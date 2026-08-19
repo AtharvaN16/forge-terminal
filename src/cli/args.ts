@@ -2,21 +2,55 @@ import { Command } from 'commander'
 import { invalidArguments } from '../core/errors.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
+import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
 
-export type Intent =
-  | {
-      kind: 'convert'
-      inputs: string[]
-      target: FormatId
-      output?: string
-      options: ConvertOptions
-      force: boolean
-      recursive: boolean
-      concurrency?: number
-      debug: boolean
+export interface ConvertIntent {
+  kind: 'convert'
+  inputs: string[]
+  target: FormatId
+  output?: string
+  options: ConvertOptions
+  force: boolean
+  recursive: boolean
+  concurrency?: number
+  debug: boolean
+}
+
+export type Intent = ConvertIntent | { kind: 'formats' } | { kind: 'shell' } | ConfigIntent
+
+/**
+ * `config` is parsed before Commander sees the argv at all. Commander is
+ * configured with a variadic `[inputs...]` argument, so it would otherwise
+ * take `config` for a filename and `set`/`output` for two more — the
+ * subcommand has to be claimed first or it is indistinguishable from a
+ * conversion of three files that do not exist.
+ */
+function parseConfigArgs(argv: string[]): ConfigIntent {
+  const [, action, key, ...rest] = argv
+
+  if (action === undefined || action === 'list') return { kind: 'config', action: 'list' }
+  if (action === 'path') return { kind: 'config', action: 'path' }
+
+  if (action === 'set') {
+    if (key === undefined || !CONFIG_KEYS.includes(key as ConfigKey)) {
+      throw invalidArguments(
+        `Unknown config setting ${key ?? '(none)'}.`,
+        `Try one of: ${CONFIG_KEYS.join(', ')}.`,
+      )
     }
-  | { kind: 'formats' }
-  | { kind: 'shell' }
+    // Joined rather than taken as a single token: an unquoted path with a
+    // space in it arrives as several argv entries, and rejecting that would
+    // be a papercut on exactly the folders people actually have.
+    const value = rest.join(' ')
+    if (value.length === 0) throw invalidArguments(`forge config set ${key} needs a value.`)
+    return { kind: 'config', action: 'set', key: key as ConfigKey, value }
+  }
+
+  throw invalidArguments(
+    `Unknown config action ${action}.`,
+    'Try: forge config list, forge config set <setting> <value>, or forge config path.',
+  )
+}
 
 const ALIASES: Record<string, string> = { jpg: 'jpeg', tif: 'tiff', heif: 'heic' }
 
@@ -49,6 +83,8 @@ function parseConcurrency(raw: string): number {
 }
 
 export function parseArgs(argv: string[]): Intent {
+  if (argv[0] === 'config') return parseConfigArgs(argv)
+
   const program = new Command()
     .name('forge')
     .description('Convert — transform your files from the terminal')
