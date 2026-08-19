@@ -6,3 +6,6 @@ coverage/
 .env
 .env.*
 .claude/settings.local.json
+
+# brainstorming companion
+.superpowers/

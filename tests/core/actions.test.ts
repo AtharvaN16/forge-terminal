@@ -35,14 +35,7 @@ describe('convert action options', () => {
     const target = specs.find((s) => s.id === 'target')
     expect(target?.kind).toBe('select')
     if (target?.kind !== 'select') throw new Error('expected select')
-    expect(target.choices.map((c) => c.value)).toEqual([
-      'jpeg',
-      'png',
-      'webp',
-      'avif',
-      'gif',
-      'tiff',
-    ])
+    expect(target.choices.map((c) => c.value)).toEqual(['png', 'webp', 'avif', 'gif', 'tiff'])
     expect(target.choices.every((c) => c.label.length > 0 && c.hint !== undefined)).toBe(true)
   })
 
@@ -50,6 +43,28 @@ describe('convert action options', () => {
     const target = convertAction.options(source(), {}).find((s) => s.id === 'target')
     if (target?.kind !== 'select') throw new Error('expected select')
     expect(target.choices.map((c) => c.value)).not.toContain('heic')
+  })
+
+  it('never offers the source its own format as a target, since nothing would change', () => {
+    const jpegTarget = convertAction
+      .options(source({ format: 'jpeg' }), {})
+      .find((s) => s.id === 'target')
+    if (jpegTarget?.kind !== 'select') throw new Error('expected select')
+    expect(jpegTarget.choices.map((c) => c.value)).not.toContain('jpeg')
+
+    const pngTarget = convertAction
+      .options(source({ format: 'png' }), {})
+      .find((s) => s.id === 'target')
+    if (pngTarget?.kind !== 'select') throw new Error('expected select')
+    expect(pngTarget.choices.map((c) => c.value)).not.toContain('png')
+  })
+
+  it('names the source format in the label, so its absence from the list reads as intentional', () => {
+    const target = convertAction
+      .options(source({ format: 'jpeg' }), {})
+      .find((s) => s.id === 'target')
+    if (target?.kind !== 'select') throw new Error('expected select')
+    expect(target.label).toBe('Convert JPEG to')
   })
 
   it('adds a quality slider once a lossy target is chosen', () => {
@@ -76,6 +91,17 @@ describe('convert action options', () => {
     expect(dest.presets.map((p) => p.label)).toEqual(['Same folder', 'New subfolder', 'Downloads'])
     expect(dest.presets[2]?.path).toBe(join(homedir(), 'Downloads'))
   })
+
+  it('drops the Downloads preset rather than duplicating it when the source already lives there', () => {
+    const inDownloads = source({ path: join(homedir(), 'Downloads', 'photo.jpg') })
+    const specs = convertAction.options(inDownloads, { target: 'webp' })
+    const dest = specs.find((s) => s.id === 'destination')
+    if (dest?.kind !== 'path') throw new Error('expected path')
+
+    const paths = dest.presets.map((p) => p.path)
+    expect(new Set(paths).size).toBe(paths.length) // no two presets share a path
+    expect(dest.presets.map((p) => p.label)).toEqual(['Same folder', 'New subfolder'])
+  })
 })
 
 describe('convert action plan', () => {
@@ -98,7 +124,10 @@ describe('convert action plan', () => {
   })
 
   it('defaults the background to white so transparency does not become black', () => {
-    const jobs = convertAction.plan(source(), { target: 'jpeg', destination: '/out' })
+    const jobs = convertAction.plan(source({ format: 'png' }), {
+      target: 'jpeg',
+      destination: '/out',
+    })
     expect(jobs[0]?.options.background).toBe('#ffffff')
   })
 })

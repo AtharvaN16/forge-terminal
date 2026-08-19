@@ -47,12 +47,18 @@ export interface Action {
 const DEFAULT_QUALITY = 80
 
 function targetSelect(source: SourceInfo): OptionSpec {
-  const targets = targetsFor(source)
+  // Converting a file to its own format changes nothing the user can see,
+  // so it is never offered here (the CLI's separate `--to jpeg` recompress
+  // flow is unaffected — that goes through core/plan.ts, not this file).
+  const targets = targetsFor(source).filter((t) => t.id !== source.format)
   const first = targets[0]
   return {
     kind: 'select',
     id: 'target',
-    label: 'Convert to',
+    // Names the source format explicitly, so it reads as "pick something
+    // else" rather than leaving the user to wonder why their own format
+    // is missing from the list.
+    label: `Convert ${FORMATS[source.format].label} to`,
     choices: targets.map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
     default: first ? first.id : '',
   }
@@ -80,16 +86,29 @@ function requireTarget(values: Record<string, unknown>): FormatSpec {
 
 function destinationPath(source: SourceInfo): OptionSpec {
   const here = dirname(source.path)
+  const candidates: PathPreset[] = [
+    { label: 'Same folder', path: here },
+    { label: 'New subfolder', path: join(here, 'converted') },
+    { label: 'Downloads', path: join(homedir(), 'Downloads') },
+  ]
+  // Two presets can resolve to the identical folder — e.g. "Same folder" and
+  // "Downloads" collide whenever the source file already lives in
+  // ~/Downloads. `Select` keys each row by its path, so an undeduped
+  // collision here is not cosmetic: React treats it as two components
+  // sharing one identity and refuses to render reliably. Keep the earlier
+  // (more specific) preset and drop the redundant one.
+  const seen = new Set<string>()
+  const presets = candidates.filter((preset) => {
+    if (seen.has(preset.path)) return false
+    seen.add(preset.path)
+    return true
+  })
   return {
     kind: 'path',
     id: 'destination',
     label: 'Save to',
     default: here,
-    presets: [
-      { label: 'Same folder', path: here },
-      { label: 'New subfolder', path: join(here, 'converted') },
-      { label: 'Downloads', path: join(homedir(), 'Downloads') },
-    ],
+    presets,
   }
 }
 

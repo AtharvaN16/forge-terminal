@@ -19,10 +19,10 @@ async function driveToResult() {
   await settle()
   app.stdin.write(ENTER) // submit path
   await settle(300)
-  app.stdin.write(DOWN + DOWN) // jpeg, png, webp… reach webp. Accepting the
-  await settle() // first (jpeg) resolves onto the input itself, which
-  app.stdin.write(ENTER) // buildPlan refuses as output-is-input — see
-  await settle() // app-safety.test.tsx, which drives exactly that.
+  app.stdin.write(DOWN) // targets exclude jpeg (same-format is a no-op), so
+  await settle() // the order is png, webp, avif… one DOWN reaches webp.
+  app.stdin.write(ENTER)
+  await settle()
   app.stdin.write(ENTER) // accept quality
   await settle()
   app.stdin.write(ENTER) // accept "Same folder"
@@ -87,7 +87,7 @@ describe('shell conversion', () => {
     await settle()
     app.stdin.write(ENTER) // submit path
     await settle(300)
-    app.stdin.write(DOWN + DOWN) // webp
+    app.stdin.write(DOWN) // webp (jpeg excluded, so png, webp, avif…)
     await settle()
     app.stdin.write(ENTER)
     await settle()

@@ -8,7 +8,6 @@ import { App } from '../../src/shell/App.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
-const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 
@@ -43,8 +42,8 @@ async function frameAtDestination(width: number): Promise<string> {
   await settle()
   stdin.write(ENTER)
   await settle(300)
-  stdin.write(DOWN) // png: lossless, so the quality step is skipped
-  await settle()
+  // png is now the default highlighted target (jpeg is excluded as a
+  // same-format no-op), and it's lossless, so the quality step is skipped.
   stdin.write(ENTER)
   await settle(200)
   return lastFrame() ?? ''

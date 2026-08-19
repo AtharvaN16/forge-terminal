@@ -17,24 +17,6 @@ const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
  * These drive the real keypaths that reach them.
  */
 
-/** Enter four times from a dropped JPEG: first target (jpeg), quality, first preset (Same folder). */
-async function allDefaults() {
-  const dir = await makeTempDir()
-  const jpg = await makeJpeg(dir, 'photo.jpg')
-  const app = render(<App initialWidth={80} />)
-  app.stdin.write(jpg)
-  await settle()
-  app.stdin.write(ENTER) // submit the path
-  await settle(300)
-  app.stdin.write(ENTER) // accept the first target — jpeg, the source's own format
-  await settle()
-  app.stdin.write(ENTER) // accept the default quality
-  await settle()
-  app.stdin.write(ENTER) // accept the first preset — "Same folder"
-  await settle(600)
-  return { ...app, dir, jpg }
-}
-
 /** Same walk, but to webp with a webp already sitting in the destination. */
 async function ontoAnExistingOutput() {
   const dir = await makeTempDir()
@@ -46,8 +28,9 @@ async function ontoAnExistingOutput() {
   await settle()
   app.stdin.write(ENTER)
   await settle(300)
-  app.stdin.write(DOWN + DOWN) // jpeg, png, webp
-  await settle()
+  app.stdin.write(DOWN) // jpeg is excluded (same-format is a no-op), so
+  await settle() // targets are png, webp, avif… one DOWN reaches webp.
+
   app.stdin.write(ENTER)
   await settle()
   app.stdin.write(ENTER) // quality
@@ -65,28 +48,45 @@ describe('the shell never writes over the input', () => {
     const app = render(<App initialWidth={80} />)
     app.stdin.write(jpg)
     await settle()
-    app.stdin.write(ENTER)
+    app.stdin.write(ENTER) // submit the path
     await settle(300)
-    app.stdin.write(ENTER)
+    app.stdin.write(ENTER) // accept the first offered target — never jpeg,
+    await settle() // since converting to your own format isn't offered
+    app.stdin.write(ENTER) // accept the default quality
     await settle()
-    app.stdin.write(ENTER)
-    await settle()
-    app.stdin.write(ENTER)
+    app.stdin.write(ENTER) // accept the first preset — "Same folder"
     await settle(600)
     const after = await readFile(jpg)
     expect(after.equals(before)).toBe(true)
   })
 
-  it('says so, and never reports the overwrite as a success', async () => {
-    const { lastFrame } = await allDefaults()
-    const frame = lastFrame() ?? ''
-    expect(frame).toContain('Output would replace the original')
-    expect(frame).not.toContain('✓')
-  })
-
-  it('returns to the destination step so a different folder can be picked', async () => {
-    const { lastFrame } = await allDefaults()
-    expect(lastFrame()).toContain('Save to')
+  /**
+   * `buildPlan()`'s `output-is-input` refusal (unit-tested directly at
+   * tests/core/plan.test.ts:54) used to be reachable through the shell by
+   * accepting every default: the first offered target was the source's own
+   * format, so "photo.jpg" would convert to "photo.jpg" and only that
+   * refusal stood between accepting every default and silent data loss.
+   *
+   * The target picker now excludes the source's own format outright (see
+   * targetSelect in core/actions.ts) — the dangerous choice is never
+   * offered, which is stronger than refusing it after the fact. That also
+   * means the refusal is no longer reachable through the picker at all.
+   * `buildPlan()`'s check stays wired into `convert()` regardless, as a
+   * backstop the type system doesn't otherwise guarantee: a future change
+   * that reintroduces a same-format choice (a "recompress" action, say)
+   * would still be caught here rather than writing over the user's file.
+   */
+  it("never offers the source's own format, so the collision can't be reached", async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const { stdin, lastFrame } = render(<App initialWidth={80} />)
+    stdin.write(jpg)
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+    // 'JPEG' appears twice — the file card and the "Convert JPEG to" label —
+    // and never a third time as its own row in the picker below.
+    expect((lastFrame() ?? '').split('JPEG').length - 1).toBe(2)
   })
 })
 
