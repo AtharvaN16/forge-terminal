@@ -942,6 +942,17 @@ describe('Select', () => {
     const { lastFrame } = render(<Select items={[]} onSubmit={() => {}} />)
     expect(lastFrame()).toBe('')
   })
+
+  it('reports the highlighted index so a parent can preview it', async () => {
+    const onHighlight = vi.fn()
+    const { stdin } = render(<Select items={items} onSubmit={() => {}} onHighlight={onHighlight} />)
+    stdin.write(DOWN)
+    await settle()
+    expect(onHighlight).toHaveBeenLastCalledWith(1)
+    stdin.write(UP)
+    await settle()
+    expect(onHighlight).toHaveBeenLastCalledWith(0)
+  })
 })
 ```
 
@@ -993,15 +1004,24 @@ interface SelectProps {
   onSubmit: (value: string) => void
   onCancel?: () => void
   showHints?: boolean
+  /** Fires whenever the cursor moves, so a parent can preview the highlighted item. */
+  onHighlight?: (index: number) => void
 }
 
-export function Select({ items, onSubmit, onCancel, showHints = true }: SelectProps) {
+export function Select({
+  items, onSubmit, onCancel, showHints = true, onHighlight,
+}: SelectProps) {
   const [index, setIndex] = useState(0)
+
+  const move = (next: number) => {
+    setIndex(next)
+    if (onHighlight) onHighlight(next)
+  }
 
   useInput((_input, key) => {
     if (items.length === 0) return
-    if (key.downArrow) setIndex((i) => Math.min(i + 1, items.length - 1))
-    if (key.upArrow) setIndex((i) => Math.max(i - 1, 0))
+    if (key.downArrow) move(Math.min(index + 1, items.length - 1))
+    if (key.upArrow) move(Math.max(index - 1, 0))
     if (key.return) {
       const item = items[index]
       if (item) onSubmit(item.value)
@@ -1362,16 +1382,6 @@ export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathI
     { isActive: typing },
   )
 
-  // Track the highlight so the preview can follow it. Select owns the cursor,
-  // so mirror its movement here rather than duplicating the list.
-  useInput(
-    (_input, key) => {
-      if (key.downArrow) setHighlight((i) => Math.min(i + 1, items.length - 1))
-      if (key.upArrow) setHighlight((i) => Math.max(i - 1, 0))
-    },
-    { isActive: !typing },
-  )
-
   if (typing) {
     return (
       <Box flexDirection="column">
@@ -1392,6 +1402,7 @@ export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathI
       <Text>{label}</Text>
       <Select
         items={items}
+        onHighlight={setHighlight}
         onSubmit={(value) => {
           if (value === TYPE_IT) setTyping(true)
           else onSubmit(value)
@@ -1413,8 +1424,6 @@ export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathI
 
 Run: `npx vitest run tests/shell/path-input.test.tsx`
 Expected: PASS, 6 tests
-
-If the highlight-mirroring turns out to double-count arrow presses (both this component and `Select` handling the same key), that is a real design flaw rather than a test problem — report it. The clean fix is for `Select` to accept an `onHighlight` callback instead, and this component to stop listening.
 
 - [ ] **Step 5: Commit**
 
@@ -1761,7 +1770,9 @@ describe('shell flow', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    stdin.write(ENTER)          // accept the first target (webp, lossy)
+    stdin.write(DOWN + DOWN)    // targets are ordered jpeg, png, webp… so reach webp
+    await settle()
+    stdin.write(ENTER)
     await settle()
     expect(lastFrame()).toContain('Quality')
   })
@@ -1842,11 +1853,12 @@ export function Prompt({ value, onChange, onSubmit, placeholder, isActive, borde
 - [ ] **Step 4: Write `src/shell/App.tsx`**
 
 ```tsx
-import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
+import { Box, Static, Text, useStdout } from 'ink'
 import { useCallback, useMemo, useState } from 'react'
 import { type OptionSpec, convertAction } from '../core/actions.js'
 import { isForgeError } from '../core/errors.js'
-import type { Result, SourceInfo } from '../core/types.js'
+import { primaryExtension } from '../core/formats.js'
+import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
 import { type HistoryBlock, HistoryEntry } from './blocks.js'
 import { Hints } from './components/Hints.js'
@@ -1955,7 +1967,11 @@ export function App({ initialWidth }: { initialWidth?: number }) {
           <PathInput
             label={(specFor('destination') as Extract<OptionSpec, { kind: 'path' }>).label}
             presets={(specFor('destination') as Extract<OptionSpec, { kind: 'path' }>).presets}
-            preview={(p) => `${p}/${(source?.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')}`}
+            preview={(p) =>
+              source && typeof values.target === 'string'
+                ? `${p}/${(source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')}${primaryExtension(values.target as FormatId)}`
+                : p
+            }
             onSubmit={() => setStage('converting')}
             onCancel={() => setStage('target')}
           />
@@ -2028,7 +2044,9 @@ async function driveToResult() {
   await settle()
   app.stdin.write(ENTER)   // submit path
   await settle(300)
-  app.stdin.write(ENTER)   // accept first target
+  app.stdin.write(DOWN + DOWN)  // jpeg, png, webp… reach webp. Accepting the first
+  await settle()                // (jpeg) would write photo.jpg over the input and
+  app.stdin.write(ENTER)        // fail as output-is-input.
   await settle()
   app.stdin.write(ENTER)   // accept quality
   await settle()
@@ -2082,9 +2100,10 @@ Expected: FAIL — the destination step currently jumps to `converting` and noth
 
 - [ ] **Step 3: Add conversion to `src/shell/App.tsx`**
 
-Add these imports:
+Add these imports. `useApp` and `useInput` join the existing `ink` import line — Task 10 deliberately left them out because nothing used them yet, and an unused import fails lint:
 
 ```tsx
+import { useApp, useInput } from 'ink'
 import { runJobs } from '../core/run.js'
 import { openPath, revealPath } from './reveal.js'
 import { fileLink } from './hyperlink.js'
