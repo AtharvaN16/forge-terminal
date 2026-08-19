@@ -29,12 +29,24 @@ const items: Choice[] = [
 
 const settle = () => new Promise((r) => setTimeout(r, 60))
 
+/**
+ * The frame with SGR sequences removed. The cursor glyph and the label are
+ * drawn as separately coloured spans — amber marker, bright label — so a
+ * reset sequence sits between them in the raw output. Asserting on the
+ * stripped text keeps these tests about *what the row says*, which is the
+ * actual requirement, and leaves them indifferent to how it is styled.
+ * Colour itself is still pinned below, via the bold sequence.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching SGR escapes is the point
+const ANSI = /\u001b\[[0-9;]*m/g
+const plain = (frame: string | undefined) => (frame ?? '').replace(ANSI, '')
+
 describe('Select', () => {
   it('marks the first item with a cursor and bold, not colour alone', () => {
-    const { lastFrame } = render(<Select items={items} onSubmit={() => {}} />)
+    const { lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('❯ WebP')
-    expect(frame).toContain('  PNG')
+    expect(plain(frame)).toContain('❯ WebP')
+    expect(plain(frame)).toContain('  PNG')
     // The glyph alone isn't the requirement — §13 demands bold too, so pin
     // the actual SGR bold-on sequence to the selected row and nowhere else.
     const lines = frame.split('\n')
@@ -45,39 +57,39 @@ describe('Select', () => {
   })
 
   it('shows each choice hint', () => {
-    const { lastFrame } = render(<Select items={items} onSubmit={() => {}} />)
+    const { lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     expect(lastFrame()).toContain('smaller, modern')
   })
 
   it('moves the cursor down', async () => {
-    const { stdin, lastFrame } = render(<Select items={items} onSubmit={() => {}} />)
+    const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(DOWN)
     await settle()
-    expect(lastFrame()).toContain('❯ PNG')
+    expect(plain(lastFrame())).toContain('❯ PNG')
   })
 
   it('moves the cursor up', async () => {
-    const { stdin, lastFrame } = render(<Select items={items} onSubmit={() => {}} />)
+    const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(DOWN)
     await settle()
     stdin.write(UP)
     await settle()
-    expect(lastFrame()).toContain('❯ WebP')
+    expect(plain(lastFrame())).toContain('❯ WebP')
   })
 
   it('stops at the ends rather than wrapping', async () => {
-    const { stdin, lastFrame } = render(<Select items={items} onSubmit={() => {}} />)
+    const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(UP)
     await settle()
-    expect(lastFrame()).toContain('❯ WebP')
+    expect(plain(lastFrame())).toContain('❯ WebP')
     stdin.write(DOWN + DOWN + DOWN + DOWN)
     await settle()
-    expect(lastFrame()).toContain('❯ AVIF')
+    expect(plain(lastFrame())).toContain('❯ AVIF')
   })
 
   it('submits the highlighted value on enter', async () => {
     const onSubmit = vi.fn()
-    const { stdin } = render(<Select items={items} onSubmit={onSubmit} />)
+    const { stdin } = render(<Select width={60} items={items} onSubmit={onSubmit} />)
     stdin.write(DOWN)
     await settle()
     stdin.write(ENTER)
@@ -91,10 +103,10 @@ describe('Select', () => {
     // lands, not on the index that was current when this render's input
     // handler closure was created.
     const onSubmit = vi.fn()
-    const { stdin, lastFrame } = render(<Select items={items} onSubmit={onSubmit} />)
+    const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={onSubmit} />)
     stdin.write(DOWN + DOWN + ENTER)
     await settle()
-    expect(lastFrame()).toContain('❯ AVIF')
+    expect(plain(lastFrame())).toContain('❯ AVIF')
     expect(onSubmit).toHaveBeenCalledWith('avif')
   })
 
@@ -102,39 +114,51 @@ describe('Select', () => {
     const onSubmit = vi.fn()
     const onHighlight = vi.fn()
     const { stdin, lastFrame } = render(
-      <Select items={items} onSubmit={onSubmit} onHighlight={onHighlight} isActive={false} />,
+      <Select
+        width={60}
+        items={items}
+        onSubmit={onSubmit}
+        onHighlight={onHighlight}
+        isActive={false}
+      />,
     )
     stdin.write(DOWN)
     await settle()
     stdin.write(ENTER)
     await settle()
-    expect(lastFrame()).toContain('❯ WebP')
+    expect(plain(lastFrame())).toContain('❯ WebP')
     expect(onHighlight).not.toHaveBeenCalled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('cancels on escape when a handler is given', async () => {
     const onCancel = vi.fn()
-    const { stdin } = render(<Select items={items} onSubmit={() => {}} onCancel={onCancel} />)
+    const { stdin } = render(
+      <Select width={60} items={items} onSubmit={() => {}} onCancel={onCancel} />,
+    )
     stdin.write(ESCAPE)
     await settle()
     expect(onCancel).toHaveBeenCalled()
   })
 
   it('hides hints when asked, for narrow terminals', () => {
-    const { lastFrame } = render(<Select items={items} onSubmit={() => {}} showHints={false} />)
+    const { lastFrame } = render(
+      <Select width={60} items={items} onSubmit={() => {}} showHints={false} />,
+    )
     expect(lastFrame()).not.toContain('smaller, modern')
     expect(lastFrame()).toContain('WebP')
   })
 
   it('renders nothing rather than crashing on an empty list', () => {
-    const { lastFrame } = render(<Select items={[]} onSubmit={() => {}} />)
+    const { lastFrame } = render(<Select width={60} items={[]} onSubmit={() => {}} />)
     expect(lastFrame()).toBe('')
   })
 
   it('reports the highlighted index so a parent can preview it', async () => {
     const onHighlight = vi.fn()
-    const { stdin } = render(<Select items={items} onSubmit={() => {}} onHighlight={onHighlight} />)
+    const { stdin } = render(
+      <Select width={60} items={items} onSubmit={() => {}} onHighlight={onHighlight} />,
+    )
     stdin.write(DOWN)
     await settle()
     expect(onHighlight).toHaveBeenLastCalledWith(1)

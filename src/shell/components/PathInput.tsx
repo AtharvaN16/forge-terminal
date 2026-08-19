@@ -3,7 +3,8 @@ import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice, PathPreset } from '../../core/actions.js'
 import { unescapePath } from '../../utils/unescape-path.js'
-import { SYMBOLS } from '../theme.js'
+import { useTheme } from '../ThemeContext.js'
+import { colourProp, SYMBOLS } from '../theme.js'
 import { middleEllipsis } from '../width.js'
 import { Select } from './Select.js'
 
@@ -45,6 +46,7 @@ export function PathInput({
   width,
   showHints,
 }: PathInputProps) {
+  const palette = useTheme()
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
   const [highlight, setHighlight] = useState(0)
@@ -120,10 +122,10 @@ export function PathInput({
   if (typing) {
     return (
       <Box flexDirection="column">
-        <Text>{label}</Text>
+        <Text color={colourProp(palette.dim)}>{label}</Text>
         <Text>
-          {'› '}
-          {text}
+          <Text color={colourProp(palette.accent)}>{'› '}</Text>
+          <Text color={colourProp(palette.fg)}>{text}</Text>
         </Text>
       </Box>
     )
@@ -133,8 +135,9 @@ export function PathInput({
 
   return (
     <Box flexDirection="column">
-      <Text>{label}</Text>
+      <Text color={colourProp(palette.label)}>{label}</Text>
       <Select
+        width={width}
         items={items}
         onHighlight={setHighlight}
         onSubmit={(value) => {
@@ -145,7 +148,7 @@ export function PathInput({
         {...(onCancel ? { onCancel } : {})}
       />
       {highlighted && highlighted.value !== TYPE_IT ? (
-        <Text dimColor>
+        <Text color={colourProp(palette.dim)}>
           {'  '}
           {SYMBOLS.arrow} {preview(highlighted.value)}
         </Text>

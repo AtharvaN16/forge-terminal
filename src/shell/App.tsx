@@ -348,6 +348,7 @@ export function App({
         <Box flexDirection="column" marginBottom={1}>
           <Text>{targetSpec.label}</Text>
           <Select
+            width={width}
             items={targetSpec.choices}
             onSubmit={(target) => chooseTarget(source, target)}
             onCancel={() => setStage('idle')}
@@ -403,6 +404,7 @@ export function App({
         <Box flexDirection="column" marginBottom={1}>
           <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
           <Select
+            width={width}
             items={[
               { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
               { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
