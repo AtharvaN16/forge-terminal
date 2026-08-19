@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from 'ink'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useTheme } from '../ThemeContext.js'
@@ -80,13 +80,42 @@ export function Prompt({
    * replace `value` from underneath us — Tab completion does exactly that —
    * and a caret left past the new end would insert into nothing.
    */
-  const caretRef = useRef(0)
+  // Initialised to the end of whatever the field was mounted with. The rename
+  // field is seeded by its parent before this component exists, so the
+  // "value changed from outside" check below never fires for that first
+  // value — starting at 0 is what put typed text in front of the name.
+  const caretRef = useRef(Array.from(value).length)
+
+  /**
+   * A caret move changes no text, so `onChange(value)` hands React the string
+   * it already has and it bails out of re-rendering — the caret would move in
+   * the ref and never on screen. This counter exists solely to give those
+   * renders something that actually changed.
+   */
+  const [, bump] = useState(0)
+  const rerender = () => bump((n) => n + 1)
+
+  /**
+   * The last value this component itself produced. When `value` arrives
+   * different from it, the parent replaced the text from outside — seeding
+   * the rename field with a filename, or Tab completing a path — and the
+   * caret belongs at the end of the new text, not wherever it happened to sit
+   * in the old. Without this the rename field opened with the caret at 0 and
+   * everything typed landed in front of the name.
+   */
+  const ownRef = useRef(value)
+  if (value !== ownRef.current) {
+    ownRef.current = value
+    caretRef.current = Array.from(value).length
+  }
+
   const chars = () => Array.from(valueRef.current)
   const caret = () => Math.min(Math.max(caretRef.current, 0), chars().length)
 
   const commit = (next: string, at: number) => {
     valueRef.current = next
     caretRef.current = at
+    ownRef.current = next
     onChange(next)
   }
 
@@ -97,32 +126,33 @@ export function Prompt({
       // Before the text branch: Ink reports Tab with `key.tab` *and* a "\t"
       // in `input`, so falling through would append a literal tab to the path.
       if (key.tab) {
+        // The completed value arrives as a new `value`, and the block above
+        // puts the caret at its end — nothing to do here but ask.
         onTab?.()
-        caretRef.current = Number.POSITIVE_INFINITY // completion appends; follow it
         return
       }
 
       if (key.leftArrow) {
         caretRef.current = Math.max(0, caret() - 1)
-        onChange(valueRef.current) // re-render so the caret moves on screen
+        rerender()
         return
       }
 
       if (key.rightArrow) {
         caretRef.current = Math.min(chars().length, caret() + 1)
-        onChange(valueRef.current)
+        rerender()
         return
       }
 
       // ctrl-a / ctrl-e, as every readline-driven shell does.
       if (key.ctrl && input === 'a') {
         caretRef.current = 0
-        onChange(valueRef.current)
+        rerender()
         return
       }
       if (key.ctrl && input === 'e') {
         caretRef.current = chars().length
-        onChange(valueRef.current)
+        rerender()
         return
       }
 
@@ -209,6 +239,17 @@ export function Prompt({
   const before = cells.slice(0, at).join('')
   const under = cells[at] ?? ' '
   const after = cells.slice(at + 1).join('')
+
+  /**
+   * `inverse` is an SGR attribute, so with colour suppressed it emits nothing
+   * and the caret disappears — leaving no way to tell where typing will land
+   * in the middle of a name. Under NO_COLOR the caret becomes a literal
+   * glyph instead, which is the same rule the rest of the shell follows:
+   * meaning never rides on colour alone (spec §13).
+   */
+  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
+  const caretGlyph = (ch: string) =>
+    noColour ? <Text color={colourProp(palette.fg)}>{`▏${ch}`}</Text> : <Text inverse>{ch}</Text>
 
   const line = value ? (
     <Text>
