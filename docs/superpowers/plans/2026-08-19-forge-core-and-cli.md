@@ -17,6 +17,10 @@
 - Command name is `forge`. Product name is Convert. Package name `forge-terminal`.
 - Node >= 20. ESM only (`"type": "module"`). TypeScript `strict: true`.
 - Relative imports in `src/` **must** carry a `.js` extension (NodeNext ESM).
+- TypeScript is **7.x**, not 5.x. TS7 does not auto-include every `/*`
+  package, so `tsconfig.json` carries `"types": ["node"]` deliberately —
+  without it, `import { basename } from 'node:path'` fails with TS2591.
+  Do not remove it. Verified empirically at Task 3.
 - `src/core/` and `src/engines/` import no React, no Ink, no Chalk, and never call `console.*` or write to stdout. They return data.
 - No hardcoded list of output formats outside `src/core/formats.ts`. Targets come from `targetsFor(source)`.
 - Sources are identified by file content, never by extension.
