@@ -48,7 +48,9 @@ async function ontoAnExistingOutput() {
   await settle()
   app.stdin.write(ENTER) // quality
   await settle()
-  app.stdin.write(ENTER) // "Same folder"
+  app.stdin.write(ENTER) // destination -> the name step
+  await settle()
+  app.stdin.write(ENTER) // accept the proposed name
   await settle(400)
   return { ...app, dir, existing }
 }
@@ -67,7 +69,9 @@ describe('the shell never writes over the input', () => {
     await settle() // since converting to your own format isn't offered
     app.stdin.write(ENTER) // accept the default quality
     await settle()
-    app.stdin.write(ENTER) // accept the first preset — "Same folder"
+    app.stdin.write(ENTER) // destination -> the name step
+    await settle()
+    app.stdin.write(ENTER) // accept the proposed name
     await settle(600)
     const after = await readFile(jpg)
     expect(after.equals(before)).toBe(true)

@@ -19,8 +19,8 @@ import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { completePath } from './complete.js'
-import { Divider } from './components/Divider.js'
 import { FileCard } from './components/FileCard.js'
+import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
@@ -197,6 +197,15 @@ export function App({
   // `useInput` hook regardless of what else is on screen, so an ungated
   // handler here would steal `f`/`o`/`q` from the target/quality/destination
   // stages the moment they happen to share a letter.
+  // esc on the name step returns to the location step. Prompt deliberately
+  // ignores escape (a path can contain one), so the stage owns this.
+  useInput(
+    (_input, key) => {
+      if (key.escape) cancelRename()
+    },
+    { isActive: stage === 'rename' },
+  )
+
   useInput(
     (input, key) => {
       if (!lastResult) return
@@ -363,6 +372,12 @@ export function App({
     setStage('rename')
   }
 
+  const cancelRename = () => {
+    setRenaming(null)
+    setText('')
+    setStage('destination')
+  }
+
   const submitRename = (raw: string) => {
     if (!renaming) return
     const stem = raw.trim().replace(/\//g, '-') || renaming.stem
@@ -500,7 +515,7 @@ export function App({
 
         {/* The staged file, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back. */}
-        {source && stage !== 'idle' && stage !== 'theme' ? (
+        {source && stage !== 'idle' && stage !== 'theme' && stage !== 'result' ? (
           <Box marginBottom={1}>
             <FileCard source={source} width={width} />
           </Box>
@@ -519,8 +534,8 @@ export function App({
               onCancel={clearSource}
               showHints={band !== 'compact'}
             />
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={[
                 ['↑↓', 'choose'],
                 ['↵', 'confirm'],
@@ -542,8 +557,8 @@ export function App({
               onSubmit={chooseQuality}
               onCancel={() => setStage('target')}
             />
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={[
                 ['←→', 'adjust'],
                 ['↵', 'confirm'],
@@ -559,26 +574,24 @@ export function App({
               label={destinationSpec.label}
               presets={destinationSpec.presets}
               preview={previewDestination}
-              onSubmit={(destination) => void convert(destination)}
+              onSubmit={startRename}
               onCancel={() => setStage('target')}
               width={width}
               showHints={band !== 'compact'}
               defaultPath={expandTilde(livePrefs.defaultOutput)}
               onMakeDefault={makeDefault}
-              onRename={startRename}
             />
             {/* Four pairs is 45 columns — wider than a compact terminal.
                 Spec §13 drops hints there rather than overflowing, and the
                 shorter pair still names the key that is unique to this step. */}
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={
                 band === 'compact'
                   ? [['d', 'make default']]
                   : [
                       ['↑↓', 'choose'],
-                      ['↵', 'save'],
-                      ['r', 'rename'],
+                      ['↵', 'next'],
                       ['d', 'make default'],
                     ]
               }
@@ -608,11 +621,12 @@ export function App({
                 Math.max(12, width - 4),
               )}`}
             </Text>
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={[
                 ['↵', 'save'],
                 ['ctrl-u', 'clear'],
+                ['esc', 'back'],
               ]}
             />
           </Box>
@@ -635,8 +649,8 @@ export function App({
               }}
               showHints={band !== 'compact'}
             />
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={[
                 ['↑↓', 'choose'],
                 ['↵', 'confirm'],
@@ -654,7 +668,6 @@ export function App({
 
         {stage === 'result' && lastResult ? (
           <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.border)}>{'─'.repeat(Math.min(width, 52))}</Text>
             {/* Only where the terminal makes OSC 8 clickable. Otherwise
                 fileLink falls back to a bare file:// URL — a long, unreadable
                 line that says nothing the hints below it do not already say,
@@ -666,8 +679,8 @@ export function App({
                 {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
               </Text>
             ) : null}
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={[
                 ['↵', 'convert another'],
                 ['f', 'open'],
@@ -691,8 +704,8 @@ export function App({
               onTab={complete}
               matches={matches}
             />
-            <Divider width={width} />
-            <Hints
+            <HintBar
+              width={width}
               pairs={
                 band === 'compact'
                   ? [

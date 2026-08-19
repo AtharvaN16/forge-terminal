@@ -38,7 +38,9 @@ async function driveToResult() {
   await settle()
   app.stdin.write(ENTER) // accept quality
   await settle()
-  app.stdin.write(ENTER) // accept "Same folder"
+  app.stdin.write(ENTER) // accept the destination -> the name step
+  await settle()
+  app.stdin.write(ENTER) // accept the proposed name
   await settle(600) // conversion
   return { ...app, dir }
 }
@@ -106,11 +108,21 @@ describe('shell conversion', () => {
     await settle()
     app.stdin.write(ENTER) // quality
     await settle()
-    app.stdin.write(ENTER) // "Same folder"
-    app.stdin.write(ENTER) // …and again, same tick
+    app.stdin.write(ENTER) // destination -> the name step
+    await settle(300)
+    // Both in one tick, at the step that actually submits the conversion.
+    // React unmounts the handler on the next render, but both calls have
+    // already run by then — which is exactly what `converting` guards.
+    app.stdin.write(ENTER)
+    app.stdin.write(ENTER)
     await settle(900)
-    const frame = app.lastFrame() ?? ''
-    expect(frame.split('✓').length - 1).toBe(1)
+    // Asserted on disk, not on the frame. "Exactly one conversion" is a claim
+    // about what was written, and the result block lives in <Static>, which a
+    // later dynamic render pushes out of what `lastFrame()` returns — so
+    // counting ✓ in the frame measured render timing, not conversions.
+    const { readdir } = await import('node:fs/promises')
+    const written = (await readdir(dir)).filter((f) => f.endsWith('.webp'))
+    expect(written).toHaveLength(1)
   })
 
   /**
