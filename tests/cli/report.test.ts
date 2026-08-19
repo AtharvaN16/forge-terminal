@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { reportBatch, reportFailures, reportFormats, reportSingle } from '../../src/cli/report.js'
+import { readableFormats, writableFormats } from '../../src/core/capabilities.js'
 import { fileNotFound } from '../../src/core/errors.js'
+import { FORMATS } from '../../src/core/formats.js'
 import { buildPlan } from '../../src/core/plan.js'
 import { resolveInputs } from '../../src/core/resolve.js'
 import { runJobs } from '../../src/core/run.js'
@@ -69,5 +71,25 @@ describe('reportFormats', () => {
   it('marks heic as read-only, since sharp cannot encode it', () => {
     const line = reportFormats().find((l) => l.includes('HEIC')) ?? ''
     expect(line.toLowerCase()).toContain('read only')
+  })
+
+  it('derives the read-only explanation from the capability table instead of hardcoding it', () => {
+    const readable = new Set(readableFormats())
+    const writable = new Set(writableFormats())
+    const readOnly = [...readable].filter((id) => !writable.has(id)).map((id) => FORMATS[id].label)
+
+    const lines = reportFormats()
+    const note = lines.find((l) => l.toLowerCase().includes('read only because'))
+
+    if (readOnly.length === 0) {
+      expect(note).toBeUndefined()
+      return
+    }
+    expect(note).toBeDefined()
+    for (const label of readOnly) expect(note).toContain(label)
+    // Nothing writable-and-readable should be named in the explanation.
+    for (const id of writable) {
+      if (readable.has(id)) expect(note).not.toContain(FORMATS[id].label)
+    }
   })
 })

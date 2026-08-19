@@ -59,6 +59,14 @@ export function reportFormats(): string[] {
     const capability = writable.has(id) ? 'read and write' : 'read only'
     lines.push(`  ${spec.label.padEnd(6)} ${spec.extensions.join(' ').padEnd(12)} ${capability}`)
   }
-  lines.push('', 'HEIC is read only because the image library cannot encode it.')
+
+  // Derived from the capability table, not hardcoded — this would otherwise
+  // become a lie the day any engine can encode a format it currently cannot.
+  const readOnly = [...readable].filter((id) => !writable.has(id)).map((id) => FORMATS[id].label)
+  if (readOnly.length > 0) {
+    const names = readOnly.join(', ')
+    const [verb, noun] = readOnly.length === 1 ? ['is', 'it'] : ['are', 'them']
+    lines.push('', `${names} ${verb} read only because the image library cannot encode ${noun}.`)
+  }
   return lines
 }

@@ -10,6 +10,7 @@ export type ErrorCode =
   | 'unsupported-target'
   | 'corrupt-source'
   | 'output-exists'
+  | 'output-collision'
   | 'output-is-input'
   | 'empty-directory'
   | 'invalid-arguments'
@@ -112,6 +113,21 @@ export function outputExists(path: string): ForgeError {
     title: 'File already exists',
     detail: `${basename(path)} is already there.`,
     hint: 'Pass --force to replace it, or choose a different --output.',
+  })
+}
+
+/**
+ * Two distinct sources resolved to the same output path. Unlike outputExists,
+ * nothing was "already there" before this run started — the collision is
+ * between two of the user's own inputs, so --force (which means "overwrite
+ * what's on disk") must never suppress it.
+ */
+export function outputCollision(paths: [string, string], output: string): ForgeError {
+  return new ForgeError({
+    code: 'output-collision',
+    title: 'Two files want the same output',
+    detail: `${basename(paths[0])} and ${basename(paths[1])} would both become ${basename(output)}.`,
+    hint: 'Convert them separately, or use --output to send them to different folders.',
   })
 }
 

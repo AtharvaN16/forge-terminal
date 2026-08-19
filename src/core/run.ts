@@ -28,7 +28,11 @@ export async function runJobs(
   opts: { concurrency?: number; onEvent?: (event: RunEvent) => void },
 ): Promise<RunSummary> {
   const emit = opts.onEvent ?? (() => {})
-  const limit = Math.max(1, opts.concurrency ?? defaultConcurrency())
+  // A caller-supplied concurrency that is not a finite number (NaN from a bad
+  // parse, Infinity, ...) must never be allowed to collapse the worker count
+  // to zero — that would silently convert nothing while still resolving.
+  const requested = Number.isFinite(opts.concurrency) ? opts.concurrency : undefined
+  const limit = Math.max(1, requested ?? defaultConcurrency())
   const total = jobs.length
 
   const results: Result[] = []
@@ -47,10 +51,12 @@ export async function runJobs(
       const engine = engineForTarget(job.target)
       if (!engine) {
         completed++
-        failures.push({
+        const failure: InputFailure = {
           path: job.source.path,
           error: conversionFailed(job.source.path, new Error(`no engine writes ${job.target}`)),
-        })
+        }
+        failures.push(failure)
+        emit({ type: 'job:error', job, failure, completed, total })
         continue
       }
 

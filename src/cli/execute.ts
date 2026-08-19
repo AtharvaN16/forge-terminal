@@ -10,7 +10,23 @@ export interface ExecuteResult {
   stderr: string[]
 }
 
-export async function execute(intent: Intent): Promise<ExecuteResult> {
+export interface BatchProgress {
+  /** 0 on the first call, marking the batch's start. */
+  completed: number
+  total: number
+}
+
+export interface ExecuteOptions {
+  /**
+   * Called only for a batch (more than one job) and only driven by real
+   * job:done / job:error events — never a fabricated percentage. execute()
+   * itself never prints; this callback is how src/index.ts, the only layer
+   * allowed to write to a stream, gets the data to do so.
+   */
+  onProgress?: (progress: BatchProgress) => void
+}
+
+export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
   if (intent.kind === 'formats') {
     return { exitCode: 0, stdout: reportFormats(), stderr: [] }
   }
@@ -34,10 +50,21 @@ export async function execute(intent: Intent): Promise<ExecuteResult> {
   }
   const plan = await buildPlan(planRequest)
 
-  const summary = await runJobs(
-    plan.jobs,
-    intent.concurrency === undefined ? {} : { concurrency: intent.concurrency },
-  )
+  const isBatch = plan.jobs.length > 1
+  if (isBatch) opts.onProgress?.({ completed: 0, total: plan.jobs.length })
+
+  const summary = await runJobs(plan.jobs, {
+    ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
+    ...(isBatch && opts.onProgress
+      ? {
+          onEvent: (event) => {
+            if (event.type === 'job:done' || event.type === 'job:error') {
+              opts.onProgress?.({ completed: event.completed, total: event.total })
+            }
+          },
+        }
+      : {}),
+  })
 
   const failures = [...plan.failures, ...summary.failures]
 

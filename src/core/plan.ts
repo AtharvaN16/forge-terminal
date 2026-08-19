@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { targetIdsFor } from './capabilities.js'
-import { outputExists, outputIsInput, unsupportedTarget } from './errors.js'
+import { outputCollision, outputExists, outputIsInput, unsupportedTarget } from './errors.js'
 import { resolveOutputPath } from './output-path.js'
 import type { InputFailure, ResolvedInput } from './resolve.js'
 import type { ConvertOptions, FormatId, Job } from './types.js'
@@ -26,6 +26,11 @@ export interface Plan {
 export async function buildPlan(req: PlanRequest): Promise<Plan> {
   const jobs: Job[] = []
   const failures: InputFailure[] = [...req.resolved.failures]
+  // Tracks which of *this run's own* sources has already claimed an output
+  // path. existsSync only sees the disk as it was before the run started, so
+  // it can never catch two of our own jobs racing to write the same file —
+  // this map is what catches that, and it is checked regardless of --force.
+  const claimed = new Map<string, Job>()
 
   for (const source of req.resolved.sources) {
     const available = targetIdsFor(source)
@@ -49,12 +54,24 @@ export async function buildPlan(req: PlanRequest): Promise<Plan> {
       continue
     }
 
+    const key = resolve(output)
+    const owner = claimed.get(key)
+    if (owner) {
+      failures.push({
+        path: source.path,
+        error: outputCollision([owner.source.path, source.path], output),
+      })
+      continue
+    }
+
     if (existsSync(output) && !req.force) {
       failures.push({ path: source.path, error: outputExists(output) })
       continue
     }
 
-    jobs.push({ source, target: req.target, output, options: req.options })
+    const job: Job = { source, target: req.target, output, options: req.options }
+    jobs.push(job)
+    claimed.set(key, job)
   }
 
   return { jobs, failures }

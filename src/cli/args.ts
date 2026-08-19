@@ -40,6 +40,14 @@ function parseQuality(raw: string): number {
   return n
 }
 
+function parseConcurrency(raw: string): number {
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 1) {
+    throw invalidArguments(`Concurrency must be a positive whole number, not ${raw}.`)
+  }
+  return n
+}
+
 export function parseArgs(argv: string[]): Intent {
   const program = new Command()
     .name('forge')
@@ -98,6 +106,7 @@ export function parseArgs(argv: string[]): Intent {
     debug: Boolean(opts.debug),
   }
   if (opts.output !== undefined) intent.output = String(opts.output)
-  if (opts.concurrency !== undefined) intent.concurrency = Number(opts.concurrency)
+  if (opts.concurrency !== undefined)
+    intent.concurrency = parseConcurrency(String(opts.concurrency))
   return intent
 }

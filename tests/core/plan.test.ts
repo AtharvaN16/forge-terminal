@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { buildPlan } from '../../src/core/plan.js'
 import { resolveInputs } from '../../src/core/resolve.js'
@@ -51,6 +52,47 @@ describe('buildPlan', () => {
     const resolved = await resolveInputs([a], { recursive: false })
     const plan = await buildPlan({ resolved, target: 'jpeg', options, force: false })
     expect(plan.failures[0]?.error.code).toBe('output-is-input')
+  })
+
+  it('refuses two sources that would clobber the same output, keeping only one job', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'logo.jpg')
+    const webp = join(dir, 'logo.webp')
+    await sharp(jpg).webp().toFile(webp)
+
+    const resolved = await resolveInputs([jpg, webp], { recursive: false })
+    const plan = await buildPlan({ resolved, target: 'png', options, force: false })
+
+    expect(plan.jobs).toHaveLength(1)
+    expect(plan.failures).toHaveLength(1)
+    expect(plan.failures[0]?.error.code).toBe('output-collision')
+    expect(plan.failures[0]?.error.detail).toContain('logo.jpg')
+    expect(plan.failures[0]?.error.detail).toContain('logo.webp')
+    expect(plan.failures[0]?.error.detail).toContain('logo.png')
+  })
+
+  it('still refuses the collision with force, since force means overwrite-on-disk, not fight-each-other', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'logo.jpg')
+    const webp = join(dir, 'logo.webp')
+    await sharp(jpg).webp().toFile(webp)
+
+    const resolved = await resolveInputs([jpg, webp], { recursive: false })
+    const plan = await buildPlan({ resolved, target: 'png', options, force: true })
+
+    expect(plan.jobs).toHaveLength(1)
+    expect(plan.failures).toHaveLength(1)
+    expect(plan.failures[0]?.error.code).toBe('output-collision')
+  })
+
+  it('produces two jobs for two sources that do not collide', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'a.jpg')
+    const b = await makeJpeg(dir, 'b.jpg')
+    const resolved = await resolveInputs([a, b], { recursive: false })
+    const plan = await buildPlan({ resolved, target: 'png', options, force: false })
+    expect(plan.jobs).toHaveLength(2)
+    expect(plan.failures).toHaveLength(0)
   })
 
   it('carries input failures through untouched', async () => {

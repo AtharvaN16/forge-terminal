@@ -108,3 +108,34 @@ export async function pixelAt(
   const offset = (y * info.width + x) * info.channels
   return [data[offset] ?? 0, data[offset + 1] ?? 0, data[offset + 2] ?? 0]
 }
+
+/**
+ * A solid-colour fixture cannot detect quantisation — every pixel already
+ * shares one colour. This builds a genuine gradient so a lossy re-encode that
+ * collapses the palette is visible in a before/after colour count.
+ */
+export async function makeGradientPng(dir: string, name: string, size = 128): Promise<string> {
+  const path = join(dir, name)
+  const buffer = Buffer.alloc(size * size * 3)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 3
+      buffer[i] = (x * 2) % 256
+      buffer[i + 1] = (y * 2) % 256
+      buffer[i + 2] = ((x + y) * 3) % 256
+    }
+  }
+  await sharp(buffer, { raw: { width: size, height: size, channels: 3 } })
+    .png()
+    .toFile(path)
+  return path
+}
+
+export async function countColours(path: string): Promise<number> {
+  const { data, info } = await sharp(path).raw().toBuffer({ resolveWithObject: true })
+  const colours = new Set<number>()
+  for (let i = 0; i < data.length; i += info.channels) {
+    colours.add(((data[i] ?? 0) << 16) | ((data[i + 1] ?? 0) << 8) | (data[i + 2] ?? 0))
+  }
+  return colours.size
+}

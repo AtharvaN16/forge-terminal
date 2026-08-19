@@ -95,4 +95,16 @@ describe('parseArgs', () => {
   it('rejects --to with no inputs', () => {
     expect(codeOf(['--to', 'webp'])).toBe('invalid-arguments')
   })
+
+  it('rejects a non-numeric, zero or negative --concurrency', () => {
+    expect(codeOf(['a.jpg', '--to', 'webp', '--concurrency', 'abc'])).toBe('invalid-arguments')
+    expect(codeOf(['a.jpg', '--to', 'webp', '--concurrency', '0'])).toBe('invalid-arguments')
+    expect(codeOf(['a.jpg', '--to', 'webp', '--concurrency', '-1'])).toBe('invalid-arguments')
+  })
+
+  it('accepts a valid --concurrency', () => {
+    expect(parseArgs(['a.jpg', '--to', 'webp', '--concurrency', '3'])).toMatchObject({
+      concurrency: 3,
+    })
+  })
 })

@@ -7,7 +7,14 @@ import { isForgeError } from '../../src/core/errors.js'
 import type { FormatId, Job, Phase } from '../../src/core/types.js'
 import { imageEngine } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
-import { makeCorruptFile, makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
+import {
+  countColours,
+  makeCorruptFile,
+  makeGradientPng,
+  makeJpeg,
+  makePng,
+  makeTempDir,
+} from '../helpers/fixtures.js'
 
 async function job(input: string, target: FormatId, output: string): Promise<Job> {
   return {
@@ -60,6 +67,25 @@ describe('convert — format pairs', () => {
     const out = join(dir, 'deep', 'nested', 'a.webp')
     await imageEngine.convert(await job(input, 'webp', out), () => {})
     expect((await stat(out)).isFile()).toBe(true)
+  })
+
+  it('does not quantise PNG output and does not lossy-compress TIFF output', async () => {
+    const dir = await makeTempDir()
+    const input = await makeGradientPng(dir, 'gradient.png')
+    const sourceColours = await countColours(input)
+    // Sanity check on the fixture itself: it must actually be many-coloured,
+    // or a quantisation regression here would go undetected.
+    expect(sourceColours).toBeGreaterThan(10_000)
+
+    const pngOut = join(dir, 'out.png')
+    await imageEngine.convert(await job(input, 'png', pngOut), () => {})
+    const pngMeta = await sharp(pngOut).metadata()
+    expect(pngMeta.isPalette).toBeFalsy()
+    expect(await countColours(pngOut)).toBe(sourceColours)
+
+    const tiffOut = join(dir, 'out.tiff')
+    await imageEngine.convert(await job(input, 'tiff', tiffOut), () => {})
+    expect(await countColours(tiffOut)).toBe(sourceColours)
   })
 
   it('leaves no temp file behind when encoding fails', async () => {

@@ -4,6 +4,7 @@ import { buildPlan } from '../../src/core/plan.js'
 import { resolveInputs } from '../../src/core/resolve.js'
 import { type RunEvent, runJobs } from '../../src/core/run.js'
 import type { ConvertOptions, Job } from '../../src/core/types.js'
+import { probe } from '../../src/engines/registry.js'
 import { makeCorruptFile, makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
 const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
@@ -65,6 +66,29 @@ describe('runJobs', () => {
     expect(summary.results).toHaveLength(3)
     expect(summary.failures).toHaveLength(1)
     expect(summary.failures[0]?.error.code).toBe('conversion-failed')
+  })
+
+  it('never lets a non-finite concurrency value yield zero workers', async () => {
+    const dir = await makeTempDir()
+    const jobs = await planFor(dir, 3)
+    const summary = await runJobs(jobs, { concurrency: Number.NaN })
+    expect(summary.results).toHaveLength(3)
+  })
+
+  it('emits job:error, not just a silent failure, when no engine can write the target', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'a.jpg')
+    const source = await probe(jpg)
+    // heic is readable but no engine writes it — engineForTarget returns
+    // undefined, exercising the run loop's no-engine branch directly.
+    const job: Job = { source, target: 'heic', output: join(dir, 'a.heic'), options }
+
+    const events: RunEvent[] = []
+    const summary = await runJobs([job], { onEvent: (e) => events.push(e) })
+
+    expect(summary.failures).toHaveLength(1)
+    expect(events.filter((e) => e.type === 'job:error')).toHaveLength(1)
+    expect(events.at(-1)?.type).toBe('batch:done')
   })
 
   it('returns an empty summary for no jobs', async () => {

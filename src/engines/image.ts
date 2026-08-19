@@ -112,11 +112,16 @@ function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
     case 'avif':
       return pipeline.avif({ quality: q })
     case 'png':
-      return pipeline.png({ effort: 7 })
+      // sharp's `effort` option on PNG is not a CPU dial — it turns on
+      // `palette: true`, which quantises to <=256 colours. `formats.ts`
+      // declares PNG lossless, so encoding must actually be lossless.
+      return pipeline.png({ compressionLevel: 9 })
     case 'gif':
       return pipeline.gif()
     case 'tiff':
-      return pipeline.tiff()
+      // The default `compression` is 'jpeg', which is lossy. `formats.ts`
+      // declares TIFF lossless (hint: 'archival'), so the encoder must match.
+      return pipeline.tiff({ compression: 'deflate' })
     case 'heic':
       throw new Error('heic is not writable; the capability graph should have prevented this')
   }
@@ -141,7 +146,9 @@ async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
     await rename(temp, output)
     return info.size
   } catch (cause) {
-    await rm(temp, { force: true })
+    // `force` only swallows ENOENT. A cleanup failure (EACCES, EBUSY, ...)
+    // must never replace the real encode error that is about to be thrown.
+    await rm(temp, { force: true }).catch(() => {})
     throw cause
   }
 }

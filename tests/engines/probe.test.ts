@@ -48,11 +48,15 @@ describe('probe', () => {
     expect((await probe(lying)).format).toBe('png')
   })
 
-  it('separates avif from heic, which sharp reports identically as heif', async () => {
+  it('separates avif from heic, which sharp reports identically as heif', async (ctx) => {
     const dir = await makeTempDir()
     expect((await probe(await makeAvif(dir, 'a.avif'))).format).toBe('avif')
     const heic = await makeHeic(dir, 'a.heic')
-    if (heic) expect((await probe(heic)).format).toBe('heic')
+    if (!heic) {
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated on this platform')
+      return
+    }
+    expect((await probe(heic)).format).toBe('heic')
   })
 
   it('reports a missing file as file-not-found', async () => {

@@ -77,6 +77,16 @@ describe('resolveInputs', () => {
     expect(failures[0]?.error.code).toBe('corrupt-source')
   })
 
+  it('reports a corrupt file found during a directory scan, not just an explicitly named one', async () => {
+    const dir = await makeTempDir()
+    const good = await makeJpeg(dir, 'good.jpg')
+    await makeCorruptFile(dir, 'bad.jpg')
+    const { sources, failures } = await resolveInputs([dir], { recursive: false })
+    expect(names(sources)).toEqual([basename(good)])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.error.code).toBe('corrupt-source')
+  })
+
   it('raises empty-directory when a folder holds nothing convertible', async () => {
     const dir = await makeTempDir()
     await writeFile(join(dir, 'notes.txt'), 'hello')

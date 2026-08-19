@@ -59,3 +59,25 @@ describe('execute', () => {
     expect(out.stderr.join('\n')).not.toContain('at ')
   })
 })
+
+describe('execute — batch progress', () => {
+  it('reports progress for a batch, starting at 0 and driven by real completions', async () => {
+    const dir = await makeTempDir()
+    for (let i = 0; i < 3; i++) await makeJpeg(dir, `f${i}.jpg`)
+    const events: Array<{ completed: number; total: number }> = []
+    await execute(parseArgs([dir, '--to', 'webp']), { onProgress: (p) => events.push(p) })
+
+    expect(events[0]).toEqual({ completed: 0, total: 3 })
+    expect(events.at(-1)).toEqual({ completed: 3, total: 3 })
+    // One event per completed job, plus the initial 0/3 header event.
+    expect(events).toHaveLength(4)
+  })
+
+  it('reports no progress for a single file', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'a.jpg')
+    const events: unknown[] = []
+    await execute(parseArgs([a, '--to', 'webp']), { onProgress: (p) => events.push(p) })
+    expect(events).toEqual([])
+  })
+})

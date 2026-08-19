@@ -40,9 +40,13 @@ async function directoryEntries(dir: string, recursive: boolean): Promise<string
 }
 
 /**
- * Explicitly named files report their problems; files merely discovered by a
- * scan are skipped silently, because a stray .txt in a photo folder is not an
- * error the user asked about.
+ * Every file that fails to probe is reported, whether it was named explicitly
+ * or discovered by a directory scan or glob — the scan glob already filters
+ * to known image extensions, so anything reaching probe() here looked like a
+ * file the user expected converted (spec §8: failures are reported, not
+ * fatal; a batch continues and reports them at the end). A non-ForgeError is
+ * still rethrown for an explicitly named path, since that is an unanticipated
+ * failure shape rather than a plain "this file could not be read".
  */
 export async function resolveInputs(
   patterns: string[],
@@ -61,7 +65,7 @@ export async function resolveInputs(
       sources.push(await probe(abs))
       if (root) roots.set(abs, root)
     } catch (e) {
-      if (explicit && isForgeError(e)) failures.push({ path: abs, error: e })
+      if (isForgeError(e)) failures.push({ path: abs, error: e })
       else if (explicit) throw e
     }
   }
