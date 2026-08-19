@@ -19,7 +19,8 @@ import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { completePath } from './complete.js'
-import { Banner } from './components/Banner.js'
+import { Divider } from './components/Divider.js'
+import { FileCard } from './components/FileCard.js'
 import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
@@ -29,7 +30,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
-import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
+import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -284,7 +285,11 @@ export function App({
         if (requestId.current !== id) return // superseded by a later submission
         setSource(info)
         setValues({})
-        push({ kind: 'file', id: nextId(), source: info })
+        // Deliberately *not* pushed to history here. A block committed to
+        // <Static> can never be taken back, and until a conversion actually
+        // happens the dropped file is a choice the user is still making —
+        // esc has to be able to undo it. The result block records the file
+        // once there is something worth recording.
         setStage('target')
       } catch (e) {
         if (requestId.current !== id) return // superseded by a later submission
@@ -297,13 +302,21 @@ export function App({
         setStage('idle')
       }
     },
-    [push, showError],
+    [showError],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
   // (which is `SourceInfo | null`) and asserting it non-null: the caller
   // below only reaches this from a branch already narrowed on `source`
   // being set, so the non-null-ness is a real invariant, not a suppression.
+  /** Takes the dropped file back off the bench and returns to the prompt. */
+  const clearSource = () => {
+    setSource(null)
+    setValues({})
+    setMatches([])
+    setStage('idle')
+  }
+
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
     const next = convertAction.options(currentSource, { target }, livePrefs)
@@ -484,6 +497,14 @@ export function App({
     <ThemeProvider palette={paletteFor(theme)}>
       <Box flexDirection="column">
         {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
+
+        {/* The staged file, shown live rather than committed to scrollback,
+            for as long as it is still something the user can take back. */}
+        {source && stage !== 'idle' && stage !== 'theme' ? (
+          <Box marginBottom={1}>
+            <FileCard source={source} width={width} />
+          </Box>
+        ) : null}
         <Static items={history}>
           {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
         </Static>
@@ -495,9 +516,11 @@ export function App({
               width={width}
               items={targetSpec.choices}
               onSubmit={(target) => chooseTarget(source, target)}
-              onCancel={() => setStage('idle')}
+              onCancel={clearSource}
               showHints={band !== 'compact'}
             />
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={[
                 ['↑↓', 'choose'],
@@ -520,6 +543,8 @@ export function App({
               onSubmit={chooseQuality}
               onCancel={() => setStage('target')}
             />
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={[
                 ['←→', 'adjust'],
@@ -547,6 +572,8 @@ export function App({
             {/* Four pairs is 45 columns — wider than a compact terminal.
                 Spec §13 drops hints there rather than overflowing, and the
                 shorter pair still names the key that is unique to this step. */}
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={
                 band === 'compact'
@@ -584,6 +611,8 @@ export function App({
                 Math.max(12, width - 4),
               )}`}
             </Text>
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={[
                 ['↵', 'save'],
@@ -610,6 +639,8 @@ export function App({
               }}
               showHints={band !== 'compact'}
             />
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={[
                 ['↑↓', 'choose'],
@@ -640,6 +671,8 @@ export function App({
                 {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
               </Text>
             ) : null}
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={[
                 ['↵', 'convert another'],
@@ -664,6 +697,8 @@ export function App({
               onTab={complete}
               matches={matches}
             />
+            <Divider width={width} />
+            <Divider width={width} />
             <Hints
               pairs={
                 band === 'compact'
@@ -673,7 +708,7 @@ export function App({
                     ]
                   : [
                       ['↵', 'send'],
-                      ['tab', 'complete'],
+                      ['tab', 'complete path'],
                       ['ctrl-c', 'quit'],
                     ]
               }

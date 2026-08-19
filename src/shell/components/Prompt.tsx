@@ -249,39 +249,51 @@ export function Prompt({
   }
 
   /**
-   * A filled, three-line drop area rather than a single bordered row: this is
-   * the target you drag a file onto, and a one-line box is a small target.
+   * A filled drop area, drawn without a border: the fill *is* the boundary,
+   * and a stroke around it only competed with the panel it was outlining.
+   * Three rows because this is the target you drag a file onto, and a
+   * one-line box is a small target.
    *
-   * The fill is drawn by padding each row out to the box's inner width.
+   * Every row is padded to exactly the same width — an earlier version
+   * budgeted the text row differently from the blank ones, which is what left
+   * the ragged notch on the right.
+   *
    * Measured: Ink trims trailing whitespace from a rendered line, but only
-   * when it really is whitespace — with a background set, the run ends in the
-   * reset sequence instead and survives intact. So the fill exists exactly
-   * when colour does, and under NO_COLOR the padding is trimmed away and the
-   * box degrades to its border, which is the right outcome either way.
+   * when it really is whitespace — with a background set the run ends in the
+   * reset sequence and survives intact. So the fill exists exactly when
+   * colour does, and under NO_COLOR it collapses to the prompt line alone,
+   * which is the right outcome either way.
    */
-  const inner = Math.max(4, width - 4)
   const bg = palette.selectionBg === '' ? undefined : palette.selectionBg
-  const used = stringWidth(value === '' ? placeholder : value) + 2
-  const fill = ' '.repeat(Math.max(0, inner - used))
-  const blank = ' '.repeat(inner)
+  const shown = value === '' ? placeholder : value
+  const lead = 4 // two columns of inset, plus the "› "
+  const fill = ' '.repeat(Math.max(0, width - lead - stringWidth(shown) - 1))
+  const blank = ' '.repeat(Math.max(0, width))
+
+  if (!bg) {
+    // No colour: there is no fill to draw, so the prompt is just its line.
+    return (
+      <Box flexDirection="column">
+        <Box width={width}>
+          <Text>
+            <Text color={colourProp(palette.accent)}>{'  › '}</Text>
+            {line}
+          </Text>
+        </Box>
+        {list}
+      </Box>
+    )
+  }
 
   return (
     <Box flexDirection="column">
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={colourProp(palette.border)}
-        paddingX={1}
-        width={width}
-      >
-        <Text {...(bg ? { backgroundColor: bg } : {})}>{blank}</Text>
-        <Text {...(bg ? { backgroundColor: bg } : {})}>
-          <Text color={colourProp(palette.accent)}>{'› '}</Text>
-          {line}
-          {fill}
-        </Text>
-        <Text {...(bg ? { backgroundColor: bg } : {})}>{blank}</Text>
-      </Box>
+      <Text backgroundColor={bg}>{blank}</Text>
+      <Text backgroundColor={bg}>
+        <Text color={colourProp(palette.accent)}>{'  › '}</Text>
+        {line}
+        {fill}
+      </Text>
+      <Text backgroundColor={bg}>{blank}</Text>
       {list}
     </Box>
   )

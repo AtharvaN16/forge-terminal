@@ -190,10 +190,12 @@ export function PathInput({
         {...(onCancel ? { onCancel } : {})}
       />
       {highlighted && highlighted.value !== TYPE_IT ? (
-        <Text color={colourProp(palette.dim)}>
-          {'  '}
-          {SYMBOLS.arrow} {preview(highlighted.value)}
-        </Text>
+        <Box marginTop={1}>
+          <Text color={colourProp(palette.dim)}>
+            {'  '}
+            {SYMBOLS.arrow} {preview(highlighted.value)}
+          </Text>
+        </Box>
       ) : null}
     </Box>
   )
