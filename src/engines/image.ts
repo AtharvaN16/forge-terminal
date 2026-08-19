@@ -1,11 +1,15 @@
+import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, stat } from 'node:fs/promises'
-import type { Metadata } from 'sharp'
+import { access, mkdir, rename, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import type { Metadata, Sharp } from 'sharp'
 import sharp from 'sharp'
 import {
+  conversionFailed,
   corruptSource,
   fileNotFound,
   notAFile,
+  outputInvalid,
   permissionDenied,
   unsupportedSource,
 } from '../core/errors.js'
@@ -91,8 +95,71 @@ async function probe(path: string): Promise<SourceInfo> {
   }
 }
 
-async function convert(_job: Job, _onPhase: (phase: Phase) => void): Promise<Result> {
-  throw new Error('not implemented until Task 7')
+const DEFAULT_QUALITY: Partial<Record<FormatId, number>> = {
+  jpeg: 82,
+  webp: 80,
+  avif: 50,
+}
+
+function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
+  const q = quality ?? DEFAULT_QUALITY[target]
+  switch (target) {
+    case 'jpeg':
+      return pipeline.jpeg({ quality: q, mozjpeg: true })
+    case 'webp':
+      return pipeline.webp({ quality: q })
+    case 'avif':
+      return pipeline.avif({ quality: q })
+    case 'png':
+      return pipeline.png({ effort: 7 })
+    case 'gif':
+      return pipeline.gif()
+    case 'tiff':
+      return pipeline.tiff()
+    case 'heic':
+      throw new Error('heic is not writable; the capability graph should have prevented this')
+  }
+}
+
+/**
+ * Writes via a sibling temp file and renames. A crash mid-encode can then never
+ * leave a truncated file where a good one used to be, and overwriting in place
+ * is safe because the original is only replaced once the new file is complete.
+ */
+async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
+  const dir = dirname(output)
+  try {
+    await mkdir(dir, { recursive: true })
+  } catch (cause) {
+    throw outputInvalid(output, cause)
+  }
+
+  const temp = join(dir, `.forge-tmp-${randomBytes(6).toString('hex')}-${basename(output)}`)
+  try {
+    const info = await pipeline.toFile(temp)
+    await rename(temp, output)
+    return info.size
+  } catch (cause) {
+    await rm(temp, { force: true })
+    throw cause
+  }
+}
+
+async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result> {
+  onPhase('reading')
+  onPhase('decoding')
+  let pipeline = sharp(job.source.path)
+
+  onPhase('encoding')
+  pipeline = encode(pipeline, job.target, job.options.quality)
+
+  onPhase('writing')
+  try {
+    const outputBytes = await writeAtomic(pipeline, job.output)
+    return { job, outputBytes, warnings: [] }
+  } catch (cause) {
+    throw conversionFailed(job.source.path, cause)
+  }
 }
 
 export const imageEngine: Engine = {
