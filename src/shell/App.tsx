@@ -18,6 +18,7 @@ import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
+import { completePath } from './complete.js'
 import { Banner } from './components/Banner.js'
 import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
@@ -119,6 +120,17 @@ export function App({
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
+  const [matches, setMatches] = useState<string[]>([])
+
+  /**
+   * Mirrors `text` for the completion callback, for the same reason
+   * `Prompt` mirrors its own buffer: reading a directory is async, and by the
+   * time it resolves the user may have typed on. Comparing against the ref
+   * is what lets a superseded completion be dropped instead of overwriting
+   * what they typed — the same rule `requestId` applies to probes.
+   */
+  const textRef = useRef('')
+  textRef.current = text
 
   const { exit } = useApp()
 
@@ -214,9 +226,21 @@ export function App({
    */
   const requestId = useRef(0)
 
+  const complete = useCallback(() => {
+    const fragment = textRef.current
+    completePath(fragment)
+      .then(({ completed, matches: found }) => {
+        if (textRef.current !== fragment) return // superseded by more typing
+        if (completed !== fragment) setText(completed)
+        setMatches(found)
+      })
+      .catch(showError)
+  }, [showError])
+
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
+      setMatches([])
       if (!trimmed) return
 
       if (trimmed === '/theme') {
@@ -547,12 +571,22 @@ export function App({
               isActive
               bordered={band !== 'compact'}
               width={width}
+              onTab={complete}
+              matches={matches}
             />
             <Hints
-              pairs={[
-                ['↵', 'send'],
-                ['ctrl-c', 'quit'],
-              ]}
+              pairs={
+                band === 'compact'
+                  ? [
+                      ['↵', 'send'],
+                      ['ctrl-c', 'quit'],
+                    ]
+                  : [
+                      ['↵', 'send'],
+                      ['tab', 'complete'],
+                      ['ctrl-c', 'quit'],
+                    ]
+              }
             />
           </Box>
         ) : null}

@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
+import { middleEllipsis } from '../width.js'
 
 interface PromptProps {
   value: string
@@ -20,6 +21,10 @@ interface PromptProps {
    * explicitly is what keeps the bordered box from overflowing.
    */
   width: number
+  /** Fired on Tab. The parent owns completion, since it owns `value`. */
+  onTab?: () => void
+  /** Candidate basenames to list under the box when Tab found several. */
+  matches?: string[]
 }
 
 /**
@@ -50,6 +55,8 @@ export function Prompt({
   isActive,
   bordered,
   width,
+  onTab,
+  matches,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -65,6 +72,13 @@ export function Prompt({
   useInput(
     (input, key) => {
       if (key.escape) return
+
+      // Before the text branch: Ink reports Tab with `key.tab` *and* a "\t"
+      // in `input`, so falling through would append a literal tab to the path.
+      if (key.tab) {
+        onTab?.()
+        return
+      }
 
       if (key.return) {
         onSubmit(unescapePath(valueRef.current))
@@ -125,11 +139,28 @@ export function Prompt({
     </Text>
   )
 
-  if (!bordered) return <Box width={width}>{body}</Box>
+  const list =
+    matches && matches.length > 0 ? (
+      <Text color={colourProp(palette.dim)}>
+        {middleEllipsis(`  ${matches.join('   ')}`, width)}
+      </Text>
+    ) : null
+
+  if (!bordered) {
+    return (
+      <Box flexDirection="column">
+        <Box width={width}>{body}</Box>
+        {list}
+      </Box>
+    )
+  }
 
   return (
-    <Box borderStyle="round" borderColor={colourProp(palette.border)} paddingX={1} width={width}>
-      {body}
+    <Box flexDirection="column">
+      <Box borderStyle="round" borderColor={colourProp(palette.border)} paddingX={1} width={width}>
+        {body}
+      </Box>
+      {list}
     </Box>
   )
 }
