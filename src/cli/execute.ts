@@ -27,6 +27,15 @@ export interface ExecuteOptions {
 }
 
 export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
+  // Routed here rather than in src/index.ts so there is exactly one place
+  // that turns an Intent into an ExecuteResult. The import is lazy because a
+  // plain conversion has no reason to touch the config layer at all.
+  if (intent.kind === 'config') {
+    const { runConfig } = await import('./config-command.js')
+    const result = await runConfig(intent)
+    return { exitCode: result.exitCode as 0 | 1 | 2, stdout: result.stdout, stderr: [] }
+  }
+
   if (intent.kind === 'formats') {
     return { exitCode: 0, stdout: reportFormats(), stderr: [] }
   }

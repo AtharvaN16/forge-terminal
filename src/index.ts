@@ -18,7 +18,9 @@ function onProgress({ completed, total }: BatchProgress): void {
   }
 }
 
-export const VERSION = '0.1.0'
+// Re-exported, not redeclared: theme.ts owns the value so the shell can
+// show it in the banner without importing the entrypoint and forming a cycle.
+export { VERSION } from './shell/theme.js'
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)

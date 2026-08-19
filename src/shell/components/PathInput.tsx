@@ -3,7 +3,8 @@ import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice, PathPreset } from '../../core/actions.js'
 import { unescapePath } from '../../utils/unescape-path.js'
-import { SYMBOLS } from '../theme.js'
+import { useTheme } from '../ThemeContext.js'
+import { colourProp, SYMBOLS } from '../theme.js'
 import { middleEllipsis } from '../width.js'
 import { Select } from './Select.js'
 
@@ -26,6 +27,10 @@ interface PathInputProps {
   width: number
   /** False in the compact band (<60 columns), exactly as the target picker does. */
   showHints: boolean
+  /** The folder currently saved as the default, so its row can be tagged. */
+  defaultPath: string
+  /** Called when `d` is pressed on a highlighted preset. */
+  onMakeDefault?: (path: string) => void
 }
 
 /**
@@ -44,7 +49,10 @@ export function PathInput({
   onCancel,
   width,
   showHints,
+  defaultPath,
+  onMakeDefault,
 }: PathInputProps) {
+  const palette = useTheme()
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
   const [highlight, setHighlight] = useState(0)
@@ -65,14 +73,41 @@ export function PathInput({
   const labelColumn = Math.max(0, ...labels.map((l) => stringWidth(l)))
   const hintBudget = Math.max(8, width - labelColumn - 4)
 
+  const DEFAULT_TAG = '   default'
+
   const items: Choice[] = [
-    ...presets.map((p) => ({
-      value: p.path,
-      label: p.label,
-      hint: middleEllipsis(p.path, hintBudget),
-    })),
+    ...presets.map((p) => {
+      const isDefault = p.path === defaultPath
+      // The tag shares the hint column, so the path is given a smaller budget
+      // when one is present rather than letting the row grow past the width.
+      const budget = isDefault ? Math.max(8, hintBudget - DEFAULT_TAG.length) : hintBudget
+      return {
+        value: p.path,
+        label: p.label,
+        hint: `${middleEllipsis(p.path, budget)}${isDefault ? DEFAULT_TAG : ''}`,
+      }
+    }),
     { value: TYPE_IT, label: 'Type a path…' },
   ]
+
+  /**
+   * Separate from the typing handler below and gated on `!typing`, because
+   * Ink delivers input to every mounted `useInput` hook: without the gate a
+   * `d` typed into the free-text path field would also fire this and quietly
+   * rewrite the user's default.
+   */
+  useInput(
+    (input) => {
+      if (input !== 'd' || !onMakeDefault) return
+      const item = items[highlight]
+      if (!item || item.value === TYPE_IT) return
+      // Already the default: a no-op, not an error. Pressing d twice is a
+      // reasonable thing for someone to do.
+      if (item.value === defaultPath) return
+      onMakeDefault(item.value)
+    },
+    { isActive: !typing },
+  )
 
   useInput(
     (input, key) => {
@@ -120,10 +155,10 @@ export function PathInput({
   if (typing) {
     return (
       <Box flexDirection="column">
-        <Text>{label}</Text>
+        <Text color={colourProp(palette.dim)}>{label}</Text>
         <Text>
-          {'› '}
-          {text}
+          <Text color={colourProp(palette.accent)}>{'› '}</Text>
+          <Text color={colourProp(palette.fg)}>{text}</Text>
         </Text>
       </Box>
     )
@@ -133,8 +168,9 @@ export function PathInput({
 
   return (
     <Box flexDirection="column">
-      <Text>{label}</Text>
+      <Text color={colourProp(palette.label)}>{label}</Text>
       <Select
+        width={width}
         items={items}
         onHighlight={setHighlight}
         onSubmit={(value) => {
@@ -145,7 +181,7 @@ export function PathInput({
         {...(onCancel ? { onCancel } : {})}
       />
       {highlighted && highlighted.value !== TYPE_IT ? (
-        <Text dimColor>
+        <Text color={colourProp(palette.dim)}>
           {'  '}
           {SYMBOLS.arrow} {preview(highlighted.value)}
         </Text>

@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
@@ -10,6 +11,18 @@ const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Preferences pinned to this test's own temp folder. Without it the shell
+ * would preselect the factory default — the user's real ~/Desktop — and the
+ * suite would write conversion output into it. `theme` is set so the
+ * first-run picker does not stand between the test and the prompt.
+ */
+const prefsFor = (dir: string) => ({
+  ...DEFAULT_PREFERENCES,
+  theme: 'dark' as const,
+  defaultOutput: dir,
+})
 
 /**
  * Spec §8 has two write-safety rules, and both of them live in
@@ -23,7 +36,7 @@ async function ontoAnExistingOutput() {
   const jpg = await makeJpeg(dir, 'photo.jpg')
   const existing = join(dir, 'photo.webp')
   await writeFile(existing, 'not really a webp, but it is in the way')
-  const app = render(<App initialWidth={80} />)
+  const app = render(<App initialWidth={80} prefs={prefsFor(dir)} />)
   app.stdin.write(jpg)
   await settle()
   app.stdin.write(ENTER)
@@ -45,7 +58,7 @@ describe('the shell never writes over the input', () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'photo.jpg')
     const before = await readFile(jpg)
-    const app = render(<App initialWidth={80} />)
+    const app = render(<App initialWidth={80} prefs={prefsFor(dir)} />)
     app.stdin.write(jpg)
     await settle()
     app.stdin.write(ENTER) // submit the path
@@ -79,7 +92,7 @@ describe('the shell never writes over the input', () => {
   it("never offers the source's own format, so the collision can't be reached", async () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'photo.jpg')
-    const { stdin, lastFrame } = render(<App initialWidth={80} />)
+    const { stdin, lastFrame } = render(<App initialWidth={80} prefs={prefsFor(dir)} />)
     stdin.write(jpg)
     await settle()
     stdin.write(ENTER)

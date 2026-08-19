@@ -1,6 +1,12 @@
 import { basename } from 'node:path'
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  DEFAULT_PREFERENCES,
+  expandTilde,
+  type Preferences,
+  savePreferences,
+} from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
@@ -12,13 +18,18 @@ import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
+import { completePath } from './complete.js'
+import { Banner } from './components/Banner.js'
 import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
+import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
+import { ThemeProvider, useTheme } from './ThemeContext.js'
+import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -28,6 +39,7 @@ import { bandFor, middleEllipsis } from './width.js'
  * show the result.
  */
 export type Stage =
+  | 'theme'
   | 'idle'
   | 'target'
   | 'quality'
@@ -51,7 +63,29 @@ interface PendingOverwrite {
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
 
-export function App({ initialWidth }: { initialWidth?: number }) {
+/**
+ * The fallback for callers that do not supply preferences — tests, and any
+ * direct render. It carries a theme on purpose: an absent theme is the
+ * first-run signal, and defaulting to it would put the theme picker in front
+ * of every test that only wanted to convert a file.
+ *
+ * The production path never uses this. `launchShell` always passes what
+ * `loadPreferences` returned, where a genuinely absent theme does raise the
+ * picker — which is what `theme-picker.test.tsx` exercises by passing
+ * `DEFAULT_PREFERENCES` explicitly.
+ */
+const APP_DEFAULT_PREFS: Preferences = { ...DEFAULT_PREFERENCES, theme: 'dark' }
+
+export function App({
+  initialWidth,
+  prefs = APP_DEFAULT_PREFS,
+  configWarning,
+}: {
+  initialWidth?: number
+  prefs?: Preferences
+  configWarning?: string
+}) {
+  const palette = useTheme()
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
 
@@ -68,18 +102,54 @@ export function App({ initialWidth }: { initialWidth?: number }) {
   const band = bandFor(width)
 
   const [history, setHistory] = useState<HistoryBlock[]>([])
-  const [stage, setStage] = useState<Stage>('idle')
+  /**
+   * Held in state, not read straight from `prefs`, so `/theme` re-themes the
+   * running session rather than only the next launch.
+   */
+  const [theme, setTheme] = useState<'dark' | 'light' | undefined>(prefs.theme)
+  /**
+   * Preferences as they stand *now*, seeded from what was loaded at launch.
+   * `d` changes the default output mid-session, and the banner, the preset
+   * list and the `default` tag must all follow it without waiting for a
+   * relaunch — so they all read this, never the `prefs` prop.
+   */
+  const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
+  const [stage, setStage] = useState<Stage>(prefs.theme === undefined ? 'theme' : 'idle')
   const [text, setText] = useState('')
   const [source, setSource] = useState<SourceInfo | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
+  const [matches, setMatches] = useState<string[]>([])
+
+  /**
+   * Mirrors `text` for the completion callback, for the same reason
+   * `Prompt` mirrors its own buffer: reading a directory is async, and by the
+   * time it resolves the user may have typed on. Comparing against the ref
+   * is what lets a superseded completion be dropped instead of overwriting
+   * what they typed — the same rule `requestId` applies to probes.
+   */
+  const textRef = useRef('')
+  textRef.current = text
 
   const { exit } = useApp()
 
   const push = useCallback((block: HistoryBlock) => {
     setHistory((h) => [...h, block])
   }, [])
+
+  /**
+   * A config that could not be read is told to the user once, as history,
+   * and never again. The ref — not state — is what makes "once" true: this
+   * effect reruns on every render that changes its deps, and a state flag
+   * would not be visible to the run that scheduled it.
+   */
+  const warned = useRef(false)
+  useEffect(() => {
+    if (warned.current || configWarning === undefined) return
+    warned.current = true
+    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${configWarning}` })
+  }, [configWarning, push])
 
   /**
    * The one way anything in this file reports a failure. Whatever was thrown
@@ -128,8 +198,8 @@ export function App({ initialWidth }: { initialWidth?: number }) {
   // collected so far (e.g. the quality step only appears once a lossy
   // target is chosen).
   const specs: OptionSpec[] = useMemo(
-    () => (source ? convertAction.options(source, values) : []),
-    [source, values],
+    () => (source ? convertAction.options(source, values, livePrefs) : []),
+    [source, values, livePrefs],
   )
 
   const specFor = useCallback((id: string) => specs.find((s) => s.id === id), [specs])
@@ -156,10 +226,28 @@ export function App({ initialWidth }: { initialWidth?: number }) {
    */
   const requestId = useRef(0)
 
+  const complete = useCallback(() => {
+    const fragment = textRef.current
+    completePath(fragment)
+      .then(({ completed, matches: found }) => {
+        if (textRef.current !== fragment) return // superseded by more typing
+        if (completed !== fragment) setText(completed)
+        setMatches(found)
+      })
+      .catch(showError)
+  }, [showError])
+
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
+      setMatches([])
       if (!trimmed) return
+
+      if (trimmed === '/theme') {
+        setText('')
+        setStage('theme')
+        return
+      }
       const id = ++requestId.current
       setText('')
       try {
@@ -189,8 +277,32 @@ export function App({ initialWidth }: { initialWidth?: number }) {
   // being set, so the non-null-ness is a real invariant, not a suppression.
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
-    const next = convertAction.options(currentSource, { target })
+    const next = convertAction.options(currentSource, { target }, livePrefs)
     setStage(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
+  }
+
+  /**
+   * `.catch`, not `void`: this runs from Select's synchronous useInput
+   * handler and nothing awaits the promise, so a rejected write would be an
+   * unhandled rejection and Node would take the process down. A theme that
+   * fails to persist is worth telling the user about; it must never cost
+   * them the session.
+   */
+  const chooseTheme = (next: 'dark' | 'light') => {
+    setTheme(next)
+    setStage('idle')
+    savePreferences({ theme: next }).catch(showError)
+  }
+
+  /**
+   * Writes the folder to config and says so, without advancing the flow —
+   * the user is still choosing where *this* conversion goes. `.catch` for
+   * the same reason as chooseTheme: nothing awaits this promise.
+   */
+  const makeDefault = (path: string) => {
+    setLivePrefs((p) => ({ ...p, defaultOutput: path }))
+    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} default output is now ${path}` })
+    savePreferences({ defaultOutput: path }).catch(showError)
   }
 
   const chooseQuality = (quality: number) => {
@@ -314,135 +426,171 @@ export function App({ initialWidth }: { initialWidth?: number }) {
   const destinationSpec = specFor('destination')
 
   return (
-    <Box flexDirection="column">
-      <Static items={history}>
-        {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
-      </Static>
+    <ThemeProvider palette={paletteFor(theme)}>
+      <Box flexDirection="column">
+        {stage === 'theme' ? (
+          <ThemePicker onChoose={chooseTheme} />
+        ) : (
+          <Banner width={width} version={VERSION} defaultOutput={livePrefs.defaultOutput} />
+        )}
+        <Static items={history}>
+          {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
+        </Static>
 
-      {stage === 'target' && source && targetSpec?.kind === 'select' ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text>{targetSpec.label}</Text>
-          <Select
-            items={targetSpec.choices}
-            onSubmit={(target) => chooseTarget(source, target)}
-            onCancel={() => setStage('idle')}
-            showHints={band !== 'compact'}
-          />
-          <Hints
-            pairs={[
-              ['↑↓', 'choose'],
-              ['↵', 'confirm'],
-              ['esc', 'back'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'target' && source && targetSpec?.kind === 'select' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>{targetSpec.label}</Text>
+            <Select
+              width={width}
+              items={targetSpec.choices}
+              onSubmit={(target) => chooseTarget(source, target)}
+              onCancel={() => setStage('idle')}
+              showHints={band !== 'compact'}
+            />
+            <Hints
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'quality' && qualitySpec?.kind === 'slider' ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Slider
-            label={qualitySpec.label}
-            min={qualitySpec.min}
-            max={qualitySpec.max}
-            step={qualitySpec.step}
-            value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
-            onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
-            onSubmit={chooseQuality}
-            onCancel={() => setStage('target')}
-          />
-          <Hints
-            pairs={[
-              ['←→', 'adjust'],
-              ['↵', 'confirm'],
-              ['esc', 'back'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'quality' && qualitySpec?.kind === 'slider' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Slider
+              label={qualitySpec.label}
+              min={qualitySpec.min}
+              max={qualitySpec.max}
+              step={qualitySpec.step}
+              value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
+              onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
+              onSubmit={chooseQuality}
+              onCancel={() => setStage('target')}
+            />
+            <Hints
+              pairs={[
+                ['←→', 'adjust'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'destination' && destinationSpec?.kind === 'path' ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <PathInput
-            label={destinationSpec.label}
-            presets={destinationSpec.presets}
-            preview={previewDestination}
-            onSubmit={(destination) => void convert(destination)}
-            onCancel={() => setStage('target')}
-            width={width}
-            showHints={band !== 'compact'}
-          />
-        </Box>
-      ) : null}
+        {stage === 'destination' && destinationSpec?.kind === 'path' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <PathInput
+              label={destinationSpec.label}
+              presets={destinationSpec.presets}
+              preview={previewDestination}
+              onSubmit={(destination) => void convert(destination)}
+              onCancel={() => setStage('target')}
+              width={width}
+              showHints={band !== 'compact'}
+              defaultPath={expandTilde(livePrefs.defaultOutput)}
+              onMakeDefault={makeDefault}
+            />
+            {/* Four pairs is 45 columns — wider than a compact terminal.
+                Spec §13 drops hints there rather than overflowing, and the
+                shorter pair still names the key that is unique to this step. */}
+            <Hints
+              pairs={
+                band === 'compact'
+                  ? [['d', 'make default']]
+                  : [
+                      ['↑↓', 'choose'],
+                      ['↵', 'save'],
+                      ['d', 'make default'],
+                      ['esc', 'back'],
+                    ]
+              }
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'overwrite' && pending ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
-          <Select
-            items={[
-              { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
-              { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
-              { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
-            ]}
-            onSubmit={answerOverwrite}
-            onCancel={() => {
-              setPending(null)
-              setStage('destination')
-            }}
-            showHints={band !== 'compact'}
-          />
-          <Hints
-            pairs={[
-              ['↑↓', 'choose'],
-              ['↵', 'confirm'],
-              ['esc', 'cancel'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'overwrite' && pending ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
+            <Select
+              width={width}
+              items={[
+                { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
+                { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
+                { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
+              ]}
+              onSubmit={answerOverwrite}
+              onCancel={() => {
+                setPending(null)
+                setStage('destination')
+              }}
+              showHints={band !== 'compact'}
+            />
+            <Hints
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'cancel'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'converting' ? (
-        <Box marginBottom={1}>
-          <Text dimColor>Converting…</Text>
-        </Box>
-      ) : null}
+        {stage === 'converting' ? (
+          <Box marginBottom={1}>
+            <Text color={colourProp(palette.dim)}>Converting…</Text>
+          </Box>
+        ) : null}
 
-      {stage === 'result' && lastResult ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text>
-            {fileLink('Open file', lastResult.job.output)}
-            {'  ·  '}
-            {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
-          </Text>
-          <Hints
-            pairs={[
-              ['↵', 'convert another'],
-              ['f', 'open'],
-              ['o', 'reveal'],
-              ['q', 'quit'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'result' && lastResult ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>
+              {fileLink('Open file', lastResult.job.output)}
+              {'  ·  '}
+              {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
+            </Text>
+            <Hints
+              pairs={[
+                ['↵', 'convert another'],
+                ['f', 'open'],
+                ['o', 'reveal'],
+                ['q', 'quit'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'idle' ? (
-        <Box flexDirection="column">
-          <Prompt
-            value={text}
-            onChange={setText}
-            onSubmit={submitPath}
-            placeholder="drop a file or type a path"
-            isActive
-            bordered={band !== 'compact'}
-            width={width}
-          />
-          <Hints
-            pairs={[
-              ['↵', 'send'],
-              ['ctrl-c', 'quit'],
-            ]}
-          />
-        </Box>
-      ) : null}
-    </Box>
+        {stage === 'idle' ? (
+          <Box flexDirection="column">
+            <Prompt
+              value={text}
+              onChange={setText}
+              onSubmit={submitPath}
+              placeholder="drop a file or type a path"
+              isActive
+              bordered={band !== 'compact'}
+              width={width}
+              onTab={complete}
+              matches={matches}
+            />
+            <Hints
+              pairs={
+                band === 'compact'
+                  ? [
+                      ['↵', 'send'],
+                      ['ctrl-c', 'quit'],
+                    ]
+                  : [
+                      ['↵', 'send'],
+                      ['tab', 'complete'],
+                      ['ctrl-c', 'quit'],
+                    ]
+              }
+            />
+          </Box>
+        ) : null}
+      </Box>
+    </ThemeProvider>
   )
 }
