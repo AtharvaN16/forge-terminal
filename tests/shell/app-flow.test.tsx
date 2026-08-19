@@ -6,7 +6,6 @@ import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
-const BACKSPACE = String.fromCharCode(127)
 const settle = (ms = 120) => new Promise((r) => setTimeout(r, ms))
 
 describe('shell flow', () => {
@@ -137,29 +136,54 @@ describe('shell flow', () => {
    * Prompt stays mounted for the whole `await` and a second, different
    * submission can start a second, overlapping probe before the first
    * settles. This deliberately does NOT `settle()` between the two writes —
-   * a real yield of even 1ms was measured (see the fix report) to let the
-   * first probe finish and `stage` advance past `'idle'` before the second
-   * write even happens, which would unmount the Prompt and make the second
-   * write land on nothing. A genuine overlap requires both writes to occur
-   * within the same stretch of synchronous script, exactly as a user
-   * dropping a second file while the first is still probing would produce.
+   * a real yield of even 1ms lets the first probe finish and `stage`
+   * advance past `'idle'` before the second write even happens (a local
+   * temp-file probe resolves in well under a millisecond), which unmounts
+   * the Prompt and makes the second write land on nothing — that is
+   * *first*-wins, correctly, because there was never a genuine second
+   * submission. A genuine overlap — two Enter-terminated paths that both
+   * actually reach `submitPath` — only exists with zero yield between the
+   * writes, exactly as two paths pasted back to back, or two chunks
+   * delivered in the same tick, would arrive.
    *
-   * The second write backspaces away the first path's text before typing
-   * the second: with no yield in between, React has not re-rendered Prompt
-   * yet, so its internal ref (the source of truth for what to submit — see
-   * Prompt.tsx) still holds the first path's text. Typing the second path
-   * over it without clearing it first would concatenate the two into a
-   * path that exists nowhere on disk, which would test nothing about the
-   * race. Backspacing acts on that same ref directly and so is not subject
-   * to the same render-timing gap.
+   * Ordinary, unmodified writes: no backspacing, no clearing trick needed.
+   * `Prompt` resets its own buffer the instant it submits (see Prompt.tsx),
+   * so the second write's text does not concatenate onto the first's.
+   *
+   * Before that fix, this exact test reached neither file: the second
+   * write's characters landed on top of the still-unflushed first (React
+   * hadn't re-rendered `Prompt` yet, so its ref still held the first path),
+   * concatenating into a path nobody typed and that exists nowhere on disk.
+   * `probe()` rejected that bogus path with a raw `ENOTDIR` — not a
+   * `ForgeError`, since `engines/image.ts` only special-cases
+   * ENOENT/EACCES/EPERM — which `submitPath` rethrew as an unhandled
+   * promise rejection the UI never sees. Meanwhile the *first* probe, for a
+   * perfectly real file, resolved successfully but was (correctly, by its
+   * own logic) dropped as superseded, because the bogus second request had
+   * already claimed the latest id. Net effect: no card, no error, the shell
+   * silently and permanently stuck on the idle prompt. Confirmed with
+   * `process.stderr` instrumentation on both `submitPath` and `Prompt`'s
+   * handler — see the fix report for the literal trace.
+   *
+   * With the fix, both submissions are clean, so both probes resolve
+   * successfully. The id ordering is deterministic here (not a coin flip):
+   * the two writes are processed strictly in order by a single-threaded
+   * event loop, so the second submission's `submitPath` call always claims
+   * a strictly higher id than the first's, synchronously, before either one
+   * awaits. Whichever probe resolves in whatever real order, the first
+   * one's id is permanently stale by the time it settles, and the second's
+   * is permanently current — so the second (later-issued) submission always
+   * wins, cleanly. That is a different, and correct, contract from variants
+   * where a real yield elapses: there, the "second" write never becomes a
+   * submission at all, so of course the first stands.
    */
-  it('resolves a race between two submissions in favor of the later one', async () => {
+  it('resolves a race between two submissions delivered in the same tick', async () => {
     const dir = await makeTempDir()
     const first = await makeJpeg(dir, 'first.jpg')
     const second = await makeJpeg(dir, 'second.jpg')
     const { stdin, lastFrame } = render(<App initialWidth={80} />)
     stdin.write(`${first}${ENTER}`)
-    stdin.write(BACKSPACE.repeat(first.length) + second + ENTER)
+    stdin.write(`${second}${ENTER}`)
     await settle(400)
     const frame = lastFrame() ?? ''
     expect(frame).not.toContain('first.jpg')

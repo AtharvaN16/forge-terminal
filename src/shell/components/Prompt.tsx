@@ -20,6 +20,16 @@ interface PromptProps {
  * current value rather than a stale one, and a caller-driven reset (e.g.
  * clearing the field after submit) is picked up the moment it renders. See
  * Select.tsx and PathInput.tsx for the same pattern and its rationale.
+ *
+ * On submission the buffer is also reset right here, synchronously, rather
+ * than only via the caller clearing `value` and that flowing back through a
+ * re-render: two Enter-terminated events delivered in the same synchronous
+ * tick (e.g. two paths pasted back to back, or a fast burst of separate
+ * writes) reach this same closure before React ever gets a chance to
+ * re-render and resync `valueRef` from a cleared `value` prop. Without this,
+ * the second event's text would concatenate onto the just-submitted first
+ * event's text instead of starting clean, producing a path that exists
+ * nowhere on disk.
  */
 export function Prompt({
   value,
@@ -45,6 +55,8 @@ export function Prompt({
 
       if (key.return) {
         onSubmit(unescapePath(valueRef.current))
+        valueRef.current = ''
+        onChange('')
         return
       }
 
@@ -72,9 +84,12 @@ export function Prompt({
         const breakIndex = input.search(/[\r\n]/)
         if (breakIndex !== -1) {
           const next = valueRef.current + input.slice(0, breakIndex)
-          valueRef.current = next
-          onChange(next)
           onSubmit(unescapePath(next))
+          // Reset immediately, same as the key.return branch above: a
+          // second merged path+Enter event arriving in the same tick must
+          // start from an empty buffer, not concatenate onto this one.
+          valueRef.current = ''
+          onChange('')
           return
         }
 
