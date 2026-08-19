@@ -14,7 +14,7 @@ import {
   unsupportedSource,
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
-import type { FormatId, Job, Phase, Result, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, Phase, Result, SourceInfo, Warning } from '../core/types.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -148,20 +148,37 @@ async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
 
 async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result> {
   const spec = FORMATS[job.target]
+  const warnings: Warning[] = []
 
   onPhase('reading')
-  onPhase('decoding')
-  let pipeline = sharp(job.source.path)
+  const isAnimated = job.source.frames > 1
+  const keepFrames = isAnimated && spec.animatable
 
-  // Rule 1: EXIF orientation, before anything else. Without this, photos from
-  // phones emerge sideways — verified: a 40x80 orientation-6 jpeg stays 40x80.
+  // Rule 4: never drop frames silently.
+  if (isAnimated && !spec.animatable) {
+    warnings.push({
+      code: 'animation-flattened',
+      message:
+        `${basename(job.source.path)} has ${job.source.frames} frames, ` +
+        `and ${spec.label} cannot animate. Only the first frame was converted.`,
+    })
+  }
+
+  onPhase('decoding')
+  let pipeline = sharp(job.source.path, keepFrames ? { animated: true } : {})
+
+  // Rule 1: EXIF orientation, before anything else. Verified safe on animated
+  // input — page count survives.
   pipeline = pipeline.rotate()
 
-  // Rule 2: JPEG has no alpha channel. Without an explicit flatten, sharp
-  // composites transparent pixels onto black — verified: rgb(0,0,0).
+  // Rule 2: composite onto a background when the target has no alpha channel.
   if (job.source.hasAlpha && !spec.hasAlpha) {
     pipeline = pipeline.flatten({ background: job.options.background })
   }
+
+  // Rule 3: strip EXIF/GPS by default, always keep the colour profile so
+  // colours do not shift on wide-gamut displays.
+  pipeline = job.options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
 
   onPhase('encoding')
   pipeline = encode(pipeline, job.target, job.options.quality)
@@ -169,7 +186,7 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
   onPhase('writing')
   try {
     const outputBytes = await writeAtomic(pipeline, job.output)
-    return { job, outputBytes, warnings: [] }
+    return { job, outputBytes, warnings }
   } catch (cause) {
     throw conversionFailed(job.source.path, cause)
   }
