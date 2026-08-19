@@ -174,8 +174,8 @@ export function App({
   // collected so far (e.g. the quality step only appears once a lossy
   // target is chosen).
   const specs: OptionSpec[] = useMemo(
-    () => (source ? convertAction.options(source, values) : []),
-    [source, values],
+    () => (source ? convertAction.options(source, values, prefs) : []),
+    [source, values, prefs],
   )
 
   const specFor = useCallback((id: string) => specs.find((s) => s.id === id), [specs])
@@ -241,7 +241,7 @@ export function App({
   // being set, so the non-null-ness is a real invariant, not a suppression.
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
-    const next = convertAction.options(currentSource, { target })
+    const next = convertAction.options(currentSource, { target }, prefs)
     setStage(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
   }
 

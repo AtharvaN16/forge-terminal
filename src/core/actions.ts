@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { expandTilde, type Preferences } from '../config/preferences.js'
 import { targetsFor } from './capabilities.js'
 import { invalidArguments } from './errors.js'
 import { FORMATS, formatById } from './formats.js'
@@ -40,11 +41,9 @@ export interface Action {
    * the quality slider only makes sense once a lossy target is chosen.
    * (Spec §6 declared this without the second parameter; see the plan.)
    */
-  options(source: SourceInfo, values: Record<string, unknown>): OptionSpec[]
+  options(source: SourceInfo, values: Record<string, unknown>, prefs: Preferences): OptionSpec[]
   plan(source: SourceInfo, values: Record<string, unknown>): Job[]
 }
-
-const DEFAULT_QUALITY = 80
 
 function targetSelect(source: SourceInfo): OptionSpec {
   // Converting a file to its own format changes nothing the user can see,
@@ -84,12 +83,32 @@ function requireTarget(values: Record<string, unknown>): FormatSpec {
   return spec
 }
 
-function destinationPath(source: SourceInfo): OptionSpec {
+/**
+ * Names a path the way the built-in presets do, so a hoisted default is not
+ * shown as a bare path when it happens to be one of them.
+ */
+function labelFor(path: string, sourceDir: string): string {
+  if (path === sourceDir) return 'Same folder'
+  if (path === join(homedir(), 'Desktop')) return 'Desktop'
+  if (path === join(homedir(), 'Downloads')) return 'Downloads'
+  if (path === join(sourceDir, 'converted')) return 'New subfolder'
+  return path.split('/').pop() || path
+}
+
+function destinationPath(source: SourceInfo, prefs: Preferences): OptionSpec {
   const here = dirname(source.path)
+  const preferred = expandTilde(prefs.defaultOutput)
+
+  // The configured default leads, listed explicitly so that a default
+  // pointing somewhere none of the built-ins cover still appears at all. When
+  // it *is* one of them, the dedupe below collapses the pair and this entry
+  // wins — which is why it carries the built-in's label rather than a path.
   const candidates: PathPreset[] = [
+    { label: labelFor(preferred, here), path: preferred },
+    { label: 'Desktop', path: join(homedir(), 'Desktop') },
     { label: 'Same folder', path: here },
-    { label: 'New subfolder', path: join(here, 'converted') },
     { label: 'Downloads', path: join(homedir(), 'Downloads') },
+    { label: 'New subfolder', path: join(here, 'converted') },
   ]
   // Two presets can resolve to the identical folder — e.g. "Same folder" and
   // "Downloads" collide whenever the source file already lives in
@@ -107,7 +126,7 @@ function destinationPath(source: SourceInfo): OptionSpec {
     kind: 'path',
     id: 'destination',
     label: 'Save to',
-    default: here,
+    default: preferred,
     presets,
   }
 }
@@ -119,7 +138,7 @@ export const convertAction: Action = {
 
   appliesTo: () => true,
 
-  options(source, values) {
+  options(source, values, prefs) {
     const specs: OptionSpec[] = [targetSelect(source)]
 
     const target = values.target
@@ -134,11 +153,11 @@ export const convertAction: Action = {
         min: 1,
         max: 100,
         step: 5,
-        default: DEFAULT_QUALITY,
+        default: prefs.quality,
       })
     }
 
-    specs.push(destinationPath(source))
+    specs.push(destinationPath(source, prefs))
     return specs
   },
 
