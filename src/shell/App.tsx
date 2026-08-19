@@ -1,6 +1,7 @@
 import { basename } from 'node:path'
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DEFAULT_PREFERENCES, type Preferences } from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
@@ -19,6 +20,8 @@ import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { fileLink } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
+import { useTheme } from './ThemeContext.js'
+import { colourProp, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -51,7 +54,16 @@ interface PendingOverwrite {
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
 
-export function App({ initialWidth }: { initialWidth?: number }) {
+export function App({
+  initialWidth,
+  prefs = DEFAULT_PREFERENCES,
+  configWarning,
+}: {
+  initialWidth?: number
+  prefs?: Preferences
+  configWarning?: string
+}) {
+  const palette = useTheme()
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
 
@@ -80,6 +92,19 @@ export function App({ initialWidth }: { initialWidth?: number }) {
   const push = useCallback((block: HistoryBlock) => {
     setHistory((h) => [...h, block])
   }, [])
+
+  /**
+   * A config that could not be read is told to the user once, as history,
+   * and never again. The ref — not state — is what makes "once" true: this
+   * effect reruns on every render that changes its deps, and a state flag
+   * would not be visible to the run that scheduled it.
+   */
+  const warned = useRef(false)
+  useEffect(() => {
+    if (warned.current || configWarning === undefined) return
+    warned.current = true
+    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${configWarning}` })
+  }, [configWarning, push])
 
   /**
    * The one way anything in this file reports a failure. Whatever was thrown
@@ -402,7 +427,7 @@ export function App({ initialWidth }: { initialWidth?: number }) {
 
       {stage === 'converting' ? (
         <Box marginBottom={1}>
-          <Text dimColor>Converting…</Text>
+          <Text color={colourProp(palette.dim)}>Converting…</Text>
         </Box>
       ) : null}
 

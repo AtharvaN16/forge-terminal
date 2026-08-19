@@ -4,7 +4,8 @@ import type { ForgeError } from '../core/errors.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
 import { FileCard } from './components/FileCard.js'
-import { SYMBOLS } from './theme.js'
+import { useTheme } from './ThemeContext.js'
+import { colourProp, SYMBOLS } from './theme.js'
 
 /**
  * What scrolls past above the live prompt: a dropped file, a finished
@@ -24,6 +25,8 @@ function changePhrase(from: number, to: number): string {
 }
 
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
+  const palette = useTheme()
+
   if (block.kind === 'file') {
     return (
       <Box marginBottom={1}>
@@ -35,7 +38,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   if (block.kind === 'note') {
     return (
       <Box marginBottom={1}>
-        <Text>{block.text}</Text>
+        <Text color={colourProp(palette.dim)}>{block.text}</Text>
       </Box>
     )
   }
@@ -44,11 +47,11 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
     const e = block.error
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Text color="red">
+        <Text color={colourProp(palette.fail)}>
           {SYMBOLS.fail} {e.title}
         </Text>
-        <Text>{`  ${e.detail}`}</Text>
-        {e.hint ? <Text dimColor>{`  ${e.hint}`}</Text> : null}
+        <Text color={colourProp(palette.fg)}>{`  ${e.detail}`}</Text>
+        {e.hint ? <Text color={colourProp(palette.dim)}>{`  ${e.hint}`}</Text> : null}
       </Box>
     )
   }
@@ -56,16 +59,21 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   const { job, outputBytes, warnings } = block.result
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text color="green">
-        {SYMBOLS.ok} {basename(job.source.path)} {SYMBOLS.arrow} {basename(job.output)}
+      <Text>
+        <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+        <Text>{'  '}</Text>
+        <Text color={colourProp(palette.fg)}>{basename(job.source.path)}</Text>
+        <Text color={colourProp(palette.dim)}>{` ${SYMBOLS.arrow} `}</Text>
+        <Text color={colourProp(palette.fg)}>{basename(job.output)}</Text>
       </Text>
-      <Text dimColor>
-        {'  '}
-        {formatBytes(job.source.bytes)} {SYMBOLS.arrow} {formatBytes(outputBytes)} ·{' '}
-        {changePhrase(job.source.bytes, outputBytes)}
+      <Text>
+        <Text color={colourProp(palette.dim)}>
+          {`        ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+        </Text>
+        <Text color={colourProp(palette.ok)}>{changePhrase(job.source.bytes, outputBytes)}</Text>
       </Text>
       {warnings.map((w) => (
-        <Text key={w.message} color="yellow">
+        <Text key={w.message} color={colourProp(palette.warn)}>
           {SYMBOLS.warn} {w.message}
         </Text>
       ))}

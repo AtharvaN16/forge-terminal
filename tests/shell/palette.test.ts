@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DARK, LIGHT, NEUTRAL, type Palette, colourProp, paletteFor } from '../../src/shell/theme.js'
+import {
+  colourProp,
+  DARK,
+  LIGHT,
+  NEUTRAL,
+  type Palette,
+  paletteFor,
+} from '../../src/shell/theme.js'
 
 const KEYS: (keyof Palette)[] = [
   'name',

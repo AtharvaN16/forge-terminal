@@ -1,6 +1,8 @@
 import { Box, Text, useInput } from 'ink'
 import { useRef } from 'react'
 import { unescapePath } from '../../utils/unescape-path.js'
+import { useTheme } from '../ThemeContext.js'
+import { colourProp } from '../theme.js'
 
 interface PromptProps {
   value: string
@@ -49,6 +51,7 @@ export function Prompt({
   bordered,
   width,
 }: PromptProps) {
+  const palette = useTheme()
   const valueRef = useRef(value)
   // Deliberately a plain assignment in the render body, not a `useEffect`:
   // Ink's renderer has no browser paint to tear before, so there is no
@@ -113,15 +116,19 @@ export function Prompt({
 
   const body = (
     <Text>
-      <Text dimColor>{'› '}</Text>
-      {value ? <Text>{value}</Text> : <Text dimColor>{placeholder}</Text>}
+      <Text color={colourProp(palette.accent)}>{'› '}</Text>
+      {value ? (
+        <Text color={colourProp(palette.fg)}>{value}</Text>
+      ) : (
+        <Text color={colourProp(palette.dim)}>{placeholder}</Text>
+      )}
     </Text>
   )
 
   if (!bordered) return <Box width={width}>{body}</Box>
 
   return (
-    <Box borderStyle="round" borderDimColor paddingX={1} width={width}>
+    <Box borderStyle="round" borderColor={colourProp(palette.border)} paddingX={1} width={width}>
       {body}
     </Box>
   )

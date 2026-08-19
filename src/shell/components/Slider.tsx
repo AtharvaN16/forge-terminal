@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from 'ink'
 import { useRef } from 'react'
-import { BAR } from '../theme.js'
+import { useTheme } from '../ThemeContext.js'
+import { BAR, colourProp } from '../theme.js'
 
 interface SliderProps {
   label: string
@@ -58,6 +59,8 @@ export function Slider({
     { isActive },
   )
 
+  const palette = useTheme()
+
   const range = max - min
   // A zero-width range (min === max) would divide by zero; a value outside
   // that range would then drive `filled` to +/-Infinity, and
@@ -68,12 +71,16 @@ export function Slider({
 
   return (
     <Box flexDirection="column">
-      <Text>{label}</Text>
+      <Text color={colourProp(palette.dim)}>{label}</Text>
       <Text>
-        <Text>{BAR.filled.repeat(filled)}</Text>
-        <Text bold>{BAR.knob}</Text>
-        <Text dimColor>{BAR.empty.repeat(Math.max(0, width - 1 - filled))}</Text>
-        <Text>{` ${value}`}</Text>
+        <Text color={colourProp(palette.accent)}>{BAR.filled.repeat(filled)}</Text>
+        <Text bold color={colourProp(palette.accent)}>
+          {BAR.knob}
+        </Text>
+        <Text color={colourProp(palette.border)}>
+          {BAR.empty.repeat(Math.max(0, width - 1 - filled))}
+        </Text>
+        <Text color={colourProp(palette.fg)}>{` ${value}`}</Text>
       </Text>
     </Box>
   )
