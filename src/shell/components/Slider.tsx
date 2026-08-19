@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from 'ink'
+import { useRef } from 'react'
 import { BAR } from '../theme.js'
 
 interface SliderProps {
@@ -26,11 +27,32 @@ export function Slider({
   width = 20,
   isActive = true,
 }: SliderProps) {
+  /**
+   * The same ref `Prompt`, `Select` and `PathInput` keep, and for the same
+   * reason: `useInput` handlers are synchronous while `useState` (and a
+   * parent's controlled `value`) is not, so a burst of keys delivered in one
+   * stdin chunk runs through this one closure several times before React
+   * re-renders. Reading the `value` *prop* there reads the value as of the
+   * last render — measured: three RIGHTs in one write moved one step, and a
+   * RIGHT+ENTER burst submitted the value from *before* the RIGHT while the
+   * frame showed the value after it. Assigning in the render body (not an
+   * effect) keeps this current as of the most recent render, synchronously.
+   */
+  const valueRef = useRef(value)
+  valueRef.current = value
+
+  const nudge = (delta: number) => {
+    const next = Math.min(max, Math.max(min, valueRef.current + delta))
+    if (next === valueRef.current) return // already at an end: nothing moved
+    valueRef.current = next
+    onChange(next)
+  }
+
   useInput(
     (_input, key) => {
-      if (key.rightArrow) onChange(Math.min(max, value + step))
-      if (key.leftArrow) onChange(Math.max(min, value - step))
-      if (key.return) onSubmit(value)
+      if (key.rightArrow) nudge(step)
+      if (key.leftArrow) nudge(-step)
+      if (key.return) onSubmit(valueRef.current)
       if (key.escape && onCancel) onCancel()
     },
     { isActive },

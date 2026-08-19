@@ -25,6 +25,10 @@ export function unescapePath(raw: string): string {
 /**
  * Splits a paste containing several paths on *unescaped* whitespace, so
  * "My\ Photo.jpg" stays one path. Each result is then unescaped.
+ *
+ * Deliberately uncalled: the shell is single-file from probe to result (spec
+ * §10), and wiring this in would be the batch feature, not a fix. Retained,
+ * with its tests, for when that lands.
  */
 export function splitPastedPaths(raw: string): string[] {
   const out: string[] = []

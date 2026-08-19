@@ -94,6 +94,49 @@ describe('Slider', () => {
     expect(frame).toContain('75')
   })
 
+  /**
+   * Every test above writes one key per settle, which hides the whole class
+   * of bug: `useInput` handlers run synchronously between renders, so a
+   * burst delivered in a single write reaches the *same* handler closure
+   * several times before React re-renders. Reading the `value` prop there
+   * means reading the value as of the last render, not the value the user
+   * has actually reached.
+   *
+   * Measured against the unfixed component:
+   *   three RIGHTs in ONE write -> onChange: [85,85,85]   (one step, not three)
+   *   RIGHT+ENTER in ONE write  -> onChange: [85], onSubmit: [80]
+   *
+   * The second is the same defect already fixed in `Select`: submitting
+   * something other than what the frame shows.
+   */
+  it('accumulates a burst of arrows delivered in one write', async () => {
+    const onChange = vi.fn()
+    const { stdin } = render(<Slider {...base({ onChange })} />)
+    stdin.write(RIGHT + RIGHT + RIGHT)
+    await settle()
+    expect(onChange.mock.calls.map((c) => c[0])).toEqual([85, 90, 95])
+  })
+
+  it('submits what the burst actually reached, not what the last render showed', async () => {
+    const onChange = vi.fn()
+    const onSubmit = vi.fn()
+    const { stdin } = render(<Slider {...base({ onChange, onSubmit })} />)
+    stdin.write(RIGHT + RIGHT + ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith(90)
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-reads a value the parent changed under it', async () => {
+    const onChange = vi.fn()
+    const { stdin, rerender } = render(<Slider {...base({ value: 80, onChange })} />)
+    rerender(<Slider {...base({ value: 20, onChange })} />)
+    await settle()
+    stdin.write(RIGHT)
+    await settle()
+    expect(onChange).toHaveBeenLastCalledWith(25)
+  })
+
   it('ignores arrows and enter while inactive', async () => {
     const onChange = vi.fn()
     const onSubmit = vi.fn()

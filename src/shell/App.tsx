@@ -1,9 +1,12 @@
+import { basename } from 'node:path'
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
 import { primaryExtension } from '../core/formats.js'
+import { uniqueOutputPath } from '../core/output-path.js'
+import { buildPlan } from '../core/plan.js'
 import { runJobs } from '../core/run.js'
 import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
@@ -24,7 +27,26 @@ import { bandFor, middleEllipsis } from './width.js'
  * (quality, for a lossy target only) -> pick a destination -> convert ->
  * show the result.
  */
-export type Stage = 'idle' | 'target' | 'quality' | 'destination' | 'converting' | 'result'
+export type Stage =
+  | 'idle'
+  | 'target'
+  | 'quality'
+  | 'destination'
+  | 'overwrite'
+  | 'converting'
+  | 'result'
+
+/**
+ * What the overwrite question needs to remember while it is being asked:
+ * where the user chose to save, what that resolved to, and the name "keep
+ * both" would use — resolved once, when the question is raised, rather than
+ * on every render of it.
+ */
+interface PendingOverwrite {
+  destination: string
+  output: string
+  keepBoth: string
+}
 
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
@@ -51,8 +73,25 @@ export function App({ initialWidth }: { initialWidth?: number }) {
   const [source, setSource] = useState<SourceInfo | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
+  const [pending, setPending] = useState<PendingOverwrite | null>(null)
 
   const { exit } = useApp()
+
+  const push = useCallback((block: HistoryBlock) => {
+    setHistory((h) => [...h, block])
+  }, [])
+
+  /**
+   * The one way anything in this file reports a failure. Whatever was thrown
+   * — a `ForgeError`, or something nothing anticipated — becomes a history
+   * block the user can actually read, never a raw stack trace (spec §11).
+   */
+  const showError = useCallback(
+    (e: unknown) => {
+      push({ kind: 'error', id: nextId(), error: isForgeError(e) ? e : unexpectedError(e) })
+    },
+    [push],
+  )
 
   // Gated on `stage === 'result'`: Ink delivers input to every mounted
   // `useInput` hook regardless of what else is on screen, so an ungated
@@ -68,16 +107,21 @@ export function App({ initialWidth }: { initialWidth?: number }) {
         setStage('idle')
         return
       }
-      if (input === 'f') void openPath(lastResult.job.output)
-      if (input === 'o') void revealPath(lastResult.job.output)
+      /**
+       * `.catch`, not `void`: `reveal.ts` promisifies `execFile`, so `open`
+       * exiting non-zero — which is exactly what it does when the file has
+       * since been moved, renamed, or its volume unmounted — rejects. A
+       * `void`ed rejection is an unhandled rejection, and Node terminates
+       * the process and prints the stack. Result blocks live in `<Static>`
+       * scrollback for the rest of the session, so `f` and `o` stay
+       * pressable long after the file they point at has gone.
+       */
+      if (input === 'f') openPath(lastResult.job.output).catch(showError)
+      if (input === 'o') revealPath(lastResult.job.output).catch(showError)
       if (input === 'q') exit()
     },
     { isActive: stage === 'result' },
   )
-
-  const push = useCallback((block: HistoryBlock) => {
-    setHistory((h) => [...h, block])
-  }, [])
 
   // The picker never hardcodes a format list: it renders whatever
   // convertAction.options() returns for the probed source and the answers
@@ -132,11 +176,11 @@ export function App({ initialWidth }: { initialWidth?: number }) {
         // awaits or catches the promise it returns. Whatever this is —
         // a ForgeError, or anything else probe() didn't anticipate — the
         // shell must render it, not silently do nothing forever.
-        push({ kind: 'error', id: nextId(), error: isForgeError(e) ? e : unexpectedError(e) })
+        showError(e)
         setStage('idle')
       }
     },
-    [push],
+    [push, showError],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -167,17 +211,70 @@ export function App({ initialWidth }: { initialWidth?: number }) {
     return middleEllipsis(full, Math.max(12, width - 4))
   }
 
-  // Unlike `submitPath`/`probe`, there is no race to guard against here:
-  // once `stage` moves to 'converting' every earlier stage's input handler
-  // is unmounted (each lives inside its own `stage === '...'` branch below),
-  // and the result-stage handler is gated on `stage === 'result'`, so
-  // nothing can start a second conversion while this one is in flight.
-  const convert = async (destination: string) => {
+  /**
+   * Two Enters delivered in the same tick — a held key repeating, or a paste
+   * carrying two line endings — both reach `convert` from the destination
+   * step's synchronous `useInput` handler. Moving `stage` to `'converting'`
+   * does not stop the second: React unmounts that handler on the next
+   * render, and both calls have already run by then. Measured before this
+   * ref existed: two `runJobs` calls, two encodes, two renames onto the same
+   * path, two result blocks. So this is claimed synchronously, before the
+   * first `await`, for the same reason `requestId` above is.
+   */
+  const converting = useRef(false)
+
+  /**
+   * Spec §8's write-safety rules live in `buildPlan()` and nowhere else:
+   * never write over the input, and never replace an existing output without
+   * consent. The shell has to route through it for exactly the reason the
+   * CLI does — `targetIdsFor` legitimately offers jpeg for a JPEG, and "Same
+   * folder" is legitimately the first destination preset, so the
+   * all-defaults keypath resolves the output straight onto the user's
+   * original unless something refuses.
+   *
+   * `convertAction.plan()` is still what derives the job (it validates the
+   * target and assembles the `ConvertOptions`); `buildPlan()` is what decides
+   * whether that job is allowed to happen.
+   */
+  const convert = async (destination: string, opts: { force?: boolean; output?: string } = {}) => {
     if (!source) return
+    if (converting.current) return
+    converting.current = true
     setStage('converting')
     try {
-      const jobs = convertAction.plan(source, { ...values, destination })
-      const summary = await runJobs(jobs, {})
+      const planned = convertAction.plan(source, { ...values, destination })[0]
+      if (!planned) {
+        setStage('idle')
+        return
+      }
+      const output = opts.output ?? planned.output
+
+      const plan = await buildPlan({
+        resolved: { sources: [source], failures: [], roots: new Map<string, string>() },
+        target: planned.target,
+        output,
+        options: planned.options,
+        force: opts.force ?? false,
+      })
+
+      const refusal = plan.failures[0]
+      if (refusal) {
+        // An output that already exists is a question, not a refusal: spec §8
+        // says the shell asks — keep both, replace, or cancel.
+        if (refusal.error.code === 'output-exists') {
+          setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
+          setStage('overwrite')
+          return
+        }
+        push({ kind: 'error', id: nextId(), error: refusal.error })
+        // Writing over the source has no "replace" worth offering — there is
+        // no outcome there that keeps the original. Back to the destination
+        // step, where choosing a different folder is the actual fix.
+        setStage(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
+        return
+      }
+
+      const summary = await runJobs(plan.jobs, {})
       const result = summary.results[0]
       if (result) {
         setLastResult(result)
@@ -190,15 +287,26 @@ export function App({ initialWidth }: { initialWidth?: number }) {
       }
     } catch (e) {
       // convertAction.plan() throws synchronously on a bad target, and
-      // nothing guarantees runJobs() can never reject for some cause it
-      // doesn't itself catch. Either way, this runs inside an async handler
-      // nothing awaits — PathInput fires onSubmit from a synchronous
-      // useInput handler — so a rethrow here would become an unhandled
-      // rejection instead of something the user ever sees. Render it
-      // instead, exactly like submitPath does for probe().
-      push({ kind: 'error', id: nextId(), error: isForgeError(e) ? e : unexpectedError(e) })
+      // nothing guarantees buildPlan() or runJobs() can never reject for some
+      // cause they don't themselves catch. Either way, this runs inside an
+      // async handler nothing awaits — PathInput fires onSubmit from a
+      // synchronous useInput handler — so a rethrow here would become an
+      // unhandled rejection instead of something the user ever sees. Render
+      // it instead, exactly like submitPath does for probe().
+      showError(e)
       setStage('idle')
+    } finally {
+      converting.current = false
     }
+  }
+
+  const answerOverwrite = (choice: string) => {
+    if (!pending) return
+    const { destination, keepBoth } = pending
+    setPending(null)
+    if (choice === 'replace') void convert(destination, { force: true })
+    else if (choice === 'keep') void convert(destination, { output: keepBoth })
+    else setStage('destination')
   }
 
   const targetSpec = specFor('target')
@@ -258,8 +366,36 @@ export function App({ initialWidth }: { initialWidth?: number }) {
             label={destinationSpec.label}
             presets={destinationSpec.presets}
             preview={previewDestination}
-            onSubmit={convert}
+            onSubmit={(destination) => void convert(destination)}
             onCancel={() => setStage('target')}
+            width={width}
+            showHints={band !== 'compact'}
+          />
+        </Box>
+      ) : null}
+
+      {stage === 'overwrite' && pending ? (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
+          <Select
+            items={[
+              { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
+              { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
+              { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
+            ]}
+            onSubmit={answerOverwrite}
+            onCancel={() => {
+              setPending(null)
+              setStage('destination')
+            }}
+            showHints={band !== 'compact'}
+          />
+          <Hints
+            pairs={[
+              ['↑↓', 'choose'],
+              ['↵', 'confirm'],
+              ['esc', 'cancel'],
+            ]}
           />
         </Box>
       ) : null}

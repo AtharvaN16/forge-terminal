@@ -411,8 +411,16 @@ Save to
 Dropping a file into a terminal pastes a shell-escaped path —
 `/Users/you/My\ Photo.jpg`, sometimes single-quoted. `unescape-path.ts`
 normalises backslash escapes, surrounding quotes, and `~`. This is the entire
-mechanism; no drop-target API exists or is needed. Multiple paths pasted at
-once are split on unescaped whitespace.
+mechanism; no drop-target API exists or is needed.
+
+**One path per drop.** The flow above is single-file from `probe` through to
+the result, so a drop is read as exactly one path — a paste carrying several
+is treated as one path and fails to probe as such. Splitting a paste on
+unescaped whitespace is written and tested (`splitPastedPaths` in
+`unescape-path.ts`) but deliberately not wired in: making the shell
+multi-file is the batch feature on the roadmap, a product decision, not
+something the drag-and-drop mechanism should make on its own. Until then the
+flag CLI is where a folder or a glob gets converted.
 
 ### Clickable links
 

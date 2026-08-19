@@ -8,6 +8,7 @@ import {
   conversionFailed,
   corruptSource,
   fileNotFound,
+  isForgeError,
   notADirectory,
   notAFile,
   outputInvalid,
@@ -211,7 +212,14 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
     const outputBytes = await writeAtomic(pipeline, job.output)
     return { job, outputBytes, warnings }
   } catch (cause) {
-    throw conversionFailed(job.source.path, cause)
+    // `writeAtomic` already names what it knows — an undirectory-able
+    // destination becomes `outputInvalid` ("Cannot write there / Check that
+    // the path is valid and that you have permission"). Wrapping that in the
+    // generic `conversionFailed` threw away the better message and replaced
+    // its hint with "run again with --debug", which the interactive shell has
+    // no equivalent for. Only an unnamed failure gets the generic wrapper;
+    // `run.ts` makes the same distinction the same way.
+    throw isForgeError(cause) ? cause : conversionFailed(job.source.path, cause)
   }
 }
 

@@ -288,7 +288,27 @@ Save to
   → ./sample.webp
 ```
 
-Enter on a preset converts immediately:
+Enter on a preset converts immediately — unless writing there would destroy
+something. The shell runs the same `buildPlan()` write-safety checks the flag
+CLI does (§ *Safety* above): converting a JPEG to JPEG in its own folder, which
+is what accepting every default does, resolves the output onto the input and is
+refused outright rather than replacing your original with a lossy re-encode:
+
+```
+✕ Output would replace the original
+  sample.jpg is both the input and the output.
+```
+
+and an output that already exists asks instead of clobbering it:
+
+```
+sample.webp already exists
+❯ Keep both  sample (1).webp
+  Replace    the existing file is lost
+  Cancel     pick a different folder
+```
+
+Either way you land back on the destination step. Otherwise:
 
 ```
 ✓ sample.jpg → sample.webp
@@ -323,8 +343,10 @@ of dropping the link entirely — which is exactly what's shown above.
 
 The layout adapts to width rather than wrapping: below 60 columns the
 bordered prompt box, the per-item format hints (`universal`, `lossless`,
-...), and the file card's format/dimensions are all dropped so every line
-stays inside the terminal edge; at 60 columns and above everything renders
+...), the destination presets' folder paths, and the file card's
+format/dimensions are all dropped so every line stays inside the terminal
+edge; above that, a preset's path is middle-truncated to whatever the width
+leaves for it; at 60 columns and above everything renders
 as pictured above. This re-bands live if you resize the window mid-session,
 not just at launch. Long filenames and paths are truncated from the middle
 (keeping both the start and the extension visible) rather than overflowing
@@ -335,7 +357,8 @@ and rendered bold.
 ### What the shell doesn't do yet
 
 - **One file at a time.** No batch conversion through the shell — point it
-  at a folder from the flag CLI instead.
+  at a folder from the flag CLI instead. A paste containing several paths is
+  read as one path and fails to probe as such.
 - **One action.** Convert is the only thing on offer; the underlying data
   model supports a menu of actions (`actionsFor`), but with exactly one
   action registered the shell skips straight past a menu of one.

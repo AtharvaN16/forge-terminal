@@ -1,8 +1,10 @@
 import { Box, Text, useInput } from 'ink'
 import { useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import type { Choice, PathPreset } from '../../core/actions.js'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { SYMBOLS } from '../theme.js'
+import { middleEllipsis } from '../width.js'
 import { Select } from './Select.js'
 
 const TYPE_IT = '__type__'
@@ -14,6 +16,16 @@ interface PathInputProps {
   preview: (path: string) => string
   onSubmit: (path: string) => void
   onCancel?: () => void
+  /**
+   * The live terminal width. A preset's hint is its *absolute* path, which is
+   * routinely longer than the terminal on its own — spec §13 says content is
+   * truncated with a middle ellipsis, never wrapped and never allowed to
+   * overflow, so the hints have to be budgeted against a real number rather
+   * than printed at whatever length they happen to be.
+   */
+  width: number
+  /** False in the compact band (<60 columns), exactly as the target picker does. */
+  showHints: boolean
 }
 
 /**
@@ -24,7 +36,15 @@ interface PathInputProps {
  * handler, since Ink delivers input to every mounted `useInput` hook and
  * two handlers would both move on one keypress.
  */
-export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathInputProps) {
+export function PathInput({
+  label,
+  presets,
+  preview,
+  onSubmit,
+  onCancel,
+  width,
+  showHints,
+}: PathInputProps) {
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
   const [highlight, setHighlight] = useState(0)
@@ -39,8 +59,18 @@ export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathI
    */
   const textRef = useRef('')
 
+  const labels = [...presets.map((p) => p.label), 'Type a path…']
+  // Mirrors the row `Select` actually draws: two columns of cursor gutter,
+  // the padded label column, then two columns of gap before the hint.
+  const labelColumn = Math.max(0, ...labels.map((l) => stringWidth(l)))
+  const hintBudget = Math.max(8, width - labelColumn - 4)
+
   const items: Choice[] = [
-    ...presets.map((p) => ({ value: p.path, label: p.label, hint: p.path })),
+    ...presets.map((p) => ({
+      value: p.path,
+      label: p.label,
+      hint: middleEllipsis(p.path, hintBudget),
+    })),
     { value: TYPE_IT, label: 'Type a path…' },
   ]
 
@@ -111,6 +141,7 @@ export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathI
           if (value === TYPE_IT) setTyping(true)
           else onSubmit(value)
         }}
+        showHints={showHints}
         {...(onCancel ? { onCancel } : {})}
       />
       {highlighted && highlighted.value !== TYPE_IT ? (
