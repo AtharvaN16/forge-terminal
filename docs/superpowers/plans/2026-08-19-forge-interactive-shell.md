@@ -96,7 +96,7 @@ Files are small and single-purpose because a component you can hold in your head
 Nothing else can start until an Ink component renders and is testable. This task exists to prove that, not to build product.
 
 **Files:**
-- Modify: `package.json`, `tsconfig.json`, `tsconfig.typecheck.json`
+- Modify: `package.json`, `tsconfig.json`, `tsconfig.typecheck.json`, `vitest.config.ts`
 - Create: `src/shell/components/Hello.tsx` (deleted in Task 6 — scaffolding, and the plan says so up front)
 - Test: `tests/shell/toolchain.test.tsx`
 
@@ -117,7 +117,14 @@ npm i -D ink-testing-library @types/react
 
 Add `"jsx": "react-jsx"` to `compilerOptions`. Leave `"types": ["node"]` alone — it is deliberate (TypeScript 7 does not auto-include `@types/*`) and React's types resolve through the explicit `react` import, not ambient inclusion.
 
-- [ ] **Step 3: Extend both configs to see `.tsx`**
+- [ ] **Step 3: Extend the test glob to discover `.tsx`, and both configs to see it**
+
+`vitest.config.ts` currently has `include: ['tests/**/*.test.ts']`, which does **not** match `.test.tsx`. Measured: with the original glob vitest finds 18 files / 134 tests and silently skips the new one; with `.tsx` added it finds 19 / 135. Every remaining task in this plan writes `.test.tsx`, so without this the whole shell suite would report green while running nothing.
+
+```ts
+include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+```
+
 
 `tsconfig.json`'s `include` stays `["src"]` — it already picks up `.tsx`. In `tsconfig.typecheck.json`, confirm `include` is `["src", "tests", "vitest.config.ts"]` so test components are type-checked too.
 
