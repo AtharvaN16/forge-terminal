@@ -32,11 +32,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   }
 
   if (intent.kind === 'shell') {
-    return {
-      exitCode: 2,
-      stdout: [],
-      stderr: ['The interactive shell is not built yet. Use --to for now, or --help.'],
-    }
+    return { exitCode: 0, stdout: [], stderr: [] }
   }
 
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })

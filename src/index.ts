@@ -29,11 +29,16 @@ async function main(): Promise<void> {
 
     // The shell is only ever launched from a real terminal. Piped or scripted
     // invocations must never block waiting for a keypress.
-    if (intent.kind === 'shell' && !process.stdout.isTTY) {
-      process.stderr.write(
-        'Forge needs a file and a target format.\nTry: forge photo.jpg --to webp\n',
-      )
-      process.exitCode = 2
+    if (intent.kind === 'shell') {
+      if (!process.stdout.isTTY) {
+        process.stderr.write(
+          'Forge needs a file and a target format.\nTry: forge photo.jpg --to webp\n',
+        )
+        process.exitCode = 2
+        return
+      }
+      const { launchShell } = await import('./shell/launch.js')
+      await launchShell()
       return
     }
 
