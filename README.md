@@ -92,6 +92,68 @@ git pull && npm install && npm run build   # update
 npm unlink -g forge-terminal               # remove
 ```
 
+## Configuration
+
+Forge stores preferences at `~/.config/forge/config.json`, or
+`$XDG_CONFIG_HOME/forge/config.json` when that is set.
+
+```bash
+forge config list                    # show every setting and where it lives
+forge config set output ~/Desktop    # default output folder
+forge config set theme light         # dark or light
+forge config set quality 80          # what the quality slider opens on
+forge config path                    # print the file location
+```
+
+A corrupt or unreadable config never blocks a conversion. Forge falls back to
+defaults, says so once, and carries on — and it validates key by key, so one
+bad setting does not cost you the ones that are fine. Keys written by a newer
+version of Forge survive a write from an older one.
+
+### Themes
+
+Forge ships two palettes, built separately rather than one dimmed: a colour
+that reads on `#0e1016` does not read on paper white. The first time you run
+the shell it asks which suits your terminal and remembers the answer.
+
+Change it later with `/theme` in the shell, or:
+
+```bash
+forge config set theme light
+```
+
+`NO_COLOR` is honoured and turns both palettes off entirely. Every status
+still carries a symbol *and* a word — `✓ done`, `✕ failed`, `⚠ warning` — so
+nothing depends on colour to be readable.
+
+### Default output folder
+
+Desktop is the factory default. The shell's **Save to** step marks whichever
+folder is currently your default and preselects it:
+
+```
+  Save to
+❯ Desktop         ~/Desktop              default
+  Same folder     ~/Pictures
+  Downloads       ~/Downloads
+  New subfolder   ~/Pictures/converted
+
+  → ~/Desktop/diagram.webp
+  ↑↓ choose · ↵ save · d make default · esc back
+```
+
+Press `d` on any row to make it the new default. It takes effect immediately
+— the tag moves, the banner updates — and it does not advance the flow, since
+you are still choosing where *this* conversion goes.
+
+### Tab completion
+
+Tab in the prompt completes paths against the filesystem. A unique match
+completes in place; several complete the common prefix and list the
+candidates underneath. Directories gain a trailing `/` so the next Tab
+descends, `~` expands, and matching is case-insensitive to match the
+filesystem. Only folders and files Forge can actually read are offered.
+
 ## Usage
 
 ```
