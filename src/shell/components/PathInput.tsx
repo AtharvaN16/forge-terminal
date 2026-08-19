@@ -27,6 +27,10 @@ interface PathInputProps {
   width: number
   /** False in the compact band (<60 columns), exactly as the target picker does. */
   showHints: boolean
+  /** The folder currently saved as the default, so its row can be tagged. */
+  defaultPath: string
+  /** Called when `d` is pressed on a highlighted preset. */
+  onMakeDefault?: (path: string) => void
 }
 
 /**
@@ -45,6 +49,8 @@ export function PathInput({
   onCancel,
   width,
   showHints,
+  defaultPath,
+  onMakeDefault,
 }: PathInputProps) {
   const palette = useTheme()
   const [typing, setTyping] = useState(false)
@@ -67,14 +73,41 @@ export function PathInput({
   const labelColumn = Math.max(0, ...labels.map((l) => stringWidth(l)))
   const hintBudget = Math.max(8, width - labelColumn - 4)
 
+  const DEFAULT_TAG = '   default'
+
   const items: Choice[] = [
-    ...presets.map((p) => ({
-      value: p.path,
-      label: p.label,
-      hint: middleEllipsis(p.path, hintBudget),
-    })),
+    ...presets.map((p) => {
+      const isDefault = p.path === defaultPath
+      // The tag shares the hint column, so the path is given a smaller budget
+      // when one is present rather than letting the row grow past the width.
+      const budget = isDefault ? Math.max(8, hintBudget - DEFAULT_TAG.length) : hintBudget
+      return {
+        value: p.path,
+        label: p.label,
+        hint: `${middleEllipsis(p.path, budget)}${isDefault ? DEFAULT_TAG : ''}`,
+      }
+    }),
     { value: TYPE_IT, label: 'Type a path…' },
   ]
+
+  /**
+   * Separate from the typing handler below and gated on `!typing`, because
+   * Ink delivers input to every mounted `useInput` hook: without the gate a
+   * `d` typed into the free-text path field would also fire this and quietly
+   * rewrite the user's default.
+   */
+  useInput(
+    (input) => {
+      if (input !== 'd' || !onMakeDefault) return
+      const item = items[highlight]
+      if (!item || item.value === TYPE_IT) return
+      // Already the default: a no-op, not an error. Pressing d twice is a
+      // reasonable thing for someone to do.
+      if (item.value === defaultPath) return
+      onMakeDefault(item.value)
+    },
+    { isActive: !typing },
+  )
 
   useInput(
     (input, key) => {

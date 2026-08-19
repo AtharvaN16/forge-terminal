@@ -27,6 +27,8 @@ function props(over: Partial<Parameters<typeof PathInput>[0]> = {}) {
     onSubmit: () => {},
     width: 120,
     showHints: true,
+    // No preset matches, so no row is tagged unless a test asks for it.
+    defaultPath: '/nowhere-in-particular',
     ...over,
   }
 }

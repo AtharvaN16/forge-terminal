@@ -1,7 +1,12 @@
 import { basename } from 'node:path'
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DEFAULT_PREFERENCES, type Preferences, savePreferences } from '../config/preferences.js'
+import {
+  DEFAULT_PREFERENCES,
+  expandTilde,
+  type Preferences,
+  savePreferences,
+} from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
@@ -101,6 +106,13 @@ export function App({
    * running session rather than only the next launch.
    */
   const [theme, setTheme] = useState<'dark' | 'light' | undefined>(prefs.theme)
+  /**
+   * Preferences as they stand *now*, seeded from what was loaded at launch.
+   * `d` changes the default output mid-session, and the banner, the preset
+   * list and the `default` tag must all follow it without waiting for a
+   * relaunch — so they all read this, never the `prefs` prop.
+   */
+  const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
   const [stage, setStage] = useState<Stage>(prefs.theme === undefined ? 'theme' : 'idle')
   const [text, setText] = useState('')
   const [source, setSource] = useState<SourceInfo | null>(null)
@@ -174,8 +186,8 @@ export function App({
   // collected so far (e.g. the quality step only appears once a lossy
   // target is chosen).
   const specs: OptionSpec[] = useMemo(
-    () => (source ? convertAction.options(source, values, prefs) : []),
-    [source, values, prefs],
+    () => (source ? convertAction.options(source, values, livePrefs) : []),
+    [source, values, livePrefs],
   )
 
   const specFor = useCallback((id: string) => specs.find((s) => s.id === id), [specs])
@@ -241,7 +253,7 @@ export function App({
   // being set, so the non-null-ness is a real invariant, not a suppression.
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
-    const next = convertAction.options(currentSource, { target }, prefs)
+    const next = convertAction.options(currentSource, { target }, livePrefs)
     setStage(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
   }
 
@@ -256,6 +268,17 @@ export function App({
     setTheme(next)
     setStage('idle')
     savePreferences({ theme: next }).catch(showError)
+  }
+
+  /**
+   * Writes the folder to config and says so, without advancing the flow —
+   * the user is still choosing where *this* conversion goes. `.catch` for
+   * the same reason as chooseTheme: nothing awaits this promise.
+   */
+  const makeDefault = (path: string) => {
+    setLivePrefs((p) => ({ ...p, defaultOutput: path }))
+    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} default output is now ${path}` })
+    savePreferences({ defaultOutput: path }).catch(showError)
   }
 
   const chooseQuality = (quality: number) => {
@@ -384,7 +407,7 @@ export function App({
         {stage === 'theme' ? (
           <ThemePicker onChoose={chooseTheme} />
         ) : (
-          <Banner width={width} version={VERSION} defaultOutput={prefs.defaultOutput} />
+          <Banner width={width} version={VERSION} defaultOutput={livePrefs.defaultOutput} />
         )}
         <Static items={history}>
           {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
@@ -442,6 +465,23 @@ export function App({
               onCancel={() => setStage('target')}
               width={width}
               showHints={band !== 'compact'}
+              defaultPath={expandTilde(livePrefs.defaultOutput)}
+              onMakeDefault={makeDefault}
+            />
+            {/* Four pairs is 45 columns — wider than a compact terminal.
+                Spec §13 drops hints there rather than overflowing, and the
+                shorter pair still names the key that is unique to this step. */}
+            <Hints
+              pairs={
+                band === 'compact'
+                  ? [['d', 'make default']]
+                  : [
+                      ['↑↓', 'choose'],
+                      ['↵', 'save'],
+                      ['d', 'make default'],
+                      ['esc', 'back'],
+                    ]
+              }
             />
           </Box>
         ) : null}
