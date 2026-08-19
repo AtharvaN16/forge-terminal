@@ -1,5 +1,5 @@
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
@@ -16,7 +16,7 @@ import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { fileLink } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
-import { bandFor } from './width.js'
+import { bandFor, middleEllipsis } from './width.js'
 
 /**
  * Everything below `App` is dumb and takes props; this is the only file
@@ -31,7 +31,18 @@ const nextId = () => `b${++blockSeq}`
 
 export function App({ initialWidth }: { initialWidth?: number }) {
   const { stdout } = useStdout()
-  const width = initialWidth ?? stdout?.columns ?? 80
+  const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
+
+  useEffect(() => {
+    if (initialWidth !== undefined || !stdout) return
+    const onResize = () => setMeasured(stdout.columns ?? 80)
+    stdout.on('resize', onResize)
+    return () => {
+      stdout.off('resize', onResize)
+    }
+  }, [initialWidth, stdout])
+
+  const width = measured
   const band = bandFor(width)
 
   const [history, setHistory] = useState<HistoryBlock[]>([])
@@ -143,6 +154,19 @@ export function App({ initialWidth }: { initialWidth?: number }) {
     setStage('destination')
   }
 
+  // The destination preview shows the resolved output path as the user
+  // highlights each preset. Truncated with `middleEllipsis`, budgeted off the
+  // live terminal width, so a deep preset path can't push the line past the
+  // edge of a narrow terminal.
+  const previewDestination = (candidate: string): string => {
+    const stem = source ? (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '') : ''
+    const full =
+      source && typeof values.target === 'string'
+        ? `${candidate}/${stem}${primaryExtension(values.target as FormatId)}`
+        : candidate
+    return middleEllipsis(full, Math.max(12, width - 4))
+  }
+
   // Unlike `submitPath`/`probe`, there is no race to guard against here:
   // once `stage` moves to 'converting' every earlier stage's input handler
   // is unmounted (each lives inside its own `stage === '...'` branch below),
@@ -233,11 +257,7 @@ export function App({ initialWidth }: { initialWidth?: number }) {
           <PathInput
             label={destinationSpec.label}
             presets={destinationSpec.presets}
-            preview={(p) => {
-              if (!(source && typeof values.target === 'string')) return p
-              const stem = (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')
-              return `${p}/${stem}${primaryExtension(values.target as FormatId)}`
-            }}
+            preview={previewDestination}
             onSubmit={convert}
             onCancel={() => setStage('target')}
           />
@@ -277,6 +297,7 @@ export function App({ initialWidth }: { initialWidth?: number }) {
             placeholder="drop a file or type a path"
             isActive
             bordered={band !== 'compact'}
+            width={width}
           />
           <Hints
             pairs={[

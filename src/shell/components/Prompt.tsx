@@ -9,6 +9,15 @@ interface PromptProps {
   placeholder: string
   isActive: boolean
   bordered: boolean
+  /**
+   * The live terminal width. Ink's `Box` has no notion of the caller's
+   * `initialWidth` test prop — left unset, a bordered `Box` expands to fill
+   * whatever `stdout.columns` genuinely is, which in production coincides
+   * with the width App.tsx computed but in a narrow real terminal (or a test
+   * that pins a narrower `initialWidth`) does not. Passing it through
+   * explicitly is what keeps the bordered box from overflowing.
+   */
+  width: number
 }
 
 /**
@@ -38,6 +47,7 @@ export function Prompt({
   placeholder,
   isActive,
   bordered,
+  width,
 }: PromptProps) {
   const valueRef = useRef(value)
   // Deliberately a plain assignment in the render body, not a `useEffect`:
@@ -108,10 +118,10 @@ export function Prompt({
     </Text>
   )
 
-  if (!bordered) return <Box>{body}</Box>
+  if (!bordered) return <Box width={width}>{body}</Box>
 
   return (
-    <Box borderStyle="round" borderDimColor paddingX={1}>
+    <Box borderStyle="round" borderDimColor paddingX={1} width={width}>
       {body}
     </Box>
   )
