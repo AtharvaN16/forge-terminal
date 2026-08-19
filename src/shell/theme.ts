@@ -10,13 +10,101 @@ export const SYMBOLS = {
   arrow: '→',
 } as const
 
-export const COLOURS = {
+/**
+ * Every colour the shell draws. No component names a colour directly, so
+ * changing a theme is changing this object and nothing else.
+ *
+ * Values are hex rather than ANSI names because the two palettes need
+ * specific brightnesses: ANSI `yellow` is whatever the user's terminal theme
+ * decided it is, which is fine when there is one palette and useless when the
+ * entire point is that light and dark differ. NEUTRAL is the exception — see
+ * its comment.
+ */
+export interface Palette {
+  name: 'dark' | 'light' | 'neutral'
+  /** Primary text. */
+  fg: string
+  /** Secondary text — sizes, hints, paths. */
+  dim: string
+  /** The one accent: cursor, selected marker, wordmark edge. */
+  accent: string
+  ok: string
+  warn: string
+  fail: string
+  /** Format tag inlined into the file card's border. */
+  tag: string
+  /** Section labels such as CONVERT TO. */
+  label: string
+  /** Resting frame colour. */
+  border: string
+  /** Fill behind the selected row. Empty means "draw no band". */
+  selectionBg: string
+}
+
+export const DARK: Palette = {
+  name: 'dark',
+  fg: '#e4e8f0',
+  dim: '#6b7385',
+  accent: '#e5a23c',
+  ok: '#6fcf7f',
+  warn: '#e5c07b',
+  fail: '#e8796d',
+  tag: '#63c1d8',
+  label: '#a68ce0',
+  border: '#39404f',
+  selectionBg: '#252c3a',
+}
+
+export const LIGHT: Palette = {
+  name: 'light',
+  fg: '#23262d',
+  dim: '#8b9099',
+  accent: '#a86a06',
+  ok: '#1e7a35',
+  warn: '#8a6100',
+  fail: '#b3261e',
+  tag: '#0a6b86',
+  label: '#6141ad',
+  border: '#c3bdb2',
+  selectionBg: '#eae4d8',
+}
+
+/**
+ * Used before the user has chosen a theme — that is, while the first-run
+ * picker is on screen and we genuinely do not know the background. It is the
+ * one palette built from ANSI names and empty strings rather than hex: it
+ * sets no background fill and no foreground at all, so it inherits the
+ * terminal's own colours and is legible on any background by construction.
+ */
+export const NEUTRAL: Palette = {
+  name: 'neutral',
+  fg: '',
+  dim: 'gray',
+  accent: 'yellow',
   ok: 'green',
-  fail: 'red',
   warn: 'yellow',
-  muted: 'gray',
-  accent: 'cyan',
-} as const
+  fail: 'red',
+  tag: 'cyan',
+  label: 'magenta',
+  border: 'gray',
+  selectionBg: '',
+}
+
+export function paletteFor(theme: 'dark' | 'light' | undefined): Palette {
+  if (theme === 'dark') return DARK
+  if (theme === 'light') return LIGHT
+  return NEUTRAL
+}
+
+/**
+ * Ink treats `undefined` as "do not set this attribute"; the palettes use ''
+ * for the same idea, because an interface of optional strings would make
+ * every consumer handle absence separately. This is the one adapter between
+ * the two conventions.
+ */
+export function colourProp(value: string): string | undefined {
+  return value === '' ? undefined : value
+}
 
 /**
  * Glyphs for bar-style controls (e.g. the quality Slider). `filled` and
