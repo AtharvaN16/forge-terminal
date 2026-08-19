@@ -13,6 +13,7 @@ import {
   permissionDenied,
   unsupportedSource,
 } from '../core/errors.js'
+import { FORMATS } from '../core/formats.js'
 import type { FormatId, Job, Phase, Result, SourceInfo } from '../core/types.js'
 import type { Engine } from './types.js'
 
@@ -146,9 +147,21 @@ async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
 }
 
 async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result> {
+  const spec = FORMATS[job.target]
+
   onPhase('reading')
   onPhase('decoding')
   let pipeline = sharp(job.source.path)
+
+  // Rule 1: EXIF orientation, before anything else. Without this, photos from
+  // phones emerge sideways — verified: a 40x80 orientation-6 jpeg stays 40x80.
+  pipeline = pipeline.rotate()
+
+  // Rule 2: JPEG has no alpha channel. Without an explicit flatten, sharp
+  // composites transparent pixels onto black — verified: rgb(0,0,0).
+  if (job.source.hasAlpha && !spec.hasAlpha) {
+    pipeline = pipeline.flatten({ background: job.options.background })
+  }
 
   onPhase('encoding')
   pipeline = encode(pipeline, job.target, job.options.quality)
