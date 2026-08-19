@@ -1,9 +1,10 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { targetsFor } from './capabilities.js'
-import { FORMATS } from './formats.js'
+import { invalidArguments } from './errors.js'
+import { FORMATS, formatById } from './formats.js'
 import { resolveOutputPath } from './output-path.js'
-import type { ConvertOptions, FormatId, Job, SourceInfo } from './types.js'
+import type { ConvertOptions, FormatId, FormatSpec, Job, SourceInfo } from './types.js'
 
 export interface Choice {
   value: string
@@ -57,6 +58,26 @@ function targetSelect(source: SourceInfo): OptionSpec {
   }
 }
 
+/**
+ * plan() cannot trust `values.target` the way options() can afford to — a
+ * caller (in practice, the shell) is expected to reach plan() only after
+ * walking options(), but nothing enforces that. An unchecked `as FormatId`
+ * here would let a missing, empty, or bogus target slip through and crash
+ * deep inside resolveOutputPath instead of failing at the boundary with a
+ * message that says what went wrong.
+ */
+function requireTarget(values: Record<string, unknown>): FormatSpec {
+  const raw = values.target
+  const spec = typeof raw === 'string' ? formatById(raw) : undefined
+  if (!spec) {
+    throw invalidArguments(
+      `convertAction.plan() requires a valid target format, got ${JSON.stringify(raw)}.`,
+      'This is a caller bug, not a user-facing condition: call options() and pass one of the target select choices before calling plan().',
+    )
+  }
+  return spec
+}
+
 function destinationPath(source: SourceInfo): OptionSpec {
   const here = dirname(source.path)
   return {
@@ -103,14 +124,14 @@ export const convertAction: Action = {
   },
 
   plan(source, values) {
-    const target = values.target as FormatId
-    const spec = FORMATS[target]
+    const spec = requireTarget(values)
+    const target = spec.id
 
     const options: ConvertOptions = {
       background: '#ffffff',
       keepMetadata: false,
     }
-    if (spec?.lossy && typeof values.quality === 'number') options.quality = values.quality
+    if (spec.lossy && typeof values.quality === 'number') options.quality = values.quality
 
     const destination = typeof values.destination === 'string' ? values.destination : undefined
     const output = resolveOutputPath({

@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ACTIONS, actionsFor, convertAction } from '../../src/core/actions.js'
+import { isForgeError } from '../../src/core/errors.js'
 import type { SourceInfo } from '../../src/core/types.js'
 
 function source(over: Partial<SourceInfo> = {}): SourceInfo {
@@ -99,5 +100,28 @@ describe('convert action plan', () => {
   it('defaults the background to white so transparency does not become black', () => {
     const jobs = convertAction.plan(source(), { target: 'jpeg', destination: '/out' })
     expect(jobs[0]?.options.background).toBe('#ffffff')
+  })
+})
+
+describe('convert action plan target validation', () => {
+  function planCode(values: Record<string, unknown>): string {
+    try {
+      convertAction.plan(source(), values)
+    } catch (e) {
+      return isForgeError(e) ? e.code : `unexpected:${String(e)}`
+    }
+    return 'no-error'
+  }
+
+  it('throws a ForgeError, not a TypeError, when target is missing', () => {
+    expect(planCode({})).toBe('invalid-arguments')
+  })
+
+  it('throws a ForgeError when target is the empty string', () => {
+    expect(planCode({ target: '' })).toBe('invalid-arguments')
+  })
+
+  it('throws a ForgeError when target is not a format Forge knows', () => {
+    expect(planCode({ target: 'mp4' })).toBe('invalid-arguments')
   })
 })
