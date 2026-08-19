@@ -174,6 +174,15 @@ measured capability.
 really a PNG is common; trusting the extension means showing the wrong menu.
 `sharp().metadata()` reads the container's magic bytes.
 
+Two measured quirks that `probe()` must absorb, or the capability graph is
+wrong:
+
+- Sharp reports **both HEIC and AVIF** as `format: 'heif'`. They are separated
+  by `metadata().compression` — `'hevc'` is HEIC, `'av1'` is AVIF. Getting this
+  wrong would offer HEIC as a writable target, which fails at encode time.
+- `metadata().pages` is `undefined` for a still image and a count for an
+  animated one, so `frames` is `pages ?? 1`.
+
 ```ts
 interface SourceInfo {
   path: string
@@ -435,9 +444,20 @@ class ForgeError extends Error {
 }
 ```
 
-Node and Sharp errors are mapped at the engine boundary: `ENOENT` →
-`file-not-found`, `EACCES`/`EPERM` → `permission-denied`, Sharp's
-`Input buffer contains unsupported image format` → `corrupt-source`. A raw
+**Sharp cannot be trusted to classify failures.** Measured on 0.35.3: it never
+populates `error.code`, and a file the process cannot read produces a message
+identical to a corrupt one —
+
+```
+missing file : "Input file is missing: /nope/missing.jpg"       code=undefined
+corrupt file : "Input file contains unsupported image format"
+no read perm : "Input file contains unsupported image format"   code=undefined
+```
+
+So `probe()` calls `fs.stat` and `fs.access(R_OK)` **before** handing the path
+to Sharp. Node reports `ENOENT` and `EACCES` correctly, and that is where
+`file-not-found` and `permission-denied` come from. Only once the file is known
+to exist and be readable does a Sharp failure mean `corrupt-source`. A raw
 stack trace never reaches the user without `--debug`.
 
 Rendered identically in both front ends:
