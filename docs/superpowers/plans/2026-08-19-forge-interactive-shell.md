@@ -1020,15 +1020,21 @@ export function Select({
 }: SelectProps) {
   const [index, setIndex] = useState(0)
 
-  const move = (next: number) => {
-    setIndex(next)
-    if (onHighlight) onHighlight(next)
+  // The functional updater is load-bearing: several keypresses can arrive in one
+  // write, and computing from the closed-over `index` would make them all read the
+  // same stale value. onHighlight fires only on a real move, not a no-op at an end.
+  const move = (delta: number) => {
+    setIndex((i) => {
+      const next = Math.min(Math.max(i + delta, 0), items.length - 1)
+      if (next !== i && onHighlight) onHighlight(next)
+      return next
+    })
   }
 
   useInput((_input, key) => {
     if (items.length === 0) return
-    if (key.downArrow) move(Math.min(index + 1, items.length - 1))
-    if (key.upArrow) move(Math.max(index - 1, 0))
+    if (key.downArrow) move(1)
+    if (key.upArrow) move(-1)
     if (key.return) {
       const item = items[index]
       if (item) onSubmit(item.value)
