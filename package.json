@@ -27,6 +27,7 @@
     "ink": "^7.1.1",
     "react": "^19.2.8",
     "sharp": "^0.35.3",
+    "string-width": "^8.2.2",
     "supports-hyperlinks": "^4.5.0",
     "tinyglobby": "^0.2.17"
   },

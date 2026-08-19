@@ -67,4 +67,13 @@ describe('splitPastedPaths', () => {
   it('returns nothing for empty input', () => {
     expect(splitPastedPaths('   ')).toEqual([])
   })
+
+  it('merges two paths into one bogus chunk on an unterminated quote', () => {
+    // Deliberate, documented behaviour (mirrors real shell semantics): once
+    // an opening quote never finds its close, everything after it -
+    // including whitespace that would otherwise be a path separator - is
+    // absorbed into a single chunk. Two dropped paths can silently become
+    // one. Not something this function is expected to fix.
+    expect(splitPastedPaths("'/a/one.jpg /a/two.jpg")).toEqual(["'/a/one.jpg /a/two.jpg"])
+  })
 })
