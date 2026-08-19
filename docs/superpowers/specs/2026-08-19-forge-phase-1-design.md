@@ -168,17 +168,33 @@ mid-tone against both backgrounds and reads muddy.
 
 | Context | Shown |
 | --- | --- |
-| First run | Full mark and wordmark |
+| Every shell launch | Full mark and wordmark |
 | `forge --version` | Full mark and wordmark |
-| Every other shell launch | One-line header: `⚒ Forge 0.1.0 · image ─────────── ~/Desktop` |
+| Compact width band (`< 60`) | One-line header |
+| Non-TTY / piped | Nothing |
 
-A six-row banner on every launch pushes the result the user came for off the
-top of the screen. The full mark is for the moments when identity is the
-point; the header keeps it present everywhere else. The one-line header shows
-the current default output folder on the right, which makes the setting
-visible without a settings screen.
+The banner is shown on every launch, as Claude Code does. An earlier draft
+of this section showed it only on first run and reserved a one-line header
+for subsequent launches; that was overruled during design and is superseded.
 
-Both degrade under the compact width band (`< 60`) to the header alone.
+The banner carries a status line beneath the mark showing the version, the
+enabled engines, and the current default output folder:
+
+```
+ Convert 0.1.0  · image                              ~/Desktop
+```
+
+The default output folder appearing on every launch is what makes that
+setting discoverable without a settings screen.
+
+Under the compact width band the mark and wordmark do not fit — a 42-column
+wordmark plus an 11-column mark needs 55 columns before padding — so compact
+falls back to the one-line header alone. This is the existing width-band
+mechanism from base spec §13, not a new one.
+
+The banner is printed by the shell, never by the flag CLI: `forge in.jpg
+--to webp` stays silent so piped and scripted use is unaffected, per
+invariant 1 and base spec §9.
 
 ---
 
@@ -423,8 +439,12 @@ interaction, per base spec §14.
 - Non-convertible files are excluded from listings.
 
 **Identity**
-- Full mark on first run and `--version`; header otherwise.
-- Compact width band shows the header only.
+- Full mark and wordmark on every shell launch, and on `--version`.
+- The status line shows the configured default output folder, and follows it
+  when `d` changes the default.
+- Compact width band (`< 60`) falls back to the one-line header.
+- The flag CLI prints no banner: `forge in.jpg --to webp` produces conversion
+  output only, and a piped run emits nothing extra.
 
 ---
 
