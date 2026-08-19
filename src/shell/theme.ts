@@ -47,28 +47,38 @@ export interface Palette {
 export const DARK: Palette = {
   name: 'dark',
   fg: '#e4e8f0',
-  dim: '#6b7385',
+  // 5.4:1 on a #1e1e1e terminal. The previous #6b7385 measured 3.51:1, which
+  // is below AA for body text — and secondary text here is real content
+  // (sizes, paths), not decoration.
+  dim: '#8b93a6',
   accent: '#e5a23c',
   ok: '#6fcf7f',
   warn: '#e5c07b',
   fail: '#e8796d',
   tag: '#63c1d8',
   label: '#a68ce0',
-  border: '#39404f',
+  // 2.97:1 — just under the 3:1 wanted for a meaningful boundary, and as far
+  // as a frame can go before it starts competing with the text inside it.
+  // The old #39404f measured 1.60:1 and was effectively invisible.
+  border: '#5f6879',
   selectionBg: '#252c3a',
 }
 
 export const LIGHT: Palette = {
   name: 'light',
   fg: '#23262d',
-  dim: '#8b9099',
-  accent: '#a86a06',
+  // 4.77:1 on white; the previous #8b9099 was 3.21:1.
+  dim: '#6e737c',
+  // 5.19:1; #a86a06 measured 4.44:1, just under AA. The accent marks the
+  // selected row, so it has to clear the bar for text, not for decoration.
+  accent: '#9a6005',
   ok: '#1e7a35',
   warn: '#8a6100',
   fail: '#b3261e',
   tag: '#0a6b86',
   label: '#6141ad',
-  border: '#c3bdb2',
+  // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
+  border: '#9a9184',
   selectionBg: '#eae4d8',
 }
 
