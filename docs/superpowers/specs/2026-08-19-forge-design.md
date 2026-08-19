@@ -16,6 +16,26 @@ A terminal-native file converter for macOS with two front ends over one core:
 Version 0.1 converts images. The architecture exists so that PDF, video, and
 audio engines can be added later without touching the user interface.
 
+### Design references
+
+The interaction model is taken from **Claude Code**, **Gemini CLI**, and
+**Codex CLI**. What is being borrowed, specifically:
+
+- **One persistent screen.** History scrolls above a fixed prompt. No stage
+  ever replaces the screen, which is what separates this from a wizard.
+- **Inline choices.** A picker appears in the flow, is answered with arrow
+  keys, and becomes part of the scrollback — the way Claude Code renders a
+  permission prompt.
+- **Slash commands** as the escape hatch for anything the flow does not cover.
+- **Restraint.** Minimal borders, generous whitespace, colour as accent rather
+  than structure, short copy, keyboard hints pinned to the bottom.
+- **Paste-to-attach.** Dragging a file into the terminal is treated as input,
+  not as a separate mode.
+
+What is deliberately *not* borrowed: conversational free text. Forge parses
+paths and commands, not natural language. The resemblance is in the shape of
+the interface, not in the presence of a model.
+
 ---
 
 ## 2. Verified technical facts
