@@ -17,6 +17,10 @@
 - Command name is `forge`. Product name is Convert. Package name `forge-terminal`.
 - Node >= 20. ESM only (`"type": "module"`). TypeScript `strict: true`.
 - Relative imports in `src/` **must** carry a `.js` extension (NodeNext ESM).
+- Sharp's ESM types export named interfaces (`Metadata`, `Sharp`, `OutputInfo`),
+  NOT a `sharp` namespace — the namespace exists only in its CJS typings. Use
+  `import type { Metadata, Sharp } from 'sharp'`; `sharp.Metadata` fails with
+  TS2503. Verified empirically at Task 5.
 - TypeScript is **7.x**, not 5.x. TS7 does not auto-include every `/*`
   package, so `tsconfig.json` carries `"types": ["node"]` deliberately —
   without it, `import { basename } from 'node:path'` fails with TS2591.
@@ -1058,6 +1062,7 @@ The `convert` method is added in Task 7. For now it throws, so the module type-c
 import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import sharp from 'sharp'
+import type { Metadata } from 'sharp'
 import {
   corruptSource, fileNotFound, notAFile, permissionDenied, unsupportedSource,
 } from '../core/errors.js'
@@ -1082,7 +1087,7 @@ const DIRECT: Record<string, FormatId> = {
  * field is the only thing separating them, and getting it wrong would offer
  * HEIC as a writable target — which fails at encode time.
  */
-function identify(path: string, meta: sharp.Metadata): FormatId {
+function identify(path: string, meta: Metadata): FormatId {
   if (meta.format === 'heif') return meta.compression === 'av1' ? 'avif' : 'heic'
   const id = DIRECT[meta.format ?? '']
   if (!id) throw unsupportedSource(path, meta.format ?? 'an unknown format')
@@ -1110,7 +1115,7 @@ async function probe(path: string): Promise<SourceInfo> {
     throw permissionDenied(path)
   }
 
-  let meta: sharp.Metadata
+  let meta: Metadata
   try {
     meta = await sharp(path).metadata()
   } catch (cause) {
@@ -1427,6 +1432,7 @@ Add these imports at the top of the file, alongside the existing ones:
 ```ts
 import { randomBytes } from 'node:crypto'
 import { mkdir, rename, rm } from 'node:fs/promises'
+import type { Sharp } from 'sharp'
 import { basename, dirname, join } from 'node:path'
 import { conversionFailed, outputInvalid } from '../core/errors.js'
 ```
@@ -1440,7 +1446,7 @@ const DEFAULT_QUALITY: Partial<Record<FormatId, number>> = {
   avif: 50,
 }
 
-function encode(pipeline: sharp.Sharp, target: FormatId, quality?: number): sharp.Sharp {
+function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
   const q = quality ?? DEFAULT_QUALITY[target]
   switch (target) {
     case 'jpeg':
@@ -1465,7 +1471,7 @@ function encode(pipeline: sharp.Sharp, target: FormatId, quality?: number): shar
  * leave a truncated file where a good one used to be, and overwriting in place
  * is safe because the original is only replaced once the new file is complete.
  */
-async function writeAtomic(pipeline: sharp.Sharp, output: string): Promise<number> {
+async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
   const dir = dirname(output)
   try {
     await mkdir(dir, { recursive: true })
