@@ -535,9 +535,18 @@ cause and that no stack leaks without `--debug`.
 
 **CLI** — argument parsing and exit codes.
 
-The shell is exercised only for the pure pieces — `unescape-path`, width
-banding, hyperlink degradation. The core carries the correctness burden and
-needs no terminal.
+**The shell is tested through its interaction, not merely at its edges.**
+Measured with ink-testing-library 4.0.0 against Ink 7.1.1: a component using
+`useInput` is fully drivable from a test — `stdin.write` of an arrow-key or
+Enter sequence advances it, `<Static>` history commits correctly, and the
+rendered frame is assertable via `lastFrame()`. An earlier draft of this
+section scoped shell testing down to pure helpers only; that was a decision
+made before this was known, and it is superseded.
+
+So: the flow itself is test-driven — file drop through picker through
+destination through result — alongside the pure pieces (`unescape-path`,
+width banding, hyperlink degradation). The core still carries the conversion
+correctness burden and still needs no terminal.
 
 ---
 
