@@ -83,4 +83,40 @@ describe('PathInput', () => {
     await settle()
     expect(onSubmit).toHaveBeenCalledWith('/Users/me/My Folder')
   })
+
+  it('submits the text without the CR when text and Enter arrive in one write', async () => {
+    // Ink does not split a chunk containing both text and a line ending:
+    // "abc" + CR arrives as ONE event whose `input` is "abc\r" and whose
+    // `key.return` is false. A handler that only checks `key.return` would
+    // never submit, and would append a raw \r to the buffer instead.
+    const onSubmit = vi.fn()
+    const { stdin } = render(
+      <PathInput label="Save to" presets={presets} preview={preview} onSubmit={onSubmit} />,
+    )
+    stdin.write(DOWN + DOWN + DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(`abc${ENTER}`)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith('abc')
+  })
+
+  it('submits the unescaped path when a dropped path with a trailing CR arrives in one write', async () => {
+    // The realistic drag-and-drop-with-newline case: a path copied from a
+    // file listing, editor, or multi-line selection carries a trailing
+    // newline, so the pasted path and the terminal's Enter land in the same
+    // chunk.
+    const onSubmit = vi.fn()
+    const { stdin } = render(
+      <PathInput label="Save to" presets={presets} preview={preview} onSubmit={onSubmit} />,
+    )
+    stdin.write(DOWN + DOWN + DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(`/Users/me/My\\ Folder${ENTER}`)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith('/Users/me/My Folder')
+  })
 })

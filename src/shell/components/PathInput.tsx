@@ -60,6 +60,26 @@ export function PathInput({ label, presets, preview, onSubmit, onCancel }: PathI
         return
       }
       if (input) {
+        /**
+         * Ink does not split a chunk that contains both text and a line
+         * ending: a dropped path with a trailing newline — e.g. one copied
+         * from a file listing or an editor's multi-line selection — and the
+         * terminal's own Enter land in the same `stdin` chunk as one event,
+         * whose `input` is `"path\r"` (or `\n`, or `\r\n`) and whose
+         * `key.return` is false. Checking `key.return` alone would silently
+         * bake a raw CR/LF into the buffer and never submit. So an embedded
+         * CR/LF is treated as an inline Enter: everything before it is the
+         * final text, everything from it onward — the line ending and
+         * anything after — is discarded, and submission follows the same
+         * path as the `key.return` branch above.
+         */
+        const breakIndex = input.search(/[\r\n]/)
+        if (breakIndex !== -1) {
+          textRef.current += input.slice(0, breakIndex)
+          setText(textRef.current)
+          onSubmit(unescapePath(textRef.current))
+          return
+        }
         textRef.current += input
         setText(textRef.current)
       }
