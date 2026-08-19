@@ -1,4 +1,5 @@
 // tests/helpers/fixtures.test.ts
+import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,6 +9,7 @@ import {
   makeOrientedJpeg,
   makeTempDir,
   makeTransparentPng,
+  pixelAt,
 } from './fixtures.js'
 
 describe('fixtures', () => {
@@ -37,12 +39,28 @@ describe('fixtures', () => {
     expect(meta.compression).toBe('av1')
   })
 
-  it('builds a heic that sharp reports as heif/hevc, or skips off macOS', async () => {
+  it('builds a heic that sharp reports as heif/hevc, or skips off macOS', async (ctx) => {
     const dir = await makeTempDir()
     const heic = await makeHeic(dir, 'x.heic')
-    if (!heic) return
+    if (!heic) {
+      ctx.skip()
+      return
+    }
     const meta = await sharp(heic).metadata()
     expect(meta.format).toBe('heif')
     expect(meta.compression).toBe('hevc')
+  })
+
+  it('pixelAt correctly reads pixel values using offset arithmetic', async () => {
+    const dir = await makeTempDir()
+    const raw = Buffer.from([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+    const p = join(dir, 'grid.png')
+    await sharp(raw, { raw: { width: 2, height: 2, channels: 3 } })
+      .png()
+      .toFile(p)
+    expect(await pixelAt(p, 0, 0)).toEqual([10, 20, 30])
+    expect(await pixelAt(p, 1, 0)).toEqual([40, 50, 60])
+    expect(await pixelAt(p, 0, 1)).toEqual([70, 80, 90])
+    expect(await pixelAt(p, 1, 1)).toEqual([100, 110, 120])
   })
 })
