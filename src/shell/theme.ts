@@ -1,3 +1,6 @@
+/** Single source of truth for the version the shell displays. */
+export const VERSION = '0.1.0'
+
 /**
  * Symbols are paired with words at every call site so meaning survives a
  * monochrome terminal — colour is an accent, never the carrier.

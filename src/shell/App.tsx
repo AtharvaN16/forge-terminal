@@ -13,6 +13,7 @@ import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
+import { Banner } from './components/Banner.js'
 import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
@@ -22,7 +23,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
-import { colourProp, paletteFor, SYMBOLS } from './theme.js'
+import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -380,7 +381,11 @@ export function App({
   return (
     <ThemeProvider palette={paletteFor(theme)}>
       <Box flexDirection="column">
-        {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
+        {stage === 'theme' ? (
+          <ThemePicker onChoose={chooseTheme} />
+        ) : (
+          <Banner width={width} version={VERSION} defaultOutput={prefs.defaultOutput} />
+        )}
         <Static items={history}>
           {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
         </Static>
