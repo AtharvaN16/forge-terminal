@@ -120,3 +120,22 @@ describe('colour', () => {
     expect(frame).toMatch(ANSI)
   })
 })
+
+describe('dividers', () => {
+  it('draws exactly one rule above the hints, never a stack of them', () => {
+    const frame = render(<App initialWidth={80} />).lastFrame() ?? ''
+    const rules = frame.split('\n').filter((l) => /^─+$/.test(l.trim()))
+    expect(rules.length).toBeLessThanOrEqual(1)
+  })
+
+  it('spans the full terminal width rather than stopping short', () => {
+    // Capped at 100: ink-testing-library renders into a 100-column stdout, so
+    // Ink clamps anything wider regardless of the width App was handed. In a
+    // real terminal the two are the same number.
+    for (const w of [60, 80, 100]) {
+      const frame = render(<App initialWidth={w} />).lastFrame() ?? ''
+      const rule = frame.split('\n').find((l) => /^─+$/.test(l.trim()))
+      if (rule) expect(rule.trim().length).toBe(w)
+    }
+  })
+})
