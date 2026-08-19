@@ -16,6 +16,11 @@ export type ErrorCode =
   | 'invalid-arguments'
   | 'conversion-failed'
   | 'output-invalid'
+  | 'not-a-directory'
+  | 'symlink-loop'
+  | 'path-too-long'
+  | 'unreadable-path'
+  | 'unexpected'
 
 interface ForgeErrorInit {
   code: ErrorCode
@@ -72,6 +77,51 @@ export function permissionDenied(path: string): ForgeError {
     title: 'Permission denied',
     detail: `${basename(path)} could not be read.`,
     hint: 'Check the file permissions and try again.',
+  })
+}
+
+/** `stat` reports ENOTDIR when some earlier segment of the path — not necessarily the last one — is a file, not a directory. A mistyped or concatenated path is the common cause. */
+export function notADirectory(path: string): ForgeError {
+  return new ForgeError({
+    code: 'not-a-directory',
+    title: 'Invalid path',
+    detail: `${basename(path)} could not be found: part of its path is not a directory.`,
+    hint: 'Check the path and try again.',
+  })
+}
+
+export function symlinkLoop(path: string): ForgeError {
+  return new ForgeError({
+    code: 'symlink-loop',
+    title: 'Too many symbolic links',
+    detail: `${basename(path)} could not be resolved: its path contains a symbolic-link loop.`,
+    hint: 'Check for a circular symlink somewhere in the path.',
+  })
+}
+
+export function pathTooLong(path: string): ForgeError {
+  return new ForgeError({
+    code: 'path-too-long',
+    title: 'Path too long',
+    detail: `${basename(path)}'s path is too long for the filesystem to resolve.`,
+    hint: 'Use a shorter path and try again.',
+  })
+}
+
+/**
+ * The fallback for any `stat` failure that isn't one of the specific cases
+ * above — Forge 0.1 aims to name every errno it has a good message for, but
+ * the filesystem can still fail in ways it hasn't anticipated, and that must
+ * become a readable error rather than an unhandled throw. `cause` is kept so
+ * `--debug` can still show what actually happened.
+ */
+export function unreadablePath(path: string, cause: unknown): ForgeError {
+  return new ForgeError({
+    code: 'unreadable-path',
+    title: 'Could not read path',
+    detail: `${basename(path)} could not be checked.`,
+    hint: 'Check the path and try again.',
+    cause,
   })
 }
 
@@ -169,6 +219,26 @@ export function conversionFailed(path: string, cause: unknown): ForgeError {
     title: 'Conversion failed',
     detail: `${basename(path)} could not be converted.`,
     hint: 'Run again with --debug for the underlying error.',
+    cause,
+  })
+}
+
+/**
+ * The last resort: something threw that isn't a `ForgeError` and has no
+ * specific, well-worded constructor above — an unanticipated failure shape
+ * rather than a plain "this file could not be read". A caller that only
+ * knows how to render a `ForgeError` (the shell's history blocks, in
+ * particular) must never be left with nothing to show for it, so this wraps
+ * whatever was thrown into one, carrying its message for whatever that's
+ * worth and keeping `cause` for `--debug` — without ever surfacing a raw
+ * stack trace to the user (spec §11).
+ */
+export function unexpectedError(cause: unknown): ForgeError {
+  return new ForgeError({
+    code: 'unexpected',
+    title: 'Something went wrong',
+    detail: cause instanceof Error ? cause.message : String(cause),
+    hint: 'This was not expected. Try again — if it keeps happening, it may be worth reporting.',
     cause,
   })
 }

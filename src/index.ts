@@ -29,11 +29,28 @@ async function main(): Promise<void> {
 
     // The shell is only ever launched from a real terminal. Piped or scripted
     // invocations must never block waiting for a keypress.
-    if (intent.kind === 'shell' && !process.stdout.isTTY) {
-      process.stderr.write(
-        'Forge needs a file and a target format.\nTry: forge photo.jpg --to webp\n',
-      )
-      process.exitCode = 2
+    //
+    // Both streams are checked, not just stdout. `useInput` calls
+    // `setRawMode(true)` on stdin, which throws when stdin is not a TTY — and
+    // `forge < /dev/null`, a Makefile recipe, or an IDE run pane all give a
+    // TTY stdout with a redirected stdin. Gating on stdout alone let those
+    // through to Ink, whose ErrorBoundary then rendered the raw stack.
+    if (intent.kind === 'shell') {
+      if (!process.stdout.isTTY || !process.stdin.isTTY) {
+        process.stderr.write(
+          'Forge needs a file and a target format.\nTry: forge photo.jpg --to webp\n',
+        )
+        process.exitCode = 2
+        return
+      }
+      // Before the shell — and therefore before Ink, and therefore before
+      // chalk, which fixes its colour level at import time and never
+      // reconsults the environment afterwards. See shell/theme.ts.
+      const { applyColourPreference } = await import('./shell/theme.js')
+      applyColourPreference()
+
+      const { launchShell } = await import('./shell/launch.js')
+      await launchShell()
       return
     }
 

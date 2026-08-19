@@ -56,9 +56,11 @@ describe('runJobs', () => {
     const dir = await makeTempDir()
     const jobs = await planFor(dir, 3)
     const bad = await makeCorruptFile(dir, 'bad.bin')
+    const template = jobs[0]
+    if (!template) throw new Error('planFor(dir, 3) produced no jobs')
     const broken: Job = {
-      ...jobs[0]!,
-      source: { ...jobs[0]!.source, path: bad },
+      ...template,
+      source: { ...template.source, path: bad },
       output: join(dir, 'bad.webp'),
     }
 

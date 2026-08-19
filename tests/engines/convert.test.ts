@@ -105,4 +105,42 @@ describe('convert — format pairs', () => {
     const leftovers = (await readdir(dir)).filter((f) => f.includes('.forge-tmp'))
     expect(leftovers).toEqual([])
   })
+
+  /**
+   * `writeAtomic` already raises a well-worded `outputInvalid` ("Cannot write
+   * there / Check that the path is valid and that you have permission") when
+   * the destination directory cannot be created. `convert`'s catch used to
+   * wrap *everything*, including that, replacing it with "Conversion failed /
+   * Run again with `--debug`" — a hint that names a CLI flag the interactive
+   * shell does not have, so in the shell it is a dead end. `run.ts` has
+   * always preserved a `ForgeError` this way; the engine now does too.
+   */
+  it('preserves the specific error writeAtomic already raised', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    // A path *through* a regular file: mkdir -p fails with ENOTDIR.
+    const doomed = await job(jpg, 'webp', join(jpg, 'nested', 'out.webp'))
+
+    await expect(imageEngine.convert(doomed, () => {})).rejects.toSatisfy(
+      (e: unknown) => isForgeError(e) && e.code === 'output-invalid',
+    )
+  })
+
+  it('still wraps an encode failure it has no better name for', async () => {
+    const dir = await makeTempDir()
+    const good = await makeJpeg(dir, 'good.jpg')
+    const source = await probe(good)
+    const bad = await makeCorruptFile(dir, 'bad.bin')
+
+    const doomed: Job = {
+      source: { ...source, path: bad },
+      target: 'webp',
+      output: join(dir, 'out.webp'),
+      options: { background: '#ffffff', keepMetadata: false },
+    }
+
+    await expect(imageEngine.convert(doomed, () => {})).rejects.toSatisfy(
+      (e: unknown) => isForgeError(e) && e.code === 'conversion-failed',
+    )
+  })
 })

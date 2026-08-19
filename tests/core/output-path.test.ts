@@ -1,6 +1,7 @@
+import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { resolveOutputPath } from '../../src/core/output-path.js'
+import { resolveOutputPath, uniqueOutputPath } from '../../src/core/output-path.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 describe('resolveOutputPath', () => {
@@ -65,6 +66,43 @@ describe('resolveOutputPath', () => {
   it('keeps a filename that contains dots', () => {
     expect(resolveOutputPath({ sourcePath: '/a/my.holiday.photo.jpg', target: 'png' })).toBe(
       resolve('/a/my.holiday.photo.png'),
+    )
+  })
+})
+
+/** The name behind spec §8's "keep both" choice in the shell. */
+describe('uniqueOutputPath', () => {
+  it('leaves a free name alone', async () => {
+    const dir = await makeTempDir()
+    const free = join(dir, 'photo.webp')
+    expect(uniqueOutputPath(free)).toBe(free)
+  })
+
+  it('suffixes before the extension, so the file still opens in the right app', async () => {
+    const dir = await makeTempDir()
+    await writeFile(join(dir, 'photo.webp'), 'x')
+    expect(uniqueOutputPath(join(dir, 'photo.webp'))).toBe(join(dir, 'photo (1).webp'))
+  })
+
+  it('counts up rather than overwriting the copy kept last time', async () => {
+    const dir = await makeTempDir()
+    await writeFile(join(dir, 'photo.webp'), 'x')
+    await writeFile(join(dir, 'photo (1).webp'), 'x')
+    await writeFile(join(dir, 'photo (2).webp'), 'x')
+    expect(uniqueOutputPath(join(dir, 'photo.webp'))).toBe(join(dir, 'photo (3).webp'))
+  })
+
+  it('handles a name with no extension', async () => {
+    const dir = await makeTempDir()
+    await writeFile(join(dir, 'photo'), 'x')
+    expect(uniqueOutputPath(join(dir, 'photo'))).toBe(join(dir, 'photo (1)'))
+  })
+
+  it('keeps every dot of a multi-dot name', async () => {
+    const dir = await makeTempDir()
+    await writeFile(join(dir, 'my.holiday.photo.webp'), 'x')
+    expect(uniqueOutputPath(join(dir, 'my.holiday.photo.webp'))).toBe(
+      join(dir, 'my.holiday.photo (1).webp'),
     )
   })
 })
