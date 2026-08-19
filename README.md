@@ -20,9 +20,10 @@ ImageMagick's legacy binary name, and Homebrew still installs it — a command
 called `convert` would silently shadow or collide with that. The product is
 still called Convert; the binary just has a name of its own.
 
-Today Forge is a flag-driven CLI, built to be scriptable and usable for daily
-conversions. An interactive shell is planned but **does not exist yet** — see
-[Roadmap](#roadmap).
+Forge is both a flag-driven CLI, built to be scriptable and usable for daily
+conversions, and an interactive shell — run `forge` with no arguments in a
+real terminal and it walks you through the same conversion by drag-and-drop
+and arrow keys instead of flags. See [Interactive shell](#interactive-shell).
 
 ## Installation
 
@@ -204,14 +205,12 @@ directories are created. Exit codes: `0` all succeeded, `1` some failed,
 
 ### Bare `forge`
 
-```
-$ forge
-The interactive shell is not built yet. Use --to for now, or --help.
-$ echo $?
-2
-```
+Run `forge` with no arguments in a real terminal and it launches the
+interactive shell instead of erroring — see [Interactive shell](#interactive-shell)
+below for the full flow. That launch is gated on stdout actually being a
+TTY, so it only ever happens in a terminal you're sitting at.
 
-Piped or non-interactive invocations get a slightly different hint and never
+Piped or non-interactive invocations (no TTY) get a hint instead, and never
 hang waiting for input:
 
 ```
@@ -221,6 +220,127 @@ Try: forge photo.jpg --to webp
 $ echo $?
 2
 ```
+
+## Interactive shell
+
+Ink/React are only loaded (via a dynamic `import()`) once the TTY check
+above passes, so a normal flag invocation like `forge photo.jpg --to webp`
+never pays to load a UI framework it doesn't use — confirmed by hand: the
+flag CLI's own tests and manual runs are unaffected by the shell's
+existence.
+
+The flow is one path, start to finish: drop a file → pick a target format →
+a quality slider, for a lossy target only → pick a destination → convert →
+see the result. What follows is a real session, captured verbatim (with the
+ANSI styling stripped for readability) converting an 11.5 KB JPEG to WebP
+in a 100-column terminal:
+
+```
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ › drop a file or type a path                                                                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+↵ send · ctrl-c quit
+```
+
+Drag a file in from Finder (its path arrives shell-escaped, e.g. `my\ photo.jpg`,
+and is unescaped automatically) or type a path, then press Enter. Forge
+probes it and shows a one-line card:
+
+```
+sample.jpg · 11.5 KB · JPEG 1600×1200
+```
+
+Then a target menu — built from what the source can actually become, never
+a hardcoded list, which is why HEIC never appears here (see
+[Supported formats](#supported-formats)):
+
+```
+Convert to
+❯ JPEG  universal
+  PNG   lossless
+  WebP  smaller, modern
+  AVIF  smallest
+  GIF   animation
+  TIFF  archival
+↑↓ choose · ↵ confirm · esc back
+```
+
+Arrow keys move `❯`; Enter accepts the highlighted format. Choosing a lossy
+target (WebP, JPEG, AVIF) adds a quality slider; PNG, GIF and TIFF skip
+straight to the destination step:
+
+```
+Quality
+━━━━━━━━━━━━━━━●━━━━ 80
+←→ adjust · ↵ confirm · esc back
+```
+
+The destination step offers the source folder, a new `converted/`
+subfolder, `~/Downloads`, or a typed path — the preview line below follows
+whichever preset is highlighted:
+
+```
+Save to
+❯ Same folder    .
+  New subfolder  converted
+  Downloads      /Users/you/Downloads
+  Type a path…
+  → ./sample.webp
+```
+
+Enter on a preset converts immediately:
+
+```
+✓ sample.jpg → sample.webp
+  11.5 KB → 3.5 KB · 69.6% smaller
+
+file:///private/tmp/forge-shell-check/sample.webp  ·  file:///private/tmp/forge-shell-check
+↵ convert another · f open · o reveal · q quit
+```
+
+`f` opens the converted file in its default app and `o` reveals it in
+Finder — both just shell out to macOS's `open`; both actually launched
+Preview and Finder in this run, confirmed by asking each app afterward what
+it had open. `↵` clears the picker and returns to the prompt with this
+result still sitting above it: finished entries are written to the
+terminal with Ink's `<Static>`, which commits them to the real scrollback
+once rather than redrawing them on every frame — confirmed by inspecting
+the raw output stream, which contains no full-screen or scrollback-clearing
+escape codes once a card or result has been printed, only the small live
+region below it being rewritten. `q` quits.
+
+Those two links print as bare `file://` URLs (to wherever the file actually
+landed — `/tmp/forge-shell-check` was this session's scratch directory)
+rather than as the words "Open file" and "Reveal in Finder". Both are
+rendered as OSC 8 hyperlinks — a link *target* wrapped around a label — and
+a terminal that understands OSC 8 (iTerm2, Ghostty, WezTerm, Kitty, VS
+Code's terminal) shows just the label, clickable. Terminal.app doesn't
+understand OSC 8, and neither did the scripted terminal this transcript was
+captured in, so both degrade to the bare, still cmd+clickable URL instead
+of dropping the link entirely — which is exactly what's shown above.
+
+### Terminal support
+
+The layout adapts to width rather than wrapping: below 60 columns the
+bordered prompt box, the per-item format hints (`universal`, `lossless`,
+...), and the file card's format/dimensions are all dropped so every line
+stays inside the terminal edge; at 60 columns and above everything renders
+as pictured above. This re-bands live if you resize the window mid-session,
+not just at launch. Long filenames and paths are truncated from the middle
+(keeping both the start and the extension visible) rather than overflowing
+or wrapping. Meaning is never colour-only: every status is a symbol plus a
+word (`✓`/`✕`/`⚠`), and the selected item in every list is marked with `❯`
+and rendered bold.
+
+### What the shell doesn't do yet
+
+- **One file at a time.** No batch conversion through the shell — point it
+  at a folder from the flag CLI instead.
+- **One action.** Convert is the only thing on offer; the underlying data
+  model supports a menu of actions (`actionsFor`), but with exactly one
+  action registered the shell skips straight past a menu of one.
+- **No slash commands.**
+- **No recent-files list** — every session starts at an empty prompt.
 
 ## Supported formats
 
@@ -279,6 +399,7 @@ src/
 │   ├── types.ts         shared types: SourceInfo, Job, Result, FormatId...
 │   ├── formats.ts       format registry (labels, extensions, capabilities)
 │   ├── capabilities.ts  readable/writable format sets, targetsFor()
+│   ├── actions.ts       Action/OptionSpec — what convert asks for, and in what order
 │   ├── resolve.ts       paths / globs / directories → SourceInfo[]
 │   ├── plan.ts          (sources, target, options) → Job[]
 │   ├── run.ts           bounded-concurrency batch runner, emits events
@@ -296,18 +417,45 @@ src/
 │   ├── execute.ts       runs an Intent, returns exit code + stdout/stderr
 │   └── report.ts        stdout formatting (success, batch, errors, --formats)
 │
+├── shell/              the interactive shell (Ink + React) — the only place
+│   │                    that renders to a real terminal frame by frame
+│   ├── App.tsx           the state machine: file → target → quality →
+│   │                      destination → convert → result; the only file
+│   │                      that knows the flow
+│   ├── blocks.tsx        HistoryBlock/HistoryEntry — what gets committed to
+│   │                      <Static> scrollback (file cards, results, errors)
+│   ├── launch.tsx        render(<App/>), awaits waitUntilExit()
+│   ├── width.ts          width bands (<60 compact) and middle-ellipsis
+│   │                      truncation, so nothing overflows or wraps
+│   ├── theme.ts          symbols and colour tokens — meaning is carried by
+│   │                      symbol + word, never colour alone
+│   ├── hyperlink.ts      OSC 8 links with a plain-URL fallback
+│   ├── reveal.ts         shells out to macOS `open` / `open -R`
+│   └── components/
+│       ├── Prompt.tsx      the bordered/unbordered text input; drop target
+│       ├── Select.tsx      arrow-key list picker (❯ + bold selection)
+│       ├── Slider.tsx      the quality bar
+│       ├── PathInput.tsx   destination picker: presets, plus type-a-path
+│       ├── FileCard.tsx    the dropped-file summary line
+│       └── Hints.tsx       the "key · action" row under each stage
+│
+├── utils/
+│   └── unescape-path.ts  undoes shell escaping on a dragged-and-dropped path
+│
 └── index.ts              entry point: TTY detection, dispatches to execute()
+                           or (on a real TTY, bare invocation) launchShell()
 ```
 
 **The invariant:** `core/` and `engines/` import no UI framework and never
 write to stdout — everything they produce is data (`Job`, `Result`,
 `ForgeError`, `RunEvent`). This is what keeps the engine testable without a
-terminal, and it's also what a future interactive shell will consume without
-the core changing at all. `src/index.ts` detects whether stdout is a TTY;
-non-interactive invocations (piped, scripted, or no TTY) always resolve to
-the CLI path and print a hint rather than blocking. See
-[Roadmap](#roadmap) for the `shell/` directory this will grow once it exists
-— it isn't there today.
+terminal, and it's also what lets the shell consume the exact same
+`core`/`engines` layer the flag CLI does, unchanged — `App.tsx` calls
+`convertAction.plan()` and `runJobs()` directly, the same functions
+`cli/execute.ts` calls. `src/index.ts` detects whether stdout is a TTY:
+non-interactive invocations (piped, scripted, or no TTY) resolve to the CLI
+path and print a hint rather than blocking; a bare `forge` on a real TTY
+dynamically imports `shell/launch.js` and hands off to it instead.
 
 ## Development
 
@@ -330,7 +478,7 @@ npm test        # vitest run
 npm run test:watch
 ```
 
-117 tests, all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
+237 tests, all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
 animated GIFs, HEIC/AVIF samples) are generated by Sharp — or, for HEIC,
 `sips` — at test time, never committed as binaries. Coverage includes:
 
@@ -343,19 +491,30 @@ animated GIFs, HEIC/AVIF samples) are generated by Sharp — or, for HEIC,
 - **Errors** — one test per `ErrorCode`, including that no stack trace
   leaks without `--debug`.
 - **CLI** — argument parsing and exit codes, including the `--quality`
-  without `--to` rejection above.
+  without `--to` rejection above, and that a bare `forge` on a TTY hands off
+  to the shell rather than erroring.
+- **Shell** — `ink-testing-library` driving real keystrokes through every
+  stage: arrow-key selection, the quality slider, the destination presets
+  and typed-path fallback, a full probe-to-result conversion, dropped paths
+  that are shell-escaped or carry an embedded CR/LF, and that no rendered
+  line exceeds the terminal width at four widths.
 
 ## Roadmap
 
 Not yet built, in rough order:
 
-- **Interactive shell** (`forge` with no arguments, in a real terminal) —
-  drop a file, pick a target from a derived menu, pick a destination, watch
-  it convert, with inline pickers in the style of Claude Code / Codex CLI.
-  Bare `forge` currently just says the shell isn't built yet and exits 2.
+- **Batch conversion through the shell** — the flag CLI already converts a
+  whole folder; the shell only ever probes and converts one file per
+  session right now.
+- **A real action menu** — the shell's data model already supports more
+  than one `Action` (`actionsFor(source)`), but with only `convert`
+  registered it skips straight past a menu of one. This is what the next
+  two roadmap items would turn on.
 - **Compress action** — quality/size reduction without a format change;
   the reason `--quality` requires `--to` today.
 - **Resize action.**
+- **`/slash` commands** in the shell, and **a recent-files list** so a
+  session doesn't always start from an empty prompt.
 - **PDF and video engines** — Sharp can't do either; these will sit behind
   the same `Engine` interface `image.ts` implements now, so the CLI and
   format menu won't need to change to support them.
