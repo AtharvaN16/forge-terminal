@@ -74,4 +74,35 @@ describe('Slider', () => {
     await settle()
     expect(onSubmit).toHaveBeenCalledWith(80)
   })
+
+  it('renders sensibly on a degenerate range, even when value sits outside it', () => {
+    // min === max makes ratio = (value - min) / (max - min) a division by
+    // zero. When value === min that's an accidentally-survivable NaN, but
+    // a value outside a zero-width range drives ratio to +/-Infinity, and
+    // '━'.repeat(Infinity) throws a RangeError during render.
+    //
+    // NB: `expect(() => render(...)).not.toThrow()` does NOT catch this in
+    // this harness — Ink's own <ErrorBoundary> (see node_modules/ink/build/
+    // components/App.js) swallows render errors before they ever reach the
+    // caller, so the throw never crosses the synchronous try/catch a
+    // `.not.toThrow()` assertion relies on. Asserting on the frame's actual
+    // content is the only way this test can fail against the unfixed code
+    // (verified: unfixed code renders a bare `"\n"` here, not the label).
+    const { lastFrame } = render(<Slider {...base({ min: 50, max: 50, value: 75 })} />)
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Quality')
+    expect(frame).toContain('75')
+  })
+
+  it('ignores arrows and enter while inactive', async () => {
+    const onChange = vi.fn()
+    const onSubmit = vi.fn()
+    const { stdin } = render(<Slider {...base({ onChange, onSubmit, isActive: false })} />)
+    stdin.write(RIGHT)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onChange).not.toHaveBeenCalled()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
 })

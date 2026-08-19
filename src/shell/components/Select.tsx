@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from 'ink'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Choice } from '../../core/actions.js'
 import { SYMBOLS } from '../theme.js'
 
@@ -10,37 +10,53 @@ interface SelectProps {
   showHints?: boolean
   /** Fires whenever the cursor moves, so a parent can preview the highlighted item. */
   onHighlight?: (index: number) => void
+  isActive?: boolean
 }
 
-export function Select({ items, onSubmit, onCancel, showHints = true, onHighlight }: SelectProps) {
+export function Select({
+  items,
+  onSubmit,
+  onCancel,
+  showHints = true,
+  onHighlight,
+  isActive = true,
+}: SelectProps) {
   const [index, setIndex] = useState(0)
 
   /**
-   * Reads and writes via the functional updater, not the closured `index`.
-   * Ink delivers each keypress through the same registered handler, and
-   * several presses can arrive before React re-renders (e.g. a caller that
-   * writes multiple escape sequences in one burst) — a closure read would
-   * clamp every one of them against the same stale starting index instead
-   * of walking forward one step at a time.
+   * `useInput` handlers are synchronous, but `useState` updates are not —
+   * several keypresses can be delivered through the same handler closure
+   * before React re-renders, so `useState` cannot be the source of truth
+   * for what to act on *right now*. `indexRef` is that source of truth;
+   * `index`/`setIndex` exist only to trigger a render with the latest
+   * value. In particular, Enter must read `indexRef.current`, not `index`
+   * — reading the state would submit whatever was on screen when this
+   * render's closure was created, not what the frame the user is looking
+   * at actually shows.
    */
+  const indexRef = useRef(0)
+
   const move = (delta: number) => {
-    setIndex((current) => {
-      const next = Math.max(0, Math.min(items.length - 1, current + delta))
-      if (next !== current && onHighlight) onHighlight(next)
-      return next
-    })
+    const next = Math.min(Math.max(indexRef.current + delta, 0), items.length - 1)
+    if (next === indexRef.current) return // no-op at an end: nothing moved, nothing to report
+    indexRef.current = next
+    setIndex(next)
+    if (onHighlight) onHighlight(next)
   }
 
-  useInput((_input, key) => {
-    if (items.length === 0) return
-    if (key.downArrow) move(1)
-    if (key.upArrow) move(-1)
-    if (key.return) {
-      const item = items[index]
-      if (item) onSubmit(item.value)
-    }
-    if (key.escape && onCancel) onCancel()
-  })
+  useInput(
+    (_input, key) => {
+      if (items.length === 0) return
+      if (key.downArrow) move(1)
+      if (key.upArrow) move(-1)
+      if (key.return) {
+        const item = items[indexRef.current]
+        if (item) onSubmit(item.value)
+      }
+      if (key.escape && onCancel) onCancel()
+    },
+    { isActive },
+  )
 
   if (items.length === 0) return null
 
