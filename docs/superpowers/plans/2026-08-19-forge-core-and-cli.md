@@ -3194,6 +3194,17 @@ await main()
 Run: `npx vitest run tests/cli/execute.test.ts`
 Expected: PASS, 7 tests
 
+- [ ] **Step 5a: Delete `tests/smoke.test.ts`**
+
+```bash
+rm tests/smoke.test.ts
+```
+
+It was toolchain scaffolding for Task 1. Now that `src/index.ts` calls `main()`
+at the top level, importing it from a test **executes the CLI** against vitest's
+own argv — which writes to stderr and sets a non-zero `process.exitCode`,
+failing the run. `tests/cli/execute.test.ts` covers everything it did and more.
+
 - [ ] **Step 6: Run the whole suite plus type and lint checks**
 
 Run: `npm test && npm run typecheck && npm run lint`
