@@ -26,6 +26,8 @@ function rgb(hex: string): string {
   return `${(n >> 16) & 255};${(n >> 8) & 255};${n & 255}`
 }
 
+const settle = (ms = 80) => new Promise((r) => setTimeout(r, ms))
+
 const themed = (palette: Palette) => {
   const prefs = { ...DEFAULT_PREFERENCES, theme: palette.name as 'dark' | 'light' }
   return (
@@ -56,8 +58,23 @@ describe('palettes actually reach the terminal', () => {
     expect(themed(DARK)).not.toBe(themed(LIGHT))
   })
 
-  it('each theme uses its own foreground for the wordmark face', () => {
-    expect(themed(DARK)).toContain(rgb(DARK.fg))
-    expect(themed(LIGHT)).toContain(rgb(LIGHT.fg))
+  it('each theme uses its own foreground for the wordmark face', async () => {
+    // Asserted across every frame, not just the last. The wordmark lives in
+    // the banner, which commits to <Static>; Ink writes static output once
+    // and later writes carry only the dynamic tree, so by the final frame the
+    // banner has scrolled out of what `lastFrame()` returns. "Reaches the
+    // terminal" is a claim about what was ever written, which is `frames`.
+    for (const palette of [DARK, LIGHT] as const) {
+      const { frames } = render(
+        <ThemeProvider palette={palette}>
+          <App
+            initialWidth={100}
+            prefs={{ ...DEFAULT_PREFERENCES, theme: palette === DARK ? 'dark' : 'light' }}
+          />
+        </ThemeProvider>,
+      )
+      await settle()
+      expect(frames.join(''), `${palette.name} foreground`).toContain(rgb(palette.fg))
+    }
   })
 })
