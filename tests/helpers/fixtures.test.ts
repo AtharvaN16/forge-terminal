@@ -43,7 +43,7 @@ describe('fixtures', () => {
     const dir = await makeTempDir()
     const heic = await makeHeic(dir, 'x.heic')
     if (!heic) {
-      ctx.skip()
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated on this platform')
       return
     }
     const meta = await sharp(heic).metadata()
