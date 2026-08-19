@@ -76,7 +76,7 @@ export function Banner({
   // 11 of mark needs 55 before any padding at all.
   if (bandFor(width) === 'compact' || width < FULL_WIDTH) {
     return (
-      <Box marginBottom={1}>
+      <Box marginTop={1} marginBottom={1}>
         <Text>
           <Text color={colourProp(palette.accent)}>{'⚒ '}</Text>
           <Text color={colourProp(palette.fg)} bold>
@@ -92,7 +92,9 @@ export function Banner({
   const gap = Math.max(2, width - status.length - defaultOutput.length - 1)
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    // marginTop clears the shell prompt the user typed `forge` at; without it
+    // the mark sits flush against their own command line.
+    <Box flexDirection="column" marginTop={1} marginBottom={1}>
       {WORDMARK.map((word, i) => (
         // The row index is a stable identity here: this is fixed-length
         // constant art, never reordered, filtered or appended to.

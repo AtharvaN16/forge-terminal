@@ -520,7 +520,6 @@ export function App({
               showHints={band !== 'compact'}
             />
             <Divider width={width} />
-            <Divider width={width} />
             <Hints
               pairs={[
                 ['↑↓', 'choose'],
@@ -543,7 +542,6 @@ export function App({
               onSubmit={chooseQuality}
               onCancel={() => setStage('target')}
             />
-            <Divider width={width} />
             <Divider width={width} />
             <Hints
               pairs={[
@@ -572,7 +570,6 @@ export function App({
             {/* Four pairs is 45 columns — wider than a compact terminal.
                 Spec §13 drops hints there rather than overflowing, and the
                 shorter pair still names the key that is unique to this step. */}
-            <Divider width={width} />
             <Divider width={width} />
             <Hints
               pairs={
@@ -612,7 +609,6 @@ export function App({
               )}`}
             </Text>
             <Divider width={width} />
-            <Divider width={width} />
             <Hints
               pairs={[
                 ['↵', 'save'],
@@ -639,7 +635,6 @@ export function App({
               }}
               showHints={band !== 'compact'}
             />
-            <Divider width={width} />
             <Divider width={width} />
             <Hints
               pairs={[
@@ -672,7 +667,6 @@ export function App({
               </Text>
             ) : null}
             <Divider width={width} />
-            <Divider width={width} />
             <Hints
               pairs={[
                 ['↵', 'convert another'],
@@ -697,7 +691,6 @@ export function App({
               onTab={complete}
               matches={matches}
             />
-            <Divider width={width} />
             <Divider width={width} />
             <Hints
               pairs={
