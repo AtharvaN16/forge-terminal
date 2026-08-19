@@ -26,7 +26,7 @@ import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { ThemePicker } from './components/ThemePicker.js'
-import { fileLink } from './hyperlink.js'
+import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
 import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
@@ -44,6 +44,7 @@ export type Stage =
   | 'target'
   | 'quality'
   | 'destination'
+  | 'rename'
   | 'overwrite'
   | 'converting'
   | 'result'
@@ -101,7 +102,29 @@ export function App({
   const width = measured
   const band = bandFor(width)
 
-  const [history, setHistory] = useState<HistoryBlock[]>([])
+  /**
+   * Seeded with the banner rather than having an effect push it, so it is
+   * `<Static>` item zero from the very first frame. Ink flushes static output
+   * above everything that re-renders, so this is what pins the banner to the
+   * top of the session — it scrolls up as history grows, exactly as Claude
+   * Code's does, instead of being redrawn below the scrollback on every
+   * update, which is how it ended up in the middle of the screen.
+   *
+   * Skipped when no theme has been chosen: the first-run picker owns the
+   * screen until it is answered, and the banner is pushed once it is.
+   */
+  const [history, setHistory] = useState<HistoryBlock[]>(() =>
+    prefs.theme === undefined
+      ? []
+      : [
+          {
+            kind: 'banner',
+            id: nextId(),
+            width: initialWidth ?? 80,
+            defaultOutput: prefs.defaultOutput,
+          },
+        ],
+  )
   /**
    * Held in state, not read straight from `prefs`, so `/theme` re-themes the
    * running session rather than only the next launch.
@@ -121,6 +144,8 @@ export function App({
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   const [matches, setMatches] = useState<string[]>([])
+  /** Destination and proposed stem while the rename field is open. */
+  const [renaming, setRenaming] = useState<{ destination: string; stem: string } | null>(null)
 
   /**
    * Mirrors `text` for the completion callback, for the same reason
@@ -143,6 +168,10 @@ export function App({
    * and never again. The ref — not state — is what makes "once" true: this
    * effect reruns on every render that changes its deps, and a state flag
    * would not be visible to the run that scheduled it.
+   */
+  /**
+   * Pushed once, before anything else can reach history, so the banner is the
+   * first thing `<Static>` flushes and stays at the top of the session.
    */
   const warned = useRef(false)
   useEffect(() => {
@@ -291,6 +320,8 @@ export function App({
   const chooseTheme = (next: 'dark' | 'light') => {
     setTheme(next)
     setStage('idle')
+    // The banner was skipped at init because the picker owned the screen.
+    push({ kind: 'banner', id: nextId(), width, defaultOutput: livePrefs.defaultOutput })
     savePreferences({ theme: next }).catch(showError)
   }
 
@@ -303,6 +334,29 @@ export function App({
     setLivePrefs((p) => ({ ...p, defaultOutput: path }))
     push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} default output is now ${path}` })
     savePreferences({ defaultOutput: path }).catch(showError)
+  }
+
+  /**
+   * Opens the rename field for the highlighted destination. The extension is
+   * not editable and not shown here — it is decided by the target format, and
+   * letting someone type `.png` onto a WebP would produce a file that lies
+   * about itself.
+   */
+  const startRename = (destination: string) => {
+    if (!source) return
+    const stem = (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')
+    setRenaming({ destination, stem })
+    setText(stem)
+    setStage('rename')
+  }
+
+  const submitRename = (raw: string) => {
+    if (!renaming) return
+    const stem = raw.trim().replace(/\//g, '-') || renaming.stem
+    const ext = typeof values.target === 'string' ? primaryExtension(values.target as FormatId) : ''
+    setText('')
+    setRenaming(null)
+    void convert(renaming.destination, { output: `${renaming.destination}/${stem}${ext}` })
   }
 
   const chooseQuality = (quality: number) => {
@@ -418,6 +472,7 @@ export function App({
     setPending(null)
     if (choice === 'replace') void convert(destination, { force: true })
     else if (choice === 'keep') void convert(destination, { output: keepBoth })
+    else if (choice === 'rename') startRename(destination)
     else setStage('destination')
   }
 
@@ -428,11 +483,7 @@ export function App({
   return (
     <ThemeProvider palette={paletteFor(theme)}>
       <Box flexDirection="column">
-        {stage === 'theme' ? (
-          <ThemePicker onChoose={chooseTheme} />
-        ) : (
-          <Banner width={width} version={VERSION} defaultOutput={livePrefs.defaultOutput} />
-        )}
+        {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
         <Static items={history}>
           {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
         </Static>
@@ -491,6 +542,7 @@ export function App({
               showHints={band !== 'compact'}
               defaultPath={expandTilde(livePrefs.defaultOutput)}
               onMakeDefault={makeDefault}
+              onRename={startRename}
             />
             {/* Four pairs is 45 columns — wider than a compact terminal.
                 Spec §13 drops hints there rather than overflowing, and the
@@ -502,10 +554,41 @@ export function App({
                   : [
                       ['↑↓', 'choose'],
                       ['↵', 'save'],
+                      ['r', 'rename'],
                       ['d', 'make default'],
-                      ['esc', 'back'],
                     ]
               }
+            />
+          </Box>
+        ) : null}
+
+        {stage === 'rename' && renaming ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colourProp(palette.label)}>Name the file</Text>
+            <Prompt
+              value={text}
+              onChange={setText}
+              onSubmit={submitRename}
+              placeholder="file name"
+              isActive
+              bordered={false}
+              width={width}
+            />
+            <Text color={colourProp(palette.dim)}>
+              {`  ${SYMBOLS.arrow} ${middleEllipsis(
+                `${renaming.destination}/${text || renaming.stem}${
+                  typeof values.target === 'string'
+                    ? primaryExtension(values.target as FormatId)
+                    : ''
+                }`,
+                Math.max(12, width - 4),
+              )}`}
+            </Text>
+            <Hints
+              pairs={[
+                ['↵', 'save'],
+                ['ctrl-u', 'clear'],
+              ]}
             />
           </Box>
         ) : null}
@@ -545,11 +628,18 @@ export function App({
 
         {stage === 'result' && lastResult ? (
           <Box flexDirection="column" marginBottom={1}>
-            <Text>
-              {fileLink('Open file', lastResult.job.output)}
-              {'  ·  '}
-              {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
-            </Text>
+            <Text color={colourProp(palette.border)}>{'─'.repeat(Math.min(width, 52))}</Text>
+            {/* Only where the terminal makes OSC 8 clickable. Otherwise
+                fileLink falls back to a bare file:// URL — a long, unreadable
+                line that says nothing the hints below it do not already say,
+                which is why it read as a duplicate. */}
+            {hyperlinksSupported() ? (
+              <Text>
+                {fileLink('Open file', lastResult.job.output)}
+                {'  ·  '}
+                {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
+              </Text>
+            ) : null}
             <Hints
               pairs={[
                 ['↵', 'convert another'],

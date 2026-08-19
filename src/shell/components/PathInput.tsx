@@ -31,6 +31,8 @@ interface PathInputProps {
   defaultPath: string
   /** Called when `d` is pressed on a highlighted preset. */
   onMakeDefault?: (path: string) => void
+  /** Called when `r` is pressed, carrying the highlighted destination. */
+  onRename?: (path: string) => void
 }
 
 /**
@@ -51,6 +53,7 @@ export function PathInput({
   showHints,
   defaultPath,
   onMakeDefault,
+  onRename,
 }: PathInputProps) {
   const palette = useTheme()
   const [typing, setTyping] = useState(false)
@@ -98,9 +101,15 @@ export function PathInput({
    */
   useInput(
     (input) => {
-      if (input !== 'd' || !onMakeDefault) return
       const item = items[highlight]
       if (!item || item.value === TYPE_IT) return
+
+      if (input === 'r' && onRename) {
+        onRename(item.value)
+        return
+      }
+
+      if (input !== 'd' || !onMakeDefault) return
       // Already the default: a no-op, not an error. Pressing d twice is a
       // reasonable thing for someone to do.
       if (item.value === defaultPath) return

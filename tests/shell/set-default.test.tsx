@@ -96,7 +96,10 @@ describe('making a destination the default', () => {
     // Exactly one *preset row* carries the tag, wherever it has moved to.
     // Matching on the trailing tag rather than the word: the keyboard hint
     // ("d make default") and the confirmation note both say "default" too.
-    const tagged = (lastFrame() ?? '').split('\n').filter((l) => l.trimEnd().endsWith('default'))
+    // The tag is set off by three spaces; the keyboard hint reads
+    // "d make default" with one. Matching the spacing is what separates the
+    // preset row from every other line that happens to say the word.
+    const tagged = (lastFrame() ?? '').split('\n').filter((l) => / {3}default$/.test(l.trimEnd()))
     expect(tagged.length).toBe(1)
   })
 

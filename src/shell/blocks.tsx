@@ -3,9 +3,10 @@ import { Box, Text } from 'ink'
 import type { ForgeError } from '../core/errors.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
+import { Banner } from './components/Banner.js'
 import { FileCard } from './components/FileCard.js'
 import { useTheme } from './ThemeContext.js'
-import { colourProp, SYMBOLS } from './theme.js'
+import { colourProp, SYMBOLS, VERSION } from './theme.js'
 
 /**
  * What scrolls past above the live prompt: a dropped file, a finished
@@ -14,6 +15,13 @@ import { colourProp, SYMBOLS } from './theme.js'
  * or decides what went wrong.
  */
 export type HistoryBlock =
+  /**
+   * The banner. It lives in history rather than in the live tree because
+   * Ink flushes `<Static>` output above everything that re-renders — a
+   * banner in the dynamic tree is redrawn *below* the scrollback on every
+   * update, which is how it ended up in the middle of the session.
+   */
+  | { kind: 'banner'; id: string; width: number; defaultOutput: string }
   | { kind: 'file'; id: string; source: SourceInfo }
   | { kind: 'result'; id: string; result: Result }
   | { kind: 'error'; id: string; error: ForgeError }
@@ -26,6 +34,10 @@ function changePhrase(from: number, to: number): string {
 
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
   const palette = useTheme()
+
+  if (block.kind === 'banner') {
+    return <Banner width={block.width} version={VERSION} defaultOutput={block.defaultOutput} />
+  }
 
   if (block.kind === 'file') {
     return (

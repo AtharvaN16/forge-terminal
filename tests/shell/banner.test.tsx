@@ -69,16 +69,23 @@ describe('banner rendering', () => {
 })
 
 describe('banner in the shell', () => {
-  it('shows on every launch, not just the first', () => {
+  // The banner is committed to <Static> from an effect — Static output is
+  // flushed above everything that re-renders, which is the only way it stays
+  // at the top of the session — so it is not in the very first frame.
+  const settle = (ms = 80) => new Promise((r) => setTimeout(r, ms))
+
+  it('shows on every launch, not just the first', async () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
-    expect(render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? '').toContain('█')
+    const { lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    await settle()
+    expect(lastFrame() ?? '').toContain('█')
   })
 
-  it('shows the configured default output folder', () => {
+  it('shows the configured default output folder', async () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: '~/Pictures' }
-    expect(render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? '').toContain(
-      '~/Pictures',
-    )
+    const { lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    await settle()
+    expect(lastFrame() ?? '').toContain('~/Pictures')
   })
 
   it('does not compete with the first-run theme picker', () => {
