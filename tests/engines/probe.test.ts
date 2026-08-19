@@ -82,4 +82,21 @@ describe('probe', () => {
     await chmod(png, 0o644)
     expect(code).toBe('permission-denied')
   })
+
+  /**
+   * The interactive shell calls `probe` directly on whatever a user types or
+   * pastes — unlike the CLI's `resolveInputs`, which only ever hands `probe`
+   * a path it has already `stat`ed successfully. A path that runs *through*
+   * a file (a plausible typo: an extra `/something` tacked onto a real
+   * filename) makes `stat` fail with ENOTDIR, not ENOENT. Before this was
+   * mapped, that errno fell through to a raw, unrecognised `Error`, which
+   * `codeOf` reports as `unexpected:...` rather than a real error code —
+   * this asserts the *type* survives (a `ForgeError`), not any particular
+   * wording of the message.
+   */
+  it('reports a path that runs through a file as not-a-directory, not a raw error', async () => {
+    const dir = await makeTempDir()
+    const real = await makeJpeg(dir, 'real.jpg')
+    expect(await codeOf(() => probe(join(real, 'nope.jpg')))).toBe('not-a-directory')
+  })
 })

@@ -8,9 +8,13 @@ import {
   conversionFailed,
   corruptSource,
   fileNotFound,
+  notADirectory,
   notAFile,
   outputInvalid,
+  pathTooLong,
   permissionDenied,
+  symlinkLoop,
+  unreadablePath,
   unsupportedSource,
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
@@ -57,6 +61,15 @@ function identify(path: string, meta: Metadata): FormatId {
   return id
 }
 
+/**
+ * `stat`'s error taxonomy must be total, not partial: this is called
+ * directly by the interactive shell (unlike the CLI's `resolveInputs`,
+ * which stats every input up front and only ever forwards `probe` a path
+ * already known to exist), so a typed or pasted path reaches this
+ * unfiltered. Every errno not given a specific, well-worded error above
+ * still becomes a `ForgeError` via `unreadablePath` — never a raw `Error`
+ * left to escape as an unhandled rejection.
+ */
 async function probe(path: string): Promise<SourceInfo> {
   let stats: Awaited<ReturnType<typeof stat>>
   try {
@@ -65,7 +78,10 @@ async function probe(path: string): Promise<SourceInfo> {
     const code = (cause as NodeJS.ErrnoException).code
     if (code === 'ENOENT') throw fileNotFound(path)
     if (code === 'EACCES' || code === 'EPERM') throw permissionDenied(path)
-    throw cause
+    if (code === 'ENOTDIR') throw notADirectory(path)
+    if (code === 'ELOOP') throw symlinkLoop(path)
+    if (code === 'ENAMETOOLONG') throw pathTooLong(path)
+    throw unreadablePath(path, cause)
   }
 
   if (!stats.isFile()) throw notAFile(path)

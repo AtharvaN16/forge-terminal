@@ -54,6 +54,30 @@ describe('shell flow', () => {
     expect(frame.toLowerCase()).toContain('drop a file')
   })
 
+  /**
+   * A plausible typo — an extra path segment tacked onto a real filename —
+   * makes the underlying `stat` fail with ENOTDIR rather than ENOENT.
+   * `probe()` (src/engines/image.ts) now maps that to a `ForgeError`
+   * instead of letting a raw `Error` escape; and even if something the
+   * engine layer didn't anticipate ever throws a non-ForgeError here,
+   * `submitPath`'s catch (src/shell/App.tsx) must render it rather than
+   * rethrow into an unhandled rejection nobody sees. This is the exact case
+   * that used to leave the shell showing nothing at all, forever.
+   */
+  it('renders a visible error and stays usable when a typed path runs through a file', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const { stdin, lastFrame } = render(<App initialWidth={80} />)
+    stdin.write(`${jpg}/nope.jpg`)
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('✕')
+    expect(frame).toContain('Invalid path')
+    expect(frame.toLowerCase()).toContain('drop a file')
+  })
+
   it('unescapes a dropped path with a space in it', async () => {
     const dir = await makeTempDir()
     await makeJpeg(dir, 'my photo.jpg')

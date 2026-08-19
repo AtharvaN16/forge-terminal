@@ -2,7 +2,7 @@ import { Box, Static, Text, useStdout } from 'ink'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
-import { isForgeError } from '../core/errors.js'
+import { isForgeError, unexpectedError } from '../core/errors.js'
 import { primaryExtension } from '../core/formats.js'
 import type { FormatId, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
@@ -89,9 +89,13 @@ export function App({ initialWidth }: { initialWidth?: number }) {
         push({ kind: 'file', id: nextId(), source: info })
         setStage('target')
       } catch (e) {
-        if (!isForgeError(e)) throw e
         if (requestId.current !== id) return // superseded by a later submission
-        push({ kind: 'error', id: nextId(), error: e })
+        // A rethrow here would become an unhandled rejection: submitPath is
+        // fired from Prompt's synchronous useInput handler, and nothing
+        // awaits or catches the promise it returns. Whatever this is —
+        // a ForgeError, or anything else probe() didn't anticipate — the
+        // shell must render it, not silently do nothing forever.
+        push({ kind: 'error', id: nextId(), error: isForgeError(e) ? e : unexpectedError(e) })
         setStage('idle')
       }
     },
