@@ -50,11 +50,17 @@ async function frameAtDestination(width: number): Promise<string> {
 }
 
 describe('responsiveness', () => {
-  it('drops the prompt border in a compact terminal', () => {
-    const narrow = render(<App initialWidth={40} />).lastFrame() ?? ''
-    const normal = render(<App initialWidth={80} />).lastFrame() ?? ''
-    expect(normal).toContain('╭')
-    expect(narrow).not.toContain('╭')
+  it('draws no box around the drop area at any width', () => {
+    // The drop area is a fill, not a frame: the fill is its own boundary and
+    // a stroke around it only competed with the panel it outlined. Spec §13's
+    // "drop the box border when compact" now applies to the file card, which
+    // is covered in blocks-design.test.tsx.
+    for (const w of [40, 80, 120]) {
+      const frame = render(<App initialWidth={w} />).lastFrame() ?? ''
+      const promptLine = frame.split('\n').find((l) => l.includes('drop a file')) ?? ''
+      expect(promptLine).not.toContain('╭')
+      expect(promptLine).not.toContain('│')
+    }
   })
 
   it('never emits a line wider than the terminal at the idle stage', () => {
