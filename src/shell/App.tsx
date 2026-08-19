@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DEFAULT_PREFERENCES, type Preferences } from '../config/preferences.js'
+import { DEFAULT_PREFERENCES, type Preferences, savePreferences } from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
@@ -18,10 +18,11 @@ import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
+import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink } from './hyperlink.js'
 import { openPath, revealPath } from './reveal.js'
-import { useTheme } from './ThemeContext.js'
-import { colourProp, SYMBOLS } from './theme.js'
+import { ThemeProvider, useTheme } from './ThemeContext.js'
+import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -31,6 +32,7 @@ import { bandFor, middleEllipsis } from './width.js'
  * show the result.
  */
 export type Stage =
+  | 'theme'
   | 'idle'
   | 'target'
   | 'quality'
@@ -54,9 +56,22 @@ interface PendingOverwrite {
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
 
+/**
+ * The fallback for callers that do not supply preferences — tests, and any
+ * direct render. It carries a theme on purpose: an absent theme is the
+ * first-run signal, and defaulting to it would put the theme picker in front
+ * of every test that only wanted to convert a file.
+ *
+ * The production path never uses this. `launchShell` always passes what
+ * `loadPreferences` returned, where a genuinely absent theme does raise the
+ * picker — which is what `theme-picker.test.tsx` exercises by passing
+ * `DEFAULT_PREFERENCES` explicitly.
+ */
+const APP_DEFAULT_PREFS: Preferences = { ...DEFAULT_PREFERENCES, theme: 'dark' }
+
 export function App({
   initialWidth,
-  prefs = DEFAULT_PREFERENCES,
+  prefs = APP_DEFAULT_PREFS,
   configWarning,
 }: {
   initialWidth?: number
@@ -80,7 +95,12 @@ export function App({
   const band = bandFor(width)
 
   const [history, setHistory] = useState<HistoryBlock[]>([])
-  const [stage, setStage] = useState<Stage>('idle')
+  /**
+   * Held in state, not read straight from `prefs`, so `/theme` re-themes the
+   * running session rather than only the next launch.
+   */
+  const [theme, setTheme] = useState<'dark' | 'light' | undefined>(prefs.theme)
+  const [stage, setStage] = useState<Stage>(prefs.theme === undefined ? 'theme' : 'idle')
   const [text, setText] = useState('')
   const [source, setSource] = useState<SourceInfo | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -185,6 +205,12 @@ export function App({
     async (raw: string) => {
       const trimmed = raw.trim()
       if (!trimmed) return
+
+      if (trimmed === '/theme') {
+        setText('')
+        setStage('theme')
+        return
+      }
       const id = ++requestId.current
       setText('')
       try {
@@ -216,6 +242,19 @@ export function App({
     setValues((v) => ({ ...v, target }))
     const next = convertAction.options(currentSource, { target })
     setStage(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
+  }
+
+  /**
+   * `.catch`, not `void`: this runs from Select's synchronous useInput
+   * handler and nothing awaits the promise, so a rejected write would be an
+   * unhandled rejection and Node would take the process down. A theme that
+   * fails to persist is worth telling the user about; it must never cost
+   * them the session.
+   */
+  const chooseTheme = (next: 'dark' | 'light') => {
+    setTheme(next)
+    setStage('idle')
+    savePreferences({ theme: next }).catch(showError)
   }
 
   const chooseQuality = (quality: number) => {
@@ -339,137 +378,140 @@ export function App({
   const destinationSpec = specFor('destination')
 
   return (
-    <Box flexDirection="column">
-      <Static items={history}>
-        {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
-      </Static>
+    <ThemeProvider palette={paletteFor(theme)}>
+      <Box flexDirection="column">
+        {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
+        <Static items={history}>
+          {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
+        </Static>
 
-      {stage === 'target' && source && targetSpec?.kind === 'select' ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text>{targetSpec.label}</Text>
-          <Select
-            width={width}
-            items={targetSpec.choices}
-            onSubmit={(target) => chooseTarget(source, target)}
-            onCancel={() => setStage('idle')}
-            showHints={band !== 'compact'}
-          />
-          <Hints
-            pairs={[
-              ['↑↓', 'choose'],
-              ['↵', 'confirm'],
-              ['esc', 'back'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'target' && source && targetSpec?.kind === 'select' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>{targetSpec.label}</Text>
+            <Select
+              width={width}
+              items={targetSpec.choices}
+              onSubmit={(target) => chooseTarget(source, target)}
+              onCancel={() => setStage('idle')}
+              showHints={band !== 'compact'}
+            />
+            <Hints
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'quality' && qualitySpec?.kind === 'slider' ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Slider
-            label={qualitySpec.label}
-            min={qualitySpec.min}
-            max={qualitySpec.max}
-            step={qualitySpec.step}
-            value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
-            onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
-            onSubmit={chooseQuality}
-            onCancel={() => setStage('target')}
-          />
-          <Hints
-            pairs={[
-              ['←→', 'adjust'],
-              ['↵', 'confirm'],
-              ['esc', 'back'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'quality' && qualitySpec?.kind === 'slider' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Slider
+              label={qualitySpec.label}
+              min={qualitySpec.min}
+              max={qualitySpec.max}
+              step={qualitySpec.step}
+              value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
+              onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
+              onSubmit={chooseQuality}
+              onCancel={() => setStage('target')}
+            />
+            <Hints
+              pairs={[
+                ['←→', 'adjust'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'destination' && destinationSpec?.kind === 'path' ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <PathInput
-            label={destinationSpec.label}
-            presets={destinationSpec.presets}
-            preview={previewDestination}
-            onSubmit={(destination) => void convert(destination)}
-            onCancel={() => setStage('target')}
-            width={width}
-            showHints={band !== 'compact'}
-          />
-        </Box>
-      ) : null}
+        {stage === 'destination' && destinationSpec?.kind === 'path' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <PathInput
+              label={destinationSpec.label}
+              presets={destinationSpec.presets}
+              preview={previewDestination}
+              onSubmit={(destination) => void convert(destination)}
+              onCancel={() => setStage('target')}
+              width={width}
+              showHints={band !== 'compact'}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'overwrite' && pending ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
-          <Select
-            width={width}
-            items={[
-              { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
-              { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
-              { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
-            ]}
-            onSubmit={answerOverwrite}
-            onCancel={() => {
-              setPending(null)
-              setStage('destination')
-            }}
-            showHints={band !== 'compact'}
-          />
-          <Hints
-            pairs={[
-              ['↑↓', 'choose'],
-              ['↵', 'confirm'],
-              ['esc', 'cancel'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'overwrite' && pending ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
+            <Select
+              width={width}
+              items={[
+                { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
+                { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
+                { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
+              ]}
+              onSubmit={answerOverwrite}
+              onCancel={() => {
+                setPending(null)
+                setStage('destination')
+              }}
+              showHints={band !== 'compact'}
+            />
+            <Hints
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'cancel'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'converting' ? (
-        <Box marginBottom={1}>
-          <Text color={colourProp(palette.dim)}>Converting…</Text>
-        </Box>
-      ) : null}
+        {stage === 'converting' ? (
+          <Box marginBottom={1}>
+            <Text color={colourProp(palette.dim)}>Converting…</Text>
+          </Box>
+        ) : null}
 
-      {stage === 'result' && lastResult ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text>
-            {fileLink('Open file', lastResult.job.output)}
-            {'  ·  '}
-            {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
-          </Text>
-          <Hints
-            pairs={[
-              ['↵', 'convert another'],
-              ['f', 'open'],
-              ['o', 'reveal'],
-              ['q', 'quit'],
-            ]}
-          />
-        </Box>
-      ) : null}
+        {stage === 'result' && lastResult ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>
+              {fileLink('Open file', lastResult.job.output)}
+              {'  ·  '}
+              {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
+            </Text>
+            <Hints
+              pairs={[
+                ['↵', 'convert another'],
+                ['f', 'open'],
+                ['o', 'reveal'],
+                ['q', 'quit'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
-      {stage === 'idle' ? (
-        <Box flexDirection="column">
-          <Prompt
-            value={text}
-            onChange={setText}
-            onSubmit={submitPath}
-            placeholder="drop a file or type a path"
-            isActive
-            bordered={band !== 'compact'}
-            width={width}
-          />
-          <Hints
-            pairs={[
-              ['↵', 'send'],
-              ['ctrl-c', 'quit'],
-            ]}
-          />
-        </Box>
-      ) : null}
-    </Box>
+        {stage === 'idle' ? (
+          <Box flexDirection="column">
+            <Prompt
+              value={text}
+              onChange={setText}
+              onSubmit={submitPath}
+              placeholder="drop a file or type a path"
+              isActive
+              bordered={band !== 'compact'}
+              width={width}
+            />
+            <Hints
+              pairs={[
+                ['↵', 'send'],
+                ['ctrl-c', 'quit'],
+              ]}
+            />
+          </Box>
+        ) : null}
+      </Box>
+    </ThemeProvider>
   )
 }
