@@ -1,5 +1,5 @@
 import { Box, Static, Text, useStdout } from 'ink'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { OptionSpec } from '../core/actions.js'
 import { convertAction } from '../core/actions.js'
 import { isForgeError } from '../core/errors.js'
@@ -53,19 +53,44 @@ export function App({ initialWidth }: { initialWidth?: number }) {
 
   const specFor = useCallback((id: string) => specs.find((s) => s.id === id), [specs])
 
+  /**
+   * `probe()` is genuinely I/O-bound (`stat`, `access`, then sharp reading
+   * the file's header), and nothing moves `stage` off `'idle'` until it
+   * resolves — the Prompt stays mounted and interactive for the whole
+   * `await` by design (disabling it mid-probe, e.g. via `isActive`, is a UX
+   * decision this file doesn't get to make on its own). So a user can submit
+   * a second, different path before the first probe settles, and the two
+   * probes genuinely race.
+   *
+   * `requestId` is a ref, not state, for the same reason `Select.tsx` and
+   * `Prompt.tsx` use one: `useInput` handlers are synchronous but `setState`
+   * is not, so a second submission arriving before React re-renders must
+   * still see the true current id, not a stale closed-over value. Each call
+   * claims the next id the instant it starts, so the *latest* submission
+   * always wins ownership — and a probe's result, success or failure, is
+   * only applied if its id is still the current one by the time it settles.
+   * A superseded (stale) result — an earlier submission that is still
+   * finishing after a newer one has already started — is dropped on the
+   * floor rather than clobbering whatever the newer submission produced.
+   */
+  const requestId = useRef(0)
+
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
       if (!trimmed) return
+      const id = ++requestId.current
       setText('')
       try {
         const info = await probe(trimmed)
+        if (requestId.current !== id) return // superseded by a later submission
         setSource(info)
         setValues({})
         push({ kind: 'file', id: nextId(), source: info })
         setStage('target')
       } catch (e) {
         if (!isForgeError(e)) throw e
+        if (requestId.current !== id) return // superseded by a later submission
         push({ kind: 'error', id: nextId(), error: e })
         setStage('idle')
       }

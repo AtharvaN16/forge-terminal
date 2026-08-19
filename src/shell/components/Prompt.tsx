@@ -30,6 +30,13 @@ export function Prompt({
   bordered,
 }: PromptProps) {
   const valueRef = useRef(value)
+  // Deliberately a plain assignment in the render body, not a `useEffect`:
+  // Ink's renderer has no browser paint to tear before, so there is no
+  // "render without committing" hazard `useLayoutEffect` guards against
+  // elsewhere. `useInput`'s handler (below) runs between renders, and by
+  // reading `valueRef.current` — never the `value` prop directly — it always
+  // sees whatever this line last wrote, which is current as of the most
+  // recent render, synchronously, with no effect-scheduling delay.
   valueRef.current = value
 
   useInput(
