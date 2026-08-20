@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES, type Preferences } from '../../src/config/preferences.js'
-import { ACTIONS, actionsFor, convertAction } from '../../src/core/actions.js'
+import { ACTIONS, actionsFor, convertAction } from '../../src/core/actions/index.js'
 import { isForgeError } from '../../src/core/errors.js'
 import type { SourceInfo } from '../../src/core/types.js'
 
@@ -20,13 +20,12 @@ function source(over: Partial<SourceInfo> = {}): SourceInfo {
 }
 
 describe('action registry', () => {
-  it('registers exactly one action in this version', () => {
-    expect(ACTIONS).toHaveLength(1)
-    expect(ACTIONS[0]?.id).toBe('convert')
+  it('registers convert and compress', () => {
+    expect(ACTIONS.map((a) => a.id)).toEqual(['convert', 'compress'])
   })
 
   it('offers convert for any image', () => {
-    expect(actionsFor(source()).map((a) => a.id)).toEqual(['convert'])
+    expect(actionsFor(source()).map((a) => a.id)).toContain('convert')
   })
 })
 

@@ -20,7 +20,15 @@ import {
   unsupportedSource,
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
-import type { FormatId, Job, Phase, Result, SourceInfo, Warning } from '../core/types.js'
+import type {
+  ConvertOptions,
+  FormatId,
+  Job,
+  Phase,
+  Result,
+  SourceInfo,
+  Warning,
+} from '../core/types.js'
 import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import type { Engine } from './types.js'
 
@@ -205,6 +213,83 @@ async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
   }
 }
 
+/**
+ * Builds the pipeline both callers encode from, up to but not including the
+ * encode itself.
+ *
+ * Shared rather than duplicated so the correctness rules hold on both paths:
+ * HEIC decoded through sips, `.rotate()` before anything else, alpha
+ * flattened for a target that cannot carry it, EXIF stripped unless asked
+ * for. A second copy of this would be a second place for those to drift.
+ *
+ * The caller owns `cleanup` and must call it on every path — the temp HEIC
+ * decode is exactly the litter invariant 6 exists to prevent.
+ */
+async function pipelineFor(
+  source: SourceInfo,
+  target: FormatId,
+  options: ConvertOptions,
+  animated: boolean,
+): Promise<{ pipeline: Sharp; cleanup: () => Promise<void> }> {
+  /**
+   * HEIC cannot be decoded by the bundled libvips (see engines/heic.ts), so
+   * it is transcoded to a temporary PNG by `sips` first and the ordinary
+   * pipeline runs on that. Everything downstream is unchanged; only the file
+   * Sharp opens differs.
+   */
+  if (source.format === 'heic' && !(await heicDecodable())) {
+    throw heicDecoderUnavailable(source.path)
+  }
+  const heic = source.format === 'heic' ? await decodeHeic(source.path) : undefined
+  const cleanup = async () => {
+    await heic?.cleanup()
+  }
+
+  let pipeline = sharp(heic?.path ?? source.path, animated ? { animated: true } : {})
+
+  // Rule 1: EXIF orientation, before anything else. Verified safe on
+  // animated input — page count survives.
+  //
+  // Applies to a decoded HEIC too. Measured, because the opposite seemed
+  // more likely: an oriented JPEG stored 40x80/orientation-6 becomes an
+  // 80x40 HEIC with the rotation baked in, and `sips` then decodes that
+  // back to a 40x80 PNG *carrying orientation 6* in an eXIf chunk. So the
+  // intermediate needs rotating exactly like any other source, and
+  // skipping it here shipped every HEIC photo on its side.
+  pipeline = pipeline.rotate()
+
+  // Rule 2: composite onto a background when the target has no alpha channel.
+  if (source.hasAlpha && !FORMATS[target].hasAlpha) {
+    pipeline = pipeline.flatten({ background: options.background })
+  }
+
+  // Rule 3: strip EXIF/GPS by default, always keep the colour profile so
+  // colours do not shift on wide-gamut displays.
+  pipeline = options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
+
+  return { pipeline, cleanup }
+}
+
+/**
+ * Encodes without touching the disk.
+ *
+ * The target-size search calls this once per attempt and only ever needs the
+ * byte count, so writing a temp file each time would be wasted I/O — and one
+ * left behind by a failed attempt would be litter.
+ */
+export async function encodeToBuffer(
+  source: SourceInfo,
+  target: FormatId,
+  options: ConvertOptions,
+): Promise<Buffer> {
+  const { pipeline, cleanup } = await pipelineFor(source, target, options, false)
+  try {
+    return await encode(pipeline, target, options.quality).toBuffer()
+  } finally {
+    await cleanup()
+  }
+}
+
 async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result> {
   const spec = FORMATS[job.target]
   const warnings: Warning[] = []
@@ -224,47 +309,14 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
   }
 
   onPhase('decoding')
-
-  /**
-   * HEIC cannot be decoded by the bundled libvips (see engines/heic.ts), so
-   * it is transcoded to a temporary PNG by `sips` first and the ordinary
-   * pipeline runs on that. Everything downstream is unchanged; only the file
-   * Sharp opens differs.
-   */
-  if (job.source.format === 'heic' && !(await heicDecodable())) {
-    throw heicDecoderUnavailable(job.source.path)
-  }
-  const heic = job.source.format === 'heic' ? await decodeHeic(job.source.path) : undefined
-  const input = heic?.path ?? job.source.path
+  const { pipeline, cleanup } = await pipelineFor(job.source, job.target, job.options, keepFrames)
 
   try {
-    let pipeline = sharp(input, keepFrames ? { animated: true } : {})
-
-    // Rule 1: EXIF orientation, before anything else. Verified safe on
-    // animated input — page count survives.
-    //
-    // Applies to a decoded HEIC too. Measured, because the opposite seemed
-    // more likely: an oriented JPEG stored 40x80/orientation-6 becomes an
-    // 80x40 HEIC with the rotation baked in, and `sips` then decodes that
-    // back to a 40x80 PNG *carrying orientation 6* in an eXIf chunk. So the
-    // intermediate needs rotating exactly like any other source, and
-    // skipping it here shipped every HEIC photo on its side.
-    pipeline = pipeline.rotate()
-
-    // Rule 2: composite onto a background when the target has no alpha channel.
-    if (job.source.hasAlpha && !spec.hasAlpha) {
-      pipeline = pipeline.flatten({ background: job.options.background })
-    }
-
-    // Rule 3: strip EXIF/GPS by default, always keep the colour profile so
-    // colours do not shift on wide-gamut displays.
-    pipeline = job.options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
-
     onPhase('encoding')
-    pipeline = encode(pipeline, job.target, job.options.quality)
+    const encoded = encode(pipeline, job.target, job.options.quality)
 
     onPhase('writing')
-    const outputBytes = await writeAtomic(pipeline, job.output)
+    const outputBytes = await writeAtomic(encoded, job.output)
     return { job, outputBytes, warnings }
   } catch (cause) {
     // `writeAtomic` already names what it knows — an undirectory-able
@@ -276,10 +328,7 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
     // `run.ts` makes the same distinction the same way.
     throw isForgeError(cause) ? cause : conversionFailed(job.source.path, cause)
   } finally {
-    // Runs on every path, including the throw above: a temp decode left on
-    // disk after a failed conversion is exactly the litter invariant 6 exists
-    // to prevent.
-    await heic?.cleanup()
+    await cleanup()
   }
 }
 

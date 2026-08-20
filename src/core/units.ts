@@ -37,3 +37,35 @@ export function percentChange(from: number, to: number): SizeChange {
     direction: ratio > 0 ? 'smaller' : 'larger',
   }
 }
+
+const SIZE_UNITS: Record<string, number> = {
+  b: 1,
+  kb: 1024,
+  mb: 1024 * 1024,
+  gb: 1024 * 1024 * 1024,
+}
+
+/**
+ * Reads a size the way a person writes one: `500kb`, `2 MB`, `1.5mb`.
+ *
+ * Powers of 1024 rather than 1000, because the number this is compared
+ * against is `stat().size` and every other size Forge prints comes from
+ * `formatBytes`, which is also binary. Mixing the two would make a file
+ * "1 MB" in one line and over the limit in the next.
+ *
+ * Returns undefined rather than throwing or guessing: the caller is a text
+ * field that has to tell the user their input was not understood, and
+ * `undefined` is the only answer that cannot be mistaken for a size.
+ */
+export function parseSize(input: string): number | undefined {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?\s*$/i.exec(input)
+  if (!match) return undefined
+
+  const amount = Number(match[1])
+  if (!Number.isFinite(amount) || amount <= 0) return undefined
+
+  const unit = SIZE_UNITS[(match[2] ?? 'b').toLowerCase()]
+  if (unit === undefined) return undefined
+
+  return Math.round(amount * unit)
+}

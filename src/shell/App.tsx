@@ -7,20 +7,30 @@ import {
   type Preferences,
   savePreferences,
 } from '../config/preferences.js'
-import type { OptionSpec } from '../core/actions.js'
-import { convertAction } from '../core/actions.js'
-import { isForgeError, unexpectedError } from '../core/errors.js'
-import { primaryExtension } from '../core/formats.js'
+import type { OptionSpec } from '../core/actions/index.js'
+import { compressAction, convertAction } from '../core/actions/index.js'
+import { findQuality } from '../core/compress.js'
+import {
+  isForgeError,
+  targetUnreachable,
+  unexpectedError,
+  unsupportedCompress,
+} from '../core/errors.js'
+import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { runJobs } from '../core/run.js'
+import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Result, SourceInfo } from '../core/types.js'
+import { formatBytes, parseSize } from '../core/units.js'
+import { encodeToBuffer } from '../engines/image.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
+import { COMMANDS, type Command, isCommandBuffer, parseCommand } from './commands.js'
+import { CommandPalette } from './components/CommandPalette.js'
 import { FileCard } from './components/FileCard.js'
 import { HintBar } from './components/HintBar.js'
-import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
@@ -29,7 +39,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
-import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
+import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -41,6 +51,10 @@ import { bandFor, middleEllipsis } from './width.js'
 export type Stage =
   | 'theme'
   | 'idle'
+  /** Compress: by quality, or to a target size. */
+  | 'mode'
+  /** Compress: the target-size field. */
+  | 'size'
   | 'target'
   | 'quality'
   | 'destination'
@@ -55,6 +69,14 @@ export type Stage =
  * both" would use — resolved once, when the question is raised, rather than
  * on every render of it.
  */
+interface PendingRename {
+  destination: string
+  /** The name without its extension, which is what the user edits. */
+  stem: string
+  /** Fixed: decided by the target format, not by what is typed. */
+  ext: string
+}
+
 interface PendingOverwrite {
   destination: string
   output: string
@@ -146,13 +168,28 @@ export function App({
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
   const [stage, setStage] = useState<Stage>(prefs.theme === undefined ? 'theme' : 'idle')
+  /**
+   * Which action the staged file is being put through. Dropping a file means
+   * convert; `/compress` switches it. The action layer already supports more
+   * than one action — `actionsFor` has existed since 0.1 and never been
+   * called, because until now there was nothing to choose between.
+   */
+  const [mode, setMode] = useState<'convert' | 'compress'>('convert')
+  const action = mode === 'compress' ? compressAction : convertAction
+
+  /** Where the target-size search has got to, for an honest counter. */
+  const [attempt, setAttempt] = useState<{ n: number; of: number } | undefined>(undefined)
+  /** Why a typed size was rejected, shown against the field rather than later. */
+  const [sizeError, setSizeError] = useState<string | undefined>(undefined)
+  /** A measured alternative worth offering after a compression. */
+  const [suggestion, setSuggestion] = useState<Suggestion | undefined>(undefined)
   const [text, setText] = useState('')
   const [source, setSource] = useState<SourceInfo | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   /** Destination and proposed stem while the rename field is open. */
-  const [renaming, setRenaming] = useState<{ destination: string; stem: string } | null>(null)
+  const [renaming, setRenaming] = useState<PendingRename | null>(null)
 
   /**
    * Mirrors `text` for the completion callback, for the same reason
@@ -212,6 +249,18 @@ export function App({
     { isActive: stage === 'rename' },
   )
 
+  // esc on the size field goes back to the mode choice. Prompt ignores
+  // escape by design — a path can contain one — so the stage owns this.
+  useInput(
+    (_input, key) => {
+      if (!key.escape) return
+      setSizeError(undefined)
+      setText('')
+      setStage('mode')
+    },
+    { isActive: stage === 'size' },
+  )
+
   useInput(
     (input, key) => {
       if (!lastResult) return
@@ -237,6 +286,15 @@ export function App({
       if (input === 'o') openPath(lastResult.job.output).catch(showError)
       if (input === 's') revealPath(lastResult.job.output).catch(showError)
       if (input === 'q') exit()
+      // Acts on the measured suggestion: re-enters convert with that target
+      // already chosen, so the offer is one keystroke from being taken.
+      if (input === 'c' && suggestion && lastResult) {
+        setSuggestion(undefined)
+        setMode('convert')
+        setValues({ target: suggestion.target })
+        setSource(lastResult.job.source)
+        setStage('destination')
+      }
     },
     { isActive: stage === 'result' },
   )
@@ -246,8 +304,8 @@ export function App({
   // collected so far (e.g. the quality step only appears once a lossy
   // target is chosen).
   const specs: OptionSpec[] = useMemo(
-    () => (source ? convertAction.options(source, values, livePrefs) : []),
-    [source, values, livePrefs],
+    () => (source ? action.options(source, values, livePrefs) : []),
+    [source, values, livePrefs, action],
   )
 
   const specFor = useCallback((id: string) => specs.find((s) => s.id === id), [specs])
@@ -274,14 +332,73 @@ export function App({
    */
   const requestId = useRef(0)
 
+  /**
+   * Runs a command chosen from the palette or typed in full.
+   *
+   * `needsSource` decides what a command does with a file already on the
+   * bench: `/compress` switches it into the compress flow, `/theme` ignores
+   * it entirely.
+   */
+  const runCommand = useCallback(
+    (command: Command) => {
+      setText('')
+
+      if (command.name === 'theme') {
+        setStage('theme')
+        return
+      }
+
+      if (command.name === 'help') {
+        push({
+          kind: 'note',
+          id: nextId(),
+          text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
+        })
+        return
+      }
+
+      if (command.name === 'convert') {
+        setMode('convert')
+        setValues({})
+        setStage(source ? 'target' : 'idle')
+        return
+      }
+
+      if (command.name === 'compress') {
+        if (source && !compressAction.appliesTo(source)) {
+          push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
+          return
+        }
+        setMode('compress')
+        setValues({})
+        setStage(source ? 'mode' : 'idle')
+      }
+    },
+    [push, source],
+  )
+
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
       if (!trimmed) return
 
-      if (trimmed === '/theme') {
+      /**
+       * A command, not a path. Checked before probing, because otherwise
+       * `/compress` is looked up as a file and reported missing — which is
+       * exactly what happened before this branch existed.
+       */
+      if (isCommandBuffer(trimmed)) {
+        const command = parseCommand(trimmed)
         setText('')
-        setStage('theme')
+        if (command) {
+          runCommand(command)
+        } else {
+          push({
+            kind: 'note',
+            id: nextId(),
+            text: `no command matches ${trimmed} — try /help`,
+          })
+        }
         return
       }
       const id = ++requestId.current
@@ -296,6 +413,21 @@ export function App({
         // happens the dropped file is a choice the user is still making —
         // esc has to be able to undo it. The result block records the file
         // once there is something worth recording.
+        //
+        // Which step comes next depends on the mode: `/compress` before
+        // dropping a file means the file lands in the compress flow, and
+        // compressing something lossless is refused here rather than after
+        // the user has answered three more questions about it.
+        if (mode === 'compress') {
+          if (!compressAction.appliesTo(info)) {
+            push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
+            setMode('convert')
+            setStage('target')
+            return
+          }
+          setStage('mode')
+          return
+        }
         setStage('target')
       } catch (e) {
         if (requestId.current !== id) return // superseded by a later submission
@@ -308,7 +440,10 @@ export function App({
         setStage('idle')
       }
     },
-    [showError],
+    // `mode` matters: without it this closure keeps the value it had when the
+    // callback was created, and a file dropped after /compress would be
+    // routed to the convert flow anyway.
+    [showError, push, runCommand, mode],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -324,7 +459,7 @@ export function App({
 
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
-    const next = convertAction.options(currentSource, { target }, livePrefs)
+    const next = action.options(currentSource, { target }, livePrefs)
     setStage(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
   }
 
@@ -360,10 +495,24 @@ export function App({
    * letting someone type `.png` onto a WebP would produce a file that lies
    * about itself.
    */
+  /**
+   * Opens the name field, pre-filled from the name the action would have
+   * chosen.
+   *
+   * The proposal comes from `plan()` rather than being rebuilt here: the
+   * action knows the extension (compress keeps the source's, convert uses the
+   * target's) and any suffix it needs to avoid landing on the input. Deriving
+   * it a second time in the shell is how the field ended up offering a name
+   * with no extension at all for compression.
+   */
   const startRename = (destination: string) => {
     if (!source) return
-    const stem = (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')
-    setRenaming({ destination, stem })
+    const planned = action.plan(source, { ...values, destination })[0]
+    const proposed = (planned?.output ?? source.path).split('/').pop() ?? 'file'
+    const dot = proposed.lastIndexOf('.')
+    const stem = dot > 0 ? proposed.slice(0, dot) : proposed
+    const ext = dot > 0 ? proposed.slice(dot) : ''
+    setRenaming({ destination, stem, ext })
     setText(stem)
     setStage('rename')
   }
@@ -377,10 +526,27 @@ export function App({
   const submitRename = (raw: string) => {
     if (!renaming) return
     const stem = raw.trim().replace(/\//g, '-') || renaming.stem
-    const ext = typeof values.target === 'string' ? primaryExtension(values.target as FormatId) : ''
     setText('')
     setRenaming(null)
-    void convert(renaming.destination, { output: `${renaming.destination}/${stem}${ext}` })
+    void convert(renaming.destination, {
+      output: `${renaming.destination}/${stem}${renaming.ext}`,
+    })
+  }
+
+  /**
+   * Validates in the field rather than at conversion time — the difference
+   * between catching a typo and failing a run that already chose a folder.
+   */
+  const submitSize = (raw: string) => {
+    const bytes = parseSize(raw)
+    if (bytes === undefined) {
+      setSizeError(`${raw.trim() || 'that'} is not a size. Try 500kb or 2mb.`)
+      return
+    }
+    setSizeError(undefined)
+    setValues((v) => ({ ...v, size: raw, targetBytes: bytes }))
+    setText('')
+    setStage('destination')
   }
 
   const chooseQuality = (quality: number) => {
@@ -432,12 +598,38 @@ export function App({
     converting.current = true
     setStage('converting')
     try {
-      const planned = convertAction.plan(source, { ...values, destination })[0]
+      const planned = action.plan(source, { ...values, destination })[0]
       if (!planned) {
         setStage('idle')
         return
       }
       const output = opts.output ?? planned.output
+
+      /**
+       * A target size means the quality is the search's answer, not the
+       * user's. Run it before planning the write, so a target nothing can
+       * reach fails before any file is created.
+       */
+      if (typeof values.targetBytes === 'number') {
+        setStage('converting')
+        const found = await findQuality({
+          encode: async (quality) =>
+            (await encodeToBuffer(source, planned.target, { ...planned.options, quality })).length,
+          targetBytes: values.targetBytes,
+          onAttempt: (n, of) => setAttempt({ n, of }),
+        })
+        setAttempt(undefined)
+        if (found.missed) {
+          push({
+            kind: 'error',
+            id: nextId(),
+            error: targetUnreachable(source, values.targetBytes, found.bytes),
+          })
+          setStage('idle')
+          return
+        }
+        planned.options.quality = found.quality
+      }
 
       const plan = await buildPlan({
         resolved: { sources: [source], failures: [], roots: new Map<string, string>() },
@@ -470,6 +662,25 @@ export function App({
         setLastResult(result)
         push({ kind: 'result', id: nextId(), result })
         setStage('result')
+
+        /**
+         * Only after a compression, and only once the file is safely written:
+         * this is an extra encode purely to find out whether a sentence is
+         * worth saying, and it must not be able to cost the user the
+         * conversion they actually asked for.
+         */
+        if (mode === 'compress') {
+          const found = await suggestFormat({
+            source,
+            resultBytes: result.outputBytes,
+            quality: planned.options.quality ?? livePrefs.quality,
+            encode: async (target, quality) =>
+              (await encodeToBuffer(source, target, { ...planned.options, quality })).length,
+          })
+          setSuggestion(found)
+        } else {
+          setSuggestion(undefined)
+        }
       } else {
         const failure = summary.failures[0]
         if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
@@ -500,6 +711,8 @@ export function App({
     else setStage('destination')
   }
 
+  const modeSpec = specFor('mode')
+  const sizeSpec = specFor('size')
   const targetSpec = specFor('target')
   const qualitySpec = specFor('quality')
   const destinationSpec = specFor('destination')
@@ -519,6 +732,56 @@ export function App({
         <Static items={history}>
           {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
         </Static>
+
+        {stage === 'mode' && source && modeSpec?.kind === 'select' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
+            <Select
+              width={width}
+              items={modeSpec.choices}
+              onSubmit={(chosen) => {
+                setValues((v) => ({ ...v, mode: chosen }))
+                setStage(chosen === 'size' ? 'size' : 'quality')
+              }}
+              onCancel={clearSource}
+              showHints={band !== 'compact'}
+            />
+            <HintBar
+              width={width}
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'remove file'],
+              ]}
+            />
+          </Box>
+        ) : null}
+
+        {stage === 'size' && sizeSpec?.kind === 'text' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colourProp(palette.label)}>{sizeSpec.label}</Text>
+            <Prompt
+              value={text}
+              onChange={setText}
+              onSubmit={submitSize}
+              placeholder={sizeSpec.placeholder}
+              isActive
+              variant={band === 'compact' ? 'plain' : 'field'}
+              width={width}
+            />
+            {sizeError ? (
+              <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${sizeError}`}</Text>
+            ) : null}
+            <HintBar
+              width={width}
+              pairs={[
+                ['↵', 'confirm'],
+                ['ctrl-u', 'clear'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
 
         {stage === 'target' && source && targetSpec?.kind === 'select' ? (
           <Box flexDirection="column" marginBottom={1}>
@@ -609,11 +872,7 @@ export function App({
             />
             <Text color={colourProp(palette.dim)}>
               {`  ${SYMBOLS.arrow} ${middleEllipsis(
-                `${renaming.destination}/${text || renaming.stem}${
-                  typeof values.target === 'string'
-                    ? primaryExtension(values.target as FormatId)
-                    : ''
-                }`,
+                `${renaming.destination}/${text || renaming.stem}${renaming.ext}`,
                 Math.max(12, width - 4),
               )}`}
             </Text>
@@ -658,12 +917,28 @@ export function App({
 
         {stage === 'converting' ? (
           <Box marginBottom={1}>
-            <Text color={colourProp(palette.dim)}>Converting…</Text>
+            <Text color={colourProp(palette.dim)}>
+              {attempt
+                ? `Finding the right quality — attempt ${attempt.n} of ${attempt.of}…`
+                : 'Converting…'}
+            </Text>
           </Box>
         ) : null}
 
         {stage === 'result' && lastResult ? (
           <Box flexDirection="column" marginBottom={1}>
+            {/* Measured, not estimated: this number came from actually
+                encoding a candidate. Offered rather than applied — the file
+                the user asked for is already written. */}
+            {suggestion ? (
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.warn)}>
+                  {`${SYMBOLS.warn} ${FORMATS[suggestion.target].label} would be ${formatBytes(
+                    suggestion.bytes,
+                  )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
+                </Text>
+              </Box>
+            ) : null}
             {/* Only where the terminal makes OSC 8 clickable. Otherwise
                 fileLink falls back to a bare file:// URL — a long, unreadable
                 line that says nothing the hints below it do not already say,
@@ -679,6 +954,12 @@ export function App({
               width={width}
               pairs={[
                 ['↵', 'convert another'],
+                ...(suggestion
+                  ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
+                      string,
+                      string,
+                    ][])
+                  : []),
                 ['o', 'open'],
                 ['s', revealLabel().toLowerCase()],
                 ['q', 'quit'],
@@ -689,6 +970,18 @@ export function App({
 
         {stage === 'idle' ? (
           <Box flexDirection="column">
+            {/* Ink delivers input to every mounted useInput, so Prompt and
+                the palette's Select are both live while this is open — which
+                is what makes typing narrow the list and the arrows move the
+                selection at the same time. */}
+            {isCommandBuffer(text) ? (
+              <CommandPalette
+                fragment={text.slice(1)}
+                width={width}
+                onRun={runCommand}
+                onCancel={() => setText('')}
+              />
+            ) : null}
             <Prompt
               value={text}
               onChange={setText}

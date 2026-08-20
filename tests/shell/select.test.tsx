@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
-import type { Choice } from '../../src/core/actions.js'
+import type { Choice } from '../../src/core/actions/index.js'
 import { Select } from '../../src/shell/components/Select.js'
 
 /**
