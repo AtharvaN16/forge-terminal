@@ -308,3 +308,51 @@ describe('convertAction honours the fill colour it is given', () => {
     expect(job?.op === 'convert' && job.options.background).toBe('#ffffff')
   })
 })
+
+describe('page selection keeps naming and ordering in step', () => {
+  const doc = {
+    kind: 'document' as const,
+    path: '/Users/me/report.pdf',
+    format: 'pdf' as const,
+    bytes: 1000,
+    pages: 12,
+    encrypted: false,
+  }
+
+  /** The Nth output must hold the Nth selected page. Phase 3 shipped a bug
+   *  where the engine ordered pages one way and the naming another, so
+   *  `doc-p5.pdf` contained page 2. Every test that existed used ascending
+   *  pages, which cannot tell "preserved" apart from "coincidentally sorted". */
+  const planFor = (pages: number[]) => {
+    const [job] = convertAction.plan([doc], { target: 'jpeg', pages })
+    if (job?.op !== 'convert') throw new Error('expected a convert job')
+    return job
+  }
+
+  it('normalises a non-ascending selection rather than trusting the order given', () => {
+    const job = planFor([4, 0, 2])
+    expect(job.options.pages).toEqual([0, 2, 4])
+  })
+
+  it('names each output after the page it actually holds', () => {
+    // The correspondence itself: outputs[i] must be named for pages[i].
+    const job = planFor([4, 0, 2])
+    const names = job.outputs.map((p) => p.split('/').pop())
+    expect(names).toEqual(['report-1.jpg', 'report-3.jpg', 'report-5.jpg'])
+    expect(job.options.pages).toEqual([0, 2, 4])
+  })
+
+  it('drops duplicates instead of writing the same page twice', () => {
+    const job = planFor([2, 2, 0])
+    expect(job.options.pages).toEqual([0, 2])
+    expect(job.outputs).toHaveLength(2)
+  })
+
+  it('keeps outputs and pages the same length, which the engine requires', () => {
+    // pdfium throws on a mismatch, so a plan that violates this is a crash.
+    for (const sel of [[0], [4, 0, 2], [11, 0], [2, 2, 0]]) {
+      const job = planFor(sel)
+      expect(job.outputs.length).toBe(job.options.pages?.length)
+    }
+  })
+})
