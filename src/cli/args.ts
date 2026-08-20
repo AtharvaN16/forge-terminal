@@ -36,9 +36,34 @@ export interface CompressIntent {
   debug: boolean
 }
 
+/**
+ * A page operation on one or more PDFs: merge, split, extract, delete or
+ * rotate. Kept as its own `kind` — distinct from `ConvertIntent` — because it
+ * has no target format and, for split/extract/delete/rotate, exactly one
+ * input rather than a batch. `action` mirrors `Action['id']` from
+ * `core/actions`, which is how `execute()` looks the action up.
+ */
+export interface PageOpIntent {
+  kind: 'pageop'
+  action: 'merge' | 'split' | 'extract' | 'delete' | 'rotate'
+  inputs: string[]
+  /** Raw range text for --extract / --delete, parsed once the page count is known. */
+  pages?: string
+  /** With --extract, write one file per page instead of one file. */
+  separate?: boolean
+  /** Degrees for --rotate: 90, 180 or 270. */
+  rotate?: number
+  split?:
+    | { mode: 'every-page' }
+    | { mode: 'every-n'; n: number }
+    | { mode: 'points'; after: number[] }
+  debug: boolean
+}
+
 export type Intent =
   | ConvertIntent
   | CompressIntent
+  | PageOpIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
   | ConfigIntent
@@ -125,6 +150,12 @@ export function parseArgs(argv: string[]): Intent {
     .option('--concurrency <n>', 'how many files to convert at once')
     .option('--debug', 'show underlying errors', false)
     .option('--formats', 'list supported formats', false)
+    .option('--merge', 'combine several PDFs into one')
+    .option('--split <mode>', 'every-page | every=N | at=N,N')
+    .option('--extract <pages>', 'keep only these pages, e.g. 3-7,12')
+    .option('--delete <pages>', 'drop these pages')
+    .option('--rotate <degrees>', '90, 180 or 270')
+    .option('--separate', 'with --extract, write one file per page')
     .helpOption('-h, --help', 'show this help')
     .version('0.1.0', '-V, --version', 'show the version')
     .exitOverride()
@@ -136,6 +167,67 @@ export function parseArgs(argv: string[]): Intent {
   const inputs = program.args
 
   if (opts.formats) return { kind: 'formats' }
+
+  /**
+   * A page-operation flag is checked ahead of the shell fallback below, not
+   * just ahead of --to: `forge --merge` with zero inputs must report "no
+   * files given", not silently open the interactive shell the way a bare
+   * `forge` does.
+   */
+  const chosen = (['merge', 'split', 'extract', 'delete', 'rotate'] as const).filter(
+    (name) => opts[name] !== undefined,
+  )
+  if (chosen.length > 1) {
+    throw invalidArguments(
+      `Use one operation at a time — got ${chosen.map((c) => `--${c}`).join(' and ')}.`,
+    )
+  }
+
+  if (chosen.length === 1) {
+    const action = chosen[0] as (typeof chosen)[number]
+    if (inputs.length === 0) {
+      throw invalidArguments(
+        'No files given.',
+        `Name a PDF, for example: forge doc.pdf --${action}`,
+      )
+    }
+
+    const pageOp: PageOpIntent = {
+      kind: 'pageop',
+      action,
+      inputs,
+      debug: Boolean(opts.debug),
+    }
+
+    if (action === 'rotate') {
+      const deg = Number(opts.rotate)
+      if (!Number.isInteger(deg) || deg % 90 !== 0 || deg === 0 || deg >= 360) {
+        throw invalidArguments(`--rotate takes a multiple of 90 below 360, not "${opts.rotate}".`)
+      }
+      pageOp.rotate = deg
+    }
+
+    if (action === 'extract' || action === 'delete') {
+      pageOp.pages = String(opts[action])
+      if (action === 'extract' && opts.separate) pageOp.separate = true
+    }
+
+    if (action === 'split') {
+      const raw = String(opts.split)
+      const every = raw.match(/^every=(\d+)$/)
+      const at = raw.match(/^at=([\d,\s]+)$/)
+      if (raw === 'every-page') pageOp.split = { mode: 'every-page' }
+      else if (every?.[1]) pageOp.split = { mode: 'every-n', n: Number(every[1]) }
+      else if (at?.[1]) {
+        pageOp.split = { mode: 'points', after: at[1].split(',').map((s) => Number(s.trim())) }
+      } else {
+        throw invalidArguments(`--split takes every-page, every=N or at=N,N — not "${raw}".`)
+      }
+    }
+
+    return pageOp
+  }
+
   if (inputs.length === 0 && !opts.to && opts.quality === undefined && opts.maxSize === undefined) {
     return { kind: 'shell' }
   }
