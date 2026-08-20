@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
 import { describe, expect, it, vi } from 'vitest'
-import type { PathPreset } from '../../src/core/actions.js'
+import type { PathPreset } from '../../src/core/actions/index.js'
 import { PathInput } from '../../src/shell/components/PathInput.js'
 import { middleEllipsis } from '../../src/shell/width.js'
 

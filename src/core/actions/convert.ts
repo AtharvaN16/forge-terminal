@@ -1,51 +1,12 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { expandTilde, type Preferences } from '../config/preferences.js'
-import { targetsFor } from './capabilities.js'
-import { invalidArguments } from './errors.js'
-import { FORMATS, formatById } from './formats.js'
-import { resolveOutputPath } from './output-path.js'
-import type { ConvertOptions, FormatId, FormatSpec, Job, SourceInfo } from './types.js'
-
-export interface Choice {
-  value: string
-  label: string
-  hint?: string
-  /** A short tag rendered in the accent colour, set apart from the hint. */
-  badge?: string
-}
-
-export interface PathPreset {
-  label: string
-  path: string
-}
-
-export type OptionSpec =
-  | { kind: 'select'; id: string; label: string; choices: Choice[]; default: string }
-  | {
-      kind: 'slider'
-      id: string
-      label: string
-      min: number
-      max: number
-      step: number
-      default: number
-    }
-  | { kind: 'path'; id: string; label: string; default: string; presets: PathPreset[] }
-
-export interface Action {
-  id: string
-  label: string
-  hint: string
-  appliesTo(source: SourceInfo): boolean
-  /**
-   * Takes the answers so far, because some options depend on earlier ones —
-   * the quality slider only makes sense once a lossy target is chosen.
-   * (Spec §6 declared this without the second parameter; see the plan.)
-   */
-  options(source: SourceInfo, values: Record<string, unknown>, prefs: Preferences): OptionSpec[]
-  plan(source: SourceInfo, values: Record<string, unknown>): Job[]
-}
+import { expandTilde, type Preferences } from '../../config/preferences.js'
+import { targetsFor } from '../capabilities.js'
+import { invalidArguments } from '../errors.js'
+import { FORMATS, formatById } from '../formats.js'
+import { resolveOutputPath } from '../output-path.js'
+import type { ConvertOptions, FormatId, FormatSpec, Job, SourceInfo } from '../types.js'
+import type { Action, OptionSpec, PathPreset } from './index.js'
 
 function targetSelect(source: SourceInfo): OptionSpec {
   // Converting a file to its own format changes nothing the user can see,
@@ -182,10 +143,4 @@ export const convertAction: Action = {
 
     return [{ source, target, output, options }]
   },
-}
-
-export const ACTIONS: Action[] = [convertAction]
-
-export function actionsFor(source: SourceInfo): Action[] {
-  return ACTIONS.filter((a) => a.appliesTo(source))
 }

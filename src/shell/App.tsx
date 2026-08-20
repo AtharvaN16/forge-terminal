@@ -7,8 +7,8 @@ import {
   type Preferences,
   savePreferences,
 } from '../config/preferences.js'
-import type { OptionSpec } from '../core/actions.js'
-import { convertAction } from '../core/actions.js'
+import type { OptionSpec } from '../core/actions/index.js'
+import { convertAction } from '../core/actions/index.js'
 import { isForgeError, unexpectedError } from '../core/errors.js'
 import { primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'

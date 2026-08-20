@@ -1,7 +1,7 @@
 import { Box, Text, useInput } from 'ink'
 import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
-import type { Choice, PathPreset } from '../../core/actions.js'
+import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
