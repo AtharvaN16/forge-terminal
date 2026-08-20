@@ -1,10 +1,13 @@
 import { isForgeError } from '../core/errors.js'
 import type { FormatId, Job, SourceInfo } from '../core/types.js'
 import { imageEngine } from './image.js'
+import { mupdfEngine } from './mupdf.js'
 import { pdfEngine } from './pdf.js'
 import type { Engine } from './types.js'
 
-export const ENGINES: Engine[] = [imageEngine, pdfEngine]
+// Order matters: imageEngine declines a PDF quickly, pdfEngine probes it
+// successfully, and mupdfEngine never probes — it must stay last.
+export const ENGINES: Engine[] = [imageEngine, pdfEngine, mupdfEngine]
 
 export function engineForSource(format: FormatId): Engine | undefined {
   return ENGINES.find((e) => e.reads.has(format))
