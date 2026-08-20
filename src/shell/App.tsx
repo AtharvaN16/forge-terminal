@@ -18,7 +18,6 @@ import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
-import { completePath } from './complete.js'
 import { FileCard } from './components/FileCard.js'
 import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
@@ -144,7 +143,6 @@ export function App({
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
-  const [matches, setMatches] = useState<string[]>([])
   /** Destination and proposed stem while the rename field is open. */
   const [renaming, setRenaming] = useState<{ destination: string; stem: string } | null>(null)
 
@@ -265,21 +263,9 @@ export function App({
    */
   const requestId = useRef(0)
 
-  const complete = useCallback(() => {
-    const fragment = textRef.current
-    completePath(fragment)
-      .then(({ completed, matches: found }) => {
-        if (textRef.current !== fragment) return // superseded by more typing
-        if (completed !== fragment) setText(completed)
-        setMatches(found)
-      })
-      .catch(showError)
-  }, [showError])
-
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
-      setMatches([])
       if (!trimmed) return
 
       if (trimmed === '/theme') {
@@ -322,7 +308,6 @@ export function App({
   const clearSource = () => {
     setSource(null)
     setValues({})
-    setMatches([])
     setStage('idle')
   }
 
@@ -701,8 +686,6 @@ export function App({
               isActive
               bordered={band !== 'compact'}
               width={width}
-              onTab={complete}
-              matches={matches}
             />
             <HintBar
               width={width}
@@ -714,7 +697,7 @@ export function App({
                     ]
                   : [
                       ['↵', 'send'],
-                      ['tab', 'complete path'],
+                      ['ctrl-u', 'clear'],
                       ['ctrl-c', 'quit'],
                     ]
               }

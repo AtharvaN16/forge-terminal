@@ -146,13 +146,13 @@ Press `d` on any row to make it the new default. It takes effect immediately
 — the tag moves, the banner updates — and it does not advance the flow, since
 you are still choosing where *this* conversion goes.
 
-### Tab completion
+### Naming the output
 
-Tab in the prompt completes paths against the filesystem. A unique match
-completes in place; several complete the common prefix and list the
-candidates underneath. Directories gain a trailing `/` so the next Tab
-descends, `~` expands, and matching is case-insensitive to match the
-filesystem. Only folders and files Forge can actually read are offered.
+After choosing where the file goes, Forge asks what to call it, pre-filled
+with the current name and showing the resolved path as you type. `ctrl-u`
+clears the field, arrow keys move the caret, and `esc` goes back to the
+folder list. If a file of that name is already there, Forge asks — keep
+both, rename, replace, or cancel.
 
 ## Usage
 
