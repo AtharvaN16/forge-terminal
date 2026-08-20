@@ -63,6 +63,12 @@ over. Re-measured here: 24 A4 pages, each a photo plus 18 lines of text.
    object corrupts the wasm heap (`table index is out of bounds`). Take a fresh
    `doc.getPage(n)` for every render, or iterate `doc.pages()` once.
 
+**Disk cost is slightly better, and the §2 "no brew step" claim survives.**
+`@hyzyla/pdfium` is **11 MB** against mupdf's 14 MB, has **zero dependencies**,
+and declares **no install or postinstall script** — so it stays pure JS/WASM with
+nothing to compile at install time, which was the constraint that ruled out
+native bindings in the first place.
+
 `qpdf-wasm` (Apache-2.0) could restore unlock later, but it is v0.1.0 and is not
 being taken on now.
 
