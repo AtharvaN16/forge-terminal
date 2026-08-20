@@ -42,7 +42,13 @@ export interface Action {
    * (Spec §6 declared this without the second parameter; see the plan.)
    */
   options(source: SourceInfo, values: Record<string, unknown>, prefs: Preferences): OptionSpec[]
-  plan(source: SourceInfo, values: Record<string, unknown>): Job[]
+  /**
+   * Both built-in actions only ever produce a `convert` job today — one
+   * source, one output — so the return type is narrowed to that member
+   * rather than the full `Job` union. A later action that plans a page
+   * operation widens this.
+   */
+  plan(source: SourceInfo, values: Record<string, unknown>): Extract<Job, { op: 'convert' }>[]
 }
 
 export { compressAction } from './compress.js'

@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises'
 import { PDFDocument } from 'pdf-lib'
-import type { DocumentInfo, FormatId, Job, Phase, Result } from '../core/types.js'
+import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
@@ -35,11 +35,12 @@ export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
   writes: WRITES,
+  ops: new Set<Job['op']>(['merge', 'split', 'extract', 'delete', 'rotate']),
   probe,
-  // The page operations arrive in tasks 6-9, and the rename of this method to
-  // `run` (with the `ops` capability set) arrives in task 4. Until then this
-  // engine exists to be probed with.
-  async convert(_job: Job, _onPhase: (p: Phase) => void): Promise<Result> {
-    throw new Error('the pdf engine implements no conversions')
+  // The five page operations are declared above so engineForJob routes to
+  // this engine, but each one's actual implementation arrives in tasks 6-9.
+  // Until then this engine exists to be probed with.
+  async run(_job: Job, _onPhase: (p: Progress) => void): Promise<Result> {
+    throw new Error('the pdf engine does not implement this operation yet')
   },
 }

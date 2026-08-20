@@ -15,7 +15,7 @@ describe('buildPlan', () => {
     const resolved = await resolveInputs([a], { recursive: false })
     const plan = await buildPlan({ resolved, target: 'webp', options, force: false })
     expect(plan.jobs).toHaveLength(1)
-    expect(plan.jobs[0]?.output).toBe(join(dir, 'a.webp'))
+    expect(plan.jobs[0]?.outputs[0]).toBe(join(dir, 'a.webp'))
   })
 
   it('rejects an impossible target and names the possible ones', async () => {

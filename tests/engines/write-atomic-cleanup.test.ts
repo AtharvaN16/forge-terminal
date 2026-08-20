@@ -31,13 +31,14 @@ describe('writeAtomic cleanup', () => {
     const bad = await makeCorruptFile(dir, 'bad.bin')
 
     const doomed: Job = {
-      source: { ...source, path: bad },
+      op: 'convert',
+      sources: [{ ...source, path: bad }],
+      outputs: [`${dir}/out.webp`],
       target: 'webp',
-      output: `${dir}/out.webp`,
       options: { background: '#ffffff', keepMetadata: false },
     }
 
-    const error = await imageEngine.convert(doomed, () => {}).catch((e: unknown) => e)
+    const error = await imageEngine.run(doomed, () => {}).catch((e: unknown) => e)
     expect(isForgeError(error)).toBe(true)
     // The failed rm() must never replace the real cause with its own error.
     const cause = (error as ForgeError).cause

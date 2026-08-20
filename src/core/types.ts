@@ -48,12 +48,36 @@ export interface ConvertOptions {
   keepMetadata: boolean
 }
 
-export interface Job {
-  source: SourceInfo
-  target: FormatId
-  output: string
-  options: ConvertOptions
-}
+/**
+ * One unit of work.
+ *
+ * A union rather than a widened `{sources[], outputs[]}` because arity is part
+ * of what each operation means: only `merge` takes several sources, only
+ * `split` and `extract` produce several outputs. Tuple types make that a
+ * compile error rather than a convention.
+ *
+ * `cuts` are 0-based indices of the page *after which* a cut falls. `pages`
+ * are 0-based page indices. Both are 1-based only in what the user sees.
+ */
+export type Job =
+  | {
+      op: 'convert'
+      sources: [SourceInfo]
+      outputs: [string]
+      target: FormatId
+      options: ConvertOptions
+    }
+  | { op: 'merge'; sources: SourceInfo[]; outputs: [string] }
+  | { op: 'split'; sources: [DocumentInfo]; outputs: string[]; cuts: number[] }
+  | {
+      op: 'extract'
+      sources: [DocumentInfo]
+      outputs: string[]
+      pages: number[]
+      separate: boolean
+    }
+  | { op: 'delete'; sources: [DocumentInfo]; outputs: [string]; pages: number[] }
+  | { op: 'rotate'; sources: [DocumentInfo]; outputs: [string]; turns: 1 | 2 | 3 }
 
 export interface Warning {
   code: 'animation-flattened'
@@ -66,4 +90,15 @@ export interface Result {
   warnings: Warning[]
 }
 
+/**
+ * Where a job has got to.
+ *
+ * The `page` variant may only be emitted where the total is genuinely known
+ * in advance. Spec §12 forbids fabricated progress, and a page count is real.
+ */
+export type Progress =
+  | { phase: 'reading' | 'decoding' | 'encoding' | 'writing' }
+  | { phase: 'page'; done: number; total: number }
+
+/** Kept as an alias so existing render code compiles — it is now Progress's first variant. */
 export type Phase = 'reading' | 'decoding' | 'encoding' | 'writing'

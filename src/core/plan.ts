@@ -59,7 +59,7 @@ export async function buildPlan(req: PlanRequest): Promise<Plan> {
     if (owner) {
       failures.push({
         path: source.path,
-        error: outputCollision([owner.source.path, source.path], output),
+        error: outputCollision([owner.sources[0].path, source.path], output),
       })
       continue
     }
@@ -69,7 +69,13 @@ export async function buildPlan(req: PlanRequest): Promise<Plan> {
       continue
     }
 
-    const job: Job = { source, target: req.target, output, options: req.options }
+    const job: Job = {
+      op: 'convert',
+      sources: [source],
+      outputs: [output],
+      target: req.target,
+      options: req.options,
+    }
     jobs.push(job)
     claimed.set(key, job)
   }

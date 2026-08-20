@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
-import type { FormatId, Job, Phase } from '../../src/core/types.js'
+import type { FormatId, Job, Progress } from '../../src/core/types.js'
 import { imageEngine } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
 import {
@@ -18,9 +18,10 @@ import {
 
 async function job(input: string, target: FormatId, output: string): Promise<Job> {
   return {
-    source: await probe(input),
+    op: 'convert',
+    sources: [await probe(input)],
+    outputs: [output],
     target,
-    output,
     options: { background: '#ffffff', keepMetadata: false },
   }
 }
@@ -44,7 +45,7 @@ describe('convert — format pairs', () => {
       if (from === 'webp') await sharp(seed).webp().toFile(input)
 
       const out = join(dir, `out.${to}`)
-      const result = await imageEngine.convert(await job(input, to, out), () => {})
+      const result = await imageEngine.run(await job(input, to, out), () => {})
 
       const meta = await sharp(out).metadata()
       expect(meta.format).toBe(to)
@@ -56,16 +57,21 @@ describe('convert — format pairs', () => {
   it('reports phases in order and never invents a percentage', async () => {
     const dir = await makeTempDir()
     const input = await makeJpeg(dir, 'a.jpg')
-    const phases: Phase[] = []
-    await imageEngine.convert(await job(input, 'webp', join(dir, 'a.webp')), (p) => phases.push(p))
-    expect(phases).toEqual(['reading', 'decoding', 'encoding', 'writing'])
+    const phases: Progress[] = []
+    await imageEngine.run(await job(input, 'webp', join(dir, 'a.webp')), (p) => phases.push(p))
+    expect(phases).toEqual([
+      { phase: 'reading' },
+      { phase: 'decoding' },
+      { phase: 'encoding' },
+      { phase: 'writing' },
+    ])
   })
 
   it('creates missing intermediate directories', async () => {
     const dir = await makeTempDir()
     const input = await makeJpeg(dir, 'a.jpg')
     const out = join(dir, 'deep', 'nested', 'a.webp')
-    await imageEngine.convert(await job(input, 'webp', out), () => {})
+    await imageEngine.run(await job(input, 'webp', out), () => {})
     expect((await stat(out)).isFile()).toBe(true)
   })
 
@@ -78,13 +84,13 @@ describe('convert — format pairs', () => {
     expect(sourceColours).toBeGreaterThan(10_000)
 
     const pngOut = join(dir, 'out.png')
-    await imageEngine.convert(await job(input, 'png', pngOut), () => {})
+    await imageEngine.run(await job(input, 'png', pngOut), () => {})
     const pngMeta = await sharp(pngOut).metadata()
     expect(pngMeta.isPalette).toBeFalsy()
     expect(await countColours(pngOut)).toBe(sourceColours)
 
     const tiffOut = join(dir, 'out.tiff')
-    await imageEngine.convert(await job(input, 'tiff', tiffOut), () => {})
+    await imageEngine.run(await job(input, 'tiff', tiffOut), () => {})
     expect(await countColours(tiffOut)).toBe(sourceColours)
   })
 
@@ -95,13 +101,14 @@ describe('convert — format pairs', () => {
     const bad = await makeCorruptFile(dir, 'bad.bin')
 
     const doomed: Job = {
-      source: { ...source, path: bad },
+      op: 'convert',
+      sources: [{ ...source, path: bad }],
+      outputs: [join(dir, 'out.webp')],
       target: 'webp',
-      output: join(dir, 'out.webp'),
       options: { background: '#ffffff', keepMetadata: false },
     }
 
-    await expect(imageEngine.convert(doomed, () => {})).rejects.toSatisfy(isForgeError)
+    await expect(imageEngine.run(doomed, () => {})).rejects.toSatisfy(isForgeError)
     const leftovers = (await readdir(dir)).filter((f) => f.includes('.forge-tmp'))
     expect(leftovers).toEqual([])
   })
@@ -121,7 +128,7 @@ describe('convert — format pairs', () => {
     // A path *through* a regular file: mkdir -p fails with ENOTDIR.
     const doomed = await job(jpg, 'webp', join(jpg, 'nested', 'out.webp'))
 
-    await expect(imageEngine.convert(doomed, () => {})).rejects.toSatisfy(
+    await expect(imageEngine.run(doomed, () => {})).rejects.toSatisfy(
       (e: unknown) => isForgeError(e) && e.code === 'output-invalid',
     )
   })
@@ -133,13 +140,14 @@ describe('convert — format pairs', () => {
     const bad = await makeCorruptFile(dir, 'bad.bin')
 
     const doomed: Job = {
-      source: { ...source, path: bad },
+      op: 'convert',
+      sources: [{ ...source, path: bad }],
+      outputs: [join(dir, 'out.webp')],
       target: 'webp',
-      output: join(dir, 'out.webp'),
       options: { background: '#ffffff', keepMetadata: false },
     }
 
-    await expect(imageEngine.convert(doomed, () => {})).rejects.toSatisfy(
+    await expect(imageEngine.run(doomed, () => {})).rejects.toSatisfy(
       (e: unknown) => isForgeError(e) && e.code === 'conversion-failed',
     )
   })

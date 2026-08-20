@@ -58,10 +58,11 @@ describe('runJobs', () => {
     const bad = await makeCorruptFile(dir, 'bad.bin')
     const template = jobs[0]
     if (!template) throw new Error('planFor(dir, 3) produced no jobs')
+    if (template.op !== 'convert') throw new Error('planFor produced a non-convert job')
     const broken: Job = {
       ...template,
-      source: { ...template.source, path: bad },
-      output: join(dir, 'bad.webp'),
+      sources: [{ ...template.sources[0], path: bad }],
+      outputs: [join(dir, 'bad.webp')],
     }
 
     const summary = await runJobs([...jobs, broken], {})
@@ -81,9 +82,15 @@ describe('runJobs', () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'a.jpg')
     const source = await probe(jpg)
-    // heic is readable but no engine writes it — engineForTarget returns
+    // heic is readable but no engine writes it — engineForJob returns
     // undefined, exercising the run loop's no-engine branch directly.
-    const job: Job = { source, target: 'heic', output: join(dir, 'a.heic'), options }
+    const job: Job = {
+      op: 'convert',
+      sources: [source],
+      outputs: [join(dir, 'a.heic')],
+      target: 'heic',
+      options,
+    }
 
     const events: RunEvent[] = []
     const summary = await runJobs([job], { onEvent: (e) => events.push(e) })

@@ -82,9 +82,9 @@ describe('compress action', () => {
     })
     // Same folder, same extension — without a suffix this is the input, and
     // buildPlan would refuse every run.
-    expect(job?.output).not.toBe(source().path)
-    expect(job?.output).toContain('photo-small')
-    expect(job?.output.endsWith('.jpg')).toBe(true)
+    expect(job?.outputs[0]).not.toBe(source().path)
+    expect(job?.outputs[0]).toContain('photo-small')
+    expect(job?.outputs[0].endsWith('.jpg')).toBe(true)
   })
 
   it('carries no quality when searching for a size — the search decides it', () => {

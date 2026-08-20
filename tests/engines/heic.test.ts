@@ -72,8 +72,14 @@ describe('HEIC at photo size', () => {
     }
     const source = await probe(heic)
     const output = join(dir, 'out.jpg')
-    await imageEngine.convert(
-      { source, target: 'jpeg', output, options: { background: '#ffffff', keepMetadata: false } },
+    await imageEngine.run(
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'jpeg',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     const meta = await sharp(output).metadata()
@@ -120,11 +126,12 @@ describe('HEIC conversion', () => {
       expect(source.format).toBe('heic')
 
       const output = join(dir, `out.${target === 'jpeg' ? 'jpg' : target}`)
-      const result = await imageEngine.convert(
+      const result = await imageEngine.run(
         {
-          source,
+          op: 'convert',
+          sources: [source],
+          outputs: [output],
           target,
-          output,
           options: { background: '#ffffff', keepMetadata: false },
         },
         () => {},
@@ -148,11 +155,12 @@ describe('HEIC conversion', () => {
 
     const before = (await readdir(tmpdir())).filter((f) => f.startsWith('forge-heic-'))
     const source = await probe(heic)
-    await imageEngine.convert(
+    await imageEngine.run(
       {
-        source,
+        op: 'convert',
+        sources: [source],
+        outputs: [join(dir, 'out.png')],
         target: 'png',
-        output: join(dir, 'out.png'),
         options: { background: '#ffffff', keepMetadata: false },
       },
       () => {},
@@ -182,11 +190,12 @@ describe('HEIC conversion', () => {
 
     const source = await probe(heic)
     const output = join(dir, 'tall.png')
-    await imageEngine.convert(
+    await imageEngine.run(
       {
-        source,
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
         target: 'png',
-        output,
         options: { background: '#ffffff', keepMetadata: false },
       },
       () => {},

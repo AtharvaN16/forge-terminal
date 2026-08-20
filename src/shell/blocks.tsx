@@ -81,7 +81,14 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   }
 
   const { job, outputBytes, warnings } = block.result
-  const fromLabel = FORMATS[job.source.format].label
+  // Every Result rendered here today comes from a conversion or a
+  // compression — both plan a `convert` job — and this card is built around
+  // that shape: one source format becoming one target format. A page
+  // operation's result gets its own rendering once one exists.
+  if (job.op !== 'convert') {
+    throw new Error(`HistoryEntry cannot render a "${job.op}" result yet`)
+  }
+  const fromLabel = FORMATS[job.sources[0].format].label
   const toLabel = FORMATS[job.target].label
 
   /**
@@ -95,8 +102,8 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
    * keeps the single-line form.
    */
   const band = bandFor(width)
-  const fromName = basename(job.source.path)
-  const toName = basename(job.output)
+  const fromName = basename(job.sources[0].path)
+  const toName = basename(job.outputs[0])
 
   /**
    * Side by side each box gets under half the terminal, which a real
@@ -121,13 +128,15 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
           <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
           <Text
             color={colourProp(palette.dim)}
-          >{`  ${middleEllipsis(basename(job.output), Math.max(8, width - 8))}`}</Text>
+          >{`  ${middleEllipsis(basename(job.outputs[0]), Math.max(8, width - 8))}`}</Text>
         </Text>
         <Text>
           <Text color={colourProp(palette.dim)}>
-            {`  ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+            {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
           </Text>
-          <Text color={colourProp(palette.ok)}>{changePhrase(job.source.bytes, outputBytes)}</Text>
+          <Text color={colourProp(palette.ok)}>
+            {changePhrase(job.sources[0].bytes, outputBytes)}
+          </Text>
         </Text>
         {warnings.map((w) => (
           <Text key={w.message} color={colourProp(palette.warn)}>
@@ -207,10 +216,10 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
         <Box marginTop={1}>
           <Text>
             <Text color={colourProp(palette.dim)}>
-              {`  ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+              {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
             </Text>
             <Text color={colourProp(palette.ok)}>
-              {changePhrase(job.source.bytes, outputBytes)}
+              {changePhrase(job.sources[0].bytes, outputBytes)}
             </Text>
           </Text>
         </Box>
@@ -250,9 +259,11 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
       <Box marginTop={1}>
         <Text>
           <Text color={colourProp(palette.dim)}>
-            {`  ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+            {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
           </Text>
-          <Text color={colourProp(palette.ok)}>{changePhrase(job.source.bytes, outputBytes)}</Text>
+          <Text color={colourProp(palette.ok)}>
+            {changePhrase(job.sources[0].bytes, outputBytes)}
+          </Text>
         </Text>
       </Box>
       {warnings.map((w) => (

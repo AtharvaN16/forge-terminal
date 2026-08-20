@@ -120,10 +120,11 @@ export const compressAction: Action = {
 
     return [
       {
-        source,
+        op: 'convert',
+        sources: [source],
         // The whole point of the action: the format does not change.
         target: source.format,
-        output,
+        outputs: [output],
         options: {
           background: '#ffffff',
           keepMetadata: false,

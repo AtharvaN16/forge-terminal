@@ -2,7 +2,7 @@
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
-import type { FormatId, Job } from '../../src/core/types.js'
+import type { ConvertOptions, FormatId, Job } from '../../src/core/types.js'
 import { imageEngine } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
 import { makeOrientedJpeg, makeTempDir, makeTransparentPng, pixelAt } from '../helpers/fixtures.js'
@@ -11,12 +11,13 @@ async function job(
   input: string,
   target: FormatId,
   output: string,
-  options: Partial<Job['options']> = {},
+  options: Partial<ConvertOptions> = {},
 ): Promise<Job> {
   return {
-    source: await probe(input),
+    op: 'convert',
+    sources: [await probe(input)],
+    outputs: [output],
     target,
-    output,
     options: { background: '#ffffff', keepMetadata: false, ...options },
   }
 }
@@ -27,7 +28,7 @@ describe('exif orientation', () => {
     const input = await makeOrientedJpeg(dir, 'rot.jpg', 6)
     const out = join(dir, 'rot.png')
 
-    await imageEngine.convert(await job(input, 'png', out), () => {})
+    await imageEngine.run(await job(input, 'png', out), () => {})
 
     const meta = await sharp(out).metadata()
     expect(meta.width).toBe(80)
@@ -39,7 +40,7 @@ describe('exif orientation', () => {
     const input = await makeOrientedJpeg(dir, 'plain.jpg', 1)
     const out = join(dir, 'plain.png')
 
-    await imageEngine.convert(await job(input, 'png', out), () => {})
+    await imageEngine.run(await job(input, 'png', out), () => {})
 
     const meta = await sharp(out).metadata()
     expect(meta.width).toBe(40)
@@ -53,7 +54,7 @@ describe('alpha flattening', () => {
     const input = await makeTransparentPng(dir, 't.png')
     const out = join(dir, 't.jpg')
 
-    await imageEngine.convert(await job(input, 'jpeg', out), () => {})
+    await imageEngine.run(await job(input, 'jpeg', out), () => {})
 
     const [r, g, b] = await pixelAt(out, 0, 0)
     expect(r).toBeGreaterThan(250)
@@ -66,7 +67,7 @@ describe('alpha flattening', () => {
     const input = await makeTransparentPng(dir, 't.png')
     const out = join(dir, 't-black.jpg')
 
-    await imageEngine.convert(await job(input, 'jpeg', out, { background: '#000000' }), () => {})
+    await imageEngine.run(await job(input, 'jpeg', out, { background: '#000000' }), () => {})
 
     const [r, g, b] = await pixelAt(out, 0, 0)
     expect(r).toBeLessThan(5)
@@ -79,7 +80,7 @@ describe('alpha flattening', () => {
     const input = await makeTransparentPng(dir, 't.png')
     const out = join(dir, 't.webp')
 
-    await imageEngine.convert(await job(input, 'webp', out), () => {})
+    await imageEngine.run(await job(input, 'webp', out), () => {})
 
     expect((await sharp(out).metadata()).hasAlpha).toBe(true)
   })

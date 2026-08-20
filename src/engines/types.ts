@@ -1,4 +1,4 @@
-import type { FormatId, Job, Phase, Result, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
 
 /**
  * The seam that lets PDF, video and audio engines arrive later without the
@@ -8,6 +8,8 @@ export interface Engine {
   id: string
   reads: ReadonlySet<FormatId>
   writes: ReadonlySet<FormatId>
+  /** Which operations this engine implements. */
+  ops: ReadonlySet<Job['op']>
   probe(path: string): Promise<SourceInfo>
-  convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result>
+  run(job: Job, onPhase: (progress: Progress) => void): Promise<Result>
 }

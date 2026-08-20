@@ -2,7 +2,7 @@
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
-import type { FormatId, Job } from '../../src/core/types.js'
+import type { ConvertOptions, FormatId, Job } from '../../src/core/types.js'
 import { imageEngine } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
 import { makeAnimatedGif, makeOrientedJpeg, makeTempDir } from '../helpers/fixtures.js'
@@ -11,12 +11,13 @@ async function job(
   input: string,
   target: FormatId,
   output: string,
-  options: Partial<Job['options']> = {},
+  options: Partial<ConvertOptions> = {},
 ): Promise<Job> {
   return {
-    source: await probe(input),
+    op: 'convert',
+    sources: [await probe(input)],
+    outputs: [output],
     target,
-    output,
     options: { background: '#ffffff', keepMetadata: false, ...options },
   }
 }
@@ -27,7 +28,7 @@ describe('metadata', () => {
     const input = await makeOrientedJpeg(dir, 'a.jpg', 6)
     const out = join(dir, 'a.webp')
 
-    await imageEngine.convert(await job(input, 'webp', out), () => {})
+    await imageEngine.run(await job(input, 'webp', out), () => {})
 
     expect((await sharp(out).metadata()).exif).toBeUndefined()
   })
@@ -37,7 +38,7 @@ describe('metadata', () => {
     const input = await makeOrientedJpeg(dir, 'b.jpg', 6)
     const out = join(dir, 'b.webp')
 
-    await imageEngine.convert(await job(input, 'webp', out, { keepMetadata: true }), () => {})
+    await imageEngine.run(await job(input, 'webp', out, { keepMetadata: true }), () => {})
 
     expect((await sharp(out).metadata()).exif).toBeDefined()
   })
@@ -49,7 +50,7 @@ describe('animation', () => {
     const input = await makeAnimatedGif(dir, 'a.gif', 3)
     const out = join(dir, 'a.webp')
 
-    const result = await imageEngine.convert(await job(input, 'webp', out), () => {})
+    const result = await imageEngine.run(await job(input, 'webp', out), () => {})
 
     expect((await sharp(out).metadata()).pages).toBe(3)
     expect(result.warnings).toEqual([])
@@ -60,7 +61,7 @@ describe('animation', () => {
     const input = await makeAnimatedGif(dir, 'b.gif', 3)
     const out = join(dir, 'b.png')
 
-    const result = await imageEngine.convert(await job(input, 'png', out), () => {})
+    const result = await imageEngine.run(await job(input, 'png', out), () => {})
 
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]?.code).toBe('animation-flattened')
@@ -71,7 +72,7 @@ describe('animation', () => {
   it('says nothing about animation for a still image', async () => {
     const dir = await makeTempDir()
     const input = await makeOrientedJpeg(dir, 'c.jpg', 1)
-    const result = await imageEngine.convert(await job(input, 'png', join(dir, 'c.png')), () => {})
+    const result = await imageEngine.run(await job(input, 'png', join(dir, 'c.png')), () => {})
     expect(result.warnings).toEqual([])
   })
 })

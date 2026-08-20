@@ -84,9 +84,10 @@ describe('file card', () => {
 describe('result block', () => {
   const result: Result = {
     job: {
-      source,
+      op: 'convert',
+      sources: [source],
+      outputs: ['/tmp/diagram.webp'],
       target: 'webp',
-      output: '/tmp/diagram.webp',
       options: { background: '#ffffff', keepMetadata: false },
     },
     outputBytes: 114_688,
@@ -117,9 +118,10 @@ describe('result block, paired form', () => {
   // a long name legitimately switches it to the stacked one.
   const result: Result = {
     job: {
-      source,
+      op: 'convert',
+      sources: [source],
+      outputs: ['/tmp/diagram.gif'],
       target: 'gif',
-      output: '/tmp/diagram.gif',
       options: { background: '#ffffff', keepMetadata: false },
     },
     outputBytes: 133_120,
@@ -176,9 +178,10 @@ describe('result block, long names', () => {
   const long: SourceInfo = { ...source, path: '/tmp/Screenshot 2026-08-17 at 3.52.36 PM.png' }
   const result: Result = {
     job: {
-      source: long,
+      op: 'convert',
+      sources: [long],
+      outputs: ['/tmp/Screenshot 2026-08-17 at 3.52.36 PM.gif'],
       target: 'gif',
-      output: '/tmp/Screenshot 2026-08-17 at 3.52.36 PM.gif',
       options: { background: '#ffffff', keepMetadata: false },
     },
     outputBytes: 133_120,
@@ -204,9 +207,11 @@ describe('result block, long names', () => {
     const short: Result = {
       ...result,
       job: {
-        ...result.job,
-        source: { ...long, path: '/tmp/a.png' },
-        output: '/tmp/a.gif',
+        op: 'convert',
+        sources: [{ ...long, path: '/tmp/a.png' }],
+        outputs: ['/tmp/a.gif'],
+        target: 'gif',
+        options: { background: '#ffffff', keepMetadata: false },
       },
     }
     const frame = frameOf(

@@ -283,8 +283,8 @@ export function App({
        * scrollback for the rest of the session, so `f` and `o` stay
        * pressable long after the file they point at has gone.
        */
-      if (input === 'o') openPath(lastResult.job.output).catch(showError)
-      if (input === 's') revealPath(lastResult.job.output).catch(showError)
+      if (input === 'o') openPath(lastResult.job.outputs[0]).catch(showError)
+      if (input === 's') revealPath(lastResult.job.outputs[0]).catch(showError)
       if (input === 'q') exit()
       // Acts on the measured suggestion: re-enters convert with that target
       // already chosen, so the offer is one keystroke from being taken.
@@ -292,7 +292,7 @@ export function App({
         setSuggestion(undefined)
         setMode('convert')
         setValues({ target: suggestion.target })
-        setSource(lastResult.job.source)
+        setSource(lastResult.job.sources[0])
         setStage('destination')
       }
     },
@@ -508,7 +508,7 @@ export function App({
   const startRename = (destination: string) => {
     if (!source) return
     const planned = action.plan(source, { ...values, destination })[0]
-    const proposed = (planned?.output ?? source.path).split('/').pop() ?? 'file'
+    const proposed = (planned?.outputs[0] ?? source.path).split('/').pop() ?? 'file'
     const dot = proposed.lastIndexOf('.')
     const stem = dot > 0 ? proposed.slice(0, dot) : proposed
     const ext = dot > 0 ? proposed.slice(dot) : ''
@@ -603,7 +603,7 @@ export function App({
         setStage('idle')
         return
       }
-      const output = opts.output ?? planned.output
+      const output = opts.output ?? planned.outputs[0]
 
       /**
        * A target size means the quality is the search's answer, not the
@@ -961,9 +961,9 @@ export function App({
                 which is why it read as a duplicate. */}
             {hyperlinksSupported() ? (
               <Text>
-                {fileLink('Open file', lastResult.job.output)}
+                {fileLink('Open file', lastResult.job.outputs[0])}
                 {'  ·  '}
-                {fileLink(revealLabel(), lastResult.job.output.replace(/\/[^/]+$/, ''))}
+                {fileLink(revealLabel(), lastResult.job.outputs[0].replace(/\/[^/]+$/, ''))}
               </Text>
             ) : null}
             <HintBar

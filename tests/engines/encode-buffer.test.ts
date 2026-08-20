@@ -54,8 +54,14 @@ describe('encodeToBuffer', () => {
     const source = await probe(jpg)
     const output = join(dir, 'out.webp')
 
-    await imageEngine.convert(
-      { source, target: 'webp', output, options: { ...opts, quality: 70 } },
+    await imageEngine.run(
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'webp',
+        options: { ...opts, quality: 70 },
+      },
       () => {},
     )
     const written = (await stat(output)).size

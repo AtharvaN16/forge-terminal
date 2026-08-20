@@ -6,7 +6,6 @@ import type { Metadata, Sharp } from 'sharp'
 import sharp from 'sharp'
 import {
   conversionFailed,
-  corruptFormatSource,
   corruptSource,
   fileNotFound,
   heicDecoderUnavailable,
@@ -25,7 +24,7 @@ import type {
   ConvertOptions,
   FormatId,
   Job,
-  Phase,
+  Progress,
   Result,
   SourceInfo,
   Warning,
@@ -123,12 +122,9 @@ async function probe(path: string): Promise<SourceInfo> {
     try {
       info = await heicInfo(path)
     } catch (cause) {
-      // looksLikeHeic already read the ftyp box, so the format is known here
-      // — unlike the generic sharp.metadata() failure below, this message
-      // can and should say HEIC rather than falling back to "unrecognised".
-      throw corruptFormatSource(path, 'heic', cause)
+      throw corruptSource(path, cause)
     }
-    if (info.width === 0 || info.height === 0) throw corruptFormatSource(path, 'heic', undefined)
+    if (info.width === 0 || info.height === 0) throw corruptSource(path, undefined)
     return {
       kind: 'image',
       path,
@@ -305,18 +301,24 @@ export async function encodeToBuffer(
   }
 }
 
-async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result> {
+async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Result> {
+  if (job.op !== 'convert') {
+    throw new Error(`image engine cannot ${job.op}`)
+  }
+  const source = job.sources[0]
+  const output = job.outputs[0]
+
   // Same reasoning as pipelineFor: the registry only ever routes an image
   // source to this engine.
-  if (job.source.kind !== 'image') {
+  if (source.kind !== 'image') {
     throw new Error('the image engine cannot convert a document source')
   }
 
   const spec = FORMATS[job.target]
   const warnings: Warning[] = []
 
-  onPhase('reading')
-  const isAnimated = job.source.frames > 1
+  onPhase({ phase: 'reading' })
+  const isAnimated = source.frames > 1
   const keepFrames = isAnimated && spec.animatable
 
   // Rule 4: never drop frames silently.
@@ -324,20 +326,20 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
     warnings.push({
       code: 'animation-flattened',
       message:
-        `${basename(job.source.path)} has ${job.source.frames} frames, ` +
+        `${basename(source.path)} has ${source.frames} frames, ` +
         `and ${spec.label} cannot animate. Only the first frame was converted.`,
     })
   }
 
-  onPhase('decoding')
-  const { pipeline, cleanup } = await pipelineFor(job.source, job.target, job.options, keepFrames)
+  onPhase({ phase: 'decoding' })
+  const { pipeline, cleanup } = await pipelineFor(source, job.target, job.options, keepFrames)
 
   try {
-    onPhase('encoding')
+    onPhase({ phase: 'encoding' })
     const encoded = encode(pipeline, job.target, job.options.quality)
 
-    onPhase('writing')
-    const outputBytes = await writeAtomic(encoded, job.output)
+    onPhase({ phase: 'writing' })
+    const outputBytes = await writeAtomic(encoded, output)
     return { job, outputBytes, warnings }
   } catch (cause) {
     // `writeAtomic` already names what it knows — an undirectory-able
@@ -347,7 +349,7 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
     // its hint with "run again with --debug", which the interactive shell has
     // no equivalent for. Only an unnamed failure gets the generic wrapper;
     // `run.ts` makes the same distinction the same way.
-    throw isForgeError(cause) ? cause : conversionFailed(job.source.path, cause)
+    throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
   } finally {
     await cleanup()
   }
@@ -357,6 +359,7 @@ export const imageEngine: Engine = {
   id: 'image',
   reads: READS,
   writes: WRITES,
+  ops: new Set<Job['op']>(['convert']),
   probe,
-  convert,
+  run,
 }

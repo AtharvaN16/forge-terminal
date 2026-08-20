@@ -1,5 +1,5 @@
 import { isForgeError } from '../core/errors.js'
-import type { FormatId, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, SourceInfo } from '../core/types.js'
 import { imageEngine } from './image.js'
 import { pdfEngine } from './pdf.js'
 import type { Engine } from './types.js'
@@ -12,6 +12,15 @@ export function engineForSource(format: FormatId): Engine | undefined {
 
 export function engineForTarget(format: FormatId): Engine | undefined {
   return ENGINES.find((e) => e.writes.has(format))
+}
+
+/**
+ * The engine that runs a job. Convert routes by target format; every other
+ * operation routes by op, because a page operation has no target format.
+ */
+export function engineForJob(job: Job): Engine | undefined {
+  if (job.op === 'convert') return ENGINES.find((e) => e.writes.has(job.target))
+  return ENGINES.find((e) => e.ops.has(job.op))
 }
 
 /**

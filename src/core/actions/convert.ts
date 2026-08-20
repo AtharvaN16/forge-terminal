@@ -141,6 +141,6 @@ export const convertAction: Action = {
       ...(destination === undefined ? {} : { output: `${destination}/` }),
     })
 
-    return [{ source, target, output, options }]
+    return [{ op: 'convert', sources: [source], outputs: [output], target, options }]
   },
 }

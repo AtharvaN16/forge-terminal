@@ -17,8 +17,8 @@ export function reportSingle(summary: RunSummary): string[] {
   if (!result) return []
 
   const lines = [
-    `✓ ${basename(result.job.source.path)} → ${basename(result.job.output)}`,
-    `  ${formatBytes(result.job.source.bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(result.job.source.bytes, result.outputBytes)}`,
+    `✓ ${basename(result.job.sources[0].path)} → ${basename(result.job.outputs[0])}`,
+    `  ${formatBytes(result.job.sources[0].bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(result.job.sources[0].bytes, result.outputBytes)}`,
   ]
   for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
   return lines

@@ -55,9 +55,10 @@ describe('HistoryEntry', () => {
   it('renders a result with a symbol AND a word, both sizes and the change', () => {
     const result: Result = {
       job: {
-        source,
+        op: 'convert',
+        sources: [source],
+        outputs: ['/Users/me/Desktop/photo.webp'],
         target: 'webp',
-        output: '/Users/me/Desktop/photo.webp',
         options: { background: '#ffffff', keepMetadata: false },
       },
       outputBytes: 820_000,
@@ -76,9 +77,10 @@ describe('HistoryEntry', () => {
   it('renders a warning alongside a successful result', () => {
     const result: Result = {
       job: {
-        source,
+        op: 'convert',
+        sources: [source],
+        outputs: ['/Users/me/Desktop/photo.png'],
         target: 'png',
-        output: '/Users/me/Desktop/photo.png',
         options: { background: '#ffffff', keepMetadata: false },
       },
       outputBytes: 100,

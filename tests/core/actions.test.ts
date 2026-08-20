@@ -126,7 +126,7 @@ describe('convert action plan', () => {
     })
     expect(jobs).toHaveLength(1)
     expect(jobs[0]?.target).toBe('webp')
-    expect(jobs[0]?.output).toBe('/Users/me/out/photo.webp')
+    expect(jobs[0]?.outputs[0]).toBe('/Users/me/out/photo.webp')
     expect(jobs[0]?.options.quality).toBe(70)
   })
 
