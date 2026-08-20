@@ -100,6 +100,25 @@ export async function makeHeic(dir: string, name: string): Promise<string | null
   }
 }
 
+/**
+ * A HEIC whose container is genuinely identifiable but whose payload is not:
+ * a real `makeHeic` file, truncated to just past its `ftyp` box. `ftyp`'s own
+ * size is its first big-endian uint32, so the cut point is computed from the
+ * real file rather than guessed — sips still reports pixel dimensions of 0
+ * (or fails outright) for what remains, but `looksLikeHeic`'s content sniff,
+ * which only reads the box itself, still recognises it. Returns null exactly
+ * where `makeHeic` does: when `sips` is unavailable to build the source HEIC.
+ */
+export async function makeCorruptHeic(dir: string, name: string): Promise<string | null> {
+  const real = await makeHeic(dir, `${name}.source.heic`)
+  if (!real) return null
+  const bytes = await readFile(real)
+  const ftypBoxSize = bytes.readUInt32BE(0)
+  const path = join(dir, name)
+  await writeFile(path, bytes.subarray(0, ftypBoxSize + 8))
+  return path
+}
+
 export async function pixelAt(
   path: string,
   x: number,

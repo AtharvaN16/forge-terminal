@@ -6,6 +6,7 @@ import type { Metadata, Sharp } from 'sharp'
 import sharp from 'sharp'
 import {
   conversionFailed,
+  corruptFormatSource,
   corruptSource,
   fileNotFound,
   heicDecoderUnavailable,
@@ -122,9 +123,12 @@ async function probe(path: string): Promise<SourceInfo> {
     try {
       info = await heicInfo(path)
     } catch (cause) {
-      throw corruptSource(path, cause)
+      // looksLikeHeic already read the ftyp box, so the format is known here
+      // — unlike the generic sharp.metadata() failure below, this message
+      // can and should say HEIC rather than falling back to "unrecognised".
+      throw corruptFormatSource(path, 'heic', cause)
     }
-    if (info.width === 0 || info.height === 0) throw corruptSource(path, undefined)
+    if (info.width === 0 || info.height === 0) throw corruptFormatSource(path, 'heic', undefined)
     return {
       kind: 'image',
       path,

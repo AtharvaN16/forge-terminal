@@ -8,6 +8,7 @@ import {
   makeAnimatedGif,
   makeAvif,
   makeCorruptFile,
+  makeCorruptHeic,
   makeHeic,
   makeJpeg,
   makeTempDir,
@@ -78,6 +79,40 @@ describe('probe', () => {
     const dir = await makeTempDir()
     const bad = await makeCorruptFile(dir, 'bad.jpg')
     expect(await codeOf(() => probe(bad))).toBe('corrupt-source')
+  })
+
+  /**
+   * `looksLikeHeic` identifies the container from its own `ftyp` box before
+   * decoding is even attempted, so a HEIC whose payload sips cannot read
+   * must not get the generic "not a format Forge recognises" wording
+   * `corrupt-source` falls back to when nothing was identified (see
+   * `tests/engines/pdf-probe.test.ts`'s corrupt-PDF case, where the format
+   * genuinely isn't known) — here the format IS known, and the message must
+   * say so.
+   *
+   * The fixture is deliberately named without "heic" in it: probing is
+   * content-based (invariant 3), and a name like "bad.heic" would let
+   * `${basename(path)}` alone satisfy a `.toContain('heic')` assertion even
+   * from the generic, format-blind message — proving nothing about which
+   * wording actually fired.
+   */
+  it('names HEIC for a HEIC with a genuine container but an unreadable payload', async (ctx) => {
+    const dir = await makeTempDir()
+    const path = await makeCorruptHeic(dir, 'mystery-file')
+    if (!path) {
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated on this platform')
+      return
+    }
+    let error: unknown
+    try {
+      await probe(path)
+    } catch (e) {
+      error = e
+    }
+    if (!isForgeError(error)) throw new Error('expected a ForgeError')
+    expect(error.code).toBe('corrupt-source')
+    const message = `${error.title} ${error.detail}`.toLowerCase()
+    expect(message).toContain('heic')
   })
 
   it('distinguishes unreadable from corrupt, which sharp alone cannot', async () => {

@@ -200,18 +200,42 @@ export function unsupportedTarget(
 }
 
 /**
- * Thrown at probe time, before any engine has identified what the file is —
- * that is precisely why it failed to decode. The wording must stay
- * format-neutral: with more than one engine registered, this is reached by
- * probing a file that decodes as nothing recognisable, image or otherwise
- * (see engines/registry.ts's `probe`), so claiming "as an image" here would
- * be inventing a format the probe never actually determined.
+ * Thrown when a source could not be decoded and nothing identified its
+ * format first — `imageEngine.probe`'s generic `sharp(path).metadata()`
+ * failure, or (via `engines/registry.ts`'s `probe`) whichever engine's
+ * classified error wins when every engine declines. The wording must stay
+ * format-neutral for exactly that reason: with more than one engine
+ * registered, claiming "as an image" (or any other format) here would
+ * assert something the probe never actually determined.
+ *
+ * Where the format HAS already been identified from content before decoding
+ * failed — HEIC via its `ftyp` container brand, for instance — use
+ * `corruptFormatSource` instead, which names it: vagueness is only honest
+ * when the vagueness is real.
  */
 export function corruptSource(path: string, cause: unknown): ForgeError {
   return new ForgeError({
     code: 'corrupt-source',
     title: 'Damaged file',
     detail: `${basename(path)} could not be read. It may be damaged, or not a format Forge recognises.`,
+    hint: 'The file may be incomplete or corrupted.',
+    cause,
+  })
+}
+
+/**
+ * Thrown when a source's format was already identified from its own content
+ * — before decoding it was attempted, not guessed afterwards — but decoding
+ * then failed anyway. `corruptSource`'s wording must stay neutral because at
+ * that point the format is genuinely unknown; this sibling exists for the
+ * opposite case, where the caller already knows what the file is and the
+ * message should say so.
+ */
+export function corruptFormatSource(path: string, format: FormatId, cause: unknown): ForgeError {
+  return new ForgeError({
+    code: 'corrupt-source',
+    title: `Damaged ${FORMATS[format].label}`,
+    detail: `${basename(path)} is a ${FORMATS[format].label} file, but its content could not be read.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
   })
