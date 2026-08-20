@@ -141,3 +141,57 @@ describe('compress in the shell', () => {
     expect(lastFrame() ?? '').toContain('Convert JPEG to')
   }, 20_000)
 })
+
+describe('the format suggestion', () => {
+  it('offers a stronger format after compressing, with a measured size', async () => {
+    const { stdin, lastFrame, frames } = await toCompress()
+    stdin.write(ENTER) // By quality
+    await settle()
+    stdin.write(ENTER) // accept the slider
+    await settle()
+    await finish(stdin)
+    await settle(600)
+
+    const all = frames.join('') + (lastFrame() ?? '')
+    // WebP is the candidate for a JPEG. The number beside it came from an
+    // actual encode, not an estimate.
+    expect(all).toContain('WebP would be')
+    expect(all).toMatch(/\d+% smaller again/)
+  }, 30_000)
+
+  it('offers a key to act on it', async () => {
+    const { stdin, lastFrame, frames } = await toCompress()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    await finish(stdin)
+    await settle(600)
+    const all = frames.join('') + (lastFrame() ?? '')
+    expect(all).toContain('convert to WebP')
+  }, 30_000)
+
+  it('says nothing after an ordinary conversion', async () => {
+    // The suggestion belongs to compression: after /convert the user has
+    // already chosen a format, and second-guessing it is noise.
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame, frames } = render(<App initialWidth={100} prefs={prefs} />)
+    stdin.write(jpg)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    stdin.write(DOWN) // webp
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(ENTER) // quality
+    await settle()
+    await finish(stdin)
+    await settle(600)
+
+    const all = frames.join('') + (lastFrame() ?? '')
+    expect(all).not.toContain('would be')
+  }, 30_000)
+})

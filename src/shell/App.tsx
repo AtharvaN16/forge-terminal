@@ -16,12 +16,13 @@ import {
   unexpectedError,
   unsupportedCompress,
 } from '../core/errors.js'
-import { primaryExtension } from '../core/formats.js'
+import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { runJobs } from '../core/run.js'
+import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Result, SourceInfo } from '../core/types.js'
-import { parseSize } from '../core/units.js'
+import { formatBytes, parseSize } from '../core/units.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
@@ -180,6 +181,8 @@ export function App({
   const [attempt, setAttempt] = useState<{ n: number; of: number } | undefined>(undefined)
   /** Why a typed size was rejected, shown against the field rather than later. */
   const [sizeError, setSizeError] = useState<string | undefined>(undefined)
+  /** A measured alternative worth offering after a compression. */
+  const [suggestion, setSuggestion] = useState<Suggestion | undefined>(undefined)
   const [text, setText] = useState('')
   const [source, setSource] = useState<SourceInfo | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -283,6 +286,15 @@ export function App({
       if (input === 'o') openPath(lastResult.job.output).catch(showError)
       if (input === 's') revealPath(lastResult.job.output).catch(showError)
       if (input === 'q') exit()
+      // Acts on the measured suggestion: re-enters convert with that target
+      // already chosen, so the offer is one keystroke from being taken.
+      if (input === 'c' && suggestion && lastResult) {
+        setSuggestion(undefined)
+        setMode('convert')
+        setValues({ target: suggestion.target })
+        setSource(lastResult.job.source)
+        setStage('destination')
+      }
     },
     { isActive: stage === 'result' },
   )
@@ -650,6 +662,25 @@ export function App({
         setLastResult(result)
         push({ kind: 'result', id: nextId(), result })
         setStage('result')
+
+        /**
+         * Only after a compression, and only once the file is safely written:
+         * this is an extra encode purely to find out whether a sentence is
+         * worth saying, and it must not be able to cost the user the
+         * conversion they actually asked for.
+         */
+        if (mode === 'compress') {
+          const found = await suggestFormat({
+            source,
+            resultBytes: result.outputBytes,
+            quality: planned.options.quality ?? livePrefs.quality,
+            encode: async (target, quality) =>
+              (await encodeToBuffer(source, target, { ...planned.options, quality })).length,
+          })
+          setSuggestion(found)
+        } else {
+          setSuggestion(undefined)
+        }
       } else {
         const failure = summary.failures[0]
         if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
@@ -896,6 +927,18 @@ export function App({
 
         {stage === 'result' && lastResult ? (
           <Box flexDirection="column" marginBottom={1}>
+            {/* Measured, not estimated: this number came from actually
+                encoding a candidate. Offered rather than applied — the file
+                the user asked for is already written. */}
+            {suggestion ? (
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.warn)}>
+                  {`${SYMBOLS.warn} ${FORMATS[suggestion.target].label} would be ${formatBytes(
+                    suggestion.bytes,
+                  )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
+                </Text>
+              </Box>
+            ) : null}
             {/* Only where the terminal makes OSC 8 clickable. Otherwise
                 fileLink falls back to a bare file:// URL — a long, unreadable
                 line that says nothing the hints below it do not already say,
@@ -911,6 +954,12 @@ export function App({
               width={width}
               pairs={[
                 ['↵', 'convert another'],
+                ...(suggestion
+                  ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
+                      string,
+                      string,
+                    ][])
+                  : []),
                 ['o', 'open'],
                 ['s', revealLabel().toLowerCase()],
                 ['q', 'quit'],
