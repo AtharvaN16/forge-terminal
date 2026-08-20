@@ -95,7 +95,24 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
    * keeps the single-line form.
    */
   const band = bandFor(width)
+  const fromName = basename(job.source.path)
+  const toName = basename(job.output)
+
+  /**
+   * Side by side each box gets under half the terminal, which a real
+   * filename — "Screenshot 2026-08-17 at 3.52.36 PM.png" — does not fit
+   * inside. Rather than ellipsing the middle out of both names, the pair
+   * stacks vertically when either is too long: one box per row, each with
+   * the full width, and the arrow between them turns downward.
+   *
+   * Truncation is then a last resort rather than the normal case.
+   */
+  const sideBySideText = Math.min(30, Math.floor((Math.min(width, 76) - 5) / 2)) - 4
+  const fitsSideBySide =
+    stringWidth(fromName) <= sideBySideText && stringWidth(toName) <= sideBySideText
+
   const paired = band !== 'compact' && width >= 56
+  const stacked = paired && !fitsSideBySide
 
   if (!paired) {
     return (
@@ -150,8 +167,60 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
     }
   }
 
-  const from = cell(fromLabel, basename(job.source.path))
-  const to = cell(toLabel, basename(job.output))
+  if (stacked) {
+    const full = Math.min(width, 76)
+    const fullText = full - 4
+
+    const wide = (label: string, name: string) => {
+      const rule = '─'.repeat(Math.max(0, full - 2 - stringWidth(label) - 3))
+      const shown = middleEllipsis(name, fullText)
+      const pad = ' '.repeat(Math.max(0, fullText - stringWidth(shown)))
+      return (
+        <Box flexDirection="column">
+          <Text>
+            <Text color={colourProp(palette.border)}>{'╭─ '}</Text>
+            <Text color={colourProp(palette.tag)}>{label}</Text>
+            <Text color={colourProp(palette.border)}>{` ${rule}╮`}</Text>
+          </Text>
+          <Text>
+            <Text color={colourProp(palette.border)}>{'│ '}</Text>
+            <Text color={colourProp(palette.fg)}>{`${shown}${pad}`}</Text>
+            <Text color={colourProp(palette.border)}>{' │'}</Text>
+          </Text>
+          <Text color={colourProp(palette.border)}>{`╰${'─'.repeat(full - 2)}╯`}</Text>
+        </Box>
+      )
+    }
+
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+        <Box marginTop={1} flexDirection="column">
+          {wide(fromLabel, fromName)}
+          <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}↓`}</Text>
+          {wide(toLabel, toName)}
+        </Box>
+        <Box marginTop={1}>
+          <Text>
+            <Text color={colourProp(palette.dim)}>
+              {`  ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+            </Text>
+            <Text color={colourProp(palette.ok)}>
+              {changePhrase(job.source.bytes, outputBytes)}
+            </Text>
+          </Text>
+        </Box>
+        {warnings.map((w) => (
+          <Text key={w.message} color={colourProp(palette.warn)}>
+            {SYMBOLS.warn} {w.message}
+          </Text>
+        ))}
+      </Box>
+    )
+  }
+
+  const from = cell(fromLabel, fromName)
+  const to = cell(toLabel, toName)
   const gutter = '   '
 
   return (

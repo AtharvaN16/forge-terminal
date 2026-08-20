@@ -50,7 +50,7 @@ async function toDestination() {
 describe('making a destination the default', () => {
   it('marks the current default in the list', async () => {
     const { lastFrame } = await toDestination()
-    expect(lastFrame() ?? '').toContain('default')
+    expect(lastFrame() ?? '').toContain('[default]')
   })
 
   it('offers the key in the hints', async () => {
@@ -96,10 +96,9 @@ describe('making a destination the default', () => {
     // Exactly one *preset row* carries the tag, wherever it has moved to.
     // Matching on the trailing tag rather than the word: the keyboard hint
     // ("d make default") and the confirmation note both say "default" too.
-    // The tag is set off by three spaces; the keyboard hint reads
-    // "d make default" with one. Matching the spacing is what separates the
-    // preset row from every other line that happens to say the word.
-    const tagged = (lastFrame() ?? '').split('\n').filter((l) => / {3}default$/.test(l.trimEnd()))
+    // The badge is bracketed, which is what separates it from the keyboard
+    // hint ("d make default") and from the confirmation note.
+    const tagged = (lastFrame() ?? '').split('\n').filter((l) => l.includes('[default]'))
     expect(tagged.length).toBe(1)
   })
 

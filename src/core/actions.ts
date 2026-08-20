@@ -11,6 +11,8 @@ export interface Choice {
   value: string
   label: string
   hint?: string
+  /** A short tag rendered in the accent colour, set apart from the hint. */
+  badge?: string
 }
 
 export interface PathPreset {

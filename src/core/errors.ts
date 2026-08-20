@@ -7,6 +7,7 @@ export type ErrorCode =
   | 'not-a-file'
   | 'permission-denied'
   | 'unsupported-source'
+  | 'heic-decoder-unavailable'
   | 'unsupported-target'
   | 'corrupt-source'
   | 'output-exists'
@@ -131,6 +132,21 @@ export function unsupportedSource(path: string, detected: string): ForgeError {
     title: 'Unsupported file type',
     detail: `${basename(path)} is ${detected}, which Forge cannot read.`,
     hint: 'Forge 0.1 handles images only.',
+  })
+}
+
+/**
+ * HEIC is decoded by macOS's own `sips`, because Sharp's prebuilt binary
+ * ships libheif without an HEVC decoder for licensing reasons. This is the
+ * one condition that can take HEIC away, and it deserves to say so rather
+ * than surfacing as a generic conversion failure.
+ */
+export function heicDecoderUnavailable(path: string): ForgeError {
+  return new ForgeError({
+    code: 'heic-decoder-unavailable',
+    title: 'Cannot read HEIC here',
+    detail: `${basename(path)} is a HEIC photo, which Forge decodes with the macOS sips tool.`,
+    hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
   })
 }
 
