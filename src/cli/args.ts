@@ -57,6 +57,8 @@ export interface PageOpIntent {
     | { mode: 'every-page' }
     | { mode: 'every-n'; n: number }
     | { mode: 'points'; after: number[] }
+  /** Overrides write-safety's refusal to replace an existing file or an input. */
+  force: boolean
   debug: boolean
 }
 
@@ -191,11 +193,15 @@ export function parseArgs(argv: string[]): Intent {
         `Name a PDF, for example: forge doc.pdf --${action}`,
       )
     }
+    if (opts.separate && action !== 'extract') {
+      throw invalidArguments(`--separate only applies to --extract, not --${action}.`)
+    }
 
     const pageOp: PageOpIntent = {
       kind: 'pageop',
       action,
       inputs,
+      force: Boolean(opts.force),
       debug: Boolean(opts.debug),
     }
 

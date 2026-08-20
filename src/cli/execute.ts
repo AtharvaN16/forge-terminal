@@ -11,6 +11,7 @@ import { buildPlan } from '../core/plan.js'
 import { resolveInputs } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
 import type { DocumentInfo, SourceInfo } from '../core/types.js'
+import { checkWriteSafety } from '../core/write-safety.js'
 import type { Intent, PageOpIntent } from './args.js'
 import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
 
@@ -123,10 +124,16 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     }
 
     const values = pageOpValues(intent, resolved.sources)
-    const jobs = action.plan(resolved.sources, values)
+    const planned = action.plan(resolved.sources, values)
 
-    const summary = await runJobs(jobs, {})
-    const failures = [...resolved.failures, ...summary.failures]
+    // `action.plan()` bypasses `buildPlan` (its one-source-one-target shape
+    // does not fit merge's several sources or split's several outputs), so
+    // the write-safety rules `buildPlan` enforces for conversions have to be
+    // applied here explicitly instead of inheriting them for free.
+    const safe = checkWriteSafety(planned, { force: intent.force })
+
+    const summary = await runJobs(safe.jobs, {})
+    const failures = [...resolved.failures, ...safe.failures, ...summary.failures]
     const stdout = summary.results.length === 0 ? [] : reportPageOp(summary)
 
     return {

@@ -57,4 +57,20 @@ describe('page operation flags', () => {
   it('rejects two page operations at once', () => {
     expect(() => parseArgs(['doc.pdf', '--rotate', '90', '--delete', '2'])).toThrow(/one operation/)
   })
+
+  it('carries --force through to the intent', () => {
+    const intent = parseArgs(['doc.pdf', '--rotate', '90', '--force'])
+    if (intent.kind !== 'pageop') throw new Error('expected pageop')
+    expect(intent.force).toBe(true)
+  })
+
+  it('defaults force to false', () => {
+    const intent = parseArgs(['doc.pdf', '--rotate', '90'])
+    if (intent.kind !== 'pageop') throw new Error('expected pageop')
+    expect(intent.force).toBe(false)
+  })
+
+  it('rejects --separate on an operation other than --extract', () => {
+    expect(() => parseArgs(['doc.pdf', '--delete', '3', '--separate'])).toThrow(/--separate/)
+  })
 })
