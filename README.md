@@ -648,13 +648,15 @@ and rendered bold.
 
 ### What the shell doesn't do yet
 
-- **One file at a time.** No batch conversion through the shell — point it
-  at a folder from the flag CLI instead. A paste containing several paths is
-  read as one path and fails to probe as such.
-- **One action.** Convert is the only thing on offer; the underlying data
-  model supports a menu of actions (`actionsFor`), but with exactly one
-  action registered the shell skips straight past a menu of one.
-- **No slash commands.**
+- **Batch convert or compress.** `/convert` and `/compress` refuse to run
+  against more than one staged file, rather than silently acting on just the
+  first — point the flag CLI at a folder instead. Several files *can* be
+  staged at once now, but only `/pdf`'s merge is defined by having more than
+  one; a paste containing several paths is still read as one path and fails
+  to probe as such.
+- **PDF compression, PDF↔image conversion, and password protection.** Not in
+  this phase — see [PDF § Not yet](#not-yet) above for what's coming and
+  when.
 - **No recent-files list** — every session starts at an empty prompt.
 
 ## Supported formats
