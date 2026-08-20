@@ -154,6 +154,65 @@ clears the field, arrow keys move the caret, and `esc` goes back to the
 folder list. If a file of that name is already there, Forge asks — keep
 both, rename, replace, or cancel.
 
+## Commands
+
+Type `/` in the shell and a list opens:
+
+```
+  /convert     change a file's format
+  /compress    make a file smaller
+  /theme       switch between light and dark
+  /help        list these commands
+```
+
+Typing narrows it, arrows move, Enter runs. Dropping a file without typing
+anything converts, so the common path costs nothing.
+
+A leading slash alone does not open the palette — `/Users/me/photo.png` is a
+path, and paths are what this prompt is mostly for. A command has no further
+slashes and no spaces.
+
+## Compressing
+
+`/compress` keeps the format and makes the file smaller. It never changes a
+file's extension — that is what `/convert` is for.
+
+Two ways to ask:
+
+- **By quality** — pick a level on the slider and see what it produced.
+- **To a target size** — say `500kb` and Forge searches for the highest
+  quality that fits, reporting each attempt as a real position in a bounded
+  sequence. If even the lowest quality overshoots, it writes nothing and tells
+  you the smallest size achievable, rather than handing you a file that misses
+  the number you asked for.
+
+From the flag CLI:
+
+```bash
+forge photo.jpg --quality 60        # compress, same format
+forge photo.jpg --max-size 500kb    # compress to fit
+forge *.jpg --max-size 1mb          # a whole folder
+```
+
+`--quality` without `--to` compresses; with `--to` it converts, as it always
+has. `--quality` and `--max-size` are mutually exclusive — they ask the same
+question two ways, and Forge will not guess which wins.
+
+Compression only applies to formats with a quality dial. A PNG is lossless, so
+there is nothing to trade away; `/convert` it to WebP instead, and Forge says
+so if you try.
+
+After compressing, if another format would be meaningfully smaller, Forge says
+so — and it encodes a candidate to find out rather than guessing:
+
+```
+✓ done   photo.jpg → photo-small.jpg
+         4.2 MB → 1.1 MB · 73% smaller
+
+⚠ WebP would be 480 KB — 56% smaller again.
+  ↵ convert another · c convert to WebP · o open · s show in finder · q quit
+```
+
 ## Usage
 
 ```
