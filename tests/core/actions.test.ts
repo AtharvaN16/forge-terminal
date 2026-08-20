@@ -277,3 +277,34 @@ describe('quality default', () => {
     expect(spec.default).toBe(55)
   })
 })
+
+describe('convertAction honours the fill colour it is given', () => {
+  const doc = {
+    kind: 'document' as const,
+    path: '/Users/me/report.pdf',
+    format: 'pdf' as const,
+    bytes: 1000,
+    pages: 3,
+    encrypted: false,
+  }
+
+  it('uses the background it was handed, not a hardcoded white', () => {
+    // `--background` works for an image conversion but was silently ignored
+    // for a document, because plan() hardcoded '#ffffff'. Same flag, two
+    // behaviours depending on the source kind.
+    const [job] = convertAction.plan([doc], { target: 'jpeg', background: '#ff8000' })
+    expect(job?.op === 'convert' && job.options.background).toBe('#ff8000')
+  })
+
+  it('still defaults to white when no background is given', () => {
+    // The shell has no background control and passes nothing, so the default
+    // has to survive this change.
+    const [job] = convertAction.plan([doc], { target: 'jpeg' })
+    expect(job?.op === 'convert' && job.options.background).toBe('#ffffff')
+  })
+
+  it('ignores a non-string background rather than trusting it', () => {
+    const [job] = convertAction.plan([doc], { target: 'jpeg', background: 42 })
+    expect(job?.op === 'convert' && job.options.background).toBe('#ffffff')
+  })
+})

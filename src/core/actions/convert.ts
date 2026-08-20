@@ -203,7 +203,13 @@ export const convertAction: Action = {
     const target = spec.id
 
     const options: ConvertOptions = {
-      background: '#ffffff',
+      // The caller's fill colour when one is given. The shell has no
+      // background control and passes nothing, so it keeps the white default;
+      // the CLI's `--background` reaches here through `values`. Hardcoding
+      // white made that flag work for an image conversion and silently do
+      // nothing for a document — the same flag behaving two ways depending on
+      // what was dropped on it.
+      background: typeof values.background === 'string' ? values.background : '#ffffff',
       keepMetadata: false,
     }
     if (spec.lossy && typeof values.quality === 'number') options.quality = values.quality

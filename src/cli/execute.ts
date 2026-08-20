@@ -14,7 +14,7 @@ import {
 import { buildPlan } from '../core/plan.js'
 import { resolveInputs } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
-import type { DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
+import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { openPdf, pdfiumEngine } from '../engines/pdfium.js'
 import type { Intent, PageOpIntent } from './args.js'
@@ -124,6 +124,8 @@ async function buildRasterJob(
     dpi?: number
     pages?: string
     passwordStdin?: boolean
+    /** Carries the user's `--background`; `plan()` falls back to white without it. */
+    options: ConvertOptions
   },
 ): Promise<{ job: Job } | { failure: { path: string; error: ForgeError } }> {
   let password: string | undefined
@@ -164,6 +166,7 @@ async function buildRasterJob(
     // writes more than one page, so it is used as a folder here too.
     planned = convertAction.plan([source], {
       target: intent.target,
+      background: intent.options.background,
       dpi: String(intent.dpi ?? 150),
       ...(intent.pages === undefined ? {} : { pages: intent.pages }),
       ...(intent.output === undefined ? {} : { destination: intent.output }),
