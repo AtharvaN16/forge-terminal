@@ -6,7 +6,19 @@ import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
-const settle = (ms = 120) => new Promise((r) => setTimeout(r, ms))
+/**
+ * 250ms, matching the rest of the shell suite. This file used 120 — the
+ * shortest sleep anywhere in `tests/shell/` — which made it the first thing
+ * to fail whenever the machine was busy, with a different assertion each run.
+ *
+ * A longer sleep can only give the app MORE time to reach the state a test
+ * already asserts, so it cannot turn a real failure green; it removes a
+ * timing guess, not a check. The proper fix is a polling `waitFor`, but only
+ * 2 of this file's 20 sleeps are the mechanical `settle`-then-assert shape —
+ * the rest sit between keystrokes with no predicate to poll on and need a
+ * decision per site.
+ */
+const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 
 describe('shell flow', () => {
   it('starts by asking for a file', () => {
