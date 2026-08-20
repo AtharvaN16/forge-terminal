@@ -76,18 +76,17 @@ export function PathInput({
   const labelColumn = Math.max(0, ...labels.map((l) => stringWidth(l)))
   const hintBudget = Math.max(8, width - labelColumn - 4)
 
-  const DEFAULT_TAG = '   default'
-
   const items: Choice[] = [
     ...presets.map((p) => {
       const isDefault = p.path === defaultPath
-      // The tag shares the hint column, so the path is given a smaller budget
+      // The badge has its own column, so the path is given a smaller budget
       // when one is present rather than letting the row grow past the width.
-      const budget = isDefault ? Math.max(8, hintBudget - DEFAULT_TAG.length) : hintBudget
+      const budget = isDefault ? Math.max(8, hintBudget - 12) : hintBudget
       return {
         value: p.path,
         label: p.label,
-        hint: `${middleEllipsis(p.path, budget)}${isDefault ? DEFAULT_TAG : ''}`,
+        hint: middleEllipsis(p.path, budget),
+        ...(isDefault ? { badge: 'default' } : {}),
       }
     }),
     { value: TYPE_IT, label: 'Type a path…' },

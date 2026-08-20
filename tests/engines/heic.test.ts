@@ -24,6 +24,63 @@ async function makeHeic(dir: string, name: string, from?: string): Promise<strin
   }
 }
 
+/**
+ * A photo-sized HEIC. This matters more than it looks: sips stores a large
+ * image as a tiled grid, and it is only at that size that libheif's iref
+ * reference limit is exceeded and sharp stops being able to read the file at
+ * all. Every small fixture in this file passes with or without the fix.
+ */
+async function makeLargeHeic(dir: string): Promise<string | undefined> {
+  const jpg = join(dir, 'large.jpg')
+  await sharp({ create: { width: 4032, height: 3024, channels: 3, background: '#3a7fb5' } })
+    .jpeg({ quality: 92 })
+    .toFile(jpg)
+  return makeHeic(dir, 'IMG_4021.heic', jpg)
+}
+
+describe('HEIC at photo size', () => {
+  it('sharp cannot even read the metadata — the reason probe does not use it', async (ctx) => {
+    const dir = await makeTempDir()
+    const heic = await makeLargeHeic(dir)
+    if (heic === undefined) {
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated')
+      return
+    }
+    await expect(sharp(heic).metadata()).rejects.toThrow(/iref|security limit/i)
+  }, 60_000)
+
+  it('probes a 12MP photo and reports its real dimensions', async (ctx) => {
+    const dir = await makeTempDir()
+    const heic = await makeLargeHeic(dir)
+    if (heic === undefined) {
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated')
+      return
+    }
+    const source = await probe(heic)
+    expect(source.format).toBe('heic')
+    expect(source.width).toBe(4032)
+    expect(source.height).toBe(3024)
+  }, 60_000)
+
+  it('converts a 12MP photo to jpeg', async (ctx) => {
+    const dir = await makeTempDir()
+    const heic = await makeLargeHeic(dir)
+    if (heic === undefined) {
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated')
+      return
+    }
+    const source = await probe(heic)
+    const output = join(dir, 'out.jpg')
+    await imageEngine.convert(
+      { source, target: 'jpeg', output, options: { background: '#ffffff', keepMetadata: false } },
+      () => {},
+    )
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(4032)
+    expect(meta.height).toBe(3024)
+  }, 60_000)
+})
+
 describe('HEIC decoding', () => {
   it('sharp alone cannot decode HEVC — the reason this path exists', async (ctx) => {
     const dir = await makeTempDir()
@@ -102,10 +159,17 @@ describe('HEIC conversion', () => {
     expect(after.length).toBe(before.length)
   })
 
-  it('does not double-rotate an oriented source', async (ctx) => {
-    // sips applies EXIF orientation while decoding and writes a PNG with no
-    // orientation tag. Rotating again would put a correct image on its side,
-    // so the pipeline skips .rotate() for a decoded HEIC — this pins it.
+  it('writes an oriented source the right way up', async (ctx) => {
+    /**
+     * The intermediate PNG carries the source's orientation, so `.rotate()`
+     * must run on it exactly as it does for any other input — an earlier
+     * draft skipped it and shipped every rotated photo on its side.
+     *
+     * Asserted on the output's own shape rather than against `probe`:
+     * `sips` reports the stored dimensions for a rotated HEIC and offers no
+     * orientation field, so the two can legitimately disagree. The written
+     * file being upright is the guarantee that matters.
+     */
     const dir = await makeTempDir()
     const oriented = await makeOrientedJpeg(dir, 'tall.jpg', 6)
     const heic = await makeHeic(dir, 'tall.heic', oriented)
@@ -127,7 +191,8 @@ describe('HEIC conversion', () => {
     )
 
     const meta = await sharp(output).metadata()
-    expect(meta.width).toBe(source.width)
-    expect(meta.height).toBe(source.height)
+    // The source is a portrait 40x80 rotated to display as 80x40 landscape.
+    expect(meta.width).toBe(80)
+    expect(meta.height).toBe(40)
   })
 })

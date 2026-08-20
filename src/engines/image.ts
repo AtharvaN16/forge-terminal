@@ -8,6 +8,7 @@ import {
   conversionFailed,
   corruptSource,
   fileNotFound,
+  heicDecoderUnavailable,
   isForgeError,
   notADirectory,
   notAFile,
@@ -20,7 +21,7 @@ import {
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { FormatId, Job, Phase, Result, SourceInfo, Warning } from '../core/types.js'
-import { decodeHeic } from './heic.js'
+import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -94,6 +95,39 @@ async function probe(path: string): Promise<SourceInfo> {
     await access(path, constants.R_OK)
   } catch {
     throw permissionDenied(path)
+  }
+
+  /**
+   * HEIC is identified from its own container bytes and measured with `sips`,
+   * never through Sharp.
+   *
+   * Sharp cannot read a real photo's metadata at all: an iPhone HEIC is a
+   * tiled grid whose tiles are cross-referenced through the ISO-BMFF `iref`
+   * box, and libheif rejects more than 16 references as a security limit —
+   * a 12MP photo has 48. Routing HEIC through Sharp therefore reported
+   * "Damaged image" for precisely the files people convert, while small
+   * single-tile fixtures passed. See engines/heic.ts.
+   */
+  if (await looksLikeHeic(path)) {
+    if (!(await heicDecodable())) throw heicDecoderUnavailable(path)
+    let info: Awaited<ReturnType<typeof heicInfo>>
+    try {
+      info = await heicInfo(path)
+    } catch (cause) {
+      throw corruptSource(path, cause)
+    }
+    if (info.width === 0 || info.height === 0) throw corruptSource(path, undefined)
+    return {
+      path,
+      format: 'heic',
+      width: info.width,
+      height: info.height,
+      bytes: stats.size,
+      hasAlpha: info.hasAlpha,
+      // A HEIC image sequence exists but Forge treats one photo as one frame;
+      // the decode step hands Sharp a single still either way.
+      frames: 1,
+    }
   }
 
   let meta: Metadata
@@ -197,6 +231,9 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
    * pipeline runs on that. Everything downstream is unchanged; only the file
    * Sharp opens differs.
    */
+  if (job.source.format === 'heic' && !(await heicDecodable())) {
+    throw heicDecoderUnavailable(job.source.path)
+  }
   const heic = job.source.format === 'heic' ? await decodeHeic(job.source.path) : undefined
   const input = heic?.path ?? job.source.path
 

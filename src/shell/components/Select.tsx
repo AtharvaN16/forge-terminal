@@ -93,7 +93,8 @@ export function Select({
          * columns and one code point, so a length-based budget overflows the
          * terminal by exactly the difference.
          */
-        const used = stringWidth(cursor) + stringWidth(label)
+        const badgeWidth = item.badge ? stringWidth(item.badge) + 5 : 0
+        const used = stringWidth(cursor) + stringWidth(label) + badgeWidth
         const shownHint = hint === '' ? '' : middleEllipsis(hint, Math.max(0, width - used))
 
         return (
@@ -108,6 +109,11 @@ export function Select({
               {label}
             </Text>
             {shownHint ? <Text color={colourProp(palette.dim)}>{shownHint}</Text> : null}
+            {item.badge ? (
+              // Accent, bracketed and spaced: as a plain dim suffix it read as
+              // the tail of the path it followed rather than a label about it.
+              <Text color={colourProp(palette.accent)}>{`   [${item.badge}]`}</Text>
+            ) : null}
           </Text>
         )
       })}

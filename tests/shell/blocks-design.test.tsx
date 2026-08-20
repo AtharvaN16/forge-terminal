@@ -112,11 +112,13 @@ describe('result block', () => {
 })
 
 describe('result block, paired form', () => {
+  // Short names on purpose: this block is about the side-by-side layout, and
+  // a long name legitimately switches it to the stacked one.
   const result: Result = {
     job: {
       source,
       target: 'gif',
-      output: '/tmp/Screenshot 2026-08-17 at 3.52.36 PM.gif',
+      output: '/tmp/diagram.gif',
       options: { background: '#ffffff', keepMetadata: false },
     },
     outputBytes: 133_120,
@@ -163,6 +165,57 @@ describe('result block, paired form', () => {
 
   it('never overflows the terminal at any width', () => {
     for (const w of [40, 56, 60, 80, 100, 120]) {
+      const frame = frameOf(<HistoryEntry block={block} width={w} />)
+      for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
+    }
+  })
+})
+
+describe('result block, long names', () => {
+  const long: SourceInfo = { ...source, path: '/tmp/Screenshot 2026-08-17 at 3.52.36 PM.png' }
+  const result: Result = {
+    job: {
+      source: long,
+      target: 'gif',
+      output: '/tmp/Screenshot 2026-08-17 at 3.52.36 PM.gif',
+      options: { background: '#ffffff', keepMetadata: false },
+    },
+    outputBytes: 133_120,
+    warnings: [],
+  }
+  const block = { kind: 'result' as const, id: 'r3', result }
+
+  it('stacks the boxes when a name will not fit side by side', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={92} />)
+    // One box per row means two top edges, not one shared line.
+    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(2)
+    expect(frame).toContain('↓')
+  })
+
+  it('shows the full names rather than ellipsing both', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={92} />)
+    expect(frame).toContain('Screenshot 2026-08-17 at 3.52.36 PM.png')
+    expect(frame).toContain('Screenshot 2026-08-17 at 3.52.36 PM.gif')
+    expect(frame).not.toContain('…')
+  })
+
+  it('still pairs them side by side when both names are short', () => {
+    const short: Result = {
+      ...result,
+      job: {
+        ...result.job,
+        source: { ...long, path: '/tmp/a.png' },
+        output: '/tmp/a.gif',
+      },
+    }
+    const frame = frameOf(
+      <HistoryEntry block={{ kind: 'result', id: 'r4', result: short }} width={92} />,
+    )
+    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(1)
+  })
+
+  it('never overflows, stacked or paired', () => {
+    for (const w of [56, 60, 80, 92, 120]) {
       const frame = frameOf(<HistoryEntry block={block} width={w} />)
       for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
     }

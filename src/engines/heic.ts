@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { rm } from 'node:fs/promises'
+import { open, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -85,5 +85,100 @@ export async function decodeHeic(source: string): Promise<DecodedHeic> {
   } catch (e) {
     await cleanup()
     throw e
+  }
+}
+
+/**
+ * Whether the file is HEIC, decided by its own bytes.
+ *
+ * Needed because Sharp cannot be asked. A real photo is stored as a tiled
+ * grid — a 12MP iPhone HEIC is dozens of tiles cross-referenced through the
+ * ISO-BMFF `iref` box — and libheif refuses more than 16 references by
+ * default:
+ *
+ *   heif: Security limit exceeded: Number of references in iref box (48)
+ *   exceeds the security limits of 16 references
+ *
+ * So `sharp(photo).metadata()` throws for exactly the files people actually
+ * have, while succeeding on the small single-tile fixtures a test suite
+ * tends to generate. Detection therefore reads the container directly, which
+ * is content-based and never consults the extension (invariant 3).
+ *
+ * Layout: a 4-byte big-endian box size, the literal 'ftyp', then a 4-byte
+ * major brand, then optional compatible brands. Any HEIF-family brand counts;
+ * whether it is decodable is a separate question answered by `heicDecodable`.
+ */
+const HEIF_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'mif1', 'msf1'])
+
+/**
+ * AVIF is the same container with a different codec, and it lists `mif1`
+ * among its compatible brands — so a check for HEIF brands alone claims
+ * every AVIF as HEIC. An AVIF brand anywhere in the box settles it, because
+ * sharp reads AVIF perfectly well and must keep doing so.
+ */
+const AVIF_BRANDS = new Set(['avif', 'avis'])
+
+export async function looksLikeHeic(path: string): Promise<boolean> {
+  let handle: Awaited<ReturnType<typeof open>>
+  try {
+    handle = await open(path, 'r')
+  } catch {
+    return false
+  }
+  try {
+    const buffer = Buffer.alloc(64)
+    const { bytesRead } = await handle.read(buffer, 0, 64, 0)
+    if (bytesRead < 12) return false
+    if (buffer.toString('latin1', 4, 8) !== 'ftyp') return false
+
+    // The major brand, plus every compatible brand in the rest of the box.
+    const size = Math.min(buffer.readUInt32BE(0), bytesRead)
+    const brands: string[] = []
+    for (let at = 8; at + 4 <= size; at += 4) {
+      brands.push(buffer.toString('latin1', at, at + 4))
+    }
+    if (brands.some((b) => AVIF_BRANDS.has(b))) return false
+    return brands.some((b) => HEIF_BRANDS.has(b))
+  } catch {
+    return false
+  } finally {
+    await handle.close().catch(() => {})
+  }
+}
+
+export interface HeicInfo {
+  width: number
+  height: number
+  hasAlpha: boolean
+}
+
+/**
+ * Dimensions straight from `sips`, for the files libheif will not parse.
+ *
+ * Known limitation: these are the dimensions `sips` reports, which for a
+ * HEIC carrying an EXIF rotation are the stored ones, not the displayed
+ * ones. `sips` exposes no orientation field for HEIC (`-g orientation`
+ * returns nil, and Spotlight has nothing either), so there is no cheap way
+ * to correct them without decoding the file — which at probe time would cost
+ * a second per photo for a number shown on one line.
+ *
+ * The conversion itself is unaffected: the decoded intermediate carries the
+ * orientation and `.rotate()` applies it, so the written file is always the
+ * right way up. Only the dimensions in the file card can read transposed,
+ * and only for a rotated source.
+ * `hasAlpha` is asked for too rather than assumed: a photo never has an alpha
+ * channel, but a HEIC exported from a graphics tool can, and guessing would
+ * silently skip the flatten step that keeps transparency from going black.
+ */
+export async function heicInfo(path: string): Promise<HeicInfo> {
+  const { stdout } = await run(
+    '/usr/bin/sips',
+    ['-g', 'pixelWidth', '-g', 'pixelHeight', '-g', 'hasAlpha', path],
+    { timeout: 30_000 },
+  )
+  return {
+    width: Number(/pixelWidth:\s*(\d+)/.exec(stdout)?.[1] ?? 0),
+    height: Number(/pixelHeight:\s*(\d+)/.exec(stdout)?.[1] ?? 0),
+    hasAlpha: /hasAlpha:\s*yes/i.test(stdout),
   }
 }

@@ -303,7 +303,7 @@ export function Prompt({
   // claim the same weight as the drop target, which it is not.
   if (variant === 'field') {
     return (
-      <Box flexDirection="column" marginTop={1} marginBottom={1}>
+      <Box flexDirection="column" marginTop={2} marginBottom={1}>
         {body}
       </Box>
     )
