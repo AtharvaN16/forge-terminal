@@ -26,6 +26,7 @@ export type ErrorCode =
   | 'path-too-long'
   | 'unreadable-path'
   | 'invalid-page-range'
+  | 'empty-selection'
   | 'unexpected'
 
 interface ForgeErrorInit {
@@ -321,6 +322,20 @@ export function invalidPageRange(_input: string, detail: string, pageCount: numb
     title: 'Page range not understood',
     detail,
     hint: `This document has ${pageCount} pages. Use numbers and spans, like "3-7, 12, 20-".`,
+  })
+}
+
+/**
+ * Extract and delete both refuse to write an empty document rather than
+ * silently producing one — an extract with no pages selected, or a delete
+ * that would remove every page. `detail` says which.
+ */
+export function emptySelection(detail: string): ForgeError {
+  return new ForgeError({
+    code: 'empty-selection',
+    title: 'Nothing to write',
+    detail,
+    hint: 'Select at least one page to keep.',
   })
 }
 

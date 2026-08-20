@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { PDFDocument } from 'pdf-lib'
-import { encryptedSource } from '../core/errors.js'
+import { emptySelection, encryptedSource } from '../core/errors.js'
 import { cutsToRanges } from '../core/pages.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
 import type { Engine } from './types.js'
@@ -132,6 +132,77 @@ async function split(
   return { job, outputBytes, warnings: [] }
 }
 
+/** Copy an explicit page list into a new document, in the order given. */
+async function pagesInto(src: PDFDocument, indices: number[]): Promise<Uint8Array> {
+  const out = await PDFDocument.create()
+  const pages = await out.copyPages(src, indices)
+  for (const page of pages) out.addPage(page)
+  return out.save()
+}
+
+async function extract(
+  job: Extract<Job, { op: 'extract' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  assertUnencrypted([source])
+  if (job.pages.length === 0) {
+    throw emptySelection('That extract selects no pages.')
+  }
+
+  onPhase({ phase: 'reading' })
+  const src = await load(source.path)
+  const wanted = [...new Set(job.pages)].sort((a, b) => a - b)
+
+  const written: string[] = []
+  let outputBytes = 0
+  try {
+    if (!job.separate) {
+      onPhase({ phase: 'writing' })
+      const path = job.outputs[0] as string
+      outputBytes = await writeAtomic(path, await pagesInto(src, wanted))
+      written.push(path)
+    } else {
+      for (const [i, page] of wanted.entries()) {
+        const path = job.outputs[i] as string
+        outputBytes += await writeAtomic(path, await pagesInto(src, [page]))
+        written.push(path)
+        onPhase({ phase: 'page', done: i + 1, total: wanted.length })
+      }
+    }
+  } catch (e) {
+    await Promise.all(written.map((p) => rm(p, { force: true })))
+    throw e
+  }
+
+  return { job, outputBytes, warnings: [] }
+}
+
+/**
+ * Exact inverse of `extract`: the kept set is everything not in `job.pages`.
+ * Refuses to write an empty document, the same way `extract` refuses an
+ * empty selection — deleting every page is the delete-side of that case.
+ */
+async function deletePages(
+  job: Extract<Job, { op: 'delete' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  assertUnencrypted([source])
+
+  onPhase({ phase: 'reading' })
+  const src = await load(source.path)
+  const drop = new Set(job.pages)
+  const keep = src.getPageIndices().filter((i) => !drop.has(i))
+  if (keep.length === 0) {
+    throw emptySelection('That would delete every page.')
+  }
+
+  onPhase({ phase: 'writing' })
+  const outputBytes = await writeAtomic(job.outputs[0], await pagesInto(src, keep))
+  return { job, outputBytes, warnings: [] }
+}
+
 export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
@@ -144,6 +215,10 @@ export const pdfEngine: Engine = {
         return merge(job, onPhase)
       case 'split':
         return split(job, onPhase)
+      case 'extract':
+        return extract(job, onPhase)
+      case 'delete':
+        return deletePages(job, onPhase)
       default:
         throw new Error(`pdf engine cannot ${job.op}`)
     }
