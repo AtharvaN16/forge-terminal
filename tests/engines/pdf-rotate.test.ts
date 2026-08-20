@@ -54,6 +54,22 @@ describe('rotate', () => {
     expect(await rotations(out)).toEqual([90, 90])
   })
 
+  /**
+   * Spec §6: additive, "normalised to 0–270". JS `%` keeps the sign, so a
+   * page stored at -270 — every value modulo 360 is legal in a PDF, and
+   * other tools do write negatives — used to land at -180. Viewers render
+   * that correctly, which is exactly why it would have gone unnoticed.
+   */
+  it('normalises a negatively stored rotation into 0-270', async () => {
+    const dir = await makeTempDir()
+    const src = await preRotated(dir, 'doc.pdf', -270)
+    const out = join(dir, 'out.pdf')
+    const job: Job = { op: 'rotate', sources: [await doc(src)], outputs: [out], turns: 1 }
+    await pdfEngine.run(job, () => {})
+    // -270 is a quarter turn; another quarter turn is a half turn.
+    expect(await rotations(out)).toEqual([180, 180])
+  })
+
   it('handles three-quarter turns', async () => {
     const dir = await makeTempDir()
     const src = await makeMarkedPdf(dir, 'doc.pdf', [1])

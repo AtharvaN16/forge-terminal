@@ -236,7 +236,12 @@ async function rotate(
   onPhase({ phase: 'reading' })
   const doc = await load(source.path)
   for (const page of doc.getPages()) {
-    const next = (page.getRotation().angle + job.turns * 90) % 360
+    // Twice-modulo, because JS `%` keeps the sign: a page stored at -270
+    // rotated by a quarter turn would otherwise land at -180. Every value is
+    // right modulo 360 and viewers render either correctly, which is exactly
+    // why spec §6 pins the stored form to 0–270 rather than trusting it.
+    const turned = page.getRotation().angle + job.turns * 90
+    const next = ((turned % 360) + 360) % 360
     page.setRotation(degrees(next))
   }
 
