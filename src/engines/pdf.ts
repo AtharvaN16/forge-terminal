@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { PDFDocument } from 'pdf-lib'
+import { degrees, PDFDocument } from 'pdf-lib'
 import { emptySelection, encryptedSource } from '../core/errors.js'
 import { cutsToRanges } from '../core/pages.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
@@ -203,6 +203,33 @@ async function deletePages(
   return { job, outputBytes, warnings: [] }
 }
 
+/**
+ * Rotation is *additive*.
+ *
+ * A page already at 90° rotated by another quarter turn must land at 180°.
+ * Setting the angle absolutely would silently discard a rotation the
+ * document already carried — the same class of bug as ignoring EXIF
+ * orientation, which this project treats as load-bearing (invariant 4).
+ */
+async function rotate(
+  job: Extract<Job, { op: 'rotate' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  assertUnencrypted([source])
+
+  onPhase({ phase: 'reading' })
+  const doc = await load(source.path)
+  for (const page of doc.getPages()) {
+    const next = (page.getRotation().angle + job.turns * 90) % 360
+    page.setRotation(degrees(next))
+  }
+
+  onPhase({ phase: 'writing' })
+  const outputBytes = await writeAtomic(job.outputs[0], await doc.save())
+  return { job, outputBytes, warnings: [] }
+}
+
 export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
@@ -219,6 +246,8 @@ export const pdfEngine: Engine = {
         return extract(job, onPhase)
       case 'delete':
         return deletePages(job, onPhase)
+      case 'rotate':
+        return rotate(job, onPhase)
       default:
         throw new Error(`pdf engine cannot ${job.op}`)
     }
