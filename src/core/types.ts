@@ -12,6 +12,12 @@ export interface FormatSpec {
   lossy: boolean
   /** One short phrase shown beside the format in a picker. */
   hint: string
+  /**
+   * Quality Forge encodes at when the user has not chosen one. Present only
+   * for lossy formats. Lives here rather than in an engine because more than
+   * one engine encodes to these formats and they must not disagree.
+   */
+  defaultQuality?: number
 }
 
 /** What a file actually is, determined by reading it — never by its extension. */

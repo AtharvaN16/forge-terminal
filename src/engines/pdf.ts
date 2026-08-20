@@ -15,7 +15,6 @@ import type {
   Result,
   Warning,
 } from '../core/types.js'
-import { DEFAULT_QUALITY } from './image.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -83,8 +82,8 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
  * change) to correct a minority of files. Instead only a source that
  * genuinely carries a non-trivial orientation tag pays for the decode.
  *
- * A rotated JPEG is re-encoded back to JPEG, at `image.ts`'s
- * `DEFAULT_QUALITY.jpeg`/mozjpeg — the same quality this engine already
+ * A rotated JPEG is re-encoded back to JPEG, at `FORMATS.jpeg.defaultQuality`
+ * /mozjpeg — the same quality this engine already
  * accepts for every JPEG target it produces. Re-encoding as PNG instead was
  * tried first and reverted: unlike `heic.ts`'s PNG intermediate, which is
  * immediately re-compressed to whatever the user asked for at their chosen
@@ -95,6 +94,11 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
  * avoided one. Forge already accepts a second lossy JPEG generation for
  * every other conversion this engine performs, so refusing it in only this
  * one path was inconsistent with the tool's own established behaviour.
+ *
+ * What that argument does NOT establish: that a second q82 generation is
+ * perceptually harmless. It is reasoned from consistency, not measured — no
+ * SSIM or visual diff was run. The sizes below were measured; the quality
+ * claim was not. Recorded so a later reader does not mistake one for the other.
  *
  * A rotated PNG stays PNG: lossless-to-lossless has no quality trade to
  * weigh. Every other source format (webp/avif/gif/tiff) was already being
@@ -113,7 +117,7 @@ async function embedBytes(doc: PDFDocument, source: ImageInfo, raw: Buffer) {
   if (source.format === 'jpeg') {
     const rotated = await sharp(raw)
       .rotate()
-      .jpeg({ quality: DEFAULT_QUALITY.jpeg, mozjpeg: true })
+      .jpeg({ quality: FORMATS.jpeg.defaultQuality, mozjpeg: true })
       .toBuffer()
     return doc.embedJpg(rotated)
   }

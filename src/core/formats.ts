@@ -9,6 +9,7 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     animatable: false,
     lossy: true,
     hint: 'universal',
+    defaultQuality: 82,
   },
   png: {
     id: 'png',
@@ -27,6 +28,7 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     animatable: true,
     lossy: true,
     hint: 'smaller, modern',
+    defaultQuality: 80,
   },
   avif: {
     id: 'avif',
@@ -36,6 +38,7 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     animatable: true,
     lossy: true,
     hint: 'smallest',
+    defaultQuality: 50,
   },
   heic: {
     id: 'heic',

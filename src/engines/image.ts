@@ -162,19 +162,8 @@ async function probe(path: string): Promise<SourceInfo> {
   }
 }
 
-/**
- * Exported so `pdf.ts` can re-encode a rotated JPEG at the same quality this
- * engine already uses for every JPEG it produces, rather than inventing a
- * second answer to "what quality does Forge re-encode at".
- */
-export const DEFAULT_QUALITY: Partial<Record<FormatId, number>> = {
-  jpeg: 82,
-  webp: 80,
-  avif: 50,
-}
-
 function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
-  const q = quality ?? DEFAULT_QUALITY[target]
+  const q = quality ?? FORMATS[target].defaultQuality
   switch (target) {
     case 'jpeg':
       return pipeline.jpeg({ quality: q, mozjpeg: true })
