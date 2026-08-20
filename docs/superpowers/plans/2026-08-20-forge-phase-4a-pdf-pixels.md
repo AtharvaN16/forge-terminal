@@ -286,7 +286,7 @@ export const pdfiumEngine: Engine = {
   reads: READS,
   writes: WRITES,
   ops: OPS,
-  probe(): SourceInfo {
+  probe(): Promise<SourceInfo> {
     // engines/pdf.ts already classifies PDFs by content and is registered
     // first, so this is never reached. It throws rather than returning a
     // wrong answer if the registration order is ever changed.
