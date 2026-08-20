@@ -722,6 +722,18 @@ export function App({
       <Box flexDirection="column">
         {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
+        {/* Which action the next file goes through. Shown only for compress:
+            convert is what dropping a file already does, so labelling it
+            would be telling the user something they did not ask about. */}
+        {mode === 'compress' && stage !== 'theme' ? (
+          <Box marginBottom={1}>
+            <Text color={colourProp(palette.accent)} bold>
+              {'  COMPRESS  '}
+            </Text>
+            <Text color={colourProp(palette.dim)}>{'  /convert to switch back'}</Text>
+          </Box>
+        ) : null}
+
         {/* The staged file, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back. */}
         {source && stage !== 'idle' && stage !== 'theme' && stage !== 'result' ? (
@@ -953,7 +965,7 @@ export function App({
             <HintBar
               width={width}
               pairs={[
-                ['↵', 'convert another'],
+                ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
                 ...(suggestion
                   ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
                       string,
@@ -997,10 +1009,11 @@ export function App({
                 band === 'compact'
                   ? [
                       ['↵', 'send'],
-                      ['ctrl-c', 'quit'],
+                      ['/', 'commands'],
                     ]
                   : [
                       ['↵', 'send'],
+                      ['/', 'commands'],
                       ['ctrl-u', 'clear'],
                       ['ctrl-c', 'quit'],
                     ]

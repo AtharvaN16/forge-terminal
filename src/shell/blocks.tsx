@@ -141,7 +141,10 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   // Two boxes and the arrow gutter share the row; each box carries its own
   // border, so the text inside is the box width less the two frame glyphs
   // and a column of padding on each side.
-  const boxWidth = Math.min(30, Math.floor((Math.min(width, 76) - 5) / 2))
+  // The connector is ` ──→ ` — five columns — and the top and bottom edges
+  // must span the same gap, or the boxes stop lining up.
+  const CONNECTOR = ` ${SYMBOLS.longArrow} `
+  const boxWidth = Math.min(30, Math.floor((Math.min(width, 76) - CONNECTOR.length) / 2))
   const textWidth = boxWidth - 4
 
   const cell = (label: string, name: string) => {
@@ -197,7 +200,8 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
         <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
         <Box marginTop={1} flexDirection="column">
           {wide(fromLabel, fromName)}
-          <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}↓`}</Text>
+          <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}│`}</Text>
+          <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}▼`}</Text>
           {wide(toLabel, toName)}
         </Box>
         <Box marginTop={1}>
@@ -221,7 +225,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
   const from = cell(fromLabel, fromName)
   const to = cell(toLabel, toName)
-  const gutter = '   '
+  const gutter = ' '.repeat(CONNECTOR.length)
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -234,7 +238,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
         </Text>
         <Text>
           {from.mid}
-          <Text color={colourProp(palette.dim)}>{` ${SYMBOLS.arrow} `}</Text>
+          <Text color={colourProp(palette.dim)}>{CONNECTOR}</Text>
           {to.mid}
         </Text>
         <Text>

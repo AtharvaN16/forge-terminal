@@ -195,3 +195,56 @@ describe('the format suggestion', () => {
     expect(all).not.toContain('would be')
   }, 30_000)
 })
+
+describe('knowing which mode you are in', () => {
+  it('names the mode once compress is active', async () => {
+    const { lastFrame } = await toCompress()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('COMPRESS')
+    expect(frame).toContain('/convert to switch back')
+  })
+
+  it('says nothing in convert, which is what dropping a file already does', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    stdin.write(jpg)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    expect(lastFrame() ?? '').not.toContain('COMPRESS')
+  }, 20_000)
+
+  it('offers to compress again, not convert another', async () => {
+    const { stdin, lastFrame, frames } = await toCompress()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    await finish(stdin)
+    await settle(600)
+    const all = frames.join('') + (lastFrame() ?? '')
+    expect(all).toContain('compress again')
+  }, 30_000)
+
+  it('/convert switches back out of compress', async () => {
+    const { stdin, lastFrame } = await toCompress()
+    // esc off the mode step, back to the prompt, then switch.
+    stdin.write(String.fromCharCode(27))
+    await settle(200)
+    stdin.write('/convert')
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+    expect(lastFrame() ?? '').not.toContain('COMPRESS')
+  }, 20_000)
+})
+
+describe('the palette is discoverable', () => {
+  it('the prompt hints mention the slash', () => {
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
+    const frame = render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? ''
+    expect(frame).toContain('/ commands')
+  })
+})
