@@ -196,6 +196,22 @@ export function parseArgs(argv: string[]): Intent {
     if (opts.separate && action !== 'extract') {
       throw invalidArguments(`--separate only applies to --extract, not --${action}.`)
     }
+    /**
+     * `PageOpIntent` has no `output` field — `intent.output` is set on the
+     * convert path below, after this `return` — so `-o` was accepted and then
+     * silently dropped. Refused outright rather than honoured: five
+     * operations with five different arities (merge is N:1, split is 1:N)
+     * each need their own rule for what a single `--output` means, which is
+     * a later phase's work. Ignoring a flag someone typed is the defect;
+     * saying so plainly is the fix. Same shape as the `--separate` refusal
+     * just above.
+     */
+    if (opts.output !== undefined) {
+      throw invalidArguments(
+        `--output does not apply to --${action}.`,
+        'Page operations name their own outputs, beside the source. Rename the result afterwards.',
+      )
+    }
 
     const pageOp: PageOpIntent = {
       kind: 'pageop',

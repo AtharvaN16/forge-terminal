@@ -72,7 +72,7 @@ function firstUnsafeOutput(
     const key = resolve(output)
 
     if (sourcePaths.has(key) && !force) {
-      return { output, error: outputIsInput(output) }
+      return { output, error: outputIsInput(output, job.op) }
     }
 
     const owner = claimed.get(key)
@@ -82,7 +82,7 @@ function firstUnsafeOutput(
     }
 
     if (existsSync(key) && !force) {
-      return { output, error: outputExists(output) }
+      return { output, error: outputExists(output, job.op) }
     }
   }
 
@@ -113,6 +113,11 @@ function firstUnsafeOutput(
  * the 4th collides would break the same atomicity `writeAtomic` (Task 10)
  * already guarantees one job at a time; this is what guarantees it across
  * jobs too, before a single byte is written.
+ *
+ * Both refusals are told which operation raised them, because their hints
+ * differ: only a conversion can be sent somewhere else with `--output` (see
+ * `takesOutputFlag` in `core/errors.ts`), so a page operation is offered a
+ * way out it can actually take.
  *
  * Collision is checked regardless of `--force` — two writes racing onto one
  * path is a bug, not a preference, exactly as `buildPlan` treats it. `--force`

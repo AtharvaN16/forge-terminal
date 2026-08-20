@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { FORMATS } from './formats.js'
-import type { FormatId, SourceInfo } from './types.js'
+import type { FormatId, Job, SourceInfo } from './types.js'
 import { formatBytes } from './units.js'
 
 export type ErrorCode =
@@ -260,12 +260,25 @@ export function encryptedSource(path: string): ForgeError {
   })
 }
 
-export function outputExists(path: string): ForgeError {
+/**
+ * Whether the operation that produced this output takes `--output` at all.
+ *
+ * Only `convert` does: a page operation names its outputs from its sources
+ * and `cli/args.ts` refuses `--output` on one outright, so offering the flag
+ * as the way out of a refusal would be advising something the same run
+ * rejects. Defaulted to `convert` because `core/plan.ts`, the other caller of
+ * both refusals below, only ever builds conversions.
+ */
+const takesOutputFlag = (op: Job['op']): boolean => op === 'convert'
+
+export function outputExists(path: string, op: Job['op'] = 'convert'): ForgeError {
   return new ForgeError({
     code: 'output-exists',
     title: 'File already exists',
     detail: `${basename(path)} is already there.`,
-    hint: 'Pass --force to replace it, or choose a different --output.',
+    hint: takesOutputFlag(op)
+      ? 'Pass --force to replace it, or choose a different --output.'
+      : 'Pass --force to replace it, or move the existing file out of the way.',
   })
 }
 
@@ -284,12 +297,14 @@ export function outputCollision(paths: [string, string], output: string): ForgeE
   })
 }
 
-export function outputIsInput(path: string): ForgeError {
+export function outputIsInput(path: string, op: Job['op'] = 'convert'): ForgeError {
   return new ForgeError({
     code: 'output-is-input',
     title: 'Output would replace the original',
     detail: `${basename(path)} is both the input and the output.`,
-    hint: 'Choose a different --output, or pass --force to overwrite in place.',
+    hint: takesOutputFlag(op)
+      ? 'Choose a different --output, or pass --force to overwrite in place.'
+      : 'Move or rename that file first, or pass --force to overwrite it in place.',
   })
 }
 

@@ -86,6 +86,22 @@ describe('page operation flags', () => {
     expect(() => parseArgs(['doc.pdf', '--split', 'every=0'])).toThrow(/at least 1/)
   })
 
+  /**
+   * `PageOpIntent` carries no `output` field and `intent.output` is only set
+   * on the convert path, so `-o` used to be accepted and then silently
+   * dropped: `--merge -o combined.pdf` wrote `<folder>-merged.pdf` without
+   * ever mentioning the flag. Refused outright instead, the same way
+   * `--separate` is refused on the four operations it does not apply to —
+   * implementing `-o` across five operations with different arities is a
+   * later phase, but silently ignoring a flag someone typed is a defect now.
+   */
+  it('refuses --output on a page operation rather than ignoring it', () => {
+    expect(() => parseArgs(['a.pdf', 'b.pdf', '--merge', '-o', 'combined.pdf'])).toThrow(/--output/)
+    expect(() => parseArgs(['doc.pdf', '--rotate', '90', '--output', 'out.pdf'])).toThrow(
+      /--output/,
+    )
+  })
+
   it('still accepts the smallest valid group size', () => {
     const intent = parseArgs(['doc.pdf', '--split', 'every=1'])
     if (intent.kind !== 'pageop') throw new Error('expected pageop')

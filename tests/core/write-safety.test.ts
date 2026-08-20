@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { DocumentInfo, Job } from '../../src/core/types.js'
+import type { DocumentInfo, ImageInfo, Job } from '../../src/core/types.js'
 import { checkWriteSafety } from '../../src/core/write-safety.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
@@ -12,6 +12,17 @@ const doc = (path: string, pages = 7): DocumentInfo => ({
   bytes: 1000,
   pages,
   encrypted: false,
+})
+
+const image = (path: string): ImageInfo => ({
+  kind: 'image',
+  path,
+  format: 'jpeg',
+  bytes: 1000,
+  width: 10,
+  height: 10,
+  hasAlpha: false,
+  frames: 1,
 })
 
 describe('checkWriteSafety', () => {
@@ -150,6 +161,55 @@ describe('checkWriteSafety', () => {
     expect(jobs).toEqual([])
     expect(failures).toHaveLength(1)
     expect(failures[0]?.error.code).toBe('output-collision')
+  })
+
+  /**
+   * Both refusals used to offer `--output` as the way out. A page operation
+   * refuses `--output` (see `cli/args.ts`), so for merge, split, extract,
+   * delete and rotate that half of each hint named a flag the same run would
+   * reject — leaving someone whose glob-merge collided with its own output
+   * no non-destructive way forward at all.
+   */
+  it('does not advise --output when a page operation is refused', async () => {
+    const dir = await makeTempDir()
+    const a = join(dir, 'a.pdf')
+    const b = join(dir, 'b.pdf')
+    const output = join(dir, 'merged.pdf')
+    await writeFile(output, 'already here')
+
+    const exists = checkWriteSafety(
+      [{ op: 'merge', sources: [doc(a), doc(b)], outputs: [output] }],
+      { force: false },
+    ).failures[0]?.error
+    expect(exists?.code).toBe('output-exists')
+    expect(exists?.hint).not.toContain('--output')
+    expect(exists?.hint).toContain('--force')
+
+    const isInput = checkWriteSafety([{ op: 'merge', sources: [doc(a), doc(b)], outputs: [a] }], {
+      force: false,
+    }).failures[0]?.error
+    expect(isInput?.code).toBe('output-is-input')
+    expect(isInput?.hint).not.toContain('--output')
+    // Still names a way out that does not destroy anything.
+    expect(isInput?.hint).toMatch(/move|rename/i)
+  })
+
+  it('still advises --output when a conversion is refused', async () => {
+    const dir = await makeTempDir()
+    const source = join(dir, 'photo.jpg')
+    const output = join(dir, 'photo.webp')
+    await writeFile(output, 'already here')
+    const job: Job = {
+      op: 'convert',
+      sources: [image(source)],
+      outputs: [output],
+      target: 'webp',
+      options: { background: '#ffffff', keepMetadata: false },
+    }
+
+    const failure = checkWriteSafety([job], { force: false }).failures[0]?.error
+    expect(failure?.code).toBe('output-exists')
+    expect(failure?.hint).toContain('--output')
   })
 
   it('keeps a job whose outputs clear every rule', async () => {

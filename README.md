@@ -288,7 +288,7 @@ already-rotated PDF by another 90° lands at 180°, it doesn't reset to 90°.
 | `--merge` | derived from the inputs' shared parent folder — merging everything in `~/invoices/` writes `invoices-merged.pdf` into that folder; inputs spanning different folders fall back to `<first-file>-merged.pdf` |
 
 Every one of these writes beside its source(s) — page operations have no
-`--output` flag.
+`--output` flag, and passing one is refused rather than quietly ignored.
 
 ### Write safety
 
@@ -307,7 +307,7 @@ $ forge invoices/jan.pdf invoices/feb.pdf --merge
 
   invoices-merged.pdf is already there.
 
-  Pass --force to replace it, or choose a different --output.
+  Pass --force to replace it, or move the existing file out of the way.
 ```
 
 (A glob like `invoices/*.pdf --merge` run twice hits a sharper version of the
