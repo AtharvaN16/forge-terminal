@@ -40,6 +40,22 @@ export function reportBatch(summary: RunSummary, output?: string): string[] {
   return lines
 }
 
+/**
+ * A page operation's result names its outputs instead of showing a size
+ * change — "4.2 MB → 4.3 MB" says nothing useful for a split into 4 files,
+ * unlike a conversion where the before/after size is the whole point.
+ */
+export function reportPageOp(summary: RunSummary): string[] {
+  const outputs = summary.results.flatMap((r) => r.job.outputs)
+  const names = outputs.map((o) => basename(o)).join(', ')
+  const noun = outputs.length === 1 ? 'file' : 'files'
+
+  const lines = [`✓ ${outputs.length} ${noun} · ${names}`]
+  const warnings = summary.results.flatMap((r) => r.warnings)
+  for (const warning of warnings) lines.push('', `⚠ ${warning.message}`)
+  return lines
+}
+
 export function reportFailures(failures: InputFailure[], opts: { debug: boolean }): string[] {
   if (failures.length === 0) return []
   const lines: string[] = []
