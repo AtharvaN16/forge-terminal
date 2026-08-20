@@ -199,11 +199,19 @@ export function unsupportedTarget(
   })
 }
 
+/**
+ * Thrown at probe time, before any engine has identified what the file is —
+ * that is precisely why it failed to decode. The wording must stay
+ * format-neutral: with more than one engine registered, this is reached by
+ * probing a file that decodes as nothing recognisable, image or otherwise
+ * (see engines/registry.ts's `probe`), so claiming "as an image" here would
+ * be inventing a format the probe never actually determined.
+ */
 export function corruptSource(path: string, cause: unknown): ForgeError {
   return new ForgeError({
     code: 'corrupt-source',
-    title: 'Damaged image',
-    detail: `${basename(path)} could not be read as an image.`,
+    title: 'Damaged file',
+    detail: `${basename(path)} could not be read. It may be damaged, or not a format Forge recognises.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
   })

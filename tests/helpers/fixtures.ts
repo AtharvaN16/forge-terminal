@@ -182,3 +182,18 @@ export async function pdfPageMarks(path: string): Promise<number[]> {
   const doc = await PDFDocument.load(await readFile(path), { ignoreEncryption: true })
   return doc.getPages().map((p) => Math.round(p.getSize().width) - MARK_BASE)
 }
+
+/**
+ * A file that starts with the `%PDF-` magic bytes Sharp and pdf-lib both use
+ * to notice "this claims to be a PDF", but whose body neither can parse:
+ * Sharp doesn't decode PDFs as an image at all, and pdf-lib's xref/trailer
+ * parser throws on the garbage that follows. Distinct from `makeCorruptFile`,
+ * which writes bytes that don't even look like any recognised format — this
+ * exercises the case where content-based probing gets partway to "this looks
+ * like a PDF" and then fails to decode it.
+ */
+export async function makeCorruptPdf(dir: string, name: string): Promise<string> {
+  const path = join(dir, name)
+  await writeFile(path, '%PDF-1.4\nthis is not a valid PDF body.\n%%EOF')
+  return path
+}
