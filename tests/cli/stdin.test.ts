@@ -72,7 +72,9 @@ describe('readPassword', () => {
     // but do not cover the TTY-dependent path where terminal:true engages raw mode.
     // A regression that drops terminal:true would be invisible to these tests but
     // would cause the password to be echoed on real terminals. TTY-level verification
-    // requires a pty harness (spawned subprocess with real terminal).
+    // would require a pty harness (spawned subprocess with a real terminal); no such
+    // harness exists in this repo. Masking was confirmed on a live pty once, by hand,
+    // during review — that was a one-off check, not standing automated coverage.
 
     it('writes prompt and trailing newline to stderr', async () => {
       const inputStream = Readable.from(['mypassword\n'])
@@ -114,9 +116,32 @@ describe('readPassword', () => {
       expect(password).toBe('secret123')
     })
 
-    // Note: rl.close() execution cannot be tested here. While the finally block
-    // is syntactically guaranteed to run (and it does — the newline in stderr proves that),
-    // mock streams have no observable effect when closed. The actual close() call is
-    // verified by the pty harness on real terminals.
+    // Fixture note, learned the hard way over three review rounds: Readable.from([...])
+    // ends as soon as its single chunk is consumed, and readline auto-closes on the
+    // input's 'end' event. Under that fixture the explicit rl.close() in the finally
+    // block is a no-op — deleting it changes nothing observable, so any teardown test
+    // built on it is hollow. A teardown test needs a stream that stays open: a
+    // PassThrough that is written to but never ended, as below.
+    it('releases stdin when the prompt completes', async () => {
+      // Never ended, so readline's own auto-close on input 'end' cannot fire. The only
+      // thing that can release stdin here is the explicit rl.close() in the finally block.
+      const inputStream = new PassThrough()
+      const mockStderr = new PassThrough()
+      mockStderr.resume()
+
+      Object.defineProperty(process, 'stdin', { value: inputStream, configurable: true })
+      Object.defineProperty(process, 'stderr', { value: mockStderr, configurable: true })
+
+      const pending = readPassword({ stdin: false })
+      inputStream.write('secret123\n')
+      const password = await pending
+
+      expect(password).toBe('secret123')
+      // readline with terminal:true attaches a 'keypress' listener to stdin and removes
+      // it when the interface closes. A surviving listener means the interface still
+      // holds stdin. Asserted rather than isPaused() because the listener is the thing
+      // that actually keeps stdin captured; pausing is a downstream side effect.
+      expect(inputStream.listenerCount('keypress')).toBe(0)
+    })
   })
 })

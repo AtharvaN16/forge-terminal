@@ -35,11 +35,12 @@ export async function readPassword(opts: { stdin: boolean }): Promise<string> {
     return await new Promise<string>((resolve) => rl.question('', resolve))
   } finally {
     process.stderr.write('\n')
-    // close() is guaranteed to run here by JavaScript semantics — the finally block
-    // executes before the promise settles, whether it resolves or rejects. This ensures
-    // stdin is released even if the promise rejects. Unit testing with mock streams
-    // cannot observe close()'s effects (mock streams don't care if they're closed), so
-    // this behavior is verified by the pty harness on real terminals.
+    // Releases stdin: readline removes its 'keypress' listener and pauses the stream.
+    // The finally guarantees it runs whether the promise resolves or rejects.
+    // Covered by 'releases stdin when the prompt completes' in tests/cli/stdin.test.ts,
+    // which asserts no 'keypress' listener survives. That test must feed stdin from a
+    // stream that stays open — Readable.from() ends immediately and readline auto-closes
+    // on the input's 'end' event, which would mask this call and make the test hollow.
     rl.close()
   }
 }
