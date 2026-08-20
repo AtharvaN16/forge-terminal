@@ -113,10 +113,17 @@ export function splitOutputPaths(sourcePath: string, count: number): string[] {
  * Named by the page's own 1-based number, not its position in the
  * selection — rendering pages 2-3 of a document writes `doc-2.jpg` and
  * `doc-3.jpg`, never `doc-1.jpg`/`doc-2.jpg`, so a filename on disk always
- * says which page it holds. `splitOutputPaths`-style zero-padding, but
- * against the width of the *selection's* size rather than the document's
- * whole page count — a 2-page selection out of a 300-page document gets
- * `-2`/`-3`, not `-002`/`-003`.
+ * says which page it holds. `splitOutputPaths`-style zero-padding, but against
+ * the widest page *number* being written rather than the document's whole page
+ * count — a 2-page selection out of a 300-page document gets `-2`/`-3`, not
+ * `-002`/`-003`.
+ *
+ * Padding follows the largest page number, NOT how many pages were selected.
+ * Those differ whenever the selection is sparse, and using the count writes
+ * names that sort wrongly: pages 2 and 10 are two pages, so a count-derived
+ * width of 1 gives `doc-2.jpg` and `doc-10.jpg`, which `ls` and Finder order
+ * as `doc-10, doc-2`. That is the same defect `splitOutputPaths` above is
+ * careful to avoid, and the page picker makes sparse selections easy to reach.
  */
 export function rasterOutputPaths(
   sourcePath: string,
@@ -127,7 +134,7 @@ export function rasterOutputPaths(
   const { stem } = stemAndExt(resolve(sourcePath))
   const dir = destination ? resolve(destination) : resolve(sourcePath, '..')
   const ext = primaryExtension(target)
-  const width = String(Math.max(1, pages.length)).length
+  const width = String(Math.max(1, ...pages.map((p) => p + 1))).length
   const names = pages.map((p) => join(dir, `${stem}-${String(p + 1).padStart(width, '0')}${ext}`))
   const [first, ...rest] = names
   if (first === undefined) {
