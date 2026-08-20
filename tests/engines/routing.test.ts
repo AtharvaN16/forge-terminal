@@ -44,7 +44,9 @@ describe('engineForJob routes a conversion by both ends', () => {
     }
     // The image engine also writes jpeg. Matching on target alone picks it,
     // and it cannot read a PDF — this is the regression under test.
-    expect(engineForJob(job)?.id).not.toBe('image')
+    // Named, not `.not.toBe('image')`: that also passes when no engine is
+    // found at all, so deleting pdfium from the registry would leave it green.
+    expect(engineForJob(job)?.id).toBe('pdfium')
   })
 
   it('finds no engine for a pairing nothing supports', () => {

@@ -77,6 +77,9 @@ describe('encrypted sources', () => {
 
   it('has no --unlock flag — the feature was cut, so the flag must not linger', () => {
     // A flag that parses but does nothing is worse than no flag. Ruling R7.
-    expect(() => parseArgs(argv('--unlock'))).toThrow()
+    // With `--to` present, so the throw can only come from the unknown flag
+    // — without it, `parseArgs` refuses for having no target format and the
+    // assertion passes whether `--unlock` exists or not.
+    expect(() => parseArgs(argv('--to', 'jpeg', '--unlock'))).toThrow()
   })
 })
