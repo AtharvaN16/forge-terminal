@@ -421,10 +421,10 @@ Either way you land back on the destination step. Otherwise:
   11.5 KB → 3.5 KB · 69.6% smaller
 
 file:///private/tmp/forge-shell-check/sample.webp  ·  file:///private/tmp/forge-shell-check
-↵ convert another · f open · o reveal · q quit
+↵ convert another · o open · r reveal · q quit
 ```
 
-`f` opens the converted file in its default app and `o` reveals it in
+`o` opens the converted file in its default app and `o` reveals it in
 Finder — both just shell out to macOS's `open`; both actually launched
 Preview and Finder in this run, confirmed by asking each app afterward what
 it had open. `↵` clears the picker and returns to the prompt with this

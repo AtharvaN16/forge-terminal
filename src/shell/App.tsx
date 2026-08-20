@@ -223,8 +223,8 @@ export function App({
        * scrollback for the rest of the session, so `f` and `o` stay
        * pressable long after the file they point at has gone.
        */
-      if (input === 'f') openPath(lastResult.job.output).catch(showError)
-      if (input === 'o') revealPath(lastResult.job.output).catch(showError)
+      if (input === 'o') openPath(lastResult.job.output).catch(showError)
+      if (input === 'r') revealPath(lastResult.job.output).catch(showError)
       if (input === 'q') exit()
     },
     { isActive: stage === 'result' },
@@ -668,8 +668,8 @@ export function App({
               width={width}
               pairs={[
                 ['↵', 'convert another'],
-                ['f', 'open'],
-                ['o', 'reveal'],
+                ['o', 'open'],
+                ['r', 'reveal'],
                 ['q', 'quit'],
               ]}
             />

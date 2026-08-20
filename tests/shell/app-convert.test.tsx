@@ -127,7 +127,7 @@ describe('shell conversion', () => {
 
   /**
    * Result blocks stay in `<Static>` scrollback for the rest of the session,
-   * so `f` and `o` remain pressable long after the file they point at has
+   * so `o` and `r` remain pressable long after the file they point at has
    * been moved, renamed, or had its volume unmounted. `reveal.ts` promisifies
    * `execFile`, so `open` exiting non-zero rejects — and a `void`ed rejection
    * is an unhandled rejection, which terminates Node and prints the whole
@@ -137,7 +137,7 @@ describe('shell conversion', () => {
   it('reports a failed open as an error block instead of dying on it', async () => {
     const { stdin, lastFrame, dir } = await driveToResult()
     await rm(join(dir, 'photo.webp'))
-    stdin.write('f')
+    stdin.write('o')
     await settle(1500)
     const frame = lastFrame() ?? ''
     expect(frame).toContain('✕')
@@ -147,7 +147,7 @@ describe('shell conversion', () => {
   it('reports a failed reveal the same way', async () => {
     const { stdin, lastFrame, dir } = await driveToResult()
     await rm(join(dir, 'photo.webp'))
-    stdin.write('o')
+    stdin.write('r')
     await settle(1500)
     expect(lastFrame()).toContain('✕')
   })
