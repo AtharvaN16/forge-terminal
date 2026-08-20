@@ -8,6 +8,7 @@ export type ErrorCode =
   | 'permission-denied'
   | 'unsupported-source'
   | 'heic-decoder-unavailable'
+  | 'unsupported-compress'
   | 'unsupported-target'
   | 'corrupt-source'
   | 'output-exists'
@@ -147,6 +148,20 @@ export function heicDecoderUnavailable(path: string): ForgeError {
     title: 'Cannot read HEIC here',
     detail: `${basename(path)} is a HEIC photo, which Forge decodes with the macOS sips tool.`,
     hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
+  })
+}
+
+/**
+ * A lossless format has no quality to trade away, so `/compress` on one would
+ * promise something the encoder cannot do. Naming that is better than a
+ * silent no-op, and the hint points at the thing that *would* work.
+ */
+export function unsupportedCompress(source: SourceInfo): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-compress',
+    title: 'Nothing to compress',
+    detail: `${basename(source.path)} is ${FORMATS[source.format].label}, which is lossless — there is no quality to trade away.`,
+    hint: 'Use /convert to change it to a smaller format instead.',
   })
 }
 

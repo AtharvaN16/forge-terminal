@@ -5,7 +5,7 @@ import { targetsFor } from '../capabilities.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, formatById } from '../formats.js'
 import { resolveOutputPath } from '../output-path.js'
-import type { ConvertOptions, FormatId, FormatSpec, Job, SourceInfo } from '../types.js'
+import type { ConvertOptions, FormatId, FormatSpec, SourceInfo } from '../types.js'
 import type { Action, OptionSpec, PathPreset } from './index.js'
 
 function targetSelect(source: SourceInfo): OptionSpec {

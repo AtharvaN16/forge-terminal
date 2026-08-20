@@ -8,8 +8,8 @@ import {
   savePreferences,
 } from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions/index.js'
-import { convertAction } from '../core/actions/index.js'
-import { isForgeError, unexpectedError } from '../core/errors.js'
+import { compressAction, convertAction } from '../core/actions/index.js'
+import { isForgeError, unexpectedError, unsupportedCompress } from '../core/errors.js'
 import { primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
@@ -18,9 +18,10 @@ import type { FormatId, Result, SourceInfo } from '../core/types.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
+import { COMMANDS, type Command, isCommandBuffer } from './commands.js'
+import { CommandPalette } from './components/CommandPalette.js'
 import { FileCard } from './components/FileCard.js'
 import { HintBar } from './components/HintBar.js'
-import { Hints } from './components/Hints.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
@@ -29,7 +30,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
-import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
+import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -41,6 +42,10 @@ import { bandFor, middleEllipsis } from './width.js'
 export type Stage =
   | 'theme'
   | 'idle'
+  /** Compress: by quality, or to a target size. */
+  | 'mode'
+  /** Compress: the target-size field. */
+  | 'size'
   | 'target'
   | 'quality'
   | 'destination'
@@ -146,6 +151,13 @@ export function App({
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
   const [stage, setStage] = useState<Stage>(prefs.theme === undefined ? 'theme' : 'idle')
+  /**
+   * Which action the staged file is being put through. Dropping a file means
+   * convert; `/compress` switches it. The action layer already supports more
+   * than one action — `actionsFor` has existed since 0.1 and never been
+   * called, because until now there was nothing to choose between.
+   */
+  const [_mode, setMode] = useState<'convert' | 'compress'>('convert')
   const [text, setText] = useState('')
   const [source, setSource] = useState<SourceInfo | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -273,6 +285,51 @@ export function App({
    * floor rather than clobbering whatever the newer submission produced.
    */
   const requestId = useRef(0)
+
+  /**
+   * Runs a command chosen from the palette or typed in full.
+   *
+   * `needsSource` decides what a command does with a file already on the
+   * bench: `/compress` switches it into the compress flow, `/theme` ignores
+   * it entirely.
+   */
+  const runCommand = useCallback(
+    (command: Command) => {
+      setText('')
+
+      if (command.name === 'theme') {
+        setStage('theme')
+        return
+      }
+
+      if (command.name === 'help') {
+        push({
+          kind: 'note',
+          id: nextId(),
+          text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
+        })
+        return
+      }
+
+      if (command.name === 'convert') {
+        setMode('convert')
+        setValues({})
+        setStage(source ? 'target' : 'idle')
+        return
+      }
+
+      if (command.name === 'compress') {
+        if (source && !compressAction.appliesTo(source)) {
+          push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
+          return
+        }
+        setMode('compress')
+        setValues({})
+        setStage(source ? 'mode' : 'idle')
+      }
+    },
+    [push, source],
+  )
 
   const submitPath = useCallback(
     async (raw: string) => {
@@ -689,6 +746,18 @@ export function App({
 
         {stage === 'idle' ? (
           <Box flexDirection="column">
+            {/* Ink delivers input to every mounted useInput, so Prompt and
+                the palette's Select are both live while this is open — which
+                is what makes typing narrow the list and the arrows move the
+                selection at the same time. */}
+            {isCommandBuffer(text) ? (
+              <CommandPalette
+                fragment={text.slice(1)}
+                width={width}
+                onRun={runCommand}
+                onCancel={() => setText('')}
+              />
+            ) : null}
             <Prompt
               value={text}
               onChange={setText}
