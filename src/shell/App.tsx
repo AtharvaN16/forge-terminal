@@ -21,7 +21,7 @@ import { uniqueOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { runJobs } from '../core/run.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
-import type { FormatId, Result, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
 import { formatBytes, parseSize } from '../core/units.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { probe } from '../engines/registry.js'
@@ -36,6 +36,7 @@ import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
+import { PdfFlow } from './flows/pdf.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
@@ -63,6 +64,10 @@ export type Step =
   | 'overwrite'
   | 'converting'
   | 'result'
+  /** `/pdf`: `PdfFlow` owns the conversation; this just mounts it. */
+  | 'pdf'
+  /** Between `PdfFlow` handing off its jobs and `runJobs` finishing. */
+  | 'pdf-running'
 
 /**
  * What the overwrite question needs to remember while it is being asked:
@@ -88,6 +93,36 @@ let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
 
 /**
+ * One line for the history, once a page-operation job has actually run.
+ * `HistoryEntry`'s `result` block is built around a `convert` job's
+ * one-source-to-one-target shape (spec: "A page operation's result gets its
+ * own rendering once one exists") — until it does, a `note` block says what
+ * happened in plain words rather than the shell crashing trying to draw a
+ * before/after pair for a job that has neither.
+ */
+function describePdfResult(result: Result): string {
+  const { job } = result
+  const outputs = job.outputs.map((o) => basename(o))
+  const first = outputs[0] ?? ''
+  switch (job.op) {
+    case 'merge':
+      return `merged ${job.sources.length} files into ${first}`
+    case 'split':
+      return `split into ${outputs.length} files`
+    case 'extract':
+      return job.separate
+        ? `extracted ${job.pages.length} pages into ${outputs.length} files`
+        : `extracted ${job.pages.length} pages into ${first}`
+    case 'delete':
+      return `removed ${job.pages.length} pages — ${first}`
+    case 'rotate':
+      return `rotated ${job.turns * 90}° — ${first}`
+    default:
+      return `done — ${first}`
+  }
+}
+
+/**
  * The fallback for callers that do not supply preferences — tests, and any
  * direct render. It carries a theme on purpose: an absent theme is the
  * first-run signal, and defaulting to it would put the theme picker in front
@@ -102,16 +137,20 @@ const APP_DEFAULT_PREFS: Preferences = { ...DEFAULT_PREFERENCES, theme: 'dark' }
 
 export function App({
   initialWidth,
+  initialHeight,
   prefs = APP_DEFAULT_PREFS,
   configWarning,
 }: {
   initialWidth?: number
+  initialHeight?: number
   prefs?: Preferences
   configWarning?: string
 }) {
   const palette = useTheme()
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
+  /** Only `PdfFlow`'s page grid needs this — see `gridLayout`. */
+  const [measuredHeight, setMeasuredHeight] = useState(initialHeight ?? stdout?.rows ?? 24)
 
   useEffect(() => {
     if (initialWidth !== undefined || !stdout) return
@@ -122,7 +161,17 @@ export function App({
     }
   }, [initialWidth, stdout])
 
+  useEffect(() => {
+    if (initialHeight !== undefined || !stdout) return
+    const onResize = () => setMeasuredHeight(stdout.rows ?? 24)
+    stdout.on('resize', onResize)
+    return () => {
+      stdout.off('resize', onResize)
+    }
+  }, [initialHeight, stdout])
+
   const width = measured
+  const height = measuredHeight
   const band = bandFor(width)
 
   /**
@@ -285,6 +334,29 @@ export function App({
     })
   }, [push])
 
+  /**
+   * Whether `convertAction` actually has somewhere to send this source.
+   * `convertAction.appliesTo` only checks `sources.length >= 1` — true for
+   * every source there has ever been until the PDF engine arrived, since
+   * every image format could always become some *other* image format. A
+   * PDF's only writable format is PDF itself, which `targetSelect` (in
+   * `core/actions/convert.ts`) deliberately filters out as a no-op
+   * conversion, so its target list is genuinely empty.
+   *
+   * Without this check, dropping a PDF (or typing `/convert` on one) would
+   * open the `target` step with a `Select` that has nothing to move a
+   * cursor onto — and critically, `Select` no-ops on *every* key, including
+   * escape, when its item list is empty (see `Select.tsx`). That is a dead
+   * end a person cannot back out of short of quitting the process.
+   */
+  const hasConvertTarget = useCallback(
+    (candidate: SourceInfo): boolean =>
+      convertAction
+        .options([candidate], {}, livePrefs)
+        .some((s) => s.kind === 'select' && s.id === 'target' && s.choices.length > 0),
+    [livePrefs],
+  )
+
   // Gated on `step === 'result'`: Ink delivers input to every mounted
   // `useInput` hook regardless of what else is on screen, so an ungated
   // handler here would steal `f`/`o`/`q` from the target/quality/destination
@@ -426,7 +498,10 @@ export function App({
         }
         setMode('convert')
         setValues({})
-        setStep(source ? 'target' : 'idle')
+        // A source with nowhere to convert to (a staged PDF, today) stays
+        // at idle rather than opening a target picker with nothing in it —
+        // see `hasConvertTarget`.
+        setStep(source && hasConvertTarget(source) ? 'target' : 'idle')
         return
       }
 
@@ -442,9 +517,23 @@ export function App({
         setMode('compress')
         setValues({})
         setStep(source ? 'mode' : 'idle')
+        return
+      }
+
+      /**
+       * Deliberately does not consult `stagedBatch`/`refuseBatch` — those
+       * exist to stop convert/compress from silently acting on only the
+       * first of several staged files (see the note above `convert()`),
+       * and `/pdf`'s whole point is the opposite: merge is defined by
+       * having several files staged, and the hub itself dims whatever the
+       * current stage can't do, with a reason, rather than the shell
+       * refusing to even open it.
+       */
+      if (command.name === 'pdf') {
+        setStep(source ? 'pdf' : 'idle')
       }
     },
-    [push, source, stagedBatch, refuseBatch],
+    [push, source, stagedBatch, refuseBatch, hasConvertTarget],
   )
 
   const submitPath = useCallback(
@@ -505,13 +594,20 @@ export function App({
           if (!compressAction.appliesTo([info])) {
             push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
             setMode('convert')
-            setStep('target')
+            // See `hasConvertTarget`: a PDF can't compress *or* convert, so
+            // falling back to the target step here would trade one dead
+            // end for another.
+            setStep(hasConvertTarget(info) ? 'target' : 'idle')
             return
           }
           setStep('mode')
           return
         }
-        setStep('target')
+        // A source with no convert target (a PDF, today) stays at idle,
+        // staged and ready for `/pdf` or another command, rather than
+        // opening a target picker with nothing in it — see
+        // `hasConvertTarget`.
+        setStep(hasConvertTarget(info) ? 'target' : 'idle')
       } catch (e) {
         if (requestId.current !== id) return // superseded by a later submission
         // A rethrow here would become an unhandled rejection: submitPath is
@@ -529,7 +625,7 @@ export function App({
     // reason: reading it straight (rather than through the `setStage`
     // updater form) is what lets the batch guard above decide off the
     // current list, not a stale one.
-    [showError, push, runCommand, mode, stage, refuseBatch],
+    [showError, push, runCommand, mode, stage, refuseBatch, hasConvertTarget],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -823,6 +919,38 @@ export function App({
     else setStep('destination')
   }
 
+  /**
+   * `PdfFlow` only ever decides *what* to run — `onDone` is where that
+   * handoff happens, through the same `runJobs` the convert/compress wizard
+   * uses. Page-op outputs are named by the action's own `plan()` (suffixed,
+   * numbered, or merged beside the source) rather than a destination the
+   * user picks, so there is no `buildPlan`/overwrite step here the way
+   * `convert()` has one — see the note on `convert()` for why that function
+   * still only ever plans for `[source]`, not `stage.sources`; `/pdf` is the
+   * one place in this file that deliberately does act on the whole staged
+   * list, because merge is defined by having several files staged.
+   */
+  const handlePdfDone = async (jobs: Job[]) => {
+    setStep('pdf-running')
+    try {
+      const summary = await runJobs(jobs, {})
+      for (const result of summary.results) {
+        push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} ${describePdfResult(result)}` })
+      }
+      for (const failure of summary.failures) {
+        push({ kind: 'error', id: nextId(), error: failure.error })
+      }
+    } catch (e) {
+      // Mirrors `convert()`'s own catch: this runs from a handler PdfFlow's
+      // synchronous `useInput` fired, and nothing else awaits this promise.
+      showError(e)
+    } finally {
+      setStage(clearStage())
+      setValues({})
+      setStep('idle')
+    }
+  }
+
   const modeSpec = specFor('mode')
   const sizeSpec = specFor('size')
   const targetSpec = specFor('target')
@@ -838,8 +966,10 @@ export function App({
             default. An earlier version showed this only for compress, on the
             reasoning that convert is what dropping a file already does; but
             a mode you cannot see is one you can be in by accident, and the
-            cost of saying so is one line. */}
-        {step !== 'theme' ? (
+            cost of saying so is one line. Skipped for `/pdf`: that flow is
+            neither convert nor compress, and `mode` does not change while
+            it runs — showing it would be actively wrong, not just unhelpful. */}
+        {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
           <Box marginBottom={1}>
             <Text color={colourProp(palette.accent)} bold>
               {mode === 'compress' ? '  COMPRESS  ' : '  CONVERT  '}
@@ -1093,6 +1223,25 @@ export function App({
                 ['q', 'quit'],
               ]}
             />
+          </Box>
+        ) : null}
+
+        {step === 'pdf' ? (
+          <PdfFlow
+            stage={stage}
+            width={width}
+            height={height}
+            prefs={livePrefs}
+            onDone={(jobs) => {
+              void handlePdfDone(jobs)
+            }}
+            onCancel={clearSource}
+          />
+        ) : null}
+
+        {step === 'pdf-running' ? (
+          <Box marginBottom={1}>
+            <Text color={colourProp(palette.dim)}>Running…</Text>
           </Box>
         ) : null}
 

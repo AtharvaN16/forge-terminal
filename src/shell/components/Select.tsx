@@ -21,6 +21,12 @@ interface SelectProps {
   width: number
 }
 
+/** The first row that isn't `disabled`, or 0 if every row is (nothing to land on anyway). */
+function firstEnabled(items: Choice[]): number {
+  const i = items.findIndex((item) => !item.disabled)
+  return i === -1 ? 0 : i
+}
+
 export function Select({
   items,
   onSubmit,
@@ -31,7 +37,7 @@ export function Select({
   width,
 }: SelectProps) {
   const palette = useTheme()
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(() => firstEnabled(items))
 
   /**
    * `useInput` handlers are synchronous, but `useState` updates are not —
@@ -44,10 +50,23 @@ export function Select({
    * render's closure was created, not what the frame the user is looking
    * at actually shows.
    */
-  const indexRef = useRef(0)
+  const indexRef = useRef(firstEnabled(items))
+
+  /**
+   * The next enabled row in `delta`'s direction, or the current one if
+   * there isn't one — a disabled row (the `/pdf` hub's dimmed "needs 2+
+   * files" Merge) is not a stop the cursor can land on, so moving toward
+   * one keeps walking past it exactly like `move` already walks past the
+   * end of the list.
+   */
+  const nextEnabledIndex = (from: number, delta: number): number => {
+    let i = from + delta
+    while (i >= 0 && i < items.length && items[i]?.disabled) i += delta
+    return i >= 0 && i < items.length ? i : from
+  }
 
   const move = (delta: number) => {
-    const next = Math.min(Math.max(indexRef.current + delta, 0), items.length - 1)
+    const next = nextEnabledIndex(indexRef.current, delta)
     if (next === indexRef.current) return // no-op at an end: nothing moved, nothing to report
     indexRef.current = next
     setIndex(next)
@@ -61,7 +80,7 @@ export function Select({
       if (key.upArrow) move(-1)
       if (key.return) {
         const item = items[indexRef.current]
-        if (item) onSubmit(item.value)
+        if (item && !item.disabled) onSubmit(item.value)
       }
       if (key.escape && onCancel) onCancel()
     },
@@ -75,7 +94,11 @@ export function Select({
   return (
     <Box flexDirection="column">
       {items.map((item, i) => {
-        const selected = i === index
+        // A disabled row is never the live selection, even if `index`
+        // somehow pointed at one (it shouldn't — `move` and the initial
+        // index both skip disabled rows) — the dim hub row for an
+        // unavailable action must never draw the cursor or go bold.
+        const selected = i === index && !item.disabled
         const cursor = selected ? `${SYMBOLS.cursor} ` : '  '
         const label = item.label.padEnd(labelWidth)
         const hint = showHints && item.hint ? `  ${item.hint}` : ''
@@ -105,7 +128,14 @@ export function Select({
               : {})}
           >
             <Text {...(selected ? { color: colourProp(palette.accent) } : {})}>{cursor}</Text>
-            <Text bold={selected} {...(selected ? { color: colourProp(palette.fg) } : {})}>
+            <Text
+              bold={selected}
+              {...(item.disabled
+                ? { color: colourProp(palette.dim) }
+                : selected
+                  ? { color: colourProp(palette.fg) }
+                  : {})}
+            >
               {label}
             </Text>
             {shownHint ? <Text color={colourProp(palette.dim)}>{shownHint}</Text> : null}

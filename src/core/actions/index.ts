@@ -13,6 +13,12 @@ export interface Choice {
   hint?: string
   /** A short tag rendered in the accent colour, set apart from the hint. */
   badge?: string
+  /**
+   * Rendered dim, skipped by the cursor, and never submittable — the `/pdf`
+   * hub's way of saying "Merge exists, but not for what's staged" without
+   * making the row vanish. `hint` is where the reason goes.
+   */
+  disabled?: boolean
 }
 
 export interface PathPreset {

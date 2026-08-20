@@ -18,6 +18,7 @@ export interface Command {
 export const COMMANDS: Command[] = [
   { name: 'convert', description: "change a file's format", needsSource: true },
   { name: 'compress', description: 'make a file smaller', needsSource: true },
+  { name: 'pdf', description: 'page operations on a PDF', needsSource: true },
   { name: 'theme', description: 'switch between light and dark', needsSource: false },
   { name: 'help', description: 'list these commands', needsSource: false },
 ]

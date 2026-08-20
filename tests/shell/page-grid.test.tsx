@@ -345,4 +345,39 @@ describe('PageGrid keyboard interaction', () => {
     await settle()
     expect(lastFrame()).toBe(before)
   })
+
+  /**
+   * A flow that opens the typed range editor on `r` needs to seed it from
+   * whatever is already selected — otherwise a selection made before the
+   * toggle is silently lost, since nothing else exposes the grid's
+   * in-progress state (there is no `onChange`, only `onSubmit` on Enter,
+   * which the toggle keys deliberately do not fire).
+   */
+  it('hands the current selection to onToggleView, not just a bare notification', async () => {
+    const onToggleView = vi.fn()
+    const { stdin } = render(
+      createElement(PageGrid, { ...base, mode: 'cell', onSubmit: () => {}, onToggleView } as never),
+    )
+    stdin.write(SPACE) // select page 1
+    await settle()
+    stdin.write(RIGHT)
+    await settle()
+    stdin.write(SPACE) // select page 2
+    await settle()
+    stdin.write('r')
+    await settle()
+    expect(onToggleView).toHaveBeenCalledWith([0, 1])
+  })
+
+  it('hands the current cuts to onToggleView in gap mode', async () => {
+    const onToggleView = vi.fn()
+    const { stdin } = render(
+      createElement(PageGrid, { ...base, mode: 'gap', onSubmit: () => {}, onToggleView } as never),
+    )
+    stdin.write(SPACE) // cut after page 1
+    await settle()
+    stdin.write('g')
+    await settle()
+    expect(onToggleView).toHaveBeenCalledWith([0])
+  })
 })

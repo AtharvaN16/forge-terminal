@@ -48,8 +48,14 @@ interface PageGridProps {
    * the grid's business — the typed-range editor they open onto is owned by
    * the flow mounting this component. Both keys call this, if given, and are
    * otherwise ignored.
+   *
+   * Carries the current selection (cell mode) or cuts (gap mode) — this
+   * component is uncontrolled and `onSubmit` only fires on Enter, so without
+   * this the flow has no way to see a page picked or a cut placed before the
+   * toggle, and the range editor it opens would silently start from
+   * nothing.
    */
-  onToggleView?: () => void
+  onToggleView?: (current: number[]) => void
   width: number
   height: number
 }
@@ -265,7 +271,9 @@ export function PageGrid({
     if (key.downArrow) moveCursor(1, 0)
     if (input === ' ') toggleCurrent()
     if (input === 'a') toggleAll()
-    if ((input === 'r' || input === 'g') && onToggleView) onToggleView()
+    if ((input === 'r' || input === 'g') && onToggleView) {
+      onToggleView(mode === 'cell' ? selectedRef.current : cutsRef.current)
+    }
     if (key.pageUp) goToScreen(screenRef.current - 1)
     if (key.pageDown) goToScreen(screenRef.current + 1)
     if (key.return) onSubmit(mode === 'cell' ? selectedRef.current : cutsRef.current)

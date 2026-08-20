@@ -69,7 +69,13 @@ describe('parseCommand', () => {
 
 describe('the registry', () => {
   it('carries every command the shell can run', () => {
-    expect(COMMANDS.map((c) => c.name).sort()).toEqual(['compress', 'convert', 'help', 'theme'])
+    expect(COMMANDS.map((c) => c.name).sort()).toEqual([
+      'compress',
+      'convert',
+      'help',
+      'pdf',
+      'theme',
+    ])
   })
 
   it('gives every command a description, since the palette shows them', () => {
@@ -80,6 +86,7 @@ describe('the registry', () => {
     const needs = Object.fromEntries(COMMANDS.map((c) => [c.name, c.needsSource]))
     expect(needs.convert).toBe(true)
     expect(needs.compress).toBe(true)
+    expect(needs.pdf).toBe(true)
     expect(needs.theme).toBe(false)
     expect(needs.help).toBe(false)
   })

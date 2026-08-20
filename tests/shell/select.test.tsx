@@ -167,3 +167,75 @@ describe('Select', () => {
     expect(onHighlight).toHaveBeenLastCalledWith(0)
   })
 })
+
+/**
+ * The pdf hub dims a row whose `appliesTo` is false rather than hiding it —
+ * "needs 2+ files" only teaches anything if Merge is still on screen. That
+ * needs the cursor to treat a disabled row as not there: skipped by the
+ * arrows, never landed on at mount, never submittable.
+ */
+describe('Select disabled rows', () => {
+  const withDisabled: Choice[] = [
+    { value: 'merge', label: 'Merge', hint: 'needs 2+ files', disabled: true },
+    { value: 'split', label: 'Split', hint: 'into several files' },
+    { value: 'extract', label: 'Extract', hint: 'keep only some pages' },
+  ]
+
+  it('starts the cursor on the first enabled row, not row zero', () => {
+    const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
+    expect(plain(lastFrame())).toContain('❯ Split')
+  })
+
+  it('skips a disabled row when moving down', async () => {
+    const middleDisabled: Choice[] = [
+      { value: 'split', label: 'Split', hint: 'a' },
+      { value: 'merge', label: 'Merge', hint: 'needs 2+ files', disabled: true },
+      { value: 'extract', label: 'Extract', hint: 'b' },
+    ]
+    const { stdin, lastFrame } = render(
+      <Select width={60} items={middleDisabled} onSubmit={() => {}} />,
+    )
+    stdin.write(DOWN)
+    await settle()
+    expect(plain(lastFrame())).toContain('❯ Extract')
+  })
+
+  it('skips a disabled row when moving up', async () => {
+    const middleDisabled: Choice[] = [
+      { value: 'split', label: 'Split', hint: 'a' },
+      { value: 'merge', label: 'Merge', hint: 'needs 2+ files', disabled: true },
+      { value: 'extract', label: 'Extract', hint: 'b' },
+    ]
+    const { stdin, lastFrame } = render(
+      <Select width={60} items={middleDisabled} onSubmit={() => {}} />,
+    )
+    stdin.write(DOWN)
+    await settle()
+    stdin.write(UP)
+    await settle()
+    expect(plain(lastFrame())).toContain('❯ Split')
+  })
+
+  it('never submits a disabled row', async () => {
+    const onSubmit = vi.fn()
+    const { stdin } = render(<Select width={60} items={withDisabled} onSubmit={onSubmit} />)
+    stdin.write(UP) // already on the first enabled row; up is a no-op at the end
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith('split')
+  })
+
+  it('renders a disabled row dim, without the cursor or bold', () => {
+    const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
+    const frame = lastFrame() ?? ''
+    const mergeLine = frame.split('\n').find((l) => plain(l).includes('Merge')) ?? ''
+    expect(plain(mergeLine)).not.toContain('❯')
+    expect(mergeLine).not.toContain(BOLD_ON)
+  })
+
+  it('still shows the reason in the margin for a disabled row', () => {
+    const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
+    expect(plain(lastFrame())).toContain('needs 2+ files')
+  })
+})

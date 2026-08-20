@@ -26,8 +26,6 @@ function rgb(hex: string): string {
   return `${(n >> 16) & 255};${(n >> 8) & 255};${n & 255}`
 }
 
-const settle = (ms = 80) => new Promise((r) => setTimeout(r, ms))
-
 const themed = (palette: Palette) => {
   const prefs = { ...DEFAULT_PREFERENCES, theme: palette.name as 'dark' | 'light' }
   return (
