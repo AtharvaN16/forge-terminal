@@ -20,6 +20,7 @@ import {
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { FormatId, Job, Phase, Result, SourceInfo, Warning } from '../core/types.js'
+import { decodeHeic } from './heic.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -189,26 +190,43 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
   }
 
   onPhase('decoding')
-  let pipeline = sharp(job.source.path, keepFrames ? { animated: true } : {})
 
-  // Rule 1: EXIF orientation, before anything else. Verified safe on animated
-  // input — page count survives.
-  pipeline = pipeline.rotate()
+  /**
+   * HEIC cannot be decoded by the bundled libvips (see engines/heic.ts), so
+   * it is transcoded to a temporary PNG by `sips` first and the ordinary
+   * pipeline runs on that. Everything downstream is unchanged; only the file
+   * Sharp opens differs.
+   */
+  const heic = job.source.format === 'heic' ? await decodeHeic(job.source.path) : undefined
+  const input = heic?.path ?? job.source.path
 
-  // Rule 2: composite onto a background when the target has no alpha channel.
-  if (job.source.hasAlpha && !spec.hasAlpha) {
-    pipeline = pipeline.flatten({ background: job.options.background })
-  }
-
-  // Rule 3: strip EXIF/GPS by default, always keep the colour profile so
-  // colours do not shift on wide-gamut displays.
-  pipeline = job.options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
-
-  onPhase('encoding')
-  pipeline = encode(pipeline, job.target, job.options.quality)
-
-  onPhase('writing')
   try {
+    let pipeline = sharp(input, keepFrames ? { animated: true } : {})
+
+    // Rule 1: EXIF orientation, before anything else. Verified safe on
+    // animated input — page count survives.
+    //
+    // Applies to a decoded HEIC too. Measured, because the opposite seemed
+    // more likely: an oriented JPEG stored 40x80/orientation-6 becomes an
+    // 80x40 HEIC with the rotation baked in, and `sips` then decodes that
+    // back to a 40x80 PNG *carrying orientation 6* in an eXIf chunk. So the
+    // intermediate needs rotating exactly like any other source, and
+    // skipping it here shipped every HEIC photo on its side.
+    pipeline = pipeline.rotate()
+
+    // Rule 2: composite onto a background when the target has no alpha channel.
+    if (job.source.hasAlpha && !spec.hasAlpha) {
+      pipeline = pipeline.flatten({ background: job.options.background })
+    }
+
+    // Rule 3: strip EXIF/GPS by default, always keep the colour profile so
+    // colours do not shift on wide-gamut displays.
+    pipeline = job.options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
+
+    onPhase('encoding')
+    pipeline = encode(pipeline, job.target, job.options.quality)
+
+    onPhase('writing')
     const outputBytes = await writeAtomic(pipeline, job.output)
     return { job, outputBytes, warnings }
   } catch (cause) {
@@ -220,6 +238,11 @@ async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Resul
     // no equivalent for. Only an unnamed failure gets the generic wrapper;
     // `run.ts` makes the same distinction the same way.
     throw isForgeError(cause) ? cause : conversionFailed(job.source.path, cause)
+  } finally {
+    // Runs on every path, including the throw above: a temp decode left on
+    // disk after a failed conversion is exactly the litter invariant 6 exists
+    // to prevent.
+    await heic?.cleanup()
   }
 }
 

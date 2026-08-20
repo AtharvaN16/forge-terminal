@@ -421,10 +421,10 @@ Either way you land back on the destination step. Otherwise:
   11.5 KB → 3.5 KB · 69.6% smaller
 
 file:///private/tmp/forge-shell-check/sample.webp  ·  file:///private/tmp/forge-shell-check
-↵ convert another · f open · o reveal · q quit
+↵ convert another · o open · r reveal · q quit
 ```
 
-`f` opens the converted file in its default app and `o` reveals it in
+`o` opens the converted file in its default app and `o` reveals it in
 Finder — both just shell out to macOS's `open`; both actually launched
 Preview and Finder in this run, confirmed by asking each app afterward what
 it had open. `↵` clears the picker and returns to the prompt with this
@@ -498,6 +498,19 @@ rather than failing partway through an encode.
 Formats are probed by file content (Sharp's magic-byte detection), not by
 extension — a `.jpg` that's secretly a PNG is handled correctly, and the
 target list is never a hardcoded string list.
+
+### HEIC
+
+Reading HEIC needs a decoder Sharp's prebuilt binary does not ship. HEVC sits
+in a patent pool, so upstream's position is that HEIC support requires a
+globally installed libvips built against libheif, libde265 and x265 — AVIF
+works in the same container only because AV1 is royalty-free.
+
+Forge decodes HEIC with `/usr/bin/sips` instead, which uses the same system
+codec Preview does. No install, no build step. If `sips` is missing, HEIC
+conversion is the only thing that stops working.
+
+Writing HEIC is still unavailable: Sharp cannot encode HEVC at all.
 
 ## Correctness rules
 

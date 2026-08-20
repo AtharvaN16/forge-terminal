@@ -27,7 +27,7 @@ import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
-import { openPath, revealPath } from './reveal.js'
+import { openPath, revealLabel, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
 import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
@@ -208,6 +208,9 @@ export function App({
     (input, key) => {
       if (!lastResult) return
       if (key.return) {
+        // A dashed rule and a blank line either side, so a long session reads
+        // as a sequence of separate operations rather than one wall of text.
+        push({ kind: 'separator', id: nextId(), width })
         setSource(null)
         setValues({})
         setLastResult(null)
@@ -223,8 +226,8 @@ export function App({
        * scrollback for the rest of the session, so `f` and `o` stay
        * pressable long after the file they point at has gone.
        */
-      if (input === 'f') openPath(lastResult.job.output).catch(showError)
-      if (input === 'o') revealPath(lastResult.job.output).catch(showError)
+      if (input === 'o') openPath(lastResult.job.output).catch(showError)
+      if (input === 's') revealPath(lastResult.job.output).catch(showError)
       if (input === 'q') exit()
     },
     { isActive: stage === 'result' },
@@ -593,7 +596,7 @@ export function App({
               onSubmit={submitRename}
               placeholder="file name"
               isActive
-              bordered={false}
+              variant={band === 'compact' ? 'plain' : 'field'}
               width={width}
             />
             <Text color={colourProp(palette.dim)}>
@@ -661,15 +664,15 @@ export function App({
               <Text>
                 {fileLink('Open file', lastResult.job.output)}
                 {'  ·  '}
-                {fileLink('Reveal in Finder', lastResult.job.output.replace(/\/[^/]+$/, ''))}
+                {fileLink(revealLabel(), lastResult.job.output.replace(/\/[^/]+$/, ''))}
               </Text>
             ) : null}
             <HintBar
               width={width}
               pairs={[
                 ['↵', 'convert another'],
-                ['f', 'open'],
-                ['o', 'reveal'],
+                ['o', 'open'],
+                ['s', revealLabel().toLowerCase()],
                 ['q', 'quit'],
               ]}
             />
@@ -684,7 +687,7 @@ export function App({
               onSubmit={submitPath}
               placeholder="drop a file or type a path"
               isActive
-              bordered={band !== 'compact'}
+              variant={band === 'compact' ? 'plain' : 'drop'}
               width={width}
             />
             <HintBar

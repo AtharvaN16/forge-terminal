@@ -11,7 +11,12 @@ interface PromptProps {
   onSubmit: (value: string) => void
   placeholder: string
   isActive: boolean
-  bordered: boolean
+  /**
+   * `drop` is the three-line target you drag a file onto; `field` is a filled
+   * single line for a short answer such as a filename. `plain` is the
+   * unfilled fallback used in the compact band.
+   */
+  variant: 'drop' | 'field' | 'plain'
   /**
    * The live terminal width. Ink's `Box` has no notion of the caller's
    * `initialWidth` test prop — left unset, a bordered `Box` expands to fill
@@ -50,7 +55,7 @@ export function Prompt({
   onSubmit,
   placeholder,
   isActive,
-  bordered,
+  variant,
   width,
 }: PromptProps) {
   const palette = useTheme()
@@ -240,32 +245,15 @@ export function Prompt({
   const line = value ? (
     <Text>
       <Text color={colourProp(palette.fg)}>{before}</Text>
-      {isActive ? (
-        <Text inverse>{under}</Text>
-      ) : (
-        <Text color={colourProp(palette.fg)}>{under}</Text>
-      )}
+      {isActive ? caretGlyph(under) : <Text color={colourProp(palette.fg)}>{under}</Text>}
       <Text color={colourProp(palette.fg)}>{after}</Text>
     </Text>
   ) : (
     <Text>
-      {isActive ? <Text inverse> </Text> : null}
+      {isActive ? caretGlyph(' ') : null}
       <Text color={colourProp(palette.dim)}>{placeholder}</Text>
     </Text>
   )
-
-  if (!bordered) {
-    return (
-      <Box flexDirection="column">
-        <Box width={width}>
-          <Text>
-            <Text color={colourProp(palette.accent)}>{'› '}</Text>
-            {line}
-          </Text>
-        </Box>
-      </Box>
-    )
-  }
 
   /**
    * A filled drop area, drawn without a border: the fill *is* the boundary,
@@ -289,7 +277,7 @@ export function Prompt({
   const fill = ' '.repeat(Math.max(0, width - lead - stringWidth(shown) - 1))
   const blank = ' '.repeat(Math.max(0, width))
 
-  if (!bg) {
+  if (!bg || variant === 'plain') {
     // No colour: there is no fill to draw, so the prompt is just its line.
     return (
       <Box flexDirection="column">
@@ -303,14 +291,28 @@ export function Prompt({
     )
   }
 
+  const body = (
+    <Text backgroundColor={bg}>
+      <Text color={colourProp(palette.accent)}>{'  › '}</Text>
+      {line}
+      {fill}
+    </Text>
+  )
+
+  // A filename is a short answer, so its field is one line — three would
+  // claim the same weight as the drop target, which it is not.
+  if (variant === 'field') {
+    return (
+      <Box flexDirection="column" marginTop={1} marginBottom={1}>
+        {body}
+      </Box>
+    )
+  }
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={1} marginBottom={1}>
       <Text backgroundColor={bg}>{blank}</Text>
-      <Text backgroundColor={bg}>
-        <Text color={colourProp(palette.accent)}>{'  › '}</Text>
-        {line}
-        {fill}
-      </Text>
+      {body}
       <Text backgroundColor={bg}>{blank}</Text>
     </Box>
   )
