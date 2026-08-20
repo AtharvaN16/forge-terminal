@@ -1,11 +1,17 @@
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import type { DocumentInfo, Job, Progress } from '../../src/core/types.js'
 import { pdfiumEngine } from '../../src/engines/pdfium.js'
 import { probe } from '../../src/engines/registry.js'
-import { makeColouredPdf, makeMarkedPdf, makeTempDir } from '../helpers/fixtures.js'
+import {
+  makeColouredPdf,
+  makeMarkedPdf,
+  makePartiallyPaintedPdf,
+  makeTempDir,
+  pixelAt,
+} from '../helpers/fixtures.js'
 
 async function doc(path: string): Promise<DocumentInfo> {
   const info = await probe(path)
@@ -177,5 +183,88 @@ describe('rasterising', () => {
     await expect(pdfiumEngine.run(job, () => {})).rejects.toThrow(/3 pages.*2 outputs/)
     await expect(readFile(out1)).rejects.toThrow()
     await expect(readFile(out2)).rejects.toThrow()
+  })
+
+  it('paints unpainted page area with the requested background, not opaque white', async () => {
+    // pdfium's render() defaults to transparent: false, which pre-fills the
+    // bitmap with opaque white before painting anything — so a naive
+    // flatten() onto that bitmap is a no-op and `--background` silently does
+    // nothing. makePartiallyPaintedPdf paints only its bottom-left quarter,
+    // leaving the rest genuinely unpainted; sampling the far corner proves
+    // the background option actually reached the page.
+    const dir = await makeTempDir()
+    const src = await makePartiallyPaintedPdf(dir, 'partial.pdf', { r: 20, g: 20, b: 20 })
+    const out = join(dir, 'partial.png')
+    await pdfiumEngine.run(
+      {
+        op: 'convert',
+        sources: [await doc(src)],
+        outputs: [out],
+        target: 'png',
+        options: { ...options, background: '#ff8000', dpi: 72, pages: [0] },
+      },
+      () => {},
+    )
+
+    // Top-right corner: far from the bottom-left painted square.
+    const [r, g, b] = await pixelAt(out, 195, 5)
+    expect(r).toBeGreaterThan(200) // #ff8000's red channel, ~255
+    expect(g).toBeGreaterThan(100) // ~128, well above 0
+    expect(g).toBeLessThan(200) // and well below white's 255
+    expect(b).toBeLessThan(50) // ~0, not white's 255
+  })
+
+  it('reports the true total for a subset selection, not the whole document', async () => {
+    // The "reports progress once per page" test above selects all 3 pages of
+    // a 3-page document, so `total: pages.length` and a hypothetical (wrong)
+    // `total: source.pages` are indistinguishable there. A 5-page document
+    // with only 2 pages selected tells them apart: progress must reach its
+    // own total, not stall partway through a bigger number that was never
+    // the job's total to begin with (invariant 7).
+    const dir = await makeTempDir()
+    const src = await makeMarkedPdf(dir, 'doc.pdf', [1, 2, 3, 4, 5])
+    const seen: Array<{ done: number; total: number }> = []
+    await pdfiumEngine.run(
+      {
+        op: 'convert',
+        sources: [await doc(src)],
+        target: 'jpeg',
+        outputs: [join(dir, '1.jpg'), join(dir, '2.jpg')],
+        options: { ...options, dpi: 72, pages: [0, 2] },
+      },
+      (p: Progress) => {
+        if (p.phase === 'page') seen.push({ done: p.done, total: p.total })
+      },
+    )
+
+    expect(seen).toEqual([
+      { done: 1, total: 2 },
+      { done: 2, total: 2 },
+    ])
+  })
+
+  it('rolls back every output when a later page fails to write', async () => {
+    // pages: [0, 1] are both in range (the bounds check above wouldn't
+    // reject this job), so the failure has to come from something that goes
+    // wrong mid-loop, after at least one output has already been written —
+    // exactly the invariant-6 case the try/catch/rm exists for. A directory
+    // sitting at the second output's path forces writeAtomic's rename to
+    // fail (EISDIR) deterministically, without touching the filesystem in
+    // any exotic way.
+    const dir = await makeTempDir()
+    const src = await makeMarkedPdf(dir, 'doc.pdf', [1, 2, 3])
+    const good = join(dir, 'good.jpg')
+    const blocked = join(dir, 'blocked.jpg')
+    await mkdir(blocked)
+    const job: Job = {
+      op: 'convert',
+      sources: [await doc(src)],
+      outputs: [good, blocked],
+      target: 'jpeg',
+      options: { ...options, dpi: 72, pages: [0, 1] },
+    }
+
+    await expect(pdfiumEngine.run(job, () => {})).rejects.toThrow()
+    await expect(readFile(good)).rejects.toThrow()
   })
 })

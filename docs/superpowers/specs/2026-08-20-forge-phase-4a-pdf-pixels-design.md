@@ -44,11 +44,28 @@ over. Re-measured here: 24 A4 pages, each a photo plus 18 lines of text.
   number came from. The decision is unchanged; the evidence for it is weaker
   than I wrote.
 - **150 dpi by default survives** on the same reasoning.
-- **The progress bar's justification weakens and its conclusion holds.** 24 pages
-  took 740 ms, 31 ms a page, so a 248-page scan is about **8 seconds** — not the
-  25 seconds §2 claims. 8 seconds is still far past the point a person wonders
-  whether it has hung, so the bar is warranted, but it is not the emergency the
-  original number implied.
+- **The progress bar's justification is STRONGER than §2 claimed. My first
+  correction here was wrong and is retracted.** I originally wrote that a
+  248-page scan takes about 8 seconds rather than §2's 25, and concluded the
+  bar was less necessary than argued. That figure timed `render()` alone — not
+  the encode and atomic write a person actually waits through. Re-measured
+  end to end on 12 text-heavy A4 pages at 150 dpi:
+
+  | stage | cost |
+  | --- | --- |
+  | pdfium `render()` | **5 ms/page** |
+  | Sharp mozjpeg q82 encode | **135 ms/page** |
+  | total | **141 ms/page → a 248-page scan is ~35 seconds** |
+
+  So rasterisation is not render-bound at all; it is **encode**-bound, by 27×.
+  35 seconds comfortably exceeds §2's 25, and the determinate bar is more
+  justified than the original design argued, not less.
+
+  Worth knowing for a later phase: `mozjpeg: true` is buying that 135 ms.
+  Turning it off would cut wall-clock dramatically at some size cost. Not
+  changed here — it is the same encoder every other JPEG in Forge goes
+  through, and consistency is worth more than the seconds until someone
+  actually complains.
 - **pdfium honours `/Rotate`,** same as mupdf: a 400×800 page with `/Rotate 90`
   renders 800×400. The §2 conclusion is unaffected.
 
@@ -405,7 +422,11 @@ src/
    engine declares them. No menu is edited.
 3. Sources are probed by content.
 4. `.rotate()` before other Sharp operations — untouched.
-5. Alpha flattening — untouched.
+5. Alpha flattening — **extended, not untouched.** Rasterisation renders with
+   `transparent: true` and flattens onto `--background` for both JPEG and PNG.
+   PNG could carry the alpha, but a page's unpainted area is paper. See
+   Amendment 1; the original design assumed pdfium rendered onto transparency
+   by default, which it does not.
 6. Writes are atomic, and multi-output jobs are all-or-nothing. A 248-page
    rasterisation that fails at page 200 leaves nothing behind.
 7. **Progress is never fabricated.** The bar is determinate because the total

@@ -162,7 +162,16 @@ async function probe(path: string): Promise<SourceInfo> {
   }
 }
 
-function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
+/**
+ * The single place a target format is dispatched to a Sharp encoder call.
+ * Exported so `engines/pdfium.ts` can reuse it for the PDF-rasterisation
+ * path rather than keeping a second, divergent dispatch — a hand-rolled
+ * `target === 'png' ? ... : ...` there once silently dropped PNG's
+ * `compressionLevel: 9` and would have silently emitted JPEG bytes for any
+ * third format `WRITES` ever gained, which is exactly the hardcoded
+ * output-format decision invariant 2 exists to prevent.
+ */
+export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
   const q = quality ?? FORMATS[target].defaultQuality
   switch (target) {
     case 'jpeg':
