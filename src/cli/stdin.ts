@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline'
+import { PassThrough } from 'node:stream'
 
 /**
  * A password, never from argv.
@@ -16,10 +17,15 @@ export async function readPassword(opts: { stdin: boolean }): Promise<string> {
       .replace(/\r?\n$/, '')
   }
 
-  const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true })
+  // Use a null stream for readline's output to prevent echoing typed characters.
+  // We write the prompt manually to stderr instead.
+  const nullOutput = new PassThrough()
+  const rl = createInterface({ input: process.stdin, output: nullOutput, terminal: true })
   try {
-    // Prompt on stderr so a piped stdout stays clean.
-    return await new Promise<string>((resolve) => rl.question('Password: ', resolve))
+    process.stderr.write('Password: ')
+    // Use empty string for prompt since we already wrote it; readline would
+    // append it to the line but we've handled it separately.
+    return await new Promise<string>((resolve) => rl.question('', resolve))
   } finally {
     rl.close()
   }
