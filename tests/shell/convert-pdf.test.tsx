@@ -5,7 +5,7 @@ import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { convertAction } from '../../src/core/actions/convert.js'
 import type { DocumentInfo, ImageInfo } from '../../src/core/types.js'
 import { App } from '../../src/shell/App.js'
-import { makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
 
 const doc: DocumentInfo = {
   kind: 'document',
@@ -97,6 +97,32 @@ async function waitFor(
 }
 
 /**
+ * Every frame observed between now and `predicate` becoming true (or the
+ * ceiling), sampled every `stepMs`. Used where the thing under test is an
+ * *absence* — "no frame ever shows X" — which `waitFor`'s single snapshot
+ * cannot prove: a fixture image converts fast enough that a single
+ * fixed-offset check could easily land after the fabrication would have
+ * already been drawn and gone, passing for the wrong reason (see
+ * `Progress.tsx`'s and this file's own sabotage-check notes on assertions
+ * that would hold against a blank or missed frame).
+ */
+async function framesUntil(
+  lastFrame: () => string | undefined,
+  predicate: (frame: string) => boolean,
+  ceilingMs = 15_000,
+  stepMs = 10,
+): Promise<string[]> {
+  const frames: string[] = []
+  const start = Date.now()
+  for (;;) {
+    const frame = lastFrame() ?? ''
+    frames.push(frame)
+    if (predicate(frame) || Date.now() - start > ceilingMs) return frames
+    await settle(stepMs)
+  }
+}
+
+/**
  * End-to-end wiring, not just `convertAction` in isolation: drops a
  * multi-page PDF, walks the real `pages` -> `dpi` -> `quality` -> `destination`
  * steps this task adds to App.tsx, and drives the run all the way through
@@ -107,7 +133,7 @@ async function waitFor(
  * intermediate frame rather than either the pre-run or the finished one.
  */
 describe('the shell — page and resolution steps, live progress', () => {
-  it('renders a real, growing position while rasterising, and never a fabricated one for an ordinary conversion', async () => {
+  it('renders a real, growing position while rasterising', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 10)
     const { stdin, lastFrame } = render(
@@ -172,4 +198,51 @@ describe('the shell — page and resolution steps, live progress', () => {
     // `/pdf`'s other page operations use, not the single-file result screen.
     expect(finalFrame).toContain('drop a file or type a path')
   }, 30_000)
+
+  /**
+   * Invariant 7's other half: a single-file, single-page conversion (the
+   * ordinary `/convert` wizard, not `/pdf`) must show no percentage at all,
+   * because it has no real position to report. `pageProgress` only ever
+   * gets set by `runPdfJobs`'s `onEvent`, and the `converting` step's JSX
+   * never reads it — but that separation is exactly the kind of thing a
+   * later edit (e.g. hoisting `<Progress>` into a shared "running" block)
+   * could quietly erase. This drives a real, ordinary image conversion and
+   * samples every frame from the moment the run starts to the moment it
+   * finishes, so a fabricated bar has nowhere to hide even if it only
+   * flickers on for a single render.
+   */
+  it('shows no fabricated position for an ordinary single-file conversion', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+
+    stdin.write(jpg)
+    await settle()
+    stdin.write(ENTER) // stage the file -> target picker
+    await settle(300)
+    stdin.write(DOWN) // targets exclude jpeg itself; one DOWN reaches webp
+    await settle()
+    stdin.write(ENTER) // choose webp -> quality (lossy)
+    await settle(200)
+    stdin.write(ENTER) // accept default quality -> destination
+    await settle(200)
+    stdin.write(ENTER) // accept the default destination -> the name step
+    await settle(200)
+    stdin.write(ENTER) // accept the proposed name -> runs
+
+    const frames = await framesUntil(lastFrame, (f) => f.includes('convert another'))
+
+    // Sanity first: real, non-blank frames were actually sampled — the
+    // negative assertion below would hold trivially against silence.
+    expect(frames.some((f) => f.includes('Converting…') || f.includes('convert another'))).toBe(
+      true,
+    )
+
+    for (const frame of frames) {
+      expect(frame).not.toMatch(/page \d+ of \d+/)
+      expect(frame).not.toContain('RENDERING')
+    }
+
+    expect(lastFrame() ?? '').toContain('convert another')
+  }, 20_000)
 })
