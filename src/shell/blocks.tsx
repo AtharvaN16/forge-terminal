@@ -22,6 +22,7 @@ export type HistoryBlock =
    * update, which is how it ended up in the middle of the session.
    */
   | { kind: 'banner'; id: string; width: number; defaultOutput: string }
+  | { kind: 'separator'; id: string; width: number }
   | { kind: 'file'; id: string; source: SourceInfo }
   | { kind: 'result'; id: string; result: Result }
   | { kind: 'error'; id: string; error: ForgeError }
@@ -37,6 +38,14 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
   if (block.kind === 'banner') {
     return <Banner width={block.width} version={VERSION} defaultOutput={block.defaultOutput} />
+  }
+
+  if (block.kind === 'separator') {
+    return (
+      <Box marginTop={1} marginBottom={2}>
+        <Text color={colourProp(palette.border)}>{'╌'.repeat(Math.max(4, block.width))}</Text>
+      </Box>
+    )
   }
 
   if (block.kind === 'file') {

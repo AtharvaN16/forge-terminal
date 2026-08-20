@@ -94,7 +94,7 @@ export function Banner({
   return (
     // marginTop clears the shell prompt the user typed `forge` at; without it
     // the mark sits flush against their own command line.
-    <Box flexDirection="column" marginTop={1} marginBottom={1}>
+    <Box flexDirection="column" marginTop={1} marginBottom={2}>
       {WORDMARK.map((word, i) => (
         // The row index is a stable identity here: this is fixed-length
         // constant art, never reordered, filtered or appended to.

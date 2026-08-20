@@ -499,6 +499,19 @@ Formats are probed by file content (Sharp's magic-byte detection), not by
 extension — a `.jpg` that's secretly a PNG is handled correctly, and the
 target list is never a hardcoded string list.
 
+### HEIC
+
+Reading HEIC needs a decoder Sharp's prebuilt binary does not ship. HEVC sits
+in a patent pool, so upstream's position is that HEIC support requires a
+globally installed libvips built against libheif, libde265 and x265 — AVIF
+works in the same container only because AV1 is royalty-free.
+
+Forge decodes HEIC with `/usr/bin/sips` instead, which uses the same system
+codec Preview does. No install, no build step. If `sips` is missing, HEIC
+conversion is the only thing that stops working.
+
+Writing HEIC is still unavailable: Sharp cannot encode HEVC at all.
+
 ## Correctness rules
 
 These apply automatically, unconditionally, unless a flag opts out:

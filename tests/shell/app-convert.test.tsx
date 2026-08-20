@@ -64,7 +64,8 @@ describe('shell conversion', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('convert another')
     expect(frame).toContain('open')
-    expect(frame).toContain('reveal')
+    // "Reveal" is Finder's word; the label follows the platform now.
+    expect(frame.toLowerCase()).toContain('show in')
   })
 
   it('returns to the prompt on enter so you can convert another', async () => {
@@ -127,7 +128,7 @@ describe('shell conversion', () => {
 
   /**
    * Result blocks stay in `<Static>` scrollback for the rest of the session,
-   * so `o` and `r` remain pressable long after the file they point at has
+   * so `o` and `s` remain pressable long after the file they point at has
    * been moved, renamed, or had its volume unmounted. `reveal.ts` promisifies
    * `execFile`, so `open` exiting non-zero rejects — and a `void`ed rejection
    * is an unhandled rejection, which terminates Node and prints the whole
@@ -147,7 +148,7 @@ describe('shell conversion', () => {
   it('reports a failed reveal the same way', async () => {
     const { stdin, lastFrame, dir } = await driveToResult()
     await rm(join(dir, 'photo.webp'))
-    stdin.write('r')
+    stdin.write('s')
     await settle(1500)
     expect(lastFrame()).toContain('✕')
   })
