@@ -29,7 +29,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
-import { colourProp, paletteFor, SYMBOLS } from './theme.js'
+import { colourProp, paletteFor, SYMBOLS, VERSION } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -112,6 +112,18 @@ export function App({
    *
    * Skipped when no theme has been chosen: the first-run picker owns the
    * screen until it is answered, and the banner is pushed once it is.
+   */
+  /**
+   * Seeded with the banner so it is `<Static>` item zero from the first
+   * frame, which is what pins it to the top: Ink flushes static output above
+   * everything that re-renders.
+   *
+   * An animated version of this existed briefly and was removed. Animation
+   * cannot live in `<Static>` — static output is written once and never
+   * redrawn — so it had to run in the live region and then settle into
+   * history. That height change left earlier lines on screen: the rendered
+   * frame was correct, and the terminal showed a stack of stale rules
+   * underneath it. A still mark costs nothing and cannot do that.
    */
   const [history, setHistory] = useState<HistoryBlock[]>(() =>
     prefs.theme === undefined
@@ -330,7 +342,7 @@ export function App({
   const chooseTheme = (next: 'dark' | 'light') => {
     setTheme(next)
     setStage('idle')
-    // The banner was skipped at init because the picker owned the screen.
+    // The picker owned the screen until now.
     push({ kind: 'banner', id: nextId(), width, defaultOutput: livePrefs.defaultOutput })
     savePreferences({ theme: next }).catch(showError)
   }

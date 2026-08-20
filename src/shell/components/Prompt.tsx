@@ -299,12 +299,15 @@ export function Prompt({
     </Text>
   )
 
-  // A filename is a short answer, so its field is one line — three would
-  // claim the same weight as the drop target, which it is not.
+  // Padded inside the fill, not just around it: a single filled line reads as
+  // a highlighted row rather than a field you type into. The drop area still
+  // gets more room around it, since it is the larger target.
   if (variant === 'field') {
     return (
-      <Box flexDirection="column" marginTop={2} marginBottom={1}>
+      <Box flexDirection="column" marginTop={2} marginBottom={2}>
+        <Text backgroundColor={bg}>{blank}</Text>
         {body}
+        <Text backgroundColor={bg}>{blank}</Text>
       </Box>
     )
   }
