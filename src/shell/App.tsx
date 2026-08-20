@@ -657,7 +657,22 @@ export function App({
         setStage(next)
         setValues({})
         if (next.sources.length > 1) {
-          refuseBatch()
+          // `refuseBatch` was written when nothing consumed several files at
+          // once, so a multi-file stage could only mean an unsupported batch
+          // convert. Merge ordering made staging several files the *point*,
+          // and left the message contradicting the `/pdf` signpost two lines
+          // below it — "drop a single file, or esc to clear the list" about a
+          // list the user was deliberately building. `pdfActionsApply` is
+          // already this file's single answer to "do the page operations
+          // apply here", so it decides. What replaces the refusal is not
+          // another line of prose: the staged card (rendered at idle from
+          // two files up — see the gate in the JSX below) says what is
+          // staged, and the existing signpost says where to take it.
+          if (!pdfActionsApply(next.sources)) {
+            refuseBatch()
+            return
+          }
+          setStep('idle')
           return
         }
         // Deliberately *not* pushed to history here. A block committed to
@@ -705,7 +720,7 @@ export function App({
     // reason: reading it straight (rather than through the `setStage`
     // updater form) is what lets the batch guard above decide off the
     // current list, not a stale one.
-    [showError, push, runCommand, mode, stage, refuseBatch, hasConvertTarget],
+    [showError, push, runCommand, mode, stage, refuseBatch, hasConvertTarget, pdfActionsApply],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -1129,8 +1144,19 @@ export function App({
         ) : null}
 
         {/* The staged list, shown live rather than committed to scrollback,
-            for as long as it is still something the user can take back. */}
-        {stage.sources.length > 0 && step !== 'idle' && step !== 'theme' && step !== 'result' ? (
+            for as long as it is still something the user can take back.
+
+            Idle is included once more than one file is staged: that is
+            exactly where a merge list is assembled — each drop lands back at
+            the prompt — so hiding the card there meant building a merge with
+            no confirmation that anything had been staged at all. One file at
+            idle stays hidden: a lone drop either advances into the wizard,
+            which shows the card, or is a PDF waiting on `/pdf`, and a card
+            for it would sit under the prompt through every command. */}
+        {stage.sources.length > 0 &&
+        step !== 'theme' &&
+        step !== 'result' &&
+        (step !== 'idle' || stage.sources.length > 1) ? (
           <Box marginBottom={1}>
             <StagedFiles stage={stage} width={width} />
           </Box>

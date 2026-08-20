@@ -3,7 +3,7 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
-import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
@@ -85,6 +85,40 @@ describe('a staged batch refuses to convert or compress', () => {
 
     const written = (await readdir(dir)).filter((f) => f !== 'a.jpg' && f !== 'b.jpg')
     expect(written).toHaveLength(0)
+  }, 20_000)
+
+  /**
+   * Dropping a second PDF is the only way to build a merge stage, and until
+   * this test existed that path contradicted itself: nothing confirmed
+   * either file was staged, and the refusal above — written when nothing
+   * consumed several files at once — told the user to "drop a single file"
+   * two lines above the shell's own "/pdf for page operations" signpost.
+   * Merge ordering made a multi-file stage useful and the message wrong.
+   */
+  it('stages two PDFs, shows them, and does not tell the user to undo it', async () => {
+    const dir = await makeTempDir()
+    const a = await makePdf(dir, 'jan.pdf', 3)
+    const b = await makePdf(dir, 'feb.pdf', 2)
+    const app = render(<App initialWidth={80} initialHeight={24} prefs={prefsFor(dir)} />)
+
+    app.stdin.write(a)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(400)
+    app.stdin.write(b)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(400)
+
+    const frame = app.lastFrame() ?? ''
+    // What they have: the card, both files, and the count in the tag.
+    expect(frame).toContain('jan.pdf')
+    expect(frame).toContain('feb.pdf')
+    expect(frame).toContain('PDF ×2')
+    // What to do next, with nothing telling them to take it back.
+    expect(frame).toContain('/pdf for page operations')
+    expect(frame).not.toContain("isn't supported yet")
+    expect(frame).not.toContain('Drop a single file')
   }, 20_000)
 
   it('still converts a single staged file normally — the common case has not moved', async () => {
