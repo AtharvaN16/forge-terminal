@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DocumentInfo, FormatId, ImageInfo, SourceInfo } from '../../src/core/types.js'
-
-// 'pdf' is not part of FormatId yet — that lands in Task 3, which adds PDF
-// support. The cast is confined to this test: DocumentInfo's shape is real
-// and load-bearing for later tasks, but nothing in the source tree
-// constructs one until PDF is a recognised format.
-const PDF = 'pdf' as FormatId
+import type { DocumentInfo, ImageInfo, SourceInfo } from '../../src/core/types.js'
 
 describe('SourceInfo', () => {
   it('narrows to image fields on kind "image"', () => {
@@ -26,7 +20,7 @@ describe('SourceInfo', () => {
     const source: SourceInfo = {
       kind: 'document',
       path: '/tmp/a.pdf',
-      format: PDF,
+      format: 'pdf',
       bytes: 4096,
       pages: 24,
       encrypted: false,
@@ -48,7 +42,7 @@ describe('SourceInfo', () => {
     const doc: DocumentInfo = {
       kind: 'document',
       path: '/tmp/a.pdf',
-      format: PDF,
+      format: 'pdf',
       bytes: 1,
       pages: 1,
       encrypted: false,

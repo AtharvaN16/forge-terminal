@@ -2,8 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { ALL_FORMAT_IDS, FORMATS, formatById, primaryExtension } from '../../src/core/formats.js'
 
 describe('format registry', () => {
-  it('knows all seven formats', () => {
-    expect(ALL_FORMAT_IDS.sort()).toEqual(['avif', 'gif', 'heic', 'jpeg', 'png', 'tiff', 'webp'])
+  it('knows all eight formats', () => {
+    expect(ALL_FORMAT_IDS.sort()).toEqual([
+      'avif',
+      'gif',
+      'heic',
+      'jpeg',
+      'pdf',
+      'png',
+      'tiff',
+      'webp',
+    ])
   })
 
   it('records that jpeg cannot carry alpha and png can', () => {

@@ -64,6 +64,17 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     lossy: false,
     hint: 'archival',
   },
+  pdf: {
+    id: 'pdf',
+    label: 'PDF',
+    extensions: ['.pdf'],
+    hasAlpha: false,
+    animatable: false,
+    // A PDF container is not lossy. /compress supplies its own quality
+    // control; /convert must not show a quality slider for this target.
+    lossy: false,
+    hint: 'document',
+  },
 }
 
 export const ALL_FORMAT_IDS = Object.keys(FORMATS) as FormatId[]
