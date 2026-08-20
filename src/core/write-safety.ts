@@ -1,6 +1,12 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { type ForgeError, outputCollision, outputExists, outputIsInput } from './errors.js'
+import {
+  type ForgeError,
+  outputCollision,
+  outputExists,
+  outputIsInput,
+  selfCollision,
+} from './errors.js'
 import type { InputFailure } from './resolve.js'
 import type { Job } from './types.js'
 
@@ -31,6 +37,11 @@ export interface WriteSafetyResult {
  * the user might genuinely want — it is the job's own plan asking to write
  * two different things to one path, which can only be a bug in whatever
  * produced the job, not a preference `--force` could sensibly express.
+ *
+ * Reported by `selfCollision`, not `outputCollision`: the latter's wording is
+ * built around two *different* sources landing on one name, and describing
+ * one job's duplicate output that way named the same file on both sides of
+ * the sentence.
  */
 function firstSelfCollision(job: Job): { output: string; error: ForgeError } | undefined {
   const reportPath = job.sources[0]?.path ?? job.outputs[0] ?? ''
@@ -39,7 +50,7 @@ function firstSelfCollision(job: Job): { output: string; error: ForgeError } | u
   for (const output of job.outputs) {
     const key = resolve(output)
     if (seen.has(key)) {
-      return { output, error: outputCollision([reportPath, reportPath], output) }
+      return { output, error: selfCollision(reportPath, output) }
     }
     seen.add(key)
   }

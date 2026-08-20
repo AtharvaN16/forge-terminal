@@ -5,9 +5,11 @@ import {
   ForgeError,
   fileNotFound,
   isForgeError,
+  outputCollision,
   outputExists,
   permissionDenied,
   renderError,
+  selfCollision,
   unsupportedTarget,
 } from '../../src/core/errors.js'
 import type { SourceInfo } from '../../src/core/types.js'
@@ -53,6 +55,15 @@ describe('ForgeError', () => {
 
   it('suggests --force when the output already exists', () => {
     expect(outputExists('/tmp/out.webp').hint).toContain('--force')
+  })
+
+  it('distinguishes one job writing a path twice from two sources colliding', () => {
+    const self = selfCollision('/tmp/source.pdf', '/tmp/out.pdf')
+    const between = outputCollision(['/tmp/a.jpg', '/tmp/b.png'], '/tmp/out.webp')
+    expect(self.code).toBe(between.code)
+    expect(self.title).not.toBe(between.title)
+    expect(self.detail).toContain('twice')
+    expect(self.hint).not.toContain('--force')
   })
 })
 

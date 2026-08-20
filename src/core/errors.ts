@@ -297,6 +297,27 @@ export function outputCollision(paths: [string, string], output: string): ForgeE
   })
 }
 
+/**
+ * One job whose own `outputs` name the same path twice — a separated extract
+ * handed a repeated page, say. Distinct from `outputCollision`, which is
+ * shaped for two *different* sources landing on one name: reusing it here
+ * printed "source.pdf and source.pdf would both become out.pdf", a sentence
+ * about a situation that is not the one that happened.
+ *
+ * Shares the `output-collision` code because it is the same kind of fault
+ * and, like its sibling, is never overridable by `--force`: it is the job's
+ * own plan asking to write two different things to one path, which can only
+ * be a bug in whatever produced the job.
+ */
+export function selfCollision(source: string, output: string): ForgeError {
+  return new ForgeError({
+    code: 'output-collision',
+    title: 'One output, written twice',
+    detail: `${basename(source)} would write ${basename(output)} twice, and only the second would survive.`,
+    hint: 'Every output has to be its own file. Check the selection for a repeated page.',
+  })
+}
+
 export function outputIsInput(path: string, op: Job['op'] = 'convert'): ForgeError {
   return new ForgeError({
     code: 'output-is-input',

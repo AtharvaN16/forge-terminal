@@ -144,6 +144,31 @@ describe('checkWriteSafety', () => {
     expect(failures[0]?.error.code).toBe('output-collision')
   })
 
+  /**
+   * A self-collision is one job writing one path twice, which is a different
+   * thing from two separate sources landing on one name — it used to borrow
+   * `outputCollision`, a message shaped for the latter, and read
+   * "source.pdf and source.pdf would both become out.pdf".
+   */
+  it('describes a self-collision as one file written twice, not as two files colliding', async () => {
+    const dir = await makeTempDir()
+    const source = join(dir, 'source.pdf')
+    const output = join(dir, 'out.pdf')
+    const job: Job = {
+      op: 'extract',
+      sources: [doc(source)],
+      outputs: [output, output],
+      pages: [2, 2],
+      separate: true,
+    }
+
+    const error = checkWriteSafety([job], { force: false }).failures[0]?.error
+    expect(error?.detail).toContain('source.pdf')
+    expect(error?.detail).toContain('out.pdf')
+    expect(error?.detail).not.toMatch(/source\.pdf and source\.pdf/)
+    expect(error?.detail).toMatch(/twice/)
+  })
+
   it('--force does not rescue a job whose own outputs collide with each other', async () => {
     const dir = await makeTempDir()
     const source = join(dir, 'source.pdf')
