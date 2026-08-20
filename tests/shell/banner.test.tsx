@@ -3,13 +3,9 @@ import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
-import {
-  Banner,
-  FULL_WIDTH,
-  MARK,
-  MARK_FRAMES,
-  WORDMARK,
-} from '../../src/shell/components/Banner.js'
+import { Banner, FULL_WIDTH, MARK, WORDMARK } from '../../src/shell/components/Banner.js'
+import { playIntro } from '../../src/shell/intro.js'
+import { ANVIL, composeMark, HAMMER, MARK_HEIGHT, MARK_WIDTH, SWING } from '../../src/shell/mark.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, LIGHT } from '../../src/shell/theme.js'
 
@@ -25,8 +21,8 @@ describe('banner art', () => {
     expect(new Set(MARK.map((r) => r.length)).size).toBe(1)
   })
 
-  it('mark and wordmark are the same height, so they sit side by side', () => {
-    expect(MARK.length).toBe(WORDMARK.length)
+  it('the mark is at least as tall as the wordmark it sits beside', () => {
+    expect(MARK.length).toBeGreaterThanOrEqual(WORDMARK.length)
   })
 
   it('the wordmark has an outline, not just a fill', () => {
@@ -74,72 +70,143 @@ describe('banner rendering', () => {
   })
 })
 
-describe('banner in the shell', () => {
-  // The banner is committed to <Static> from an effect — Static output is
-  // flushed above everything that re-renders, which is the only way it stays
-  // at the top of the session — so it is not in the very first frame.
-  const settle = (ms = 80) => new Promise((r) => setTimeout(r, ms))
+describe('the intro', () => {
+  /** Captures what would have been written to the terminal. */
+  function capture() {
+    const out: string[] = []
+    return { out, write: (s: string) => void out.push(s) }
+  }
 
-  it('shows on every launch, not just the first', async () => {
-    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
-    const { lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
-    await settle()
-    expect(lastFrame() ?? '').toContain('█')
+  const ESC = String.fromCharCode(27)
+  const UP = new RegExp(`${ESC}\\[\\d+A`, 'g')
+  const SGR = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, 'g')
+  const strip = (s: string) => s.replace(SGR, '')
+
+  const opts = (over: Record<string, unknown> = {}) => ({
+    width: 100,
+    palette: DARK,
+    version: '0.1.0',
+    defaultOutput: '~/Desktop',
+    colour: true,
+    frameMs: 0,
+    ...over,
+  })
+
+  it('draws the mark and the wordmark on every launch', async () => {
+    const { out, write } = capture()
+    await playIntro({ ...opts(), write })
+    const text = strip(out.join(''))
+    expect(text).toContain('\u2588')
+    expect(text).toContain('0.1.0')
   })
 
   it('shows the configured default output folder', async () => {
-    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: '~/Pictures' }
-    const { lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
-    await settle()
-    expect(lastFrame() ?? '').toContain('~/Pictures')
+    const { out, write } = capture()
+    await playIntro({ ...opts({ defaultOutput: '~/Pictures' }), write })
+    expect(strip(out.join(''))).toContain('~/Pictures')
   })
 
-  it('does not compete with the first-run theme picker', () => {
-    const frame = render(<App initialWidth={100} prefs={DEFAULT_PREFERENCES} />).lastFrame() ?? ''
-    expect(frame).not.toContain('█')
-    expect(frame).toContain('Dark')
+  it('moves the cursor back up between frames, so it redraws in place', async () => {
+    const { out, write } = capture()
+    await playIntro({ ...opts(), write })
+    const ups = out.join('').match(UP) ?? []
+    // One fewer than the frames: the last is left on screen on purpose, which
+    // is what turns the loop into ordinary scrollback.
+    expect(ups.length).toBe(SWING.length - 1)
+    expect(ups.every((u) => u === `${ESC}[${MARK_HEIGHT}A`)).toBe(true)
+  })
+
+  it('plays no loop at all without colour — there is nothing to see', async () => {
+    const { out, write } = capture()
+    await playIntro({ ...opts({ colour: false }), write })
+    expect(out.join('').match(UP)).toBe(null)
+    expect(out.join('')).toContain('\u2588')
+  })
+
+  it('falls back to a one-line header when the terminal is too narrow', async () => {
+    const { out, write } = capture()
+    await playIntro({ ...opts({ width: 40 }), write })
+    expect(out.join('')).not.toContain('\u2588')
+    expect(out.join('')).toContain('Forge')
+  })
+
+  it('does not draw the banner inside Ink — the intro already did', () => {
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
+    const frame = render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? ''
+    expect(frame).not.toContain(
+      '\u2590\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258c',
+    )
   })
 })
 
-describe('animated mark', () => {
-  it('every frame is the same shape, or the art shears', () => {
-    for (const f of MARK_FRAMES) {
-      expect(f.length, 'row count').toBe(WORDMARK.length)
-      expect(new Set(f.map((r) => r.length)).size, 'row widths').toBe(1)
-      expect(f[0]?.length).toBe(MARK_FRAMES[0]?.[0]?.length)
+describe('the mark', () => {
+  it('every composed frame is the same shape, or the art shears', () => {
+    for (const step of SWING) {
+      const f = composeMark(step)
+      expect(f.length).toBe(MARK_HEIGHT)
+      expect(new Set(f.map((r) => r.length))).toEqual(new Set([MARK_WIDTH]))
     }
   })
 
-  it('the anvil itself never moves — only the hammer and sparks do', () => {
-    // Rows 2-5 are the anvil. If they differed between frames the whole mark
-    // would jitter rather than the hammer swinging against a fixed anvil.
-    for (const row of [2, 3, 4, 5]) {
-      const distinct = new Set(MARK_FRAMES.map((f) => f[row]))
-      expect(distinct.size, `anvil row ${row}`).toBe(1)
+  it('the handle is centred on the head, not half a column off', () => {
+    const head = HAMMER.find((r) => r.includes('█████')) ?? ''
+    const shaft = HAMMER[0] ?? ''
+    const centre = (s: string) =>
+      (s.indexOf(s.trim()[0] ?? '') + s.lastIndexOf(s.trim().at(-1) ?? '')) / 2
+    expect(centre(shaft)).toBe(centre(head))
+  })
+
+  it('the handle is attached to the head, with no gap between them', () => {
+    const lastHandle = HAMMER.map((r) => r.includes('║')).lastIndexOf(true)
+    const firstHead = HAMMER.findIndex((r) => r.includes('█'))
+    expect(firstHead).toBe(lastHandle + 1)
+  })
+
+  it('the anvil never moves — only the hammer and sparks do', () => {
+    for (const step of SWING) {
+      expect(composeMark(step).slice(-ANVIL.length)).toEqual([...ANVIL])
     }
   })
 
   it('sparks appear on the strike and not while the hammer is raised', () => {
-    const hasSparks = MARK_FRAMES.map((f) => f.join('').includes('✦'))
-    expect(hasSparks[0]).toBe(false)
-    expect(hasSparks[2]).toBe(true)
+    const sparky = SWING.map((s) => /[|/*.']/.test(composeMark(s).join('')))
+    expect(sparky[0]).toBe(false)
+    expect(sparky[2]).toBe(true)
   })
 
-  it('renders every frame without overflowing', () => {
-    for (let f = 0; f < MARK_FRAMES.length; f++) {
-      const frame = frameOf(
-        <Banner width={100} version="0.1.0" defaultOutput="~/Desktop" frame={f} />,
-      )
-      for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(100)
+  it('renders without overflowing', () => {
+    const frame = frameOf(<Banner width={100} version="0.1.0" defaultOutput="~/Desktop" />)
+    for (const line of frame.split(String.fromCharCode(10)))
+      expect(line.length).toBeLessThanOrEqual(100)
+  })
+})
+
+describe('the hammer stays whole', () => {
+  it('the head is visible on every step of the swing', () => {
+    // A positive offset pushes the head onto the anvil's own row, where the
+    // anvil overwrites it — the hammer loses its head and only the handle
+    // shows. This pins the offsets against that.
+    for (const [i, step] of SWING.entries()) {
+      const sky = composeMark(step).slice(0, MARK_HEIGHT - ANVIL.length)
+      expect(
+        sky.some((r) => r.includes('█████')),
+        `step ${i}`,
+      ).toBe(true)
     }
   })
 
-  it('settles into scrollback rather than animating forever', async () => {
-    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
-    const { lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
-    await new Promise((r) => setTimeout(r, 1400))
-    // Once settled the banner lives in <Static>; exactly one is ever drawn.
-    const marks = (lastFrame() ?? '').split('\n').filter((l) => l.includes('▐██████████'))
-    expect(marks.length).toBeLessThanOrEqual(1)
-  }, 10_000)
+  it('the handle sits directly on the head in every step', () => {
+    for (const step of SWING) {
+      const sky = composeMark(step).slice(0, MARK_HEIGHT - ANVIL.length)
+      const head = sky.findIndex((r) => r.includes('█████'))
+      const handleRows = sky.map((r) => r.includes('║'))
+      const lastHandle = handleRows.lastIndexOf(true)
+      if (lastHandle !== -1) expect(head).toBe(lastHandle + 1)
+    }
+  })
+
+  it('rests on the strike, not mid-lift', () => {
+    const last = SWING[SWING.length - 1]
+    expect(last?.hot).toBe(true)
+  })
 })

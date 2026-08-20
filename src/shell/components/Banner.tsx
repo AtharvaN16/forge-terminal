@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink'
+import { glyphColour, HEAT, MARK_AT_REST, MARK_WIDTH, REST_STEP } from '../mark.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { bandFor } from '../width.js'
@@ -22,56 +23,22 @@ export const WORDMARK = [
   '╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝',
 ] as const
 
-/**
- * The mark, as a loop: a hammer swinging down onto hot metal, sparks on the
- * strike, then the glow fading while the hammer lifts again.
- *
- * Six rows and eleven columns, like the wordmark it sits beside — every row
- * of every frame must be exactly eleven columns or the art shears, and there
- * is a test for it. Trailing spaces are load-bearing.
- *
- * Row 2 is the anvil's face, drawn in the heat colours rather than the
- * palette's: metal at forging temperature is orange whatever theme the
- * terminal is using, and a hot bar that turned grey in light mode would stop
- * being hot metal and start being a line.
- */
-export const MARK_FRAMES = [
-  // Raised.
-  ['        ▗▟▙', '       ▗▛▘ ', ' ▗▄▄▄▄▄▄▄▄▖', '▐██████████', ' ▝▀▀▐██▌▀▀ ', ' ▗▄██████▄▖'],
-  // Falling.
-  ['      ▗▟▙  ', '     ▗▛▘   ', ' ▗▄▄▄▄▄▄▄▄▖', '▐██████████', ' ▝▀▀▐██▌▀▀ ', ' ▗▄██████▄▖'],
-  // Strike — sparks off the face.
-  [' ˙   ▟█▙  ˙', '✦    ▝▘   ✦', ' ▗▄▄▄▄▄▄▄▄▖', '▐██████████', ' ▝▀▀▐██▌▀▀ ', ' ▗▄██████▄▖'],
-  // Sparks flying, hammer starting to lift.
-  ['✦  ˙  ▟▙  ˙', '   ▗▛▘     ', ' ▗▄▄▄▄▄▄▄▄▖', '▐██████████', ' ▝▀▀▐██▌▀▀ ', ' ▗▄██████▄▖'],
-] as const
-
-/** How hot the anvil face reads on each frame: brightest on the strike. */
-const HEAT = ['#b4531a', '#c9631d', '#ff8c1a', '#e0701c'] as const
-const SPARK = '#ffc247'
-/** The anvil's face — the row drawn at forging temperature. */
-const FACE_ROW = 2
-
-/**
- * The mark at rest is the strike itself — hammer on the metal, sparks off
- * the face. A still image gets one moment, so it should be the moment that
- * says what the tool does.
- */
-export const MARK = MARK_FRAMES[2]
+/** Re-exported so callers that only need the still mark do not reach past this. */
+export const MARK = MARK_AT_REST
 
 const GAP = '  '
 /** Columns the mark, gap and wordmark need before any padding. */
-export const FULL_WIDTH = MARK[0].length + GAP.length + WORDMARK[0].length
+export const FULL_WIDTH = MARK_WIDTH + GAP.length + (WORDMARK[0]?.length ?? 0)
 
 /** Sparks and heat are their own colours; everything else is the anvil. */
-function markRow(row: string, index: number, frame: number, anvil: string | undefined) {
-  if (index === FACE_ROW) return <Text color={HEAT[frame % HEAT.length]}>{row}</Text>
-  if (!/[✦˙]/.test(row)) return <Text color={anvil}>{row}</Text>
+function markRow(row: string, index: number, anvil: string | undefined) {
+  const step = REST_STEP
+  const heat = HEAT[4] ?? HEAT[0]
   return (
     <>
       {Array.from(row).map((ch, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
-        <Text key={i} color={ch === '✦' || ch === '˙' ? SPARK : anvil}>
+        <Text key={i} color={glyphColour(ch, index, step, heat, anvil ?? '') ?? undefined}>
           {ch}
         </Text>
       ))}
@@ -108,13 +75,10 @@ export function Banner({
   width,
   version,
   defaultOutput,
-  frame = 2,
 }: {
   width: number
   version: string
   defaultOutput: string
-  /** Which heat level to draw the anvil face at. Defaults to the strike. */
-  frame?: number
 }) {
   const palette = useTheme()
 
@@ -146,7 +110,7 @@ export function Banner({
         // constant art, never reordered, filtered or appended to.
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
         <Text key={i}>
-          {markRow(MARK[i] ?? '', i, frame, colourProp(palette.dim))}
+          {markRow(MARK[i] ?? '', i, colourProp(palette.dim))}
           <Text>{GAP}</Text>
           {splitFace(word).map((run, j) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art

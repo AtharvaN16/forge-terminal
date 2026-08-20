@@ -59,22 +59,21 @@ describe('palettes actually reach the terminal', () => {
   })
 
   it('each theme uses its own foreground for the wordmark face', async () => {
-    // Asserted across every frame, not just the last. The wordmark lives in
-    // the banner, which commits to <Static>; Ink writes static output once
-    // and later writes carry only the dynamic tree, so by the final frame the
-    // banner has scrolled out of what `lastFrame()` returns. "Reaches the
-    // terminal" is a claim about what was ever written, which is `frames`.
+    // The wordmark is drawn by the intro, before Ink exists, so it is not in
+    // any Ink frame to assert against — see shell/intro.ts.
+    const { playIntro } = await import('../../src/shell/intro.js')
     for (const palette of [DARK, LIGHT] as const) {
-      const { frames } = render(
-        <ThemeProvider palette={palette}>
-          <App
-            initialWidth={100}
-            prefs={{ ...DEFAULT_PREFERENCES, theme: palette === DARK ? 'dark' : 'light' }}
-          />
-        </ThemeProvider>,
-      )
-      await settle()
-      expect(frames.join(''), `${palette.name} foreground`).toContain(rgb(palette.fg))
+      const out: string[] = []
+      await playIntro({
+        width: 100,
+        palette,
+        version: '0.1.0',
+        defaultOutput: '~/Desktop',
+        colour: true,
+        frameMs: 0,
+        write: (s) => void out.push(s),
+      })
+      expect(out.join(''), `${palette.name} foreground`).toContain(rgb(palette.fg))
     }
   })
 })

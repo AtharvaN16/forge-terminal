@@ -125,18 +125,14 @@ export function App({
    * frame was correct, and the terminal showed a stack of stale rules
    * underneath it. A still mark costs nothing and cannot do that.
    */
-  const [history, setHistory] = useState<HistoryBlock[]>(() =>
-    prefs.theme === undefined
-      ? []
-      : [
-          {
-            kind: 'banner',
-            id: nextId(),
-            width: initialWidth ?? 80,
-            defaultOutput: prefs.defaultOutput,
-          },
-        ],
-  )
+  /**
+   * Empty. The banner is drawn by `playIntro` before Ink mounts, so by the
+   * time this renders it is already on screen as ordinary scrollback — see
+   * intro.ts. The one exception is first run, where the theme picker owned
+   * the screen and there was no palette to draw it in; `chooseTheme` pushes
+   * one then.
+   */
+  const [history, setHistory] = useState<HistoryBlock[]>([])
   /**
    * Held in state, not read straight from `prefs`, so `/theme` re-themes the
    * running session rather than only the next launch.
