@@ -6,6 +6,7 @@ import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
+const CTRL_U = String.fromCharCode(21)
 const DOWN = `${ESC}[B`
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 
@@ -90,5 +91,46 @@ describe('esc at the prompt', () => {
     app.stdin.write(ENTER)
     await settle(300)
     expect(app.lastFrame() ?? '').toContain('Convert JPEG to')
+  }, 20_000)
+
+  it('clears a leftover stage when the typed fragment matches no command', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'a.jpg')
+    const app = await stageOneThenFailBackToIdle(dir, a)
+    expect(app.lastFrame() ?? '').toContain('a.jpg')
+
+    // "/U" — realistic and minimal: the start of any absolute path under
+    // /Users, and it matches none of convert/compress/theme/help.
+    // `CommandPalette` renders a plain, non-interactive "no command
+    // matches" message here — no `<Select>`, no `useInput` at all — so
+    // nothing but the stage hook itself is in a position to consume esc.
+    app.stdin.write('/U')
+    await settle()
+    expect((app.lastFrame() ?? '').toLowerCase()).toContain('no command matches')
+
+    // Esc: nothing is mounted to consume this keystroke (no `<Select>`,
+    // no `useInput` inside the "no command matches" message), so this is
+    // testing the stage hook and only the stage hook.
+    app.stdin.write(ESC)
+    await settle()
+
+    // The typed "/U" itself is untouched by this esc — clearing the text
+    // buffer was never this hook's job, only `Select`'s `onCancel` does
+    // that, and nothing here plays that role. Ctrl-u (an ordinary,
+    // already-available editing key, unrelated to either fix) clears it
+    // so the next assertion starts from a clean prompt.
+    app.stdin.write(CTRL_U)
+    await settle()
+    expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
+
+    // The stage really did clear on that esc: /convert now has nothing
+    // staged to act on, so it stays at the idle prompt instead of
+    // reaching the target picker.
+    app.stdin.write('/convert')
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(300)
+    expect(app.lastFrame() ?? '').not.toContain('Convert JPEG to')
+    expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
   }, 20_000)
 })
