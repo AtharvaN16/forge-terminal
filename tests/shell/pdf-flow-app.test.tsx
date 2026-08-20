@@ -171,6 +171,50 @@ describe('/pdf end to end through App', () => {
 })
 
 /**
+ * The target step's `onCancel` is a ternary — `backToPromptKeepingStage` for
+ * a document (exercised throughout the describe block above: a PDF has
+ * `/pdf` and merge staging to go back to, so escaping the picker must not
+ * cost it its place on the bench), `clearSource` for anything else. Every
+ * test above drives the document branch; nothing exercised the image one
+ * before this — an image has nowhere else to go once it backs out of "convert
+ * to", so the whole point of `clearSource` here is that escaping really does
+ * give the file back, not just close the picker.
+ */
+describe('esc on the target picker for an image', () => {
+  it('clears the stage, not just the picker', async () => {
+    const dir = await makeTempDir()
+    const file = await makeJpeg(dir, 'photo.jpg')
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
+
+    stdin.write(file)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    expect(lastFrame() ?? '').toContain('Convert JPEG to') // sanity: really on the picker
+
+    stdin.write(ESC)
+    await settle(300)
+
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('drop a file or type a path')
+    expect(frame).not.toContain('Convert JPEG to')
+
+    // The stronger proof: with `backToPromptKeepingStage` instead of
+    // `clearSource` here, photo.jpg would still be staged, and `/convert`
+    // would reopen the exact picker just escaped from. Landing back at
+    // idle instead is only possible if the stage genuinely emptied.
+    stdin.write('/convert')
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+    const afterConvert = lastFrame() ?? ''
+    expect(afterConvert).not.toContain('Convert JPEG to')
+    expect(afterConvert).toContain('drop a file or type a path')
+  }, 20_000)
+})
+
+/**
  * `checkWriteSafety` (Task: write-safety) already covers the rule itself in
  * isolation; this covers the thing that actually matters here — that the
  * `/pdf` run path in App.tsx calls it before `runJobs`, the same way the
