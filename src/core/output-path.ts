@@ -106,6 +106,37 @@ export function splitOutputPaths(sourcePath: string, count: number): string[] {
 }
 
 /**
+ * Outputs for rasterising selected pages of a document to images — one file
+ * per page in `pages`, in the order given (`core/actions/convert.ts` and the
+ * CLI's execute path both hand this an already-`normalisePages`d list).
+ *
+ * Named by the page's own 1-based number, not its position in the
+ * selection — rendering pages 2-3 of a document writes `doc-2.jpg` and
+ * `doc-3.jpg`, never `doc-1.jpg`/`doc-2.jpg`, so a filename on disk always
+ * says which page it holds. `splitOutputPaths`-style zero-padding, but
+ * against the width of the *selection's* size rather than the document's
+ * whole page count — a 2-page selection out of a 300-page document gets
+ * `-2`/`-3`, not `-002`/`-003`.
+ */
+export function rasterOutputPaths(
+  sourcePath: string,
+  pages: number[],
+  target: FormatId,
+  destination?: string,
+): [string, ...string[]] {
+  const { stem } = stemAndExt(resolve(sourcePath))
+  const dir = destination ? resolve(destination) : resolve(sourcePath, '..')
+  const ext = primaryExtension(target)
+  const width = String(Math.max(1, pages.length)).length
+  const names = pages.map((p) => join(dir, `${stem}-${String(p + 1).padStart(width, '0')}${ext}`))
+  const [first, ...rest] = names
+  if (first === undefined) {
+    throw new Error('rasterOutputPaths requires at least one selected page')
+  }
+  return [first, ...rest]
+}
+
+/**
  * Outputs for an extract.
  *
  * Separate files are named by 1-based page number rather than sequence, so

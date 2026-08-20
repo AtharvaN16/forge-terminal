@@ -32,7 +32,9 @@ import { HistoryEntry } from './blocks.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HintBar } from './components/HintBar.js'
+import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
+import { Progress } from './components/Progress.js'
 import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
@@ -60,6 +62,12 @@ export type Step =
   /** Compress: the target-size field. */
   | 'size'
   | 'target'
+  /** A document target only: which pages to rasterise (all/first/choose). */
+  | 'pages'
+  /** 'Choose pages' from the `pages` step opens `PageGrid` here. */
+  | 'page-picker'
+  /** A document target only: the rasterisation resolution. */
+  | 'dpi'
   | 'quality'
   | 'destination'
   | 'rename'
@@ -247,6 +255,21 @@ export function App({
 
   /** Where the target-size search has got to, for an honest counter. */
   const [attempt, setAttempt] = useState<{ n: number; of: number } | undefined>(undefined)
+  /**
+   * The latest `{ phase: 'page' }` event `runJobs` reported, or `null` until
+   * one actually arrives. `null` is the whole point, not just an initial
+   * value: invariant 7 forbids a fabricated percentage, and an operation
+   * that only ever reports the phases-only variant (`reading`/`decoding`/
+   * `encoding`/`writing`) must never mount `<Progress>` — gating on "a page
+   * event has been seen" rather than "a job is running" is what keeps a
+   * single-file, single-phase conversion from growing a bar it has no real
+   * position to show on.
+   */
+  const [pageProgress, setPageProgress] = useState<{
+    done: number
+    total: number
+    detail?: string
+  } | null>(null)
   /** Why a typed size was rejected, shown against the field rather than later. */
   const [sizeError, setSizeError] = useState<string | undefined>(undefined)
   /** A measured alternative worth offering after a compression. */
@@ -789,6 +812,40 @@ export function App({
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
     const next = action.options([currentSource], { target }, livePrefs)
+    // A document target always means rasterisation (`targetSelect` filters
+    // 'pdf' — its only other target — out as a no-op), which needs to know
+    // which pages and at what resolution before quality or destination.
+    if (next.some((s) => s.id === 'pages')) {
+      setStep('pages')
+      return
+    }
+    setStep(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
+  }
+
+  /**
+   * `'all'`/`'first'` advance straight to resolution; `'choose'` hands off to
+   * `PageGrid` (`page-picker`) rather than storing itself as the answer —
+   * `convertAction.plan()` only knows how to turn `'all'`, `'first'`, a typed
+   * range, or an explicit array into pages, not the literal string `'choose'`.
+   */
+  const choosePages = (value: string) => {
+    setValues((v) => ({ ...v, pages: value }))
+    setStep(value === 'choose' ? 'page-picker' : 'dpi')
+  }
+
+  /** `PageGrid`'s own selection, already 0-based — `convertAction.plan()` still runs it through `normalisePages`. */
+  const submitPagePicker = (pages: number[]) => {
+    setValues((v) => ({ ...v, pages }))
+    setStep('dpi')
+  }
+
+  const chooseDpi = (currentSource: SourceInfo, dpi: string) => {
+    setValues((v) => ({ ...v, dpi }))
+    const next = action.options(
+      [currentSource],
+      { ...values, target: values.target, dpi },
+      livePrefs,
+    )
     setStep(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
   }
 
@@ -850,6 +907,39 @@ export function App({
     setRenaming(null)
     setText('')
     setStep('destination')
+  }
+
+  /**
+   * A document rasterisation plans one output per page — there is no single
+   * stem for a rename field to edit, and `resolveOutputPath`'s single-output
+   * shape is exactly what `rasterOutputPaths` (inside `convertAction.plan()`)
+   * exists to bypass. So this skips `startRename`/`buildPlan` entirely and
+   * routes through the same `checkWriteSafety` + `runJobs` pipeline `/pdf`'s
+   * five page operations already use — `handlePdfDone` is generic over any
+   * `Job[]`, not `/pdf`-specific, and a multi-output convert job fits it
+   * exactly (self-collision, existing-file and input-collision checks all
+   * apply the same way here as they do to a separated extract).
+   */
+  const confirmDocumentConversion = (destination: string) => {
+    if (!source) return
+    void handlePdfDone(action.plan([source], { ...values, destination }))
+  }
+
+  const confirmDestination = (destination: string) => {
+    if (source?.kind === 'document') {
+      confirmDocumentConversion(destination)
+      return
+    }
+    startRename(destination)
+  }
+
+  /** Back from `destination`: to whichever step actually precedes it for this source. */
+  const destinationBack = () => {
+    if (specFor('quality')) {
+      setStep('quality')
+      return
+    }
+    setStep(specFor('dpi') ? 'dpi' : 'target')
   }
 
   const submitRename = (raw: string) => {
@@ -1090,11 +1180,29 @@ export function App({
    * one place in this file that deliberately does act on the whole staged
    * list, because merge is defined by having several files staged.
    */
-  /** Actually runs jobs already cleared by `checkWriteSafety`. */
+  /**
+   * Actually runs jobs already cleared by `checkWriteSafety`.
+   *
+   * A rasterisation job's `total` is `job.options.pages.length` — the
+   * *selected* page count, not the document's — because that is exactly
+   * what `engines/pdfium.ts` reports (see its own doc comment); this only
+   * relays it, never recomputes one of its own. `detail` is the basename of
+   * whichever output the just-finished page wrote, read back off the job's
+   * own `outputs[done - 1]` rather than threaded through separately, so it
+   * can never name a different file than the one `Progress` is counting.
+   */
   const runPdfJobs = async (jobs: Job[]) => {
     setStep('pdf-running')
+    setPageProgress(null)
     try {
-      const summary = await runJobs(jobs, {})
+      const summary = await runJobs(jobs, {
+        onEvent: (event) => {
+          if (event.type !== 'job:phase' || event.progress.phase !== 'page') return
+          const { done, total } = event.progress
+          const output = event.job.op === 'convert' ? event.job.outputs[done - 1] : undefined
+          setPageProgress({ done, total, detail: output ? basename(output) : undefined })
+        },
+      })
       for (const result of summary.results) {
         push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} ${describePdfResult(result)}` })
       }
@@ -1106,6 +1214,7 @@ export function App({
       // synchronous `useInput` fired, and nothing else awaits this promise.
       showError(e)
     } finally {
+      setPageProgress(null)
       setStage(clearStage())
       setValues({})
       setStep('idle')
@@ -1182,6 +1291,8 @@ export function App({
   const modeSpec = specFor('mode')
   const sizeSpec = specFor('size')
   const targetSpec = specFor('target')
+  const pagesSpec = specFor('pages')
+  const dpiSpec = specFor('dpi')
   const qualitySpec = specFor('quality')
   const destinationSpec = specFor('destination')
 
@@ -1312,6 +1423,72 @@ export function App({
           </Box>
         ) : null}
 
+        {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
+            <Select
+              width={width}
+              items={pagesSpec.choices}
+              onSubmit={choosePages}
+              onCancel={() => setStep('target')}
+              showHints={band !== 'compact'}
+            />
+            <HintBar
+              width={width}
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
+
+        {step === 'page-picker' && source && source.kind === 'document' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <PageGrid
+              mode="cell"
+              pageCount={source.pages}
+              selected={Array.isArray(values.pages) ? (values.pages as number[]) : []}
+              cuts={[]}
+              onSubmit={submitPagePicker}
+              onCancel={() => setStep('pages')}
+              width={width}
+              height={height}
+            />
+            <HintBar
+              width={width}
+              pairs={[
+                ['space', 'toggle'],
+                ['a', 'all'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
+
+        {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
+            <Select
+              width={width}
+              items={dpiSpec.choices}
+              onSubmit={(dpi) => chooseDpi(source, dpi)}
+              onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
+              showHints={band !== 'compact'}
+            />
+            <HintBar
+              width={width}
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'back'],
+              ]}
+            />
+          </Box>
+        ) : null}
+
         {step === 'quality' && qualitySpec?.kind === 'slider' ? (
           <Box flexDirection="column" marginBottom={1}>
             <Slider
@@ -1322,7 +1499,7 @@ export function App({
               value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
               onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
               onSubmit={chooseQuality}
-              onCancel={() => setStep('target')}
+              onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
             />
             <HintBar
               width={width}
@@ -1341,8 +1518,8 @@ export function App({
               label={destinationSpec.label}
               presets={destinationSpec.presets}
               preview={previewDestination}
-              onSubmit={startRename}
-              onCancel={() => setStep('target')}
+              onSubmit={confirmDestination}
+              onCancel={destinationBack}
               width={width}
               showHints={band !== 'compact'}
               defaultPath={expandTilde(livePrefs.defaultOutput)}
@@ -1510,7 +1687,22 @@ export function App({
 
         {step === 'pdf-running' ? (
           <Box marginBottom={1}>
-            <Text color={colourProp(palette.dim)}>Running…</Text>
+            {/* Determinate only once a real `page` event has arrived — see
+                `pageProgress`'s own doc comment. Every other page operation
+                (merge, split, extract, delete, rotate) reports phases only,
+                so this stays the plain "Running…" line for all of them,
+                exactly as invariant 7 requires. */}
+            {pageProgress ? (
+              <Progress
+                label="RENDERING"
+                done={pageProgress.done}
+                total={pageProgress.total}
+                detail={pageProgress.detail}
+                width={width}
+              />
+            ) : (
+              <Text color={colourProp(palette.dim)}>Running…</Text>
+            )}
           </Box>
         ) : null}
 
