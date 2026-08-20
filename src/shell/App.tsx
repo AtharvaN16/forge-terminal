@@ -19,10 +19,12 @@ import {
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
+import type { InputFailure } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
 import { formatBytes, parseSize } from '../core/units.js'
+import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
@@ -68,6 +70,8 @@ export type Step =
   | 'pdf'
   /** Between `PdfFlow` handing off its jobs and `runJobs` finishing. */
   | 'pdf-running'
+  /** `checkWriteSafety` refused the job `PdfFlow` handed off — see `pdfBlocked`. */
+  | 'pdf-blocked'
 
 /**
  * What the overwrite question needs to remember while it is being asked:
@@ -87,6 +91,20 @@ interface PendingOverwrite {
   destination: string
   output: string
   keepBoth: string
+}
+
+/**
+ * What the `/pdf` write-safety refusal needs to remember while it is being
+ * asked: the exact jobs `PdfFlow` handed off (so "Replace" can re-check them
+ * with `force: true` rather than needing to re-derive them) and the refusal
+ * itself. `checkWriteSafety` is per-job all-or-nothing, and every page
+ * action this phase built plans exactly one job, so `failures` is one entry
+ * in practice — kept as a list because `checkWriteSafety`'s own return type
+ * is, and nothing here should assume more than that type promises.
+ */
+interface PendingPdfRefusal {
+  jobs: Job[]
+  failures: InputFailure[]
 }
 
 let blockSeq = 0
@@ -281,6 +299,8 @@ export function App({
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   /** Destination and proposed stem while the rename field is open. */
   const [renaming, setRenaming] = useState<PendingRename | null>(null)
+  /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
+  const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
 
   /**
    * Mirrors `text` for the completion callback, for the same reason
@@ -954,7 +974,8 @@ export function App({
    * one place in this file that deliberately does act on the whole staged
    * list, because merge is defined by having several files staged.
    */
-  const handlePdfDone = async (jobs: Job[]) => {
+  /** Actually runs jobs already cleared by `checkWriteSafety`. */
+  const runPdfJobs = async (jobs: Job[]) => {
     setStep('pdf-running')
     try {
       const summary = await runJobs(jobs, {})
@@ -974,6 +995,73 @@ export function App({
       setStep('idle')
     }
   }
+
+  /**
+   * `PdfFlow`'s `plan()` output bypasses `buildPlan` (see the note above) and
+   * so bypasses its write-safety checks too — merge, split, extract, delete
+   * and rotate can each collide with an existing file, and merge and rotate
+   * can even target a path that is one of their own inputs (rotate twice,
+   * or merge a folder a second time after its own merged output already
+   * landed there). `checkWriteSafety` is the same check the CLI's page-op
+   * path applies before its own `runJobs` call — this is the shell applying
+   * it too, in the one spot both paths share: right before the actual run.
+   *
+   * The shell has no `--force` flag, so a refusal has to be answered
+   * in-flow rather than by re-typing the command with a flag. Only
+   * `output-exists` gets an in-flow bypass ("Replace"): it is the ordinary,
+   * expected case (rerunning an operation regenerates a file that is
+   * already there) and `checkWriteSafety` supports overriding it safely.
+   * `output-is-input` is deliberately given no bypass here even though
+   * `checkWriteSafety` could technically allow one with `force: true` — an
+   * operation reading and overwriting its own input in place, with no
+   * `--output` to redirect to, is confusing enough that "go back and choose
+   * something else" is the honest answer, not a one-keystroke override.
+   * `output-collision` has no bypass at all, in the shell or the CLI: it is
+   * the job's own plan asking to write two things to one path, which is not
+   * a preference `force` can express (see `checkWriteSafety`'s doc).
+   */
+  const handlePdfDone = async (jobs: Job[]) => {
+    const safe = checkWriteSafety(jobs, { force: false })
+    if (safe.failures.length > 0) {
+      setPdfBlocked({ jobs, failures: safe.failures })
+      setStep('pdf-blocked')
+      return
+    }
+    await runPdfJobs(safe.jobs)
+  }
+
+  /** `replace` retries `pdfBlocked.jobs` with `force: true`; anything else cancels. */
+  const answerPdfBlocked = (choice: string) => {
+    if (!pdfBlocked) return
+    if (choice !== 'replace') {
+      setPdfBlocked(null)
+      setStep('pdf')
+      return
+    }
+    const forced = checkWriteSafety(pdfBlocked.jobs, { force: true })
+    setPdfBlocked(null)
+    if (forced.failures.length > 0) {
+      // A collision: `force` never bypasses it (see `checkWriteSafety`), so
+      // this is the rare remainder "Replace" cannot fix.
+      for (const failure of forced.failures) {
+        push({ kind: 'error', id: nextId(), error: failure.error })
+      }
+      setStep('pdf')
+      return
+    }
+    void runPdfJobs(forced.jobs)
+  }
+
+  // `Select` owns arrow/enter for the output-exists choice; a plain refusal
+  // (no bypass offered) has nothing mounted to answer escape or enter, so
+  // this step owns both directly — same reasoning as the 'rename' and
+  // 'size' steps above, which own escape for the same reason.
+  useInput(
+    (_input, key) => {
+      if (key.escape || key.return) answerPdfBlocked('cancel')
+    },
+    { isActive: step === 'pdf-blocked' && pdfBlocked?.failures[0]?.error.code !== 'output-exists' },
+  )
 
   const modeSpec = specFor('mode')
   const sizeSpec = specFor('size')
@@ -1269,6 +1357,45 @@ export function App({
           </Box>
         ) : null}
 
+        {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colourProp(palette.fail)}>
+              {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
+            </Text>
+            {/* `.detail`, never `.hint` — the hint text is CLI wording
+                ("Pass --force to replace it"), and the shell has no
+                --force flag. The choice below is the shell's own answer
+                to the same situation. */}
+            <Text color={colourProp(palette.fg)}>{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
+            {pdfBlocked.failures[0].error.code === 'output-exists' ? (
+              <Select
+                width={width}
+                items={[
+                  { value: 'cancel', label: 'Cancel', hint: 'back to /pdf, nothing written' },
+                  { value: 'replace', label: 'Replace', hint: 'overwrite the existing file' },
+                ]}
+                onSubmit={answerPdfBlocked}
+                onCancel={() => answerPdfBlocked('cancel')}
+                showHints={band !== 'compact'}
+              />
+            ) : (
+              <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
+            )}
+            <HintBar
+              width={width}
+              pairs={
+                pdfBlocked.failures[0].error.code === 'output-exists'
+                  ? [
+                      ['↑↓', 'choose'],
+                      ['↵', 'confirm'],
+                      ['esc', 'cancel'],
+                    ]
+                  : [['esc', 'back']]
+              }
+            />
+          </Box>
+        ) : null}
+
         {step === 'idle' ? (
           <Box flexDirection="column">
             {/* Ink delivers input to every mounted useInput, so Prompt and
@@ -1282,6 +1409,21 @@ export function App({
                 onRun={runCommand}
                 onCancel={() => setText('')}
               />
+            ) : null}
+            {/* A staged PDF has nowhere to go in the default convert flow
+                (see `hasConvertTarget`) and lands right back here — so this
+                is the one moment someone who does not already know `/pdf`
+                exists needs to be told it does. Commands are only worth
+                having if they can be found (the same reasoning behind the
+                palette itself); a document sitting on the bench with no
+                visible next step fails that test. Suppressed once a command
+                is being typed — the palette is already doing this job then. */}
+            {!isCommandBuffer(text) && stage.sources.some((s) => s.kind === 'document') ? (
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.dim)}>
+                  {`${SYMBOLS.arrow} /pdf for page operations`}
+                </Text>
+              </Box>
             ) : null}
             <Prompt
               value={text}
