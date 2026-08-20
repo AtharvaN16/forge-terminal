@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises'
+import { mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DocumentInfo, Job } from '../../src/core/types.js'
@@ -67,11 +67,20 @@ describe('split', () => {
   it('leaves nothing behind when an output cannot be written', async () => {
     const dir = await makeTempDir()
     const src = await makeMarkedPdf(dir, 'doc.pdf', MARKS)
-    const outputs = [join(dir, 'o1.pdf'), join(dir, 'nope', 'o2.pdf')]
+    // writeAtomic now creates missing parent directories (Task 6 review
+    // finding), so a merely-missing directory would no longer force a
+    // failure. An existing directory sitting at the output path still does:
+    // the temp file writes fine beside it, but renaming onto a directory is
+    // EISDIR on both macOS and Linux, and no `mkdir -p` can rescue that.
+    const blocked = join(dir, 'o2.pdf')
+    await mkdir(blocked)
+    const outputs = [join(dir, 'o1.pdf'), blocked]
     await expect(
       pdfEngine.run({ op: 'split', sources: [await doc(src)], outputs, cuts: [2] }, () => {}),
     ).rejects.toThrow()
-    expect(await readdir(dir)).toEqual(['doc.pdf'])
+    // doc.pdf (the source) and the pre-existing o2.pdf directory remain;
+    // o1.pdf, which split had already written successfully, must not.
+    expect((await readdir(dir)).sort()).toEqual(['doc.pdf', 'o2.pdf'])
   })
 
   it('normalises an unsorted cut list with duplicates', async () => {

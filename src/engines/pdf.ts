@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto'
-import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { degrees, PDFDocument } from 'pdf-lib'
-import { emptySelection, encryptedSource } from '../core/errors.js'
+import { emptySelection, encryptedSource, outputInvalid } from '../core/errors.js'
 import { cutsToRanges } from '../core/pages.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
 import type { Engine } from './types.js'
@@ -40,8 +41,19 @@ async function probe(path: string): Promise<DocumentInfo> {
  * Shared by every page operation this engine implements — split, extract,
  * delete and rotate all write their output through this same function, so
  * its atomicity and its cleanup-on-failure only need to be correct once.
+ *
+ * Creates the output directory first, mirroring `image.ts`'s `writeAtomic` —
+ * `resolveOutputPath` supports directory outputs, and the two engines must
+ * not disagree about whether that works.
  */
 async function writeAtomic(path: string, bytes: Uint8Array): Promise<number> {
+  const dir = dirname(path)
+  try {
+    await mkdir(dir, { recursive: true })
+  } catch (cause) {
+    throw outputInvalid(path, cause)
+  }
+
   const temp = `${path}.${randomBytes(6).toString('hex')}.tmp`
   try {
     await writeFile(temp, bytes)
