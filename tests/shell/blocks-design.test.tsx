@@ -189,7 +189,7 @@ describe('result block, long names', () => {
     const frame = frameOf(<HistoryEntry block={block} width={92} />)
     // One box per row means two top edges, not one shared line.
     expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(2)
-    expect(frame).toContain('↓')
+    expect(frame).toContain('▼')
   })
 
   it('shows the full names rather than ellipsing both', () => {

@@ -11,6 +11,13 @@ export const SYMBOLS = {
   warn: '⚠',
   cursor: '❯',
   arrow: '→',
+  /**
+   * The arrow drawn between two things rather than inside a sentence — the
+   * before and after of a conversion. Long enough to read as a connector at
+   * a glance; the short one still serves inline text like "4 MB → 1 MB".
+   */
+  longArrow: '──→',
+  longArrowDown: '│\n▼',
 } as const
 
 /**
