@@ -204,6 +204,15 @@ export function App({
    * this used to be, so none of that logic has to change.
    */
   const source: SourceInfo | null = stage.sources[0] ?? null
+  /**
+   * Whether converting or compressing right now would silently act on only
+   * the first of several staged files. Batch convert/compress is deferred —
+   * see the note above `convert()` — so this is what keeps that deferral
+   * from being a silent one: `/convert` and `/compress`, and a drop that
+   * would otherwise advance straight into the wizard, all check this first
+   * and refuse instead of quietly picking `stage.sources[0]` for the user.
+   */
+  const stagedBatch = stage.sources.length > 1
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
@@ -254,6 +263,27 @@ export function App({
     },
     [push],
   )
+
+  /**
+   * Refuses to convert or compress a staged batch rather than silently
+   * acting on the first file in it. Refusing beats converting-the-first-
+   * loudly: a partial action on an ambiguous request is worse than no
+   * action, because the user can clear the stage and drop one file in a
+   * second, but they cannot un-convert a file they never meant to touch —
+   * the same "a change nobody asked for is a surprise" reasoning the phase-2
+   * compress design doc uses for why compress never changes the format.
+   *
+   * A `note` block, not a new one: this is a plain history line, the same
+   * shape `/help` and the config-warning banner already use, with the warn
+   * symbol paired with words so the reason survives a monochrome terminal.
+   */
+  const refuseBatch = useCallback(() => {
+    push({
+      kind: 'note',
+      id: nextId(),
+      text: `${SYMBOLS.warn} Converting several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
+    })
+  }, [push])
 
   // Gated on `step === 'result'`: Ink delivers input to every mounted
   // `useInput` hook regardless of what else is on screen, so an ungated
@@ -390,6 +420,10 @@ export function App({
       }
 
       if (command.name === 'convert') {
+        if (stagedBatch) {
+          refuseBatch()
+          return
+        }
         setMode('convert')
         setValues({})
         setStep(source ? 'target' : 'idle')
@@ -397,6 +431,10 @@ export function App({
       }
 
       if (command.name === 'compress') {
+        if (stagedBatch) {
+          refuseBatch()
+          return
+        }
         if (source && !compressAction.appliesTo(source)) {
           push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
           return
@@ -406,7 +444,7 @@ export function App({
         setStep(source ? 'mode' : 'idle')
       }
     },
-    [push, source],
+    [push, source, stagedBatch, refuseBatch],
   )
 
   const submitPath = useCallback(
@@ -442,9 +480,17 @@ export function App({
         // a prompt that already has one staged (e.g. after a failed run
         // returned here without clearing it) builds a batch instead of
         // losing the first file. `addToStage` also drops an exact repeat of
-        // a path already staged.
-        setStage((s) => addToStage(s, [info], []))
+        // a path already staged. Computed once, synchronously, rather than
+        // via the `setStage(s => ...)` updater form this used before: the
+        // guard just below needs to know the resulting length *now*, to
+        // decide whether to advance into the wizard at all.
+        const next = addToStage(stage, [info], [])
+        setStage(next)
         setValues({})
+        if (next.sources.length > 1) {
+          refuseBatch()
+          return
+        }
         // Deliberately *not* pushed to history here. A block committed to
         // <Static> can never be taken back, and until a conversion actually
         // happens the dropped file is a choice the user is still making —
@@ -479,8 +525,11 @@ export function App({
     },
     // `mode` matters: without it this closure keeps the value it had when the
     // callback was created, and a file dropped after /compress would be
-    // routed to the convert flow anyway.
-    [showError, push, runCommand, mode],
+    // routed to the convert flow anyway. `stage` matters for the same
+    // reason: reading it straight (rather than through the `setStage`
+    // updater form) is what lets the batch guard above decide off the
+    // current list, not a stale one.
+    [showError, push, runCommand, mode, stage, refuseBatch],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
