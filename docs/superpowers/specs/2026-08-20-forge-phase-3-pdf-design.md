@@ -449,7 +449,7 @@ common case. Output is `<stem>-rotated.pdf`.
 Both front ends run the same core, so parity is nearly free.
 
 ```bash
-forge a.pdf b.pdf c.pdf --merge -o combined.pdf
+forge a.pdf b.pdf c.pdf --merge
 forge doc.pdf --split every-page
 forge doc.pdf --split every=10
 forge doc.pdf --split at=1,4
@@ -458,6 +458,17 @@ forge doc.pdf --delete 3-7
 forge doc.pdf --rotate 90
 forge ~/invoices/ --merge            # directory, name from the folder
 ```
+
+> **Shipped without `-o`.** This section originally showed
+> `--merge -o combined.pdf`. Page operations were built without an
+> `--output` flag — merge takes one output, split and separated extract take
+> many, and one flag cannot mean the same thing to both — so the shipped CLI
+> **refuses** `--output` on a page operation rather than accepting and
+> ignoring it. Names come from the rules in §10 and §11 instead.
+>
+> This deviation went unrecorded during implementation and was caught by the
+> whole-branch review; the note is here so the binding document and the
+> binary agree. Giving page operations a real `--output` is phase-4 work.
 
 The range grammar is one parser shared by `--extract`, `--delete` and `r` in
 the shell: comma-separated terms, each `N`, `N-M`, or `N-` for "to the end",
