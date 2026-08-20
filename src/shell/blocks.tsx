@@ -1,12 +1,15 @@
 import { basename } from 'node:path'
 import { Box, Text } from 'ink'
+import stringWidth from 'string-width'
 import type { ForgeError } from '../core/errors.js'
+import { FORMATS } from '../core/formats.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
 import { Banner } from './components/Banner.js'
 import { FileCard } from './components/FileCard.js'
 import { useTheme } from './ThemeContext.js'
 import { colourProp, SYMBOLS, VERSION } from './theme.js'
+import { bandFor, middleEllipsis } from './width.js'
 
 /**
  * What scrolls past above the live prompt: a dropped file, a finished
@@ -78,21 +81,107 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   }
 
   const { job, outputBytes, warnings } = block.result
+  const fromLabel = FORMATS[job.source.format].label
+  const toLabel = FORMATS[job.target].label
+
+  /**
+   * Two framed names with an arrow between them, so a finished conversion
+   * reads as a before and an after rather than as a sentence. The saving sits
+   * underneath, because it is the answer to "was that worth it?" and belongs
+   * on its own line rather than competing with the filenames.
+   *
+   * Below the normal band there is no room for two boxes side by side — a
+   * pair needs roughly 2x22 columns plus the arrow — so the compact band
+   * keeps the single-line form.
+   */
+  const band = bandFor(width)
+  const paired = band !== 'compact' && width >= 56
+
+  if (!paired) {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text>
+          <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+          <Text
+            color={colourProp(palette.dim)}
+          >{`  ${middleEllipsis(basename(job.output), Math.max(8, width - 8))}`}</Text>
+        </Text>
+        <Text>
+          <Text color={colourProp(palette.dim)}>
+            {`  ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+          </Text>
+          <Text color={colourProp(palette.ok)}>{changePhrase(job.source.bytes, outputBytes)}</Text>
+        </Text>
+        {warnings.map((w) => (
+          <Text key={w.message} color={colourProp(palette.warn)}>
+            {SYMBOLS.warn} {w.message}
+          </Text>
+        ))}
+      </Box>
+    )
+  }
+
+  // Two boxes and the arrow gutter share the row; each box carries its own
+  // border, so the text inside is the box width less the two frame glyphs
+  // and a column of padding on each side.
+  const boxWidth = Math.min(30, Math.floor((Math.min(width, 76) - 5) / 2))
+  const textWidth = boxWidth - 4
+
+  const cell = (label: string, name: string) => {
+    const rule = '─'.repeat(Math.max(0, boxWidth - 2 - stringWidth(label) - 3))
+    const shown = middleEllipsis(name, textWidth)
+    const pad = ' '.repeat(Math.max(0, textWidth - stringWidth(shown)))
+    return {
+      top: (
+        <>
+          <Text color={colourProp(palette.border)}>{'╭─ '}</Text>
+          <Text color={colourProp(palette.tag)}>{label}</Text>
+          <Text color={colourProp(palette.border)}>{` ${rule}╮`}</Text>
+        </>
+      ),
+      mid: (
+        <>
+          <Text color={colourProp(palette.border)}>{'│ '}</Text>
+          <Text color={colourProp(palette.fg)}>{`${shown}${pad}`}</Text>
+          <Text color={colourProp(palette.border)}>{' │'}</Text>
+        </>
+      ),
+      bottom: <Text color={colourProp(palette.border)}>{`╰${'─'.repeat(boxWidth - 2)}╯`}</Text>,
+    }
+  }
+
+  const from = cell(fromLabel, basename(job.source.path))
+  const to = cell(toLabel, basename(job.output))
+  const gutter = '   '
+
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text>
-        <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
-        <Text>{'  '}</Text>
-        <Text color={colourProp(palette.fg)}>{basename(job.source.path)}</Text>
-        <Text color={colourProp(palette.dim)}>{` ${SYMBOLS.arrow} `}</Text>
-        <Text color={colourProp(palette.fg)}>{basename(job.output)}</Text>
-      </Text>
-      <Text>
-        <Text color={colourProp(palette.dim)}>
-          {`        ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+      <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text>
+          {from.top}
+          <Text>{gutter}</Text>
+          {to.top}
         </Text>
-        <Text color={colourProp(palette.ok)}>{changePhrase(job.source.bytes, outputBytes)}</Text>
-      </Text>
+        <Text>
+          {from.mid}
+          <Text color={colourProp(palette.dim)}>{` ${SYMBOLS.arrow} `}</Text>
+          {to.mid}
+        </Text>
+        <Text>
+          {from.bottom}
+          <Text>{gutter}</Text>
+          {to.bottom}
+        </Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text>
+          <Text color={colourProp(palette.dim)}>
+            {`  ${formatBytes(job.source.bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
+          </Text>
+          <Text color={colourProp(palette.ok)}>{changePhrase(job.source.bytes, outputBytes)}</Text>
+        </Text>
+      </Box>
       {warnings.map((w) => (
         <Text key={w.message} color={colourProp(palette.warn)}>
           {SYMBOLS.warn} {w.message}
