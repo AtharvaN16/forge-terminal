@@ -12,13 +12,13 @@ const doc: DocumentInfo = {
   encrypted: false,
 }
 
-describe('the mupdf engine', () => {
+describe('the pdfium engine', () => {
   it('is registered', () => {
-    expect(ENGINES.map((e) => e.id)).toContain('mupdf')
+    expect(ENGINES.map((e) => e.id)).toContain('pdfium')
   })
 
   it('declares what it reads and writes', () => {
-    const engine = ENGINES.find((e) => e.id === 'mupdf')
+    const engine = ENGINES.find((e) => e.id === 'pdfium')
     expect(engine?.reads.has('pdf')).toBe(true)
     expect(engine?.writes.has('jpeg')).toBe(true)
     expect(engine?.writes.has('png')).toBe(true)
@@ -30,5 +30,12 @@ describe('the mupdf engine', () => {
     const targets = targetIdsFor(doc)
     expect(targets).toContain('jpeg')
     expect(targets).toContain('png')
+  })
+
+  it('carries no AGPL dependency', async () => {
+    // The reason this engine exists. A regression here is a licensing bug,
+    // not a rendering one, and nothing else in the suite would catch it.
+    const pkg = await import('../../package.json', { with: { type: 'json' } })
+    expect(Object.keys(pkg.default.dependencies)).not.toContain('mupdf')
   })
 })
