@@ -94,6 +94,13 @@ describe('a staged batch refuses to convert or compress', () => {
    * consumed several files at once — told the user to "drop a single file"
    * two lines above the shell's own "/pdf for page operations" signpost.
    * Merge ordering made a multi-file stage useful and the message wrong.
+   *
+   * A PDF now has a real convert target (jpeg, png), so the first drop's
+   * Enter lands on that picker rather than idle — the same as any image.
+   * `esc` backs out of it without discarding the stage
+   * (`backToPromptKeepingStage` in App.tsx, added alongside the mupdf
+   * engine specifically so this stayed reachable), which is what makes the
+   * second drop land on the same idle prompt as before.
    */
   it('stages two PDFs, shows them, and does not tell the user to undo it', async () => {
     const dir = await makeTempDir()
@@ -104,7 +111,9 @@ describe('a staged batch refuses to convert or compress', () => {
     app.stdin.write(a)
     await settle()
     app.stdin.write(ENTER)
-    await settle(400)
+    await settle(400) // opens the convert picker for jan.pdf
+    app.stdin.write(ESC)
+    await settle(300) // back to idle, jan.pdf still staged
     app.stdin.write(b)
     await settle()
     app.stdin.write(ENTER)

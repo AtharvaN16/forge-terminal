@@ -7,15 +7,29 @@ import { App } from '../../src/shell/App.js'
 import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
 
 const ENTER = String.fromCharCode(13)
-const DOWN = `${String.fromCharCode(27)}[B`
+const ESC = String.fromCharCode(27)
+const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 
-/** Drops `file`, opens `/pdf`, chooses Rotate, accepts 90°, confirms. */
+/**
+ * Drops `file`, opens `/pdf`, chooses Rotate, accepts 90°, confirms.
+ *
+ * A staged PDF now has a real convert target (jpeg, png — see
+ * `engines/mupdf.ts`), so the drop's own Enter lands on "Convert PDF to",
+ * not idle — `hasConvertTarget` in App.tsx is genuinely true for it. `esc`
+ * backs out of that picker without discarding the stage
+ * (`backToPromptKeepingStage`), which is what makes `/pdf` reachable from
+ * here at all; the same escape is exercised on its own further down, in
+ * `describe('the /pdf signpost')` and `describe('/pdf refuses a stage
+ * nothing applies to')`.
+ */
 async function rotateOnce(stdin: { write: (s: string) => void }, file: string) {
   stdin.write(file)
   await settle()
   stdin.write(ENTER)
   await settle(400)
+  stdin.write(ESC)
+  await settle(200)
   stdin.write('/pdf')
   await settle()
   stdin.write(ENTER)
@@ -39,12 +53,13 @@ async function rotateOnce(stdin: { write: (s: string) => void }, file: string) {
  * staged PDF to it and back out again.
  */
 describe('/pdf end to end through App', () => {
-  it('a dropped PDF stays staged and idle, not stuck on an empty target picker', async () => {
-    // A PDF's only writable format is PDF itself, which convert's target
-    // picker filters out as a no-op — so the target list is genuinely
-    // empty. `Select` no-ops entirely (even on escape) when its item list
-    // is empty, which made this a real dead end before App.tsx checked for
-    // it: see `hasConvertTarget`.
+  it('a dropped PDF opens the convert picker, and /pdf still reaches page operations from there', async () => {
+    // A PDF now has real convert targets — jpeg and png, from the mupdf
+    // engine — so `hasConvertTarget` is genuinely true for it and a solo
+    // drop advances straight to the picker, the same as any image (see the
+    // next test). What changed with that: page operations must not become
+    // a casualty of conversion becoming real. Both need to be reachable
+    // from this one drop — see `backToPromptKeepingStage` in App.tsx.
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -53,11 +68,23 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    const frame = lastFrame() ?? ''
-    // Back at the ordinary prompt — not a "Convert PDF to" picker with
-    // nothing in it.
-    expect(frame).toContain('drop a file or type a path')
-    expect(frame).not.toContain('Convert PDF to')
+    const pickerFrame = lastFrame() ?? ''
+    expect(pickerFrame).toContain('Convert PDF to')
+    // The pointer to page operations rides along on the same screen —
+    // it does not have to be discovered some other way.
+    expect(pickerFrame).toContain('/pdf for page operations')
+
+    // Escaping the picker must not cost the user the file: `esc` here goes
+    // to `backToPromptKeepingStage`, not `clearSource`, specifically
+    // because a document has somewhere else to go.
+    stdin.write(ESC)
+    await settle(300)
+    const idleFrame = lastFrame() ?? ''
+    expect(idleFrame).toContain('drop a file or type a path')
+    expect(idleFrame).not.toContain('Convert PDF to')
+    // Still staged — proven by the signpost still rendering, which only
+    // draws when `stage.sources` actually contains a document.
+    expect(idleFrame).toContain('/pdf for page operations')
   }, 20_000)
 
   it('an image still opens the target picker as before — the PDF fix does not touch it', async () => {
@@ -72,7 +99,13 @@ describe('/pdf end to end through App', () => {
     expect(lastFrame() ?? '').toContain('Convert JPEG to')
   }, 20_000)
 
-  it('typing /convert on a staged PDF also stays put rather than opening an empty picker', async () => {
+  it('typing /convert on a staged, idle PDF opens the real picker, now that conversion works', async () => {
+    // Reaching idle with a PDF still staged means going through the picker
+    // and backing out first (see the previous test) — a solo drop no
+    // longer stops at idle on its own now that `hasConvertTarget` is true
+    // for a PDF. Once there, `/convert` is a second, explicit way in, and
+    // — unlike before mupdf existed — it now finds real choices instead
+    // of silently doing nothing.
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -81,11 +114,14 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
+    stdin.write(ESC) // back to idle, doc.pdf still staged
+    await settle(300)
+
     stdin.write('/convert')
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').not.toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert PDF to')
   }, 20_000)
 
   it('drop, /pdf, rotate: writes a real file, reports it in history, and clears the stage', async () => {
@@ -98,6 +134,11 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
+    // The drop lands on the convert picker now (a real target picker, not
+    // an empty one) — back out of it without losing the stage before
+    // reaching for /pdf. See `rotateOnce`, which does the same thing.
+    stdin.write(ESC)
+    await settle(200)
 
     stdin.write('/pdf')
     await settle()
@@ -204,7 +245,10 @@ describe('/pdf refuses to overwrite without asking', () => {
 })
 
 describe('the /pdf signpost', () => {
-  it('points at /pdf once a PDF is staged with nowhere else to go', async () => {
+  it('points at /pdf alongside the convert picker a dropped PDF now opens', async () => {
+    // Covered end-to-end in the first describe block above too; this one
+    // exists so the signpost's own describe block still has a test that
+    // fails first if the hint is ever removed from the target step.
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -229,6 +273,9 @@ describe('the /pdf signpost', () => {
   }, 20_000)
 
   it('says nothing once the command palette is open — the palette is already doing that job', async () => {
+    // The command palette only exists at idle (typed against `Prompt`),
+    // and a solo PDF drop no longer stops there — reach it the same way
+    // the other tests above do, by backing out of the picker first.
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -237,6 +284,8 @@ describe('the /pdf signpost', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
+    stdin.write(ESC) // back to idle, doc.pdf still staged
+    await settle(300)
     stdin.write('/')
     await settle(200)
     expect(lastFrame() ?? '').not.toContain('/pdf for page operations')
@@ -256,13 +305,15 @@ describe('the /pdf signpost', () => {
  *
  * A lone image can never reach this state through a single drop (every real
  * image format has a valid convert target, so it always advances past
- * idle — see `hasConvertTarget`), so the repro here stages a PDF first
- * (which does stay at idle, precisely because it has no convert target)
- * and then drops an image on top of it. The second drop is refused as a
- * batch (`refuseBatch`) before it ever reaches a wizard step, which is what
- * leaves both files sitting in a mixed, idle stage — a JPEG genuinely
- * staged, exactly the reviewer's scenario, reached through real UI paths
- * rather than injected test state.
+ * idle — see `hasConvertTarget`). A PDF now advances past idle too — its
+ * picker opens the same way — but backing out of it with `esc` returns to
+ * idle *with the file still staged* (`backToPromptKeepingStage`), which is
+ * what makes it possible to reach a mixed stage through the real UI at
+ * all: drop the PDF, back out of its picker, then drop an image on top.
+ * The second drop is refused as a batch (`refuseBatch`) before it ever
+ * reaches a wizard step, which is what leaves both files sitting in a
+ * mixed, idle stage — a JPEG genuinely staged, exactly the reviewer's
+ * scenario, reached through real UI paths rather than injected test state.
  */
 describe('/pdf refuses a stage nothing applies to', () => {
   it('does not open the hub for a mixed stage, and says why', async () => {
@@ -275,7 +326,9 @@ describe('/pdf refuses a stage nothing applies to', () => {
     stdin.write(pdf)
     await settle()
     stdin.write(ENTER)
-    await settle(400) // stays at idle — a PDF has no convert target
+    await settle(400) // opens the convert picker — a PDF has a real target now
+    stdin.write(ESC)
+    await settle(200) // back to idle, doc.pdf still staged
 
     stdin.write(jpeg)
     await settle()
