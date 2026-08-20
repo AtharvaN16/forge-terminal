@@ -4,7 +4,6 @@ import stringWidth from 'string-width'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
-import { middleEllipsis } from '../width.js'
 
 interface PromptProps {
   value: string
@@ -22,10 +21,6 @@ interface PromptProps {
    * explicitly is what keeps the bordered box from overflowing.
    */
   width: number
-  /** Fired on Tab. The parent owns completion, since it owns `value`. */
-  onTab?: () => void
-  /** Candidate basenames to list under the box when Tab found several. */
-  matches?: string[]
 }
 
 /**
@@ -57,8 +52,6 @@ export function Prompt({
   isActive,
   bordered,
   width,
-  onTab,
-  matches,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -125,13 +118,6 @@ export function Prompt({
 
       // Before the text branch: Ink reports Tab with `key.tab` *and* a "\t"
       // in `input`, so falling through would append a literal tab to the path.
-      if (key.tab) {
-        // The completed value arrives as a new `value`, and the block above
-        // puts the caret at its end — nothing to do here but ask.
-        onTab?.()
-        return
-      }
-
       if (key.leftArrow) {
         caretRef.current = Math.max(0, caret() - 1)
         rerender()
@@ -268,13 +254,6 @@ export function Prompt({
     </Text>
   )
 
-  const list =
-    matches && matches.length > 0 ? (
-      <Text color={colourProp(palette.dim)}>
-        {middleEllipsis(`  ${matches.join('   ')}`, width)}
-      </Text>
-    ) : null
-
   if (!bordered) {
     return (
       <Box flexDirection="column">
@@ -284,7 +263,6 @@ export function Prompt({
             {line}
           </Text>
         </Box>
-        {list}
       </Box>
     )
   }
@@ -321,7 +299,6 @@ export function Prompt({
             {line}
           </Text>
         </Box>
-        {list}
       </Box>
     )
   }
@@ -335,7 +312,6 @@ export function Prompt({
         {fill}
       </Text>
       <Text backgroundColor={bg}>{blank}</Text>
-      {list}
     </Box>
   )
 }
