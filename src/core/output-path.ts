@@ -30,6 +30,30 @@ function swapExtension(path: string, target: FormatId): string {
   return stem + primaryExtension(target)
 }
 
+/**
+ * Where inside an output directory a source's files belong.
+ *
+ * With `--recursive`, `resolveInputs` records the root each source was found
+ * under, and the tree below that root is recreated inside the destination —
+ * `in/sub/a.png` with `-o out` writes `out/sub/a.jpg`, not `out/a.jpg`, so a
+ * recursive scan of a nested library does not collapse into one flat folder
+ * (and, with it, into a pile of `output-collision` refusals).
+ *
+ * Shared by `resolveOutputPath` and `rasterOutputPaths` rather than written
+ * out in each: a document source that flattened while an image beside it
+ * nested was the same flag meaning two different things depending on what
+ * was dropped on it.
+ *
+ * No root, or a source that lies outside the root it was given, keeps the
+ * destination as-is — there is no meaningful tree to recreate.
+ */
+function relativeToRoot(destination: string, sourceDir: string, sourceRoot?: string): string {
+  if (!sourceRoot) return destination
+  const rel = relative(resolve(sourceRoot), sourceDir)
+  if (!rel || rel.startsWith('..')) return destination
+  return join(destination, rel)
+}
+
 export function resolveOutputPath(req: OutputRequest): string {
   const source = resolve(req.sourcePath)
   const filename = swapExtension(source, req.target)
@@ -40,13 +64,7 @@ export function resolveOutputPath(req: OutputRequest): string {
 
   if (!looksLikeDirectory(req.output)) return resolve(output)
 
-  if (req.sourceRoot) {
-    const root = resolve(req.sourceRoot)
-    const rel = relative(root, resolve(source, '..'))
-    if (rel && !rel.startsWith('..')) return join(output, rel, filename)
-  }
-
-  return join(output, filename)
+  return join(relativeToRoot(output, resolve(source, '..'), req.sourceRoot), filename)
 }
 
 /**
@@ -124,15 +142,23 @@ export function splitOutputPaths(sourcePath: string, count: number): string[] {
  * width of 1 gives `doc-2.jpg` and `doc-10.jpg`, which `ls` and Finder order
  * as `doc-10, doc-2`. That is the same defect `splitOutputPaths` above is
  * careful to avoid, and the page picker makes sparse selections easy to reach.
+ *
+ * `sourceRoot` recreates the source tree inside `destination` exactly as
+ * `resolveOutputPath` does for a one-output conversion (`relativeToRoot`),
+ * so `--recursive -o out` nests a rasterised PDF beside the images it was
+ * scanned with instead of flattening it to the top of the destination.
  */
 export function rasterOutputPaths(
   sourcePath: string,
   pages: number[],
   target: FormatId,
   destination?: string,
+  sourceRoot?: string,
 ): [string, ...string[]] {
   const { stem } = stemAndExt(resolve(sourcePath))
-  const dir = destination ? resolve(destination) : resolve(sourcePath, '..')
+  const dir = destination
+    ? relativeToRoot(resolve(destination), resolve(sourcePath, '..'), sourceRoot)
+    : resolve(sourcePath, '..')
   const ext = primaryExtension(target)
   const width = String(Math.max(1, ...pages.map((p) => p + 1))).length
   const names = pages.map((p) => join(dir, `${stem}-${String(p + 1).padStart(width, '0')}${ext}`))

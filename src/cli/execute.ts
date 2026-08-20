@@ -124,22 +124,30 @@ async function buildRasterJob(
     dpi?: number
     pages?: string
     passwordStdin?: boolean
-    /** Carries the user's `--background`; `plan()` falls back to white without it. */
+    /**
+     * Carries every `ConvertOptions` field the user set — `--background`,
+     * `--quality`, `--keep-metadata`. Each one is forwarded into `plan()`
+     * below; a field left out here is a flag that works for an image source
+     * and silently does nothing for a document, which is exactly the defect
+     * `--background` had before this.
+     */
     options: ConvertOptions
   },
+  /**
+   * The root this source was scanned under, when `--recursive` found it
+   * inside one. Threaded through so `rasterOutputPaths` recreates the source
+   * tree under `--output` the same way `buildPlan` already does for an image.
+   */
+  sourceRoot?: string,
 ): Promise<{ job: Job } | { failure: { path: string; error: ForgeError } }> {
   let password: string | undefined
   if (source.encrypted) {
     // Never for an unencrypted file — asking would be a prompt nobody
     // expected and, worse, a password nothing is actually locked with.
     password = await readPassword({ stdin: intent.passwordStdin ?? false })
+    let doc: Awaited<ReturnType<typeof openPdf>>
     try {
-      // .destroy() runs right after a successful open — this document only
-      // exists to check the password, not to render anything, and the
-      // engine opens its own copy below. Skipping this would leak a wasm
-      // page buffer per encrypted file, which adds up on a long scan.
-      const doc = await openPdf(await readFile(source.path), password)
-      doc.destroy()
+      doc = await openPdf(await readFile(source.path), password)
     } catch {
       // Any failure here becomes "wrong password", not just PDFium's own
       // PASSWORD error code — deliberately: gating this whole block on
@@ -153,6 +161,13 @@ async function buildRasterJob(
       // encrypted-source error already says what to do differently.
       return { failure: { path: source.path, error: encryptedSource(source.path) } }
     }
+    // Outside the catch above, deliberately: this document only exists to
+    // check the password, not to render anything, and the engine opens its
+    // own copy below — so it is freed immediately (skipping it leaks a wasm
+    // page buffer per encrypted file, which adds up on a long scan). A
+    // failure *here* is not a wrong password, and reporting it as one would
+    // send the user to re-type a password that was in fact correct.
+    doc.destroy()
   }
 
   let planned: Job[]
@@ -167,9 +182,12 @@ async function buildRasterJob(
     planned = convertAction.plan([source], {
       target: intent.target,
       background: intent.options.background,
+      keepMetadata: intent.options.keepMetadata,
       dpi: String(intent.dpi ?? 150),
+      ...(intent.options.quality === undefined ? {} : { quality: intent.options.quality }),
       ...(intent.pages === undefined ? {} : { pages: intent.pages }),
       ...(intent.output === undefined ? {} : { destination: intent.output }),
+      ...(sourceRoot === undefined ? {} : { sourceRoot }),
     })
   } catch (e) {
     if (!isForgeError(e)) throw e
@@ -355,22 +373,39 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   const documentJobs: Job[] = []
   const documentFailures: { path: string; error: ForgeError }[] = []
   for (const source of documentSources) {
-    const built = await buildRasterJob(source, intent)
+    const built = await buildRasterJob(source, intent, resolved.roots.get(source.path))
     if ('failure' in built) documentFailures.push(built.failure)
     else documentJobs.push(built.job)
   }
-  const safeDocuments = checkWriteSafety(documentJobs, { force: intent.force })
-
   const planRequest = {
     resolved: { sources: otherSources, failures: [], roots: resolved.roots },
     target: intent.target,
     options: intent.options,
     force: intent.force,
+    // Checked below, over both sets at once — see `safe`.
+    deferWriteSafety: true,
     ...(intent.output === undefined ? {} : { output: intent.output }),
   }
   const plan = await buildPlan(planRequest)
 
-  const allJobs = [...plan.jobs, ...safeDocuments.jobs]
+  /**
+   * One write-safety pass over every job this run plans, whatever path
+   * planned it. Two independent passes — one over the raster jobs, one
+   * inside `buildPlan` over the rest — each see only half the outputs, so a
+   * `doc.pdf` rasterising to `doc-1.jpg` and a `doc-1.png` converting to the
+   * same name collide in neither. That is `outputCollision`'s exact case,
+   * and it is the one refusal `--force` must never suppress: silently
+   * writing one file and reporting two converted breaks invariant 6 (a
+   * multi-output job is all-or-nothing) and invariant 7 (the summary never
+   * asserts something untrue).
+   *
+   * Document jobs go last so an ordinary one-source-one-output conversion
+   * keeps the name it would have had on its own, and the multi-output
+   * rasterisation is the side told to go elsewhere.
+   */
+  const safe = checkWriteSafety([...plan.jobs, ...documentJobs], { force: intent.force })
+
+  const allJobs = safe.jobs
   const isBatch = allJobs.length > 1
   if (isBatch) opts.onProgress?.({ completed: 0, total: allJobs.length })
 
@@ -391,7 +426,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     ...resolved.failures,
     ...documentFailures,
     ...plan.failures,
-    ...safeDocuments.failures,
+    ...safe.failures,
     ...summary.failures,
   ]
 

@@ -1,10 +1,9 @@
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { targetIdsFor } from './capabilities.js'
-import { outputCollision, outputExists, outputIsInput, unsupportedTarget } from './errors.js'
+import { unsupportedTarget } from './errors.js'
 import { resolveOutputPath } from './output-path.js'
 import type { InputFailure, ResolvedInput } from './resolve.js'
 import type { ConvertOptions, FormatId, Job } from './types.js'
+import { checkWriteSafety } from './write-safety.js'
 
 export interface PlanRequest {
   resolved: ResolvedInput
@@ -12,6 +11,17 @@ export interface PlanRequest {
   output?: string
   options: ConvertOptions
   force: boolean
+  /**
+   * Hand back every planned job unchecked, leaving write safety to the
+   * caller. Only `src/cli/execute.ts` sets it, and only because a conversion
+   * run can plan jobs on two paths at once: a document source rasterising
+   * through `convertAction.plan()` (one source, many outputs — a shape
+   * `buildPlan` cannot express) and everything else through here. Two
+   * independent `checkWriteSafety` passes cannot see a collision *between*
+   * the two sets, so the caller runs one pass over the union instead. Left
+   * off, `buildPlan` checks its own jobs exactly as it always has.
+   */
+  deferWriteSafety?: boolean
 }
 
 export interface Plan {
@@ -26,11 +36,6 @@ export interface Plan {
 export async function buildPlan(req: PlanRequest): Promise<Plan> {
   const jobs: Job[] = []
   const failures: InputFailure[] = [...req.resolved.failures]
-  // Tracks which of *this run's own* sources has already claimed an output
-  // path. existsSync only sees the disk as it was before the run started, so
-  // it can never catch two of our own jobs racing to write the same file —
-  // this map is what catches that, and it is checked regardless of --force.
-  const claimed = new Map<string, Job>()
 
   for (const source of req.resolved.sources) {
     const available = targetIdsFor(source)
@@ -49,36 +54,22 @@ export async function buildPlan(req: PlanRequest): Promise<Plan> {
       sourceRoot: req.resolved.roots.get(source.path),
     })
 
-    if (resolve(output) === resolve(source.path) && !req.force) {
-      failures.push({ path: source.path, error: outputIsInput(output) })
-      continue
-    }
-
-    const key = resolve(output)
-    const owner = claimed.get(key)
-    if (owner) {
-      failures.push({
-        path: source.path,
-        error: outputCollision([owner.sources[0].path, source.path], output),
-      })
-      continue
-    }
-
-    if (existsSync(output) && !req.force) {
-      failures.push({ path: source.path, error: outputExists(output) })
-      continue
-    }
-
-    const job: Job = {
+    jobs.push({
       op: 'convert',
       sources: [source],
       outputs: [output],
       target: req.target,
       options: req.options,
-    }
-    jobs.push(job)
-    claimed.set(key, job)
+    })
   }
 
-  return { jobs, failures }
+  if (req.deferWriteSafety) return { jobs, failures }
+
+  // The write-safety rules live in exactly one module (`core/write-safety.ts`),
+  // not once here and once there: two copies of "never overwrite an input,
+  // never collide, never replace without --force" are two chances for the
+  // page-operation path and the conversion path to drift apart on what is
+  // refused and in what order.
+  const safe = checkWriteSafety(jobs, { force: req.force })
+  return { jobs: safe.jobs, failures: [...failures, ...safe.failures] }
 }

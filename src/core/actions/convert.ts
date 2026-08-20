@@ -210,7 +210,13 @@ export const convertAction: Action = {
       // nothing for a document — the same flag behaving two ways depending on
       // what was dropped on it.
       background: typeof values.background === 'string' ? values.background : '#ffffff',
-      keepMetadata: false,
+      // Same reasoning as `background` above: the shell has no metadata
+      // control and passes nothing, so it keeps the `false` default, while
+      // the CLI's `--keep-metadata` reaches here through `values`. Every
+      // `ConvertOptions` field a caller can set has to be readable from
+      // `values` or the flag that sets it works for one source kind and
+      // silently does nothing for the other.
+      keepMetadata: values.keepMetadata === true,
     }
     if (spec.lossy && typeof values.quality === 'number') options.quality = values.quality
 
@@ -225,7 +231,8 @@ export const convertAction: Action = {
       options.dpi = Number.isFinite(dpi) && dpi > 0 ? dpi : 150
       const pages = resolvePages(source, values.pages)
       options.pages = pages
-      const outputs = rasterOutputPaths(source.path, pages, target, destination)
+      const sourceRoot = typeof values.sourceRoot === 'string' ? values.sourceRoot : undefined
+      const outputs = rasterOutputPaths(source.path, pages, target, destination, sourceRoot)
       return [{ op: 'convert', sources: [source], outputs, target, options }]
     }
 
