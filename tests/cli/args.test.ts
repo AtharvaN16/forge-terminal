@@ -78,8 +78,10 @@ describe('parseArgs', () => {
     expect(codeOf(['a.jpg'])).toBe('invalid-arguments')
   })
 
-  it('rejects --quality without --to, so the flag cannot change meaning later', () => {
-    expect(codeOf(['a.jpg', '--quality', '70'])).toBe('invalid-arguments')
+  it('--quality without --to now means compress', () => {
+    // 0.1 rejected this to keep the slot free (spec §315). Phase 2 fills it:
+    // quality with no target is a request to keep the format and shrink.
+    expect(parseArgs(['a.jpg', '--quality', '70']).kind).toBe('compress')
   })
 
   it('rejects an unknown target format', () => {

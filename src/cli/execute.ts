@@ -1,3 +1,5 @@
+import { dirname } from 'node:path'
+import { targetUnreachable, unsupportedCompress } from '../core/errors.js'
 import { buildPlan } from '../core/plan.js'
 import { resolveInputs } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
@@ -45,6 +47,89 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   }
 
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
+
+  /**
+   * Compression keeps each file's own format, so there is no single target
+   * for the whole batch — every source is its own. Planned per file and run
+   * through the same `runJobs` the conversion path uses, so concurrency,
+   * atomic writes and failure reporting are shared rather than reimplemented.
+   */
+  if (intent.kind === 'compress') {
+    const { compressAction } = await import('../core/actions/index.js')
+    const { findQuality } = await import('../core/compress.js')
+    const { encodeToBuffer } = await import('../engines/image.js')
+
+    const jobs = []
+    const refusals = []
+    for (const source of resolved.sources) {
+      if (!compressAction.appliesTo(source)) {
+        refusals.push({ path: source.path, error: unsupportedCompress(source) })
+        continue
+      }
+      const [job] = compressAction.plan(source, {
+        mode: intent.maxBytes === undefined ? 'quality' : 'size',
+        ...(intent.quality === undefined ? {} : { quality: intent.quality }),
+        destination: dirname(source.path),
+      })
+      if (!job) continue
+
+      if (intent.maxBytes !== undefined) {
+        const found = await findQuality({
+          encode: async (quality) =>
+            (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
+          targetBytes: intent.maxBytes,
+        })
+        if (found.missed) {
+          refusals.push({
+            path: source.path,
+            error: targetUnreachable(source, intent.maxBytes, found.bytes),
+          })
+          continue
+        }
+        job.options.quality = found.quality
+      }
+      jobs.push(job)
+    }
+
+    const compressPlan = await buildPlan({
+      resolved: { sources: [], failures: [], roots: new Map<string, string>() },
+      target: 'jpeg',
+      options: intent.options,
+      force: intent.force,
+    })
+    compressPlan.jobs = jobs
+    compressPlan.failures = [...compressPlan.failures, ...refusals]
+
+    const batch = jobs.length > 1
+    if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
+
+    const done = await runJobs(jobs, {
+      ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
+      ...(batch && opts.onProgress
+        ? {
+            onEvent: (event) => {
+              if (event.type === 'job:done' || event.type === 'job:error') {
+                opts.onProgress?.({ completed: event.completed, total: event.total })
+              }
+            },
+          }
+        : {}),
+    })
+
+    const failures = [...refusals, ...done.failures]
+    const stdout =
+      done.results.length === 0
+        ? []
+        : done.results.length === 1
+          ? reportSingle(done)
+          : reportBatch(done)
+
+    return {
+      exitCode: failures.length > 0 ? 1 : 0,
+      stdout,
+      stderr: reportFailures(failures, { debug: intent.debug }),
+    }
+  }
 
   const planRequest = {
     resolved,

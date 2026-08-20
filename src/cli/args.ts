@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { invalidArguments } from '../core/errors.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
+import { parseSize } from '../core/units.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
 
 export interface ConvertIntent {
@@ -16,7 +17,31 @@ export interface ConvertIntent {
   debug: boolean
 }
 
-export type Intent = ConvertIntent | { kind: 'formats' } | { kind: 'shell' } | ConfigIntent
+/**
+ * Compression through flags. `--quality` without `--to` has been reserved for
+ * this since the original spec (§315) and errored until now with "No target
+ * format given".
+ */
+export interface CompressIntent {
+  kind: 'compress'
+  inputs: string[]
+  /** Set by --quality. Mutually exclusive with maxBytes. */
+  quality?: number
+  /** Set by --max-size. The search decides the quality. */
+  maxBytes?: number
+  options: ConvertOptions
+  force: boolean
+  recursive: boolean
+  concurrency?: number
+  debug: boolean
+}
+
+export type Intent =
+  | ConvertIntent
+  | CompressIntent
+  | { kind: 'formats' }
+  | { kind: 'shell' }
+  | ConfigIntent
 
 /**
  * `config` is parsed before Commander sees the argv at all. Commander is
@@ -96,6 +121,7 @@ export function parseArgs(argv: string[]): Intent {
     .option('--keep-metadata', 'preserve EXIF and GPS data', false)
     .option('--recursive', 'descend into subfolders', false)
     .option('--force', 'allow overwriting existing files', false)
+    .option('--max-size <size>', 'compress until the file fits, e.g. 500kb')
     .option('--concurrency <n>', 'how many files to convert at once')
     .option('--debug', 'show underlying errors', false)
     .option('--formats', 'list supported formats', false)
@@ -110,7 +136,56 @@ export function parseArgs(argv: string[]): Intent {
   const inputs = program.args
 
   if (opts.formats) return { kind: 'formats' }
-  if (inputs.length === 0 && !opts.to && opts.quality === undefined) return { kind: 'shell' }
+  if (inputs.length === 0 && !opts.to && opts.quality === undefined && opts.maxSize === undefined) {
+    return { kind: 'shell' }
+  }
+
+  /**
+   * Quality or a size ceiling, with no target format, means compression: keep
+   * the format, make the file smaller.
+   */
+  if (!opts.to && (opts.quality !== undefined || opts.maxSize !== undefined)) {
+    if (opts.quality !== undefined && opts.maxSize !== undefined) {
+      throw invalidArguments(
+        'Use either --quality or --max-size, not both.',
+        'They are two ways of asking for the same thing, and Forge will not guess which wins.',
+      )
+    }
+    if (inputs.length === 0) {
+      throw invalidArguments(
+        'No files given.',
+        'Name a file, for example: forge photo.jpg --max-size 500kb',
+      )
+    }
+
+    const maxBytes = opts.maxSize === undefined ? undefined : parseSize(String(opts.maxSize))
+    if (opts.maxSize !== undefined && maxBytes === undefined) {
+      throw invalidArguments(
+        `${opts.maxSize} is not a size.`,
+        'Try a number with a unit, for example 500kb, 2mb or 1.5mb.',
+      )
+    }
+
+    const compressOptions: ConvertOptions = {
+      background: String(opts.background),
+      keepMetadata: Boolean(opts.keepMetadata),
+    }
+
+    const compress: CompressIntent = {
+      kind: 'compress',
+      inputs,
+      options: compressOptions,
+      force: Boolean(opts.force),
+      recursive: Boolean(opts.recursive),
+      debug: Boolean(opts.debug),
+    }
+    if (opts.quality !== undefined) compress.quality = parseQuality(String(opts.quality))
+    if (maxBytes !== undefined) compress.maxBytes = maxBytes
+    if (opts.concurrency !== undefined) {
+      compress.concurrency = parseConcurrency(String(opts.concurrency))
+    }
+    return compress
+  }
 
   if (!opts.to) {
     throw invalidArguments(
