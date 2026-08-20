@@ -81,7 +81,10 @@ export const SWING: readonly SwingStep[] = [
   { offset: -1, spark: -1, hot: false },
   { offset: 0, spark: 0, hot: true },
   { offset: 0, spark: 1, hot: true },
-  { offset: 0, spark: 2, hot: true },
+  // The head cools on the frame the loop stops on. Only the work is hot —
+  // a hammer that stays glowing in the scrollback reads as the thing being
+  // forged rather than the thing doing the forging.
+  { offset: 0, spark: 2, hot: false },
 ]
 
 /**
