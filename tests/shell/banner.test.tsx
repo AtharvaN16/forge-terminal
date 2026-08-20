@@ -5,7 +5,17 @@ import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { Banner, FULL_WIDTH, MARK, WORDMARK } from '../../src/shell/components/Banner.js'
 import { playIntro } from '../../src/shell/intro.js'
-import { ANVIL, composeMark, HAMMER, MARK_HEIGHT, MARK_WIDTH, SWING } from '../../src/shell/mark.js'
+import {
+  ANVIL,
+  composeMark,
+  FACE_ROW,
+  glyphColour,
+  HAMMER,
+  MARK_HEIGHT,
+  MARK_WIDTH,
+  SWING,
+  type SwingStep,
+} from '../../src/shell/mark.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, LIGHT } from '../../src/shell/theme.js'
 
@@ -205,8 +215,16 @@ describe('the hammer stays whole', () => {
     }
   })
 
-  it('rests on the strike, not mid-lift', () => {
+  it('rests with the hammer down, not mid-lift', () => {
+    expect(SWING[SWING.length - 1]?.offset).toBe(0)
+  })
+
+  it('the head is cool in the resting frame — only the metal stays hot', () => {
     const last = SWING[SWING.length - 1]
-    expect(last?.hot).toBe(true)
+    expect(last?.hot).toBe(false)
+    // The anvil's face is coloured by its row, not by the step, so it is hot
+    // regardless — this is only about the hammer.
+    expect(glyphColour('█', 0, last as SwingStep, '#ff8c1a', '#7d879e')).toBe('#7d879e')
+    expect(glyphColour('▄', FACE_ROW, last as SwingStep, '#ff8c1a', '#7d879e')).toBe('#ff8c1a')
   })
 })
