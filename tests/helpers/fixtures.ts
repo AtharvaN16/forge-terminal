@@ -55,6 +55,41 @@ export async function makeOrientedJpeg(
 }
 
 /**
+ * A photo-like oriented JPEG: a gradient plus noise, not a solid colour.
+ *
+ * `makeOrientedJpeg`'s flat background is fine for checking pixel
+ * dimensions, but useless for checking output *size* — a solid colour
+ * compresses smaller as PNG than as JPEG at fixture scale, exactly backwards
+ * from what a real photo does, so it can't tell a lossless re-encode apart
+ * from a lossy one by size. This gives PNG-vs-JPEG size the same shape a
+ * real rotated photo has.
+ */
+export async function makeNoisyOrientedJpeg(
+  dir: string,
+  name: string,
+  orientation = 6,
+  width = 240,
+  height = 180,
+): Promise<string> {
+  const path = join(dir, name)
+  const buffer = Buffer.alloc(width * height * 3)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 3
+      const noise = Math.floor(Math.random() * 40)
+      buffer[i] = (x * 255) / width + noise
+      buffer[i + 1] = (y * 255) / height + noise
+      buffer[i + 2] = ((x + y) * 255) / (width + height) + noise
+    }
+  }
+  await sharp(buffer, { raw: { width, height, channels: 3 } })
+    .jpeg({ quality: 85, mozjpeg: true })
+    .withMetadata({ orientation })
+    .toFile(path)
+  return path
+}
+
+/**
  * Sharp only treats raw input as multi-page when pageHeight sits inside the raw
  * options — the other three plausible spellings silently produce one tall frame.
  */

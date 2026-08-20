@@ -15,6 +15,7 @@ import type {
   Result,
   Warning,
 } from '../core/types.js'
+import { DEFAULT_QUALITY } from './image.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -78,17 +79,28 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
  * to prevent, reintroduced here in a new file.
  *
  * The fix is deliberately not "always decode through Sharp": that would cost
- * every JPEG a lossy re-encode generation (and PNG a size change) to correct
- * a minority of files. Instead only a source that genuinely carries a
- * non-trivial orientation tag pays for the decode. When it does, the result
- * is re-encoded as PNG rather than back to JPEG — this is a forced
- * intermediate the user never agreed to lose quality on twice, the same
- * reasoning `heic.ts` gives for decoding to PNG rather than JPEG.
+ * every JPEG a re-encode generation (and, if re-encoded as PNG, a size
+ * change) to correct a minority of files. Instead only a source that
+ * genuinely carries a non-trivial orientation tag pays for the decode.
  *
- * Every other source format was already being decoded through Sharp to
- * become PNG regardless, so folding `.rotate()` into that same call is free
- * — `.rotate()` with no arguments is sharp's EXIF auto-orient and is a
- * no-op when there is no orientation to apply.
+ * A rotated JPEG is re-encoded back to JPEG, at `image.ts`'s
+ * `DEFAULT_QUALITY.jpeg`/mozjpeg — the same quality this engine already
+ * accepts for every JPEG target it produces. Re-encoding as PNG instead was
+ * tried first and reverted: unlike `heic.ts`'s PNG intermediate, which is
+ * immediately re-compressed to whatever the user asked for at their chosen
+ * quality, PNG here would be the *terminal* artifact (`job.options.quality`
+ * is never consulted by this file), so "avoid a second lossy generation"
+ * bought a categorical size-class jump — a real photo measured ~7-9x larger
+ * as PNG than the JPEG re-encode below, both against the same source — not
+ * avoided one. Forge already accepts a second lossy JPEG generation for
+ * every other conversion this engine performs, so refusing it in only this
+ * one path was inconsistent with the tool's own established behaviour.
+ *
+ * A rotated PNG stays PNG: lossless-to-lossless has no quality trade to
+ * weigh. Every other source format (webp/avif/gif/tiff) was already being
+ * decoded through Sharp to become PNG regardless of orientation, so folding
+ * `.rotate()` into that same call is free — `.rotate()` with no arguments is
+ * sharp's EXIF auto-orient and a no-op when there is nothing to apply.
  */
 async function embedBytes(doc: PDFDocument, source: ImageInfo, raw: Buffer) {
   const embeddable = source.format === 'jpeg' || source.format === 'png'
@@ -96,6 +108,14 @@ async function embedBytes(doc: PDFDocument, source: ImageInfo, raw: Buffer) {
 
   if (embeddable && (orientation === undefined || orientation === 1)) {
     return source.format === 'jpeg' ? doc.embedJpg(raw) : doc.embedPng(raw)
+  }
+
+  if (source.format === 'jpeg') {
+    const rotated = await sharp(raw)
+      .rotate()
+      .jpeg({ quality: DEFAULT_QUALITY.jpeg, mozjpeg: true })
+      .toBuffer()
+    return doc.embedJpg(rotated)
   }
 
   return doc.embedPng(await sharp(raw).rotate().png().toBuffer())

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ import {
   makeAnimatedGif,
   makeAvif,
   makeJpeg,
+  makeNoisyOrientedJpeg,
   makeOrientedJpeg,
   makePdf,
   makePng,
@@ -121,6 +122,40 @@ describe('exif orientation (invariant 4)', () => {
     const { width, height } = doc.getPage(0).getSize()
     expect(Math.round(width)).toBe(40)
     expect(Math.round(height)).toBe(80)
+  })
+
+  /**
+   * `makeOrientedJpeg`'s flat-colour fixture proves the rotation happens but
+   * can't prove the re-encode format is sane — a solid colour compresses
+   * smaller as PNG than as JPEG at fixture scale, backwards from a real
+   * photo. `makeNoisyOrientedJpeg` gives real entropy: measured on this
+   * fixture's dimensions, a PNG re-encode ran 7-9x the source size, while
+   * the JPEG82 path this engine uses came in *under* the source. 3x is
+   * generous headroom above the JPEG path and nowhere near the PNG one, so
+   * this fails loudly if a PNG re-encode is ever reintroduced for JPEG.
+   */
+  it('re-encodes a rotated jpeg-origin source back to jpeg, not a PNG-sized blowup', async () => {
+    const dir = await makeTempDir()
+    const src = await makeNoisyOrientedJpeg(dir, 'photo.jpg', 6)
+    const out = join(dir, 'photo.pdf')
+    const info = await image(src)
+    const sourceBytes = (await stat(src)).size
+
+    await pdfEngine.run(
+      { op: 'convert', sources: [info], outputs: [out], target: 'pdf', options },
+      () => {},
+    )
+
+    const doc = await PDFDocument.load(await readFile(out))
+    const { width, height } = doc.getPage(0).getSize()
+    // Rotation still happened — the size assertion below can't pass by
+    // quietly skipping it and embedding the source untouched instead.
+    expect(Math.round(width)).toBe(info.height)
+    expect(Math.round(height)).toBe(info.width)
+
+    const outBytes = (await stat(out)).size
+    expect(outBytes).toBeLessThan(sourceBytes * 3)
+    expect(outBytes).toBeGreaterThan(sourceBytes * 0.2)
   })
 })
 
