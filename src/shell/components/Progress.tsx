@@ -27,22 +27,49 @@ interface ProgressProps {
 export function Progress({ label, done, total, detail, width }: ProgressProps) {
   const palette = useTheme()
   const counter = `page ${done} of ${total}`
-  const track = Math.max(4, Math.min(24, width - counter.length - 6))
-  const filled = total === 0 ? 0 : Math.round((done / total) * (track - 1))
+
+  // The track needs at least 4 columns to show real movement — fewer than
+  // that and the knob barely shifts, so the bar would read as decoration
+  // claiming a precision it doesn't have. `width - counter.length - 6` is
+  // the track this width affords, with 2 columns of margin against the
+  // frame edge. When that budget doesn't reach 4, there is no room left for
+  // an honest bar next to this counter at this width. The counter is what
+  // carries the meaning in a monochrome terminal (see the doc comment
+  // above), so it is the bar that gives way, not the count: `showBar` false
+  // falls back to the counter alone rather than forcing a floor that would
+  // push the line past `width`.
+  const trackBudget = width - counter.length - 6
+  const showBar = trackBudget >= 4
+  const track = Math.min(24, trackBudget)
+  const rawFilled = total === 0 ? 0 : Math.round((done / total) * (track - 1))
+  // Clamped the way Slider.tsx:69-70 clamps its own `filled`: `done` can
+  // arrive greater than `total` — a stale event, an off-by-one upstream —
+  // and an unclamped `filled` would repeat past the track with nothing to
+  // catch it, overflowing the line well past `width`.
+  const filled = Math.max(0, Math.min(track - 1, rawFilled))
 
   return (
     <Box flexDirection="column">
       <Text color={colourProp(palette.label)}>{label}</Text>
-      <Text>
-        <Text color={colourProp(palette.border)}>{'├'}</Text>
-        <Text color={colourProp(palette.accent)}>{BAR.filled.repeat(filled)}</Text>
-        <Text color={colourProp(palette.accent)}>{BAR.knob}</Text>
-        <Text color={colourProp(palette.border)}>
-          {BAR.empty.repeat(Math.max(0, track - 1 - filled))}
-          {'┤'}
+      {showBar ? (
+        <Text>
+          <Text color={colourProp(palette.border)}>{'├'}</Text>
+          <Text color={colourProp(palette.accent)}>{BAR.filled.repeat(filled)}</Text>
+          <Text bold color={colourProp(palette.accent)}>
+            {BAR.knob}
+          </Text>
+          <Text color={colourProp(palette.border)}>
+            {BAR.empty.repeat(Math.max(0, track - 1 - filled))}
+            {'┤'}
+          </Text>
+          {/* Two spaces (Slider uses one): this follows the '┤' border glyph
+          rather than the bar fill itself, and reads better with a clearer
+          gap between the frame and the counter. */}
+          <Text color={colourProp(palette.dim)}>{`  ${counter}`}</Text>
         </Text>
-        <Text color={colourProp(palette.dim)}>{`  ${counter}`}</Text>
-      </Text>
+      ) : (
+        <Text color={colourProp(palette.dim)}>{counter}</Text>
+      )}
       {detail ? (
         <Text color={colourProp(palette.dim)}>{middleEllipsis(detail, width - 2)}</Text>
       ) : null}
