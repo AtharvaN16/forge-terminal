@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { invalidArguments } from '../core/errors.js'
+import { invalidArguments, invalidDpi } from '../core/errors.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
 import { parseSize } from '../core/units.js'
@@ -15,6 +15,12 @@ export interface ConvertIntent {
   recursive: boolean
   concurrency?: number
   debug: boolean
+  /** Rasterisation resolution, 36-600. Only meaningful when a source is a PDF. */
+  dpi?: number
+  /** Raw range text from --pages, e.g. "3-7,12" — unparsed, since the page count needed to validate it is only known once a source is probed. */
+  pages?: string
+  /** Read an encrypted source's password from stdin instead of prompting. */
+  passwordStdin?: boolean
 }
 
 /**
@@ -158,6 +164,9 @@ export function parseArgs(argv: string[]): Intent {
     .option('--delete <pages>', 'drop these pages')
     .option('--rotate <degrees>', '90, 180 or 270')
     .option('--separate', 'with --extract, write one file per page')
+    .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
+    .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
+    .option('--password-stdin', "read an encrypted PDF's password from stdin")
     .helpOption('-h, --help', 'show this help')
     .version('0.1.0', '-V, --version', 'show the version')
     .exitOverride()
@@ -169,6 +178,13 @@ export function parseArgs(argv: string[]): Intent {
   const inputs = program.args
 
   if (opts.formats) return { kind: 'formats' }
+
+  // Checked ahead of every other branch below: --pages only means something
+  // once a target is known, and none of the later branches (page ops, the
+  // shell fallback, compression) have anywhere to put it.
+  if (opts.pages !== undefined && opts.to === undefined) {
+    throw invalidArguments('--pages needs --to: it chooses which pages to render.')
+  }
 
   /**
    * A page-operation flag is checked ahead of the shell fallback below, not
@@ -333,6 +349,12 @@ export function parseArgs(argv: string[]): Intent {
   }
   if (opts.quality !== undefined) options.quality = parseQuality(String(opts.quality))
 
+  // --dpi always has a value (Commander's default is '150'), so this is
+  // unconditional — unlike --quality and --pages, which are only ever set
+  // when the user actually typed them.
+  const dpi = Number(opts.dpi)
+  if (!Number.isInteger(dpi) || dpi < 36 || dpi > 600) throw invalidDpi(opts.dpi)
+
   const intent: Intent = {
     kind: 'convert',
     inputs,
@@ -341,8 +363,14 @@ export function parseArgs(argv: string[]): Intent {
     force: Boolean(opts.force),
     recursive: Boolean(opts.recursive),
     debug: Boolean(opts.debug),
+    dpi,
+    passwordStdin: Boolean(opts.passwordStdin),
   }
   if (opts.output !== undefined) intent.output = String(opts.output)
+  // Carried through as the raw range text, not parsed here: parsing needs
+  // the source's page count, which is only known once resolveInputs/probe
+  // has actually read the file (src/cli/execute.ts does that per source).
+  if (opts.pages !== undefined) intent.pages = String(opts.pages)
   if (opts.concurrency !== undefined)
     intent.concurrency = parseConcurrency(String(opts.concurrency))
   return intent

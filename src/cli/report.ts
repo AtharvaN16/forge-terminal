@@ -12,13 +12,35 @@ function changePhrase(from: number, to: number): string {
   return `${pct}% ${direction}`
 }
 
+/**
+ * One converted source. Usually one output too, but a single PDF rasterised
+ * to several pages is still one *result* — one job, one source — with many
+ * `outputs`. `summary.results.length === 1` is what routes execute() here
+ * rather than to `reportBatch`, so this has to handle that shape itself
+ * rather than assuming `outputs[0]` is the whole story (phase 4a's own
+ * version of phase 3's worst defect: code that quietly only ever looked at
+ * the first output).
+ */
 export function reportSingle(summary: RunSummary): string[] {
   const result = summary.results[0]
   if (!result) return []
 
+  const source = result.job.sources[0]
+  const outputs = result.job.outputs
+
+  if (outputs.length > 1) {
+    const lines = [
+      `✓ ${basename(source.path)} → ${outputs.length} files`,
+      `  ${outputs.map((o) => basename(o)).join(', ')}`,
+      `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} total`,
+    ]
+    for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
+    return lines
+  }
+
   const lines = [
-    `✓ ${basename(result.job.sources[0].path)} → ${basename(result.job.outputs[0])}`,
-    `  ${formatBytes(result.job.sources[0].bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(result.job.sources[0].bytes, result.outputBytes)}`,
+    `✓ ${basename(source.path)} → ${basename(outputs[0])}`,
+    `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(source.bytes, result.outputBytes)}`,
   ]
   for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
   return lines

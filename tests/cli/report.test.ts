@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { reportBatch, reportFailures, reportFormats, reportSingle } from '../../src/cli/report.js'
 import { readableFormats, writableFormats } from '../../src/core/capabilities.js'
@@ -6,8 +7,9 @@ import { FORMATS } from '../../src/core/formats.js'
 import { buildPlan } from '../../src/core/plan.js'
 import { resolveInputs } from '../../src/core/resolve.js'
 import { runJobs } from '../../src/core/run.js'
-import type { ConvertOptions } from '../../src/core/types.js'
-import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import type { ConvertOptions, Job } from '../../src/core/types.js'
+import { probe } from '../../src/engines/registry.js'
+import { makeJpeg, makeMarkedPdf, makeTempDir } from '../helpers/fixtures.js'
 
 const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
 
@@ -27,6 +29,32 @@ describe('reportSingle', () => {
     expect(text).toMatch(/f0\.jpg/)
     expect(text).toMatch(/f0\.webp/)
     expect(text).toMatch(/smaller|larger|same size/)
+  })
+
+  it('names every output for a multi-page PDF rasterisation, not just the first', async () => {
+    // A single PDF rasterised to 3 pages is one *result* (one job, one
+    // source) — `summary.results.length === 1` is exactly what routes
+    // execute() to reportSingle rather than reportBatch, so this is the
+    // shape that actually reaches it. Before this fix, reportSingle read
+    // only `outputs[0]`: pages 2 and 3 were written correctly but silently
+    // absent from what the CLI printed.
+    const dir = await makeTempDir()
+    const src = await makeMarkedPdf(dir, 'doc.pdf', [1, 2, 3])
+    const info = await probe(src)
+    if (info.kind !== 'document') throw new Error('expected a document')
+    const job: Job = {
+      op: 'convert',
+      sources: [info],
+      outputs: [join(dir, 'doc-1.jpg'), join(dir, 'doc-2.jpg'), join(dir, 'doc-3.jpg')],
+      target: 'jpeg',
+      options: { ...options, dpi: 72, pages: [0, 1, 2] },
+    }
+    const summary = await runJobs([job], {})
+    const text = reportSingle(summary).join('\n')
+    expect(text).toContain('3 files')
+    expect(text).toContain('doc-1.jpg')
+    expect(text).toContain('doc-2.jpg')
+    expect(text).toContain('doc-3.jpg')
   })
 })
 
