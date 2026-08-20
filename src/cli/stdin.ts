@@ -23,6 +23,10 @@ export async function readPassword(opts: { stdin: boolean }): Promise<string> {
   // after the user presses Enter, since readline's line-submit writes to the buffered
   // output stream that never reaches the terminal.
   const nullOutput = new PassThrough()
+  // CRITICAL: terminal:true engages raw mode on real TTYs, disabling OS line discipline
+  // echo. Dropping this flag causes the kernel to echo typed characters in plaintext.
+  // No test catches this regression — the test suite uses Readable.from() which is
+  // never a TTY, so has no kernel echo to suppress. This only breaks on real terminals.
   const rl = createInterface({ input: process.stdin, output: nullOutput, terminal: true })
   try {
     process.stderr.write('Password: ')
