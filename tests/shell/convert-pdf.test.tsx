@@ -246,3 +246,76 @@ describe('the shell — page and resolution steps, live progress', () => {
     expect(lastFrame() ?? '').toContain('convert another')
   }, 20_000)
 })
+
+/**
+ * `confirmDocumentConversion` (an ordinary PDF→image run through the
+ * wizard, not `/pdf`) reuses `handlePdfDone`/`answerPdfBlocked`/the
+ * `pdf-blocked` step verbatim — the same write-safety question `/pdf`'s
+ * five page operations ask. Before this fix, "Cancel" there always landed
+ * on `setStep('pdf')`, the `/pdf` hub, regardless of how the collision was
+ * reached: a conversion started from the ordinary target picker, nowhere
+ * near `/pdf`, got dumped onto "PDF — choose an operation" (Merge/Split/
+ * Extract/Delete/Rotate) — none of which is the conversion the user was
+ * doing. This drives that exact route and checks Cancel returns to the
+ * conversion's own destination step instead, mirroring what
+ * `answerOverwrite`'s "Cancel" already does for every other format that
+ * hits an ordinary (non-document) output-exists question.
+ */
+describe('cancelling a write collision on an ordinary document conversion', () => {
+  it('returns to its own destination step, not the /pdf hub, and writes nothing', async () => {
+    const dir = await makeTempDir()
+    const file = await makePdf(dir, 'doc.pdf', 1)
+    // The exact collision `rasterOutputPaths` would produce for a one-page,
+    // "all pages" jpeg conversion — see `output-path.ts`'s width-1 padding.
+    await makeJpeg(dir, 'doc-1.jpg')
+    const { stdin, lastFrame } = render(
+      <App initialWidth={100} initialHeight={24} prefs={prefsFor(dir)} />,
+    )
+
+    stdin.write(file)
+    await settle()
+    stdin.write(ENTER) // stage -> convert picker
+    await settle(400)
+    expect(lastFrame() ?? '').toContain('Convert PDF to')
+
+    stdin.write(ENTER) // choose jpeg -> pages step
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Pages')
+
+    stdin.write(ENTER) // "All pages" (default) -> dpi step
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Resolution')
+
+    stdin.write(ENTER) // default dpi -> quality (jpeg is lossy)
+    await settle(300)
+    stdin.write(ENTER) // accept default quality -> destination
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Save to') // sanity: really on destination
+
+    stdin.write(ENTER) // accept the default destination -> collides
+    await settle(300)
+
+    const blockedFrame = lastFrame() ?? ''
+    // The real refusal, not a paraphrase — same wording `outputExists` gives
+    // the CLI and `/pdf`'s own collision screen.
+    expect(blockedFrame).toContain('File already exists')
+    // Not yet the bug: still on the blocked screen, not sent anywhere.
+    expect(blockedFrame).not.toContain('PDF — choose an operation')
+
+    stdin.write(ENTER) // "Cancel" is the default, first row, no arrow needed
+    await settle(300)
+
+    const frame = lastFrame() ?? ''
+    // The bug this pins: this conversion was never started from /pdf, so
+    // cancelling must never land on its hub.
+    expect(frame).not.toContain('PDF — choose an operation')
+    // The positive assertion beside it: genuinely back on the destination
+    // step this conversion actually came from — not a blank frame that
+    // would make the negative assertion above pass for free.
+    expect(frame).toContain('Save to')
+
+    // Nothing written: the pre-existing collision file is untouched and no
+    // second file appeared.
+    expect((await readdir(dir)).sort()).toEqual(['doc-1.jpg', 'doc.pdf'])
+  }, 20_000)
+})
