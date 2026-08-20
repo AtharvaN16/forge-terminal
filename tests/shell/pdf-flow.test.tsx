@@ -89,17 +89,80 @@ function mount(sources: DocumentInfo[], opts: { width?: number; height?: number 
   return { ...app, onDone, onCancel, stage }
 }
 
-describe('merge — no options, straight to confirm', () => {
-  it('plans and hands off exactly what mergeAction.plan produces', async () => {
+describe('merge — the reorder screen comes before confirm', () => {
+  it('plans and hands off exactly what mergeAction.plan produces when the order is untouched', async () => {
     const sources = [doc('/docs/a.pdf'), doc('/docs/b.pdf')]
     const { stdin, lastFrame, onDone } = mount(sources)
     // Merge is the first hub row.
     stdin.write(ENTER)
     await settle()
+    // The reorder screen, not confirm yet.
+    expect(lastFrame() ?? '').toContain('order the files')
+    expect(lastFrame() ?? '').toContain('a.pdf')
+    stdin.write(ENTER) // submit the (untouched) order
+    await settle()
     expect(lastFrame() ?? '').toContain('Merge 2 files')
     stdin.write(ENTER) // confirm
     await settle()
     expect(onDone).toHaveBeenCalledWith(mergeAction.plan(sources, {}))
+  })
+
+  it('reordering before confirming changes which order the job actually plans in', async () => {
+    const sources = [doc('/docs/a.pdf'), doc('/docs/b.pdf'), doc('/docs/c.pdf')]
+    const { stdin, onDone } = mount(sources)
+    stdin.write(ENTER) // Merge — the reorder screen
+    await settle()
+    stdin.write(' ') // pick up the first row, a.pdf
+    await settle()
+    stdin.write(DOWN) // move it past b.pdf
+    await settle()
+    stdin.write(' ') // drop it
+    await settle()
+    stdin.write(ENTER) // submit the edited order
+    await settle()
+    stdin.write(ENTER) // confirm
+    await settle()
+    const reordered = [sources[1], sources[0], sources[2]] as typeof sources
+    expect(onDone).toHaveBeenCalledWith(mergeAction.plan(reordered, {}))
+  })
+
+  it('escaping back from confirm to the reorder screen keeps the edit — it does not reset to the staged order', async () => {
+    const sources = [doc('/docs/a.pdf'), doc('/docs/b.pdf'), doc('/docs/c.pdf')]
+    const { stdin, lastFrame, onDone } = mount(sources)
+    stdin.write(ENTER) // Merge — the reorder screen
+    await settle()
+    stdin.write(' ') // pick up a.pdf
+    await settle()
+    stdin.write(DOWN) // move it past b.pdf
+    await settle()
+    stdin.write(' ') // drop it
+    await settle()
+    stdin.write(ENTER) // submit — reaches confirm
+    await settle()
+    stdin.write(ESCAPE) // back to the reorder screen
+    await settle()
+    // MergeList re-mounted: it must show the edit that was already made,
+    // not the original staged order it started from.
+    expect(lastFrame() ?? '').toMatch(/1\s+b\.pdf/)
+    stdin.write(ENTER) // submit again, untouched this time
+    await settle()
+    stdin.write(ENTER) // confirm
+    await settle()
+    const reordered = [sources[1], sources[0], sources[2]] as typeof sources
+    expect(onDone).toHaveBeenCalledWith(mergeAction.plan(reordered, {}))
+  })
+
+  it('removing files down to one exits back to the hub with a note, and never calls onDone', async () => {
+    const sources = [doc('/docs/a.pdf'), doc('/docs/b.pdf')]
+    const { stdin, lastFrame, onDone } = mount(sources)
+    stdin.write(ENTER) // Merge — the reorder screen
+    await settle()
+    stdin.write('x') // remove a.pdf, leaving one file
+    await settle()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('at least two')
+    expect(onDone).not.toHaveBeenCalled()
   })
 })
 

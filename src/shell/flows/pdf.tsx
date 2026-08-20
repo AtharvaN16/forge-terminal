@@ -8,8 +8,9 @@ import { ACTIONS, unavailableReason } from '../../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../../core/actions/split.js'
 import { isForgeError } from '../../core/errors.js'
 import { formatRanges, parseRanges } from '../../core/pages.js'
-import type { DocumentInfo, Job } from '../../core/types.js'
+import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
 import { HintBar } from '../components/HintBar.js'
+import { MergeList } from '../components/MergeList.js'
 import { gridLayout, PageGrid } from '../components/PageGrid.js'
 import { PathInput } from '../components/PathInput.js'
 import { Prompt } from '../components/Prompt.js'
@@ -38,10 +39,12 @@ export const HUB_ACTIONS = ACTIONS.filter((a) => a.id !== 'convert' && a.id !== 
  * extract/delete's page selection (see `renderOptionsStep`). `split-n` and
  * `split-grid` are the two sub-answers "every N pages" and "at points I
  * choose" open, neither of which is a spec `splitAction.options()` itself
- * returns. `confirm` shows the planned outputs; `run` is the brief instant
- * between handing the jobs to `onDone` and the caller unmounting this flow.
+ * returns. `merge` is `MergeList` — merge's one "option" is the file order
+ * itself, decided interactively rather than through an `options()` spec.
+ * `confirm` shows the planned outputs; `run` is the brief instant between
+ * handing the jobs to `onDone` and the caller unmounting this flow.
  */
-type FlowStep = 'hub' | 'options' | 'split-n' | 'split-grid' | 'confirm' | 'run'
+type FlowStep = 'hub' | 'options' | 'split-n' | 'split-grid' | 'merge' | 'confirm' | 'run'
 
 function pagesFit(pageCount: number, width: number, height: number): boolean {
   const { perRow, rowsPerPage } = gridLayout(pageCount, width, height)
@@ -68,6 +71,33 @@ function describeJob(job: Job): string {
     default:
       return 'Ready'
   }
+}
+
+/**
+ * `action.plan(stage.sources, values)`, except for merge: `MergeList` is the
+ * only place the page order and the output name can be edited, and neither
+ * lives in `values` the way every other action's answers do — `mergeOrder`
+ * and `mergeOutputOverride` carry them instead. Reading `stage.sources`
+ * straight through here for merge would silently discard the reorder and
+ * plan the file in whatever order it happened to be staged — the exact bug
+ * this component exists to prevent.
+ */
+function planJobs(
+  action: Action | undefined,
+  sources: SourceInfo[],
+  values: Record<string, unknown>,
+  mergeOrder: SourceInfo[] | undefined,
+  mergeOutputOverride: string | undefined,
+): Job[] {
+  if (!action) return []
+  const effectiveSources = action.id === 'merge' && mergeOrder ? mergeOrder : sources
+  const planned = action.plan(effectiveSources, values)
+  if (action.id === 'merge' && mergeOutputOverride !== undefined) {
+    return planned.map((job) =>
+      job.op === 'merge' ? { ...job, outputs: [mergeOutputOverride] as [string] } : job,
+    )
+  }
+  return planned
 }
 
 export interface PdfFlowProps {
@@ -103,6 +133,14 @@ export function PdfFlow({
   const [fieldError, setFieldError] = useState<string | undefined>(undefined)
   const [pagesError, setPagesError] = useState<string | undefined>(undefined)
   const [pagesView, setPagesView] = useState<'grid' | 'range'>('grid')
+  // Merge's two answers — the edited order and, if `n` was used, the
+  // renamed output — live outside `values` because `MergeList` is the only
+  // step that produces them and `mergeAction.plan` never reads `values` at
+  // all (see `planJobs`).
+  const [mergeOrder, setMergeOrder] = useState<SourceInfo[] | undefined>(undefined)
+  const [mergeOutputOverride, setMergeOutputOverride] = useState<string | undefined>(undefined)
+  /** Set when `x` in `MergeList` drops the file count below two — shown at the hub. */
+  const [hubNote, setHubNote] = useState<string | undefined>(undefined)
 
   const doc: DocumentInfo | undefined =
     stage.sources.length === 1 && stage.sources[0]?.kind === 'document'
@@ -113,8 +151,8 @@ export function PdfFlow({
   const spec = specs[specIndex]
 
   const jobs = useMemo(
-    () => (action ? action.plan(stage.sources, values) : []),
-    [action, values, stage.sources],
+    () => planJobs(action, stage.sources, values, mergeOrder, mergeOutputOverride),
+    [action, values, stage.sources, mergeOrder, mergeOutputOverride],
   )
 
   const hubItems: Choice[] = HUB_ACTIONS.map((a) => {
@@ -133,6 +171,9 @@ export function PdfFlow({
     setText('')
     setFieldError(undefined)
     setPagesError(undefined)
+    setMergeOrder(undefined)
+    setMergeOutputOverride(undefined)
+    setHubNote(undefined)
   }
 
   const chooseAction = (id: string) => {
@@ -143,6 +184,14 @@ export function PdfFlow({
 
     if ((chosen.id === 'extract' || chosen.id === 'delete') && doc) {
       setPagesView(pagesFit(doc.pages, width, height) ? 'grid' : 'range')
+    }
+
+    // Merge has no option-spec list to walk — its one "option" is the file
+    // order, decided interactively in MergeList rather than through
+    // options()/plan() the way the other four actions' specs are answered.
+    if (chosen.id === 'merge') {
+      setStep('merge')
+      return
     }
 
     const nextSpecs = chosen.options(stage.sources, {}, prefs)
@@ -170,6 +219,13 @@ export function PdfFlow({
       setStep('options')
       return
     }
+    // Merge's order and name came from MergeList, not from a spec
+    // options() returns either — "back" from confirm re-opens that screen,
+    // the same shape as split just above.
+    if (action.id === 'merge') {
+      setStep('merge')
+      return
+    }
     const currentSpecs = action.options(stage.sources, values, prefs)
     if (currentSpecs.length === 0) {
       setStep('hub')
@@ -181,9 +237,27 @@ export function PdfFlow({
 
   const confirmAndRun = () => {
     if (!action) return
-    const planned = action.plan(stage.sources, values)
+    const planned = planJobs(action, stage.sources, values, mergeOrder, mergeOutputOverride)
     setStep('run')
     onDone(planned)
+  }
+
+  /** `MergeList`'s `onSubmit` — the edited order and output path land in state, then the shared confirm screen (same as every other action) takes over. */
+  const submitMerge = (ordered: SourceInfo[], outputPath: string) => {
+    setMergeOrder(ordered)
+    setMergeOutputOverride(outputPath)
+    setStep('confirm')
+  }
+
+  const cancelMerge = () => {
+    setStep('hub')
+  }
+
+  const tooFewToMerge = (remaining: number) => {
+    setHubNote(
+      `Merge needs at least two files — ${remaining} ${remaining === 1 ? 'file' : 'files'} left.`,
+    )
+    setStep('hub')
   }
 
   useInput(
@@ -520,6 +594,9 @@ export function PdfFlow({
       {step === 'hub' ? (
         <Box flexDirection="column" marginBottom={1}>
           <Text color={colourProp(palette.label)}>PDF — choose an operation</Text>
+          {hubNote ? (
+            <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${hubNote}`}</Text>
+          ) : null}
           <Select
             width={width}
             items={hubItems}
@@ -539,6 +616,23 @@ export function PdfFlow({
       ) : null}
 
       {step === 'options' ? renderOptionsStep() : null}
+
+      {step === 'merge' ? (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color={colourProp(palette.label)}>Merge — order the files</Text>
+          <MergeList
+            // `mergeOrder` first: escaping back from confirm re-mounts this
+            // component (it is uncontrolled — see its own doc comment), and
+            // seeding it from the raw stage every time would silently
+            // discard whatever the user had already arranged.
+            sources={mergeOrder ?? stage.sources}
+            width={width}
+            onSubmit={submitMerge}
+            onCancel={cancelMerge}
+            onTooFew={tooFewToMerge}
+          />
+        </Box>
+      ) : null}
 
       {step === 'split-n' ? (
         <Box flexDirection="column" marginBottom={1}>
