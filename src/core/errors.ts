@@ -163,10 +163,28 @@ export function heicDecoderUnavailable(path: string): ForgeError {
  * silent no-op, and the hint points at the thing that *would* work.
  */
 export function unsupportedCompress(source: SourceInfo): ForgeError {
+  const name = basename(source.path)
+
+  /**
+   * A PDF gets its own wording because the lossless line below is FALSE for
+   * one. A PDF is a container: its pages are usually JPEGs, and re-encoding
+   * them measured 79% smaller on a photo brochure. Telling someone there is
+   * "no quality to trade away" sent them hunting for a workaround that does
+   * not exist, when the real answer is that Forge has not built this yet.
+   */
+  if (source.kind === 'document') {
+    return new ForgeError({
+      code: 'unsupported-compress',
+      title: 'Forge cannot compress a PDF yet',
+      detail: `${name} is a PDF. Compression works on images for now.`,
+      hint: 'Try /pdf for page operations, or /convert to turn its pages into images.',
+    })
+  }
+
   return new ForgeError({
     code: 'unsupported-compress',
     title: 'Nothing to compress',
-    detail: `${basename(source.path)} is ${FORMATS[source.format].label}, which is lossless — there is no quality to trade away.`,
+    detail: `${name} is ${FORMATS[source.format].label}, which is lossless — there is no quality to trade away.`,
     hint: 'Use /convert to change it to a smaller format instead.',
   })
 }

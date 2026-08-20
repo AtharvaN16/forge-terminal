@@ -10,6 +10,7 @@ import {
   permissionDenied,
   renderError,
   selfCollision,
+  unsupportedCompress,
   unsupportedTarget,
 } from '../../src/core/errors.js'
 import type { SourceInfo } from '../../src/core/types.js'
@@ -83,5 +84,47 @@ describe('renderError', () => {
   it('reveals the underlying cause under debug', () => {
     const e = conversionFailed('/tmp/x.png', new Error('vips exploded'))
     expect(renderError(e, { debug: true }).join('\n')).toContain('vips exploded')
+  })
+})
+
+describe('refusing to compress', () => {
+  const png = {
+    kind: 'image' as const,
+    path: '/tmp/logo.png',
+    format: 'png' as const,
+    width: 10,
+    height: 10,
+    bytes: 100,
+    hasAlpha: false,
+    frames: 1,
+  }
+  const pdf = {
+    kind: 'document' as const,
+    path: '/tmp/brochure.pdf',
+    format: 'pdf' as const,
+    bytes: 1_400_000,
+    pages: 7,
+    encrypted: false,
+  }
+
+  it('tells a lossless image the truth: there is no quality to trade', () => {
+    const e = unsupportedCompress(png)
+    expect(e.detail).toContain('lossless')
+    expect(e.detail).toContain('logo.png')
+  })
+
+  it('does NOT claim a PDF is lossless', () => {
+    // A PDF is a container. Its pages are usually JPEGs, which compress
+    // fine — measured at 79% smaller. Saying "lossless, no quality to
+    // trade away" is true of PNG and false of PDF, and it sent a user
+    // looking for a workaround that does not exist.
+    const e = unsupportedCompress(pdf)
+    expect(e.detail).not.toContain('lossless')
+    expect(e.detail).toContain('brochure.pdf')
+  })
+
+  it('points a PDF at what does work, not at a smaller format', () => {
+    const e = unsupportedCompress(pdf)
+    expect(`${e.title} ${e.detail} ${e.hint ?? ''}`).toContain('/pdf')
   })
 })
