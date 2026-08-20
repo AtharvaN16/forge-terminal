@@ -77,17 +77,27 @@ was tried on the fixture:
 | `garbage=deduplicate,compress,compress-images,compress-fonts` | 1.0% smaller |
 
 mupdf does not re-encode images that are already compressed. Actually
-shrinking a PDF means extracting its images, re-encoding them, and rebuilding:
+shrinking a PDF means extracting its images, re-encoding them, and rebuilding.
 
-| Re-encode embedded JPEG at | PDF becomes |
+> **Corrected during phase 4 planning.** This table first read 43% / 66% /
+> 77%, measured by rebuilding a PDF *from scratch* around a re-encoded JPEG —
+> which also discarded the original document's structural overhead, and so
+> measured something no compressor could reproduce. Re-measured by modifying
+> a real document **in place** (enumerate its image XObjects, `loadImage()`
+> → `toPixmap()` → re-encode → `writeRawStream()`, then save):
+
+| Re-encode embedded image at | PDF becomes |
 | --- | --- |
-| q75 | 43% smaller |
-| q50 | 66% smaller |
-| q30 | 77% smaller |
+| q75 | 18% smaller |
+| q50 | 47% smaller |
+| q30 | 63% smaller |
 
-So "Compress PDF" is an image-pipeline job that runs through the Sharp engine
-Forge already has, not a thin wrapper over a library call. That is the single
-biggest reason it is in phase 4 and not this one.
+So "Compress PDF" is an image-pipeline job, not a thin wrapper over a library
+call — that remains the reason it is not in phase 3. Two corrections to what
+this section originally implied: the achievable saving is materially smaller
+than first stated, and the pipeline does **not** require Sharp — mupdf decodes
+and re-encodes on its own, and every figure above was produced without Sharp
+in the path.
 
 **Encryption works, and is no longer a risk.**
 `saveToBuffer("encrypt=aes-256,user-password=…,owner-password=…")` produced a
