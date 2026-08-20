@@ -63,8 +63,21 @@ export const pdfiumEngine: Engine = {
   async run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
     if (job.op !== 'convert') throw new Error(`pdfium cannot ${job.op}`)
     const source = job.sources[0]
+    if (source.kind !== 'document') {
+      throw new Error('the pdfium engine can only rasterise a document source')
+    }
     const dpi = job.options.dpi ?? 150
-    const pages = job.options.pages ?? []
+    // No `pages` means "convert this PDF" — read as every page. `outputs`
+    // promises at least one file ([string, ...string[]]); defaulting to an
+    // empty selection would report success while writing nothing.
+    const pages = job.options.pages ?? Array.from({ length: source.pages }, (_, i) => i)
+    // A programmer error, not a user error: whatever built this job promised
+    // one output per page and didn't keep that promise. Throwing here rather
+    // than truncating to the shorter length is what stops `job.outputs[i]`
+    // from silently reading past the end of a too-short array.
+    if (pages.length !== job.outputs.length) {
+      throw new Error(`pdfium was given ${pages.length} pages but ${job.outputs.length} outputs`)
+    }
     const quality = job.options.quality ?? FORMATS[job.target].defaultQuality
 
     const doc = await openPdf(await readFile(source.path), job.options.password)
@@ -90,6 +103,11 @@ export const pdfiumEngine: Engine = {
                   .jpeg({ quality, mozjpeg: true })
                   .toBuffer()
 
+          // The arity guard above proves this index is in range, but
+          // TypeScript can't carry that fact through a runtime-computed
+          // index into a `[string, ...string[]]` tuple — under
+          // `noUncheckedIndexedAccess` a non-literal index still widens to
+          // `string | undefined`. The cast is what the guard buys back.
           const out = job.outputs[i] as string
           outputBytes += await writeAtomic(out, bytes)
           written.push(out)
