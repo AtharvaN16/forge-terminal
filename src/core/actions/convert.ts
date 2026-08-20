@@ -4,9 +4,71 @@ import { expandTilde, type Preferences } from '../../config/preferences.js'
 import { targetsFor } from '../capabilities.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, formatById } from '../formats.js'
-import { resolveOutputPath } from '../output-path.js'
-import type { ConvertOptions, FormatId, FormatSpec, SourceInfo } from '../types.js'
+import { rasterOutputPaths, resolveOutputPath } from '../output-path.js'
+import { normalisePages, parseRanges } from '../pages.js'
+import type { ConvertOptions, DocumentInfo, FormatId, FormatSpec, SourceInfo } from '../types.js'
 import type { Action, OptionSpec, PathPreset } from './index.js'
+
+/**
+ * Which pages to rasterise, and the resolution to do it at. Only offered
+ * once a document source has a real (raster) target — the only other target
+ * a document has is filtered out in `targetSelect` for being a no-op, so a
+ * chosen target always means jpeg or png here (see `engines/pdfium.ts`).
+ *
+ * `choose` hands off to the shell's page picker (`PageGrid`, phase 3) rather
+ * than a typed field: the grid is the one existing UI for this, and building
+ * a second picker for the same job is exactly what note 4 warns against.
+ */
+function pagesSelect(doc: DocumentInfo): OptionSpec {
+  return {
+    kind: 'select',
+    id: 'pages',
+    label: 'Pages',
+    default: 'all',
+    choices: [
+      { value: 'all', label: 'All pages', hint: `${doc.pages} pages` },
+      { value: 'first', label: 'First page only' },
+      { value: 'choose', label: 'Choose pages', hint: 'pick which ones' },
+    ],
+  }
+}
+
+/**
+ * The shell offers three presets because a picker needs a short list; the
+ * CLI's own `--dpi` has no such constraint and accepts any integer in
+ * `invalidDpi`'s 36-600 range (spec §10). 150 is the default either way.
+ */
+function dpiSelect(): OptionSpec {
+  return {
+    kind: 'select',
+    id: 'dpi',
+    label: 'Resolution',
+    default: '150',
+    choices: [
+      { value: '72', label: '72 dpi', hint: 'screen' },
+      { value: '150', label: '150 dpi', hint: 'default' },
+      { value: '300', label: '300 dpi', hint: 'print' },
+    ],
+  }
+}
+
+/**
+ * `values.pages` arrives as one of: `'all'` (or unset), `'first'`, a typed
+ * range string (`parseRanges`'s grammar), or an explicit array — the shape
+ * `PageGrid`'s `onSubmit` hands back after "Choose pages". Every branch is
+ * normalised through the one ordering authority, `core/pages.ts`'s
+ * `normalisePages` — the same function `core/actions/extract.ts`'s
+ * `selectedPages` uses, so naming and rendering can never derive from two
+ * different orderings (phase 3's worst defect).
+ */
+function resolvePages(doc: DocumentInfo, raw: unknown): number[] {
+  if (Array.isArray(raw)) return normalisePages(raw as number[])
+  if (raw === 'first') return [0]
+  if (typeof raw === 'string' && raw !== 'all' && raw !== '') {
+    return normalisePages(parseRanges(raw, doc.pages))
+  }
+  return Array.from({ length: doc.pages }, (_, i) => i)
+}
 
 function targetSelect(source: SourceInfo): OptionSpec {
   // Converting a file to its own format changes nothing the user can see,
@@ -109,6 +171,14 @@ export const convertAction: Action = {
     const target = values.target
     if (typeof target !== 'string') return specs
 
+    // A document's only real targets are jpeg and png (`targetSelect`
+    // already filters 'pdf' out as a no-op), so reaching here with a chosen
+    // target means a rasterisation, and it needs to know which pages and at
+    // what resolution.
+    if (source.kind === 'document') {
+      specs.push(pagesSelect(source), dpiSelect())
+    }
+
     const spec = FORMATS[target as FormatId]
     if (spec?.lossy) {
       specs.push({
@@ -139,6 +209,20 @@ export const convertAction: Action = {
     if (spec.lossy && typeof values.quality === 'number') options.quality = values.quality
 
     const destination = typeof values.destination === 'string' ? values.destination : undefined
+
+    // A document source rasterises to one image per selected page rather
+    // than one output for the whole source — `resolveOutputPath` below
+    // assumes exactly the latter, so this branches before it rather than
+    // trying to bend that function to a shape it was never built for.
+    if (source.kind === 'document') {
+      const dpi = Number(values.dpi)
+      options.dpi = Number.isFinite(dpi) && dpi > 0 ? dpi : 150
+      const pages = resolvePages(source, values.pages)
+      options.pages = pages
+      const outputs = rasterOutputPaths(source.path, pages, target, destination)
+      return [{ op: 'convert', sources: [source], outputs, target, options }]
+    }
+
     const output = resolveOutputPath({
       sourcePath: source.path,
       target,
