@@ -37,8 +37,7 @@ place later without touching anything.
 Measured on this machine, not assumed.
 
 **Target-size search is affordable.** Eight encode attempts on a 4032×3024
-JPEG — one more than the seven §6 bounds the search at, so the figures below
-are a conservative ceiling rather than a typical case:
+JPEG — exactly the worst case §6 bounds the search at:
 
 | Approach | Time |
 | --- | --- |
@@ -46,8 +45,8 @@ are a conservative ceiling rather than a typical case:
 | Decode once to raw pixels, re-encode from memory | 293 ms |
 | Memory held by the raw buffer | 34.9 MB |
 
-That is about 38 ms an encode, so a full search costs roughly a quarter of a
-second on a 12MP image, and
+That is about 38 ms an encode, so a worst-case search costs roughly a third of
+a second on a 12MP image, and
 **the raw-buffer optimisation is not worth building** — it saves 5% for 35MB
 of resident memory. The fixture was a flat colour and a real photograph will
 be slower, but not by an order of magnitude.
@@ -193,9 +192,14 @@ export function findQuality(req: SearchRequest): Promise<SearchResult>
 ```
 
 A binary search over the quality range, returning the **highest** quality
-whose output fits. The iteration count is bounded by `ceil(log2(100))` = 7,
-so `onAttempt` reports a real position in a known sequence — `attempt 3 of 7`
-— rather than a fabricated percentage. This satisfies spec §12 honestly: the
+whose output fits. The iteration count is bounded by
+`1 + ceil(log2(100))` = 8 — seven bisections plus the one probe at maximum
+quality that always runs first — so `onAttempt` reports a real position in a
+known sequence, `attempt 3 of 8`, rather than a fabricated percentage.
+
+*(Corrected during implementation: this originally said 7, having counted the
+bisections and forgotten the probe. Reporting "attempt 8 of 7" would have been
+exactly the dishonesty the bound exists to prevent.)* This satisfies spec §12 honestly: the
 denominator is known in advance because the algorithm decides it.
 
 When even quality 1 exceeds the target, `missed` is true and nothing is
