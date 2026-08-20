@@ -16,6 +16,29 @@ const doc = (name: string, pages: number): DocumentInfo => ({
 
 const sources = [doc('jan.pdf', 3), doc('feb.pdf', 2), doc('mar.pdf', 12)]
 
+const DOWN = `${String.fromCharCode(27)}[B`
+/** One turn of the event loop — long enough for Ink to re-render. */
+const tick = () => new Promise((r) => setTimeout(r, 20))
+
+const app = (props: Record<string, unknown> = {}) =>
+  render(
+    createElement(MergeList, {
+      sources,
+      width: 80,
+      onSubmit: () => {},
+      onCancel: () => {},
+      onTooFew: () => {},
+      ...props,
+    } as never),
+  )
+
+/** The filenames in the order the rows currently show them. */
+const rowOrder = (out: string): string[] =>
+  out
+    .split('\n')
+    .filter((l) => /\.pdf/.test(l) && !/merged/.test(l))
+    .map((l) => /([\w.-]+\.pdf)/.exec(l)?.[1] ?? '')
+
 const frame = (props: Record<string, unknown> = {}) => {
   const { lastFrame } = render(
     createElement(MergeList, {
@@ -74,5 +97,36 @@ describe('MergeList', () => {
     expect(rows).toHaveLength(2)
     for (const row of rows) expect(stringWidth(row.trimEnd())).toBeLessThanOrEqual(60)
     expect(rows.some((r) => r.includes('…'))).toBe(true)
+  })
+
+  /**
+   * `s` sorted from the as-staged list every time, so someone who dragged a
+   * row by hand and then pressed `s` once could never get their arrangement
+   * back: cycling round to `dropped` restored the staged order, not theirs.
+   * A hand-dragged order is the more expensive thing to lose, and `dropped`
+   * is the un-labelled state on screen — no `sorted: … ▾` line — so it can
+   * honestly mean "the order you have" rather than "the order they arrived".
+   */
+  it('cycles back to a hand-dragged order, not the as-staged one', async () => {
+    const { stdin, lastFrame } = app()
+
+    stdin.write(' ') // pick up jan.pdf, the first row
+    await tick()
+    stdin.write(DOWN)
+    await tick()
+    stdin.write(DOWN) // ...and carry it to the bottom
+    await tick()
+    stdin.write(' ') // drop it
+    await tick()
+    expect(rowOrder(lastFrame() ?? '')).toEqual(['feb.pdf', 'mar.pdf', 'jan.pdf'])
+
+    // dropped -> name -> newest -> oldest -> dropped
+    for (let i = 0; i < 4; i++) {
+      stdin.write('s')
+      await tick()
+    }
+
+    expect(lastFrame() ?? '').not.toContain('sorted:')
+    expect(rowOrder(lastFrame() ?? '')).toEqual(['feb.pdf', 'mar.pdf', 'jan.pdf'])
   })
 })

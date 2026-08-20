@@ -105,11 +105,18 @@ export function MergeList({
   customStemRef.current = customStem
 
   /**
-   * The as-staged order, so cycling `s` back around to `dropped` is exact —
-   * `sortSources`'s `dropped` case is identity, so it has to be handed the
-   * original list, not whatever the screen currently shows. Only ever
-   * shrinks, when `x` removes a file; hand-dragging and sorting never touch
-   * it, which is what makes it safe to cycle back to.
+   * What `s` sorts from, and what cycling back around to `dropped` restores
+   * — `sortSources`'s `dropped` case is identity, so it has to be handed a
+   * list rather than reading the screen.
+   *
+   * Starts as the as-staged order and is replaced whenever a row is dropped
+   * somewhere new by hand. Sorting never touches it, so `s` remains
+   * reversible; a hand-dragged order is the more expensive thing to lose,
+   * and without this someone who dragged a row and then pressed `s` once
+   * could never get their arrangement back. `dropped` is also the only mode
+   * that renders no `sorted: … ▾` line, so it can honestly mean "the order
+   * you have" rather than "the order they arrived in". Also shrinks when `x`
+   * removes a file.
    */
   const baseRef = useRef(sources)
 
@@ -156,6 +163,11 @@ export function MergeList({
       heldRef.current = cursorRef.current
       setHeld(cursorRef.current)
     } else {
+      // Dropping a row commits the arrangement: it becomes what `s` sorts
+      // from and what cycling back to `dropped` restores (see `baseRef`).
+      // Only reached by `space` — `esc` goes through `putBackOrCancel`,
+      // which restores the snapshot instead and leaves the baseline alone.
+      baseRef.current = orderRef.current
       heldRef.current = null
       setHeld(null)
       heldSnapshotRef.current = null
