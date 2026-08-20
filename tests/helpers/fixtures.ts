@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, rgb } from 'pdf-lib'
 import sharp from 'sharp'
 
 const run = promisify(execFile)
@@ -249,5 +249,25 @@ export async function pdfPageMarks(path: string): Promise<number[]> {
 export async function makeCorruptPdf(dir: string, name: string): Promise<string> {
   const path = join(dir, name)
   await writeFile(path, '%PDF-1.4\nthis is not a valid PDF body.\n%%EOF')
+  return path
+}
+
+/** A one-page PDF filled with an asymmetric colour, for channel-order checks. */
+export async function makeColouredPdf(
+  dir: string,
+  name: string,
+  c: { r: number; g: number; b: number },
+): Promise<string> {
+  const doc = await PDFDocument.create()
+  const page = doc.addPage([200, 200])
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 200,
+    color: rgb(c.r / 255, c.g / 255, c.b / 255),
+  })
+  const path = join(dir, name)
+  await writeFile(path, await doc.save())
   return path
 }

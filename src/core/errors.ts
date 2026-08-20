@@ -27,6 +27,7 @@ export type ErrorCode =
   | 'unreadable-path'
   | 'invalid-page-range'
   | 'empty-selection'
+  | 'invalid-dpi'
   | 'unexpected'
 
 interface ForgeErrorInit {
@@ -378,6 +379,21 @@ export function emptySelection(detail: string): ForgeError {
     title: 'Nothing to write',
     detail,
     hint: 'Select at least one page to keep.',
+  })
+}
+
+/**
+ * `--dpi` and the shell's resolution picker both funnel here. The bounds
+ * are measured, not arbitrary: below 36 the render is illegible, and 600 on
+ * a several-hundred-page scan is tens of gigabytes of PNG and minutes of
+ * rendering — worth refusing rather than letting someone discover it.
+ */
+export function invalidDpi(value: unknown): ForgeError {
+  return new ForgeError({
+    code: 'invalid-dpi',
+    title: 'Invalid resolution',
+    detail: `${String(value)} is not a resolution Forge can use.`,
+    hint: 'Give a number between 36 and 600. The default is 150.',
   })
 }
 
