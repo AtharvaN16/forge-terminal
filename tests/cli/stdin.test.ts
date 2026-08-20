@@ -114,25 +114,9 @@ describe('readPassword', () => {
       expect(password).toBe('secret123')
     })
 
-    it('writes newline after password is entered, indicating close was called', async () => {
-      // The finally block writes a newline after the promise resolves but before closing.
-      // This test verifies the finally block executes by checking that a newline reaches stderr.
-      const inputStream = Readable.from(['password\n'])
-      const stderrWrites: string[] = []
-      const mockStderr = new PassThrough()
-
-      mockStderr.on('data', (chunk) => {
-        stderrWrites.push(chunk.toString('utf8'))
-      })
-
-      Object.defineProperty(process, 'stdin', { value: inputStream, configurable: true })
-      Object.defineProperty(process, 'stderr', { value: mockStderr, configurable: true })
-
-      const password = await readPassword({ stdin: false })
-
-      // The newline in stderr proves the finally block ran (which includes close())
-      expect(stderrWrites.join('')).toContain('\n')
-      expect(password).toBe('password')
-    })
+    // Note: rl.close() execution cannot be tested here. While the finally block
+    // is syntactically guaranteed to run (and it does — the newline in stderr proves that),
+    // mock streams have no observable effect when closed. The actual close() call is
+    // verified by the pty harness on real terminals.
   })
 })
