@@ -27,7 +27,7 @@ import { encodeToBuffer } from '../engines/image.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
-import { COMMANDS, type Command, isCommandBuffer, parseCommand } from './commands.js'
+import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HintBar } from './components/HintBar.js'
 import { PathInput } from './components/PathInput.js'
@@ -262,6 +262,20 @@ export function App({
    * and refuse instead of quietly picking `stage.sources[0]` for the user.
    */
   const stagedBatch = stage.sources.length > 1
+  /**
+   * Whether `CommandPalette`'s `<Select>` currently owns escape — that is,
+   * whether the typed fragment has at least one match. `isCommandBuffer`
+   * alone is not enough: it is true the instant text starts with `/` and
+   * has no further `/` or space, which includes fragments like `/U` that
+   * match nothing. `CommandPalette` renders a plain, non-interactive
+   * "no command matches" `<Text>` in that state — no `<Select>`, no
+   * `useInput` — so nothing would be left to consume escape if the stage
+   * hook below were gated on `isCommandBuffer` alone. Calling the same
+   * `matchCommands` that `CommandPalette` itself calls to choose between
+   * `<Select>` and that message is what keeps this from drifting out of
+   * sync with what actually mounts, the way `isCommandBuffer` did.
+   */
+  const paletteOwnsEscape = isCommandBuffer(text) && matchCommands(text.slice(1)).length > 0
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
@@ -386,13 +400,23 @@ export function App({
   // reported a failure and returned here without clearing what was staged
   // (a partial batch is still there to retry, or to abandon). Empty stages
   // are the common case and cost nothing extra to check.
+  //
+  // Gated on the command buffer being closed, for the same reason the
+  // `step === 'result'` hook above is gated on `step`: Ink delivers input
+  // to every mounted `useInput` regardless of what else is on screen.
+  // `CommandPalette`'s `Select` (`isActive` default `true`) already owns
+  // escape while `/convert` or similar is being typed — its `onCancel`
+  // clears the text buffer — so an ungated hook here would fire on the very
+  // same keystroke and silently discard the stage as a side effect of
+  // someone backing out of a half-typed command, not asking to clear
+  // anything.
   useInput(
     (_input, key) => {
       if (!key.escape) return
       if (stage.sources.length === 0 && stage.failures.length === 0) return
       setStage(clearStage())
     },
-    { isActive: step === 'idle' },
+    { isActive: step === 'idle' && !paletteOwnsEscape },
   )
 
   useInput(

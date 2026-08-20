@@ -1,10 +1,19 @@
-import { dirname } from 'node:path'
-import { targetUnreachable, unsupportedCompress } from '../core/errors.js'
+import { basename, dirname } from 'node:path'
+import { ACTIONS, unavailableReason } from '../core/actions/index.js'
+import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
+import {
+  invalidArguments,
+  invalidPageRange,
+  targetUnreachable,
+  unsupportedCompress,
+} from '../core/errors.js'
 import { buildPlan } from '../core/plan.js'
 import { resolveInputs } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
-import type { Intent } from './args.js'
-import { reportBatch, reportFailures, reportFormats, reportSingle } from './report.js'
+import type { DocumentInfo, SourceInfo } from '../core/types.js'
+import { checkWriteSafety } from '../core/write-safety.js'
+import type { Intent, PageOpIntent } from './args.js'
+import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
 
 export interface ExecuteResult {
   exitCode: 0 | 1 | 2
@@ -28,6 +37,49 @@ export interface ExecuteOptions {
   onProgress?: (progress: BatchProgress) => void
 }
 
+/**
+ * Turns a `PageOpIntent` into the `values` shape each action's `plan()`
+ * expects (see `core/actions/*.ts`). This is the one place both of the
+ * CLI's page-boundary conversions happen: `--split at=` is 1-based cut
+ * points as the user typed them, `cuts` is 0-based as `Job` holds them;
+ * `--separate` is a boolean flag, but `extractAction.plan` reads the string
+ * 'many' (it was designed for the shell's select option, whose choices are
+ * string values).
+ */
+function pageOpValues(intent: PageOpIntent, sources: SourceInfo[]): Record<string, unknown> {
+  if (intent.action === 'merge') return {}
+  if (intent.action === 'rotate') return { degrees: intent.rotate }
+  if (intent.action === 'extract') {
+    return { pages: intent.pages, separate: intent.separate ? 'many' : 'one' }
+  }
+  if (intent.action === 'delete') return { pages: intent.pages }
+
+  // action === 'split'
+  const doc = sources.find((s): s is DocumentInfo => s.kind === 'document')
+  const pageCount = doc?.pages ?? 0
+  const spec = intent.split
+  if (!spec) {
+    throw invalidArguments('--split needs a mode: every-page, every=N or at=N,N.')
+  }
+  if (spec.mode === 'every-page') return { cuts: everyPageCuts(pageCount) }
+  if (spec.mode === 'every-n') return { cuts: everyNCuts(pageCount, spec.n) }
+
+  // spec.mode === 'points' — validated here, the same way parseRanges
+  // validates ranges: out of bounds is an error naming the page count, never
+  // a silent clamp (cutsToRanges, downstream, would otherwise just drop it).
+  const last = Math.max(pageCount - 1, 0)
+  for (const n of spec.after) {
+    if (!Number.isInteger(n) || n < 1 || n > last) {
+      throw invalidPageRange(
+        String(n),
+        `"${n}" is outside 1 and ${last} — ${doc ? basename(doc.path) : 'the document'} has ${pageCount} pages.`,
+        pageCount,
+      )
+    }
+  }
+  return { cuts: spec.after.map((n) => n - 1) }
+}
+
 export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
   // Routed here rather than in src/index.ts so there is exactly one place
   // that turns an Intent into an ExecuteResult. The import is lazy because a
@@ -44,6 +96,51 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
 
   if (intent.kind === 'shell') {
     return { exitCode: 0, stdout: [], stderr: [] }
+  }
+
+  /**
+   * A page operation is never a batch of separate conversions — it is one
+   * `Action` (Task 10) turning a fixed set of sources into a `Job`, the same
+   * way the shell hub does. Resolved and probed like every other path, so a
+   * missing file or an unreadable PDF is reported the same way.
+   */
+  if (intent.kind === 'pageop') {
+    const resolved = await resolveInputs(intent.inputs, { recursive: false })
+
+    if (resolved.sources.length === 0) {
+      return {
+        exitCode: 1,
+        stdout: [],
+        stderr: reportFailures(resolved.failures, { debug: intent.debug }),
+      }
+    }
+
+    const action = ACTIONS.find((a) => a.id === intent.action)
+    if (!action) throw new Error(`no action registered for "${intent.action}"`)
+
+    if (!action.appliesTo(resolved.sources)) {
+      const reason = unavailableReason(action, resolved.sources) ?? 'not available for these files'
+      throw invalidArguments(`Cannot ${intent.action}: ${reason}.`)
+    }
+
+    const values = pageOpValues(intent, resolved.sources)
+    const planned = action.plan(resolved.sources, values)
+
+    // `action.plan()` bypasses `buildPlan` (its one-source-one-target shape
+    // does not fit merge's several sources or split's several outputs), so
+    // the write-safety rules `buildPlan` enforces for conversions have to be
+    // applied here explicitly instead of inheriting them for free.
+    const safe = checkWriteSafety(planned, { force: intent.force })
+
+    const summary = await runJobs(safe.jobs, {})
+    const failures = [...resolved.failures, ...safe.failures, ...summary.failures]
+    const stdout = summary.results.length === 0 ? [] : reportPageOp(summary)
+
+    return {
+      exitCode: failures.length > 0 ? 1 : 0,
+      stdout,
+      stderr: reportFailures(failures, { debug: intent.debug }),
+    }
   }
 
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
