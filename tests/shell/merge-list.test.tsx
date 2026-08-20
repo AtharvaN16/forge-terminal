@@ -129,4 +129,23 @@ describe('MergeList', () => {
     expect(lastFrame() ?? '').not.toContain('sorted:')
     expect(rowOrder(lastFrame() ?? '')).toEqual(['feb.pdf', 'mar.pdf', 'jan.pdf'])
   })
+
+  /**
+   * `useInput` handlers are synchronous and `useState` updates are not, so
+   * two keypresses delivered in one tick both read the same render's `mode`
+   * — the discipline this file's own comment block establishes for
+   * `orderRef`, `cursorRef`, `heldRef` and `customStemRef`, and the reason
+   * `Select.tsx` keeps an `indexRef`. `mode` was the one piece of state that
+   * skipped it, so a fast double-press advanced the cycle once.
+   */
+  it('advances the sort twice when two presses land in one tick', async () => {
+    const { stdin, lastFrame } = app()
+
+    stdin.write('s')
+    stdin.write('s')
+    await tick()
+
+    // dropped -> name -> newest, not dropped -> name twice.
+    expect(lastFrame() ?? '').toContain('sorted: newest')
+  })
 })

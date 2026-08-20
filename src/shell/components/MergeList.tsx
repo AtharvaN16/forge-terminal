@@ -101,6 +101,7 @@ export function MergeList({
   const orderRef = useRef(order)
   const cursorRef = useRef(cursor)
   const heldRef = useRef(held)
+  const modeRef = useRef(mode)
   const customStemRef = useRef(customStem)
   customStemRef.current = customStem
 
@@ -209,8 +210,12 @@ export function MergeList({
 
   const cycleSort = () => {
     if (heldRef.current !== null) return
-    const next = nextSortMode(mode)
+    // `modeRef`, not `mode`: two `s` presses delivered in one tick share this
+    // render's closure, so reading the state would advance the cycle once for
+    // both of them (see the ref note above).
+    const next = nextSortMode(modeRef.current)
     const sorted = sortSources(baseRef.current, next, mtimes)
+    modeRef.current = next
     setMode(next)
     orderRef.current = sorted
     setOrder(sorted)
