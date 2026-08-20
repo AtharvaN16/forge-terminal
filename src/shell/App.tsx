@@ -113,6 +113,18 @@ interface PendingOverwrite {
 interface PendingPdfRefusal {
   jobs: Job[]
   failures: InputFailure[]
+  /**
+   * Where "Cancel" lands. `/pdf`'s five page operations hand off through
+   * `onDone` with nowhere else of their own to go back to but the hub —
+   * `'pdf'` reopens `PdfFlow` there, same as it always has. An ordinary
+   * document conversion run through the wizard (`confirmDocumentConversion`)
+   * has a real step to return to instead: `'destination'`, where "pick a
+   * different folder" is the actual fix, exactly what `answerOverwrite`'s
+   * own cancel already offers every other format that hits this same
+   * question. Defaulting a caller-less refusal to the hub would silently
+   * drop a wizard conversion into `/pdf` instead of back into its own flow.
+   */
+  cancelTo: 'pdf' | 'destination'
 }
 
 let blockSeq = 0
@@ -145,6 +157,28 @@ function describePdfResult(result: Result): string {
       return `rotated ${job.turns * 90}° — ${first}`
     default:
       return `done — ${first}`
+  }
+}
+
+/**
+ * The verb painted beside `pageProgress`'s running count, derived from
+ * whichever job actually reported it — never a flag threaded down by hand,
+ * so it can never say something is rendering when it is really copying
+ * pages. `merge`, `delete` and `rotate` report phases only (see
+ * `engines/pdf.ts`), so `pageProgress` never carries their `op` and this
+ * never runs for them; `default` exists only as a defensive fallback if a
+ * future op starts reporting page progress without a label of its own.
+ */
+function pageProgressLabel(op: Job['op']): string {
+  switch (op) {
+    case 'convert':
+      return 'RENDERING'
+    case 'split':
+      return 'SPLITTING'
+    case 'extract':
+      return 'EXTRACTING'
+    default:
+      return 'PROCESSING'
   }
 }
 
@@ -269,6 +303,8 @@ export function App({
     done: number
     total: number
     detail?: string
+    /** Which job this count belongs to — what `pageProgressLabel` reads. */
+    op: Job['op']
   } | null>(null)
   /** Why a typed size was rejected, shown against the field rather than later. */
   const [sizeError, setSizeError] = useState<string | undefined>(undefined)
@@ -922,7 +958,9 @@ export function App({
    */
   const confirmDocumentConversion = (destination: string) => {
     if (!source) return
-    void handlePdfDone(action.plan([source], { ...values, destination }))
+    void handlePdfDone(action.plan([source], { ...values, destination }), {
+      cancelTo: 'destination',
+    })
   }
 
   const confirmDestination = (destination: string) => {
@@ -1200,7 +1238,12 @@ export function App({
           if (event.type !== 'job:phase' || event.progress.phase !== 'page') return
           const { done, total } = event.progress
           const output = event.job.op === 'convert' ? event.job.outputs[done - 1] : undefined
-          setPageProgress({ done, total, detail: output ? basename(output) : undefined })
+          setPageProgress({
+            done,
+            total,
+            detail: output ? basename(output) : undefined,
+            op: event.job.op,
+          })
         },
       })
       for (const result of summary.results) {
@@ -1245,10 +1288,10 @@ export function App({
    * the job's own plan asking to write two things to one path, which is not
    * a preference `force` can express (see `checkWriteSafety`'s doc).
    */
-  const handlePdfDone = async (jobs: Job[]) => {
+  const handlePdfDone = async (jobs: Job[], opts: { cancelTo?: 'pdf' | 'destination' } = {}) => {
     const safe = checkWriteSafety(jobs, { force: false })
     if (safe.failures.length > 0) {
-      setPdfBlocked({ jobs, failures: safe.failures })
+      setPdfBlocked({ jobs, failures: safe.failures, cancelTo: opts.cancelTo ?? 'pdf' })
       setStep('pdf-blocked')
       return
     }
@@ -1259,8 +1302,9 @@ export function App({
   const answerPdfBlocked = (choice: string) => {
     if (!pdfBlocked) return
     if (choice !== 'replace') {
+      const cancelTo = pdfBlocked.cancelTo
       setPdfBlocked(null)
-      setStep('pdf')
+      setStep(cancelTo)
       return
     }
     const forced = checkWriteSafety(pdfBlocked.jobs, { force: true })
@@ -1688,13 +1732,18 @@ export function App({
         {step === 'pdf-running' ? (
           <Box marginBottom={1}>
             {/* Determinate only once a real `page` event has arrived — see
-                `pageProgress`'s own doc comment. Every other page operation
-                (merge, split, extract, delete, rotate) reports phases only,
-                so this stays the plain "Running…" line for all of them,
-                exactly as invariant 7 requires. */}
+                `pageProgress`'s own doc comment. Split, extract (separate
+                mode) and rasterising a document each report real per-page
+                progress; merge, delete and rotate report phases only and
+                never reach this branch, so they stay the plain "Running…"
+                line below, exactly as invariant 7 requires. The label comes
+                from `pageProgress.op` via `pageProgressLabel`, not a
+                hardcoded word, so it can never claim an operation that
+                isn't the one actually running (a split copying pages is not
+                "RENDERING" anything). */}
             {pageProgress ? (
               <Progress
-                label="RENDERING"
+                label={pageProgressLabel(pageProgress.op)}
                 done={pageProgress.done}
                 total={pageProgress.total}
                 detail={pageProgress.detail}
@@ -1720,7 +1769,18 @@ export function App({
               <Select
                 width={width}
                 items={[
-                  { value: 'cancel', label: 'Cancel', hint: 'back to /pdf, nothing written' },
+                  {
+                    value: 'cancel',
+                    label: 'Cancel',
+                    // Says where it actually goes: a page operation run from
+                    // `/pdf` has only the hub to return to, but an ordinary
+                    // document conversion has its own destination step —
+                    // see `PendingPdfRefusal.cancelTo`'s doc comment.
+                    hint:
+                      pdfBlocked.cancelTo === 'destination'
+                        ? 'pick a different folder, nothing written'
+                        : 'back to /pdf, nothing written',
+                  },
                   { value: 'replace', label: 'Replace', hint: 'overwrite the existing file' },
                 ]}
                 onSubmit={answerPdfBlocked}
