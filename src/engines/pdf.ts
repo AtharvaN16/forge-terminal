@@ -1,12 +1,21 @@
 import { readFile, rm, stat } from 'node:fs/promises'
 import { degrees, PDFDocument } from 'pdf-lib'
+import sharp from 'sharp'
 import { writeAtomic } from '../core/atomic.js'
 import { emptySelection, encryptedSource } from '../core/errors.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
-import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
+import type { DocumentInfo, FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
 import type { Engine } from './types.js'
 
-const READS: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
+const READS: ReadonlySet<FormatId> = new Set<FormatId>([
+  'pdf',
+  'jpeg',
+  'png',
+  'webp',
+  'avif',
+  'gif',
+  'tiff',
+])
 const WRITES: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
 
 /**
@@ -45,6 +54,43 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
   for (const s of sources) {
     if (s.encrypted) throw encryptedSource(s.path)
   }
+}
+
+/**
+ * pdf-lib embeds JPEG and PNG and nothing else. Anything else is decoded to
+ * PNG first, the same two-step `heic.ts` uses — one extra decode, no new
+ * dependency, and the alternative is refusing formats the capability graph
+ * has already offered.
+ */
+async function embedBytes(doc: PDFDocument, source: SourceInfo, raw: Buffer) {
+  if (source.format === 'jpeg') return doc.embedJpg(raw)
+  if (source.format === 'png') return doc.embedPng(raw)
+  return doc.embedPng(await sharp(raw).png().toBuffer())
+}
+
+/**
+ * One page, sized to the image, holding the whole image at its native
+ * resolution — the inbound half of phase 4a. `outputs`/`sources` are single
+ * because `convert` is defined that way (see `core/types.ts`); a multi-image
+ * PDF is a `merge` of several single-image PDFs, not a variant of this.
+ */
+async function imageToPdf(
+  job: Extract<Job, { op: 'convert' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  onPhase({ phase: 'reading' })
+  const raw = await readFile(source.path)
+
+  onPhase({ phase: 'encoding' })
+  const doc = await PDFDocument.create()
+  const embedded = await embedBytes(doc, source, raw)
+  const page = doc.addPage([embedded.width, embedded.height])
+  page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height })
+
+  onPhase({ phase: 'writing' })
+  const outputBytes = await writeAtomic(job.outputs[0], await doc.save())
+  return { job, outputBytes, warnings: [] }
 }
 
 async function merge(
@@ -223,10 +269,13 @@ export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
   writes: WRITES,
-  ops: new Set<Job['op']>(['merge', 'split', 'extract', 'delete', 'rotate']),
+  ops: new Set<Job['op']>(['convert', 'merge', 'split', 'extract', 'delete', 'rotate']),
   probe,
   async run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
     switch (job.op) {
+      case 'convert':
+        if (job.target !== 'pdf') throw new Error('the pdf engine only converts to pdf')
+        return imageToPdf(job, onPhase)
       case 'merge':
         return merge(job, onPhase)
       case 'split':
@@ -237,8 +286,6 @@ export const pdfEngine: Engine = {
         return deletePages(job, onPhase)
       case 'rotate':
         return rotate(job, onPhase)
-      default:
-        throw new Error(`pdf engine cannot ${job.op}`)
     }
   },
 }
