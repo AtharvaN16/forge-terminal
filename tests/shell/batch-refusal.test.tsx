@@ -19,12 +19,13 @@ const prefsFor = (dir: string) => ({
 /**
  * Stages `file`, then drives it through a real, deterministic failure —
  * asking to compress to a target size no actual JPEG can ever reach ("1b")
- * — so the run reports `target-unreachable` and returns to the prompt
- * *without* clearing what was staged. That is the one path in the app that
- * leaves the idle prompt sitting in front of a non-empty stage (see the
- * long comment above `convert()` in App.tsx), which is what makes a second
- * drop actually reachable through the real UI rather than by reaching into
- * React state directly.
+ * — so the search comes up short and the shell asks the "can't get that
+ * small" question instead of writing anything. Escaping that question
+ * returns to the prompt *without* clearing what was staged. That is the one
+ * path in the app that leaves the idle prompt sitting in front of a
+ * non-empty stage (see the long comment above `convert()` in App.tsx), which
+ * is what makes a second drop actually reachable through the real UI rather
+ * than by reaching into React state directly.
  */
 async function stageOneThenFailBackToIdle(dir: string, file: string) {
   const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
@@ -58,11 +59,15 @@ describe('a staged batch refuses to convert or compress', () => {
     const b = await makeJpeg(dir, 'b.jpg')
 
     const app = await stageOneThenFailBackToIdle(dir, a)
-    // Sanity check on the setup itself: the failure has to land back at the
-    // prompt with `a.jpg` still staged, not cleared — otherwise the rest of
-    // this test would pass for the wrong reason (nothing staged, so of
-    // course a second drop does not collide with anything).
+    // Sanity check on the setup itself: the search came up short, and the
+    // "can't get that small" question it raises names `a.jpg` — proof
+    // nothing was cleared. Dismissing it (esc) is what actually lands back
+    // at the idle prompt with `a.jpg` still staged, not cleared — otherwise
+    // the rest of this test would pass for the wrong reason (nothing
+    // staged, so of course a second drop does not collide with anything).
     expect(app.lastFrame() ?? '').toContain('a.jpg')
+    app.stdin.write(ESC)
+    await settle()
 
     app.stdin.write(b)
     await settle()

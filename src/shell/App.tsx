@@ -10,12 +10,7 @@ import {
 import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
 import { findQuality } from '../core/compress.js'
-import {
-  isForgeError,
-  targetUnreachable,
-  unexpectedError,
-  unsupportedCompress,
-} from '../core/errors.js'
+import { isForgeError, unexpectedError, unsupportedCompress } from '../core/errors.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
@@ -73,6 +68,8 @@ export type Step =
   | 'rename'
   | 'overwrite'
   | 'converting'
+  /** A target size searched down to the lowest quality and still missed it — see `sizeUnreachable`. */
+  | 'size-unreachable'
   | 'result'
   /** `/pdf`: `PdfFlow` owns the conversation; this just mounts it. */
   | 'pdf'
@@ -99,6 +96,23 @@ interface PendingOverwrite {
   destination: string
   output: string
   keepBoth: string
+}
+
+/**
+ * What the "can't get that small" question needs to remember while it is
+ * being asked: the plan a target-size search already fell short of, plus the
+ * smallest quality/size that search actually found, so "use the lowest
+ * quality" can finish the same conversion rather than re-planning or
+ * re-searching from scratch.
+ */
+interface PendingSizeUnreachable {
+  planned: Extract<Job, { op: 'convert' }>
+  destination: string
+  output: string
+  opts: { force?: boolean; output?: string }
+  targetBytes: number
+  smallest: number
+  quality: number
 }
 
 /**
@@ -379,6 +393,8 @@ export function App({
   const [renaming, setRenaming] = useState<PendingRename | null>(null)
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
+  /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
+  const [sizeUnreachable, setSizeUnreachable] = useState<PendingSizeUnreachable | null>(null)
 
   /**
    * Mirrors `text` for the completion callback, for the same reason
@@ -1067,6 +1083,94 @@ export function App({
    * brief does not make, so this function still only ever acts on the first
    * staged file. See the task report for the full trace.
    */
+  /**
+   * The part of a conversion that runs once quality is settled — a plan
+   * already carrying the quality it will encode at, never one still waiting
+   * on a target-size search. Split out of `convert()` so the "use the lowest
+   * quality anyway" answer to `sizeUnreachable` can finish the same
+   * conversion the search already ran most of, instead of re-planning or
+   * re-searching from scratch.
+   */
+  const finishConversion = async (
+    planned: Extract<Job, { op: 'convert' }>,
+    destination: string,
+    output: string,
+    opts: { force?: boolean; output?: string },
+  ) => {
+    if (!source) return
+    // Deliberately still `[source]`, not `stage.sources` — see the note on
+    // `convert()` below for why passing the whole batch here is not a safe
+    // mechanical change.
+    const plan = await buildPlan({
+      resolved: { sources: [source], failures: [], roots: new Map<string, string>() },
+      target: planned.target,
+      output,
+      options: planned.options,
+      force: opts.force ?? false,
+    })
+
+    const refusal = plan.failures[0]
+    if (refusal) {
+      // An output that already exists is a question, not a refusal: spec §8
+      // says the shell asks — keep both, replace, or cancel.
+      if (refusal.error.code === 'output-exists') {
+        setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
+        setStep('overwrite')
+        return
+      }
+      push({ kind: 'error', id: nextId(), error: refusal.error })
+      // Writing over the source has no "replace" worth offering — there is
+      // no outcome there that keeps the original. Back to the destination
+      // step, where choosing a different folder is the actual fix.
+      setStep(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
+      return
+    }
+
+    const summary = await runJobs(plan.jobs, {})
+    const result = summary.results[0]
+    if (result) {
+      setLastResult(result)
+      push({ kind: 'result', id: nextId(), result })
+      setStep('result')
+
+      /**
+       * Only after a compression, and only once the file is safely written:
+       * this is an extra encode purely to find out whether a sentence is
+       * worth saying, and it must not be able to cost the user the
+       * conversion they actually asked for.
+       */
+      if (mode === 'compress') {
+        const found = await suggestFormat({
+          source,
+          resultBytes: result.outputBytes,
+          quality: planned.options.quality ?? livePrefs.quality,
+          encode: async (target, quality) =>
+            (await encodeToBuffer(source, target, { ...planned.options, quality })).length,
+        })
+        setSuggestion(found)
+        setMergeOffer(undefined)
+      } else {
+        setSuggestion(undefined)
+        // Compress never reaches here with `target === 'pdf'` — it keeps
+        // the source's own format (see `compressAction.appliesTo`) — so
+        // this only ever counts conversions the user actually chose 'PDF'
+        // for.
+        if (planned.target === 'pdf') {
+          pdfOutputsThisSession.current += 1
+          setMergeOffer(
+            pdfOutputsThisSession.current > 1 ? pdfOutputsThisSession.current : undefined,
+          )
+        } else {
+          setMergeOffer(undefined)
+        }
+      }
+    } else {
+      const failure = summary.failures[0]
+      if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
+      setStep('idle')
+    }
+  }
+
   const convert = async (destination: string, opts: { force?: boolean; output?: string } = {}) => {
     if (!source) return
     if (converting.current) return
@@ -1100,88 +1204,25 @@ export function App({
         })
         setAttempt(undefined)
         if (found.missed) {
-          push({
-            kind: 'error',
-            id: nextId(),
-            error: targetUnreachable(source, values.targetBytes, found.bytes),
+          // Nothing gets small enough — but the search still measured the
+          // smallest it *can* get, so this asks rather than just refuses:
+          // take that size, or go pick a format with more room to shrink.
+          setSizeUnreachable({
+            planned,
+            destination,
+            output,
+            opts,
+            targetBytes: values.targetBytes,
+            smallest: found.bytes,
+            quality: found.quality,
           })
-          setStep('idle')
+          setStep('size-unreachable')
           return
         }
         planned.options.quality = found.quality
       }
 
-      // Deliberately still `[source]`, not `stage.sources` — see the note on
-      // `convert()` above this function for why passing the whole batch here
-      // is not a safe mechanical change.
-      const plan = await buildPlan({
-        resolved: { sources: [source], failures: [], roots: new Map<string, string>() },
-        target: planned.target,
-        output,
-        options: planned.options,
-        force: opts.force ?? false,
-      })
-
-      const refusal = plan.failures[0]
-      if (refusal) {
-        // An output that already exists is a question, not a refusal: spec §8
-        // says the shell asks — keep both, replace, or cancel.
-        if (refusal.error.code === 'output-exists') {
-          setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
-          setStep('overwrite')
-          return
-        }
-        push({ kind: 'error', id: nextId(), error: refusal.error })
-        // Writing over the source has no "replace" worth offering — there is
-        // no outcome there that keeps the original. Back to the destination
-        // step, where choosing a different folder is the actual fix.
-        setStep(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
-        return
-      }
-
-      const summary = await runJobs(plan.jobs, {})
-      const result = summary.results[0]
-      if (result) {
-        setLastResult(result)
-        push({ kind: 'result', id: nextId(), result })
-        setStep('result')
-
-        /**
-         * Only after a compression, and only once the file is safely written:
-         * this is an extra encode purely to find out whether a sentence is
-         * worth saying, and it must not be able to cost the user the
-         * conversion they actually asked for.
-         */
-        if (mode === 'compress') {
-          const found = await suggestFormat({
-            source,
-            resultBytes: result.outputBytes,
-            quality: planned.options.quality ?? livePrefs.quality,
-            encode: async (target, quality) =>
-              (await encodeToBuffer(source, target, { ...planned.options, quality })).length,
-          })
-          setSuggestion(found)
-          setMergeOffer(undefined)
-        } else {
-          setSuggestion(undefined)
-          // Compress never reaches here with `target === 'pdf'` — it keeps
-          // the source's own format (see `compressAction.appliesTo`) — so
-          // this only ever counts conversions the user actually chose 'PDF'
-          // for.
-          if (planned.target === 'pdf') {
-            pdfOutputsThisSession.current += 1
-            setMergeOffer(
-              pdfOutputsThisSession.current > 1 ? pdfOutputsThisSession.current : undefined,
-            )
-          } else {
-            setMergeOffer(undefined)
-          }
-        }
-      } else {
-        const failure = summary.failures[0]
-        if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
-        setStep('idle')
-      }
+      await finishConversion(planned, destination, output, opts)
     } catch (e) {
       // convertAction.plan() throws synchronously on a bad target, and
       // nothing guarantees buildPlan() or runJobs() can never reject for some
@@ -1195,6 +1236,31 @@ export function App({
     } finally {
       converting.current = false
     }
+  }
+
+  /** Answers `sizeUnreachable`: take the smallest size the search found, or back off to pick a format instead. */
+  const answerSizeUnreachable = (choice: string) => {
+    if (!sizeUnreachable) return
+    const { planned, destination, output, opts, quality } = sizeUnreachable
+    setSizeUnreachable(null)
+    if (choice === 'lowest') {
+      if (converting.current) return
+      converting.current = true
+      planned.options.quality = quality
+      setStep('converting')
+      void finishConversion(planned, destination, output, opts)
+        .catch((e) => {
+          showError(e)
+          setStep('idle')
+        })
+        .finally(() => {
+          converting.current = false
+        })
+      return
+    }
+    setMode('convert')
+    setValues({})
+    setStep(source && hasConvertTarget(source) ? 'target' : 'idle')
   }
 
   const answerOverwrite = (choice: string) => {
@@ -1355,10 +1421,10 @@ export function App({
         {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
           <Box marginBottom={1}>
             <Text color={colourProp(palette.accent)} bold>
-              {mode === 'compress' ? '  COMPRESS  ' : '  CONVERT  '}
+              {band === 'compact' ? `  ${mode}  ` : `  current mode: ${mode}  `}
             </Text>
             <Text color={colourProp(palette.dim)}>
-              {mode === 'compress' ? '  /convert to switch back' : '  /compress to switch'}
+              {band === 'compact' ? '  / to change' : '  use / to change mode'}
             </Text>
           </Box>
         ) : null}
@@ -1630,6 +1696,45 @@ export function App({
               onCancel={() => {
                 setPending(null)
                 setStep('destination')
+              }}
+              showHints={band !== 'compact'}
+            />
+            <HintBar
+              width={width}
+              pairs={[
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+                ['esc', 'cancel'],
+              ]}
+            />
+          </Box>
+        ) : null}
+
+        {step === 'size-unreachable' && sizeUnreachable ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text>
+              {`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
+                sizeUnreachable.smallest,
+              )} — you asked for ${formatBytes(sizeUnreachable.targetBytes)}.`}
+            </Text>
+            <Select
+              width={width}
+              items={[
+                {
+                  value: 'lowest',
+                  label: 'Use the lowest quality',
+                  hint: `${formatBytes(sizeUnreachable.smallest)} — as small as it gets`,
+                },
+                {
+                  value: 'format',
+                  label: 'Pick a smaller format instead',
+                  hint: '/convert',
+                },
+              ]}
+              onSubmit={answerSizeUnreachable}
+              onCancel={() => {
+                setSizeUnreachable(null)
+                setStep('idle')
               }}
               showHints={band !== 'compact'}
             />

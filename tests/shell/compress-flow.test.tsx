@@ -200,8 +200,8 @@ describe('knowing which mode you are in', () => {
   it('names the mode once compress is active', async () => {
     const { lastFrame } = await toCompress()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('COMPRESS')
-    expect(frame).toContain('/convert to switch back')
+    expect(frame).toContain('current mode: compress')
+    expect(frame).toContain('use / to change mode')
   })
 
   it('names convert too — a mode you cannot see is one you can be in by accident', async () => {
@@ -214,14 +214,16 @@ describe('knowing which mode you are in', () => {
     stdin.write(ENTER)
     await settle(400)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('CONVERT')
-    expect(frame).not.toContain('COMPRESS')
-    expect(frame).toContain('/compress to switch')
+    expect(frame).toContain('current mode: convert')
+    expect(frame).not.toContain('current mode: compress')
+    expect(frame).toContain('use / to change mode')
   }, 20_000)
 
   it('names the mode before any file is dropped', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
-    expect(render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? '').toContain('CONVERT')
+    expect(render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? '').toContain(
+      'current mode: convert',
+    )
   })
 
   it('offers to compress again, not convert another', async () => {
@@ -246,8 +248,8 @@ describe('knowing which mode you are in', () => {
     stdin.write(ENTER)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).not.toContain('COMPRESS')
-    expect(frame).toContain('CONVERT')
+    expect(frame).not.toContain('current mode: compress')
+    expect(frame).toContain('current mode: convert')
   }, 20_000)
 })
 

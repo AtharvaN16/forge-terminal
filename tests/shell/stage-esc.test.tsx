@@ -19,7 +19,8 @@ const prefsFor = (dir: string) => ({
 /**
  * Stages `file`, then drives it through a real, deterministic failure — an
  * unreachable compress target size ("1b", which no real JPEG can ever hit)
- * — so the run reports `target-unreachable` and returns to the idle prompt
+ * — so the search comes up short and the shell asks the "can't get that
+ * small" question. Escaping that question returns to the idle prompt
  * *without* clearing the stage. Duplicated from `batch-refusal.test.tsx`
  * rather than shared, matching this suite's existing convention of each
  * file keeping its own scenario helper (`toCompress`, `ontoAnExistingOutput`).
@@ -58,14 +59,17 @@ describe('esc at the prompt', () => {
     const dir = await makeTempDir()
     const a = await makeJpeg(dir, 'a.jpg')
     const app = await stageOneThenFailBackToIdle(dir, a)
-    // Sanity check on the setup: the failure really left a.jpg staged.
+    // Sanity check on the setup: the search came up short and is now asking
+    // the "can't get that small" question, naming a.jpg.
     expect(app.lastFrame() ?? '').toContain('a.jpg')
 
+    // Dismiss the question — same as any other refusal, esc goes back to the
+    // idle prompt without discarding what was staged.
+    app.stdin.write(ESC)
+    await settle()
+
     // Open the palette with a partial command. Its description text is what
-    // proves the palette itself is open — plain "/convert" also appears in
-    // the leftover `target-unreachable` error's hint ("...or /convert to a
-    // smaller format"), so that alone can't distinguish palette-open from
-    // palette-closed.
+    // proves the palette itself is open.
     app.stdin.write('/conv')
     await settle()
     expect(app.lastFrame() ?? '').toContain("change a file's format")
@@ -98,6 +102,11 @@ describe('esc at the prompt', () => {
     const a = await makeJpeg(dir, 'a.jpg')
     const app = await stageOneThenFailBackToIdle(dir, a)
     expect(app.lastFrame() ?? '').toContain('a.jpg')
+
+    // Dismiss the "can't get that small" question first — the idle prompt
+    // this test actually exercises only mounts once it is answered.
+    app.stdin.write(ESC)
+    await settle()
 
     // "/U" — realistic and minimal: the start of any absolute path under
     // /Users, and it matches none of convert/compress/theme/help.
