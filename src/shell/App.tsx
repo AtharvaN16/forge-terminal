@@ -251,6 +251,25 @@ export function App({
   const [sizeError, setSizeError] = useState<string | undefined>(undefined)
   /** A measured alternative worth offering after a compression. */
   const [suggestion, setSuggestion] = useState<Suggestion | undefined>(undefined)
+  /**
+   * How many `target: 'pdf'` conversions have written a file this session.
+   * Unlike `suggestion` (recomputed fresh from one result), the merge offer
+   * below only makes sense once a *second* single-image PDF exists to
+   * combine the first one with — so this has to survive across separate
+   * conversions rather than being derived from the latest result alone. A
+   * ref, not state: the count itself is never rendered, only whether it has
+   * crossed one, which `mergeOffer` below tracks.
+   */
+  const pdfOutputsThisSession = useRef(0)
+  /**
+   * Set once a `target: 'pdf'` conversion brings `pdfOutputsThisSession`
+   * above one. Several single-image PDFs are exactly what phase 3's
+   * `mergeAction` combines, and once they exist as separate files nothing
+   * else in the wizard points at that — so this offers it, the same way the
+   * compress flow offers a stronger format. See the render below for why
+   * acting on it is left to `/pdf` rather than a dedicated key.
+   */
+  const [mergeOffer, setMergeOffer] = useState<number | undefined>(undefined)
   const [text, setText] = useState('')
   /**
    * The staged list. What was one file (`SourceInfo | null`) is now a list
@@ -1013,8 +1032,21 @@ export function App({
               (await encodeToBuffer(source, target, { ...planned.options, quality })).length,
           })
           setSuggestion(found)
+          setMergeOffer(undefined)
         } else {
           setSuggestion(undefined)
+          // Compress never reaches here with `target === 'pdf'` — it keeps
+          // the source's own format (see `compressAction.appliesTo`) — so
+          // this only ever counts conversions the user actually chose 'PDF'
+          // for.
+          if (planned.target === 'pdf') {
+            pdfOutputsThisSession.current += 1
+            setMergeOffer(
+              pdfOutputsThisSession.current > 1 ? pdfOutputsThisSession.current : undefined,
+            )
+          } else {
+            setMergeOffer(undefined)
+          }
         }
       } else {
         const failure = summary.failures[0]
@@ -1411,6 +1443,25 @@ export function App({
                   {`${SYMBOLS.warn} ${FORMATS[suggestion.target].label} would be ${formatBytes(
                     suggestion.bytes,
                   )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
+                </Text>
+              </Box>
+            ) : null}
+            {/* Reuses the block above rather than inventing a second visual
+                pattern for a second kind of offer. Deliberately informational
+                only, with no key of its own that stages and acts on it the
+                way `c` does for `suggestion`: doing that honestly needs the
+                written PDFs re-probed into real `SourceInfo`s first (`probe`
+                is async, and nothing here currently tracks more than their
+                paths), and `/pdf` — already one command away, and already
+                signposted elsewhere in this file — is that path already
+                built. A second, keystroke-driven way to reach the same
+                screen is not worth the complexity for what this offer is:
+                a nudge that several single-image PDFs now sitting on disk
+                are exactly what `mergeAction` combines. */}
+            {mergeOffer ? (
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.warn)}>
+                  {`${SYMBOLS.warn} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`}
                 </Text>
               </Box>
             ) : null}

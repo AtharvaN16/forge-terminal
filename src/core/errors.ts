@@ -252,11 +252,17 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
  * last step would not tell the user what is actually wrong.
  */
 export function encryptedSource(path: string): ForgeError {
+  const name = basename(path)
   return new ForgeError({
     code: 'encrypted-source',
     title: 'This PDF is password-protected',
-    detail: `${basename(path)} cannot be changed until it is unlocked.`,
-    hint: 'Remove the password first, then try again.',
+    detail: `${name} is password-protected.`,
+    // Forge cannot decrypt-and-write a PDF — the only libraries that can are
+    // AGPL, and Forge is MIT (see the phase-4a spec's ruling on this). The
+    // shell also has no password field by design (spec §8), so this points
+    // at the one front end that reads an encrypted PDF rather than only
+    // refusing.
+    hint: `Convert it to images instead:  forge ${name} --to jpeg --password-stdin`,
   })
 }
 
