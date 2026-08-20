@@ -9,6 +9,7 @@ import type { SourceInfo } from '../../src/core/types.js'
 
 function source(format: SourceInfo['format']): SourceInfo {
   return {
+    kind: 'image',
     path: `/tmp/x.${format}`,
     format,
     width: 8,

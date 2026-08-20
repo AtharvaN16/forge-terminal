@@ -57,6 +57,7 @@ describe('HEIC at photo size', () => {
       return
     }
     const source = await probe(heic)
+    if (source.kind !== 'image') throw new Error('expected an image source')
     expect(source.format).toBe('heic')
     expect(source.width).toBe(4032)
     expect(source.height).toBe(3024)
@@ -115,6 +116,7 @@ describe('HEIC conversion', () => {
       }
 
       const source = await probe(heic)
+      if (source.kind !== 'image') throw new Error('expected an image source')
       expect(source.format).toBe('heic')
 
       const output = join(dir, `out.${target === 'jpeg' ? 'jpg' : target}`)

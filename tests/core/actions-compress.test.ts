@@ -3,9 +3,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { compressAction } from '../../src/core/actions/index.js'
-import type { SourceInfo } from '../../src/core/types.js'
+import type { ImageInfo, SourceInfo } from '../../src/core/types.js'
 
-const source = (over: Partial<SourceInfo> = {}): SourceInfo => ({
+const source = (over: Partial<ImageInfo> = {}): SourceInfo => ({
+  kind: 'image',
   path: '/Users/me/Pictures/photo.jpg',
   format: 'jpeg',
   width: 4032,

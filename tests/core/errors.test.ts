@@ -13,6 +13,7 @@ import {
 import type { SourceInfo } from '../../src/core/types.js'
 
 const source: SourceInfo = {
+  kind: 'image',
   path: '/tmp/photo.jpg',
   format: 'jpeg',
   width: 10,

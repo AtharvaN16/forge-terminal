@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { writableFormats } from '../../src/core/capabilities.js'
 import { candidateFor, suggestFormat } from '../../src/core/suggest.js'
-import type { SourceInfo } from '../../src/core/types.js'
+import type { ImageInfo, SourceInfo } from '../../src/core/types.js'
 
-const source = (over: Partial<SourceInfo> = {}): SourceInfo => ({
+const source = (over: Partial<ImageInfo> = {}): SourceInfo => ({
+  kind: 'image',
   path: '/tmp/photo.jpg',
   format: 'jpeg',
   width: 100,

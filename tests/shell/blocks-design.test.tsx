@@ -8,6 +8,7 @@ import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, LIGHT } from '../../src/shell/theme.js'
 
 const source: SourceInfo = {
+  kind: 'image',
   path: '/tmp/diagram.png',
   format: 'png',
   width: 2400,

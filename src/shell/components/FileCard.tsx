@@ -24,13 +24,17 @@ export function FileCard({ source, width }: { source: SourceInfo; width: number 
   const name = source.path.split('/').pop() ?? source.path
   const label = FORMATS[source.format].label
 
-  const facts = [
-    `${source.width}×${source.height}`,
-    formatBytes(source.bytes),
-    // Only claimed when the source genuinely carries alpha — saying
-    // "transparent" about an opaque JPEG would be a plain lie about the file.
-    ...(source.hasAlpha ? ['transparent'] : []),
-  ].join(' · ')
+  const facts = (
+    source.kind === 'image'
+      ? [
+          `${source.width}×${source.height}`,
+          formatBytes(source.bytes),
+          // Only claimed when the source genuinely carries alpha — saying
+          // "transparent" about an opaque JPEG would be a plain lie about the file.
+          ...(source.hasAlpha ? ['transparent'] : []),
+        ]
+      : [`${source.pages} pages`, formatBytes(source.bytes)]
+  ).join(' · ')
 
   // Spec §13: the compact band drops the frame *and* the format and
   // dimensions, keeping only what identifies the file and how big it is.

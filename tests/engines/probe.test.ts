@@ -27,6 +27,7 @@ describe('probe', () => {
   it('reads dimensions, size and alpha', async () => {
     const dir = await makeTempDir()
     const info = await probe(await makeTransparentPng(dir, 'a.png'))
+    if (info.kind !== 'image') throw new Error('expected an image source')
     expect(info.format).toBe('png')
     expect(info.width).toBe(32)
     expect(info.height).toBe(32)
@@ -36,8 +37,13 @@ describe('probe', () => {
 
   it('defaults frames to 1 for a still and counts them for an animation', async () => {
     const dir = await makeTempDir()
-    expect((await probe(await makeJpeg(dir, 'a.jpg'))).frames).toBe(1)
-    expect((await probe(await makeAnimatedGif(dir, 'a.gif', 3))).frames).toBe(3)
+    const still = await probe(await makeJpeg(dir, 'a.jpg'))
+    const animated = await probe(await makeAnimatedGif(dir, 'a.gif', 3))
+    if (still.kind !== 'image' || animated.kind !== 'image') {
+      throw new Error('expected image sources')
+    }
+    expect(still.frames).toBe(1)
+    expect(animated.frames).toBe(3)
   })
 
   it('identifies by content, not by extension', async () => {

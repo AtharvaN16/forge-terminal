@@ -126,6 +126,7 @@ async function probe(path: string): Promise<SourceInfo> {
     }
     if (info.width === 0 || info.height === 0) throw corruptSource(path, undefined)
     return {
+      kind: 'image',
       path,
       format: 'heic',
       width: info.width,
@@ -146,6 +147,7 @@ async function probe(path: string): Promise<SourceInfo> {
   }
 
   return {
+    kind: 'image',
     path,
     format: identify(path, meta),
     width: meta.width ?? 0,
@@ -231,6 +233,13 @@ async function pipelineFor(
   options: ConvertOptions,
   animated: boolean,
 ): Promise<{ pipeline: Sharp; cleanup: () => Promise<void> }> {
+  // The image engine only ever builds a pipeline for an image — the registry
+  // routes jobs to an engine by `reads`/`writes`, so a document source
+  // reaching here would be a caller bug, not a condition a user can trigger.
+  if (source.kind !== 'image') {
+    throw new Error('pipelineFor received a non-image source')
+  }
+
   /**
    * HEIC cannot be decoded by the bundled libvips (see engines/heic.ts), so
    * it is transcoded to a temporary PNG by `sips` first and the ordinary
@@ -291,6 +300,12 @@ export async function encodeToBuffer(
 }
 
 async function convert(job: Job, onPhase: (phase: Phase) => void): Promise<Result> {
+  // Same reasoning as pipelineFor: the registry only ever routes an image
+  // source to this engine.
+  if (job.source.kind !== 'image') {
+    throw new Error('the image engine cannot convert a document source')
+  }
+
   const spec = FORMATS[job.target]
   const warnings: Warning[] = []
 

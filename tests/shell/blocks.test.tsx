@@ -7,6 +7,7 @@ import { FileCard } from '../../src/shell/components/FileCard.js'
 import { Hints } from '../../src/shell/components/Hints.js'
 
 const source: SourceInfo = {
+  kind: 'image',
   path: '/Users/me/Desktop/photo.jpg',
   format: 'jpeg',
   width: 3024,

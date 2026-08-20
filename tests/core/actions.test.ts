@@ -4,10 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES, type Preferences } from '../../src/config/preferences.js'
 import { ACTIONS, actionsFor, convertAction } from '../../src/core/actions/index.js'
 import { isForgeError } from '../../src/core/errors.js'
-import type { SourceInfo } from '../../src/core/types.js'
+import type { ImageInfo, SourceInfo } from '../../src/core/types.js'
 
-function source(over: Partial<SourceInfo> = {}): SourceInfo {
+function source(over: Partial<ImageInfo> = {}): SourceInfo {
   return {
+    kind: 'image',
     path: '/Users/me/Desktop/photo.jpg',
     format: 'jpeg',
     width: 3024,
@@ -168,6 +169,7 @@ describe('convert action plan target validation', () => {
 
 describe('destination presets', () => {
   const source: SourceInfo = {
+    kind: 'image',
     path: '/Users/x/Pictures/diagram.png',
     format: 'png',
     width: 10,
@@ -232,6 +234,7 @@ describe('destination presets', () => {
 
 describe('quality default', () => {
   const source: SourceInfo = {
+    kind: 'image',
     path: '/tmp/a.png',
     format: 'png',
     width: 10,
