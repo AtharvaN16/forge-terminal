@@ -77,3 +77,65 @@ export function uniqueOutputPath(path: string): string {
   // beats returning `path`, which the caller would dutifully overwrite.
   throw new Error(`no free name beside ${name}`)
 }
+
+function stemAndExt(path: string): { dir: string; stem: string; ext: string } {
+  const dir = resolve(path, '..')
+  const name = basename(path)
+  const ext = extname(name)
+  return { dir, stem: ext ? name.slice(0, -ext.length) : name, ext: ext || '.pdf' }
+}
+
+/** `report.pdf` + `trimmed` → `report-trimmed.pdf`, beside the source. */
+export function suffixedOutputPath(sourcePath: string, suffix: string): string {
+  const { dir, stem, ext } = stemAndExt(resolve(sourcePath))
+  return join(dir, `${stem}-${suffix}${ext}`)
+}
+
+/**
+ * Numbered outputs for a split.
+ *
+ * Zero-padded to the width of the count, so `-01`…`-12` sorts the way anyone
+ * looking at the folder expects. Unpadded numbers put `-10` before `-2`.
+ */
+export function splitOutputPaths(sourcePath: string, count: number): string[] {
+  const { dir, stem, ext } = stemAndExt(resolve(sourcePath))
+  const width = String(count).length
+  return Array.from({ length: count }, (_, i) =>
+    join(dir, `${stem}-${String(i + 1).padStart(width, '0')}${ext}`),
+  )
+}
+
+/**
+ * Outputs for an extract.
+ *
+ * Separate files are named by 1-based page number rather than sequence, so
+ * the name says where the page came from — `report-p12.pdf` is page 12, not
+ * the twelfth file.
+ */
+export function extractOutputPaths(
+  sourcePath: string,
+  pages: number[],
+  separate: boolean,
+): string[] {
+  if (!separate) return [suffixedOutputPath(sourcePath, 'extract')]
+  const { dir, stem, ext } = stemAndExt(resolve(sourcePath))
+  return pages.map((p) => join(dir, `${stem}-p${p + 1}${ext}`))
+}
+
+/**
+ * The output for a merge.
+ *
+ * Every other operation derives its name from its one source; merge has none.
+ * The common parent folder is the best available answer — `~/invoices/*.pdf`
+ * becomes `invoices-merged.pdf` in that folder. When the inputs span folders
+ * there is no shared name worth using, so it falls back to the first file.
+ */
+export function mergeOutputPath(sourcePaths: string[]): string {
+  const first = resolve(sourcePaths[0] ?? 'merged.pdf')
+  const dirs = new Set(sourcePaths.map((p) => resolve(p, '..')))
+  if (dirs.size === 1) {
+    const dir = resolve(first, '..')
+    return join(dir, `${basename(dir)}-merged.pdf`)
+  }
+  return suffixedOutputPath(first, 'merged')
+}
