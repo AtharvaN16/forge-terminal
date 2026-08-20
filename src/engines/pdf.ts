@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { PDFDocument } from 'pdf-lib'
 import { encryptedSource } from '../core/errors.js'
+import { cutsToRanges } from '../core/pages.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
 import type { Engine } from './types.js'
 
@@ -85,6 +86,52 @@ async function merge(
   return { job, outputBytes, warnings: [] }
 }
 
+/**
+ * `cutsToRanges` silently normalises its input (dedupes, sorts, drops
+ * out-of-range cuts) rather than validating it, so a `cuts` list that arrived
+ * unsorted or with duplicates still produces a correct partition here.
+ *
+ * Every output is written before any is kept. A split that fails half way
+ * through must not leave a folder of partial results (invariant 6).
+ */
+async function split(
+  job: Extract<Job, { op: 'split' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  assertUnencrypted([source])
+
+  onPhase({ phase: 'reading' })
+  const src = await load(source.path)
+  const ranges = cutsToRanges(job.cuts, src.getPageCount())
+
+  const written: string[] = []
+  let outputBytes = 0
+  try {
+    for (const [i, range] of ranges.entries()) {
+      const out = await PDFDocument.create()
+      const indices = Array.from({ length: range.to - range.from + 1 }, (_, n) => range.from + n)
+      const pages = await out.copyPages(src, indices)
+      for (const page of pages) out.addPage(page)
+
+      const path = job.outputs[i]
+      if (path === undefined) {
+        throw new Error(
+          `split produced ${ranges.length} parts but was given ${job.outputs.length} outputs`,
+        )
+      }
+      outputBytes += await writeAtomic(path, await out.save())
+      written.push(path)
+      onPhase({ phase: 'page', done: i + 1, total: ranges.length })
+    }
+  } catch (e) {
+    await Promise.all(written.map((p) => rm(p, { force: true })))
+    throw e
+  }
+
+  return { job, outputBytes, warnings: [] }
+}
+
 export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
@@ -95,6 +142,8 @@ export const pdfEngine: Engine = {
     switch (job.op) {
       case 'merge':
         return merge(job, onPhase)
+      case 'split':
+        return split(job, onPhase)
       default:
         throw new Error(`pdf engine cannot ${job.op}`)
     }
