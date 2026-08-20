@@ -3,8 +3,8 @@ import type { PDFiumDocument } from '@hyzyla/pdfium'
 import { PDFiumLibrary } from '@hyzyla/pdfium'
 import sharp from 'sharp'
 import { writeAtomic } from '../core/atomic.js'
-import { FORMATS } from '../core/formats.js'
 import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
+import { encode } from './image.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
@@ -78,7 +78,23 @@ export const pdfiumEngine: Engine = {
     if (pages.length !== job.outputs.length) {
       throw new Error(`pdfium was given ${pages.length} pages but ${job.outputs.length} outputs`)
     }
-    const quality = job.options.quality ?? FORMATS[job.target].defaultQuality
+    // Also a caller bug: `doc.getPage(99)` on a 3-page document does not
+    // throw, it hands back an empty page whose render produces an empty
+    // bitmap — the user would see Sharp's opaque "Input Buffer is empty"
+    // instead of anything that names what actually went wrong. `source`
+    // already carries the real page count, so check before opening the doc.
+    for (const index of pages) {
+      if (index < 0 || index >= source.pages) {
+        throw new Error(
+          `pdfium was asked for page ${index}, but ${source.path} has ${source.pages} pages`,
+        )
+      }
+    }
+    // `job.options.keepMetadata` is accepted by the job shape but never
+    // consulted here, the same way `engines/pdf.ts`'s `imageToPdf` documents
+    // for its own unused options: a rendered bitmap is a fresh raster off
+    // the vector page, not a decode of a file carrying its own EXIF/ICC
+    // data, so there is nothing for "keep metadata" to act on.
 
     const doc = await openPdf(await readFile(source.path), job.options.password)
     try {
@@ -91,17 +107,27 @@ export const pdfiumEngine: Engine = {
           // first pixel [51,102,230,255]. bitmap.data is handed to Sharp's
           // raw input unswapped; swapping the channels yields a visibly
           // wrong image that still passes every width/height assertion.
-          const bitmap = await doc.getPage(index).render({ scale: dpi / 72, render: 'bitmap' })
-          const image = sharp(Buffer.from(bitmap.data), {
+          //
+          // `transparent: true` is required, not cosmetic: pdfium's default
+          // is `transparent: false`, which pre-fills the bitmap with opaque
+          // white before painting anything, so `flatten()` below would be a
+          // no-op and `--background` would silently do nothing. With real
+          // transparency in the bitmap, flattening onto `job.options.background`
+          // applies to both JPEG (which cannot carry alpha at all) and PNG
+          // (which could, but a scanned page's unpainted area reads as paper,
+          // not a transparent cut-out — so both targets get the same paper
+          // colour rather than PNG alone defaulting to see-through).
+          const bitmap = await doc
+            .getPage(index)
+            .render({ scale: dpi / 72, render: 'bitmap', transparent: true })
+          // Sharp accepts a Uint8Array directly and the library already
+          // slices its own copy off the wasm heap, so wrapping it in
+          // `Buffer.from` here would be a second, needless full-page copy —
+          // ~140 MB at 600 dpi for nothing.
+          const image = sharp(bitmap.data, {
             raw: { width: bitmap.width, height: bitmap.height, channels: 4 },
-          })
-          const bytes =
-            job.target === 'png'
-              ? await image.png().toBuffer()
-              : await image
-                  .flatten({ background: job.options.background })
-                  .jpeg({ quality, mozjpeg: true })
-                  .toBuffer()
+          }).flatten({ background: job.options.background })
+          const bytes = await encode(image, job.target, job.options.quality).toBuffer()
 
           // The arity guard above proves this index is in range, but
           // TypeScript can't carry that fact through a runtime-computed

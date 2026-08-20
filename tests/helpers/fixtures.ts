@@ -271,3 +271,30 @@ export async function makeColouredPdf(
   await writeFile(path, await doc.save())
   return path
 }
+
+/**
+ * A page where only the bottom-left quarter is painted; the rest is left
+ * genuinely unpainted, not merely white. Renders (with `transparent: true`)
+ * as real transparency there, so sampling far from the painted corner tests
+ * what a *background* option actually did, not the page's own content — a
+ * fully-painted fixture can't distinguish "flattened onto the requested
+ * colour" from "the library's opaque-white default happened to match".
+ */
+export async function makePartiallyPaintedPdf(
+  dir: string,
+  name: string,
+  c: { r: number; g: number; b: number },
+): Promise<string> {
+  const doc = await PDFDocument.create()
+  const page = doc.addPage([200, 200])
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    color: rgb(c.r / 255, c.g / 255, c.b / 255),
+  })
+  const path = join(dir, name)
+  await writeFile(path, await doc.save())
+  return path
+}
