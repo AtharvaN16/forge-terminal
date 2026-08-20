@@ -15,7 +15,7 @@ const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
  * Drops `file`, opens `/pdf`, chooses Rotate, accepts 90°, confirms.
  *
  * A staged PDF now has a real convert target (jpeg, png — see
- * `engines/mupdf.ts`), so the drop's own Enter lands on "Convert PDF to",
+ * `engines/pdfium.ts`), so the drop's own Enter lands on "Convert PDF to",
  * not idle — `hasConvertTarget` in App.tsx is genuinely true for it. `esc`
  * backs out of that picker without discarding the stage
  * (`backToPromptKeepingStage`), which is what makes `/pdf` reachable from
@@ -54,7 +54,7 @@ async function rotateOnce(stdin: { write: (s: string) => void }, file: string) {
  */
 describe('/pdf end to end through App', () => {
   it('a dropped PDF opens the convert picker, and /pdf still reaches page operations from there', async () => {
-    // A PDF now has real convert targets — jpeg and png, from the mupdf
+    // A PDF now has real convert targets — jpeg and png, from the pdfium
     // engine — so `hasConvertTarget` is genuinely true for it and a solo
     // drop advances straight to the picker, the same as any image (see the
     // next test). What changed with that: page operations must not become
@@ -104,7 +104,8 @@ describe('/pdf end to end through App', () => {
     // and backing out first (see the previous test) — a solo drop no
     // longer stops at idle on its own now that `hasConvertTarget` is true
     // for a PDF. Once there, `/convert` is a second, explicit way in, and
-    // — unlike before mupdf existed — it now finds real choices instead
+    // — unlike before a rasterisation engine existed — it now finds real
+    // choices instead
     // of silently doing nothing.
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)

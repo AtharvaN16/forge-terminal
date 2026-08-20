@@ -390,11 +390,12 @@ export function App({
   /**
    * Whether `convertAction` actually has somewhere to send this source.
    * `convertAction.appliesTo` only checks `sources.length >= 1` — that was
-   * never enough on its own to guarantee a real choice: before the mupdf
-   * engine arrived, a PDF's only writable format was PDF itself, which
+   * never enough on its own to guarantee a real choice: before a
+   * rasterisation engine arrived, a PDF's only writable format was PDF
+   * itself, which
    * `targetSelect` (in `core/actions/convert.ts`) deliberately filters out
    * as a no-op conversion, leaving its target list genuinely empty. A PDF
-   * now has real targets (jpeg, png — see `engines/mupdf.ts`), so this
+   * now has real targets (jpeg, png — see `engines/pdfium.ts`), so this
    * returns `true` for one; the check stays because nothing guarantees
    * every future source kind will have somewhere to go.
    *

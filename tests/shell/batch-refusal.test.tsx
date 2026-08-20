@@ -98,8 +98,9 @@ describe('a staged batch refuses to convert or compress', () => {
    * A PDF now has a real convert target (jpeg, png), so the first drop's
    * Enter lands on that picker rather than idle — the same as any image.
    * `esc` backs out of it without discarding the stage
-   * (`backToPromptKeepingStage` in App.tsx, added alongside the mupdf
-   * engine specifically so this stayed reachable), which is what makes the
+   * (`backToPromptKeepingStage` in App.tsx, added alongside the
+   * rasterisation engine specifically so this stayed reachable), which is
+   * what makes the
    * second drop land on the same idle prompt as before.
    */
   it('stages two PDFs, shows them, and does not tell the user to undo it', async () => {
