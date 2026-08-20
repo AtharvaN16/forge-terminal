@@ -3,6 +3,7 @@ import type { PDFiumDocument } from '@hyzyla/pdfium'
 import { PDFiumLibrary } from '@hyzyla/pdfium'
 import sharp from 'sharp'
 import { writeAtomic } from '../core/atomic.js'
+import { encryptedSource } from '../core/errors.js'
 import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
 import { encode } from './image.js'
 import type { Engine } from './types.js'
@@ -65,6 +66,17 @@ export const pdfiumEngine: Engine = {
     const source = job.sources[0]
     if (source.kind !== 'document') {
       throw new Error('the pdfium engine can only rasterise a document source')
+    }
+    // The refusal lives here, below every caller, rather than in the CLI's
+    // `buildRasterJob` alone: the shell reaches this engine through
+    // `convertAction.plan()` + `runJobs` with no password step of its own
+    // (spec §8 gives it no password field), so a guard in the CLI leaves the
+    // shell showing pdfium's opaque load failure flattened into a generic
+    // `conversion-failed`. Thrown as a `ForgeError`, which `runJobs` passes
+    // through untouched (`isForgeError` in `core/run.ts`), so both front ends
+    // get the wording that actually names `--password-stdin`.
+    if (source.encrypted && job.options.password === undefined) {
+      throw encryptedSource(source.path)
     }
     const dpi = job.options.dpi ?? 150
     // No `pages` means "convert this PDF" — read as every page. `outputs`
