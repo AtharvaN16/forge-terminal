@@ -1,10 +1,20 @@
 import { readFile, rm, stat } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { degrees, PDFDocument } from 'pdf-lib'
 import sharp from 'sharp'
 import { writeAtomic } from '../core/atomic.js'
 import { emptySelection, encryptedSource } from '../core/errors.js'
+import { FORMATS } from '../core/formats.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
-import type { DocumentInfo, FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
+import type {
+  DocumentInfo,
+  FormatId,
+  ImageInfo,
+  Job,
+  Progress,
+  Result,
+  Warning,
+} from '../core/types.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -61,11 +71,34 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
  * PNG first, the same two-step `heic.ts` uses — one extra decode, no new
  * dependency, and the alternative is refusing formats the capability graph
  * has already offered.
+ *
+ * Invariant 4: `.rotate()` before anything else. pdf-lib does not read EXIF
+ * orientation itself, so embedding raw JPEG/PNG bytes unconditionally would
+ * ship every phone photo sideways — the exact bug `image.ts`'s Rule 1 exists
+ * to prevent, reintroduced here in a new file.
+ *
+ * The fix is deliberately not "always decode through Sharp": that would cost
+ * every JPEG a lossy re-encode generation (and PNG a size change) to correct
+ * a minority of files. Instead only a source that genuinely carries a
+ * non-trivial orientation tag pays for the decode. When it does, the result
+ * is re-encoded as PNG rather than back to JPEG — this is a forced
+ * intermediate the user never agreed to lose quality on twice, the same
+ * reasoning `heic.ts` gives for decoding to PNG rather than JPEG.
+ *
+ * Every other source format was already being decoded through Sharp to
+ * become PNG regardless, so folding `.rotate()` into that same call is free
+ * — `.rotate()` with no arguments is sharp's EXIF auto-orient and is a
+ * no-op when there is no orientation to apply.
  */
-async function embedBytes(doc: PDFDocument, source: SourceInfo, raw: Buffer) {
-  if (source.format === 'jpeg') return doc.embedJpg(raw)
-  if (source.format === 'png') return doc.embedPng(raw)
-  return doc.embedPng(await sharp(raw).png().toBuffer())
+async function embedBytes(doc: PDFDocument, source: ImageInfo, raw: Buffer) {
+  const embeddable = source.format === 'jpeg' || source.format === 'png'
+  const orientation = embeddable ? (await sharp(raw).metadata()).orientation : undefined
+
+  if (embeddable && (orientation === undefined || orientation === 1)) {
+    return source.format === 'jpeg' ? doc.embedJpg(raw) : doc.embedPng(raw)
+  }
+
+  return doc.embedPng(await sharp(raw).rotate().png().toBuffer())
 }
 
 /**
@@ -73,12 +106,41 @@ async function embedBytes(doc: PDFDocument, source: SourceInfo, raw: Buffer) {
  * resolution — the inbound half of phase 4a. `outputs`/`sources` are single
  * because `convert` is defined that way (see `core/types.ts`); a multi-image
  * PDF is a `merge` of several single-image PDFs, not a variant of this.
+ *
+ * `job.options` (background, keepMetadata) is accepted by the job shape but
+ * never consulted here: `embedPng`'s SMask already carries alpha, so there
+ * is nothing to flatten (unlike `image.ts`'s Rule 2), and pdf-lib strips
+ * source metadata by construction, so "keep metadata" has nothing to act on.
  */
 async function imageToPdf(
   job: Extract<Job, { op: 'convert' }>,
   onPhase: (p: Progress) => void,
 ): Promise<Result> {
   const source = job.sources[0]
+  // Same reasoning as `image.ts`'s analogous guard: the registry routes a
+  // job to this engine by `reads`/`writes`, but `pdf` is offered as a
+  // same-format target for a PDF source the way any format is offered for
+  // itself (recompression) — and unlike an image, a PDF source has no
+  // pixels to embed. Without this, it reaches `embedBytes` and fails as an
+  // opaque Sharp decode error instead of a named one.
+  if (source.kind !== 'image') {
+    throw new Error('the pdf engine cannot embed a document source')
+  }
+
+  const warnings: Warning[] = []
+  // Rule 4 (spec): never drop frames silently. A PDF page has no concept of
+  // animation, so any source with more than one frame loses everything past
+  // the first — the same warning `image.ts` raises for a lossless target
+  // that cannot animate either, reusing its code rather than inventing one.
+  if (source.frames > 1) {
+    warnings.push({
+      code: 'animation-flattened',
+      message:
+        `${basename(source.path)} has ${source.frames} frames, and ` +
+        `${FORMATS.pdf.label} cannot animate. Only the first frame was converted.`,
+    })
+  }
+
   onPhase({ phase: 'reading' })
   const raw = await readFile(source.path)
 
@@ -90,7 +152,7 @@ async function imageToPdf(
 
   onPhase({ phase: 'writing' })
   const outputBytes = await writeAtomic(job.outputs[0], await doc.save())
-  return { job, outputBytes, warnings: [] }
+  return { job, outputBytes, warnings }
 }
 
 async function merge(
