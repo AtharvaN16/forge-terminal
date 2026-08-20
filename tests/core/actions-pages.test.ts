@@ -8,6 +8,7 @@ import {
   splitAction,
   unavailableReason,
 } from '../../src/core/actions/index.js'
+import { everyNCuts, everyPageCuts } from '../../src/core/actions/split.js'
 import type { DocumentInfo, ImageInfo } from '../../src/core/types.js'
 
 const doc = (path: string, pages = 7): DocumentInfo => ({
@@ -88,5 +89,32 @@ describe('plan', () => {
     if (job?.op !== 'rotate') throw new Error('expected rotate')
     expect(job.turns).toBe(2)
     expect(job.outputs).toEqual(['/docs/report-rotated.pdf'])
+  })
+})
+
+/**
+ * A step of 0 never advances the loop, so this used to run until the cuts
+ * array hit its maximum length — about a second of CPU — and then throw a
+ * raw `RangeError` that `src/index.ts` rethrows as a stack trace. Both front
+ * ends now validate before calling, so this guard is the backstop: it fails
+ * as a ForgeError, which every caller already knows how to render, rather
+ * than silently answering "no cuts" for an input nobody could have meant.
+ */
+describe('everyNCuts', () => {
+  it('cuts every n pages, with a shorter last group', () => {
+    expect(everyNCuts(25, 10)).toEqual([9, 19])
+  })
+
+  it('refuses a step of zero instead of looping forever', () => {
+    expect(() => everyNCuts(24, 0)).toThrow(/at least 1/)
+  })
+
+  it('refuses a negative or fractional step for the same reason', () => {
+    expect(() => everyNCuts(24, -1)).toThrow(/at least 1/)
+    expect(() => everyNCuts(24, 2.5)).toThrow(/at least 1/)
+  })
+
+  it('leaves every-page alone', () => {
+    expect(everyPageCuts(3)).toEqual([0, 1])
   })
 })

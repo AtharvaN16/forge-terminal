@@ -73,4 +73,22 @@ describe('page operation flags', () => {
   it('rejects --separate on an operation other than --extract', () => {
     expect(() => parseArgs(['doc.pdf', '--delete', '3', '--separate'])).toThrow(/--separate/)
   })
+
+  /**
+   * `every=0` matches the digits regex and the captured "0" is a truthy
+   * string, so it used to parse as a real mode and reach `everyNCuts`, whose
+   * loop never advances with a step of 0 — it burned CPU until the cuts array
+   * hit its maximum length and then died with a raw `RangeError` stack. The
+   * shell has validated this exact field since it was written
+   * (`flows/pdf.tsx`'s `submitSplitN`); this is the CLI catching up.
+   */
+  it('rejects --split every=0 rather than looping forever on it', () => {
+    expect(() => parseArgs(['doc.pdf', '--split', 'every=0'])).toThrow(/at least 1/)
+  })
+
+  it('still accepts the smallest valid group size', () => {
+    const intent = parseArgs(['doc.pdf', '--split', 'every=1'])
+    if (intent.kind !== 'pageop') throw new Error('expected pageop')
+    expect(intent.split).toEqual({ mode: 'every-n', n: 1 })
+  })
 })

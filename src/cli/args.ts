@@ -223,8 +223,20 @@ export function parseArgs(argv: string[]): Intent {
       const every = raw.match(/^every=(\d+)$/)
       const at = raw.match(/^at=([\d,\s]+)$/)
       if (raw === 'every-page') pageOp.split = { mode: 'every-page' }
-      else if (every?.[1]) pageOp.split = { mode: 'every-n', n: Number(every[1]) }
-      else if (at?.[1]) {
+      else if (every?.[1] !== undefined) {
+        // `every=0` matches the regex above and "0" is a truthy string, so
+        // without this it parsed as a real mode and reached `everyNCuts`,
+        // whose loop never advances with a step of 0. Validated here for the
+        // same reason `--rotate` is two branches above, and with the same
+        // rule the shell's own field already applies (`flows/pdf.tsx`).
+        const n = Number(every[1])
+        if (!Number.isInteger(n) || n < 1) {
+          throw invalidArguments(
+            `--split every=N takes a whole number of pages, at least 1, not "${every[1]}".`,
+          )
+        }
+        pageOp.split = { mode: 'every-n', n }
+      } else if (at?.[1]) {
         pageOp.split = { mode: 'points', after: at[1].split(',').map((s) => Number(s.trim())) }
       } else {
         throw invalidArguments(`--split takes every-page, every=N or at=N,N — not "${raw}".`)
