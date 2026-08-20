@@ -29,15 +29,16 @@ import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { COMMANDS, type Command, isCommandBuffer, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
-import { FileCard } from './components/FileCard.js'
 import { HintBar } from './components/HintBar.js'
 import { PathInput } from './components/PathInput.js'
 import { Prompt } from './components/Prompt.js'
 import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
+import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
+import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider, useTheme } from './ThemeContext.js'
 import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
@@ -48,7 +49,7 @@ import { bandFor, middleEllipsis } from './width.js'
  * (quality, for a lossy target only) -> pick a destination -> convert ->
  * show the result.
  */
-export type Stage =
+export type Step =
   | 'theme'
   | 'idle'
   /** Compress: by quality, or to a target size. */
@@ -167,7 +168,7 @@ export function App({
    * relaunch — so they all read this, never the `prefs` prop.
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
-  const [stage, setStage] = useState<Stage>(prefs.theme === undefined ? 'theme' : 'idle')
+  const [step, setStep] = useState<Step>(prefs.theme === undefined ? 'theme' : 'idle')
   /**
    * Which action the staged file is being put through. Dropping a file means
    * convert; `/compress` switches it. The action layer already supports more
@@ -184,7 +185,34 @@ export function App({
   /** A measured alternative worth offering after a compression. */
   const [suggestion, setSuggestion] = useState<Suggestion | undefined>(undefined)
   const [text, setText] = useState('')
-  const [source, setSource] = useState<SourceInfo | null>(null)
+  /**
+   * The staged list. What was one file (`SourceInfo | null`) is now a list
+   * with two drops accumulating into it — merge needs several files at once,
+   * and `resolve.ts`/`run.ts` already speak in lists; the shell was the only
+   * place still narrowed to one.
+   *
+   * The wizard below (target, quality, destination) still walks a single
+   * representative file — `source`, derived just below — because picking a
+   * target format is one choice for the whole batch, not a per-file one.
+   * Only the run itself, and what is drawn on screen, need the full list.
+   */
+  const [stage, setStage] = useState<Stage>(emptyStage())
+  /**
+   * The first staged file, standing in for "the" file everywhere the wizard
+   * only ever needed one — computing option specs, planning a filename
+   * preview, and so on. `?? null` keeps the exact `SourceInfo | null` shape
+   * this used to be, so none of that logic has to change.
+   */
+  const source: SourceInfo | null = stage.sources[0] ?? null
+  /**
+   * Whether converting or compressing right now would silently act on only
+   * the first of several staged files. Batch convert/compress is deferred —
+   * see the note above `convert()` — so this is what keeps that deferral
+   * from being a silent one: `/convert` and `/compress`, and a drop that
+   * would otherwise advance straight into the wizard, all check this first
+   * and refuse instead of quietly picking `stage.sources[0]` for the user.
+   */
+  const stagedBatch = stage.sources.length > 1
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
@@ -236,29 +264,63 @@ export function App({
     [push],
   )
 
-  // Gated on `stage === 'result'`: Ink delivers input to every mounted
+  /**
+   * Refuses to convert or compress a staged batch rather than silently
+   * acting on the first file in it. Refusing beats converting-the-first-
+   * loudly: a partial action on an ambiguous request is worse than no
+   * action, because the user can clear the stage and drop one file in a
+   * second, but they cannot un-convert a file they never meant to touch —
+   * the same "a change nobody asked for is a surprise" reasoning the phase-2
+   * compress design doc uses for why compress never changes the format.
+   *
+   * A `note` block, not a new one: this is a plain history line, the same
+   * shape `/help` and the config-warning banner already use, with the warn
+   * symbol paired with words so the reason survives a monochrome terminal.
+   */
+  const refuseBatch = useCallback(() => {
+    push({
+      kind: 'note',
+      id: nextId(),
+      text: `${SYMBOLS.warn} Converting several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
+    })
+  }, [push])
+
+  // Gated on `step === 'result'`: Ink delivers input to every mounted
   // `useInput` hook regardless of what else is on screen, so an ungated
   // handler here would steal `f`/`o`/`q` from the target/quality/destination
   // stages the moment they happen to share a letter.
   // esc on the name step returns to the location step. Prompt deliberately
-  // ignores escape (a path can contain one), so the stage owns this.
+  // ignores escape (a path can contain one), so the step owns this.
   useInput(
     (_input, key) => {
       if (key.escape) cancelRename()
     },
-    { isActive: stage === 'rename' },
+    { isActive: step === 'rename' },
   )
 
   // esc on the size field goes back to the mode choice. Prompt ignores
-  // escape by design — a path can contain one — so the stage owns this.
+  // escape by design — a path can contain one — so the step owns this.
   useInput(
     (_input, key) => {
       if (!key.escape) return
       setSizeError(undefined)
       setText('')
-      setStage('mode')
+      setStep('mode')
     },
-    { isActive: stage === 'size' },
+    { isActive: step === 'size' },
+  )
+
+  // esc at the prompt clears a leftover stage — reachable when a run
+  // reported a failure and returned here without clearing what was staged
+  // (a partial batch is still there to retry, or to abandon). Empty stages
+  // are the common case and cost nothing extra to check.
+  useInput(
+    (_input, key) => {
+      if (!key.escape) return
+      if (stage.sources.length === 0 && stage.failures.length === 0) return
+      setStage(clearStage())
+    },
+    { isActive: step === 'idle' },
   )
 
   useInput(
@@ -268,10 +330,10 @@ export function App({
         // A dashed rule and a blank line either side, so a long session reads
         // as a sequence of separate operations rather than one wall of text.
         push({ kind: 'separator', id: nextId(), width })
-        setSource(null)
+        setStage(clearStage())
         setValues({})
         setLastResult(null)
-        setStage('idle')
+        setStep('idle')
         return
       }
       /**
@@ -292,11 +354,11 @@ export function App({
         setSuggestion(undefined)
         setMode('convert')
         setValues({ target: suggestion.target })
-        setSource(lastResult.job.sources[0])
-        setStage('destination')
+        setStage(addToStage(emptyStage(), [lastResult.job.sources[0]], []))
+        setStep('destination')
       }
     },
-    { isActive: stage === 'result' },
+    { isActive: step === 'result' },
   )
 
   // The picker never hardcodes a format list: it renders whatever
@@ -312,7 +374,7 @@ export function App({
 
   /**
    * `probe()` is genuinely I/O-bound (`stat`, `access`, then sharp reading
-   * the file's header), and nothing moves `stage` off `'idle'` until it
+   * the file's header), and nothing moves `step` off `'idle'` until it
    * resolves — the Prompt stays mounted and interactive for the whole
    * `await` by design (disabling it mid-probe, e.g. via `isActive`, is a UX
    * decision this file doesn't get to make on its own). So a user can submit
@@ -344,7 +406,7 @@ export function App({
       setText('')
 
       if (command.name === 'theme') {
-        setStage('theme')
+        setStep('theme')
         return
       }
 
@@ -358,23 +420,31 @@ export function App({
       }
 
       if (command.name === 'convert') {
+        if (stagedBatch) {
+          refuseBatch()
+          return
+        }
         setMode('convert')
         setValues({})
-        setStage(source ? 'target' : 'idle')
+        setStep(source ? 'target' : 'idle')
         return
       }
 
       if (command.name === 'compress') {
+        if (stagedBatch) {
+          refuseBatch()
+          return
+        }
         if (source && !compressAction.appliesTo(source)) {
           push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
           return
         }
         setMode('compress')
         setValues({})
-        setStage(source ? 'mode' : 'idle')
+        setStep(source ? 'mode' : 'idle')
       }
     },
-    [push, source],
+    [push, source, stagedBatch, refuseBatch],
   )
 
   const submitPath = useCallback(
@@ -406,8 +476,21 @@ export function App({
       try {
         const info = await probe(trimmed)
         if (requestId.current !== id) return // superseded by a later submission
-        setSource(info)
+        // Drops accumulate rather than replace — dropping a second file onto
+        // a prompt that already has one staged (e.g. after a failed run
+        // returned here without clearing it) builds a batch instead of
+        // losing the first file. `addToStage` also drops an exact repeat of
+        // a path already staged. Computed once, synchronously, rather than
+        // via the `setStage(s => ...)` updater form this used before: the
+        // guard just below needs to know the resulting length *now*, to
+        // decide whether to advance into the wizard at all.
+        const next = addToStage(stage, [info], [])
+        setStage(next)
         setValues({})
+        if (next.sources.length > 1) {
+          refuseBatch()
+          return
+        }
         // Deliberately *not* pushed to history here. A block committed to
         // <Static> can never be taken back, and until a conversion actually
         // happens the dropped file is a choice the user is still making —
@@ -422,13 +505,13 @@ export function App({
           if (!compressAction.appliesTo(info)) {
             push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
             setMode('convert')
-            setStage('target')
+            setStep('target')
             return
           }
-          setStage('mode')
+          setStep('mode')
           return
         }
-        setStage('target')
+        setStep('target')
       } catch (e) {
         if (requestId.current !== id) return // superseded by a later submission
         // A rethrow here would become an unhandled rejection: submitPath is
@@ -437,30 +520,33 @@ export function App({
         // a ForgeError, or anything else probe() didn't anticipate — the
         // shell must render it, not silently do nothing forever.
         showError(e)
-        setStage('idle')
+        setStep('idle')
       }
     },
     // `mode` matters: without it this closure keeps the value it had when the
     // callback was created, and a file dropped after /compress would be
-    // routed to the convert flow anyway.
-    [showError, push, runCommand, mode],
+    // routed to the convert flow anyway. `stage` matters for the same
+    // reason: reading it straight (rather than through the `setStage`
+    // updater form) is what lets the batch guard above decide off the
+    // current list, not a stale one.
+    [showError, push, runCommand, mode, stage, refuseBatch],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
   // (which is `SourceInfo | null`) and asserting it non-null: the caller
   // below only reaches this from a branch already narrowed on `source`
   // being set, so the non-null-ness is a real invariant, not a suppression.
-  /** Takes the dropped file back off the bench and returns to the prompt. */
+  /** Takes the whole staged batch back off the bench and returns to the prompt. */
   const clearSource = () => {
-    setSource(null)
+    setStage(clearStage())
     setValues({})
-    setStage('idle')
+    setStep('idle')
   }
 
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
     const next = action.options(currentSource, { target }, livePrefs)
-    setStage(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
+    setStep(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
   }
 
   /**
@@ -472,7 +558,7 @@ export function App({
    */
   const chooseTheme = (next: 'dark' | 'light') => {
     setTheme(next)
-    setStage('idle')
+    setStep('idle')
     // The picker owned the screen until now.
     push({ kind: 'banner', id: nextId(), width, defaultOutput: livePrefs.defaultOutput })
     savePreferences({ theme: next }).catch(showError)
@@ -514,13 +600,13 @@ export function App({
     const ext = dot > 0 ? proposed.slice(dot) : ''
     setRenaming({ destination, stem, ext })
     setText(stem)
-    setStage('rename')
+    setStep('rename')
   }
 
   const cancelRename = () => {
     setRenaming(null)
     setText('')
-    setStage('destination')
+    setStep('destination')
   }
 
   const submitRename = (raw: string) => {
@@ -546,12 +632,12 @@ export function App({
     setSizeError(undefined)
     setValues((v) => ({ ...v, size: raw, targetBytes: bytes }))
     setText('')
-    setStage('destination')
+    setStep('destination')
   }
 
   const chooseQuality = (quality: number) => {
     setValues((v) => ({ ...v, quality }))
-    setStage('destination')
+    setStep('destination')
   }
 
   // The destination preview shows the resolved output path as the user
@@ -570,7 +656,7 @@ export function App({
   /**
    * Two Enters delivered in the same tick — a held key repeating, or a paste
    * carrying two line endings — both reach `convert` from the destination
-   * step's synchronous `useInput` handler. Moving `stage` to `'converting'`
+   * step's synchronous `useInput` handler. Moving `step` to `'converting'`
    * does not stop the second: React unmounts that handler on the next
    * render, and both calls have already run by then. Measured before this
    * ref existed: two `runJobs` calls, two encodes, two renames onto the same
@@ -591,16 +677,34 @@ export function App({
    * `convertAction.plan()` is still what derives the job (it validates the
    * target and assembles the `ConvertOptions`); `buildPlan()` is what decides
    * whether that job is allowed to happen.
+   *
+   * `resolved.sources` below is still `[source]`, not `stage.sources`, even
+   * though the run path is generally meant to take the whole batch now.
+   * `output` here is always one exact filename — the rename step always
+   * builds `${destination}/${stem}${ext}` for the single representative
+   * `source` — and `buildPlan()` treats a non-directory `output` as the
+   * literal target for *every* source it is given (§ `resolveOutputPath` /
+   * `looksLikeDirectory`). Passing `stage.sources` with that output would
+   * make every source past the first collide on the same path, which
+   * `buildPlan()` correctly reports as `output-collision` failures — but the
+   * refusal branch right below treats *any* failure as the whole run being
+   * refused and returns before calling `runJobs` at all, so a two-file stage
+   * would silently convert nothing instead of batch-converting. Making that
+   * actually work needs the wizard to know it is planning for a batch
+   * (skip or reinterpret the single-file rename step, run the jobs that
+   * did resolve, show more than one result) — real UX decisions Task 12's
+   * brief does not make, so this function still only ever acts on the first
+   * staged file. See the task report for the full trace.
    */
   const convert = async (destination: string, opts: { force?: boolean; output?: string } = {}) => {
     if (!source) return
     if (converting.current) return
     converting.current = true
-    setStage('converting')
+    setStep('converting')
     try {
       const planned = action.plan(source, { ...values, destination })[0]
       if (!planned) {
-        setStage('idle')
+        setStep('idle')
         return
       }
       const output = opts.output ?? planned.outputs[0]
@@ -611,7 +715,7 @@ export function App({
        * reach fails before any file is created.
        */
       if (typeof values.targetBytes === 'number') {
-        setStage('converting')
+        setStep('converting')
         const found = await findQuality({
           encode: async (quality) =>
             (await encodeToBuffer(source, planned.target, { ...planned.options, quality })).length,
@@ -625,12 +729,15 @@ export function App({
             id: nextId(),
             error: targetUnreachable(source, values.targetBytes, found.bytes),
           })
-          setStage('idle')
+          setStep('idle')
           return
         }
         planned.options.quality = found.quality
       }
 
+      // Deliberately still `[source]`, not `stage.sources` — see the note on
+      // `convert()` above this function for why passing the whole batch here
+      // is not a safe mechanical change.
       const plan = await buildPlan({
         resolved: { sources: [source], failures: [], roots: new Map<string, string>() },
         target: planned.target,
@@ -645,14 +752,14 @@ export function App({
         // says the shell asks — keep both, replace, or cancel.
         if (refusal.error.code === 'output-exists') {
           setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
-          setStage('overwrite')
+          setStep('overwrite')
           return
         }
         push({ kind: 'error', id: nextId(), error: refusal.error })
         // Writing over the source has no "replace" worth offering — there is
         // no outcome there that keeps the original. Back to the destination
         // step, where choosing a different folder is the actual fix.
-        setStage(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
+        setStep(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
         return
       }
 
@@ -661,7 +768,7 @@ export function App({
       if (result) {
         setLastResult(result)
         push({ kind: 'result', id: nextId(), result })
-        setStage('result')
+        setStep('result')
 
         /**
          * Only after a compression, and only once the file is safely written:
@@ -684,7 +791,7 @@ export function App({
       } else {
         const failure = summary.failures[0]
         if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
-        setStage('idle')
+        setStep('idle')
       }
     } catch (e) {
       // convertAction.plan() throws synchronously on a bad target, and
@@ -695,7 +802,7 @@ export function App({
       // unhandled rejection instead of something the user ever sees. Render
       // it instead, exactly like submitPath does for probe().
       showError(e)
-      setStage('idle')
+      setStep('idle')
     } finally {
       converting.current = false
     }
@@ -708,7 +815,7 @@ export function App({
     if (choice === 'replace') void convert(destination, { force: true })
     else if (choice === 'keep') void convert(destination, { output: keepBoth })
     else if (choice === 'rename') startRename(destination)
-    else setStage('destination')
+    else setStep('destination')
   }
 
   const modeSpec = specFor('mode')
@@ -720,14 +827,14 @@ export function App({
   return (
     <ThemeProvider palette={paletteFor(theme)}>
       <Box flexDirection="column">
-        {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
+        {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
         {/* Which action the next file goes through, always — including the
             default. An earlier version showed this only for compress, on the
             reasoning that convert is what dropping a file already does; but
             a mode you cannot see is one you can be in by accident, and the
             cost of saying so is one line. */}
-        {stage !== 'theme' ? (
+        {step !== 'theme' ? (
           <Box marginBottom={1}>
             <Text color={colourProp(palette.accent)} bold>
               {mode === 'compress' ? '  COMPRESS  ' : '  CONVERT  '}
@@ -738,18 +845,18 @@ export function App({
           </Box>
         ) : null}
 
-        {/* The staged file, shown live rather than committed to scrollback,
+        {/* The staged list, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back. */}
-        {source && stage !== 'idle' && stage !== 'theme' && stage !== 'result' ? (
+        {stage.sources.length > 0 && step !== 'idle' && step !== 'theme' && step !== 'result' ? (
           <Box marginBottom={1}>
-            <FileCard source={source} width={width} />
+            <StagedFiles stage={stage} width={width} />
           </Box>
         ) : null}
         <Static items={history}>
           {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
         </Static>
 
-        {stage === 'mode' && source && modeSpec?.kind === 'select' ? (
+        {step === 'mode' && source && modeSpec?.kind === 'select' ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
             <Select
@@ -757,7 +864,7 @@ export function App({
               items={modeSpec.choices}
               onSubmit={(chosen) => {
                 setValues((v) => ({ ...v, mode: chosen }))
-                setStage(chosen === 'size' ? 'size' : 'quality')
+                setStep(chosen === 'size' ? 'size' : 'quality')
               }}
               onCancel={clearSource}
               showHints={band !== 'compact'}
@@ -773,7 +880,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'size' && sizeSpec?.kind === 'text' ? (
+        {step === 'size' && sizeSpec?.kind === 'text' ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text color={colourProp(palette.label)}>{sizeSpec.label}</Text>
             <Prompt
@@ -799,7 +906,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'target' && source && targetSpec?.kind === 'select' ? (
+        {step === 'target' && source && targetSpec?.kind === 'select' ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text>{targetSpec.label}</Text>
             <Select
@@ -820,7 +927,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'quality' && qualitySpec?.kind === 'slider' ? (
+        {step === 'quality' && qualitySpec?.kind === 'slider' ? (
           <Box flexDirection="column" marginBottom={1}>
             <Slider
               label={qualitySpec.label}
@@ -830,7 +937,7 @@ export function App({
               value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
               onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
               onSubmit={chooseQuality}
-              onCancel={() => setStage('target')}
+              onCancel={() => setStep('target')}
             />
             <HintBar
               width={width}
@@ -843,14 +950,14 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'destination' && destinationSpec?.kind === 'path' ? (
+        {step === 'destination' && destinationSpec?.kind === 'path' ? (
           <Box flexDirection="column" marginBottom={1}>
             <PathInput
               label={destinationSpec.label}
               presets={destinationSpec.presets}
               preview={previewDestination}
               onSubmit={startRename}
-              onCancel={() => setStage('target')}
+              onCancel={() => setStep('target')}
               width={width}
               showHints={band !== 'compact'}
               defaultPath={expandTilde(livePrefs.defaultOutput)}
@@ -874,7 +981,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'rename' && renaming ? (
+        {step === 'rename' && renaming ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text color={colourProp(palette.label)}>Name the file</Text>
             <Prompt
@@ -903,7 +1010,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'overwrite' && pending ? (
+        {step === 'overwrite' && pending ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
             <Select
@@ -916,7 +1023,7 @@ export function App({
               onSubmit={answerOverwrite}
               onCancel={() => {
                 setPending(null)
-                setStage('destination')
+                setStep('destination')
               }}
               showHints={band !== 'compact'}
             />
@@ -931,7 +1038,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'converting' ? (
+        {step === 'converting' ? (
           <Box marginBottom={1}>
             <Text color={colourProp(palette.dim)}>
               {attempt
@@ -941,7 +1048,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'result' && lastResult ? (
+        {step === 'result' && lastResult ? (
           <Box flexDirection="column" marginBottom={1}>
             {/* Measured, not estimated: this number came from actually
                 encoding a candidate. Offered rather than applied — the file
@@ -984,7 +1091,7 @@ export function App({
           </Box>
         ) : null}
 
-        {stage === 'idle' ? (
+        {step === 'idle' ? (
           <Box flexDirection="column">
             {/* Ink delivers input to every mounted useInput, so Prompt and
                 the palette's Select are both live while this is open — which
