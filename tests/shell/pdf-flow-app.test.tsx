@@ -242,3 +242,53 @@ describe('the /pdf signpost', () => {
     expect(lastFrame() ?? '').not.toContain('/pdf for page operations')
   }, 20_000)
 })
+
+/**
+ * `/convert` (`hasConvertTarget`) and `/compress` (`compressAction.appliesTo`)
+ * both refuse to open a picker before checking that something in it would
+ * actually apply. `/pdf` needs the same guard: without it, staging a source
+ * none of the five page actions apply to and running `/pdf` mounts the hub
+ * anyway — every row comes back `disabled`, `Select`'s cursor falls back to
+ * index 0 regardless, and that row is disabled too, so nothing is selected,
+ * arrows are no-ops and Enter submits nothing. `items.length` is 5, not 0,
+ * so — unlike the dead end this task originally fixed — Escape still works;
+ * but it is still a confusing, silent screen.
+ *
+ * A lone image can never reach this state through a single drop (every real
+ * image format has a valid convert target, so it always advances past
+ * idle — see `hasConvertTarget`), so the repro here stages a PDF first
+ * (which does stay at idle, precisely because it has no convert target)
+ * and then drops an image on top of it. The second drop is refused as a
+ * batch (`refuseBatch`) before it ever reaches a wizard step, which is what
+ * leaves both files sitting in a mixed, idle stage — a JPEG genuinely
+ * staged, exactly the reviewer's scenario, reached through real UI paths
+ * rather than injected test state.
+ */
+describe('/pdf refuses a stage nothing applies to', () => {
+  it('does not open the hub for a mixed stage, and says why', async () => {
+    const dir = await makeTempDir()
+    const pdf = await makePdf(dir, 'doc.pdf', 3)
+    const jpeg = await makeJpeg(dir, 'photo.jpg')
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
+
+    stdin.write(pdf)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400) // stays at idle — a PDF has no convert target
+
+    stdin.write(jpeg)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400) // refused as a batch, still idle — now [doc.pdf, photo.jpg]
+
+    stdin.write('/pdf')
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+
+    const frame = lastFrame() ?? ''
+    expect(frame).not.toContain('PDF — choose an operation')
+    expect(frame).toContain('/pdf needs the staged files to be PDFs')
+  }, 20_000)
+})

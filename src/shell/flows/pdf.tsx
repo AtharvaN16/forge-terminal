@@ -25,8 +25,12 @@ import { bandFor, middleEllipsis } from '../width.js'
  * them. Compress and Convert reach the hub in phase 4, as shortcuts to
  * `/compress` and `/convert` — listing them here now would say "not built
  * yet", which is noise, not information.
+ *
+ * Exported so `App.tsx` can ask the same question the hub itself answers
+ * per-row (`appliesTo`) before ever mounting this component — one list,
+ * asked twice, rather than two lists that could drift.
  */
-const HUB_ACTIONS = ACTIONS.filter((a) => a.id !== 'convert' && a.id !== 'compress')
+export const HUB_ACTIONS = ACTIONS.filter((a) => a.id !== 'convert' && a.id !== 'compress')
 
 /**
  * `hub` — pick an operation. `options` — walk that action's `options()`,

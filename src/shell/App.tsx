@@ -38,7 +38,7 @@ import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
-import { PdfFlow } from './flows/pdf.js'
+import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
@@ -391,6 +391,27 @@ export function App({
     [livePrefs],
   )
 
+  /**
+   * Whether *any* of the five page operations `PdfFlow`'s hub lists applies
+   * to what is staged — the same question `/convert` asks via
+   * `hasConvertTarget` and `/compress` asks via `compressAction.appliesTo`,
+   * asked here so `/pdf` agrees with its two siblings in this file about
+   * checking applicability before opening anything.
+   *
+   * Without this, staging a non-PDF (or a mix that satisfies none of the
+   * five actions — see each action's own `appliesTo`) and running `/pdf`
+   * mounted the hub anyway: every row came back `disabled`, `Select`'s
+   * `firstEnabled` fell back to index 0 regardless, and `selected` was
+   * false for every row — no visible cursor, arrows doing nothing, Enter
+   * submitting nothing. Not the same unrecoverable lock the empty-list case
+   * was (`items.length` is 5, so Escape still works), but a confusing,
+   * silent screen all the same.
+   */
+  const pdfActionsApply = useCallback(
+    (sources: SourceInfo[]): boolean => HUB_ACTIONS.some((a) => a.appliesTo(sources)),
+    [],
+  )
+
   // Gated on `step === 'result'`: Ink delivers input to every mounted
   // `useInput` hook regardless of what else is on screen, so an ungated
   // handler here would steal `f`/`o`/`q` from the target/quality/destination
@@ -572,12 +593,27 @@ export function App({
        * having several files staged, and the hub itself dims whatever the
        * current stage can't do, with a reason, rather than the shell
        * refusing to even open it.
+       *
+       * But "dims what doesn't apply" only works once the hub is open — it
+       * is not a substitute for checking whether *anything* applies before
+       * opening it at all. `/convert` has `hasConvertTarget` and
+       * `/compress` has `compressAction.appliesTo` for exactly this, a few
+       * lines above; `pdfActionsApply` is `/pdf`'s version of the same
+       * check, so all three commands in this file agree on the rule.
        */
       if (command.name === 'pdf') {
+        if (source && !pdfActionsApply(stage.sources)) {
+          push({
+            kind: 'note',
+            id: nextId(),
+            text: `${SYMBOLS.warn} /pdf needs the staged files to be PDFs.`,
+          })
+          return
+        }
         setStep(source ? 'pdf' : 'idle')
       }
     },
-    [push, source, stagedBatch, refuseBatch, hasConvertTarget],
+    [push, source, stage.sources, stagedBatch, refuseBatch, hasConvertTarget, pdfActionsApply],
   )
 
   const submitPath = useCallback(
