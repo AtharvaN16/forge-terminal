@@ -161,6 +161,7 @@ Type `/` in the shell and a list opens:
 ```
   /convert     change a file's format
   /compress    make a file smaller
+  /pdf         page operations on a PDF
   /theme       switch between light and dark
   /help        list these commands
 ```
@@ -212,6 +213,132 @@ so — and it encodes a candidate to find out rather than guessing:
 ⚠ WebP would be 480 KB — 56% smaller again.
   ↵ convert another · c convert to WebP · o open · s show in finder · q quit
 ```
+
+## PDF
+
+Five page operations, one flag each: merge, split, extract, delete and
+rotate. None of them take `--to` — a PDF stays a PDF — and only one
+operation runs per invocation:
+
+```bash
+forge a.pdf b.pdf --merge                # combine, in argument order
+forge report.pdf --split every-page      # one file per page
+forge report.pdf --split every=5         # groups of 5; the last group is shorter
+forge report.pdf --split at=4,8          # cut after pages 4 and 8 → three parts
+forge report.pdf --extract 3-7,12        # keep only these pages, one output file
+forge report.pdf --extract 1,3 --separate  # one output file per selected page
+forge report.pdf --delete 1,2            # drop these pages
+forge report.pdf --rotate 90             # quarter turn clockwise
+```
+
+Asking for two at once is rejected outright, not merged into some combined
+behaviour:
+
+```
+$ forge report.pdf --merge --split every-page
+✕ Invalid arguments
+
+  Use one operation at a time — got --merge and --split.
+```
+
+### Page ranges
+
+`--extract` and `--delete` share one grammar: comma-separated terms, each
+`N`, `N-M`, or `N-` for "to the end" — `3-7, 12, 20-`. Page numbers are
+1-based. A page outside the document is an error naming the actual count,
+never a silent clamp:
+
+```
+$ forge report.pdf --extract 1-100
+✕ Page range not understood
+
+  "1-100" is outside 1 and 12.
+
+  This document has 12 pages. Use numbers and spans, like "3-7, 12, 20-".
+```
+
+### `--split`
+
+Three forms, checked in this order:
+
+| Form | Meaning |
+| --- | --- |
+| `--split every-page` | one file per page |
+| `--split every=N` | groups of `N` pages; the last group takes whatever's left |
+| `--split at=N,N,...` | cuts after the named 1-based pages — `at=4,8` on a 12-page document gives pages 1-4, 5-8, 9-12 |
+
+Anything else is rejected: `--split takes every-page, every=N or at=N,N`.
+
+### `--rotate`
+
+Degrees only, and only a multiple of 90 below 360: `90` (quarter turn
+clockwise), `180` (upside down) or `270` (quarter turn back). `45` or `360`
+are both refused rather than rounded. Rotation is additive — rotating an
+already-rotated PDF by another 90° lands at 180°, it doesn't reset to 90°.
+
+### Output names
+
+| Operation | Name |
+| --- | --- |
+| `--split` | `report-01.pdf` … `report-12.pdf` — zero-padded to the width of the part count, so a 12-part split doesn't sort `-10` before `-2` in a file listing |
+| `--extract` | `report-extract.pdf` (one output for the whole selection) |
+| `--extract --separate` | `report-p3.pdf`, `report-p12.pdf` — named by page number, not by sequence |
+| `--delete` | `report-trimmed.pdf` |
+| `--rotate` | `report-rotated.pdf` |
+| `--merge` | derived from the inputs' shared parent folder — merging everything in `~/invoices/` writes `invoices-merged.pdf` into that folder; inputs spanning different folders fall back to `<first-file>-merged.pdf` |
+
+Every one of these writes beside its source(s) — page operations have no
+`--output` flag.
+
+### Write safety
+
+A page operation refuses to overwrite an existing output, and refuses to
+write over one of its own inputs. `--force` overrides both of those — but
+never a collision between two of a job's own outputs, which is a bug in the
+request rather than a preference. This is what makes running the same merge
+twice safe rather than destructive: the second run stops instead of folding
+the first run's output back in as one of its own inputs.
+
+```
+$ forge invoices/jan.pdf invoices/feb.pdf --merge
+✓ 1 file · invoices-merged.pdf
+$ forge invoices/jan.pdf invoices/feb.pdf --merge
+✕ File already exists
+
+  invoices-merged.pdf is already there.
+
+  Pass --force to replace it, or choose a different --output.
+```
+
+(A glob like `invoices/*.pdf --merge` run twice hits a sharper version of the
+same problem: the second run's glob also matches the first run's
+`invoices-merged.pdf`, so it fails with "Output would replace the original"
+instead — one of its own inputs, not just a stale file on disk. Either way,
+nothing gets overwritten without `--force`.)
+
+### In the shell
+
+`/pdf` needs at least one staged PDF (drop a file, then drop another to
+stage a second one — that's how two files end up ready for merge). It opens
+a hub listing all five operations, dimming whichever don't apply to what's
+staged — merge stays dimmed with fewer than two PDFs, the other four need
+exactly one PDF (split additionally needs it to have more than one page) —
+then walks that operation's own options: extract and delete open a page grid
+(`space` toggles, `a` selects all, `r` switches to a typed range) that falls
+back straight to the typed field on a terminal too narrow to fit the grid;
+split's "at points I choose" opens the same grid in cut mode; merge opens a
+reorderable list where files can be picked up and dropped into a new order,
+sorted, removed, or renamed before confirming. A confirm screen lists the
+planned output filenames before anything runs.
+
+### Not yet
+
+This phase is page operations only. Compressing a PDF, converting between
+PDF and images, and password protection or removal are not implemented —
+they're planned for a later phase, with Markdown, HTML and Office conversion
+later still. Separately, and not specific to PDFs: the shell refuses to
+convert or compress several staged files at once today — that's a deliberate
+limit while batch handling through the shell is still unbuilt, not a bug.
 
 ## Usage
 
