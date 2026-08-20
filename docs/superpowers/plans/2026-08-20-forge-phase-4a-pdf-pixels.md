@@ -4,9 +4,9 @@
 
 **Goal:** Render PDF pages to images, embed images into PDFs, decrypt PDFs from the CLI, and show real progress while doing it.
 
-**Architecture:** A second PDF engine (`engines/mupdf.ts`) sits beside the existing pdf-lib one, split by library rather than by feature. `engineForJob` learns to match a conversion on source *and* target, which two PDF-writing engines make mandatory. `Progress` and `runJobs`'s `onEvent` — both declared in phase 3 and never used — get wired to a determinate bar.
+**Architecture:** A second PDF engine (`engines/pdfium.ts`) sits beside the existing pdf-lib one, split by library rather than by feature. `engineForJob` learns to match a conversion on source *and* target, which two PDF-writing engines make mandatory. `Progress` and `runJobs`'s `onEvent` — both declared in phase 3 and never used — get wired to a determinate bar.
 
-**Tech Stack:** Node 24 · TypeScript strict, ESM · React + Ink · Sharp 0.35.3 · pdf-lib 1.17.1 · **mupdf 1.28.0 (new)** · Commander · Vitest · Biome · npm
+**Tech Stack:** Node 24 · TypeScript strict, ESM · React + Ink · Sharp 0.35.3 · pdf-lib 1.17.1 · **@hyzyla/pdfium 2.1.13 (new)** · Commander · Vitest · Biome · npm
 
 **Spec:** [docs/superpowers/specs/2026-08-20-forge-phase-4a-pdf-pixels-design.md](../specs/2026-08-20-forge-phase-4a-pdf-pixels-design.md)
 
@@ -39,8 +39,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/engines/mupdf.ts` | mupdf: rasterise pages, decrypt documents. |
-| `src/core/actions/unlock.ts` | Unlock action: applies to encrypted documents, plans the job. |
+| `src/engines/pdfium.ts` | pdfium: rasterise pages; open encrypted documents for reading. |
 | `src/cli/stdin.ts` | Read a password from stdin or a TTY prompt. Nothing else. |
 | `src/shell/components/Progress.tsx` | The determinate bar plus its counter line. |
 
@@ -48,13 +47,12 @@
 
 | File | Change |
 | --- | --- |
-| `src/engines/registry.ts` | `engineForJob` matches source + target for conversions; register `mupdfEngine`. |
+| `src/engines/registry.ts` | `engineForJob` matches source + target for conversions; register `pdfiumEngine`. |
 | `src/engines/pdf.ts` | Reads image formats; handles `convert` when the target is `pdf`. |
-| `src/core/types.ts` | `Job` gains `unlock`; `ConvertOptions` gains `dpi` and `pages`. |
+| `src/core/types.ts` | `ConvertOptions` gains `dpi`, `pages` and `password`. `Job` is unchanged. |
 | `src/core/actions/convert.ts` | Page and resolution option specs when the source is a document. |
-| `src/core/actions/index.ts` | Register `unlockAction`. |
 | `src/core/errors.ts` | `wrongPassword`, `invalidDpi`. |
-| `src/cli/args.ts` | `--pages`, `--dpi`, `--unlock`, `--password-stdin`. |
+| `src/cli/args.ts` | `--pages`, `--dpi`, `--password-stdin`. |
 | `src/cli/execute.ts` | Pass `onEvent` to `runJobs`; per-page CLI output. |
 | `src/shell/App.tsx` | Pass `onEvent`; render `Progress`; encrypted-file hint names the CLI. |
 | `tests/helpers/fixtures.ts` | `makeEncryptedPdf`. |
@@ -167,25 +165,40 @@ git commit -m "fix(engines): route a conversion on its source as well as its tar
 
 ---
 
-## Task 2: The mupdf engine skeleton
+## Task 2: The pdfium engine skeleton
+
+> **Amended 2026-08-20 (ruling R7).** This task originally created an `mupdf`
+> engine. `mupdf` is AGPL-3.0-or-later and Forge is MIT, so it is replaced by
+> `@hyzyla/pdfium` (wrapper MIT, PDFium core BSD-3-Clause). **If
+> `src/engines/mupdf.ts` already exists in your checkout, delete it, remove
+> `mupdf` from `package.json`, and delete `tests/engines/mupdf-registration.test.ts`.**
+> The engine id is `pdfium` and it no longer declares an `unlock` op.
 
 **Files:**
-- Create: `src/engines/mupdf.ts`
+- Create: `src/engines/pdfium.ts`
+- Delete (if present): `src/engines/mupdf.ts`, `tests/engines/mupdf-registration.test.ts`
 - Modify: `src/engines/registry.ts`, `package.json`
-- Test: `tests/engines/mupdf-registration.test.ts`
+- Test: `tests/engines/pdfium-registration.test.ts`
 
 **Interfaces:**
-- Produces: `mupdfEngine: Engine` with `reads: {pdf}`, `writes: {jpeg, png}`, `ops: {convert, unlock}`; `openPdf(path: string, password?: string): Promise<mupdf.PDFDocument>` at module scope for tasks 3 and 6.
+- Produces: `pdfiumEngine: Engine` with `reads: {pdf}`, `writes: {jpeg, png}`, `ops: {convert}`; and `openPdf(bytes: Uint8Array, password?: string): Promise<PDFiumDocument>` at module scope for task 3.
 
-- [ ] **Step 1: Install mupdf**
+- [ ] **Step 1: Swap the dependency**
 
 ```bash
-npm install mupdf@1.28.0
+npm uninstall mupdf
+npm install @hyzyla/pdfium@2.1.13
+```
+
+Then confirm the licence is what this swap was for:
+
+```bash
+node -e "console.log(require('@hyzyla/pdfium/package.json').license)"   # MIT
 ```
 
 - [ ] **Step 2: Write the failing test**
 
-Create `tests/engines/mupdf-registration.test.ts`:
+Create `tests/engines/pdfium-registration.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -198,13 +211,13 @@ const doc: DocumentInfo = {
   bytes: 1, pages: 3, encrypted: false,
 }
 
-describe('the mupdf engine', () => {
+describe('the pdfium engine', () => {
   it('is registered', () => {
-    expect(ENGINES.map((e) => e.id)).toContain('mupdf')
+    expect(ENGINES.map((e) => e.id)).toContain('pdfium')
   })
 
   it('declares what it reads and writes', () => {
-    const engine = ENGINES.find((e) => e.id === 'mupdf')
+    const engine = ENGINES.find((e) => e.id === 'pdfium')
     expect(engine?.reads.has('pdf')).toBe(true)
     expect(engine?.writes.has('jpeg')).toBe(true)
     expect(engine?.writes.has('png')).toBe(true)
@@ -217,115 +230,141 @@ describe('the mupdf engine', () => {
     expect(targets).toContain('jpeg')
     expect(targets).toContain('png')
   })
+
+  it('carries no AGPL dependency', async () => {
+    // The reason this engine exists. A regression here is a licensing bug,
+    // not a rendering one, and nothing else in the suite would catch it.
+    const pkg = await import('../../package.json', { with: { type: 'json' } })
+    expect(Object.keys(pkg.default.dependencies)).not.toContain('mupdf')
+  })
 })
 ```
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `npx vitest run tests/engines/mupdf-registration.test.ts`
-Expected: FAIL — no engine with id `mupdf`.
+Run: `npx vitest run tests/engines/pdfium-registration.test.ts`
+Expected: FAIL — no engine with id `pdfium`.
 
 - [ ] **Step 4: Write the engine skeleton**
 
-Create `src/engines/mupdf.ts`:
+Create `src/engines/pdfium.ts`:
 
 ```ts
-import { readFile } from 'node:fs/promises'
-import * as mupdf from 'mupdf'
+import { PDFiumLibrary } from '@hyzyla/pdfium'
+import type { PDFiumDocument } from '@hyzyla/pdfium'
 import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
 const WRITES: ReadonlySet<FormatId> = new Set<FormatId>(['jpeg', 'png'])
-const OPS: ReadonlySet<Job['op']> = new Set<Job['op']>(['convert', 'unlock'])
+const OPS: ReadonlySet<Job['op']> = new Set<Job['op']>(['convert'])
 
-/**
- * Open a document for rendering.
- *
- * Shared by rasterisation and unlock so both reach mupdf the same way. A
- * password is supplied only by unlock; rendering an encrypted document is
- * refused before it gets here, by the action layer.
- */
-export async function openPdf(path: string, password?: string) {
-  const doc = mupdf.Document.openDocument(await readFile(path), 'application/pdf')
-  if (password !== undefined && doc.needsPassword()) {
-    doc.authenticatePassword(password)
-  }
-  return doc
+// PDFiumLibrary.init() compiles the wasm module. It costs real time and there
+// is no reason to pay it per file, so it is memoised for the process. The
+// promise itself is cached, not the resolved value, so two concurrent callers
+// share one initialisation rather than racing two.
+let library: Promise<Awaited<ReturnType<typeof PDFiumLibrary.init>>> | undefined
+function getLibrary() {
+  library ??= PDFiumLibrary.init()
+  return library
 }
 
-export const mupdfEngine: Engine = {
-  id: 'mupdf',
+/**
+ * Open a PDF for reading.
+ *
+ * `password` is for ENCRYPTED SOURCES ONLY — PDFium can read a locked document
+ * but cannot write one, so there is no unlock feature here (ruling R7). The
+ * value must never be logged, returned, or attached to an error (invariant 8).
+ */
+export async function openPdf(bytes: Uint8Array, password?: string): Promise<PDFiumDocument> {
+  const lib = await getLibrary()
+  return await lib.loadDocument(bytes, password)
+}
+
+export const pdfiumEngine: Engine = {
+  id: 'pdfium',
   reads: READS,
   writes: WRITES,
   ops: OPS,
-  // Probing is handled by `engines/pdf.ts`, which is registered first and
-  // already recognises a PDF by content. The registry takes the first engine
-  // whose probe succeeds, so a second PDF prober would never run.
-  probe(): Promise<SourceInfo> {
-    throw new Error('the mupdf engine does not probe; engines/pdf.ts does')
+  probe(): SourceInfo {
+    // engines/pdf.ts already classifies PDFs by content and is registered
+    // first, so this is never reached. It throws rather than returning a
+    // wrong answer if the registration order is ever changed.
+    throw new Error('pdfium does not probe; engines/pdf.ts classifies PDFs')
   },
-  async run(_job: Job, _onPhase: (p: Progress) => void): Promise<Result> {
-    throw new Error('not implemented until task 3')
+  async run(_job: Job, _onProgress: (p: Progress) => void): Promise<Result> {
+    throw new Error('not implemented')   // Task 3
   },
 }
 ```
 
 - [ ] **Step 5: Register it**
 
-In `src/engines/registry.ts`:
+In `src/engines/registry.ts`, import `pdfiumEngine` and add it **last**:
 
 ```ts
-import { mupdfEngine } from './mupdf.js'
-
-export const ENGINES: Engine[] = [imageEngine, pdfEngine, mupdfEngine]
+export const ENGINES: readonly Engine[] = [imageEngine, pdfEngine, pdfiumEngine]
 ```
 
-Order matters: `imageEngine` declines a PDF quickly, `pdfEngine` probes it successfully, and `mupdfEngine` never probes. Keep it last.
+Order matters for `probe()`: `pdfEngine` classifies PDFs by content and must be
+reached first. `pdfiumEngine` only ever answers capability questions.
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `npx vitest run tests/engines/mupdf-registration.test.ts`
-Expected: PASS — 3 tests.
-
-- [ ] **Step 7: Run the full suite**
-
-Run: `npm run lint && npm run typecheck && npm test`
+Run: `npx vitest run tests/engines/pdfium-registration.test.ts tests/engines/routing.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add package.json package-lock.json src/engines/mupdf.ts src/engines/registry.ts tests/engines/mupdf-registration.test.ts
-git commit -m "feat(engines): register the mupdf engine"
+git add src/engines/pdfium.ts src/engines/registry.ts package.json package-lock.json tests/engines/pdfium-registration.test.ts
+git rm -f --ignore-unmatch src/engines/mupdf.ts tests/engines/mupdf-registration.test.ts
+git commit -m "feat(engines): add the pdfium engine, drop AGPL mupdf"
 ```
 
----
 
 ## Task 3: Rasterise PDF pages to images
 
+> **Amended 2026-08-20 (ruling R7).** Rewritten for `@hyzyla/pdfium`.
+
 **Files:**
-- Modify: `src/engines/mupdf.ts`, `src/core/types.ts`, `src/core/errors.ts`
-- Test: `tests/engines/mupdf-render.test.ts`
+- Modify: `src/engines/pdfium.ts`, `src/core/types.ts`, `src/core/errors.ts`
+- Test: `tests/engines/pdfium-render.test.ts`
 
 **Interfaces:**
-- Consumes: `openPdf` (Task 2), `writeAtomic` pattern from `engines/pdf.ts`
-- Produces: `mupdfEngine.run` handling `op: 'convert'`; `ConvertOptions` gains `dpi?: number` and `pages?: number[]`; `invalidDpi(value: unknown): ForgeError`
+- Consumes: `openPdf` (Task 2), `writeAtomic` from `core/atomic.ts`, `DEFAULT_QUALITY` from `engines/image.ts`
+- Produces: `pdfiumEngine.run` handling `op: 'convert'`; `ConvertOptions` gains `dpi?: number` and `pages?: number[]`; `invalidDpi(value: unknown): ForgeError`
 
-**Note on ordering:** `pages` is a 0-based, ascending, deduped list. The engine writes `outputs[i]` from `pages[i]`. **It must not sort or dedupe internally** — phase 3's worst defect was the engine sorting while the naming did not. Whatever hands it a job is responsible for normalising, and `core/pages.ts`'s `normalisePages` is that function.
+**Note on ordering:** `pages` is a 0-based, ascending, deduped list. The engine
+writes `outputs[i]` from `pages[i]`. **It must not sort or dedupe internally** —
+phase 3's worst defect was the engine sorting while the naming did not. Whatever
+hands it a job is responsible for normalising, and `core/pages.ts`'s
+`normalisePages` is that function.
+
+**Two measured API constraints. Both were found by spiking; neither is guessable
+from the types:**
+
+1. **`render({ render: 'bitmap' })` returns RGBA.** A page painted R=51 G=102
+   B=229 gives first pixel `[51,102,230,255]`. Pass it straight to Sharp's `raw`
+   input with `channels: 4`. Swapping the channels yields `r=232 b=56` — visibly
+   wrong colour that **passes every width/height assertion**. This is why step 1
+   asserts a pixel colour.
+2. **A `PDFiumPage` object is single-use.** Calling `.render()` twice on the same
+   page object corrupts the wasm heap (`RuntimeError: table index is out of
+   bounds`). Take a fresh `doc.getPage(n)` for each render. Never cache one.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/engines/mupdf-render.test.ts`:
+Create `tests/engines/pdfium-render.test.ts`:
 
 ```ts
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
-import { mupdfEngine } from '../../src/engines/mupdf.js'
+import { pdfiumEngine } from '../../src/engines/pdfium.js'
 import { probe } from '../../src/engines/registry.js'
-import type { DocumentInfo, Job, Progress } from '../../src/core/types.js'
+import type { DocumentInfo, Job } from '../../src/core/types.js'
 import { makeMarkedPdf, makeTempDir } from '../helpers/fixtures.js'
 
 async function doc(path: string): Promise<DocumentInfo> {
@@ -339,8 +378,8 @@ const options = { background: '#ffffff', keepMetadata: false }
 describe('rasterising', () => {
   it('renders the pages it was given, in the order it was given them', async () => {
     const dir = await makeTempDir()
-    // page n is 600 + n points wide, so an image's aspect ratio identifies
-    // which page it came from — not merely that a file appeared.
+    // page n is 600 + n points wide, so an image's width identifies which page
+    // it came from — not merely that a file appeared.
     const src = await makeMarkedPdf(dir, 'doc.pdf', [1, 2, 3, 4, 5])
     const outputs = [join(dir, 'a.jpg'), join(dir, 'b.jpg')]
     const job: Job = {
@@ -348,269 +387,192 @@ describe('rasterising', () => {
       options: { ...options, dpi: 72, pages: [1, 3] },
     }
 
-    await mupdfEngine.run(job, () => {})
+    await pdfiumEngine.run(job, () => {})
 
     // page index 1 is 602pt wide, index 3 is 604pt — at 72dpi, 1pt = 1px
-    const a = await sharp(await readFile(outputs[0] as string)).metadata()
-    const b = await sharp(await readFile(outputs[1] as string)).metadata()
-    expect(a.width).toBe(602)
-    expect(b.width).toBe(604)
+    expect((await sharp(await readFile(outputs[0] as string)).metadata()).width).toBe(602)
+    expect((await sharp(await readFile(outputs[1] as string)).metadata()).width).toBe(604)
+  })
+
+  it('writes the page\'s real colours, not a channel-swapped copy', async () => {
+    // Guards the RGBA/BGRA trap. makeColouredPdf paints a deliberately
+    // asymmetric colour: a symmetric one cannot tell RGBA from BGRA apart.
+    const dir = await makeTempDir()
+    const src = await makeColouredPdf(dir, 'c.pdf', { r: 51, g: 102, b: 229 })
+    const out = join(dir, 'c.png')
+    await pdfiumEngine.run({
+      op: 'convert', sources: [await doc(src)], outputs: [out], target: 'png',
+      options: { ...options, dpi: 72, pages: [0] },
+    }, () => {})
+
+    const { dominant } = await sharp(await readFile(out)).stats()
+    expect(dominant.r).toBeGreaterThan(200 - 160)   // ~51, not ~232
+    expect(dominant.b).toBeGreaterThan(200)         // ~229, not ~56
+    expect(dominant.b).toBeGreaterThan(dominant.r)  // the ordering is the point
   })
 
   it('scales with the requested resolution', async () => {
     const dir = await makeTempDir()
-    const src = await makeMarkedPdf(dir, 'doc.pdf', [0])
-    const out = join(dir, 'a.jpg')
-    await mupdfEngine.run(
-      {
+    const src = await makeMarkedPdf(dir, 'doc.pdf', [1])
+    const at = async (dpi: number) => {
+      const out = join(dir, `${dpi}.jpg`)
+      await pdfiumEngine.run({
         op: 'convert', sources: [await doc(src)], outputs: [out], target: 'jpeg',
-        options: { ...options, dpi: 144, pages: [0] },
-      },
-      () => {},
-    )
-    // 600pt at 144dpi = 1200px
-    expect((await sharp(await readFile(out)).metadata()).width).toBe(1200)
+        options: { ...options, dpi, pages: [0] },
+      }, () => {})
+      return (await sharp(await readFile(out)).metadata()).width as number
+    }
+    expect(await at(144)).toBe((await at(72)) * 2)
   })
 
-  it('honours a page rotation rather than ignoring it', async () => {
+  it('reports progress once per page, never fabricating a total', async () => {
     const dir = await makeTempDir()
-    const src = await makeMarkedPdf(dir, 'doc.pdf', [0], { rotate: 90 })
-    const out = join(dir, 'a.jpg')
-    await mupdfEngine.run(
-      {
-        op: 'convert', sources: [await doc(src)], outputs: [out], target: 'jpeg',
-        options: { ...options, dpi: 72, pages: [0] },
-      },
-      () => {},
-    )
-    const meta = await sharp(await readFile(out)).metadata()
-    // 600x842 rotated 90 renders 842x600
-    expect(meta.width).toBe(842)
-    expect(meta.height).toBe(600)
-  })
+    const src = await makeMarkedPdf(dir, 'doc.pdf', [1, 2, 3])
+    const seen: Array<{ done: number; total: number }> = []
+    await pdfiumEngine.run({
+      op: 'convert', sources: [await doc(src)], target: 'jpeg',
+      outputs: [join(dir, '1.jpg'), join(dir, '2.jpg'), join(dir, '3.jpg')],
+      options: { ...options, dpi: 72, pages: [0, 1, 2] },
+    }, (p) => { if (p.kind === 'determinate') seen.push({ done: p.done, total: p.total }) })
 
-  it('writes PNG when asked', async () => {
-    const dir = await makeTempDir()
-    const src = await makeMarkedPdf(dir, 'doc.pdf', [0])
-    const out = join(dir, 'a.png')
-    await mupdfEngine.run(
-      {
-        op: 'convert', sources: [await doc(src)], outputs: [out], target: 'png',
-        options: { ...options, dpi: 72, pages: [0] },
-      },
-      () => {},
-    )
-    expect((await sharp(await readFile(out)).metadata()).format).toBe('png')
-  })
-
-  it('reports one page event per page, counting to the real total', async () => {
-    const dir = await makeTempDir()
-    const src = await makeMarkedPdf(dir, 'doc.pdf', [0, 1, 2])
-    const outputs = [join(dir, 'a.jpg'), join(dir, 'b.jpg'), join(dir, 'c.jpg')]
-    const seen: Progress[] = []
-    await mupdfEngine.run(
-      {
-        op: 'convert', sources: [await doc(src)], outputs, target: 'jpeg',
-        options: { ...options, dpi: 72, pages: [0, 1, 2] },
-      },
-      (p) => seen.push(p),
-    )
-    const pages = seen.filter((p) => p.phase === 'page')
-    expect(pages).toEqual([
-      { phase: 'page', done: 1, total: 3 },
-      { phase: 'page', done: 2, total: 3 },
-      { phase: 'page', done: 3, total: 3 },
-    ])
-  })
-
-  it('leaves nothing behind when one output cannot be written', async () => {
-    const { readdir, mkdir } = await import('node:fs/promises')
-    const dir = await makeTempDir()
-    const src = await makeMarkedPdf(dir, 'doc.pdf', [0, 1])
-    const blocked = join(dir, 'blocked')
-    await mkdir(blocked)
-    const outputs = [join(dir, 'a.jpg'), blocked]
-    await expect(
-      mupdfEngine.run(
-        {
-          op: 'convert', sources: [await doc(src)], outputs, target: 'jpeg',
-          options: { ...options, dpi: 72, pages: [0, 1] },
-        },
-        () => {},
-      ),
-    ).rejects.toThrow()
-    expect((await readdir(dir)).sort()).toEqual(['blocked', 'doc.pdf'])
+    expect(seen.map((s) => s.done)).toEqual([1, 2, 3])
+    expect(seen.every((s) => s.total === 3)).toBe(true)
   })
 })
 ```
 
-- [ ] **Step 2: Extend the fixture helper**
-
-`makeMarkedPdf` needs an optional rotation. In `tests/helpers/fixtures.ts`, change its signature and body:
+You will need a `makeColouredPdf` helper. Add it to `tests/helpers/fixtures.ts`:
 
 ```ts
-export async function makeMarkedPdf(
-  dir: string,
-  name: string,
-  marks: number[],
-  opts: { rotate?: 90 | 180 | 270 } = {},
+/** A one-page PDF filled with an asymmetric colour, for channel-order checks. */
+export async function makeColouredPdf(
+  dir: string, name: string, c: { r: number; g: number; b: number },
 ): Promise<string> {
   const doc = await PDFDocument.create()
-  for (const mark of marks) {
-    const page = doc.addPage([MARK_BASE + mark, 842])
-    if (opts.rotate) page.setRotation(degrees(opts.rotate))
-  }
+  const page = doc.addPage([200, 200])
+  page.drawRectangle({
+    x: 0, y: 0, width: 200, height: 200,
+    color: rgb(c.r / 255, c.g / 255, c.b / 255),
+  })
   const path = join(dir, name)
   await writeFile(path, await doc.save())
   return path
 }
 ```
 
-Add `degrees` to the existing `pdf-lib` import. Every current caller passes three arguments and is unaffected.
+- [ ] **Step 2: Run the test to verify it fails**
 
-- [ ] **Step 3: Run the test to verify it fails**
+Run: `npx vitest run tests/engines/pdfium-render.test.ts`
+Expected: FAIL — `not implemented`.
 
-Run: `npx vitest run tests/engines/mupdf-render.test.ts`
-Expected: FAIL — `not implemented until task 3`.
+- [ ] **Step 3: Add `dpi` and `pages` to `ConvertOptions`**
 
-- [ ] **Step 4: Extend the types**
-
-In `src/core/types.ts`, add to `ConvertOptions`:
+In `src/core/types.ts`, extend `ConvertOptions`:
 
 ```ts
-export interface ConvertOptions {
-  /** 1-100. Ignored for lossless targets. */
-  quality?: number
-  /** CSS colour used when flattening alpha into a format that cannot carry it. */
-  background: string
-  keepMetadata: boolean
-  /** Rasterisation resolution, 36-600. Only meaningful for a document source. */
-  dpi?: number
+export type ConvertOptions = {
+  readonly background: string
+  readonly keepMetadata: boolean
+  readonly quality?: number
+  /** Rasterisation resolution. 36–600. Only meaningful for a PDF source. */
+  readonly dpi?: number
+  /** 0-based page indices, ascending and deduped by `normalisePages`. */
+  readonly pages?: readonly number[]
   /**
-   * 0-based page indices to render, ascending and deduped. Only meaningful
-   * for a document source. The engine writes `outputs[i]` from `pages[i]` and
-   * does NOT reorder — whoever builds the job owns the ordering, so naming
-   * and writing can never disagree.
+   * For an ENCRYPTED source only. Never logged, never returned, never attached
+   * to an error — invariant 8. There is no `--password` flag; this arrives from
+   * a prompt or `--password-stdin`.
    */
-  pages?: number[]
+  readonly password?: string
 }
 ```
 
-- [ ] **Step 5: Add the error factory**
+- [ ] **Step 4: Add the `invalidDpi` error**
 
-In `src/core/errors.ts`, add `'invalid-dpi'` to `ErrorCode`, then:
+In `src/core/errors.ts`, beside the existing constructors:
 
 ```ts
 export function invalidDpi(value: unknown): ForgeError {
-  return new ForgeError({
+  return forgeError({
     code: 'invalid-dpi',
-    title: 'Resolution out of range',
-    detail: `${String(value)} is not a resolution between 36 and 600.`,
-    hint: 'Try 150 for reading, or 300 for print.',
+    message: `${String(value)} is not a resolution I can use.`,
+    hint: 'Give a number between 36 and 600. The default is 150.',
   })
 }
 ```
 
-- [ ] **Step 6: Implement rasterisation**
+- [ ] **Step 5: Implement `run`**
 
-In `src/engines/mupdf.ts`:
+In `src/engines/pdfium.ts`, replace the throwing `run`:
 
 ```ts
-import { randomBytes } from 'node:crypto'
-import { rename, rm, writeFile } from 'node:fs/promises'
-
-/** Invariant 6: temp file, then rename. Never a partial file at the real path. */
-async function writeAtomic(path: string, bytes: Uint8Array): Promise<number> {
-  const temp = `${path}.${randomBytes(6).toString('hex')}.tmp`
-  try {
-    await writeFile(temp, bytes)
-    await rename(temp, path)
-    return bytes.byteLength
-  } catch (e) {
-    await rm(temp, { force: true }).catch(() => {})
-    throw e
-  }
-}
-
-async function rasterise(
-  job: Extract<Job, { op: 'convert' }>,
-  onPhase: (p: Progress) => void,
-) {
+async run(job: Job, onProgress: (p: Progress) => void): Promise<Result> {
+  if (job.op !== 'convert') throw new Error(`pdfium cannot ${job.op}`)
   const source = job.sources[0]
   const dpi = job.options.dpi ?? 150
   const pages = job.options.pages ?? []
-  const scale = dpi / 72
+  const quality = job.options.quality ?? DEFAULT_QUALITY.jpeg
 
-  onPhase({ phase: 'reading' })
-  const doc = await openPdf(source.path)
-
-  const written: string[] = []
-  let outputBytes = 0
+  const doc = await openPdf(await readFile(source.path), job.options.password)
   try {
-    for (const [i, pageIndex] of pages.entries()) {
-      const pixmap = doc
-        .loadPage(pageIndex)
-        .toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true)
-      const bytes =
-        job.target === 'png'
-          ? pixmap.asPNG()
-          : pixmap.asJPEG(job.options.quality ?? 82, false)
+    const written: string[] = []
+    for (const [i, index] of pages.entries()) {
+      // A fresh page handle per render. Reusing one corrupts the wasm heap.
+      const bitmap = await doc.getPage(index).render({
+        scale: dpi / 72,
+        render: 'bitmap',
+      })
+      // bitmap.data is RGBA — hand it to Sharp unswapped.
+      const image = sharp(Buffer.from(bitmap.data), {
+        raw: { width: bitmap.width, height: bitmap.height, channels: 4 },
+      })
+      const bytes = job.target === 'png'
+        ? await image.png().toBuffer()
+        : await image.flatten({ background: job.options.background })
+                     .jpeg({ quality, mozjpeg: true }).toBuffer()
 
-      const path = job.outputs[i]
-      if (path === undefined) {
-        throw new Error(`rendering ${pages.length} pages into ${job.outputs.length} outputs`)
-      }
-      outputBytes += await writeAtomic(path, bytes)
-      written.push(path)
-      onPhase({ phase: 'page', done: i + 1, total: pages.length })
+      const out = job.outputs[i] as string
+      await writeAtomic(out, bytes)
+      written.push(out)
+      onProgress({ kind: 'determinate', done: i + 1, total: pages.length })
     }
-  } catch (e) {
-    // All-or-nothing: remove outputs already renamed, not just the failing temp.
-    await Promise.all(written.map((p) => rm(p, { force: true }).catch(() => {})))
-    throw e
+    return { ok: true, outputs: written }
+  } finally {
+    // Frees the wasm document. Skipping it leaks the whole page buffer.
+    doc.destroy()
   }
-
-  return { job, outputBytes, warnings: [] }
 }
 ```
 
-Replace the stub `run` with a dispatcher:
+Note `flatten` on the JPEG path only: a PDF page is rendered onto transparency
+where nothing is painted, and JPEG cannot carry alpha (invariant 5). PNG keeps it.
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `npx vitest run tests/engines/pdfium-render.test.ts`
+Expected: PASS.
+
+- [ ] **Step 7: Sabotage-check the colour test**
+
+Prove the colour assertion is load-bearing. Temporarily swap the channels before
+handing the buffer to Sharp:
 
 ```ts
-  async run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
-    switch (job.op) {
-      case 'convert':
-        return rasterise(job, onPhase)
-      default:
-        throw new Error(`mupdf engine cannot ${job.op}`)
-    }
-  },
+for (let i = 0; i < bitmap.data.length; i += 4) {
+  const t = bitmap.data[i]; bitmap.data[i] = bitmap.data[i+2]; bitmap.data[i+2] = t
+}
 ```
 
-- [ ] **Step 7: Run the test to verify it passes**
+Run the suite. **The colour test must fail and the width tests must still pass** —
+that asymmetry is the whole reason the colour test exists. Revert the sabotage.
 
-Run: `npx vitest run tests/engines/mupdf-render.test.ts`
-Expected: PASS — 6 tests.
-
-- [ ] **Step 8: Prove the tests are load-bearing**
-
-Sabotage each, confirm the named test fails, then revert:
-
-- Replace `pages.entries()` with a reversed iteration → the ordering test fails.
-- Drop the `rm` in the catch → the all-or-nothing test fails.
-- Hardcode `scale = 1` → the resolution test fails.
-
-Record what you saw in your report.
-
-- [ ] **Step 9: Run the full suite and commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-npm run lint && npm run typecheck && npm test
-git add src/engines/mupdf.ts src/core/types.ts src/core/errors.ts tests/engines/mupdf-render.test.ts tests/helpers/fixtures.ts
-git commit -m "feat(engines): rasterise PDF pages through mupdf"
+git add src/engines/pdfium.ts src/core/types.ts src/core/errors.ts tests/engines/pdfium-render.test.ts tests/helpers/fixtures.ts
+git commit -m "feat(engines): rasterise PDF pages through pdfium"
 ```
 
----
 
 ## Task 4: Embed images into a PDF
 
@@ -898,227 +860,29 @@ git commit -m "feat(shell): a determinate progress bar"
 
 ---
 
-## Task 6: Unlock — engine and action
+## Task 6: Unlock — CUT
 
-**Files:**
-- Modify: `src/engines/mupdf.ts`, `src/core/types.ts`, `src/core/errors.ts`, `src/core/actions/index.ts`
-- Create: `src/core/actions/unlock.ts`
-- Test: `tests/engines/mupdf-unlock.test.ts`, `tests/helpers/fixtures.ts`
+> **Cut 2026-08-20 (ruling R7).** This task built `unlock` on mupdf's
+> `authenticatePassword` + save. `mupdf` is AGPL-3.0-or-later and Forge is MIT,
+> so it was removed. PDFium can *open* an encrypted PDF but exposes no save
+> function — verified against its API surface — and unlock must decrypt **and
+> write**. There is no permissive library in the stack that can do it.
+>
+> **Do not implement this task.** Skip to Task 7.
+>
+> What survives: reading an encrypted PDF. `openPdf` takes an optional
+> `password`, so `/convert` on a locked PDF prompts and rasterises. That keeps
+> `src/cli/stdin.ts` (Task 7) and invariant 8 in force.
+>
+> If unlock is ever wanted, `qpdf-wasm` (Apache-2.0) can decrypt and write, but
+> it was v0.1.0 at the time of this decision and was judged too immature to put
+> on the password path.
 
-**Interfaces:**
-- Consumes: `openPdf`, `writeAtomic` (Tasks 2, 3)
-- Produces: `Job` gains `{ op: 'unlock'; sources: [DocumentInfo]; outputs: [string]; password: string }`; `unlockAction: Action`; `wrongPassword(path: string): ForgeError`; `makeEncryptedPdf(dir, name, password, pages?): Promise<string>`
 
-- [ ] **Step 1: Write the failing test**
+## Task 7: CLI — page selection, resolution, encrypted sources
 
-Create `tests/engines/mupdf-unlock.test.ts`:
-
-```ts
-import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { mupdfEngine } from '../../src/engines/mupdf.js'
-import { probe } from '../../src/engines/registry.js'
-import type { DocumentInfo, Job } from '../../src/core/types.js'
-import { makeEncryptedPdf, makeTempDir } from '../helpers/fixtures.js'
-
-async function doc(path: string): Promise<DocumentInfo> {
-  const info = await probe(path)
-  if (info.kind !== 'document') throw new Error('expected a document')
-  return info
-}
-
-describe('unlock', () => {
-  it('probes an encrypted document as encrypted', async () => {
-    const dir = await makeTempDir()
-    const src = await makeEncryptedPdf(dir, 'locked.pdf', 'hunter2', 3)
-    expect((await doc(src)).encrypted).toBe(true)
-  })
-
-  it('writes a copy that is no longer encrypted', async () => {
-    const dir = await makeTempDir()
-    const src = await makeEncryptedPdf(dir, 'locked.pdf', 'hunter2', 3)
-    const out = join(dir, 'open.pdf')
-    const job: Job = {
-      op: 'unlock', sources: [await doc(src)], outputs: [out], password: 'hunter2',
-    }
-
-    await mupdfEngine.run(job, () => {})
-
-    const after = await doc(out)
-    expect(after.encrypted).toBe(false)
-    expect(after.pages).toBe(3)
-  })
-
-  it('refuses a wrong password with a specific error', async () => {
-    const dir = await makeTempDir()
-    const src = await makeEncryptedPdf(dir, 'locked.pdf', 'hunter2', 1)
-    const job: Job = {
-      op: 'unlock', sources: [await doc(src)], outputs: [join(dir, 'o.pdf')], password: 'wrong',
-    }
-    await expect(mupdfEngine.run(job, () => {})).rejects.toThrow(/password/i)
-  })
-
-  it('never puts the password in the error', async () => {
-    const dir = await makeTempDir()
-    const src = await makeEncryptedPdf(dir, 'locked.pdf', 'hunter2', 1)
-    const secret = 'correct-horse-battery-staple'
-    let caught: unknown
-    try {
-      await mupdfEngine.run(
-        { op: 'unlock', sources: [await doc(src)], outputs: [join(dir, 'o.pdf')], password: secret },
-        () => {},
-      )
-    } catch (e) {
-      caught = e
-    }
-    const text = JSON.stringify(caught, Object.getOwnPropertyNames(Object(caught)))
-    expect(text).not.toContain(secret)
-  })
-})
-```
-
-- [ ] **Step 2: Add the fixture**
-
-Append to `tests/helpers/fixtures.ts`:
-
-```ts
-/** A document that genuinely requires a password to read. */
-export async function makeEncryptedPdf(
-  dir: string,
-  name: string,
-  password: string,
-  pages = 1,
-): Promise<string> {
-  const mupdf = await import('mupdf')
-  const plain = await PDFDocument.create()
-  for (let i = 0; i < pages; i++) plain.addPage([595, 842])
-  const doc = mupdf.Document.openDocument(
-    Buffer.from(await plain.save()),
-    'application/pdf',
-  ).asPDF()
-  const bytes = doc
-    .saveToBuffer(`encrypt=aes-256,user-password=${password},owner-password=${password}`)
-    .asUint8Array()
-  const path = join(dir, name)
-  await writeFile(path, bytes)
-  return path
-}
-```
-
-- [ ] **Step 3: Run the test to verify it fails**
-
-Run: `npx vitest run tests/engines/mupdf-unlock.test.ts`
-Expected: FAIL — `mupdf engine cannot unlock`.
-
-- [ ] **Step 4: Add the Job member and error**
-
-In `src/core/types.ts`, add to the `Job` union:
-
-```ts
-  | {
-      op: 'unlock'
-      sources: [DocumentInfo]
-      outputs: [string]
-      /**
-       * Never log, render, or include this in an error, a Result, or debug
-       * output. Invariant 8.
-       */
-      password: string
-    }
-```
-
-In `src/core/errors.ts`, add `'wrong-password'` to `ErrorCode` and:
-
-```ts
-export function wrongPassword(path: string): ForgeError {
-  return new ForgeError({
-    code: 'wrong-password',
-    title: 'Password not accepted',
-    detail: `${basename(path)} did not open with that password.`,
-    hint: 'Check the password and try again.',
-  })
-}
-```
-
-Note what this does **not** interpolate.
-
-- [ ] **Step 5: Implement unlock**
-
-In `src/engines/mupdf.ts`:
-
-```ts
-import { wrongPassword } from '../core/errors.js'
-
-async function unlock(job: Extract<Job, { op: 'unlock' }>, onPhase: (p: Progress) => void) {
-  const source = job.sources[0]
-  onPhase({ phase: 'reading' })
-
-  const doc = mupdf.Document.openDocument(await readFile(source.path), 'application/pdf')
-  if (doc.needsPassword() && doc.authenticatePassword(job.password) === 0) {
-    throw wrongPassword(source.path)
-  }
-
-  onPhase({ phase: 'writing' })
-  const bytes = doc.asPDF().saveToBuffer('').asUint8Array()
-  const outputBytes = await writeAtomic(job.outputs[0], bytes)
-  return { job, outputBytes, warnings: [] }
-}
-```
-
-`authenticatePassword` returns a bitfield: 0 means neither the user nor the owner password matched. Add `case 'unlock': return unlock(job, onPhase)` to the dispatcher.
-
-- [ ] **Step 6: Write the action**
-
-Create `src/core/actions/unlock.ts`:
-
-```ts
-import { suffixedOutputPath } from '../output-path.js'
-import type { DocumentInfo, Job, SourceInfo } from '../types.js'
-import type { Action } from './index.js'
-
-const encryptedDocuments = (sources: SourceInfo[]): DocumentInfo[] =>
-  sources.filter((s): s is DocumentInfo => s.kind === 'document' && s.encrypted)
-
-export const unlockAction: Action = {
-  id: 'unlock',
-  label: 'Unlock',
-  hint: 'remove a known password',
-  appliesTo: (sources) =>
-    sources.length > 0 && encryptedDocuments(sources).length === sources.length,
-  unavailable: () => 'encrypted PDFs only',
-  options: () => [],
-  plan(sources, values): Job[] {
-    const password = typeof values.password === 'string' ? values.password : ''
-    return encryptedDocuments(sources).map((doc) => ({
-      op: 'unlock' as const,
-      sources: [doc] as [DocumentInfo],
-      outputs: [suffixedOutputPath(doc.path, 'unlocked')] as [string],
-      password,
-    }))
-  },
-}
-```
-
-Register it in `src/core/actions/index.ts`'s `ACTIONS` array.
-
-**It does not appear in `/pdf`'s hub** — `HUB_ACTIONS` filters by id, so add `'unlock'` to the ids it excludes alongside `'convert'` and `'compress'`. Unlock is CLI-only by design (spec §8); the shell has no masked input.
-
-- [ ] **Step 7: Run the test to verify it passes**
-
-Run: `npx vitest run tests/engines/mupdf-unlock.test.ts`
-Expected: PASS — 4 tests.
-
-- [ ] **Step 8: Run the full suite and commit**
-
-```bash
-npm run lint && npm run typecheck && npm test
-git add src/engines/mupdf.ts src/core/types.ts src/core/errors.ts src/core/actions/unlock.ts src/core/actions/index.ts src/shell/flows/pdf.tsx tests/engines/mupdf-unlock.test.ts tests/helpers/fixtures.ts
-git commit -m "feat(engines): unlock an encrypted PDF"
-```
-
----
-
-## Task 7: CLI — page selection, resolution, unlock
+> **Amended 2026-08-20 (ruling R7).** `--unlock` is gone with the feature. The
+> password path survives for *reading* an encrypted PDF during a conversion.
 
 **Files:**
 - Create: `src/cli/stdin.ts`
@@ -1126,7 +890,7 @@ git commit -m "feat(engines): unlock an encrypted PDF"
 - Test: `tests/cli/pixels-args.test.ts`
 
 **Interfaces:**
-- Consumes: `parseRanges`, `normalisePages` (`core/pages.ts`), `invalidDpi`, `unlockAction`
+- Consumes: `parseRanges`, `normalisePages` (`core/pages.ts`), `invalidDpi`, `openPdf` (Task 2)
 - Produces: `readPassword(opts: { stdin: boolean }): Promise<string>` in `src/cli/stdin.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -1165,18 +929,19 @@ describe('rasterisation flags', () => {
   })
 })
 
-describe('unlock flags', () => {
-  it('parses --unlock', () => {
-    expect(parseArgs(argv('--unlock')).action).toBe('unlock')
-  })
-
+describe('encrypted sources', () => {
   it('parses --password-stdin', () => {
-    expect(parseArgs(argv('--unlock', '--password-stdin')).passwordStdin).toBe(true)
+    expect(parseArgs(argv('--to', 'jpeg', '--password-stdin')).passwordStdin).toBe(true)
   })
 
   it('has no --password flag at all', () => {
     // A password in argv lands in shell history and ps output. Spec §8.
-    expect(() => parseArgs(argv('--unlock', '--password', 'hunter2'))).toThrow()
+    expect(() => parseArgs(argv('--to', 'jpeg', '--password', 'hunter2'))).toThrow()
+  })
+
+  it('has no --unlock flag — the feature was cut, so the flag must not linger', () => {
+    // A flag that parses but does nothing is worse than no flag. Ruling R7.
+    expect(() => parseArgs(argv('--unlock'))).toThrow()
   })
 })
 ```
@@ -1193,11 +958,10 @@ In `src/cli/args.ts`, register:
 ```ts
   .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
   .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
-  .option('--unlock', 'remove a known password from a PDF')
-  .option('--password-stdin', 'read the password from stdin instead of prompting')
+  .option('--password-stdin', 'read an encrypted PDF\'s password from stdin')
 ```
 
-Extend `Intent` with `dpi?: number`, `pages?: string`, `passwordStdin?: boolean`, and `'unlock'` in the `action` union. Validate:
+Extend `Intent` with `dpi?: number`, `pages?: string`, and `passwordStdin?: boolean`. The `action` union is unchanged. Validate:
 
 ```ts
 const dpi = Number(opts.dpi)
@@ -1244,7 +1008,7 @@ export async function readPassword(opts: { stdin: boolean }): Promise<string> {
 
 - [ ] **Step 5: Wire execution**
 
-In `src/cli/execute.ts`, for `intent.action === 'unlock'`: read the password via `readPassword`, call `unlockAction.plan(sources, { password })`, run the jobs through `checkWriteSafety` and `runJobs` exactly as the other page operations do.
+In `src/cli/execute.ts`, when a conversion's source is a document with `encrypted: true`: read the password via `readPassword({ stdin: intent.passwordStdin ?? false })` and pass it in `ConvertOptions.password`. If the source is not encrypted, never prompt. A wrong password must fail with the existing encrypted-source error and **must not** echo the attempted value (invariant 8).
 
 For a conversion whose source is a document: parse `intent.pages` with `parseRanges(text, source.pages)` — or all pages when absent — normalise it with `normalisePages`, and pass `{ dpi, pages }` in `ConvertOptions`. Build one output per page with `splitOutputPaths`-style zero-padding.
 
@@ -1264,7 +1028,7 @@ Expected: `t-2.jpg` and `t-3.jpg` exist, each 595px wide.
 ```bash
 npm run lint && npm run typecheck && npm test
 git add src/cli/args.ts src/cli/execute.ts src/cli/stdin.ts tests/cli/pixels-args.test.ts
-git commit -m "feat(cli): render pages to images, and unlock"
+git commit -m "feat(cli): render pages to images, prompt for locked PDFs"
 ```
 
 ---
@@ -1385,7 +1149,7 @@ import { encryptedSource } from '../../src/core/errors.js'
 describe('the encrypted-file refusal', () => {
   it('names the command that can actually do it', () => {
     const error = encryptedSource('/tmp/scan.pdf')
-    expect(`${error.detail} ${error.hint ?? ''}`).toContain('--unlock')
+    expect(`${error.detail} ${error.hint ?? ''}`).toContain('--password-stdin')
   })
 
   it('names the file so the command can be copied', () => {
@@ -1412,10 +1176,10 @@ export function encryptedSource(path: string): ForgeError {
   return new ForgeError({
     code: 'encrypted-source',
     title: 'This PDF is password-protected',
-    detail: `${name} cannot be changed until it is unlocked.`,
+    detail: `${name} is password-protected.`,
     // The shell has no password field by design (spec §8), so it points at
     // the front end that does rather than only refusing.
-    hint: `Unlock it first:  forge ${name} --unlock`,
+    hint: `Convert it to images instead:  forge ${name} --to jpeg --password-stdin`,
   })
 }
 ```
@@ -1428,7 +1192,7 @@ In `src/shell/App.tsx`, after a conversion whose target was `pdf` and which prod
 npx vitest run tests/shell/embed-suggestion.test.tsx
 npm run lint && npm run typecheck && npm test
 git add src/core/errors.ts src/shell/App.tsx tests/shell/embed-suggestion.test.tsx
-git commit -m "feat(shell): offer to merge embedded PDFs, and point at --unlock"
+git commit -m "feat(shell): offer to merge embedded PDFs, signpost locked files"
 ```
 
 ---
@@ -1440,9 +1204,9 @@ git commit -m "feat(shell): offer to merge embedded PDFs, and point at --unlock"
 
 - [ ] **Step 1: Document what shipped, by running it**
 
-Build the binary and exercise every command before writing a line about it. Cover PDF→image (`--to jpeg`, `--pages`, `--dpi` and its bounds), image→PDF, and `--unlock` with both password routes.
+Build the binary and exercise every command before writing a line about it. Cover PDF→image (`--to jpeg`, `--pages`, `--dpi` and its bounds), image→PDF, and converting an encrypted PDF by both password routes.
 
-State plainly that **unlock is CLI-only and protect is not built** — a README that leaves a user hunting for a shell command that does not exist is worse than one that says so.
+State plainly that **Forge cannot remove a password from a PDF, only read one it is given** — and why: the libraries that can decrypt-and-write are AGPL, and Forge is MIT. A README that leaves a user hunting for a command that does not exist is worse than one that says so.
 
 - [ ] **Step 2: Note what is still to come**
 
@@ -1453,17 +1217,17 @@ Compress and split-under-a-size are phase 4b; Markdown, HTML and Office are phas
 ```bash
 npm run lint && npm run typecheck && npm test
 git add README.md
-git commit -m "docs: rasterisation, embedding, and unlock"
+git commit -m "docs: rasterisation, embedding, encrypted sources"
 ```
 
 ---
 
 ## Self-Review
 
-**Spec coverage.** §4 routing → Task 1. §5 engines → Tasks 2, 3, 4. §6 PDF→image → Tasks 3, 7, 8. §7 image→PDF → Tasks 4, 9. §8 unlock → Tasks 6, 7, and the signpost in Task 9. §9 progress → Tasks 5, 8. §10 CLI → Task 7. §11 code layout → the File Structure table. §12 testing → distributed. §13 invariants → Global Constraints, with invariant 8 tested in Task 6. §14 out of scope → Task 10.
+**Spec coverage.** §4 routing → Task 1. §5 engines → Tasks 2, 3, 4. §6 PDF→image → Tasks 3, 7, 8. §7 image→PDF → Tasks 4, 9. §8 unlock → CUT by ruling R7; the reading half survives in Task 7 and the signpost in Task 9. §9 progress → Tasks 5, 8. §10 CLI → Task 7. §11 code layout → the File Structure table. §12 testing → distributed. §13 invariants → Global Constraints, with invariant 8 tested in Task 7. §14 out of scope → Task 10.
 
 **Placeholder scan.** No `TBD` or "handle edge cases". Three steps describe rather than transcribe — Task 7's execute wiring, Task 8's convert-action options and the App.tsx progress state — because each threads through an existing flow whose shape the implementer must read first. Their tests are written out in full, which is what pins the behaviour.
 
-**Type consistency.** `ConvertOptions.dpi`/`.pages` are defined in Task 3 and consumed in 7 and 8. `Job`'s `unlock` member is defined in Task 6 and consumed in 7. `openPdf` and `writeAtomic` are defined in Tasks 2 and 3 and reused in 6. `normalisePages` comes from phase 3's `core/pages.ts` and is used identically in Tasks 7 and 8 — deliberately the same function, so naming and writing cannot diverge. `Progress`'s props are fixed in Task 5 and mounted in Task 8.
+**Type consistency.** `ConvertOptions.dpi`/`.pages` are defined in Task 3 and consumed in 7 and 8. `Job` gains no new member — `unlock` was cut, so `Job['op']` is untouched by this phase. `openPdf` is defined in Task 2 and reused in 3 and 7; `writeAtomic` lives in `core/atomic.ts`. `normalisePages` comes from phase 3's `core/pages.ts` and is used identically in Tasks 7 and 8 — deliberately the same function, so naming and writing cannot diverge. `Progress`'s props are fixed in Task 5 and mounted in Task 8.
 
 **One risk worth naming.** Task 3's ordering test and Task 8's planning test both rest on `pages` reaching the engine already normalised. If a future caller skips `normalisePages`, the engine will render the wrong page into a correctly-named file — silently, exactly as phase 3's extract did. The engine deliberately does not defend against it, because defending would recreate the two-orderings bug. The protection is that one function exists and both callers use it.

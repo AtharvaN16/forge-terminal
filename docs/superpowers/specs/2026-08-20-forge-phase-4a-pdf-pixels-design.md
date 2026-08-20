@@ -6,6 +6,68 @@
 
 ---
 
+## Amendment 1 — mupdf replaced by pdfium; unlock cut — 2026-08-20
+
+**This amendment supersedes every mention of `mupdf` and of the `unlock`
+feature below it.** The rest of the document stands.
+
+`mupdf@1.28.0` is **AGPL-3.0-or-later**. Forge declares **MIT**, and every other
+dependency (pdf-lib, sharp, ink, commander) is MIT or Apache-2.0. Shipping an
+MIT CLI linked against an AGPL runtime forces the combined work to AGPL. The
+repo is public and the deliverable is a distributable command, so the obligation
+is real. This was my error in the phase 3 spike: I chose mupdf on capability and
+never read its licence. It never reached `dev` or `main`.
+
+**Rasterisation now uses `@hyzyla/pdfium`** — wrapper MIT, PDFium core
+BSD-3-Clause.
+
+**`unlock` is cut.** PDFium can *open* an encrypted PDF but exposes no save
+function, and unlock must decrypt *and write*. Reading an encrypted PDF is kept:
+`/convert` on a locked PDF prompts for a password and rasterises it. So
+`cli/stdin.ts` and invariant 8 both stand — passwords still exist, they just
+unlock a read rather than produce a decrypted file.
+
+### Re-measured on pdfium
+
+The §2 figures were taken with mupdf on a different fixture and do not carry
+over. Re-measured here: 24 A4 pages, each a photo plus 18 lines of text.
+
+| dpi | scale | render 1 page | PNG | JPEG q75 | ratio |
+| --- | --- | --- | --- | --- | --- |
+| 72 | 1.000 | 33 ms | 0.68 MB | 0.08 MB | 8× |
+| 150 | 2.083 | 36 ms | 2.83 MB | 0.25 MB | 12× |
+| 300 | 4.167 | 58 ms | 10.78 MB | 0.71 MB | 15× |
+
+- **JPEG-by-default survives**, 12× at 150 dpi rather than the 46× claimed in §2.
+  That gap is the *fixture*, not the library — Sharp does the encoding either
+  way, and text compresses far better as PNG than the photo-heavy page the old
+  number came from. The decision is unchanged; the evidence for it is weaker
+  than I wrote.
+- **150 dpi by default survives** on the same reasoning.
+- **The progress bar's justification weakens and its conclusion holds.** 24 pages
+  took 740 ms, 31 ms a page, so a 248-page scan is about **8 seconds** — not the
+  25 seconds §2 claims. 8 seconds is still far past the point a person wonders
+  whether it has hung, so the bar is warranted, but it is not the emergency the
+  original number implied.
+- **pdfium honours `/Rotate`,** same as mupdf: a 400×800 page with `/Rotate 90`
+  renders 800×400. The §2 conclusion is unaffected.
+
+### Two API constraints that must reach the implementation
+
+1. **`render: 'bitmap'` returns RGBA, not BGRA.** A page painted R=51 G=102 B=229
+   yields first pixel `[51,102,230,255]`. Feed Sharp's `raw` input directly with
+   `channels: 4`. Swapping produces `r=232 b=56` — silently inverted colour that
+   passes every width/height assertion. **Task 3 must assert a colour, not only
+   a size.**
+2. **A `PDFiumPage` object is single-use.** Calling `.render()` twice on one page
+   object corrupts the wasm heap (`table index is out of bounds`). Take a fresh
+   `doc.getPage(n)` for every render, or iterate `doc.pages()` once.
+
+`qpdf-wasm` (Apache-2.0) could restore unlock later, but it is v0.1.0 and is not
+being taken on now.
+
+---
+
 ## 1. What phase 4a is
 
 Phase 3 gave PDFs page operations — merge, split, extract, delete, rotate — all
