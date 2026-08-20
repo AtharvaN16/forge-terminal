@@ -110,3 +110,61 @@ describe('result block', () => {
     expect(frame).toContain('115 KB')
   })
 })
+
+describe('result block, paired form', () => {
+  const result: Result = {
+    job: {
+      source,
+      target: 'gif',
+      output: '/tmp/Screenshot 2026-08-17 at 3.52.36 PM.gif',
+      options: { background: '#ffffff', keepMetadata: false },
+    },
+    outputBytes: 133_120,
+    warnings: [],
+  }
+  const block = { kind: 'result' as const, id: 'r2', result }
+
+  it('frames the source and the output as a before and an after', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={100} />)
+    expect(frame).toContain('╭─ PNG')
+    expect(frame).toContain('╭─ GIF')
+    expect(frame).toContain('→')
+  })
+
+  it('still says done in words, not colour alone', () => {
+    expect(frameOf(<HistoryEntry block={block} width={100} />)).toContain('✓ done')
+  })
+
+  it('puts the sizes and the saving on their own line', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={100} />)
+    const line = frame.split('\n').find((l) => l.includes('%')) ?? ''
+    expect(line).toContain('348 KB')
+    expect(line).toContain('133 KB')
+    expect(line).toMatch(/\d+% smaller/)
+    expect(line).not.toContain('│')
+  })
+
+  it('keeps both boxes the same height and aligned', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={100} />)
+    const tops = frame.split('\n').filter((l) => l.includes('╭'))
+    const bottoms = frame.split('\n').filter((l) => l.includes('╰'))
+    // Both boxes share one line for each edge, so there is exactly one of each.
+    expect(tops).toHaveLength(1)
+    expect(bottoms).toHaveLength(1)
+    expect(tops[0]?.split('╭')).toHaveLength(3) // two boxes on that line
+  })
+
+  it('falls back to the single-line form when two boxes will not fit', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={50} />)
+    expect(frame).not.toContain('╭')
+    expect(frame).toContain('✓ done')
+    expect(frame).toMatch(/\d+% smaller/)
+  })
+
+  it('never overflows the terminal at any width', () => {
+    for (const w of [40, 56, 60, 80, 100, 120]) {
+      const frame = frameOf(<HistoryEntry block={block} width={w} />)
+      for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
+    }
+  })
+})
