@@ -52,6 +52,16 @@ export interface ConvertOptions {
   /** CSS colour used when flattening alpha into a format that cannot carry it. */
   background: string
   keepMetadata: boolean
+  /** Rasterisation resolution, relative to 72dpi (`scale = dpi / 72`). 36-600. Only meaningful for a PDF source. */
+  dpi?: number
+  /** 0-based page indices, ascending and deduped by `core/pages.ts`'s `normalisePages`. Only meaningful for a PDF source. */
+  pages?: number[]
+  /**
+   * For an ENCRYPTED source only. Never logged, never returned, never
+   * attached to an error (invariant 8). There is no `--password` flag; this
+   * arrives from a prompt or `--password-stdin`.
+   */
+  password?: string
 }
 
 /**
@@ -62,6 +72,14 @@ export interface ConvertOptions {
  * `split` and `extract` produce several outputs. Tuple types make that a
  * compile error rather than a convention.
  *
+ * `convert`'s `outputs` is `[string, ...string[]]` rather than a plain
+ * `string[]` so every existing single-output caller (`job.outputs[0]`) keeps
+ * a `string`, never a `string | undefined`, under `noUncheckedIndexedAccess`.
+ * A convert job stays exactly one *source* — a multi-page PDF rasterisation
+ * is one PDF in, many images out, not several sources — but can produce many
+ * *outputs* when that source is a paged document: `pdfium.ts` writes
+ * `outputs[i]` from `options.pages[i]`, one file per selected page.
+ *
  * `cuts` are 0-based indices of the page *after which* a cut falls. `pages`
  * are 0-based page indices. Both are 1-based only in what the user sees.
  */
@@ -69,7 +87,7 @@ export type Job =
   | {
       op: 'convert'
       sources: [SourceInfo]
-      outputs: [string]
+      outputs: [string, ...string[]]
       target: FormatId
       options: ConvertOptions
     }
