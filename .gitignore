@@ -9,3 +9,6 @@ coverage/
 
 # brainstorming companion
 .superpowers/
+
+# agent worktrees (harness-created, never committed)
+.claude/worktrees/
