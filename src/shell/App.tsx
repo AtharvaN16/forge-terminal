@@ -370,18 +370,22 @@ export function App({
 
   /**
    * Whether `convertAction` actually has somewhere to send this source.
-   * `convertAction.appliesTo` only checks `sources.length >= 1` — true for
-   * every source there has ever been until the PDF engine arrived, since
-   * every image format could always become some *other* image format. A
-   * PDF's only writable format is PDF itself, which `targetSelect` (in
-   * `core/actions/convert.ts`) deliberately filters out as a no-op
-   * conversion, so its target list is genuinely empty.
+   * `convertAction.appliesTo` only checks `sources.length >= 1` — that was
+   * never enough on its own to guarantee a real choice: before the mupdf
+   * engine arrived, a PDF's only writable format was PDF itself, which
+   * `targetSelect` (in `core/actions/convert.ts`) deliberately filters out
+   * as a no-op conversion, leaving its target list genuinely empty. A PDF
+   * now has real targets (jpeg, png — see `engines/mupdf.ts`), so this
+   * returns `true` for one; the check stays because nothing guarantees
+   * every future source kind will have somewhere to go.
    *
-   * Without this check, dropping a PDF (or typing `/convert` on one) would
-   * open the `target` step with a `Select` that has nothing to move a
-   * cursor onto — and critically, `Select` no-ops on *every* key, including
-   * escape, when its item list is empty (see `Select.tsx`). That is a dead
-   * end a person cannot back out of short of quitting the process.
+   * Without this check, a source with no real target would open the
+   * `target` step with a `Select` that has nothing to move a cursor onto —
+   * and critically, `Select` no-ops on *every* key, including escape, when
+   * its item list is empty (see `Select.tsx`). That was a dead end a
+   * person could not back out of short of quitting the process; it is why
+   * this exists at all, even though no source reaches that empty case
+   * today.
    */
   const hasConvertTarget = useCallback(
     (candidate: SourceInfo): boolean =>
@@ -563,9 +567,11 @@ export function App({
         }
         setMode('convert')
         setValues({})
-        // A source with nowhere to convert to (a staged PDF, today) stays
-        // at idle rather than opening a target picker with nothing in it —
-        // see `hasConvertTarget`.
+        // A source with nowhere to convert to would stay at idle rather
+        // than opening a target picker with nothing in it — see
+        // `hasConvertTarget`. No source reaches that today; a staged PDF
+        // now opens the real picker like anything else, with a way back to
+        // `/pdf` from there — see the `target` step's own signpost.
         setStep(source && hasConvertTarget(source) ? 'target' : 'idle')
         return
       }
@@ -689,18 +695,22 @@ export function App({
           if (!compressAction.appliesTo([info])) {
             push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
             setMode('convert')
-            // See `hasConvertTarget`: a PDF can't compress *or* convert, so
-            // falling back to the target step here would trade one dead
-            // end for another.
+            // `compressAction.appliesTo` only accepts a lossy image, so
+            // nothing reaches this branch without a real convert target
+            // either — but check anyway, via `hasConvertTarget`, rather
+            // than assume: falling back to the target step for a source
+            // that turned out to have nothing to convert to would trade
+            // one dead end for another.
             setStep(hasConvertTarget(info) ? 'target' : 'idle')
             return
           }
           setStep('mode')
           return
         }
-        // A source with no convert target (a PDF, today) stays at idle,
-        // staged and ready for `/pdf` or another command, rather than
-        // opening a target picker with nothing in it — see
+        // A source with a real convert target — every image, and now a PDF
+        // too — goes straight to the target picker. One without a target
+        // would stay at idle, staged and ready for `/pdf` or another
+        // command, rather than opening a picker with nothing in it — see
         // `hasConvertTarget`.
         setStep(hasConvertTarget(info) ? 'target' : 'idle')
       } catch (e) {
@@ -727,9 +737,31 @@ export function App({
   // (which is `SourceInfo | null`) and asserting it non-null: the caller
   // below only reaches this from a branch already narrowed on `source`
   // being set, so the non-null-ness is a real invariant, not a suppression.
-  /** Takes the whole staged batch back off the bench and returns to the prompt. */
+  /**
+   * Takes the whole staged batch back off the bench and returns to the
+   * prompt. Right for a source whose only path forward *was* the target
+   * picker — an image has nothing else to do with a staged file, so
+   * backing out means abandoning it. See `backToPromptKeepingStage` for the
+   * other case.
+   */
   const clearSource = () => {
     setStage(clearStage())
+    setValues({})
+    setStep('idle')
+  }
+
+  /**
+   * Backs out of the target picker without discarding what is staged.
+   *
+   * A staged PDF has somewhere else to go besides conversion: `/pdf`'s five
+   * page operations, and — by dropping a second PDF once back at the
+   * prompt — a merge stage. `clearSource` would cost the user both just for
+   * escaping the question "convert it to what", so a document keeps its
+   * place on the bench; only the in-progress target choice is dropped.
+   * Wired up only where the staged source is a document (see the `target`
+   * step below) — an image still uses `clearSource`, unchanged.
+   */
+  const backToPromptKeepingStage = () => {
     setValues({})
     setStep('idle')
   }
@@ -1222,9 +1254,20 @@ export function App({
               width={width}
               items={targetSpec.choices}
               onSubmit={(target) => chooseTarget(source, target)}
-              onCancel={clearSource}
+              onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
               showHints={band !== 'compact'}
             />
+            {/* A PDF reaching this screen still has page operations on the
+                table too — see `backToPromptKeepingStage`. Without this, the
+                one moment someone lands here straight off a drop, `/pdf`
+                would be invisible: the idle-step signpost a few hundred
+                lines down never gets a chance to render, because a PDF no
+                longer stops at idle on the way in. */}
+            {source.kind === 'document' ? (
+              <Text
+                color={colourProp(palette.dim)}
+              >{`${SYMBOLS.arrow} /pdf for page operations`}</Text>
+            ) : null}
             <HintBar
               width={width}
               pairs={[
@@ -1472,14 +1515,16 @@ export function App({
                 onCancel={() => setText('')}
               />
             ) : null}
-            {/* A staged PDF has nowhere to go in the default convert flow
-                (see `hasConvertTarget`) and lands right back here — so this
-                is the one moment someone who does not already know `/pdf`
-                exists needs to be told it does. Commands are only worth
-                having if they can be found (the same reasoning behind the
-                palette itself); a document sitting on the bench with no
-                visible next step fails that test. Suppressed once a command
-                is being typed — the palette is already doing this job then. */}
+            {/* A PDF sitting here — via a refused mixed batch, a multi-PDF
+                merge stage, or backing out of the target picker with
+                `backToPromptKeepingStage` — has a command that is not
+                otherwise visible. Commands are only worth having if they
+                can be found (the same reasoning behind the palette itself);
+                a document on the bench with no visible next step fails that
+                test. Suppressed once a command is being typed — the palette
+                is already doing this job then. The target picker has its
+                own copy of this same line for the moment a solo drop goes
+                straight there instead of stopping here. */}
             {!isCommandBuffer(text) && stage.sources.some((s) => s.kind === 'document') ? (
               <Box marginBottom={1}>
                 <Text color={colourProp(palette.dim)}>
