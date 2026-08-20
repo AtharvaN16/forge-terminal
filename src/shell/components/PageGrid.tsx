@@ -43,6 +43,13 @@ interface PageGridProps {
   cuts: number[]
   onSubmit: (result: number[]) => void
   onCancel?: () => void
+  /**
+   * `r` and `g` used to be the grid's own reset/home shortcuts; they are not
+   * the grid's business — the typed-range editor they open onto is owned by
+   * the flow mounting this component. Both keys call this, if given, and are
+   * otherwise ignored.
+   */
+  onToggleView?: () => void
   width: number
   height: number
 }
@@ -62,13 +69,17 @@ interface PageGridProps {
  * input takes a `defaultValue` — there is no `onChange`, only `onSubmit` on
  * Enter, so after mount this component is the arrays' sole owner.
  *
- * A row is only ever `perRow` cells wide with `GAP` columns between them —
- * the gap *between rows* (the last cell of one row and the first of the
- * next) is not drawn or reachable by the cursor. Rendering it would need a
- * fourth line per row, and `rowsPerPage` is computed as exactly three lines
- * a row (see `gridLayout`). `a` (select/cut everything) still reaches every
- * page or gap in the document regardless of this, since it writes the whole
- * array directly rather than going through the cursor.
+ * In gap mode, a row is `cell gap cell gap … cell gap` — every cell gets a
+ * gap immediately after it, including a trailing one after the row's last
+ * cell that reaches the first page of the next row. That trailing gap is
+ * the row-boundary cut point: without it, a page count that does not divide
+ * evenly into whole rows would have cut positions no cursor could ever
+ * reach. The one row that omits it is whichever row holds the document's
+ * very last page, since there is no next page left to cut against. Cursor
+ * columns line up with gaps this way too — column `c` in gap mode is always
+ * "the gap after cell `c`" — so right-arrow off a row's last gap and
+ * left-arrow off a row's first gap simply continue into the neighbouring
+ * row rather than clamping, the one place this component's cursor wraps.
  */
 export function PageGrid({
   mode,
@@ -77,6 +88,7 @@ export function PageGrid({
   cuts: initialCuts,
   onSubmit,
   onCancel,
+  onToggleView,
   width,
   height,
 }: PageGridProps) {
@@ -108,11 +120,28 @@ export function PageGrid({
   const rowsInScreen = (s: number) => Math.max(1, Math.ceil(visibleCount(s) / perRow))
   const cellsInRow = (r: number, s: number) =>
     Math.max(0, Math.min(perRow, visibleCount(s) - r * perRow))
-  const maxCol = (r: number, s: number) => {
+
+  /** Whether this row's last cell has a next page to cut against. */
+  const hasTrailingGap = (r: number, s: number) => {
     const n = cellsInRow(r, s)
-    // cell mode: one cursor stop per cell. gap mode: one fewer, since a row
-    // of n cells has n - 1 gaps between them.
-    return mode === 'cell' ? Math.max(0, n - 1) : Math.max(0, n - 2)
+    if (n === 0) return false
+    const lastPageIndex = s * pagesPerScreen + r * perRow + (n - 1)
+    return lastPageIndex < pageCount - 1
+  }
+
+  /** Gaps in this row: one per cell, minus one unless the row has a trailing gap. */
+  const gapCount = (r: number, s: number) => {
+    const n = cellsInRow(r, s)
+    if (n === 0) return 0
+    return hasTrailingGap(r, s) ? n : Math.max(0, n - 1)
+  }
+
+  const maxCol = (r: number, s: number) => {
+    // cell mode: one cursor stop per cell. gap mode: one per gap (see
+    // `gapCount` — this is what makes the trailing, row-boundary gap a
+    // reachable cursor stop).
+    if (mode === 'cell') return Math.max(0, cellsInRow(r, s) - 1)
+    return Math.max(0, gapCount(r, s) - 1)
   }
 
   const clampCursor = (row: number, col: number, s: number): Cursor => {
@@ -130,6 +159,48 @@ export function PageGrid({
     if (next.row === cursorRef.current.row && next.col === cursorRef.current.col) return
     cursorRef.current = next
     setCursor(next)
+  }
+
+  const setCursorTo = (next: Cursor) => {
+    cursorRef.current = next
+    setCursor(next)
+  }
+
+  /**
+   * Left/right in gap mode continue into the neighbouring row rather than
+   * clamping at the row's edge — otherwise the trailing gap at the end of a
+   * row (the row-boundary cut point) would be a dead end you could reach
+   * but never leave, and the gap at the start of the next row would be
+   * unreachable by arrow key at all. Cell mode keeps the plain clamp: every
+   * cell already has its own reachable cursor stop, so there is nothing a
+   * wrap would add.
+   */
+  const stepRight = () => {
+    if (mode !== 'gap') {
+      moveCursor(0, 1)
+      return
+    }
+    const { row, col } = cursorRef.current
+    const s = screenRef.current
+    if (col < maxCol(row, s)) {
+      moveCursor(0, 1)
+      return
+    }
+    if (row < rowsInScreen(s) - 1) setCursorTo({ row: row + 1, col: 0 })
+  }
+
+  const stepLeft = () => {
+    if (mode !== 'gap') {
+      moveCursor(0, -1)
+      return
+    }
+    const { row, col } = cursorRef.current
+    const s = screenRef.current
+    if (col > 0) {
+      moveCursor(0, -1)
+      return
+    }
+    if (row > 0) setCursorTo({ row: row - 1, col: maxCol(row - 1, s) })
   }
 
   const goToScreen = (s: number) => {
@@ -165,22 +236,11 @@ export function PageGrid({
     }
   }
 
-  const resetAll = () => {
-    if (mode === 'cell') {
-      selectedRef.current = []
-      setSelectedPages([])
-    } else {
-      cutsRef.current = []
-      setCutGaps([])
-    }
-  }
-
   const toggleCurrent = () => {
     const offset = screenRef.current * pagesPerScreen
     const { row, col } = cursorRef.current
-    const n = cellsInRow(row, screenRef.current)
     if (mode === 'cell') {
-      if (col >= n) return
+      if (col >= cellsInRow(row, screenRef.current)) return
       const pageIndex = offset + row * perRow + col
       const next = selectedRef.current.includes(pageIndex)
         ? selectedRef.current.filter((p) => p !== pageIndex)
@@ -188,7 +248,7 @@ export function PageGrid({
       selectedRef.current = next
       setSelectedPages(next)
     } else {
-      if (col >= Math.max(0, n - 1)) return
+      if (col >= gapCount(row, screenRef.current)) return
       const gapIndex = offset + row * perRow + col
       const next = cutsRef.current.includes(gapIndex)
         ? cutsRef.current.filter((g) => g !== gapIndex)
@@ -199,14 +259,13 @@ export function PageGrid({
   }
 
   useInput((input, key) => {
-    if (key.leftArrow) moveCursor(0, -1)
-    if (key.rightArrow) moveCursor(0, 1)
+    if (key.leftArrow) stepLeft()
+    if (key.rightArrow) stepRight()
     if (key.upArrow) moveCursor(-1, 0)
     if (key.downArrow) moveCursor(1, 0)
     if (input === ' ') toggleCurrent()
     if (input === 'a') toggleAll()
-    if (input === 'r') resetAll()
-    if (input === 'g') goToScreen(0)
+    if ((input === 'r' || input === 'g') && onToggleView) onToggleView()
     if (key.pageUp) goToScreen(screenRef.current - 1)
     if (key.pageDown) goToScreen(screenRef.current + 1)
     if (key.return) onSubmit(mode === 'cell' ? selectedRef.current : cutsRef.current)
@@ -238,6 +297,7 @@ export function PageGrid({
     r: number,
     c: number,
     gapIndex: number,
+    isTrailing: boolean,
   ) => {
     const cursorHere = mode === 'gap' && cursor.row === r && cursor.col === c
     const bg = cursorHere ? cursorBg : undefined
@@ -245,7 +305,18 @@ export function PageGrid({
       const cut = cutsSet.has(gapIndex)
       const glyph = cut ? '┃' : '┆'
       const glyphColour = cut ? colourProp(palette.accent) : border
-      return (
+      // A trailing gap is a row's last rendered content. Ink trims trailing
+      // whitespace from every line (see `Select.tsx`), so a centred
+      // " <glyph> " would lose its final space there and shear this row
+      // against ones without a trailing gap. Right-aligning it — no
+      // trailing space — keeps all three columns; a non-trailing gap can
+      // stay centred, since a cell always follows it on the line.
+      return isTrailing ? (
+        <Text key={`${lineKind}${c}`} backgroundColor={bg}>
+          <Text color={border}>{'  '}</Text>
+          <Text color={glyphColour}>{glyph}</Text>
+        </Text>
+      ) : (
         <Text key={`${lineKind}${c}`} backgroundColor={bg}>
           <Text color={border}> </Text>
           <Text color={glyphColour}>{glyph}</Text>
@@ -253,9 +324,16 @@ export function PageGrid({
         </Text>
       )
     }
+    // Border lines: blank for an ordinary gap. The row's trailing gap would
+    // otherwise be three whitespace columns at the very end of the line —
+    // exactly what Ink's trim removes — vanishing from the printed width
+    // entirely rather than just losing one column like the number line
+    // above. Dashes avoid that (no invented glyph, no trim) and read as the
+    // frame continuing into the next row, which is what a trailing gap is.
+    const fill = isTrailing ? '─'.repeat(GAP) : ' '.repeat(GAP)
     return (
       <Text key={`${lineKind}${c}`} backgroundColor={bg} color={border}>
-        {' '.repeat(GAP)}
+        {fill}
       </Text>
     )
   }
@@ -305,11 +383,16 @@ export function PageGrid({
         </Text>,
       )
 
-      if (c < n - 1) {
+      // A gap follows every cell except a row's last one — unless this is
+      // gap mode and the row has a trailing gap (see `hasTrailingGap`), in
+      // which case the last cell gets one too: the row-boundary cut point.
+      const isLastInRow = c === n - 1
+      const isTrailing = isLastInRow && mode === 'gap' && hasTrailingGap(r, screen)
+      if (!isLastInRow || isTrailing) {
         const gapIndex = pageIndex // the gap right after this page
-        topSegs.push(gapSegment('top', r, c, gapIndex))
-        numSegs.push(gapSegment('number', r, c, gapIndex))
-        bottomSegs.push(gapSegment('bottom', r, c, gapIndex))
+        topSegs.push(gapSegment('top', r, c, gapIndex, isTrailing))
+        numSegs.push(gapSegment('number', r, c, gapIndex, isTrailing))
+        bottomSegs.push(gapSegment('bottom', r, c, gapIndex, isTrailing))
       }
     }
 
