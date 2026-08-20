@@ -2,6 +2,7 @@ import { statSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { Box, Text, useInput } from 'ink'
 import { useMemo, useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import { moveItem, nextSortMode, type SortMode, sortSources } from '../../core/order.js'
 import { mergeOutputPath } from '../../core/output-path.js'
 import type { SourceInfo } from '../../core/types.js'
@@ -240,15 +241,34 @@ export function MergeList({
   )
 
   const totalPages = order.reduce((n, s) => n + pagesOf(s), 0)
-  const nameWidth = Math.max(0, ...order.map((s) => basename(s.path).length)) + 4
+
+  /**
+   * Everything on a row that is not the name: two leading spaces, the
+   * pick-up mark, a space, the two-digit number, two spaces, then the
+   * right-aligned page count (9) and size (10).
+   */
+  const ROW_CHROME = 27
+  /**
+   * The name column is as wide as the longest name, but never wider than the
+   * room left on the row — spec §13: content is truncated, not wrapped. One
+   * long filename used to push every row past the terminal width, and Ink
+   * wrapped the lot. Measured in columns rather than code units, because
+   * `middleEllipsis` budgets in columns and a name can contain a wide glyph.
+   */
+  const nameWidth = Math.min(
+    Math.max(0, ...order.map((s) => stringWidth(basename(s.path)))) + 4,
+    Math.max(4, width - ROW_CHROME),
+  )
 
   const rows = order.map((s, i) => {
     const isCursor = i === cursor
     const isHeld = i === held
     const mark = isHeld ? '⇅' : isCursor ? SYMBOLS.cursor : ' '
-    const name = basename(s.path)
+    const name = middleEllipsis(basename(s.path), nameWidth)
     const numStr = String(i + 1).padStart(2)
-    const nameStr = name.padEnd(nameWidth)
+    // Padded by column count, not by `padEnd`'s code units, for the same
+    // reason the width above is measured in columns.
+    const nameStr = `${name}${' '.repeat(Math.max(0, nameWidth - stringWidth(name)))}`
     const pages = pagesOf(s)
     const pagesStr = `${pages} ${pages === 1 ? 'page' : 'pages'}`.padStart(9)
     const sizeStr = formatBytes(s.bytes).padStart(10)

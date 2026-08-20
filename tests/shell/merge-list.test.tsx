@@ -60,4 +60,19 @@ describe('MergeList', () => {
   it('marks the held row when one is picked up', () => {
     expect(frame({ heldIndex: 1 })).toContain('⇅')
   })
+
+  /**
+   * Spec §13: content is truncated, not wrapped. The name column was padded
+   * to the longest filename and never truncated, so one long name pushed
+   * every row past the terminal width and Ink wrapped them all.
+   */
+  it('truncates a name too long for the row rather than overflowing it', () => {
+    const long = doc('a-scanned-invoice-from-a-supplier-with-a-very-long-name.pdf', 4)
+    const out = frame({ sources: [long, doc('feb.pdf', 2)], width: 60 })
+    const rows = out.split('\n').filter((l) => /\.pdf/.test(l) && !/merged/.test(l))
+
+    expect(rows).toHaveLength(2)
+    for (const row of rows) expect(stringWidth(row.trimEnd())).toBeLessThanOrEqual(60)
+    expect(rows.some((r) => r.includes('…'))).toBe(true)
+  })
 })
