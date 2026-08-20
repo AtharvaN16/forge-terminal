@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'target-unreachable'
   | 'unsupported-target'
   | 'corrupt-source'
+  | 'encrypted-source'
   | 'output-exists'
   | 'output-collision'
   | 'output-is-input'
@@ -238,6 +239,23 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
     detail: `${basename(path)} is a ${FORMATS[format].label} file, but its content could not be read.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
+  })
+}
+
+/**
+ * A password-protected PDF probes successfully (`load` passes
+ * `ignoreEncryption: true` so `encrypted: true` can be reported), but no page
+ * operation can actually read its content until it is unlocked. This is
+ * thrown at the start of each operation rather than left to surface as
+ * whatever pdf-lib does partway through — a generic parse failure at the
+ * last step would not tell the user what is actually wrong.
+ */
+export function encryptedSource(path: string): ForgeError {
+  return new ForgeError({
+    code: 'encrypted-source',
+    title: 'This PDF is password-protected',
+    detail: `${basename(path)} cannot be changed until it is unlocked.`,
+    hint: 'Remove the password first, then try again.',
   })
 }
 
