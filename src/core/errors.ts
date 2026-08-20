@@ -1,6 +1,7 @@
 import { basename } from 'node:path'
 import { FORMATS } from './formats.js'
 import type { FormatId, SourceInfo } from './types.js'
+import { formatBytes } from './units.js'
 
 export type ErrorCode =
   | 'file-not-found'
@@ -9,6 +10,7 @@ export type ErrorCode =
   | 'unsupported-source'
   | 'heic-decoder-unavailable'
   | 'unsupported-compress'
+  | 'target-unreachable'
   | 'unsupported-target'
   | 'corrupt-source'
   | 'output-exists'
@@ -162,6 +164,24 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
     title: 'Nothing to compress',
     detail: `${basename(source.path)} is ${FORMATS[source.format].label}, which is lossless — there is no quality to trade away.`,
     hint: 'Use /convert to change it to a smaller format instead.',
+  })
+}
+
+/**
+ * The search found nothing small enough. Reporting the smallest achievable
+ * size teaches the user what is actually possible; writing a file that
+ * quietly misses the number they asked for does not.
+ */
+export function targetUnreachable(
+  source: SourceInfo,
+  targetBytes: number,
+  smallest: number,
+): ForgeError {
+  return new ForgeError({
+    code: 'target-unreachable',
+    title: 'Cannot get that small',
+    detail: `${basename(source.path)} is ${formatBytes(smallest)} even at the lowest quality, which is still over ${formatBytes(targetBytes)}.`,
+    hint: 'Try a larger target, or /convert to a smaller format.',
   })
 }
 
