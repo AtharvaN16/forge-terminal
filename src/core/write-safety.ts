@@ -10,17 +10,61 @@ export interface WriteSafetyResult {
 }
 
 /**
+ * A job whose own `outputs` list names the same path twice — two of its own
+ * parts would silently alias one file, the last write winning and the rest
+ * simply vanishing. Checked before anything else: `claimed` only learns
+ * about a job's outputs once the whole job has already cleared every check
+ * (see the loop in `checkWriteSafety`), and nothing has been written yet at
+ * check time either, so neither the cross-job collision check nor
+ * `existsSync` can see this — a job can only collide with itself here.
+ *
+ * Not reachable through the shipped CLI today (every action's `plan()`
+ * structurally guarantees unique outputs within one job — `splitOutputPaths`,
+ * `extractOutputPaths` fed by `parseRanges`'s deduped `Set`), but
+ * `extractAction`'s `selectedPages` also accepts a raw `values.pages` array
+ * for a future caller — the shell's page grid — that would bypass that
+ * dedup, so this module, built to be shared with exactly that caller, checks
+ * for it regardless of who is calling today.
+ *
+ * Never overridable by `--force`: unlike a stale file on disk or an output
+ * that happens to equal an input, this is not a choice between two outcomes
+ * the user might genuinely want — it is the job's own plan asking to write
+ * two different things to one path, which can only be a bug in whatever
+ * produced the job, not a preference `--force` could sensibly express.
+ */
+function firstSelfCollision(job: Job): { output: string; error: ForgeError } | undefined {
+  const reportPath = job.sources[0]?.path ?? job.outputs[0] ?? ''
+  const seen = new Set<string>()
+
+  for (const output of job.outputs) {
+    const key = resolve(output)
+    if (seen.has(key)) {
+      return { output, error: outputCollision([reportPath, reportPath], output) }
+    }
+    seen.add(key)
+  }
+
+  return undefined
+}
+
+/**
  * The first of a job's outputs that fails a write-safety rule, or undefined
- * if every output clears all three. Checked in the same order `buildPlan`
- * checks them (`core/plan.ts`): output-is-input, then collision, then
+ * if every output clears all four. Checked in the same order `buildPlan`
+ * checks its three (`core/plan.ts`): output-is-input, then collision, then
  * output-exists — so the two share not just the rules but the priority
- * between them when more than one applies to the same path.
+ * between them when more than one applies to the same path. Self-collision
+ * (a job's own outputs duplicating a path) is checked ahead of all three,
+ * since it needs neither `claimed` nor the filesystem to detect and a job
+ * that fails it is unsafe regardless of what else is true about it.
  */
 function firstUnsafeOutput(
   job: Job,
   claimed: ReadonlyMap<string, Job>,
   force: boolean,
 ): { output: string; error: ForgeError } | undefined {
+  const selfCollision = firstSelfCollision(job)
+  if (selfCollision) return selfCollision
+
   const sourcePaths = new Set(job.sources.map((s) => resolve(s.path)))
   const reportPath = job.sources[0]?.path ?? job.outputs[0] ?? ''
 
@@ -49,7 +93,9 @@ function firstUnsafeOutput(
  * Applies the three write-safety rules `buildPlan` enforces for conversions
  * — never write over an input, never replace an existing file without
  * `--force`, never let two writes collide on one path — to any `Job`,
- * whatever its arity.
+ * whatever its arity, plus one rule `buildPlan` never needed: never let a
+ * single job's own outputs collide with each other (`firstSelfCollision`),
+ * which only exists once a job can have more than one output at all.
  *
  * Page operations (merge, split, extract, delete, rotate) call
  * `Action.plan()` directly rather than `buildPlan`: `buildPlan` is shaped

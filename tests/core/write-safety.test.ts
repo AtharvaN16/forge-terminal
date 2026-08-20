@@ -110,6 +110,48 @@ describe('checkWriteSafety', () => {
     expect(failures[0]?.error.code).toBe('output-collision')
   })
 
+  it('refuses a job whose own outputs list the same path twice, and writes nothing', async () => {
+    const dir = await makeTempDir()
+    const source = join(dir, 'source.pdf')
+    const output = join(dir, 'out.pdf')
+    // A hand-built extract job simulating a future caller (the shell's page
+    // grid) that passed a duplicated page selection through the array
+    // branch of `selectedPages`, which — unlike `parseRanges` — is not
+    // deduped, so two of its outputs alias the same path.
+    const job: Job = {
+      op: 'extract',
+      sources: [doc(source)],
+      outputs: [output, output],
+      pages: [2, 2],
+      separate: true,
+    }
+
+    const { jobs, failures } = checkWriteSafety([job], { force: false })
+
+    expect(jobs).toEqual([])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.error.code).toBe('output-collision')
+  })
+
+  it('--force does not rescue a job whose own outputs collide with each other', async () => {
+    const dir = await makeTempDir()
+    const source = join(dir, 'source.pdf')
+    const output = join(dir, 'out.pdf')
+    const job: Job = {
+      op: 'extract',
+      sources: [doc(source)],
+      outputs: [output, output],
+      pages: [2, 2],
+      separate: true,
+    }
+
+    const { jobs, failures } = checkWriteSafety([job], { force: true })
+
+    expect(jobs).toEqual([])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.error.code).toBe('output-collision')
+  })
+
   it('keeps a job whose outputs clear every rule', async () => {
     const dir = await makeTempDir()
     const source = join(dir, 'source.pdf')
