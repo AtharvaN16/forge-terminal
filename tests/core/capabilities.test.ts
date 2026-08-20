@@ -22,10 +22,14 @@ function source(format: SourceInfo['format']): SourceInfo {
 
 describe('capability graph', () => {
   it('offers every writable format for a jpeg source', () => {
+    // Includes 'pdf': the pdf engine reads jpeg (among other image formats)
+    // and writes pdf, so invariant 2's engine-driven graph offers it here
+    // with no format list edited by hand.
     expect(targetIdsFor(source('jpeg')).sort()).toEqual([
       'avif',
       'gif',
       'jpeg',
+      'pdf',
       'png',
       'tiff',
       'webp',

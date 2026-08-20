@@ -44,7 +44,17 @@ describe('convert action options', () => {
     const target = specs.find((s) => s.id === 'target')
     expect(target?.kind).toBe('select')
     if (target?.kind !== 'select') throw new Error('expected select')
-    expect(target.choices.map((c) => c.value)).toEqual(['png', 'webp', 'avif', 'gif', 'tiff'])
+    // Includes 'pdf': the pdf engine now reads jpeg among other image
+    // formats, so the capability graph (invariant 2) offers it here with no
+    // list edited by hand.
+    expect(target.choices.map((c) => c.value)).toEqual([
+      'png',
+      'webp',
+      'avif',
+      'gif',
+      'tiff',
+      'pdf',
+    ])
     expect(target.choices.every((c) => c.label.length > 0 && c.hint !== undefined)).toBe(true)
   })
 

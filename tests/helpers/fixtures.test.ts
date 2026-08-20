@@ -6,6 +6,7 @@ import {
   makeAnimatedGif,
   makeAvif,
   makeHeic,
+  makeNoisyOrientedJpeg,
   makeOrientedJpeg,
   makeTempDir,
   makeTransparentPng,
@@ -23,6 +24,20 @@ describe('fixtures', () => {
     const dir = await makeTempDir()
     const jpg = await makeOrientedJpeg(dir, 'rot.jpg', 6)
     expect((await sharp(jpg).metadata()).orientation).toBe(6)
+  })
+
+  it('builds a photo-like jpeg that also carries exif orientation, unlike the flat one', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeNoisyOrientedJpeg(dir, 'noisy.jpg', 6)
+    const meta = await sharp(jpg).metadata()
+    expect(meta.orientation).toBe(6)
+    // Real entropy, not a flat fill: a PNG re-encode must come out larger
+    // than a JPEG one, the way an actual photo does. `makeOrientedJpeg`'s
+    // solid colour gets this backwards at fixture scale.
+    const raw = await sharp(jpg).toBuffer()
+    const png = await sharp(raw).png().toBuffer()
+    const jpeg = await sharp(raw).jpeg({ quality: 82, mozjpeg: true }).toBuffer()
+    expect(png.byteLength).toBeGreaterThan(jpeg.byteLength)
   })
 
   it('builds a png with a real alpha channel', async () => {

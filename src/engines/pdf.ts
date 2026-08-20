@@ -1,13 +1,32 @@
-import { randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { readFile, rm, stat } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { degrees, PDFDocument } from 'pdf-lib'
-import { emptySelection, encryptedSource, outputInvalid } from '../core/errors.js'
+import sharp from 'sharp'
+import { writeAtomic } from '../core/atomic.js'
+import { emptySelection, encryptedSource } from '../core/errors.js'
+import { FORMATS } from '../core/formats.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
-import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
+import type {
+  DocumentInfo,
+  FormatId,
+  ImageInfo,
+  Job,
+  Progress,
+  Result,
+  Warning,
+} from '../core/types.js'
+import { DEFAULT_QUALITY } from './image.js'
 import type { Engine } from './types.js'
 
-const READS: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
+const READS: ReadonlySet<FormatId> = new Set<FormatId>([
+  'pdf',
+  'jpeg',
+  'png',
+  'webp',
+  'avif',
+  'gif',
+  'tiff',
+])
 const WRITES: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
 
 /**
@@ -36,36 +55,6 @@ async function probe(path: string): Promise<DocumentInfo> {
 }
 
 /**
- * Invariant 6: temp file, then rename. Never a partial file at the real path.
- *
- * Shared by every page operation this engine implements — split, extract,
- * delete and rotate all write their output through this same function, so
- * its atomicity and its cleanup-on-failure only need to be correct once.
- *
- * Creates the output directory first, mirroring `image.ts`'s `writeAtomic` —
- * `resolveOutputPath` supports directory outputs, and the two engines must
- * not disagree about whether that works.
- */
-async function writeAtomic(path: string, bytes: Uint8Array): Promise<number> {
-  const dir = dirname(path)
-  try {
-    await mkdir(dir, { recursive: true })
-  } catch (cause) {
-    throw outputInvalid(path, cause)
-  }
-
-  const temp = `${path}.${randomBytes(6).toString('hex')}.tmp`
-  try {
-    await writeFile(temp, bytes)
-    await rename(temp, path)
-    return bytes.byteLength
-  } catch (e) {
-    await rm(temp, { force: true })
-    throw e
-  }
-}
-
-/**
  * Refuses a password-protected source before any page operation touches it.
  * `probe` reports `encrypted` with `ignoreEncryption: true`, so this is the
  * one place that turns "known to be locked" into a refusal that names the
@@ -76,6 +65,114 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
   for (const s of sources) {
     if (s.encrypted) throw encryptedSource(s.path)
   }
+}
+
+/**
+ * pdf-lib embeds JPEG and PNG and nothing else. Anything else is decoded to
+ * PNG first, the same two-step `heic.ts` uses — one extra decode, no new
+ * dependency, and the alternative is refusing formats the capability graph
+ * has already offered.
+ *
+ * Invariant 4: `.rotate()` before anything else. pdf-lib does not read EXIF
+ * orientation itself, so embedding raw JPEG/PNG bytes unconditionally would
+ * ship every phone photo sideways — the exact bug `image.ts`'s Rule 1 exists
+ * to prevent, reintroduced here in a new file.
+ *
+ * The fix is deliberately not "always decode through Sharp": that would cost
+ * every JPEG a re-encode generation (and, if re-encoded as PNG, a size
+ * change) to correct a minority of files. Instead only a source that
+ * genuinely carries a non-trivial orientation tag pays for the decode.
+ *
+ * A rotated JPEG is re-encoded back to JPEG, at `image.ts`'s
+ * `DEFAULT_QUALITY.jpeg`/mozjpeg — the same quality this engine already
+ * accepts for every JPEG target it produces. Re-encoding as PNG instead was
+ * tried first and reverted: unlike `heic.ts`'s PNG intermediate, which is
+ * immediately re-compressed to whatever the user asked for at their chosen
+ * quality, PNG here would be the *terminal* artifact (`job.options.quality`
+ * is never consulted by this file), so "avoid a second lossy generation"
+ * bought a categorical size-class jump — a real photo measured ~7-9x larger
+ * as PNG than the JPEG re-encode below, both against the same source — not
+ * avoided one. Forge already accepts a second lossy JPEG generation for
+ * every other conversion this engine performs, so refusing it in only this
+ * one path was inconsistent with the tool's own established behaviour.
+ *
+ * A rotated PNG stays PNG: lossless-to-lossless has no quality trade to
+ * weigh. Every other source format (webp/avif/gif/tiff) was already being
+ * decoded through Sharp to become PNG regardless of orientation, so folding
+ * `.rotate()` into that same call is free — `.rotate()` with no arguments is
+ * sharp's EXIF auto-orient and a no-op when there is nothing to apply.
+ */
+async function embedBytes(doc: PDFDocument, source: ImageInfo, raw: Buffer) {
+  const embeddable = source.format === 'jpeg' || source.format === 'png'
+  const orientation = embeddable ? (await sharp(raw).metadata()).orientation : undefined
+
+  if (embeddable && (orientation === undefined || orientation === 1)) {
+    return source.format === 'jpeg' ? doc.embedJpg(raw) : doc.embedPng(raw)
+  }
+
+  if (source.format === 'jpeg') {
+    const rotated = await sharp(raw)
+      .rotate()
+      .jpeg({ quality: DEFAULT_QUALITY.jpeg, mozjpeg: true })
+      .toBuffer()
+    return doc.embedJpg(rotated)
+  }
+
+  return doc.embedPng(await sharp(raw).rotate().png().toBuffer())
+}
+
+/**
+ * One page, sized to the image, holding the whole image at its native
+ * resolution — the inbound half of phase 4a. `outputs`/`sources` are single
+ * because `convert` is defined that way (see `core/types.ts`); a multi-image
+ * PDF is a `merge` of several single-image PDFs, not a variant of this.
+ *
+ * `job.options` (background, keepMetadata) is accepted by the job shape but
+ * never consulted here: `embedPng`'s SMask already carries alpha, so there
+ * is nothing to flatten (unlike `image.ts`'s Rule 2), and pdf-lib strips
+ * source metadata by construction, so "keep metadata" has nothing to act on.
+ */
+async function imageToPdf(
+  job: Extract<Job, { op: 'convert' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  // Same reasoning as `image.ts`'s analogous guard: the registry routes a
+  // job to this engine by `reads`/`writes`, but `pdf` is offered as a
+  // same-format target for a PDF source the way any format is offered for
+  // itself (recompression) — and unlike an image, a PDF source has no
+  // pixels to embed. Without this, it reaches `embedBytes` and fails as an
+  // opaque Sharp decode error instead of a named one.
+  if (source.kind !== 'image') {
+    throw new Error('the pdf engine cannot embed a document source')
+  }
+
+  const warnings: Warning[] = []
+  // Rule 4 (spec): never drop frames silently. A PDF page has no concept of
+  // animation, so any source with more than one frame loses everything past
+  // the first — the same warning `image.ts` raises for a lossless target
+  // that cannot animate either, reusing its code rather than inventing one.
+  if (source.frames > 1) {
+    warnings.push({
+      code: 'animation-flattened',
+      message:
+        `${basename(source.path)} has ${source.frames} frames, and ` +
+        `${FORMATS.pdf.label} cannot animate. Only the first frame was converted.`,
+    })
+  }
+
+  onPhase({ phase: 'reading' })
+  const raw = await readFile(source.path)
+
+  onPhase({ phase: 'encoding' })
+  const doc = await PDFDocument.create()
+  const embedded = await embedBytes(doc, source, raw)
+  const page = doc.addPage([embedded.width, embedded.height])
+  page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height })
+
+  onPhase({ phase: 'writing' })
+  const outputBytes = await writeAtomic(job.outputs[0], await doc.save())
+  return { job, outputBytes, warnings }
 }
 
 async function merge(
@@ -254,10 +351,13 @@ export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
   writes: WRITES,
-  ops: new Set<Job['op']>(['merge', 'split', 'extract', 'delete', 'rotate']),
+  ops: new Set<Job['op']>(['convert', 'merge', 'split', 'extract', 'delete', 'rotate']),
   probe,
   async run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
     switch (job.op) {
+      case 'convert':
+        if (job.target !== 'pdf') throw new Error('the pdf engine only converts to pdf')
+        return imageToPdf(job, onPhase)
       case 'merge':
         return merge(job, onPhase)
       case 'split':
@@ -268,8 +368,6 @@ export const pdfEngine: Engine = {
         return deletePages(job, onPhase)
       case 'rotate':
         return rotate(job, onPhase)
-      default:
-        throw new Error(`pdf engine cannot ${job.op}`)
     }
   },
 }
