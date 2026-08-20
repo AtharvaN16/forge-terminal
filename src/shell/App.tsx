@@ -722,15 +722,19 @@ export function App({
       <Box flexDirection="column">
         {stage === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
-        {/* Which action the next file goes through. Shown only for compress:
-            convert is what dropping a file already does, so labelling it
-            would be telling the user something they did not ask about. */}
-        {mode === 'compress' && stage !== 'theme' ? (
+        {/* Which action the next file goes through, always — including the
+            default. An earlier version showed this only for compress, on the
+            reasoning that convert is what dropping a file already does; but
+            a mode you cannot see is one you can be in by accident, and the
+            cost of saying so is one line. */}
+        {stage !== 'theme' ? (
           <Box marginBottom={1}>
             <Text color={colourProp(palette.accent)} bold>
-              {'  COMPRESS  '}
+              {mode === 'compress' ? '  COMPRESS  ' : '  CONVERT  '}
             </Text>
-            <Text color={colourProp(palette.dim)}>{'  /convert to switch back'}</Text>
+            <Text color={colourProp(palette.dim)}>
+              {mode === 'compress' ? '  /convert to switch back' : '  /compress to switch'}
+            </Text>
           </Box>
         ) : null}
 

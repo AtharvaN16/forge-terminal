@@ -204,7 +204,7 @@ describe('knowing which mode you are in', () => {
     expect(frame).toContain('/convert to switch back')
   })
 
-  it('says nothing in convert, which is what dropping a file already does', async () => {
+  it('names convert too — a mode you cannot see is one you can be in by accident', async () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'photo.jpg')
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -213,8 +213,16 @@ describe('knowing which mode you are in', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').not.toContain('COMPRESS')
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('CONVERT')
+    expect(frame).not.toContain('COMPRESS')
+    expect(frame).toContain('/compress to switch')
   }, 20_000)
+
+  it('names the mode before any file is dropped', () => {
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
+    expect(render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? '').toContain('CONVERT')
+  })
 
   it('offers to compress again, not convert another', async () => {
     const { stdin, lastFrame, frames } = await toCompress()
@@ -237,7 +245,9 @@ describe('knowing which mode you are in', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').not.toContain('COMPRESS')
+    const frame = lastFrame() ?? ''
+    expect(frame).not.toContain('COMPRESS')
+    expect(frame).toContain('CONVERT')
   }, 20_000)
 })
 
