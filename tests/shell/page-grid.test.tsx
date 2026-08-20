@@ -12,6 +12,7 @@ const lines = (props: Record<string, unknown>) => {
 const ESC = String.fromCharCode(27)
 const RIGHT = `${ESC}[C`
 const LEFT = `${ESC}[D`
+const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
 const SPACE = ' '
 const PGDN = `${ESC}[6~`
@@ -108,6 +109,61 @@ describe('PageGrid geometry', () => {
     expect(rowTwoNumbers).toBeDefined()
     expect(rowTwoNumbers ?? '').not.toContain('┃')
   })
+
+  it("draws no trailing gap after the document's final page, even though a full row precedes it", () => {
+    // gridLayout(12, 40, 24).perRow === 4 — three full rows of four (4, 4,
+    // 4), so "last row" and "last full row" coincide here on purpose. That
+    // makes this the case a regression could most easily hide in: a bug
+    // that keyed the trailing gap off "is this row full" rather than "does
+    // the document have a next page" would still look right everywhere
+    // except this row, since every row here is equally full.
+    const rows = lines({ ...base, pageCount: 12, width: 40, mode: 'gap' })
+    const cellWidth = gridLayout(12, 40, 24).cellWidth
+
+    const rowThreeIndex = rows.findIndex((l) => l.includes('│') && l.includes('12'))
+    expect(rowThreeIndex).not.toBe(-1)
+    const rowThreeTop = rows[rowThreeIndex - 1] ?? ''
+    const rowThreeBottom = rows[rowThreeIndex + 1] ?? ''
+    // No trailing dash run, and no invented width for one either.
+    expect(rowThreeTop.endsWith('╮')).toBe(true)
+    expect(rowThreeBottom.endsWith('╯')).toBe(true)
+    expect(stringWidth(rowThreeTop)).toBe(4 * cellWidth + 3 * 3) // 4 cells, 3 in-row gaps, no trailing one
+
+    // Contrast: the row before it is not the document's final row, so it
+    // does carry the trailing gap — same shape, opposite cell count check.
+    const rowTwoIndex = rows.findIndex(
+      (l) => l.includes('│') && l.includes('8') && !l.includes('12'),
+    )
+    const rowTwoTop = rows[rowTwoIndex - 1] ?? ''
+    expect(rowTwoTop.endsWith('╮───')).toBe(true)
+    expect(stringWidth(rowTwoTop)).toBe(4 * cellWidth + 3 * 3 + 3)
+  })
+
+  it('a ragged final row draws no trailing gap either, unlike the full row before it', () => {
+    // gridLayout(9, 40, 24).perRow === 4 — two full rows (pages 1-4, 5-8)
+    // and a ragged last row of a single cell (page 9). This is where "last
+    // row" and "last page" most obviously diverge: the final row here
+    // isn't even full, so `hasTrailingGap` has to reach the right answer
+    // from the document's page count, not from anything about the row's
+    // own shape.
+    const rows = lines({ ...base, pageCount: 9, width: 40, mode: 'gap' })
+    const cellWidth = gridLayout(9, 40, 24).cellWidth
+
+    const rowTwoIndex = rows.findIndex((l) => l.includes('│') && l.includes('8'))
+    expect(rowTwoIndex).not.toBe(-1)
+    const rowTwoTop = rows[rowTwoIndex - 1] ?? ''
+    // Page 8 is not the document's final page (page 9 is) — trailing gap present.
+    expect(rowTwoTop.endsWith('╮───')).toBe(true)
+    expect(stringWidth(rowTwoTop)).toBe(4 * cellWidth + 3 * 3 + 3)
+
+    const rowThreeIndex = rows.findIndex((l) => l.includes('│') && l.includes('9'))
+    expect(rowThreeIndex).not.toBe(-1)
+    const rowThreeTop = rows[rowThreeIndex - 1] ?? ''
+    const rowThreeBottom = rows[rowThreeIndex + 1] ?? ''
+    expect(rowThreeTop.endsWith('╮')).toBe(true)
+    expect(rowThreeBottom.endsWith('╯')).toBe(true)
+    expect(stringWidth(rowThreeTop)).toBe(cellWidth) // one cell, no gaps at all — not even an in-row one
+  })
 })
 
 describe('PageGrid keyboard interaction', () => {
@@ -198,6 +254,28 @@ describe('PageGrid keyboard interaction', () => {
     // two's first column nor skipping past it to row one's second-to-last.
     await press(stdin, RIGHT + RIGHT + RIGHT + RIGHT + LEFT, SPACE, ENTER)
     expect(onSubmit).toHaveBeenCalledWith([3])
+  })
+
+  it("the cursor cannot navigate past the document's final gap, and space there is a no-op", async () => {
+    // Same three-full-rows-of-four layout (pageCount 12, width 40). Gap 10
+    // (between page 11 and page 12) is the last real gap in the document —
+    // there is no gap 11, since page 12 is the document's final page and a
+    // final row has no trailing gap. Two DOWNs land on row two (pages
+    // 9-12); five RIGHTs badly overshoot the two actually needed to reach
+    // gap 10. If a phantom gap past the end were reachable, space would
+    // toggle it and enter would report something other than plain [10].
+    const onSubmit = vi.fn()
+    const { stdin } = render(
+      createElement(PageGrid, {
+        ...base,
+        pageCount: 12,
+        width: 40,
+        mode: 'gap',
+        onSubmit,
+      } as never),
+    )
+    await press(stdin, DOWN + DOWN + RIGHT + RIGHT + RIGHT + RIGHT + RIGHT, SPACE, ENTER)
+    expect(onSubmit).toHaveBeenCalledWith([10])
   })
 
   it('a selects every page, and clears the selection on a second press', async () => {
