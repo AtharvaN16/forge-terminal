@@ -67,7 +67,14 @@ describe('readPassword', () => {
   })
 
   describe('prompt mode', () => {
-    it('writes prompt to stderr', async () => {
+    // Note: These tests use Readable.from([...]) for stdin, which is never a TTY.
+    // They verify the no-echo behavior and correct prompt handling with streams,
+    // but do not cover the TTY-dependent path where terminal:true engages raw mode.
+    // A regression that drops terminal:true would be invisible to these tests but
+    // would cause the password to be echoed on real terminals. TTY-level verification
+    // requires a pty harness (spawned subprocess with real terminal).
+
+    it('writes prompt and trailing newline to stderr', async () => {
       const inputStream = Readable.from(['mypassword\n'])
       const stderrWrites: string[] = []
       const mockStderr = new PassThrough()
@@ -81,7 +88,8 @@ describe('readPassword', () => {
 
       const password = await readPassword({ stdin: false })
 
-      expect(stderrWrites).toContain('Password: ')
+      const allWritten = stderrWrites.join('')
+      expect(allWritten).toBe('Password: \n')
       expect(password).toBe('mypassword')
     })
 
@@ -100,10 +108,31 @@ describe('readPassword', () => {
       const password = await readPassword({ stdin: false })
 
       const allWritten = stderrWrites.join('')
-      // Only the prompt should be written; no echo of the typed password
-      expect(allWritten).toBe('Password: ')
+      // Only the prompt and newline should be written; no echo of the typed password
+      expect(allWritten).toBe('Password: \n')
       expect(allWritten).not.toContain('secret123')
       expect(password).toBe('secret123')
+    })
+
+    it('writes newline after password is entered, indicating close was called', async () => {
+      // The finally block writes a newline after the promise resolves but before closing.
+      // This test verifies the finally block executes by checking that a newline reaches stderr.
+      const inputStream = Readable.from(['password\n'])
+      const stderrWrites: string[] = []
+      const mockStderr = new PassThrough()
+
+      mockStderr.on('data', (chunk) => {
+        stderrWrites.push(chunk.toString('utf8'))
+      })
+
+      Object.defineProperty(process, 'stdin', { value: inputStream, configurable: true })
+      Object.defineProperty(process, 'stderr', { value: mockStderr, configurable: true })
+
+      const password = await readPassword({ stdin: false })
+
+      // The newline in stderr proves the finally block ran (which includes close())
+      expect(stderrWrites.join('')).toContain('\n')
+      expect(password).toBe('password')
     })
   })
 })

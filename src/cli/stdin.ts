@@ -18,7 +18,10 @@ export async function readPassword(opts: { stdin: boolean }): Promise<string> {
   }
 
   // Use a null stream for readline's output to prevent echoing typed characters.
-  // We write the prompt manually to stderr instead.
+  // readline writes input echo to this stream, which we buffer but do not forward to
+  // stderr. We write the prompt manually to stderr instead, and supply the newline
+  // after the user presses Enter, since readline's line-submit writes to the buffered
+  // output stream that never reaches the terminal.
   const nullOutput = new PassThrough()
   const rl = createInterface({ input: process.stdin, output: nullOutput, terminal: true })
   try {
@@ -27,6 +30,7 @@ export async function readPassword(opts: { stdin: boolean }): Promise<string> {
     // append it to the line but we've handled it separately.
     return await new Promise<string>((resolve) => rl.question('', resolve))
   } finally {
+    process.stderr.write('\n')
     rl.close()
   }
 }
