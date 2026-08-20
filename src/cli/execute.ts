@@ -62,16 +62,17 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     const jobs = []
     const refusals = []
     for (const source of resolved.sources) {
-      if (!compressAction.appliesTo(source)) {
+      if (!compressAction.appliesTo([source])) {
         refusals.push({ path: source.path, error: unsupportedCompress(source) })
         continue
       }
-      const [job] = compressAction.plan(source, {
+      const [planned] = compressAction.plan([source], {
         mode: intent.maxBytes === undefined ? 'quality' : 'size',
         ...(intent.quality === undefined ? {} : { quality: intent.quality }),
         destination: dirname(source.path),
       })
-      if (!job) continue
+      if (planned?.op !== 'convert') continue
+      const job = planned
 
       if (intent.maxBytes !== undefined) {
         const found = await findQuality({

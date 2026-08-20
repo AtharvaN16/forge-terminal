@@ -21,18 +21,26 @@ function source(over: Partial<ImageInfo> = {}): SourceInfo {
 }
 
 describe('action registry', () => {
-  it('registers convert and compress', () => {
-    expect(ACTIONS.map((a) => a.id)).toEqual(['convert', 'compress'])
+  it('registers convert, compress and the page actions', () => {
+    expect(ACTIONS.map((a) => a.id)).toEqual([
+      'convert',
+      'compress',
+      'merge',
+      'split',
+      'extract',
+      'delete',
+      'rotate',
+    ])
   })
 
   it('offers convert for any image', () => {
-    expect(actionsFor(source()).map((a) => a.id)).toContain('convert')
+    expect(actionsFor([source()]).map((a) => a.id)).toContain('convert')
   })
 })
 
 describe('convert action options', () => {
   it('offers a target select derived from the capability graph, never a fixed list', () => {
-    const specs = convertAction.options(source(), {}, DEFAULT_PREFERENCES)
+    const specs = convertAction.options([source()], {}, DEFAULT_PREFERENCES)
     const target = specs.find((s) => s.id === 'target')
     expect(target?.kind).toBe('select')
     if (target?.kind !== 'select') throw new Error('expected select')
@@ -42,7 +50,7 @@ describe('convert action options', () => {
 
   it('never offers heic, which sharp cannot encode', () => {
     const target = convertAction
-      .options(source(), {}, DEFAULT_PREFERENCES)
+      .options([source()], {}, DEFAULT_PREFERENCES)
       .find((s) => s.id === 'target')
     if (target?.kind !== 'select') throw new Error('expected select')
     expect(target.choices.map((c) => c.value)).not.toContain('heic')
@@ -50,13 +58,13 @@ describe('convert action options', () => {
 
   it('never offers the source its own format as a target, since nothing would change', () => {
     const jpegTarget = convertAction
-      .options(source({ format: 'jpeg' }), {}, DEFAULT_PREFERENCES)
+      .options([source({ format: 'jpeg' })], {}, DEFAULT_PREFERENCES)
       .find((s) => s.id === 'target')
     if (jpegTarget?.kind !== 'select') throw new Error('expected select')
     expect(jpegTarget.choices.map((c) => c.value)).not.toContain('jpeg')
 
     const pngTarget = convertAction
-      .options(source({ format: 'png' }), {}, DEFAULT_PREFERENCES)
+      .options([source({ format: 'png' })], {}, DEFAULT_PREFERENCES)
       .find((s) => s.id === 'target')
     if (pngTarget?.kind !== 'select') throw new Error('expected select')
     expect(pngTarget.choices.map((c) => c.value)).not.toContain('png')
@@ -64,14 +72,14 @@ describe('convert action options', () => {
 
   it('names the source format in the label, so its absence from the list reads as intentional', () => {
     const target = convertAction
-      .options(source({ format: 'jpeg' }), {}, DEFAULT_PREFERENCES)
+      .options([source({ format: 'jpeg' })], {}, DEFAULT_PREFERENCES)
       .find((s) => s.id === 'target')
     if (target?.kind !== 'select') throw new Error('expected select')
     expect(target.label).toBe('Convert JPEG to')
   })
 
   it('adds a quality slider once a lossy target is chosen', () => {
-    const specs = convertAction.options(source(), { target: 'webp' }, DEFAULT_PREFERENCES)
+    const specs = convertAction.options([source()], { target: 'webp' }, DEFAULT_PREFERENCES)
     const quality = specs.find((s) => s.id === 'quality')
     expect(quality?.kind).toBe('slider')
     if (quality?.kind !== 'slider') throw new Error('expected slider')
@@ -81,12 +89,12 @@ describe('convert action options', () => {
   })
 
   it('omits the quality slider for a lossless target', () => {
-    const specs = convertAction.options(source(), { target: 'png' }, DEFAULT_PREFERENCES)
+    const specs = convertAction.options([source()], { target: 'png' }, DEFAULT_PREFERENCES)
     expect(specs.find((s) => s.id === 'quality')).toBeUndefined()
   })
 
   it('offers a destination path with presets once a target is chosen', () => {
-    const specs = convertAction.options(source(), { target: 'webp' }, DEFAULT_PREFERENCES)
+    const specs = convertAction.options([source()], { target: 'webp' }, DEFAULT_PREFERENCES)
     const dest = specs.find((s) => s.id === 'destination')
     expect(dest?.kind).toBe('path')
     if (dest?.kind !== 'path') throw new Error('expected path')
@@ -103,7 +111,7 @@ describe('convert action options', () => {
 
   it('drops the Downloads preset rather than duplicating it when the source already lives there', () => {
     const inDownloads = source({ path: join(homedir(), 'Downloads', 'photo.jpg') })
-    const specs = convertAction.options(inDownloads, { target: 'webp' }, DEFAULT_PREFERENCES)
+    const specs = convertAction.options([inDownloads], { target: 'webp' }, DEFAULT_PREFERENCES)
     const dest = specs.find((s) => s.id === 'destination')
     if (dest?.kind !== 'path') throw new Error('expected path')
 
@@ -119,35 +127,41 @@ describe('convert action options', () => {
 describe('convert action plan', () => {
   it('builds one job with the chosen values', () => {
     const s = source()
-    const jobs = convertAction.plan(s, {
+    const jobs = convertAction.plan([s], {
       target: 'webp',
       quality: 70,
       destination: '/Users/me/out',
     })
     expect(jobs).toHaveLength(1)
-    expect(jobs[0]?.target).toBe('webp')
-    expect(jobs[0]?.outputs[0]).toBe('/Users/me/out/photo.webp')
-    expect(jobs[0]?.options.quality).toBe(70)
+    const job = jobs[0]
+    if (job?.op !== 'convert') throw new Error('expected convert')
+    expect(job.target).toBe('webp')
+    expect(job.outputs[0]).toBe('/Users/me/out/photo.webp')
+    expect(job.options.quality).toBe(70)
   })
 
   it('omits quality for a lossless target rather than passing a meaningless number', () => {
-    const jobs = convertAction.plan(source(), { target: 'png', destination: '/Users/me/out' })
-    expect(jobs[0]?.options.quality).toBeUndefined()
+    const jobs = convertAction.plan([source()], { target: 'png', destination: '/Users/me/out' })
+    const job = jobs[0]
+    if (job?.op !== 'convert') throw new Error('expected convert')
+    expect(job.options.quality).toBeUndefined()
   })
 
   it('defaults the background to white so transparency does not become black', () => {
-    const jobs = convertAction.plan(source({ format: 'png' }), {
+    const jobs = convertAction.plan([source({ format: 'png' })], {
       target: 'jpeg',
       destination: '/out',
     })
-    expect(jobs[0]?.options.background).toBe('#ffffff')
+    const job = jobs[0]
+    if (job?.op !== 'convert') throw new Error('expected convert')
+    expect(job.options.background).toBe('#ffffff')
   })
 })
 
 describe('convert action plan target validation', () => {
   function planCode(values: Record<string, unknown>): string {
     try {
-      convertAction.plan(source(), values)
+      convertAction.plan([source()], values)
     } catch (e) {
       return isForgeError(e) ? e.code : `unexpected:${String(e)}`
     }
@@ -181,7 +195,7 @@ describe('destination presets', () => {
 
   const destination = (p: Preferences = DEFAULT_PREFERENCES) => {
     const spec = convertAction
-      .options(source, { target: 'webp' }, p)
+      .options([source], { target: 'webp' }, p)
       .find((s) => s.id === 'destination')
     if (spec?.kind !== 'path') throw new Error('no destination spec')
     return spec
@@ -217,7 +231,7 @@ describe('destination presets', () => {
   it('never lists the same folder twice, even when the source lives in the default', () => {
     const onDesktop = { ...source, path: join(homedir(), 'Desktop', 'diagram.png') }
     const spec = convertAction
-      .options(onDesktop, { target: 'webp' }, DEFAULT_PREFERENCES)
+      .options([onDesktop], { target: 'webp' }, DEFAULT_PREFERENCES)
       .find((s) => s.id === 'destination')
     if (spec?.kind !== 'path') throw new Error('no destination spec')
     const paths = spec.presets.map((x) => x.path)
@@ -247,7 +261,7 @@ describe('quality default', () => {
   it('opens the slider on the configured quality, not a hardcoded 80', () => {
     const p = { ...DEFAULT_PREFERENCES, quality: 55 }
     const spec = convertAction
-      .options(source, { target: 'webp' }, p)
+      .options([source], { target: 'webp' }, p)
       .find((s) => s.id === 'quality')
     if (spec?.kind !== 'slider') throw new Error('no quality spec')
     expect(spec.default).toBe(55)

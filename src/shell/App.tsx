@@ -366,7 +366,7 @@ export function App({
   // collected so far (e.g. the quality step only appears once a lossy
   // target is chosen).
   const specs: OptionSpec[] = useMemo(
-    () => (source ? action.options(source, values, livePrefs) : []),
+    () => (source ? action.options([source], values, livePrefs) : []),
     [source, values, livePrefs, action],
   )
 
@@ -435,7 +435,7 @@ export function App({
           refuseBatch()
           return
         }
-        if (source && !compressAction.appliesTo(source)) {
+        if (source && !compressAction.appliesTo([source])) {
           push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
           return
         }
@@ -502,7 +502,7 @@ export function App({
         // compressing something lossless is refused here rather than after
         // the user has answered three more questions about it.
         if (mode === 'compress') {
-          if (!compressAction.appliesTo(info)) {
+          if (!compressAction.appliesTo([info])) {
             push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
             setMode('convert')
             setStep('target')
@@ -545,7 +545,7 @@ export function App({
 
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
-    const next = action.options(currentSource, { target }, livePrefs)
+    const next = action.options([currentSource], { target }, livePrefs)
     setStep(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
   }
 
@@ -593,7 +593,7 @@ export function App({
    */
   const startRename = (destination: string) => {
     if (!source) return
-    const planned = action.plan(source, { ...values, destination })[0]
+    const planned = action.plan([source], { ...values, destination })[0]
     const proposed = (planned?.outputs[0] ?? source.path).split('/').pop() ?? 'file'
     const dot = proposed.lastIndexOf('.')
     const stem = dot > 0 ? proposed.slice(0, dot) : proposed
@@ -702,8 +702,13 @@ export function App({
     converting.current = true
     setStep('converting')
     try {
-      const planned = action.plan(source, { ...values, destination })[0]
-      if (!planned) {
+      const planned = action.plan([source], { ...values, destination })[0]
+      // `action` here is always convertAction or compressAction — both plan
+      // only ever produce a `convert` job — but `plan()`'s return type is now
+      // the full `Job` union (widened for the page actions), so the `target`/
+      // `options` reads below need this narrowed explicitly rather than
+      // assumed.
+      if (planned?.op !== 'convert') {
         setStep('idle')
         return
       }

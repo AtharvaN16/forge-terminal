@@ -99,9 +99,11 @@ export const convertAction: Action = {
   label: 'Convert',
   hint: 'to another format',
 
-  appliesTo: () => true,
+  appliesTo: (sources) => sources.length >= 1,
 
-  options(source, values, prefs) {
+  options(sources, values, prefs) {
+    const source = sources[0]
+    if (!source) return []
     const specs: OptionSpec[] = [targetSelect(source)]
 
     const target = values.target
@@ -124,7 +126,9 @@ export const convertAction: Action = {
     return specs
   },
 
-  plan(source, values) {
+  plan(sources, values) {
+    const source = sources[0]
+    if (!source) return []
     const spec = requireTarget(values)
     const target = spec.id
 

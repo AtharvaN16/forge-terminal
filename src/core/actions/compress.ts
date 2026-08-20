@@ -3,8 +3,11 @@ import { dirname, join } from 'node:path'
 import { expandTilde, type Preferences } from '../../config/preferences.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
-import type { SourceInfo } from '../types.js'
+import type { ImageInfo, SourceInfo } from '../types.js'
 import type { Action, OptionSpec, PathPreset } from './index.js'
+
+const soleImage = (sources: SourceInfo[]): ImageInfo | undefined =>
+  sources.length === 1 && sources[0]?.kind === 'image' ? sources[0] : undefined
 
 /**
  * The suffix that keeps a compressed file from landing on its source.
@@ -61,9 +64,14 @@ export const compressAction: Action = {
    * cannot happen. Making a PNG smaller means changing its format, which is
    * what `/convert` is for.
    */
-  appliesTo: (source) => FORMATS[source.format].lossy,
+  appliesTo: (sources) => {
+    const image = soleImage(sources)
+    return image !== undefined && FORMATS[image.format].lossy
+  },
 
-  options(source, values, prefs) {
+  options(sources, values, prefs) {
+    const source = sources[0]
+    if (!source) return []
     const specs: OptionSpec[] = [
       {
         kind: 'select',
@@ -104,7 +112,7 @@ export const compressAction: Action = {
     return specs
   },
 
-  plan(source, values) {
+  plan(sources, values) {
     const mode = values.mode
     if (mode !== 'quality' && mode !== 'size') {
       throw invalidArguments(
@@ -112,6 +120,9 @@ export const compressAction: Action = {
         'This is a caller bug, not a user-facing condition: walk options() before calling plan().',
       )
     }
+
+    const source = sources[0]
+    if (!source) return []
 
     const stem = (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')
     const destination =

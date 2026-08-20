@@ -2,6 +2,10 @@ import type { Preferences } from '../../config/preferences.js'
 import type { Job, SourceInfo } from '../types.js'
 import { compressAction } from './compress.js'
 import { convertAction } from './convert.js'
+import { deleteAction, extractAction } from './extract.js'
+import { mergeAction } from './merge.js'
+import { rotateAction } from './rotate.js'
+import { splitAction } from './split.js'
 
 export interface Choice {
   value: string
@@ -35,27 +39,49 @@ export interface Action {
   id: string
   label: string
   hint: string
-  appliesTo(source: SourceInfo): boolean
+  /**
+   * Whether this action can run against the staged list.
+   *
+   * Takes the list rather than one source because merge is defined by having
+   * several, and because the hub dims what does not apply rather than hiding
+   * it — which needs an answer for every action on every stage.
+   */
+  appliesTo(sources: SourceInfo[]): boolean
+  /** Why `appliesTo` said no, in three words for the hub's right margin. */
+  unavailable?(sources: SourceInfo[]): string | undefined
   /**
    * Takes the answers so far, because some options depend on earlier ones —
    * the quality slider only makes sense once a lossy target is chosen.
    * (Spec §6 declared this without the second parameter; see the plan.)
    */
-  options(source: SourceInfo, values: Record<string, unknown>, prefs: Preferences): OptionSpec[]
-  /**
-   * Both built-in actions only ever produce a `convert` job today — one
-   * source, one output — so the return type is narrowed to that member
-   * rather than the full `Job` union. A later action that plans a page
-   * operation widens this.
-   */
-  plan(source: SourceInfo, values: Record<string, unknown>): Extract<Job, { op: 'convert' }>[]
+  options(sources: SourceInfo[], values: Record<string, unknown>, prefs: Preferences): OptionSpec[]
+  plan(sources: SourceInfo[], values: Record<string, unknown>): Job[]
 }
 
-export { compressAction } from './compress.js'
-export { convertAction } from './convert.js'
+export {
+  compressAction,
+  convertAction,
+  deleteAction,
+  extractAction,
+  mergeAction,
+  rotateAction,
+  splitAction,
+}
 
-export const ACTIONS: Action[] = [convertAction, compressAction]
+export const ACTIONS: Action[] = [
+  convertAction,
+  compressAction,
+  mergeAction,
+  splitAction,
+  extractAction,
+  deleteAction,
+  rotateAction,
+]
 
-export function actionsFor(source: SourceInfo): Action[] {
-  return ACTIONS.filter((a) => a.appliesTo(source))
+export function actionsFor(sources: SourceInfo[]): Action[] {
+  return ACTIONS.filter((a) => a.appliesTo(sources))
+}
+
+export function unavailableReason(action: Action, sources: SourceInfo[]): string | undefined {
+  return action.appliesTo(sources) ? undefined : action.unavailable?.(sources)
 }
