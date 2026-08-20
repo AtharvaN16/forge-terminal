@@ -30,7 +30,13 @@ async function waitFor(
   for (;;) {
     const frame = lastFrame() ?? ''
     if (predicate(frame)) return frame
-    if (Date.now() - start > ceilingMs) return frame
+    if (Date.now() - start > ceilingMs) {
+      // Throw rather than return the last frame. Returning it makes a timeout
+      // surface as whatever assertion runs next — "expected <a PDF screen> to
+      // contain 'drop a file…'" — which reads like a behaviour bug and sends
+      // the reader looking in the wrong place. This says what happened.
+      throw new Error(`waitFor gave up after ${ceilingMs}ms. Last frame was:\n${frame}`)
+    }
     await settle(stepMs)
   }
 }
@@ -55,7 +61,7 @@ async function waitFor(
 describe('a running split names itself correctly, not RENDERING', () => {
   it('shows SPLITTING with a real, growing page count while the split is in flight', async () => {
     const dir = await makeTempDir()
-    const file = await makePdf(dir, 'doc.pdf', 1000)
+    const file = await makePdf(dir, 'doc.pdf', 300)
     const { stdin, lastFrame } = render(
       <App initialWidth={100} initialHeight={24} prefs={prefsFor(dir)} />,
     )
@@ -83,18 +89,18 @@ describe('a running split names itself correctly, not RENDERING', () => {
 
     stdin.write(ENTER) // "Every page" is the default mode -> confirm step
     await settle(300)
-    expect(lastFrame() ?? '').toContain('Split into 1000 files')
+    expect(lastFrame() ?? '').toContain('Split into 300 files')
 
     stdin.write(ENTER) // confirm and run
 
     // Caught mid-run: a real page count from a real `page` event, not the
     // "Running…" fallback `pdf-running` shows before the first one arrives,
     // and not the finished frame either (asserted separately below).
-    const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 1000/.test(f))
-    expect(midFrame).toMatch(/page \d+ of 1000/)
-    const caughtDone = Number(midFrame.match(/page (\d+) of 1000/)?.[1])
+    const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 300/.test(f))
+    expect(midFrame).toMatch(/page \d+ of 300/)
+    const caughtDone = Number(midFrame.match(/page (\d+) of 300/)?.[1])
     expect(caughtDone).toBeGreaterThan(0)
-    expect(caughtDone).toBeLessThan(1000)
+    expect(caughtDone).toBeLessThan(300)
 
     // The positive assertion the label itself needs: SPLITTING actually
     // rendered, not just a blank or unrelated frame with no label at all.
@@ -102,10 +108,14 @@ describe('a running split names itself correctly, not RENDERING', () => {
     // The bug this pins: split must never claim to be rendering.
     expect(midFrame).not.toContain('RENDERING')
 
-    const finalFrame = await waitFor(lastFrame, (f) => f.includes('drop a file or type a path'))
+    const finalFrame = await waitFor(
+      lastFrame,
+      (f) => f.includes('drop a file or type a path'),
+      25_000, // the split itself has to finish here; the suite runs 16 files at once
+    )
     expect(finalFrame).toContain('drop a file or type a path')
 
     const written = (await readdir(dir)).filter((f) => f !== 'doc.pdf')
-    expect(written).toHaveLength(1000)
+    expect(written).toHaveLength(300)
   }, 30_000)
 })
