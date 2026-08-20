@@ -405,7 +405,11 @@ src/
    engine declares them. No menu is edited.
 3. Sources are probed by content.
 4. `.rotate()` before other Sharp operations — untouched.
-5. Alpha flattening — untouched.
+5. Alpha flattening — **extended, not untouched.** Rasterisation renders with
+   `transparent: true` and flattens onto `--background` for both JPEG and PNG.
+   PNG could carry the alpha, but a page's unpainted area is paper. See
+   Amendment 1; the original design assumed pdfium rendered onto transparency
+   by default, which it does not.
 6. Writes are atomic, and multi-output jobs are all-or-nothing. A 248-page
    rasterisation that fails at page 200 leaves nothing behind.
 7. **Progress is never fabricated.** The bar is determinate because the total

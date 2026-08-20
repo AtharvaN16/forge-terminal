@@ -544,8 +544,19 @@ async run(job: Job, onProgress: (p: Progress) => void): Promise<Result> {
 }
 ```
 
-Note `flatten` on the JPEG path only: a PDF page is rendered onto transparency
-where nothing is painted, and JPEG cannot carry alpha (invariant 5). PNG keeps it.
+**CORRECTED 2026-08-20 — the original note here was factually wrong.** It said
+"a PDF page is rendered onto transparency where nothing is painted, and JPEG
+cannot carry alpha, so flatten on the JPEG path only; PNG keeps it." pdfium does
+not do that: `render()` defaults `transparent: false` and pre-fills the bitmap
+with opaque white `0xffffffff`. Measured — an unpainted region comes back
+`[255,255,255,255]`. So `flatten()` was a no-op, `--background` silently did
+nothing, and "PNG keeps alpha" described four channels with alpha uniformly 255.
+
+Pass `transparent: true` to `render()`, then flatten onto
+`job.options.background` for **both** targets. The default background is
+`#ffffff`, so default output is visually unchanged, but `--background` starts
+working. PNG is flattened too, deliberately: a scanned page's unpainted area
+reads as paper, not a transparent cut-out.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
