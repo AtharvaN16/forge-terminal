@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { degrees, PDFDocument } from 'pdf-lib'
 import { emptySelection, encryptedSource, outputInvalid } from '../core/errors.js'
-import { cutsToRanges } from '../core/pages.js'
+import { cutsToRanges, normalisePages } from '../core/pages.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result } from '../core/types.js'
 import type { Engine } from './types.js'
 
@@ -164,7 +164,10 @@ async function extract(
 
   onPhase({ phase: 'reading' })
   const src = await load(source.path)
-  const wanted = [...new Set(job.pages)].sort((a, b) => a - b)
+  // The same function `extractAction.plan` names the outputs from, so
+  // `outputs[i]` is always the file named for `wanted[i]` (see
+  // `core/pages.ts`'s `normalisePages`).
+  const wanted = normalisePages(job.pages)
 
   const written: string[] = []
   let outputBytes = 0

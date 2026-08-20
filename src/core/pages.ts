@@ -57,6 +57,23 @@ export function parseRanges(input: string, pageCount: number): number[] {
   return [...pages].sort((a, b) => a - b)
 }
 
+/**
+ * The single ordering an explicit page selection is used in: unique, ascending.
+ *
+ * Extract names one output file per selected page (`extractOutputPaths`) and
+ * the PDF engine copies those pages itself. Both derive from this, because a
+ * selection can arrive in any order — the shell's page grid appends in the
+ * order pages were pressed — and two independent orderings meant a file named
+ * `doc-p5.pdf` could be handed the document's second page. One function, one
+ * order, so the name and the content cannot disagree.
+ *
+ * Deduped as well as sorted: two outputs named for one page would collide,
+ * and `write-safety.ts` refuses a job whose own outputs alias each other.
+ */
+export function normalisePages(pages: number[]): number[] {
+  return [...new Set(pages)].sort((a, b) => a - b)
+}
+
 /** The inverse of `parseRanges`, for showing a selection back to the user. */
 export function formatRanges(pages: number[]): string {
   if (pages.length === 0) return ''
