@@ -6,7 +6,7 @@ import type { Stage } from '../stage.js'
 import { stageSummary } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
-import { middleEllipsis } from '../width.js'
+import { bandFor, middleEllipsis } from '../width.js'
 import { FileCard } from './FileCard.js'
 
 /** The card never grows past this, however wide the terminal is — same cap
@@ -74,6 +74,28 @@ export function StagedFiles({ stage, width }: { stage: Stage; width: number }) {
   const sameFormat = sources.every((s) => s.format === first?.format)
   const formatLabel = first ? FORMATS[first.format].label : ''
   const tag = sameFormat ? `${formatLabel} ×${sources.length}` : `MIXED ×${sources.length}`
+
+  // Below the compact band (<60 columns) the frame is dropped entirely,
+  // exactly as `FileCard` drops it — spec §13: content is truncated, not
+  // wrapped, and a border is not content. This also sidesteps the frame
+  // arithmetic below at widths it was never built to survive: the top
+  // border's rule width only stays non-negative because `FileCard` never
+  // reaches it under 60 columns either, and this returns before that
+  // arithmetic runs, the same way.
+  const band = bandFor(width)
+  if (band === 'compact') {
+    return (
+      <Box flexDirection="column">
+        <Text>
+          <Text color={colourProp(palette.tag)}>{tag}</Text>
+          <Text color={colourProp(palette.dim)}>
+            {` · ${middleEllipsis(stageSummary(stage), Math.max(8, width - stringWidth(tag) - 3))}`}
+          </Text>
+        </Text>
+        {skipped}
+      </Box>
+    )
+  }
 
   // Total drawn width, borders included — identical arithmetic to
   // `FileCard`: `inner` is the two vertical border glyphs removed, `textWidth`

@@ -314,13 +314,23 @@ export function App({
   // reported a failure and returned here without clearing what was staged
   // (a partial batch is still there to retry, or to abandon). Empty stages
   // are the common case and cost nothing extra to check.
+  //
+  // Gated on the command buffer being closed, for the same reason the
+  // `step === 'result'` hook above is gated on `step`: Ink delivers input
+  // to every mounted `useInput` regardless of what else is on screen.
+  // `CommandPalette`'s `Select` (`isActive` default `true`) already owns
+  // escape while `/convert` or similar is being typed — its `onCancel`
+  // clears the text buffer — so an ungated hook here would fire on the very
+  // same keystroke and silently discard the stage as a side effect of
+  // someone backing out of a half-typed command, not asking to clear
+  // anything.
   useInput(
     (_input, key) => {
       if (!key.escape) return
       if (stage.sources.length === 0 && stage.failures.length === 0) return
       setStage(clearStage())
     },
-    { isActive: step === 'idle' },
+    { isActive: step === 'idle' && !isCommandBuffer(text) },
   )
 
   useInput(
