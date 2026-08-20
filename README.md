@@ -359,16 +359,26 @@ $ forge report.pdf --to webp
   Available: jpeg, png, pdf
 ```
 
-Output files are named by 1-based page number and zero-padded to the width
-of the *document's* total page count, not the size of the `--pages`
-selection — so picking pages 1 and 10 out of a 12-page document still sorts
-correctly:
+Output files are named by 1-based page number and zero-padded to the width of
+the *highest page number being written*, not the size of the `--pages`
+selection — so picking pages 1 and 10 still sorts correctly rather than
+listing `-10` before `-2`:
 
 ```
 $ forge big.pdf --to jpeg --pages 1,10
 ✓ big.pdf → 2 files
   big-01.jpg, big-10.jpg
   2.9 KB → 7.7 KB total
+```
+
+The padding follows the pages actually written, so a small selection out of a
+long document is not padded to that document's width:
+
+```
+$ forge big.pdf --to png --pages 1,2      # big.pdf has 300 pages
+✓ big.pdf → 2 files
+  big-1.png, big-2.png
+  4.2 KB → 928 B total
 ```
 
 ### image → PDF
