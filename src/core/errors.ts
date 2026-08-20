@@ -24,6 +24,7 @@ export type ErrorCode =
   | 'symlink-loop'
   | 'path-too-long'
   | 'unreadable-path'
+  | 'invalid-page-range'
   | 'unexpected'
 
 interface ForgeErrorInit {
@@ -262,6 +263,15 @@ export function emptyDirectory(path: string): ForgeError {
 
 export function invalidArguments(detail: string, hint?: string): ForgeError {
   return new ForgeError({ code: 'invalid-arguments', title: 'Invalid arguments', detail, hint })
+}
+
+export function invalidPageRange(_input: string, detail: string, pageCount: number): ForgeError {
+  return new ForgeError({
+    code: 'invalid-page-range',
+    title: 'Page range not understood',
+    detail,
+    hint: `This document has ${pageCount} pages. Use numbers and spans, like "3-7, 12, 20-".`,
+  })
 }
 
 export function conversionFailed(path: string, cause: unknown): ForgeError {
