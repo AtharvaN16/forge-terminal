@@ -316,6 +316,117 @@ same problem: the second run's glob also matches the first run's
 instead — one of its own inputs, not just a stale file on disk. Either way,
 nothing gets overwritten without `--force`.)
 
+### PDF → image
+
+A PDF can also become a JPEG or PNG — this is `--to`, not one of the five
+page operations above, so it composes with the rest of the flag CLI rather
+than living in `--merge`/`--split`/etc.:
+
+```bash
+forge report.pdf --to jpeg --pages 2-4 --dpi 150
+```
+
+```
+$ forge report.pdf --to jpeg --pages 2-4 --dpi 150
+✓ report.pdf → 3 files
+  report-2.jpg, report-3.jpg, report-4.jpg
+  1.6 KB → 11.6 KB total
+```
+
+`--pages` uses the same grammar as `--extract`/`--delete` (see
+[Page ranges](#page-ranges) above) and defaults to every page when omitted.
+`--dpi` sets the rasterisation resolution, `36`-`600`, default `150`:
+
+```
+$ forge report.pdf --to png --dpi 35
+✕ Invalid resolution
+
+  35 is not a resolution Forge can use.
+
+  Give a number between 36 and 600. The default is 150.
+```
+
+A PDF's only targets are `jpeg`, `png`, and `pdf` itself (page operations) —
+asking for anything else is rejected the same way an unsupported image
+target is:
+
+```
+$ forge report.pdf --to webp
+✕ Can't convert report.pdf to webp
+
+  report.pdf is a PDF image.
+
+  Available: jpeg, png, pdf
+```
+
+Output files are named by 1-based page number and zero-padded to the width
+of the *document's* total page count, not the size of the `--pages`
+selection — so picking pages 1 and 10 out of a 12-page document still sorts
+correctly:
+
+```
+$ forge big.pdf --to jpeg --pages 1,10
+✓ big.pdf → 2 files
+  big-01.jpg, big-10.jpg
+  2.9 KB → 7.7 KB total
+```
+
+### image → PDF
+
+```
+$ forge report-1.png --to pdf
+✓ report-1.png → report-1.pdf
+  5.9 KB → 6.2 KB · 5.8% larger
+```
+
+Each image becomes its own single-page PDF — converting several images with
+`--to pdf` writes one PDF per image, not one PDF containing all of them.
+Combining several files into one PDF is `--merge`, and `--merge` only takes
+PDFs as input.
+
+### Encrypted PDFs
+
+Forge can **read** a password-protected PDF — probing, page operations, and
+`--to jpeg`/`--to png` all work once it has the password. It cannot
+**remove** a password from one; there is no unlock or decrypt-and-resave
+feature, on purpose. The only libraries that can decrypt and rewrite a PDF
+are AGPL-licensed, and Forge is MIT, so that feature was cut rather than
+shipped under a licence the rest of the project doesn't carry.
+
+There is deliberately no `--password` flag — an argument lands in shell
+history and in `ps` output, and PDF passwords are reused often enough that
+leaking one leaks more than one file. Two routes instead:
+
+```
+$ echo -n "hunter2" | forge locked-hunter2.pdf --to png --password-stdin
+✓ locked-hunter2.pdf → 3 files
+  locked-hunter2-1.png, locked-hunter2-2.png, locked-hunter2-3.png
+  2.7 KB → 22.4 KB total
+```
+
+or leave `--password-stdin` off and Forge prompts on stderr, reading one
+line without echoing it back:
+
+```
+$ forge locked-hunter2.pdf --to jpeg
+Password: 
+✓ locked-hunter2.pdf → 3 files
+  locked-hunter2-1.jpg, locked-hunter2-2.jpg, locked-hunter2-3.jpg
+  2.7 KB → 16.6 KB total
+```
+
+A wrong password gets the same message an unattempted password does — Forge
+doesn't echo back anything about the attempt itself:
+
+```
+$ echo -n "wrongpass" | forge locked-hunter2.pdf --to png --password-stdin
+✕ This PDF is password-protected
+
+  locked-hunter2.pdf is password-protected.
+
+  Convert it to images instead:  forge locked-hunter2.pdf --to jpeg --password-stdin
+```
+
 ### In the shell
 
 `/pdf` needs at least one staged PDF (drop a file, then drop another to
@@ -331,14 +442,25 @@ reorderable list where files can be picked up and dropped into a new order,
 sorted, removed, or renamed before confirming. A confirm screen lists the
 planned output filenames before anything runs.
 
+Choosing an image target for a staged PDF (see [PDF → image](#pdf--image)
+above) adds two steps of its own between target and destination: which pages
+to render — all, or choose from a page grid the same way extract/delete
+does — and the rasterisation resolution. Rendering itself runs a live
+progress bar tracking pages completed against the page count, rather than
+the shell's usual single-file "no percentage" convert step, since a
+multi-page render has a real count to report against.
+
 ### Not yet
 
-This phase is page operations only. Compressing a PDF, converting between
-PDF and images, and password protection or removal are not implemented —
-they're planned for a later phase, with Markdown, HTML and Office conversion
-later still. Separately, and not specific to PDFs: the shell refuses to
-convert or compress several staged files at once today — that's a deliberate
-limit while batch handling through the shell is still unbuilt, not a bug.
+This phase adds PDF↔image conversion and reading a password-protected PDF
+(see [PDF → image](#pdf--image) and [Encrypted PDFs](#encrypted-pdfs)
+above — including in the shell). Still not implemented: compressing a PDF
+and splitting one to a target size, which are phase 4b, and Markdown, HTML
+and Office conversion, which are phase 5. Removing a password from a PDF is
+not planned at all — see [Encrypted PDFs](#encrypted-pdfs) for why.
+Separately, and not specific to PDFs: the shell refuses to convert or
+compress several staged files at once today — that's a deliberate limit
+while batch handling through the shell is still unbuilt, not a bug.
 
 ## Usage
 
@@ -654,9 +776,8 @@ and rendered bold.
   staged at once now, but only `/pdf`'s merge is defined by having more than
   one; a paste containing several paths is still read as one path and fails
   to probe as such.
-- **PDF compression, PDF↔image conversion, and password protection.** Not in
-  this phase — see [PDF § Not yet](#not-yet) above for what's coming and
-  when.
+- **PDF compression and splitting to a target size.** Not in this phase —
+  see [PDF § Not yet](#not-yet) above for what's coming and when.
 - **No recent-files list** — every session starts at an empty prompt.
 
 ## Supported formats
@@ -672,9 +793,15 @@ Formats
   HEIC   .heic .heif  read only
   GIF    .gif         read and write
   TIFF   .tif .tiff   read and write
+  PDF    .pdf         read and write
 
 HEIC is read only because the image library cannot encode it.
 ```
+
+PDF's "read and write" covers the five page operations plus rasterising to
+JPEG/PNG and encoding images to PDF — see [PDF](#pdf) above for the actual
+grammar; it isn't a peer of the image formats above it in every respect
+(there's no `--quality` for it, for one).
 
 **Why HEIC is read-only:** Forge's image engine is Sharp/libvips, and the
 prebuilt libvips binary can decode HEVC (what iPhones save HEIC as) but
@@ -808,9 +935,12 @@ npm test        # vitest run
 npm run test:watch
 ```
 
-237 tests, all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
+789 tests, all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
 animated GIFs, HEIC/AVIF samples) are generated by Sharp — or, for HEIC,
-`sips` — at test time, never committed as binaries. Coverage includes:
+`sips` — at test time, never committed as binaries; the one exception is
+`tests/fixtures/locked-hunter2.pdf`, a real encrypted PDF (password
+`hunter2`) checked in because pdf-lib can't produce an encrypted document
+itself. Coverage includes:
 
 - **Engine correctness** — the two reproduced defects (transparent-PNG→JPEG
   going black, EXIF-rotated images staying sideways) as regression tests,
@@ -823,11 +953,17 @@ animated GIFs, HEIC/AVIF samples) are generated by Sharp — or, for HEIC,
 - **CLI** — argument parsing and exit codes, including the `--quality`
   without `--to` rejection above, and that a bare `forge` on a TTY hands off
   to the shell rather than erroring.
+- **PDF rasterisation** — page selection and DPI bounds, zero-padded output
+  naming keyed to the document's page count, reading an encrypted PDF by
+  both password routes, and that a wrong password never leaks the attempted
+  string into an error message.
 - **Shell** — `ink-testing-library` driving real keystrokes through every
   stage: arrow-key selection, the quality slider, the destination presets
   and typed-path fallback, a full probe-to-result conversion, dropped paths
-  that are shell-escaped or carry an embedded CR/LF, and that no rendered
-  line exceeds the terminal width at four widths.
+  that are shell-escaped or carry an embedded CR/LF, that no rendered line
+  exceeds the terminal width at four widths, and — new this phase — the
+  page-grid and resolution steps for PDF→image plus the live per-page
+  progress bar.
 
 ## Roadmap
 
@@ -845,9 +981,11 @@ Not yet built, in rough order:
 - **Resize action.**
 - **`/slash` commands** in the shell, and **a recent-files list** so a
   session doesn't always start from an empty prompt.
-- **PDF and video engines** — Sharp can't do either; these will sit behind
-  the same `Engine` interface `image.ts` implements now, so the CLI and
-  format menu won't need to change to support them.
+- **A video engine** — Sharp can't do it; it will sit behind the same
+  `Engine` interface `image.ts` and the PDF engine already implement, so the
+  CLI and format menu won't need to change to support it. The PDF engine
+  itself now covers page operations and PDF↔image (see [PDF](#pdf) above);
+  PDF compression and splitting to a target size are still to come.
 
 Explicitly out of scope for 0.1: HEIC encoding (the underlying library
 can't), DOCX/PPTX/SVG output, MP4/MP3, recursive watch mode, config files,
