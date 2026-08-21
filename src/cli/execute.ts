@@ -41,6 +41,16 @@ export interface ExecuteOptions {
    * allowed to write to a stream, gets the data to do so.
    */
   onProgress?: (progress: BatchProgress) => void
+  /**
+   * Called during a target-size search with a human-readable position, e.g.
+   * `150 dpi · attempt 3 of 8`.
+   *
+   * A status string rather than a spinner, so this file stays ignorant of how
+   * — or whether — anything is drawn; `src/index.ts` owns that and gates it on
+   * a real terminal. Every number in the string is a real index in a bounded
+   * sequence, never an invented percentage (invariant 7).
+   */
+  onSearch?: (status: string) => void
 }
 
 /**
@@ -339,6 +349,15 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
                     .bytes.byteLength
                 : (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
             targetBytes: intent.maxBytes,
+            // The rung is named as well as the attempt: without it a search
+            // that drops from 150 to 120 dpi looks like the counter simply
+            // restarting for no reason.
+            onAttempt: (attempt, of) =>
+              opts.onSearch?.(
+                dpi === undefined
+                  ? `attempt ${attempt} of ${of}`
+                  : `${dpi} dpi · attempt ${attempt} of ${of}`,
+              ),
           })
           closest = Math.min(closest, found.bytes)
           if (!found.missed) {

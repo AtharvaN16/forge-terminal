@@ -120,3 +120,39 @@ describe('--dpi is honoured in both modes, not just one', () => {
     expect(kept).toBeGreaterThan(defaulted * 1.5)
   })
 })
+
+describe('the search reports where it has got to', () => {
+  it('names the resolution and a real attempt index, never a percentage', async () => {
+    // Invariant 7: the search cannot know which resolution rung will succeed,
+    // so a percentage would be invented. Its position inside the current rung
+    // is real and bounded, and that is what it reports.
+    const dir = await makeTempDir()
+    const src = await makeScannedPdf(dir, 'scan.pdf', { dpi: 300, pages: 2 })
+    const seen: string[] = []
+
+    await execute(parseArgs(['node', 'forge', src, '--max-size', '80kb']), {
+      onSearch: (status) => seen.push(status),
+    })
+
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen[0]).toMatch(/^\d+ dpi · attempt \d+ of \d+$/)
+    // No invented progress anywhere in it.
+    expect(seen.join(' ')).not.toMatch(/%/)
+    // The attempt index stays inside the bound it declares.
+    for (const line of seen) {
+      const [, n, of] = line.match(/attempt (\d+) of (\d+)/) ?? []
+      expect(Number(n)).toBeLessThanOrEqual(Number(of))
+    }
+  }, 60_000)
+
+  it('says nothing when there is no search to report', async () => {
+    // Quality mode encodes once. A spinner there would flash for no reason.
+    const dir = await makeTempDir()
+    const src = await makeScannedPdf(dir, 'scan.pdf', { pages: 2 })
+    const seen: string[] = []
+    await execute(parseArgs(['node', 'forge', src, '--quality', '50']), {
+      onSearch: (status) => seen.push(status),
+    })
+    expect(seen).toEqual([])
+  })
+})

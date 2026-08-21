@@ -2,6 +2,7 @@
 import { parseArgs } from './cli/args.js'
 import type { BatchProgress } from './cli/execute.js'
 import { execute } from './cli/execute.js'
+import { type Spinner, startSpinner } from './cli/spinner.js'
 import { isForgeError, renderError } from './core/errors.js'
 
 /**
@@ -56,9 +57,25 @@ async function main(): Promise<void> {
       return
     }
 
+    /**
+     * The spinner is created on the first search callback rather than up
+     * front: most runs never search at all, and starting one for them would
+     * flash a line for no reason. `execute` reports a position; only this
+     * file decides to animate it, and only on a terminal.
+     */
+    let spinner: Spinner | undefined
     const result = await execute(intent, {
       onProgress: process.stderr.isTTY ? onProgress : undefined,
+      ...(process.stderr.isTTY
+        ? {
+            onSearch: (status: string) => {
+              spinner ??= startSpinner(process.stderr, 'finding the smallest that fits')
+              spinner.update(status)
+            },
+          }
+        : {}),
     })
+    spinner?.stop()
     if (result.stdout.length > 0) process.stdout.write(`${result.stdout.join('\n')}\n`)
     if (result.stderr.length > 0) process.stderr.write(`${result.stderr.join('\n')}\n`)
     process.exitCode = result.exitCode
