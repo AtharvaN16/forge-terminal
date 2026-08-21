@@ -298,3 +298,47 @@ export async function makePartiallyPaintedPdf(
   await writeFile(path, await doc.save())
   return path
 }
+
+/**
+ * A PDF shaped like a scan: one photographic image per page.
+ *
+ * The image is noise, not a flat colour, so it behaves like a photograph
+ * under re-encoding. A flat fill compresses to almost nothing at every
+ * quality, which would make a compression test pass without compressing
+ * anything — the same trap as a fixture whose page labels are all empty.
+ *
+ * `filter` chooses how the image is stored: `'jpeg'` embeds as /DCTDecode,
+ * which Sharp can decode straight out of the PDF, and `'png'` embeds as
+ * /FlateDecode, which it cannot. Real scans are the former.
+ */
+export async function makeScannedPdf(
+  dir: string,
+  name: string,
+  opts: { pages?: number; filter?: 'jpeg' | 'png' } = {},
+): Promise<string> {
+  const { pages = 3, filter = 'jpeg' } = opts
+  const w = 600
+  const h = 450
+  const raw = Buffer.alloc(w * h * 3)
+  // Deterministic pseudo-noise: a fixed seed keeps fixture bytes stable
+  // across runs, so a size assertion is not racing the random number
+  // generator.
+  let seed = 12_345
+  for (let i = 0; i < raw.length; i++) {
+    seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648
+    raw[i] = seed % 256
+  }
+  const image = sharp(raw, { raw: { width: w, height: h, channels: 3 } })
+  const bytes =
+    filter === 'jpeg' ? await image.jpeg({ quality: 95 }).toBuffer() : await image.png().toBuffer()
+
+  const doc = await PDFDocument.create()
+  const embedded = filter === 'jpeg' ? await doc.embedJpg(bytes) : await doc.embedPng(bytes)
+  for (let i = 0; i < pages; i++) {
+    const page = doc.addPage([595, 842])
+    page.drawImage(embedded, { x: 40, y: 300, width: 515, height: 386 })
+  }
+  const path = join(dir, name)
+  await writeFile(path, await doc.save())
+  return path
+}
