@@ -6,6 +6,7 @@ import { writeAtomic } from '../core/atomic.js'
 import { emptySelection, encryptedSource } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
+import { surveyDocument } from '../core/pdf-compress.js'
 import type {
   DocumentInfo,
   FormatId,
@@ -50,6 +51,10 @@ async function probe(path: string): Promise<DocumentInfo> {
     bytes: size,
     pages: doc.getPageCount(),
     encrypted: doc.isEncrypted,
+    // Surveyed from the document already parsed above rather than by reading
+    // the file a second time: probing runs on every drop, and parsing a large
+    // PDF twice to answer one question is lag the user feels.
+    images: surveyDocument(doc),
   }
 }
 

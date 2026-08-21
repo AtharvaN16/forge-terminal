@@ -59,8 +59,7 @@ function imageStreams(doc: PDFDocument): { ref: PDFRef; stream: PDFRawStream; fi
  * simply a kind Forge cannot re-encode — two different answers a user
  * deserves to be told apart.
  */
-export async function surveyPdfImages(bytes: Uint8Array): Promise<PdfImageSurvey> {
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+export function surveyDocument(doc: PDFDocument): PdfImageSurvey {
   let compressible = 0
   let skipped = 0
   for (const { filter } of imageStreams(doc)) {
@@ -68,6 +67,17 @@ export async function surveyPdfImages(bytes: Uint8Array): Promise<PdfImageSurvey
     else skipped++
   }
   return { compressible, skipped }
+}
+
+/**
+ * The same survey from raw bytes.
+ *
+ * `engines/pdf.ts`'s probe uses {@link surveyDocument} on the document it has
+ * already parsed instead — probing happens on every drop, and parsing a large
+ * PDF twice to answer one question is a cost the user feels as lag.
+ */
+export async function surveyPdfImages(bytes: Uint8Array): Promise<PdfImageSurvey> {
+  return surveyDocument(await PDFDocument.load(bytes, { ignoreEncryption: true }))
 }
 
 /**

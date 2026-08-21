@@ -42,6 +42,16 @@ export interface DocumentInfo {
   pages: number
   /** True when the file is password-protected. Probing never prompts. */
   encrypted: boolean
+  /**
+   * What the document holds that `/compress` could act on, counted at probe
+   * time so the flow can refuse before promising anything.
+   *
+   * `compressible` and `skipped` are deliberately separate: "this PDF has no
+   * images" and "this PDF's images are a kind Forge cannot re-encode" are
+   * different answers, and collapsing them into one number would force a
+   * message that is wrong for one of the two.
+   */
+  images?: { compressible: number; skipped: number }
 }
 
 export type SourceInfo = ImageInfo | DocumentInfo

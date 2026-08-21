@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 import { compressPdf, surveyPdfImages } from '../../src/core/pdf-compress.js'
+import { probe } from '../../src/engines/registry.js'
 import { makePdf, makeScannedPdf, makeTempDir } from '../helpers/fixtures.js'
 
 /** The PDF filter each image object is stored under, in document order. */
@@ -121,5 +122,25 @@ describe('compressing a PDF', () => {
     expect(page.width).toBeGreaterThan(0)
     doc.destroy()
     lib.destroy()
+  })
+})
+
+describe('probing reports what a PDF offers', () => {
+  it('tells a scanned PDF apart from a text one', async () => {
+    const dir = await makeTempDir()
+    const scan = await probe(await makeScannedPdf(dir, 'scan.pdf'))
+    const text = await probe(await makePdf(dir, 'text.pdf', 2))
+    expect(scan.kind).toBe('document')
+    expect(text.kind).toBe('document')
+    if (scan.kind !== 'document' || text.kind !== 'document') return
+    expect(scan.images).toEqual({ compressible: 1, skipped: 0 })
+    expect(text.images).toEqual({ compressible: 0, skipped: 0 })
+  })
+
+  it('reports a Flate image as skipped, so /compress can explain itself', async () => {
+    const dir = await makeTempDir()
+    const shot = await probe(await makeScannedPdf(dir, 'shot.pdf', { filter: 'png' }))
+    if (shot.kind !== 'document') throw new Error('expected a document')
+    expect(shot.images).toEqual({ compressible: 0, skipped: 1 })
   })
 })
