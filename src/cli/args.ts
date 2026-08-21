@@ -35,6 +35,13 @@ export interface CompressIntent {
   quality?: number
   /** Set by --max-size. The search decides the quality. */
   maxBytes?: number
+  /**
+   * Set by --dpi. Only meaningful for a PDF, where compression can also
+   * reduce image resolution — by far the larger of the two levers. Absent
+   * means the 150 dpi default; pass the scan's own resolution to keep every
+   * pixel and trade only quality.
+   */
+  dpi?: number
   options: ConvertOptions
   force: boolean
   recursive: boolean
@@ -323,6 +330,24 @@ export function parseArgs(argv: string[]): Intent {
     }
     if (opts.quality !== undefined) compress.quality = parseQuality(String(opts.quality))
     if (maxBytes !== undefined) compress.maxBytes = maxBytes
+    /**
+     * Only a `--dpi` the user actually typed is carried through.
+     *
+     * Commander gives the option a default of '150' for the conversion path,
+     * so `opts.dpi` is always set and cannot distinguish an explicit 150 from
+     * the fallback. `getOptionValueSource` can — and it reads the parse this
+     * call performed, unlike `process.argv`, which is the host process's and
+     * is wrong under test and anywhere `parseArgs` is handed a synthetic argv.
+     *
+     * The distinction matters because absent means "use the compression
+     * default", which is 150 today but is the engine's business, not this
+     * file's.
+     */
+    if (program.getOptionValueSource('dpi') === 'cli') {
+      const dpi = Number(opts.dpi)
+      if (!Number.isInteger(dpi) || dpi < 36 || dpi > 600) throw invalidDpi(opts.dpi)
+      compress.dpi = dpi
+    }
     if (opts.concurrency !== undefined) {
       compress.concurrency = parseConcurrency(String(opts.concurrency))
     }

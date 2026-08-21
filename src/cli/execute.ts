@@ -297,6 +297,10 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       })
       if (planned?.op !== 'convert') continue
       const job = planned
+      // A typed `--dpi` applies to both modes. It was originally threaded
+      // only into the target-size search below, so quality mode silently kept
+      // the engine default and produced the same bytes whatever was passed.
+      if (intent.dpi !== undefined) job.options.dpi = intent.dpi
 
       if (intent.maxBytes !== undefined) {
         /**
@@ -310,21 +314,47 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
          * waits through for nothing.
          */
         const original = source.kind === 'document' ? await readFile(source.path) : undefined
-        const found = await findQuality({
-          encode: async (quality) =>
-            original
-              ? (await compressPdf(original, quality)).bytes.byteLength
-              : (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
-          targetBytes: intent.maxBytes,
-        })
-        if (found.missed) {
+
+        /**
+         * A PDF has two levers, so the search has two dimensions.
+         *
+         * Quality is tried first at the default resolution. If even quality 1
+         * overshoots, the resolution comes down a rung and the quality search
+         * runs again. The user named a size; reaching it is what they asked
+         * for, and refusing would send them to a website that would have done
+         * exactly this. An image conversion has only the one lever and takes
+         * a single-rung ladder.
+         *
+         * Descending only when needed matters: most targets are met on the
+         * first rung, and each extra rung is another full bisection.
+         */
+        const ladder = original === undefined ? [undefined] : [intent.dpi ?? 150, 120, 96, 72]
+        let chosen: { quality: number; dpi?: number } | undefined
+        let closest = Number.POSITIVE_INFINITY
+        for (const dpi of ladder) {
+          const found = await findQuality({
+            encode: async (quality) =>
+              original
+                ? (await compressPdf(original, { quality, ...(dpi === undefined ? {} : { dpi }) }))
+                    .bytes.byteLength
+                : (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
+            targetBytes: intent.maxBytes,
+          })
+          closest = Math.min(closest, found.bytes)
+          if (!found.missed) {
+            chosen = { quality: found.quality, ...(dpi === undefined ? {} : { dpi }) }
+            break
+          }
+        }
+        if (chosen === undefined) {
           refusals.push({
             path: source.path,
-            error: targetUnreachable(source, intent.maxBytes, found.bytes),
+            error: targetUnreachable(source, intent.maxBytes, closest),
           })
           continue
         }
-        job.options.quality = found.quality
+        job.options.quality = chosen.quality
+        if (chosen.dpi !== undefined) job.options.dpi = chosen.dpi
       }
       jobs.push(job)
     }

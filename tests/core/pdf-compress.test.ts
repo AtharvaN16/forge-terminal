@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib'
+import { PDFDocument, PDFName, PDFNumber, PDFRawStream } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 import { compressPdf, surveyPdfImages } from '../../src/core/pdf-compress.js'
 import { probe } from '../../src/engines/registry.js'
@@ -73,7 +73,7 @@ describe('compressing a PDF', () => {
   it('makes a scanned PDF substantially smaller', async () => {
     const dir = await makeTempDir()
     const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { pages: 4 }))
-    const out = await compressPdf(original, 30)
+    const out = await compressPdf(original, { quality: 30 })
     expect(out.bytes.byteLength).toBeLessThan(original.byteLength * 0.6)
     expect(out.recompressed).toBe(1)
     expect(out.skipped).toBe(0)
@@ -82,8 +82,8 @@ describe('compressing a PDF', () => {
   it('gets smaller as the quality drops', async () => {
     const dir = await makeTempDir()
     const original = await readFile(await makeScannedPdf(dir, 'scan.pdf'))
-    const high = await compressPdf(original, 90)
-    const low = await compressPdf(original, 20)
+    const high = await compressPdf(original, { quality: 90 })
+    const low = await compressPdf(original, { quality: 20 })
     expect(low.bytes.byteLength).toBeLessThan(high.bytes.byteLength)
   })
 
@@ -93,16 +93,16 @@ describe('compressing a PDF', () => {
     // before it, and the bisection would converge on a lie.
     const dir = await makeTempDir()
     const original = await readFile(await makeScannedPdf(dir, 'scan.pdf'))
-    const first = await compressPdf(original, 50)
-    await compressPdf(original, 5)
-    const again = await compressPdf(original, 50)
+    const first = await compressPdf(original, { quality: 50 })
+    await compressPdf(original, { quality: 5 })
+    const again = await compressPdf(original, { quality: 50 })
     expect(again.bytes.byteLength).toBe(first.bytes.byteLength)
   })
 
   it('leaves a Flate image alone and says so rather than corrupting it', async () => {
     const dir = await makeTempDir()
     const original = await readFile(await makeScannedPdf(dir, 'shot.pdf', { filter: 'png' }))
-    const out = await compressPdf(original, 30)
+    const out = await compressPdf(original, { quality: 30 })
     expect(out.recompressed).toBe(0)
     expect(out.skipped).toBe(1)
     // Still a readable PDF with its page intact.
@@ -113,7 +113,7 @@ describe('compressing a PDF', () => {
   it('produces a file that still opens and renders', async () => {
     const dir = await makeTempDir()
     const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { pages: 2 }))
-    const out = await compressPdf(original, 25)
+    const out = await compressPdf(original, { quality: 25 })
     const { PDFiumLibrary } = await import('@hyzyla/pdfium')
     const lib = await PDFiumLibrary.init()
     const doc = await lib.loadDocument(out.bytes)
@@ -133,14 +133,90 @@ describe('probing reports what a PDF offers', () => {
     expect(scan.kind).toBe('document')
     expect(text.kind).toBe('document')
     if (scan.kind !== 'document' || text.kind !== 'document') return
-    expect(scan.images).toEqual({ compressible: 1, skipped: 0 })
-    expect(text.images).toEqual({ compressible: 0, skipped: 0 })
+    expect(scan.images).toMatchObject({ compressible: 1, skipped: 0 })
+    expect(text.images).toMatchObject({ compressible: 0, skipped: 0 })
   })
 
   it('reports a Flate image as skipped, so /compress can explain itself', async () => {
     const dir = await makeTempDir()
     const shot = await probe(await makeScannedPdf(dir, 'shot.pdf', { filter: 'png' }))
     if (shot.kind !== 'document') throw new Error('expected a document')
-    expect(shot.images).toEqual({ compressible: 0, skipped: 1 })
+    expect(shot.images).toMatchObject({ compressible: 0, skipped: 1 })
+  })
+})
+
+describe('downsampling the images inside a PDF', () => {
+  /** Pixel width of the first image object in a PDF. */
+  async function firstImageWidth(bytes: Uint8Array): Promise<number> {
+    const doc = await PDFDocument.load(bytes)
+    for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+      if (!(obj instanceof PDFRawStream)) continue
+      if (obj.dict.get(PDFName.of('Subtype'))?.toString() !== '/Image') continue
+      const width = obj.dict.get(PDFName.of('Width'))
+      return width instanceof PDFNumber ? width.asNumber() : 0
+    }
+    return 0
+  }
+
+  it('reduces an image to the requested resolution', async () => {
+    const dir = await makeTempDir()
+    // 300 dpi on an A4 page: 2480px across 595pt.
+    const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { dpi: 300 }))
+    // (595 / 72) * 300 rounds to 2479.
+    expect(await firstImageWidth(original)).toBe(2479)
+
+    const out = await compressPdf(original, { quality: 60, dpi: 150 })
+    // 150 dpi on the same page is half the pixels, give or take rounding.
+    const width = await firstImageWidth(out.bytes)
+    expect(width).toBeGreaterThan(1200)
+    expect(width).toBeLessThan(1280)
+  })
+
+  it('is far smaller than re-encoding alone', async () => {
+    const dir = await makeTempDir()
+    const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { dpi: 300, pages: 3 }))
+    const reencoded = await compressPdf(original, { quality: 40 })
+    const downsampled = await compressPdf(original, { quality: 40, dpi: 150 })
+    expect(downsampled.bytes.byteLength).toBeLessThan(reencoded.bytes.byteLength / 3)
+  })
+
+  it('never enlarges an image that is already below the target', async () => {
+    // Upscaling a 72 dpi scan to 150 would add bytes and no detail — the
+    // opposite of what compression promises.
+    const dir = await makeTempDir()
+    const original = await readFile(await makeScannedPdf(dir, 'low.pdf', { dpi: 72 }))
+    const before = await firstImageWidth(original)
+    const out = await compressPdf(original, { quality: 60, dpi: 150 })
+    expect(await firstImageWidth(out.bytes)).toBe(before)
+  })
+
+  it('leaves resolution alone when no dpi is asked for', async () => {
+    const dir = await makeTempDir()
+    const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { dpi: 300 }))
+    const out = await compressPdf(original, { quality: 60 })
+    expect(await firstImageWidth(out.bytes)).toBe(2479)
+  })
+
+  it('reports the resolution it started from, so the change can be named', async () => {
+    const dir = await makeTempDir()
+    const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { dpi: 300 }))
+    const survey = await surveyPdfImages(original)
+    expect(survey.maxDpi).toBeGreaterThan(280)
+    expect(survey.maxDpi).toBeLessThan(320)
+  })
+
+  it('keeps the page geometry and the picture intact', async () => {
+    const dir = await makeTempDir()
+    const original = await readFile(await makeScannedPdf(dir, 'scan.pdf', { dpi: 300, pages: 2 }))
+    const out = await compressPdf(original, { quality: 50, dpi: 96 })
+    const { PDFiumLibrary } = await import('@hyzyla/pdfium')
+    const lib = await PDFiumLibrary.init()
+    const doc = await lib.loadDocument(out.bytes)
+    const page = await doc.getPage(0).render({ scale: 1, render: 'bitmap' })
+    // The PAGE is still A4 even though the image inside it shrank.
+    expect(page.width).toBe(595)
+    expect(page.height).toBe(842)
+    doc.destroy()
+    lib.destroy()
   })
 })

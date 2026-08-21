@@ -314,11 +314,14 @@ export async function makePartiallyPaintedPdf(
 export async function makeScannedPdf(
   dir: string,
   name: string,
-  opts: { pages?: number; filter?: 'jpeg' | 'png' | 'mixed' } = {},
+  opts: { pages?: number; filter?: 'jpeg' | 'png' | 'mixed'; dpi?: number } = {},
 ): Promise<string> {
-  const { pages = 3, filter = 'jpeg' } = opts
-  const w = 600
-  const h = 450
+  const { pages = 3, filter = 'jpeg', dpi } = opts
+  // `dpi` sizes the image to cover an A4 page at that resolution, which is
+  // what a scanner produces: 300 dpi across 595pt is 2480px. Without it the
+  // image is a fixed small size, which is all most tests need.
+  const w = dpi === undefined ? 600 : Math.round((595 / 72) * dpi)
+  const h = dpi === undefined ? 450 : Math.round((842 / 72) * dpi)
   const raw = Buffer.alloc(w * h * 3)
   // Deterministic pseudo-noise: a fixed seed keeps fixture bytes stable
   // across runs, so a size assertion is not racing the random number
@@ -346,7 +349,10 @@ export async function makeScannedPdf(
   for (let i = 0; i < pages; i++) {
     const page = doc.addPage([595, 842])
     for (const [n, e] of embedded.entries()) {
-      page.drawImage(e, { x: 40, y: 300 - n * 120, width: 515, height: 386 })
+      // A dpi-sized image covers the whole page, the way a scan does, so the
+      // effective resolution it is drawn at matches what was asked for.
+      if (dpi === undefined) page.drawImage(e, { x: 40, y: 300 - n * 120, width: 515, height: 386 })
+      else page.drawImage(e, { x: 0, y: 0, width: 595, height: 842 })
     }
   }
   const path = join(dir, name)

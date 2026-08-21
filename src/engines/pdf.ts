@@ -387,10 +387,22 @@ async function compressDocument(
   const original = await readFile(source.path)
 
   onPhase({ phase: 'encoding' })
-  // `/compress` always supplies a quality — from the slider, or as the
-  // answer the target-size search converged on. The fallback keeps a
-  // hand-built job from silently re-encoding at whatever Sharp defaults to.
-  const { bytes, recompressed, skipped } = await compressPdf(original, job.options.quality ?? 60)
+  /**
+   * `/compress` always supplies a quality — from the slider, or as the answer
+   * the target-size search converged on. The fallback keeps a hand-built job
+   * from silently re-encoding at whatever Sharp defaults to.
+   *
+   * Resolution defaults to 150 dpi rather than leaving it alone. Reducing it
+   * is worth roughly ten times more than re-encoding: a 5.7 MB 300 dpi scan
+   * reaches 1065 KB on quality alone and 111 KB with both. 150 dpi is
+   * indistinguishable on screen and at upload sizes, which is what people
+   * compress a scan for. `--dpi` overrides it — pass the scan's own
+   * resolution to keep every pixel.
+   */
+  const { bytes, recompressed, skipped, fromDpi, toDpi } = await compressPdf(original, {
+    quality: job.options.quality ?? 60,
+    dpi: job.options.dpi ?? 150,
+  })
 
   onPhase({ phase: 'writing' })
   const outputBytes = await writeAtomic(job.outputs[0], bytes)
@@ -411,6 +423,15 @@ async function compressDocument(
     warnings.push({
       code: 'pdf-images-skipped',
       message: `${recompressed} image${plural(recompressed)} recompressed, ${skipped} skipped (not JPEG).`,
+    })
+  }
+  // Resolution is the change a user is most likely to be surprised by, so it
+  // is stated whenever it happened — silently reducing what someone may need
+  // for printing is exactly the kind of quiet loss this project avoids.
+  if (fromDpi !== undefined && toDpi !== undefined) {
+    warnings.push({
+      code: 'pdf-downsampled',
+      message: `Images reduced from ${fromDpi} to ${toDpi} dpi. Pass --dpi ${fromDpi} to keep them.`,
     })
   }
 

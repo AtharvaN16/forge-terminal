@@ -51,7 +51,12 @@ export interface DocumentInfo {
    * different answers, and collapsing them into one number would force a
    * message that is wrong for one of the two.
    */
-  images?: { compressible: number; skipped: number }
+  images?: {
+    compressible: number
+    skipped: number
+    /** Highest resolution any compressible image is drawn at, when measurable. */
+    maxDpi?: number
+  }
 }
 
 export type SourceInfo = ImageInfo | DocumentInfo
@@ -120,6 +125,8 @@ export interface Warning {
     | 'pdf-no-images'
     /** Some images were re-encoded and some were left alone. */
     | 'pdf-images-skipped'
+    /** Image resolution was reduced, which is the loss worth naming. */
+    | 'pdf-downsampled'
   message: string
 }
 

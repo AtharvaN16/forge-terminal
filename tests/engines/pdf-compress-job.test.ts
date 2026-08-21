@@ -84,12 +84,50 @@ describe('compressing a PDF through the engine', () => {
     const source = (await probe(
       await makeScannedPdf(dir, 'report.pdf', { filter: 'mixed' }),
     )) as DocumentInfo
-    expect(source.images).toEqual({ compressible: 1, skipped: 1 })
+    expect(source.images).toMatchObject({ compressible: 1, skipped: 1 })
 
     const result = await pdfEngine.run(await compressJob(dir, source, 30), () => {})
     expect(result.warnings.map((w) => w.code)).toContain('pdf-images-skipped')
     expect(result.warnings.map((w) => w.message).join(' ')).toMatch(
       /1 image recompressed, 1 skipped/i,
     )
+  })
+})
+
+describe('resolution is reduced by default', () => {
+  it('drops a 300 dpi scan to 150 without being asked', async () => {
+    // The chosen default: most people compressing a scan want it for screen
+    // or upload, where 150 dpi is indistinguishable and a third the size.
+    const dir = await makeTempDir()
+    const path = await makeScannedPdf(dir, 'scan.pdf', { dpi: 300, pages: 2 })
+    const source = (await probe(path)) as DocumentInfo
+    const result = await pdfEngine.run(await compressJob(dir, source, 60), () => {})
+
+    const after = (await probe(join(dir, 'out.pdf'))) as DocumentInfo
+    expect(after.images?.maxDpi).toBeGreaterThan(140)
+    expect(after.images?.maxDpi).toBeLessThan(160)
+    // And it says so, rather than silently changing what the user has.
+    expect(result.warnings.map((w) => w.message).join(' ')).toMatch(/300.*150|150 dpi/i)
+  })
+
+  it('honours an explicit resolution instead of the default', async () => {
+    const dir = await makeTempDir()
+    const source = (await probe(
+      await makeScannedPdf(dir, 'scan.pdf', { dpi: 300 }),
+    )) as DocumentInfo
+    const job = await compressJob(dir, source, 60)
+    if (job.op !== 'convert') throw new Error('expected a convert job')
+    job.options.dpi = 300 // keep what the scan already has
+
+    await pdfEngine.run(job, () => {})
+    const after = (await probe(join(dir, 'out.pdf'))) as DocumentInfo
+    expect(after.images?.maxDpi).toBeGreaterThan(280)
+  })
+
+  it('says nothing about resolution when there was none to reduce', async () => {
+    const dir = await makeTempDir()
+    const source = (await probe(await makeScannedPdf(dir, 'low.pdf', { dpi: 72 }))) as DocumentInfo
+    const result = await pdfEngine.run(await compressJob(dir, source, 60), () => {})
+    expect(result.warnings.map((w) => w.message).join(' ')).not.toMatch(/dpi/i)
   })
 })
