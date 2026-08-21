@@ -6,7 +6,7 @@ import { writeAtomic } from '../core/atomic.js'
 import { emptySelection, encryptedSource } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
-import { surveyDocument } from '../core/pdf-compress.js'
+import { compressPdf, surveyDocument } from '../core/pdf-compress.js'
 import type {
   DocumentInfo,
   FormatId,
@@ -153,7 +153,13 @@ async function imageToPdf(
   // pixels to embed. Without this, it reaches `embedBytes` and fails as an
   // opaque Sharp decode error instead of a named one.
   if (source.kind !== 'image') {
-    throw new Error('the pdf engine cannot embed a document source')
+    throw new Error(
+      // Unreachable while a convert job carries exactly one source: a
+      // document source is routed to `compressDocument` before this runs.
+      // Kept as a defensive throw so a future multi-source convert cannot
+      // reach `sharp()` with PDF bytes and die on a raw decode error.
+      'the pdf engine cannot embed a document source',
+    )
   }
 
   const warnings: Warning[] = []
@@ -356,6 +362,61 @@ async function rotate(
   return { job, outputBytes, warnings: [] }
 }
 
+/**
+ * Shrinks a PDF by re-encoding the images inside it.
+ *
+ * Reached only when a `convert` job's source is itself a PDF — `/compress`
+ * plans exactly that shape, a job whose target equals its source format
+ * (`core/actions/compress.ts`). An images-to-PDF job has image sources and
+ * goes to `imageToPdf` instead.
+ *
+ * The warnings are the honest half. Re-encoding can find nothing to do — a
+ * text-only PDF has no images, and a screenshot PDF's images are Flate-encoded
+ * raw pixels this cannot rebuild — and in both cases the output is a near
+ * copy of the input. Writing that silently and reporting a size change of
+ * roughly zero would leave the user to guess why; the result says which of
+ * the two happened.
+ */
+async function compressDocument(
+  job: Extract<Job, { op: 'convert' }>,
+  onPhase: (p: Progress) => void,
+): Promise<Result> {
+  const source = job.sources[0]
+  assertUnencrypted([source])
+  onPhase({ phase: 'reading' })
+  const original = await readFile(source.path)
+
+  onPhase({ phase: 'encoding' })
+  // `/compress` always supplies a quality — from the slider, or as the
+  // answer the target-size search converged on. The fallback keeps a
+  // hand-built job from silently re-encoding at whatever Sharp defaults to.
+  const { bytes, recompressed, skipped } = await compressPdf(original, job.options.quality ?? 60)
+
+  onPhase({ phase: 'writing' })
+  const outputBytes = await writeAtomic(job.outputs[0], bytes)
+
+  const plural = (n: number) => (n === 1 ? '' : 's')
+  const warnings: Warning[] = []
+  if (recompressed === 0 && skipped === 0) {
+    warnings.push({
+      code: 'pdf-no-images',
+      message: 'This PDF has no images to re-encode, so its size is almost unchanged.',
+    })
+  } else if (recompressed === 0) {
+    warnings.push({
+      code: 'pdf-no-images',
+      message: `None of its ${skipped} image${plural(skipped)} could be re-encoded — they are not JPEG data.`,
+    })
+  } else if (skipped > 0) {
+    warnings.push({
+      code: 'pdf-images-skipped',
+      message: `${recompressed} image${plural(recompressed)} recompressed, ${skipped} skipped (not JPEG).`,
+    })
+  }
+
+  return { job, outputBytes, warnings }
+}
+
 export const pdfEngine: Engine = {
   id: 'pdf',
   reads: READS,
@@ -366,7 +427,10 @@ export const pdfEngine: Engine = {
     switch (job.op) {
       case 'convert':
         if (job.target !== 'pdf') throw new Error('the pdf engine only converts to pdf')
-        return imageToPdf(job, onPhase)
+        // A PDF in and a PDF out is a compression, not an embedding.
+        return job.sources[0].kind === 'document'
+          ? compressDocument(job, onPhase)
+          : imageToPdf(job, onPhase)
       case 'merge':
         return merge(job, onPhase)
       case 'split':

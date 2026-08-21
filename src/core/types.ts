@@ -114,7 +114,12 @@ export type Job =
   | { op: 'rotate'; sources: [DocumentInfo]; outputs: [string]; turns: 1 | 2 | 3 }
 
 export interface Warning {
-  code: 'animation-flattened'
+  code:
+    | 'animation-flattened'
+    /** A PDF held nothing this could re-encode, so its size barely moved. */
+    | 'pdf-no-images'
+    /** Some images were re-encoded and some were left alone. */
+    | 'pdf-images-skipped'
   message: string
 }
 

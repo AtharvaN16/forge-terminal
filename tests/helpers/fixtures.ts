@@ -314,7 +314,7 @@ export async function makePartiallyPaintedPdf(
 export async function makeScannedPdf(
   dir: string,
   name: string,
-  opts: { pages?: number; filter?: 'jpeg' | 'png' } = {},
+  opts: { pages?: number; filter?: 'jpeg' | 'png' | 'mixed' } = {},
 ): Promise<string> {
   const { pages = 3, filter = 'jpeg' } = opts
   const w = 600
@@ -328,15 +328,26 @@ export async function makeScannedPdf(
     seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648
     raw[i] = seed % 256
   }
-  const image = sharp(raw, { raw: { width: w, height: h, channels: 3 } })
-  const bytes =
-    filter === 'jpeg' ? await image.jpeg({ quality: 95 }).toBuffer() : await image.png().toBuffer()
-
+  const image = () => sharp(raw, { raw: { width: w, height: h, channels: 3 } })
   const doc = await PDFDocument.create()
-  const embedded = filter === 'jpeg' ? await doc.embedJpg(bytes) : await doc.embedPng(bytes)
+
+  // 'mixed' puts one of each in the same document — the realistic shape of a
+  // report with a scanned photo and an exported chart, and the only way to
+  // exercise "some recompressed, some skipped".
+  const asJpeg = async () => doc.embedJpg(await image().jpeg({ quality: 95 }).toBuffer())
+  const asPng = async () => doc.embedPng(await image().png().toBuffer())
+  const embedded =
+    filter === 'png'
+      ? [await asPng()]
+      : filter === 'mixed'
+        ? [await asJpeg(), await asPng()]
+        : [await asJpeg()]
+
   for (let i = 0; i < pages; i++) {
     const page = doc.addPage([595, 842])
-    page.drawImage(embedded, { x: 40, y: 300, width: 515, height: 386 })
+    for (const [n, e] of embedded.entries()) {
+      page.drawImage(e, { x: 40, y: 300 - n * 120, width: 515, height: 386 })
+    }
   }
   const path = join(dir, name)
   await writeFile(path, await doc.save())

@@ -195,7 +195,21 @@ describe('animation (spec rule 4)', () => {
 })
 
 describe('document sources', () => {
-  it('refuses to embed a PDF as though it were an image, rather than failing on a raw sharp decode error', async () => {
+  /**
+   * A test was deleted here, deliberately.
+   *
+   * It asserted that a lone PDF source with a PDF target was refused
+   * ("cannot embed a document source"). That was correct while such a job
+   * meant nothing. It now means compression — `compressDocument` in
+   * `engines/pdf.ts` — so the refusal would be wrong.
+   *
+   * It could not simply be rewritten to mix a PDF among images either:
+   * `Job`'s convert variant carries `sources: [SourceInfo]`, exactly one
+   * source, so there is no second slot to put a document in. The guard in
+   * `imageToPdf` is therefore unreachable and is kept only as a defensive
+   * throw, which is why nothing here tests it.
+   */
+  it('compresses a lone PDF source instead of refusing it', async () => {
     const dir = await makeTempDir()
     const src = await makePdf(dir, 'a.pdf')
     const out = join(dir, 'b.pdf')
@@ -207,6 +221,9 @@ describe('document sources', () => {
       options,
     }
 
-    await expect(pdfEngine.run(job, () => {})).rejects.toThrow(/document source/i)
+    const result = await pdfEngine.run(job, () => {})
+    // A text-only PDF has nothing to re-encode, and the result says so
+    // rather than reporting a silent near-copy as a success.
+    expect(result.warnings.map((w) => w.code)).toContain('pdf-no-images')
   })
 })
