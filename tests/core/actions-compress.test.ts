@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { compressAction } from '../../src/core/actions/index.js'
-import type { ImageInfo, SourceInfo } from '../../src/core/types.js'
+import type { DocumentInfo, ImageInfo, SourceInfo } from '../../src/core/types.js'
 
 const source = (over: Partial<ImageInfo> = {}): SourceInfo => ({
   kind: 'image',
@@ -106,5 +106,54 @@ describe('compress action', () => {
 
   it('rejects a plan with no usable mode rather than guessing', () => {
     expect(() => compressAction.plan([source()], { destination: '/tmp' })).toThrow()
+  })
+})
+
+describe('/compress and PDFs', () => {
+  const pdf = (images: { compressible: number; skipped: number }): DocumentInfo => ({
+    kind: 'document',
+    path: '/tmp/brochure.pdf',
+    format: 'pdf',
+    bytes: 1_400_000,
+    pages: 7,
+    encrypted: false,
+    images,
+  })
+
+  it('accepts a PDF that has JPEG images to re-encode', () => {
+    expect(compressAction.appliesTo([pdf({ compressible: 3, skipped: 0 })])).toBe(true)
+  })
+
+  it('refuses a PDF with no images at all', () => {
+    // Nothing to trade away here, so offering the flow would promise a
+    // saving that cannot happen.
+    expect(compressAction.appliesTo([pdf({ compressible: 0, skipped: 0 })])).toBe(false)
+  })
+
+  it('refuses a PDF whose images are all a kind it cannot re-encode', () => {
+    expect(compressAction.appliesTo([pdf({ compressible: 0, skipped: 4 })])).toBe(false)
+  })
+
+  it('accepts a mixed PDF, where some images can be re-encoded', () => {
+    expect(compressAction.appliesTo([pdf({ compressible: 2, skipped: 1 })])).toBe(true)
+  })
+
+  it('refuses a PDF probed before this field existed, rather than crashing', () => {
+    // `images` is optional on DocumentInfo. A source built without it must
+    // read as "nothing known to compress", not throw.
+    const legacy = { ...pdf({ compressible: 1, skipped: 0 }) }
+    delete (legacy as { images?: unknown }).images
+    expect(compressAction.appliesTo([legacy])).toBe(false)
+  })
+
+  it('plans a PDF job that keeps the format and targets a -small name', () => {
+    const [job] = compressAction.plan([pdf({ compressible: 2, skipped: 0 })], {
+      mode: 'quality',
+      quality: 40,
+    })
+    if (job?.op !== 'convert') throw new Error('expected a convert job')
+    expect(job.target).toBe('pdf')
+    expect(job.outputs[0]).toMatch(/brochure-small\.pdf$/)
+    expect(job.options.quality).toBe(40)
   })
 })

@@ -280,6 +280,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   if (intent.kind === 'compress') {
     const { compressAction } = await import('../core/actions/index.js')
     const { findQuality } = await import('../core/compress.js')
+    const { compressPdf } = await import('../core/pdf-compress.js')
     const { encodeToBuffer } = await import('../engines/image.js')
 
     const jobs = []
@@ -298,9 +299,22 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       const job = planned
 
       if (intent.maxBytes !== undefined) {
+        /**
+         * A PDF is compressed by re-encoding the images inside it, not by
+         * running an image pipeline over the file — `encodeToBuffer` would
+         * hand PDF bytes to Sharp and die on `pipelineFor received a
+         * non-image source`.
+         *
+         * Read once, outside the callback: the search runs this up to eight
+         * times, and re-reading a large scan per attempt is work the user
+         * waits through for nothing.
+         */
+        const original = source.kind === 'document' ? await readFile(source.path) : undefined
         const found = await findQuality({
           encode: async (quality) =>
-            (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
+            original
+              ? (await compressPdf(original, quality)).bytes.byteLength
+              : (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
           targetBytes: intent.maxBytes,
         })
         if (found.missed) {

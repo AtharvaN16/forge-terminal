@@ -3,11 +3,14 @@ import { dirname, join } from 'node:path'
 import { expandTilde, type Preferences } from '../../config/preferences.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
-import type { ImageInfo, SourceInfo } from '../types.js'
+import type { DocumentInfo, ImageInfo, SourceInfo } from '../types.js'
 import type { Action, OptionSpec, PathPreset } from './index.js'
 
 const soleImage = (sources: SourceInfo[]): ImageInfo | undefined =>
   sources.length === 1 && sources[0]?.kind === 'image' ? sources[0] : undefined
+
+const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
+  sources.length === 1 && sources[0]?.kind === 'document' ? sources[0] : undefined
 
 /**
  * The suffix that keeps a compressed file from landing on its source.
@@ -66,7 +69,26 @@ export const compressAction: Action = {
    */
   appliesTo: (sources) => {
     const image = soleImage(sources)
-    return image !== undefined && FORMATS[image.format].lossy
+    if (image !== undefined) return FORMATS[image.format].lossy
+
+    /**
+     * A PDF qualifies when it holds at least one image this can re-encode.
+     *
+     * The container itself is lossless, which is why this used to refuse
+     * every PDF — but a scan is JPEG data in a PDF wrapper, and that is the
+     * same trade compression offers anywhere else.
+     *
+     * Counted at probe time (`engines/pdf.ts`), so the flow is only offered
+     * when it can actually deliver: a text-only PDF and a PDF whose images
+     * are all Flate-encoded both have nothing to give, and opening the
+     * quality slider for either would promise a saving that cannot happen.
+     *
+     * `?? 0` matters: `images` is optional on `DocumentInfo`, and a source
+     * built without it has to read as "nothing known to compress" rather
+     * than throw.
+     */
+    const document = soleDocument(sources)
+    return (document?.images?.compressible ?? 0) > 0
   },
 
   options(sources, values, prefs) {
