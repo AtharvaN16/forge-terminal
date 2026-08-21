@@ -413,6 +413,28 @@ export function App({
   }, [])
 
   /**
+   * Rules a dashed line under whatever is already on screen, so a change of
+   * flow reads as a new operation rather than a continuation of the last one.
+   *
+   * A compress refusal used to sit directly above `/pdf`'s operation list,
+   * close enough to read as part of that menu — the user took a message about
+   * compression as an explanation of the PDF screen they were now looking at.
+   * The same rule already separates finished results (see the `lastResult`
+   * handler); entering a different flow earns it for the same reason.
+   *
+   * Functional update rather than reading `history`: this runs from input
+   * callbacks whose closures would otherwise capture a stale array. No rule
+   * on an empty session, and never two in a row.
+   */
+  const fenceOff = useCallback(() => {
+    setHistory((h) => {
+      if (h.length === 0) return h
+      if (h[h.length - 1]?.kind === 'separator') return h
+      return [...h, { kind: 'separator' as const, id: nextId(), width }]
+    })
+  }, [width])
+
+  /**
    * A config that could not be read is told to the user once, as history,
    * and never again. The ref — not state — is what makes "once" true: this
    * effect reruns on every render that changes its deps, and a state flag
@@ -680,6 +702,7 @@ export function App({
           push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
           return
         }
+        fenceOff()
         setMode('compress')
         setValues({})
         setStep(source ? 'mode' : 'idle')
@@ -711,10 +734,20 @@ export function App({
           })
           return
         }
+        if (source) fenceOff()
         setStep(source ? 'pdf' : 'idle')
       }
     },
-    [push, source, stage.sources, stagedBatch, refuseBatch, hasConvertTarget, pdfActionsApply],
+    [
+      push,
+      fenceOff,
+      source,
+      stage.sources,
+      stagedBatch,
+      refuseBatch,
+      hasConvertTarget,
+      pdfActionsApply,
+    ],
   )
 
   const submitPath = useCallback(
@@ -1423,6 +1456,22 @@ export function App({
             <Text color={colourProp(palette.accent)} bold>
               {band === 'compact' ? `  ${mode}  ` : `  current mode: ${mode}  `}
             </Text>
+            {/* The staged file's name, beside the mode.
+
+                Two separate rules used to conspire to hide it: the file card
+                is suppressed for a lone file at `idle` (a solo drop normally
+                advances into the wizard, which shows the card), and the mode
+                line is suppressed inside `/pdf`. Backing out of the target
+                picker lands in the gap between them — a file staged, and
+                nothing on screen saying so. A user typed `/compress` there
+                against a PDF they had forgotten was still loaded, and read
+                the refusal as coming from nowhere.
+
+                Only at `idle`: every other step already shows the card, and
+                repeating the name would be noise. */}
+            {step === 'idle' && source && !stagedBatch ? (
+              <Text color={colourProp(palette.fg)}>{`  ${basename(source.path)}  `}</Text>
+            ) : null}
             <Text color={colourProp(palette.dim)}>
               {band === 'compact' ? '  / to change' : '  use / to change mode'}
             </Text>

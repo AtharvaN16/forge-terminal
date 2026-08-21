@@ -69,13 +69,41 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
   if (block.kind === 'error') {
     const e = block.error
+    /**
+     * Framed, not three loose lines.
+     *
+     * This used to render flush against the scrollback above it in the same
+     * plain text as everything else, and a user reported reading straight
+     * past a refusal — then typing the command it had just declined. The
+     * frame makes the title, the reason and the way forward one object with
+     * an edge, which is the difference between output you skim and output
+     * you stop at.
+     *
+     * Capped at the same 52 columns as `FileCard` so a wide terminal gets a
+     * card rather than a rule to the far edge, and `-2` leaves room for the
+     * border glyphs Ink draws outside the content box.
+     */
+    const inner = Math.max(8, Math.min(width, 52) - 2)
     return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text color={colourProp(palette.fail)}>
+      <Box
+        flexDirection="column"
+        marginBottom={1}
+        borderStyle="round"
+        borderColor={colourProp(palette.fail)}
+        width={inner + 2}
+        paddingX={1}
+      >
+        <Text color={colourProp(palette.fail)} wrap="wrap">
           {SYMBOLS.fail} {e.title}
         </Text>
-        <Text color={colourProp(palette.fg)}>{`  ${e.detail}`}</Text>
-        {e.hint ? <Text color={colourProp(palette.dim)}>{`  ${e.hint}`}</Text> : null}
+        <Text color={colourProp(palette.fg)} wrap="wrap">
+          {e.detail}
+        </Text>
+        {e.hint ? (
+          <Text color={colourProp(palette.dim)} wrap="wrap">
+            {e.hint}
+          </Text>
+        ) : null}
       </Box>
     )
   }

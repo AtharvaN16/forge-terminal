@@ -111,3 +111,33 @@ describe('HistoryEntry', () => {
     expect(frame).toContain('Converting 4 files')
   })
 })
+
+describe('an error is hard to overlook', () => {
+  it('draws the whole message as one framed block, not loose lines', () => {
+    // Reported: a refusal was "completely overlooked". It rendered as three
+    // unstyled lines flush against the scrollback above it, indistinguishable
+    // from ordinary output, so the eye slid past it. Framing groups the
+    // title, the reason and the way forward into a single object.
+    const error = fileNotFound('/tmp/ghost.jpg')
+    const frame = render(
+      <HistoryEntry block={{ kind: 'error', id: 'e1', error }} width={80} />,
+    ).lastFrame()
+
+    expect(frame).toContain('✕')
+    expect(frame).toContain('File not found')
+    // A frame corner, so the block is visually bounded.
+    expect(frame).toMatch(/[╭╰]/)
+    // The hint has to survive inside the frame — it is the actionable half.
+    expect(frame).toContain('Check the filename')
+  })
+
+  it('keeps the frame inside the width it is given', () => {
+    const error = fileNotFound('/tmp/ghost.jpg')
+    const frame =
+      render(<HistoryEntry block={{ kind: 'error', id: 'e1', error }} width={60} />).lastFrame() ??
+      ''
+    for (const line of frame.split('\n')) {
+      expect(line.length).toBeLessThanOrEqual(60)
+    }
+  })
+})
