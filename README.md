@@ -793,6 +793,32 @@ and rendered bold.
   see [PDF § Not yet](#not-yet) above for what's coming and when.
 - **No recent-files list** — every session starts at an empty prompt.
 
+## Keyboard shortcuts
+
+In the text field:
+
+| Action | Keys |
+| --- | --- |
+| Move a word | Option+Left / Option+Right (also Ctrl+Left / Ctrl+Right) |
+| Start / end of line | Home / End, or Ctrl+A / Ctrl+E |
+| Delete the word before the caret | Option+Backspace, or Ctrl+W |
+| Delete the word after the caret | Option+fn+Delete |
+| Delete to start / end of line | Ctrl+U / Ctrl+K |
+| Cut / paste the selection | Ctrl+X / Ctrl+Y |
+| Extend a selection | Shift+Left / Shift+Right |
+
+**On Cmd shortcuts.** Cmd is the line-scoped counterpart to Option's
+word-scoped one, not a word-movement shortcut itself: Cmd+Left/Right go to
+the start/end of the line and Cmd+Backspace deletes to the line start — the
+same three things Home/End (or Ctrl+A/Ctrl+E) and Ctrl+U already do above.
+Cmd+A selects the whole field and has no other binding. All four work only
+in terminals that speak the kitty keyboard protocol — iTerm2, Ghostty,
+WezTerm, kitty, and the VS Code integrated terminal. Terminal.app cannot
+report Cmd at all: its key-mapping UI does not offer Command as a modifier,
+so no Cmd chord produces any bytes there. Home/End, Ctrl+A/Ctrl+E and Ctrl+U
+cover the same ground everywhere; selecting the whole field has no fallback
+in Terminal.app.
+
 ## Supported formats
 
 ```

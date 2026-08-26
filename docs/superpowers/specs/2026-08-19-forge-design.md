@@ -424,13 +424,16 @@ flag CLI is where a folder or a glob gets converted.
 
 ### Clickable links
 
-`Open file` and `Reveal in Finder` are emitted as OSC 8 hyperlinks pointing at
-`file://` URLs, detected via `supports-hyperlinks`. Supported by iTerm2,
-Ghostty, WezTerm, Kitty, and the VS Code integrated terminal. **Terminal.app
-does not support OSC 8** — there the literal `file://` URL is printed instead,
-which Terminal.app makes cmd+clickable. The `f` and `o` keybindings perform
-the same actions via `open(1)` and always work, so the feature never depends
-on terminal capability.
+`Open file` and `Reveal in Finder` always render as labels — the links no
+longer disappear on a terminal that can't make them clickable. Where OSC 8 is
+supported (detected via `supports-hyperlinks`: iTerm2, Ghostty, WezTerm,
+Kitty, and the VS Code integrated terminal) the labels are still emitted as
+OSC 8 hyperlinks pointing at `file://` URLs, so cmd+click and copying the URL
+both keep working there. Where it isn't — Terminal.app chief among them — the
+label is plain text and a click on it is hit-tested by the app itself
+instead. The `o` and `s` keybindings perform the same two actions via
+`open(1)` and always work regardless, which is the guaranteed fallback: the
+feature never depends on terminal capability.
 
 ---
 
