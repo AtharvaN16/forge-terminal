@@ -105,7 +105,10 @@ export async function probe(path: string): Promise<DocumentInfo> {
  */
 const CASK_SOFFICE_PATH = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
 
+let resolveCallCountForTests = 0
+
 async function resolveSofficePath(): Promise<string | undefined> {
+  resolveCallCountForTests++
   try {
     await execFileAsync('soffice', ['--version'], { timeout: 5000 })
     return 'soffice'
@@ -121,6 +124,8 @@ async function resolveSofficePath(): Promise<string | undefined> {
 }
 
 let sofficePath: Promise<string | undefined> | undefined
+let forcing = false
+let forcedValue: string | undefined
 
 /**
  * Whether LibreOffice's headless CLI is available here, and where. Cached
@@ -128,9 +133,6 @@ let sofficePath: Promise<string | undefined> | undefined
  * one-time shell probe — "install it and try again" naturally picks this up
  * on the next run, so no invalidation logic is needed.
  */
-let forcing = false
-let forcedValue: string | undefined
-
 export async function libreOfficeAvailable(): Promise<string | undefined> {
   if (forcing) return forcedValue
   sofficePath ??= resolveSofficePath()
@@ -157,4 +159,9 @@ export function forceLibreOfficeForTests(path: string | undefined): void {
 /** Only for tests: undoes `forceLibreOfficeForTests`, restoring real detection. */
 export function stopForcingLibreOfficeForTests(): void {
   forcing = false
+}
+
+/** Only for tests: counts real (uncached, unforced) detection attempts, to prove caching actually avoids repeat work. */
+export function getResolveCallCountForTests(): number {
+  return resolveCallCountForTests
 }

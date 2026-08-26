@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   forceLibreOfficeForTests,
+  getResolveCallCountForTests,
   libreOfficeAvailable,
   resetLibreOfficeCache,
   stopForcingLibreOfficeForTests,
@@ -15,9 +16,10 @@ describe('LibreOffice detection', () => {
 
   it('caches the result — a second call does not repeat the detection work', async () => {
     resetLibreOfficeCache()
-    const first = await libreOfficeAvailable()
-    const second = await libreOfficeAvailable()
-    expect(second).toBe(first)
+    await libreOfficeAvailable()
+    const afterFirst = getResolveCallCountForTests()
+    await libreOfficeAvailable()
+    expect(getResolveCallCountForTests()).toBe(afterFirst)
   })
 })
 
