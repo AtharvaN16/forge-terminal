@@ -1,3 +1,4 @@
+import { pdfiumEngine } from '../engines/pdfium.js'
 import { ENGINES } from '../engines/registry.js'
 import { FORMATS } from './formats.js'
 import type { FormatId, SourceInfo } from './types.js'
@@ -51,4 +52,16 @@ export function writableFormats(): FormatId[] {
   const ids = new Set<FormatId>()
   for (const engine of ENGINES) for (const id of engine.writes) ids.add(id)
   return sortByRegistryOrder([...ids])
+}
+
+/**
+ * Whether a `convert` job targeting this format is a rasterisation — a
+ * document source becoming pixels — versus a document-to-document
+ * conversion (pdf/docx/doc). Read from pdfium's own declared `writes`
+ * rather than a hardcoded `['jpeg', 'png']` (invariant 2): the only engine
+ * that turns a page into an image is `pdfiumEngine`, so whatever it writes
+ * *is* the definition of "rasterises."
+ */
+export function rasterises(target: FormatId): boolean {
+  return pdfiumEngine.writes.has(target)
 }

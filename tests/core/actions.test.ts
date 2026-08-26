@@ -356,3 +356,47 @@ describe('page selection keeps naming and ordering in step', () => {
     }
   })
 })
+
+describe('convert action stays document-target-aware, not just document-kind-aware', () => {
+  const pdfSource = {
+    kind: 'document' as const,
+    path: '/Users/me/report.pdf',
+    format: 'pdf' as const,
+    bytes: 1000,
+    pages: 3,
+    encrypted: false,
+  }
+  const docxSource = {
+    kind: 'document' as const,
+    path: '/Users/me/report.docx',
+    format: 'docx' as const,
+    bytes: 1000,
+    pages: 3,
+    encrypted: false,
+  }
+
+  it('still offers pages/dpi when a pdf targets an image (a real rasterisation)', () => {
+    const specs = convertAction.options([pdfSource], { target: 'jpeg' }, DEFAULT_PREFERENCES)
+    expect(specs.some((s) => s.id === 'pages')).toBe(true)
+    expect(specs.some((s) => s.id === 'dpi')).toBe(true)
+  })
+
+  it('does not offer pages/dpi when a pdf targets docx — not a rasterisation', () => {
+    const specs = convertAction.options([pdfSource], { target: 'docx' }, DEFAULT_PREFERENCES)
+    expect(specs.some((s) => s.id === 'pages')).toBe(false)
+    expect(specs.some((s) => s.id === 'dpi')).toBe(false)
+  })
+
+  it('does not offer pages/dpi for a docx source at all', () => {
+    const specs = convertAction.options([docxSource], { target: 'pdf' }, DEFAULT_PREFERENCES)
+    expect(specs.some((s) => s.id === 'pages')).toBe(false)
+    expect(specs.some((s) => s.id === 'dpi')).toBe(false)
+  })
+
+  it('plans a single-output job for pdf -> docx, not a per-page raster job', () => {
+    const [job] = convertAction.plan([pdfSource], { target: 'docx', destination: '/out' })
+    if (job?.op !== 'convert') throw new Error('expected convert')
+    expect(job.outputs).toEqual(['/out/report.docx'])
+    expect(job.options.pages).toBeUndefined()
+  })
+})

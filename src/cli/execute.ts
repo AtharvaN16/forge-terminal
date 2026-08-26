@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import { ACTIONS, convertAction, unavailableReason } from '../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
+import { rasterises } from '../core/capabilities.js'
 import {
   encryptedSource,
   type ForgeError,
@@ -14,7 +15,7 @@ import { runPlan } from '../core/execute-jobs.js'
 import { buildPlan } from '../core/plan.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
-import { openPdf, pdfiumEngine } from '../engines/pdfium.js'
+import { openPdf } from '../engines/pdfium.js'
 import type { Intent, PageOpIntent } from './args.js'
 import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
 import { readPassword } from './stdin.js'
@@ -92,18 +93,6 @@ function pageOpValues(intent: PageOpIntent, sources: SourceInfo[]): Record<strin
     }
   }
   return { cuts: spec.after.map((n) => n - 1) }
-}
-
-/**
- * Whether a document source's `convert` job belongs to `pdfiumEngine` at all.
- * Read from the engine's own declared `writes`, not a hardcoded `['jpeg',
- * 'png']` — invariant 2. A document source targeting something pdfium does
- * not write (`--to pdf`, say) is left for `buildPlan`'s existing path, which
- * already reports `unsupportedTarget` or routes to whatever engine applies —
- * unchanged by this phase.
- */
-function rasterises(target: FormatId): boolean {
-  return pdfiumEngine.writes.has(target)
 }
 
 /**
