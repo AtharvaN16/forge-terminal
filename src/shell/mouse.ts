@@ -24,6 +24,18 @@ import stringWidth from 'string-width'
 export const MOUSE_ON = '\x1b[?1000h\x1b[?1002h\x1b[?1006h'
 
 /**
+ * `MOUSE_ON`, but with `?1003` (report *every* motion) in place of `?1002`
+ * (report motion only while a button is held).
+ *
+ * Used only while something hoverable is on screen. `?1003` wakes the process
+ * on every cell of pointer travel, which is why it is not the default: with an
+ * empty target registry `useMouse` asks for `MOUSE_ON` instead and the terminal
+ * stays quiet. Cleared by the same `MOUSE_OFF` — `?1002l` releases this
+ * tracking slot whichever of the two set it.
+ */
+export const MOUSE_ON_WITH_HOVER = '\x1b[?1000h\x1b[?1003h\x1b[?1006h'
+
+/**
  * Disabled in the reverse order, and — critically — this must run on every
  * exit path. Ink installs no SIGINT/SIGTSTP handling of its own, so a process
  * killed while reporting is on leaves the *terminal* in that state: the shell

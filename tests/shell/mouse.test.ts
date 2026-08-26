@@ -140,3 +140,21 @@ describe('mapping a click column to a caret offset', () => {
     expect(offsetForColumn('日x', 1)).toBe(1)
   })
 })
+
+describe('MOUSE_ON_WITH_HOVER', () => {
+  it('asks for any-motion reporting instead of button-motion', async () => {
+    const { MOUSE_ON_WITH_HOVER } = await import('../../src/shell/mouse.js')
+    // ?1003 (any motion) in place of ?1002 (motion only while held): hover
+    // feedback needs events when no button is down.
+    expect(MOUSE_ON_WITH_HOVER).toBe('\x1b[?1000h\x1b[?1003h\x1b[?1006h')
+    expect(MOUSE_ON_WITH_HOVER).not.toContain('?1002h')
+  })
+
+  it('is cleared by the existing MOUSE_OFF', async () => {
+    const { MOUSE_OFF } = await import('../../src/shell/mouse.js')
+    // ?1003 and ?1002 are the same tracking slot, so ?1002l clears either.
+    expect(MOUSE_OFF).toContain('?1002l')
+    expect(MOUSE_OFF).toContain('?1000l')
+    expect(MOUSE_OFF).toContain('?1006l')
+  })
+})
