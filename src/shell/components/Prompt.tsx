@@ -123,28 +123,8 @@ export function Prompt({
 
       // Before the text branch: Ink reports Tab with `key.tab` *and* a "\t"
       // in `input`, so falling through would append a literal tab to the path.
-      // macOS Option+Left / Option+Right escape sequences or Alt/Meta arrow keys
-      if ((key.meta || input === '\x1bb' || input === '\x1bf') && (key.leftArrow || input === '\x1bb')) {
-        const c = chars()
-        let i = caret()
-        while (i > 0 && c[i - 1] === ' ') i--
-        while (i > 0 && c[i - 1] !== ' ' && c[i - 1] !== '/') i--
-        caretRef.current = i
-        rerender()
-        return
-      }
-
-      if ((key.meta || input === '\x1bf') && (key.rightArrow || input === '\x1bf')) {
-        const c = chars()
-        let i = caret()
-        while (i < c.length && c[i] === ' ') i++
-        while (i < c.length && c[i] !== ' ' && c[i] !== '/') i++
-        caretRef.current = i
-        rerender()
-        return
-      }
-
-      // Cmd+Backspace, Ctrl+U, or Option+Backspace (\x17 / \x7f / \x1b\x7f)
+      // macOS / standard terminal shortcuts
+      // 1. Cmd + Backspace / Ctrl + U (Delete entire line before caret)
       if (
         (key.meta && (key.backspace || key.delete)) ||
         (key.ctrl && input === 'u') ||
@@ -156,7 +136,9 @@ export function Prompt({
         return
       }
 
+      // 2. Option + Backspace / Ctrl + W (Delete word before caret)
       if (
+        (key.meta && (key.backspace || key.delete)) ||
         (key.ctrl && input === 'w') ||
         input === '\x17' ||
         input === '\x1b\x7f' ||
@@ -168,6 +150,38 @@ export function Prompt({
         while (i > 0 && c[i - 1] === ' ') i--
         while (i > 0 && c[i - 1] !== ' ' && c[i - 1] !== '/') i--
         commit([...c.slice(0, i), ...c.slice(at)].join(''), i)
+        return
+      }
+
+      // 3. Option + Left / Cmd + Left (Word back / Line start)
+      if (
+        (key.meta && key.leftArrow) ||
+        input === '\x1bb' ||
+        input === '\x1b[1;3D' ||
+        input === '\x1b[1;5D'
+      ) {
+        const c = chars()
+        let i = caret()
+        while (i > 0 && c[i - 1] === ' ') i--
+        while (i > 0 && c[i - 1] !== ' ' && c[i - 1] !== '/') i--
+        caretRef.current = i
+        rerender()
+        return
+      }
+
+      // 4. Option + Right / Cmd + Right (Word forward / Line end)
+      if (
+        (key.meta && key.rightArrow) ||
+        input === '\x1bf' ||
+        input === '\x1b[1;3C' ||
+        input === '\x1b[1;5C'
+      ) {
+        const c = chars()
+        let i = caret()
+        while (i < c.length && c[i] === ' ') i++
+        while (i < c.length && c[i] !== ' ' && c[i] !== '/') i++
+        caretRef.current = i
+        rerender()
         return
       }
 
@@ -183,7 +197,7 @@ export function Prompt({
         return
       }
 
-      // ctrl-a / ctrl-e, as every readline-driven shell does.
+      // ctrl-a / ctrl-e
       if (key.ctrl && input === 'a') {
         caretRef.current = 0
         rerender()
@@ -212,19 +226,11 @@ export function Prompt({
       }
 
       if (input) {
-        /**
-         * Ink does not split a chunk that contains both text and a line
-         * ending: a dropped file path and the terminal's own Enter often
-         * land in the same `stdin` chunk as one event, whose `input` is
-         * `"path\r"` (or `"path\n"`, or `"path\r\n"`) and whose
-         * `key.return` is false — and a bare `\n` sets no key flag at all,
-         * merged or not. Checking `key.return` alone would silently bake
-         * the raw line ending into the buffer and never submit. So an
-         * embedded CR/LF is treated as an inline Enter: everything before
-         * it is the final value, everything from it onward — the line
-         * ending and anything after — is discarded, and submission follows
-         * the same path as the `key.return` branch above.
-         */
+        // Filter unhandled escape sequences / control characters (e.g. \x1b[...)
+        if (input.startsWith('\x1b') || input === '\x00') {
+          return
+        }
+
         const breakIndex = input.search(/[\r\n]/)
         const c = chars()
         const at = caret()
@@ -232,9 +238,6 @@ export function Prompt({
         if (breakIndex !== -1) {
           const next = [...c.slice(0, at), ...input.slice(0, breakIndex), ...c.slice(at)].join('')
           onSubmit(unescapePath(next))
-          // Reset immediately, same as the key.return branch above: a
-          // second merged path+Enter event arriving in the same tick must
-          // start from an empty buffer, not concatenate onto this one.
           valueRef.current = ''
           caretRef.current = 0
           onChange('')
