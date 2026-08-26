@@ -1011,9 +1011,10 @@ export function App({
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     setValues((v) => ({ ...v, target }))
     const next = action.options([currentSource], { target }, livePrefs)
-    // A document target always means rasterisation (`targetSelect` filters
-    // 'pdf' — its only other target — out as a no-op), which needs to know
-    // which pages and at what resolution before quality or destination.
+    // `action.options()` only includes a pages spec when the chosen target
+    // actually rasterises the source (jpeg/png via pdfium) — a pdf/docx/doc
+    // target skips straight to quality or destination, having no pages or
+    // resolution concept at all.
     if (next.some((s) => s.id === 'pages')) {
       setStep('pages')
       return
@@ -1744,7 +1745,7 @@ export function App({
                 would be invisible: the idle-step signpost a few hundred
                 lines down never gets a chance to render, because a PDF no
                 longer stops at idle on the way in. */}
-              {source.kind === 'document' ? (
+              {source.kind === 'document' && source.format === 'pdf' ? (
                 <Text
                   color={colourProp(palette.dim)}
                 >{`${SYMBOLS.arrow} /pdf for page operations`}</Text>
@@ -2165,7 +2166,8 @@ export function App({
                 is already doing this job then. The target picker has its
                 own copy of this same line for the moment a solo drop goes
                 straight there instead of stopping here. */}
-              {!isCommandBuffer(text) && stage.sources.some((s) => s.kind === 'document') ? (
+              {!isCommandBuffer(text) &&
+              stage.sources.some((s) => s.kind === 'document' && s.format === 'pdf') ? (
                 <Box marginBottom={1}>
                   <Text color={colourProp(palette.dim)}>
                     {`${SYMBOLS.arrow} /pdf for page operations`}

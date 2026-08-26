@@ -350,8 +350,16 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
    * unchanged by this phase. `buildPlan` never sees these sources at all: it
    * cannot express "many outputs from one source", which is exactly what a
    * multi-page render is (see `Job`'s `convert` variant in `core/types.ts`).
+   *
+   * `format === 'pdf'` matters as much as `wantsRaster` does: pdfium only
+   * ever reads `pdf`, so a docx/doc source can never actually be rasterised
+   * regardless of the target. Without this, `forge report.docx --to jpeg`
+   * was routed into `buildRasterJob` anyway and crashed with an uncaught
+   * "requires at least one selected page" instead of the clean
+   * `unsupported-target` refusal `buildPlan` already produces for it below.
    */
-  const isDocument = (s: SourceInfo): s is DocumentInfo => s.kind === 'document'
+  const isDocument = (s: SourceInfo): s is DocumentInfo =>
+    s.kind === 'document' && s.format === 'pdf'
   const wantsRaster = rasterises(intent.target)
   const documentSources = wantsRaster ? resolved.sources.filter(isDocument) : []
   const otherSources = wantsRaster

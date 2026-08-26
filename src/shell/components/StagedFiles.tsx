@@ -19,7 +19,9 @@ const MAX_ROWS = 3
 
 function factFor(source: SourceInfo): string {
   if (source.kind === 'document') {
-    return `${source.pages} ${source.pages === 1 ? 'page' : 'pages'}`
+    // 0 means "unknown" (a `.doc`, or a `.docx` with no cached page count) —
+    // same reasoning as `FileCard`'s identical guard.
+    return source.pages > 0 ? `${source.pages} ${source.pages === 1 ? 'page' : 'pages'}` : ''
   }
   return `${source.width}×${source.height}`
 }

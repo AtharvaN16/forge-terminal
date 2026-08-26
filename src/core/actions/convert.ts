@@ -11,9 +11,10 @@ import type { Action, OptionSpec, PathPreset } from './index.js'
 
 /**
  * Which pages to rasterise, and the resolution to do it at. Only offered
- * once a document source has a real (raster) target — the only other target
- * a document has is filtered out in `targetSelect` for being a no-op, so a
- * chosen target always means jpeg or png here (see `engines/pdfium.ts`).
+ * once a document source has a target that actually rasterises it — jpeg or
+ * png via pdfium, checked by the caller with `rasterises(target)`. A pdf/
+ * docx/doc target is a document-to-document conversion with no pages or
+ * dpi concept, and is never routed here.
  *
  * `choose` hands off to the shell's page picker (`PageGrid`, phase 3) rather
  * than a typed field: the grid is the one existing UI for this, and building

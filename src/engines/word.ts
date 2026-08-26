@@ -11,7 +11,7 @@ import { PDFDocument as PDFLibDocument, StandardFonts } from 'pdf-lib'
 import { PDFParse } from 'pdf-parse'
 import WordExtractor from 'word-extractor'
 import { writeAtomic } from '../core/atomic.js'
-import { conversionFailed } from '../core/errors.js'
+import { conversionFailed, encryptedSource } from '../core/errors.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result, Warning } from '../core/types.js'
 import type { Engine } from './types.js'
 
@@ -307,7 +307,21 @@ async function runSoffice(soffice: string, sourcePath: string, target: FormatId)
   try {
     await execFileAsync(
       soffice,
-      ['--headless', '--convert-to', target, '--outdir', outDir, sourcePath],
+      [
+        // Without a per-invocation profile, two concurrent `soffice`
+        // processes (a batch run through `runJobs`' worker pool) fight over
+        // LibreOffice's shared default user profile — the second typically
+        // exits 0 having written nothing, which then surfaces as an ENOENT
+        // reading the output below rather than anything naming the real
+        // cause. `outDir` is already unique and already cleaned up per call.
+        `-env:UserInstallation=file://${outDir}/profile`,
+        '--headless',
+        '--convert-to',
+        target,
+        '--outdir',
+        outDir,
+        sourcePath,
+      ],
       { timeout: 120_000 },
     )
     const stem = basename(sourcePath, extname(sourcePath))
@@ -323,6 +337,13 @@ async function run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
   if (source.kind !== 'document') {
     throw new Error('the word engine can only convert a document source')
   }
+  // `DocumentInfo.encrypted` is only ever true for a pdf source (docx/doc
+  // probing always reports false — see probe()'s comment) — a pdf -> docx
+  // job reaching this engine. Refusing with the named `encryptedSource`
+  // error here matches `pdfiumEngine`'s own refusal for the same case,
+  // rather than letting pdf-parse throw and surfacing a generic
+  // conversion-failed with no hint about --password-stdin.
+  if (source.encrypted) throw encryptedSource(source.path)
 
   onPhase({ phase: 'reading' })
   const soffice = await libreOfficeAvailable()
