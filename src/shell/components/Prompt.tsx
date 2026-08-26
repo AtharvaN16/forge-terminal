@@ -1,7 +1,9 @@
-import { Box, Text } from 'ink'
+import { Box, type DOMElement, Text } from 'ink'
 import { useRef, useState } from 'react'
 import { unescapePath } from '../../utils/unescape-path.js'
+import { useClickTarget } from '../ClickTargets.js'
 import { copy, paste } from '../clipboard.js'
+import { offsetForColumn } from '../mouse.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -469,28 +471,41 @@ export function Prompt({
   const at = Math.min(Math.max(caretRef.current, 0), cells.length)
 
   /**
-   * Click-to-position-the-caret is deliberately absent, and the reason is
-   * worth recording so it is not attempted the same way twice.
+   * Click-to-position the caret.
    *
-   * Mapping a click needs the frame's absolute position on the terminal, which
-   * Ink never exposes — and this app renders inline, with `<Static>` history
-   * scrolling underneath, so the frame moves. The apparent way around it was
-   * `useCursor`: park the *real* terminal cursor on the caret, then ask the
-   * terminal where its cursor is (DSR) to learn the caret's absolute position.
+   * This was once impossible for a stated reason: mapping a click needs the
+   * frame's absolute position, which Ink never exposes, and the apparent way
+   * around it — parking the *real* terminal cursor on the caret and asking the
+   * terminal where its cursor is — showed a second cursor, because Ink cannot
+   * place the cursor without making it visible.
    *
-   * That works, and it cannot be used. `useCursor`'s contract is "setting a
-   * cursor position makes the cursor visible", and Ink offers no way to place
-   * the cursor without showing it — so the terminal's own cursor appears
-   * alongside the inverse-block caret this component draws, and the field has
-   * two cursors. Making them coincide is not a fix; they are two cursors
-   * either way, and the drawn one cannot be dropped because it is what carries
-   * the caret under NO_COLOR (spec §13) and what the frame-level tests read.
-   *
-   * A correct implementation needs the frame origin from the component that
-   * owns the root box, or the alternate screen, where the origin is fixed at
-   * 1,1 — the route every TUI with real hit-testing takes. Neither is a change
-   * to this file.
+   * What changed is that the query never needed the caret. Ink hides the cursor
+   * while rendering and leaves it one line below the frame, so asking where it
+   * is locates the *frame* — invisibly, and without moving anything. The caret
+   * is then plain arithmetic from there. See `useFrameOrigin.ts`.
    */
+  const lineRef = useRef<DOMElement | null>(null)
+
+  useClickTarget({
+    id: 'prompt-line',
+    ref: lineRef,
+    isActive,
+    /**
+     * The prompt marker (`› `, or `  › ` in the plain variant) sits between the
+     * Box's left edge and the first character, so the click column is measured
+     * from the text's start, not the Box's.
+     */
+    inset: { col: variant === 'plain' ? 4 : 2 },
+    /**
+     * `point` is already target-relative and already inset past the prompt
+     * marker, so it is a column into the text. `offsetForColumn` converts it
+     * to a character index by display width, which is what makes a click land
+     * correctly in a path containing a wide glyph or an emoji.
+     */
+    onClick: (point) => {
+      moveTo(offsetForColumn(valueRef.current, point.col), false)
+    },
+  })
 
   /**
    * The caret is drawn as an inverse block on the character it sits on, and
@@ -581,7 +596,7 @@ export function Prompt({
     // No colour: there is no fill to draw, so the prompt is just its line.
     return (
       <Box flexDirection="column">
-        <Box width={width}>
+        <Box ref={lineRef} width={width}>
           <Text wrap="wrap">
             <Text color={colourProp(palette.accent)}>{'  › '}</Text>
             {line}
@@ -601,7 +616,7 @@ export function Prompt({
       marginTop={variant === 'field' ? 2 : 1}
       marginBottom={variant === 'field' ? 2 : 1}
     >
-      <Box>
+      <Box ref={lineRef}>
         <Text wrap="wrap">
           <Text color={colourProp(palette.accent)}>{'› '}</Text>
           {line}
