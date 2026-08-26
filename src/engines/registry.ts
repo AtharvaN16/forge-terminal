@@ -4,10 +4,21 @@ import { imageEngine } from './image.js'
 import { pdfEngine } from './pdf.js'
 import { pdfiumEngine } from './pdfium.js'
 import type { Engine } from './types.js'
+import { wordEngine } from './word.js'
 
-// Order matters: imageEngine declines a PDF quickly, pdfEngine probes it
-// successfully, and pdfiumEngine never probes — it must stay last.
-export const ENGINES: Engine[] = [imageEngine, pdfEngine, pdfiumEngine]
+/**
+ * Order matters. `imageEngine` declines a PDF/docx/doc quickly, `pdfEngine`
+ * probes a real PDF successfully, `wordEngine` probes a docx/doc, and
+ * `pdfiumEngine` never probes at all — it must stay last.
+ *
+ * `pdfEngine` and `wordEngine` both declare `pdf` in `reads`/`writes` (the
+ * latter needs to, to route `docx → pdf` and `doc → pdf` — see
+ * `word.ts`), so `pdf → pdf` recompression could in principle match either.
+ * `engineForJob` takes the first match, and `pdfEngine` is listed first, so
+ * that ambiguity always resolves the same way it did before `wordEngine`
+ * existed.
+ */
+export const ENGINES: Engine[] = [imageEngine, pdfEngine, wordEngine, pdfiumEngine]
 
 export function engineForSource(format: FormatId): Engine | undefined {
   return ENGINES.find((e) => e.reads.has(format))
