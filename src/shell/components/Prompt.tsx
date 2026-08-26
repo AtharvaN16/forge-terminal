@@ -281,7 +281,20 @@ export function Prompt({
 
   useKeys(
     (input, key) => {
-      if (key.escape) return
+      /**
+       * Escape clears the field rather than acting as a second "back" key
+       * alongside whatever the owning step already does with it: with text
+       * still in the field there is nothing further back to fall to, so the
+       * first press only clears. Once the field is empty there is nothing
+       * left for this component to do, so it no-ops and leaves the
+       * keystroke for the owning step's own escape handler — delivered to
+       * every mounted `useInput` the same way — to treat as "back a step".
+       */
+      if (key.escape) {
+        if (chars().length === 0) return
+        commit('', 0)
+        return
+      }
 
       /**
        * Every branch below matches on what Ink *delivers*, which is not what
@@ -530,6 +543,12 @@ export function Prompt({
         commit([...c.slice(0, at - 1), ...c.slice(at)].join(''), at - 1)
         return
       }
+
+      // An unhandled Ctrl chord (every letter this component gives a job to
+      // — a/e/u/k/w/x/y — already returned above) is not text: falling
+      // through to the branch below would type the bare letter, which is
+      // what let Ctrl+N land an 'n' in the field instead of doing nothing.
+      if (key.ctrl) return
 
       if (input) {
         /**

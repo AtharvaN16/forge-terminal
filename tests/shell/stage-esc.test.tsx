@@ -6,7 +6,6 @@ import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
-const CTRL_U = String.fromCharCode(21)
 const DOWN = `${ESC}[B`
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 
@@ -119,18 +118,17 @@ describe('esc at the prompt', () => {
 
     // Esc: nothing is mounted to consume this keystroke (no `<Select>`,
     // no `useInput` inside the "no command matches" message), so this is
-    // testing the stage hook and only the stage hook.
+    // testing the stage hook and only the stage hook. The hook clears
+    // whatever is typed first — same as every other text field — so this
+    // first press only takes back "/U"; the stage is untouched by it.
     app.stdin.write(ESC)
     await settle()
-
-    // The typed "/U" itself is untouched by this esc — clearing the text
-    // buffer was never this hook's job, only `Select`'s `onCancel` does
-    // that, and nothing here plays that role. Ctrl-u (an ordinary,
-    // already-available editing key, unrelated to either fix) clears it
-    // so the next assertion starts from a clean prompt.
-    app.stdin.write(CTRL_U)
-    await settle()
     expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
+
+    // A second press, now that the field is already empty, is what reaches
+    // the stage.
+    app.stdin.write(ESC)
+    await settle()
 
     // The stage really did clear on that esc: /convert now has nothing
     // staged to act on, so it stays at the idle prompt instead of

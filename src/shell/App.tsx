@@ -900,7 +900,6 @@ export function App({
 
   const submitPath = useCallback(
     async (raw: string) => {
-      process.stderr.write(`DIAG submitPath raw=${JSON.stringify(raw)}\n`)
       const trimmed = raw.trim()
       if (!trimmed) return
 

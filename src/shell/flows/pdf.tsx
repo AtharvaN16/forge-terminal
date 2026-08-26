@@ -270,11 +270,13 @@ export function PdfFlow({
     { isActive: step === 'confirm' },
   )
 
-  // Prompt deliberately ignores escape — a typed value can contain one — so
-  // the step owns it, the same way App.tsx's own text fields do.
+  // `Prompt` claims escape itself first and clears whatever was typed (see
+  // Prompt.tsx); this is what the keystroke falls through to once the field
+  // is already empty — the same "clear first, then back" split App.tsx's
+  // own text fields use.
   useKeys(
     (_input, key) => {
-      if (key.escape) setStep('options')
+      if (key.escape && text === '') setStep('options')
     },
     { isActive: step === 'split-n' },
   )
@@ -655,7 +657,7 @@ export function PdfFlow({
             width={width}
             pairs={[
               ['↵', 'confirm'],
-              ['esc', 'back'],
+              ['esc', 'clear / back'],
             ]}
           />
         </Box>

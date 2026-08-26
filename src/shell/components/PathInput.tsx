@@ -121,7 +121,14 @@ export function PathInput({
 
   useKeys(
     (input, key) => {
+      // Clears first, same as `Prompt`: only once the field is already
+      // empty does escape fall through to backing out of typing mode.
       if (key.escape) {
+        if (textRef.current !== '') {
+          textRef.current = ''
+          setText('')
+          return
+        }
         onCancel?.()
         return
       }
@@ -134,6 +141,9 @@ export function PathInput({
         setText(textRef.current)
         return
       }
+      // An unhandled Ctrl chord (e.g. Ctrl+N) is not text — without this an
+      // unclaimed one would fall through and type its bare letter.
+      if (key.ctrl) return
       if (input) {
         /**
          * A DSR reply or a mouse report Ink could not resolve reaches here

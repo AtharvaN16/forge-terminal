@@ -73,6 +73,27 @@ describe('PathInput', () => {
     expect(lastFrame()).toContain('›')
   })
 
+  it('clears the typed text on the first escape, then cancels out on the second', async () => {
+    const onCancel = vi.fn()
+    const { stdin, lastFrame } = render(<PathInput {...props({ onCancel })} />)
+    stdin.write(DOWN + DOWN + DOWN) // "Type a path…"
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write('/Users/me/partial')
+    await settle()
+    expect(lastFrame()).toContain('/Users/me/partial')
+
+    stdin.write(ESC)
+    await settle()
+    expect(lastFrame()).not.toContain('/Users/me/partial')
+    expect(onCancel).not.toHaveBeenCalled()
+
+    stdin.write(ESC) // nothing left to clear -> cancels
+    await settle()
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
   it('unescapes a dropped path typed into the field', async () => {
     const onSubmit = vi.fn()
     const { stdin } = render(<PathInput {...props({ onSubmit })} />)

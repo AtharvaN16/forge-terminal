@@ -70,9 +70,10 @@ describe('/pdf end to end through App', () => {
     await settle(400)
     const pickerFrame = lastFrame() ?? ''
     expect(pickerFrame).toContain('Convert PDF to')
-    // The pointer to page operations rides along on the same screen —
-    // it does not have to be discovered some other way.
-    expect(pickerFrame).toContain('/pdf for page operations')
+    // The route to page operations rides along on the same screen, as a
+    // selectable row rather than a hint someone has to act on elsewhere.
+    expect(pickerFrame).toContain('/pdf')
+    expect(pickerFrame).toContain('for more options')
 
     // Escaping the picker must not cost the user the file: `esc` here goes
     // to `backToPromptKeepingStage`, not `clearSource`, specifically
@@ -168,6 +169,37 @@ describe('/pdf end to end through App', () => {
 
     const written = (await readdir(dir)).filter((f) => f !== 'doc.pdf')
     expect(written).toEqual(['doc-rotated.pdf'])
+  }, 20_000)
+
+  /**
+   * The convert-target picker's only route into `/pdf` used to be a line of
+   * dim text below the list — real information, but not a choice: reaching
+   * it meant escaping the picker (see `backToPromptKeepingStage` above) and
+   * typing the command from memory. This proves the picker itself now
+   * carries a real, selectable row to the same place, reached the same way
+   * JPEG or PNG are — arrow down, Enter — with the file still staged when it
+   * lands.
+   */
+  it('the target picker has a selectable row into /pdf, not just a hint', async () => {
+    const dir = await makeTempDir()
+    const file = await makePdf(dir, 'doc.pdf', 3)
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
+
+    stdin.write(file)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    expect(lastFrame() ?? '').toContain('Convert PDF to')
+
+    // Picker order is JPEG, PNG, a gap, then the /pdf row — two arrow-downs
+    // from JPEG lands on it, the gap itself unreachable like any disabled row.
+    stdin.write(DOWN + DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+
+    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
   }, 20_000)
 })
 
@@ -293,7 +325,7 @@ describe('the /pdf signpost', () => {
   it('points at /pdf alongside the convert picker a dropped PDF now opens', async () => {
     // Covered end-to-end in the first describe block above too; this one
     // exists so the signpost's own describe block still has a test that
-    // fails first if the hint is ever removed from the target step.
+    // fails first if the route to /pdf is ever removed from the target step.
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -302,7 +334,9 @@ describe('the /pdf signpost', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('/pdf for page operations')
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('/pdf')
+    expect(frame).toContain('for more options')
   }, 20_000)
 
   it('says nothing for a file that already has somewhere to convert to', async () => {
@@ -314,7 +348,7 @@ describe('the /pdf signpost', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').not.toContain('/pdf for page operations')
+    expect(lastFrame() ?? '').not.toContain('for more options')
   }, 20_000)
 
   it('says nothing once the command palette is open — the palette is already doing that job', async () => {
