@@ -223,6 +223,35 @@ export async function makeNonDocxZip(dir: string, name: string): Promise<string>
   return path
 }
 
+/**
+ * A zip whose End Of Central Directory record is intact — so `new AdmZip()`
+ * itself succeeds, since that scan only reads the fixed 22-byte EOCD — but
+ * whose "entries on this disk" count has been inflated far past what the
+ * buffer can actually hold. `adm-zip` defers parsing the central directory
+ * to the first `getEntry()`/`getEntries()` call, which is where this then
+ * throws (`ADM-ZIP: Number of disk entries is too large`): the failure mode
+ * `readDocx()`'s single try/catch around construction-through-entry-access
+ * has to survive, that a try/catch around construction alone would miss.
+ */
+export async function makeZipWithCorruptCentralDirectory(
+  dir: string,
+  name: string,
+): Promise<string> {
+  const zip = new AdmZip()
+  zip.addFile('word/document.xml', Buffer.from('<w:document/>'))
+  const buffer = zip.toBuffer()
+  // No zip comment, so the 22-byte EOCD record is the file's last 22 bytes.
+  // Byte offset 8 within it is the little-endian uint16 "number of entries
+  // on this disk" (`ENDSUB`) that adm-zip's lazy `readEntries()` checks
+  // against the buffer's real size.
+  const eocdOffset = buffer.length - 22
+  const corrupted = Buffer.from(buffer)
+  corrupted.writeUInt16LE(0xffff, eocdOffset + 8)
+  const path = join(dir, name)
+  await writeFile(path, corrupted)
+  return path
+}
+
 export async function pixelAt(
   path: string,
   x: number,

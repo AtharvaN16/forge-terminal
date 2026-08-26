@@ -35,21 +35,26 @@ interface DocxProbeResult {
  * `heic.ts` already uses for one-off values (`pixelWidth`, `hasAlpha`).
  */
 function readDocx(bytes: Buffer): DocxProbeResult | undefined {
-  let zip: AdmZip
+  // One try/catch around the whole read, matching `looksLikeDoc` above:
+  // `adm-zip` only validates the fixed-size End Of Central Directory record
+  // at construction — it defers parsing the central directory itself to the
+  // first `getEntry()`/`getEntries()` call, so a zip-shaped-but-corrupted
+  // file can throw from `getEntry` or `readAsText` just as easily as from
+  // `new AdmZip()`.
   try {
-    zip = new AdmZip(bytes)
+    const zip = new AdmZip(bytes)
+    if (!zip.getEntry('word/document.xml')) return undefined
+
+    let pages = 0
+    const appXml = zip.getEntry('docProps/app.xml')
+    if (appXml) {
+      const match = /<Pages>(\d+)<\/Pages>/.exec(zip.readAsText(appXml))
+      if (match?.[1]) pages = Number(match[1])
+    }
+    return { pages }
   } catch {
     return undefined
   }
-  if (!zip.getEntry('word/document.xml')) return undefined
-
-  let pages = 0
-  const appXml = zip.getEntry('docProps/app.xml')
-  if (appXml) {
-    const match = /<Pages>(\d+)<\/Pages>/.exec(zip.readAsText(appXml))
-    if (match?.[1]) pages = Number(match[1])
-  }
-  return { pages }
 }
 
 export async function probe(path: string): Promise<DocumentInfo> {

@@ -8,6 +8,7 @@ import {
   makeDocx,
   makeNonDocxZip,
   makeTempDir,
+  makeZipWithCorruptCentralDirectory,
 } from '../helpers/fixtures.js'
 
 describe('word engine probing', () => {
@@ -36,6 +37,18 @@ describe('word engine probing', () => {
     const dir = await makeTempDir()
     const path = await makeCorruptFile(dir, 'garbage.docx')
     await expect(probe(path)).rejects.toThrow()
+  })
+
+  it('rejects a zip whose central directory is corrupt, rather than throwing an internal adm-zip error', async () => {
+    // Construction alone (`new AdmZip()`) succeeds here — only the fixed-size
+    // End Of Central Directory record is read at that point. `adm-zip`
+    // defers parsing the entries themselves to the first `getEntry()` call,
+    // so a try/catch around construction alone would miss this and let an
+    // internal adm-zip error escape `probe()` instead of falling through to
+    // "not a Word document".
+    const dir = await makeTempDir()
+    const path = await makeZipWithCorruptCentralDirectory(dir, 'corrupt.docx')
+    await expect(probe(path)).rejects.toThrow('is not a Word document')
   })
 
   it('identifies a legacy .doc by its OLE content, reporting an unknown (0) page count', async (ctx) => {
