@@ -8,11 +8,11 @@ import {
   invalidArguments,
   invalidPageRange,
   isForgeError,
-  targetUnreachable,
   unsupportedCompress,
 } from '../core/errors.js'
+import { runPlan } from '../core/execute-jobs.js'
 import { buildPlan } from '../core/plan.js'
-import { resolveInputs } from '../core/resolve.js'
+import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
 import { checkWriteSafety } from '../core/write-safety.js'
@@ -284,17 +284,16 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   /**
    * Compression keeps each file's own format, so there is no single target
    * for the whole batch — every source is its own. Planned per file and run
-   * through the same `runJobs` the conversion path uses, so concurrency,
-   * atomic writes and failure reporting are shared rather than reimplemented.
+   * through the same `runPlan` every other path uses, so write safety, the
+   * target-size search, concurrency and atomic writes are shared rather than
+   * reimplemented — this path used to reimplement the search and skip write
+   * safety entirely.
    */
   if (intent.kind === 'compress') {
     const { compressAction } = await import('../core/actions/index.js')
-    const { findQuality } = await import('../core/compress.js')
-    const { compressPdf } = await import('../core/pdf-compress.js')
-    const { encodeToBuffer } = await import('../engines/image.js')
 
-    const jobs = []
-    const refusals = []
+    const jobs: Job[] = []
+    const refusals: InputFailure[] = []
     for (const source of resolved.sources) {
       if (!compressAction.appliesTo([source])) {
         refusals.push({ path: source.path, error: unsupportedCompress(source) })
@@ -306,110 +305,50 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         destination: dirname(source.path),
       })
       if (planned?.op !== 'convert') continue
-      const job = planned
       // A typed `--dpi` applies to both modes. It was originally threaded
-      // only into the target-size search below, so quality mode silently kept
-      // the engine default and produced the same bytes whatever was passed.
-      if (intent.dpi !== undefined) job.options.dpi = intent.dpi
-
-      if (intent.maxBytes !== undefined) {
-        /**
-         * A PDF is compressed by re-encoding the images inside it, not by
-         * running an image pipeline over the file — `encodeToBuffer` would
-         * hand PDF bytes to Sharp and die on `pipelineFor received a
-         * non-image source`.
-         *
-         * Read once, outside the callback: the search runs this up to eight
-         * times, and re-reading a large scan per attempt is work the user
-         * waits through for nothing.
-         */
-        const original = source.kind === 'document' ? await readFile(source.path) : undefined
-
-        /**
-         * A PDF has two levers, so the search has two dimensions.
-         *
-         * Quality is tried first at the default resolution. If even quality 1
-         * overshoots, the resolution comes down a rung and the quality search
-         * runs again. The user named a size; reaching it is what they asked
-         * for, and refusing would send them to a website that would have done
-         * exactly this. An image conversion has only the one lever and takes
-         * a single-rung ladder.
-         *
-         * Descending only when needed matters: most targets are met on the
-         * first rung, and each extra rung is another full bisection.
-         */
-        const ladder = original === undefined ? [undefined] : [intent.dpi ?? 150, 120, 96, 72]
-        let chosen: { quality: number; dpi?: number } | undefined
-        let closest = Number.POSITIVE_INFINITY
-        for (const dpi of ladder) {
-          const found = await findQuality({
-            encode: async (quality) =>
-              original
-                ? (await compressPdf(original, { quality, ...(dpi === undefined ? {} : { dpi }) }))
-                    .bytes.byteLength
-                : (await encodeToBuffer(source, job.target, { ...job.options, quality })).length,
-            targetBytes: intent.maxBytes,
-            // The rung is named as well as the attempt: without it a search
-            // that drops from 150 to 120 dpi looks like the counter simply
-            // restarting for no reason.
-            onAttempt: (attempt, of) =>
-              opts.onSearch?.(
-                dpi === undefined
-                  ? `attempt ${attempt} of ${of}`
-                  : `${dpi} dpi · attempt ${attempt} of ${of}`,
-              ),
-          })
-          closest = Math.min(closest, found.bytes)
-          if (!found.missed) {
-            chosen = { quality: found.quality, ...(dpi === undefined ? {} : { dpi }) }
-            break
-          }
-        }
-        if (chosen === undefined) {
-          refusals.push({
-            path: source.path,
-            error: targetUnreachable(source, intent.maxBytes, closest),
-          })
-          continue
-        }
-        job.options.quality = chosen.quality
-        if (chosen.dpi !== undefined) job.options.dpi = chosen.dpi
-      }
-      jobs.push(job)
+      // only into the target-size search, so quality mode silently kept the
+      // engine default and produced the same bytes whatever was passed.
+      if (intent.dpi !== undefined) planned.options.dpi = intent.dpi
+      jobs.push(planned)
     }
-
-    const compressPlan = await buildPlan({
-      resolved: { sources: [], failures: [], roots: new Map<string, string>() },
-      target: 'jpeg',
-      options: intent.options,
-      force: intent.force,
-    })
-    compressPlan.jobs = jobs
-    compressPlan.failures = [...compressPlan.failures, ...refusals]
 
     const batch = jobs.length > 1
     if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
 
-    const done = await runJobs(jobs, {
+    const outcome = await runPlan(jobs, {
+      force: intent.force,
       ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
-      ...(batch && opts.onProgress
-        ? {
-            onEvent: (event) => {
-              if (event.type === 'job:done' || event.type === 'job:error') {
-                opts.onProgress?.({ completed: event.completed, total: event.total })
-              }
-            },
-          }
-        : {}),
+      ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
+      onEvent: (event) => {
+        if (event.type === 'search:attempt') {
+          // The rung is named as well as the attempt: without it a search that
+          // drops from 150 to 120 dpi looks like the counter simply restarting
+          // for no reason.
+          opts.onSearch?.(
+            event.rung.dpi === undefined
+              ? `attempt ${event.attempt} of ${event.of}`
+              : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
+          )
+          return
+        }
+        if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
+          opts.onProgress?.({ completed: event.completed, total: event.total })
+        }
+      },
     })
 
-    const failures = [...refusals, ...done.failures]
+    const failures = [
+      ...refusals,
+      ...outcome.refusals,
+      ...outcome.unreachable.map((u) => ({ path: u.job.sources[0].path, error: u.error })),
+      ...outcome.failures,
+    ]
     const stdout =
-      done.results.length === 0
+      outcome.results.length === 0
         ? []
-        : done.results.length === 1
-          ? reportSingle(done)
-          : reportBatch(done)
+        : outcome.results.length === 1
+          ? reportSingle(outcome)
+          : reportBatch(outcome)
 
     return {
       exitCode: failures.length > 0 ? 1 : 0,
