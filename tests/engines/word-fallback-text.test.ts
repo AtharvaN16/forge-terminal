@@ -1,0 +1,127 @@
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import AdmZip from 'adm-zip'
+import mammoth from 'mammoth'
+import { PDFParse } from 'pdf-parse'
+import { describe, expect, it } from 'vitest'
+import { probe } from '../../src/engines/registry.js'
+import {
+  buildDocx,
+  extractPlainText,
+  layoutAsPdf,
+  PAGE_BREAK,
+  probe as probeWordDocument,
+} from '../../src/engines/word.js'
+import { makeDoc, makeDocx, makeTempDir, makeTextPdf, pdfPageCount } from '../helpers/fixtures.js'
+
+describe('extractPlainText', () => {
+  it('pulls paragraphs out of a docx', async () => {
+    const dir = await makeTempDir()
+    const path = await makeDocx(dir, 'a.docx', ['First paragraph.', 'Second paragraph.'])
+    const source = await probeWordDocument(path)
+    if (source.kind !== 'document') throw new Error('expected a document')
+    const paragraphs = await extractPlainText(source)
+    expect(paragraphs).toContain('First paragraph.')
+    expect(paragraphs).toContain('Second paragraph.')
+  })
+
+  it('pulls text out of a legacy doc', async (ctx) => {
+    const dir = await makeTempDir()
+    const path = await makeDoc(dir, 'a.doc', 'Legacy content here.')
+    if (path === null) {
+      ctx.skip('textutil unavailable — .doc fixture cannot be generated')
+      return
+    }
+    const source = await probeWordDocument(path)
+    if (source.kind !== 'document') throw new Error('expected a document')
+    const paragraphs = await extractPlainText(source)
+    expect(paragraphs.join(' ')).toContain('Legacy content here.')
+  })
+
+  it('separates pdf pages with a page-break marker', async () => {
+    const dir = await makeTempDir()
+    const path = await makeTextPdf(dir, 'a.pdf', ['Page one text.', 'Page two text.'])
+    const source = await probe(path)
+    if (source.kind !== 'document') throw new Error('expected a document')
+    const paragraphs = await extractPlainText(source)
+    const breakIndex = paragraphs.indexOf(PAGE_BREAK)
+    expect(breakIndex).toBeGreaterThan(-1)
+    expect(paragraphs.slice(0, breakIndex).join(' ')).toContain('Page one text.')
+    expect(paragraphs.slice(breakIndex + 1).join(' ')).toContain('Page two text.')
+  })
+})
+
+describe('layoutAsPdf', () => {
+  it('produces a one-page pdf for short text', async () => {
+    const dir = await makeTempDir()
+    const bytes = await layoutAsPdf(['A short line of text.'])
+    const path = join(dir, 'short.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBe(1)
+  })
+
+  it('paginates long text across more than one page', async () => {
+    const dir = await makeTempDir()
+    const longParagraph = Array.from({ length: 1200 }, () => 'word').join(' ')
+    const bytes = await layoutAsPdf([longParagraph])
+    const path = join(dir, 'long.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBeGreaterThan(1)
+  })
+
+  it('starts a new page at an explicit page-break marker', async () => {
+    const dir = await makeTempDir()
+    const bytes = await layoutAsPdf(['Page one.', PAGE_BREAK, 'Page two.'])
+    const path = join(dir, 'two.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBe(2)
+  })
+
+  it('produces a valid one-page pdf for an empty paragraph list', async () => {
+    const dir = await makeTempDir()
+    const bytes = await layoutAsPdf([])
+    const path = join(dir, 'empty.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBe(1)
+  })
+
+  it('keeps an oversized word rather than dropping it', async () => {
+    const dir = await makeTempDir()
+    // 96 'x's at 11pt Helvetica measure ~528pt: past the 504pt usable line
+    // width (612 - 2*54 margin), so it genuinely exercises the "word alone
+    // is too wide to wrap" branch — but still within the page's own 558pt
+    // right-edge (612 - 54 margin), so pdf.js's text extraction (which
+    // clips glyphs that render past the physical page boundary — verified
+    // separately, unrelated to this code path) can read the whole thing
+    // back. A wider word (e.g. 150 'x's, past the page's physical edge)
+    // would get silently truncated by that extractor-side clipping and
+    // make this assertion fail even against a correct implementation.
+    const hugeWord = 'x'.repeat(96)
+    const bytes = await layoutAsPdf([`${hugeWord} short`])
+    const path = join(dir, 'oversized.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBe(1)
+
+    const parser = new PDFParse({ data: await readFile(path) })
+    const { text } = await parser.getText()
+    await parser.destroy()
+    expect(text).toContain(hugeWord)
+  })
+})
+
+describe('buildDocx', () => {
+  it('round-trips paragraph text through mammoth', async () => {
+    const buffer = await buildDocx(['First paragraph.', 'Second paragraph.'])
+    const { value } = await mammoth.extractRawText({ buffer })
+    expect(value).toContain('First paragraph.')
+    expect(value).toContain('Second paragraph.')
+  })
+
+  it('turns a PAGE_BREAK sentinel into a real page break', async () => {
+    const buffer = await buildDocx(['Page one.', PAGE_BREAK, 'Page two.'])
+    const zip = new AdmZip(buffer)
+    const xml = zip.readAsText('word/document.xml')
+    expect(xml).toContain('w:br')
+    expect(xml).toContain('type="page"')
+  })
+})

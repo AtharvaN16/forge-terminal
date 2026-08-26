@@ -78,6 +78,24 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     lossy: false,
     hint: 'document',
   },
+  docx: {
+    id: 'docx',
+    label: 'DOCX',
+    extensions: ['.docx'],
+    hasAlpha: false,
+    animatable: false,
+    lossy: false,
+    hint: 'Word document',
+  },
+  doc: {
+    id: 'doc',
+    label: 'DOC',
+    extensions: ['.doc'],
+    hasAlpha: false,
+    animatable: false,
+    lossy: false,
+    hint: 'legacy Word',
+  },
 }
 
 export const ALL_FORMAT_IDS = Object.keys(FORMATS) as FormatId[]

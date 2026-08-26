@@ -20,7 +20,7 @@
 - `doc` (legacy binary Word) is a read-only source — never a write target, at any layer.
 - LibreOffice not being installed never blocks a conversion; it only routes to the npm fallback, which always succeeds or fails on its own merits. A `soffice` invocation that *is* attempted and fails (bad input, timeout) is a real `conversion-failed`, never a silent fallback trigger.
 - The `word-basic-fidelity` warning is attached if and only if the npm fallback path ran — never when LibreOffice did the conversion.
-- Every new dependency is pure JS/WASM — no native compilation step is added to `npm install`.
+- Every new dependency adds no native compilation step to `npm install` (prebuilt-binary native deps, like `pdf-parse`'s unused-here `@napi-rs/canvas`, are fine on the same terms Sharp already is; a from-source compile step is not).
 
 ---
 

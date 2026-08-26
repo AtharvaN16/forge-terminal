@@ -24,19 +24,26 @@
   },
   "dependencies": {
     "@hyzyla/pdfium": "^2.1.13",
+    "adm-zip": "^0.6.0",
+    "cfb": "^1.2.2",
     "commander": "^15.0.0",
+    "docx": "^9.7.1",
     "ink": "^7.1.1",
+    "mammoth": "^1.12.1",
     "pdf-lib": "^1.17.1",
+    "pdf-parse": "^2.4.5",
     "react": "^19.2.8",
     "sharp": "^0.35.3",
     "string-width": "^8.2.2",
     "supports-hyperlinks": "^4.5.0",
-    "tinyglobby": "^0.2.17"
+    "tinyglobby": "^0.2.17",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.9",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
+    "@types/word-extractor": "^1.0.6",
     "ink-testing-library": "^4.0.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",

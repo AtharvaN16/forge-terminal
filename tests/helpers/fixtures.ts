@@ -3,7 +3,9 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { PDFDocument, rgb } from 'pdf-lib'
+import AdmZip from 'adm-zip'
+import { Document, Packer, Paragraph } from 'docx'
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import sharp from 'sharp'
 
 const run = promisify(execFile)
@@ -154,6 +156,102 @@ export async function makeCorruptHeic(dir: string, name: string): Promise<string
   return path
 }
 
+/**
+ * A minimal, valid .docx — built by the `docx` package, never a committed binary.
+ *
+ * `docx`'s `AppProperties` writer emits a bare
+ * `<Properties xmlns="..."/>` with no children — it has no layout engine, so
+ * it never computes a page count. Only Word or LibreOffice populates
+ * `docProps/app.xml`'s `<Pages>` value, on save, from real pagination. That
+ * value is patched in here after packing so this fixture still exercises
+ * `word.ts`'s "read whatever cached value is present" path the way a
+ * document that has actually been opened and saved in Word would.
+ */
+export async function makeDocx(
+  dir: string,
+  name: string,
+  paragraphs: string[] = ['Hello from Forge.'],
+): Promise<string> {
+  const doc = new Document({ sections: [{ children: paragraphs.map((p) => new Paragraph(p)) }] })
+  const path = join(dir, name)
+  const zip = new AdmZip(await Packer.toBuffer(doc))
+  zip.updateFile(
+    'docProps/app.xml',
+    Buffer.from(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+        '<Pages>1</Pages></Properties>',
+    ),
+  )
+  await writeFile(path, zip.toBuffer())
+  return path
+}
+
+/**
+ * A genuine legacy-binary .doc, produced by macOS's built-in `textutil` —
+ * the same "shell out to a system tool rather than commit a binary" move
+ * `makeHeic` already makes for HEIC. Returns null where `textutil` is
+ * unavailable so tests can skip cleanly.
+ */
+export async function makeDoc(
+  dir: string,
+  name: string,
+  text = 'Hello from Forge.',
+): Promise<string | null> {
+  const source = join(dir, `${name}.source.txt`)
+  await writeFile(source, text)
+  const path = join(dir, name)
+  try {
+    await run('textutil', ['-convert', 'doc', '-output', path, source])
+    return path
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A zip shaped like OOXML but without `word/document.xml` — the shape a
+ * `.xlsx` or `.pptx` would have. Used to prove docx detection is content-based
+ * (invariant 3), not "any zip with this extension."
+ */
+export async function makeNonDocxZip(dir: string, name: string): Promise<string> {
+  const zip = new AdmZip()
+  zip.addFile('not-a-word-document.txt', Buffer.from('nope'))
+  const path = join(dir, name)
+  zip.writeZip(path)
+  return path
+}
+
+/**
+ * A zip whose End Of Central Directory record is intact — so `new AdmZip()`
+ * itself succeeds, since that scan only reads the fixed 22-byte EOCD — but
+ * whose "entries on this disk" count has been inflated far past what the
+ * buffer can actually hold. `adm-zip` defers parsing the central directory
+ * to the first `getEntry()`/`getEntries()` call, which is where this then
+ * throws (`ADM-ZIP: Number of disk entries is too large`): the failure mode
+ * `readDocx()`'s single try/catch around construction-through-entry-access
+ * has to survive, that a try/catch around construction alone would miss.
+ */
+export async function makeZipWithCorruptCentralDirectory(
+  dir: string,
+  name: string,
+): Promise<string> {
+  const zip = new AdmZip()
+  zip.addFile('word/document.xml', Buffer.from('<w:document/>'))
+  const buffer = zip.toBuffer()
+  // No zip comment, so the 22-byte EOCD record is the file's last 22 bytes.
+  // Byte offset 8 within it is the little-endian uint16 "number of entries
+  // on this disk" (`ENDSUB`) that adm-zip's lazy `readEntries()` checks
+  // against the buffer's real size.
+  const eocdOffset = buffer.length - 22
+  const corrupted = Buffer.from(buffer)
+  corrupted.writeUInt16LE(0xffff, eocdOffset + 8)
+  const path = join(dir, name)
+  await writeFile(path, corrupted)
+  return path
+}
+
 export async function pixelAt(
   path: string,
   x: number,
@@ -207,6 +305,23 @@ export async function makePdf(dir: string, name: string, pages = 3): Promise<str
 export async function pdfPageCount(path: string): Promise<number> {
   const doc = await PDFDocument.load(await readFile(path), { ignoreEncryption: true })
   return doc.getPageCount()
+}
+
+/** A PDF with real, extractable text on each page — unlike `makePdf`'s blank pages. */
+export async function makeTextPdf(
+  dir: string,
+  name: string,
+  pagesOfText: string[],
+): Promise<string> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  for (const text of pagesOfText) {
+    const page = doc.addPage([595, 842])
+    page.drawText(text, { x: 50, y: 780, size: 14, font })
+  }
+  const path = join(dir, name)
+  await writeFile(path, await doc.save())
+  return path
 }
 
 /** Page `n` of a marked document is `MARK_BASE + mark` points wide. */

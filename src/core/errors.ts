@@ -172,12 +172,24 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
    * "no quality to trade away" sent them hunting for a workaround that does
    * not exist, when the real answer is that Forge has not built this yet.
    */
-  if (source.kind === 'document') {
+  if (source.kind === 'document' && source.format === 'pdf') {
     return new ForgeError({
       code: 'unsupported-compress',
       title: 'Forge cannot compress a PDF yet',
       detail: `${name} is a PDF. Compression works on images for now.`,
       hint: 'Try /pdf for page operations, or /convert to turn its pages into images.',
+    })
+  }
+
+  // A docx/doc has no images for this action to re-encode — same conclusion
+  // as the lossless-image case below, reached for a different reason, so it
+  // needs its own wording rather than falling into "is lossless."
+  if (source.kind === 'document') {
+    return new ForgeError({
+      code: 'unsupported-compress',
+      title: 'Nothing to compress',
+      detail: `${name} is ${FORMATS[source.format].label}, which has no images Forge can re-encode.`,
+      hint: 'Use /convert to change it to PDF instead.',
     })
   }
 
@@ -215,7 +227,7 @@ export function unsupportedTarget(
   return new ForgeError({
     code: 'unsupported-target',
     title: `Can't convert ${basename(source.path)} to ${requested}`,
-    detail: `${basename(source.path)} is a ${FORMATS[source.format].label} image.`,
+    detail: `${basename(source.path)} is a ${FORMATS[source.format].label} ${source.kind === 'image' ? 'image' : 'document'}.`,
     hint: `Available: ${available.join(', ')}`,
   })
 }

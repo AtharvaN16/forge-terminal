@@ -104,7 +104,7 @@ export function reportFormats(): string[] {
   if (readOnly.length > 0) {
     const names = readOnly.join(', ')
     const [verb, noun] = readOnly.length === 1 ? ['is', 'it'] : ['are', 'them']
-    lines.push('', `${names} ${verb} read only because the image library cannot encode ${noun}.`)
+    lines.push('', `${names} ${verb} read only because Forge cannot yet write ${noun}.`)
   }
   return lines
 }

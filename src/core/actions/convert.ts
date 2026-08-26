@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { expandTilde, type Preferences } from '../../config/preferences.js'
-import { targetsFor } from '../capabilities.js'
+import { rasterises, targetsFor } from '../capabilities.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, formatById } from '../formats.js'
 import { rasterOutputPaths, resolveOutputPath } from '../output-path.js'
@@ -11,9 +11,10 @@ import type { Action, OptionSpec, PathPreset } from './index.js'
 
 /**
  * Which pages to rasterise, and the resolution to do it at. Only offered
- * once a document source has a real (raster) target — the only other target
- * a document has is filtered out in `targetSelect` for being a no-op, so a
- * chosen target always means jpeg or png here (see `engines/pdfium.ts`).
+ * once a document source has a target that actually rasterises it — jpeg or
+ * png via pdfium, checked by the caller with `rasterises(target)`. A pdf/
+ * docx/doc target is a document-to-document conversion with no pages or
+ * dpi concept, and is never routed here.
  *
  * `choose` hands off to the shell's page picker (`PageGrid`, phase 3) rather
  * than a typed field: the grid is the one existing UI for this, and building
@@ -171,11 +172,11 @@ export const convertAction: Action = {
     const target = values.target
     if (typeof target !== 'string') return specs
 
-    // A document's only real targets are jpeg and png (`targetSelect`
-    // already filters 'pdf' out as a no-op), so reaching here with a chosen
-    // target means a rasterisation, and it needs to know which pages and at
-    // what resolution.
-    if (source.kind === 'document') {
+    // A document source only needs the pages/resolution pickers when the
+    // chosen target actually rasterises it (jpeg/png, via pdfium) — a
+    // target of pdf/docx/doc is a document-to-document conversion with no
+    // pages or dpi concept at all.
+    if (source.kind === 'document' && rasterises(target as FormatId)) {
       specs.push(pagesSelect(source), dpiSelect())
     }
 
@@ -225,8 +226,10 @@ export const convertAction: Action = {
     // A document source rasterises to one image per selected page rather
     // than one output for the whole source — `resolveOutputPath` below
     // assumes exactly the latter, so this branches before it rather than
-    // trying to bend that function to a shape it was never built for.
-    if (source.kind === 'document') {
+    // trying to bend that function to a shape it was never built for. Only
+    // true when the target actually rasterises (jpeg/png); pdf/docx/doc
+    // fall through to the single-output path below like any other format.
+    if (source.kind === 'document' && rasterises(target)) {
       const dpi = Number(values.dpi)
       options.dpi = Number.isFinite(dpi) && dpi > 0 ? dpi : 150
       const pages = resolvePages(source, values.pages)

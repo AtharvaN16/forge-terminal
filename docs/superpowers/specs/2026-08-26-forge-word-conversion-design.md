@@ -51,7 +51,7 @@ direction.** So there is no system tool on a stock Mac that does this at all.
 | LibreOffice detected once per process, cached | Same pattern as `heic.ts`'s `heicDecodable()`. "Install it and try again" naturally picks it up on the next run — no invalidation logic needed. |
 | A failed LibreOffice invocation is a conversion failure, not a silent fallback trigger | Only "LibreOffice isn't installed" is a capability gap that triggers the npm path. A corrupt DOCX that makes `soffice` exit non-zero is a real failure — silently retrying with the weaker path could produce a plausible-looking but wrong result from the same bad input, which is worse than a clear error. |
 | Fallback text extraction is genuinely plain — no heading/bullet/table reconstruction | The warning already sets the expectation ("basic formatting only"). Rebuilding partial HTML-like fidelity by hand duplicates exactly what LibreOffice already does correctly, for a result that's still not trustworthy enough to skip the warning. YAGNI. |
-| New dependencies: `mammoth`, `docx`, `pdf-parse`, `word-extractor`, `cfb`, `adm-zip` | Six single-purpose libraries rather than one framework. All pure JS/WASM — no native compilation step is added to `npm install`, which the README currently calls out as Sharp's job alone. |
+| New dependencies: `mammoth`, `docx`, `pdf-parse`, `word-extractor`, `cfb`, `adm-zip` | Six single-purpose libraries rather than one framework. Five are pure JS; `pdf-parse` carries a native `@napi-rs/canvas` dependency it uses for its screenshot/table features (unused here — only `getText()` is called), distributed as prebuilt per-platform binaries the same way Sharp already is. Either way, no native compilation step is added to `npm install`, which the README currently calls out as Sharp's job alone — that property, not "pure JS/WASM" as a goal in itself, is what's load-bearing. |
 
 ---
 
@@ -161,13 +161,23 @@ Both checks are content-based, never the extension, matching `heic.ts`'s
 ```ts
 export const wordEngine: Engine = {
   id: 'word',
-  reads: new Set(['docx', 'doc']),
-  writes: new Set(['docx']),
+  reads: new Set(['docx', 'doc', 'pdf']),
+  writes: new Set(['docx', 'pdf']),
   ops: new Set(['convert']),
   probe,
   run,
 }
 ```
+
+`reads` and `writes` both include `pdf` — not just `docx` — because
+`engineForJob` matches an engine by **both ends** of a conversion
+(`reads.has(from) && writes.has(target)`). `docx → pdf` and `doc → pdf` are
+the whole point of this feature's "reverse conversions" half; without `pdf`
+in `writes`, no engine would match either job. This doesn't collide with
+`pdfEngine`'s existing `pdf → pdf` recompression: `engineForJob` takes the
+first match in registration order, and `pdfEngine` is registered before
+`wordEngine` (below), so that case still resolves to `pdfEngine` exactly as
+it did before this feature existed.
 
 Registered in `engines/registry.ts` as
 `[imageEngine, pdfEngine, wordEngine, pdfiumEngine]` — anywhere before
