@@ -1559,6 +1559,7 @@ export function App({
             it runs — showing it would be actively wrong, not just unhelpful. */}
         {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
           <Box
+            width={width}
             marginBottom={1}
             paddingY={1}
             paddingX={1}
