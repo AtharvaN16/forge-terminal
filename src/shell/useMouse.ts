@@ -1,7 +1,24 @@
 import { writeSync } from 'node:fs'
 import { useStdin, useStdout } from 'ink'
 import { useEffect, useRef } from 'react'
-import { MOUSE_OFF, MOUSE_ON, type MouseEvent, parseCursorReport, parseMouse } from './mouse.js'
+import {
+  MOUSE_OFF,
+  MOUSE_ON,
+  MOUSE_ON_WITH_HOVER,
+  type MouseEvent,
+  parseCursorReport,
+  parseMouse,
+} from './mouse.js'
+
+/**
+ * Which reporting mode to ask the terminal for.
+ *
+ * Motion reporting costs an event per cell of pointer travel, so it is asked
+ * for only while something on screen can respond to a hover.
+ */
+export function reportingSequence(hover: boolean): string {
+  return hover ? MOUSE_ON_WITH_HOVER : MOUSE_ON
+}
 
 /**
  * Turns terminal mouse reporting on for as long as the calling component is
@@ -20,7 +37,11 @@ import { MOUSE_OFF, MOUSE_ON, type MouseEvent, parseCursorReport, parseMouse } f
  * click-dragging no longer selects text to copy. Holding Option restores the
  * native behaviour in both Terminal.app and iTerm2.
  */
-export function useMouse(onEvent: (event: MouseEvent) => void, isActive = true): void {
+export function useMouse(
+  onEvent: (event: MouseEvent) => void,
+  options: { isActive?: boolean; hover?: boolean } = {},
+): void {
+  const { isActive = true, hover = false } = options
   const { setRawMode, internal_eventEmitter } = useStdin() as ReturnType<typeof useStdin> & {
     internal_eventEmitter?: {
       on: (event: string, listener: (data: string) => void) => void
@@ -60,7 +81,7 @@ export function useMouse(onEvent: (event: MouseEvent) => void, isActive = true):
     if (!out?.isTTY) return
 
     setRawMode(true)
-    out.write(MOUSE_ON)
+    out.write(reportingSequence(hover))
 
     let cleared = false
     const clear = () => {
@@ -118,7 +139,7 @@ export function useMouse(onEvent: (event: MouseEvent) => void, isActive = true):
       process.removeListener('SIGHUP', onSignal)
       process.removeListener('exit', clear)
     }
-  }, [isActive, setRawMode, internal_eventEmitter, stdout])
+  }, [isActive, hover, setRawMode, internal_eventEmitter, stdout])
 }
 
 /**

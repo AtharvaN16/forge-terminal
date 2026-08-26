@@ -1,5 +1,5 @@
 import type { DOMElement } from 'ink'
-import { type RefObject, useCallback, useRef } from 'react'
+import { type RefObject, useCallback, useRef, useSyncExternalStore } from 'react'
 import { useClickTargetRegistry } from './ClickTargets.js'
 import type { MouseEvent } from './mouse.js'
 import { useFrameOrigin } from './useFrameOrigin.js'
@@ -65,5 +65,17 @@ export function useMouseRouting(rootRef: RefObject<DOMElement | null>, revision:
     [registry],
   )
 
-  useMouse(onEvent)
+  /**
+   * Read through `useSyncExternalStore` rather than by calling `registry.size()`
+   * during render: targets register in effects, so a render-time read sees an
+   * empty registry on mount and would leave motion reporting off until
+   * something unrelated re-rendered.
+   */
+  const targetCount = useSyncExternalStore(
+    registry.subscribe,
+    registry.getSnapshot,
+    registry.getSnapshot,
+  )
+
+  useMouse(onEvent, { hover: targetCount > 0 })
 }
