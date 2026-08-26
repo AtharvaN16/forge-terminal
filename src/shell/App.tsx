@@ -22,7 +22,7 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
-import { splitPastedPaths } from '../utils/unescape-path.js'
+import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
@@ -631,31 +631,35 @@ export function App({
   // `useInput` hook regardless of what else is on screen, so an ungated
   // handler here would steal `f`/`o`/`q` from the target/quality/destination
   // stages the moment they happen to share a letter.
-  // esc on the name step returns to the location step. Prompt deliberately
-  // ignores escape (a path can contain one), so the step owns this.
+  // esc on the name step returns to the location step — but only once the
+  // field is already empty. `Prompt` claims escape itself first (see
+  // Prompt.tsx) and clears whatever was typed; this hook is what the
+  // keystroke falls through to once there is nothing left to clear.
   useKeys(
     (_input, key) => {
-      if (key.escape) cancelRename()
+      if (key.escape && text === '') cancelRename()
     },
     { isActive: step === 'rename' },
   )
 
-  // esc on the size field goes back to the mode choice. Prompt ignores
-  // escape by design — a path can contain one — so the step owns this.
+  // esc on the size field goes back to the mode choice, once `Prompt` has
+  // nothing left in the field to clear — same "clear first, then back"
+  // split as the rename step above.
   useKeys(
     (_input, key) => {
-      if (!key.escape) return
+      if (!key.escape || text !== '') return
       setSizeError(undefined)
-      setText('')
       setStep('mode')
     },
     { isActive: step === 'size' },
   )
 
-  // esc at the prompt clears a leftover stage — reachable when a run
-  // reported a failure and returned here without clearing what was staged
-  // (a partial batch is still there to retry, or to abandon). Empty stages
-  // are the common case and cost nothing extra to check.
+  // esc at the prompt clears whatever is typed first (mirroring every other
+  // text field), and only once that field is empty does it fall through to
+  // clearing a leftover stage — reachable when a run reported a failure and
+  // returned here without clearing what was staged (a partial batch is
+  // still there to retry, or to abandon). Empty stages are the common case
+  // and cost nothing extra to check.
   //
   // Gated on the command buffer being closed, for the same reason the
   // `step === 'result'` hook above is gated on `step`: Ink delivers input
@@ -669,10 +673,46 @@ export function App({
   useKeys(
     (_input, key) => {
       if (!key.escape) return
+      if (text !== '') {
+        setText('')
+        return
+      }
       if (stage.sources.length === 0 && stage.failures.length === 0) return
       setStage(clearStage())
     },
     { isActive: step === 'idle' && !paletteOwnsEscape },
+  )
+
+  /**
+   * Ctrl+N: abandon whatever is in progress and start over, from any step.
+   * A harder reset than any single step's own "back" — it drops the staged
+   * source(s), every answer collected so far, and any pending confirmation,
+   * landing back on the idle prompt exactly as if the app had just started.
+   *
+   * Excluded while a job is actually running: there is nothing sound to do
+   * with a `runJobs` promise already in flight once the state it was
+   * closed over has been reset out from under it.
+   */
+  const startNewSession = () => {
+    setStage(clearStage())
+    setValues({})
+    setLastResult(null)
+    setPending(null)
+    setRenaming(null)
+    setPdfBlocked(null)
+    setSizeUnreachable(null)
+    setSuggestion(undefined)
+    setSizeError(undefined)
+    setText('')
+    setMode('convert')
+    setStep('idle')
+  }
+
+  useKeys(
+    (input, key) => {
+      if (key.ctrl && input === 'n') startNewSession()
+    },
+    { isActive: step !== 'theme' && step !== 'converting' && step !== 'pdf-running' },
   )
 
   /**
@@ -860,6 +900,7 @@ export function App({
 
   const submitPath = useCallback(
     async (raw: string) => {
+      process.stderr.write(`DIAG submitPath raw=${JSON.stringify(raw)}\n`)
       const trimmed = raw.trim()
       if (!trimmed) return
 
@@ -885,51 +926,75 @@ export function App({
       const id = ++requestId.current
       setText('')
 
-      // A real OS drag of several files pastes every escaped path on one
-      // line, space-separated — the mechanism `splitPastedPaths` was written
-      // and tested for, but left unwired while the shell was single-file
-      // only (see the design spec's "one path per drop" section). It runs
-      // here rather than `Prompt`'s own `unescapePath` (this is the one
-      // `Prompt` passed `rawOnSubmit`, precisely so the escaping survives
-      // this far): unescaping first would turn "a\ b.pdf c\ d.pdf" into "a
-      // b.pdf c d.pdf", and nothing left could tell an escaped space inside
-      // a filename apart from the plain one separating two paths.
-      // `splitPastedPaths` also correctly returns a single, fully-unescaped
-      // path for a single-path drop — the ordinary case, still handled by
-      // the plain `probe`/`try`/`catch` below rather than folded into the
-      // loop underneath, so one bad path still renders the same visible
-      // error block it always has (see `app-flow.test.tsx`), not a quiet
-      // entry in the staged card's skipped list the way a bad path *within*
-      // a multi-file drop does.
-      const paths = splitPastedPaths(trimmed)
-      if (paths.length > 1) {
-        const infos: SourceInfo[] = []
-        const failures: InputFailure[] = []
-        for (const path of paths) {
-          try {
-            infos.push(await probe(path))
-          } catch (e) {
-            failures.push({ path, error: isForgeError(e) ? e : unexpectedError(e) })
+      /**
+       * Tried whole and unescaped, before anything is split on whitespace.
+       * A single dropped file is the overwhelmingly common case, and a
+       * terminal's own escaping of it can be *incomplete* rather than
+       * absent: Terminal.app leaves the space before "AM.png"/"PM.png"
+       * unescaped in a macOS screenshot's filename (confirmed against the
+       * literal bytes it pastes), so splitting on whitespace first — the
+       * previous order here — read one dropped screenshot as two
+       * nonexistent fragments ("…52" and "AM.png") and never resolved the
+       * real file at all.
+       *
+       * `unescapePath` strips every backslash wherever one appears,
+       * regardless of which spaces the terminal did or didn't escape, so it
+       * reconstructs the true filename either way. A genuine multi-file drop
+       * still reaches the split branch below: two or more real, distinct
+       * paths joined by the space between them essentially never match
+       * anything on disk as one combined string, so this attempt fails
+       * harmlessly and falls through to `splitPastedPaths` exactly as
+       * before.
+       */
+      let info: SourceInfo | undefined
+      let wholeError: unknown
+      try {
+        info = await probe(unescapePath(trimmed))
+      } catch (e) {
+        wholeError = e
+      }
+
+      if (!info) {
+        // A real OS drag of several files pastes every escaped path on one
+        // line, space-separated — the mechanism `splitPastedPaths` was
+        // written and tested for, but left unwired while the shell was
+        // single-file only (see the design spec's "one path per drop"
+        // section). It runs here rather than `Prompt`'s own `unescapePath`
+        // (this is the one `Prompt` passed `rawOnSubmit`, precisely so the
+        // escaping survives this far): unescaping first would turn "a\ b.pdf
+        // c\ d.pdf" into "a b.pdf c d.pdf", and nothing left could tell an
+        // escaped space inside a filename apart from the plain one
+        // separating two paths.
+        const paths = splitPastedPaths(trimmed)
+        if (paths.length > 1) {
+          const infos: SourceInfo[] = []
+          const failures: InputFailure[] = []
+          for (const path of paths) {
+            try {
+              infos.push(await probe(path))
+            } catch (e) {
+              failures.push({ path, error: isForgeError(e) ? e : unexpectedError(e) })
+            }
           }
-        }
-        if (requestId.current !== id) return // superseded by a later submission
-        const next = addToStage(stage, infos, failures)
-        setStage(next)
-        setValues({})
-        if (next.sources.length > 1) {
-          if (!pdfActionsApply(next.sources)) {
-            refuseBatch()
+          if (requestId.current !== id) return // superseded by a later submission
+          const next = addToStage(stage, infos, failures)
+          setStage(next)
+          setValues({})
+          if (next.sources.length > 1) {
+            if (!pdfActionsApply(next.sources)) {
+              refuseBatch()
+              return
+            }
+            setStep('idle')
             return
           }
-          setStep('idle')
+          setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
           return
         }
-        setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
-        return
       }
 
       try {
-        const info = await probe(paths[0] ?? trimmed)
+        if (!info) throw wholeError
         if (requestId.current !== id) return // superseded by a later submission
         // Drops accumulate rather than replace — dropping a second file onto
         // a prompt that already has one staged (e.g. after a failed run
@@ -1757,8 +1822,7 @@ export function App({
                 width={width}
                 pairs={[
                   ['↵', 'confirm'],
-                  ['ctrl-u', 'clear'],
-                  ['esc', 'back'],
+                  ['esc', 'clear / back'],
                 ]}
               />
             </Box>
@@ -1952,8 +2016,7 @@ export function App({
                 width={width}
                 pairs={[
                   ['↵', 'save'],
-                  ['ctrl-u', 'clear'],
-                  ['esc', 'back'],
+                  ['esc', 'clear / back'],
                 ]}
               />
             </Box>
@@ -2243,7 +2306,8 @@ export function App({
                     : [
                         ['↵', 'send'],
                         ['/', 'commands'],
-                        ['ctrl-u', 'clear'],
+                        ['esc', 'clear'],
+                        ['ctrl-n', 'new'],
                         ['ctrl-c', 'quit'],
                       ]
                 }
