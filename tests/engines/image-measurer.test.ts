@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
+import type { ImageInfo, Job } from '../../src/core/types.js'
 import { imageEngine } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
-import type { ImageInfo, Job } from '../../src/core/types.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
 let dir: string
