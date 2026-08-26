@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { unescapePath } from '../../utils/unescape-path.js'
+import { isStrayEscapeSequence } from '../mouse.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -134,6 +135,15 @@ export function PathInput({
         return
       }
       if (input) {
+        /**
+         * A DSR reply or a mouse report Ink could not resolve reaches here
+         * looking like ordinary text starting with `[` — its leading ESC is
+         * already gone. See `isStrayEscapeSequence` in mouse.ts for why the
+         * match is this narrow: brackets are legal in filenames, and
+         * `shot[1].png` must still type.
+         */
+        if (isStrayEscapeSequence(input)) return
+
         /**
          * Ink does not split a chunk that contains both text and a line
          * ending: a dropped path with a trailing newline — e.g. one copied

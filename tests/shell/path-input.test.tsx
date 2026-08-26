@@ -141,6 +141,43 @@ describe('PathInput', () => {
     expect(frame).toContain('Same folder')
   })
 
+  /**
+   * Mouse support means this shell now receives, on the same stdin channel
+   * as typed text, sequences it never used to: a DSR reply to the
+   * cursor-position query `useFrameOrigin` sends (provoked here by entering
+   * typing mode, which changes the frame height), and a press-and-release
+   * pair for every click. Ink strips the leading ESC from anything its own
+   * parser could not resolve, so both arrive looking like ordinary text
+   * starting with `[` — exactly what a real terminal with mouse reporting on
+   * would deliver mid-edit. Fed with no guard, they used to land in the
+   * buffer; see `isStrayEscapeSequence` in `src/shell/mouse.ts`.
+   */
+  it('filters a DSR reply and a mouse report out of a typed path, without blocking legal brackets', async () => {
+    const onSubmit = vi.fn()
+    const { stdin } = render(<PathInput {...props({ onSubmit })} />)
+    stdin.write(DOWN + DOWN + DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write('/tmp/a')
+    await settle()
+    // A DSR reply (cursor-position query answer).
+    stdin.write('\x1b[24;1R')
+    await settle()
+    // A left-click's press report, immediately followed by its release —
+    // every click delivers both.
+    stdin.write('\x1b[<0;12;34M')
+    await settle()
+    stdin.write('\x1b[<0;12;34m')
+    await settle()
+    // Brackets are legal in filenames and must still type normally.
+    stdin.write('shot[1].png')
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith('/tmp/ashot[1].png')
+  })
+
   it('drops the hints entirely when the caller says the band is compact', () => {
     const frame =
       render(<PathInput {...props({ width: 40, showHints: false })} />).lastFrame() ?? ''

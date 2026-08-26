@@ -30,8 +30,9 @@ export const MOUSE_ON = '\x1b[?1000h\x1b[?1002h\x1b[?1006h'
  * Used only while something hoverable is on screen. `?1003` wakes the process
  * on every cell of pointer travel, which is why it is not the default: with an
  * empty target registry `useMouse` asks for `MOUSE_ON` instead and the terminal
- * stays quiet. Cleared by the same `MOUSE_OFF` — `?1002l` releases this
- * tracking slot whichever of the two set it.
+ * stays quiet. Cleared by the same `MOUSE_OFF`, which clears `?1003`
+ * explicitly rather than counting on the terminal to alias it to `?1002`'s
+ * tracking slot — see the comment on `MOUSE_OFF` for why.
  */
 export const MOUSE_ON_WITH_HOVER = '\x1b[?1000h\x1b[?1003h\x1b[?1006h'
 
@@ -41,8 +42,43 @@ export const MOUSE_ON_WITH_HOVER = '\x1b[?1000h\x1b[?1003h\x1b[?1006h'
  * killed while reporting is on leaves the *terminal* in that state: the shell
  * the user returns to spews `[<35;…M` on every mouse move. That is the bug
  * behind the "stuck in mouse reporting" reports filed against other CLIs.
+ *
+ * Clears `?1002` and `?1003` both, even though only one of them was ever
+ * turned on (`MOUSE_ON` sets the former, `MOUSE_ON_WITH_HOVER` the latter).
+ * On a terminal with a single button-motion tracking slot, clearing either
+ * one releases it regardless of which set it — but that is an aliasing
+ * behaviour specific implementations happen to have (xterm, iTerm2), not
+ * something the mouse-tracking protocol promises, and at least one real class
+ * of emulator tracks `any_event` (`?1003`) as a flag of its own rather than
+ * aliasing it to `?1002`. Relying on that aliasing is not worth the failure
+ * mode above, so every mode this file can turn on is explicitly turned back
+ * off, whether or not the terminal would have released it anyway.
  */
-export const MOUSE_OFF = '\x1b[?1006l\x1b[?1002l\x1b[?1000l'
+export const MOUSE_OFF = '\x1b[?1006l\x1b[?1002l\x1b[?1003l\x1b[?1000l'
+
+/**
+ * Recognises a control sequence Ink handed to a text consumer as if it were
+ * typed input, rather than something the app should insert into a text
+ * buffer.
+ *
+ * This shell now receives two kinds of sequence on stdin that never existed
+ * before mouse support: `CURSOR_QUERY` replies (see `parseCursorReport`
+ * above) and SGR mouse reports (see `parseMouse` below). Ink strips the
+ * leading ESC from any sequence its own keypress parser could not resolve,
+ * and both of those are exactly that — so they arrive at a plain text field
+ * looking like ordinary characters starting with `[`, e.g. `"[<0;12;34M"` or
+ * `"[24;1R"`. A field with no guard against this appends them to whatever
+ * the user was typing.
+ *
+ * Matched narrowly on purpose: a lone `[`, and `[` followed by anything that
+ * is not a CSI parameter run, must stay typeable, because brackets are legal
+ * in filenames — `shot[1].png` must still work. A bare NUL (`\x00`), which
+ * some terminals send as filler, is filtered for the same reason: it is
+ * wire noise, not something anyone typed.
+ */
+export function isStrayEscapeSequence(input: string): boolean {
+  return /^\[(?:[<>?][\d;]*|[\d;]+)[A-Za-z~]$/.test(input) || input === '\x00'
+}
 
 /**
  * Device Status Report — asks the terminal where the cursor currently is.

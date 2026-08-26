@@ -152,7 +152,9 @@ describe('MOUSE_ON_WITH_HOVER', () => {
 
   it('is cleared by the existing MOUSE_OFF', async () => {
     const { MOUSE_OFF } = await import('../../src/shell/mouse.js')
-    // ?1003 and ?1002 are the same tracking slot, so ?1002l clears either.
+    // ?1003 is cleared explicitly rather than relying on the terminal to
+    // alias it to ?1002's tracking slot — see the comment on MOUSE_OFF.
+    expect(MOUSE_OFF).toContain('?1003l')
     expect(MOUSE_OFF).toContain('?1002l')
     expect(MOUSE_OFF).toContain('?1000l')
     expect(MOUSE_OFF).toContain('?1006l')
