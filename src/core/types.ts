@@ -1,4 +1,14 @@
-export type FormatId = 'jpeg' | 'png' | 'webp' | 'avif' | 'heic' | 'gif' | 'tiff' | 'pdf'
+export type FormatId =
+  | 'jpeg'
+  | 'png'
+  | 'webp'
+  | 'avif'
+  | 'heic'
+  | 'gif'
+  | 'tiff'
+  | 'pdf'
+  | 'docx'
+  | 'doc'
 
 export interface FormatSpec {
   id: FormatId
@@ -127,6 +137,8 @@ export interface Warning {
     | 'pdf-images-skipped'
     /** Image resolution was reduced, which is the loss worth naming. */
     | 'pdf-downsampled'
+    /** The npm fallback ran instead of LibreOffice — tables, images and layout were not preserved. */
+    | 'word-basic-fidelity'
   message: string
 }
 

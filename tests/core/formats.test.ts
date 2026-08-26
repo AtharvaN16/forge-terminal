@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { ALL_FORMAT_IDS, FORMATS, formatById, primaryExtension } from '../../src/core/formats.js'
 
 describe('format registry', () => {
-  it('knows all eight formats', () => {
+  it('knows all ten formats', () => {
     expect(ALL_FORMAT_IDS.sort()).toEqual([
       'avif',
+      'doc',
+      'docx',
       'gif',
       'heic',
       'jpeg',

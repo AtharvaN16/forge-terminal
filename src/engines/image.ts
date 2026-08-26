@@ -195,6 +195,10 @@ export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sha
       throw new Error('heic is not writable; the capability graph should have prevented this')
     case 'pdf':
       throw new Error('pdf is not an image target; the capability graph should have prevented this')
+    case 'docx':
+      throw new Error('docx is not an image target; the capability graph should have prevented this')
+    case 'doc':
+      throw new Error('doc is not an image target; the capability graph should have prevented this')
   }
 }
 

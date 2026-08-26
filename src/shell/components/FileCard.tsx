@@ -33,7 +33,12 @@ export function FileCard({ source, width }: { source: SourceInfo; width: number 
           // "transparent" about an opaque JPEG would be a plain lie about the file.
           ...(source.hasAlpha ? ['transparent'] : []),
         ]
-      : [`${source.pages} pages`, formatBytes(source.bytes)]
+      : [
+          // 0 means "unknown" (a `.doc` file, or a `.docx` that never cached a
+          // page count) — showing "0 pages" would read as a real, wrong fact.
+          ...(source.pages > 0 ? [`${source.pages} pages`] : []),
+          formatBytes(source.bytes),
+        ]
   ).join(' · ')
 
   // Spec §13: the compact band drops the frame *and* the format and
