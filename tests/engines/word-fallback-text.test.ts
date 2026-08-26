@@ -1,7 +1,8 @@
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
 import mammoth from 'mammoth'
+import { PDFParse } from 'pdf-parse'
 import { describe, expect, it } from 'vitest'
 import { probe } from '../../src/engines/registry.js'
 import {
@@ -84,13 +85,27 @@ describe('layoutAsPdf', () => {
     expect(await pdfPageCount(path)).toBe(1)
   })
 
-  it('keeps and draws a single word wider than the page margins without throwing', async () => {
+  it('keeps an oversized word rather than dropping it', async () => {
     const dir = await makeTempDir()
-    const oversizedWord = 'x'.repeat(150)
-    const bytes = await layoutAsPdf([oversizedWord])
+    // 96 'x's at 11pt Helvetica measure ~528pt: past the 504pt usable line
+    // width (612 - 2*54 margin), so it genuinely exercises the "word alone
+    // is too wide to wrap" branch — but still within the page's own 558pt
+    // right-edge (612 - 54 margin), so pdf.js's text extraction (which
+    // clips glyphs that render past the physical page boundary — verified
+    // separately, unrelated to this code path) can read the whole thing
+    // back. A wider word (e.g. 150 'x's, past the page's physical edge)
+    // would get silently truncated by that extractor-side clipping and
+    // make this assertion fail even against a correct implementation.
+    const hugeWord = 'x'.repeat(96)
+    const bytes = await layoutAsPdf([`${hugeWord} short`])
     const path = join(dir, 'oversized.pdf')
     await writeFile(path, bytes)
-    expect(await pdfPageCount(path)).toBeGreaterThanOrEqual(1)
+    expect(await pdfPageCount(path)).toBe(1)
+
+    const parser = new PDFParse({ data: await readFile(path) })
+    const { text } = await parser.getText()
+    await parser.destroy()
+    expect(text).toContain(hugeWord)
   })
 })
 
