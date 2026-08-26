@@ -16,7 +16,7 @@ import type {
   Result,
   Warning,
 } from '../core/types.js'
-import type { Engine } from './types.js'
+import type { Engine, Measurer } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
   'pdf',
@@ -438,8 +438,51 @@ async function compressDocument(
   return { job, outputBytes, warnings }
 }
 
+/**
+ * A PDF has two levers, so the search has two dimensions.
+ *
+ * Quality is tried first at the default resolution. If even quality 1
+ * overshoots, the resolution comes down a rung and the quality search runs
+ * again. The user named a size; reaching it is what they asked for, and
+ * refusing would send them to a website that would have done exactly this.
+ *
+ * Descending only when needed matters: most targets are met on the first rung,
+ * and each extra rung is another full bisection.
+ *
+ * 150 dpi leads because reducing resolution is worth roughly ten times more
+ * than re-encoding — a 5.7 MB 300 dpi scan reaches 1065 KB on quality alone
+ * and 111 KB with both — and it is indistinguishable on screen at the sizes
+ * people compress a scan for. An explicit `--dpi` leads instead, because that
+ * is the user asking to keep every pixel.
+ *
+ * The file is read once here rather than per attempt: the search calls
+ * `measure` up to eight times per rung, and re-reading a large scan each time
+ * is work the user waits through for nothing.
+ */
+async function measurer(job: Job): Promise<Measurer | undefined> {
+  if (job.op !== 'convert') return undefined
+  const source = job.sources[0]
+  // An image going to PDF is an embedding, not a compression: there is no
+  // resolution ladder to walk, so decline rather than invent one.
+  if (source.kind !== 'document') return undefined
+
+  const original = await readFile(source.path)
+
+  return {
+    ladder: [job.options.dpi ?? 150, 120, 96, 72].map((dpi) => ({ dpi })),
+    measure: async (options) =>
+      (
+        await compressPdf(original, {
+          quality: options.quality ?? 60,
+          ...(options.dpi === undefined ? {} : { dpi: options.dpi }),
+        })
+      ).bytes.byteLength,
+  }
+}
+
 export const pdfEngine: Engine = {
   id: 'pdf',
+  measurer,
   reads: READS,
   writes: WRITES,
   ops: new Set<Job['op']>(['convert', 'merge', 'split', 'extract', 'delete', 'rotate']),
