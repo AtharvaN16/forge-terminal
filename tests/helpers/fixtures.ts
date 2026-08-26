@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
 import { Document, Packer, Paragraph } from 'docx'
-import { PDFDocument, rgb } from 'pdf-lib'
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import sharp from 'sharp'
 
 const run = promisify(execFile)
@@ -305,6 +305,19 @@ export async function makePdf(dir: string, name: string, pages = 3): Promise<str
 export async function pdfPageCount(path: string): Promise<number> {
   const doc = await PDFDocument.load(await readFile(path), { ignoreEncryption: true })
   return doc.getPageCount()
+}
+
+/** A PDF with real, extractable text on each page — unlike `makePdf`'s blank pages. */
+export async function makeTextPdf(dir: string, name: string, pagesOfText: string[]): Promise<string> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  for (const text of pagesOfText) {
+    const page = doc.addPage([595, 842])
+    page.drawText(text, { x: 50, y: 780, size: 14, font })
+  }
+  const path = join(dir, name)
+  await writeFile(path, await doc.save())
+  return path
 }
 
 /** Page `n` of a marked document is `MARK_BASE + mark` points wide. */
