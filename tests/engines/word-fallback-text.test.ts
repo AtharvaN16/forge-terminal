@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import AdmZip from 'adm-zip'
 import mammoth from 'mammoth'
 import { describe, expect, it } from 'vitest'
 import { probe } from '../../src/engines/registry.js'
@@ -74,6 +75,23 @@ describe('layoutAsPdf', () => {
     await writeFile(path, bytes)
     expect(await pdfPageCount(path)).toBe(2)
   })
+
+  it('produces a valid one-page pdf for an empty paragraph list', async () => {
+    const dir = await makeTempDir()
+    const bytes = await layoutAsPdf([])
+    const path = join(dir, 'empty.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBe(1)
+  })
+
+  it('keeps and draws a single word wider than the page margins without throwing', async () => {
+    const dir = await makeTempDir()
+    const oversizedWord = 'x'.repeat(150)
+    const bytes = await layoutAsPdf([oversizedWord])
+    const path = join(dir, 'oversized.pdf')
+    await writeFile(path, bytes)
+    expect(await pdfPageCount(path)).toBeGreaterThanOrEqual(1)
+  })
 })
 
 describe('buildDocx', () => {
@@ -82,5 +100,13 @@ describe('buildDocx', () => {
     const { value } = await mammoth.extractRawText({ buffer })
     expect(value).toContain('First paragraph.')
     expect(value).toContain('Second paragraph.')
+  })
+
+  it('turns a PAGE_BREAK sentinel into a real page break', async () => {
+    const buffer = await buildDocx(['Page one.', PAGE_BREAK, 'Page two.'])
+    const zip = new AdmZip(buffer)
+    const xml = zip.readAsText('word/document.xml')
+    expect(xml).toContain('w:br')
+    expect(xml).toContain('type="page"')
   })
 })
