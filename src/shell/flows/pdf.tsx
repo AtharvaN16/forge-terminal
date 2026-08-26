@@ -11,6 +11,7 @@ import { formatRanges, parseRanges } from '../../core/pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
 import { HintBar } from '../components/HintBar.js'
 import { MergeList } from '../components/MergeList.js'
+import { ModeHeader } from '../components/ModeHeader.js'
 import { gridLayout, PageGrid } from '../components/PageGrid.js'
 import { PathInput } from '../components/PathInput.js'
 import { Prompt } from '../components/Prompt.js'
@@ -591,6 +592,8 @@ export function PdfFlow({
 
   return (
     <Box flexDirection="column">
+      <ModeHeader mode="pdf" title="PDF operations" width={width} />
+
       {step === 'hub' ? (
         <Box flexDirection="column" marginBottom={1}>
           <Text color={colourProp(palette.label)}>PDF — choose an operation</Text>

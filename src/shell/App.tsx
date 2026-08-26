@@ -27,6 +27,7 @@ import { HistoryEntry } from './blocks.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HintBar } from './components/HintBar.js'
+import { ModeHeader } from './components/ModeHeader.js'
 import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
 import { Progress } from './components/Progress.js'
@@ -1452,10 +1453,11 @@ export function App({
             neither convert nor compress, and `mode` does not change while
             it runs — showing it would be actively wrong, not just unhelpful. */}
         {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
-          <Box marginBottom={1}>
-            <Text color={colourProp(palette.accent)} bold>
-              {band === 'compact' ? `  ${mode}  ` : `  current mode: ${mode}  `}
-            </Text>
+          <ModeHeader
+            mode={mode}
+            title={band === 'compact' ? mode : `current mode: ${mode}`}
+            width={width}
+          >
             {/* The staged file's name, beside the mode.
 
                 Two separate rules used to conspire to hide it: the file card
@@ -1475,7 +1477,7 @@ export function App({
             <Text color={colourProp(palette.dim)}>
               {band === 'compact' ? '  / to change' : '  use / to change mode'}
             </Text>
-          </Box>
+          </ModeHeader>
         ) : null}
 
         {/* The staged list, shown live rather than committed to scrollback,
