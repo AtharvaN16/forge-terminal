@@ -161,13 +161,23 @@ Both checks are content-based, never the extension, matching `heic.ts`'s
 ```ts
 export const wordEngine: Engine = {
   id: 'word',
-  reads: new Set(['docx', 'doc']),
-  writes: new Set(['docx']),
+  reads: new Set(['docx', 'doc', 'pdf']),
+  writes: new Set(['docx', 'pdf']),
   ops: new Set(['convert']),
   probe,
   run,
 }
 ```
+
+`reads` and `writes` both include `pdf` — not just `docx` — because
+`engineForJob` matches an engine by **both ends** of a conversion
+(`reads.has(from) && writes.has(target)`). `docx → pdf` and `doc → pdf` are
+the whole point of this feature's "reverse conversions" half; without `pdf`
+in `writes`, no engine would match either job. This doesn't collide with
+`pdfEngine`'s existing `pdf → pdf` recompression: `engineForJob` takes the
+first match in registration order, and `pdfEngine` is registered before
+`wordEngine` (below), so that case still resolves to `pdfEngine` exactly as
+it did before this feature existed.
 
 Registered in `engines/registry.ts` as
 `[imageEngine, pdfEngine, wordEngine, pdfiumEngine]` — anywhere before
