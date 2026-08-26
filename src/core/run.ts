@@ -1,5 +1,6 @@
 import { cpus } from 'node:os'
 import { engineForJob } from '../engines/registry.js'
+import type { Engine } from '../engines/types.js'
 import { conversionFailed, isForgeError } from './errors.js'
 import type { InputFailure } from './resolve.js'
 import type { Job, Progress, Result } from './types.js'
@@ -25,9 +26,19 @@ export function defaultConcurrency(): number {
 
 export async function runJobs(
   jobs: Job[],
-  opts: { concurrency?: number; onEvent?: (event: RunEvent) => void },
+  opts: {
+    concurrency?: number
+    onEvent?: (event: RunEvent) => void
+    /**
+     * Resolves the engine for a job. Defaults to the registry; `runPlan`
+     * threads its own through so a test can drive the whole pipeline against a
+     * stub engine without reaching the real encoders.
+     */
+    engineFor?: (job: Job) => Engine | undefined
+  },
 ): Promise<RunSummary> {
   const emit = opts.onEvent ?? (() => {})
+  const resolveEngine = opts.engineFor ?? engineForJob
   // A caller-supplied concurrency that is not a finite number (NaN from a bad
   // parse, Infinity, ...) must never be allowed to collapse the worker count
   // to zero — that would silently convert nothing while still resolving.
@@ -48,7 +59,7 @@ export async function runJobs(
 
       emit({ type: 'job:start', job, index, total })
 
-      const engine = engineForJob(job)
+      const engine = resolveEngine(job)
       if (!engine) {
         completed++
         const path = job.sources[0].path
