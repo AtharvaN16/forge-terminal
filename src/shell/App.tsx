@@ -22,6 +22,7 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
+import { splitPastedPaths } from '../utils/unescape-path.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
@@ -32,12 +33,12 @@ import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
 import { Progress } from './components/Progress.js'
 import { Prompt } from './components/Prompt.js'
+import { ResultLinks } from './components/ResultLinks.js'
 import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
-import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
@@ -639,6 +640,29 @@ export function App({
     { isActive: step === 'idle' && !paletteOwnsEscape },
   )
 
+  /**
+   * `.catch`, not `void`: `reveal.ts` promisifies `execFile`, so `open`
+   * exiting non-zero — which is exactly what it does when the file has
+   * since been moved, renamed, or its volume unmounted — rejects. A
+   * `void`ed rejection is an unhandled rejection, and Node terminates
+   * the process and prints the stack. Result blocks live in `<Static>`
+   * scrollback for the rest of the session, so `o` and `s` (and the
+   * result links, which call the same two functions) stay pressable
+   * long after the file they point at has gone.
+   *
+   * Shared by the `o`/`s` keys and by clicking the result links. One
+   * function per action, not two copies that can drift — the `.catch`
+   * above is easy to omit from a second copy.
+   */
+  const openLastResult = () => {
+    if (!lastResult) return
+    openPath(lastResult.job.outputs[0]).catch(showError)
+  }
+  const revealLastResult = () => {
+    if (!lastResult) return
+    revealPath(lastResult.job.outputs[0]).catch(showError)
+  }
+
   useKeys(
     (input, key) => {
       if (!lastResult) return
@@ -652,17 +676,8 @@ export function App({
         setStep('idle')
         return
       }
-      /**
-       * `.catch`, not `void`: `reveal.ts` promisifies `execFile`, so `open`
-       * exiting non-zero — which is exactly what it does when the file has
-       * since been moved, renamed, or its volume unmounted — rejects. A
-       * `void`ed rejection is an unhandled rejection, and Node terminates
-       * the process and prints the stack. Result blocks live in `<Static>`
-       * scrollback for the rest of the session, so `f` and `o` stay
-       * pressable long after the file they point at has gone.
-       */
-      if (input === 'o') openPath(lastResult.job.outputs[0]).catch(showError)
-      if (input === 's') revealPath(lastResult.job.outputs[0]).catch(showError)
+      if (input === 'o') openLastResult()
+      if (input === 's') revealLastResult()
       if (input === 'q') exit()
       // Acts on the measured suggestion: re-enters convert with that target
       // already chosen, so the offer is one keystroke from being taken.
@@ -834,6 +849,47 @@ export function App({
       }
       const id = ++requestId.current
       setText('')
+
+      // A real OS drag of several files pastes every escaped path on one
+      // line, space-separated — the mechanism `splitPastedPaths` was written
+      // and tested for, but left unwired while the shell was single-file
+      // only (see the design spec's "one path per drop" section). It stays
+      // uncalled for a lone path: `Prompt` already ran `unescapePath` on
+      // `trimmed` before this fires, so a single result here has nothing
+      // left to split. (A dropped filename that itself contains an escaped
+      // space, alongside a second file in the same multi-drop, is the one
+      // case that can still mis-split — `Prompt`'s own unescaping already
+      // resolved that filename's backslash before `splitPastedPaths` ever
+      // sees the line, so it can no longer tell that space apart from the
+      // one separating the two paths. Narrower than the common case this
+      // exists for, and not something a single-path drop ever hits.)
+      const paths = splitPastedPaths(trimmed)
+      if (paths.length > 1) {
+        const infos: SourceInfo[] = []
+        const failures: InputFailure[] = []
+        for (const path of paths) {
+          try {
+            infos.push(await probe(path))
+          } catch (e) {
+            failures.push({ path, error: isForgeError(e) ? e : unexpectedError(e) })
+          }
+        }
+        if (requestId.current !== id) return // superseded by a later submission
+        const next = addToStage(stage, infos, failures)
+        setStage(next)
+        setValues({})
+        if (next.sources.length > 1) {
+          if (!pdfActionsApply(next.sources)) {
+            refuseBatch()
+            return
+          }
+          setStep('idle')
+          return
+        }
+        setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
+        return
+      }
+
       try {
         const info = await probe(trimmed)
         if (requestId.current !== id) return // superseded by a later submission
@@ -1963,17 +2019,19 @@ export function App({
                   </Text>
                 </Box>
               ) : null}
-              {/* Only where the terminal makes OSC 8 clickable. Otherwise
-                fileLink falls back to a bare file:// URL — a long, unreadable
-                line that says nothing the hints below it do not already say,
-                which is why it read as a duplicate. */}
-              {hyperlinksSupported() ? (
-                <Text>
-                  {fileLink('Open file', lastResult.job.outputs[0])}
-                  {'  ·  '}
-                  {fileLink(revealLabel(), lastResult.job.outputs[0].replace(/\/[^/]+$/, ''))}
-                </Text>
-              ) : null}
+              {/* Renders in every terminal, not only where OSC 8 is
+                supported: Terminal.app has no OSC 8, so this label used to
+                be gated away entirely there. Clicking is now app-level hit
+                testing rather than a terminal hyperlink, so the label no
+                longer needs to be gated on `hyperlinksSupported()` — see
+                `ResultLinks`, which still emits an OSC 8 hyperlink where the
+                terminal supports one. */}
+              <ResultLinks
+                outputPath={lastResult.job.outputs[0]}
+                revealLabel={revealLabel()}
+                onOpen={openLastResult}
+                onReveal={revealLastResult}
+              />
               <HintBar
                 width={width}
                 pairs={[
