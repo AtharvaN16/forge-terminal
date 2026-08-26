@@ -31,7 +31,7 @@ import type {
   Warning,
 } from '../core/types.js'
 import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
-import type { Engine } from './types.js'
+import type { Engine, Measurer } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
   'jpeg',
@@ -362,6 +362,21 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
   }
 }
 
+/**
+ * One rung: an image has a single lever, quality.
+ *
+ * The resolution ladder lives in the PDF engine, which is the only module that
+ * knows why 150 → 120 → 96 → 72 and not some other sequence.
+ */
+async function measurer(job: Job): Promise<Measurer | undefined> {
+  if (job.op !== 'convert') return undefined
+  const source = job.sources[0]
+  return {
+    ladder: [{}],
+    measure: async (options) => (await encodeToBuffer(source, job.target, options)).length,
+  }
+}
+
 export const imageEngine: Engine = {
   id: 'image',
   reads: READS,
@@ -369,4 +384,5 @@ export const imageEngine: Engine = {
   ops: new Set<Job['op']>(['convert']),
   probe,
   run,
+  measurer,
 }
