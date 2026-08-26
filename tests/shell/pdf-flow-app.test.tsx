@@ -192,9 +192,10 @@ describe('/pdf end to end through App', () => {
     await settle(400)
     expect(lastFrame() ?? '').toContain('Convert PDF to')
 
-    // Picker order is JPEG, PNG, a gap, then the /pdf row — two arrow-downs
-    // from JPEG lands on it, the gap itself unreachable like any disabled row.
-    stdin.write(DOWN + DOWN)
+    // Picker order is JPEG, PNG, DOCX, a gap, then the /pdf row — three
+    // arrow-downs from JPEG lands on it, the gap itself unreachable like any
+    // disabled row.
+    stdin.write(DOWN + DOWN + DOWN)
     await settle()
     stdin.write(ENTER)
     await settle(400)
