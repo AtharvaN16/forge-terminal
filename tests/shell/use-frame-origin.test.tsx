@@ -136,4 +136,27 @@ describe('useFrameOrigin', () => {
     expect(writes.some((w) => w.includes('[6n'))).toBe(true)
     app.unmount()
   })
+
+  it('stops issuing queries once too many replies are outstanding, instead of growing forever', () => {
+    const app = render(<Harness revision={0} lines={2} />)
+    writes.length = 0
+    // A terminal that never replies to DSR at all — the case that would
+    // otherwise leak one pending entry per recalibration for the life of the
+    // process. Drive far more height changes than any reasonable bound, and
+    // never deliver a single reply.
+    for (let n = 3; n <= 20; n++) {
+      app.rerender(<Harness revision={0} lines={n} />)
+    }
+    const queriesWhileUnanswered = writes.filter((w) => w.includes('[6n')).length
+    // Bounded, not one-per-trigger: 18 height changes above, far fewer queries.
+    expect(queriesWhileUnanswered).toBeGreaterThan(0)
+    expect(queriesWhileUnanswered).toBeLessThan(10)
+
+    // Once the cap is hit, a further unanswered trigger issues nothing more —
+    // this is "gave up on this terminal", not "still catching up".
+    writes.length = 0
+    app.rerender(<Harness revision={0} lines={21} />)
+    expect(writes.filter((w) => w.includes('[6n'))).toHaveLength(0)
+    app.unmount()
+  })
 })

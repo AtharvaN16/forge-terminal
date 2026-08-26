@@ -6,6 +6,19 @@ import { writeToTerminal } from './terminal-write.js'
 import { useCursorReport } from './useMouse.js'
 
 /**
+ * How many unanswered `CURSOR_QUERY` writes `pendingHeights` tolerates before
+ * this hook stops sending more. Real latency plus a burst of triggers (a fast
+ * resize followed immediately by a revision bump, say) can leave a couple of
+ * replies outstanding briefly; a terminal that never answers DSR at all —
+ * some multiplexers, CI/wrapper PTYs, minimal emulators, all real, not
+ * hypothetical — would otherwise leave this queue growing by one on every
+ * recalibration for the life of the process. Small enough to bound that
+ * leak quickly, generous enough that ordinary round-trip latency never
+ * trips it.
+ */
+const MAX_PENDING_QUERIES = 4
+
+/**
  * The absolute row the frame's first line occupies, or null until the terminal
  * has answered once.
  *
@@ -79,6 +92,21 @@ export function useFrameOrigin(
     const resized = lastColumns.current !== stdout?.columns || lastRows.current !== stdout?.rows
 
     if (!heightChanged && !revisionChanged && !resized) return
+
+    // A terminal that never answers DSR is an expected case, not an anomaly
+    // (see `MAX_PENDING_QUERIES`) — nothing ever shifts `pendingHeights` in
+    // that world, so left ungated this would push one more entry per
+    // recalibration for as long as the process runs. Once that many replies
+    // are still outstanding, give up asking: `origin` stays at whatever it
+    // last resolved to (`null`, if the very first query was never answered),
+    // mouse support degrades to inert rather than guessing, and no further
+    // escape sequences are wasted on a terminal that ignores them.
+    //
+    // The trackers below are deliberately left stale while gated, so that
+    // the render right after a slot frees (a reply finally does shift one
+    // off) re-evaluates against *current* geometry rather than the
+    // possibly-long-stale geometry from when queries first stopped.
+    if (pendingHeights.current.length >= MAX_PENDING_QUERIES) return
 
     lastHeight.current = height
     lastRevision.current = revision
