@@ -3,8 +3,18 @@ import { join } from 'node:path'
 import { PDFParse } from 'pdf-parse'
 import { describe, expect, it } from 'vitest'
 import { probe } from '../../src/engines/registry.js'
-import { libreOfficeAvailable, probe as probeWordDocument, wordEngine } from '../../src/engines/word.js'
-import { makeCorruptFile, makeDoc, makeDocx, makeTempDir, makeTextPdf } from '../helpers/fixtures.js'
+import {
+  libreOfficeAvailable,
+  probe as probeWordDocument,
+  wordEngine,
+} from '../../src/engines/word.js'
+import {
+  makeCorruptFile,
+  makeDoc,
+  makeDocx,
+  makeTempDir,
+  makeTextPdf,
+} from '../helpers/fixtures.js'
 
 async function requireLibreOffice(ctx: { skip: (reason: string) => void }) {
   const soffice = await libreOfficeAvailable()
@@ -23,7 +33,13 @@ describe('wordEngine.run — LibreOffice path', () => {
     const source = await probeWordDocument(path)
     const output = join(dir, 'out.pdf')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'pdf', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'pdf',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -45,7 +61,13 @@ describe('wordEngine.run — LibreOffice path', () => {
     const source = await probeWordDocument(path)
     const output = join(dir, 'out.pdf')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'pdf', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'pdf',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -59,7 +81,13 @@ describe('wordEngine.run — LibreOffice path', () => {
     const source = await probe(path)
     const output = join(dir, 'out.docx')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'docx', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'docx',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -81,7 +109,13 @@ describe('wordEngine.run — LibreOffice path', () => {
     const output = join(dir, 'out.pdf')
     await expect(
       wordEngine.run(
-        { op: 'convert', sources: [source], outputs: [output], target: 'pdf', options: { background: '#ffffff', keepMetadata: false } },
+        {
+          op: 'convert',
+          sources: [source],
+          outputs: [output],
+          target: 'pdf',
+          options: { background: '#ffffff', keepMetadata: false },
+        },
         () => {},
       ),
     ).rejects.toMatchObject({ code: 'conversion-failed' })

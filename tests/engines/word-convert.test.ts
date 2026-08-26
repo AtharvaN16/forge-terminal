@@ -10,7 +10,13 @@ import {
   stopForcingLibreOfficeForTests,
   wordEngine,
 } from '../../src/engines/word.js'
-import { makeCorruptFile, makeDoc, makeDocx, makeTempDir, makeTextPdf } from '../helpers/fixtures.js'
+import {
+  makeCorruptFile,
+  makeDoc,
+  makeDocx,
+  makeTempDir,
+  makeTextPdf,
+} from '../helpers/fixtures.js'
 
 describe('wordEngine.run — npm fallback', () => {
   // Forced for every test in this file, so it always exercises the fallback
@@ -28,7 +34,13 @@ describe('wordEngine.run — npm fallback', () => {
     const source = await probeWordDocument(path)
     const output = join(dir, 'out.pdf')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'pdf', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'pdf',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -49,7 +61,13 @@ describe('wordEngine.run — npm fallback', () => {
     const source = await probeWordDocument(path)
     const output = join(dir, 'out.pdf')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'pdf', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'pdf',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -65,7 +83,13 @@ describe('wordEngine.run — npm fallback', () => {
     const source = await probe(path)
     const output = join(dir, 'out.docx')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'docx', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'docx',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -79,7 +103,13 @@ describe('wordEngine.run — npm fallback', () => {
     const source = await probeWordDocument(path)
     const output = join(dir, 'out.docx')
     const result = await wordEngine.run(
-      { op: 'convert', sources: [source], outputs: [output], target: 'docx', options: { background: '#ffffff', keepMetadata: false } },
+      {
+        op: 'convert',
+        sources: [source],
+        outputs: [output],
+        target: 'docx',
+        options: { background: '#ffffff', keepMetadata: false },
+      },
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
@@ -101,7 +131,13 @@ describe('wordEngine.run — npm fallback', () => {
     const output = join(dir, 'out.pdf')
     await expect(
       wordEngine.run(
-        { op: 'convert', sources: [source], outputs: [output], target: 'pdf', options: { background: '#ffffff', keepMetadata: false } },
+        {
+          op: 'convert',
+          sources: [source],
+          outputs: [output],
+          target: 'pdf',
+          options: { background: '#ffffff', keepMetadata: false },
+        },
         () => {},
       ),
     ).rejects.toMatchObject({ code: 'conversion-failed' })

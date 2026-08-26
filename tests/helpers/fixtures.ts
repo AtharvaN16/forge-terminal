@@ -308,7 +308,11 @@ export async function pdfPageCount(path: string): Promise<number> {
 }
 
 /** A PDF with real, extractable text on each page — unlike `makePdf`'s blank pages. */
-export async function makeTextPdf(dir: string, name: string, pagesOfText: string[]): Promise<string> {
+export async function makeTextPdf(
+  dir: string,
+  name: string,
+  pagesOfText: string[],
+): Promise<string> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   for (const text of pagesOfText) {

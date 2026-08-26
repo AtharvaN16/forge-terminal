@@ -10,7 +10,10 @@ remember — point it at a file or a folder, say what you want it to become,
 and it writes the result next to the original (or wherever you tell it to).
 
 Version 0.1 converts images: JPEG, PNG, WebP, AVIF, GIF, TIFF, and reads
-HEIC. It runs correctly, not just fast — auto-orienting phone photos,
+HEIC. It also converts between PDF and Word documents (DOCX both ways, DOC
+one way in) — install [LibreOffice](https://www.libreoffice.org/) for
+full-fidelity results; without it, Forge still converts, using a plain-text
+fallback and a note in the result saying so. It runs correctly, not just fast — auto-orienting phone photos,
 flattening transparency instead of turning it black, and stripping GPS data
 from EXIF by default so a converted photo doesn't quietly leak where it was
 taken.
