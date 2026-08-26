@@ -153,6 +153,12 @@ describe('click target registry', () => {
 
   it('does not notify subscribers when a mounted target re-registers unchanged', async () => {
     const h = mount()
+    // A genuinely new registration's notification is deferred by a
+    // microtask too now (round 2: so a parent whose subscribing effect runs
+    // after a child's registering effect still hears about it — see
+    // ClickTargets.tsx). Let the initial mount's pair of add notifications
+    // land before subscribing, so only the re-render below is under test.
+    await Promise.resolve()
     const listener = vi.fn()
     const unsubscribe = h.registry.subscribe(listener)
     // useClickTarget's effect has no dependency array, so this re-render

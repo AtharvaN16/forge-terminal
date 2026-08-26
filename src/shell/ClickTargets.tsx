@@ -96,7 +96,27 @@ export function ClickTargetProvider({ children }: { children: ReactNode }) {
         const reappeared = pendingRemovals.delete(target.id)
         const isNew = !reappeared && !targets.has(target.id)
         targets.set(target.id, target)
-        if (isNew) notify()
+        if (isNew) {
+          // Deferred for the same reason a removal is, but against a
+          // different ordering hazard: `useMouseRouting` (the subscriber,
+          // via `useSyncExternalStore`) and `useClickTarget` (the
+          // registrant) normally live in different components — a parent
+          // and a child, e.g. `App` and `Prompt` — and React always runs a
+          // child's effects before its parent's within one commit. A
+          // synchronous `notify()` here fires from the child's registration
+          // effect, before the parent's own effect has reached its
+          // `subscribe()` call, so it reaches a `listeners` set that's
+          // still empty and is gone for good — nothing else re-renders the
+          // subscriber, so it never finds out a target now exists. A
+          // same-component harness where one function calls both hooks
+          // can't see this: within one component, effects run in hook
+          // declaration order, not commit order, so subscribing-before-
+          // registering is guaranteed there in a way it isn't across a
+          // parent/child boundary. Deferring to a microtask runs the
+          // notification after every effect in the commit has finished,
+          // including a parent's, regardless of which component ran first.
+          queueMicrotask(notify)
+        }
         return () => {
           // Guarded so a stale cleanup cannot evict a live target that
           // re-registered under the same id after a re-render.
