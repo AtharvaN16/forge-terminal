@@ -1,5 +1,7 @@
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { basename, extname, join } from 'node:path'
 import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
 import { find as cfbFind, parse as cfbParse } from 'cfb'
@@ -8,7 +10,10 @@ import mammoth from 'mammoth'
 import { PDFDocument as PDFLibDocument, StandardFonts } from 'pdf-lib'
 import { PDFParse } from 'pdf-parse'
 import WordExtractor from 'word-extractor'
-import type { DocumentInfo } from '../core/types.js'
+import { writeAtomic } from '../core/atomic.js'
+import { conversionFailed } from '../core/errors.js'
+import type { DocumentInfo, FormatId, Job, Progress, Result, Warning } from '../core/types.js'
+import type { Engine } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -277,4 +282,80 @@ export async function buildDocx(paragraphs: string[]): Promise<Buffer> {
   )
   const doc = new DocxDocument({ sections: [{ children }] })
   return Packer.toBuffer(doc)
+}
+
+const READS: ReadonlySet<FormatId> = new Set<FormatId>(['docx', 'doc', 'pdf'])
+const WRITES: ReadonlySet<FormatId> = new Set<FormatId>(['docx', 'pdf'])
+const OPS: ReadonlySet<Job['op']> = new Set<Job['op']>(['convert'])
+
+const BASIC_FIDELITY_WARNING: Warning = {
+  code: 'word-basic-fidelity',
+  message:
+    "Converted with basic formatting only — tables, images, and complex layouts weren't preserved. " +
+    'Install LibreOffice for full-fidelity conversion: brew install --cask libreoffice',
+}
+
+/**
+ * Shells out to LibreOffice's headless converter. `--convert-to` takes the
+ * extension name directly — 'pdf' and 'docx' both are exactly that, so no
+ * mapping from `FormatId` is needed. LibreOffice names its own output after
+ * the input's basename, which is why the produced file has to be found
+ * rather than assumed to already be at `job.outputs[0]`.
+ */
+async function runSoffice(soffice: string, sourcePath: string, target: FormatId): Promise<Buffer> {
+  const outDir = await mkdtemp(join(tmpdir(), 'forge-word-'))
+  try {
+    await execFileAsync(
+      soffice,
+      ['--headless', '--convert-to', target, '--outdir', outDir, sourcePath],
+      { timeout: 120_000 },
+    )
+    const stem = basename(sourcePath, extname(sourcePath))
+    return await readFile(join(outDir, `${stem}.${target}`))
+  } finally {
+    await rm(outDir, { recursive: true, force: true })
+  }
+}
+
+async function run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
+  if (job.op !== 'convert') throw new Error(`the word engine cannot ${job.op}`)
+  const source = job.sources[0]
+  if (source.kind !== 'document') {
+    throw new Error('the word engine can only convert a document source')
+  }
+
+  onPhase({ phase: 'reading' })
+  const soffice = await libreOfficeAvailable()
+
+  onPhase({ phase: 'encoding' })
+  const warnings: Warning[] = []
+  let bytes: Uint8Array
+  try {
+    if (soffice !== undefined) {
+      bytes = await runSoffice(soffice, source.path, job.target)
+    } else {
+      const paragraphs = await extractPlainText(source)
+      bytes = job.target === 'pdf' ? await layoutAsPdf(paragraphs) : await buildDocx(paragraphs)
+      warnings.push(BASIC_FIDELITY_WARNING)
+    }
+  } catch (e) {
+    // A failed soffice invocation and a failed npm-fallback parse are both
+    // real conversion failures, not a signal to silently retry the other
+    // path — the spec's decision (§3) is that only "not installed at all"
+    // routes to the fallback, never a per-file failure.
+    throw conversionFailed(source.path, e)
+  }
+
+  onPhase({ phase: 'writing' })
+  const outputBytes = await writeAtomic(job.outputs[0], bytes)
+  return { job, outputBytes, warnings }
+}
+
+export const wordEngine: Engine = {
+  id: 'word',
+  reads: READS,
+  writes: WRITES,
+  ops: OPS,
+  probe,
+  run,
 }
