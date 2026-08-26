@@ -102,4 +102,38 @@ describe('useFrameOrigin', () => {
     expect(app.lastFrame()).toContain('origin=11')
     app.unmount()
   })
+
+  it('pairs each in-flight query with its own reply, in the order sent', async () => {
+    const app = render(<Harness revision={0} lines={2} />)
+    // Mount already queued a query for the 3-line frame (2 lines + the origin
+    // line). Grow the frame before that reply arrives, so a second query is
+    // in flight at the same time — the two-recalibrations-before-any-reply
+    // case a scalar `pendingHeight` cannot survive.
+    app.rerender(<Harness revision={0} lines={5} />)
+    // Replies arrive in the order the queries were sent: the mount query's
+    // reply (paired with height 3) before the growth query's reply (paired
+    // with height 6, the new 5-line + origin-line frame).
+    await act(async () => {
+      reportHandlers[0]?.({ row: 10, col: 0 })
+    })
+    expect(app.lastFrame()).toContain('origin=7')
+    await act(async () => {
+      reportHandlers[0]?.({ row: 20, col: 0 })
+    })
+    expect(app.lastFrame()).toContain('origin=14')
+    app.unmount()
+  })
+
+  it('recalibrates when the terminal resizes', () => {
+    const app = render(<Harness revision={0} lines={2} />)
+    writes.length = 0
+    // The fake terminal's `columns` is a hardcoded getter on the class
+    // prototype; shadow it with an own property on this instance so the test
+    // can drive it, the same way a real resize changes what `useStdout`
+    // reports.
+    Object.defineProperty(app.stdout, 'columns', { get: () => 40, configurable: true })
+    app.rerender(<Harness revision={0} lines={2} />)
+    expect(writes.some((w) => w.includes('[6n'))).toBe(true)
+    app.unmount()
+  })
 })

@@ -38,21 +38,32 @@ export function useFrameOrigin(
   const [origin, setOrigin] = useState<number | null>(null)
 
   /**
-   * The height the frame had when the in-flight query was sent. The reply
-   * carries no identity, so it must be paired with the height that was current
-   * when it was asked for — pairing it with the height at *arrival* would be
-   * wrong for any render that happened in between.
+   * Heights of in-flight queries, oldest first. The reply carries no identity,
+   * so it must be paired with the height that was current when it was *sent*
+   * — pairing it with the height at arrival would be wrong for any render
+   * that happened in between, and a single scalar survives only one in-flight
+   * query at a time: a second recalibration before the first reply lands
+   * would overwrite it, mispairing the first reply and dropping the second
+   * (its arrival would see nothing pending).
+   *
+   * A FIFO queue instead of a scalar is correct because DSR replies are not
+   * reordered — the terminal answers requests over a single serial
+   * connection in the order they were sent — so shifting the oldest pending
+   * height off the front always matches the oldest reply still owed,
+   * however many queries are in flight at once.
    */
-  const pendingHeight = useRef<number | null>(null)
+  const pendingHeights = useRef<number[]>([])
   const lastHeight = useRef<number | null>(null)
   const lastRevision = useRef<number | null>(null)
   const lastColumns = useRef<number | undefined>(stdout?.columns)
   const lastRows = useRef<number | undefined>(stdout?.rows)
 
   useCursorReport((position) => {
-    const height = pendingHeight.current
-    if (height === null) return
-    pendingHeight.current = null
+    // A reply with nothing queued is a stray report the app did not ask for
+    // (or one delivered after this component already unmounted its previous
+    // instance) — ignore it rather than pairing it with an unrelated height.
+    const height = pendingHeights.current.shift()
+    if (height === undefined) return
     setOrigin(frameTopFromCursor(position.row, height))
   })
 
@@ -74,7 +85,7 @@ export function useFrameOrigin(
     lastColumns.current = stdout?.columns
     lastRows.current = stdout?.rows
 
-    pendingHeight.current = height
+    pendingHeights.current.push(height)
     writeToTerminal(CURSOR_QUERY, stdout as NodeJS.WriteStream | undefined)
   })
 
