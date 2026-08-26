@@ -2,7 +2,10 @@ import { mergeOutputPath } from '../output-path.js'
 import type { Job, SourceInfo } from '../types.js'
 import type { Action } from './index.js'
 
-const documents = (sources: SourceInfo[]) => sources.filter((s) => s.kind === 'document')
+// Page operations are pdf-only — a docx/doc has no fixed page tree to
+// merge, split, extract from, delete from, or rotate.
+const documents = (sources: SourceInfo[]) =>
+  sources.filter((s) => s.kind === 'document' && s.format === 'pdf')
 
 export const mergeAction: Action = {
   id: 'merge',

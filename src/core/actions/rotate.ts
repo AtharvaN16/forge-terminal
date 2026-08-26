@@ -2,8 +2,11 @@ import { suffixedOutputPath } from '../output-path.js'
 import type { DocumentInfo, Job, SourceInfo } from '../types.js'
 import type { Action, OptionSpec } from './index.js'
 
+// Page operations are pdf-only — see merge.ts's identical comment.
 const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
-  sources.length === 1 && sources[0]?.kind === 'document' ? sources[0] : undefined
+  sources.length === 1 && sources[0]?.kind === 'document' && sources[0].format === 'pdf'
+    ? sources[0]
+    : undefined
 
 export const rotateAction: Action = {
   id: 'rotate',

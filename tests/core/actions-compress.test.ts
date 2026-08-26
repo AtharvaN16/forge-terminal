@@ -146,6 +146,18 @@ describe('/compress and PDFs', () => {
     expect(compressAction.appliesTo([legacy])).toBe(false)
   })
 
+  it('does not apply to a docx/doc source either — there is nothing to re-encode', () => {
+    const docx: DocumentInfo = {
+      kind: 'document',
+      path: '/Users/me/report.docx',
+      format: 'docx',
+      bytes: 50_000,
+      pages: 3,
+      encrypted: false,
+    }
+    expect(compressAction.appliesTo([docx])).toBe(false)
+  })
+
   it('plans a PDF job that keeps the format and targets a -small name', () => {
     const [job] = compressAction.plan([pdf({ compressible: 2, skipped: 0 })], {
       mode: 'quality',
