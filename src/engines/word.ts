@@ -1,7 +1,11 @@
 import { readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
 import { find as cfbFind, parse as cfbParse } from 'cfb'
 import type { DocumentInfo } from '../core/types.js'
+
+const execFileAsync = promisify(execFile)
 
 const OLE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
 
@@ -92,4 +96,65 @@ export async function probe(path: string): Promise<DocumentInfo> {
   // sees) — the same "defensive, expected to be shadowed" throw
   // `pdfiumEngine.probe()` uses for its own unreachable case.
   throw new Error(`${path} is not a Word document`)
+}
+
+/**
+ * A Homebrew cask install (`brew install --cask libreoffice`) puts
+ * `LibreOffice.app` in `/Applications` but does not add `soffice` to `PATH`
+ * — this is the fallback location when the PATH lookup below fails.
+ */
+const CASK_SOFFICE_PATH = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
+
+async function resolveSofficePath(): Promise<string | undefined> {
+  try {
+    await execFileAsync('soffice', ['--version'], { timeout: 5000 })
+    return 'soffice'
+  } catch {
+    // Not on PATH — fall through to the fixed cask location.
+  }
+  try {
+    await execFileAsync(CASK_SOFFICE_PATH, ['--version'], { timeout: 5000 })
+    return CASK_SOFFICE_PATH
+  } catch {
+    return undefined
+  }
+}
+
+let sofficePath: Promise<string | undefined> | undefined
+
+/**
+ * Whether LibreOffice's headless CLI is available here, and where. Cached
+ * for the process, the same way `heic.ts`'s `heicDecodable()` caches its own
+ * one-time shell probe — "install it and try again" naturally picks this up
+ * on the next run, so no invalidation logic is needed.
+ */
+let forcing = false
+let forcedValue: string | undefined
+
+export async function libreOfficeAvailable(): Promise<string | undefined> {
+  if (forcing) return forcedValue
+  sofficePath ??= resolveSofficePath()
+  return sofficePath
+}
+
+/** Only for tests, which need to exercise both the available and missing paths. */
+export function resetLibreOfficeCache(): void {
+  sofficePath = undefined
+}
+
+/**
+ * Only for tests: forces `libreOfficeAvailable()`'s answer regardless of
+ * what is actually installed. Needed because `run()`'s two dispatch
+ * branches (LibreOffice vs. the npm fallback) must both be covered
+ * deterministically — whether this machine happens to have LibreOffice
+ * installed cannot be allowed to change which branch a test exercises.
+ */
+export function forceLibreOfficeForTests(path: string | undefined): void {
+  forcing = true
+  forcedValue = path
+}
+
+/** Only for tests: undoes `forceLibreOfficeForTests`, restoring real detection. */
+export function stopForcingLibreOfficeForTests(): void {
+  forcing = false
 }
