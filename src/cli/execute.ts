@@ -13,9 +13,7 @@ import {
 import { runPlan } from '../core/execute-jobs.js'
 import { buildPlan } from '../core/plan.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
-import { runJobs } from '../core/run.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
-import { checkWriteSafety } from '../core/write-safety.js'
 import { openPdf, pdfiumEngine } from '../engines/pdfium.js'
 import type { Intent, PageOpIntent } from './args.js'
 import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
@@ -262,15 +260,14 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     const values = pageOpValues(intent, resolved.sources)
     const planned = action.plan(resolved.sources, values)
 
-    // `action.plan()` bypasses `buildPlan` (its one-source-one-target shape
-    // does not fit merge's several sources or split's several outputs), so
-    // the write-safety rules `buildPlan` enforces for conversions have to be
-    // applied here explicitly instead of inheriting them for free.
-    const safe = checkWriteSafety(planned, { force: intent.force })
+    // `action.plan()` bypasses `buildPlan` — its one-source-one-target shape
+    // does not fit merge's several sources or split's several outputs — but
+    // `runPlan` is arity-agnostic, so the write-safety rules arrive for free
+    // rather than having to be applied here by hand.
+    const outcome = await runPlan(planned, { force: intent.force })
 
-    const summary = await runJobs(safe.jobs, {})
-    const failures = [...resolved.failures, ...safe.failures, ...summary.failures]
-    const stdout = summary.results.length === 0 ? [] : reportPageOp(summary)
+    const failures = [...resolved.failures, ...outcome.refusals, ...outcome.failures]
+    const stdout = outcome.results.length === 0 ? [] : reportPageOp(outcome)
 
     return {
       exitCode: failures.length > 0 ? 1 : 0,
@@ -384,60 +381,55 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     target: intent.target,
     options: intent.options,
     force: intent.force,
-    // Checked below, over both sets at once — see `safe`.
-    deferWriteSafety: true,
     ...(intent.output === undefined ? {} : { output: intent.output }),
   }
   const plan = await buildPlan(planRequest)
 
   /**
    * One write-safety pass over every job this run plans, whatever path
-   * planned it. Two independent passes — one over the raster jobs, one
-   * inside `buildPlan` over the rest — each see only half the outputs, so a
-   * `doc.pdf` rasterising to `doc-1.jpg` and a `doc-1.png` converting to the
-   * same name collide in neither. That is `outputCollision`'s exact case,
-   * and it is the one refusal `--force` must never suppress: silently
-   * writing one file and reporting two converted breaks invariant 6 (a
-   * multi-output job is all-or-nothing) and invariant 7 (the summary never
-   * asserts something untrue).
+   * planned it — `runPlan` does it, over the union.
+   *
+   * Two independent passes — one over the raster jobs, one over the rest —
+   * would each see only half the outputs, so a `doc.pdf` rasterising to
+   * `doc-1.jpg` and a `doc-1.png` converting to the same name would collide
+   * in neither. That is `outputCollision`'s exact case, and it is the one
+   * refusal `--force` must never suppress: silently writing one file and
+   * reporting two converted breaks invariant 6 (a multi-output job is
+   * all-or-nothing) and invariant 7 (the summary never asserts something
+   * untrue).
    *
    * Document jobs go last so an ordinary one-source-one-output conversion
    * keeps the name it would have had on its own, and the multi-output
    * rasterisation is the side told to go elsewhere.
    */
-  const safe = checkWriteSafety([...plan.jobs, ...documentJobs], { force: intent.force })
-
-  const allJobs = safe.jobs
+  const allJobs = [...plan.jobs, ...documentJobs]
   const isBatch = allJobs.length > 1
   if (isBatch) opts.onProgress?.({ completed: 0, total: allJobs.length })
 
-  const summary = await runJobs(allJobs, {
+  const outcome = await runPlan(allJobs, {
+    force: intent.force,
     ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
-    ...(isBatch && opts.onProgress
-      ? {
-          onEvent: (event) => {
-            if (event.type === 'job:done' || event.type === 'job:error') {
-              opts.onProgress?.({ completed: event.completed, total: event.total })
-            }
-          },
-        }
-      : {}),
+    onEvent: (event) => {
+      if (isBatch && (event.type === 'job:done' || event.type === 'job:error')) {
+        opts.onProgress?.({ completed: event.completed, total: event.total })
+      }
+    },
   })
 
   const failures = [
     ...resolved.failures,
     ...documentFailures,
     ...plan.failures,
-    ...safe.failures,
-    ...summary.failures,
+    ...outcome.refusals,
+    ...outcome.failures,
   ]
 
   const stdout =
-    summary.results.length === 0
+    outcome.results.length === 0
       ? []
-      : summary.results.length === 1
-        ? reportSingle(summary)
-        : reportBatch(summary, intent.output)
+      : outcome.results.length === 1
+        ? reportSingle(outcome)
+        : reportBatch(outcome, intent.output)
 
   const stderr = reportFailures(failures, { debug: intent.debug })
 

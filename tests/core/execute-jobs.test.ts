@@ -1,10 +1,13 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import sharp from 'sharp'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { runPlan } from '../../src/core/execute-jobs.js'
+import { buildPlan } from '../../src/core/plan.js'
+import { resolveInputs } from '../../src/core/resolve.js'
 import type { ConvertOptions, DocumentInfo, Job } from '../../src/core/types.js'
 import type { Engine } from '../../src/engines/types.js'
-import { makeTempDir } from '../helpers/fixtures.js'
+import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 let dir: string
 
@@ -169,5 +172,81 @@ describe('runPlan', () => {
     expect(attempts.length).toBeGreaterThan(0)
     expect(attempts.every((a) => a.attempt >= 1 && a.attempt <= a.of)).toBe(true)
     expect(new Set(attempts.map((a) => a.rung.dpi))).toEqual(new Set([150, 120]))
+  })
+})
+
+/**
+ * These rules used to be asserted against `buildPlan`, which enforced them for
+ * conversions while page operations and the compress path each had to remember
+ * to call `checkWriteSafety` themselves. `runPlan` applies them to every job
+ * whatever planned it, so the assertions belong here now.
+ */
+describe('runPlan write safety', () => {
+  const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
+
+  const planFor = async (inputs: string[], target: 'png' | 'jpeg' | 'webp') => {
+    const resolved = await resolveInputs(inputs, { recursive: false })
+    return buildPlan({ resolved, target, options, force: false })
+  }
+
+  it('refuses to overwrite an existing output without force', async () => {
+    const d = await makeTempDir()
+    const a = await makeJpeg(d, 'a.jpg')
+    await makePng(d, 'a.png')
+
+    const outcome = await runPlan((await planFor([a], 'png')).jobs, { force: false })
+
+    expect(outcome.refusals[0]?.error.code).toBe('output-exists')
+    expect(outcome.results).toHaveLength(0)
+  })
+
+  it('allows the overwrite with force', async () => {
+    const d = await makeTempDir()
+    const a = await makeJpeg(d, 'a.jpg')
+    await makePng(d, 'a.png')
+
+    const outcome = await runPlan((await planFor([a], 'png')).jobs, { force: true })
+
+    expect(outcome.refusals).toHaveLength(0)
+    expect(outcome.results).toHaveLength(1)
+  })
+
+  it('refuses to write over its own input without force', async () => {
+    const d = await makeTempDir()
+    const a = await makeJpeg(d, 'a.jpg')
+
+    const outcome = await runPlan((await planFor([a], 'jpeg')).jobs, { force: false })
+
+    expect(outcome.refusals[0]?.error.code).toBe('output-is-input')
+  })
+
+  it('refuses two sources that would clobber the same output, keeping only one job', async () => {
+    const d = await makeTempDir()
+    const jpg = await makeJpeg(d, 'logo.jpg')
+    const webp = join(d, 'logo.webp')
+    await sharp(jpg).webp().toFile(webp)
+
+    const outcome = await runPlan((await planFor([jpg, webp], 'png')).jobs, { force: false })
+
+    expect(outcome.results).toHaveLength(1)
+    expect(outcome.refusals).toHaveLength(1)
+    expect(outcome.refusals[0]?.error.code).toBe('output-collision')
+    expect(outcome.refusals[0]?.error.detail).toContain('logo.jpg')
+    expect(outcome.refusals[0]?.error.detail).toContain('logo.webp')
+    expect(outcome.refusals[0]?.error.detail).toContain('logo.png')
+  })
+
+  /** Force means overwrite-on-disk, never let two writes fight each other. */
+  it('still refuses the collision with force', async () => {
+    const d = await makeTempDir()
+    const jpg = await makeJpeg(d, 'logo.jpg')
+    const webp = join(d, 'logo.webp')
+    await sharp(jpg).webp().toFile(webp)
+
+    const outcome = await runPlan((await planFor([jpg, webp], 'png')).jobs, { force: true })
+
+    expect(outcome.results).toHaveLength(1)
+    expect(outcome.refusals).toHaveLength(1)
+    expect(outcome.refusals[0]?.error.code).toBe('output-collision')
   })
 })

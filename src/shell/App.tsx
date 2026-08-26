@@ -9,11 +9,10 @@ import {
 } from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
-import { findQuality } from '../core/compress.js'
 import { isForgeError, unexpectedError, unsupportedCompress } from '../core/errors.js'
+import { runPlan } from '../core/execute-jobs.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
-import { buildPlan } from '../core/plan.js'
 import type { InputFailure } from '../core/resolve.js'
 import { runJobs } from '../core/run.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
@@ -21,6 +20,7 @@ import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
 import { formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
+import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
@@ -110,10 +110,27 @@ interface PendingSizeUnreachable {
   planned: Extract<Job, { op: 'convert' }>
   destination: string
   output: string
-  opts: { force?: boolean; output?: string }
+  opts: ConversionOpts
   targetBytes: number
   smallest: number
   quality: number
+  /**
+   * The rung the smallest size came from. Only a document has one — an image
+   * search has a single lever — so it names the resolution the "use it anyway"
+   * answer would write at.
+   */
+  dpi?: number
+}
+
+/**
+ * How a conversion was asked for. `targetBytes` travels with it so the search
+ * happens inside `runPlan` rather than in the shell — which is what makes a
+ * document reach the resolution ladder at all.
+ */
+interface ConversionOpts {
+  force?: boolean
+  output?: string
+  targetBytes?: number
 }
 
 /**
@@ -314,7 +331,14 @@ export function App({
   const action = mode === 'compress' ? compressAction : convertAction
 
   /** Where the target-size search has got to, for an honest counter. */
-  const [attempt, setAttempt] = useState<{ n: number; of: number } | undefined>(undefined)
+  /**
+   * `dpi` names the rung a document search is on. Without it, a search
+   * dropping from 150 to 120 dpi looks like the counter restarting for no
+   * reason — the CLI learned this the same way.
+   */
+  const [attempt, setAttempt] = useState<{ n: number; of: number; dpi?: number } | undefined>(
+    undefined,
+  )
   /**
    * The latest `{ phase: 'page' }` event `runJobs` reported, or `null` until
    * one actually arrives. `null` is the whole point, not just an initial
@@ -1024,10 +1048,31 @@ export function App({
     })
   }
 
+  /**
+   * Routes on how the outputs get their names, not on source kind.
+   *
+   * A rasterisation names one output per page (`doc-1.jpg`) — at one page as
+   * much as at twenty — so there is no single stem for a rename field to
+   * edit, and it takes the multi-output path. A compression keeps the
+   * source's own format and plans one ordinarily-named output, so it takes
+   * the ordinary path, where `finishConversion` runs the target-size search.
+   *
+   * Read from the engine's declared `writes` rather than a hardcoded list of
+   * raster formats (invariant 2), the same way the CLI's `rasterises` does.
+   *
+   * Branching on `kind` alone sent every document down the rasterisation
+   * route, a compression included — which is how the shell came to offer "to
+   * a target size" for a scan, collect the number, and ignore it.
+   */
   const confirmDestination = (destination: string) => {
-    if (source?.kind === 'document') {
-      confirmDocumentConversion(destination)
-      return
+    if (!source) return
+
+    if (source.kind === 'document') {
+      const [planned] = action.plan([source], { ...values, destination })
+      if (planned?.op === 'convert' && pdfiumEngine.writes.has(planned.target)) {
+        confirmDocumentConversion(destination)
+        return
+      }
     }
     startRename(destination)
   }
@@ -1098,35 +1143,29 @@ export function App({
   const converting = useRef(false)
 
   /**
-   * Spec §8's write-safety rules live in `buildPlan()` and nowhere else:
-   * never write over the input, and never replace an existing output without
-   * consent. The shell has to route through it for exactly the reason the
-   * CLI does — `targetIdsFor` legitimately offers jpeg for a JPEG, and "Same
-   * folder" is legitimately the first destination preset, so the
+   * Spec §8's write-safety rules live in `core/write-safety.ts` and reach this
+   * path through `runPlan`: never write over the input, never replace an
+   * existing output without consent. The shell needs them for exactly the
+   * reason the CLI does — `targetIdsFor` legitimately offers jpeg for a JPEG,
+   * and "Same folder" is legitimately the first destination preset, so the
    * all-defaults keypath resolves the output straight onto the user's
    * original unless something refuses.
    *
-   * `convertAction.plan()` is still what derives the job (it validates the
-   * target and assembles the `ConvertOptions`); `buildPlan()` is what decides
-   * whether that job is allowed to happen.
+   * `action.plan()` derives the job; `runPlan` decides whether it may happen,
+   * resolves any target size, and runs it. `buildPlan` used to sit in between
+   * re-deriving a job that already existed, which is why the output path had
+   * two authorities and the rename field once offered a name with no
+   * extension.
    *
-   * `resolved.sources` below is still `[source]`, not `stage.sources`, even
-   * though the run path is generally meant to take the whole batch now.
-   * `output` here is always one exact filename — the rename step always
-   * builds `${destination}/${stem}${ext}` for the single representative
-   * `source` — and `buildPlan()` treats a non-directory `output` as the
-   * literal target for *every* source it is given (§ `resolveOutputPath` /
-   * `looksLikeDirectory`). Passing `stage.sources` with that output would
-   * make every source past the first collide on the same path, which
-   * `buildPlan()` correctly reports as `output-collision` failures — but the
-   * refusal branch right below treats *any* failure as the whole run being
-   * refused and returns before calling `runJobs` at all, so a two-file stage
-   * would silently convert nothing instead of batch-converting. Making that
-   * actually work needs the wizard to know it is planning for a batch
-   * (skip or reinterpret the single-file rename step, run the jobs that
-   * did resolve, show more than one result) — real UX decisions Task 12's
-   * brief does not make, so this function still only ever acts on the first
-   * staged file. See the task report for the full trace.
+   * Still one source, not `stage.sources`: `output` here is one exact
+   * filename, since the rename step builds `${destination}/${stem}${ext}` for
+   * a single representative source. Handing the whole stage the same output
+   * would make every source past the first collide on that path — correctly
+   * refused, but the branch below treats any refusal as the whole run being
+   * refused, so a two-file stage would convert nothing instead of batching.
+   * Making that work needs the wizard to know it is planning for a batch
+   * (skip or reinterpret the rename step, run what did resolve, show more
+   * than one result) — UX decisions this change does not make.
    */
   /**
    * The part of a conversion that runs once quality is settled — a plan
@@ -1140,21 +1179,55 @@ export function App({
     planned: Extract<Job, { op: 'convert' }>,
     destination: string,
     output: string,
-    opts: { force?: boolean; output?: string },
+    opts: ConversionOpts,
   ) => {
     if (!source) return
-    // Deliberately still `[source]`, not `stage.sources` — see the note on
-    // `convert()` below for why passing the whole batch here is not a safe
-    // mechanical change.
-    const plan = await buildPlan({
-      resolved: { sources: [source], failures: [], roots: new Map<string, string>() },
-      target: planned.target,
-      output,
-      options: planned.options,
-      force: opts.force ?? false,
-    })
 
-    const refusal = plan.failures[0]
+    // The rename step can redirect where this lands, so the job carries the
+    // final path rather than a second module re-deriving it.
+    planned.outputs[0] = output
+
+    /**
+     * One call for write safety, the target-size search and the run.
+     *
+     * This used to be `buildPlan` (which re-planned a job `action.plan()` had
+     * already produced) followed by `runJobs`, with the search living in
+     * `convert()` — where a document source never reached it. Routing both
+     * kinds through here is what makes a PDF target size take effect.
+     */
+    const outcome = await runPlan([planned], {
+      force: opts.force ?? false,
+      ...(opts.targetBytes === undefined ? {} : { targetBytes: opts.targetBytes }),
+      onEvent: (event) => {
+        if (event.type === 'search:attempt') {
+          setAttempt({ n: event.attempt, of: event.of, dpi: event.rung.dpi })
+        }
+      },
+    })
+    setAttempt(undefined)
+
+    /**
+     * Nothing gets small enough — but the search measured the smallest it
+     * *can* get, so this asks rather than refuses: take that size, or go pick
+     * a format with more room to shrink.
+     */
+    const missed = outcome.unreachable[0]
+    if (missed && opts.targetBytes !== undefined) {
+      setSizeUnreachable({
+        planned,
+        destination,
+        output,
+        opts,
+        targetBytes: opts.targetBytes,
+        smallest: missed.smallest,
+        quality: missed.settings.quality,
+        ...(missed.settings.dpi === undefined ? {} : { dpi: missed.settings.dpi }),
+      })
+      setStep('size-unreachable')
+      return
+    }
+
+    const refusal = outcome.refusals[0]
     if (refusal) {
       // An output that already exists is a question, not a refusal: spec §8
       // says the shell asks — keep both, replace, or cancel.
@@ -1171,7 +1244,7 @@ export function App({
       return
     }
 
-    const summary = await runJobs(plan.jobs, {})
+    const summary = outcome
     const result = summary.results[0]
     if (result) {
       setLastResult(result)
@@ -1236,38 +1309,14 @@ export function App({
 
       /**
        * A target size means the quality is the search's answer, not the
-       * user's. Run it before planning the write, so a target nothing can
-       * reach fails before any file is created.
+       * user's — but the search itself belongs to `runPlan`, which picks the
+       * right ladder from the engine. The shell used to run a one-dimensional
+       * image search here, which a document source never reached at all.
        */
-      if (typeof values.targetBytes === 'number') {
-        setStep('converting')
-        const found = await findQuality({
-          encode: async (quality) =>
-            (await encodeToBuffer(source, planned.target, { ...planned.options, quality })).length,
-          targetBytes: values.targetBytes,
-          onAttempt: (n, of) => setAttempt({ n, of }),
-        })
-        setAttempt(undefined)
-        if (found.missed) {
-          // Nothing gets small enough — but the search still measured the
-          // smallest it *can* get, so this asks rather than just refuses:
-          // take that size, or go pick a format with more room to shrink.
-          setSizeUnreachable({
-            planned,
-            destination,
-            output,
-            opts,
-            targetBytes: values.targetBytes,
-            smallest: found.bytes,
-            quality: found.quality,
-          })
-          setStep('size-unreachable')
-          return
-        }
-        planned.options.quality = found.quality
-      }
-
-      await finishConversion(planned, destination, output, opts)
+      await finishConversion(planned, destination, output, {
+        ...opts,
+        ...(typeof values.targetBytes === 'number' ? { targetBytes: values.targetBytes } : {}),
+      })
     } catch (e) {
       // convertAction.plan() throws synchronously on a bad target, and
       // nothing guarantees buildPlan() or runJobs() can never reject for some
@@ -1286,14 +1335,21 @@ export function App({
   /** Answers `sizeUnreachable`: take the smallest size the search found, or back off to pick a format instead. */
   const answerSizeUnreachable = (choice: string) => {
     if (!sizeUnreachable) return
-    const { planned, destination, output, opts, quality } = sizeUnreachable
+    const { planned, destination, output, opts, quality, dpi } = sizeUnreachable
     setSizeUnreachable(null)
     if (choice === 'lowest') {
       if (converting.current) return
       converting.current = true
       planned.options.quality = quality
+      // A document's smallest came off a resolution rung as well as a quality,
+      // so taking that size means taking both.
+      if (dpi !== undefined) planned.options.dpi = dpi
       setStep('converting')
-      void finishConversion(planned, destination, output, opts)
+      // Deliberately without `targetBytes`: the search already ran and this is
+      // the answer to it. Passing it again would search a second time and miss
+      // a second time.
+      const { targetBytes: _alreadySearched, ...settled } = opts
+      void finishConversion(planned, destination, output, settled)
         .catch((e) => {
           showError(e)
           setStep('idle')

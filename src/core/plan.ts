@@ -3,25 +3,17 @@ import { unsupportedTarget } from './errors.js'
 import { resolveOutputPath } from './output-path.js'
 import type { InputFailure, ResolvedInput } from './resolve.js'
 import type { ConvertOptions, FormatId, Job } from './types.js'
-import { checkWriteSafety } from './write-safety.js'
 
 export interface PlanRequest {
   resolved: ResolvedInput
   target: FormatId
   output?: string
   options: ConvertOptions
-  force: boolean
   /**
-   * Hand back every planned job unchecked, leaving write safety to the
-   * caller. Only `src/cli/execute.ts` sets it, and only because a conversion
-   * run can plan jobs on two paths at once: a document source rasterising
-   * through `convertAction.plan()` (one source, many outputs — a shape
-   * `buildPlan` cannot express) and everything else through here. Two
-   * independent `checkWriteSafety` passes cannot see a collision *between*
-   * the two sets, so the caller runs one pass over the union instead. Left
-   * off, `buildPlan` checks its own jobs exactly as it always has.
+   * Retained because callers pass it through alongside the rest of the
+   * request; write safety itself is `runPlan`'s job now, not this module's.
    */
-  deferWriteSafety?: boolean
+  force: boolean
 }
 
 export interface Plan {
@@ -30,8 +22,14 @@ export interface Plan {
 }
 
 /**
- * Pure with respect to conversion — it decides what will happen and what will
- * not, so every refusal surfaces before a single byte is written.
+ * Turns resolved inputs into one convert job per source.
+ *
+ * Planning only. Write safety used to live here too, which meant a conversion
+ * run that planned on two paths at once — a document rasterising through
+ * `convertAction.plan()`, everything else through here — needed a
+ * `deferWriteSafety` flag so the caller could run one pass over the union.
+ * `runPlan` now checks every job whatever planned it, so the flag and the
+ * condition it patched are both gone.
  */
 export async function buildPlan(req: PlanRequest): Promise<Plan> {
   const jobs: Job[] = []
@@ -63,13 +61,5 @@ export async function buildPlan(req: PlanRequest): Promise<Plan> {
     })
   }
 
-  if (req.deferWriteSafety) return { jobs, failures }
-
-  // The write-safety rules live in exactly one module (`core/write-safety.ts`),
-  // not once here and once there: two copies of "never overwrite an input,
-  // never collide, never replace without --force" are two chances for the
-  // page-operation path and the conversion path to drift apart on what is
-  // refused and in what order.
-  const safe = checkWriteSafety(jobs, { force: req.force })
-  return { jobs: safe.jobs, failures: [...failures, ...safe.failures] }
+  return { jobs, failures }
 }
