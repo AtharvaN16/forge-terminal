@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import { render } from 'ink-testing-library'
-import { useRef } from 'react'
+import { act, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import {
   ClickTargetProvider,
@@ -42,18 +42,20 @@ function mount(props: Partial<Parameters<typeof Harness>[0]> = {}) {
   let registry!: ReturnType<typeof useClickTargetRegistry>
   const onClickA = props.onClickA ?? vi.fn()
   const onClickB = props.onClickB ?? vi.fn()
-  const app = render(
+  const activeB = props.activeB
+  const onRegistry = (r: ReturnType<typeof useClickTargetRegistry>) => {
+    registry = r
+  }
+  // Kept as a builder, not a one-shot element, so `rerenderUnchanged` below
+  // can hand the exact same tree shape back to `app.rerender` — the same
+  // ClickTargetProvider position means React updates the existing instance
+  // (and its memoized registry) instead of remounting it.
+  const buildTree = () => (
     <ClickTargetProvider>
-      <Harness
-        onRegistry={(r) => {
-          registry = r
-        }}
-        onClickA={onClickA}
-        onClickB={onClickB}
-        activeB={props.activeB}
-      />
-    </ClickTargetProvider>,
+      <Harness onRegistry={onRegistry} onClickA={onClickA} onClickB={onClickB} activeB={activeB} />
+    </ClickTargetProvider>
   )
+  const app = render(buildTree())
   return {
     app,
     get registry() {
@@ -61,6 +63,16 @@ function mount(props: Partial<Parameters<typeof Harness>[0]> = {}) {
     },
     onClickA,
     onClickB,
+    /**
+     * Re-renders with identical ids, refs, and handlers — the "an unrelated
+     * ancestor re-rendered" case, not a mount or unmount. Every mounted
+     * `useClickTarget`'s effect has no dependency array, so this still runs
+     * each target's cleanup followed immediately by re-registration; the
+     * registry must treat that as a no-op, not two membership changes.
+     */
+    rerenderUnchanged() {
+      app.rerender(buildTree())
+    },
   }
 }
 
@@ -122,15 +134,43 @@ describe('click target registry', () => {
     second.app.unmount()
   })
 
-  it('notifies subscribers when a target is added or removed', () => {
+  it('notifies subscribers when a target is added or removed', async () => {
     const h = mount()
     const listener = vi.fn()
     const unsubscribe = h.registry.subscribe(listener)
     expect(h.registry.getSnapshot()).toBe(2)
     h.app.unmount()
-    // Unmount removes both targets, and each removal is a membership change.
+    // A removal's notification is deferred by one microtask (see
+    // ClickTargets.tsx) so a same-commit re-registration of the same id can
+    // cancel it — give it one turn to run before checking.
+    await Promise.resolve()
+    // Unmount removes both targets, and each removal is a genuine membership
+    // change with nothing re-registering to cancel it.
     expect(listener).toHaveBeenCalled()
     expect(h.registry.getSnapshot()).toBe(0)
+    unsubscribe()
+  })
+
+  it('does not notify subscribers when a mounted target re-registers unchanged', async () => {
+    const h = mount()
+    const listener = vi.fn()
+    const unsubscribe = h.registry.subscribe(listener)
+    // useClickTarget's effect has no dependency array, so this re-render
+    // still runs cleanup-then-register for both 'a' and 'b' — same ids, same
+    // rects. React always runs the previous cleanup before the new effect in
+    // one commit; a naive notify-on-every-mutation implementation fires on
+    // the delete and again on the re-add, waking a useSyncExternalStore
+    // subscriber for a target that never actually left.
+    await act(async () => {
+      h.rerenderUnchanged()
+    })
+    // The re-registration cancels the pending removal synchronously, but
+    // give any (wrongly) scheduled notification a microtask turn anyway —
+    // this must observe zero calls, not just zero calls so far.
+    await Promise.resolve()
+    expect(listener).not.toHaveBeenCalled()
+    expect(h.registry.getSnapshot()).toBe(2)
+    h.app.unmount()
     unsubscribe()
   })
 })

@@ -52,24 +52,62 @@ export function ClickTargetProvider({ children }: { children: ReactNode }) {
   const registry = useMemo<ClickTargetRegistry>(() => {
     const targets = new Map<string, ClickTarget>()
     const listeners = new Set<() => void>()
+
+    /**
+     * Ids whose removal has run but whose matching re-registration hasn't
+     * shown up yet — either because the removal is real, or because it's
+     * one half of a same-commit delete-then-re-add still in flight.
+     *
+     * React always runs a hook's *previous* effect cleanup before its *new*
+     * effect within the same commit, and `useClickTarget`'s effect has no
+     * dependency array — so a perfectly stable, unchanged target still does
+     * delete-then-re-add on *every* re-render of its owner. Notifying
+     * synchronously on both halves (the naive approach) fires a
+     * `useSyncExternalStore` listener twice per render for a target that
+     * never actually left, with a transient, WRONG snapshot of "one fewer"
+     * readable in between — exactly the failure mode the addendum introduced
+     * `subscribe`/`getSnapshot` to avoid, just moved one level down.
+     *
+     * A pure size (or id-set) diff can't fix this: a mount immediately
+     * followed by an unmount, with nothing in between, nets to the exact
+     * same "no change" as a stable re-render does, yet the two must be told
+     * apart — the former is still a real removal callers need to hear about.
+     * So the removal side defers specifically by id: cleanup marks the id
+     * pending and schedules a microtask that fires the notification unless
+     * a `register` for that *same* id cancels it first. A same-commit
+     * re-registration always runs before any microtask gets a turn, so it
+     * cancels reliably; a real removal has nothing to cancel it and the
+     * notification survives, one microtask late — fine for
+     * `useSyncExternalStore`, which does not require synchronous delivery.
+     * `targets` itself is mutated synchronously either way, so `size()` and
+     * `hitTest()` are never stale.
+     */
+    const pendingRemovals = new Set<string>()
     const notify = () => {
       for (const listener of listeners) listener()
     }
+
     return {
       register(target) {
-        // Adding a new id is a membership change; overwriting an existing
-        // id's rect on a later render is not — only notify on the former,
-        // or useSyncExternalStore would wake on every re-registration.
-        const isNewId = !targets.has(target.id)
+        // A `Set.delete` that finds and removes the entry returns true: this
+        // id's cleanup ran earlier in the same commit, so this is that same
+        // target reappearing, not a new one. Cancel the scheduled removal
+        // instead of counting it as an add.
+        const reappeared = pendingRemovals.delete(target.id)
+        const isNew = !reappeared && !targets.has(target.id)
         targets.set(target.id, target)
-        if (isNewId) notify()
+        if (isNew) notify()
         return () => {
           // Guarded so a stale cleanup cannot evict a live target that
           // re-registered under the same id after a re-render.
-          if (targets.get(target.id) === target) {
-            targets.delete(target.id)
-            notify()
-          }
+          if (targets.get(target.id) !== target) return
+          targets.delete(target.id)
+          pendingRemovals.add(target.id)
+          queueMicrotask(() => {
+            // Still pending means nothing re-registered this id in the
+            // meantime, so the removal is real.
+            if (pendingRemovals.delete(target.id)) notify()
+          })
         }
       },
       hitTest(point) {
