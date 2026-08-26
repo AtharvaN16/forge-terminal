@@ -219,6 +219,12 @@ Rationale:
 `measurer` is optional; an engine that cannot be searched produces a refusal
 via the existing `unsupportedCompress`, not a crash.
 
+**Only `op: 'convert'` jobs carry `options`** (`core/types.ts:101-119`) — merge,
+split, extract, delete and rotate have no `ConvertOptions` at all. Quality
+resolution therefore applies to convert jobs only; a `targetBytes` policy is
+silently irrelevant to page operations rather than an error, since no caller
+can produce that combination through any action's `plan()`.
+
 ---
 
 ## 5. Event stream
@@ -274,8 +280,13 @@ export interface ResultView {
   /** Past tense, one word: 'converted' | 'compressed' | 'split' | 'merged' | … */
   verb: string
   sources: FileRef[]
-  /** Every file written — 20 entries for a 20-page render, not just the first. */
-  outputs: FileRef[]
+  /**
+   * Every path written — 20 entries for a 20-page render, not just the first.
+   * Paths only: `Result` carries a single `outputBytes` total and no per-file
+   * breakdown, so a `FileRef[]` here would be inventing numbers.
+   */
+  outputs: string[]
+  outputBytes: number
   /** Only when one source became one output, so a ratio means something. */
   size?: { from: number; to: number }
   warnings: Warning[]
@@ -299,6 +310,12 @@ by handling the case but by making it unreachable.
   again. Safe here in a way `hint` is not: both front ends say "converted",
   whereas only one has a `--force` flag. The rule: universal wording may live
   in core, front-end-specific wording may not.
+- **`verb` cannot come from `op` alone.** `compressAction.plan()` produces
+  `op: 'convert'` jobs (`execute.ts:308` asserts exactly this), so compress and
+  convert are the same op. They are told apart by whether the target format
+  equals the source format — a compress re-encodes to its own format, a convert
+  does not. `/convert jpeg → jpeg` at a lower quality reads as "compressed",
+  which is accurate rather than a bug.
 - **`outputs` carries all of them.** Bug 3 was never about abbreviation; it was
   the shell not knowing 20 files existed. Core hands over the full list, each
   front end abbreviates for its own width — legitimately different, since the
