@@ -112,15 +112,23 @@ describe('useFrameOrigin', () => {
     app.rerender(<Harness revision={0} lines={5} />)
     // Replies arrive in the order the queries were sent: the mount query's
     // reply (paired with height 3) before the growth query's reply (paired
-    // with height 6, the new 5-line + origin-line frame).
+    // with height 6, the new 5-line + origin-line frame). Row 13 is what a
+    // real terminal would answer for the second query — the frame grew in
+    // place, so its top (7) did not move — which also satisfies
+    // `useFrameOrigin`'s own cross-check that a height/resize-triggered
+    // reply is consistent with the last confirmed origin.
     await act(async () => {
       reportHandlers[0]?.({ row: 10, col: 0 })
     })
     expect(app.lastFrame()).toContain('origin=7')
     await act(async () => {
-      reportHandlers[0]?.({ row: 20, col: 0 })
+      reportHandlers[0]?.({ row: 13, col: 0 })
     })
-    expect(app.lastFrame()).toContain('origin=14')
+    // Still 7 — via height 6 (frameTopFromCursor(13, 6) = 7), not the mount
+    // query's height 3 (frameTopFromCursor(13, 3) = 10, which would show up
+    // as a wrong origin here) — proving the second reply was paired with the
+    // second query's own height, not a mispairing.
+    expect(app.lastFrame()).toContain('origin=7')
     app.unmount()
   })
 
@@ -157,6 +165,53 @@ describe('useFrameOrigin', () => {
     writes.length = 0
     app.rerender(<Harness revision={0} lines={21} />)
     expect(writes.filter((w) => w.includes('[6n'))).toHaveLength(0)
+    app.unmount()
+  })
+
+  /**
+   * Reproduces the effect of, rather than the cause of, the throttle race:
+   * Ink renders with `debug: true` under ink-testing-library (see
+   * node_modules/ink-testing-library/build/index.js), which is what
+   * `unthrottled` in node_modules/ink/build/ink.js checks for — so every
+   * paint here is synchronous and the real race (a query overtaking Ink's own
+   * *throttled* repaint) cannot be provoked from this harness. What can be
+   * tested honestly is the self-correction itself: fed a reply that looks
+   * like it describes the pre-repaint frame — consistent with the old
+   * height, not the one this query was sent for — `useFrameOrigin` must
+   * refuse to commit the origin that pairing implies, and must retry rather
+   * than leave the wrong value standing.
+   */
+  it('does not commit a height/resize reply that is inconsistent with the last confirmed origin, and retries', async () => {
+    const app = render(<Harness revision={0} lines={2} />)
+    await act(async () => {
+      reportHandlers[0]?.({ row: 10, col: 0 }) // 3-line frame -> origin 7
+    })
+    expect(app.lastFrame()).toContain('origin=7')
+
+    writes.length = 0
+    app.rerender(<Harness revision={0} lines={5} />) // height 3 -> 6, no revision bump
+    expect(writes.filter((w) => w.includes('[6n'))).toHaveLength(1)
+
+    // Row 10 is what the *previous* (height-3) query would have received.
+    // Paired with the new query's height of 6 it implies origin 4 — wrong,
+    // since the frame's top never moved. `position.row - originRef(7) !== 6`,
+    // so this must be rejected rather than committed.
+    writes.length = 0
+    await act(async () => {
+      reportHandlers[0]?.({ row: 10, col: 0 })
+    })
+    expect(app.lastFrame()).toContain('origin=7')
+    expect(app.lastFrame()).not.toContain('origin=4')
+    // Rejecting it must not leave the hook silently stuck: a fresh, verified
+    // query goes out against the current (height 6) measurement.
+    expect(writes.filter((w) => w.includes('[6n'))).toHaveLength(1)
+
+    // The retry's reply is consistent with the frame having genuinely just
+    // grown in place (row 13 - origin 7 = height 6), and is accepted.
+    await act(async () => {
+      reportHandlers[0]?.({ row: 13, col: 0 })
+    })
+    expect(app.lastFrame()).toContain('origin=7')
     app.unmount()
   })
 })

@@ -19,6 +19,26 @@ import { useCursorReport } from './useMouse.js'
 const MAX_PENDING_QUERIES = 4
 
 /**
+ * One in-flight `CURSOR_QUERY`: the frame height it was paired with when it
+ * was sent, and whether its reply needs cross-checking before being trusted.
+ *
+ * `verify` is false only for a query sent because `revision` changed. Those
+ * commits carry a `<Static>` push, which goes through Ink's
+ * `onImmediateRender` — `resetAfterCommit` in `node_modules/ink/build/
+ * reconciler.js` calls it, unthrottled, whenever `isStaticDirty`, and returns
+ * before the regular (possibly throttled) `onRender` even runs for that
+ * commit. So a revision-triggered query is never raced the way described on
+ * `useCursorReport` below, and — because `<Static>` is the one thing that
+ * legitimately moves the frame's top row — its reply is exactly the case the
+ * check below cannot tell apart from the race. `heightChanged` and `resized`
+ * queries get no such guarantee and are always verified.
+ */
+interface PendingQuery {
+  height: number
+  verify: boolean
+}
+
+/**
  * The absolute row the frame's first line occupies, or null until the terminal
  * has answered once.
  *
@@ -42,6 +62,11 @@ const MAX_PENDING_QUERIES = 4
  * previous origin; `<Static>` only ever pushes the frame *down*, so a stale
  * origin fails the bounds check and the click is dropped rather than routed to
  * the wrong target.
+ *
+ * A `heightChanged` or `resized` refresh can itself race Ink's own repaint —
+ * see the comment inside `useCursorReport` below for the mechanism and
+ * `PendingQuery` for how a reply from that race is told apart from a
+ * legitimate one.
  */
 export function useFrameOrigin(
   rootRef: RefObject<DOMElement | null>,
@@ -51,10 +76,10 @@ export function useFrameOrigin(
   const [origin, setOrigin] = useState<number | null>(null)
 
   /**
-   * Heights of in-flight queries, oldest first. The reply carries no identity,
-   * so it must be paired with the height that was current when it was *sent*
-   * — pairing it with the height at arrival would be wrong for any render
-   * that happened in between, and a single scalar survives only one in-flight
+   * In-flight queries, oldest first. The reply carries no identity, so it
+   * must be paired with the height that was current when it was *sent* —
+   * pairing it with the height at arrival would be wrong for any render that
+   * happened in between, and a single scalar survives only one in-flight
    * query at a time: a second recalibration before the first reply lands
    * would overwrite it, mispairing the first reply and dropping the second
    * (its arrival would see nothing pending).
@@ -62,22 +87,82 @@ export function useFrameOrigin(
    * A FIFO queue instead of a scalar is correct because DSR replies are not
    * reordered — the terminal answers requests over a single serial
    * connection in the order they were sent — so shifting the oldest pending
-   * height off the front always matches the oldest reply still owed,
-   * however many queries are in flight at once.
+   * entry off the front always matches the oldest reply still owed, however
+   * many queries are in flight at once.
    */
-  const pendingHeights = useRef<number[]>([])
+  const pending = useRef<PendingQuery[]>([])
   const lastHeight = useRef<number | null>(null)
   const lastRevision = useRef<number | null>(null)
   const lastColumns = useRef<number | undefined>(stdout?.columns)
   const lastRows = useRef<number | undefined>(stdout?.rows)
+  /**
+   * Mirrors `origin` synchronously. `useCursorReport`'s handler fires from a
+   * raw input event, not a render, so it cannot wait for `origin` state to
+   * catch up before the next reply needs to read it — the same reason
+   * `PathInput.tsx` and `Prompt.tsx` shadow their own state with a ref.
+   */
+  const originRef = useRef<number | null>(null)
+
+  const query = (height: number, verify: boolean) => {
+    pending.current.push({ height, verify })
+    writeToTerminal(CURSOR_QUERY, stdout as NodeJS.WriteStream | undefined)
+  }
 
   useCursorReport((position) => {
     // A reply with nothing queued is a stray report the app did not ask for
     // (or one delivered after this component already unmounted its previous
-    // instance) — ignore it rather than pairing it with an unrelated height.
-    const height = pendingHeights.current.shift()
-    if (height === undefined) return
-    setOrigin(frameTopFromCursor(position.row, height))
+    // instance) — ignore it rather than pairing it with an unrelated entry.
+    const entry = pending.current.shift()
+    if (!entry) return
+
+    /**
+     * Ink's render throttle (`node_modules/ink/build/ink.js`:
+     * `throttle(this.onRender, renderThrottleMs, {leading: true, trailing:
+     * true})`, ~33ms at the default `maxFps: 30`) can paint on a trailing
+     * timer that fires *after* the effect below has already measured the new
+     * layout and sent its query. Yoga's layout — what `measureElement` reads
+     * — updates synchronously on every commit regardless of the throttle
+     * (`resetAfterCommit` in `node_modules/ink/build/reconciler.js` calls
+     * `onComputeLayout()` unconditionally, before the possibly-throttled
+     * `onRender()`), so the effect can measure and query a height the
+     * terminal has not been told about yet. When that happens, this reply
+     * describes whatever was *last actually painted* — the old frame — but
+     * is about to be paired with the *new* height, which would misplace the
+     * origin by the difference and leave it wrong until an unrelated trigger
+     * recalibrated.
+     *
+     * `entry.verify` is false for a query that cannot have raced (see
+     * `PendingQuery`), and its reply is trusted outright. Otherwise: a reply
+     * consistent with the paint having caught up satisfies `position.row -
+     * originRef.current === entry.height` (the frame's top has not moved,
+     * only its height did — the case this hook can retry safely). A reply
+     * that fails this is not trustworthy either way — the paint may not have
+     * landed, or the frame moved for a reason this hook does not model — so
+     * it is dropped and a fresh, verified query goes out against the
+     * *current* measured height instead of risking a wrong pairing. The very
+     * first reply of all (`originRef.current === null`) has nothing to check
+     * against and is always trusted: nothing can be mid-throttle before the
+     * first paint has ever happened.
+     */
+    if (
+      entry.verify &&
+      originRef.current !== null &&
+      position.row - originRef.current !== entry.height
+    ) {
+      if (pending.current.length < MAX_PENDING_QUERIES) {
+        const node = rootRef.current
+        if (node) {
+          const height = measureElement(node).height
+          lastHeight.current = height
+          query(height, true)
+        }
+      }
+      return
+    }
+
+    const next = frameTopFromCursor(position.row, entry.height)
+    originRef.current = next
+    setOrigin(next)
   })
 
   // No dependency array: the frame's height is only knowable after a render,
@@ -94,8 +179,8 @@ export function useFrameOrigin(
     if (!heightChanged && !revisionChanged && !resized) return
 
     // A terminal that never answers DSR is an expected case, not an anomaly
-    // (see `MAX_PENDING_QUERIES`) — nothing ever shifts `pendingHeights` in
-    // that world, so left ungated this would push one more entry per
+    // (see `MAX_PENDING_QUERIES`) — nothing ever shifts `pending` in that
+    // world, so left ungated this would push one more entry per
     // recalibration for as long as the process runs. Once that many replies
     // are still outstanding, give up asking: `origin` stays at whatever it
     // last resolved to (`null`, if the very first query was never answered),
@@ -106,15 +191,18 @@ export function useFrameOrigin(
     // the render right after a slot frees (a reply finally does shift one
     // off) re-evaluates against *current* geometry rather than the
     // possibly-long-stale geometry from when queries first stopped.
-    if (pendingHeights.current.length >= MAX_PENDING_QUERIES) return
+    if (pending.current.length >= MAX_PENDING_QUERIES) return
 
     lastHeight.current = height
     lastRevision.current = revision
     lastColumns.current = stdout?.columns
     lastRows.current = stdout?.rows
 
-    pendingHeights.current.push(height)
-    writeToTerminal(CURSOR_QUERY, stdout as NodeJS.WriteStream | undefined)
+    // Revision-triggered queries cannot race (see `PendingQuery`) and — via
+    // `<Static>` — are the one legitimate way the origin moves, which is
+    // exactly what the verification above cannot distinguish from the race.
+    // So they skip it; height and resize queries do not.
+    query(height, !revisionChanged)
   })
 
   return origin
