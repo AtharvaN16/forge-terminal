@@ -123,9 +123,8 @@ export function Prompt({
 
       // Before the text branch: Ink reports Tab with `key.tab` *and* a "\t"
       // in `input`, so falling through would append a literal tab to the path.
-      // macOS / standard shortcuts:
-      // Option + Left (Word Back) / Option + Right (Word Forward)
-      if (key.meta && key.leftArrow) {
+      // macOS Option+Left / Option+Right escape sequences or Alt/Meta arrow keys
+      if ((key.meta || input === '\x1bb' || input === '\x1bf') && (key.leftArrow || input === '\x1bb')) {
         const c = chars()
         let i = caret()
         while (i > 0 && c[i - 1] === ' ') i--
@@ -135,7 +134,7 @@ export function Prompt({
         return
       }
 
-      if (key.meta && key.rightArrow) {
+      if ((key.meta || input === '\x1bf') && (key.rightArrow || input === '\x1bf')) {
         const c = chars()
         let i = caret()
         while (i < c.length && c[i] === ' ') i++
@@ -145,16 +144,24 @@ export function Prompt({
         return
       }
 
-      // Cmd + Backspace or Ctrl + U (Delete line to left)
-      if ((key.meta || (key.ctrl && input === 'u')) && (key.backspace || key.delete || input === 'u')) {
+      // Cmd+Backspace, Ctrl+U, or Option+Backspace (\x17 / \x7f / \x1b\x7f)
+      if (
+        (key.meta && (key.backspace || key.delete)) ||
+        (key.ctrl && input === 'u') ||
+        input === '\x15'
+      ) {
         const c = chars()
         const at = caret()
         commit(c.slice(at).join(''), 0)
         return
       }
 
-      // Option + Backspace or Ctrl + W (Delete word to left)
-      if ((key.meta || (key.ctrl && input === 'w')) && (key.backspace || key.delete || input === 'w')) {
+      if (
+        (key.ctrl && input === 'w') ||
+        input === '\x17' ||
+        input === '\x1b\x7f' ||
+        input === '\x1b\x08'
+      ) {
         const c = chars()
         const at = caret()
         let i = at
