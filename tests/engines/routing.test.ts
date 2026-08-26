@@ -10,6 +10,14 @@ const doc: DocumentInfo = {
   pages: 3,
   encrypted: false,
 }
+const docx: DocumentInfo = {
+  kind: 'document',
+  path: '/tmp/a.docx',
+  format: 'docx',
+  bytes: 1,
+  pages: 1,
+  encrypted: false,
+}
 const png: ImageInfo = {
   kind: 'image',
   path: '/tmp/a.png',
@@ -58,5 +66,52 @@ describe('engineForJob routes a conversion by both ends', () => {
       options,
     }
     expect(engineForJob(job)).toBeUndefined()
+  })
+})
+
+describe('engineForJob routes docx/doc conversions to the word engine', () => {
+  it('sends docx -> pdf to the word engine', () => {
+    const job: Job = {
+      op: 'convert',
+      sources: [docx],
+      outputs: ['/tmp/a.pdf'],
+      target: 'pdf',
+      options,
+    }
+    expect(engineForJob(job)?.id).toBe('word')
+  })
+
+  it('sends pdf -> docx to the word engine, not the pdf engine', () => {
+    const job: Job = {
+      op: 'convert',
+      sources: [doc],
+      outputs: ['/tmp/a.docx'],
+      target: 'docx',
+      options,
+    }
+    expect(engineForJob(job)?.id).toBe('word')
+  })
+
+  it('still sends pdf -> pdf (recompression) to the pdf engine, not the word engine', () => {
+    const job: Job = {
+      op: 'convert',
+      sources: [doc],
+      outputs: ['/tmp/a.pdf'],
+      target: 'pdf',
+      options,
+    }
+    expect(engineForJob(job)?.id).toBe('pdf')
+  })
+
+  it('offers doc -> docx for free, from reading doc and writing docx', () => {
+    const legacyDoc: DocumentInfo = { ...doc, path: '/tmp/a.doc', format: 'doc' }
+    const job: Job = {
+      op: 'convert',
+      sources: [legacyDoc],
+      outputs: ['/tmp/a.docx'],
+      target: 'docx',
+      options,
+    }
+    expect(engineForJob(job)?.id).toBe('word')
   })
 })
