@@ -21,6 +21,20 @@ interface PromptProps {
    */
   variant: 'drop' | 'field' | 'plain'
   /**
+   * Skips this component's own `unescapePath` call, handing `onSubmit` the
+   * buffer exactly as typed or pasted.
+   *
+   * Every other field submits one answer, where running `unescapePath`
+   * unconditionally is harmless — a rename or a page range has no backslash
+   * escapes to lose. The one file-drop prompt is different: a real multi-file
+   * drag pastes several *shell-escaped* paths on one line, and splitting that
+   * apart (`splitPastedPaths`, which the caller runs instead) needs the
+   * escaping intact to tell a literal space in a filename from the space
+   * separating two paths. Unescaping here first would already have thrown
+   * that distinction away.
+   */
+  rawOnSubmit?: boolean
+  /**
    * The live terminal width. Ink's `Box` has no notion of the caller's
    * `initialWidth` test prop — left unset, a bordered `Box` expands to fill
    * whatever `stdout.columns` genuinely is, which in production coincides
@@ -60,6 +74,7 @@ export function Prompt({
   isActive,
   variant,
   width,
+  rawOnSubmit = false,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -395,7 +410,7 @@ export function Prompt({
       }
 
       if (key.return) {
-        onSubmit(unescapePath(valueRef.current))
+        onSubmit(rawOnSubmit ? valueRef.current : unescapePath(valueRef.current))
         valueRef.current = ''
         caretRef.current = 0
         onChange('')
@@ -453,7 +468,7 @@ export function Prompt({
 
         if (breakIndex !== -1) {
           const next = [...c.slice(0, at), ...input.slice(0, breakIndex), ...c.slice(at)].join('')
-          onSubmit(unescapePath(next))
+          onSubmit(rawOnSubmit ? next : unescapePath(next))
           valueRef.current = ''
           caretRef.current = 0
           onChange('')
