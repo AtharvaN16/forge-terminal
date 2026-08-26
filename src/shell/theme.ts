@@ -47,10 +47,13 @@ export interface Palette {
   label: string
   /** Mode header colour for image conversion. */
   modeConvert: string
+  modeConvertBg: string
   /** Mode header colour for compression. */
   modeCompress: string
+  modeCompressBg: string
   /** Mode header colour for PDF page operations. */
   modePdf: string
+  modePdfBg: string
   /** Resting frame colour. */
   border: string
   /** Fill behind the selected row. Empty means "draw no band". */
@@ -71,8 +74,11 @@ export const DARK: Palette = {
   tag: '#63c1d8',
   label: '#a68ce0',
   modeConvert: '#55c7d9',
+  modeConvertBg: '#122c33',
   modeCompress: '#79c98b',
-  modePdf: '#d28be8',
+  modeCompressBg: '#182c1e',
+  modePdf: '#ff6b4a',
+  modePdfBg: '#361c16',
   // 2.97:1 — just under the 3:1 wanted for a meaningful boundary, and as far
   // as a frame can go before it starts competing with the text inside it.
   // The old #39404f measured 1.60:1 and was effectively invisible.
@@ -94,8 +100,11 @@ export const LIGHT: Palette = {
   tag: '#0a6b86',
   label: '#6141ad',
   modeConvert: '#087f91',
+  modeConvertBg: '#e6f7fa',
   modeCompress: '#24733a',
-  modePdf: '#8a3fa1',
+  modeCompressBg: '#eaf5ec',
+  modePdf: '#c83b1d',
+  modePdfBg: '#fceee9',
   // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
   border: '#9a9184',
   selectionBg: '#eae4d8',
@@ -119,8 +128,11 @@ export const NEUTRAL: Palette = {
   tag: 'cyan',
   label: 'magenta',
   modeConvert: 'cyan',
+  modeConvertBg: '',
   modeCompress: 'green',
-  modePdf: 'magenta',
+  modeCompressBg: '',
+  modePdf: 'red',
+  modePdfBg: '',
   border: 'gray',
   selectionBg: '',
 }

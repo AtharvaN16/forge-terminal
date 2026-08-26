@@ -592,8 +592,6 @@ export function PdfFlow({
 
   return (
     <Box flexDirection="column">
-      <ModeHeader mode="pdf" title="PDF operations" width={width} />
-
       {step === 'hub' ? (
         <Box flexDirection="column" marginBottom={1}>
           <Text color={colourProp(palette.label)}>PDF — choose an operation</Text>

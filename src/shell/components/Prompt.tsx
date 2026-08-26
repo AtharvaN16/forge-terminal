@@ -123,6 +123,47 @@ export function Prompt({
 
       // Before the text branch: Ink reports Tab with `key.tab` *and* a "\t"
       // in `input`, so falling through would append a literal tab to the path.
+      // macOS / standard shortcuts:
+      // Option + Left (Word Back) / Option + Right (Word Forward)
+      if (key.meta && key.leftArrow) {
+        const c = chars()
+        let i = caret()
+        while (i > 0 && c[i - 1] === ' ') i--
+        while (i > 0 && c[i - 1] !== ' ' && c[i - 1] !== '/') i--
+        caretRef.current = i
+        rerender()
+        return
+      }
+
+      if (key.meta && key.rightArrow) {
+        const c = chars()
+        let i = caret()
+        while (i < c.length && c[i] === ' ') i++
+        while (i < c.length && c[i] !== ' ' && c[i] !== '/') i++
+        caretRef.current = i
+        rerender()
+        return
+      }
+
+      // Cmd + Backspace or Ctrl + U (Delete line to left)
+      if ((key.meta || (key.ctrl && input === 'u')) && (key.backspace || key.delete || input === 'u')) {
+        const c = chars()
+        const at = caret()
+        commit(c.slice(at).join(''), 0)
+        return
+      }
+
+      // Option + Backspace or Ctrl + W (Delete word to left)
+      if ((key.meta || (key.ctrl && input === 'w')) && (key.backspace || key.delete || input === 'w')) {
+        const c = chars()
+        const at = caret()
+        let i = at
+        while (i > 0 && c[i - 1] === ' ') i--
+        while (i > 0 && c[i - 1] !== ' ' && c[i - 1] !== '/') i--
+        commit([...c.slice(0, i), ...c.slice(at)].join(''), i)
+        return
+      }
+
       if (key.leftArrow) {
         caretRef.current = Math.max(0, caret() - 1)
         rerender()
@@ -144,23 +185,6 @@ export function Prompt({
       if (key.ctrl && input === 'e') {
         caretRef.current = chars().length
         rerender()
-        return
-      }
-
-      // ctrl-u clears the whole field, ctrl-w the word before the caret —
-      // both the readline bindings, so they need no explaining to anyone who
-      // has used a terminal.
-      if (key.ctrl && input === 'u') {
-        commit('', 0)
-        return
-      }
-      if (key.ctrl && input === 'w') {
-        const c = chars()
-        const at = caret()
-        let i = at
-        while (i > 0 && c[i - 1] === ' ') i--
-        while (i > 0 && c[i - 1] !== ' ' && c[i - 1] !== '/') i--
-        commit([...c.slice(0, i), ...c.slice(at)].join(''), i)
         return
       }
 
@@ -272,17 +296,13 @@ export function Prompt({
    * which is the right outcome either way.
    */
   const bg = palette.selectionBg === '' ? undefined : palette.selectionBg
-  const shown = value === '' ? placeholder : value
-  const lead = 4 // two columns of inset, plus the "› "
-  const fill = ' '.repeat(Math.max(0, width - lead - stringWidth(shown) - 1))
-  const blank = ' '.repeat(Math.max(0, width))
 
   if (!bg || variant === 'plain') {
     // No colour: there is no fill to draw, so the prompt is just its line.
     return (
       <Box flexDirection="column">
         <Box width={width}>
-          <Text>
+          <Text wrap="wrap">
             <Text color={colourProp(palette.accent)}>{'  › '}</Text>
             {line}
           </Text>
@@ -291,32 +311,20 @@ export function Prompt({
     )
   }
 
-  const body = (
-    <Text backgroundColor={bg}>
-      <Text color={colourProp(palette.accent)}>{'  › '}</Text>
-      {line}
-      {fill}
-    </Text>
-  )
-
-  // Padded inside the fill, not just around it: a single filled line reads as
-  // a highlighted row rather than a field you type into. The drop area still
-  // gets more room around it, since it is the larger target.
-  if (variant === 'field') {
-    return (
-      <Box flexDirection="column" marginTop={2} marginBottom={2}>
-        <Text backgroundColor={bg}>{blank}</Text>
-        {body}
-        <Text backgroundColor={bg}>{blank}</Text>
-      </Box>
-    )
-  }
-
   return (
-    <Box flexDirection="column" marginTop={1} marginBottom={1}>
-      <Text backgroundColor={bg}>{blank}</Text>
-      {body}
-      <Text backgroundColor={bg}>{blank}</Text>
+    <Box
+      flexDirection="column"
+      width={width}
+      backgroundColor={colourProp(bg)}
+      paddingX={1}
+      paddingY={1}
+      marginTop={variant === 'field' ? 2 : 1}
+      marginBottom={variant === 'field' ? 2 : 1}
+    >
+      <Text wrap="wrap">
+        <Text color={colourProp(palette.accent)}>{'› '}</Text>
+        {line}
+      </Text>
     </Box>
   )
 }

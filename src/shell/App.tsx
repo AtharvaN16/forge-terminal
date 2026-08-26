@@ -1453,31 +1453,27 @@ export function App({
             neither convert nor compress, and `mode` does not change while
             it runs — showing it would be actively wrong, not just unhelpful. */}
         {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
-          <ModeHeader
-            mode={mode}
-            title={band === 'compact' ? mode : `current mode: ${mode}`}
-            width={width}
+          <Box
+            marginBottom={1}
+            paddingY={1}
+            paddingX={1}
+            backgroundColor={colourProp(
+              mode === 'compress' ? palette.modeCompressBg : palette.modeConvertBg,
+            )}
           >
-            {/* The staged file's name, beside the mode.
-
-                Two separate rules used to conspire to hide it: the file card
-                is suppressed for a lone file at `idle` (a solo drop normally
-                advances into the wizard, which shows the card), and the mode
-                line is suppressed inside `/pdf`. Backing out of the target
-                picker lands in the gap between them — a file staged, and
-                nothing on screen saying so. A user typed `/compress` there
-                against a PDF they had forgotten was still loaded, and read
-                the refusal as coming from nowhere.
-
-                Only at `idle`: every other step already shows the card, and
-                repeating the name would be noise. */}
+            <Text
+              color={colourProp(mode === 'compress' ? palette.modeCompress : palette.modeConvert)}
+              bold
+            >
+              {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
+            </Text>
             {step === 'idle' && source && !stagedBatch ? (
-              <Text color={colourProp(palette.fg)}>{`  ${basename(source.path)}  `}</Text>
+              <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
             ) : null}
             <Text color={colourProp(palette.dim)}>
               {band === 'compact' ? '  / to change' : '  use / to change mode'}
             </Text>
-          </ModeHeader>
+          </Box>
         ) : null}
 
         {/* The staged list, shown live rather than committed to scrollback,
