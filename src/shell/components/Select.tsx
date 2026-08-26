@@ -1,7 +1,8 @@
-import { Box, Text } from 'ink'
-import { useRef, useState } from 'react'
+import { Box, type DOMElement, Text } from 'ink'
+import { type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
+import { useClickTarget } from '../ClickTargets.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -26,6 +27,38 @@ interface SelectProps {
 function firstEnabled(items: Choice[]): number {
   const i = items.findIndex((item) => !item.disabled)
   return i === -1 ? 0 : i
+}
+
+/**
+ * One row, plus the click region it occupies.
+ *
+ * A component rather than inline JSX because each row needs its own ref and
+ * its own `useClickTarget`, and hooks cannot be called from inside a `map`.
+ */
+function SelectRow({
+  index,
+  isActive,
+  onChoose,
+  onPointer,
+  children,
+}: {
+  index: number
+  isActive: boolean
+  onChoose: () => void
+  onPointer: () => void
+  children: ReactNode
+}) {
+  const ref = useRef<DOMElement | null>(null)
+  useClickTarget({
+    id: `select-row-${index}`,
+    ref,
+    onClick: onChoose,
+    onHover: (hovering) => {
+      if (hovering) onPointer()
+    },
+    isActive,
+  })
+  return <Box ref={ref}>{children}</Box>
 }
 
 export function Select({
@@ -69,6 +102,20 @@ export function Select({
   const move = (delta: number) => {
     const next = nextEnabledIndex(indexRef.current, delta)
     if (next === indexRef.current) return // no-op at an end: nothing moved, nothing to report
+    indexRef.current = next
+    setIndex(next)
+    if (onHighlight) onHighlight(next)
+  }
+
+  /**
+   * Moves the highlight to an exact row, for the pointer.
+   *
+   * Separate from `move`, which is relative and skips disabled rows — a
+   * pointer names the row directly, and a disabled row registers no target so
+   * it can never be named.
+   */
+  const highlightRow = (next: number) => {
+    if (next === indexRef.current) return
     indexRef.current = next
     setIndex(next)
     if (onHighlight) onHighlight(next)
@@ -122,30 +169,37 @@ export function Select({
         const shownHint = hint === '' ? '' : middleEllipsis(hint, Math.max(0, width - used))
 
         return (
-          <Text
+          <SelectRow
             key={item.value}
-            {...(selected && palette.selectionBg !== ''
-              ? { backgroundColor: palette.selectionBg }
-              : {})}
+            index={i}
+            isActive={isActive && !item.disabled}
+            onChoose={() => onSubmit(item.value)}
+            onPointer={() => highlightRow(i)}
           >
-            <Text {...(selected ? { color: colourProp(palette.accent) } : {})}>{cursor}</Text>
             <Text
-              bold={selected}
-              {...(item.disabled
-                ? { color: colourProp(palette.dim) }
-                : selected
-                  ? { color: colourProp(palette.fg) }
-                  : {})}
+              {...(selected && palette.selectionBg !== ''
+                ? { backgroundColor: palette.selectionBg }
+                : {})}
             >
-              {label}
+              <Text {...(selected ? { color: colourProp(palette.accent) } : {})}>{cursor}</Text>
+              <Text
+                bold={selected}
+                {...(item.disabled
+                  ? { color: colourProp(palette.dim) }
+                  : selected
+                    ? { color: colourProp(palette.fg) }
+                    : {})}
+              >
+                {label}
+              </Text>
+              {shownHint ? <Text color={colourProp(palette.dim)}>{shownHint}</Text> : null}
+              {item.badge ? (
+                // Accent, bracketed and spaced: as a plain dim suffix it read as
+                // the tail of the path it followed rather than a label about it.
+                <Text color={colourProp(palette.accent)}>{`   [${item.badge}]`}</Text>
+              ) : null}
             </Text>
-            {shownHint ? <Text color={colourProp(palette.dim)}>{shownHint}</Text> : null}
-            {item.badge ? (
-              // Accent, bracketed and spaced: as a plain dim suffix it read as
-              // the tail of the path it followed rather than a label about it.
-              <Text color={colourProp(palette.accent)}>{`   [${item.badge}]`}</Text>
-            ) : null}
-          </Text>
+          </SelectRow>
         )
       })}
     </Box>
