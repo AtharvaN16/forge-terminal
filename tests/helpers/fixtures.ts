@@ -3,6 +3,8 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import AdmZip from 'adm-zip'
+import { Document, Packer, Paragraph } from 'docx'
 import { PDFDocument, rgb } from 'pdf-lib'
 import sharp from 'sharp'
 
@@ -151,6 +153,73 @@ export async function makeCorruptHeic(dir: string, name: string): Promise<string
   const ftypBoxSize = bytes.readUInt32BE(0)
   const path = join(dir, name)
   await writeFile(path, bytes.subarray(0, ftypBoxSize + 8))
+  return path
+}
+
+/**
+ * A minimal, valid .docx — built by the `docx` package, never a committed binary.
+ *
+ * `docx`'s `AppProperties` writer emits a bare
+ * `<Properties xmlns="..."/>` with no children — it has no layout engine, so
+ * it never computes a page count. Only Word or LibreOffice populates
+ * `docProps/app.xml`'s `<Pages>` value, on save, from real pagination. That
+ * value is patched in here after packing so this fixture still exercises
+ * `word.ts`'s "read whatever cached value is present" path the way a
+ * document that has actually been opened and saved in Word would.
+ */
+export async function makeDocx(
+  dir: string,
+  name: string,
+  paragraphs: string[] = ['Hello from Forge.'],
+): Promise<string> {
+  const doc = new Document({ sections: [{ children: paragraphs.map((p) => new Paragraph(p)) }] })
+  const path = join(dir, name)
+  const zip = new AdmZip(await Packer.toBuffer(doc))
+  zip.updateFile(
+    'docProps/app.xml',
+    Buffer.from(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+        '<Pages>1</Pages></Properties>',
+    ),
+  )
+  await writeFile(path, zip.toBuffer())
+  return path
+}
+
+/**
+ * A genuine legacy-binary .doc, produced by macOS's built-in `textutil` —
+ * the same "shell out to a system tool rather than commit a binary" move
+ * `makeHeic` already makes for HEIC. Returns null where `textutil` is
+ * unavailable so tests can skip cleanly.
+ */
+export async function makeDoc(
+  dir: string,
+  name: string,
+  text = 'Hello from Forge.',
+): Promise<string | null> {
+  const source = join(dir, `${name}.source.txt`)
+  await writeFile(source, text)
+  const path = join(dir, name)
+  try {
+    await run('textutil', ['-convert', 'doc', '-output', path, source])
+    return path
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A zip shaped like OOXML but without `word/document.xml` — the shape a
+ * `.xlsx` or `.pptx` would have. Used to prove docx detection is content-based
+ * (invariant 3), not "any zip with this extension."
+ */
+export async function makeNonDocxZip(dir: string, name: string): Promise<string> {
+  const zip = new AdmZip()
+  zip.addFile('not-a-word-document.txt', Buffer.from('nope'))
+  const path = join(dir, name)
+  zip.writeZip(path)
   return path
 }
 
