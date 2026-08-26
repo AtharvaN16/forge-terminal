@@ -29,6 +29,14 @@ const image: ImageInfo = {
   hasAlpha: false,
   frames: 1,
 }
+const docx: DocumentInfo = {
+  kind: 'document',
+  path: '/tmp/a.docx',
+  format: 'docx',
+  bytes: 1000,
+  pages: 3,
+  encrypted: false,
+}
 
 describe('appliesTo', () => {
   it('offers merge only when two or more documents are staged', () => {
@@ -49,6 +57,13 @@ describe('appliesTo', () => {
 
   it('offers no page operation on an image', () => {
     expect(actionsFor([image]).map((a) => a.id)).not.toContain('split')
+  })
+
+  it('never offers a page operation on a docx — those stay pdf-only', () => {
+    expect(mergeAction.appliesTo([docx, docx])).toBe(false)
+    for (const action of [splitAction, extractAction, deleteAction, rotateAction]) {
+      expect(action.appliesTo([docx])).toBe(false)
+    }
   })
 
   it('does not offer split on a one-page document', () => {
