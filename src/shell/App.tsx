@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { Box, type DOMElement, Static, Text, useApp, useStdout } from 'ink'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
   expandTilde,
@@ -249,6 +249,41 @@ function pageProgressLabel(op: Job['op']): string {
  * `DEFAULT_PREFERENCES` explicitly.
  */
 const APP_DEFAULT_PREFS: Preferences = { ...DEFAULT_PREFERENCES, theme: 'dark' }
+
+/**
+ * Routes mouse events into the frame. Renders nothing.
+ *
+ * A component rather than a `useMouseRouting` call in `App`'s own body, for a
+ * reason that is invisible until the whole thing is assembled and is easy to
+ * reintroduce: `useContext` only sees providers *above* the component that
+ * calls it. `App` renders `ClickTargetProvider` as its own child, so a routing
+ * hook in `App`'s body reads the inert fallback registry — the one that
+ * hit-tests to nothing — while every clickable component below registers into
+ * the real one. Two registries that never meet: no click can land, and hover
+ * can never switch the terminal into motion reporting. Routing has to be
+ * *inside* the provider, which is the whole job of this component.
+ *
+ * Rendered as the root Box's first child so its subscription is in place
+ * before any sibling registers a target. That is belt-and-braces — the
+ * registry defers its notifications for exactly this reason — but it costs
+ * nothing and removes the ordering question entirely.
+ */
+function MouseRouter({
+  rootRef,
+  revision,
+}: {
+  rootRef: RefObject<DOMElement | null>
+  revision: number
+}) {
+  useMouseRouting(rootRef, revision)
+  return null
+}
+
+/** Sentinel `Select` value for the convert-target picker's row into `/pdf`. */
+const GOTO_PDF = '__goto-pdf__'
+
+/** The `/pdf` command, looked up once rather than re-found on every render. */
+const pdfCommand = COMMANDS.find((c) => c.name === 'pdf')
 
 export function App({
   initialWidth,
@@ -853,16 +888,19 @@ export function App({
       // A real OS drag of several files pastes every escaped path on one
       // line, space-separated — the mechanism `splitPastedPaths` was written
       // and tested for, but left unwired while the shell was single-file
-      // only (see the design spec's "one path per drop" section). It stays
-      // uncalled for a lone path: `Prompt` already ran `unescapePath` on
-      // `trimmed` before this fires, so a single result here has nothing
-      // left to split. (A dropped filename that itself contains an escaped
-      // space, alongside a second file in the same multi-drop, is the one
-      // case that can still mis-split — `Prompt`'s own unescaping already
-      // resolved that filename's backslash before `splitPastedPaths` ever
-      // sees the line, so it can no longer tell that space apart from the
-      // one separating the two paths. Narrower than the common case this
-      // exists for, and not something a single-path drop ever hits.)
+      // only (see the design spec's "one path per drop" section). It runs
+      // here rather than `Prompt`'s own `unescapePath` (this is the one
+      // `Prompt` passed `rawOnSubmit`, precisely so the escaping survives
+      // this far): unescaping first would turn "a\ b.pdf c\ d.pdf" into "a
+      // b.pdf c d.pdf", and nothing left could tell an escaped space inside
+      // a filename apart from the plain one separating two paths.
+      // `splitPastedPaths` also correctly returns a single, fully-unescaped
+      // path for a single-path drop — the ordinary case, still handled by
+      // the plain `probe`/`try`/`catch` below rather than folded into the
+      // loop underneath, so one bad path still renders the same visible
+      // error block it always has (see `app-flow.test.tsx`), not a quiet
+      // entry in the staged card's skipped list the way a bad path *within*
+      // a multi-file drop does.
       const paths = splitPastedPaths(trimmed)
       if (paths.length > 1) {
         const infos: SourceInfo[] = []
@@ -891,7 +929,7 @@ export function App({
       }
 
       try {
-        const info = await probe(trimmed)
+        const info = await probe(paths[0] ?? trimmed)
         if (requestId.current !== id) return // superseded by a later submission
         // Drops accumulate rather than replace — dropping a second file onto
         // a prompt that already has one staged (e.g. after a failed run
@@ -1611,17 +1649,15 @@ export function App({
    */
   const rootRef = useRef<DOMElement | null>(null)
 
-  /**
-   * Bumping this recalibrates the frame's origin. Committed history scrolls
-   * the live frame down the screen, and `history.length` changes exactly when
-   * that happens.
-   */
-  useMouseRouting(rootRef, history.length)
-
   return (
     <ThemeProvider palette={paletteFor(theme)}>
       <ClickTargetProvider>
         <Box flexDirection="column" ref={rootRef}>
+          {/* Inside the provider, deliberately — see `MouseRouter`. `revision`
+              recalibrates the frame's origin: committed history scrolls the
+              live frame down the screen, and `history.length` changes exactly
+              when that happens. */}
+          <MouseRouter rootRef={rootRef} revision={history.length} />
           {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
           {/* Which action the next file goes through, always — including the
@@ -1733,22 +1769,36 @@ export function App({
               <Text>{targetSpec.label}</Text>
               <Select
                 width={width}
-                items={targetSpec.choices}
-                onSubmit={(target) => chooseTarget(source, target)}
+                items={
+                  // A PDF reaching this screen still has page operations on
+                  // the table too — see `backToPromptKeepingStage`. A dim
+                  // line below the list used to be the only pointer to
+                  // `/pdf`, which said where to go but not how to get there
+                  // short of escaping and typing the command from memory.
+                  // This is that same pointer, but reachable the way JPEG
+                  // or PNG are: a disabled, unlabelled row first, so it
+                  // reads as its own group rather than a sixth format
+                  // (`nextEnabledIndex` in Select already skips a disabled
+                  // row when the cursor walks past it), then the row
+                  // itself.
+                  source.kind === 'document'
+                    ? [
+                        ...targetSpec.choices,
+                        { value: '__gap__', label: '', hint: '', disabled: true },
+                        { value: GOTO_PDF, label: '/pdf', hint: 'for more options' },
+                      ]
+                    : targetSpec.choices
+                }
+                onSubmit={(target) => {
+                  if (target === GOTO_PDF) {
+                    if (pdfCommand) runCommand(pdfCommand)
+                    return
+                  }
+                  chooseTarget(source, target)
+                }}
                 onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
                 showHints={band !== 'compact'}
               />
-              {/* A PDF reaching this screen still has page operations on the
-                table too — see `backToPromptKeepingStage`. Without this, the
-                one moment someone lands here straight off a drop, `/pdf`
-                would be invisible: the idle-step signpost a few hundred
-                lines down never gets a chance to render, because a PDF no
-                longer stops at idle on the way in. */}
-              {source.kind === 'document' ? (
-                <Text
-                  color={colourProp(palette.dim)}
-                >{`${SYMBOLS.arrow} /pdf for page operations`}</Text>
-              ) : null}
               <HintBar
                 width={width}
                 pairs={[
@@ -2180,6 +2230,7 @@ export function App({
                 isActive
                 variant={band === 'compact' ? 'plain' : 'drop'}
                 width={width}
+                rawOnSubmit
               />
               <HintBar
                 width={width}
