@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { moveItem, nextSortMode, type SortMode, sortSources } from '../../core/order.js'
@@ -9,6 +9,7 @@ import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 import { middleEllipsis } from '../width.js'
 import { HintBar } from './HintBar.js'
 import { Prompt } from './Prompt.js'
@@ -236,14 +237,14 @@ export function MergeList({
     setRenaming(false)
   }
 
-  useInput(
+  useKeys(
     (_input, key) => {
       if (key.escape) setRenaming(false)
     },
     { isActive: renaming },
   )
 
-  useInput(
+  useKeys(
     (input, key) => {
       if (key.upArrow) moveCursor(-1)
       if (key.downArrow) moveCursor(1)

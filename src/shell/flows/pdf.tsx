@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { DEFAULT_PREFERENCES, type Preferences } from '../../config/preferences.js'
@@ -20,6 +20,7 @@ import { Slider } from '../components/Slider.js'
 import type { Stage } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 import { bandFor, middleEllipsis } from '../width.js'
 
 /**
@@ -261,7 +262,7 @@ export function PdfFlow({
     setStep('hub')
   }
 
-  useInput(
+  useKeys(
     (_input, key) => {
       if (key.return) confirmAndRun()
       if (key.escape) backFromConfirm()
@@ -271,7 +272,7 @@ export function PdfFlow({
 
   // Prompt deliberately ignores escape — a typed value can contain one — so
   // the step owns it, the same way App.tsx's own text fields do.
-  useInput(
+  useKeys(
     (_input, key) => {
       if (key.escape) setStep('options')
     },
@@ -373,7 +374,7 @@ export function PdfFlow({
   // far so the grid opens with it already selected; an incomplete or invalid
   // in-progress range falls back to what was last committed rather than
   // blocking the toggle or losing it.
-  useInput(
+  useKeys(
     (input) => {
       if (input !== 'r' && input !== 'g') return
       if (!doc) return

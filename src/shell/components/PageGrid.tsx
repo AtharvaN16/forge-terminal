@@ -1,8 +1,9 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useRef, useState } from 'react'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 
 const GAP = 3 // columns between cells, on all three lines
 
@@ -264,7 +265,7 @@ export function PageGrid({
     }
   }
 
-  useInput((input, key) => {
+  useKeys((input, key) => {
     if (key.leftArrow) stepLeft()
     if (key.rightArrow) stepRight()
     if (key.upArrow) moveCursor(-1, 0)

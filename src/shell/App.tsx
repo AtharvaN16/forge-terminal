@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { Box, Static, Text, useApp, useInput, useStdout } from 'ink'
+import { Box, Static, Text, useApp, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -27,7 +27,6 @@ import { HistoryEntry } from './blocks.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HintBar } from './components/HintBar.js'
-import { ModeHeader } from './components/ModeHeader.js'
 import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
 import { Progress } from './components/Progress.js'
@@ -40,8 +39,9 @@ import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
-import { ThemeProvider, useTheme } from './ThemeContext.js'
+import { ThemeProvider } from './ThemeContext.js'
 import { colourProp, paletteFor, SYMBOLS } from './theme.js'
+import { useKeys } from './useKeys.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -221,7 +221,6 @@ export function App({
   prefs?: Preferences
   configWarning?: string
 }) {
-  const palette = useTheme()
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
   /** Only `PdfFlow`'s page grid needs this — see `gridLayout`. */
@@ -285,6 +284,18 @@ export function App({
    * running session rather than only the next launch.
    */
   const [theme, setTheme] = useState<'dark' | 'light' | undefined>(prefs.theme)
+  /**
+   * Derived straight from `theme`, not read from context: this component is
+   * the one that renders `<ThemeProvider palette={paletteFor(theme)}>` a few
+   * hundred lines down, and a component can never consume a context value
+   * from a provider it renders as its own descendant — that provider's value
+   * only reaches components further down the tree. Reading `useTheme()` here
+   * instead resolved against whatever wraps `<App>` from the outside
+   * (launch.tsx's provider, frozen at the palette computed once at launch),
+   * so this file's own top-level elements — the mode header background among
+   * them — never picked up a theme chosen or changed mid-session.
+   */
+  const palette = paletteFor(theme)
   /**
    * Preferences as they stand *now*, seeded from what was loaded at launch.
    * `d` changes the default output mid-session, and the banner, the preset
@@ -540,7 +551,7 @@ export function App({
   // stages the moment they happen to share a letter.
   // esc on the name step returns to the location step. Prompt deliberately
   // ignores escape (a path can contain one), so the step owns this.
-  useInput(
+  useKeys(
     (_input, key) => {
       if (key.escape) cancelRename()
     },
@@ -549,7 +560,7 @@ export function App({
 
   // esc on the size field goes back to the mode choice. Prompt ignores
   // escape by design — a path can contain one — so the step owns this.
-  useInput(
+  useKeys(
     (_input, key) => {
       if (!key.escape) return
       setSizeError(undefined)
@@ -573,7 +584,7 @@ export function App({
   // same keystroke and silently discard the stage as a side effect of
   // someone backing out of a half-typed command, not asking to clear
   // anything.
-  useInput(
+  useKeys(
     (_input, key) => {
       if (!key.escape) return
       if (stage.sources.length === 0 && stage.failures.length === 0) return
@@ -582,7 +593,7 @@ export function App({
     { isActive: step === 'idle' && !paletteOwnsEscape },
   )
 
-  useInput(
+  useKeys(
     (input, key) => {
       if (!lastResult) return
       if (key.return) {
@@ -1425,7 +1436,7 @@ export function App({
   // (no bypass offered) has nothing mounted to answer escape or enter, so
   // this step owns both directly — same reasoning as the 'rename' and
   // 'size' steps above, which own escape for the same reason.
-  useInput(
+  useKeys(
     (_input, key) => {
       if (key.escape || key.return) answerPdfBlocked('cancel')
     },

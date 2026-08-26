@@ -40,6 +40,42 @@ export async function launchShell(): Promise<void> {
     <ThemeProvider palette={palette}>
       <App prefs={prefs} {...(warning === undefined ? {} : { configWarning: warning })} />
     </ThemeProvider>,
+    {
+      /**
+       * The kitty keyboard protocol, which is the only way Cmd ever reaches a
+       * terminal app on macOS.
+       *
+       * Without it a terminal reports modifiers by prefixing ESC, which cannot
+       * express Command at all — Terminal.app's key-mapping UI does not even
+       * offer it as a modifier. With it, the terminal reports each key as a
+       * structured event carrying a modifier bitmask, and Cmd arrives as
+       * `key.super`. That is what makes Cmd+Left and Cmd+Backspace possible in
+       * iTerm2, Ghostty, WezTerm, kitty and VS Code's terminal.
+       *
+       * `auto` rather than `enabled`: Ink probes with `CSI ? u` and waits
+       * 200ms for a reply, so a terminal that does not implement the protocol
+       * — Terminal.app among them — is left exactly as it was rather than
+       * being sent sequences it would print as text. The shell keeps working
+       * there; it simply falls back to Option and the Ctrl bindings.
+       *
+       * `reportEventTypes` is what makes Cmd legible on the *arrow* keys, and
+       * it is not optional for that. Measured against Ink 7.1.1: with only
+       * `disambiguateEscapeCodes`, Cmd+Left arrives as the legacy `CSI 1;9D`,
+       * which Ink's pre-kitty parser folds into `key.meta` — indistinguishable
+       * from Option, so Cmd+Left would move by word instead of to the line
+       * start. With event types on it arrives as `CSI 1;9:1D` and reports
+       * `key.super` correctly.
+       *
+       * The cost is that the terminal then reports every key going up as well
+       * as down. `useKeys` drops those releases in one place; nothing in this
+       * app may call Ink's `useInput` directly, or it will fire twice per
+       * keystroke.
+       */
+      kittyKeyboard: {
+        mode: 'auto',
+        flags: ['disambiguateEscapeCodes', 'reportEventTypes'],
+      },
+    },
   )
   await instance.waitUntilExit()
 }

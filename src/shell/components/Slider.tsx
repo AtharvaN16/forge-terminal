@@ -1,7 +1,8 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { useRef } from 'react'
 import { useTheme } from '../ThemeContext.js'
 import { BAR, colourProp } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 
 interface SliderProps {
   label: string
@@ -49,7 +50,7 @@ export function Slider({
     onChange(next)
   }
 
-  useInput(
+  useKeys(
     (_input, key) => {
       if (key.rightArrow) nudge(step)
       if (key.leftArrow) nudge(-step)

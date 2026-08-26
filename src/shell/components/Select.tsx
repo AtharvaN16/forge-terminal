@@ -1,9 +1,10 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 import { middleEllipsis } from '../width.js'
 
 interface SelectProps {
@@ -73,7 +74,7 @@ export function Select({
     if (onHighlight) onHighlight(next)
   }
 
-  useInput(
+  useKeys(
     (_input, key) => {
       if (items.length === 0) return
       if (key.downArrow) move(1)

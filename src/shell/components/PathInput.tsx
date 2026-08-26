@@ -1,10 +1,11 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 import { middleEllipsis } from '../width.js'
 import { Select } from './Select.js'
 
@@ -98,7 +99,7 @@ export function PathInput({
    * `d` typed into the free-text path field would also fire this and quietly
    * rewrite the user's default.
    */
-  useInput(
+  useKeys(
     (input) => {
       const item = items[highlight]
       if (!item || item.value === TYPE_IT) return
@@ -117,7 +118,7 @@ export function PathInput({
     { isActive: !typing },
   )
 
-  useInput(
+  useKeys(
     (input, key) => {
       if (key.escape) {
         onCancel?.()

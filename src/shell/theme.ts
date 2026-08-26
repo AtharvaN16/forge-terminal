@@ -58,6 +58,14 @@ export interface Palette {
   border: string
   /** Fill behind the selected row. Empty means "draw no band". */
   selectionBg: string
+  /**
+   * Fill behind selected *text* inside an input. Deliberately not
+   * `selectionBg`: that one is the drop area's own fill, so a selection drawn
+   * in it would be invisible against the box it sits in. Empty means "no
+   * colour available" — the field falls back to reverse video, which is the
+   * only way to show a selection when there is no palette at all.
+   */
+  textSelectionBg: string
 }
 
 export const DARK: Palette = {
@@ -84,6 +92,9 @@ export const DARK: Palette = {
   // The old #39404f measured 1.60:1 and was effectively invisible.
   border: '#5f6879',
   selectionBg: '#252c3a',
+  // Clearly distinct from selectionBg above, which is the drop area's own
+  // fill — a selection has to read against that, not blend into it.
+  textSelectionBg: '#3f5c86',
 }
 
 export const LIGHT: Palette = {
@@ -108,6 +119,7 @@ export const LIGHT: Palette = {
   // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
   border: '#9a9184',
   selectionBg: '#eae4d8',
+  textSelectionBg: '#b9cfe8',
 }
 
 /**
@@ -135,6 +147,9 @@ export const NEUTRAL: Palette = {
   modePdfBg: '',
   border: 'gray',
   selectionBg: '',
+  // No colour is asserted before the theme is known, so a selection in this
+  // palette is drawn with reverse video instead.
+  textSelectionBg: '',
 }
 
 export function paletteFor(theme: 'dark' | 'light' | undefined): Palette {
