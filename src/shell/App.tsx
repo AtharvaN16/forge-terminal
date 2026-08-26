@@ -9,6 +9,7 @@ import {
 } from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
+import { describeResult } from '../core/describe.js'
 import { isForgeError, unexpectedError, unsupportedCompress } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
@@ -175,6 +176,20 @@ function describePdfResult(result: Result): string {
   const outputs = job.outputs.map((o) => basename(o))
   const first = outputs[0] ?? ''
   switch (job.op) {
+    /**
+     * The case this switch used to lack.
+     *
+     * A rasterisation writes one file per page, and falling through to the old
+     * `done — ${first}` default reported one filename for however many were
+     * written. The count comes from `describeResult` rather than being worked
+     * out again here — that is the module which owns what a result means.
+     */
+    case 'convert': {
+      const view = describeResult(result)
+      return view.outputs.length === 1
+        ? `${view.verb} — ${first}`
+        : `${view.verb} into ${view.outputs.length} files`
+    }
     case 'merge':
       return `merged ${job.sources.length} files into ${first}`
     case 'split':
@@ -187,8 +202,14 @@ function describePdfResult(result: Result): string {
       return `removed ${job.pages.length} pages — ${first}`
     case 'rotate':
       return `rotated ${job.turns * 90}° — ${first}`
-    default:
-      return `done — ${first}`
+    default: {
+      /**
+       * No silent default. The old one swallowed `convert` and reported a
+       * wrong-but-plausible sentence; a new op must fail to compile instead.
+       */
+      const unhandled: never = job
+      throw new Error(`describePdfResult has no wording for ${JSON.stringify(unhandled)}`)
+    }
   }
 }
 

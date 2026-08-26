@@ -62,4 +62,27 @@ describe('compressing a PDF to a target size in the shell', () => {
     // "succeed" while throwing away far more quality than was asked for.
     expect(size).toBeGreaterThan(80 * 1024 * 0.15)
   }, 60_000)
+
+  /**
+   * `runPdfJobs` pushed a bare note and never read `result.warnings`, so
+   * `pdf-downsampled` — the loss actually worth naming — reached CLI users and
+   * not shell users. Routing a compression through the ordinary result path
+   * fixed it; this pins that it stays fixed.
+   */
+  it('shows the downsampling warning, which the CLI has always shown', async () => {
+    const { stdin, lastFrame } = await toCompressScan()
+
+    stdin.write(ENTER) // By quality
+    await settle()
+    stdin.write(ENTER) // accept the slider
+    await settle()
+    stdin.write(ENTER) // destination
+    await settle(300)
+    stdin.write(ENTER) // name
+    await settle(6000)
+
+    // A 300 dpi scan compressed at the 150 dpi default is downsampled, and
+    // saying so is what lets the user pass a higher dpi if they cared.
+    expect(lastFrame() ?? '').toMatch(/reduced from 300 to 150 dpi/i)
+  }, 60_000)
 })
