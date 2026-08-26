@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { Box, Static, Text, useApp, useStdout } from 'ink'
+import { Box, type DOMElement, Static, Text, useApp, useStdout } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -24,6 +24,7 @@ import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
+import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HintBar } from './components/HintBar.js'
@@ -42,6 +43,7 @@ import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { useKeys } from './useKeys.js'
+import { useMouseRouting } from './useMouseRouting.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -1545,44 +1547,60 @@ export function App({
   const qualitySpec = specFor('quality')
   const destinationSpec = specFor('destination')
 
+  /**
+   * The Box the whole frame is measured from. `useFrameOrigin` needs its
+   * height to place the frame, and `<Static>` is excluded from this Box's
+   * layout (measured against Ink 7.1.1) — which is what makes the height the
+   * *live* frame's height rather than the whole session's.
+   */
+  const rootRef = useRef<DOMElement | null>(null)
+
+  /**
+   * Bumping this recalibrates the frame's origin. Committed history scrolls
+   * the live frame down the screen, and `history.length` changes exactly when
+   * that happens.
+   */
+  useMouseRouting(rootRef, history.length)
+
   return (
     <ThemeProvider palette={paletteFor(theme)}>
-      <Box flexDirection="column">
-        {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
+      <ClickTargetProvider>
+        <Box flexDirection="column" ref={rootRef}>
+          {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
-        {/* Which action the next file goes through, always — including the
+          {/* Which action the next file goes through, always — including the
             default. An earlier version showed this only for compress, on the
             reasoning that convert is what dropping a file already does; but
             a mode you cannot see is one you can be in by accident, and the
             cost of saying so is one line. Skipped for `/pdf`: that flow is
             neither convert nor compress, and `mode` does not change while
             it runs — showing it would be actively wrong, not just unhelpful. */}
-        {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
-          <Box
-            width={width}
-            marginBottom={1}
-            paddingY={1}
-            paddingX={1}
-            backgroundColor={colourProp(
-              mode === 'compress' ? palette.modeCompressBg : palette.modeConvertBg,
-            )}
-          >
-            <Text
-              color={colourProp(mode === 'compress' ? palette.modeCompress : palette.modeConvert)}
-              bold
+          {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
+            <Box
+              width={width}
+              marginBottom={1}
+              paddingY={1}
+              paddingX={1}
+              backgroundColor={colourProp(
+                mode === 'compress' ? palette.modeCompressBg : palette.modeConvertBg,
+              )}
             >
-              {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
-            </Text>
-            {step === 'idle' && source && !stagedBatch ? (
-              <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
-            ) : null}
-            <Text color={colourProp(palette.dim)}>
-              {band === 'compact' ? '  / to change' : '  use / to change mode'}
-            </Text>
-          </Box>
-        ) : null}
+              <Text
+                color={colourProp(mode === 'compress' ? palette.modeCompress : palette.modeConvert)}
+                bold
+              >
+                {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
+              </Text>
+              {step === 'idle' && source && !stagedBatch ? (
+                <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
+              ) : null}
+              <Text color={colourProp(palette.dim)}>
+                {band === 'compact' ? '  / to change' : '  use / to change mode'}
+              </Text>
+            </Box>
+          ) : null}
 
-        {/* The staged list, shown live rather than committed to scrollback,
+          {/* The staged list, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back.
 
             Idle is included once more than one file is staged: that is
@@ -1592,341 +1610,341 @@ export function App({
             idle stays hidden: a lone drop either advances into the wizard,
             which shows the card, or is a PDF waiting on `/pdf`, and a card
             for it would sit under the prompt through every command. */}
-        {stage.sources.length > 0 &&
-        step !== 'theme' &&
-        step !== 'result' &&
-        (step !== 'idle' || stage.sources.length > 1) ? (
-          <Box marginBottom={1}>
-            <StagedFiles stage={stage} width={width} />
-          </Box>
-        ) : null}
-        <Static items={history}>
-          {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
-        </Static>
+          {stage.sources.length > 0 &&
+          step !== 'theme' &&
+          step !== 'result' &&
+          (step !== 'idle' || stage.sources.length > 1) ? (
+            <Box marginBottom={1}>
+              <StagedFiles stage={stage} width={width} />
+            </Box>
+          ) : null}
+          <Static items={history}>
+            {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
+          </Static>
 
-        {step === 'mode' && source && modeSpec?.kind === 'select' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
-            <Select
-              width={width}
-              items={modeSpec.choices}
-              onSubmit={(chosen) => {
-                setValues((v) => ({ ...v, mode: chosen }))
-                setStep(chosen === 'size' ? 'size' : 'quality')
-              }}
-              onCancel={clearSource}
-              showHints={band !== 'compact'}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['↑↓', 'choose'],
-                ['↵', 'confirm'],
-                ['esc', 'remove file'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'mode' && source && modeSpec?.kind === 'select' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
+              <Select
+                width={width}
+                items={modeSpec.choices}
+                onSubmit={(chosen) => {
+                  setValues((v) => ({ ...v, mode: chosen }))
+                  setStep(chosen === 'size' ? 'size' : 'quality')
+                }}
+                onCancel={clearSource}
+                showHints={band !== 'compact'}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'remove file'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'size' && sizeSpec?.kind === 'text' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.label)}>{sizeSpec.label}</Text>
-            <Prompt
-              value={text}
-              onChange={setText}
-              onSubmit={submitSize}
-              placeholder={sizeSpec.placeholder}
-              isActive
-              variant={band === 'compact' ? 'plain' : 'field'}
-              width={width}
-            />
-            {sizeError ? (
-              <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${sizeError}`}</Text>
-            ) : null}
-            <HintBar
-              width={width}
-              pairs={[
-                ['↵', 'confirm'],
-                ['ctrl-u', 'clear'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'size' && sizeSpec?.kind === 'text' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color={colourProp(palette.label)}>{sizeSpec.label}</Text>
+              <Prompt
+                value={text}
+                onChange={setText}
+                onSubmit={submitSize}
+                placeholder={sizeSpec.placeholder}
+                isActive
+                variant={band === 'compact' ? 'plain' : 'field'}
+                width={width}
+              />
+              {sizeError ? (
+                <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${sizeError}`}</Text>
+              ) : null}
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↵', 'confirm'],
+                  ['ctrl-u', 'clear'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'target' && source && targetSpec?.kind === 'select' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text>{targetSpec.label}</Text>
-            <Select
-              width={width}
-              items={targetSpec.choices}
-              onSubmit={(target) => chooseTarget(source, target)}
-              onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
-              showHints={band !== 'compact'}
-            />
-            {/* A PDF reaching this screen still has page operations on the
+          {step === 'target' && source && targetSpec?.kind === 'select' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text>{targetSpec.label}</Text>
+              <Select
+                width={width}
+                items={targetSpec.choices}
+                onSubmit={(target) => chooseTarget(source, target)}
+                onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
+                showHints={band !== 'compact'}
+              />
+              {/* A PDF reaching this screen still has page operations on the
                 table too — see `backToPromptKeepingStage`. Without this, the
                 one moment someone lands here straight off a drop, `/pdf`
                 would be invisible: the idle-step signpost a few hundred
                 lines down never gets a chance to render, because a PDF no
                 longer stops at idle on the way in. */}
-            {source.kind === 'document' ? (
-              <Text
-                color={colourProp(palette.dim)}
-              >{`${SYMBOLS.arrow} /pdf for page operations`}</Text>
-            ) : null}
-            <HintBar
-              width={width}
-              pairs={[
-                ['↑↓', 'choose'],
-                ['↵', 'confirm'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+              {source.kind === 'document' ? (
+                <Text
+                  color={colourProp(palette.dim)}
+                >{`${SYMBOLS.arrow} /pdf for page operations`}</Text>
+              ) : null}
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
-            <Select
-              width={width}
-              items={pagesSpec.choices}
-              onSubmit={choosePages}
-              onCancel={() => setStep('target')}
-              showHints={band !== 'compact'}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['↑↓', 'choose'],
-                ['↵', 'confirm'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
+              <Select
+                width={width}
+                items={pagesSpec.choices}
+                onSubmit={choosePages}
+                onCancel={() => setStep('target')}
+                showHints={band !== 'compact'}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'page-picker' && source && source.kind === 'document' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <PageGrid
-              mode="cell"
-              pageCount={source.pages}
-              selected={Array.isArray(values.pages) ? (values.pages as number[]) : []}
-              cuts={[]}
-              onSubmit={submitPagePicker}
-              onCancel={() => setStep('pages')}
-              width={width}
-              height={height}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['space', 'toggle'],
-                ['a', 'all'],
-                ['↵', 'confirm'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'page-picker' && source && source.kind === 'document' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <PageGrid
+                mode="cell"
+                pageCount={source.pages}
+                selected={Array.isArray(values.pages) ? (values.pages as number[]) : []}
+                cuts={[]}
+                onSubmit={submitPagePicker}
+                onCancel={() => setStep('pages')}
+                width={width}
+                height={height}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['space', 'toggle'],
+                  ['a', 'all'],
+                  ['↵', 'confirm'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
-            <Select
-              width={width}
-              items={dpiSpec.choices}
-              onSubmit={(dpi) => chooseDpi(source, dpi)}
-              onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
-              showHints={band !== 'compact'}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['↑↓', 'choose'],
-                ['↵', 'confirm'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
+              <Select
+                width={width}
+                items={dpiSpec.choices}
+                onSubmit={(dpi) => chooseDpi(source, dpi)}
+                onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
+                showHints={band !== 'compact'}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'quality' && qualitySpec?.kind === 'slider' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Slider
-              label={qualitySpec.label}
-              min={qualitySpec.min}
-              max={qualitySpec.max}
-              step={qualitySpec.step}
-              value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
-              onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
-              onSubmit={chooseQuality}
-              onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['←→', 'adjust'],
-                ['↵', 'confirm'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'quality' && qualitySpec?.kind === 'slider' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Slider
+                label={qualitySpec.label}
+                min={qualitySpec.min}
+                max={qualitySpec.max}
+                step={qualitySpec.step}
+                value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
+                onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
+                onSubmit={chooseQuality}
+                onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['←→', 'adjust'],
+                  ['↵', 'confirm'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'destination' && destinationSpec?.kind === 'path' ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <PathInput
-              label={destinationSpec.label}
-              presets={destinationSpec.presets}
-              preview={previewDestination}
-              onSubmit={confirmDestination}
-              onCancel={destinationBack}
-              width={width}
-              showHints={band !== 'compact'}
-              defaultPath={expandTilde(livePrefs.defaultOutput)}
-              onMakeDefault={makeDefault}
-            />
-            {/* Four pairs is 45 columns — wider than a compact terminal.
+          {step === 'destination' && destinationSpec?.kind === 'path' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <PathInput
+                label={destinationSpec.label}
+                presets={destinationSpec.presets}
+                preview={previewDestination}
+                onSubmit={confirmDestination}
+                onCancel={destinationBack}
+                width={width}
+                showHints={band !== 'compact'}
+                defaultPath={expandTilde(livePrefs.defaultOutput)}
+                onMakeDefault={makeDefault}
+              />
+              {/* Four pairs is 45 columns — wider than a compact terminal.
                 Spec §13 drops hints there rather than overflowing, and the
                 shorter pair still names the key that is unique to this step. */}
-            <HintBar
-              width={width}
-              pairs={
-                band === 'compact'
-                  ? [['d', 'make default']]
-                  : [
-                      ['↑↓', 'choose'],
-                      ['↵', 'next'],
-                      ['d', 'make default'],
-                    ]
-              }
-            />
-          </Box>
-        ) : null}
+              <HintBar
+                width={width}
+                pairs={
+                  band === 'compact'
+                    ? [['d', 'make default']]
+                    : [
+                        ['↑↓', 'choose'],
+                        ['↵', 'next'],
+                        ['d', 'make default'],
+                      ]
+                }
+              />
+            </Box>
+          ) : null}
 
-        {step === 'rename' && renaming ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.label)}>Name the file</Text>
-            <Prompt
-              value={text}
-              onChange={setText}
-              onSubmit={submitRename}
-              placeholder="file name"
-              isActive
-              variant={band === 'compact' ? 'plain' : 'field'}
-              width={width}
-            />
-            <Text color={colourProp(palette.dim)}>
-              {`  ${SYMBOLS.arrow} ${middleEllipsis(
-                `${renaming.destination}/${text || renaming.stem}${renaming.ext}`,
-                Math.max(12, width - 4),
-              )}`}
-            </Text>
-            <HintBar
-              width={width}
-              pairs={[
-                ['↵', 'save'],
-                ['ctrl-u', 'clear'],
-                ['esc', 'back'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'rename' && renaming ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color={colourProp(palette.label)}>Name the file</Text>
+              <Prompt
+                value={text}
+                onChange={setText}
+                onSubmit={submitRename}
+                placeholder="file name"
+                isActive
+                variant={band === 'compact' ? 'plain' : 'field'}
+                width={width}
+              />
+              <Text color={colourProp(palette.dim)}>
+                {`  ${SYMBOLS.arrow} ${middleEllipsis(
+                  `${renaming.destination}/${text || renaming.stem}${renaming.ext}`,
+                  Math.max(12, width - 4),
+                )}`}
+              </Text>
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↵', 'save'],
+                  ['ctrl-u', 'clear'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'overwrite' && pending ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
-            <Select
-              width={width}
-              items={[
-                { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
-                { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
-                { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
-              ]}
-              onSubmit={answerOverwrite}
-              onCancel={() => {
-                setPending(null)
-                setStep('destination')
-              }}
-              showHints={band !== 'compact'}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['↑↓', 'choose'],
-                ['↵', 'confirm'],
-                ['esc', 'cancel'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'overwrite' && pending ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
+              <Select
+                width={width}
+                items={[
+                  { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
+                  { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
+                  { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
+                ]}
+                onSubmit={answerOverwrite}
+                onCancel={() => {
+                  setPending(null)
+                  setStep('destination')
+                }}
+                showHints={band !== 'compact'}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'cancel'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'size-unreachable' && sizeUnreachable ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text>
-              {`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
-                sizeUnreachable.smallest,
-              )} — you asked for ${formatBytes(sizeUnreachable.targetBytes)}.`}
-            </Text>
-            <Select
-              width={width}
-              items={[
-                {
-                  value: 'lowest',
-                  label: 'Use the lowest quality',
-                  hint: `${formatBytes(sizeUnreachable.smallest)} — as small as it gets`,
-                },
-                {
-                  value: 'format',
-                  label: 'Pick a smaller format instead',
-                  hint: '/convert',
-                },
-              ]}
-              onSubmit={answerSizeUnreachable}
-              onCancel={() => {
-                setSizeUnreachable(null)
-                setStep('idle')
-              }}
-              showHints={band !== 'compact'}
-            />
-            <HintBar
-              width={width}
-              pairs={[
-                ['↑↓', 'choose'],
-                ['↵', 'confirm'],
-                ['esc', 'cancel'],
-              ]}
-            />
-          </Box>
-        ) : null}
+          {step === 'size-unreachable' && sizeUnreachable ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text>
+                {`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
+                  sizeUnreachable.smallest,
+                )} — you asked for ${formatBytes(sizeUnreachable.targetBytes)}.`}
+              </Text>
+              <Select
+                width={width}
+                items={[
+                  {
+                    value: 'lowest',
+                    label: 'Use the lowest quality',
+                    hint: `${formatBytes(sizeUnreachable.smallest)} — as small as it gets`,
+                  },
+                  {
+                    value: 'format',
+                    label: 'Pick a smaller format instead',
+                    hint: '/convert',
+                  },
+                ]}
+                onSubmit={answerSizeUnreachable}
+                onCancel={() => {
+                  setSizeUnreachable(null)
+                  setStep('idle')
+                }}
+                showHints={band !== 'compact'}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'cancel'],
+                ]}
+              />
+            </Box>
+          ) : null}
 
-        {step === 'converting' ? (
-          <Box marginBottom={1}>
-            <Text color={colourProp(palette.dim)}>
-              {attempt
-                ? `Finding the right quality — attempt ${attempt.n} of ${attempt.of}…`
-                : 'Converting…'}
-            </Text>
-          </Box>
-        ) : null}
+          {step === 'converting' ? (
+            <Box marginBottom={1}>
+              <Text color={colourProp(palette.dim)}>
+                {attempt
+                  ? `Finding the right quality — attempt ${attempt.n} of ${attempt.of}…`
+                  : 'Converting…'}
+              </Text>
+            </Box>
+          ) : null}
 
-        {step === 'result' && lastResult ? (
-          <Box flexDirection="column" marginBottom={1}>
-            {/* Measured, not estimated: this number came from actually
+          {step === 'result' && lastResult ? (
+            <Box flexDirection="column" marginBottom={1}>
+              {/* Measured, not estimated: this number came from actually
                 encoding a candidate. Offered rather than applied — the file
                 the user asked for is already written. */}
-            {suggestion ? (
-              <Box marginBottom={1}>
-                <Text color={colourProp(palette.warn)}>
-                  {`${SYMBOLS.warn} ${FORMATS[suggestion.target].label} would be ${formatBytes(
-                    suggestion.bytes,
-                  )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
-                </Text>
-              </Box>
-            ) : null}
-            {/* Reuses the block above rather than inventing a second visual
+              {suggestion ? (
+                <Box marginBottom={1}>
+                  <Text color={colourProp(palette.warn)}>
+                    {`${SYMBOLS.warn} ${FORMATS[suggestion.target].label} would be ${formatBytes(
+                      suggestion.bytes,
+                    )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
+                  </Text>
+                </Box>
+              ) : null}
+              {/* Reuses the block above rather than inventing a second visual
                 pattern for a second kind of offer. Deliberately informational
                 only, with no key of its own that stages and acts on it the
                 way `c` does for `suggestion`: doing that honestly needs the
@@ -1938,58 +1956,58 @@ export function App({
                 screen is not worth the complexity for what this offer is:
                 a nudge that several single-image PDFs now sitting on disk
                 are exactly what `mergeAction` combines. */}
-            {mergeOffer ? (
-              <Box marginBottom={1}>
-                <Text color={colourProp(palette.warn)}>
-                  {`${SYMBOLS.warn} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`}
-                </Text>
-              </Box>
-            ) : null}
-            {/* Only where the terminal makes OSC 8 clickable. Otherwise
+              {mergeOffer ? (
+                <Box marginBottom={1}>
+                  <Text color={colourProp(palette.warn)}>
+                    {`${SYMBOLS.warn} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`}
+                  </Text>
+                </Box>
+              ) : null}
+              {/* Only where the terminal makes OSC 8 clickable. Otherwise
                 fileLink falls back to a bare file:// URL — a long, unreadable
                 line that says nothing the hints below it do not already say,
                 which is why it read as a duplicate. */}
-            {hyperlinksSupported() ? (
-              <Text>
-                {fileLink('Open file', lastResult.job.outputs[0])}
-                {'  ·  '}
-                {fileLink(revealLabel(), lastResult.job.outputs[0].replace(/\/[^/]+$/, ''))}
-              </Text>
-            ) : null}
-            <HintBar
+              {hyperlinksSupported() ? (
+                <Text>
+                  {fileLink('Open file', lastResult.job.outputs[0])}
+                  {'  ·  '}
+                  {fileLink(revealLabel(), lastResult.job.outputs[0].replace(/\/[^/]+$/, ''))}
+                </Text>
+              ) : null}
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
+                  ...(suggestion
+                    ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
+                        string,
+                        string,
+                      ][])
+                    : []),
+                  ['o', 'open'],
+                  ['s', revealLabel().toLowerCase()],
+                  ['q', 'quit'],
+                ]}
+              />
+            </Box>
+          ) : null}
+
+          {step === 'pdf' ? (
+            <PdfFlow
+              stage={stage}
               width={width}
-              pairs={[
-                ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
-                ...(suggestion
-                  ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
-                      string,
-                      string,
-                    ][])
-                  : []),
-                ['o', 'open'],
-                ['s', revealLabel().toLowerCase()],
-                ['q', 'quit'],
-              ]}
+              height={height}
+              prefs={livePrefs}
+              onDone={(jobs) => {
+                void handlePdfDone(jobs)
+              }}
+              onCancel={clearSource}
             />
-          </Box>
-        ) : null}
+          ) : null}
 
-        {step === 'pdf' ? (
-          <PdfFlow
-            stage={stage}
-            width={width}
-            height={height}
-            prefs={livePrefs}
-            onDone={(jobs) => {
-              void handlePdfDone(jobs)
-            }}
-            onCancel={clearSource}
-          />
-        ) : null}
-
-        {step === 'pdf-running' ? (
-          <Box marginBottom={1}>
-            {/* Determinate only once a real `page` event has arrived — see
+          {step === 'pdf-running' ? (
+            <Box marginBottom={1}>
+              {/* Determinate only once a real `page` event has arrived — see
                 `pageProgress`'s own doc comment. Split, extract (separate
                 mode) and rasterising a document each report real per-page
                 progress; merge, delete and rotate report phases only and
@@ -1999,85 +2017,87 @@ export function App({
                 hardcoded word, so it can never claim an operation that
                 isn't the one actually running (a split copying pages is not
                 "RENDERING" anything). */}
-            {pageProgress ? (
-              <Progress
-                label={pageProgressLabel(pageProgress.op)}
-                done={pageProgress.done}
-                total={pageProgress.total}
-                detail={pageProgress.detail}
-                width={width}
-              />
-            ) : (
-              <Text color={colourProp(palette.dim)}>Running…</Text>
-            )}
-          </Box>
-        ) : null}
+              {pageProgress ? (
+                <Progress
+                  label={pageProgressLabel(pageProgress.op)}
+                  done={pageProgress.done}
+                  total={pageProgress.total}
+                  detail={pageProgress.detail}
+                  width={width}
+                />
+              ) : (
+                <Text color={colourProp(palette.dim)}>Running…</Text>
+              )}
+            </Box>
+          ) : null}
 
-        {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colourProp(palette.fail)}>
-              {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
-            </Text>
-            {/* `.detail`, never `.hint` — the hint text is CLI wording
+          {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text color={colourProp(palette.fail)}>
+                {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
+              </Text>
+              {/* `.detail`, never `.hint` — the hint text is CLI wording
                 ("Pass --force to replace it"), and the shell has no
                 --force flag. The choice below is the shell's own answer
                 to the same situation. */}
-            <Text color={colourProp(palette.fg)}>{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
-            {pdfBlocked.failures[0].error.code === 'output-exists' ? (
-              <Select
+              <Text
+                color={colourProp(palette.fg)}
+              >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
+              {pdfBlocked.failures[0].error.code === 'output-exists' ? (
+                <Select
+                  width={width}
+                  items={[
+                    {
+                      value: 'cancel',
+                      label: 'Cancel',
+                      // Says where it actually goes: a page operation run from
+                      // `/pdf` has only the hub to return to, but an ordinary
+                      // document conversion has its own destination step —
+                      // see `PendingPdfRefusal.cancelTo`'s doc comment.
+                      hint:
+                        pdfBlocked.cancelTo === 'destination'
+                          ? 'pick a different folder, nothing written'
+                          : 'back to /pdf, nothing written',
+                    },
+                    { value: 'replace', label: 'Replace', hint: 'overwrite the existing file' },
+                  ]}
+                  onSubmit={answerPdfBlocked}
+                  onCancel={() => answerPdfBlocked('cancel')}
+                  showHints={band !== 'compact'}
+                />
+              ) : (
+                <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
+              )}
+              <HintBar
                 width={width}
-                items={[
-                  {
-                    value: 'cancel',
-                    label: 'Cancel',
-                    // Says where it actually goes: a page operation run from
-                    // `/pdf` has only the hub to return to, but an ordinary
-                    // document conversion has its own destination step —
-                    // see `PendingPdfRefusal.cancelTo`'s doc comment.
-                    hint:
-                      pdfBlocked.cancelTo === 'destination'
-                        ? 'pick a different folder, nothing written'
-                        : 'back to /pdf, nothing written',
-                  },
-                  { value: 'replace', label: 'Replace', hint: 'overwrite the existing file' },
-                ]}
-                onSubmit={answerPdfBlocked}
-                onCancel={() => answerPdfBlocked('cancel')}
-                showHints={band !== 'compact'}
+                pairs={
+                  pdfBlocked.failures[0].error.code === 'output-exists'
+                    ? [
+                        ['↑↓', 'choose'],
+                        ['↵', 'confirm'],
+                        ['esc', 'cancel'],
+                      ]
+                    : [['esc', 'back']]
+                }
               />
-            ) : (
-              <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
-            )}
-            <HintBar
-              width={width}
-              pairs={
-                pdfBlocked.failures[0].error.code === 'output-exists'
-                  ? [
-                      ['↑↓', 'choose'],
-                      ['↵', 'confirm'],
-                      ['esc', 'cancel'],
-                    ]
-                  : [['esc', 'back']]
-              }
-            />
-          </Box>
-        ) : null}
+            </Box>
+          ) : null}
 
-        {step === 'idle' ? (
-          <Box flexDirection="column">
-            {/* Ink delivers input to every mounted useInput, so Prompt and
+          {step === 'idle' ? (
+            <Box flexDirection="column">
+              {/* Ink delivers input to every mounted useInput, so Prompt and
                 the palette's Select are both live while this is open — which
                 is what makes typing narrow the list and the arrows move the
                 selection at the same time. */}
-            {isCommandBuffer(text) ? (
-              <CommandPalette
-                fragment={text.slice(1)}
-                width={width}
-                onRun={runCommand}
-                onCancel={() => setText('')}
-              />
-            ) : null}
-            {/* A PDF sitting here — via a refused mixed batch, a multi-PDF
+              {isCommandBuffer(text) ? (
+                <CommandPalette
+                  fragment={text.slice(1)}
+                  width={width}
+                  onRun={runCommand}
+                  onCancel={() => setText('')}
+                />
+              ) : null}
+              {/* A PDF sitting here — via a refused mixed batch, a multi-PDF
                 merge stage, or backing out of the target picker with
                 `backToPromptKeepingStage` — has a command that is not
                 otherwise visible. Commands are only worth having if they
@@ -2087,41 +2107,42 @@ export function App({
                 is already doing this job then. The target picker has its
                 own copy of this same line for the moment a solo drop goes
                 straight there instead of stopping here. */}
-            {!isCommandBuffer(text) && stage.sources.some((s) => s.kind === 'document') ? (
-              <Box marginBottom={1}>
-                <Text color={colourProp(palette.dim)}>
-                  {`${SYMBOLS.arrow} /pdf for page operations`}
-                </Text>
-              </Box>
-            ) : null}
-            <Prompt
-              value={text}
-              onChange={setText}
-              onSubmit={submitPath}
-              placeholder="drop a file or type a path"
-              isActive
-              variant={band === 'compact' ? 'plain' : 'drop'}
-              width={width}
-            />
-            <HintBar
-              width={width}
-              pairs={
-                band === 'compact'
-                  ? [
-                      ['↵', 'send'],
-                      ['/', 'commands'],
-                    ]
-                  : [
-                      ['↵', 'send'],
-                      ['/', 'commands'],
-                      ['ctrl-u', 'clear'],
-                      ['ctrl-c', 'quit'],
-                    ]
-              }
-            />
-          </Box>
-        ) : null}
-      </Box>
+              {!isCommandBuffer(text) && stage.sources.some((s) => s.kind === 'document') ? (
+                <Box marginBottom={1}>
+                  <Text color={colourProp(palette.dim)}>
+                    {`${SYMBOLS.arrow} /pdf for page operations`}
+                  </Text>
+                </Box>
+              ) : null}
+              <Prompt
+                value={text}
+                onChange={setText}
+                onSubmit={submitPath}
+                placeholder="drop a file or type a path"
+                isActive
+                variant={band === 'compact' ? 'plain' : 'drop'}
+                width={width}
+              />
+              <HintBar
+                width={width}
+                pairs={
+                  band === 'compact'
+                    ? [
+                        ['↵', 'send'],
+                        ['/', 'commands'],
+                      ]
+                    : [
+                        ['↵', 'send'],
+                        ['/', 'commands'],
+                        ['ctrl-u', 'clear'],
+                        ['ctrl-c', 'quit'],
+                      ]
+                }
+              />
+            </Box>
+          ) : null}
+        </Box>
+      </ClickTargetProvider>
     </ThemeProvider>
   )
 }
