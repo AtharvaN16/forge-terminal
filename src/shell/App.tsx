@@ -15,7 +15,6 @@ import { runPlan } from '../core/execute-jobs.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
-import { runJobs } from '../core/run.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
 import { formatBytes, parseSize } from '../core/units.js'
@@ -1340,7 +1339,7 @@ export function App({
       })
     } catch (e) {
       // convertAction.plan() throws synchronously on a bad target, and
-      // nothing guarantees buildPlan() or runJobs() can never reject for some
+      // nothing guarantees runPlan() can never reject for some
       // cause they don't themselves catch. Either way, this runs inside an
       // async handler nothing awaits — PathInput fires onSubmit from a
       // synchronous useInput handler — so a rethrow here would become an
@@ -1417,11 +1416,22 @@ export function App({
    * own `outputs[done - 1]` rather than threaded through separately, so it
    * can never name a different file than the one `Progress` is counting.
    */
-  const runPdfJobs = async (jobs: Job[]) => {
+  const runPdfJobs = async (jobs: Job[], opts: { force?: boolean } = {}) => {
     setStep('pdf-running')
     setPageProgress(null)
     try {
-      const summary = await runJobs(jobs, {
+      /**
+       * `force` is threaded rather than defaulted because these jobs have
+       * already cleared `handlePdfDone`'s check — including, after "Replace",
+       * a deliberate overwrite. Running them through `runPlan` at `force:
+       * false` would refuse exactly the outputs the user just chose to
+       * replace.
+       *
+       * No `targetBytes`: a page operation has no quality dial, so there is
+       * nothing here for a search to settle.
+       */
+      const summary = await runPlan(jobs, {
+        force: opts.force ?? false,
         onEvent: (event) => {
           if (event.type !== 'job:phase' || event.progress.phase !== 'page') return
           const { done, total } = event.progress
@@ -1436,8 +1446,15 @@ export function App({
       })
       for (const result of summary.results) {
         push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} ${describePdfResult(result)}` })
+        // Warnings used to stop here: only the note was pushed, and
+        // `result.warnings` was never read. No page operation emits one today,
+        // so this is a guard against the next one that does rather than a live
+        // fix — but it costs a loop and the alternative was a silent drop.
+        for (const warning of result.warnings) {
+          push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
+        }
       }
-      for (const failure of summary.failures) {
+      for (const failure of [...summary.refusals, ...summary.failures]) {
         push({ kind: 'error', id: nextId(), error: failure.error })
       }
     } catch (e) {
@@ -1506,7 +1523,7 @@ export function App({
       setStep('pdf')
       return
     }
-    void runPdfJobs(forced.jobs)
+    void runPdfJobs(forced.jobs, { force: true })
   }
 
   // `Select` owns arrow/enter for the output-exists choice; a plain refusal
