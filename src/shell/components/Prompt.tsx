@@ -1,12 +1,102 @@
 import { Box, type DOMElement, Text } from 'ink'
 import { useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useClickTarget } from '../ClickTargets.js'
 import { copy, paste } from '../clipboard.js'
-import { offsetForColumn } from '../mouse.js'
+import { positionInFrame } from '../frame-geometry.js'
+import { isStrayEscapeSequence, offsetForColumn } from '../mouse.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useKeys } from '../useKeys.js'
+
+/**
+ * Consumes as many characters starting at `from` as fit within `maxWidth`
+ * display cells, always taking at least one. Mirrors `wrapWord`'s own
+ * per-token accumulation in wrap-ansi (the library `wrap-text.js` calls for
+ * Ink's `wrap="wrap"`): the first character placed on a row is kept even if
+ * it alone is wider than the row, which is what stops a single wide glyph
+ * from starving the loop.
+ */
+function takeByWidth(chars: string[], from: number, maxWidth: number): number {
+  let width = stringWidth(chars[from] ?? '')
+  let i = from + 1
+  while (i < chars.length) {
+    const w = stringWidth(chars[i] ?? '')
+    if (width + w > maxWidth) break
+    width += w
+    i++
+  }
+  return i
+}
+
+/**
+ * Where a wrapped, space-free `value` breaks across visual rows, given a
+ * `<Text wrap="wrap">` that is `columns` cells wide and a marker occupying
+ * `markerWidth` of those cells on row 0 only.
+ *
+ * Returns the EXCLUSIVE end index (into `Array.from(value)`) of each row's
+ * slice of `value`, in row order: row 0's slice is `value.slice(0,
+ * bounds[0])`, row `r`'s (`r > 0`) is `value.slice(bounds[r - 1],
+ * bounds[r])`. Row 0's slice can be empty — see below.
+ *
+ * This exists because `wrap-text.js` wraps with wrap-ansi's `{ trim: false,
+ * hard: true }` (checked against the installed wrap-ansi@10, which Ink
+ * 7.1.1 depends on), and a `value` with no space is one unbreakable "word":
+ * `hard: true` then degrades wrap-ansi's word-wrap to plain fixed-width
+ * chunking, via the exact same `wrapWord` routine this function mirrors.
+ * `trim: false` (Ink's choice, not the default) is what makes the mapping
+ * possible at all — it turns off wrap-ansi's end-of-row trimming, so every
+ * row's characters concatenate back into `value` exactly, in order, with
+ * none dropped or added, and a row-by-row walk can reconstruct `value`'s
+ * indices losslessly.
+ *
+ * Two things decide the split, both taken from wrap-ansi's own `exec`:
+ *   1. If `value` fits in `columns` at all, it either sits packed right
+ *      after the marker (small enough for the leftover room), or — if not —
+ *      moves whole to row 1, leaving row 0 as marker only.
+ *   2. If `value` is wider than a full row, it hard-wraps in `columns`-wide
+ *      chunks. Whether the first chunk starts packed after the marker or on
+ *      a fresh row follows wrap-ansi's own tie-break: pack there only when
+ *      doing so does not cost an extra row overall.
+ *
+ * NOT attempted when `value` contains a space: wrap-ansi then wraps at word
+ * boundaries, which can end a row short of a full `columns` cells, and
+ * reproducing that exactly would mean re-implementing wrap-ansi's whole
+ * word-splitting pass — a second wrapping engine to keep forever in sync
+ * with whatever Ink bundles. Given how rarely a dropped or typed path
+ * actually contains a literal space, that cost is not worth paying here;
+ * callers fall back to clamping instead (see the click handler below).
+ */
+function hardWrapBounds(value: string, columns: number, markerWidth: number): number[] {
+  const chars = Array.from(value)
+  const total = chars.length
+  const remaining = columns - markerWidth
+  const wordWidth = stringWidth(value)
+
+  if (wordWidth <= columns) {
+    return wordWidth <= remaining ? [total] : [0, total]
+  }
+
+  const breaksPackedHere = 1 + Math.floor((wordWidth - remaining - 1) / columns)
+  const breaksFromNextRow = Math.floor((wordWidth - 1) / columns)
+
+  const bounds: number[] = []
+  let budget = remaining
+  if (breaksFromNextRow < breaksPackedHere) {
+    bounds.push(0)
+    budget = columns
+  }
+
+  let i = 0
+  while (i < total) {
+    const end = takeByWidth(chars, i, budget)
+    bounds.push(end)
+    i = end
+    budget = columns
+  }
+  return bounds
+}
 
 interface PromptProps {
   value: string
@@ -454,7 +544,7 @@ export function Prompt({
          * anything that is not a CSI parameter run, stay typeable, because
          * brackets are legal in filenames — `shot[1].png` must still work.
          */
-        if (/^\[(?:[<>?][\d;]*|[\d;]+)[A-Za-z~]$/.test(input) || input === '\x00') {
+        if (isStrayEscapeSequence(input)) {
           return
         }
 
@@ -501,24 +591,73 @@ export function Prompt({
    */
   const lineRef = useRef<DOMElement | null>(null)
 
+  /**
+   * The prompt marker (`› `, or `  › ` in the plain variant) sits between the
+   * Box's left edge and the first character of row 0 ONLY. `value` renders
+   * inside `<Text wrap="wrap">`, so a value longer than the available width
+   * spans several visual rows — the normal case for a real path, not an edge
+   * case — and a continuation row has no marker at all: it starts at column
+   * 0. Both the click inset below and the continuation-row math in `onClick`
+   * need this number, so it is computed once.
+   */
+  const markerWidth = variant === 'plain' ? 4 : 2
+
   useClickTarget({
     id: 'prompt-line',
     ref: lineRef,
     isActive,
-    /**
-     * The prompt marker (`› `, or `  › ` in the plain variant) sits between the
-     * Box's left edge and the first character, so the click column is measured
-     * from the text's start, not the Box's.
-     */
-    inset: { col: variant === 'plain' ? 4 : 2 },
-    /**
-     * `point` is already target-relative and already inset past the prompt
-     * marker, so it is a column into the text. `offsetForColumn` converts it
-     * to a character index by display width, which is what makes a click land
-     * correctly in a path containing a wide glyph or an emoji.
-     */
+    // Shrinks the registered rect past the marker, which is only ever
+    // correct for row 0 — `onClick` below corrects for that on every other
+    // row.
+    inset: { col: markerWidth },
     onClick: (point) => {
-      moveTo(offsetForColumn(valueRef.current, point.col), false)
+      /**
+       * Row 0: `point.col` is already target-relative and already past the
+       * marker (the registered rect is inset by `markerWidth`), so it is a
+       * column straight into `value`, and `offsetForColumn` finds the
+       * character by display width exactly as it always has — unchanged
+       * from before this row-aware handling existed.
+       */
+      if (point.row === 0) {
+        moveTo(offsetForColumn(valueRef.current, point.col), false)
+        return
+      }
+
+      // A continuation row has no marker, so its true on-screen column is
+      // `point.col` with the inset added back — the inset only ever applied
+      // to row 0.
+      const colInRow = point.col + markerWidth
+
+      // The same width the `<Text wrap="wrap">` actually wrapped against:
+      // the registered click rect is this width minus `markerWidth` (see
+      // the inset above), so re-deriving it here from the live layout, the
+      // same way `useClickTarget` itself does, is the only way to recover
+      // it without hardcoding the padding math for each variant.
+      const rect = positionInFrame(
+        lineRef.current as unknown as Parameters<typeof positionInFrame>[0],
+      )
+      const columns = rect?.width
+
+      if (columns === undefined || columns < markerWidth || /\s/.test(valueRef.current)) {
+        /**
+         * FALLBACK, not the full mapping — see `hardWrapBounds` above for
+         * why a value containing whitespace is not attempted (word-wrap
+         * boundaries, not fixed columns) and why a terminal narrower than
+         * the marker itself is not either (the tie-break arithmetic assumes
+         * non-negative leftover room). Landing at the end is predictable;
+         * guessing a column-based offset that ignores how this row actually
+         * wrapped would not be — see the reviewer's repro in
+         * prompt-mouse.test.tsx for exactly what that looked like.
+         */
+        moveTo(chars().length, false)
+        return
+      }
+
+      const bounds = hardWrapBounds(valueRef.current, columns, markerWidth)
+      const start = bounds[point.row - 1] ?? chars().length
+      const end = bounds[point.row] ?? chars().length
+      const rowText = chars().slice(start, end).join('')
+      moveTo(start + offsetForColumn(rowText, colInRow), false)
     },
   })
 
