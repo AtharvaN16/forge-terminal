@@ -16,6 +16,7 @@ const KEYS: (keyof Palette)[] = [
   'ok',
   'warn',
   'fail',
+  'larger',
   'tag',
   'label',
   'border',
@@ -34,6 +35,14 @@ describe('palettes', () => {
   it('the two palettes are genuinely different, not one dimmed', () => {
     const differing = KEYS.filter((k) => k !== 'name').filter((k) => DARK[k] !== LIGHT[k])
     expect(differing.length).toBeGreaterThan(6)
+  })
+
+  it('larger has its own colour, distinct from warn, in both real palettes', () => {
+    // The whole reason `larger` exists rather than reusing `warn`: they need
+    // to read as different colours next to each other, not just be two
+    // names for the same one.
+    expect(DARK.larger).not.toBe(DARK.warn)
+    expect(LIGHT.larger).not.toBe(LIGHT.warn)
   })
 
   it('paletteFor maps the stored theme value', () => {
@@ -91,7 +100,7 @@ describe('palette contrast', () => {
   const DARK_BG = '#1e1e1e'
   const LIGHT_BG = '#ffffff'
 
-  const TEXT_KEYS = ['fg', 'dim', 'accent', 'ok', 'warn', 'fail', 'tag', 'label'] as const
+  const TEXT_KEYS = ['fg', 'dim', 'accent', 'ok', 'warn', 'fail', 'larger', 'tag', 'label'] as const
 
   it('every dark text colour clears 4.5:1 on a dark terminal', () => {
     for (const k of TEXT_KEYS) {

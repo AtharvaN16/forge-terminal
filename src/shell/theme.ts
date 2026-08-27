@@ -41,6 +41,15 @@ export interface Palette {
   ok: string
   warn: string
   fail: string
+  /**
+   * A conversion result that came out *larger* than its source. Distinct
+   * from `warn`: `warn` is a shared, general-purpose "worth a second look"
+   * used for several unrelated messages elsewhere, and reusing it here
+   * happened to land on a pale gold rather than something that actually
+   * reads as orange against `ok`'s green. This is that colour, kept apart so
+   * tuning it never drags every other `warn` message's tone along with it.
+   */
+  larger: string
   /** Format tag inlined into the file card's border. */
   tag: string
   /** Section labels such as CONVERT TO. */
@@ -79,6 +88,10 @@ export const DARK: Palette = {
   ok: '#6fcf7f',
   warn: '#e5c07b',
   fail: '#e8796d',
+  // 7.49:1 on #1e1e1e. A true orange (hue ~28°) rather than `warn`'s gold
+  // (~40°) — the two need to read as different colours next to each other,
+  // not just different words.
+  larger: '#f2994a',
   tag: '#63c1d8',
   label: '#a68ce0',
   modeConvert: '#55c7d9',
@@ -108,6 +121,10 @@ export const LIGHT: Palette = {
   ok: '#1e7a35',
   warn: '#8a6100',
   fail: '#b3261e',
+  // 5.56:1 on white. Same reasoning as DARK's `larger`: a burnt orange
+  // (~34°) distinct from `warn`'s brown-gold, clearing AA the way `dim` and
+  // `accent` above do.
+  larger: '#9c5700',
   tag: '#0a6b86',
   label: '#6141ad',
   modeConvert: '#087f91',
@@ -137,6 +154,9 @@ export const NEUTRAL: Palette = {
   ok: 'green',
   warn: 'yellow',
   fail: 'red',
+  // No distinct "orange" in the basic 16 ANSI names this palette is built
+  // from — same collapse `accent` and `warn` already make here.
+  larger: 'yellow',
   tag: 'cyan',
   label: 'magenta',
   modeConvert: 'cyan',
