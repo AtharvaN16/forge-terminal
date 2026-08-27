@@ -10,7 +10,12 @@ import {
 import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
-import { isForgeError, unexpectedError, unsupportedCompress } from '../core/errors.js'
+import {
+  isForgeError,
+  unexpectedError,
+  unsupportedCompress,
+  unsupportedPdf,
+} from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
@@ -29,6 +34,7 @@ import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HintBar } from './components/HintBar.js'
+import { Hints } from './components/Hints.js'
 import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
 import { Progress } from './components/Progress.js'
@@ -39,6 +45,7 @@ import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
+import { mouseSupported } from './mouse.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
@@ -385,8 +392,27 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  const [mode, setMode] = useState<'convert' | 'compress'>('convert')
+  const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
   const action = mode === 'compress' ? compressAction : convertAction
+  /**
+   * The mode banner's colours. `/pdf` has no `action` of its own — it opens
+   * `PdfFlow` directly rather than walking `convertAction`/`compressAction`'s
+   * option-spec wizard — so this is keyed off `mode` again rather than
+   * derived from `action`, the same reason the banner text itself already
+   * reads `mode` and not `action.id`.
+   */
+  const modeBg =
+    mode === 'compress'
+      ? palette.modeCompressBg
+      : mode === 'pdf'
+        ? palette.modePdfBg
+        : palette.modeConvertBg
+  const modeColour =
+    mode === 'compress'
+      ? palette.modeCompress
+      : mode === 'pdf'
+        ? palette.modePdf
+        : palette.modeConvert
 
   /** Where the target-size search has got to, for an honest counter. */
   /**
@@ -467,17 +493,42 @@ export function App({
    */
   const stagedBatch = stage.sources.length > 1
   /**
-   * Whether `CommandPalette`'s `<Select>` currently owns escape — that is,
-   * whether the typed fragment has at least one match. `isCommandBuffer`
-   * alone is not enough: it is true the instant text starts with `/` and
-   * has no further `/` or space, which includes fragments like `/U` that
-   * match nothing. `CommandPalette` renders a plain, non-interactive
-   * "no command matches" `<Text>` in that state — no `<Select>`, no
-   * `useInput` — so nothing would be left to consume escape if the stage
-   * hook below were gated on `isCommandBuffer` alone. Calling the same
-   * `matchCommands` that `CommandPalette` itself calls to choose between
-   * `<Select>` and that message is what keeps this from drifting out of
-   * sync with what actually mounts, the way `isCommandBuffer` did.
+   * The banner's actual content, with no Box of its own — split out so it
+   * can sit inside two different containers: the highlighted bar shown at
+   * the top of every other step, and (for `result`) a plain row stacked
+   * with the keyboard hints instead. Kept as one definition so the two
+   * never drift apart on what the banner actually says.
+   */
+  const modeLine = (
+    <>
+      <Text color={colourProp(modeColour)} bold>
+        {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
+      </Text>
+      {step === 'idle' && source && !stagedBatch ? (
+        <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
+      ) : null}
+      <Text color={colourProp(palette.dim)}>
+        {band === 'compact' ? '  / to change' : '  use / to change mode'}
+      </Text>
+    </>
+  )
+  /**
+   * Whether `CommandPalette`'s `<Select>` is currently mounted and
+   * interactive — that is, whether the typed fragment has at least one
+   * match. `isCommandBuffer` alone is not enough: it is true the instant
+   * text starts with `/` and has no further `/` or space, which includes
+   * fragments like `/U` that match nothing. `CommandPalette` renders a
+   * plain, non-interactive "no command matches" `<Text>` in that state — no
+   * `<Select>`, no `useInput` — so nothing would be left to consume escape
+   * if the stage hook below were gated on `isCommandBuffer` alone. Calling
+   * the same `matchCommands` that `CommandPalette` itself calls to choose
+   * between `<Select>` and that message is what keeps this from drifting
+   * out of sync with what actually mounts, the way `isCommandBuffer` did.
+   *
+   * Also handed to `Prompt` as `disableSubmit`: while `Select` is mounted it
+   * owns Enter the same way it owns escape, for the same reason — see
+   * `disableSubmit`'s own doc comment for what the two of them racing on one
+   * keystroke actually did.
    */
   const paletteOwnsEscape = isCommandBuffer(text) && matchCommands(text.slice(1)).length > 0
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -866,15 +917,27 @@ export function App({
        * current stage can't do, with a reason, rather than the shell
        * refusing to even open it.
        *
-       * But "dims what doesn't apply" only works once the hub is open — it
-       * is not a substitute for checking whether *anything* applies before
-       * opening it at all. `/convert` has `hasConvertTarget` and
-       * `/compress` has `compressAction.appliesTo` for exactly this, a few
-       * lines above; `pdfActionsApply` is `/pdf`'s version of the same
-       * check, so all three commands in this file agree on the rule.
+       * With no source at all, this arms `mode` and stays at idle — the same
+       * shape `/compress` already has a few lines up, for the same reason:
+       * `/pdf` has nothing to open yet (the hub has no files to show
+       * operations for), but the choice of what happens to the *next*
+       * dropped file is real and worth remembering, same as compress's own
+       * pre-armed mode. `submitPath`'s single-file success path is where
+       * that arming actually takes effect once something lands.
        */
       if (command.name === 'pdf') {
-        if (source && !pdfActionsApply(stage.sources)) {
+        if (!source) {
+          setMode('pdf')
+          setStep('idle')
+          return
+        }
+        // With a source, "dims what doesn't apply" only works once the hub
+        // is open — it is not a substitute for checking whether *anything*
+        // applies before opening it at all. `/convert` has `hasConvertTarget`
+        // and `/compress` has `compressAction.appliesTo` for exactly this, a
+        // few lines up; `pdfActionsApply` is `/pdf`'s version of the same
+        // check, so all three commands in this file agree on the rule.
+        if (!pdfActionsApply(stage.sources)) {
           push({
             kind: 'note',
             id: nextId(),
@@ -882,8 +945,9 @@ export function App({
           })
           return
         }
-        if (source) fenceOff()
-        setStep(source ? 'pdf' : 'idle')
+        setMode('pdf')
+        fenceOff()
+        setStep('pdf')
       }
     },
     [
@@ -1051,6 +1115,22 @@ export function App({
           setStep('mode')
           return
         }
+        // `/pdf` armed with nothing staged yet (see `runCommand`) — the same
+        // shape as the `compress` branch above: a source the hub has
+        // nothing to do with falls back to convert, one it can act on opens
+        // the hub directly, with no need to type `/pdf` a second time now
+        // that a file actually exists for it to open on.
+        if (mode === 'pdf') {
+          if (!pdfActionsApply([info])) {
+            push({ kind: 'error', id: nextId(), error: unsupportedPdf(info) })
+            setMode('convert')
+            setStep(hasConvertTarget(info) ? 'target' : 'idle')
+            return
+          }
+          fenceOff()
+          setStep('pdf')
+          return
+        }
         // A source with a real convert target — every image, and now a PDF
         // too — goes straight to the target picker. One without a target
         // would stay at idle, staged and ready for `/pdf` or another
@@ -1074,7 +1154,17 @@ export function App({
     // reason: reading it straight (rather than through the `setStage`
     // updater form) is what lets the batch guard above decide off the
     // current list, not a stale one.
-    [showError, push, runCommand, mode, stage, refuseBatch, hasConvertTarget, pdfActionsApply],
+    [
+      showError,
+      push,
+      runCommand,
+      mode,
+      stage,
+      refuseBatch,
+      hasConvertTarget,
+      pdfActionsApply,
+      fenceOff,
+    ],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -1729,31 +1819,43 @@ export function App({
             default. An earlier version showed this only for compress, on the
             reasoning that convert is what dropping a file already does; but
             a mode you cannot see is one you can be in by accident, and the
-            cost of saying so is one line. Skipped for `/pdf`: that flow is
-            neither convert nor compress, and `mode` does not change while
-            it runs — showing it would be actively wrong, not just unhelpful. */}
-          {step !== 'theme' && step !== 'pdf' && step !== 'pdf-running' ? (
+            cost of saying so is one line. `/pdf` armed the same way now
+            shows here too — the hub's five page operations are exactly as
+            much "a mode" as compress's wizard is, and hiding it while inside
+            the hub would reintroduce the same invisible-mode risk this
+            banner exists to close.
+            A rule directly above it, and one row instead of three: `Static`
+            history (a result, a note, an error) always renders above every
+            live element regardless of where that element sits in the JSX —
+            an Ink guarantee, not something this file's own layout controls
+            (see "Static" in Ink's own docs) — so this can land right under a
+            just-finished result as easily as under nothing at all. The rule
+            is what makes either case read as "history ends, this is the
+            current status line" rather than a box floating with blank lines
+            on both sides. Drawn only once there is history to divide from
+            (`history.length > 0`) — with none yet (a fresh session, still at
+            the very first idle prompt) there is nothing above the banner to
+            separate it from, and the rule would be a second one stacked with
+            `HintBar`'s own for no reason (`responsive.test.tsx`'s "never a
+            stack of them" caught exactly this).
+            Skipped for `result` too — that screen draws it itself, grouped
+            with the keyboard hints instead of sitting between the finished
+            job and its own links. See the `HintBar` replacement inside the
+            `result` step below. */}
+          {step !== 'theme' && step !== 'result' ? (
             <Box
               width={width}
               marginBottom={1}
-              paddingY={1}
               paddingX={1}
-              backgroundColor={colourProp(
-                mode === 'compress' ? palette.modeCompressBg : palette.modeConvertBg,
-              )}
+              borderStyle="single"
+              borderColor={colourProp(palette.border)}
+              borderBottom={false}
+              borderLeft={false}
+              borderRight={false}
+              borderTop={history.length > 0}
+              backgroundColor={colourProp(modeBg)}
             >
-              <Text
-                color={colourProp(mode === 'compress' ? palette.modeCompress : palette.modeConvert)}
-                bold
-              >
-                {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
-              </Text>
-              {step === 'idle' && source && !stagedBatch ? (
-                <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
-              ) : null}
-              <Text color={colourProp(palette.dim)}>
-                {band === 'compact' ? '  / to change' : '  use / to change mode'}
-              </Text>
+              {modeLine}
             </Box>
           ) : null}
 
@@ -2136,34 +2238,58 @@ export function App({
                   </Text>
                 </Box>
               ) : null}
-              {/* Renders in every terminal, not only where OSC 8 is
-                supported: Terminal.app has no OSC 8, so this label used to
-                be gated away entirely there. Clicking is now app-level hit
-                testing rather than a terminal hyperlink, so the label no
-                longer needs to be gated on `hyperlinksSupported()` — see
-                `ResultLinks`, which still emits an OSC 8 hyperlink where the
-                terminal supports one. */}
-              <ResultLinks
-                outputPath={lastResult.job.outputs[0]}
-                revealLabel={revealLabel()}
-                onOpen={openLastResult}
-                onReveal={revealLastResult}
-              />
-              <HintBar
+              {/* Gated on `mouseSupported()`, not drawn unconditionally.
+                The original reasoning here was that app-level hit testing
+                made this independent of `hyperlinksSupported()`'s terminal
+                allowlist — true for how a click is *routed*, but not for
+                whether one ever arrives. Confirmed against real
+                Terminal.app: reporting turns on, the frame calibrates, and
+                a click still never reaches the app — see `mouseSupported`'s
+                own doc comment for why nothing here can tell that is
+                happening. A label that looks exactly like a button and
+                never responds is worse than no label at all, and `o`/`s`
+                below already do the same thing from the keyboard. */}
+              {mouseSupported() ? (
+                <ResultLinks
+                  outputPath={lastResult.job.outputs[0]}
+                  revealLabel={revealLabel()}
+                  onOpen={openLastResult}
+                  onReveal={revealLastResult}
+                />
+              ) : null}
+              {/* `HintBar` itself, not reused here: the mode line sits
+                between its rule and its hints, which `HintBar`'s own props
+                have no room for and which every *other* step has no reason
+                to grow. Same rule, same border styling, so this remains
+                indistinguishable from `HintBar` visually — the only change
+                from a plain `<HintBar>` is what is stacked inside it. */}
+              <Box
+                flexDirection="column"
                 width={width}
-                pairs={[
-                  ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
-                  ...(suggestion
-                    ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
-                        string,
-                        string,
-                      ][])
-                    : []),
-                  ['o', 'open'],
-                  ['s', revealLabel().toLowerCase()],
-                  ['q', 'quit'],
-                ]}
-              />
+                borderStyle="single"
+                borderColor={colourProp(palette.border)}
+                borderBottom={false}
+                borderLeft={false}
+                borderRight={false}
+              >
+                <Box width={width} paddingX={1} backgroundColor={colourProp(modeBg)}>
+                  {modeLine}
+                </Box>
+                <Hints
+                  pairs={[
+                    ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
+                    ...(suggestion
+                      ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
+                          string,
+                          string,
+                        ][])
+                      : []),
+                    ['o', 'open'],
+                    ['s', revealLabel().toLowerCase()],
+                    ['q', 'quit'],
+                  ]}
+                />
+              </Box>
             </Box>
           ) : null}
 
@@ -2176,7 +2302,16 @@ export function App({
               onDone={(jobs) => {
                 void handlePdfDone(jobs)
               }}
-              onCancel={clearSource}
+              // Keeps the stage rather than `clearSource`: `mode` is still
+              // 'pdf' on the way back out (nothing here resets it), so
+              // dropping a second PDF at idle re-enters the hub with both
+              // staged — the escape hatch merge needs, now that a single
+              // drop opens the hub directly instead of requiring `/pdf`
+              // to be typed again. Abandoning the file entirely is still
+              // one keystroke further: esc again at idle, on an empty
+              // field, clears the stage the same way it already does
+              // everywhere else in this file.
+              onCancel={backToPromptKeepingStage}
             />
           ) : null}
 
@@ -2299,6 +2434,7 @@ export function App({
                 variant={band === 'compact' ? 'plain' : 'drop'}
                 width={width}
                 rawOnSubmit
+                disableSubmit={paletteOwnsEscape}
               />
               <HintBar
                 width={width}

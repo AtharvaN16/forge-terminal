@@ -10,6 +10,7 @@ export type ErrorCode =
   | 'unsupported-source'
   | 'heic-decoder-unavailable'
   | 'unsupported-compress'
+  | 'unsupported-pdf'
   | 'target-unreachable'
   | 'unsupported-target'
   | 'corrupt-source'
@@ -198,6 +199,23 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
     title: 'Nothing to compress',
     detail: `${name} is ${FORMATS[source.format].label}, which is lossless — there is no quality to trade away.`,
     hint: 'Use /convert to change it to a smaller format instead.',
+  })
+}
+
+/**
+ * `/pdf` mode is armed and expects the next dropped file to be a PDF — its
+ * five page operations (merge, split, extract, delete, rotate) have nothing
+ * to act on otherwise. Falls back to `/convert`'s target picker, the same
+ * "route it somewhere useful instead of a dead end" rule `unsupportedCompress`
+ * follows for its own mismatches.
+ */
+export function unsupportedPdf(source: SourceInfo): ForgeError {
+  const name = basename(source.path)
+  return new ForgeError({
+    code: 'unsupported-pdf',
+    title: '/pdf needs a PDF',
+    detail: `${name} is ${FORMATS[source.format].label}, not a PDF.`,
+    hint: 'Converting it instead.',
   })
 }
 

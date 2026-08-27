@@ -1,4 +1,5 @@
 import stringWidth from 'string-width'
+import supportsHyperlinks from 'supports-hyperlinks'
 
 /**
  * Terminal mouse reporting: the escape sequences that switch it on, and the
@@ -10,6 +11,33 @@ import stringWidth from 'string-width'
  *
  * Protocol reference: xterm ctlseqs, "Mouse Tracking".
  */
+
+/**
+ * Whether this terminal is worth drawing a clickable affordance in at all.
+ *
+ * Enabling reporting (below) and registering click targets costs nothing on
+ * a terminal that ignores both — a stray `?1000h` prints as garbage only if
+ * the terminal cannot parse CSI at all, which none in real use fail at. The
+ * actual failure mode, confirmed against real Terminal.app: reporting turns
+ * on and the app calibrates its frame origin without error (Terminal.app
+ * answers the plain `CURSOR_QUERY` DSR this app relies on — see
+ * `useFrameOrigin.ts` — DSR/CPR is old, universal VT100, unlike the mouse
+ * protocol layered on top of it), so nothing here can tell a click was ever
+ * dropped. The result is a coloured label that looks exactly like a button
+ * and never responds — worse than not drawing it, because a keyboard
+ * shortcut for the same action is already shown right below it.
+ *
+ * Reuses `hyperlinksSupported`'s terminal allowlist rather than keeping a
+ * second one: every terminal named there for OSC 8 (iTerm2, WezTerm, VS
+ * Code, Ghostty, kitty, …) is also one with real SGR mouse support in
+ * practice, and Apple's Terminal.app — the one terminal excluded from both
+ * — is the actual, reported failure this exists to route around. Not a
+ * logical guarantee (the two protocols are unrelated), but the same
+ * pragmatic bet this codebase already made once.
+ */
+export function mouseSupported(): boolean {
+  return supportsHyperlinks.stdout
+}
 
 /**
  * SGR encoding (`?1006`) rather than the original X10 scheme, which packs

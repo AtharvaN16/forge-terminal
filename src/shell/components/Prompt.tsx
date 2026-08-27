@@ -133,6 +133,31 @@ interface PromptProps {
    * explicitly is what keeps the bordered box from overflowing.
    */
   width: number
+  /**
+   * Suppresses this component's own Enter handling. `App` mounts
+   * `CommandPalette`'s `Select` alongside this component whenever the typed
+   * buffer opens a command (see the comment above that render: "Ink delivers
+   * input to every mounted useInput, so Prompt and the palette's Select are
+   * both live while this is open"), which is deliberate for every other key
+   * — it is what lets typing narrow the list and the arrows move its cursor.
+   * Enter is different: `Select`'s own `key.return` branch already submits
+   * the highlighted command, so this component submitting the *same*
+   * keystroke as a raw path is not a second opinion, it is a second write to
+   * state neither side coordinates with the other — observed, against the
+   * built binary in a real terminal, as the field showing `/pdf/pdf` and
+   * then a bogus "pdf could not be found" instead of the command running.
+   * This flag removes that hazard outright, which is the fix for the
+   * ordinary case.
+   *
+   * It does not fully close a narrower one: typing a full command and
+   * hitting Enter within roughly the first second after the shell mounts —
+   * while start-up work (the kitty-keyboard protocol probe, mouse
+   * calibration's DSR round trip) can still be in flight — reproduced the
+   * same symptom even with this flag in place, in a fraction of attempts,
+   * against a real PTY. Not reproduced past that window in dozens of runs.
+   * Root cause not fully isolated; flagged rather than silently left fixed.
+   */
+  disableSubmit?: boolean
 }
 
 /**
@@ -165,6 +190,7 @@ export function Prompt({
   variant,
   width,
   rawOnSubmit = false,
+  disableSubmit = false,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -513,6 +539,10 @@ export function Prompt({
       }
 
       if (key.return) {
+        // Left to `CommandPalette`'s own `Select` — see `disableSubmit`'s doc
+        // comment. Not even a buffer clear: `Select`'s `onSubmit` already
+        // routes through `runCommand`, which clears it.
+        if (disableSubmit) return
         onSubmit(rawOnSubmit ? valueRef.current : unescapePath(valueRef.current))
         valueRef.current = ''
         caretRef.current = 0

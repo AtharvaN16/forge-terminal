@@ -76,4 +76,21 @@ describe('the palette in the prompt', () => {
     expect(all).toContain('/convert')
     expect(all).toContain('/compress')
   })
+
+  it('/pdf with nothing staged arms pdf mode and keeps the drop area open', async () => {
+    // Mirrors `/compress`: with nothing staged there is no hub to open yet,
+    // but the choice of what the *next* dropped file goes through is real
+    // and worth remembering. Silently returning to idle with the banner
+    // unchanged was indistinguishable from the keystroke doing nothing at
+    // all, which is exactly how "/pdf isn't switching the mode" was
+    // reported.
+    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    stdin.write('/pdf')
+    await settle()
+    stdin.write(ENTER)
+    await settle(250)
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('current mode: pdf')
+    expect(frame).toContain('drop a file or type a path')
+  })
 })

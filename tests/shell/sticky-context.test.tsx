@@ -13,10 +13,11 @@ const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
  *
  * The reported bug: a PDF was staged, the user pressed escape back to the
  * prompt, and nothing on screen said so — the file card is deliberately
- * hidden for a lone file at idle, and the mode line is deliberately hidden
- * during `/pdf`. Between those two rules there was a state showing neither,
- * so `/compress` was typed against a file the user had forgotten was there,
- * and the refusal read as if it came from nowhere.
+ * hidden for a lone file at idle, and (at the time this was written) the
+ * mode line was unconditionally hidden during `/pdf`, before `/pdf` had a
+ * real mode of its own to show. Between those two rules there was a state
+ * showing neither, so `/compress` was typed against a file the user had
+ * forgotten was there, and the refusal read as if it came from nowhere.
  */
 async function stagePdfAtIdle() {
   const dir = await makeTempDir()
@@ -42,7 +43,7 @@ describe('the staged file is never invisible', () => {
     expect(frame).toContain('resonance_brochure.pdf')
   })
 
-  it('says where you are inside /pdf, without claiming a convert mode', async () => {
+  it('says where you are inside /pdf, with a real pdf mode of its own', async () => {
     const { stdin, lastFrame } = await stagePdfAtIdle()
     stdin.write('/pdf')
     await settle()
@@ -52,9 +53,10 @@ describe('the staged file is never invisible', () => {
     expect(frame).toContain('PDF — choose an operation')
     // The staged file stays named here too.
     expect(frame).toContain('resonance_brochure.pdf')
-    // `mode` is 'convert' throughout; printing it inside /pdf would be a
-    // lie, which is why the mode line is suppressed for this flow.
-    expect(frame).not.toContain('current mode')
+    // `mode` is genuinely 'pdf' here now — `/pdf` arms it the same way
+    // `/compress` arms 'compress' — so the banner says so rather than being
+    // suppressed as a would-be lie about still being in convert mode.
+    expect(frame).toContain('current mode: pdf')
   })
 })
 
