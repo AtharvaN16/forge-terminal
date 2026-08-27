@@ -36,6 +36,18 @@ function changePhrase(from: number, to: number): string {
   return direction === 'same' ? 'same size' : `${pct}% ${direction}`
 }
 
+/**
+ * `ok` (green) reads as "this is what you wanted." A convert or compress
+ * that comes out *larger* is the opposite of that — most often a lossless
+ * target re-encoding a lossy source (PNG from a JPEG, say), not a defect,
+ * but still a result worth a second look, which is what `warn` (the same
+ * colour a real warning uses) signals. `same` stays `ok`: nothing surprising
+ * happened.
+ */
+function changeColour(from: number, to: number): 'ok' | 'warn' {
+  return percentChange(from, to).direction === 'larger' ? 'warn' : 'ok'
+}
+
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
   const palette = useTheme()
 
@@ -162,7 +174,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
           <Text color={colourProp(palette.dim)}>
             {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
           </Text>
-          <Text color={colourProp(palette.ok)}>
+          <Text color={colourProp(palette[changeColour(job.sources[0].bytes, outputBytes)])}>
             {changePhrase(job.sources[0].bytes, outputBytes)}
           </Text>
         </Text>
@@ -246,7 +258,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
             <Text color={colourProp(palette.dim)}>
               {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
             </Text>
-            <Text color={colourProp(palette.ok)}>
+            <Text color={colourProp(palette[changeColour(job.sources[0].bytes, outputBytes)])}>
               {changePhrase(job.sources[0].bytes, outputBytes)}
             </Text>
           </Text>
@@ -289,7 +301,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
           <Text color={colourProp(palette.dim)}>
             {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
           </Text>
-          <Text color={colourProp(palette.ok)}>
+          <Text color={colourProp(palette[changeColour(job.sources[0].bytes, outputBytes)])}>
             {changePhrase(job.sources[0].bytes, outputBytes)}
           </Text>
         </Text>
