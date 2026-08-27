@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { Box, type DOMElement, Static, Text, useApp, useStdout } from 'ink'
+import { Box, type DOMElement, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -496,10 +496,15 @@ export function App({
    * The banner's actual content, with no Box of its own — split out so it
    * can sit inside two different containers: the highlighted bar shown at
    * the top of every other step, and (for `result`) a plain row stacked
-   * with the keyboard hints instead. Kept as one definition so the two
-   * never drift apart on what the banner actually says.
+   * with the keyboard hints instead. Kept as one function so the two never
+   * drift apart on what the banner actually says.
+   *
+   * `showHint` is false only for `result`: typing `/` there does nothing —
+   * the idle prompt that opens the command palette isn't mounted, and
+   * `result`'s own keys are `↵`/`o`/`s`/`q`, none of which gets back to it —
+   * so "use / to change mode" would be pointing at a door that isn't there.
    */
-  const modeLine = (
+  const modeLine = (showHint: boolean) => (
     <>
       <Text color={colourProp(modeColour)} bold>
         {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
@@ -507,9 +512,11 @@ export function App({
       {step === 'idle' && source && !stagedBatch ? (
         <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
       ) : null}
-      <Text color={colourProp(palette.dim)}>
-        {band === 'compact' ? '  / to change' : '  use / to change mode'}
-      </Text>
+      {showHint ? (
+        <Text color={colourProp(palette.dim)}>
+          {band === 'compact' ? '  / to change' : '  use / to change mode'}
+        </Text>
+      ) : null}
     </>
   )
   /**
@@ -550,8 +557,6 @@ export function App({
    */
   const textRef = useRef('')
   textRef.current = text
-
-  const { exit } = useApp()
 
   const push = useCallback((block: HistoryBlock) => {
     setHistory((h) => [...h, block])
@@ -804,7 +809,6 @@ export function App({
       }
       if (input === 'o') openLastResult()
       if (input === 's') revealLastResult()
-      if (input === 'q') exit()
       // Acts on the measured suggestion: re-enters convert with that target
       // already chosen, so the offer is one keystroke from being taken.
       if (input === 'c' && suggestion && lastResult) {
@@ -1824,38 +1828,16 @@ export function App({
             much "a mode" as compress's wizard is, and hiding it while inside
             the hub would reintroduce the same invisible-mode risk this
             banner exists to close.
-            A rule directly above it, and one row instead of three: `Static`
-            history (a result, a note, an error) always renders above every
-            live element regardless of where that element sits in the JSX —
-            an Ink guarantee, not something this file's own layout controls
-            (see "Static" in Ink's own docs) — so this can land right under a
-            just-finished result as easily as under nothing at all. The rule
-            is what makes either case read as "history ends, this is the
-            current status line" rather than a box floating with blank lines
-            on both sides. Drawn only once there is history to divide from
-            (`history.length > 0`) — with none yet (a fresh session, still at
-            the very first idle prompt) there is nothing above the banner to
-            separate it from, and the rule would be a second one stacked with
-            `HintBar`'s own for no reason (`responsive.test.tsx`'s "never a
-            stack of them" caught exactly this).
-            Skipped for `result` too — that screen draws it itself, grouped
-            with the keyboard hints instead of sitting between the finished
-            job and its own links. See the `HintBar` replacement inside the
-            `result` step below. */}
+            No rule of its own above it: a fenced-off history already gets
+            the heavier `╍` separator (see `blocks.tsx`), and stacking this
+            box's own rule on top of that read as two dividers doing the same
+            job. Skipped for `result` entirely — that screen draws it itself,
+            grouped with the keyboard hints instead of sitting between the
+            finished job and its own links. See the `HintBar` replacement
+            inside the `result` step below. */}
           {step !== 'theme' && step !== 'result' ? (
-            <Box
-              width={width}
-              marginBottom={1}
-              paddingX={1}
-              borderStyle="single"
-              borderColor={colourProp(palette.border)}
-              borderBottom={false}
-              borderLeft={false}
-              borderRight={false}
-              borderTop={history.length > 0}
-              backgroundColor={colourProp(modeBg)}
-            >
-              {modeLine}
+            <Box width={width} marginBottom={1} paddingX={1} backgroundColor={colourProp(modeBg)}>
+              {modeLine(true)}
             </Box>
           ) : null}
 
@@ -2257,12 +2239,12 @@ export function App({
                   onReveal={revealLastResult}
                 />
               ) : null}
-              {/* `HintBar` itself, not reused here: the mode line sits
-                between its rule and its hints, which `HintBar`'s own props
-                have no room for and which every *other* step has no reason
-                to grow. Same rule, same border styling, so this remains
-                indistinguishable from `HintBar` visually — the only change
-                from a plain `<HintBar>` is what is stacked inside it. */}
+              {/* `HintBar` itself, not reused here: the mode line sits below
+                its hints, which `HintBar`'s own props have no room for and
+                which every *other* step has no reason to grow. Same rule,
+                same border styling, so this remains indistinguishable from
+                `HintBar` visually — the only change from a plain `<HintBar>`
+                is what is stacked below it. */}
               <Box
                 flexDirection="column"
                 width={width}
@@ -2272,9 +2254,6 @@ export function App({
                 borderLeft={false}
                 borderRight={false}
               >
-                <Box width={width} paddingX={1} backgroundColor={colourProp(modeBg)}>
-                  {modeLine}
-                </Box>
                 <Hints
                   pairs={[
                     ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
@@ -2286,9 +2265,12 @@ export function App({
                       : []),
                     ['o', 'open'],
                     ['s', revealLabel().toLowerCase()],
-                    ['q', 'quit'],
+                    ['ctrl-c', 'close app'],
                   ]}
                 />
+                <Box width={width} paddingX={1} marginTop={1} backgroundColor={colourProp(modeBg)}>
+                  {modeLine(false)}
+                </Box>
               </Box>
             </Box>
           ) : null}
@@ -2449,7 +2431,7 @@ export function App({
                         ['/', 'commands'],
                         ['esc', 'clear'],
                         ['ctrl-n', 'new'],
-                        ['ctrl-c', 'quit'],
+                        ['ctrl-c', 'close app'],
                       ]
                 }
               />

@@ -214,7 +214,7 @@ so — and it encodes a candidate to find out rather than guessing:
          4.2 MB → 1.1 MB · 73% smaller
 
 ⚠ WebP would be 480 KB — 56% smaller again.
-  ↵ convert another · c convert to WebP · o open · s show in finder · q quit
+  ↵ convert another · c convert to WebP · o open · s show in finder · ctrl-c close app
 ```
 
 ## PDF
@@ -669,7 +669,7 @@ in a 100-column terminal:
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ › drop a file or type a path                                                                     │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-↵ send · ctrl-c quit
+↵ send · ctrl-c close app
 ```
 
 Drag a file in from Finder (its path arrives shell-escaped, e.g. `my\ photo.jpg`,
@@ -745,7 +745,7 @@ Either way you land back on the destination step. Otherwise:
   11.5 KB → 3.5 KB · 69.6% smaller
 
 file:///private/tmp/forge-shell-check/sample.webp  ·  file:///private/tmp/forge-shell-check
-↵ convert another · o open · r reveal · q quit
+↵ convert another · o open · r reveal · ctrl-c close app
 ```
 
 `o` opens the converted file in its default app and `o` reveals it in
@@ -757,7 +757,7 @@ terminal with Ink's `<Static>`, which commits them to the real scrollback
 once rather than redrawing them on every frame — confirmed by inspecting
 the raw output stream, which contains no full-screen or scrollback-clearing
 escape codes once a card or result has been printed, only the small live
-region below it being rewritten. `q` quits.
+region below it being rewritten. `ctrl-c` closes the app.
 
 Those two links print as bare `file://` URLs (to wherever the file actually
 landed — `/tmp/forge-shell-check` was this session's scratch directory)

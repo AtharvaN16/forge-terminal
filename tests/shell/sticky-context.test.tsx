@@ -84,6 +84,6 @@ describe('a change of flow is fenced off from what came before', () => {
     // Positive first: we really are on the PDF screen.
     expect(frame).toContain('PDF — choose an operation')
     // And the refusal is now behind a rule rather than floating above it.
-    expect(frame).toContain('╌')
+    expect(frame).toContain('╍')
   })
 })

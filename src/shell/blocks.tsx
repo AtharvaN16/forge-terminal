@@ -40,12 +40,12 @@ function changePhrase(from: number, to: number): string {
  * `ok` (green) reads as "this is what you wanted." A convert or compress
  * that comes out *larger* is the opposite of that — most often a lossless
  * target re-encoding a lossy source (PNG from a JPEG, say), not a defect,
- * but still a result worth a second look, which is what `warn` (the same
- * colour a real warning uses) signals. `same` stays `ok`: nothing surprising
- * happened.
+ * but still a result worth a second look, which is what `larger` (a
+ * dedicated orange — see its doc comment on `Palette`) signals. `same`
+ * stays `ok`: nothing surprising happened.
  */
-function changeColour(from: number, to: number): 'ok' | 'warn' {
-  return percentChange(from, to).direction === 'larger' ? 'warn' : 'ok'
+function changeColour(from: number, to: number): 'ok' | 'larger' {
+  return percentChange(from, to).direction === 'larger' ? 'larger' : 'ok'
 }
 
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
@@ -56,9 +56,16 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   }
 
   if (block.kind === 'separator') {
+    // Heavy double-dash, not the light one used for ordinary borders: this
+    // marks a break between separate operations in one session, a coarser
+    // structural event than a border ever draws. Spaced (`╍ `, not a solid
+    // `╍╍╍`) and in `dim` rather than `border` for the same reason — this
+    // has to read as a deliberate marker, not another rule.
+    const width = Math.max(4, block.width)
+    const line = '╍ '.repeat(Math.ceil(width / 2)).slice(0, width)
     return (
       <Box marginTop={1} marginBottom={2}>
-        <Text color={colourProp(palette.border)}>{'╌'.repeat(Math.max(4, block.width))}</Text>
+        <Text color={colourProp(palette.dim)}>{line}</Text>
       </Box>
     )
   }
