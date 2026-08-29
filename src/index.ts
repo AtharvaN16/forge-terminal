@@ -11,9 +11,9 @@ import { isForgeError, renderError } from './core/errors.js'
  * progress callback — and only on a real TTY, so a piped or CI run stays
  * quiet. No live redraw: each update is its own line, not a bar to be built.
  */
-function onProgress({ completed, total }: BatchProgress): void {
+function onProgress({ completed, total }: BatchProgress, activity = 'Converting'): void {
   if (completed === 0) {
-    process.stderr.write(`Converting ${total} files\n`)
+    process.stderr.write(`${activity} ${total} files\n`)
   } else {
     process.stderr.write(`  ${completed}/${total}\n`)
   }
@@ -64,8 +64,14 @@ async function main(): Promise<void> {
      * file decides to animate it, and only on a terminal.
      */
     let spinner: Spinner | undefined
+    const activity =
+      intent.kind === 'remove-background'
+        ? 'Removing backgrounds from'
+        : intent.kind === 'compress'
+          ? 'Compressing'
+          : 'Converting'
     const result = await execute(intent, {
-      onProgress: process.stderr.isTTY ? onProgress : undefined,
+      onProgress: process.stderr.isTTY ? (progress) => onProgress(progress, activity) : undefined,
       ...(process.stderr.isTTY
         ? {
             onSearch: (status: string) => {

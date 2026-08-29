@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
-import { formatById } from '../core/formats.js'
+import { FORMATS, formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
 import { parseSize } from '../core/units.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
@@ -49,6 +49,20 @@ export interface CompressIntent {
   debug: boolean
 }
 
+export interface RemoveBackgroundIntent {
+  kind: 'remove-background'
+  inputs: string[]
+  /** Absent means the first alpha-capable target from the capability graph. */
+  target?: FormatId
+  output?: string
+  quality?: number
+  keepMetadata: boolean
+  force: boolean
+  recursive: boolean
+  concurrency?: number
+  debug: boolean
+}
+
 /**
  * A page operation on one or more PDFs: merge, split, extract, delete or
  * rotate. Kept as its own `kind` — distinct from `ConvertIntent` — because it
@@ -78,6 +92,7 @@ export interface PageOpIntent {
 export type Intent =
   | ConvertIntent
   | CompressIntent
+  | RemoveBackgroundIntent
   | PageOpIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
@@ -162,6 +177,7 @@ export function parseArgs(argv: string[]): Intent {
     .option('--recursive', 'descend into subfolders', false)
     .option('--force', 'allow overwriting existing files', false)
     .option('--max-size <size>', 'compress until the file fits, e.g. 500kb')
+    .option('--remove-background', 'make an image background transparent')
     .option('--concurrency <n>', 'how many files to convert at once')
     .option('--debug', 'show underlying errors', false)
     .option('--formats', 'list supported formats', false)
@@ -202,6 +218,11 @@ export function parseArgs(argv: string[]): Intent {
   const chosen = (['merge', 'split', 'extract', 'delete', 'rotate'] as const).filter(
     (name) => opts[name] !== undefined,
   )
+  if (opts.removeBackground && chosen.length > 0) {
+    throw invalidArguments(
+      `Use one operation at a time — got --remove-background and --${chosen[0]}.`,
+    )
+  }
   if (chosen.length > 1) {
     throw invalidArguments(
       `Use one operation at a time — got ${chosen.map((c) => `--${c}`).join(' and ')}.`,
@@ -285,8 +306,76 @@ export function parseArgs(argv: string[]): Intent {
     return pageOp
   }
 
-  if (inputs.length === 0 && !opts.to && opts.quality === undefined && opts.maxSize === undefined) {
+  if (
+    inputs.length === 0 &&
+    !opts.to &&
+    !opts.removeBackground &&
+    opts.quality === undefined &&
+    opts.maxSize === undefined
+  ) {
     return { kind: 'shell' }
+  }
+
+  if (opts.removeBackground) {
+    if (inputs.length === 0) {
+      throw invalidArguments(
+        'No files given.',
+        'Name an image, for example: forge photo.jpg --remove-background',
+      )
+    }
+    if (opts.maxSize !== undefined) {
+      throw invalidArguments('--max-size does not apply to --remove-background.')
+    }
+    if (opts.pages !== undefined) {
+      throw invalidArguments('--pages does not apply to --remove-background.')
+    }
+    if (program.getOptionValueSource('dpi') === 'cli') {
+      throw invalidArguments('--dpi does not apply to --remove-background.')
+    }
+    if (program.getOptionValueSource('background') === 'cli') {
+      throw invalidArguments(
+        '--background does not apply to --remove-background.',
+        'The removed area is transparent; use --to with an alpha-capable format.',
+      )
+    }
+    if (opts.passwordStdin) {
+      throw invalidArguments('--password-stdin does not apply to --remove-background.')
+    }
+    if (opts.separate) {
+      throw invalidArguments('--separate does not apply to --remove-background.')
+    }
+    if (opts.quality !== undefined && opts.to === undefined) {
+      throw invalidArguments(
+        '--quality with --remove-background needs --to.',
+        'Choose a lossy alpha-capable format such as WebP or AVIF.',
+      )
+    }
+
+    const intent: RemoveBackgroundIntent = {
+      kind: 'remove-background',
+      inputs,
+      keepMetadata: Boolean(opts.keepMetadata),
+      force: Boolean(opts.force),
+      recursive: Boolean(opts.recursive),
+      debug: Boolean(opts.debug),
+    }
+    if (opts.to !== undefined) intent.target = parseTarget(String(opts.to))
+    if (
+      intent.target !== undefined &&
+      opts.quality !== undefined &&
+      !FORMATS[intent.target].lossy
+    ) {
+      throw invalidArguments(
+        `--quality does not apply to ${FORMATS[intent.target].label}.`,
+        'Leave it out, or choose a lossy alpha-capable target.',
+      )
+    }
+    if (opts.output !== undefined) intent.output = String(opts.output)
+    if (opts.quality !== undefined) intent.quality = parseQuality(String(opts.quality))
+    if (opts.concurrency !== undefined) {
+      intent.concurrency = parseConcurrency(String(opts.concurrency))
+    }
+    return intent
   }
 
   /**

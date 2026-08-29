@@ -8,20 +8,21 @@ import {
   savePreferences,
 } from '../config/preferences.js'
 import type { OptionSpec } from '../core/actions/index.js'
-import { compressAction, convertAction } from '../core/actions/index.js'
+import { compressAction, convertAction, removeBackgroundAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
 import {
   isForgeError,
   unexpectedError,
+  unsupportedBackgroundRemoval,
   unsupportedCompress,
   unsupportedPdf,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
-import { FORMATS, primaryExtension } from '../core/formats.js'
+import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
-import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
+import type { Job, Result, SourceInfo } from '../core/types.js'
 import { formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
@@ -143,6 +144,8 @@ interface ConversionOpts {
   targetBytes?: number
 }
 
+type VisualJob = Extract<Job, { op: 'convert' }> | Extract<Job, { op: 'remove-background' }>
+
 /**
  * What the `/pdf` write-safety refusal needs to remember while it is being
  * asked: the exact jobs `PdfFlow` handed off (so "Replace" can re-check them
@@ -198,6 +201,10 @@ function describePdfResult(result: Result): string {
       return view.outputs.length === 1
         ? `${view.verb} — ${first}`
         : `${view.verb} into ${view.outputs.length} files`
+    }
+    case 'remove-background': {
+      const view = describeResult(result)
+      return `${view.verb} — ${first}`
     }
     case 'merge':
       return `merged ${job.sources.length} files into ${first}`
@@ -392,8 +399,14 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
-  const action = mode === 'compress' ? compressAction : convertAction
+  const [mode, setMode] = useState<'convert' | 'compress' | 'remove-background' | 'pdf'>('convert')
+  const action =
+    mode === 'compress'
+      ? compressAction
+      : mode === 'remove-background'
+        ? removeBackgroundAction
+        : convertAction
+  const modeLabel = mode === 'remove-background' ? 'remove background' : mode
   /**
    * The mode banner's colours. `/pdf` has no `action` of its own — it opens
    * `PdfFlow` directly rather than walking `convertAction`/`compressAction`'s
@@ -507,7 +520,7 @@ export function App({
   const modeLine = (showHint: boolean) => (
     <>
       <Text color={colourProp(modeColour)} bold>
-        {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
+        {band === 'compact' ? modeLabel : `current mode: ${modeLabel}`}
       </Text>
       {step === 'idle' && source && !stagedBatch ? (
         <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
@@ -630,7 +643,7 @@ export function App({
     push({
       kind: 'note',
       id: nextId(),
-      text: `${SYMBOLS.warn} Converting several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
+      text: `${SYMBOLS.warn} Processing several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
     })
   }, [push])
 
@@ -659,6 +672,15 @@ export function App({
       convertAction
         .options([candidate], {}, livePrefs)
         .some((s) => s.kind === 'select' && s.id === 'target' && s.choices.length > 0),
+    [livePrefs],
+  )
+
+  const hasBackgroundTarget = useCallback(
+    (candidate: SourceInfo): boolean =>
+      removeBackgroundAction.appliesTo([candidate]) &&
+      removeBackgroundAction
+        .options([candidate], {}, livePrefs)
+        .some((spec) => spec.kind === 'select' && spec.id === 'target' && spec.choices.length > 0),
     [livePrefs],
   )
 
@@ -912,6 +934,22 @@ export function App({
         return
       }
 
+      if (command.name === 'remove-background') {
+        if (stagedBatch) {
+          refuseBatch()
+          return
+        }
+        if (source && !hasBackgroundTarget(source)) {
+          push({ kind: 'error', id: nextId(), error: unsupportedBackgroundRemoval(source) })
+          return
+        }
+        fenceOff()
+        setMode('remove-background')
+        setValues({})
+        setStep(source ? 'target' : 'idle')
+        return
+      }
+
       /**
        * Deliberately does not consult `stagedBatch`/`refuseBatch` — those
        * exist to stop convert/compress from silently acting on only the
@@ -962,6 +1000,7 @@ export function App({
       stagedBatch,
       refuseBatch,
       hasConvertTarget,
+      hasBackgroundTarget,
       pdfActionsApply,
     ],
   )
@@ -1119,6 +1158,16 @@ export function App({
           setStep('mode')
           return
         }
+        if (mode === 'remove-background') {
+          if (!hasBackgroundTarget(info)) {
+            push({ kind: 'error', id: nextId(), error: unsupportedBackgroundRemoval(info) })
+            setMode('convert')
+            setStep(hasConvertTarget(info) ? 'target' : 'idle')
+            return
+          }
+          setStep('target')
+          return
+        }
         // `/pdf` armed with nothing staged yet (see `runCommand`) — the same
         // shape as the `compress` branch above: a source the hub has
         // nothing to do with falls back to convert, one it can act on opens
@@ -1166,6 +1215,7 @@ export function App({
       stage,
       refuseBatch,
       hasConvertTarget,
+      hasBackgroundTarget,
       pdfActionsApply,
       fenceOff,
     ],
@@ -1397,11 +1447,10 @@ export function App({
   // live terminal width, so a deep preset path can't push the line past the
   // edge of a narrow terminal.
   const previewDestination = (candidate: string): string => {
-    const stem = source ? (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '') : ''
-    const full =
-      source && typeof values.target === 'string'
-        ? `${candidate}/${stem}${primaryExtension(values.target as FormatId)}`
-        : candidate
+    const planned = source
+      ? action.plan([source], { ...values, destination: candidate })[0]
+      : undefined
+    const full = planned?.outputs[0] ?? candidate
     return middleEllipsis(full, Math.max(12, width - 4))
   }
 
@@ -1451,7 +1500,7 @@ export function App({
    * re-searching from scratch.
    */
   const finishConversion = async (
-    planned: Extract<Job, { op: 'convert' }>,
+    planned: VisualJob,
     destination: string,
     output: string,
     opts: ConversionOpts,
@@ -1488,6 +1537,9 @@ export function App({
      */
     const missed = outcome.unreachable[0]
     if (missed && opts.targetBytes !== undefined) {
+      if (planned.op !== 'convert') {
+        throw new Error('only a conversion can be searched to a target size')
+      }
       setSizeUnreachable({
         planned,
         destination,
@@ -1532,7 +1584,7 @@ export function App({
        * worth saying, and it must not be able to cost the user the
        * conversion they actually asked for.
        */
-      if (mode === 'compress') {
+      if (mode === 'compress' && planned.op === 'convert') {
         const found = await suggestFormat({
           source,
           resultBytes: result.outputBytes,
@@ -1548,7 +1600,7 @@ export function App({
         // the source's own format (see `compressAction.appliesTo`) — so
         // this only ever counts conversions the user actually chose 'PDF'
         // for.
-        if (planned.target === 'pdf') {
+        if (planned.op === 'convert' && planned.target === 'pdf') {
           pdfOutputsThisSession.current += 1
           setMergeOffer(
             pdfOutputsThisSession.current > 1 ? pdfOutputsThisSession.current : undefined,
@@ -1571,12 +1623,9 @@ export function App({
     setStep('converting')
     try {
       const planned = action.plan([source], { ...values, destination })[0]
-      // `action` here is always convertAction or compressAction — both plan
-      // only ever produce a `convert` job — but `plan()`'s return type is now
-      // the full `Job` union (widened for the page actions), so the `target`/
-      // `options` reads below need this narrowed explicitly rather than
-      // assumed.
-      if (planned?.op !== 'convert') {
+      // The three visual actions carry one source, one output and a target.
+      // Page operations do not reach this wizard.
+      if (planned?.op !== 'convert' && planned?.op !== 'remove-background') {
         setStep('idle')
         return
       }
@@ -2182,7 +2231,9 @@ export function App({
               <Text color={colourProp(palette.dim)}>
                 {attempt
                   ? `Finding the right quality — attempt ${attempt.n} of ${attempt.of}…`
-                  : 'Converting…'}
+                  : mode === 'remove-background'
+                    ? 'Removing background…'
+                    : 'Converting…'}
               </Text>
             </Box>
           ) : null}
@@ -2256,7 +2307,14 @@ export function App({
               >
                 <Hints
                   pairs={[
-                    ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
+                    [
+                      '↵',
+                      mode === 'compress'
+                        ? 'compress again'
+                        : mode === 'remove-background'
+                          ? 'remove another background'
+                          : 'convert another',
+                    ],
                     ...(suggestion
                       ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
                           string,

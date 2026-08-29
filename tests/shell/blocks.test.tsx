@@ -94,6 +94,27 @@ describe('HistoryEntry', () => {
     expect(frame).toContain('only the first frame')
   })
 
+  it('renders background removal as its own successful operation', () => {
+    const result: Result = {
+      job: {
+        op: 'remove-background',
+        sources: [source],
+        outputs: ['/Users/me/Desktop/photo-no-bg.png'],
+        target: 'png',
+        options: { keepMetadata: false },
+      },
+      outputBytes: 100,
+      warnings: [],
+    }
+    const frame =
+      render(
+        <HistoryEntry block={{ kind: 'result', id: 'r3', result }} width={80} />,
+      ).lastFrame() ?? ''
+
+    expect(frame).toContain('background removed')
+    expect(frame).toContain('photo-no-bg.png')
+  })
+
   it('renders an error with its title, detail and hint', () => {
     const block: HistoryBlock = { kind: 'error', id: 'e1', error: fileNotFound('/a/ghost.jpg') }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''

@@ -39,16 +39,16 @@ export function reportSingle(summary: RunSummary): string[] {
   }
 
   const lines = [
-    `✓ ${basename(source.path)} → ${basename(outputs[0])}`,
+    `✓ ${result.job.op === 'remove-background' ? 'background removed · ' : ''}${basename(source.path)} → ${basename(outputs[0])}`,
     `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(source.bytes, result.outputBytes)}`,
   ]
   for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
   return lines
 }
 
-export function reportBatch(summary: RunSummary, output?: string): string[] {
+export function reportBatch(summary: RunSummary, output?: string, success?: string): string[] {
   const lines = [
-    `✓ ${summary.results.length} converted`,
+    `✓ ${success ?? `${summary.results.length} converted`}`,
     `  ${formatBytes(summary.inputBytes)} → ${formatBytes(summary.outputBytes)} · ${changePhrase(summary.inputBytes, summary.outputBytes)}`,
   ]
 

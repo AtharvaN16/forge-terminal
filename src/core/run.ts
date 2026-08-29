@@ -1,7 +1,7 @@
 import { cpus } from 'node:os'
 import { engineForJob } from '../engines/registry.js'
 import type { Engine } from '../engines/types.js'
-import { conversionFailed, isForgeError } from './errors.js'
+import { isForgeError, jobFailed } from './errors.js'
 import type { InputFailure } from './resolve.js'
 import type { Job, Progress, Result } from './types.js'
 
@@ -65,7 +65,7 @@ export async function runJobs(
         const path = job.sources[0].path
         const failure: InputFailure = {
           path,
-          error: conversionFailed(path, new Error(`no engine runs ${job.op}`)),
+          error: jobFailed(job, new Error(`no engine runs ${job.op}`)),
         }
         failures.push(failure)
         emit({ type: 'job:error', job, failure, completed, total })
@@ -82,7 +82,7 @@ export async function runJobs(
       } catch (e) {
         completed++
         const path = job.sources[0].path
-        const error = isForgeError(e) ? e : conversionFailed(path, e)
+        const error = isForgeError(e) ? e : jobFailed(job, e)
         const failure: InputFailure = { path, error }
         failures.push(failure)
         emit({ type: 'job:error', job, failure, completed, total })

@@ -63,6 +63,19 @@ describe('describeResult', () => {
     expect(describeResult(result).verb).toBe('compressed')
   })
 
+  it('keeps background removal distinct from a format conversion', () => {
+    const source = image('/portrait.jpg', 'jpeg', 1000)
+    const job: Job = {
+      op: 'remove-background',
+      sources: [source],
+      outputs: ['/portrait-no-bg.png'],
+      target: 'png',
+      options: { keepMetadata: false },
+    }
+
+    expect(describeResult({ job, outputBytes: 400, warnings: [] }).verb).toBe('background removed')
+  })
+
   /**
    * The bug this replaces: the shell reported `✓ done — doc-01.jpg` for a
    * twenty-page render, naming one file of twenty.

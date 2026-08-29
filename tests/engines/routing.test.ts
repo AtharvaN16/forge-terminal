@@ -69,6 +69,20 @@ describe('engineForJob routes a conversion by both ends', () => {
   })
 })
 
+describe('engineForJob routes semantic image operations by capability', () => {
+  it('sends background removal to the image engine', () => {
+    const job: Job = {
+      op: 'remove-background',
+      sources: [png],
+      outputs: ['/tmp/a-no-bg.png'],
+      target: 'png',
+      options: { keepMetadata: false },
+    }
+
+    expect(engineForJob(job)?.id).toBe('image')
+  })
+})
+
 describe('engineForJob routes docx/doc conversions to the word engine', () => {
   it('sends docx -> pdf to the word engine', () => {
     const job: Job = {
