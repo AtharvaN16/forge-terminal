@@ -21,10 +21,11 @@ function source(over: Partial<ImageInfo> = {}): SourceInfo {
 }
 
 describe('action registry', () => {
-  it('registers convert, compress and the page actions', () => {
+  it('registers image and page actions', () => {
     expect(ACTIONS.map((a) => a.id)).toEqual([
       'convert',
       'compress',
+      'remove-background',
       'merge',
       'split',
       'extract',

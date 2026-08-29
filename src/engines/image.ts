@@ -5,6 +5,8 @@ import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import sharp from 'sharp'
 import {
+  backgroundRemovalFailed,
+  backgroundRemovalUnavailable,
   conversionFailed,
   corruptFormatSource,
   corruptSource,
@@ -18,6 +20,8 @@ import {
   permissionDenied,
   symlinkLoop,
   unreadablePath,
+  unsupportedBackgroundRemoval,
+  unsupportedBackgroundTarget,
   unsupportedSource,
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
@@ -30,6 +34,11 @@ import type {
   SourceInfo,
   Warning,
 } from '../core/types.js'
+import {
+  type BackgroundRemover,
+  type RemovedBackground,
+  removeImageBackground,
+} from './background-removal.js'
 import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import type { Engine, Measurer } from './types.js'
 
@@ -314,10 +323,10 @@ export async function encodeToBuffer(
   }
 }
 
-async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Result> {
-  if (job.op !== 'convert') {
-    throw new Error(`image engine cannot ${job.op}`)
-  }
+async function runConversion(
+  job: Extract<Job, { op: 'convert' }>,
+  onPhase: (progress: Progress) => void,
+): Promise<Result> {
   const source = job.sources[0]
   const output = job.outputs[0]
 
@@ -368,6 +377,113 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
   }
 }
 
+async function orientedPng(
+  source: Extract<SourceInfo, { kind: 'image' }>,
+  keepMetadata: boolean,
+): Promise<{ image: Buffer; cleanup: () => Promise<void> }> {
+  if (source.format === 'heic' && !(await heicDecodable())) {
+    throw heicDecoderUnavailable(source.path)
+  }
+  const heic = source.format === 'heic' ? await decodeHeic(source.path) : undefined
+  const cleanup = async () => {
+    await heic?.cleanup()
+  }
+
+  try {
+    let pipeline = sharp(heic?.path ?? source.path).rotate()
+    pipeline = keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
+    return { image: await pipeline.png().toBuffer(), cleanup }
+  } catch (cause) {
+    await cleanup()
+    throw cause
+  }
+}
+
+async function runBackgroundRemoval(
+  job: Extract<Job, { op: 'remove-background' }>,
+  onPhase: (progress: Progress) => void,
+  removeBackground: BackgroundRemover,
+): Promise<Result> {
+  const source = job.sources[0]
+  if (source.frames > 1) throw unsupportedBackgroundRemoval(source)
+  if (process.platform === 'darwin' && process.arch !== 'arm64') {
+    throw backgroundRemovalUnavailable(source.path)
+  }
+  if (!FORMATS[job.target].hasAlpha) {
+    throw unsupportedBackgroundTarget(source, job.target, [])
+  }
+
+  onPhase({ phase: 'reading' })
+  onPhase({ phase: 'decoding' })
+  const { image, cleanup } = await orientedPng(source, job.options.keepMetadata)
+
+  try {
+    onPhase({ phase: 'processing' })
+    const removed = await removeBackground(image)
+    const original = await sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    const pixels = original.info.width * original.info.height
+    if (
+      removed.width !== original.info.width ||
+      removed.height !== original.info.height ||
+      removed.channels !== 4 ||
+      removed.data.length !== pixels * 4
+    ) {
+      throw new Error('the background-removal model returned a mask with the wrong dimensions')
+    }
+
+    const matte = Buffer.alloc(pixels * 4, 255)
+    for (let i = 0; i < pixels; i++) {
+      const modelAlpha = removed.data[i * 4 + 3] ?? 0
+      matte[i * 4 + 3] = modelAlpha
+    }
+
+    // dest-in multiplies the model matte with any transparency the source
+    // already had, instead of replacing it and making old transparent pixels
+    // opaque. Compositing onto the oriented PNG also keeps its ICC profile.
+    let pipeline = sharp(image).composite([
+      {
+        input: matte,
+        raw: { width: original.info.width, height: original.info.height, channels: 4 },
+        blend: 'dest-in',
+      },
+    ])
+    pipeline = job.options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
+
+    onPhase({ phase: 'encoding' })
+    const encoded = encode(pipeline, job.target, job.options.quality)
+    onPhase({ phase: 'writing' })
+    const outputBytes = await writeAtomic(encoded, job.outputs[0])
+    return { job, outputBytes, warnings: [] }
+  } catch (cause) {
+    throw isForgeError(cause) ? cause : backgroundRemovalFailed(source.path, cause)
+  } finally {
+    await cleanup()
+  }
+}
+
+export interface ImageEngineOptions {
+  removeBackground?: BackgroundRemover
+}
+
+export function createImageEngine(options: ImageEngineOptions = {}): Engine {
+  const removeBackground = options.removeBackground ?? removeImageBackground
+  return {
+    id: 'image',
+    reads: READS,
+    writes: WRITES,
+    ops: new Set<Job['op']>(['convert', 'remove-background']),
+    probe,
+    run(job, onPhase) {
+      if (job.op === 'convert') return runConversion(job, onPhase)
+      if (job.op === 'remove-background') {
+        return runBackgroundRemoval(job, onPhase, removeBackground)
+      }
+      throw new Error(`image engine cannot ${job.op}`)
+    },
+    measurer,
+  }
+}
+
 /**
  * One rung: an image has a single lever, quality.
  *
@@ -383,12 +499,6 @@ async function measurer(job: Job): Promise<Measurer | undefined> {
   }
 }
 
-export const imageEngine: Engine = {
-  id: 'image',
-  reads: READS,
-  writes: WRITES,
-  ops: new Set<Job['op']>(['convert']),
-  probe,
-  run,
-  measurer,
-}
+export type { RemovedBackground }
+
+export const imageEngine: Engine = createImageEngine()

@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
-import { ACTIONS, convertAction, unavailableReason } from '../core/actions/index.js'
+import {
+  ACTIONS,
+  convertAction,
+  removeBackgroundAction,
+  unavailableReason,
+} from '../core/actions/index.js'
+import { backgroundTargetsFor } from '../core/actions/remove-background.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
 import { rasterises } from '../core/capabilities.js'
 import {
@@ -9,6 +15,8 @@ import {
   invalidArguments,
   invalidPageRange,
   isForgeError,
+  unsupportedBackgroundRemoval,
+  unsupportedBackgroundTarget,
   unsupportedCompress,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
@@ -16,6 +24,7 @@ import { buildPlan } from '../core/plan.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
 import { openPdf } from '../engines/pdfium.js'
+import type { Engine } from '../engines/types.js'
 import type { Intent, PageOpIntent } from './args.js'
 import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
 import { readPassword } from './stdin.js'
@@ -50,6 +59,8 @@ export interface ExecuteOptions {
    * sequence, never an invented percentage (invariant 7).
    */
   onSearch?: (status: string) => void
+  /** Test seam for operation engines; production resolves from the registry. */
+  engineFor?: (job: Job) => Engine | undefined
 }
 
 /**
@@ -335,6 +346,70 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         : outcome.results.length === 1
           ? reportSingle(outcome)
           : reportBatch(outcome)
+
+    return {
+      exitCode: failures.length > 0 ? 1 : 0,
+      stdout,
+      stderr: reportFailures(failures, { debug: intent.debug }),
+    }
+  }
+
+  if (intent.kind === 'remove-background') {
+    const jobs: Job[] = []
+    const refusals: InputFailure[] = []
+
+    for (const source of resolved.sources) {
+      if (!removeBackgroundAction.appliesTo([source])) {
+        refusals.push({ path: source.path, error: unsupportedBackgroundRemoval(source) })
+        continue
+      }
+      if (source.kind !== 'image') continue
+
+      const targets = backgroundTargetsFor(source)
+      const target = intent.target ?? targets[0]?.id
+      const available = targets.map((candidate) => candidate.id)
+      if (target === undefined || !available.includes(target)) {
+        refusals.push({
+          path: source.path,
+          error: unsupportedBackgroundTarget(source, String(target ?? ''), available),
+        })
+        continue
+      }
+
+      const [planned] = removeBackgroundAction.plan([source], {
+        target,
+        keepMetadata: intent.keepMetadata,
+        ...(intent.quality === undefined ? {} : { quality: intent.quality }),
+        ...(intent.output === undefined ? {} : { output: intent.output }),
+        ...(resolved.roots.get(source.path) === undefined
+          ? {}
+          : { sourceRoot: resolved.roots.get(source.path) }),
+      })
+      if (planned) jobs.push(planned)
+    }
+
+    const batch = jobs.length > 1
+    if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
+    const outcome = await runPlan(jobs, {
+      force: intent.force,
+      // ML inference uses materially more memory than an encode. A caller can
+      // still opt into parallel jobs, but the safe default is one at a time.
+      concurrency: intent.concurrency ?? 1,
+      ...(opts.engineFor === undefined ? {} : { engineFor: opts.engineFor }),
+      onEvent: (event) => {
+        if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
+          opts.onProgress?.({ completed: event.completed, total: event.total })
+        }
+      },
+    })
+
+    const failures = [...resolved.failures, ...refusals, ...outcome.refusals, ...outcome.failures]
+    const stdout =
+      outcome.results.length === 0
+        ? []
+        : outcome.results.length === 1
+          ? reportSingle(outcome)
+          : reportBatch(outcome, intent.output, `${outcome.results.length} backgrounds removed`)
 
     return {
       exitCode: failures.length > 0 ? 1 : 0,

@@ -132,11 +132,12 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   // compression — both plan a `convert` job — and this card is built around
   // that shape: one source format becoming one target format. A page
   // operation's result gets its own rendering once one exists.
-  if (job.op !== 'convert') {
+  if (job.op !== 'convert' && job.op !== 'remove-background') {
     throw new Error(`HistoryEntry cannot render a "${job.op}" result yet`)
   }
   const fromLabel = FORMATS[job.sources[0].format].label
   const toLabel = FORMATS[job.target].label
+  const status = job.op === 'remove-background' ? 'background removed' : 'done'
 
   /**
    * Two framed names with an arrow between them, so a finished conversion
@@ -172,7 +173,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Text>
-          <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+          <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} ${status}`}</Text>
           <Text
             color={colourProp(palette.dim)}
           >{`  ${middleEllipsis(basename(job.outputs[0]), Math.max(8, width - 8))}`}</Text>
@@ -253,7 +254,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+        <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} ${status}`}</Text>
         <Box marginTop={1} flexDirection="column">
           {wide(fromLabel, fromName)}
           <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}│`}</Text>
@@ -285,7 +286,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
+      <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} ${status}`}</Text>
       <Box marginTop={1} flexDirection="column">
         <Text>
           {from.top}

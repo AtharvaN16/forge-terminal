@@ -4,7 +4,7 @@
 
 ## What it is
 
-Forge takes a file and turns it into another format without leaving the
+Forge converts files and removes image backgrounds without leaving the
 terminal. No web upload, no GUI app to open, no ImageMagick incantations to
 remember — point it at a file or a folder, say what you want it to become,
 and it writes the result next to the original (or wherever you tell it to).
@@ -56,7 +56,10 @@ forge photo.jpg --to webp
 
 `npm install` compiles Sharp's native bindings, which is the slow step —
 expect a minute or two on a first install. Nothing else needs Homebrew;
-image conversion is entirely self-contained.
+image conversion is entirely self-contained. Background removal downloads a
+small Apache-2.0-licensed model on first use, caches it under
+`~/Library/Caches/forge/models`, and then runs locally without uploading the
+image.
 
 ### Once it's published
 
@@ -162,11 +165,12 @@ both, rename, replace, or cancel.
 Type `/` in the shell and a list opens:
 
 ```
-  /convert     change a file's format
-  /compress    make a file smaller
-  /pdf         page operations on a PDF
-  /theme       switch between light and dark
-  /help        list these commands
+  /convert            change a file's format
+  /compress           make a file smaller
+  /remove-background  make an image background transparent
+  /pdf                page operations on a PDF
+  /theme              switch between light and dark
+  /help               list these commands
 ```
 
 Typing narrows it, arrows move, Enter runs. Dropping a file without typing
@@ -216,6 +220,33 @@ so — and it encodes a candidate to find out rather than guessing:
 ⚠ WebP would be 480 KB — 56% smaller again.
   ↵ convert another · c convert to WebP · o open · s show in finder · ctrl-c close app
 ```
+
+## Removing Backgrounds
+
+Background removal runs locally and writes transparency instead of replacing
+the background with a colour. The default result is a lossless PNG named with
+`-no-bg`; choose another alpha-capable format with `--to`:
+
+```bash
+forge product.jpg --remove-background
+# product-no-bg.png
+
+forge portrait.heic --remove-background --to webp --quality 80
+forge photos/ --remove-background -o ./cutouts/
+```
+
+The first run downloads a quantized ISNet general-use model to
+`~/Library/Caches/forge/models`.
+Later runs use that cache and do not need a network connection. Forge processes
+the image on the machine and never uploads it. Animated images are refused for
+now rather than silently applying the model to only one frame. The model runtime
+currently supports Apple silicon Macs; Forge's other actions continue to work
+normally on Intel Macs.
+
+In the interactive shell, run `/remove-background`, drop an image, choose an
+alpha-capable output format, and pick the destination. The format list comes
+from the same engine capability graph as conversion; opaque formats such as
+JPEG are not offered.
 
 ## PDF
 
@@ -474,35 +505,34 @@ above — including in the shell). Still not implemented: compressing a PDF
 and splitting one to a target size, which are phase 4b, and Markdown, HTML
 and Office conversion, which are phase 5. Removing a password from a PDF is
 not planned at all — see [Encrypted PDFs](#encrypted-pdfs) for why.
-Separately, and not specific to PDFs: the shell refuses to convert or
-compress several staged files at once today — that's a deliberate limit
+Separately, and not specific to PDFs: the shell refuses to convert, compress,
+or remove backgrounds from several staged files at once today — that's a deliberate limit
 while batch handling through the shell is still unbuilt, not a bug.
 
 ## Usage
 
 ```
-forge <inputs...> --to <format> [options]
+forge <inputs...> (--to <format> | --remove-background) [options]
 ```
 
 | Flag | Meaning |
 | --- | --- |
-| `-t, --to <format>` | target format (required) |
+| `-t, --to <format>` | target format; optional with `--remove-background` (defaults to PNG) |
 | `-o, --output <path>` | output file or directory |
 | `-q, --quality <n>` | 1–100, lossy targets only, **requires `--to`** |
 | `--background <css>` | fill colour when flattening alpha (default white) |
+| `--remove-background` | detect the foreground and make everything else transparent |
 | `--keep-metadata` | preserve EXIF/GPS instead of stripping it |
 | `--recursive` | descend into subdirectories |
 | `--force` | allow overwriting an existing output file |
-| `--concurrency <n>` | batch parallelism (default `min(cpus, 4)`) |
+| `--concurrency <n>` | batch parallelism (default `min(cpus, 4)`; 1 for background removal) |
 | `--debug` | include stack traces in error output |
 | `--formats` | print the capability matrix |
 | `-V, --version` / `-h, --help` | the usual |
 
-`--quality` is rejected unless `--to` is also given — even though it looks
-like it should stand alone. That's deliberate: a future `compress` action
-will accept `--quality` on its own with different semantics (compress in
-place, no format change), and letting `--quality` alone mean something today
-would make it a breaking change later. So for now it's tied to `--to`.
+`--quality` without `--to` compresses the source in its current format. With
+`--to`, it controls a lossy conversion or background-removal target. It is
+rejected for lossless targets rather than silently ignored.
 
 ### A single conversion
 
@@ -786,7 +816,8 @@ and rendered bold.
 
 ### What the shell doesn't do yet
 
-- **Batch convert or compress.** `/convert` and `/compress` refuse to run
+- **Batch convert, compress, or remove backgrounds.** `/convert`, `/compress`,
+  and `/remove-background` refuse to run
   against more than one staged file, rather than silently acting on just the
   first — point the flag CLI at a folder instead. Several files *can* be
   staged at once now, but only `/pdf`'s merge is defined by having more than

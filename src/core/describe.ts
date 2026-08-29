@@ -52,6 +52,8 @@ function verbFor(job: Job): string {
   switch (job.op) {
     case 'convert':
       return job.target === job.sources[0].format ? 'compressed' : 'converted'
+    case 'remove-background':
+      return 'background removed'
     case 'merge':
       return 'merged'
     case 'split':

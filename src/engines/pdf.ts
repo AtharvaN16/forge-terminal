@@ -506,5 +506,6 @@ export const pdfEngine: Engine = {
       case 'rotate':
         return rotate(job, onPhase)
     }
+    throw new Error(`the pdf engine cannot ${job.op}`)
   },
 }

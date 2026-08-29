@@ -10,6 +10,8 @@ export interface OutputRequest {
   output?: string
   /** When set with --recursive, the tree below this root is recreated. */
   sourceRoot?: string
+  /** Added before the target extension for implicit/directory outputs. */
+  suffix?: string
 }
 
 /**
@@ -23,11 +25,11 @@ export function looksLikeDirectory(p: string): boolean {
   return extname(p) === ''
 }
 
-function swapExtension(path: string, target: FormatId): string {
+function swapExtension(path: string, target: FormatId, suffix?: string): string {
   const name = basename(path)
   const ext = extname(name)
   const stem = ext ? name.slice(0, -ext.length) : name
-  return stem + primaryExtension(target)
+  return `${stem}${suffix ? `-${suffix}` : ''}${primaryExtension(target)}`
 }
 
 /**
@@ -56,7 +58,7 @@ function relativeToRoot(destination: string, sourceDir: string, sourceRoot?: str
 
 export function resolveOutputPath(req: OutputRequest): string {
   const source = resolve(req.sourcePath)
-  const filename = swapExtension(source, req.target)
+  const filename = swapExtension(source, req.target, req.suffix)
 
   if (!req.output) return join(resolve(source, '..'), filename)
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  backgroundRemovalUnavailable,
   conversionFailed,
   corruptSource,
   ForgeError,
@@ -65,6 +66,14 @@ describe('ForgeError', () => {
     expect(self.title).not.toBe(between.title)
     expect(self.detail).toContain('twice')
     expect(self.hint).not.toContain('--force')
+  })
+
+  it('explains the Intel Mac background-removal limitation without disabling other actions', () => {
+    const error = backgroundRemovalUnavailable('/tmp/photo.jpg')
+    expect(error.code).toBe('unsupported-background-removal')
+    expect(error.detail).toContain('photo.jpg')
+    expect(error.title).toContain('Apple silicon')
+    expect(error.hint).toContain('still work')
   })
 })
 

@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
-import { Document, Packer, Paragraph } from 'docx'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import sharp from 'sharp'
 
@@ -172,6 +171,7 @@ export async function makeDocx(
   name: string,
   paragraphs: string[] = ['Hello from Forge.'],
 ): Promise<string> {
+  const { Document, Packer, Paragraph } = await import('docx')
   const doc = new Document({ sections: [{ children: paragraphs.map((p) => new Paragraph(p)) }] })
   const path = join(dir, name)
   const zip = new AdmZip(await Packer.toBuffer(doc))

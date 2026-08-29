@@ -10,6 +10,7 @@ export type ErrorCode =
   | 'unsupported-source'
   | 'heic-decoder-unavailable'
   | 'unsupported-compress'
+  | 'unsupported-background-removal'
   | 'unsupported-pdf'
   | 'target-unreachable'
   | 'unsupported-target'
@@ -21,6 +22,7 @@ export type ErrorCode =
   | 'empty-directory'
   | 'invalid-arguments'
   | 'conversion-failed'
+  | 'background-removal-failed'
   | 'output-invalid'
   | 'not-a-directory'
   | 'symlink-loop'
@@ -202,6 +204,47 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
   })
 }
 
+export function unsupportedBackgroundRemoval(source: SourceInfo): ForgeError {
+  const name = basename(source.path)
+  if (source.kind === 'document') {
+    return new ForgeError({
+      code: 'unsupported-background-removal',
+      title: 'Background removal needs an image',
+      detail: `${name} is a ${FORMATS[source.format].label} document, not an image.`,
+      hint: 'Choose a supported still image.',
+    })
+  }
+
+  return new ForgeError({
+    code: 'unsupported-background-removal',
+    title: 'Animated images are not supported yet',
+    detail: `${name} has ${source.frames} frames. Background removal currently works on still images.`,
+    hint: 'Convert one frame to a still image first, then remove its background.',
+  })
+}
+
+export function backgroundRemovalUnavailable(path: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-background-removal',
+    title: 'Background removal needs Apple silicon',
+    detail: `${basename(path)} cannot be processed because the local model runtime has no Intel Mac build.`,
+    hint: 'Conversion, compression, and document actions still work normally on Intel Macs.',
+  })
+}
+
+export function unsupportedBackgroundTarget(
+  source: SourceInfo,
+  requested: string,
+  available: FormatId[],
+): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-target',
+    title: `Can't save ${basename(source.path)} without a background as ${requested}`,
+    detail: `${FORMATS[requested as FormatId]?.label ?? requested} cannot carry the transparency this operation creates.`,
+    hint: `Available: ${available.join(', ')}`,
+  })
+}
+
 /**
  * `/pdf` mode is armed and expects the next dropped file to be a PDF — its
  * five page operations (merge, split, extract, delete, rotate) have nothing
@@ -324,7 +367,7 @@ export function encryptedSource(path: string): ForgeError {
  * rejects. Defaulted to `convert` because `core/plan.ts`, the other caller of
  * both refusals below, only ever builds conversions.
  */
-const takesOutputFlag = (op: Job['op']): boolean => op === 'convert'
+const takesOutputFlag = (op: Job['op']): boolean => op === 'convert' || op === 'remove-background'
 
 export function outputExists(path: string, op: Job['op'] = 'convert'): ForgeError {
   return new ForgeError({
@@ -453,6 +496,22 @@ export function conversionFailed(path: string, cause: unknown): ForgeError {
     hint: 'Run again with --debug for the underlying error.',
     cause,
   })
+}
+
+export function backgroundRemovalFailed(path: string, cause: unknown): ForgeError {
+  return new ForgeError({
+    code: 'background-removal-failed',
+    title: 'Background removal failed',
+    detail: `${basename(path)} could not have its background removed.`,
+    hint: 'The first run downloads a local model. Check your connection and run again with --debug.',
+    cause,
+  })
+}
+
+export function jobFailed(job: Job, cause: unknown): ForgeError {
+  return job.op === 'remove-background'
+    ? backgroundRemovalFailed(job.sources[0].path, cause)
+    : conversionFailed(job.sources[0].path, cause)
 }
 
 /**

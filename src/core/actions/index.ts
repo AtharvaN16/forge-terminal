@@ -4,6 +4,7 @@ import { compressAction } from './compress.js'
 import { convertAction } from './convert.js'
 import { deleteAction, extractAction } from './extract.js'
 import { mergeAction } from './merge.js'
+import { removeBackgroundAction } from './remove-background.js'
 import { rotateAction } from './rotate.js'
 import { splitAction } from './split.js'
 
@@ -70,6 +71,7 @@ export {
   deleteAction,
   extractAction,
   mergeAction,
+  removeBackgroundAction,
   rotateAction,
   splitAction,
 }
@@ -77,6 +79,15 @@ export {
 export const ACTIONS: Action[] = [
   convertAction,
   compressAction,
+  removeBackgroundAction,
+  mergeAction,
+  splitAction,
+  extractAction,
+  deleteAction,
+  rotateAction,
+]
+
+export const PAGE_ACTIONS: Action[] = [
   mergeAction,
   splitAction,
   extractAction,

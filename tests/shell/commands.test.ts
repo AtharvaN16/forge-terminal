@@ -74,6 +74,7 @@ describe('the registry', () => {
       'convert',
       'help',
       'pdf',
+      'remove-background',
       'theme',
     ])
   })
@@ -87,6 +88,7 @@ describe('the registry', () => {
     expect(needs.convert).toBe(true)
     expect(needs.compress).toBe(true)
     expect(needs.pdf).toBe(true)
+    expect(needs['remove-background']).toBe(true)
     expect(needs.theme).toBe(false)
     expect(needs.help).toBe(false)
   })

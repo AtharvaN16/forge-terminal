@@ -15,7 +15,10 @@ describe('a single dropped path with one unescaped space', () => {
     const dir = await makeTempDir()
     const name = 'Screenshot 2026-08-26 at 1.06.52 AM.png'
     const path = await makePng(dir, name)
-    const pastedRaw = path.replace('Screenshot 2026-08-26 at 1.06.52 AM.png', 'Screenshot\\ 2026-08-26\\ at\\ 1.06.52 AM.png')
+    const pastedRaw = path.replace(
+      'Screenshot 2026-08-26 at 1.06.52 AM.png',
+      'Screenshot\\ 2026-08-26\\ at\\ 1.06.52 AM.png',
+    )
     // Sanity check on the fixture itself: the paste must actually contain an
     // unescaped space, or this test would pass without exercising anything.
     expect(pastedRaw).toMatch(/\d\.\d\d \S/)

@@ -5,7 +5,6 @@ import { basename, extname, join } from 'node:path'
 import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
 import { find as cfbFind, parse as cfbParse } from 'cfb'
-import { Document as DocxDocument, Packer, PageBreak, Paragraph } from 'docx'
 import mammoth from 'mammoth'
 import { PDFDocument as PDFLibDocument, StandardFonts } from 'pdf-lib'
 import { PDFParse } from 'pdf-parse'
@@ -277,6 +276,9 @@ export async function layoutAsPdf(paragraphs: string[]): Promise<Uint8Array> {
 
 /** One docx paragraph per line, `PAGE_BREAK` sentinels becoming real page breaks. */
 export async function buildDocx(paragraphs: string[]): Promise<Buffer> {
+  // docx probes global localStorage at import time on Node 26, which emits a
+  // warning. Keep it off the ordinary image/PDF startup path entirely.
+  const { Document: DocxDocument, Packer, PageBreak, Paragraph } = await import('docx')
   const children = paragraphs.map((p) =>
     p === PAGE_BREAK ? new Paragraph({ children: [new PageBreak()] }) : new Paragraph(p),
   )

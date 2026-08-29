@@ -89,6 +89,13 @@ export interface ConvertOptions {
   password?: string
 }
 
+export interface RemoveBackgroundOptions {
+  /** 1-100. Ignored for lossless targets. */
+  quality?: number
+  /** Preserve EXIF/GPS instead of applying Forge's metadata-safe default. */
+  keepMetadata: boolean
+}
+
 /**
  * One unit of work.
  *
@@ -115,6 +122,14 @@ export type Job =
       outputs: [string, ...string[]]
       target: FormatId
       options: ConvertOptions
+    }
+  | {
+      op: 'remove-background'
+      sources: [ImageInfo]
+      outputs: [string]
+      /** Always alpha-capable; enforced by the action and engine. */
+      target: FormatId
+      options: RemoveBackgroundOptions
     }
   | { op: 'merge'; sources: SourceInfo[]; outputs: [string] }
   | { op: 'split'; sources: [DocumentInfo]; outputs: string[]; cuts: number[] }
@@ -155,8 +170,8 @@ export interface Result {
  * in advance. Spec §12 forbids fabricated progress, and a page count is real.
  */
 export type Progress =
-  | { phase: 'reading' | 'decoding' | 'encoding' | 'writing' }
+  | { phase: 'reading' | 'decoding' | 'processing' | 'encoding' | 'writing' }
   | { phase: 'page'; done: number; total: number }
 
 /** Kept as an alias so existing render code compiles — it is now Progress's first variant. */
-export type Phase = 'reading' | 'decoding' | 'encoding' | 'writing'
+export type Phase = 'reading' | 'decoding' | 'processing' | 'encoding' | 'writing'
