@@ -14,6 +14,12 @@ export interface Choice {
   /** A short tag rendered in the accent colour, set apart from the hint. */
   badge?: string
   /**
+   * Colours `hint`. Absent means the ordinary dim, which is what every hint
+   * that is merely descriptive should stay — a tone is for a hint that is
+   * telling the user something they may not want, or want to hear.
+   */
+  tone?: 'ok' | 'warn'
+  /**
    * Rendered dim, skipped by the cursor, and never submittable — the `/pdf`
    * hub's way of saying "Merge exists, but not for what's staged" without
    * making the row vanish. `hint` is where the reason goes.

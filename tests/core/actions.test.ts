@@ -400,3 +400,36 @@ describe('convert action stays document-target-aware, not just document-kind-awa
     expect(job.options.pages).toBeUndefined()
   })
 })
+
+describe('convert target size expectations', () => {
+  /**
+   * The user going to /convert from a missed target size is looking for a
+   * format that gets *smaller*. A lossless target cannot do that for a
+   * photograph — it keeps every pixel — so the row says so rather than
+   * letting them find out by writing a bigger file. Told, never blocked:
+   * a lossless copy is a legitimate thing to want.
+   */
+  it('warns that a lossless target is likely bigger than a lossy source', () => {
+    const specs = convertAction.options([source({ format: 'jpeg' })], {}, DEFAULT_PREFERENCES)
+    const target = specs.find((s) => s.id === 'target')
+    if (target?.kind !== 'select') throw new Error('expected a target select')
+
+    const png = target.choices.find((c) => c.value === 'png')
+    expect(png?.hint).toContain('likely bigger')
+    expect(png?.tone).toBe('warn')
+
+    // Lossy to lossy is not a claim this can make honestly — it depends on
+    // the quality each side is encoded at, which is not known here.
+    expect(target.choices.find((c) => c.value === 'webp')?.tone).toBeUndefined()
+  })
+
+  it('marks a lossy target as likely smaller than a lossless source', () => {
+    const specs = convertAction.options([source({ format: 'png' })], {}, DEFAULT_PREFERENCES)
+    const target = specs.find((s) => s.id === 'target')
+    if (target?.kind !== 'select') throw new Error('expected a target select')
+
+    const webp = target.choices.find((c) => c.value === 'webp')
+    expect(webp?.hint).toContain('likely smaller')
+    expect(webp?.tone).toBe('ok')
+  })
+})

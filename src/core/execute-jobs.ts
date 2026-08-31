@@ -36,6 +36,13 @@ export interface RunPolicy {
    */
   targetBytes?: number
   onEvent?: (event: PlanEvent) => void
+  /**
+   * Stops a target-size search between encodes — the shell's esc key. Only the
+   * search is interruptible: once a job is settled and handed to `runJobs`, a
+   * write is either atomic or has not started, and there is no half-state
+   * worth exposing a cancel for.
+   */
+  signal?: AbortSignal
   /** Test seam. Defaults to the registry's `engineForJob`. */
   engineFor?: (job: Job) => Engine | undefined
 }
@@ -65,6 +72,12 @@ export interface RunOutcome {
   unreachable: UnreachableTarget[]
   /** Ran and threw. Not retryable. */
   failures: InputFailure[]
+  /**
+   * The search was cancelled before it settled, so nothing ran. Distinct from
+   * `unreachable`: that is an answer the user must choose between, this is the
+   * user having already chosen to stop being asked.
+   */
+  cancelled?: boolean
   inputBytes: number
   outputBytes: number
 }
@@ -105,6 +118,7 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
   const refusals: InputFailure[] = [...safe.failures]
   const unreachable: UnreachableTarget[] = []
   const ready: Job[] = []
+  let cancelled = false
 
   for (const job of safe.jobs) {
     // Only `convert` carries `ConvertOptions`; a page operation has no quality
@@ -130,7 +144,19 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
         encode: (quality) => measurer.measure({ ...job.options, ...rung, quality }),
         targetBytes,
         onAttempt: (attempt, of) => emit({ type: 'search:attempt', job, attempt, of, rung }),
+        ...(policy.signal === undefined ? {} : { signal: policy.signal }),
       })
+
+      /**
+       * A cancelled search has no answer — not a settled quality, and not a
+       * measured floor to offer as "use it anyway" either, since the ladder
+       * was abandoned partway. So this job neither runs nor becomes a
+       * question: it simply stops.
+       */
+      if (found.cancelled) {
+        cancelled = true
+        break
+      }
 
       if (found.bytes < smallest) {
         smallest = found.bytes
@@ -145,6 +171,8 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
       }
     }
 
+    if (cancelled) break
+
     if (!settled && closest) {
       unreachable.push({
         job,
@@ -152,6 +180,18 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
         settings: closest,
         error: targetUnreachable(job.sources[0], targetBytes, smallest),
       })
+    }
+  }
+
+  if (cancelled) {
+    return {
+      results: [],
+      refusals,
+      unreachable: [],
+      failures: [],
+      inputBytes: 0,
+      outputBytes: 0,
+      cancelled: true,
     }
   }
 

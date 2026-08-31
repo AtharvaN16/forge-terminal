@@ -250,3 +250,30 @@ describe('runPlan write safety', () => {
     expect(outcome.refusals[0]?.error.code).toBe('output-collision')
   })
 })
+
+describe('runPlan cancellation', () => {
+  it('runs nothing and reports cancelled when the signal aborts mid-search', async () => {
+    const controller = new AbortController()
+    let measures = 0
+    const engine = stubEngine([{ dpi: 150 }, { dpi: 72 }], () => {
+      measures += 1
+      if (measures === 2) controller.abort()
+      // Never fits, so an uncancelled search would walk the whole ladder.
+      return 900_000
+    })
+
+    const outcome = await runPlan([jobFor()], {
+      force: true,
+      targetBytes: 500_000,
+      engineFor: () => engine,
+      signal: controller.signal,
+    })
+
+    expect(outcome.cancelled).toBe(true)
+    // A cancelled search settles nothing, so there is nothing safe to write —
+    // and nothing to ask the user about either.
+    expect(outcome.results).toHaveLength(0)
+    expect(outcome.unreachable).toHaveLength(0)
+    expect(engine.run).not.toHaveBeenCalled()
+  })
+})

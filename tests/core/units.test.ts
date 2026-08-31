@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, parseSize, percentChange } from '../../src/core/units.js'
+import { describeSize, formatBytes, parseSize, percentChange } from '../../src/core/units.js'
 
 describe('formatBytes', () => {
   it('shows plain bytes below a kilobyte', () => {
@@ -72,5 +72,28 @@ describe('parseSize', () => {
     // Both binary. If one were decimal a file would read "1 MB" on one line
     // and be over the limit on the next.
     expect(formatBytes(parseSize('1mb') ?? 0)).toContain('1 MB')
+  })
+})
+
+describe('describeSize', () => {
+  /**
+   * The target-size field echoes what it understood. It must echo the size
+   * the user actually named — `parseSize` counts a KB as 1024 bytes while
+   * `formatBytes` prints one as 1000, so round-tripping a typed "500 MB"
+   * through both would answer "524 MB" and read as the field misunderstanding
+   * a number it in fact got right.
+   */
+  it('restates a typed size in its own units', () => {
+    expect(describeSize('500mb')).toBe('500 MB')
+    expect(describeSize('2 MB')).toBe('2 MB')
+    expect(describeSize('1.5gb')).toBe('1.5 GB')
+    // No unit means bytes, the same assumption `parseSize` makes.
+    expect(describeSize('900')).toBe('900 B')
+  })
+
+  it('is undefined for anything parseSize refuses', () => {
+    expect(describeSize('later')).toBeUndefined()
+    expect(describeSize('')).toBeUndefined()
+    expect(describeSize('0kb')).toBeUndefined()
   })
 })

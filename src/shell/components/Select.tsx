@@ -192,7 +192,22 @@ export function Select({
               >
                 {label}
               </Text>
-              {shownHint ? <Text color={colourProp(palette.dim)}>{shownHint}</Text> : null}
+              {shownHint ? (
+                // A tone is the row saying something about the choice rather
+                // than describing it — "likely bigger" on a lossless target.
+                // Dim otherwise, which is every ordinary hint.
+                <Text
+                  color={colourProp(
+                    item.tone === 'warn'
+                      ? palette.warn
+                      : item.tone === 'ok'
+                        ? palette.ok
+                        : palette.dim,
+                  )}
+                >
+                  {shownHint}
+                </Text>
+              ) : null}
               {item.badge ? (
                 // Accent, bracketed and spaced: as a plain dim suffix it read as
                 // the tail of the path it followed rather than a label about it.

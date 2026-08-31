@@ -239,3 +239,35 @@ describe('Select disabled rows', () => {
     expect(plain(lastFrame())).toContain('needs 2+ files')
   })
 })
+
+describe('a hint with a tone', () => {
+  /**
+   * A toned hint has to be visibly different from an ordinary one — the
+   * point of "likely bigger" on a convert row is that it catches the eye of
+   * someone scanning for something smaller. Compared against the dim hint
+   * beside it rather than pinned to a hex value, so retuning the palette
+   * cannot quietly turn this back into ordinary text.
+   */
+  it('draws it in a different colour from a plain hint', () => {
+    const rendered = render(
+      <Select
+        width={60}
+        items={[
+          { value: 'png', label: 'PNG', hint: 'likely bigger', tone: 'warn' },
+          { value: 'gif', label: 'GIF', hint: 'likely bigger' },
+        ]}
+        onSubmit={() => {}}
+      />,
+    )
+
+    const lines = (rendered.lastFrame() ?? '').split('\n')
+    // The colour run opening the phrase, on each row: everything from the
+    // last escape before "likely bigger" up to the phrase itself.
+    const colourOf = (line: string | undefined) =>
+      new RegExp(`(${ESC}\\[[0-9;]*m)(?=\\s*likely bigger)`).exec(line ?? '')?.[1]
+
+    expect(colourOf(lines[0])).toBeDefined()
+    expect(colourOf(lines[1])).toBeDefined()
+    expect(colourOf(lines[0])).not.toBe(colourOf(lines[1]))
+  })
+})

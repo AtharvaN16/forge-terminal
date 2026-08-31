@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forge — Compress terminal UI</title>
+    <style>
+      /* Colours are DARK from src/shell/theme.ts, verbatim — this mockup
+         reuses the real palette rather than inventing one. */
+      :root {
+        --fg: #e4e8f0;
+        --dim: #8b93a6;
+        --accent: #e5a23c;
+        --warn: #e5c07b;
+        --ok: #6fcf7f;
+        --tag: #63c1d8;
+        --label: #a68ce0;
+        --mode-fg: #79c98b;
+        --mode-bg: #182c1e;
+        --convert-fg: #55c7d9;
+        --convert-bg: #122c33;
+        --border: #5f6879;
+        --selection-bg: #252c3a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #1e1e1e;
+        color: var(--fg);
+        font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      .term { width: min(760px, calc(100% - 32px)); margin: 40px auto; white-space: pre; }
+      .row { display: block; }
+      .mode-bar { display: block; padding: 0 4px; margin-bottom: 6px; background: var(--mode-bg); color: var(--mode-fg); font-weight: 600; }
+      .mode-bar.convert { background: var(--convert-bg); color: var(--convert-fg); }
+      .mode-bar .hint { color: var(--dim); font-weight: 400; }
+      .dim { color: var(--dim); }
+      .fg { color: var(--fg); }
+      .accent { color: var(--accent); font-weight: 600; }
+      .label { color: var(--label); }
+      .tag { color: var(--tag); }
+      .warn { color: var(--warn); }
+      .ok { color: var(--ok); }
+      .border { color: var(--border); }
+      .bold { font-weight: 600; }
+      .gap { display: block; height: 12px; }
+      .caret { display: inline-block; width: 8px; background: var(--fg); color: #1e1e1e; }
+      .caret.blink { animation: blink 1s step-end infinite; }
+      @keyframes blink { 50% { background: transparent; color: var(--fg); } }
+      .hints { display: block; margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--border); }
+      .hints .sep { color: var(--border); }
+      .hints kbd { color: var(--accent); font-weight: 600; font-family: inherit; }
+      .hints .what { color: var(--dim); }
+      .unit { padding: 0 6px; }
+      .unit.selected { background: var(--selection-bg); color: var(--fg); font-weight: 600; }
+      .unit:not(.selected) { color: var(--dim); }
+      .field-fill { display: inline-block; background: var(--selection-bg); padding: 2px 6px; }
+      .dots .dot { letter-spacing: 4px; }
+      .dots .filled { color: var(--mode-fg); }
+      .dots .current { color: var(--accent); }
+      .dots .empty { color: var(--border); }
+      .opt { display: block; }
+      .opt .cursor { color: var(--accent); }
+      .opt.selected .label-text { color: var(--fg); font-weight: 600; }
+      .opt:not(.selected) .label-text { color: var(--dim); }
+      .opt .opt-hint { color: var(--dim); }
+      .opt .opt-hint.warn { color: var(--warn); }
+      .opt .opt-hint.ok { color: var(--ok); }
+      .screen { display: none; }
+      .screen.active { display: block; }
+    </style>
+  </head>
+  <body>
+    <main class="term" aria-label="Forge terminal mockup, compress flow">
+      <!-- SETUP: mode + size + unit, unit chosen with left/right arrows -->
+      <section class="screen active" id="setup">
+        <span class="mode-bar">current mode: compress<span class="hint">  use / to change mode</span></span>
+
+        <span class="row border">╭─ <span class="tag">JPG</span> ────────────────────────────────╮</span>
+        <span class="row border">│ <span class="fg">vacation-photo.jpg                    </span>│</span>
+        <span class="row border">│ <span class="dim">4032×3024 · 12.4 MB                   </span>│</span>
+        <span class="row border">╰──────────────────────────────────────╯</span>
+        <span class="gap"></span>
+
+        <span class="row label">Compress vacation-photo.jpg</span>
+        <span class="row"><span class="dim">  </span><span class="fg">By quality</span></span>
+        <span class="row"><span class="accent">❯ </span><span class="fg bold">To a target size</span><span class="dim">  smallest quality that fits</span></span>
+        <span class="gap"></span>
+
+        <span class="row label">Target size</span>
+        <span class="row">
+          <span class="accent">› </span><span class="field-fill" id="amountField">500<span class="caret blink" id="caret"> </span></span>
+          <span class="dim">  </span><span class="unit" id="u-b">B</span><span class="unit selected" id="u-kb">KB</span><span class="unit" id="u-mb">MB</span><span class="unit" id="u-gb">GB</span>
+        </span>
+        <span class="row dim" id="parsedLine">  understood as <span class="fg">500 KB</span></span>
+        <span class="gap"></span>
+
+        <span class="hints">
+          <kbd>↵</kbd><span class="what"> confirm</span>
+          <span class="sep">  │  </span><kbd>tab</kbd><span class="what"> unit</span>
+          <span class="sep">  │  </span><kbd>←→</kbd><span class="what"> change unit</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> clear / back</span>
+        </span>
+      </section>
+
+      <!-- SEARCH: bounded, 8 discrete dots (one per real attempt — never a
+           fabricated smooth percentage), esc goes back a step like every
+           other screen, keeping the file staged and the typed size intact -->
+      <section class="screen" id="searching">
+        <span class="mode-bar">current mode: compress<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row dim">Finding the right quality for 500 KB…</span>
+        <span class="row dots" id="dots"></span>
+        <span class="row dim">Nothing is written until this finishes — the original is untouched.</span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>esc</kbd><span class="what"> back — stops the search, nothing written, size stays as typed</span>
+        </span>
+      </section>
+
+      <!-- QUALITY: reached from the failure screen's "compress by quality
+           instead" option, so that option lands somewhere real -->
+      <section class="screen" id="quality">
+        <span class="mode-bar">current mode: compress<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row label">Quality</span>
+        <span class="row"><span class="fg" id="qualityBar">━━━━━━━━━━━━━━●━━━━━━━━━━━━━━━━━━━━━</span><span class="dim" id="qualityVal">  70</span></span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>←→</kbd><span class="what"> adjust</span>
+          <span class="sep">  │  </span><kbd>↵</kbd><span class="what"> confirm</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back</span>
+        </span>
+      </section>
+
+      <!-- CONVERT: reached from the failure screen's "convert to a
+           different format" option -->
+      <section class="screen" id="convert">
+        <span class="mode-bar convert">current mode: convert<span class="hint">  use / to change mode</span></span>
+        <span class="gap"></span>
+        <span class="row label">Convert vacation-photo.jpg to</span>
+        <span id="convertOptions"><!-- built by renderConvertOptions(), driven by each format's lossy flag --></span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>↑↓</kbd><span class="what"> choose</span>
+          <span class="sep">  │  </span><kbd>↵</kbd><span class="what"> confirm</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back</span>
+        </span>
+      </section>
+
+      <!-- DONE -->
+      <section class="screen" id="done">
+        <span class="mode-bar">current mode: compress<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row"><span class="fg bold">✓ Compression complete</span></span>
+        <span class="row dim">before <span class="fg">12.4 MB</span>  ──→  after <span class="fg" id="doneBytes">1.8 MB</span>  <span class="tag" id="doneSaving">85.5% smaller</span></span>
+        <span class="row dim" id="doneMeta">saved as vacation-photo-small.jpg · quality 78</span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>o</kbd><span class="what"> open</span>
+          <span class="sep">  │  </span><kbd>s</kbd><span class="what"> show in folder</span>
+          <span class="sep">  │  </span><kbd>↵</kbd><span class="what"> compress another</span>
+        </span>
+      </section>
+
+      <!-- NOT FOUND: the search exhausted all 8 bounded attempts without
+           reaching the target. Explains why, then offers every real way
+           forward — retry the size, switch to quality, or convert instead —
+           rather than a dead end. -->
+      <section class="screen" id="unreachable">
+        <span class="mode-bar">current mode: compress<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row warn">⚠ Target not found</span>
+        <span class="row dim">Tried all 8 quality levels — the smallest we could get was <span class="fg">2.6 MB</span>, above your <span class="fg">500 KB</span> target. This file won't compress any further.</span>
+        <span class="gap"></span>
+        <span class="opt selected" data-value="lowest"><span class="cursor accent">❯ </span><span class="label-text">Use 2.6 MB anyway</span></span>
+        <span class="opt" data-value="retry"><span class="cursor">  </span><span class="label-text">Try a different target size</span></span>
+        <span class="opt" data-value="quality"><span class="cursor">  </span><span class="label-text">Compress by quality instead</span></span>
+        <span class="opt" data-value="convert"><span class="cursor">  </span><span class="label-text">Convert to a different format</span></span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>↑↓</kbd><span class="what"> choose</span>
+          <span class="sep">  │  </span><kbd>↵</kbd><span class="what"> confirm</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back to setup</span>
+        </span>
+      </section>
+    </main>
+
+    <script>
+      const UNITS = ['b', 'kb', 'mb', 'gb'];
+      const MULT = { b: 1, kb: 1024, mb: 1024 * 1024, gb: 1024 * 1024 * 1024 };
+      let unitIndex = 1; // kb
+      let amount = '500';
+      let onUnitRow = false;
+      let searchTimer = null;
+
+      // Mirrors src/core/formats.ts's `lossy` flags and src/engines/image.ts's
+      // `WRITES` set, in the registry's own order. Nothing below is
+      // per-format-pair logic — a source's likely-bigger/likely-smaller
+      // targets fall out of comparing `lossy` flags, so adding a new format
+      // here (or pointing `sourceFormat` at a different one) needs no new
+      // rules of its own.
+      const FORMAT_LOSSY = { jpeg: true, png: false, webp: true, avif: true, gif: false, tiff: false };
+      const FORMAT_LABEL = { jpeg: 'JPEG', png: 'PNG', webp: 'WebP', avif: 'AVIF', gif: 'GIF', tiff: 'TIFF' };
+      const WRITES_ORDER = ['jpeg', 'png', 'webp', 'avif', 'gif', 'tiff'];
+      const sourceFormat = 'jpeg';
+
+      function renderConvertOptions() {
+        const targets = WRITES_ORDER.filter((id) => id !== sourceFormat);
+        const sourceLossy = FORMAT_LOSSY[sourceFormat];
+        const html = targets
+          .map((id, i) => {
+            const targetLossy = FORMAT_LOSSY[id];
+            // Lossy → lossless: lossless keeps every pixel, which is why it
+            // almost always costs more bytes on a photographic source.
+            // Lossless → lossy: the reverse trade, so the reverse claim.
+            // Same losslessness on both sides: no confident claim to make.
+            const hint =
+              sourceLossy && !targetLossy
+                ? '<span class="opt-hint warn">  likely bigger</span>'
+                : !sourceLossy && targetLossy
+                  ? '<span class="opt-hint ok">  likely smaller</span>'
+                  : '';
+            const selected = i === 0;
+            const cursor = selected ? '<span class="cursor accent">❯ </span>' : '<span class="cursor">  </span>';
+            return `<span class="opt${selected ? ' selected' : ''}" data-value="${id}">${cursor}<span class="label-text">${FORMAT_LABEL[id]}</span>${hint}</span>`;
+          })
+          .join('');
+        $('convertOptions').innerHTML = html;
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const screens = ['setup', 'searching', 'quality', 'convert', 'done', 'unreachable'];
+      function show(id) {
+        screens.forEach((name) => $(name).classList.toggle('active', name === id));
+      }
+
+      function formatBytes(bytes) {
+        const table = [['GB', 1024 ** 3], ['MB', 1024 ** 2], ['KB', 1024]];
+        for (const [label, size] of table) {
+          if (bytes >= size) {
+            const v = bytes / size;
+            return `${v >= 100 ? Math.round(v) : Math.round(v * 10) / 10} ${label}`;
+          }
+        }
+        return `${Math.round(bytes)} B`;
+      }
+
+      function renderUnits() {
+        UNITS.forEach((u, i) => $(`u-${u}`).classList.toggle('selected', i === unitIndex));
+      }
+
+      function renderParsed() {
+        const n = parseFloat(amount);
+        const line = $('parsedLine');
+        if (!amount || Number.isNaN(n)) {
+          line.innerHTML = `  <span class="warn">? type a number first</span>`;
+          return;
+        }
+        const bytes = n * MULT[UNITS[unitIndex]];
+        line.innerHTML = `  understood as <span class="fg">${formatBytes(bytes)}</span>`;
+      }
+
+      // Eight discrete dots — one per real, bounded attempt. Never a smooth
+      // percentage: the search has no notion of "60% done", only "attempt 5
+      // of 8 tried". See src/shell/theme.ts's BAR comment and spec invariant
+      // 7 ("progress is never fabricated").
+      function renderDots(n) {
+        const parts = [];
+        for (let i = 1; i <= 8; i++) {
+          const cls = i < n ? 'filled' : i === n ? 'current' : 'empty';
+          parts.push(`<span class="dot ${cls}">●</span>`);
+        }
+        $('dots').innerHTML = parts.join('') + `<span class="dim">  attempt ${n} of 8</span>`;
+      }
+
+      function resetSize() {
+        amount = '500';
+        unitIndex = 1;
+        $('amountField').firstChild.textContent = amount;
+        renderUnits();
+        renderParsed();
+      }
+
+      function startSearch() {
+        clearInterval(searchTimer);
+        show('searching');
+        let n = 0;
+        renderDots(1);
+        searchTimer = setInterval(() => {
+          n++;
+          renderDots(Math.min(n, 8));
+          if (n >= 8) {
+            clearInterval(searchTimer);
+            const bytes = parseFloat(amount) * MULT[UNITS[unitIndex]];
+            setTimeout(() => show(bytes > 0 && bytes < 1024 * 1024 ? 'unreachable' : 'done'), 300);
+          }
+        }, 380);
+      }
+
+      renderUnits();
+      renderParsed();
+
+      // Vertical option lists (convert, unreachable) — arrow keys move a
+      // single shared cursor, mirroring Select.tsx's ↑↓/enter/esc contract.
+      function wireOptionList(screenId, onSubmit) {
+        const screen = $(screenId);
+        const opts = Array.from(screen.querySelectorAll('.opt'));
+        let index = opts.findIndex((o) => o.classList.contains('selected'));
+        function render() {
+          opts.forEach((o, i) => {
+            const isSel = i === index;
+            o.classList.toggle('selected', isSel);
+            o.querySelector('.cursor').textContent = isSel ? '❯ ' : '  ';
+            o.querySelector('.cursor').className = isSel ? 'cursor accent' : 'cursor';
+          });
+        }
+        return {
+          active: () => screen.classList.contains('active'),
+          onKey(e) {
+            if (e.key === 'ArrowDown') { index = Math.min(opts.length - 1, index + 1); render(); }
+            if (e.key === 'ArrowUp') { index = Math.max(0, index - 1); render(); }
+            if (e.key === 'Enter') onSubmit(opts[index].dataset.value);
+          },
+        };
+      }
+
+      renderConvertOptions();
+
+      const convertList = wireOptionList('convert', () => {
+        $('doneBytes').textContent = '620 KB';
+        $('doneSaving').textContent = '95% smaller';
+        $('doneMeta').textContent = 'saved as vacation-photo.avif';
+        show('done');
+      });
+
+      const unreachableList = wireOptionList('unreachable', (value) => {
+        if (value === 'lowest') {
+          $('doneBytes').textContent = '2.6 MB';
+          $('doneSaving').textContent = '79% smaller';
+          $('doneMeta').textContent = 'saved as vacation-photo-small.jpg · quality 12 (lowest)';
+          show('done');
+        } else if (value === 'retry') {
+          show('setup');
+        } else if (value === 'quality') {
+          show('quality');
+        } else if (value === 'convert') {
+          show('convert');
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (unreachableList.active()) { unreachableList.onKey(e); if (e.key === 'Escape') show('setup'); return; }
+        if (convertList.active()) { convertList.onKey(e); if (e.key === 'Escape') show('unreachable'); return; }
+
+        if ($('quality').classList.contains('active')) {
+          if (e.key === 'Enter') {
+            $('doneBytes').textContent = '4.1 MB';
+            $('doneSaving').textContent = '67% smaller';
+            $('doneMeta').textContent = 'saved as vacation-photo-small.jpg · quality 70';
+            show('done');
+          }
+          if (e.key === 'Escape') show('unreachable');
+          return;
+        }
+
+        if ($('searching').classList.contains('active')) {
+          // esc steps back exactly one screen, like every other step in the
+          // app — it does not clear the staged file or the size just typed.
+          if (e.key === 'Escape') {
+            clearInterval(searchTimer);
+            show('setup');
+          }
+          return;
+        }
+
+        if ($('setup').classList.contains('active')) {
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            onUnitRow = !onUnitRow;
+            $('caret').style.visibility = onUnitRow ? 'hidden' : 'visible';
+            return;
+          }
+          if (onUnitRow && e.key === 'ArrowLeft') { unitIndex = (unitIndex + UNITS.length - 1) % UNITS.length; renderUnits(); renderParsed(); return; }
+          if (onUnitRow && e.key === 'ArrowRight') { unitIndex = (unitIndex + 1) % UNITS.length; renderUnits(); renderParsed(); return; }
+          if (!onUnitRow && /^[0-9.]$/.test(e.key)) { amount += e.key; $('amountField').firstChild.textContent = amount; renderParsed(); return; }
+          if (!onUnitRow && e.key === 'Backspace') { amount = amount.slice(0, -1); $('amountField').firstChild.textContent = amount; renderParsed(); return; }
+          if (e.key === 'Enter') startSearch();
+          return;
+        }
+
+        if ($('done').classList.contains('active') && e.key === 'Enter') {
+          resetSize();
+          show('setup');
+        }
+      });
+    </script>
+  </body>
+</html>

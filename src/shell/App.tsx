@@ -22,7 +22,7 @@ import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
-import { formatBytes, parseSize } from '../core/units.js'
+import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
@@ -44,6 +44,7 @@ import { Select } from './components/Select.js'
 import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
+import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
@@ -424,6 +425,27 @@ export function App({
     undefined,
   )
   /**
+   * Aborts the target-size search that is running right now, if one is.
+   *
+   * A ref rather than state: esc is delivered to a synchronous `useKeys`
+   * handler, which must abort the controller the in-flight `runPlan` was
+   * actually given — not whichever one the last render happened to close
+   * over. Same reasoning as `Select`'s `indexRef`.
+   */
+  const searchAbort = useRef<AbortController | undefined>(undefined)
+
+  /**
+   * The target-size field's unit, and whether tab has moved focus onto it.
+   *
+   * The typed text stays the source of truth for the *amount* only — a unit
+   * typed directly (`2mb`) still wins, so the picker is a convenience rather
+   * than a second way of saying the same thing that could disagree with the
+   * first. `kb` rests as the default because it is the unit a target size is
+   * usually written in.
+   */
+  const [sizeUnit, setSizeUnit] = useState<SizeUnit>('kb')
+  const [unitFocused, setUnitFocused] = useState(false)
+  /**
    * The latest `{ phase: 'page' }` event `runJobs` reported, or `null` until
    * one actually arrives. `null` is the whole point, not just an initial
    * value: invariant 7 forbids a fabricated percentage, and an operation
@@ -705,9 +727,73 @@ export function App({
     (_input, key) => {
       if (!key.escape || text !== '') return
       setSizeError(undefined)
+      setUnitFocused(false)
       setStep('mode')
     },
     { isActive: step === 'size' },
+  )
+
+  /**
+   * Tab moves between the amount and the unit row; left/right walk the units
+   * once it has focus.
+   *
+   * Left/right are claimed only while the row is focused, so the caret keys
+   * `Prompt` needs keep working in the amount — Ink hands every keystroke to
+   * both hooks, so anything this one swallows unconditionally would be taken
+   * away from the field beside it.
+   */
+  useKeys(
+    (_input, key) => {
+      if (key.tab) {
+        setUnitFocused((focused) => !focused)
+        return
+      }
+      if (!unitFocused) return
+      const delta = key.rightArrow ? 1 : key.leftArrow ? -1 : 0
+      if (delta === 0) return
+      setSizeUnit((current) => {
+        const next = SIZE_UNIT_IDS.indexOf(current) + delta
+        return SIZE_UNIT_IDS[Math.min(SIZE_UNIT_IDS.length - 1, Math.max(0, next))] ?? current
+      })
+    },
+    { isActive: step === 'size' },
+  )
+
+  /**
+   * esc while a target-size search is running: stop it and step back one, the
+   * way esc does everywhere else. Nothing has been written at this point — a
+   * search only measures — so there is nothing to undo, and the staged file
+   * stays staged.
+   *
+   * Only meaningful while a search is actually in flight (`searchAbort` set);
+   * an ordinary conversion has no interruptible phase, so esc there is left
+   * alone rather than given a cancel that would silently do nothing.
+   */
+  useKeys(
+    (_input, key) => {
+      if (!key.escape || !searchAbort.current) return
+      searchAbort.current.abort()
+      /**
+       * Moved here rather than waiting for `runPlan` to return, because an
+       * abort can only take effect *between* encodes — the one already in
+       * flight still has to finish, and a 300-dpi scan's encode is seconds
+       * long. Waiting for it would leave esc looking as dead as the screen
+       * this fixes. Nothing is written during a search, so leaving early
+       * costs nothing; the search unwinds behind the screen the user is
+       * already back on.
+       *
+       * Safe against the race where the search settles in the same moment:
+       * `finishConversion` returns early only when the outcome really came
+       * back cancelled, and otherwise carries on to the result (or the
+       * unreachable question) exactly as it would have, moving the step off
+       * this one again. The user is never told nothing happened when a file
+       * was in fact written.
+       */
+      searchAbort.current = undefined
+      setAttempt(undefined)
+      setStep('size')
+    },
+    { isActive: step === 'converting' },
   )
 
   // esc at the prompt clears whatever is typed first (mirroring every other
@@ -1375,7 +1461,17 @@ export function App({
    * Validates in the field rather than at conversion time — the difference
    * between catching a typo and failing a run that already chose a folder.
    */
-  const submitSize = (raw: string) => {
+  /**
+   * What the field actually means: the typed text if it already names a unit,
+   * otherwise that text plus whichever unit the row is on. Written as one
+   * function because three places need the same answer — the live echo, the
+   * submit, and the error message about what could not be read.
+   */
+  const sizeWithUnit = (raw: string): string =>
+    /[a-z]/i.test(raw) ? raw.trim() : `${raw.trim()}${sizeUnit}`
+
+  const submitSize = (typed: string) => {
+    const raw = sizeWithUnit(typed)
     const bytes = parseSize(raw)
     if (bytes === undefined) {
       setSizeError(`${raw.trim() || 'that'} is not a size. Try 500kb or 2mb.`)
@@ -1470,8 +1566,12 @@ export function App({
      * `convert()` — where a document source never reached it. Routing both
      * kinds through here is what makes a PDF target size take effect.
      */
+    const controller = new AbortController()
+    searchAbort.current = controller
+
     const outcome = await runPlan([planned], {
       force: opts.force ?? false,
+      signal: controller.signal,
       ...(opts.targetBytes === undefined ? {} : { targetBytes: opts.targetBytes }),
       onEvent: (event) => {
         if (event.type === 'search:attempt') {
@@ -1480,6 +1580,16 @@ export function App({
       },
     })
     setAttempt(undefined)
+    searchAbort.current = undefined
+
+    /**
+     * Cancelled by esc, which has already put the screen back on the size
+     * field (see the `converting` key handler). Nothing further to do:
+     * a cancelled run has no result, no refusal and no unreachable target to
+     * report, and reporting one anyway would be inventing an answer the user
+     * stopped waiting for.
+     */
+    if (outcome.cancelled) return
 
     /**
      * Nothing gets small enough — but the search measured the smallest it
@@ -1632,6 +1742,24 @@ export function App({
         .finally(() => {
           converting.current = false
         })
+      return
+    }
+
+    /**
+     * The other three answers all reuse a step that already exists rather
+     * than inventing a screen: the size field the number came from, the
+     * quality slider the other compress mode uses, and `/convert`'s own
+     * target picker. A search that missed is a fork in the road, not a
+     * failure with one exit.
+     */
+    if (choice === 'size') {
+      // `text` still holds what was typed, so this lands on their own number.
+      setStep('size')
+      return
+    }
+    if (choice === 'quality') {
+      setValues((v) => ({ ...v, mode: 'quality', targetBytes: undefined }))
+      setStep('quality')
       return
     }
     setMode('convert')
@@ -1895,10 +2023,25 @@ export function App({
                 onChange={setText}
                 onSubmit={submitSize}
                 placeholder={sizeSpec.placeholder}
-                isActive
+                isActive={!unitFocused}
                 variant={band === 'compact' ? 'plain' : 'field'}
                 width={width}
               />
+              <UnitRow unit={sizeUnit} focused={unitFocused} />
+              {/* What the two halves add up to, said back in the same words
+                  `formatBytes` uses everywhere else. The placeholder could
+                  only ever say this before anything was typed; this says it
+                  exactly when there is something to be unsure about. */}
+              {text.trim() !== '' ? (
+                <Text color={colourProp(palette.dim)}>
+                  {(() => {
+                    const understood = describeSize(sizeWithUnit(text))
+                    return understood === undefined
+                      ? `  ${SYMBOLS.warn} not a size — try 500kb or 2mb`
+                      : `  ${SYMBOLS.arrow} ${understood}`
+                  })()}
+                </Text>
+              ) : null}
               {sizeError ? (
                 <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${sizeError}`}</Text>
               ) : null}
@@ -1906,6 +2049,8 @@ export function App({
                 width={width}
                 pairs={[
                   ['↵', 'confirm'],
+                  ['tab', unitFocused ? 'amount' : 'unit'],
+                  ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
                   ['esc', 'clear / back'],
                 ]}
               />
@@ -2150,14 +2295,11 @@ export function App({
                 items={[
                   {
                     value: 'lowest',
-                    label: 'Use the lowest quality',
-                    hint: `${formatBytes(sizeUnreachable.smallest)} — as small as it gets`,
+                    label: `Use ${formatBytes(sizeUnreachable.smallest)} anyway`,
                   },
-                  {
-                    value: 'format',
-                    label: 'Pick a smaller format instead',
-                    hint: '/convert',
-                  },
+                  { value: 'size', label: 'Try a different target size' },
+                  { value: 'quality', label: 'Compress by quality instead' },
+                  { value: 'format', label: 'Convert to a different format' },
                 ]}
                 onSubmit={answerSizeUnreachable}
                 onCancel={() => {
@@ -2178,12 +2320,31 @@ export function App({
           ) : null}
 
           {step === 'converting' ? (
-            <Box marginBottom={1}>
+            <Box flexDirection="column" marginBottom={1}>
               <Text color={colourProp(palette.dim)}>
-                {attempt
-                  ? `Finding the right quality — attempt ${attempt.n} of ${attempt.of}…`
-                  : 'Converting…'}
+                {attempt ? 'Finding the right quality…' : 'Converting…'}
               </Text>
+              {/* One dot per attempt the search may take — `of` is
+                  `maxAttempts()` for this rung, known before the search
+                  starts, so the row is a real bounded sequence rather than a
+                  bar filling toward an invented total (invariant 7). The
+                  numbers stay printed beside it: a dot row alone would carry
+                  its meaning in shape and colour only, and spec §13 wants the
+                  words too. */}
+              {attempt ? (
+                <Text>
+                  <Text color={colourProp(palette.modeCompress)}>
+                    {SYMBOLS.dotFilled.repeat(attempt.n)}
+                  </Text>
+                  <Text color={colourProp(palette.border)}>
+                    {SYMBOLS.dotEmpty.repeat(Math.max(0, attempt.of - attempt.n))}
+                  </Text>
+                  <Text color={colourProp(palette.dim)}>
+                    {`  attempt ${attempt.n} of ${attempt.of}`}
+                  </Text>
+                </Text>
+              ) : null}
+              <HintBar width={width} pairs={[['esc', 'back — nothing is written yet']]} />
             </Box>
           ) : null}
 

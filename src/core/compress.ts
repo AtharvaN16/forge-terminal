@@ -6,6 +6,12 @@ export interface SearchRequest {
   max?: number
   /** Called once per encode with a real position in a known sequence. */
   onAttempt?: (attempt: number, of: number) => void
+  /**
+   * Stops the search between encodes. A search is a chain of awaited encodes
+   * with nothing to interrupt it otherwise, so "cancel" can only mean "do not
+   * start the next one" — the in-flight encode always finishes.
+   */
+  signal?: AbortSignal
 }
 
 export interface SearchResult {
@@ -13,6 +19,12 @@ export interface SearchResult {
   bytes: number
   /** True when even the lowest quality overshot the target. */
   missed: boolean
+  /**
+   * True when `signal` aborted before the search settled. `quality` and
+   * `bytes` are then the last measured pair, not an answer — callers must not
+   * encode with them.
+   */
+  cancelled?: boolean
 }
 
 const DEFAULT_MIN = 1
@@ -57,9 +69,17 @@ export async function findQuality(req: SearchRequest): Promise<SearchResult> {
     return req.encode(quality)
   }
 
+  /**
+   * Checked before each encode rather than after: the point of cancelling is
+   * to not spend the next several seconds encoding, so the test that matters
+   * is "may I start this one", not "was that one wasted".
+   */
+  const cancelled = () => req.signal?.aborted === true
+
   // The best case first: if the largest size already fits, there is nothing
   // to search for and the user keeps every bit of quality.
   const atMax = await measure(max)
+  if (cancelled()) return { quality: max, bytes: atMax, missed: false, cancelled: true }
   if (atMax <= req.targetBytes) return { quality: max, bytes: atMax, missed: false }
 
   let low = min
@@ -69,6 +89,7 @@ export async function findQuality(req: SearchRequest): Promise<SearchResult> {
   while (low <= high) {
     const mid = Math.floor((low + high) / 2)
     const bytes = await measure(mid)
+    if (cancelled()) return { quality: mid, bytes, missed: false, cancelled: true }
     if (bytes <= req.targetBytes) {
       best = { quality: mid, bytes, missed: false }
       low = mid + 1

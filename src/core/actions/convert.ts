@@ -71,6 +71,30 @@ function resolvePages(doc: DocumentInfo, raw: unknown): number[] {
   return Array.from({ length: doc.pages }, (_, i) => i)
 }
 
+/**
+ * Which way a target is likely to move the file's size, or undefined when
+ * there is no honest claim to make.
+ *
+ * Derived from the two formats' `lossy` flags rather than any table of
+ * pairs, so it holds for every format the engines gain later without a rule
+ * of its own: lossless keeps every pixel, which costs bytes a lossy source
+ * had already given up, and the reverse trade goes the other way. Lossy to
+ * lossy (and lossless to lossless) is left unclaimed — that comparison
+ * depends on the quality each side is encoded at, which is not known until
+ * something is actually encoded, and inventing a direction here would be
+ * exactly the kind of guess spec §12 keeps out of progress reporting.
+ */
+function sizeExpectation(
+  source: SourceInfo,
+  target: FormatId,
+): { hint: string; tone: 'ok' | 'warn' } | undefined {
+  const from = FORMATS[source.format].lossy
+  const to = FORMATS[target].lossy
+  if (from && !to) return { hint: 'likely bigger', tone: 'warn' }
+  if (!from && to) return { hint: 'likely smaller', tone: 'ok' }
+  return undefined
+}
+
 function targetSelect(source: SourceInfo): OptionSpec {
   // Converting a file to its own format changes nothing the user can see,
   // so it is never offered here (the CLI's separate `--to jpeg` recompress
@@ -84,7 +108,19 @@ function targetSelect(source: SourceInfo): OptionSpec {
     // else" rather than leaving the user to wonder why their own format
     // is missing from the list.
     label: `Convert ${FORMATS[source.format].label} to`,
-    choices: targets.map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
+    choices: targets.map((t) => {
+      // The size expectation replaces the format's own descriptive hint
+      // rather than joining it: one short phrase per row is what the width
+      // budget in `Select` was built around, and "smaller, modern · likely
+      // bigger" reads as a contradiction even though both halves are true.
+      const expectation = sizeExpectation(source, t.id)
+      return {
+        value: t.id,
+        label: t.label,
+        hint: expectation?.hint ?? t.hint,
+        ...(expectation === undefined ? {} : { tone: expectation.tone }),
+      }
+    }),
     default: first ? first.id : '',
   }
 }

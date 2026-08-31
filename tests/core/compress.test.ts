@@ -94,3 +94,36 @@ describe('findQuality', () => {
     expect(encode.mock.calls.length).toBeLessThanOrEqual(maxAttempts())
   })
 })
+
+describe('findQuality cancellation', () => {
+  it('stops encoding once its signal is aborted', async () => {
+    const controller = new AbortController()
+    let encodes = 0
+    const encode = async (q: number) => {
+      encodes += 1
+      // Abort partway through, the way an esc keypress does mid-search.
+      if (encodes === 2) controller.abort()
+      return Math.round(100_000 + ((1_000_000 - 100_000) * (q - 1)) / 99)
+    }
+
+    const result = await findQuality({
+      encode,
+      targetBytes: 500_000,
+      signal: controller.signal,
+    })
+
+    expect(result.cancelled).toBe(true)
+    // The attempt that triggered the abort is the last one the search runs:
+    // nothing further is encoded after the signal trips.
+    expect(encodes).toBe(2)
+  })
+
+  it('is not cancelled when its signal never aborts', async () => {
+    const result = await findQuality({
+      encode: curve(100_000, 1_000_000),
+      targetBytes: 500_000,
+      signal: new AbortController().signal,
+    })
+    expect(result.cancelled).toBeFalsy()
+  })
+})

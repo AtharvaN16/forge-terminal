@@ -18,6 +18,13 @@ export const SYMBOLS = {
    */
   longArrow: '──→',
   longArrowDown: '│\n▼',
+  /**
+   * The target-size search's attempt row. Filled and empty differ in shape as
+   * well as intensity, so the row still reads under NO_COLOR — where the two
+   * colours it is drawn in collapse into one.
+   */
+  dotFilled: '●',
+  dotEmpty: '○',
 } as const
 
 /**

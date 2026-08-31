@@ -57,6 +57,26 @@ const SIZE_UNITS: Record<string, number> = {
  * field that has to tell the user their input was not understood, and
  * `undefined` is the only answer that cannot be mistaken for a size.
  */
+const SIZE_UNIT_LABELS: Record<string, string> = { b: 'B', kb: 'KB', mb: 'MB', gb: 'GB' }
+
+/**
+ * A parseable size restated in the units it was written in — "500mb" as
+ * "500 MB".
+ *
+ * Deliberately not `formatBytes(parseSize(input))`: this file counts a KB as
+ * 1024 bytes when reading one and prints it as 1000 when writing one, so that
+ * round trip answers "524 MB" to a typed "500 MB". The field this feeds exists
+ * to tell the user their number was understood, and a different number is not
+ * that. Undefined exactly when `parseSize` is, so the two never disagree about
+ * what counts as a size.
+ */
+export function describeSize(input: string): string | undefined {
+  if (parseSize(input) === undefined) return undefined
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?\s*$/i.exec(input)
+  if (!match) return undefined
+  return `${Number(match[1])} ${SIZE_UNIT_LABELS[(match[2] ?? 'b').toLowerCase()]}`
+}
+
 export function parseSize(input: string): number | undefined {
   const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?\s*$/i.exec(input)
   if (!match) return undefined
