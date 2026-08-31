@@ -40,18 +40,27 @@ export function percentChange(from: number, to: number): SizeChange {
 
 const SIZE_UNITS: Record<string, number> = {
   b: 1,
-  kb: 1024,
-  mb: 1024 * 1024,
-  gb: 1024 * 1024 * 1024,
+  kb: KB,
+  mb: MB,
+  gb: GB,
 }
 
 /**
  * Reads a size the way a person writes one: `500kb`, `2 MB`, `1.5mb`.
  *
- * Powers of 1024 rather than 1000, because the number this is compared
- * against is `stat().size` and every other size Forge prints comes from
- * `formatBytes`, which is also binary. Mixing the two would make a file
- * "1 MB" in one line and over the limit in the next.
+ * The same powers of 1000 `formatBytes` prints in — deliberately the very
+ * constants, so the two can never drift apart again.
+ *
+ * This used to read a KB as 1024 while `formatBytes` printed one as 1000,
+ * on a stated rationale ("`formatBytes`, which is also binary") that was
+ * simply not true of the function beside it. The cost was visible: a typed
+ * "500 KB" became 512,000 bytes, and the not-found screen — which prints the
+ * target through `formatBytes` — answered "you asked for 512 KB". At GB
+ * scale a typed "1 GB" came back as "1.1 GB".
+ *
+ * 1000 rather than 1024 for both, because Finder has reported file sizes in
+ * powers of 1000 since 10.6, and Finder is where the number a user is aiming
+ * at comes from.
  *
  * Returns undefined rather than throwing or guessing: the caller is a text
  * field that has to tell the user their input was not understood, and
@@ -63,12 +72,15 @@ const SIZE_UNIT_LABELS: Record<string, string> = { b: 'B', kb: 'KB', mb: 'MB', g
  * A parseable size restated in the units it was written in — "500mb" as
  * "500 MB".
  *
- * Deliberately not `formatBytes(parseSize(input))`: this file counts a KB as
- * 1024 bytes when reading one and prints it as 1000 when writing one, so that
- * round trip answers "524 MB" to a typed "500 MB". The field this feeds exists
- * to tell the user their number was understood, and a different number is not
- * that. Undefined exactly when `parseSize` is, so the two never disagree about
- * what counts as a size.
+ * `formatBytes(parseSize(input))` now returns the same string (there is a
+ * test pinning that), but this stays a separate function because the two
+ * answer different questions: `formatBytes` renders any byte count in
+ * whichever unit suits it, while this one restates what the user actually
+ * typed. Only the latter can promise "1000 KB" is echoed as the user wrote
+ * it rather than tidied into "1 MB".
+ *
+ * Undefined exactly when `parseSize` is, so the two never disagree about what
+ * counts as a size.
  */
 export function describeSize(input: string): string | undefined {
   if (parseSize(input) === undefined) return undefined

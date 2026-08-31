@@ -40,11 +40,25 @@ describe('parseSize', () => {
     expect(parseSize('500 b')).toBe(500)
   })
 
-  it('reads KB, MB and GB as powers of 1024', () => {
-    expect(parseSize('1kb')).toBe(1024)
-    expect(parseSize('500kb')).toBe(512_000)
-    expect(parseSize('2mb')).toBe(2 * 1024 * 1024)
-    expect(parseSize('1gb')).toBe(1024 * 1024 * 1024)
+  /**
+   * Decimal, matching `formatBytes` and matching Finder — which has reported
+   * file sizes in powers of 1000 since 10.6, and is where the number a user
+   * is aiming at comes from. Reading a KB as 1024 while printing one as 1000
+   * meant a typed "500 KB" came back as "you asked for 512 KB".
+   */
+  it('reads KB, MB and GB as powers of 1000, the same way formatBytes prints them', () => {
+    expect(parseSize('1kb')).toBe(1000)
+    expect(parseSize('500kb')).toBe(500_000)
+    expect(parseSize('2mb')).toBe(2_000_000)
+    expect(parseSize('1gb')).toBe(1_000_000_000)
+  })
+
+  it('round-trips through formatBytes, so a target is never restated as a different number', () => {
+    for (const typed of ['500kb', '2mb', '1gb', '250b']) {
+      const bytes = parseSize(typed)
+      if (bytes === undefined) throw new Error(`${typed} should parse`)
+      expect(formatBytes(bytes)).toBe(describeSize(typed))
+    }
   })
 
   it('ignores case and an optional space', () => {
@@ -54,7 +68,7 @@ describe('parseSize', () => {
   })
 
   it('accepts a decimal', () => {
-    expect(parseSize('1.5mb')).toBe(Math.round(1.5 * 1024 * 1024))
+    expect(parseSize('1.5mb')).toBe(1_500_000)
   })
 
   it('rejects what is not a size', () => {

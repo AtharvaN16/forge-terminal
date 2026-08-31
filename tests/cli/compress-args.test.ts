@@ -23,7 +23,8 @@ describe('compress via flags', () => {
   it('--max-size compresses to fit', () => {
     const intent = parseArgs(['photo.jpg', '--max-size', '500kb'])
     if (intent.kind !== 'compress') throw new Error('expected compress')
-    expect(intent.maxBytes).toBe(512_000)
+    // Powers of 1000, the same ones `formatBytes` prints in — see `parseSize`.
+    expect(intent.maxBytes).toBe(500_000)
   })
 
   it('--quality with --to is still a conversion, not a compression', () => {

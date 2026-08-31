@@ -151,7 +151,9 @@ the staged file entirely.
 **By quality** reuses the existing `Slider`, opening on `prefs.quality`.
 
 **To a target size** raises a text field accepting `500kb`, `2 MB`, `1.5mb` —
-case-insensitive, optional space, KB/MB/GB as powers of 1024. A value that
+case-insensitive, optional space, KB/MB/GB as powers of 1000 — the same
+powers `formatBytes` prints in, and the ones Finder has used since 10.6, so a
+typed target is never restated back as a different number. A value that
 cannot be parsed is rejected in the field rather than at conversion time.
 
 Both then continue into the destination and name steps unchanged, so
