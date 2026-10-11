@@ -42,6 +42,12 @@ export interface CompressIntent {
    * pixel and trade only quality.
    */
   dpi?: number
+  /**
+   * Set by -o. A directory receives `<name>-small.<ext>`; a filename is used
+   * as-is — the same file-or-directory reading a conversion's `--output` gets
+   * from `looksLikeDirectory`. Absent means beside the source.
+   */
+  output?: string
   options: ConvertOptions
   force: boolean
   recursive: boolean
@@ -330,6 +336,10 @@ export function parseArgs(argv: string[]): Intent {
     }
     if (opts.quality !== undefined) compress.quality = parseQuality(String(opts.quality))
     if (maxBytes !== undefined) compress.maxBytes = maxBytes
+    // Carried, not dropped: this branch used to have no field for it, so
+    // `-o` was parsed and silently ignored while the output-exists refusal
+    // told the user to "choose a different --output".
+    if (opts.output !== undefined) compress.output = String(opts.output)
     /**
      * Only a `--dpi` the user actually typed is carried through.
      *

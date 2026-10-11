@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { ACTIONS, convertAction, unavailableReason } from '../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
 import { rasterises } from '../core/capabilities.js'
@@ -12,6 +12,7 @@ import {
   unsupportedCompress,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
+import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
@@ -285,12 +286,35 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         refusals.push({ path: source.path, error: unsupportedCompress(source) })
         continue
       }
+      /**
+       * `--output` reads the way it does for a conversion. A directory gets
+       * the action's own `-small` name, nested under `--recursive` exactly as
+       * `resolveOutputPath` nests a conversion; anything else is the file to
+       * write. Several sources aimed at one file collide in `runPlan`'s
+       * write-safety pass, which already says so plainly.
+       */
+      const explicitFile =
+        intent.output !== undefined && !looksLikeDirectory(intent.output)
+          ? resolve(intent.output)
+          : undefined
+      const destination =
+        intent.output === undefined || explicitFile !== undefined
+          ? dirname(source.path)
+          : dirname(
+              resolveOutputPath({
+                sourcePath: source.path,
+                target: source.format,
+                output: intent.output,
+                sourceRoot: resolved.roots.get(source.path),
+              }),
+            )
       const [planned] = compressAction.plan([source], {
         mode: intent.maxBytes === undefined ? 'quality' : 'size',
         ...(intent.quality === undefined ? {} : { quality: intent.quality }),
-        destination: dirname(source.path),
+        destination,
       })
       if (planned?.op !== 'convert') continue
+      if (explicitFile !== undefined) planned.outputs = [explicitFile]
       // A typed `--dpi` applies to both modes. It was originally threaded
       // only into the target-size search, so quality mode silently kept the
       // engine default and produced the same bytes whatever was passed.
@@ -334,7 +358,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         ? []
         : outcome.results.length === 1
           ? reportSingle(outcome)
-          : reportBatch(outcome)
+          : reportBatch(outcome, intent.output)
 
     return {
       exitCode: failures.length > 0 ? 1 : 0,
