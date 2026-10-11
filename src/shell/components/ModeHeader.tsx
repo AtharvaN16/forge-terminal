@@ -1,9 +1,9 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, type Palette } from '../theme.js'
+import { colourProp, type Palette, type ShellMode } from '../theme.js'
 
-export type ShellMode = 'convert' | 'compress' | 'pdf'
+export type { ShellMode } from '../theme.js'
 
 type ModeStyle = {
   borderStyle: 'single' | 'round' | 'double'

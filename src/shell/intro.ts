@@ -69,9 +69,9 @@ function bannerLines(
     const drawnWord = Array.from(word)
       .map((ch) => {
         if (ch === ' ') return ch
-        // Face in the theme's foreground, edge in the accent — the outline is
+        // Face in the theme's foreground, edge in the brand colour — the outline is
         // what makes the letters legible, so it carries the colour.
-        return `${sgr(ch === '█' ? palette.fg : palette.accent)}${ch}${RESET}`
+        return `${sgr(ch === '█' ? palette.fg : palette.brand)}${ch}${RESET}`
       })
       .join('')
 

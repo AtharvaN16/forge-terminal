@@ -49,7 +49,7 @@ function markRow(row: string, index: number, anvil: string | undefined) {
 /**
  * Splits a wordmark row into face runs and edge runs so each takes its own
  * colour. The face uses the palette's plain foreground — by construction it
- * contrasts with the user's background in either theme — and the accent sits
+ * contrasts with the user's background in either theme — and the brand colour sits
  * on the edge only, where it reads as an accent rather than as the letterform
  * itself. A wordmark drawn entirely in the accent is a mid-tone against both
  * backgrounds and reads muddy.
@@ -88,7 +88,7 @@ export function Banner({
     return (
       <Box marginTop={1} marginBottom={1}>
         <Text>
-          <Text color={colourProp(palette.accent)}>{'⚒ '}</Text>
+          <Text color={colourProp(palette.brand)}>{'⚒ '}</Text>
           <Text color={colourProp(palette.fg)} bold>
             Forge
           </Text>
@@ -114,7 +114,7 @@ export function Banner({
           <Text>{GAP}</Text>
           {splitFace(word).map((run, j) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
-            <Text key={j} color={colourProp(run.edge ? palette.accent : palette.fg)}>
+            <Text key={j} color={colourProp(run.edge ? palette.brand : palette.fg)}>
               {run.text}
             </Text>
           ))}

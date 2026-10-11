@@ -95,6 +95,17 @@ export interface Palette {
    * only way to show a selection when there is no palette at all.
    */
   textSelectionBg: string
+  /**
+   * The product's own colour — the anvil's edge and the wordmark's outline.
+   * Deliberately not `accent`: `accent` follows the mode (see `modePalette`),
+   * and the logo is the one thing that must not.
+   */
+  brand: string
+  /**
+   * Fill behind a key in the hint row. Empty means "no fill available" —
+   * `Hints` then brackets the key instead, so it still reads as a key.
+   */
+  keycapBg: string
 }
 
 export const DARK: Palette = {
@@ -128,6 +139,9 @@ export const DARK: Palette = {
   // Clearly distinct from selectionBg above, which is the drop area's own
   // fill — a selection has to read against that, not blend into it.
   textSelectionBg: '#3f5c86',
+  brand: '#e5a23c',
+  // `fg` (#e4e8f0) on this fill measures about 11:1.
+  keycapBg: '#2e3340',
 }
 
 export const LIGHT: Palette = {
@@ -157,6 +171,9 @@ export const LIGHT: Palette = {
   border: '#9a9184',
   selectionBg: '#eae4d8',
   textSelectionBg: '#b9cfe8',
+  brand: '#9a6005',
+  // `fg` (#23262d) on this fill measures about 12:1.
+  keycapBg: '#e4e1da',
 }
 
 /**
@@ -190,6 +207,32 @@ export const NEUTRAL: Palette = {
   // No colour is asserted before the theme is known, so a selection in this
   // palette is drawn with reverse video instead.
   textSelectionBg: '',
+  brand: 'yellow',
+  // No fill is asserted before the theme is known; keys are bracketed.
+  keycapBg: '',
+}
+
+export type ShellMode = 'convert' | 'compress' | 'pdf'
+
+/** Paired with the mode's name wherever it is drawn, so it survives NO_COLOR. */
+export const MODE_MARKERS: Record<ShellMode, string> = { convert: '↔', compress: '↓', pdf: '▣' }
+
+/** A mode's own colour and the fill drawn behind it. */
+export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: string } {
+  if (mode === 'compress') return { fg: p.modeCompress, bg: p.modeCompressBg }
+  if (mode === 'pdf') return { fg: p.modePdf, bg: p.modePdfBg }
+  return { fg: p.modeConvert, bg: p.modeConvertBg }
+}
+
+/**
+ * The palette a screen is drawn in while the shell is in `mode`: the three
+ * role colours — accent, tag, label — become the mode's own, so one screen
+ * tells one colour story instead of four. Outcome colours (`ok`, `fail`,
+ * `warn`, `larger`) and the `brand` never move.
+ */
+export function modePalette(p: Palette, mode: ShellMode): Palette {
+  const { fg } = modeColours(p, mode)
+  return { ...p, accent: fg, tag: fg, label: fg }
 }
 
 export function paletteFor(theme: 'dark' | 'light' | undefined): Palette {
