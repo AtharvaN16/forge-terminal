@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CallToolResult } from '@modelcontextprotocol/server'
-import type { CompressIntent, ConvertIntent, PageOpIntent } from '../cli/args.js'
+import type { CompressIntent, ConvertIntent, ExtensionOpIntent, PageOpIntent } from '../cli/args.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
 import { type ForgeError, invalidArguments } from '../core/errors.js'
@@ -99,6 +99,32 @@ export function formatsTool(): CallToolResult {
 }
 
 export async function convertTool(args: ConvertArgs): Promise<CallToolResult> {
+  if (args.boost !== undefined || args.removeBackground === true) {
+    if (args.boost !== undefined && args.removeBackground === true) {
+      return refuse(
+        invalidArguments('Use one operation at a time — got boost and removeBackground.'),
+      )
+    }
+    // Same intent the CLI builds from --boost / --remove-bg, and the same
+    // checks: the extension must be installed, and a cutout needs alpha.
+    const op: ExtensionOpIntent = {
+      kind: 'extension-op',
+      op: args.boost !== undefined ? 'boost' : 'remove-background',
+      inputs: args.paths,
+      target: args.to,
+      options: {
+        background: args.background ?? '#ffffff',
+        keepMetadata: args.keepMetadata ?? false,
+        ...(args.quality === undefined ? {} : { quality: args.quality }),
+      },
+      force: args.overwrite ?? false,
+      recursive: args.recursive ?? false,
+      debug: false,
+      ...(args.boost === undefined ? {} : { scale: args.boost }),
+      ...(args.output === undefined ? {} : { output: args.output }),
+    }
+    return fromReport(await runWriting(op))
+  }
   const intent: ConvertIntent = {
     kind: 'convert',
     inputs: args.paths,

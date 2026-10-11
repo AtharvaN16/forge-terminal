@@ -127,6 +127,25 @@ export type Job =
     }
   | { op: 'delete'; sources: [DocumentInfo]; outputs: [string]; pages: number[] }
   | { op: 'rotate'; sources: [DocumentInfo]; outputs: [string]; turns: 1 | 2 | 3 }
+  /**
+   * The two extension jobs (spec §5). Both take one image and write one file
+   * in `target`; the extension itself only ever sees and writes PNG.
+   */
+  | {
+      op: 'boost'
+      sources: [ImageInfo]
+      outputs: [string]
+      scale: 2 | 4
+      target: FormatId
+      options: ConvertOptions
+    }
+  | {
+      op: 'remove-background'
+      sources: [ImageInfo]
+      outputs: [string]
+      target: FormatId
+      options: ConvertOptions
+    }
 
 /**
  * Every warning's stable identifier. --json and the MCP server print it, so a

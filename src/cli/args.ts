@@ -1,5 +1,6 @@
 import { Command, CommanderError } from 'commander'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
+import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
 import { parseSize } from '../core/units.js'
@@ -94,6 +95,28 @@ export interface PageOpIntent {
   debug: boolean
 }
 
+/**
+ * `--boost [2|4]` and `--remove-bg`: an image operation run by an optional
+ * extension (spec §5). Its own `kind` because it has an operation where a
+ * conversion has only a target, and it fails differently when the extension
+ * is absent.
+ */
+export interface ExtensionOpIntent {
+  kind: 'extension-op'
+  op: 'boost' | 'remove-background'
+  /** Only for boost. */
+  scale?: 2 | 4
+  inputs: string[]
+  /** The output format. PNG unless `--to` says otherwise. */
+  target: FormatId
+  output?: string
+  options: ConvertOptions
+  force: boolean
+  recursive: boolean
+  concurrency?: number
+  debug: boolean
+}
+
 /** `forge probe <files...>`: what each file is and what Forge can do with it (spec §3.3). */
 export interface ProbeIntent {
   kind: 'probe'
@@ -111,6 +134,7 @@ export type Intent =
   | ConvertIntent
   | CompressIntent
   | PageOpIntent
+  | ExtensionOpIntent
   | ProbeIntent
   | ExtensionsIntent
   | { kind: 'formats' }
@@ -273,11 +297,53 @@ export function wantsJson(argv: string[]): boolean {
   return (end === -1 ? argv : argv.slice(0, end)).includes('--json')
 }
 
-export function parseArgs(argv: string[]): Intent {
+/**
+ * `--boost` takes an optional 2 or 4. Commander's optional value would also
+ * swallow a filename that follows (`forge --boost photo.jpg`), so it is read
+ * here and removed before Commander sees the argv. Reading stops at `--`.
+ */
+function takeBoost(argv: string[]): { rest: string[]; scale?: 2 | 4 } {
+  const end = argv.indexOf('--')
+  const head = end === -1 ? argv : argv.slice(0, end)
+  const tail = end === -1 ? [] : argv.slice(end)
+  const rest: string[] = []
+  let scale: 2 | 4 | undefined
+  for (let i = 0; i < head.length; i++) {
+    const a = head[i] as string
+    const inline = a.startsWith('--boost=') ? a.slice('--boost='.length) : undefined
+    if (a !== '--boost' && inline === undefined) {
+      rest.push(a)
+      continue
+    }
+    let raw = inline
+    if (raw === undefined && /^\d+$/.test(head[i + 1] ?? '')) raw = head[++i]
+    if (raw !== undefined && raw !== '2' && raw !== '4') {
+      throw invalidArguments(
+        `--boost takes 2 or 4, not ${raw}.`,
+        'Try --boost, --boost 2 or --boost 4.',
+      )
+    }
+    scale = raw === '4' ? 4 : 2
+  }
+  return { rest: [...rest, ...tail], ...(scale === undefined ? {} : { scale }) }
+}
+
+export function parseArgs(rawArgv: string[]): Intent {
+  const argv = rawArgv
+  if (argv[0] === 'config' || argv[0] === 'probe' || argv[0] === 'extensions') {
+    return parseSubcommand(argv)
+  }
+  const boosted = takeBoost(argv)
+  return parseConversionArgs(boosted.rest, boosted.scale)
+}
+
+function parseSubcommand(argv: string[]): Intent {
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
-  if (argv[0] === 'extensions') return parseExtensionsArgs(argv)
+  return parseExtensionsArgs(argv)
+}
 
+function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
   const program = new Command()
     .name('forge')
     .description('Convert — transform your files from the terminal')
@@ -299,6 +365,8 @@ export function parseArgs(argv: string[]): Intent {
     .option('--delete <pages>', 'drop these pages')
     .option('--rotate <degrees>', '90, 180 or 270')
     .option('--separate', 'with --extract, write one file per page')
+    .option('--boost [2|4]', 'sharpen and enlarge 2x (default) or 4x; needs the boost extension')
+    .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
     .option('--password-stdin', "read an encrypted PDF's password from stdin")
@@ -365,6 +433,55 @@ export function parseArgs(argv: string[]): Intent {
     throw invalidArguments(
       `Use one operation at a time — got ${chosen.map((c) => `--${c}`).join(' and ')}.`,
     )
+  }
+
+  const extensionOp =
+    boost !== undefined ? ('boost' as const) : opts.removeBg ? ('remove-background' as const) : null
+  if (extensionOp !== null) {
+    if (boost !== undefined && opts.removeBg) {
+      throw invalidArguments('Use one operation at a time — got --boost and --remove-bg.')
+    }
+    const flag = extensionOp === 'boost' ? '--boost' : '--remove-bg'
+    if (chosen.length > 0) {
+      throw invalidArguments(`${flag} cannot be combined with --${chosen[0]}.`)
+    }
+    if (opts.maxSize !== undefined || opts.pages !== undefined) {
+      throw invalidArguments(
+        `${flag} cannot be combined with ${opts.maxSize !== undefined ? '--max-size' : '--pages'}.`,
+      )
+    }
+    if (inputs.length === 0) {
+      throw invalidArguments(
+        'No files given.',
+        `Name an image, for example: forge photo.jpg ${flag}`,
+      )
+    }
+    const target = opts.to ? parseTarget(String(opts.to)) : ('png' as const)
+    if (extensionOp === 'remove-background') {
+      const refusal = removeBackgroundTargetRefusal(target)
+      if (refusal) throw refusal
+    }
+    const options: ConvertOptions = {
+      background: String(opts.background),
+      keepMetadata: Boolean(opts.keepMetadata),
+    }
+    if (opts.quality !== undefined) options.quality = parseQuality(String(opts.quality))
+    const intent: ExtensionOpIntent = {
+      kind: 'extension-op',
+      op: extensionOp,
+      inputs,
+      target,
+      options,
+      force: Boolean(opts.force),
+      recursive: Boolean(opts.recursive),
+      debug: Boolean(opts.debug),
+    }
+    if (boost !== undefined) intent.scale = boost
+    if (opts.output !== undefined) intent.output = String(opts.output)
+    if (opts.concurrency !== undefined) {
+      intent.concurrency = parseConcurrency(String(opts.concurrency))
+    }
+    return intent
   }
 
   if (chosen.length === 1) {

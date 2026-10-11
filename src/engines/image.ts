@@ -214,7 +214,7 @@ export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sha
  * leave a truncated file where a good one used to be, and overwriting in place
  * is safe because the original is only replaced once the new file is complete.
  */
-async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
+export async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
   const dir = dirname(output)
   await prepareOutputDir(output)
 
@@ -301,6 +301,21 @@ async function pipelineFor(
   pipeline = options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
 
   return { pipeline, cleanup }
+}
+
+/**
+ * Decodes any readable image to an upright PNG at `dest`, for an extension to
+ * read. Goes through `pipelineFor`, so EXIF rotation (rule 1) and the HEIC
+ * path are the ones every conversion uses; the first frame only.
+ */
+export async function decodeToPng(source: SourceInfo, dest: string): Promise<void> {
+  const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
+  const { pipeline, cleanup } = await pipelineFor(source, 'png', options, false)
+  try {
+    await pipeline.png({ compressionLevel: 1 }).toFile(dest)
+  } finally {
+    await cleanup()
+  }
 }
 
 /**

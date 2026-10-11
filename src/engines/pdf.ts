@@ -521,6 +521,8 @@ export const pdfEngine: Engine = {
         return deletePages(job, onPhase)
       case 'rotate':
         return rotate(job, onPhase)
+      default:
+        throw new Error(`the pdf engine cannot ${job.op}`)
     }
   },
 }
