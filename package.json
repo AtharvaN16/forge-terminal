@@ -47,8 +47,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.typecheck.json",
-    "lint": "biome check src tests scripts",
-    "format": "biome format --write src tests scripts",
+    "lint": "biome check src tests scripts extensions",
+    "format": "biome format --write src tests scripts extensions",
     "prepublishOnly": "npm run build && npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
@@ -70,6 +70,7 @@
     "ink": "^7.1.1",
     "ink-testing-library": "^4.0.0",
     "mammoth": "^1.13.0",
+    "onnxruntime-node": "1.23.2",
     "pdf-lib": "^1.17.1",
     "react": "^19.3.0",
     "string-width": "^8.3.0",
