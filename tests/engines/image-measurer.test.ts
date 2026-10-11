@@ -34,6 +34,17 @@ describe('imageEngine.measurer', () => {
     expect(m?.ladder).toEqual([{}])
   })
 
+  it('declines a lossless target, which has no quality to search', async () => {
+    const job: Job = {
+      op: 'convert',
+      sources: [source],
+      outputs: ['/unused.png'],
+      target: 'png',
+      options: { background: '#ffffff', keepMetadata: false },
+    }
+    expect(await imageEngine.measurer?.(job)).toBeUndefined()
+  })
+
   it('measures smaller at lower quality', async () => {
     const m = await imageEngine.measurer?.(jobFor(['/unused.jpg']))
     const base = { background: '#ffffff', keepMetadata: false }

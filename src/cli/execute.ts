@@ -11,7 +11,7 @@ import {
   isForgeError,
   unsupportedCompress,
 } from '../core/errors.js'
-import { runPlan } from '../core/execute-jobs.js'
+import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
@@ -204,6 +204,29 @@ async function buildRasterJob(
   return { job }
 }
 
+/**
+ * Turns `runPlan`'s events into the two callbacks `src/index.ts` draws from.
+ * Shared by the compress and convert paths, so a target-size search reports
+ * the same way whichever flag asked for it. The rung is named as well as the
+ * attempt: without it a search that drops from 150 to 120 dpi looks like the
+ * counter restarting for no reason.
+ */
+function reportEvents(opts: ExecuteOptions, batch: boolean): (event: PlanEvent) => void {
+  return (event) => {
+    if (event.type === 'search:attempt') {
+      opts.onSearch?.(
+        event.rung.dpi === undefined
+          ? `attempt ${event.attempt} of ${event.of}`
+          : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
+      )
+      return
+    }
+    if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
+      opts.onProgress?.({ completed: event.completed, total: event.total })
+    }
+  }
+}
+
 export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
   // Routed here rather than in src/index.ts so there is exactly one place
   // that turns an Intent into an ExecuteResult. The import is lazy because a
@@ -329,22 +352,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       force: intent.force,
       ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
       ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
-      onEvent: (event) => {
-        if (event.type === 'search:attempt') {
-          // The rung is named as well as the attempt: without it a search that
-          // drops from 150 to 120 dpi looks like the counter simply restarting
-          // for no reason.
-          opts.onSearch?.(
-            event.rung.dpi === undefined
-              ? `attempt ${event.attempt} of ${event.of}`
-              : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
-          )
-          return
-        }
-        if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
-          opts.onProgress?.({ completed: event.completed, total: event.total })
-        }
-      },
+      onEvent: reportEvents(opts, batch),
     })
 
     // `resolved.failures` first, as the conversion path below orders them.
@@ -434,11 +442,8 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   const outcome = await runPlan(allJobs, {
     force: intent.force,
     ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
-    onEvent: (event) => {
-      if (isBatch && (event.type === 'job:done' || event.type === 'job:error')) {
-        opts.onProgress?.({ completed: event.completed, total: event.total })
-      }
-    },
+    ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
+    onEvent: reportEvents(opts, isBatch),
   })
 
   const failures = [
@@ -446,6 +451,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     ...documentFailures,
     ...plan.failures,
     ...outcome.refusals,
+    ...outcome.unreachable.map((u) => ({ path: u.job.sources[0].path, error: u.error })),
     ...outcome.failures,
   ]
 

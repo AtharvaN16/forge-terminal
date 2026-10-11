@@ -130,7 +130,10 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
 
     const measurer = await resolveEngine(job)?.measurer?.(job)
     if (!measurer) {
-      refusals.push({ path: job.sources[0].path, error: unsupportedCompress(job.sources[0]) })
+      refusals.push({
+        path: job.sources[0].path,
+        error: unsupportedCompress(job.sources[0], job.target),
+      })
       continue
     }
 

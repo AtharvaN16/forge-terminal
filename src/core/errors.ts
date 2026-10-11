@@ -176,8 +176,34 @@ export function heicDecoderUnavailable(path: string): ForgeError {
  * promise something the encoder cannot do. Naming that is better than a
  * silent no-op, and the hint points at the thing that *would* work.
  */
-export function unsupportedCompress(source: SourceInfo): ForgeError {
+export function unsupportedCompress(source: SourceInfo, target?: FormatId): ForgeError {
   const name = basename(source.path)
+
+  /**
+   * A conversion asked to fit a size. The size applies to the target, so the
+   * refusal must name the target: telling `photo.jpg --to png --max-size`
+   * that photo.jpg is lossless would be false. Same code as the compression
+   * refusals below, because it is the same refusal with a different subject.
+   */
+  if (target !== undefined && target !== source.format) {
+    const label = FORMATS[target].label
+    if (!FORMATS[target].lossy) {
+      return new ForgeError({
+        code: 'unsupported-compress',
+        title: 'Cannot fit that to a size',
+        detail: `${label} is lossless — there is no quality to trade away, so ${name} cannot be made to fit as ${label}.`,
+        hint: 'Drop --max-size, or choose a lossy target. forge --formats lists them.',
+        shellHint: 'Choose a lossy target to aim for a size.',
+      })
+    }
+    return new ForgeError({
+      code: 'unsupported-compress',
+      title: 'Cannot fit that to a size',
+      detail: `Forge cannot search ${name} → ${label} toward a size yet.`,
+      hint: 'Convert it first, then compress the result with --max-size.',
+      shellHint: 'Convert it first, then /compress the result to a size.',
+    })
+  }
 
   /**
    * A PDF gets its own wording because the lossless line below is FALSE for

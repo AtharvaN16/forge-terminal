@@ -131,6 +131,27 @@ describe('refusing to compress', () => {
     const e = unsupportedCompress(pdf)
     expect(e.shellHint).toContain('/pdf')
   })
+
+  const jpeg = { ...png, path: '/tmp/photo.jpg', format: 'jpeg' as const }
+
+  it('names a lossless target, not the source, when the size applies to a conversion', () => {
+    const e = unsupportedCompress(jpeg, 'png')
+    expect(e.code).toBe('unsupported-compress')
+    expect(e.detail).toContain('PNG is lossless')
+    expect(e.detail).toContain('photo.jpg')
+    expect(e.detail).not.toContain('JPEG')
+  })
+
+  it('says a lossy target cannot be searched yet, rather than calling it lossless', () => {
+    const e = unsupportedCompress(pdf, 'jpeg')
+    expect(e.detail).not.toContain('lossless')
+    expect(e.detail).toContain('brochure.pdf')
+    expect(e.detail).toContain('JPEG')
+  })
+
+  it('keeps the old wording when the target is the source format', () => {
+    expect(unsupportedCompress(png, 'png').detail).toBe(unsupportedCompress(png).detail)
+  })
 })
 
 /**

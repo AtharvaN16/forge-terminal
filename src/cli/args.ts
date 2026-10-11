@@ -21,6 +21,12 @@ export interface ConvertIntent {
   pages?: string
   /** Read an encrypted source's password from stdin instead of prompting. */
   passwordStdin?: boolean
+  /**
+   * Set by --max-size alongside --to: the converted file must fit this many
+   * bytes, and the search decides the quality. It used to be parsed and then
+   * dropped on this path (spec §4.6).
+   */
+  maxBytes?: number
 }
 
 /**
@@ -151,6 +157,17 @@ function parseConcurrency(raw: string): number {
     throw invalidArguments(`Concurrency must be a positive whole number, not ${raw}.`)
   }
   return n
+}
+
+function parseMaxSize(raw: unknown): number {
+  const bytes = parseSize(String(raw))
+  if (bytes === undefined) {
+    throw invalidArguments(
+      `${raw} is not a size.`,
+      'Try a number with a unit, for example 500kb, 2mb or 1.5mb.',
+    )
+  }
+  return bytes
 }
 
 export function parseArgs(argv: string[]): Intent {
@@ -295,29 +312,23 @@ export function parseArgs(argv: string[]): Intent {
     return { kind: 'shell' }
   }
 
+  // Both paths: they answer the same question two ways, with or without --to.
+  if (opts.quality !== undefined && opts.maxSize !== undefined) {
+    throw invalidArguments(
+      'Use either --quality or --max-size, not both.',
+      'They are two ways of asking for the same thing, and Forge will not guess which wins.',
+    )
+  }
+
   /**
    * Quality or a size ceiling, with no target format, means compression: keep
    * the format, make the file smaller.
    */
   if (!opts.to && (opts.quality !== undefined || opts.maxSize !== undefined)) {
-    if (opts.quality !== undefined && opts.maxSize !== undefined) {
-      throw invalidArguments(
-        'Use either --quality or --max-size, not both.',
-        'They are two ways of asking for the same thing, and Forge will not guess which wins.',
-      )
-    }
     if (inputs.length === 0) {
       throw invalidArguments(
         'No files given.',
         'Name a file, for example: forge photo.jpg --max-size 500kb',
-      )
-    }
-
-    const maxBytes = opts.maxSize === undefined ? undefined : parseSize(String(opts.maxSize))
-    if (opts.maxSize !== undefined && maxBytes === undefined) {
-      throw invalidArguments(
-        `${opts.maxSize} is not a size.`,
-        'Try a number with a unit, for example 500kb, 2mb or 1.5mb.',
       )
     }
 
@@ -335,7 +346,7 @@ export function parseArgs(argv: string[]): Intent {
       debug: Boolean(opts.debug),
     }
     if (opts.quality !== undefined) compress.quality = parseQuality(String(opts.quality))
-    if (maxBytes !== undefined) compress.maxBytes = maxBytes
+    if (opts.maxSize !== undefined) compress.maxBytes = parseMaxSize(opts.maxSize)
     // Carried, not dropped: this branch used to have no field for it, so
     // `-o` was parsed and silently ignored while the output-exists refusal
     // told the user to "choose a different --output".
@@ -406,6 +417,7 @@ export function parseArgs(argv: string[]): Intent {
   // the source's page count, which is only known once resolveInputs/probe
   // has actually read the file (src/cli/execute.ts does that per source).
   if (opts.pages !== undefined) intent.pages = String(opts.pages)
+  if (opts.maxSize !== undefined) intent.maxBytes = parseMaxSize(opts.maxSize)
   if (opts.concurrency !== undefined)
     intent.concurrency = parseConcurrency(String(opts.concurrency))
   return intent

@@ -110,3 +110,39 @@ describe('parseArgs', () => {
     })
   })
 })
+
+describe('--max-size with --to', () => {
+  const codeOf = (fn: () => unknown): string | undefined => {
+    try {
+      fn()
+    } catch (e) {
+      return isForgeError(e) ? e.code : 'unknown'
+    }
+    return undefined
+  }
+
+  it('is a conversion that carries the size', () => {
+    const intent = parseArgs(['a.jpg', '--to', 'jpeg', '--max-size', '50kb'])
+    if (intent.kind !== 'convert') throw new Error('expected convert')
+    expect(intent.target).toBe('jpeg')
+    expect(intent.maxBytes).toBe(50_000)
+  })
+
+  it('refuses --quality alongside it, as compression already does', () => {
+    expect(
+      codeOf(() => parseArgs(['a.jpg', '--to', 'webp', '--quality', '60', '--max-size', '1mb'])),
+    ).toBe('invalid-arguments')
+  })
+
+  it('refuses a size it cannot read', () => {
+    expect(codeOf(() => parseArgs(['a.jpg', '--to', 'jpeg', '--max-size', 'banana']))).toBe(
+      'invalid-arguments',
+    )
+  })
+
+  it('leaves maxBytes unset when --max-size is absent', () => {
+    const intent = parseArgs(['a.jpg', '--to', 'jpeg'])
+    if (intent.kind !== 'convert') throw new Error('expected convert')
+    expect(intent.maxBytes).toBeUndefined()
+  })
+})
