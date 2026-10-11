@@ -55,10 +55,10 @@ export interface RunPolicy {
   targetBytes?: number
   onEvent?: (event: PlanEvent) => void
   /**
-   * Stops a target-size search between encodes — the shell's esc key. Only the
-   * search is interruptible: once a job is settled and handed to `runJobs`, a
-   * write is either atomic or has not started, and there is no half-state
-   * worth exposing a cancel for.
+   * Stops a target-size search between encodes — the shell's esc key. Once a
+   * job is settled and handed to `runJobs`, a write is either atomic or has not
+   * started, so only an extension job (a child process) is interrupted there:
+   * it is killed, nothing is written, and the outcome is `cancelled`.
    */
   signal?: AbortSignal
   /** Test seam. Defaults to the registry's `engineForJob`. */
@@ -292,8 +292,15 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
   const done = await runJobs(ready, {
     ...(policy.concurrency === undefined ? {} : { concurrency: policy.concurrency }),
     ...(policy.engineFor === undefined ? {} : { engineFor: policy.engineFor }),
+    ...(policy.signal === undefined ? {} : { signal: policy.signal }),
     onEvent: emit,
   })
+
+  // Aborted mid-run: the killed jobs wrote nothing, and their "failure" is the
+  // user's own cancel, not an answer to report.
+  if (policy.signal?.aborted && done.failures.length > 0) {
+    return { ...done, refusals, unreachable, failures: [], cancelled: true }
+  }
 
   return {
     results: done.results,

@@ -123,8 +123,13 @@ async function main(): Promise<void> {
     // Progress and the spinner are stderr decoration for a person at a
     // terminal. Under --json they stay off entirely (spec §3.2).
     const tty = Boolean(process.stderr.isTTY) && !json
+    // ctrl-c during an extension job kills its child and writes nothing.
+    const interrupt = new AbortController()
+    // Only for extension jobs: any other run keeps the default ctrl-c.
+    if (intent.kind === 'extension-op') process.once('SIGINT', () => interrupt.abort())
     const result = await execute(intent, {
       json,
+      signal: interrupt.signal,
       ...(tty ? { onDownload } : {}),
       onProgress: tty
         ? (progress: BatchProgress) => {
@@ -148,7 +153,7 @@ async function main(): Promise<void> {
     spinner?.stop()
     if (result.stdout.length > 0) process.stdout.write(`${result.stdout.join('\n')}\n`)
     if (result.stderr.length > 0) process.stderr.write(`${result.stderr.join('\n')}\n`)
-    process.exitCode = result.exitCode
+    process.exitCode = interrupt.signal.aborted ? 130 : result.exitCode
   } catch (e) {
     if (isForgeError(e)) {
       if (json) process.stdout.write(`${JSON.stringify(errorJson(VERSION, e))}\n`)

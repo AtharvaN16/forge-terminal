@@ -8,6 +8,7 @@ import {
   type Preferences,
   savePreferences,
 } from '../config/preferences.js'
+import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
@@ -85,6 +86,8 @@ export type Step =
   | 'idle'
   /** `/extensions`, and the install offer for Boost / Remove background. */
   | 'extensions'
+  /** `/boost`: 2× or 4×, between the install check and the destination step. */
+  | 'ext-scale'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -192,6 +195,11 @@ interface PendingPdfRefusal {
 }
 
 let blockSeq = 0
+const boostScaleChoices = (() => {
+  const spec = boostAction.options([], {}, {} as never).find((o) => o.id === 'scale')
+  return spec?.kind === 'select' ? spec.choices : []
+})()
+
 const nextId = () => `b${++blockSeq}`
 
 /**
@@ -233,6 +241,10 @@ function describePdfResult(result: Result): string {
       return `removed ${job.pages.length} pages — ${first}`
     case 'rotate':
       return `rotated ${job.turns * 90}° — ${first}`
+    case 'boost':
+      return `boosted ${job.scale}× — ${first}`
+    case 'remove-background':
+      return `removed the background — ${first}`
     default: {
       /**
        * No silent default. The old one swallowed `convert` and reported a
@@ -442,6 +454,10 @@ export function App({
    */
   /** Set when /boost or /remove-background opened the extensions screen as an offer. */
   const [extOffer, setExtOffer] = useState<string | undefined>()
+  /** Set while /boost or /remove-background runs on the staged image (scale step -> destination -> run). */
+  /** /boost or /remove-background typed before any file: the next dropped image goes to it. */
+  const [extArm, setExtArm] = useState<'boost' | 'remove-background' | undefined>()
+  const [extRun, setExtRun] = useState<'boost' | 'remove-background' | undefined>()
   const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
   /**
    * What everything below is drawn in: the base palette with its role
@@ -923,6 +939,14 @@ export function App({
     (_input, key) => {
       if (!key.escape || !searchAbort.current) return
       searchAbort.current.abort()
+      if (extRun) {
+        // An extension job: the child is killed and nothing is written.
+        searchAbort.current = undefined
+        setExtRun(undefined)
+        setValues({})
+        setStep('idle')
+        return
+      }
       /**
        * Moved here rather than waiting for `runPlan` to return, because an
        * abort can only take effect *between* encodes — the one already in
@@ -1160,7 +1184,20 @@ export function App({
       }
 
       if (command.name === 'boost' || command.name === 'remove-background') {
-        if (source?.kind !== 'image') {
+        if (!source) {
+          // Nothing staged yet (a dropped image goes straight to the target
+          // picker, so this is the usual case): remember the choice for the
+          // next image, the way /compress and /pdf arm their mode.
+          setExtArm(command.name)
+          setStep('idle')
+          push({
+            kind: 'note',
+            id: nextId(),
+            text: `${SYMBOLS.tip} Drop an image to ${command.name === 'boost' ? 'boost' : 'remove its background'}.`,
+          })
+          return
+        }
+        if (source.kind !== 'image') {
           push({
             kind: 'note',
             id: nextId(),
@@ -1481,6 +1518,23 @@ export function App({
           setStep('pdf')
           return
         }
+        // /boost or /remove-background armed before this drop.
+        if (extArm) {
+          const armed = extArm
+          setExtArm(undefined)
+          if (info.kind !== 'image') {
+            push({
+              kind: 'note',
+              id: nextId(),
+              text: `${SYMBOLS.warn} /${armed} needs an image.`,
+            })
+            setStep('idle')
+            return
+          }
+          setExtOffer(armed)
+          setStep('extensions')
+          return
+        }
         // A source with a real convert target — every image, and now a PDF
         // too — goes straight to the target picker. One without a target
         // would stay at idle, staged and ready for `/pdf` or another
@@ -1515,6 +1569,7 @@ export function App({
       hasConvertTarget,
       pdfActionsApply,
       fenceOff,
+      extArm,
     ],
   )
 
@@ -1693,6 +1748,10 @@ export function App({
    */
   const confirmDestination = (destination: string) => {
     if (!source) return
+    if (extRun) {
+      void runExtensionJob(destination)
+      return
+    }
 
     if (source.kind === 'document') {
       const [planned] = action.plan([source], { ...values, destination })
@@ -1706,6 +1765,15 @@ export function App({
 
   /** Back from `destination`: to whichever step actually precedes it for this source. */
   const destinationBack = () => {
+    if (extRun) {
+      if (extRun === 'boost') setStep('ext-scale')
+      else {
+        setExtRun(undefined)
+        setValues({})
+        setStep('idle')
+      }
+      return
+    }
     if (specFor('quality')) {
       setStep('quality')
       return
@@ -1764,6 +1832,10 @@ export function App({
   // live terminal width, so a deep preset path can't push the line past the
   // edge of a narrow terminal.
   const previewDestination = (candidate: string): string => {
+    if (extRun && source) {
+      const [planned] = extActionFor(extRun).plan([source], { ...values, output: candidate })
+      if (planned) return middleEllipsis(planned.outputs[0] ?? candidate, Math.max(12, width - 4))
+    }
     const stem = source ? (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '') : ''
     const full =
       source && typeof values.target === 'string'
@@ -1948,6 +2020,73 @@ export function App({
     }
   }
 
+  const extActionFor = (id: 'boost' | 'remove-background') =>
+    id === 'boost' ? boostAction : removeBackgroundAction
+
+  /**
+   * /boost and /remove-background: the same plan-and-run path as the CLI
+   * (`action.plan` then `runPlan`), with esc wired to the AbortSignal so the
+   * extension's child is killed and nothing is written.
+   */
+  const runExtensionJob = async (
+    destination: string,
+    opts: { force?: boolean; output?: string } = {},
+  ) => {
+    if (!source || !extRun || converting.current) return
+    converting.current = true
+    setStep('converting')
+    const controller = new AbortController()
+    searchAbort.current = controller
+    try {
+      const [job] = extActionFor(extRun).plan([source], { ...values, output: destination })
+      if (!job) return
+      if (opts.output) job.outputs[0] = opts.output
+      const outcome = await runPlan([job], {
+        force: opts.force ?? false,
+        concurrency: 1,
+        signal: controller.signal,
+      })
+      if (outcome.cancelled) return
+      const refusal = outcome.refusals[0]
+      if (refusal) {
+        if (refusal.error.code === 'output-exists') {
+          const output = job.outputs[0] ?? destination
+          setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
+          setStep('overwrite')
+          return
+        }
+        push({ kind: 'error', id: nextId(), error: refusal.error })
+        setStep('destination')
+        return
+      }
+      const result = outcome.results[0]
+      if (result) {
+        push({
+          kind: 'note',
+          id: nextId(),
+          text: `${SYMBOLS.ok} ${describePdfResult(result)} · ${formatBytes(
+            result.job.sources[0].bytes,
+          )} ${SYMBOLS.arrow} ${formatBytes(result.outputBytes)}`,
+          savedTo: result.job.outputs[0],
+        })
+        for (const warning of result.warnings) {
+          push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
+        }
+      } else if (outcome.failures[0]) {
+        push({ kind: 'error', id: nextId(), error: outcome.failures[0].error })
+      }
+      setExtRun(undefined)
+      clearSource()
+    } catch (e) {
+      showError(e)
+      setExtRun(undefined)
+      clearSource()
+    } finally {
+      if (searchAbort.current === controller) searchAbort.current = undefined
+      converting.current = false
+    }
+  }
+
   const convert = async (destination: string, opts: { force?: boolean; output?: string } = {}) => {
     if (!source) return
     if (converting.current) return
@@ -2045,6 +2184,12 @@ export function App({
     if (!pending) return
     const { destination, keepBoth } = pending
     setPending(null)
+    if (extRun) {
+      if (choice === 'replace') void runExtensionJob(destination, { force: true })
+      else if (choice === 'keep') void runExtensionJob(destination, { output: keepBoth })
+      else setStep('destination')
+      return
+    }
     if (choice === 'replace') void convert(destination, { force: true })
     else if (choice === 'keep') void convert(destination, { output: keepBoth })
     else if (choice === 'rename') startRename(destination)
@@ -2506,6 +2651,37 @@ export function App({
             </Box>
           ) : null}
 
+          {step === 'ext-scale' && source ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.label)}>Scale</Text>
+              </Box>
+              <Select
+                width={pickerWidth}
+                items={boostScaleChoices}
+                initialValue="2"
+                onSubmit={(chosen) => {
+                  setValues((v) => ({ ...v, scale: chosen }))
+                  setStep('destination')
+                }}
+                onCancel={() => {
+                  setExtRun(undefined)
+                  setValues({})
+                  setStep('idle')
+                }}
+                showHints={band !== 'compact'}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↑↓', 'choose'],
+                  ['↵', 'confirm'],
+                  ['esc', 'back'],
+                ]}
+              />
+            </Box>
+          ) : null}
+
           {step === 'destination' && destinationSpec?.kind === 'path' ? (
             <Box flexDirection="column" marginBottom={1}>
               <PathInput
@@ -2751,18 +2927,18 @@ export function App({
               width={width}
               {...(extOffer ? { only: extOffer } : {})}
               onInstalled={(id) => {
-                // HOOK(W2a): the extension is present, so run `id` ('boost' |
-                // 'remove-background') on the staged image here. The action
-                // objects live in src/core/actions (W2a); until they land
-                // this only reports readiness.
                 if (extOffer === undefined) return
                 setExtOffer(undefined)
-                setStep('idle')
-                push({
-                  kind: 'note',
-                  id: nextId(),
-                  text: `${SYMBOLS.ok} ${id} is installed and ready.`,
-                })
+                if (id !== 'boost' && id !== 'remove-background') {
+                  setStep('idle')
+                  return
+                }
+                // PNG is the only target offered: it carries the alpha a cutout
+                // needs, and a boost keeps what the source had.
+                setMode('convert')
+                setValues({ target: 'png' })
+                setExtRun(id)
+                setStep(id === 'boost' ? 'ext-scale' : 'destination')
               }}
               onError={(error) => push({ kind: 'error', id: nextId(), error })}
               onClose={() => {
