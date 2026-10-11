@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forge — Boost terminal UI</title>
+    <style>
+      /* Colours are DARK from src/shell/theme.ts, verbatim — this mockup
+         reuses the real palette rather than inventing one. `larger` is the
+         dedicated orange for "a result that grew"; boost deliberately does
+         NOT use it, because an enlargement growing is not a surprise. */
+      :root {
+        --fg: #e4e8f0;
+        --dim: #8b93a6;
+        --accent: #e5a23c;
+        --warn: #e5c07b;
+        --ok: #6fcf7f;
+        --fail: #e8796d;
+        --larger: #f2994a;
+        --tag: #63c1d8;
+        --label: #a68ce0;
+        --convert-fg: #55c7d9;
+        --convert-bg: #122c33;
+        --compress-fg: #79c98b;
+        --compress-bg: #182c1e;
+        /* Proposed 4th mode colour. Violet, distinct in hue from convert's
+           cyan (~190°), compress's green (~135°) and pdf's red (~12°).
+           #b39ae8 measures 8.1:1 on #1e1e1e — comfortably above AA. */
+        --mode-fg: #b39ae8;
+        --mode-bg: #241d33;
+        --border: #5f6879;
+        --selection-bg: #252c3a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #1e1e1e;
+        color: var(--fg);
+        font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      .term { width: min(820px, calc(100% - 32px)); margin: 32px auto 12px; white-space: pre; }
+      .row { display: block; }
+      .mode-bar { display: block; padding: 0 4px; margin-bottom: 6px; background: var(--mode-bg); color: var(--mode-fg); font-weight: 600; }
+      .mode-bar .hint { color: var(--dim); font-weight: 400; }
+      .dim { color: var(--dim); }
+      .fg { color: var(--fg); }
+      .accent { color: var(--accent); font-weight: 600; }
+      .label { color: var(--label); }
+      .tag { color: var(--tag); }
+      .warn { color: var(--warn); }
+      .ok { color: var(--ok); }
+      .fail { color: var(--fail); }
+      .border { color: var(--border); }
+      .bold { font-weight: 600; }
+      .gap { display: block; height: 12px; }
+      .hints { display: block; margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--border); }
+      .hints .sep { color: var(--border); }
+      .hints kbd { color: var(--accent); font-weight: 600; font-family: inherit; }
+      .hints .what { color: var(--dim); }
+      .opt { display: block; }
+      .opt .cursor { color: var(--accent); }
+      .opt.selected .label-text { color: var(--fg); font-weight: 600; }
+      .opt:not(.selected) .label-text { color: var(--dim); }
+      .opt .opt-hint { color: var(--dim); }
+      .opt.disabled .label-text { color: var(--border); }
+      .bar .filled { color: var(--mode-fg); }
+      .bar .empty { color: var(--border); }
+      .screen { display: none; }
+      .screen.active { display: block; }
+
+      /* Mockup chrome — not part of the product */
+      .nav { width: min(820px, calc(100% - 32px)); margin: 0 auto 48px; font: 13px/1.7 ui-monospace, Menlo, monospace; color: var(--dim); border-top: 1px solid #2e2e2e; padding-top: 12px; white-space: normal; }
+      .nav b { color: var(--fg); font-weight: 600; }
+      .nav ol { margin: 8px 0 0; padding-left: 20px; }
+      .nav li { cursor: pointer; padding: 1px 0; }
+      .nav li:hover { color: var(--fg); }
+      .nav li.on { color: var(--mode-fg); font-weight: 600; }
+      .note { color: #6f7684; font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <main class="term" aria-label="Forge terminal mockup, boost flow">
+
+      <!-- 1. PHOTO DETECTED — the whole point of this screen is that there is
+           exactly ONE question. The kind-of-image question is answered by
+           measurement (flat-neighbour ratio 0.04 vs 0.80 separates photos from
+           UI by 20x), stated as a fact, with a single key to override it. -->
+      <section class="screen active" id="photo">
+        <span class="mode-bar">current mode: boost<span class="hint">  use / to change mode</span></span>
+
+        <span class="row border">╭─ <span class="tag">JPG</span> ──────────────────────────────────╮</span>
+        <span class="row border">│ <span class="fg">vacation-photo.jpg                      </span>│</span>
+        <span class="row border">│ <span class="dim">400×600 · 38 KB                         </span>│</span>
+        <span class="row border">╰────────────────────────────────────────╯</span>
+        <span class="gap"></span>
+
+        <span class="row"><span class="dim">photo</span><span class="dim"> · </span><span class="fg">photo model</span></span>
+        <span class="gap"></span>
+
+        <span class="row label">How much bigger</span>
+        <span class="opt" data-i="0"><span class="cursor">  </span><span class="label-text">2×</span><span class="opt-hint">   800×1200 · 3s</span></span>
+        <span class="opt selected" data-i="1"><span class="cursor accent">❯ </span><span class="label-text">4×</span><span class="opt-hint">   1600×2400 · 12s</span></span>
+        <span class="gap"></span>
+
+        <span class="hints">
+          <kbd>↵</kbd><span class="what"> boost</span>
+          <span class="sep">  │  </span><kbd>↑↓</kbd><span class="what"> choose</span>
+          <span class="sep">  │  </span><kbd>t</kbd><span class="what"> change type</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back</span>
+        </span>
+      </section>
+
+      <!-- 2. OVERRIDE — only reached by pressing t. Never shown otherwise, so
+           the common path stays one question. -->
+      <section class="screen" id="override">
+        <span class="mode-bar">current mode: boost<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row label">Image type</span>
+        <span class="opt selected" data-i="0"><span class="cursor accent">❯ </span><span class="label-text">Photo</span><span class="opt-hint">                detected</span></span>
+        <span class="opt" data-i="1"><span class="cursor">  </span><span class="label-text">Drawing or logo</span><span class="opt-hint">      1.2 MB model</span></span>
+        <span class="opt" data-i="2"><span class="cursor">  </span><span class="label-text">Screenshot or text</span><span class="opt-hint">   </span><span class="warn">no model</span></span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>↵</kbd><span class="what"> choose</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back</span>
+        </span>
+      </section>
+
+      <!-- 3. FIRST-USE DOWNLOAD — explicit, sized, sourced, and refusable.
+           Never runs during npm install. Declining leaves plain enlarging
+           fully working, so this is a choice and not a wall. -->
+      <section class="screen" id="install">
+        <span class="mode-bar">current mode: boost<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row label">Photo model not installed</span>
+        <span class="row dim">  59.8 MB · runs offline · remove via </span><span class="fg">/extensions</span>
+        <span class="gap"></span>
+        <span class="opt selected" data-i="0"><span class="cursor accent">❯ </span><span class="label-text">Download</span><span class="opt-hint">             59.8 MB, once</span></span>
+        <span class="opt" data-i="1"><span class="cursor">  </span><span class="label-text">Enlarge without it</span><span class="opt-hint">   instant · softer</span></span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>↵</kbd><span class="what"> choose</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back</span>
+        </span>
+      </section>
+
+      <!-- 4. PROGRESS — the percentage is REAL. The upscaler prints
+           16.67 / 33.33 / 50.00 / 66.67 / 83.33 on its own stdout; Forge parses
+           it. This is the one place in the app allowed a percentage, and only
+           because it is measured by the process doing the work. -->
+      <section class="screen" id="running">
+        <span class="mode-bar">current mode: boost<span class="hint">  vacation-photo.jpg</span></span>
+        <span class="gap"></span>
+        <span class="row dim">Boosting to 1600×2400…</span>
+        <span class="row bar" id="bar"></span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>esc</kbd><span class="what"> stop</span>
+        </span>
+      </section>
+
+      <!-- 5. RESULT — bytes are DIM, not the orange `larger` colour: an
+           enlargement growing is expected, not surprising. The headline fact is
+           dimensions. The warning is the sentence no other tool prints. -->
+      <section class="screen" id="done">
+        <span class="mode-bar">current mode: boost<span class="hint">  use / to change mode</span></span>
+        <span class="gap"></span>
+        <span class="row"><span class="ok">✓ done</span><span class="fg">   vacation-photo-4x.jpg</span></span>
+        <span class="row dim">  400×600 → <span class="fg">1600×2400</span>  ·  38 KB → 1.2 MB  ·  12.3s</span>
+        <span class="row dim">  <span class="warn">⚠</span> detail is generated, not recovered</span>
+        <span class="gap"></span>
+        <span class="hints">
+          <kbd>↵</kbd><span class="what"> boost another</span>
+          <span class="sep">  │  </span><kbd>o</kbd><span class="what"> open</span>
+          <span class="sep">  │  </span><kbd>r</kbd><span class="what"> reveal in Finder</span>
+        </span>
+      </section>
+
+      <!-- 6. GRAPHIC DETECTED — the honest refusal. Measured, not guessed:
+           this file's flat-neighbour ratio is 0.80 against 0.04 for a photo.
+           The model is still reachable, but it is not the default, because the
+           default must not quietly damage the file. -->
+      <section class="screen" id="graphic">
+        <span class="mode-bar">current mode: boost<span class="hint">  use / to change mode</span></span>
+
+        <span class="row border">╭─ <span class="tag">PNG</span> ──────────────────────────────────╮</span>
+        <span class="row border">│ <span class="fg">signup-form.png                         </span>│</span>
+        <span class="row border">│ <span class="dim">689×194 · 24 KB                         </span>│</span>
+        <span class="row border">╰────────────────────────────────────────╯</span>
+        <span class="gap"></span>
+
+        <span class="row"><span class="dim">screenshot</span><span class="dim"> · </span><span class="warn">model distorts text</span></span>
+        <span class="gap"></span>
+
+        <span class="opt selected" data-i="0"><span class="cursor accent">❯ </span><span class="label-text">Enlarge</span><span class="opt-hint">                text intact · softer</span></span>
+        <span class="opt" data-i="1"><span class="cursor">  </span><span class="label-text">Use model anyway</span><span class="opt-hint">       </span><span class="warn">text may distort</span></span>
+        <span class="gap"></span>
+
+        <span class="hints">
+          <kbd>↵</kbd><span class="what"> choose</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> back</span>
+        </span>
+      </section>
+
+      <!-- 7. /extensions — everything Forge can download, what it costs, and
+           what is already there. One screen, because the whole point is that a
+           download is visible and reversible. LibreOffice appears too: it is
+           the same idea (a capability Forge doesn't ship) even though Forge
+           detects it rather than fetching it — the list is about capability,
+           not about who did the installing. -->
+      <section class="screen" id="extensions">
+        <span class="mode-bar">extensions<span class="hint">  downloaded on first use</span></span>
+        <span class="gap"></span>
+
+        <span class="opt selected" data-i="0"><span class="cursor accent">❯ </span><span class="label-text">Photo model</span><span class="opt-hint">          </span><span class="ok">installed</span><span class="opt-hint">   59.8 MB   photos · 12s</span></span>
+        <span class="opt" data-i="1"><span class="cursor">  </span><span class="label-text">Drawing model</span><span class="opt-hint">        </span><span class="ok">installed</span><span class="opt-hint">    1.2 MB   line art · 1s</span></span>
+        <span class="opt" data-i="2"><span class="cursor">  </span><span class="label-text">LibreOffice</span><span class="opt-hint">          </span><span class="dim">not found</span><span class="opt-hint">       —      .doc layout</span></span>
+        <span class="gap"></span>
+        <span class="row dim">  61.0 MB · ~/Library/Caches/forge/</span>
+        <span class="gap"></span>
+
+        <span class="hints">
+          <kbd>d</kbd><span class="what"> remove</span>
+          <span class="sep">  │  </span><kbd>↑↓</kbd><span class="what"> move</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> close</span>
+        </span>
+      </section>
+
+      <!-- 8. AFTER REMOVAL — states the consequence plainly rather than
+           making removal feel destructive. It isn't: it is a cache. -->
+      <section class="screen" id="removed">
+        <span class="mode-bar">extensions<span class="hint">  downloaded on first use</span></span>
+        <span class="gap"></span>
+        <span class="row"><span class="ok">✓ removed</span><span class="dim">   Photo model · 59.8 MB freed</span></span>
+        <span class="gap"></span>
+
+        <span class="opt selected" data-i="0"><span class="cursor accent">❯ </span><span class="label-text">Photo model</span><span class="opt-hint">          </span><span class="dim">not installed</span><span class="opt-hint">   59.8 MB   photos · 12s</span></span>
+        <span class="opt" data-i="1"><span class="cursor">  </span><span class="label-text">Drawing model</span><span class="opt-hint">        </span><span class="ok">installed</span><span class="opt-hint">        1.2 MB   line art · 1s</span></span>
+        <span class="opt" data-i="2"><span class="cursor">  </span><span class="label-text">LibreOffice</span><span class="opt-hint">          </span><span class="dim">not found</span><span class="opt-hint">            —      .doc layout</span></span>
+        <span class="gap"></span>
+        <span class="row dim">  1.2 MB · ~/Library/Caches/forge/</span>
+        <span class="gap"></span>
+
+        <span class="hints">
+          <kbd>d</kbd><span class="what"> remove</span>
+          <span class="sep">  │  </span><kbd>↑↓</kbd><span class="what"> move</span>
+          <span class="sep">  │  </span><kbd>esc</kbd><span class="what"> close</span>
+        </span>
+      </section>
+    </main>
+
+    <nav class="nav">
+      <b>Mockup navigation</b> — click a screen, or use <b>←</b> / <b>→</b>. Inside the flow, <b>↵</b> advances.
+      <ol>
+        <li data-s="photo">Photo detected — the only question is how much bigger</li>
+        <li data-s="override">Override, reached only by pressing <b>t</b></li>
+        <li data-s="install">First use — download prompt, refusable</li>
+        <li data-s="running">Running — a real percentage, parsed from the upscaler</li>
+        <li data-s="done">Result — honest about invented detail</li>
+        <li data-s="graphic">Screenshot detected — model is not the default</li>
+        <li data-s="extensions">/extensions — what's downloaded, and its cost</li>
+        <li data-s="removed">After removing — space freed, re-fetched on next use</li>
+      </ol>
+      <p class="note">Colours are the real DARK palette from src/shell/theme.ts. The violet
+      mode colour is proposed, not yet in the theme. Timings and the detection
+      numbers quoted are measured on an M2, not invented.</p>
+    </nav>
+
+    <script>
+      const ORDER = ['photo', 'override', 'install', 'running', 'done', 'graphic', 'extensions', 'removed'];
+      const $ = (id) => document.getElementById(id);
+      let barTimer = null;
+
+      function show(id) {
+        clearInterval(barTimer);
+        ORDER.forEach((s) => $(s).classList.toggle('active', s === id));
+        document.querySelectorAll('.nav li').forEach((li) => li.classList.toggle('on', li.dataset.s === id));
+        if (id === 'running') runBar();
+      }
+
+      // The upscaler emits exactly these values — six tiles for six real
+      // steps, not a smooth animation standing in for one.
+      const STEPS = [0, 16.67, 33.33, 50, 66.67, 83.33, 100];
+      function runBar() {
+        let i = 0;
+        const draw = () => {
+          const filled = '█'.repeat(i * 4);
+          const empty = '░'.repeat((STEPS.length - 1 - i) * 4);
+          $('bar').innerHTML =
+            '  <span class="filled">' + filled + '</span><span class="empty">' + empty +
+            '</span>  <span class="dim">' + STEPS[i].toFixed(2) + '%</span>';
+        };
+        draw();
+        barTimer = setInterval(() => {
+          i += 1;
+          if (i >= STEPS.length) { clearInterval(barTimer); setTimeout(() => show('done'), 400); return; }
+          draw();
+        }, 700);
+      }
+
+      document.querySelectorAll('.nav li').forEach((li) => li.addEventListener('click', () => show(li.dataset.s)));
+
+      // Arrow keys move between mockup screens; the keys the product itself
+      // would use are handled per-screen below.
+      document.addEventListener('keydown', (e) => {
+        const current = ORDER.find((s) => $(s).classList.contains('active'));
+        if (e.key === 'ArrowRight') { show(ORDER[(ORDER.indexOf(current) + 1) % ORDER.length]); return; }
+        if (e.key === 'ArrowLeft') { show(ORDER[(ORDER.indexOf(current) + ORDER.length - 1) % ORDER.length]); return; }
+
+        if (current === 'photo') {
+          if (e.key === 't') { show('override'); return; }
+          if (e.key === 'Enter') { show('install'); return; }
+        }
+        if (current === 'override' && e.key === 'Enter') { show('install'); return; }
+        if (current === 'install' && e.key === 'Enter') { show('running'); return; }
+        if (current === 'running' && e.key === 'Escape') { show('photo'); return; }
+        if (current === 'done' && e.key === 'Enter') { show('graphic'); return; }
+        if (current === 'graphic' && e.key === 'Enter') { show('done'); return; }
+        if (current === 'extensions' && e.key === 'd') { show('removed'); return; }
+      });
+
+      show('photo');
+    </script>
+  </body>
+</html>
