@@ -24,6 +24,24 @@ import type { CompressArgs, ConvertArgs, PdfArgs, ProbeArgs } from './schemas.js
  */
 const NO_PROMPT = { interactive: false } as const
 
+/**
+ * The SDK runs tools/call requests concurrently. Each writing call checks its
+ * outputs before writing, so two calls in flight could both pass the check and
+ * the second rename would silently replace the first file (spec §3.5: never
+ * overwrites unless overwrite:true). Writing calls therefore run one at a time.
+ * Read-only tools do not wait. A failed call settles its link in the chain
+ * like any other, so it never jams the ones behind it.
+ */
+let writes: Promise<unknown> = Promise.resolve()
+function oneWriterAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const run = writes.then(work, work)
+  writes = run.catch(() => undefined)
+  return run
+}
+
+const runWriting = (intent: Parameters<typeof runIntent>[0]): Promise<RunReport> =>
+  oneWriterAtATime(() => runIntent(intent, NO_PROMPT))
+
 function failureLine(f: FailureJson): string {
   const where = f.path === undefined ? '' : ` (${f.path})`
   const hint = f.hint === undefined ? '' : ` ${f.hint}`
@@ -99,7 +117,7 @@ export async function convertTool(args: ConvertArgs): Promise<CallToolResult> {
     ...(args.pages === undefined ? {} : { pages: args.pages }),
     ...(args.password === undefined ? {} : { password: args.password }),
   }
-  return fromReport(await runIntent(intent, NO_PROMPT))
+  return fromReport(await runWriting(intent))
 }
 
 export async function compressTool(args: CompressArgs): Promise<CallToolResult> {
@@ -126,7 +144,7 @@ export async function compressTool(args: CompressArgs): Promise<CallToolResult> 
   }
   if (args.dpi !== undefined) intent.dpi = args.dpi
   if (args.output !== undefined) intent.output = args.output
-  return fromReport(await runIntent(intent, NO_PROMPT))
+  return fromReport(await runWriting(intent))
 }
 
 /**
@@ -161,5 +179,5 @@ export async function pdfTool(args: PdfArgs): Promise<CallToolResult> {
     }
     intent.split = args.split
   }
-  return fromReport(await runIntent(intent, NO_PROMPT))
+  return fromReport(await runWriting(intent))
 }

@@ -6,12 +6,13 @@ import { Readable } from 'node:stream'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Client } from '@modelcontextprotocol/client'
 import { InMemoryTransport } from '@modelcontextprotocol/server'
+import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { formatMatrix, targetIdsFor } from '../../src/core/capabilities.js'
 import type { FormatsJson, ProbeJson, RunJson } from '../../src/core/report-data.js'
 import { probe } from '../../src/engines/registry.js'
 import { createForgeServer } from '../../src/mcp/server.js'
-import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { makeJpeg, makePdf, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
 
 const LOCKED = fileURLToPath(new URL('../fixtures/locked-hunter2.pdf', import.meta.url))
 
@@ -244,5 +245,42 @@ describe('forge_probe and forge_formats', () => {
   it('lists formats from the engines', async () => {
     const out = await call<FormatsJson>('forge_formats', {})
     expect(out.doc.formats).toEqual(formatMatrix())
+  })
+})
+
+describe('writing tools called in parallel', () => {
+  it('never lets two calls overwrite each other without overwrite:true', async () => {
+    const dir = await makeTempDir()
+    const fromPng = await makeTransparentPng(dir, 'photo.png') // 32×32
+    const fromJpeg = await makeJpeg(dir, 'photo.jpg') // 40×20
+
+    const [a, b] = await Promise.all([
+      call('forge_convert', { paths: [fromPng], to: 'webp' }),
+      call('forge_convert', { paths: [fromJpeg], to: 'webp' }),
+    ])
+
+    const winners = [a, b].filter((r) => !r.isError)
+    const losers = [a, b].filter((r) => r.isError)
+    expect(winners).toHaveLength(1)
+    expect(losers).toHaveLength(1)
+    expect(losers[0]?.doc.results).toEqual([])
+    expect(losers[0]?.doc.failures[0]?.code).toBe('output-exists')
+
+    // The file on disk is the winner's, not replaced by the loser's.
+    const winnerSource = winners[0]?.doc.results[0]?.source
+    const { width, height } = await sharp(join(dir, 'photo.webp')).metadata()
+    expect(winnerSource === fromPng ? [32, 32] : [40, 20]).toEqual([width, height])
+  })
+
+  it('keeps going after a call fails', async () => {
+    const dir = await makeTempDir()
+    const src = await makeJpeg(dir, 'photo.jpg')
+    const [bad, good] = await Promise.all([
+      call('forge_convert', { paths: [join(dir, 'missing.png')], to: 'webp' }),
+      call('forge_convert', { paths: [src], to: 'png' }),
+    ])
+    expect(bad.isError).toBe(true)
+    expect(good.isError).toBe(false)
+    expect(existsSync(join(dir, 'photo.png'))).toBe(true)
   })
 })
