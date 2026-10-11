@@ -347,7 +347,11 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       },
     })
 
+    // `resolved.failures` first, as the conversion path below orders them.
+    // It was missing here, so a file that did not exist was dropped silently
+    // and the run exited 0 having done nothing.
     const failures = [
+      ...resolved.failures,
       ...refusals,
       ...outcome.refusals,
       ...outcome.unreachable.map((u) => ({ path: u.job.sources[0].path, error: u.error })),

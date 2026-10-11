@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   conversionFailed,
   corruptSource,
+  emptyDirectory,
   ForgeError,
   fileNotFound,
   isForgeError,
   outputCollision,
   outputExists,
+  outputIsInput,
   permissionDenied,
   renderError,
   selfCollision,
@@ -180,5 +182,47 @@ describe('hints speak the surface that shows them', () => {
     expect(targetUnreachable(source, 1_000, 11_600).hint).toContain('--max-size')
     expect(unsupportedCompress(lossless).hint).toContain('--to')
     expect(unsupportedCompress(docx).hint).toContain('--to')
+  })
+})
+
+/**
+ * The write-safety and empty-folder refusals give CLI advice — `--force`,
+ * `--output`, `--recursive` — and the shell rendered it verbatim, though the
+ * shell has none of those flags. Each gets shell phrasing that names only
+ * what the shell actually offers: it asks before replacing a file (Replace /
+ * Keep both), sends a conversion that would overwrite its input back to the
+ * folder picker, and takes dropped files rather than folders.
+ */
+describe('write-safety hints in the shell name no CLI flags', () => {
+  const flag = /--[a-z]/
+  const cases = [
+    ['a file that already exists (convert)', outputExists('/tmp/photo.webp')],
+    ['a file that already exists (page operation)', outputExists('/tmp/doc-1.pdf', 'split')],
+    [
+      'two files wanting one output',
+      outputCollision(['/tmp/a/x.png', '/tmp/b/x.png'], '/tmp/x.webp'),
+    ],
+    ['an output that is its own input (convert)', outputIsInput('/tmp/photo.jpg')],
+    ['an output that is its own input (page operation)', outputIsInput('/tmp/doc.pdf', 'rotate')],
+    ['an empty folder', emptyDirectory('/tmp/empty')],
+  ] as const
+
+  for (const [name, e] of cases) {
+    it(`gives the shell its own advice — ${name}`, () => {
+      expect(e.shellHint).toBeTruthy()
+      expect(e.shellHint).not.toMatch(flag)
+    })
+
+    it(`keeps the CLI's flag advice — ${name}`, () => {
+      expect(e.hint).toMatch(flag)
+    })
+  }
+
+  it('tells the shell user it will be asked, since the shell offers Replace itself', () => {
+    expect(outputExists('/tmp/photo.webp').shellHint).toMatch(/ask/i)
+  })
+
+  it('sends a conversion onto its own input to a different folder', () => {
+    expect(outputIsInput('/tmp/photo.jpg').shellHint).toMatch(/folder/i)
   })
 })
