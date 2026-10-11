@@ -1,8 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { boostAction } from '../../src/core/actions/extension.js'
+import { conversionFailed } from '../../src/core/errors.js'
 import { runPlan } from '../../src/core/execute-jobs.js'
+import { extensionEngine } from '../../src/engines/extension.js'
 import { probe } from '../../src/engines/registry.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
@@ -51,5 +53,80 @@ setTimeout(() => {}, 60000)`,
     expect(existsSync(job.outputs[0] as string)).toBe(false)
     await until(() => !alive(pid))
     expect(alive(pid)).toBe(false)
+  })
+})
+
+describe('cancelling a batch of extension jobs', () => {
+  it('starts no decode or child after the cancel and leaves no temp dirs', async () => {
+    const home = await fake.home()
+    await fake.install(home, 'boost')
+    const dir = await makeTempDir()
+    const log = join(dir, 'spawned')
+    writeFileSync(log, '')
+    writeFileSync(
+      join(home, 'forge', 'extensions', 'boost', '1.0.0', 'runner.mjs'),
+      `import { appendFileSync } from 'node:fs'
+appendFileSync(${JSON.stringify(log)}, 'x')
+setTimeout(() => {}, 60000)`,
+    )
+    const sources = await Promise.all(
+      ['a', 'b', 'c'].map(async (n) => probe(await makeTransparentPng(dir, `${n}.png`))),
+    )
+    const jobs = boostAction.plan(sources, { scale: '2', output: dir })
+    // The engine's temp dirs go under os.tmpdir(); give it one of our own to inspect.
+    const tmp = await makeTempDir()
+    const savedTmp = process.env.TMPDIR
+    process.env.TMPDIR = tmp
+    try {
+      const controller = new AbortController()
+      let decodes = 0
+      const running = runPlan(jobs, {
+        force: false,
+        concurrency: 1,
+        signal: controller.signal,
+        onEvent: (e) => {
+          if (e.type === 'job:phase' && e.progress.phase === 'decoding') decodes++
+        },
+      })
+      await until(() => readFileSync(log, 'utf8').length > 0)
+      controller.abort()
+      const outcome = await running
+
+      expect(outcome.cancelled).toBe(true)
+      expect(readFileSync(log, 'utf8')).toBe('x')
+      expect(decodes).toBe(1)
+      expect(jobs.filter((j) => existsSync(j.outputs[0] as string))).toEqual([])
+      expect(readdirSync(tmp).filter((f) => f.startsWith('forge-ext-'))).toEqual([])
+    } finally {
+      if (savedTmp === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = savedTmp
+    }
+  })
+
+  it('still reports a failure that happened before the cancel', async () => {
+    const dir = await makeTempDir()
+    const sources = await Promise.all(
+      ['bad', 'slow'].map(async (n) => probe(await makeTransparentPng(dir, `${n}.png`))),
+    )
+    const jobs = boostAction.plan(sources, { scale: '2', output: dir })
+    const controller = new AbortController()
+    const stub = {
+      ...extensionEngine,
+      run: (job: (typeof jobs)[number], _: unknown, signal?: AbortSignal) => {
+        const path = job.sources[0].path
+        if (path.endsWith('bad.png'))
+          return Promise.reject(conversionFailed(path, new Error('broken')))
+        controller.abort()
+        return Promise.reject(signal?.reason)
+      },
+    }
+    const outcome = await runPlan(jobs, {
+      force: false,
+      concurrency: 1,
+      signal: controller.signal,
+      engineFor: () => stub,
+    })
+    expect(outcome.cancelled).toBe(true)
+    expect(outcome.failures.map((f) => f.path)).toEqual([sources[0]?.path])
   })
 })

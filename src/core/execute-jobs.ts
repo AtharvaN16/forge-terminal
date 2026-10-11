@@ -289,17 +289,31 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
     }
   }
 
+  // Failures that happened before any cancel are real answers, kept even if
+  // the batch is cancelled later.
+  const failedBeforeCancel = new Set<InputFailure>()
   const done = await runJobs(ready, {
     ...(policy.concurrency === undefined ? {} : { concurrency: policy.concurrency }),
     ...(policy.engineFor === undefined ? {} : { engineFor: policy.engineFor }),
     ...(policy.signal === undefined ? {} : { signal: policy.signal }),
-    onEvent: emit,
+    onEvent: (event) => {
+      if (event.type === 'job:error' && !policy.signal?.aborted)
+        failedBeforeCancel.add(event.failure)
+      emit(event)
+    },
   })
 
   // Aborted mid-run: the killed jobs wrote nothing, and their "failure" is the
   // user's own cancel, not an answer to report.
   if (policy.signal?.aborted && done.failures.length > 0) {
-    return { ...done, refusals, unreachable, failures: [], cancelled: true }
+    const real = done.failures.filter((f) => failedBeforeCancel.has(f))
+    return {
+      ...done,
+      refusals,
+      unreachable,
+      failures: [...searchFailures, ...real],
+      cancelled: true,
+    }
   }
 
   return {
