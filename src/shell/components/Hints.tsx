@@ -1,4 +1,4 @@
-import { Text } from 'ink'
+import { Box, Text } from 'ink'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 
@@ -21,23 +21,28 @@ export function Hints({
   compact?: boolean
 }) {
   const palette = useTheme()
-  const gap = ' '.repeat(compact ? 3 : 5)
-  const capped = palette.keycapBg !== ''
+  // Read at render time, as `Prompt` reads it: NO_COLOR strips the fill, and
+  // a cap with no fill is just a key with spaces round it.
+  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
+  const capped = palette.keycapBg !== '' && !noColour
+  // A wrapping row of unbreakable pairs: a narrow terminal breaks the row
+  // between keys, never between a key and its word.
   return (
-    <Text>
-      {pairs.map(([key, what], i) => (
-        <Text key={key}>
-          {i > 0 ? <Text>{gap}</Text> : null}
-          {capped ? (
-            <Text backgroundColor={palette.keycapBg} color={colourProp(palette.fg)} bold>
-              {` ${key} `}
-            </Text>
-          ) : (
-            <Text bold>{`[${key}]`}</Text>
-          )}
-          <Text color={colourProp(palette.dim)}>{` ${what}`}</Text>
-        </Text>
+    <Box flexWrap="wrap" columnGap={compact ? 3 : 5}>
+      {pairs.map(([key, what]) => (
+        <Box key={key} flexShrink={0}>
+          <Text>
+            {capped ? (
+              <Text backgroundColor={palette.keycapBg} color={colourProp(palette.fg)} bold>
+                {` ${key} `}
+              </Text>
+            ) : (
+              <Text bold>{`[${key}]`}</Text>
+            )}
+            <Text color={colourProp(palette.dim)}>{` ${what}`}</Text>
+          </Text>
+        </Box>
       ))}
-    </Text>
+    </Box>
   )
 }

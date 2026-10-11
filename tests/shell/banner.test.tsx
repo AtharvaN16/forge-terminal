@@ -52,6 +52,21 @@ describe('banner rendering', () => {
     expect(frame).toContain('~/Desktop')
   })
 
+  it('draws the whole anvil, with the wordmark sitting level with its base', () => {
+    // The same layout the intro draws: every mark row, and the shorter
+    // wordmark bottom-aligned against it. Pairing the wordmark with the
+    // mark's first rows instead cut the anvil's base off whenever this
+    // component — not the intro — drew the banner.
+    const rows = frameOf(<Banner width={100} version="0.1.0" defaultOutput="~/Desktop" />)
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    for (const markRow of MARK) {
+      if (markRow.trim()) expect(rows.some((r) => r.startsWith(markRow.trimEnd()))).toBe(true)
+    }
+    const last = WORDMARK[WORDMARK.length - 1] ?? ''
+    expect(rows.find((r) => r.includes(last))?.startsWith(MARK[MARK.length - 1] ?? '')).toBe(true)
+  })
+
   it('falls back to a one-line header in the compact band', () => {
     const frame = frameOf(<Banner width={50} version="0.1.0" defaultOutput="~/Desktop" />)
     expect(frame).not.toContain('█')

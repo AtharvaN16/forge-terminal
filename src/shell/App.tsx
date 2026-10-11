@@ -314,7 +314,7 @@ export function App({
    */
   introShown?: boolean
 }) {
-  const { stdout } = useStdout()
+  const { stdout, write: writeAboveFrame } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
   /** Only `PdfFlow`'s page grid needs this — see `gridLayout`. */
   const [measuredHeight, setMeasuredHeight] = useState(initialHeight ?? stdout?.rows ?? 24)
@@ -576,7 +576,12 @@ export function App({
     }))
     if (!next) return
     bannerState.current = next.state
-    if (stdout) writeToTerminal(CLEAR_SCREEN, stdout)
+    // Through Ink's own `write`, not straight to the stream: Ink only
+    // rewrites rows that changed, so a frame cleared behind its back stayed
+    // blank until something on it moved. `write` erases the frame, writes the
+    // clear, and repaints the frame after it. TTY only, like every control
+    // sequence this shell writes — see `writeToTerminal`.
+    if (stdout?.isTTY) writeAboveFrame(CLEAR_SCREEN)
     setHistory(historyForRedraw(next.history, width))
     setStaticGeneration((g) => g + 1)
   }, [working])

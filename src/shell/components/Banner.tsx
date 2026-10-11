@@ -105,21 +105,30 @@ export function Banner({
     // marginTop clears the shell prompt the user typed `forge` at; without it
     // the mark sits flush against their own command line.
     <Box flexDirection="column" marginTop={1} marginBottom={2}>
-      {WORDMARK.map((word, i) => (
-        // The row index is a stable identity here: this is fixed-length
-        // constant art, never reordered, filtered or appended to.
-        // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
-        <Text key={i}>
-          {markRow(MARK[i] ?? '', i, colourProp(palette.dim))}
-          <Text>{GAP}</Text>
-          {splitFace(word).map((run, j) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
-            <Text key={j} color={colourProp(run.edge ? palette.brand : palette.fg)}>
-              {run.text}
-            </Text>
-          ))}
-        </Text>
-      ))}
+      {MARK.map((row, i) => {
+        // Bottom-aligned, as the intro draws it: the wordmark is shorter
+        // than the mark, so its rows sit level with the anvil's lowest ones.
+        const word = WORDMARK[i - (MARK.length - WORDMARK.length)]
+        return (
+          // The row index is a stable identity here: this is fixed-length
+          // constant art, never reordered, filtered or appended to.
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
+          <Text key={i}>
+            {markRow(row, i, colourProp(palette.dim))}
+            {word ? (
+              <>
+                <Text>{GAP}</Text>
+                {splitFace(word).map((run, j) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed constant art
+                  <Text key={j} color={colourProp(run.edge ? palette.brand : palette.fg)}>
+                    {run.text}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+          </Text>
+        )
+      })}
       <Text>{''}</Text>
       <Text>
         <Text color={colourProp(palette.dim)}>{status}</Text>

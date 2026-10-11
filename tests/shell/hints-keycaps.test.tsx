@@ -34,6 +34,36 @@ describe('keycap hints', () => {
     expect(f).toContain('[esc] back')
   })
 
+  it('brackets keys under NO_COLOR even when the theme has a fill', () => {
+    // NO_COLOR strips the fill, which would leave ` ↵ ` looking like text.
+    const before = process.env.NO_COLOR
+    process.env.NO_COLOR = '1'
+    try {
+      expect(frame(<Hints pairs={pairs} />, DARK)).toContain('[↵] confirm')
+    } finally {
+      if (before === undefined) delete process.env.NO_COLOR
+      else process.env.NO_COLOR = before
+    }
+  })
+
+  it('wraps between pairs, never inside one', () => {
+    // The result screen's row is wider than 72 columns as keycaps; a narrow
+    // terminal has to break it between keys, not leave "close app" behind.
+    const many: Array<[string, string]> = [
+      ['↵', 'convert another'],
+      ['o', 'open'],
+      ['s', 'show in finder'],
+      ['ctrl-c', 'close app'],
+    ]
+    for (const width of [40, 48, 72]) {
+      const rows = frame(<HintBar width={width} pairs={many} />).split('\n')
+      for (const [key, what] of many) {
+        expect(rows.some((r) => r.includes(` ${key}  ${what}`))).toBe(true)
+      }
+      for (const r of rows) expect(r.length).toBeLessThanOrEqual(width)
+    }
+  })
+
   it('draws no rule above the hint bar', () => {
     const f = frame(<HintBar width={60} pairs={pairs} />)
     expect(f).not.toContain('─')
