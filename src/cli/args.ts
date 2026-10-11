@@ -100,11 +100,19 @@ export interface ProbeIntent {
   inputs: string[]
 }
 
+/** `forge extensions [add|remove <id>]`: the optional extras, offline by default. */
+export interface ExtensionsIntent {
+  kind: 'extensions'
+  action: 'list' | 'add' | 'remove'
+  id?: string
+}
+
 export type Intent =
   | ConvertIntent
   | CompressIntent
   | PageOpIntent
   | ProbeIntent
+  | ExtensionsIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
   | ConfigIntent
@@ -189,6 +197,7 @@ export const COMMANDS_HELP = `
 Other commands:
   forge probe <files...>   what each file is and what Forge can do with it
   forge config [list | path | set <setting> <value>]
+  forge extensions [add | remove <id>]   optional extras, such as boost and remove-background
   forge mcp                run as a local MCP server over stdio, for AI agents`
 
 function parseMaxSize(raw: unknown): number {
@@ -226,6 +235,33 @@ function parseProbeArgs(argv: string[]): ProbeIntent {
   return { kind: 'probe', inputs: rest }
 }
 
+/** Claimed before Commander, like `probe` and `config`. Takes an action and an id, and `--json`. */
+function parseExtensionsArgs(argv: string[]): ExtensionsIntent {
+  const rest = argv.slice(1).filter((a) => a !== '--json')
+  const flag = rest.find((a) => a.startsWith('-'))
+  if (flag !== undefined) {
+    throw invalidArguments(
+      `forge extensions does not take ${flag}.`,
+      'Try: forge extensions, forge extensions add <id>, or forge extensions remove <id>.',
+    )
+  }
+  const [action, id, ...extra] = rest
+  if (action === undefined) return { kind: 'extensions', action: 'list' }
+  if (action !== 'add' && action !== 'remove') {
+    throw invalidArguments(
+      `Unknown extensions action ${action}.`,
+      'Try: forge extensions, forge extensions add <id>, or forge extensions remove <id>.',
+    )
+  }
+  if (id === undefined || extra.length > 0) {
+    throw invalidArguments(
+      `forge extensions ${action} takes exactly one extension.`,
+      `Try: forge extensions ${action} boost`,
+    )
+  }
+  return { kind: 'extensions', action, id }
+}
+
 /**
  * Whether the caller asked for JSON. It is read from argv rather than from the
  * parsed intent because it has to be known even when parsing fails: an argument
@@ -240,6 +276,7 @@ export function wantsJson(argv: string[]): boolean {
 export function parseArgs(argv: string[]): Intent {
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
+  if (argv[0] === 'extensions') return parseExtensionsArgs(argv)
 
   const program = new Command()
     .name('forge')

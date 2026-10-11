@@ -1,0 +1,328 @@
+import { createHash } from 'node:crypto'
+import { access, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { gzipSync } from 'node:zlib'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseArgs } from '../../src/cli/args.js'
+import { execute } from '../../src/cli/execute.js'
+import { isForgeError } from '../../src/core/errors.js'
+import type { ExtensionsJson } from '../../src/core/report-data.js'
+import type { CatalogEntry } from '../../src/extensions/catalog.js'
+
+const h = vi.hoisted(() => ({ catalog: [] as CatalogEntry[], release: '24.0.0' }))
+
+vi.mock('../../src/extensions/catalog.js', () => ({
+  get CATALOG() {
+    return h.catalog
+  },
+  catalogEntry: (id: string) => h.catalog.find((e) => e.id === id),
+}))
+vi.mock('node:os', async (orig) => ({
+  ...(await orig<typeof import('node:os')>()),
+  release: () => h.release,
+}))
+
+const { installExtension, listExtensions, removeExtension } = await import(
+  '../../src/extensions/manager.js'
+)
+const { installed, extensionsRoot } = await import('../../src/extensions/paths.js')
+
+// --- fixtures -------------------------------------------------------------
+
+function tarEntry(name: string, body: Buffer, mode = 0o644): Buffer {
+  const header = Buffer.alloc(512)
+  header.write(name, 0, 100)
+  header.write(`${mode.toString(8).padStart(7, '0')}\0`, 100)
+  header.write(`${body.length.toString(8).padStart(11, '0')}\0`, 124)
+  header.write('0', 156)
+  header.write('ustar\0', 257)
+  header.fill(' ', 148, 156)
+  const sum = header.reduce((a, b) => a + b, 0)
+  header.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148)
+  const pad = Buffer.alloc((512 - (body.length % 512)) % 512)
+  return Buffer.concat([header, body, pad])
+}
+
+const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
+
+/** A payload archive: manifest + one executable. `lie` makes the manifest hash wrong. */
+function payload(version: string, opts: { lie?: boolean; extraName?: string } = {}): Buffer {
+  const bin = Buffer.from(`#!/bin/sh\necho ${version}\n`)
+  const manifest = {
+    id: 'remove-background',
+    version,
+    arch: 'universal',
+    files: { 'forge-cutout': opts.lie ? sha(Buffer.from('other')) : sha(bin) },
+    entry: 'forge-cutout',
+    kind: 'exec',
+  }
+  const parts = [
+    tarEntry('manifest.json', Buffer.from(JSON.stringify(manifest))),
+    tarEntry('forge-cutout', bin, 0o755),
+  ]
+  if (opts.extraName) parts.push(tarEntry(opts.extraName, Buffer.from('x')))
+  return gzipSync(Buffer.concat([...parts, Buffer.alloc(1024)]))
+}
+
+let server: Server
+let base: string
+const routes = new Map<string, Buffer>()
+
+beforeAll(async () => {
+  server = createServer((req, res) => {
+    const body = routes.get(req.url ?? '')
+    if (body === undefined) {
+      res.writeHead(404).end()
+    } else if (req.url?.startsWith('/cut-short')) {
+      // Promise the full length, send half, then drop the connection.
+      res.writeHead(200, { 'content-length': body.length })
+      res.write(body.subarray(0, body.length / 2))
+      setTimeout(() => res.destroy(), 20)
+    } else {
+      res.writeHead(200, { 'content-length': body.length }).end(body)
+    }
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+})
+afterAll(() => new Promise((r) => server.close(r)))
+
+function entryFor(
+  version: string,
+  archive: Buffer,
+  path: string,
+  sha256 = sha(archive),
+): CatalogEntry {
+  routes.set(path, archive)
+  return {
+    id: 'remove-background',
+    title: 'Remove background',
+    summary: 's',
+    version,
+    minMacos: 14,
+    assets: { universal: { url: `${base}${path}`, bytes: archive.length, sha256 } },
+    licence: 'l',
+  }
+}
+
+let config: string
+const savedXdg = process.env.XDG_CONFIG_HOME
+beforeEach(async () => {
+  config = await mkdtemp(join(tmpdir(), 'forge-ext-'))
+  process.env.XDG_CONFIG_HOME = config
+  h.release = '24.0.0'
+  routes.clear()
+})
+afterEach(async () => {
+  if (savedXdg === undefined) delete process.env.XDG_CONFIG_HOME
+  else process.env.XDG_CONFIG_HOME = savedXdg
+  await rm(config, { recursive: true, force: true })
+})
+
+async function leftovers(): Promise<string[]> {
+  return (await readdir(extensionsRoot(), { recursive: true }).catch(() => [])).sort()
+}
+
+async function codeOf(p: Promise<unknown>): Promise<string> {
+  try {
+    await p
+  } catch (e) {
+    return isForgeError(e) ? e.code : `unexpected:${String(e)}`
+  }
+  return 'no-error'
+}
+
+// --- install --------------------------------------------------------------
+
+describe('installing an extension', () => {
+  it('downloads, verifies and installs a runnable payload, reporting real bytes', async () => {
+    const archive = payload('1.0.0')
+    h.catalog = [entryFor('1.0.0', archive, '/v1.tgz')]
+    const seen: Array<[number, number]> = []
+    const ext = await installExtension('remove-background', {
+      onProgress: (done, total) => seen.push([done, total]),
+    })
+
+    expect(ext.version).toBe('1.0.0')
+    expect(ext.kind).toBe('exec')
+    expect((await stat(ext.entry)).mode & 0o111).not.toBe(0)
+    expect(await installed('remove-background')).toEqual(ext)
+    expect(seen.at(-1)).toEqual([archive.length, archive.length])
+    // No download or staging debris: only the version and the pointer remain.
+    expect(await leftovers()).toEqual(
+      [
+        'remove-background',
+        'remove-background/1.0.0',
+        'remove-background/1.0.0/forge-cutout',
+        'remove-background/1.0.0/manifest.json',
+        'remove-background/current',
+      ].sort(),
+    )
+  })
+
+  it('a download that does not match its checksum is extension-corrupt and leaves nothing', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz', sha(Buffer.from('expected')))]
+    expect(await codeOf(installExtension('remove-background'))).toBe('extension-corrupt')
+    expect(await leftovers()).toEqual([])
+    expect(await installed('remove-background')).toBeUndefined()
+  })
+
+  it('a file that disagrees with the archive manifest is extension-corrupt', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0', { lie: true }), '/v1.tgz')]
+    expect(await codeOf(installExtension('remove-background'))).toBe('extension-corrupt')
+    expect(await leftovers()).toEqual([])
+  })
+
+  it('an archive entry that climbs out of the install directory is refused', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0', { extraName: '../escape' }), '/v1.tgz')]
+    expect(await codeOf(installExtension('remove-background'))).toBe('extension-corrupt')
+    await expect(access(join(config, 'forge', 'extensions', 'escape'))).rejects.toThrow()
+    expect(await leftovers()).toEqual([])
+  })
+
+  it('a connection that drops mid-download is extension-download-failed and leaves nothing', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/cut-short.tgz')]
+    expect(await codeOf(installExtension('remove-background'))).toBe('extension-download-failed')
+    expect(await leftovers()).toEqual([])
+  })
+
+  it('an unreachable server is extension-download-failed', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed')
+    }) as typeof fetch
+    expect(await codeOf(installExtension('remove-background', { fetchImpl }))).toBe(
+      'extension-download-failed',
+    )
+  })
+
+  it('an unknown id is a usage error', async () => {
+    h.catalog = []
+    expect(await codeOf(installExtension('nope'))).toBe('invalid-arguments')
+  })
+})
+
+describe('updating', () => {
+  it('replaces the old version once the new one is in place', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    await installExtension('remove-background')
+
+    h.catalog = [entryFor('1.1.0', payload('1.1.0'), '/v2.tgz')]
+    const [status] = await listExtensions()
+    expect(status).toMatchObject({ installed: '1.0.0', updateAvailable: true })
+
+    const ext = await installExtension('remove-background')
+    expect(ext.version).toBe('1.1.0')
+    expect(await readdir(join(extensionsRoot(), 'remove-background'))).toEqual(['1.1.0', 'current'])
+    expect((await listExtensions())[0]).toMatchObject({
+      installed: '1.1.0',
+      updateAvailable: false,
+    })
+  })
+
+  it('a failed update leaves the working version untouched', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    const before = await installExtension('remove-background')
+
+    h.catalog = [entryFor('1.1.0', payload('1.1.0'), '/v2.tgz', sha(Buffer.from('wrong')))]
+    expect(await codeOf(installExtension('remove-background'))).toBe('extension-corrupt')
+    expect(await installed('remove-background')).toEqual(before)
+    expect(await readFile(before.entry, 'utf8')).toContain('1.0.0')
+  })
+})
+
+describe('removing', () => {
+  it('deletes the extension, and says so when there was nothing to delete', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    await installExtension('remove-background')
+    expect(await removeExtension('remove-background')).toBe(true)
+    expect(await installed('remove-background')).toBeUndefined()
+    expect(await leftovers()).toEqual([])
+    expect(await removeExtension('remove-background')).toBe(false)
+  })
+})
+
+// --- listing --------------------------------------------------------------
+
+describe('listing', () => {
+  it('works offline: it never touches the network', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    const net = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'))
+    const [s] = await listExtensions()
+    expect(s).toMatchObject({ supported: true, updateAvailable: false })
+    expect(s?.installed).toBeUndefined()
+    expect(s?.downloadBytes).toBeGreaterThan(0)
+    expect(net).not.toHaveBeenCalled()
+    net.mockRestore()
+  })
+
+  it('reports macOS older than the minimum, and refuses to install there', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    h.release = '22.6.0' // macOS 13
+    const [s] = await listExtensions()
+    expect(s).toMatchObject({ supported: false, reason: 'needs macOS 14 or later' })
+    expect(await codeOf(installExtension('remove-background'))).toBe('extension-unsupported')
+    expect(await leftovers()).toEqual([])
+  })
+
+  it('reports an architecture with no build', async () => {
+    const entry = entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')
+    const { universal, ...rest } = entry.assets
+    h.catalog = [{ ...entry, assets: { ...rest, x64: universal } }]
+    const arch = Object.getOwnPropertyDescriptor(process, 'arch') as PropertyDescriptor
+    Object.defineProperty(process, 'arch', { value: 'arm64' })
+    try {
+      expect((await listExtensions())[0]).toMatchObject({ supported: false })
+      expect(await codeOf(installExtension('remove-background'))).toBe('extension-unsupported')
+    } finally {
+      Object.defineProperty(process, 'arch', arch)
+    }
+  })
+})
+
+// --- the command ----------------------------------------------------------
+
+describe('forge extensions', () => {
+  it('parses list, add and remove, and refuses malformed forms', () => {
+    expect(parseArgs(['extensions'])).toEqual({ kind: 'extensions', action: 'list' })
+    expect(parseArgs(['extensions', 'add', 'boost', '--json'])).toEqual({
+      kind: 'extensions',
+      action: 'add',
+      id: 'boost',
+    })
+    expect(parseArgs(['extensions', 'remove', 'boost'])).toMatchObject({ action: 'remove' })
+    for (const bad of [['add'], ['frob'], ['add', 'a', 'b'], ['--to', 'png']]) {
+      expect(() => parseArgs(['extensions', ...bad])).toThrow()
+    }
+  })
+
+  it('add --json reports the installed state; a failed download exits 1, an unknown id 2', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    const ok = await execute(
+      { kind: 'extensions', action: 'add', id: 'remove-background' },
+      { json: true },
+    )
+    const doc = JSON.parse(ok.stdout[0] ?? '') as ExtensionsJson
+    expect(ok.exitCode).toBe(0)
+    expect(doc).toMatchObject({
+      ok: true,
+      changed: { id: 'remove-background', action: 'added' },
+      failures: [],
+    })
+    expect(doc.extensions[0]).toMatchObject({ id: 'remove-background', installed: '1.0.0' })
+
+    await execute({ kind: 'extensions', action: 'remove', id: 'remove-background' })
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/cut-short.tgz')]
+    const dropped = await execute(
+      { kind: 'extensions', action: 'add', id: 'remove-background' },
+      { json: true },
+    )
+    expect(dropped.exitCode).toBe(1)
+    expect(JSON.parse(dropped.stdout[0] ?? '').failures[0].code).toBe('extension-download-failed')
+
+    const unknown = await execute({ kind: 'extensions', action: 'add', id: 'nope' }, { json: true })
+    expect(unknown.exitCode).toBe(2)
+  })
+})

@@ -30,6 +30,12 @@ export type ErrorCode =
   | 'invalid-page-range'
   | 'empty-selection'
   | 'invalid-dpi'
+  | 'extension-missing'
+  | 'extension-corrupt'
+  | 'extension-unsupported'
+  | 'extension-download-failed'
+  | 'no-subject'
+  | 'boost-too-large'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -565,6 +571,69 @@ export function invalidDpi(value: unknown): ForgeError {
     title: 'Invalid resolution',
     detail: `${String(value)} is not a resolution Forge can use.`,
     hint: 'Give a number between 36 and 600. The default is 150.',
+  })
+}
+
+export function extensionMissing(id: string): ForgeError {
+  return new ForgeError({
+    code: 'extension-missing',
+    title: 'Extension not installed',
+    detail: `${id} is an optional extension and is not installed.`,
+    hint: `Install it with: forge extensions add ${id}`,
+    shellHint: 'Open /extensions to install it.',
+  })
+}
+
+export function extensionCorrupt(id: string, detail: string): ForgeError {
+  return new ForgeError({
+    code: 'extension-corrupt',
+    title: 'Extension failed verification',
+    detail: `${id}: ${detail}`,
+    hint: `Nothing was installed. Try again with: forge extensions add ${id}`,
+    shellHint: 'Nothing was installed. Try again from /extensions.',
+  })
+}
+
+export function extensionUnsupported(id: string, reason: string): ForgeError {
+  return new ForgeError({
+    code: 'extension-unsupported',
+    title: 'Extension not available here',
+    detail: `${id} cannot be installed on this Mac: ${reason}`,
+    hint: 'See what is available with: forge extensions',
+    shellHint: 'See what is available in /extensions.',
+  })
+}
+
+export function extensionDownloadFailed(id: string, detail: string): ForgeError {
+  return new ForgeError({
+    code: 'extension-download-failed',
+    title: 'Download failed',
+    detail: `${id}: ${detail}`,
+    hint: `Check your connection (and HTTPS_PROXY if you use a proxy), then run: forge extensions add ${id}`,
+    shellHint: 'Check your connection, then try again from /extensions.',
+  })
+}
+
+export function noSubject(path: string): ForgeError {
+  return new ForgeError({
+    code: 'no-subject',
+    title: 'No subject found',
+    detail: `${basename(path)} has no clear subject to cut out.`,
+    hint: 'Try a photo where the subject stands apart from the background.',
+  })
+}
+
+export function boostTooLarge(path: string, maxScale: number): ForgeError {
+  return new ForgeError({
+    code: 'boost-too-large',
+    title: 'Too large to boost',
+    detail:
+      maxScale >= 2
+        ? `${basename(path)} is too large to boost that far; ${maxScale}x is the most it can take.`
+        : `${basename(path)} is already too large to boost.`,
+    hint:
+      maxScale >= 2 ? `Try --boost ${maxScale}.` : 'Boost works on images up to 100 megapixels.',
+    shellHint: maxScale >= 2 ? `Choose ${maxScale}x instead.` : undefined,
   })
 }
 

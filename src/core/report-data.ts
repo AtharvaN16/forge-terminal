@@ -57,6 +57,30 @@ export type ProbeJson = {
   failures: FailureJson[]
 }
 
+export type ExtensionJson = {
+  id: string
+  title: string
+  summary: string
+  /** The version this Forge ships in its catalogue. */
+  version: string
+  licence: string
+  /** The installed version, or null. */
+  installed: string | null
+  updateAvailable: boolean
+  supported: boolean
+  reason?: string
+  downloadBytes?: number
+}
+
+export type ExtensionsJson = {
+  forge: string
+  ok: boolean
+  extensions: ExtensionJson[]
+  /** What `add` or `remove` just did, when it did something. */
+  changed?: { id: string; action: 'added' | 'removed' | 'unchanged' }
+  failures: FailureJson[]
+}
+
 export type ConfigJson = {
   forge: string
   ok: boolean
@@ -139,6 +163,19 @@ export function configJson(
     ok: true,
     config,
     warnings: warnings.map((w) => ({ code: w.code, message: w.message })),
+    failures: [],
+  }
+}
+
+export function extensionsJson(
+  forge: string,
+  data: { extensions: ExtensionJson[]; changed?: ExtensionsJson['changed'] },
+): ExtensionsJson {
+  return {
+    forge,
+    ok: true,
+    extensions: data.extensions,
+    ...(data.changed ? { changed: data.changed } : {}),
     failures: [],
   }
 }

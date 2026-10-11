@@ -16,7 +16,14 @@ import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { probeFiles } from '../core/probe-report.js'
-import { configJson, errorJson, formatsJson, probeJson, runJson } from '../core/report-data.js'
+import {
+  configJson,
+  errorJson,
+  extensionsJson,
+  formatsJson,
+  probeJson,
+  runJson,
+} from '../core/report-data.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
@@ -75,6 +82,8 @@ export interface ExecuteOptions {
    * --json, stdout carries exactly that document and stderr carries nothing.
    */
   json?: boolean
+  /** Real byte counts while an extension downloads (`forge extensions add`). */
+  onDownload?: (done: number, total: number) => void
 }
 
 /** The intents that convert, compress or edit files: everything `runIntent` accepts. */
@@ -603,6 +612,15 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   const debug = 'debug' in intent ? intent.debug : false
   try {
     if (intent.kind === 'config') return await runConfigCommand(intent, json)
+    if (intent.kind === 'extensions') {
+      const { runExtensions } = await import('./extensions-command.js')
+      const result = await runExtensions(intent, { onDownload: opts.onDownload })
+      return {
+        exitCode: 0,
+        stdout: json ? [JSON.stringify(extensionsJson(VERSION, result.data))] : result.stdout,
+        stderr: [],
+      }
+    }
     if (intent.kind === 'formats') {
       return json
         ? {

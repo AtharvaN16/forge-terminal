@@ -109,11 +109,23 @@ async function main(): Promise<void> {
      * file decides to animate it, and only on a terminal.
      */
     let spinner: Spinner | undefined
+    // Real bytes for an extension download: one rewritten line, no invented percentage.
+    let lastPrinted = 0
+    const onDownload = (done: number, total: number): void => {
+      const now = Date.now()
+      if (done < total && now - lastPrinted < 100) return
+      lastPrinted = now
+      const mb = (n: number): string => (n / 1e6).toFixed(1)
+      process.stderr.write(
+        `\r  downloading ${mb(done)} / ${mb(total)} MB${done >= total ? '\n' : ''}`,
+      )
+    }
     // Progress and the spinner are stderr decoration for a person at a
     // terminal. Under --json they stay off entirely (spec §3.2).
     const tty = Boolean(process.stderr.isTTY) && !json
     const result = await execute(intent, {
       json,
+      ...(tty ? { onDownload } : {}),
       onProgress: tty
         ? (progress: BatchProgress) => {
             // The spinner redraws its line in place and the counter prints
