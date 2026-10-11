@@ -143,6 +143,12 @@ async function buildRasterJob(
     // Never for an unencrypted file — asking would be a prompt nobody
     // expected and, worse, a password nothing is actually locked with.
     password = await readPassword({ stdin: intent.passwordStdin ?? false })
+    // No --password-stdin and no terminal to ask on. Refuse now rather than
+    // wait for input that cannot come. The hint names --password-stdin,
+    // which is exactly what is missing.
+    if (password === undefined) {
+      return { failure: { path: source.path, error: encryptedSource(source.path) } }
+    }
     let doc: Awaited<ReturnType<typeof openPdf>>
     try {
       doc = await openPdf(await readFile(source.path), password)
@@ -157,7 +163,9 @@ async function buildRasterJob(
       // attempted password from surfacing, and re-wrapping a message that
       // might echo caller input is a needless way to risk that. The existing
       // encrypted-source error already says what to do differently.
-      return { failure: { path: source.path, error: encryptedSource(source.path) } }
+      return {
+        failure: { path: source.path, error: encryptedSource(source.path, { attempted: true }) },
+      }
     }
     // Outside the catch above, deliberately: this document only exists to
     // check the password, not to render anything, and the engine opens its

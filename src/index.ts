@@ -2,6 +2,7 @@
 import * as nodeModule from 'node:module'
 import { parseArgs } from './cli/args.js'
 import type { BatchProgress } from './cli/execute.js'
+import { fatalLines, guardUnsettled } from './cli/fatal.js'
 import { type Spinner, startSpinner } from './cli/spinner.js'
 import { isForgeError, renderError } from './core/errors.js'
 
@@ -117,4 +118,22 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+/**
+ * Prints an error that main() did not turn into a Forge answer itself. There is
+ * never a raw stack trace (unless --debug), and Node's own exit code never
+ * leaks through. Only this file prints.
+ */
+function reportFatal(e: unknown): void {
+  process.stderr.write(`${fatalLines(e, process.argv.includes('--debug')).join('\n')}\n`)
+}
+
+let settled = false
+guardUnsettled(() => settled, reportFatal)
+try {
+  await main()
+} catch (e) {
+  reportFatal(e)
+  process.exitCode = 1
+} finally {
+  settled = true
+}

@@ -419,8 +419,8 @@ $ echo -n "hunter2" | forge locked-hunter2.pdf --to png --password-stdin
   2.7 KB → 22.4 KB total
 ```
 
-or leave `--password-stdin` off and Forge prompts on stderr, reading one
-line without echoing it back:
+or, at a terminal, leave `--password-stdin` off and Forge prompts on stderr,
+reading one line without echoing it back:
 
 ```
 $ forge locked-hunter2.pdf --to jpeg
@@ -430,8 +430,8 @@ Password:
   2.7 KB → 16.6 KB total
 ```
 
-A wrong password gets the same message an unattempted password does — Forge
-doesn't echo back anything about the attempt itself:
+A wrong password is told apart from a missing one, and Forge never echoes the
+attempt itself:
 
 ```
 $ echo -n "wrongpass" | forge locked-hunter2.pdf --to png --password-stdin
@@ -439,8 +439,13 @@ $ echo -n "wrongpass" | forge locked-hunter2.pdf --to png --password-stdin
 
   locked-hunter2.pdf is password-protected.
 
-  Convert it to images instead:  forge locked-hunter2.pdf --to jpeg --password-stdin
+  That password didn't open it. Check it and try again.
 ```
+
+`--password-stdin` reads one line, so a pipe that stays open after sending
+the password does not hold Forge up. Without a terminal (piped, scripted, or
+driven by an agent) Forge never prompts: an encrypted PDF without
+`--password-stdin` fails at once with exit 1.
 
 ### In the shell
 

@@ -317,18 +317,24 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
  * whatever pdf-lib does partway through — a generic parse failure at the
  * last step would not tell the user what is actually wrong.
  */
-export function encryptedSource(path: string): ForgeError {
+export function encryptedSource(path: string, opts: { attempted?: boolean } = {}): ForgeError {
   const name = basename(path)
   return new ForgeError({
     code: 'encrypted-source',
     title: 'This PDF is password-protected',
     detail: `${name} is password-protected.`,
-    // Forge cannot decrypt-and-write a PDF — the only libraries that can are
-    // AGPL, and Forge is MIT (see the phase-4a spec's ruling on this). The
-    // shell also has no password field by design (spec §8), so this points
-    // at the one front end that reads an encrypted PDF rather than only
-    // refusing.
-    hint: `Convert it to images instead:  forge ${name} --to jpeg --password-stdin`,
+    hint: opts.attempted
+      ? // A password was given and it did not open the file. The old hint
+        // suggested --password-stdin, the flag that had just been used, which
+        // sent people round in a circle (spec §3.1). It deliberately says
+        // nothing about the attempt itself (invariant 8).
+        "That password didn't open it. Check it and try again."
+      : // Forge cannot decrypt-and-write a PDF — the only libraries that can
+        // are AGPL, and Forge is MIT (see the phase-4a spec's ruling on this).
+        // The shell also has no password field by design (spec §8), so this
+        // points at the one front end that reads an encrypted PDF rather than
+        // only refusing.
+        `Convert it to images instead:  forge ${name} --to jpeg --password-stdin`,
   })
 }
 
