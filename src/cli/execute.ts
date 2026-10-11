@@ -144,6 +144,26 @@ function pageOpValues(intent: PageOpIntent, sources: SourceInfo[]): Record<strin
 }
 
 /**
+ * Asks for the password at most once per run, then hands the same answer to
+ * every encrypted source. Stdin carries one line and is let go after it, so a
+ * second read would wait on a stream that has already finished; a prompt per
+ * file would be a nuisance besides. Nothing is asked until the first encrypted
+ * source needs it (invariant 8 — never for a file that is not encrypted).
+ *
+ * An empty stdin means no password was given at all, so it becomes
+ * `undefined` and the caller reports the missing-password hint, not
+ * "That password didn't open it".
+ */
+function passwordOnce(stdin: boolean, interactive: boolean): () => Promise<string | undefined> {
+  let answer: Promise<string | undefined> | undefined
+  return () => {
+    if (!interactive) return Promise.resolve(undefined)
+    answer ??= readPassword({ stdin }).then((p) => (stdin && p === '' ? undefined : p))
+    return answer
+  }
+}
+
+/**
  * Builds one rasterisation job for one encrypted-or-not document source:
  * prompts for a password only when the source is actually encrypted
  * (invariant 8 — never for a file that is not), then hands the actual
@@ -179,7 +199,7 @@ async function buildRasterJob(
      */
     options: ConvertOptions
   },
-  interactive: boolean,
+  askPassword: () => Promise<string | undefined>,
   /**
    * The root this source was scanned under, when `--recursive` found it
    * inside one. Threaded through so `rasterOutputPaths` recreates the source
@@ -191,9 +211,7 @@ async function buildRasterJob(
   if (source.encrypted) {
     // Never for an unencrypted file — asking would be a prompt nobody
     // expected and, worse, a password nothing is actually locked with.
-    password =
-      intent.password ??
-      (interactive ? await readPassword({ stdin: intent.passwordStdin ?? false }) : undefined)
+    password = intent.password ?? (await askPassword())
     // No --password-stdin and no terminal to ask on. Refuse now rather than
     // wait for input that cannot come. The hint names --password-stdin,
     // which is exactly what is missing.
@@ -459,13 +477,9 @@ async function runConvert(intent: ConvertIntent, opts: ExecuteOptions): Promise<
 
   const documentJobs: Job[] = []
   const documentFailures: InputFailure[] = []
+  const askPassword = passwordOnce(intent.passwordStdin ?? false, opts.interactive ?? true)
   for (const source of documentSources) {
-    const built = await buildRasterJob(
-      source,
-      intent,
-      opts.interactive ?? true,
-      resolved.roots.get(source.path),
-    )
+    const built = await buildRasterJob(source, intent, askPassword, resolved.roots.get(source.path))
     if ('failure' in built) documentFailures.push(built.failure)
     else documentJobs.push(built.job)
   }

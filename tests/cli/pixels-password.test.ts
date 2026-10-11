@@ -94,4 +94,37 @@ describe('rasterising an encrypted PDF from the CLI', () => {
     expect(existsSync(join(dir, 'plain-1.jpg'))).toBe(true)
     expect(existsSync(join(dir, 'plain-2.jpg'))).toBe(true)
   })
+  it('reads the password once and uses it for every encrypted source', async () => {
+    const first = await lockedPdfCopy()
+    const dir = join(first, '..')
+    const second = join(dir, 'other.pdf')
+    await cp(FIXTURE, second)
+    Object.defineProperty(process, 'stdin', {
+      value: stdinOf(`${RIGHT_PASSWORD}\n`),
+      configurable: true,
+    })
+
+    const out = await execute(parseArgs([first, second, '--to', 'png', '--password-stdin']))
+
+    expect(out.exitCode).toBe(0)
+    for (const name of ['locked', 'other']) {
+      for (const n of [1, 2, 3]) expect(existsSync(join(dir, `${name}-${n}.png`))).toBe(true)
+    }
+  }, 15000)
+
+  it('treats an empty stdin as no password, not a wrong one', async () => {
+    const path = await lockedPdfCopy()
+    Object.defineProperty(process, 'stdin', { value: stdinOf(''), configurable: true })
+
+    const out = await execute(parseArgs([path, '--to', 'png', '--password-stdin', '--json']), {
+      json: true,
+    })
+
+    expect(out.exitCode).toBe(1)
+    const doc = JSON.parse(out.stdout.join('\n'))
+    const text = JSON.stringify(doc)
+    expect(text).toContain('encrypted-source')
+    expect(text).toContain('--password-stdin')
+    expect(text).not.toContain("didn't open it")
+  })
 })
