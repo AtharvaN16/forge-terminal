@@ -33,7 +33,22 @@ and arrow keys instead of flags. See [Interactive shell](#interactive-shell).
 **Requires macOS and Node 20 or newer** (developed and tested on Node 24).
 Check with `node --version`; if you don't have it, `brew install node`.
 
-Forge isn't published to npm yet, so install it from source:
+```bash
+npm install -g forge-terminal
+```
+
+That puts `forge` on your `PATH`, so it works from any directory. Verify:
+
+```bash
+forge --version
+# 0.1.0
+
+forge photo.jpg --to webp
+```
+
+Nothing else needs Homebrew; image conversion is entirely self-contained.
+
+### From source
 
 ```bash
 git clone https://github.com/AtharvaN16/forge-terminal.git
@@ -44,28 +59,9 @@ chmod +x dist/index.js   # tsc does not preserve the executable bit
 npm link
 ```
 
-`npm link` puts `forge` on your `PATH`, so it works from any directory.
-Verify:
-
-```bash
-forge --version
-# 0.1.0
-
-forge photo.jpg --to webp
-```
-
-`npm install` compiles Sharp's native bindings, which is the slow step —
-expect a minute or two on a first install. Nothing else needs Homebrew;
-image conversion is entirely self-contained.
-
-### Once it's published
-
-```bash
-npm install -g forge-terminal
-```
-
-That will be the whole install. It isn't live yet — until then, use the
-source route above.
+`npm link` puts your working copy on your `PATH` instead of the published
+package. If you have both, whichever was installed last wins —
+`npm uninstall -g forge-terminal` removes the published one.
 
 ### A name to watch out for
 
@@ -78,8 +74,8 @@ which -a forge
 ```
 
 If more than one path comes back, they're shadowing each other. You can
-rename Forge's command by editing the `bin` field in `package.json` before
-running `npm link`:
+rename Forge's command when installing from source, by editing the `bin`
+field in `package.json` before running `npm link`:
 
 ```json
 "bin": { "convert-forge": "./dist/index.js" }
@@ -91,9 +87,12 @@ legacy binary already claims that name and Homebrew still installs it.)
 ### Updating and removing
 
 ```bash
-git pull && npm install && npm run build   # update
-npm unlink -g forge-terminal               # remove
+npm update -g forge-terminal      # update
+npm uninstall -g forge-terminal   # remove
 ```
+
+From source, `git pull && npm install && npm run build` updates and
+`npm unlink -g forge-terminal` removes.
 
 ## Configuration
 

@@ -2,9 +2,32 @@
   "name": "forge-terminal",
   "version": "0.1.0",
   "description": "A terminal-native file converter for macOS",
+  "keywords": [
+    "convert",
+    "converter",
+    "image",
+    "heic",
+    "webp",
+    "pdf",
+    "docx",
+    "compress",
+    "cli",
+    "terminal",
+    "tui",
+    "macos"
+  ],
+  "homepage": "https://github.com/AtharvaN16/forge-terminal#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AtharvaN16/forge-terminal.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AtharvaN16/forge-terminal/issues"
+  },
+  "author": "Atharva Nayak",
   "type": "module",
   "bin": {
-    "forge": "./dist/index.js"
+    "forge": "dist/index.js"
   },
   "files": [
     "dist"
@@ -12,6 +35,9 @@
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "darwin"
+  ],
   "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -20,7 +46,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "lint": "biome check src tests",
-    "format": "biome format --write src tests"
+    "format": "biome format --write src tests",
+    "prepublishOnly": "rm -rf dist && npm run build && npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
     "@hyzyla/pdfium": "^2.1.13",
