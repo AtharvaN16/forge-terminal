@@ -142,6 +142,9 @@ async function searchJob(
     }
   }
   const m = measurer
+  // The measurer may have done async I/O (reading, decoding a HEIC). An abort
+  // during that window must not still start a full-quality encode.
+  if (signal?.aborted) return { kind: 'cancelled' }
 
   let smallest = Number.POSITIVE_INFINITY
   let closest: (Partial<ConvertOptions> & { quality: number }) | undefined
@@ -166,7 +169,10 @@ async function searchJob(
       }
 
       if (!found.missed) {
-        Object.assign(job.options, rung, { quality: found.quality })
+        // A fresh object, never a mutation: `buildPlan` hands every job the
+        // same `options`, so with searches overlapping, the last one to
+        // finish would otherwise decide everyone's quality.
+        job.options = { ...job.options, ...rung, quality: found.quality }
         return { kind: 'ready' }
       }
     }

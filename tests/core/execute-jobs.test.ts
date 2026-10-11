@@ -378,6 +378,11 @@ describe('runPlan searches in parallel', () => {
     expect(outcome.cancelled).toBe(true)
     expect(outcome.results).toEqual([])
     expect(engine.run).not.toHaveBeenCalled()
+    // Searches really overlapped, and every in-flight one stopped at its next
+    // encode boundary: 4 started, the abort came on the 3rd, so at most the
+    // 4 first encodes ever ran.
+    expect(stats.peak).toBeGreaterThan(1)
+    expect(stats.measures).toBeLessThanOrEqual(4)
     const atResolve = stats.measures
     await new Promise((r) => setTimeout(r, 30))
     expect(stats.measures).toBe(atResolve)
