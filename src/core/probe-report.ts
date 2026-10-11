@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
-import { actionsFor } from './actions/index.js'
-import { targetIdsFor } from './capabilities.js'
+import { actionsFor, convertAction } from './actions/index.js'
+import { rasterises, targetIdsFor } from './capabilities.js'
 import { type InputFailure, resolveInputs } from './resolve.js'
 import type { FormatId, SourceInfo } from './types.js'
 
@@ -22,9 +22,15 @@ export type ProbeReport = {
   height?: number
   pages?: number
   encrypted?: boolean
-  /** `targetIdsFor(source)` — includes the file's own format, which recompresses. */
+  /**
+   * `targetIdsFor(source)` — includes the file's own format, which recompresses.
+   * For an encrypted PDF, only the formats its pages rasterise to.
+   */
   targets: FormatId[]
-  /** `actionsFor([source])` ids. Merge is never listed: it needs two or more files. */
+  /**
+   * `actionsFor([source])` ids. Merge is never listed: it needs two or more
+   * files. For an encrypted PDF, only `convert`.
+   */
   actions: string[]
 }
 
@@ -35,9 +41,15 @@ export function describeSource(source: SourceInfo): ProbeReport {
     format: source.format,
     bytes: source.bytes,
   }
+  // An encrypted PDF can only be opened with a password, and only the pdfium
+  // raster path takes one: everything else (pdf, docx, every page operation)
+  // refuses it with encrypted-source. So probe lists just what will work.
+  const locked = source.kind === 'document' && source.encrypted === true
   const can = {
-    targets: targetIdsFor(source),
-    actions: actionsFor([source]).map((a) => a.id),
+    targets: targetIdsFor(source).filter((t) => !locked || rasterises(t)),
+    actions: actionsFor([source])
+      .filter((a) => !locked || a.id === convertAction.id)
+      .map((a) => a.id),
   }
   if (source.kind === 'image') {
     return { ...common, width: source.width, height: source.height, ...can }

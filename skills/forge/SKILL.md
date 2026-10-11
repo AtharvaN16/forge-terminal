@@ -68,7 +68,8 @@ printf '%s\n' "$PASSWORD" | forge locked.pdf --to png --password-stdin --json
 
 Never put a password in an argument; there is no flag for it. Only rendering
 to images works on an encrypted PDF; page operations and compression refuse
-it (`encrypted-source`). Without `--password-stdin` the run fails at once with
+it (`encrypted-source`), so probe lists only the image `targets` and the one
+action `convert` for it. Without `--password-stdin` the run fails at once with
 exit 1 and a hint; a wrong password has its own hint.
 
 ## Failure codes worth knowing

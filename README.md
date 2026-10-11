@@ -402,6 +402,8 @@ Forge can **read** a password-protected PDF — probing and `--to jpeg`/`--to
 png` both work once it has the password. Page operations (`--merge`,
 `--split`, `--extract`, `--delete`, `--rotate`) refuse an encrypted PDF
 outright: they rewrite the file, and Forge cannot write an encrypted one.
+`forge probe` says so: for an encrypted PDF it lists only the image formats
+as targets and `convert` as the only action.
 
 It cannot **remove** a password either; there is no unlock or decrypt-and-resave
 feature, on purpose. The only libraries that can decrypt and rewrite a PDF

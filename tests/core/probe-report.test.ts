@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { actionsFor } from '../../src/core/actions/index.js'
-import { targetIdsFor } from '../../src/core/capabilities.js'
+import { rasterises, targetIdsFor } from '../../src/core/capabilities.js'
 import { describeSource, probeFiles } from '../../src/core/probe-report.js'
 import { probe } from '../../src/engines/registry.js'
 import { makeJpeg, makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
@@ -41,6 +41,20 @@ describe('describeSource', () => {
     const path = join(dir, 'locked.pdf')
     await cp(LOCKED, path)
     expect(describeSource(await probe(path)).encrypted).toBe(true)
+  })
+
+  it('lists only what an encrypted PDF can actually become: pages as images', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'forge-probe-'))
+    const path = join(dir, 'locked.pdf')
+    await cp(LOCKED, path)
+    const source = await probe(path)
+    const report = describeSource(source)
+    // Invariant 2: narrowed from the capability data, not a list written here.
+    expect(report.targets).toEqual(targetIdsFor(source).filter(rasterises))
+    expect(report.targets.length).toBeGreaterThan(0)
+    expect(report.targets).not.toContain('pdf')
+    expect(report.targets).not.toContain('docx')
+    expect(report.actions).toEqual(['convert'])
   })
 
   it('reads the format from content, not the extension (invariant 3)', async () => {
