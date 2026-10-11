@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canConvert,
+  formatMatrix,
   readableFormats,
   targetIdsFor,
   writableFormats,
@@ -54,5 +55,19 @@ describe('capability graph', () => {
 
   it('rejects a target no engine can write', () => {
     expect(canConvert(source('png'), 'heic')).toBe(false)
+  })
+})
+
+describe('formatMatrix', () => {
+  it('lists every format any engine reads or writes, flagged from the engines themselves', () => {
+    const readable = readableFormats()
+    const writable = writableFormats()
+    const matrix = formatMatrix()
+    expect(new Set(matrix.map((f) => f.id))).toEqual(new Set([...readable, ...writable]))
+    for (const f of matrix) {
+      expect(f.read).toBe(readable.includes(f.id))
+      expect(f.write).toBe(writable.includes(f.id))
+    }
+    expect(matrix.find((f) => f.id === 'heic')).toMatchObject({ read: true, write: false })
   })
 })

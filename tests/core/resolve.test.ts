@@ -100,11 +100,46 @@ describe('resolveInputs', () => {
     const { sources } = await resolveInputs([a, a], { recursive: false })
     expect(sources).toHaveLength(1)
   })
+
+  it('reads a file whose name contains glob characters literally', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'Photo [a].jpg')
+    const { sources, failures } = await resolveInputs([a], { recursive: false })
+    expect(names(sources)).toEqual(['Photo [a].jpg'])
+    expect(failures).toEqual([])
+  })
+
+  it('reports a glob that matches nothing, instead of silently doing nothing', async () => {
+    const dir = await makeTempDir()
+    const { sources, failures } = await resolveInputs([join(dir, '*.png')], { recursive: false })
+    expect(sources).toEqual([])
+    expect(failures[0]?.error.code).toBe('file-not-found')
+  })
+  it('reads a folder whose name contains glob characters as that folder', async () => {
+    const root = await makeTempDir()
+    const dir = join(root, 'Photos {2024,2025}')
+    await mkdir(dir)
+    await makeJpeg(dir, 'a.jpg')
+    await makePng(dir, 'b.png')
+    const { sources, failures } = await resolveInputs([dir], { recursive: false })
+    expect(names(sources)).toEqual(['a.jpg', 'b.png'])
+    expect(failures).toEqual([])
+  })
+
+  it('reports an empty glob and still returns the valid file beside it', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'a.jpg')
+    const { sources, failures } = await resolveInputs([join(dir, '*.gif'), a], {
+      recursive: false,
+    })
+    expect(names(sources)).toEqual(['a.jpg'])
+    expect(failures.map((f) => f.error.code)).toEqual(['file-not-found'])
+  })
 })
 
 describe('resolveDirectory', () => {
   it('reads a folder whose name looks like a glob as a folder', async () => {
-    const dir = join(await makeTempDir(), 'Photos [2024]')
+    const dir = join(await makeTempDir(), 'Photos {2024,2025}')
     await mkdir(dir)
     await makeJpeg(dir, 'a.jpg')
     await makePng(dir, 'b.png')
