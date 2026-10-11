@@ -70,6 +70,8 @@ export async function runJobs(
      * stub engine without reaching the real encoders.
      */
     engineFor?: (job: Job) => Engine | undefined
+    /** Handed to each engine; an aborted job lands in `failures`. */
+    signal?: AbortSignal
   },
 ): Promise<RunSummary> {
   const emit = opts.onEvent ?? (() => {})
@@ -100,7 +102,11 @@ export async function runJobs(
     }
 
     try {
-      const result = await engine.run(job, (progress) => emit({ type: 'job:phase', job, progress }))
+      const result = await engine.run(
+        job,
+        (progress) => emit({ type: 'job:phase', job, progress }),
+        opts.signal,
+      )
       resultAt[index] = result
       completed++
       emit({ type: 'job:done', job, result, completed, total })

@@ -31,7 +31,12 @@ export interface Engine {
   /** Which operations this engine implements. */
   ops: ReadonlySet<Job['op']>
   probe(path: string): Promise<SourceInfo>
-  run(job: Job, onPhase: (progress: Progress) => void): Promise<Result>
+  /**
+   * `signal` aborts a run in flight. Only the extension engine honours it (its
+   * child process is killed and nothing is written); the others finish in a
+   * single atomic write and ignore it.
+   */
+  run(job: Job, onPhase: (progress: Progress) => void, signal?: AbortSignal): Promise<Result>
   /**
    * Present only on engines that can be searched toward a byte target.
    *

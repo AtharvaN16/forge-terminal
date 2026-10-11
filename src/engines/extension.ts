@@ -16,7 +16,11 @@ import type { Engine } from './types.js'
  * code (`src/extensions/`) is imported when a job runs, never at load, so a
  * plain conversion does not pay for it (spec §4.2).
  */
-async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Result> {
+async function run(
+  job: Job,
+  onPhase: (progress: Progress) => void,
+  signal?: AbortSignal,
+): Promise<Result> {
   if (job.op !== 'boost' && job.op !== 'remove-background') {
     throw new Error(`the extension engine cannot ${job.op}`)
   }
@@ -60,7 +64,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
             join(extensionsRoot(), 'boost', 'cache'),
           ]
         : [input, result]
-    await runExtension(ext, args)
+    await runExtension(ext, args, signal === undefined ? {} : { signal })
 
     onPhase({ phase: 'writing' })
     const sharp = await loadSharp()

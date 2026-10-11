@@ -97,6 +97,8 @@ export interface ExecuteOptions {
   json?: boolean
   /** Real byte counts while an extension downloads (`forge extensions add`). */
   onDownload?: (done: number, total: number) => void
+  /** Aborts an extension job in flight: the child is killed and nothing is written. */
+  signal?: AbortSignal
 }
 
 /** The intents that convert, compress or edit files: everything `runIntent` accepts. */
@@ -532,6 +534,7 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
   const outcome = await runPlan(jobs, {
     force: intent.force,
     concurrency: 1,
+    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     onEvent: reportEvents(opts, batch),
   })
   return {
