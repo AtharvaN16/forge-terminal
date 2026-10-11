@@ -1,4 +1,4 @@
-import { basename } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { FORMATS } from './formats.js'
 import type { FormatId, Job, SourceInfo } from './types.js'
 import { formatBytes } from './units.js'
@@ -401,6 +401,40 @@ export function outputIsInput(path: string, op: Job['op'] = 'convert'): ForgeErr
   })
 }
 
+/**
+ * The write-side sibling of `permissionDenied`: the destination folder exists
+ * (or would be created inside one) that this user cannot write to.
+ *
+ * Shares the `permission-denied` code because it is the same fault the user
+ * fixes the same way. Names the folder, not the source — the source was read
+ * fine, and "photo.png could not be read" would send them to the wrong file.
+ */
+export function outputPermissionDenied(path: string, cause?: unknown): ForgeError {
+  return new ForgeError({
+    code: 'permission-denied',
+    title: 'Permission denied',
+    detail: `${basename(dirname(path))} is not a folder you can write to.`,
+    hint: 'Choose a different --output, or check the folder permissions.',
+    shellHint: 'Choose a different folder, or check its permissions.',
+    cause,
+  })
+}
+
+/** The errno codes that mean "you may not write here", not "this path is bad". */
+const PERMISSION_CODES = new Set(['EACCES', 'EPERM', 'EROFS'])
+
+/**
+ * Names a failed write by its errno, so a refusal by the filesystem reads as
+ * one instead of as a generic conversion failure. Anything it has no better
+ * name for is returned untouched for the caller to wrap as it already does.
+ */
+export function classifyWriteError(path: string, cause: unknown): unknown {
+  if (isForgeError(cause)) return cause
+  const code = (cause as NodeJS.ErrnoException | null)?.code
+  if (code !== undefined && PERMISSION_CODES.has(code)) return outputPermissionDenied(path, cause)
+  return cause
+}
+
 export function outputInvalid(path: string, cause: unknown): ForgeError {
   return new ForgeError({
     code: 'output-invalid',
@@ -468,6 +502,8 @@ export function conversionFailed(path: string, cause: unknown): ForgeError {
     title: 'Conversion failed',
     detail: `${basename(path)} could not be converted.`,
     hint: 'Run again with --debug for the underlying error.',
+    // The shell has no --debug of its own; the command line does.
+    shellHint: 'Run the same conversion with forge --debug from the command line to see why.',
     cause,
   })
 }

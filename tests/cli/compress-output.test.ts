@@ -6,7 +6,7 @@ import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
-const run = (argv: string[]) => execute(parseArgs(['node', 'forge', ...argv]))
+const run = (argv: string[]) => execute(parseArgs(argv))
 
 /**
  * `-o` used to be parsed and dropped on the compress path — `CompressIntent`
