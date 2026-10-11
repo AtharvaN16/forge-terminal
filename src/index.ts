@@ -114,7 +114,16 @@ async function main(): Promise<void> {
     const tty = Boolean(process.stderr.isTTY) && !json
     const result = await execute(intent, {
       json,
-      onProgress: tty ? onProgress : undefined,
+      onProgress: tty
+        ? (progress: BatchProgress) => {
+            // The spinner redraws its line in place and the counter prints
+            // whole lines, so the two would share one row ("⠸ finding … 1/3").
+            // Once a job finishes the counter is the better signal; the
+            // spinner goes for good (a stopped one ignores later updates).
+            if (progress.completed > 0) spinner?.stop()
+            onProgress(progress)
+          }
+        : undefined,
       ...(tty
         ? {
             onSearch: (status: string) => {

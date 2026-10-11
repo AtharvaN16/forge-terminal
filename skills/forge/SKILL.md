@@ -12,8 +12,9 @@ Forge converts files on this Mac. Nothing is uploaded.
 1. **Probe first.** `forge probe <file…> --json`. Each entry in `probes` has
    `format` (read from the file's content, not its name), `targets` (every
    format the file can become) and `actions` (what else applies: `compress`,
-   `split`, `extract`, `delete`, `rotate`; `merge` only appears when you give
-   two or more PDFs; `convert` is always there). Use these lists; do not
+   `split`, `extract`, `delete`, `rotate`; `convert` is always there).
+   `merge` is never listed by probe: to merge, pass `--merge` with two or
+   more PDFs. Use these lists; do not
    guess. `compress` appears when quality or size can be reduced: lossy
    images, and PDFs that contain compressible images (a PNG has only
    `convert`). Run it as `--quality N` or `--max-size S` without `--to`. A

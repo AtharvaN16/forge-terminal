@@ -100,6 +100,27 @@ describe('runJobs', () => {
     expect(events.at(-1)?.type).toBe('batch:done')
   })
 
+  it('reports results in job order, not completion order', async () => {
+    const dir = await makeTempDir()
+    const jobs = await planFor(dir, 3)
+    // The first job finishes last, the last first.
+    const delays = [30, 15, 0]
+    const summary = await runJobs(jobs, {
+      concurrency: 3,
+      engineFor: () =>
+        ({
+          id: 'stub',
+          reads: new Set(),
+          writes: new Set(),
+          run: async (job: Job) => {
+            await new Promise((r) => setTimeout(r, delays[jobs.indexOf(job)]))
+            return { job, outputBytes: 1, warnings: [] }
+          },
+        }) as never,
+    })
+    expect(summary.results.map((r) => r.job)).toEqual(jobs)
+  })
+
   it('returns an empty summary for no jobs', async () => {
     const summary = await runJobs([], {})
     expect(summary.results).toEqual([])
@@ -121,6 +142,14 @@ describe('pool', () => {
     })
     expect(peak).toBe(3)
     expect([...seen].sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+  })
+
+  it('still runs every item when the limit is not a finite number', async () => {
+    const seen: number[] = []
+    await pool([0, 1, 2], Number.NaN, async (item) => {
+      seen.push(item)
+    })
+    expect(seen.sort()).toEqual([0, 1, 2])
   })
 
   it('does nothing for no items', async () => {

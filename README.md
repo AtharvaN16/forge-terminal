@@ -781,7 +781,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 --json` returns `config` and `warnings`. An argument error is a document with
 one `invalid-arguments` failure and exit code 2. Fields are not renamed or
 removed within a minor version; the `forge` field says which version you are
-reading. `--help` and `--version` stay text.
+reading. `--help` and `--version` print text even with `--json`.
 
 ### Exit codes
 

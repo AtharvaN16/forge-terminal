@@ -55,7 +55,8 @@ export async function pool<T>(
       await task(items[index] as T, index)
     }
   }
-  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker))
+  const workers = Math.min(resolveConcurrency(limit), items.length)
+  await Promise.all(Array.from({ length: workers }, worker))
 }
 
 export async function runJobs(
@@ -76,8 +77,10 @@ export async function runJobs(
   const limit = resolveConcurrency(opts.concurrency)
   const total = jobs.length
 
-  const results: Result[] = []
-  const failures: InputFailure[] = []
+  // Slotted by job index and compacted at the end, so results and failures
+  // are reported in the order the jobs were given, not the order they finished.
+  const resultAt: (Result | undefined)[] = []
+  const failureAt: (InputFailure | undefined)[] = []
   let completed = 0
 
   await pool(jobs, limit, async (job, index) => {
@@ -91,14 +94,14 @@ export async function runJobs(
         path,
         error: conversionFailed(path, new Error(`no engine runs ${job.op}`)),
       }
-      failures.push(failure)
+      failureAt[index] = failure
       emit({ type: 'job:error', job, failure, completed, total })
       return
     }
 
     try {
       const result = await engine.run(job, (progress) => emit({ type: 'job:phase', job, progress }))
-      results.push(result)
+      resultAt[index] = result
       completed++
       emit({ type: 'job:done', job, result, completed, total })
     } catch (e) {
@@ -106,11 +109,13 @@ export async function runJobs(
       const path = job.sources[0].path
       const error = isForgeError(e) ? e : conversionFailed(path, e)
       const failure: InputFailure = { path, error }
-      failures.push(failure)
+      failureAt[index] = failure
       emit({ type: 'job:error', job, failure, completed, total })
     }
   })
 
+  const results = resultAt.filter((r): r is Result => r !== undefined)
+  const failures = failureAt.filter((f): f is InputFailure => f !== undefined)
   const summary: RunSummary = {
     results,
     failures,

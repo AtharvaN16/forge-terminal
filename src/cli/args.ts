@@ -3,6 +3,7 @@ import { invalidArguments, invalidDpi } from '../core/errors.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
 import { parseSize } from '../core/units.js'
+import { VERSION } from '../shell/theme.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
 
 export interface ConvertIntent {
@@ -202,12 +203,6 @@ function parseMaxSize(raw: unknown): number {
 }
 
 /**
- * Whether the caller asked for JSON. It is read from argv rather than from the
- * parsed intent because it has to be known even when parsing fails: an argument
- * error is reported in the same JSON shape as everything else (spec §3.2).
- * Reading stops at `--`, after which everything is a filename.
- */
-/**
  * Claimed before Commander for the same reason `config` is: Commander's
  * variadic `[inputs...]` would otherwise read `probe` as a filename. Probe
  * takes files and `--json` (read by `wantsJson`), and nothing else. A
@@ -231,6 +226,12 @@ function parseProbeArgs(argv: string[]): ProbeIntent {
   return { kind: 'probe', inputs: rest }
 }
 
+/**
+ * Whether the caller asked for JSON. It is read from argv rather than from the
+ * parsed intent because it has to be known even when parsing fails: an argument
+ * error is reported in the same JSON shape as everything else (spec §3.2).
+ * Reading stops at `--`, after which everything is a filename.
+ */
 export function wantsJson(argv: string[]): boolean {
   const end = argv.indexOf('--')
   return (end === -1 ? argv : argv.slice(0, end)).includes('--json')
@@ -266,7 +267,7 @@ export function parseArgs(argv: string[]): Intent {
     .option('--password-stdin', "read an encrypted PDF's password from stdin")
     .option('--json', 'print one JSON document on stdout instead of text')
     .helpOption('-h, --help', 'show this help')
-    .version('0.1.0', '-V, --version', 'show the version')
+    .version(VERSION, '-V, --version', 'show the version')
     .addHelpText('after', `${COMMANDS_HELP}\n${EXIT_CODES_HELP}`)
     .configureOutput({ outputError: () => {} })
     .exitOverride()
@@ -286,10 +287,17 @@ export function parseArgs(argv: string[]): Intent {
       e.code !== 'commander.helpDisplayed' &&
       e.code !== 'commander.version'
     ) {
-      const message = e.message.replace(/^error: /, '')
+      // Commander appends a suggestion on a second line, in parentheses:
+      // "unknown option '--tox'\n(Did you mean --to?)". That is a hint, not
+      // part of what went wrong.
+      const [first = '', ...rest] = e.message.replace(/^error: /, '').split('\n')
+      const suggestion = rest
+        .join(' ')
+        .trim()
+        .replace(/^\((.*)\)\.?$/, '$1')
       throw invalidArguments(
-        `${message.charAt(0).toUpperCase()}${message.slice(1)}.`,
-        'Run forge --help to see what Forge accepts.',
+        `${first.charAt(0).toUpperCase()}${first.slice(1).replace(/\.$/, '')}.`,
+        suggestion || 'Run forge --help to see what Forge accepts.',
       )
     }
     throw e
