@@ -1,0 +1,12 @@
+{
+  "file": "realesr-general-x4v3.onnx",
+  "source": {
+    "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth",
+    "sha256": "8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292",
+    "bytes": 4885111
+  },
+  "convert": ["convert.py", "--fixed", "256"],
+  "sha256": "700d90c0d6c88196cfbbda1df1da88d893472338e9f358bd61523a10895ace04",
+  "bytes": 4862190,
+  "licence": "BSD-3-Clause, Copyright (c) 2021, Xintao Wang (Real-ESRGAN)"
+}

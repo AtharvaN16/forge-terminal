@@ -13,3 +13,6 @@ coverage/
 
 # agent worktrees (harness-created, never committed)
 .claude/worktrees/
+
+# boost payload build cache (downloads, converted model)
+extensions/boost/.cache/

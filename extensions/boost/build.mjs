@@ -1,0 +1,248 @@
+#!/usr/bin/env node
+/**
+ * Builds the boost payload directory.
+ *
+ *   node extensions/boost/build.mjs --arch arm64|x64 --out <dir> [--pth <file>] [--runner-only]
+ *
+ * <dir> receives:
+ *   runner.mjs                  runner.ts bundled; onnxruntime-node's JS and onnxruntime-common inlined
+ *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/darwin/<arch>/, loaded from beside runner.mjs
+ *   libonnxruntime.*.dylib      the binding links it via @loader_path
+ *   realesr-general-x4v3.onnx   upstream .pth (pinned by sha256) converted by convert.py, output pinned too
+ *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT) and ONNX Runtime's third-party notices
+ *
+ * Downloads are cached in extensions/boost/.cache/ and verified by sha256 every
+ * time. --pth uses a local copy of the upstream checkpoint (still verified).
+ * --runner-only writes just runner.mjs and the native files (no network), for tests.
+ * manifest.json is not written here — scripts/package-extension.mjs does that.
+ */
+
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { build } from 'esbuild'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const cacheDir = join(here, '.cache')
+const model = JSON.parse(readFileSync(join(here, 'model.json'), 'utf8'))
+const require = createRequire(import.meta.url)
+
+const ORT_VERSION = '1.23.2'
+const ORT_NOTICES = {
+  url: `https://raw.githubusercontent.com/microsoft/onnxruntime/v${ORT_VERSION}/ThirdPartyNotices.txt`,
+  sha256: 'e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc',
+}
+
+function parseArgs(argv) {
+  const out = { runnerOnly: false }
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === '--runner-only') out.runnerOnly = true
+    else if (a === '--arch' || a === '--out' || a === '--pth') out[a.slice(2)] = argv[++i]
+    else throw new Error(`unknown argument: ${a}`)
+  }
+  if (out.arch !== 'arm64' && out.arch !== 'x64') throw new Error('--arch must be arm64 or x64')
+  if (!out.out) throw new Error('--out <dir> is required')
+  return out
+}
+
+const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
+
+/** Returns the cached file at `name`, downloading it first if needed. Always verified. */
+async function pinned(name, url, expected) {
+  mkdirSync(cacheDir, { recursive: true })
+  const path = join(cacheDir, name)
+  if (!existsSync(path)) {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`download failed: ${url} → HTTP ${res.status}`)
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (sha256(buf) !== expected) throw new Error(`sha256 mismatch for ${url}`)
+    writeFileSync(`${path}.part`, buf)
+    renameSync(`${path}.part`, path)
+  }
+  if (sha256(readFileSync(path)) !== expected) throw new Error(`sha256 mismatch for cached ${path}`)
+  return path
+}
+
+/** The ONNX model: converted from the pinned upstream .pth, output checked against model.json. */
+async function modelFile(localPth) {
+  mkdirSync(cacheDir, { recursive: true })
+  const onnx = join(cacheDir, model.file)
+  if (existsSync(onnx) && sha256(readFileSync(onnx)) === model.sha256) return onnx
+  let pth
+  if (localPth) {
+    if (sha256(readFileSync(localPth)) !== model.source.sha256)
+      throw new Error(`--pth ${localPth} does not match model.json source sha256`)
+    pth = localPth
+  } else {
+    pth = await pinned('realesr-general-x4v3.pth', model.source.url, model.source.sha256)
+  }
+  const [script, ...flags] = model.convert
+  execFileSync('python3', ['-I', join(here, script), pth, `${onnx}.part`, ...flags], {
+    stdio: ['ignore', 'ignore', 'inherit'],
+  })
+  if (sha256(readFileSync(`${onnx}.part`)) !== model.sha256)
+    throw new Error(
+      'converted model does not match model.json sha256 — convert.py or the checkpoint changed',
+    )
+  renameSync(`${onnx}.part`, onnx)
+  return onnx
+}
+
+/** onnxruntime-node loads its binding from ../bin/napi-v6/<platform>/<arch>/; point it beside runner.mjs instead. */
+const bindingBesideRunner = {
+  name: 'ort-binding-beside-runner',
+  setup(b) {
+    b.onResolve({ filter: /onnxruntime_binding\.node$/ }, (args) => ({
+      path: args.path,
+      external: true,
+    }))
+    b.onLoad({ filter: /onnxruntime-node[\\/]dist[\\/]binding\.js$/ }, (args) => {
+      const src = readFileSync(args.path, 'utf8')
+      const replaced = src.replace(
+        /require\(`\.\.\/bin\/napi-v6\/[^`]*onnxruntime_binding\.node`\)/,
+        "require('./onnxruntime_binding.node')",
+      )
+      if (replaced === src)
+        throw new Error('onnxruntime-node binding.js changed shape; update build.mjs')
+      return { contents: replaced, loader: 'js' }
+    })
+  },
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2))
+  const out = resolve(args.out)
+  mkdirSync(out, { recursive: true })
+
+  const ortPkg = require('onnxruntime-node/package.json')
+  if (ortPkg.version !== ORT_VERSION)
+    throw new Error(`onnxruntime-node ${ortPkg.version} installed; build expects ${ORT_VERSION}`)
+
+  await build({
+    entryPoints: [join(here, 'runner.ts')],
+    outfile: join(out, 'runner.mjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node20',
+    legalComments: 'none',
+    banner: {
+      js: "import { createRequire as __forgeRequire } from 'node:module'; const require = __forgeRequire(import.meta.url);",
+    },
+    plugins: [bindingBesideRunner],
+    logLevel: 'warning',
+  })
+
+  const nativeDir = join(
+    dirname(require.resolve('onnxruntime-node/package.json')),
+    'bin',
+    'napi-v6',
+    'darwin',
+    args.arch,
+  )
+  if (!existsSync(nativeDir))
+    throw new Error(`onnxruntime-node ${ORT_VERSION} has no darwin/${args.arch} binaries`)
+  for (const f of readdirSync(nativeDir)) copyFileSync(join(nativeDir, f), join(out, f))
+
+  if (args.runnerOnly) return void console.log(out)
+  copyFileSync(await modelFile(args.pth), join(out, model.file))
+
+  const ortNotices = readFileSync(
+    await pinned(`ort-${ORT_VERSION}-ThirdPartyNotices.txt`, ORT_NOTICES.url, ORT_NOTICES.sha256),
+    'utf8',
+  )
+  writeFileSync(join(out, 'NOTICES.txt'), notices(ortNotices))
+  console.log(out)
+}
+
+function notices(ortThirdParty) {
+  return `Forge "Boost resolution" extension — third-party notices
+
+The model file realesr-general-x4v3.onnx is converted (format only, weights
+unchanged) from realesr-general-x4v3.pth of Real-ESRGAN,
+https://github.com/xinntao/Real-ESRGAN, released under the licence below.
+
+----------------------------------------------------------------------------
+Real-ESRGAN
+----------------------------------------------------------------------------
+
+BSD 3-Clause License
+
+Copyright (c) 2021, Xintao Wang
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------
+ONNX Runtime ${ORT_VERSION} (onnxruntime-node, onnxruntime-common, libonnxruntime)
+https://github.com/microsoft/onnxruntime
+----------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+----------------------------------------------------------------------------
+ONNX Runtime third-party notices (ThirdPartyNotices.txt, v${ORT_VERSION})
+----------------------------------------------------------------------------
+
+${ortThirdParty}`
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err)
+  process.exit(1)
+})
