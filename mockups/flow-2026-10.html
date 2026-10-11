@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — today vs proposed, step by step</title>
+<style>
+  :root {
+    --page: #0f1013; --ink: #e2e4ea; --muted: #9196a3; --rule: #25272e; --card: #15171b;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 var(--sans); }
+  main { max-width: 1240px; margin: 0 auto; padding: 48px 24px 120px; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.015em; }
+  .lede { color: var(--muted); font-size: 17px; max-width: 760px; margin: 0; }
+  h2 { font-size: 26px; margin: 80px 0 6px; letter-spacing: -0.01em; }
+  h2 small { display: block; font-size: 15px; font-weight: 400; color: var(--muted); margin-top: 6px; letter-spacing: 0; }
+  .legend { display: flex; gap: 22px; margin: 26px 0 0; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
+  .legend b { color: var(--ink); }
+  .pill { display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; padding: 5px 8px; border-radius: 6px; }
+  .pill.today { background: #23252d; color: #aeb3c0; }
+  .pill.new { background: #2c1b10; color: #ff9a55; }
+
+  /* A step = a heading + two columns */
+  .step { margin-top: 40px; border-top: 1px solid var(--rule); padding-top: 22px; }
+  .step-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+  .step-num { font: 700 13px var(--mono); color: #ff9a55; min-width: 54px; }
+  .step-title { font-size: 19px; font-weight: 620; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cols > div { min-width: 0; }
+  @media (max-width: 1050px) { .cols { grid-template-columns: 1fr; } }
+  .col-label { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 14px; color: var(--muted); }
+  .keys { margin-left: auto; font: 12.5px var(--mono); color: var(--muted); }
+  .keys b { color: var(--ink); }
+  .note { font-size: 14.5px; color: var(--muted); margin: 10px 2px 0; }
+  .note b { color: var(--ink); font-weight: 600; }
+  .skip { border: 1px dashed #34363f; border-radius: 12px; min-height: 120px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 15px; padding: 20px; }
+  .skip b { color: #ff9a55; display: block; font-size: 16px; margin-bottom: 4px; }
+
+  /* Terminal window */
+  .term { background: var(--bg); border: 1px solid #272a33; border-radius: 10px; overflow: hidden; }
+  .term .bar { height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 12px; background: #121318; border-bottom: 1px solid #20232b; }
+  .term .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3d47; }
+  .term .bar i:nth-child(1) { background: #ff5f57; } .term .bar i:nth-child(2) { background: #febc2e; } .term .bar i:nth-child(3) { background: #28c840; }
+  .term pre { margin: 0; padding: 14px 16px 16px; font: 11.8px/1.32 var(--mono); color: var(--fg); white-space: pre; overflow-x: auto; }
+  .term.light .bar { background: #ebe9e4; border-color: #dedbd3; }
+
+  /* Today = the shell's current DARK palette (src/shell/theme.ts) */
+  .today { --bg: #1e1e1e; --fg: #e4e8f0; }
+  .today .d { color: #8b93a6; } .today .a { color: #e5a23c; } .today .t { color: #63c1d8; }
+  .today .l { color: #a68ce0; } .today .m { color: #55c7d9; } .today .o { color: #6fcf7f; }
+  .today .r { color: #e8796d; } .today .w { color: #e5c07b; } .today .x { color: #5f6879; }
+  .today .an { color: #8b93a6; } .today .sp { color: #e5a23c; }
+
+  /* Proposed = one orange accent, everything else grey */
+  .new { --bg: #16171c; --fg: #e7e9ee; }
+  .new .d { color: #8d93a3; } .new .x { color: #4b5162; } .new .e { color: #ff8a3d; }
+  .new .o { color: #7fd49a; } .new .r { color: #ff6f6f; } .new .w { color: #e9c46a; }
+  .new .c { color: #e7e9ee; text-decoration: underline; text-decoration-color: #4b5162; text-underline-offset: 3px; }
+  .new .c.on { color: #ff8a3d; text-decoration-color: #ff8a3d; }
+  .new .c.bad { color: #ff6f6f; text-decoration-color: #ff6f6f; }
+  .new .sel { background: #262932; }
+  .new.light { --bg: #fbfaf7; --fg: #1d2026; border-color: #dcd9d1; }
+  .new.light .d { color: #6a6f7b; } .new.light .x { color: #b9bcc4; } .new.light .e { color: #c2500e; }
+  .new.light .o { color: #1f7a3c; }
+  .b { font-weight: 700; }
+  .shimmer { background: linear-gradient(90deg, #8d93a3 0 35%, #ff8a3d 45%, #ffd2a1 50%, #ff8a3d 55%, #8d93a3 65% 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 2.2s linear infinite; }
+  @keyframes sh { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .row3 > div { min-width: 0; }
+  @media (max-width: 1050px) { .row3 { grid-template-columns: 1fr; } }
+  .row3 .term pre { font-size: 10.6px; }
+
+  .summary { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 1050px) { .summary { grid-template-columns: 1fr; } }
+  .summary .card { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 16px 18px; }
+  .summary .big { font-size: 30px; font-weight: 700; }
+  .summary .card p { margin: 2px 0 0; color: var(--muted); font-size: 14.5px; }
+
+  /* Q&A */
+  .qa { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 24px 26px; margin-top: 22px; }
+  .qa h3 { margin: 0 0 8px; font-size: 20px; }
+  .qa p, .qa li { color: #c5c9d3; max-width: 900px; }
+  .qa .answer { font-size: 18px; color: var(--ink); font-weight: 600; margin: 0 0 12px; }
+  .qa ul { padding-left: 20px; }
+  .qa li { margin-bottom: 6px; }
+  table { border-collapse: collapse; font-size: 14.5px; margin: 12px 0 4px; }
+  th, td { text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; }
+  td.n { font-family: var(--mono); font-size: 13.5px; }
+  .logos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 16px; }
+  .logos > div { min-width: 0; }
+  @media (max-width: 1050px) { .logos { grid-template-columns: 1fr; } }
+  .logos h4 { margin: 0 0 8px; font-size: 15px; }
+  .logos h4 span { color: #ff9a55; font-weight: 600; font-size: 13px; margin-left: 6px; }
+  .logos .term pre { font-size: 11.5px; }
+  .logos .note { min-height: 44px; }
+  code { font: 0.9em var(--mono); background: #1d1f25; padding: 1px 5px; border-radius: 4px; }
+  footer { margin-top: 90px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Converting a file: today vs the proposal</h1>
+<p class="lede">Each step shows what you see in the app today on the left and what you would see with the proposal on the right. The "today" screens are taken from the real app. You can read it top to bottom without any other context.</p>
+<div class="legend">
+  <span><span class="pill today">Today</span> the app as it is now (captured from <code>dist/index.js</code>)</span>
+  <span><span class="pill new">Proposed</span> the redesign</span>
+  <span><b>↵</b> means pressing Enter</span>
+</div>
+
+<!-- ============================================================ FLOW 1 -->
+<h2>1 · Convert one image, keeping the usual choices
+  <small>The most common job: drop <code>test.png</code> (122 KB) and turn it into a JPEG on the Desktop. The sizes in this flow are real: the app produced 74.6 KB.</small></h2>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 1</span><span class="step-title">You open the app</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="an">     ║</span>
+<span class="sp">   ' ║ '</span>
+<span class="sp"> *   ║   *</span>   ███████╗ ██████╗ ██████╗  ██████╗ ███████╗
+<span class="an">   █████</span>     ██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝
+<span class="sp"> ▄▄▄▄▄▄▄▄▄</span>   █████╗  ██║   ██║██████╔╝██║  ███╗█████╗
+<span class="an">▐█████████▌</span>  ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝
+<span class="an"> ▀▀▀▐█▌▀▀▀</span>   ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗
+<span class="an"> ▄▄██████▄</span>   ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+
+ Convert 0.1.0  <span class="d">· image                 /Users/you/Desktop</span>
+
+ <span class="d">current mode:</span> <span class="m">convert</span>  <span class="d">use / to change mode</span>
+
+
+ <span class="a">›</span>  <span class="d">drop a file or type a path</span>
+
+<span class="x">────────────────────────────────────────────────────────────────────────</span>
+<span class="a">↵</span> <span class="d">send │</span> <span class="a">/</span> <span class="d">commands │</span> <span class="a">esc</span> <span class="d">clear │</span> <span class="a">ctrl-n</span> <span class="d">new │</span> <span class="a">ctrl-c</span> <span class="d">close app</span></pre>
+      </div>
+      <p class="note">The big logo takes 9 lines and stays at the top. Below it are the version, a "mode" line and the input.</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="d"> ▄▄▄▄▄▄▄▄▄</span>   <span class="b">Convert</span> <span class="d">0.2</span>
+<span class="d">▐█████████▌</span>  <span class="d">images · HEIC · PDF · Word</span>
+<span class="d"> ▀▀▀▐█▌▀▀▀</span>   <span class="d">saves to</span> ~/Desktop
+<span class="d"> ▄▄██████▄</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="d">Drop a file here, or type its path</span>                                 <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────────────╯</span>
+  <span class="e">/</span> <span class="d">commands</span>    <span class="e">ctrl-c</span> <span class="d">quit</span></pre>
+      </div>
+      <p class="note">The same anvil, without the hammer and the big FORGE letters: 4 lines instead of 9. Where files are saved is stated plainly. There is no "mode" line, because what to do is chosen per file (step 2).</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 2</span><span class="step-title">You drop <code>test.png</code> onto the window</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="x">╭─</span> <span class="t">PNG</span> <span class="x">────────────────────────────────────────────╮</span>
+<span class="x">│</span> test.png                                         <span class="x">│</span>
+<span class="x">│</span> <span class="d">2756×774 · 122 KB · transparent</span>                  <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────╯</span>
+
+<span class="l">Convert PNG to</span>
+<span class="a">❯ JPEG</span>  <span class="d">likely smaller</span>
+  WebP  <span class="d">likely smaller</span>
+  AVIF  <span class="d">likely smaller</span>
+  GIF   <span class="d">animation</span>
+  TIFF  <span class="d">archival</span>
+  PDF   <span class="d">document</span>
+<span class="x">────────────────────────────────────────────────────────────────────────</span>
+<span class="a">↑↓</span> <span class="d">choose  │</span>  <span class="a">↵</span> <span class="d">confirm  │</span>  <span class="a">esc</span> <span class="d">back</span></pre>
+      </div>
+      <p class="note">The first of four questions: <b>which format?</b></p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">●</span> <span class="b">test.png</span>   <span class="d">PNG · 2756×774 · 122 KB · transparent</span>
+
+  Convert to <span class="c">JPEG</span><span class="x">▾</span>  quality <span class="c">80</span><span class="x">▾</span>  save to <span class="c">Desktop</span><span class="x">▾</span>  name <span class="c">test.jpg</span><span class="x">▾</span>
+  <span class="e">◐</span> <span class="shimmer">checking the size…</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span>                                                                    <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert</span>    <span class="e">tab</span> <span class="d">change something</span>    <span class="e">esc</span> <span class="d">remove file</span></pre>
+      </div>
+      <p class="note">All four answers appear at once, <b>already filled in</b> with the same defaults today's app would pick. The app starts making the file in the background so it can show the real size (see the size question at the end).</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 3</span><span class="step-title">Choosing the format</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span><span class="keys">Enter presses so far: <b>1</b></span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="x">╭─</span> <span class="t">PNG</span> <span class="x">────────────────────────────────────────────╮</span>
+<span class="x">│</span> test.png                                         <span class="x">│</span>
+<span class="x">│</span> <span class="d">2756×774 · 122 KB · transparent</span>                  <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────╯</span>
+
+<span class="l">Quality</span>
+<span class="m">━━━━━━━━━━━━━━━</span><span class="a">●</span><span class="x">━━━━</span> 80
+<span class="x">────────────────────────────────────────────────────────────────────────</span>
+<span class="a">←→</span> <span class="d">adjust  │</span>  <span class="a">↵</span> <span class="d">confirm  │</span>  <span class="a">esc</span> <span class="d">back</span></pre>
+      </div>
+      <p class="note">You press ↵ on JPEG. The format list disappears and the next question appears: <b>what quality?</b></p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span><span class="keys">Enter presses so far: <b>0</b></span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">●</span> <span class="b">test.png</span>   <span class="d">PNG · 2756×774 · 122 KB · transparent</span>
+
+  Convert to <span class="c">JPEG</span><span class="x">▾</span>  quality <span class="c">80</span><span class="x">▾</span>  save to <span class="c">Desktop</span><span class="x">▾</span>  name <span class="c">test.jpg</span><span class="x">▾</span>
+  <span class="d">→</span> <span class="b">74.6 KB</span><span class="d">,</span> <span class="o">39% smaller</span><span class="d"> · see-through areas will become white</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span>                                                                    <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert</span>    <span class="e">tab</span> <span class="d">change something</span>    <span class="e">esc</span> <span class="d">remove file</span></pre>
+      </div>
+      <p class="note">You do nothing. A moment later the <b>real size</b> appears: 74.6 KB. It also warns that JPEG can't keep transparency. You can see the whole plan before saying yes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 4</span><span class="step-title">Choosing where to save</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span><span class="keys">Enter presses so far: <b>2</b></span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="x">╭─</span> <span class="t">PNG</span> <span class="x">────────────────────────────────────────────╮</span>
+<span class="x">│</span> test.png                                         <span class="x">│</span>
+<span class="x">│</span> <span class="d">2756×774 · 122 KB · transparent</span>                  <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────╯</span>
+
+<span class="l">Save to</span>
+<span class="a">❯ Desktop</span>        <span class="d">/Users/you/Desktop</span>   <span class="d">[default]</span>
+  Same folder    <span class="d">/Users/you/Pictures</span>
+  Downloads      <span class="d">/Users/you/Downloads</span>
+  New subfolder  <span class="d">/Users/you/Pictures/converted</span>
+  Type a path…
+
+  <span class="d">→ /Users/you/Desktop/test.jpg</span>
+<span class="x">────────────────────────────────────────────────────────────────────────</span>
+<span class="a">↑↓</span> <span class="d">choose  │</span>  <span class="a">↵</span> <span class="d">next  │</span>  <span class="a">d</span> <span class="d">make default</span></pre>
+      </div>
+      <p class="note">You press ↵ to accept quality 80. The third question: <b>which folder?</b></p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="skip"><div><b>No screen for this</b>The folder was already shown and filled in at step 2.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 5</span><span class="step-title">Naming the file</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span><span class="keys">Enter presses so far: <b>3</b></span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="x">╭─</span> <span class="t">PNG</span> <span class="x">────────────────────────────────────────────╮</span>
+<span class="x">│</span> test.png                                         <span class="x">│</span>
+<span class="x">│</span> <span class="d">2756×774 · 122 KB · transparent</span>                  <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────╯</span>
+
+<span class="l">Name the file</span>
+
+
+ <span class="a">›</span> test
+
+
+  <span class="d">→ /Users/you/Desktop/test.jpg</span>
+<span class="x">────────────────────────────────────────────────────────────────────────</span>
+<span class="a">↵</span> <span class="d">save  │</span>  <span class="a">esc</span> <span class="d">clear / back</span></pre>
+      </div>
+      <p class="note">You press ↵ on Desktop. The last question: <b>what name?</b></p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="skip"><div><b>No screen for this</b>The name was already shown and filled in at step 2.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 6</span><span class="step-title">Done</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span><span class="keys">Enter presses in total: <b>4</b></span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="o">✓ done</span>
+
+<span class="x">╭─</span> <span class="t">PNG</span> <span class="x">──────────────────────╮     ╭─</span> <span class="t">JPEG</span> <span class="x">─────────────────────╮</span>
+<span class="x">│</span> test.png                   <span class="x">│</span> <span class="d">──→</span> <span class="x">│</span> test.jpg                   <span class="x">│</span>
+<span class="x">╰────────────────────────────╯     ╰────────────────────────────╯</span>
+
+  <span class="d">122 KB → 74.6 KB ·</span> <span class="o">39.1% smaller</span>
+
+<span class="x">────────────────────────────────────────────────────────────────────────</span>
+<span class="a">↵</span> <span class="d">convert another │</span> <span class="a">o</span> <span class="d">open │</span> <span class="a">s</span> <span class="d">show in finder │</span> <span class="a">ctrl-c</span> <span class="d">close</span></pre>
+      </div>
+      <p class="note">You press ↵ on the name. It converts and shows the result, but <b>not which folder the file went to</b>.</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span><span class="keys">Enter presses in total: <b>1</b></span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="o">✓</span> test.png <span class="d">→</span> <span class="b">test.jpg</span>                      <span class="d">122 KB →</span> 74.6 KB  <span class="o">39% smaller</span>
+  <span class="d">saved to</span> ~/Desktop/test.jpg
+  <span class="e">o</span> <span class="d">open</span>   <span class="e">s</span> <span class="d">show in Finder</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="d">Drop another file</span>                                                  <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────────────╯</span></pre>
+      </div>
+      <p class="note">You press ↵ once, at step 3. It's saved <b>instantly</b>, because the file was already made while you looked. The result says where the file is, then the input is ready for the next one. Each result stays on screen, so after a few files you have a list of everything you've done.</p>
+    </div>
+  </div>
+</div>
+
+<div class="summary">
+  <div class="card"><span class="pill today">Today</span><div class="big">5 screens · 4 × ↵</div><p>One question at a time. You never see the whole plan, and the result doesn't say where the file went.</p></div>
+  <div class="card"><span class="pill new">Proposed</span><div class="big">1 screen · 1 × ↵</div><p>Everything filled in at once, with the real size shown before you commit, and the folder shown afterwards.</p></div>
+</div>
+
+<!-- ============================================================ FLOW 1b -->
+<h2>2 · Same file, but you want WebP instead
+  <small>Proposed only. This is how you change a filled-in answer. Today you would pick WebP at step 2 and carry on as before.</small></h2>
+
+<div class="step">
+  <div class="row3">
+    <div>
+      <div class="col-label"><span class="pill new">a</span> Press <b>tab</b>: the format list opens</div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">●</span> <span class="b">test.png</span>   <span class="d">PNG · 2756×774 · 122 KB</span>
+
+  Convert to <span class="c on">JPEG</span><span class="e">▴</span>  quality <span class="c">80</span><span class="x">▾</span>  save to <span class="c">Desktop</span><span class="x">▾</span>
+             <span class="x">╭──────────────────────────╮</span>
+             <span class="x">│</span><span class="sel"> <span class="e">❯ JPEG</span>   74.6 KB         </span><span class="x">│</span>
+             <span class="x">│</span>   WebP   <span class="d">about 39 KB</span>     <span class="x">│</span>
+             <span class="x">│</span>   AVIF   <span class="d">about 17 KB</span>     <span class="x">│</span>
+             <span class="x">│</span>   GIF    <span class="d">about 45 KB</span>     <span class="x">│</span>
+             <span class="x">│</span>   TIFF   <span class="d">about 119 KB</span>    <span class="x">│</span>
+             <span class="x">│</span>   PDF    <span class="d">a document</span>      <span class="x">│</span>
+             <span class="x">╰──────────────────────────╯</span>
+  <span class="e">↑↓</span> <span class="d">choose</span>   <span class="e">↵</span> <span class="d">pick</span>   <span class="e">esc</span> <span class="d">close</span></pre>
+      </div>
+      <p class="note">The highlighted word opens as a small list right where it is. The other formats show an <b>estimate</b> labelled "about" (explained at the end).</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">b</span> Press <b>↓</b> then <b>↵</b>: WebP is picked</div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">●</span> <span class="b">test.png</span>   <span class="d">PNG · 2756×774 · 122 KB</span>
+
+  Convert to <span class="c on">WebP</span><span class="e">▾</span>  quality <span class="c">80</span><span class="x">▾</span>  save to <span class="c">Desktop</span><span class="x">▾</span>
+  name <span class="c">test.webp</span><span class="x">▾</span>
+  <span class="d">→</span> <span class="b">39.2 KB</span><span class="d">,</span> <span class="o">68% smaller</span><span class="d"> · keeps transparency</span>
+
+<span class="x">╭─────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span>                                               <span class="x">│</span>
+<span class="x">╰─────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert</span>   <span class="e">tab</span> <span class="d">next</span>   <span class="e">esc</span> <span class="d">remove file</span></pre>
+      </div>
+      <p class="note">The list closes and the sentence updates. The name follows the new format, and within a fraction of a second the "about" becomes the exact size.</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">c</span> Press <b>↵</b>: saved</div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="o">✓</span> test.png <span class="d">→</span> <span class="b">test.webp</span>
+  <span class="d">122 KB →</span> 39.2 KB  <span class="o">68% smaller</span>
+  <span class="d">saved to</span> ~/Desktop/test.webp
+  <span class="e">o</span> <span class="d">open</span>   <span class="e">s</span> <span class="d">show in Finder</span>
+
+<span class="x">╭─────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="d">Drop another file</span>                             <span class="x">│</span>
+<span class="x">╰─────────────────────────────────────────────────╯</span></pre>
+      </div>
+      <p class="note">Total: <b>tab, ↓, ↵, ↵</b>. Changing the quality or the folder works the same way: tab to it, change it, carry on.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ FLOW 2 -->
+<h2>3 · Several files at once
+  <small>Dropping three files together. Today the app accepts them, then refuses. File sizes in the proposed column are illustrative.</small></h2>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 1</span><span class="step-title">You drop three files</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="x">╭─</span> <span class="t">MIXED ×3</span> <span class="x">───────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="t">JPEG</span> photo.jpg                          1200×800 <span class="x">│</span>
+<span class="x">│</span> <span class="t">PNG</span>  big.png                           3000×2000 <span class="x">│</span>
+<span class="x">│</span> <span class="t">PNG</span>  test.png                           2756×774 <span class="x">│</span>
+<span class="x">│</span>                                                  <span class="x">│</span>
+<span class="x">│</span> <span class="d">3 files · 2.1 MB</span>                                 <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────╯</span></pre>
+      </div>
+      <p class="note">It looks like it worked.</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">●</span> <span class="b">3 files</span>   <span class="d">1 JPEG · 2 PNG · 2.1 MB</span>
+
+  Convert to <span class="c">WebP</span><span class="x">▾</span>  quality <span class="c">80</span><span class="x">▾</span>  save to <span class="c">Desktop/converted</span><span class="x">▾</span>
+  <span class="d">→ names stay the same: photo.webp, big.webp, test.webp</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span>                                                                    <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert all 3</span>    <span class="e">tab</span> <span class="d">change something</span>    <span class="e">esc</span> <span class="d">remove files</span></pre>
+      </div>
+      <p class="note">The same single sentence, now for three files. It only offers formats that all three can be converted to.</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 2</span><span class="step-title">You press ↵</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="w">⚠</span> Converting several files at once isn't supported yet. Drop a single
+  file, or esc to clear the list.</pre>
+      </div>
+      <p class="note">Refused, but only <b>after</b> the files were accepted. This is audit finding #6.</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre>  <span class="b">Converting 3 files</span>                                       <span class="d">2 of 3 done</span>
+  <span class="o">✓</span> photo.jpg     <span class="d">86 KB →</span>  41 KB    <span class="o">52% smaller</span>
+  <span class="o">✓</span> big.png      <span class="d">1.9 MB →</span> 210 KB    <span class="o">89% smaller</span>
+  <span class="e">◐</span> <span class="shimmer">test.png      working…</span></pre>
+      </div>
+      <p class="note">Each file gets its own line as it finishes. "2 of 3 done" is a real count, never a guessed percentage.</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-head"><span class="step-num">STEP 3</span><span class="step-title">All finished</span></div>
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span></div>
+      <div class="skip"><div><b>Not possible today</b>You would drop and convert each file separately.</div></div>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="o">✓</span> <span class="b">3 files</span> <span class="d">→ WebP</span>                            <span class="d">2.1 MB →</span> 290 KB  <span class="o">86% smaller</span>
+  <span class="d">saved to</span> ~/Desktop/converted/
+  <span class="d">photo.webp · big.webp · test.webp</span>
+  <span class="e">o</span> <span class="d">open folder</span></pre>
+      </div>
+      <p class="note">The list folds into one summary that says where everything went.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ FLOW 3 -->
+<h2>4 · When something goes wrong
+  <small>Saving into a folder you don't have permission to write to.</small></h2>
+
+<div class="step">
+  <div class="cols">
+    <div>
+      <div class="col-label"><span class="pill today">Today</span></div>
+      <div class="term today"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="r">✕ Conversion failed</span>
+
+  test.png could not be converted.
+
+  Run again with --debug for the underlying error.</pre>
+      </div>
+      <p class="note">This doesn't say what went wrong, and it suggests <code>--debug</code>, which doesn't exist inside the app (audit finding #4).</p>
+    </div>
+    <div>
+      <div class="col-label"><span class="pill new">Proposed</span></div>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="r">✕</span> <span class="b">Couldn't save to ~/Locked</span> <span class="d">— you don't have permission to write there.</span>
+  <span class="d">Nothing was saved. test.png is still here, ready to try again.</span>
+
+  Convert to <span class="c">JPEG</span><span class="x">▾</span>  quality <span class="c">80</span><span class="x">▾</span>  save to <span class="c bad">~/Locked</span><span class="r">▾</span>  name <span class="c">test.jpg</span><span class="x">▾</span>
+
+  <span class="e">↵</span> <span class="d">choose another folder</span>    <span class="e">esc</span> <span class="d">remove file</span></pre>
+      </div>
+      <p class="note">It names the real problem, says nothing was lost, and highlights the one answer that needs changing. ↵ opens the folder list.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ QUESTIONS -->
+<h2>Your two questions</h2>
+
+<div class="qa">
+  <h3>Would the smaller logo look nice, and could it break?</h3>
+  <p class="answer">It's very unlikely to break: it uses exactly the same characters as today's logo, just fewer of them.</p>
+  <ul>
+    <li><b>Same characters as today.</b> The 4-line version (A below) is the bottom half of today's logo, unchanged. If those characters displayed badly on someone's Mac, today's logo would already be broken.</li>
+    <li><b>Safer in small windows.</b> Today's logo needs 55 columns, and below that the app hides it entirely. The 4-line version is 11 columns wide, so it fits in any realistic window.</li>
+    <li><b>One known weak spot, shared with today.</b> If someone increases line spacing in their terminal's settings, block characters show thin gaps between rows. That affects today's logo the same way.</li>
+    <li><b>What I didn't check:</b> I compared these in a browser using the same font, not inside Terminal.app. Before building it, the mark should be printed in Terminal.app, iTerm2 and Ghostty to compare. It's a 10-minute check.</li>
+  </ul>
+  <div class="logos">
+    <div>
+      <h4>A · Anvil only, 4 lines <span>recommended</span></h4>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="d"> ▄▄▄▄▄▄▄▄▄</span>   <span class="b">Convert</span> <span class="d">0.2</span>
+<span class="d">▐█████████▌</span>  <span class="d">images · HEIC · PDF · Word</span>
+<span class="d"> ▀▀▀▐█▌▀▀▀</span>   <span class="d">saves to</span> ~/Desktop
+<span class="d"> ▄▄██████▄</span></pre>
+      </div>
+      <p class="note">Recognisably the same brand. The hammer could still strike once on launch if you want to keep the animation.</p>
+    </div>
+    <div>
+      <h4>B · Mini anvil, 2 lines</h4>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">▄▄▄▄▄▄▄</span>  <span class="b">Convert</span> <span class="d">0.2</span>
+<span class="e"> ▀▀█▀▀</span>   <span class="d">saves to</span> ~/Desktop
+
+
+</pre>
+      </div>
+      <p class="note">Smallest, but at this size it reads as a shape more than an anvil.</p>
+    </div>
+    <div>
+      <h4>C · No picture, just the name</h4>
+      <div class="term new"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="e">●</span> <span class="b">Convert</span> <span class="d">0.2 · saves to</span> ~/Desktop
+
+
+
+</pre>
+      </div>
+      <p class="note">Cannot break at all, but loses the personality.</p>
+    </div>
+  </div>
+  <div class="logos" style="margin-top:6px">
+    <div>
+      <h4>A in a light terminal</h4>
+      <div class="term new light"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="d"> ▄▄▄▄▄▄▄▄▄</span>   <span class="b">Convert</span> <span class="d">0.2</span>
+<span class="d">▐█████████▌</span>  <span class="d">images · HEIC · PDF · Word</span>
+<span class="d"> ▀▀▀▐█▌▀▀▀</span>   <span class="d">saves to</span> ~/Desktop
+<span class="d"> ▄▄██████▄</span></pre>
+      </div>
+    </div>
+    <div>
+      <h4>A in a narrow window (40 columns)</h4>
+      <div class="term new" style="max-width:360px"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="d"> ▄▄▄▄▄▄▄▄▄</span>   <span class="b">Convert</span> <span class="d">0.2</span>
+<span class="d">▐█████████▌</span>  <span class="d">images · PDF · Word</span>
+<span class="d"> ▀▀▀▐█▌▀▀▀</span>   ~/Desktop
+<span class="d"> ▄▄██████▄</span></pre>
+      </div>
+    </div>
+    <div>
+      <h4>Today's logo at 40 columns</h4>
+      <div class="term today" style="max-width:360px"><div class="bar"><i></i><i></i><i></i></div>
+<pre> Convert 0.1.0  <span class="d">· image</span>
+
+ <span class="d">(the logo is hidden below 55 columns)</span>
+
+
+</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="qa">
+  <h3>Before converting, can we actually know what the size will be?</h3>
+  <p class="answer">Exactly? Only by doing the conversion. The proposal does exactly that, quietly, as soon as you drop the file.</p>
+  <p>No formula predicts a JPEG or WebP size precisely, because it depends on what's in the picture. So the idea isn't to <i>predict</i> the size. The app <b>makes the file in the background</b> with the filled-in choices, keeps it aside, and shows its real size. If you press ↵ it saves that file, so nothing is converted twice. If you change a choice, it makes the file again. If you leave, the file is thrown away. This fits how the app already writes files: it saves to a temporary file and then moves it into place.</p>
+  <p><b>How long that takes</b>, measured on this Mac with the same image library the app uses:</p>
+  <table>
+    <thead><tr><th>File</th><th>JPEG</th><th>WebP</th><th>AVIF</th></tr></thead>
+    <tbody>
+      <tr><td>test.png (2756×774, 122 KB)</td><td class="n">0.02 s</td><td class="n">0.09 s</td><td class="n">0.4 s</td></tr>
+      <tr><td>12-megapixel photo-sized test images*</td><td class="n">0.05–0.09 s</td><td class="n">0.5–1.2 s</td><td class="n">0.7–3.6 s</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13.5px;color:var(--muted)">* Three generated test images (smooth, detailed and noisy), not real photos. Real iPhone photos should be checked before relying on these numbers.</p>
+  <p>Most of the time the size appears before you've finished reading the line. For AVIF on a big photo it takes a few seconds, and the line shows "checking the size…" until it's ready. It never shows a made-up number.</p>
+  <p><b>The other formats in the list</b> (the "about 39 KB" in section 2) are a different matter. Making the file in every format would be too slow, mostly because of AVIF, so those are estimates. I tested two ways of estimating:</p>
+  <table>
+    <thead><tr><th>Method</th><th>How far off it was</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>Shrink the image, convert it, scale the size up</td><td class="n">46–71% too small</td><td>Too wrong to use</td></tr>
+      <tr><td>Convert 9 small full-detail pieces of the image, scale up</td><td class="n">1–18% off; once 99% on a very small file</td><td>Good enough for "about", in a fraction of the time</td></tr>
+    </tbody>
+  </table>
+  <p><b>A decision for you:</b> show "about" estimates in the list (helpful, sometimes off), or show only the exact size of the format you've picked (always true, less to compare)? I lean towards estimates, always labelled "about", and replaced by the exact number once you pick one. Two limits either way: very large files (say, over 50 MB) would skip the background step and show the size after converting, and for PDF and Word conversions the first version would show sizes afterwards only.</p>
+</div>
+
+<footer>Convert · forge · today vs proposed · 2026-10-11 · Mockup only. Nothing in the app has changed. "Today" screens come from tmux captures of the real app; the window widths are trimmed to 72 columns and home folders shown as <code>/Users/you</code>.</footer>
+</main>
+</body>
+</html>

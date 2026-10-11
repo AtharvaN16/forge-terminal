@@ -1,0 +1,1710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — the rest of the flow</title>
+<link rel="stylesheet" href="vendor/xterm.css" />
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-canvas.js"></script>
+<style>
+  :root { --page:#0d0e11; --ink:#e2e4ea; --muted:#8f94a1; --rule:#23252c; --card:#14161a; --cyan:#55c7d9;
+    --mono:"SF Mono", ui-monospace, Menlo, monospace; --sans:-apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 var(--sans); }
+  main { max-width:1280px; margin:0 auto; padding:52px 24px 120px; }
+  h1 { font-size:34px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); font-size:17px; max-width:840px; margin:0; }
+  .scope { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:22px; max-width:900px; }
+  .scope div { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:10px 14px; font-size:14px; color:var(--muted); }
+  .scope b { color:var(--ink); display:block; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; }
+  nav a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:4px 10px; border-radius:999px; }
+  nav a:hover { color:var(--ink); }
+  section { margin-top:84px; }
+  h2 { font-size:26px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 .n { font:600 14px var(--mono); color:var(--cyan); margin-right:10px; vertical-align:3px; }
+  .sub { color:var(--muted); margin:0 0 22px; max-width:880px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:30px 22px; }
+  .grid > figure { margin:0; min-width:0; }
+  .grid .wide { grid-column:1 / -1; }
+  @media (max-width:1100px) { .grid { grid-template-columns:1fr; } }
+  .vt { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .vt .id { font:700 12px var(--mono); padding:3px 7px; border-radius:6px; background:#12282e; color:var(--cyan); }
+  .vt .id.today { background:#23252d; color:#aeb3c0; }
+  .vt .name { font-weight:620; font-size:16px; }
+  .vt .pick { margin-left:auto; font:600 11px var(--mono); letter-spacing:.08em; color:#6fcf7f; border:1px solid #2c5a37; padding:2px 7px; border-radius:6px; }
+  .idea { font-size:14.5px; color:#c7cbd4; margin:8px 0 0; }
+  .pc { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; font-size:14px; margin-top:6px; }
+  .pc ul { margin:0; padding-left:16px; color:var(--muted); } .pc li { margin-bottom:3px; }
+  .pc h5 { margin:0 0 2px; font:600 11px var(--mono); letter-spacing:.1em; text-transform:uppercase; }
+  .pc .p h5 { color:#6fcf7f; } .pc .c h5 { color:#e8796d; }
+  .rule { background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--cyan); border-radius:0 10px 10px 0; padding:12px 16px; margin:0 0 26px; max-width:900px; font-size:15px; color:#c7cbd4; }
+  .rule b { color:var(--ink); }
+  .term { background:#1e1e1e; border:1px solid #2c2f37; border-radius:10px; overflow:hidden; box-shadow:0 24px 60px -30px rgba(0,0,0,.8); }
+  .term .bar { height:26px; display:flex; align-items:center; gap:7px; padding:0 12px; background:#161619; border-bottom:1px solid #26282e; }
+  .term .bar i { width:10px; height:10px; border-radius:50%; }
+  .term .bar i:nth-child(1){background:#ff5f57} .term .bar i:nth-child(2){background:#febc2e} .term .bar i:nth-child(3){background:#28c840}
+  .term .bar em { flex:1; text-align:center; font:normal 11px var(--mono); color:#666b78; margin-right:46px; }
+  .term pre { margin:0; padding:12px 14px 14px; font:10.4px/1.17 var(--mono); color:#e4e8f0; white-space:pre; overflow-x:auto; }
+  /* A terminal row is solid; a browser leaves gaps between the backgrounds of
+     consecutive lines. Inline-block spans fill the whole line box, as a cell does. */
+  .term pre span[style*="background"] { display:inline-block; }
+  .bob { display:inline-block; animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform:translateY(-1px) } 50% { transform:translateY(2px) } }
+  .caret { animation:blink 1.05s steps(1) infinite; } @keyframes blink { 50% { opacity:0 } }
+  details.older { margin-top:56px; border-top:1px solid var(--rule); padding-top:18px; }
+  details.older summary { cursor:pointer; color:var(--muted); font:14px var(--mono); }
+  /* Sparks fade their colour into the fill rather than moving, so the cell's
+     own background never shifts: that is all a terminal could do too. */
+  .spark { animation:spark 1.8s ease-out infinite; }
+  .spark:nth-of-type(2n) { animation-delay:.6s } .spark:nth-of-type(3n) { animation-delay:1.1s }
+  @keyframes spark { 0%, 100% { color:#252c3a } }
+  .off { color:transparent !important; }
+  .xt { padding:10px 12px 12px; background:#1e1e1e; }
+  .xt .xterm-viewport { overflow:hidden !important; background:#1e1e1e !important; }
+  .vt .after { margin-left:auto; font:12px var(--mono); color:var(--muted); }
+  .stack .term + .term { margin-top:10px; }
+  .sh { background:linear-gradient(90deg,#8b93a6 0 35%,#55c7d9 45%,#d8f6fb 50%,#55c7d9 55%,#8b93a6 65% 100%); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent !important; animation:sh 2s linear infinite; }
+  @keyframes sh { from { background-position:100% 0 } to { background-position:0 0 } }
+  .sweep { background-image:linear-gradient(90deg, transparent 0 40%, rgba(85,199,217,.28) 50%, transparent 60% 100%) !important; background-size:300% 100% !important; animation:sh 2.4s linear infinite; }
+  .tabs { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:6px; margin:26px -24px 0; padding:12px 24px; background:rgba(13,14,17,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--rule); }
+  .tabs a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:6px 12px; border-radius:8px; }
+  .tabs a.on { color:#0c1d22; background:var(--cyan); border-color:var(--cyan); font-weight:700; }
+  .tabs a.later { opacity:.65; }
+  .tabs .lbl { font:600 11px var(--mono); letter-spacing:.08em; color:var(--muted); align-self:center; margin:0 4px 0 10px; }
+  section.tab { display:none; margin-top:40px; } section.tab.on { display:block; }
+  .state { font:600 11px var(--mono); letter-spacing:.06em; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; }
+  .state:first-child { margin-top:0; }
+  footer { margin-top:90px; color:var(--muted); font-size:13px; border-top:1px solid var(--rule); padding-top:16px; }
+  code { font:.9em var(--mono); background:#1c1e24; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<main>
+<h1>The rest of the flow</h1>
+<p class="lede">One part of the flow per tab. The tabs under <b>Now</b> are the ones being decided: the home screen in eight directions, and the drop zone on its own. The rest are kept for later. Every frame is drawn at real terminal size.</p>
+<div class="scope">
+  <div><b>Elsewhere (another session)</b>The format option picker and the save-to screen.</div>
+  <div><b>This page</b>Key hints · the home screen · the drop zone · the <code>/</code> command list · the working state · naming the file · errors.</div>
+</div>
+<div class="tabs" id="tabs">
+  <span class="lbl">NOW</span>
+  <a href="#keys">1 · Key hints ✓</a><a href="#home">2 · Home</a><a href="#drop">3 · Drop zone</a>
+  <span class="lbl">LATER</span>
+  <a class="later" href="#palette">4 · Commands</a><a class="later" href="#working">5 · Working</a><a class="later" href="#name">6 · Naming</a><a class="later" href="#errors">7 · Errors</a>
+</div>
+
+<!-- ====================================================== KEYS -->
+<section class="tab" id="keys">
+  <h2><span class="n">01</span>Key hints: decided</h2>
+  <p class="sub">You chose F1. It's shown here on the three screens with different main keys, as the reference for building it.</p>
+  <div class="rule"><b>The rule that comes with it.</b> <b>Main</b> keys are what this screen is for, drawn as caps two spaces apart. The <b>footnote</b> is everything that's always available (<code>esc</code>, <code>ctrl-n new</code>, <code>ctrl-c quit</code>), drawn as dim text at the right edge. When there isn't room, the footnote drops items from its right end; the main keys never shrink, and the row never wraps.</div>
+  <div class="grid" id="keys-grid"></div>
+</section>
+
+<section class="tab" id="home">
+  <h2><span class="n">02</span>Home, in eight directions</h2>
+  <p class="sub">The whole first screen, redrawn eight ways. Each one is a complete visual language on its own: logo, mode, where files go, the drop zone and the keys all follow it. No mixing with today's screen. The drop zone is explored separately in the next tab, so judge these on the overall feel.</p>
+  <div class="grid" id="home-grid"></div>
+</section>
+
+<section class="tab" id="drop">
+  <h2><span class="n">03</span>The drop zone, on its own</h2>
+  <p class="sub">Only the drop zone, out of any screen, so the idea is the only thing you're looking at. Each is shown empty and while typing a path. Whichever you like can sit inside whichever home direction you like.</p>
+  <div class="rule"><b>Real terminal frames.</b> Every frame is ANSI written into xterm.js at 80 columns, drawn as a terminal draws it. The typing frames show <b>path completion</b> (Tab finishes a folder name), which is new and optional.</div>
+  <div class="grid" id="drop-grid"></div>
+</section>
+
+<section class="tab" id="palette">
+  <h2><span class="n">04</span>The <code>/</code> command list</h2>
+  <p class="sub">What appears when you type <code>/</code>. Today it's a plain list of five commands above the prompt.</p>
+  <div class="grid" id="palette-grid"></div>
+</section>
+
+<!-- ====================================================== WORKING -->
+<section class="tab" id="working">
+  <h2><span class="n">05</span>Working</h2>
+  <p class="sub">The moment between pressing ↵ and the receipt. For a big photo or an AVIF this lasts several seconds. Today it's one dim word. A single file has no percentage (invariant 7), so every option shows activity, not progress. The animations below are live.</p>
+  <div class="grid" id="working-grid"></div>
+</section>
+
+<!-- ====================================================== NAME -->
+<section class="tab" id="name">
+  <h2><span class="n">06</span>Naming the file</h2>
+  <p class="sub">Today it's an empty filled box with the name in its middle row and the full path under it.</p>
+  <div class="grid" id="name-grid"></div>
+</section>
+
+<!-- ====================================================== ERRORS -->
+<section class="tab" id="errors">
+  <h2><span class="n">07</span>Errors</h2>
+  <p class="sub">Captured by saving into a folder without write permission. Today a red card states the problem and the app returns to the empty prompt. The file is unstaged, so to try another folder you start again.</p>
+  <div class="grid" id="errors-grid"></div>
+</section>
+
+<footer>Convert · forge · the rest of the flow · 2026-10-11 · Mockups only. "Today" frames are real colour captures of the current build (<code>tmux capture-pane -e</code>, 80 columns). Every other frame uses the app's own DARK palette with convert's cyan as the mode colour.</footer>
+</main>
+
+<script>
+const TODAY = {"idle": "\n     <span style=\"color:#8a5a2b\">\u2551</span>\n   <span style=\"color:#ffc247\">&#x27;</span> <span style=\"color:#8a5a2b\">\u2551</span> <span style=\"color:#ffc247\">&#x27;</span>\n <span style=\"color:#ffc247\">*</span>   <span style=\"color:#8a5a2b\">\u2551</span>   <span style=\"color:#ffc247\">*</span>   <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span> <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span> <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>  <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span> <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n   <span style=\"color:#8b93a6\">\u2588\u2588\u2588\u2588\u2588</span>     <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span> <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span>\n <span style=\"color:#ff8c1a\">\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584</span>   <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>  <span style=\"color:#e4e8f0\">\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n<span style=\"color:#8b93a6\">\u2590\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258c</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u255d</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u255d</span>\n <span style=\"color:#8b93a6\">\u2580\u2580\u2580\u2590\u2588\u258c\u2580\u2580\u2580</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>     <span style=\"color:#e5a23c\">\u255a</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551\u255a</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n <span style=\"color:#8b93a6\">\u2584\u2584\u2588\u2588\u2588\u2588\u2588\u2588\u2584</span>   <span style=\"color:#e5a23c\">\u255a\u2550\u255d</span>      <span style=\"color:#e5a23c\">\u255a\u2550\u2550\u2550\u2550\u2550\u255d</span> <span style=\"color:#e5a23c\">\u255a\u2550\u255d</span>  <span style=\"color:#e5a23c\">\u255a\u2550\u255d</span> <span style=\"color:#e5a23c\">\u255a\u2550\u2550\u2550\u2550\u2550\u255d</span> <span style=\"color:#e5a23c\">\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d</span>\n\n<span style=\"color:#8b93a6\"> Convert 0.1.0  \u00b7 image                                           /tmp/forge-r3</span>\n\n<span style=\"background:#122c33\"> </span><span style=\"color:#55c7d9;background:#122c33;font-weight:700\">current mode: convert</span><span style=\"color:#8b93a6;background:#122c33\">  use / to change mode</span>\n\n\n\n<span style=\"background:#252c3a\"> </span><span style=\"color:#55c7d9;background:#252c3a\">\u203a </span><span style=\"color:#252c3a;background:var(--fg)\"> </span><span style=\"color:#8b93a6;background:#252c3a\">drop a file or type a path</span>\n\n\n\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> \u21b5 </span><span style=\"color:#8b93a6\"> send</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> / </span><span style=\"color:#8b93a6\"> commands</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> esc </span><span style=\"color:#8b93a6\"> clear</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> ctrl-n </span><span style=\"color:#8b93a6\"> new</span>\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> ctrl-c </span><span style=\"color:#8b93a6\"> close app</span>\n^[[23;1R", "slash": "\n     <span style=\"color:#8a5a2b\">\u2551</span>\n   <span style=\"color:#ffc247\">&#x27;</span> <span style=\"color:#8a5a2b\">\u2551</span> <span style=\"color:#ffc247\">&#x27;</span>\n <span style=\"color:#ffc247\">*</span>   <span style=\"color:#8a5a2b\">\u2551</span>   <span style=\"color:#ffc247\">*</span>   <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span> <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span> <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>  <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span> <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n   <span style=\"color:#8b93a6\">\u2588\u2588\u2588\u2588\u2588</span>     <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span> <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span>\n <span style=\"color:#ff8c1a\">\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584</span>   <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>  <span style=\"color:#e4e8f0\">\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n<span style=\"color:#8b93a6\">\u2590\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258c</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u255d</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u255d</span>\n <span style=\"color:#8b93a6\">\u2580\u2580\u2580\u2590\u2588\u258c\u2580\u2580\u2580</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>     <span style=\"color:#e5a23c\">\u255a</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551\u255a</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n <span style=\"color:#8b93a6\">\u2584\u2584\u2588\u2588\u2588\u2588\u2588\u2588\u2584</span>   <span style=\"color:#e5a23c\">\u255a\u2550\u255d</span>      <span style=\"color:#e5a23c\">\u255a\u2550\u2550\u2550\u2550\u2550\u255d</span> <span style=\"color:#e5a23c\">\u255a\u2550\u255d</span>  <span style=\"color:#e5a23c\">\u255a\u2550\u255d</span> <span style=\"color:#e5a23c\">\u255a\u2550\u2550\u2550\u2550\u2550\u255d</span> <span style=\"color:#e5a23c\">\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d</span>\n\n<span style=\"color:#8b93a6\"> Convert 0.1.0  \u00b7 image                                           /tmp/forge-r3</span>\n\n<span style=\"background:#122c33\"> </span><span style=\"color:#55c7d9;background:#122c33;font-weight:700\">current mode: convert</span><span style=\"color:#8b93a6;background:#122c33\">  use / to change mode</span>\n\n<span style=\"color:#55c7d9;background:#252c3a\">\u276f </span><span style=\"color:#e4e8f0;background:#252c3a;font-weight:700\">/convert </span><span style=\"color:#8b93a6;background:#252c3a\">  change a file&#x27;s format</span>\n  /compress<span style=\"color:#8b93a6\">  make a file smaller</span>\n  /pdf     <span style=\"color:#8b93a6\">  page operations on a PDF</span>\n  /theme   <span style=\"color:#8b93a6\">  switch between light and dark</span>\n  /help    <span style=\"color:#8b93a6\">  list these commands</span>\n\n\n\n<span style=\"background:#252c3a\"> </span><span style=\"color:#55c7d9;background:#252c3a\">\u203a </span><span style=\"color:#e4e8f0;background:#252c3a\">/</span><span style=\"color:#252c3a;background:var(--fg)\"> </span>\n\n\n\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> \u21b5 </span><span style=\"color:#8b93a6\"> send</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> / </span><span style=\"color:#8b93a6\"> commands</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> esc </span><span style=\"color:#8b93a6\"> clear</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> ctrl-n </span><span style=\"color:#8b93a6\"> new</span>\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> ctrl-c </span><span style=\"color:#8b93a6\"> close app</span>", "name2": "<span style=\"color:#55c7d9;background:#122c33;font-weight:700\"> \u2194 FORGE </span><span style=\"color:#8b93a6;background:#122c33\">  convert</span><span style=\"background:#122c33\">                                                </span><span style=\"color:#8b93a6;background:#122c33\">/tmp/forge-r3</span>\n\n<span style=\"color:#5f6879\">\u256d\u2500 </span><span style=\"color:#55c7d9\">PNG</span><span style=\"color:#5f6879\"> \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e</span>\n<span style=\"color:#5f6879\">\u2502 </span><span style=\"color:#e4e8f0\">test.png                                        </span><span style=\"color:#5f6879\"> \u2502</span>\n<span style=\"color:#5f6879\">\u2502 </span><span style=\"color:#8b93a6\">2756\u00d7774 \u00b7 122 KB \u00b7 transparent                 </span><span style=\"color:#5f6879\"> \u2502</span>\n<span style=\"color:#5f6879\">\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f</span>\n\n<span style=\"color:#55c7d9\">Name the file</span>\n\n\n\n<span style=\"background:#252c3a\"> </span><span style=\"color:#55c7d9;background:#252c3a\">\u203a </span><span style=\"color:#e4e8f0;background:#252c3a\">test</span><span style=\"color:#252c3a;background:var(--fg)\"> </span>\n\n\n\n<span style=\"color:#8b93a6\">  \u2192 /tmp/forge-r3/locked/test.jpg</span>\n\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> \u21b5 </span><span style=\"color:#8b93a6\"> save</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> esc </span><span style=\"color:#8b93a6\"> clear / back</span>", "error": "\n     <span style=\"color:#8a5a2b\">\u2551</span>\n   <span style=\"color:#ffc247\">&#x27;</span> <span style=\"color:#8a5a2b\">\u2551</span> <span style=\"color:#ffc247\">&#x27;</span>\n <span style=\"color:#ffc247\">*</span>   <span style=\"color:#8a5a2b\">\u2551</span>   <span style=\"color:#ffc247\">*</span>   <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557 </span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557 </span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557  </span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557 </span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n   <span style=\"color:#8b93a6\">\u2588\u2588\u2588\u2588\u2588</span>     <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u2550\u2550\u255d</span>\n <span style=\"color:#ff8c1a\">\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584</span>   <span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557  </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551   </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551  </span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557  </span>\n<span style=\"color:#8b93a6\">\u2590\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258c</span>  <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u255d  </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551   </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551   </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u2550\u2550\u255d  </span>\n <span style=\"color:#8b93a6\">\u2580\u2580\u2580\u2590\u2588\u258c\u2580\u2580\u2580</span>   <span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551     \u255a</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551  </span><span style=\"color:#e4e8f0\">\u2588\u2588</span><span style=\"color:#e5a23c\">\u2551\u255a</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2554\u255d</span><span style=\"color:#e4e8f0\">\u2588\u2588\u2588\u2588\u2588\u2588\u2588</span><span style=\"color:#e5a23c\">\u2557</span>\n <span style=\"color:#8b93a6\">\u2584\u2584\u2588\u2588\u2588\u2588\u2588\u2588\u2584</span>   <span style=\"color:#e5a23c\">\u255a\u2550\u255d      \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u255d  \u255a\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d</span>\n<span style=\"color:#8b93a6\"> Convert 0.1.0  \u00b7 image</span>                                           <span style=\"color:#8b93a6\">/tmp/forge-r3</span>\n\n\n<span style=\"color:#e8796d\">\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e</span>\n<span style=\"color:#e8796d\">\u2502</span> <span style=\"color:#e8796d\">\u2715 Permission denied</span>                              <span style=\"color:#e8796d\">\u2502</span>\n<span style=\"color:#e8796d\">\u2502</span> <span style=\"color:#e4e8f0\">locked is not a folder you can write to.</span>         <span style=\"color:#e8796d\">\u2502</span>\n<span style=\"color:#e8796d\">\u2502</span> <span style=\"color:#8b93a6\">Choose a different folder, or check its </span>         <span style=\"color:#e8796d\">\u2502</span>\n<span style=\"color:#e8796d\">\u2502</span> <span style=\"color:#8b93a6\">permissions.</span>                                     <span style=\"color:#e8796d\">\u2502</span>\n<span style=\"color:#e8796d\">\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f</span>\n\n<span style=\"background:#122c33\"> </span><span style=\"color:#55c7d9;background:#122c33;font-weight:700\">current mode: convert</span><span style=\"color:#8b93a6;background:#122c33\">  use / to change mode</span>\n\n\n\n<span style=\"background:#252c3a\"> </span><span style=\"color:#55c7d9;background:#252c3a\">\u203a </span><span style=\"color:#252c3a;background:var(--fg)\"> </span><span style=\"color:#8b93a6;background:#252c3a\">drop a file or type a path</span>\n\n\n\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> \u21b5 </span><span style=\"color:#8b93a6\"> send</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> / </span><span style=\"color:#8b93a6\"> commands</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> esc </span><span style=\"color:#8b93a6\"> clear</span>     <span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> ctrl-n </span><span style=\"color:#8b93a6\"> new</span>\n<span style=\"color:#e4e8f0;background:#2e3340;font-weight:700\"> ctrl-c </span><span style=\"color:#8b93a6\"> close app</span>"}
+/* ---------------------------------------------------------------- renderer */
+const C = { f:'#e4e8f0', d:'#8b93a6', x:'#5f6879', m:'#55c7d9', mb:'#122c33', kc:'#2e3340', kl:'#24272f',
+  sel:'#252c3a', o:'#6fcf7f', r:'#e8796d', rb:'#341a18', w:'#e5c07b', a:'#e5a23c', heat:'#ff8c1a', spark:'#ffc247',
+  wood:'#8a5a2b', mk:'#79c98b', mp:'#ff6b4a', drop:'#262b36', ink:'#0c1d22' }
+const cs = s => [...s]
+const L = s => cs(s).length
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+// a segment: [text, colour, opts]  opts: { bg, b, cls }
+const S = (t, c, o = {}) => ({ t, c, ...o })
+const len = segs => segs.reduce((n, s) => n + L(s.t), 0)
+const line = (segs, fill) => ({ segs, fill })      // fill: background for the whole row
+const pad = (segs, w, o = {}) => [...segs, S(' '.repeat(Math.max(0, w - len(segs))), null, o)]
+function draw(lines, W) {
+  return lines.map(l => {
+    const segs = l.fill ? pad(l.segs, W, { bg: l.fill }) : l.segs
+    return segs.map(s => {
+      if (s.blk) {
+        // A half-cell block glyph, drawn as an exact half of the cell the way a
+        // terminal renders block elements, over whatever fill sits under it.
+        const [x, y] = s.blk
+        const px = x === 'full' ? '0' : x, py = y === 'full' ? '0' : y
+        const sx = x === 'full' ? '100%' : '50%', sy = y === 'full' ? '100%' : '50%'
+        const under = s.under ? `,linear-gradient(${s.under},${s.under})` : ''
+        return `<span style="display:inline-block;color:transparent;background:linear-gradient(${s.c},${s.c}) ${px} ${py}/${sx} ${sy} no-repeat${under}">${esc(s.t)}</span>`
+      }
+      const st = []
+      if (s.c) st.push('color:' + s.c)
+      const bg = s.bg ?? (l.fill || null)
+      if (bg) st.push('background:' + bg)
+      if (s.b) st.push('font-weight:700')
+      if (s.u) st.push('text-decoration:underline;text-underline-offset:3px')
+      return `<span class="${s.cls || ''}" style="${st.join(';')}">${esc(s.t)}</span>`
+    }).join('')
+  }).join('\n')
+}
+const blank = () => line([])
+/* ------------------------------------------------------------- components */
+function header(W, right = '~/Desktop', mode = 'convert', extra = '') {
+  const segs = [S(' ↔ FORGE ', C.m, { b: true }), S('  ' + mode + extra, C.d)]
+  const gap = W - len(segs) - L(right) - 1
+  return line([...segs, S(' '.repeat(Math.max(1, gap))), S(right, C.d), S(' ')], C.mb)
+}
+const modeLine = W => line([S(' current mode: convert', C.m, { b: true }), S('  use / to change mode', C.d)], C.mb)
+const CARDW = 52
+function card(W = CARDW, tag = 'PNG', rows = ['test.png', '2756×774 · 122 KB · transparent'], col = C.x, tagc = C.m, title) {
+  const inner = W - 2
+  const head = title || tag
+  const out = [line([S('╭─ ', col), S(head, tagc, { b: true }), S(' ' + '─'.repeat(inner - L(head) - 3) + '╮', col)])]
+  rows.forEach((r, i) => {
+    const segs = Array.isArray(r) ? r : [S(r, i === 0 ? C.f : C.d)]
+    out.push(line([S('│ ', col), ...pad(segs, inner - 2), S(' │', col)]))
+  })
+  out.push(line([S('╰' + '─'.repeat(inner) + '╯', col)]))
+  return out
+}
+const fileCard = () => card()
+/* key rows */
+const IDLE = [['↵','send'],['/','commands'],['esc','clear'],['ctrl-n','new'],['ctrl-c','close app']]
+const STYLES = {
+  today: (k, w) => [S(` ${k} `, C.f, { bg: C.kc, b: true }), S(' ' + w, C.d)],
+  cap:   (k, w) => [S(` ${k} `, C.f, { bg: C.kc, b: true }), S(' ' + w, C.d)],
+  pill:  (k, w) => [S(` ${k} `, C.f, { bg: C.kc, b: true }), S(` ${w} `, C.d, { bg: C.kl })],
+  text:  (k, w) => [S(k, C.f, { b: true }), S(' ' + w, C.d)],
+}
+function keyRow(pairs, style, gap, W, opts = {}) {
+  const sep = opts.sep ? [S(opts.sep, C.x)] : [S(' '.repeat(gap))]
+  const build = ps => ps.flatMap((p, i) => [...(i ? sep : []), ...STYLES[style](...p)])
+  if (opts.wrap) { // today's behaviour: wrap whole pairs onto a second row
+    const rows = [[]]
+    for (const p of pairs) {
+      const cur = rows[rows.length - 1]
+      const add = [...(cur.length ? sep : []), ...STYLES[style](...p)]
+      if (cur.length && len(cur) + len(add) > W) rows.push(STYLES[style](...p))
+      else cur.push(...add)
+    }
+    return rows.map(r => line(r))
+  }
+  let ps = [...pairs]
+  const more = opts.more ? STYLES[style]('?', 'more') : null
+  while (ps.length > 1 && len(build(ps)) + (more && ps.length < pairs.length ? len(sep) + len(more) : 0) > W) ps = ps.slice(0, -1)
+  let segs = build(ps)
+  if (more && ps.length < pairs.length) segs = [...segs, ...sep, ...more]
+  return [line(segs)]
+}
+function splitRow(primary, secondary, W, style = 'cap') {
+  const left = primary.flatMap((p, i) => [...(i ? [S('  ')] : []), ...STYLES[style](...p)])
+  let sec = [...secondary]
+  const right = () => [S(sec.map(([k, w]) => `${k} ${w}`).join(' · '), C.x)]
+  while (sec.length && len(left) + len(right()) + 2 > W) sec = sec.slice(0, -1)
+  const r = sec.length ? right() : []
+  return [line([...left, S(' '.repeat(Math.max(2, W - len(left) - len(r)))), ...r])]
+}
+const promptFill = (W, text = 'drop a file or type a path') => [
+  line([], C.sel), line([S(' '), S('›', C.m), S(' '), S('▏', C.f), S(text, C.d)], C.sel), line([], C.sel)]
+/* frames */
+function term(W, lines, title = '') {
+  return `<div class="term"><div class="bar"><i></i><i></i><i></i><em>${title}</em></div><pre>${draw(lines, W)}</pre></div>`
+}
+function termRaw(html, title = '') {
+  return `<div class="term"><div class="bar"><i></i><i></i><i></i><em>${title}</em></div><pre>${html}</pre></div>`
+}
+function fig(grid, { id, name, pick, html, idea, pros = [], cons = [], wide, today }) {
+  const g = document.getElementById(grid)
+  const f = document.createElement('figure')
+  if (wide) f.className = 'wide'
+  f.innerHTML = `<div class="vt"><span class="id ${today ? 'today' : ''}">${id}</span><span class="name">${name}</span>${pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${html}${idea ? `<p class="idea">${idea}</p>` : ''}
+    ${pros.length + cons.length ? `<div class="pc"><div class="p">${pros.length ? `<h5>Pros</h5><ul>${pros.map(p => `<li>${p}</li>`).join('')}</ul>` : ''}</div><div class="c"><h5>Cons</h5><ul>${cons.map(p => `<li>${p}</li>`).join('')}</ul></div></div>` : ''}`
+  g.appendChild(f)
+}
+const todayLines = (k, a, b) => TODAY[k].split('\n').slice(a, b).join('\n')
+
+/* ======================================================= 1 · KEY HINTS */
+const keysK1 = W => keyRow(IDLE, 'cap', 2, W, { more: true })
+const SCREENS = {
+  idle: {
+    label: 'empty prompt',
+    main: [['↵', 'send'], ['/', 'commands']],
+    foot: [['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']],
+    ctx: W => promptFill(W),
+  },
+  picker: {
+    label: 'a picker',
+    main: [['↑↓', 'choose'], ['↵', 'confirm']],
+    foot: [['esc', 'back'], ['ctrl-c', 'quit']],
+    ctx: () => [line([S('  TIFF'), S('  archival', C.d)]), line([S('  PDF '), S('  document', C.d)])],
+  },
+  result: {
+    label: 'the result, 60 columns',
+    main: [['↵', 'convert another'], ['o', 'open'], ['s', 'show in Finder']],
+    foot: [['ctrl-c', 'quit']],
+    ctx: W => {
+      const w = Math.min(W, 68)
+      return [
+        line([S('│  ', C.o), ...pad([S('saved to ', C.d), S('~/Desktop/test.jpg')], w - 6), S('  │', C.o)]),
+        line([S('╰' + '─'.repeat(w - 2) + '╯', C.o)]),
+      ]
+    },
+  },
+}
+const caps = (pairs, gap = 2) => pairs.flatMap((p, i) => [...(i ? [S(' '.repeat(gap))] : []), ...STYLES.cap(...p)])
+const footText = (pairs, c = C.x) => (pairs.length ? [S(pairs.map(([k, w]) => `${k} ${w}`).join(' · '), c)] : [])
+function fitFoot(foot, room) {
+  let f = [...foot]
+  while (f.length && len(footText(f)) > room) f = f.slice(0, -1)
+  return f
+}
+/** F1: main keys as caps on the left, the footnote as dim text on the right. */
+function hintRow(W, s) {
+  const left = caps(s.main)
+  const ft = footText(fitFoot(s.foot, W - len(left) - 3))
+  return [line([...left, S(' '.repeat(Math.max(3, W - len(left) - len(ft)))), ...ft])]
+}
+{
+  const frames = [['idle', 80], ['picker', 80], ['result', 60]].map(([name, W]) => {
+    const s = SCREENS[name]
+    return `<div class="state">${s.label}</div>` + term(W, [...s.ctx(W), blank(), ...hintRow(W, s)], `${W} columns`)
+  })
+  fig('keys-grid', {
+    id: 'F1', name: 'One row: main keys left, footnote right', pick: true,
+    idea: 'Chosen. Main keys are caps two spaces apart; the footnote is dim text at the right edge. When the row is too narrow, the footnote loses items from its right end. The main keys never shrink, and the row never wraps.',
+    html: `<div class="stack">${frames.join('')}</div>`,
+  })
+}
+
+/* ======================================================= 2 · EMPTY PROMPT */
+const BG = '#1e1e1e'
+const FILL = C.sel // today's drop-area fill, #252c3a
+/** Half-cell block glyphs, drawn as a terminal draws them: exact halves of a cell. */
+const blk = (ch, c, x, y, n = 1) => S(ch.repeat(n), c, { blk: [x, y] })
+const centreIn = (segs, w) => [S(' '.repeat(Math.max(0, Math.floor((w - len(segs)) / 2))))].concat(segs)
+const onFill = (segs, fill) => segs.map((s) => (s.blk ? { ...s, under: s.under ?? fill } : { ...s, bg: s.bg ?? fill }))
+/** A row of a zone with square edges. */
+const flatRow = (segs, W, fill = FILL) => line(onFill(pad(segs, W), fill))
+/** Rows of a zone with soft, half-cell-rounded edges. */
+const softTop = (W, fill = FILL, outside = BG) => line([blk('▗', fill, 'right', 'bottom'), blk('▄', fill, 'full', 'bottom', W - 2), blk('▖', fill, 'left', 'bottom')])
+const softBottom = (W, fill = FILL) => line([blk('▝', fill, 'right', 'top'), blk('▀', fill, 'full', 'top', W - 2), blk('▘', fill, 'left', 'top')])
+const softRow = (segs, W, fill = FILL, edge = fill) => line([blk('▐', edge, 'right', 'full'), ...onFill(pad(segs, W - 2), fill), blk('▌', edge, 'left', 'full')])
+const caret = () => S('▏', C.f, { cls: 'caret' })
+const typed = (t) => [S(' '), S('›', C.m, { b: true }), S(' '), S(t, C.f), caret()]
+const placeholder = (t) => [S(' '), S('›', C.m, { b: true }), S(' '), caret(), S(t, C.d)]
+const target = (dim) => [S('⇣', dim ? C.x : C.m, { b: true, cls: dim ? '' : 'bob' }), S('  '), S('Drop a file here', dim ? C.x : C.f, { b: !dim })]
+const kinds = (dim) => [S('images', dim ? C.x : C.d), S('  ·  ', C.x), S('HEIC', dim ? C.x : C.d), S('  ·  ', C.x), S('PDF', dim ? C.x : C.d), S('  ·  ', C.x), S('Word', dim ? C.x : C.d)]
+const COMPLETE = [['~/Desktop/', true], ['~/Desktop/converted/'], ['~/Desktop/receipts/']]
+const completionsOn = (fill, hl = '#33405a') => [S('   ')].concat(COMPLETE.flatMap(([p, on], i) => [...(i ? [S('   ')] : []), S(on ? ` ${p} ` : p, on ? C.f : C.d, on ? { bg: hl, b: true } : {})]))
+const zoneKeys = (W, typing) => hintRow(W, typing
+  ? { main: [['tab', 'complete'], ['↵', 'open path']], foot: [['esc', 'clear'], ['ctrl-c', 'quit']] }
+  : SCREENS.idle)
+
+/* Each variation: the same D1 structure (target in the middle, a divider,
+   the typing line at the bottom, all one zone), drawn differently. */
+const ZONES = [
+  {
+    id: 'Z1', name: 'D1 as drawn: one flat fill',
+    idea: 'The structure you chose, unstyled: the drop target, a faint divider, then the typing line, all on today\'s fill.',
+    rows: (W, t) => [
+      flatRow([], W),
+      flatRow(centreIn(target(t), W), W),
+      flatRow(centreIn(kinds(t), W), W),
+      flatRow([], W),
+      flatRow([S(' ' + '─'.repeat(W - 2), '#323a4a')], W),
+      flatRow(t ? typed('~/Desk') : placeholder('or type a path'), W),
+      flatRow(t ? completionsOn() : [], W),
+    ],
+  },
+  {
+    id: 'Z2', name: 'Soft edges',
+    idea: 'The top and bottom of the zone are half-cell blocks (▗▄▄▖ / ▝▀▀▘) and the sides are half cells (▐ ▌), so the box has rounded corners and sits half a row in from the text around it. It\'s the cheapest change that makes the zone feel like an object rather than a stripe.',
+    rows: (W, t) => [
+      softTop(W),
+      softRow([], W),
+      softRow(centreIn(target(t), W - 2), W),
+      softRow(centreIn(kinds(t), W - 2), W),
+      softRow([], W),
+      softRow([S(' ' + '─'.repeat(W - 6), '#323a4a')], W),
+      softRow(t ? typed('~/Desk') : placeholder('or type a path'), W),
+      ...(t ? [softRow(completionsOn(), W)] : []),
+      softBottom(W),
+    ],
+  },
+  {
+    id: 'Z3', name: 'A gentle glow',
+    idea: 'Every row gets its own fill, a touch lighter towards the target and darker at the edges: a vertical gradient made of 24-bit colours, one per row. The target looks lit from within; the typing row sits on the darkest band, so it reads as the floor of the zone.',
+    rows: (W, t) => {
+      const G = ['#20252f', '#232934', '#272e3c', '#2a3242', '#272e3c', '#232934', '#20252f']
+      return [
+        softTop(W, G[0]),
+        softRow([], W, G[1]),
+        softRow(centreIn(target(t), W - 2), W, G[2]),
+        softRow(centreIn(kinds(t), W - 2), W, G[3]),
+        softRow([], W, G[4]),
+        softRow(t ? typed('~/Desk') : placeholder('or type a path'), W, G[5]),
+        ...(t ? [softRow(completionsOn(), W, G[6])] : []),
+        softBottom(W, t ? G[6] : G[5]),
+      ]
+    },
+  },
+  {
+    id: 'Z4', name: 'Viewfinder corners',
+    idea: 'Corner brackets in the mode colour frame the target, like a camera viewfinder or a scanner. Only the corners are drawn, so it says "aim here" without adding a whole border.',
+    rows: (W, t) => {
+      const c = t ? '#3a4356' : C.m
+      const span = 44, lead = Math.floor((W - 2 - span) / 2)
+      const corner = (l, r) => [S(' '.repeat(lead)), S(l, c, { b: true }), S(' '.repeat(span - 2)), S(r, c, { b: true })]
+      return [
+        softTop(W),
+        softRow(corner('┌─', '─┐'.padStart(2)), W),
+        softRow(centreIn(target(t), W - 2), W),
+        softRow(centreIn(kinds(t), W - 2), W),
+        softRow(corner('└─', '─┘'), W),
+        softRow([], W),
+        softRow(t ? typed('~/Desk') : placeholder('or type a path'), W),
+        ...(t ? [softRow(completionsOn(), W)] : []),
+        softBottom(W),
+      ]
+    },
+  },
+  {
+    id: 'Z5', name: 'An arrow button',
+    idea: 'The target becomes a small rounded button in the mode colour, built from the same half-cell blocks, with the arrow cut out of it. The words sit beside it. It\'s the most "designed" of the set and works as a small logo for the action.',
+    rows: (W, t) => {
+      const b = t ? '#3a4356' : C.m, ink = t ? FILL : C.ink
+      const lead = Math.max(2, Math.floor((W - 2 - 41) / 2))
+      const icon = [
+        [blk('▗', b, 'right', 'bottom'), blk('▄', b, 'full', 'bottom', 3), blk('▖', b, 'left', 'bottom')],
+        [blk('▐', b, 'right', 'full'), S(' ⇣ ', ink, { bg: b, b: true, cls: t ? '' : 'bob' }), blk('▌', b, 'left', 'full')],
+        [blk('▝', b, 'right', 'top'), blk('▀', b, 'full', 'top', 3), blk('▘', b, 'left', 'top')],
+      ]
+      return [
+        softTop(W),
+        softRow([], W),
+        softRow([S(' '.repeat(lead)), ...icon[0], S('    '), S('Drop a file here', t ? C.x : C.f, { b: !t })], W),
+        softRow([S(' '.repeat(lead)), ...icon[1], S('    '), ...kinds(t)], W),
+        softRow([S(' '.repeat(lead)), ...icon[2], S('    '), S('saves to ', t ? C.x : C.d), S('~/Desktop', t ? C.x : C.f)], W),
+        softRow([], W),
+        softRow(t ? typed('~/Desk') : placeholder('or type a path'), W),
+        ...(t ? [softRow(completionsOn(), W)] : []),
+        softBottom(W),
+      ]
+    },
+  },
+  {
+    id: 'Z6', name: 'A typing field set into the zone',
+    idea: 'The typing line gets a field of its own: a slightly lighter, soft-edged bar inset at the bottom of the zone. While you type, the field\'s left edge lights up in the mode colour and the completions hang just under it.',
+    rows: (W, t) => {
+      const F = '#2f3748', fw = W - 6
+      const field = (segs, lit) => [S('  '), blk('▐', lit ? C.m : F, 'right', 'full'), ...onFill(pad(segs, fw - 2), F), blk('▌', F, 'left', 'full')]
+      return [
+        softTop(W),
+        softRow([], W),
+        softRow(centreIn(target(t), W - 2), W),
+        softRow(centreIn(kinds(t), W - 2), W),
+        softRow([], W),
+        softRow([S('  '), blk('▗', F, 'right', 'bottom'), blk('▄', F, 'full', 'bottom', fw - 2), blk('▖', F, 'left', 'bottom')], W),
+        softRow(field(t ? typed('~/Desk') : placeholder('or type a path'), t), W),
+        softRow([S('  '), blk('▝', F, 'right', 'top'), blk('▀', F, 'full', 'top', fw - 2), blk('▘', F, 'left', 'top')], W),
+        ...(t ? [softRow(completionsOn(FILL), W)] : []),
+        softBottom(W),
+      ]
+    },
+  },
+  {
+    id: 'Z7', name: 'All of it, restrained', 
+    idea: 'Combining the best parts: Z2\'s soft edges, a faint version of Z3\'s glow, Z5\'s arrow button, and Z6\'s inset field. The target bobs gently while the zone waits. It\'s still D1: target, then the typing line, one object.',
+    rows: (W, t) => {
+      const G = ['#21262f', '#232a35', '#262d3b', '#262d3b', '#242b37', '#232a35', '#21262f', '#21262f', '#21262f']
+      const b = t ? '#3a4356' : C.m, ink = t ? G[2] : C.ink
+      const F = '#2f3748', fw = W - 6
+      const lead = Math.max(2, Math.floor((W - 2 - 40) / 2))
+      const icon = [
+        [blk('▗', b, 'right', 'bottom'), blk('▄', b, 'full', 'bottom', 3), blk('▖', b, 'left', 'bottom')],
+        [blk('▐', b, 'right', 'full'), S(' ⇣ ', ink, { bg: b, b: true, cls: t ? '' : 'bob' }), blk('▌', b, 'left', 'full')],
+        [blk('▝', b, 'right', 'top'), blk('▀', b, 'full', 'top', 3), blk('▘', b, 'left', 'top')],
+      ]
+      const field = (segs, lit) => [S('  '), blk('▐', lit ? C.m : F, 'right', 'full'), ...onFill(pad(segs, fw - 2), F), blk('▌', F, 'left', 'full')]
+      return [
+        softTop(W, G[0]),
+        softRow([], W, G[1]),
+        softRow([S(' '.repeat(lead)), ...icon[0], S('   '), S('Drop a file here', t ? C.x : C.f, { b: !t })], W, G[2]),
+        softRow([S(' '.repeat(lead)), ...icon[1], S('   '), ...kinds(t)], W, G[3]),
+        softRow([S(' '.repeat(lead)), ...icon[2]], W, G[4]),
+        softRow([S('  '), blk('▗', F, 'right', 'bottom'), blk('▄', F, 'full', 'bottom', fw - 2), blk('▖', F, 'left', 'bottom')], W, G[5]),
+        softRow(field(t ? typed('~/Desk') : placeholder('or type a path'), t), W, G[6]),
+        softRow([S('  '), blk('▝', F, 'right', 'top'), blk('▀', F, 'full', 'top', fw - 2), blk('▘', F, 'left', 'top')], W, G[7]),
+        ...(t ? [softRow(completionsOn(G[8]), W, G[8])] : []),
+        softBottom(W, G[8]),
+      ]
+    },
+  },
+]
+/* ------------------------------------------- 2b · STROKES & DECORATIONS */
+const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+const mixHex = (a, b, k) => {
+  k = Math.max(0, Math.min(1, k))
+  const A = hexToRgb(a), B = hexToRgb(b)
+  return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('')
+}
+/**
+ * One edge of a frame, coloured cell by cell so a stroke can carry a
+ * gradient. `inserts` are labels set into the edge: [{ at, segs }].
+ */
+function edge(W, l, m, r, col, inserts = []) {
+  const cells = [l, ...Array(W - 2).fill(m), r]
+  const out = []
+  let x = 0
+  const sorted = [...inserts].sort((a, b) => a.at - b.at)
+  for (const ins of sorted) {
+    while (x < ins.at) { out.push(S(cells[x], col(x))); x++ }
+    for (const s of ins.segs) out.push(s)
+    x += len(ins.segs)
+  }
+  while (x < W) { out.push(S(cells[x], col(x))); x++ }
+  return line(out)
+}
+const side = (segs, W, col, v = '│', fill = FILL, vr = v) => line([S(v, col(0)), ...onFill(pad(segs, W - 2), fill), S(vr, col(W - 1))])
+const typedRow = (t) => (t ? typed('~/Desk') : placeholder('or type a path'))
+const doneCompletions = (t, W, col, v, fill) => (t ? [side(completionsOn(), W, col, v, fill)] : [])
+const MC = C.m, DIMS = '#4a5366'
+
+const STROKES = [
+  {
+    id: 'T1', name: 'A cyan frame that holds the mode, the target and the typing line',
+    idea: 'A rounded stroke in the mode colour around the fill. The mode is set into the top edge and how to change it into the right of that edge, so the separate mode bar goes. The divider runs into the frame as ├───┤, which makes the typing line a proper part of the zone, like the last field of a form.',
+    noModeBar: true,
+    rows: (W, t) => {
+      const col = () => MC
+      return [
+        edge(W, '╭', '─', '╮', col, [{ at: 2, segs: [S(' ↔ convert ', MC, { b: true })] }, { at: W - 21, segs: [S(' / to change mode ', C.d)] }]),
+        side([], W, col),
+        side(centreIn(target(t), W - 2), W, col),
+        side(centreIn(kinds(t), W - 2), W, col),
+        side([], W, col),
+        edge(W, '├', '─', '┤', (x) => (t ? MC : '#3d4658')),
+        side(typedRow(t), W, col),
+        ...doneCompletions(t, W, col, '│', FILL),
+        edge(W, '╰', '─', '╯', col),
+      ]
+    },
+  },
+  {
+    id: 'T2', name: 'A stroke that glows over the target',
+    idea: 'The frame\'s colour is a gradient, cell by cell: full cyan at the top centre, right above the arrow, fading to grey along the edges and down the sides. A 24-bit colour per cell, so it\'s smooth in any modern terminal. While you type, the glow moves down to the typing line.',
+    rows: (W, t) => {
+      const c = W / 2
+      const top = (x) => mixHex(DIMS, MC, t ? 0 : 1 - Math.abs(x - c) / c)
+      const bottom = (x) => mixHex(DIMS, MC, t ? 1 - Math.abs(x - c) / c : 0)
+      const sideCol = (x) => DIMS
+      return [
+        edge(W, '╭', '─', '╮', top),
+        side([], W, (x) => mixHex(DIMS, MC, t ? 0 : 0.35)),
+        side(centreIn(target(t), W - 2), W, sideCol),
+        side(centreIn(kinds(t), W - 2), W, sideCol),
+        side([], W, sideCol),
+        side([S(' ' + '─'.repeat(W - 4), '#323a4a')], W, sideCol),
+        side(typedRow(t), W, (x) => mixHex(DIMS, MC, t ? 0.5 : 0)),
+        ...doneCompletions(t, W, sideCol, '│', FILL),
+        edge(W, '╰', '─', '╯', bottom),
+      ]
+    },
+  },
+  {
+    id: 'T3', name: 'A double frame with ornaments',
+    idea: 'A formal double-line frame in quiet grey, with small cyan diamonds set into its corners and a title, DROP A FILE, centred in the top edge. Typing sits under a single-line divider. A frame made for a label.',
+    rows: (W, t) => {
+      const col = () => '#525b6e'
+      const orn = t ? C.x : MC
+      const title = [S(' ◆ ', orn), S('DROP A FILE', t ? C.x : C.f, { b: true }), S(' ◆ ', orn)]
+      return [
+        edge(W, '╔', '═', '╗', col, [{ at: Math.floor((W - len(title)) / 2), segs: title }]),
+        side([], W, col, '║'),
+        side(centreIn([S('⇣', t ? C.x : MC, { b: true, cls: t ? '' : 'bob' })], W - 2), W, col, '║'),
+        side(centreIn(kinds(t), W - 2), W, col, '║'),
+        side([], W, col, '║'),
+        edge(W, '╟', '─', '╢', (x) => (t ? MC : '#3d4658')),
+        side(typedRow(t), W, col, '║'),
+        ...doneCompletions(t, W, col, '║', FILL),
+        edge(W, '╚', '═', '╝', col),
+      ]
+    },
+  },
+  {
+    id: 'T4', name: 'Two heavy rules, open sides',
+    idea: 'No box: just a heavy cyan rule above the zone and another below, with small ornaments at their ends. The fill sits between them. Editorial and airy, like the rules around a pull-quote.',
+    rows: (W, t) => {
+      const c = t ? '#3d4658' : MC
+      const rule = (l, r) => line([S(l, c, { b: true }), S('━'.repeat(W - 4), c), S(r, c, { b: true })])
+      return [
+        rule('◢ ', ' ◣'),
+        flatRow([], W),
+        flatRow(centreIn(target(t), W), W),
+        flatRow(centreIn(kinds(t), W), W),
+        flatRow([], W),
+        flatRow(typedRow(t), W),
+        ...(t ? [flatRow(completionsOn(), W)] : []),
+        rule('◥ ', ' ◤'),
+      ]
+    },
+  },
+  {
+    id: 'T5', name: 'Marching ants',
+    idea: 'The classic drop target: a dashed rounded stroke whose dashes crawl slowly around the edge, the way a selection does in an image editor. Live below. It stops the moment you start typing.',
+    rows: (W, t) => {
+      const col = () => (t ? '#3d4658' : MC)
+      const antsTop = S('╭' + '╌'.repeat(W - 2) + '╮', col(0), { cls: t ? '' : 'ants' })
+      const antsBot = S('╰' + '╌'.repeat(W - 2) + '╯', col(0), { cls: t ? '' : 'ants rev' })
+      return [
+        line([antsTop]),
+        side([], W, col, '╎'),
+        side(centreIn(target(t), W - 2), W, col, '╎'),
+        side(centreIn(kinds(t), W - 2), W, col, '╎'),
+        side([], W, col, '╎'),
+        side([S(' ' + '─'.repeat(W - 4), '#323a4a')], W, col, '╎'),
+        side(typedRow(t), W, col, '╎'),
+        ...doneCompletions(t, W, col, '╎', FILL),
+        line([antsBot]),
+      ]
+    },
+  },
+  {
+    id: 'T6', name: 'An inner stroke with a notched label',
+    idea: 'The fill keeps its edges, and a thin, lighter stroke is drawn one cell inside it, around the target only. A label, "⇣ drop", sits in a notch cut into the stroke\'s top edge. The typing line sits below the inner frame, still on the fill, like an inset panel above a field on a piece of hardware.',
+    rows: (W, t) => {
+      const s = t ? '#3d4658' : '#4b5670'
+      const bw = W - 4 // the inner frame, two cells in from each side
+      const label = [S(' ⇣ drop ', t ? C.x : MC, { b: true })]
+      const top = [S('╭─', s), ...label, S('─'.repeat(bw - 3 - len(label)) + '╮', s)]
+      const bottom = [S('╰' + '─'.repeat(bw - 2) + '╯', s)]
+      const r = (segs) => flatRow([S('  '), S('│', s), ...pad(segs, bw - 2), S('│', s)], W)
+      return [
+        flatRow([], W),
+        flatRow([S('  '), ...top], W),
+        r(centreIn(target(t), bw - 2)),
+        r(centreIn(kinds(t), bw - 2)),
+        flatRow([S('  '), ...bottom], W),
+        flatRow(typedRow(t), W),
+        ...(t ? [flatRow(completionsOn(), W)] : []),
+        flatRow([], W),
+      ]
+    },
+  },
+  {
+    id: 'T7', name: 'Sparks from the forge',
+    idea: 'The brand as decoration. A thin grey frame, and above the arrow a few sparks in the logo\'s heat colours, flickering in and out while the zone waits. The amber stays the brand\'s, because the sparks belong to the logo, not to the mode.',
+    rows: (W, t) => {
+      const col = () => '#4a5366'
+      const c = Math.floor(W / 2)
+      const sparkRow = (pairs) => {
+        const cells = Array(W - 2).fill(null)
+        pairs.forEach(([dx, ch, k]) => (cells[c - 1 + dx] = [ch, k]))
+        return cells.map((v) => (v ? S(v[0], v[1] === 1 ? C.spark : C.heat, { cls: t ? 'off' : 'spark' }) : S(' ')))
+      }
+      return [
+        edge(W, '╭', '─', '╮', col),
+        side(sparkRow([[-6, '·', 0], [-2, '✦', 1], [3, "'", 0], [7, '·', 1]]), W, col),
+        side(sparkRow([[-4, "'", 1], [0, '·', 0], [5, '*', 1]]), W, col),
+        side(centreIn(target(t), W - 2), W, col),
+        side(centreIn(kinds(t), W - 2), W, col),
+        side([], W, col),
+        edge(W, '├', '─', '┤', (x) => (t ? MC : '#3d4658')),
+        side(typedRow(t), W, col),
+        ...doneCompletions(t, W, col, '│', FILL),
+        edge(W, '╰', '─', '╯', col),
+      ]
+    },
+  },
+  {
+    id: 'T8', name: 'A ruled frame',
+    idea: 'Square corners and tick marks every four cells along the top and bottom, like the edge of a ruler or a technical drawing. Precise rather than friendly, which suits a tool that measures sizes.',
+    rows: (W, t) => {
+      const col = () => (t ? '#3d4658' : '#59647a')
+      const ticks = (l, m, tick, r) => {
+        const cells = [l]
+        for (let x = 1; x < W - 1; x++) cells.push(x % 4 === 0 ? tick : m)
+        cells.push(r)
+        return line(cells.map((ch, x) => S(ch, x % 4 === 0 && x > 0 && x < W - 1 ? MC : col(x))))
+      }
+      return [
+        ticks('┌', '─', '┬', '┐'),
+        side([], W, col),
+        side(centreIn(target(t), W - 2), W, col),
+        side(centreIn(kinds(t), W - 2), W, col),
+        side([], W, col),
+        edge(W, '├', '─', '┤', (x) => (t ? MC : '#3d4658')),
+        side(typedRow(t), W, col),
+        ...doneCompletions(t, W, col, '│', FILL),
+        ticks('└', '─', '┴', '┘'),
+      ]
+    },
+  },
+]
+/* ------------------------------------------ 2 · EMPTY PROMPT: DIRECTIONS
+   Real terminal output: every frame below is ANSI, written into an xterm.js
+   terminal (the emulator inside VS Code) with its canvas renderer, which
+   draws box and block characters as exact cell geometry, as Ghostty does. */
+const X = (() => {
+  const E = '\x1b['
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+  const f = (h, t) => `${E}38;2;${rgb(h)}m${t}${E}39m`
+  const b = (h, t) => `${E}48;2;${rgb(h)}m${t}${E}49m`
+  const B = (t) => `${E}1m${t}${E}22m`
+  const I = (t) => `${E}3m${t}${E}23m`
+  const vis = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length
+  const padR = (s, w) => s + ' '.repeat(Math.max(0, w - vis(s)))
+  const center = (s, w) => ' '.repeat(Math.max(0, Math.floor((w - vis(s)) / 2))) + s
+  const right = (l, r, w) => l + ' '.repeat(Math.max(1, w - vis(l) - vis(r))) + r
+  const mix = (a, c, k) => {
+    k = Math.max(0, Math.min(1, k))
+    const A = rgb(a).split(';').map(Number), Cc = rgb(c).split(';').map(Number)
+    return '#' + A.map((v, i) => Math.round(v + (Cc[i] - v) * k).toString(16).padStart(2, '0')).join('')
+  }
+  /** Colour each visible character along a list of stops. */
+  const grad = (t, stops) => {
+    const cs = [...t], n = Math.max(1, cs.length - 1)
+    return cs.map((ch, i) => {
+      if (ch === ' ') return ch
+      const p = (i / n) * (stops.length - 1), k = Math.floor(p)
+      return f(mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k), ch)
+    }).join('')
+  }
+  /** A box: lines are already-styled strings padded to inner width. */
+  const box = (w, lines, { col = '#5f6879', round = true, title = '', heavy = false } = {}) => {
+    const [tl, tr, bl, br, h, v] = heavy ? ['┏', '┓', '┗', '┛', '━', '┃'] : round ? ['╭', '╮', '╰', '╯', '─', '│'] : ['┌', '┐', '└', '┘', '─', '│']
+    const top = title ? f(col, tl + h) + title + f(col, h.repeat(Math.max(0, w - 3 - vis(title))) + tr) : f(col, tl + h.repeat(w - 2) + tr)
+    return [top, ...lines.map((l) => f(col, v) + padR(l, w - 2) + f(col, v)), f(col, bl + h.repeat(w - 2) + br)]
+  }
+  return { f, b, B, I, vis, padR, center, right, grad, box, mix }
+})()
+const K = { bg: '#1e1e1e', fg: '#e4e8f0', d: '#8b93a6', x: '#5f6879', faint: '#3d4350', m: '#55c7d9', mbg: '#122c33', panel: '#252c3a', panel2: '#2b3343', cap: '#2e3340', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
+const { f: xf, b: xb, B: xB, I: xI, padR: xpad, center: xc, right: xr, grad: xg, box: xbox } = X
+
+/** Every direction returns 24 rows and where the cursor sits. */
+const DIRECTIONS = [
+  {
+    id: 'A', name: 'Welcome card', after: 'Claude Code',
+    idea: 'An inline session. A rounded welcome card says what this is and where files go, a few numbered tips teach the three things you can do, then a full-width rounded input box with a small "? for shortcuts" under it. Calm, friendly, very little colour.',
+    pros: ['Feels instantly familiar to anyone who uses Claude Code', 'Teaches the app on first sight', 'Scrollback stays: it\'s an inline session'],
+    cons: ['The welcome card and tips are noise by the hundredth launch (they could show only on first run)', 'The least "Forge" of the set: little brand'],
+    screen: () => {
+      const W = 80
+      const card = xbox(50, [
+        ` ${xf(K.m, '✻')} ${xB('Welcome to Convert')}`,
+        '',
+        `   ${xf(K.d, '/help for help, /theme to switch colours')}`,
+        '',
+        `   ${xf(K.d, 'saves to:')} ~/Desktop`,
+      ], { col: K.m })
+      const input = xbox(W, [` ${xf(K.d, '>')} ${xf(K.d, 'Drop a file, or type a path')}`], { col: K.x })
+      return {
+        rows: [
+          '', ...card, '',
+          ` ${xf(K.d, 'Tips for getting started:')}`,
+          '',
+          `  ${xf(K.d, '1.')} Drop a photo, a PDF or a Word file into this window`,
+          `  ${xf(K.d, '2.')} Type ${xf(K.m, '/compress')} to make a file smaller`,
+          `  ${xf(K.d, '3.')} Type ${xf(K.m, '/pdf')} to split, merge or rotate pages`,
+          '', '', '', '', '',
+          ...input,
+          xr(`  ${xf(K.x, '? for shortcuts')}`, xf(K.x, 'convert · ~/Desktop  '), W),
+        ],
+        cursor: [19, 5],
+      }
+    },
+  },
+  {
+    id: 'B', name: 'Almost nothing', after: 'OpenAI Codex CLI',
+    idea: 'A small header box with the name, version and the two settings that matter, then a plain list of commands, and a borderless prompt near the bottom on a faintly lighter row. The footer holds the keys on the left and the status on the right. Almost no decoration; the restraint is the style.',
+    pros: ['The fastest to read', 'Ages well: nothing to get tired of', 'Easy to keep consistent with every other screen'],
+    cons: ['Plain: it won\'t impress in a screenshot', 'Dropping a file, the main gesture, is only mentioned in text'],
+    screen: () => {
+      const W = 80
+      const head = xbox(46, [
+        ` ${xf(K.m, xB('>_'))} ${xB('Convert')} ${xf(K.d, '(v0.1.0)')}`,
+        '',
+        ` ${xf(K.d, 'mode:     ')}convert   ${xf(K.x, '/compress  /pdf')}`,
+        ` ${xf(K.d, 'saves to: ')}~/Desktop`,
+      ], { col: K.x })
+      return {
+        rows: [
+          ...head, '',
+          `  To get started, drop a file into this window or type its path.`,
+          '',
+          `  ${xf(K.m, '/convert')}   ${xf(K.d, "change a file's format")}`,
+          `  ${xf(K.m, '/compress')}  ${xf(K.d, 'make a file smaller')}`,
+          `  ${xf(K.m, '/pdf')}       ${xf(K.d, 'split, merge, rotate pages')}`,
+          `  ${xf(K.m, '/theme')}     ${xf(K.d, 'light or dark')}`,
+          '', '', '', '', '', '', '', '',
+          xb('#24272e', xpad(` ${xf(K.m, '›')} ${xf(K.d, 'Drop a file or type a path')}`, W)),
+          '',
+          xr(`  ${xf(K.fg, '⏎')} ${xf(K.d, 'send')}   ${xf(K.fg, '/')} ${xf(K.d, 'commands')}   ${xf(K.fg, '⌃C')} ${xf(K.d, 'quit')}`, xf(K.x, 'convert · ~/Desktop  '), W),
+        ],
+        cursor: [21, 4],
+      }
+    },
+  },
+  {
+    id: 'C', name: 'Centred stage', after: 'opencode',
+    idea: 'A full-screen, centred composition. A two-tone wordmark, a short list of actions with their keys, then a wide input with a thick cyan bar on its left, carrying its own status inside ("convert · saves to ~/Desktop"). A status bar runs along the very bottom. Everything sits on a vertical axis.',
+    pros: ['The most striking composition of the set', 'The input is unmistakably the centre of attention', 'The two-tone wordmark is the logo, done quietly'],
+    cons: ['Full-screen: the empty state takes over the window', 'Centring needs a redraw on every resize'],
+    screen: () => {
+      const W = 80
+      const word = ['█▀▀ █▀█ █▀█ █▀▀ █▀▀', '█▀  █▄█ █▀▄ █▄█ ██▄']
+      const tone = (r) => xf(K.d, r.slice(0, 11)) + xf(K.fg, xB(r.slice(11)))
+      const act = (l, k) => xc(xpad(xf(K.fg, l), 28) + xf(K.d, k.padStart(16)), W)
+      const iw = 60, lead = ' '.repeat((W - iw) / 2)
+      const inp = (t) => lead + xf(K.m, '┃') + xb(K.panel, xpad(t, iw - 1))
+      return {
+        rows: [
+          '', '', '',
+          xc(tone(word[0]), W), xc(tone(word[1]), W),
+          xc(xf(K.x, 'v0.1.0'), W),
+          '', '',
+          act('convert a file', 'drop it here'),
+          act('compress a file', '/compress'),
+          act('work with PDF pages', '/pdf'),
+          act('switch theme', '/theme'),
+          '', '',
+          inp(''),
+          inp(`  ${xf(K.d, 'Drop a file, or type a path')}`),
+          inp(''),
+          inp(`  ${xf(K.m, xB('convert'))}  ${xf(K.d, 'saves to ~/Desktop')}`),
+          inp(''),
+          '', '', '', '',
+          xb('#16171b', xpad(xr(` ${xf(K.d, '~/Desktop')}`, `${xf(K.d, 'enter')} ${xf(K.x, 'send')}  ${xf(K.d, '/')} ${xf(K.x, 'commands')}  ${xf(K.d, 'ctrl-c')} ${xf(K.x, 'quit')} `, W), W)),
+        ],
+        cursor: [16, 13],
+      }
+    },
+  },
+  {
+    id: 'D', name: 'Ember banner', after: 'Gemini CLI',
+    idea: 'Today\'s full FORGE wordmark, but painted with a horizontal gradient in the logo\'s own heat colours, spark-yellow to ember-red, the way Gemini paints its banner. Numbered tips, a rounded input box in the mode colour, and a three-part footer: folder, mode, version.',
+    pros: ['Keeps and celebrates the logo you made', 'The gradient is truecolour, smooth in every modern terminal', 'A strong brand moment on launch'],
+    cons: ['Loud: the banner is a lot of pixels every launch', 'Amber and cyan both on screen'],
+    screen: () => {
+      const W = 80
+      const WM = ['███████╗ ██████╗ ██████╗  ██████╗ ███████╗', '██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝', '█████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ', '██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ', '██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗', '╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝']
+      const stops = [K.spark, K.amber, K.heat, K.ember]
+      const input = xbox(W, [` ${xf(K.m, '>')}  ${xf(K.d, 'Drop a file or type a path')}`], { col: K.m })
+      return {
+        rows: [
+          '',
+          ...WM.map((r) => '  ' + xg(r, stops)),
+          '',
+          ` ${xf(K.fg, 'Tips for getting started:')}`,
+          ` ${xf(K.d, '1.')} Drop a photo, a PDF or a Word file.`,
+          ` ${xf(K.d, '2.')} ${xf(K.m, '/compress')} makes a file smaller.`,
+          ` ${xf(K.d, '3.')} ${xf(K.m, '/pdf')} splits, merges and rotates pages.`,
+          ` ${xf(K.d, '4.')} ${xf(K.m, '/help')} for everything else.`,
+          '', '', '', '',
+          ...input,
+          xr(` ${xf(K.violet, '~/Desktop')}`, xr('', `${xf(K.m, 'convert mode')}${' '.repeat(22)}${xf(K.d, 'forge 0.1.0')} `, 50), W),
+        ],
+        cursor: [20, 6],
+      }
+    },
+  },
+  {
+    id: 'E', name: 'Hatched and playful', after: 'Charm\'s Crush',
+    idea: 'Charm\'s signature: diagonal hatching ╱╱╱ in a cyan-to-violet gradient, with the name knocked out of it. Below, the three modes as tabs with thick left bars, the active one filled. The input is a thick-left-bar field, Charm\'s "Huh" form style. Playful, crafted, unmistakably a designed tool.',
+    pros: ['The most personality of the set', 'The hatching is pure texture: no meaning to misread', 'Mode tabs make switching visible and clickable'],
+    cons: ['Charm\'s look, recognisably, so less of Forge\'s own', 'Hatching can feel busy on small windows'],
+    screen: () => {
+      const W = 80
+      const hatch = (n) => xg('╱'.repeat(n), [K.m, K.violet])
+      const band = (label) => ' ' + hatch(8) + ' ' + label + ' ' + hatch(W - 12 - X.vis(label))
+      const tab = (l, on) => on ? xf(K.m, '▌') + xb(K.mbg, xf(K.m, xB(` ${l} `))) : xf(K.faint, '▌') + xf(K.d, ` ${l} `)
+      return {
+        rows: [
+          '', '',
+          band(xB(xf(K.fg, 'FORGE')) + xf(K.d, '™')),
+          band(xf(K.d, 'Convert 0.1.0')),
+          '', '',
+          `  ${tab('↔ convert', true)}   ${tab('⇣ compress', false)}   ${tab('▣ pdf', false)}`,
+          '', '',
+          `  ${xf(K.m, '┃')} ${xB('Drop a file')}`,
+          `  ${xf(K.m, '┃')} ${xf(K.d, 'or type its path below. Images, HEIC, PDF and Word.')}`,
+          `  ${xf(K.m, '┃')}`,
+          `  ${xf(K.m, '┃')} ${xf(K.m, '>')} ${xf(K.x, '~/Pictures/…')}`,
+          '', '', '', '', '', '', '', '',
+          xr(`  ${xf(K.d, 'saves to')} ~/Desktop`, `${xf(K.fg, 'tab')} ${xf(K.d, 'mode')}  ${xf(K.fg, '↵')} ${xf(K.d, 'send')}  ${xf(K.fg, 'ctrl+c')} ${xf(K.d, 'quit')}  `, W),
+          '', '',
+        ],
+        cursor: [13, 7],
+      }
+    },
+  },
+  {
+    id: 'F', name: 'Blocks and chips', after: 'Warp',
+    idea: 'The input is a block, a full-width panel with a thin header strip showing where you are and where files go, like a Warp command block. Above it, suggestion chips for the common jobs, so a first action is one click or one keystroke away. Results would stack above as blocks too.',
+    pros: ['The suggestions make the first action obvious', 'The block header carries status with no footer needed', 'Matches how receipts already work: one block per job'],
+    cons: ['Chips that look clickable only work with mouse support (not in Terminal.app)', 'Less brand, more product'],
+    screen: () => {
+      const W = 80
+      const chip = (t) => xb(K.cap, ` ${t} `)
+      const strip = xb('#1f2430', xpad(` ${xf(K.m, '↔ convert')}   ${xf(K.d, 'saves to ~/Desktop')}`, W))
+      const body = (t) => xb(K.panel, xpad(t, W))
+      return {
+        rows: [
+          '', '', '', '', '', '', '', '', '', '', '',
+          `  ${xf(K.x, 'Try')}   ${chip(xf(K.fg, 'Convert a photo'))}  ${chip(xf(K.fg, 'Compress a PDF'))}  ${chip(xf(K.fg, 'Merge PDFs'))}  ${chip(xf(K.fg, 'Rotate pages'))}`,
+          '', '',
+          strip,
+          body(''),
+          body(`  ${xf(K.m, xB('›'))} ${xf(K.d, 'Drop a file or type a path')}`),
+          body(''),
+          '',
+          xr(`  ${xb(K.cap, xf(K.fg, xB(' ↵ ')))} ${xf(K.d, 'send')}  ${xb(K.cap, xf(K.fg, xB(' / ')))} ${xf(K.d, 'commands')}`, xf(K.x, 'esc clear · ctrl-n new · ctrl-c quit  '), W),
+          '', '', '', '',
+        ],
+        cursor: [17, 6],
+      }
+    },
+  },
+  {
+    id: 'G', name: 'A launcher', after: 'Raycast and Spotlight',
+    idea: 'A centred, rounded panel with one big search-style field and a list of actions under it, each with its key. Typing filters the actions; dropping a file runs the first one. One focused object in the middle of an empty screen.',
+    pros: ['Everything the app does is visible at once', 'Typing and choosing are the same gesture', 'A very clear, modern shape'],
+    cons: ['Dropping a file isn\'t shown as the main gesture', 'Centring needs a full-screen redraw'],
+    screen: () => {
+      const W = 80, pw = 60, lead = ' '.repeat((W - pw) / 2)
+      const row = (icon, l, k, sel) => {
+        const t = ` ${sel ? xf(K.m, '❯') : ' '} ${xf(sel ? K.m : K.d, icon)}  ${sel ? xB(l) : l}`
+        const line = xpad(t, pw - 2 - X.vis(k) - 1) + xf(K.d, k) + ' '
+        return sel ? xb(K.panel, line) : line
+      }
+      const panel = xbox(pw, [
+        ` ${xf(K.m, '⌕')}  ${xf(K.d, 'Drop a file or type a path…')}`,
+        xf(K.x, '─'.repeat(pw - 2)),
+        ` ${xf(K.x, 'ACTIONS')}`,
+        row('↔', 'Convert a file', 'drop or type', true),
+        row('⇣', 'Compress a file', '/compress'),
+        row('▣', 'Work with PDF pages', '/pdf'),
+        row('◐', 'Switch theme', '/theme'),
+        row('?', 'Help', '/help'),
+      ], { col: K.x })
+      return {
+        rows: [
+          '', '', '', '',
+          ...panel.map((l) => lead + l),
+          '',
+          xc(`${xb(K.cap, xf(K.fg, xB(' ↵ ')))} ${xf(K.d, 'open')}   ${xb(K.cap, xf(K.fg, xB(' ↑↓ ')))} ${xf(K.d, 'move')}   ${xf(K.x, 'esc clear · ctrl-c quit')}`, W),
+          '', '', '', '', '', '', '',
+          xc(xf(K.x, 'forge 0.1.0  ·  saves to ~/Desktop'), W),
+        ],
+        cursor: [6, 15],
+      }
+    },
+  },
+  {
+    id: 'H', name: 'A workbench', after: 'yazi and lazygit',
+    idea: 'Full-screen panes. On the left, recent conversions with their savings, so the session has a memory. On the right, a large drop panel with the input at its foot. A status bar along the bottom. The app as a place you work in, not a prompt you visit.',
+    pros: ['Repeat work is visible and one keystroke away', 'The most "app-like" structure', 'Room to grow (a preview pane, a queue)'],
+    cons: ['The biggest departure from today\'s inline shell', 'Panes are heavy for a one-off conversion'],
+    screen: () => {
+      const W = 80, lw = 30, rw = W - lw
+      const rec = (n, s, c) => ` ${xf(K.fg, n.padEnd(15))}${xf(K.d, s.padStart(7))} ${xf(K.ok, c)}`
+      const left = xbox(lw, [
+        rec('IMG_4127.webp', '412 KB', '−83%'),
+        rec('scan-small.jpg', '940 KB', '−80%'),
+        rec('test.jpg', '74.6 KB', '−39%'),
+        rec('contract-2.pdf', '210 KB', '−12%'),
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+      ], { col: K.x, title: xf(K.d, ' recent ') })
+      const mid = (t) => X.center(t, rw - 2)
+      const right = xbox(rw, [
+        '', '', '', '', '', '',
+        mid(`${xf(K.m, '⇣')}  ${xB('Drop a file here')}`),
+        mid(xf(K.d, 'images · HEIC · PDF · Word')),
+        '', '', '', '', '', '', '', '',
+        xf(K.x, '─'.repeat(rw - 2)),
+        ` ${xf(K.m, '›')} ${xf(K.d, 'or type a path')}`,
+        '',
+      ], { col: K.m, title: xf(K.m, xB(' ↔ convert ')) })
+      return {
+        rows: [
+          ...left.map((l, i) => l + right[i]),
+          xb('#16171b', xpad(xr(` ${xf(K.d, 'forge 0.1.0  ·  ~/Desktop')}`, `${xf(K.d, 'tab')} ${xf(K.x, 'pane')}  ${xf(K.d, '↵')} ${xf(K.x, 'send')}  ${xf(K.d, 'ctrl-c')} ${xf(K.x, 'quit')} `, W), W)),
+          '', '',
+        ],
+        cursor: [19, 35],
+      }
+    },
+  },
+]
+
+function xtermFrame(el, rows, cursor, cols = 80, lines = 24) {
+  const term = new Terminal({
+    cols, rows: lines, fontSize: 11, lineHeight: 1, letterSpacing: 0,
+    fontFamily: '"SF Mono", Menlo, monospace', customGlyphs: true, cursorBlink: true,
+    cursorStyle: 'bar', disableStdin: true, allowProposedApi: true,
+    theme: { background: K.bg, foreground: K.fg, cursor: K.m, cursorAccent: K.bg },
+  })
+  term.open(el)
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()) } catch (e) { /* DOM renderer fallback */ }
+  term.write(rows.slice(0, lines).join('\r\n') + `\x1b[${cursor[0]};${cursor[1]}H`)
+}
+/* ============================================ 2 · HOME, IN EIGHT DIRECTIONS
+   3 · THE DROP ZONE, ON ITS OWN
+   Every frame is ANSI written into xterm.js, so cells are exact. */
+{
+const N = 80
+const E = '\x1b['
+const vis = X.vis
+const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+const bgOn = (h) => `${E}48;2;${rgbOf(h)}m`
+/** A row on a fill. A nested background hands back to this fill, not to the terminal's. */
+const on = (bg, s, w = N) => bgOn(bg) + xpad(s, w).split(`${E}49m`).join(bgOn(bg)) + `${E}49m`
+const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '')
+const gcol = (i, n, stops) => {
+  const p = (Math.max(0, Math.min(n - 1, i)) / Math.max(1, n - 1)) * (stops.length - 1), k = Math.floor(p)
+  return X.mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k)
+}
+/** Diagonal hatching whose colour follows the absolute column, so stacked rows line up. */
+const hatchAt = (c0, n, r = 0, stops = [K.m, K.violet]) => {
+  let s = ''
+  for (let i = 0; i < n; i++) s += xf(gcol(c0 + i + r * 2, N + 8, stops), '╱')
+  return s
+}
+/** One edge of a frame, cell by cell, with labels set into it. */
+const edgeX = (w, [l, m, r], col, ins = []) => {
+  const ch = (c) => (c === 0 ? l : c === w - 1 ? r : m)
+  let out = '', c = 0
+  for (const i of [...ins].sort((a, b) => a.at - b.at)) {
+    while (c < i.at) { out += xf(col(c), ch(c)); c++ }
+    out += i.s; c += vis(i.s)
+  }
+  while (c < w) { out += xf(col(c), ch(c)); c++ }
+  return out
+}
+/** Paint a background gradient under an already-coloured string, cell by cell. */
+const gradFill = (s, w, stops) => {
+  const src = xpad(s, w)
+  let out = '', c = 0
+  for (const m of src.matchAll(/(\x1b\[[0-9;]*m)|([^\x1b])/gu)) {
+    if (m[1]) { out += m[1]; continue }
+    out += bgOn(gcol(c, w, stops)) + m[2]; c++
+  }
+  return out + `${E}49m`
+}
+const cursorAt = (rows, re, after = false) => {
+  for (let i = 0; i < rows.length; i++) {
+    const t = strip(rows[i]), m = re.exec(t)
+    if (m) return [i + 1, [...t.slice(0, m.index)].length + (after ? [...m[0]].length : 0) + 1]
+  }
+  return [rows.length, 1]
+}
+const H = { wood: '#8a5a2b', grey: '#8b93a6', comp: '#79c98b', pdf: '#ff6b4a', strip: '#1f2430', inset: '#1a1f28', hl: '#33405a', bar: '#16171b', P: K.panel }
+const P = H.P
+
+/* ------------------------------------------------------------ brand parts */
+const ANVIL = [
+  `     ${xf(H.wood, '║')}     `,
+  `   ${xf(K.spark, "'")} ${xf(H.wood, '║')} ${xf(K.spark, "'")}   `,
+  ` ${xf(K.spark, '*')}   ${xf(H.wood, '║')}   ${xf(K.spark, '*')} `,
+  `   ${xf(H.grey, '█████')}   `,
+  ` ${xf(K.heat, '▄▄▄▄▄▄▄▄▄')} `,
+  `${xf(H.grey, '▐█████████▌')}`,
+  ` ${xf(H.grey, '▀▀▀▐█▌▀▀▀')} `,
+  ` ${xf(H.grey, '▄▄██████▄')}  `,
+]
+const WM6 = ['███████╗ ██████╗ ██████╗  ██████╗ ███████╗', '██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝', '█████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ', '██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ', '██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗', '╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝']
+const WM3 = ['█▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀▀', '█▀▀  █  █ █▀▀▄ █ ▀█ █▀▀ ', '▀    ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀']
+const ARROW = ['   ██   ', '   ██   ', '▀█▄██▄█▀', '  ▀██▀  ', '   ▀▀   ']
+const HEAT = [K.spark, K.amber, K.heat, K.ember]
+const CV = [K.m, K.violet]
+const PH = 'Drop a file, or type a path'
+const KINDS = 'images · HEIC · PDF · Word'
+
+/** F1: main keys left, footnote right; the footnote loses items before it would wrap. */
+const keysF1 = ({ main = [['↵', 'send'], ['/', 'commands']], foot = [['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']], style = 'cap', w = N, lead = 1, kc = K.fg, wc = K.d, fc = K.x } = {}) => {
+  const k = (key) => (style === 'cap' ? xb(K.cap, xf(kc, xB(` ${key} `))) : xf(kc, xB(key)))
+  const left = ' '.repeat(lead) + main.map(([key, word]) => `${k(key)} ${xf(wc, word)}`).join(style === 'cap' ? '  ' : '   ')
+  let f = [...foot]
+  const ft = () => f.map(([a, b]) => `${a} ${b}`).join(' · ')
+  while (f.length && vis(left) + 3 + ft().length + 1 > w) f = f.slice(0, -1)
+  return xr(left, xf(fc, ft()) + ' ', w)
+}
+const fill24 = (rows, last) => {
+  const r = [...rows]
+  while (r.length < (last ? 23 : 24)) r.push('')
+  return last ? [...r, last] : r
+}
+
+/* ================================================================ HOME */
+const HOMES = [
+  {
+    id: 'A', name: 'Hatched', after: 'Charm\'s Crush', pick: true,
+    idea: 'The hatching you liked, as the brand: FORGE is knocked out of a band of ╱╱╱ that runs cyan to violet, with the product name set small above it. The modes are filled tabs; the drop zone is a form field with a thick left bar. Lots of air, one loud thing.',
+    screen: () => {
+      const band = (r) => ' ' + hatchAt(1, 2, r) + ' ' + xf(K.fg, xB(WM3[r])) + ' ' + hatchAt(29, 50, r)
+      const tab = (l, c, active) => (active ? xb(c, xf(K.ink, xB(` ${l} `))) : xf(K.d, ` ${l} `))
+      const bar = xf(K.m, '┃')
+      return fill24([
+        '',
+        `    ${xf(K.violet, 'Convert')}${xf(K.x, '™')}`,
+        band(0), band(1), band(2),
+        '', '',
+        `    ${tab('↔ convert', K.m, true)}  ${tab('↓ compress')}  ${tab('▣ pdf')}`,
+        '', '',
+        `    ${bar} ${xf(K.fg, xB('Drop a file'))}`,
+        `    ${bar} ${xf(K.d, 'or type its path. Images, HEIC, PDF and Word.')}`,
+        `    ${bar}`,
+        `    ${bar} ${xf(K.violet, '>')} ${xf(K.x, PH)}`,
+        '', '', '', '', '', '',
+        `    ${xf(K.d, 'saves to')} ${xf(K.fg, '~/Desktop')}`,
+        '',
+        keysF1({ style: 'text', lead: 4, kc: K.violet }),
+      ])
+    },
+  },
+  {
+    id: 'B', name: 'Ember', after: 'Gemini CLI',
+    idea: 'Your logo, kept whole and painted with the heat it already implies: the wordmark runs spark-yellow to ember-red. The input box carries the same gradient in its stroke. Numbered tips under the banner; a three-part footer for folder, mode and version.',
+    screen: () => {
+      const col = (c) => gcol(c, N, HEAT)
+      const side = (s) => xf(col(0), '│') + xpad(s, N - 2) + xf(col(N - 1), '│')
+      const mid = xf(K.m, '↔ convert mode')
+      return [
+        '',
+        ...ANVIL.map((a, i) => ' ' + a + '   ' + (i >= 2 ? xg(WM6[i - 2], HEAT) : '')),
+        '',
+        ` ${xf(K.fg, 'Tips for getting started:')}`,
+        ` ${xf(K.d, '1.')} Drop a photo, a PDF or a Word file into this window.`,
+        ` ${xf(K.d, '2.')} ${xf(K.amber, '/compress')} makes a file smaller.`,
+        ` ${xf(K.d, '3.')} ${xf(K.amber, '/pdf')} splits, merges and rotates pages.`,
+        ` ${xf(K.d, '4.')} ${xf(K.amber, '/help')} for everything else.`,
+        '',
+        edgeX(N, ['╭', '─', '╮'], col),
+        side(` ${xf(K.spark, xB('>'))}   ${xf(K.x, PH)}`),
+        edgeX(N, ['╰', '─', '╯'], col),
+        xr(xpad(` ${xf(K.violet, '~/Desktop')}`, Math.floor((N - vis(mid)) / 2)) + mid, xf(K.d, 'forge 0.1.0 '), N),
+      ]
+    },
+  },
+  {
+    id: 'C', name: 'Centred stage', after: 'opencode',
+    idea: 'Full screen, on one vertical axis. A compact wordmark with a shadowed bottom row, then one wide input with a thick bar in the mode colour, carrying its own status inside. A single tip under the keys, and a status bar along the very bottom.',
+    screen: () => {
+      const iw = 60, lead = ' '.repeat((N - iw) / 2)
+      const inp = (s) => lead + xf(K.m, '┃') + on(P, s, iw - 1)
+      return fill24([
+        '', '', '', '',
+        ...WM3.map((r, i) => xc(i === 2 ? xf(K.x, r) : xf(K.fg, xB(r)), N)),
+        '',
+        xc(xf(K.x, 'convert  ·  v0.1.0'), N),
+        '', '',
+        inp(''),
+        inp(`  ${xf(K.d, PH)}`),
+        inp(''),
+        inp(`  ${xf(K.m, xB('Convert'))}  ${xf(K.d, 'saves to ~/Desktop')}`),
+        inp(''),
+        '',
+        xc(`${xf(K.fg, xB('↵'))} ${xf(K.d, 'send')}   ${xf(K.fg, xB('/'))} ${xf(K.d, 'commands')}   ${xf(K.x, 'esc clear · ctrl-c quit')}`, N),
+        '', '',
+        xc(`${xf(K.amber, '●')} ${xf(K.fg, 'Tip')}  ${xf(K.d, 'Type')} ${xf(K.m, '/compress')} ${xf(K.d, 'to make a file smaller')}`, N),
+      ], on(H.bar, xr(` ${xf(K.d, '~/Desktop')}`, `${xf(K.d, 'forge')} ${xf(K.x, '0.1.0')} `, N)))
+    },
+  },
+  {
+    id: 'D', name: 'Blocks', after: 'Warp',
+    idea: 'Everything is a block: a thin header strip over a filled panel. The brand is one block (anvil and wordmark on the panel), the drop zone is another, your F block exactly. Receipts would stack between them as blocks too, so the whole session is one material.',
+    screen: () => {
+      const right = ['', '', ...WM3.map((r) => xf(K.fg, xB(r))), '', xf(K.d, KINDS), '']
+      return fill24([
+        '',
+        on(H.strip, xr(` ${xf(K.amber, xB('forge'))}  ${xf(K.d, '0.1.0')}`, xf(K.x, 'welcome '), N)),
+        ...ANVIL.map((a, i) => on(P, '   ' + a + '     ' + right[i])),
+        '', '', '', '', '', '', '',
+        on(K.mbg, xr(` ${xf(K.m, xB('↔ convert'))}   ${xf(K.d, 'saves to ~/Desktop')}`, xf(K.d, '/ to change mode '), N)),
+        on(P, ''),
+        on(P, `  ${xf(K.m, xB('›'))} ${xf(K.d, PH)}`),
+        on(P, ''),
+        '',
+        keysF1(),
+      ])
+    },
+  },
+  {
+    id: 'E', name: 'Launcher', after: 'Raycast',
+    idea: 'One floating, filled panel with soft, clipped corners. A search-style field on top, the things you can do as a list with coloured icons, and an action bar at the panel\'s foot. Typing filters the list; dropping a file runs the highlighted row.',
+    screen: () => {
+      const pw = 64, lead = ' '.repeat((N - pw) / 2)
+      const prow = (s, bg = P) => lead + on(bg, s, pw)
+      const icon = (c, g) => xb(c, xf(K.ink, xB(` ${g} `)))
+      const item = (c, g, label, right, sel) => prow(xr(`  ${icon(c, g)}  ${sel ? xf(K.fg, xB(label)) : xf(K.fg, label)}`, xf(K.d, right) + '  ', pw), sel ? H.hl : P)
+      return fill24([
+        '', '', '',
+        lead + xf(P, '▗' + '▄'.repeat(pw - 2) + '▖'),
+        prow(`  ${xf(K.m, xB('⌕'))}  ${xf(K.d, 'Drop a file, or search for what to do…')}`),
+        prow(xf('#343b4a', '─'.repeat(pw))),
+        prow(`  ${xf(K.x, 'Suggestions')}`),
+        item(K.m, '↔', 'Convert a file', 'drop it here', true),
+        item(H.comp, '↓', 'Compress a file', '/compress'),
+        item(H.pdf, '▣', 'Work with PDF pages', '/pdf'),
+        item(K.violet, '◐', 'Switch theme', '/theme'),
+        item(H.grey, '?', 'Help', '/help'),
+        prow(''),
+        prow(xr(`  ${xf(K.amber, '◆')} ${xf(K.d, 'Convert')}`, `${xf(K.fg, 'Open')} ${xb(K.cap, xf(K.fg, xB(' ↵ ')))}  ${xf('#3d4350', '│')}  ${xf(K.d, 'Commands')} ${xb(K.cap, xf(K.fg, xB(' / ')))}  `, pw), H.strip),
+        lead + xf(H.strip, '▝' + '▀'.repeat(pw - 2) + '▘'),
+        '', '', '', '', '', '',
+        xc(xf(K.x, 'saves to ~/Desktop  ·  forge 0.1.0'), N),
+      ])
+    },
+  },
+  {
+    id: 'F', name: 'Workbench', after: 'lazygit and yazi',
+    idea: 'Full-screen panes with numbered titles set into their borders. Modes on the top left, recent conversions under them, and a large drop pane on the right with the path field at its foot. The active pane is drawn in the mode colour. The app as a place you work in.',
+    screen: () => {
+      const pane = (w, h, n, title, lines, col, foot = '') => {
+        const t = xf(col === K.m ? K.m : K.d, `[${n}]`) + xf(col, '─') + xf(col === K.m ? K.fg : K.d, xB(title))
+        const out = [xf(col, '╭─') + t + xf(col, '─'.repeat(w - 3 - vis(t)) + '╮')]
+        for (let i = 0; i < h - 2; i++) out.push(xf(col, '│') + (lines[i]?.bg ? on(lines[i].bg, lines[i].s, w - 2) : xpad(lines[i] ?? '', w - 2)) + xf(col, '│'))
+        out.push(foot ? xf(col, '╰─') + foot + xf(col, '─'.repeat(w - 3 - vis(foot)) + '╯') : xf(col, '╰' + '─'.repeat(w - 2) + '╯'))
+        return out
+      }
+      const G = '#4a5366'
+      const rec = (n, f, p) => ` ${xf(K.fg, n.padEnd(15))}${xf(K.d, f.padStart(5))} ${xf(K.ok, p.padStart(4))}`
+      const left = [
+        ...pane(28, 6, 1, 'Modes', [{ bg: K.mbg, s: ` ${xf(K.m, xB('↔ convert'))}` }, ` ${xf(K.d, '↓ compress')}`, ` ${xf(K.d, '▣ pdf')}`], G),
+        ...pane(28, 17, 2, 'Recent', [rec('IMG_4127.heic', 'webp', '−83%'), rec('scan.png', 'jpg', '−80%'), rec('test.png', 'jpg', '−39%'), rec('contract.pdf', 'pdf', '−12%')], G, xf(K.x, ' 4 today ')),
+      ]
+      const c = (s) => X.center(s, 50)
+      const right = pane(52, 23, 3, 'Drop', [
+        '', '', '', '', '', '',
+        ...ARROW.map((r, i) => c(xf(gcol(i, 5, CV), r))),
+        '',
+        c(xf(K.fg, xB('Drop a file here'))),
+        c(xf(K.d, KINDS)),
+        '', '', '', '',
+        xf('#323a4a', '─'.repeat(50)),
+        ` ${xf(K.m, xB('›'))} ${xf(K.d, 'or type a path')}`,
+      ], K.m, xf(K.d, ' saves to ~/Desktop '))
+      const sep = xf(K.x, ' | ')
+      return [
+        ...left.map((l, i) => l + right[i]),
+        xr(` ${xf(K.m, 'Send')}${xf(K.d, ': ↵')}${sep}${xf(K.m, 'Commands')}${xf(K.d, ': /')}${sep}${xf(K.m, 'Pane')}${xf(K.d, ': tab')}${sep}${xf(K.m, 'Quit')}${xf(K.d, ': ctrl-c')}`, `${xf(K.amber, 'forge')} ${xf(K.x, '0.1.0')} `, N),
+      ]
+    },
+  },
+  {
+    id: 'G', name: 'Instrument', after: 'btop',
+    idea: 'One full-screen frame, like an instrument panel. The modes are set into the top edge with superscript numbers (press 1, 2 or 3); the keys are set into the bottom edge. A large gradient arrow in the middle, and the path field as an inset box with its own title.',
+    screen: () => {
+      const FC = '#4a5366', IC = '#3a4356'
+      const fc = () => FC
+      const side = (s) => xf(FC, '│') + xpad(s, N - 2) + xf(FC, '│')
+      const sup = (n) => xf(K.heat, '¹²³'[n])
+      const modes = `${xf(FC, '┤')} ${sup(0)}${xf(K.m, xB('convert'))}  ${sup(1)}${xf(K.d, 'compress')}  ${sup(2)}${xf(K.d, 'pdf')} ${xf(FC, '├')}`
+      const brand = `${xf(FC, '┤')} ${xf(K.amber, xB('forge'))} ${xf(K.x, '0.1.0')} ${xf(FC, '├')}`
+      const k = (key, w) => `${xf(FC, '┤')} ${xf(K.fg, xB(key))} ${xf(K.d, w)} ${xf(FC, '├')}`
+      const k1 = k('↵', 'send'), k2 = k('/', 'commands'), k3 = `${xf(FC, '┤')} ${xf(K.x, 'esc clear · ctrl-c quit')} ${xf(FC, '├')}`
+      const inner = N - 6
+      return [
+        edgeX(N, ['╭', '─', '╮'], fc, [{ at: 2, s: modes }, { at: N - 2 - vis(brand), s: brand }]),
+        side(''), side(''), side(''),
+        ...ARROW.map((r, i) => side(X.center(xf(gcol(i, 5, CV), r), N - 2))),
+        side(''),
+        side(X.center(xf(K.fg, xB('Drop a file here')), N - 2)),
+        side(X.center(xf(K.d, KINDS), N - 2)),
+        side(''), side(''),
+        side('  ' + edgeX(inner, ['╭', '─', '╮'], () => IC, [{ at: 2, s: `${xf(IC, '┤')}${xf(K.d, ' path ')}${xf(IC, '├')}` }])),
+        side('  ' + xf(IC, '│') + xpad(` ${xf(K.m, xB('›'))} ${xf(K.d, PH)}`, inner - 2) + xf(IC, '│')),
+        side('  ' + edgeX(inner, ['╰', '─', '╯'], () => IC)),
+        side(''),
+        side(xr(`  ${xf(K.d, 'saves to')} ${xf(K.fg, '~/Desktop')}`, `${xf(K.d, 'theme')} ${xf(K.fg, 'dark')}  `, N - 2)),
+        side(''), side(''), side(''), side(''),
+        edgeX(N, ['╰', '─', '╯'], fc, [{ at: 2, s: k1 }, { at: 3 + vis(k1), s: k2 }, { at: N - 2 - vis(k3), s: k3 }]),
+      ]
+    },
+  },
+  {
+    id: 'H', name: 'Welcome card', after: 'Claude Code',
+    idea: 'An inline session that opens with one card in the brand amber: on the left the anvil and where files go, on the right tips and your recent conversions. The prompt sits between two plain rules, with "? for shortcuts" and the mode under it. Quiet, familiar, and the anvil gets a frame of its own.',
+    screen: () => {
+      const AM = K.amber, lw = 33, rw = 44
+      const left = ['', X.center(xf(K.fg, xB('Welcome to Convert')), lw), '', ...ANVIL.map((a) => X.center(a, lw)), '', X.center(xf(K.d, '~/Desktop'), lw)]
+      const right = [
+        '',
+        ' ' + xf(AM, xB('Tips for getting started')),
+        ' Drop a photo, a PDF or a Word file here',
+        ` Type ${xf(K.m, '/compress')} to make a file smaller`,
+        ` Type ${xf(K.m, '/pdf')} to split, merge or rotate pages`,
+        ' ' + xf(AM, '─'.repeat(42)),
+        ' ' + xf(AM, xB('Recent')),
+        ` ${xf(K.fg, 'IMG_4127.heic')} ${xf(K.d, '→ webp')}   ${xf(K.ok, '−83%')}`,
+        ` ${xf(K.fg, 'test.png')} ${xf(K.d, '→ jpg')}         ${xf(K.ok, '−39%')}`,
+      ]
+      return [
+        '',
+        edgeX(N, ['╭', '─', '╮'], () => AM, [{ at: 4, s: ` ${xf(K.fg, 'Convert')} ${xf(K.d, 'v0.1.0')} ` }, { at: lw + 1, s: xf(AM, '┬') }]),
+        ...left.map((l, i) => xf(AM, '│') + xpad(l, lw) + xf(AM, '│') + xpad(right[i] ?? '', rw) + xf(AM, '│')),
+        edgeX(N, ['╰', '─', '╯'], () => AM, [{ at: lw + 1, s: xf(AM, '┴') }]),
+        '',
+        xf(K.x, '─'.repeat(N)),
+        ` ${xf(K.fg, '>')} ${xf(K.d, PH)}`,
+        xf(K.x, '─'.repeat(N)),
+        xr(`  ${xf(K.x, '? for shortcuts')}`, `${xf(K.m, '↔ convert mode')} ${xf(K.x, '(/ to change)')}  `, N),
+      ]
+    },
+  },
+]
+
+/* =========================================================== DROP ZONE */
+const ZPH = new RegExp(PH.replace(/[.,]/g, '\\$&'))
+const TYPED = /~\/Desk(?!t)/
+const zIn = (t, ph = PH, pc = K.m) => (t ? `${xf(pc, xB('›'))} ~/Desk` : `${xf(pc, xB('›'))} ${xf(K.d, ph)}`)
+const zComp = (hl = H.hl, n = 3) => ['~/Desktop/', '~/Desktop/converted/', '~/Desktop/receipts/'].slice(0, n)
+  .map((p, i) => (i ? xf(K.d, p) : xb(hl, xf(K.fg, xB(` ${p} `))))).join('   ')
+const target = (dim) => `${xf(dim ? K.x : K.m, xB('⇣'))}  ${xf(dim ? K.d : K.fg, xB('Drop a file here'))}`
+const kinds = (dim) => xf(dim ? K.x : K.d, KINDS)
+
+const ZONES2 = [
+  {
+    id: 'Z1', name: 'The block',
+    idea: 'Your F block: a strip in the mode\'s tint over a filled panel, with the typing line in the middle. Status lives in the strip, so there is no separate mode bar.',
+    rows: (t) => [
+      on(K.mbg, xr(` ${xf(K.m, xB('↔ convert'))}   ${xf(K.d, 'saves to ~/Desktop')}`, xf(K.d, '/ to change mode '), N)),
+      on(P, ''),
+      on(P, '  ' + zIn(t)),
+      on(P, t ? '    ' + zComp() : ''),
+    ],
+  },
+  {
+    id: 'Z2', name: 'A slab with a pill inside',
+    idea: 'Today\'s fill, finished with half-cell edges and quarter-cell corners, so the slab has soft, clipped corners instead of a hard rectangle. The typing line is a darker pill set into it, finished the same way.',
+    rows: (t) => [
+      xf(P, '▗' + '▄'.repeat(N - 2) + '▖'),
+      on(P, X.center(target(t), N)),
+      on(P, X.center(kinds(t), N)),
+      on(P, ''),
+      on(P, '   ' + xf(H.inset, '▗' + '▄'.repeat(N - 8) + '▖')),
+      on(P, '   ' + on(H.inset, '  ' + zIn(t), N - 6)),
+      on(P, '   ' + xf(H.inset, '▝' + '▀'.repeat(N - 8) + '▘')),
+      on(P, t ? '     ' + zComp('#3a4762') : ''),
+      xf(P, '▝' + '▀'.repeat(N - 2) + '▘'),
+    ],
+  },
+  {
+    id: 'Z3', name: 'A window in the hatching',
+    idea: 'The zone is a field of quiet hatching, and the panel is a window cut into it. While you type, the hatching fades back so the field leads.',
+    rows: (t) => {
+      const st = t ? ['#1d3439', '#2a2638'] : ['#2b6873', '#55477c']
+      const w = N - 12
+      const r = (i, s) => hatchAt(0, 6, i, st) + on(P, s, w) + hatchAt(N - 6, 6, i, st)
+      return [
+        hatchAt(0, N, 0, st),
+        r(1, ''), r(2, X.center(target(t), w)), r(3, X.center(kinds(t), w)), r(4, ''),
+        r(5, '  ' + zIn(t)),
+        r(6, t ? '    ' + zComp() : ''),
+        hatchAt(0, N, 7, st),
+      ]
+    },
+  },
+  {
+    id: 'Z4', name: 'A hatched frame', pick: true,
+    idea: 'The hatching becomes the stroke: a frame of ╱╱╱ in cyan to violet around the filled panel, with the mode and the folder knocked out of its top edge. The frame dims while you type.',
+    rows: (t) => {
+      const st = t ? ['#2c4a52', '#3b3452'] : CV
+      const label = ` ${xf(K.fg, xB('↔ convert'))}  ${xf(K.d, 'saves to ~/Desktop')} `
+      const r = (i, s) => hatchAt(0, 2, i, st) + on(P, s, N - 4) + hatchAt(N - 2, 2, i, st)
+      const body = ['', X.center(target(t), N - 4), X.center(kinds(t), N - 4), '', '  ' + zIn(t), t ? '    ' + zComp() : '']
+      return [
+        hatchAt(0, 2, 0, st) + label + hatchAt(2 + vis(label), N - 2 - vis(label), 0, st),
+        ...body.map((s, i) => r(i + 1, s)),
+        hatchAt(0, N, body.length + 1, st),
+      ]
+    },
+  },
+  {
+    id: 'Z5', name: 'A form field',
+    idea: 'No fill at all. A title, a line of help, and the input, joined by one thick bar in the mode colour, the way Charm\'s forms mark the focused field. The bar brightens while you type.',
+    rows: (t) => {
+      const b = xf(t ? '#9be8f3' : K.m, '┃')
+      return [
+        `  ${b} ${xf(K.fg, xB('Drop a file'))}`,
+        `  ${b} ${xf(K.d, 'or type its path. Images, HEIC, PDF and Word.')}`,
+        `  ${b}`,
+        `  ${b} ${t ? `${xf(K.violet, xB('>'))} ~/Desk` : `${xf(K.violet, xB('>'))} ${xf(K.x, PH)}`}`,
+        t ? `  ${b}   ${zComp('#3b3452')}` : '',
+      ]
+    },
+  },
+  {
+    id: 'Z6', name: 'A gradient stroke',
+    idea: 'A rounded frame whose stroke runs cyan to violet, cell by cell, with the mode set into the top-left edge and the folder into the top-right. The divider over the typing line picks up the gradient while you type.',
+    rows: (t) => {
+      const col = (c) => gcol(c, N, CV)
+      const side = (s) => xf(col(0), '│') + xpad(s, N - 2) + xf(col(N - 1), '│')
+      const rt = ` ${xf(K.d, 'saves to ~/Desktop')} `
+      return [
+        edgeX(N, ['╭', '─', '╮'], col, [{ at: 2, s: ` ${xf(K.m, xB('↔ convert'))} ` }, { at: N - 2 - vis(rt), s: rt }]),
+        side(''), side(X.center(target(t), N - 2)), side(X.center(kinds(t), N - 2)), side(''),
+        edgeX(N, ['├', '─', '┤'], (c) => (t || c === 0 || c === N - 1 ? col(c) : '#343b4a')),
+        side(' ' + zIn(t)),
+        ...(t ? [side('   ' + zComp())] : []),
+        edgeX(N, ['╰', '─', '╯'], col),
+      ]
+    },
+  },
+  {
+    id: 'Z7', name: 'A folder tab',
+    idea: 'The modes sit on top as tabs, and the active one is fused to the panel, with a half-cell top edge, so the zone looks like a folder with its tab pulled up. Switching mode moves the tab.',
+    rows: (t) => [
+      '  ' + xf(P, '▄'.repeat(13)),
+      xr('  ' + on(P, ` ${xf(K.m, xB('↔ convert'))}`, 13) + `   ${xf(K.d, '↓ compress')}    ${xf(K.d, '▣ pdf')}`, xf(K.x, 'saves to ~/Desktop  '), N),
+      on(P, ''),
+      on(P, X.center(target(t), N)),
+      on(P, X.center(kinds(t), N)),
+      on(P, ''),
+      on(P, '  ' + zIn(t)),
+      on(P, t ? '    ' + zComp() : ''),
+    ],
+  },
+  {
+    id: 'Z8', name: 'A big arrow',
+    idea: 'A large arrow drawn in block characters, in the cyan-to-violet gradient, with the words set beside it rather than under it. The typing line sits at the arrow\'s point. The arrow greys out while you type.',
+    rows: (t) => {
+      const right = ['', xf(K.fg, xB('Drop a file here')), kinds(t), '', zIn(t, 'or type a path')]
+      return [
+        on(P, ''),
+        ...ARROW.map((r, i) => on(P, '     ' + xf(t ? '#3d4658' : gcol(i, 5, CV), r) + '     ' + right[i])),
+        on(P, t ? ' '.repeat(20) + zComp() : ''),
+      ]
+    },
+    ph: /or type a path/,
+  },
+  {
+    id: 'Z9', name: 'A dotted surface',
+    idea: 'The fill carries a faint dot grid, like a cutting mat or a design canvas, with the words knocked out of it. It says "surface you put things on" without an arrow. The dots fade while you type.',
+    rows: (t) => {
+      const dc = t ? '#2c3342' : '#414a5c'
+      const dots = (n, c0) => { let s = ''; for (let i = 0; i < n; i++) s += (c0 + i) % 3 === 1 ? '·' : ' '; return xf(dc, s) }
+      const knock = (s) => { const w = vis(s) + 4, a = Math.floor((N - w) / 2); return dots(a, 0) + '  ' + s + '  ' + dots(N - a - w, a + w) }
+      return [
+        on(P, dots(N, 0)), on(P, dots(N, 0)),
+        on(P, knock(target(t))), on(P, knock(kinds(t))),
+        on(P, dots(N, 0)),
+        on(P, '  ' + on(H.inset, ' ' + zIn(t), N - 4)),
+        on(P, t ? '    ' + zComp() : dots(N, 0)),
+      ]
+    },
+  },
+  {
+    id: 'Z10', name: 'A raised card',
+    idea: 'The panel casts a one-cell shadow down and to the right, drawn with a darker colour and half blocks. A small physical touch: the card looks lifted off the terminal, ready to take a file.',
+    rows: (t) => {
+      const SH = '#101114', cw = N - 2
+      return [
+        on(P, '', cw) + xf(SH, '▄'),
+        on(P, X.center(target(t), cw), cw) + xf(SH, '█'),
+        on(P, X.center(kinds(t), cw), cw) + xf(SH, '█'),
+        on(P, '', cw) + xf(SH, '█'),
+        on(P, '  ' + zIn(t), cw) + xf(SH, '█'),
+        on(P, t ? '    ' + zComp() : '', cw) + xf(SH, '█'),
+        ' ' + xf(SH, '▀'.repeat(cw)),
+      ]
+    },
+  },
+  {
+    id: 'Z11', name: 'Drop on the left, type on the right',
+    idea: 'Two clear targets side by side: a dashed square that says "drop here", and a field for a path. Neither gesture hides inside the other, and the folder and kinds sit with the field.',
+    rows: (t) => {
+      const dc = t ? '#3d4658' : K.m, bw = 24
+      const L = ['╭' + '╌'.repeat(bw - 2) + '╮', ...['', X.center(xf(t ? K.x : K.m, xB('⇣')), bw - 2), X.center(xf(t ? K.d : K.fg, xB('drop here')), bw - 2), ''].map((s) => xf(dc, '╎') + xpad(s, bw - 2) + xf(dc, '╎')), '╰' + '╌'.repeat(bw - 2) + '╯']
+      const Lc = L.map((s, i) => (i === 0 || i === L.length - 1 ? xf(dc, s) : s))
+      const R = [
+        `${xf(K.m, xB('↔ convert'))}  ${xf(K.d, 'saves to ~/Desktop')}`,
+        '',
+        on(P, ' ' + zIn(t, 'or type a path'), 50),
+        t ? '  ' + zComp(H.hl, 2) : '',
+        xf(K.x, KINDS),
+        '',
+      ]
+      return Lc.map((l, i) => '  ' + l + '    ' + R[i])
+    },
+    ph: /or type a path/,
+  },
+  {
+    id: 'Z12', name: 'Just an underline',
+    idea: 'Editorial and almost bare: a bold line of words, and a field that is only a thin rule under the text (▔), which turns into the gradient while you type. It leans on type rather than boxes.',
+    rows: (t) => [
+      `  ${xf(K.fg, xB('Drop a file'))}  ${xf(K.d, 'or type its path')}`,
+      '',
+      `  ${xf(K.m, xB('›'))} ${t ? '~/Desk' : xf(K.x, '~/Pictures/photo.heic')}`,
+      '  ' + (t ? xg('▔'.repeat(N - 4), CV) : xf('#2f6670', '▔'.repeat(N - 4))),
+      t ? '    ' + zComp() : `  ${xf(K.x, KINDS)}`,
+    ],
+    ph: /~\/Pictures\/photo\.heic/,
+  },
+  {
+    id: 'Z13', name: 'A gradient fill',
+    idea: 'The panel itself carries the cyan-to-violet gradient as a very dark fill, cell by cell, so the colour you liked is the material rather than a decoration on it.',
+    rows: (t) => {
+      const st = t ? ['#16262b', '#1f1b2c'] : ['#123039', '#2a2242']
+      const hl = (s) => s
+      return [
+        gradFill('', N, st),
+        gradFill(X.center(target(t), N), N, st),
+        gradFill(X.center(kinds(t), N), N, st),
+        gradFill('', N, st),
+        gradFill('  ' + zIn(t), N, st),
+        gradFill(t ? '    ' + hl(`${xf(K.fg, xB('~/Desktop/'))}   ${xf(K.d, '~/Desktop/converted/')}   ${xf(K.d, '~/Desktop/receipts/')}`) : '', N, st),
+      ]
+    },
+  },
+]
+
+/* ------------------------------------------------------------- render */
+const frame = (el, rows, cursor, lines) => xtermFrame(el, rows, cursor, N, lines)
+for (const h of HOMES) {
+  const g = document.getElementById('home-grid')
+  const fg = document.createElement('figure')
+  fg.innerHTML = `<div class="vt"><span class="id">${h.id}</span><span class="name">${h.name}</span>${h.pick ? '<span class="pick">MY PICK</span>' : `<span class="after">after ${h.after}</span>`}</div>
+    <div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24${h.pick ? ` · after ${h.after}` : ''}</em></div><div class="xt"></div></div>
+    <p class="idea">${h.idea}</p>`
+  g.appendChild(fg)
+  const rows = fill24(h.screen())
+  frame(fg.querySelector('.xt'), rows, cursorAt(rows, /Drop a file, or (type a path|search)|(?<=› )or type a path/))
+}
+for (const z of ZONES2) {
+  const g = document.getElementById('drop-grid')
+  const fg = document.createElement('figure')
+  const states = [false, true].map((t) => ['', ...z.rows(t), ''])
+  const lines = Math.max(...states.map((r) => r.length))
+  fg.innerHTML = `<div class="vt"><span class="id">${z.id}</span><span class="name">${z.name}</span>${z.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    <div class="state">empty</div><div class="term"><div class="xt"></div></div>
+    <div class="state">typing ~/Desk</div><div class="term"><div class="xt"></div></div>
+    <p class="idea">${z.idea}</p>`
+  g.appendChild(fg)
+  const [a, b] = fg.querySelectorAll('.xt')
+  frame(a, states[0], cursorAt(states[0], z.ph ?? ZPH), lines)
+  frame(b, states[1], cursorAt(states[1], TYPED, true), lines)
+}
+}
+
+/* ======================================================= 3 · COMMANDS */
+const CMDS = [['convert', "change a file's format"], ['compress', 'make a file smaller'], ['pdf', 'page operations on a PDF'], ['theme', 'switch between light and dark'], ['help', 'list these commands']]
+fig('palette-grid', { id: 'TODAY', today: true, name: 'A plain list above the prompt',
+  html: termRaw(todayLines('slash', 10, 99), '80 columns'),
+  cons: ['Modes and app settings are mixed together', 'Nothing says which commands need a file'] })
+fig('palette-grid', { id: 'P1', name: 'Modes as coloured chips, settings below', pick: true,
+  html: term(80, [modeLine(80), blank(),
+    line([S('  '), S(' ↔ convert ', C.ink, { bg: C.m, b: true }), S('   '), S(' ⇣ compress ', C.mk, { bg: '#182c1e', b: true }), S('   '), S(' ▣ pdf ', C.mp, { bg: '#361c16', b: true })]),
+    line([S("  change a file's format", C.d), S('   '), S('make a file smaller', C.d), S('   '), S('pages', C.d)]),
+    blank(),
+    line([S('  /theme', C.f), S('   light or dark', C.d), S('       '), S('/help', C.f), S('   all commands', C.d)]),
+    blank(), line([S(' '), S('›', C.m), S(' /'), S('▏', C.f)], C.sel), blank(),
+    ...keyRow([['←→','choose'],['↵','switch'],['esc','close']], 'cap', 2, 80)], '80 columns'),
+  idea: 'The three modes are drawn in their own colours, the same colours the screen turns once you pick one. Settings sit quietly underneath.',
+  pros: ['Teaches the mode colours before you need them', 'Separates "what to do" from "how the app looks"', 'Builds on the mode-colour decision'],
+  cons: ['←→ to choose a mode, ↑↓ for settings: two directions', 'More layout code than a list'] })
+fig('palette-grid', { id: 'P2', name: 'A card with match highlighting',
+  html: term(80, (() => { const W = 56, inner = W - 2
+    const row = ([n, d], sel, hl) => line([S('│', C.x), ...pad([S(sel ? ' ❯ ' : '   ', C.m, sel ? { bg: C.sel } : {}), S('/', C.d, sel ? { bg: C.sel } : {}), S(n.slice(0, hl), C.m, { b: true, ...(sel ? { bg: C.sel } : {}) }), S(n.slice(hl).padEnd(10), C.f, sel ? { bg: C.sel, b: true } : {}), S(d, C.d, sel ? { bg: C.sel } : {})], inner, sel ? { bg: C.sel } : {}), S('│', C.x)])
+    return [modeLine(80), blank(), line([S('╭─ ', C.x), S('commands', C.m, { b: true }), S(' ' + '─'.repeat(inner - 11) + '╮', C.x)]),
+      row(CMDS[0], true, 2), row(CMDS[1], false, 2),
+      line([S('╰' + '─'.repeat(inner) + '╯', C.x)]),
+      line([S(' '), S('›', C.m), S(' /co'), S('▏', C.f)], C.sel), blank(), ...keyRow([['↑↓','choose'],['↵','run'],['esc','close']], 'cap', 2, 80)] })(), '80 columns · after typing /co'),
+  idea: 'The list narrows as you type, and the matching letters light up, the way fzf and Raycast do it.',
+  pros: ['Fast once you know the commands', 'Scales if commands are added'],
+  cons: ['With five commands, filtering barely matters', 'Another bordered box on screen'] })
+fig('palette-grid', { id: 'P3', name: 'Inline completion',
+  html: term(80, [modeLine(80), blank(), line([S(' '), S('›', C.m), S(' /co'), S('▏', C.f), S('nvert', C.x)], C.sel),
+    line([S('   ', C.d), S("change a file's format", C.d), S('     tab: ', C.x), S('/compress', C.d)]), blank(),
+    ...keyRow([['→','accept'],['tab','next match'],['esc','close']], 'cap', 2, 80)], '80 columns · after typing /co'),
+  idea: 'No list at all: the rest of the best match is written in faint text after what you typed, like fish shell. → accepts it.',
+  pros: ['Almost no chrome', 'Fast for people who already know the commands'],
+  cons: ['Hides the other commands, so it is hard to discover what exists', 'Not obvious to newcomers'] })
+fig('palette-grid', { id: 'P4', name: 'Today, grouped',
+  html: term(80, [modeLine(80), blank(),
+    line([S('  MODES', C.x)]),
+    line([S('❯ /convert   ', C.m, { bg: C.sel, b: true }), S("change a file's format        ", C.d, { bg: C.sel })]),
+    line([S('  /compress  '), S('make a file smaller', C.d)]),
+    line([S('  /pdf       '), S('page operations on a PDF', C.d)]),
+    line([S('  APP', C.x)]),
+    line([S('  /theme     '), S('switch between light and dark', C.d)]),
+    line([S('  /help      '), S('list these commands', C.d)]),
+    line([S(' '), S('›', C.m), S(' /'), S('▏', C.f)], C.sel), blank(), ...keyRow([['↑↓','choose'],['↵','run'],['esc','close']], 'cap', 2, 80)], '80 columns'),
+  idea: 'Today\'s list with two small headings.',
+  pros: ['The smallest change', 'Keeps ↑↓ everywhere'],
+  cons: ['Still a plain list'] })
+
+/* ======================================================= 4 · WORKING */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const sp = () => S('⠋', C.m, { cls: 'spin', b: true })
+const workTop = W => [header(W, '~/Desktop', 'convert', ' · PNG → JPEG'), blank()]
+fig('working-grid', { id: 'TODAY', today: true, name: 'One dim word',
+  html: term(80, [...workTop(80), ...fileCard(), blank(), line([S('Converting…', C.d)]), blank(), ...keyRow([['esc','back — nothing is written yet']], 'cap', 2, 80)], '80 columns (reconstructed: it passes too fast to capture)'),
+  cons: ['On a slow conversion, a still screen looks frozen', 'Says nothing about what is being made'] })
+fig('working-grid', { id: 'W1', name: 'Spinner, what is being made, a timer', pick: true,
+  html: term(80, [...workTop(80), ...fileCard(), blank(), line([sp(), S(' '), S('Converting test.png to JPEG', C.d, { cls: 'sh' }), S('                         '), S('1.4s', C.x, { cls: 'timer' })]), blank(), ...keyRow([['esc','cancel — nothing is written yet']], 'cap', 2, 80)], '80 columns'),
+  idea: 'A braille spinner in the mode colour, a sentence that shimmers while it works, and a real elapsed timer.',
+  pros: ['Clearly alive, never frozen', 'Honest: time passed, not a guessed percentage', 'Shimmer only while working, the Claude Code pattern'],
+  cons: ['Motion needs turning off for reduced-motion users (FORGE_REDUCED_MOTION)'] })
+fig('working-grid', { id: 'W2', name: 'The header bar carries the activity',
+  html: term(80, [(() => { const l = header(80, '1.4s', 'converting test.png → JPEG'); l.segs = l.segs.map(s => ({ ...s, cls: 'sweep' })); return l })(), blank(), ...fileCard(), blank(), blank(), blank(), ...keyRow([['esc','cancel']], 'cap', 2, 80)], '80 columns'),
+  idea: 'Nothing new appears. Instead, a soft band of light sweeps across the header bar while the job runs, like a progress bar that never claims a percentage.',
+  pros: ['No extra rows', 'Very calm'],
+  cons: ['Easy to miss', 'A sweep that looks like a progress bar may still read as one'] })
+fig('working-grid', { id: 'W3', name: 'The card shows the change happening',
+  html: term(80, [...workTop(80), ...card(CARDW, 'PNG', ['test.png', '2756×774 · 122 KB · transparent'], C.m, C.m, 'PNG → JPEG ⠋'), blank(), blank(), ...keyRow([['esc','cancel']], 'cap', 2, 80)], '80 columns').replace('PNG → JPEG ⠋', 'PNG → JPEG <span class="spin">⠋</span>'),
+  idea: 'The file card itself turns the mode colour, and its tag reads PNG → JPEG with a spinner in the border.',
+  pros: ['The activity is attached to the thing being changed', 'No extra rows'],
+  cons: ['Subtle at a glance', 'The card is the only cue'] })
+fig('working-grid', { id: 'W4', name: 'The hammer works',
+  html: term(80, [...workTop(80),
+    line([S('     ║', C.wood, { cls: 'ham' })]), line([S('   █████', C.d, { cls: 'ham' })]),
+    line([S(' ▄▄▄▄▄▄▄▄▄', C.heat)]), line([S('▐█████████▌', C.d), S('   forging ', C.d), S('test.jpg', C.f, { b: true }), S('…', C.d)]),
+    line([S(' ▀▀▀▐█▌▀▀▀', C.d), S('   ', C.d), S('1.4s', C.x, { cls: 'timer' })]), line([S(' ▄▄██████▄', C.d)]), blank(),
+    ...keyRow([['esc','cancel']], 'cap', 2, 80)], '80 columns'),
+  idea: 'A small anvil with the hammer rising and falling for as long as the job runs. The logo\'s animation, moved to where the waiting actually is.',
+  pros: ['The most "Forge" option: the brand does the waiting', 'Delightful on slow conversions'],
+  cons: ['Takes six rows', 'May feel like too much for a quick job (only show it after about 0.5 s?)'] })
+
+/* ======================================================= 5 · NAME */
+fig('name-grid', { id: 'TODAY', today: true, name: 'A filled box and a path',
+  html: termRaw(todayLines('name2', 0, 99), '80 columns'),
+  cons: ['Three filled rows for a one-word answer', 'The extension is invisible until you read the path'] })
+fig('name-grid', { id: 'N1', name: 'Name with a fixed extension chip', pick: true,
+  html: term(80, [header(80), blank(), ...fileCard(), blank(), line([S('Name the file', C.m, { b: true })]),
+    line([S(' › ', C.m), S('test', C.f, { b: true, u: true }), S('▏', C.f), S(' .jpg ', C.d, { bg: C.kc })]),
+    line([S('   → ~/Desktop/', C.d), S('test.jpg', C.f)]), blank(), ...keyRow([['↵','save'],['esc','back']], 'cap', 2, 80)], '80 columns'),
+  idea: 'One line. The name is editable, and the extension sits beside it as a chip you can\'t accidentally delete.',
+  pros: ['Two rows instead of five', 'Makes "the extension is decided for you" obvious', 'Keycap language reused for the chip'],
+  cons: ['The chip looks like a key; it needs a lighter fill than keys'] })
+fig('name-grid', { id: 'N2', name: 'With ready-made names',
+  html: term(80, [header(80), blank(), ...fileCard(), blank(), line([S('Name the file', C.m, { b: true })]),
+    line([S(' › ', C.m), S('test', C.f, { b: true }), S('▏', C.f), S('.jpg', C.d)]),
+    line([S('   or  ', C.x), S('test-small', C.d), S('  ·  ', C.x), S('test-2026-10-11', C.d), S('  ·  ', C.x), S('test-web', C.d), S('    tab to use', C.x)]), blank(),
+    ...keyRow([['↵','save'],['tab','suggestion'],['esc','back']], 'cap', 2, 80)], '80 columns'),
+  idea: 'Common renames (date-stamped, "-small", "-web") are one Tab away.',
+  pros: ['Saves typing for the usual cases'],
+  cons: ['Guesses at what people want', 'One more line to read'] })
+fig('name-grid', { id: 'N3', name: 'It warns before overwriting',
+  html: term(80, [header(80), blank(), ...fileCard(), blank(), line([S('Name the file', C.m, { b: true })]),
+    line([S(' › ', C.m), S('test', C.f, { b: true }), S('▏', C.f), S('.jpg', C.d)]),
+    line([S('   ⚠ ', C.w), S('test.jpg already exists in ~/Desktop', C.w)]),
+    line([S('     ↵ saves as ', C.d), S('test-1.jpg', C.f), S('   ·   r replaces it', C.d)]), blank(),
+    ...keyRow([['↵','save as test-1.jpg'],['r','replace'],['esc','back']], 'cap', 2, 80)], '80 columns · a file of that name exists'),
+  idea: 'Not a different layout but a missing state: when the name is taken, say so here, before anything is written, with both ways forward.',
+  pros: ['Prevents a surprise overwrite or a late error', 'Works with any of the layouts above'],
+  cons: ['Needs a file-exists check as you type (cheap)'] })
+
+/* ======================================================= 6 · ERRORS */
+fig('errors-grid', { id: 'TODAY', today: true, name: 'A red card, then back to the start',
+  html: termRaw(todayLines('error', 8, 99), '80 columns'),
+  cons: ['The file is unstaged, so to try another folder you start again', 'Says what is wrong, but not which of your choices caused it'] })
+fig('errors-grid', { id: 'X1', name: 'Stay on the step that failed', pick: true,
+  html: term(80, [header(80), blank(), ...fileCard(), blank(),
+    line([S('▎ ', C.r), S('✕ Can\'t save into ~/locked', C.r, { b: true }), S(' — you don\'t have permission to write there.', C.d)]),
+    line([S('▎ ', C.r), S('Nothing was written. Pick another folder:', C.d)]), blank(),
+    line([S('Save to', C.m, { b: true })]),
+    line([S('❯ Desktop        ', C.m, { bg: C.sel, b: true }), S('~/Desktop                   ', C.d, { bg: C.sel })]),
+    line([S('  Same folder    '), S('/tmp/forge-r3', C.d)]),
+    line([S('  ~/locked       ', C.x), S('✕ not writable', C.r)]), blank(),
+    ...keyRow([['↑↓','choose'],['↵','save here'],['esc','cancel']], 'cap', 2, 80)], '80 columns'),
+  idea: 'The error appears above the question that caused it, and the question is asked again. The bad folder stays in the list, marked ✕, so you can see why.',
+  pros: ['One keystroke to recover instead of starting over', 'Points at the choice that failed', 'Fixes what audit #7 was about without losing the stage'],
+  cons: ['Each error needs to know which step it belongs to'] })
+fig('errors-grid', { id: 'X2', name: 'A failure receipt',
+  html: term(80, (() => { const W = 64, inner = W - 2
+    const row = segs => line([S('│  ', C.r), ...pad(segs, inner - 4), S('  │', C.r)])
+    return [header(80), blank(),
+      line([S('╭─ ', C.r), S('✕ NOT SAVED', C.r, { b: true }), S(' ' + '─'.repeat(inner - 14) + '╮', C.r)]),
+      row([]), row([S('test.png  ──→  test.jpg', C.f, { b: true })]), row([]),
+      row([S('why      ', C.d), S('~/locked is not a folder you can write to', C.f)]),
+      row([S('changed  ', C.d), S('nothing — test.png is untouched', C.f)]), row([]),
+      line([S('╰' + '─'.repeat(inner) + '╯', C.r)]), blank(),
+      ...keyRow([['↵','choose another folder'],['esc','start over']], 'cap', 2, 80)] })(), '80 columns'),
+  idea: 'The receipt card\'s shape, used for failures: the same before → after line, then why it failed and what was (not) changed.',
+  pros: ['Successes and failures have one visual language', 'Says explicitly that nothing was harmed'],
+  cons: ['A big box for a small problem'] })
+fig('errors-grid', { id: 'X3', name: 'Today\'s card, plus the way out',
+  html: term(80, (() => { const W = 52, inner = W - 2
+    const row = segs => line([S('│ ', C.r), ...pad(segs, inner - 2), S(' │', C.r)])
+    return [header(80), blank(), line([S('╭' + '─'.repeat(inner) + '╮', C.r)]),
+      row([S('✕ Permission denied', C.r)]), row([S('locked is not a folder you can write to.', C.f)]),
+      line([S('╰' + '─'.repeat(inner) + '╯', C.r)]), blank(),
+      ...keyRow([['↵','choose another folder'],['esc','start over']], 'cap', 2, 80)] })(), '80 columns'),
+  idea: 'Keep today\'s card, but keep the file staged and offer ↵ to go back to the folder question.',
+  pros: ['Small change', 'Fixes the "start again" cost'],
+  cons: ['Still a separate box, away from the choice that failed'] })
+
+/* tabs */
+function showTab() {
+  const id = (location.hash || '#home').slice(1)
+  document.querySelectorAll('section.tab').forEach(sec => sec.classList.toggle('on', sec.id === id))
+  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + id))
+  window.scrollTo(0, 0)
+}
+window.addEventListener('hashchange', showTab)
+showTab()
+
+/* marching ants: shift the dash pattern one cell per tick */
+const ANTS = '╌╌╌ '
+let antStep = 0
+setInterval(() => {
+  antStep++
+  document.querySelectorAll('.ants').forEach((e) => {
+    const t = e.textContent, n = [...t].length - 2
+    const k = e.classList.contains('rev') ? -antStep : antStep
+    let mid = ''
+    for (let i = 0; i < n; i++) mid += ANTS[(((i - k) % 4) + 4) % 4]
+    e.textContent = [...t][0] + mid + [...t][n + 1]
+  })
+}, 160)
+
+/* live bits: spinners and timers */
+let t0 = performance.now()
+setInterval(() => {
+  const t = performance.now() - t0
+  document.querySelectorAll('.spin').forEach(e => e.textContent = SPIN[Math.floor(t / 80) % SPIN.length])
+  document.querySelectorAll('.timer').forEach(e => e.textContent = ((t / 1000) % 6 + 0.4).toFixed(1) + 's')
+  const up = Math.floor(t / 260) % 2 === 0
+  document.querySelectorAll('.ham').forEach((e, i) => e.style.visibility = up || i === 1 ? 'visible' : 'hidden')
+}, 80)
+</script>
+</body>
+</html>

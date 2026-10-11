@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — motion</title>
+<link rel="stylesheet" href="term-kit.css" />
+</head>
+<body>
+<main>
+<h1>Motion</h1>
+<p class="lede">Seven animations, and they're the only ones. Each is a change of a character or colour in a cell, redrawn at no more than 30 fps, so all of them can be built in Ink. The picker demos use the band with a strip (B2) from <a href="explorations-2026-10.html" style="color:var(--cyan)">the picker explorations</a>.</p>
+<div class="controls"><button id="mo" class="on">motion: on</button></div>
+<section style="margin-top:40px">
+  <ol class="rules">
+    <li><b>Motion answers "is something happening?" or "what changed?"</b> It's never decoration. After the launch sweep, the idle screen doesn't move.</li>
+    <li><b>Keys never wait.</b> Anything a keypress triggers finishes in 150 ms or less, and the next keypress cuts it short.</li>
+    <li><b>Loops run only while real work runs:</b> measuring a size, or converting. They stop when the work stops.</li>
+    <li><b>No fabricated progress (invariant 7).</b> Converting shows the true phase and the elapsed time. The size bars animate only towards a size that has already been measured.</li>
+  </ol>
+  <div class="grid" id="demos"></div>
+</section>
+<footer>Convert · forge · motion · 2026-10-11 · Mockup. Turn motion off to see the fallback for <code>NO_COLOR</code>, non-TTY and reduced-motion terminals: the final frame of every animation.</footer>
+</main>
+<script src="term-kit.js"></script>
+<script>
+const V = () => VARIANTS.find(v => v.id === 'B2')
+let clock = 0, last = performance.now(), lastTick = -1
+const mo = document.getElementById('mo')
+mo.onclick = () => { MOTION = !MOTION; mo.textContent = 'motion: ' + (MOTION ? 'on' : 'off'); mo.classList.toggle('on', MOTION); lastTick = -1 }
+
+/* ------------------------------------------------------------------- demos */
+const DEMOS = [
+  { name: 'Cursor glide', from: 'Bubble Tea lists, Huh selects', what: 'The highlight fades across rows in about 140 ms instead of jumping. Truecolor terminals get the fade; others get the jump.', dur: 3400,
+    draw: t => { const ev = [[0,0],[600,1],[900,2],[1200,3],[1500,4],[2100,3],[2400,2],[2700,1],[3000,0]]
+      return V().render(makeQ('save', ev, t), stateOf(ev, t)) } },
+  { name: 'Measuring shimmer', from: 'Claude Code’s working line, Charm Crush', what: 'A band of light moves along the text only while an encode is really running. The number lands with a short cyan flash.', dur: 3200,
+    draw: t => V().render(makeQ('format', [[0, 2]], t), stateOf([[0, 2]], t)) },
+  { name: 'Answer settles', from: 'Huh forms, Claude Code’s answered questions', what: 'Enter flashes the row, then the question collapses to a ✓ line and the next one takes its place.', dur: 2800,
+    draw: t => t < 1150 ? V().render(makeQ('format', [[0, 0]], t + 600), stateOf([[0, 0]], t + 600, 800)) : [trail('Convert to', 'JPEG'), [], ...slider(80, t, Infinity)] },
+  { name: 'Spinner + true phase', from: 'Claude Code, cargo’s status line', what: 'The braille spinner from cli/spinner.ts, the real phase name and real elapsed time. Phases are marked off as they actually happen.', dur: 2000,
+    draw: t => [[], ...working(t)] },
+  { name: 'Bars draw once', from: 'btop meters, gum', what: 'The "after" bar fills to a size that has already been measured, eases out over half a second, and never repeats.', dur: 3200,
+    draw: t => receipt(t).slice(3, 7) },
+  { name: 'Mode change', from: 'each mode owns a colour', what: 'Typing /compress wipes the header bar into the new mode’s colour from the left. The colour change itself tells you the mode changed.', dur: 4200,
+    draw: t => {
+      const seq = ['convert', 'compress', 'pdf', 'convert'], i = Math.min(2, Math.floor(t / 1400)), k = (t - i * 1400) / 260
+      const A = MODES[seq[i]], B = MODES[seq[i + 1]], w = 58
+      return [[], wipe(headerBar(seq[i], w, ''), headerBar(seq[i + 1], w, ''), k, A.bg, B.bg), [], [['› ', '', fg(B.c)], ['/' + seq[i + 1], '']]]
+    } },
+  { name: 'Launch sweep', from: 'a one-off splash, then stillness', what: 'Light crosses the wordmark and the sparks fly once, for about a second, then everything settles. It never loops while idle.', dur: 3200,
+    draw: t => logo(t) },
+]
+const demoEls = DEMOS.map(d => {
+  const fig = document.createElement('figure')
+  fig.innerHTML = `<div class="term"><div class="bar"><i></i><i></i><i></i></div><pre></pre></div><figcaption><b>${d.name}.</b> ${d.what}<span class="from">from: ${d.from}</span></figcaption>`
+  document.getElementById('demos').appendChild(fig)
+  return fig.querySelector('pre')
+})
+function drawDemos() {
+  DEMOS.forEach((d, i) => {
+    const lines = d.draw(clock % d.dur).map(l => [[' '], ...l])
+    while (lines.length < 12) lines.push([])
+    demoEls[i].innerHTML = html(lines)
+  })
+}
+
+
+// redraw at most 30 times a second: the rate a real terminal would get
+function tick(now) {
+  clock += now - last; last = now
+  const step = Math.floor(clock / 33)
+  if (step !== lastTick) { lastTick = step; drawDemos() }
+  requestAnimationFrame(tick)
+}
+requestAnimationFrame(tick)
+</script>
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — explorations, round 3</title>
+<link rel="stylesheet" href="term-kit.css" />
+</head>
+<body>
+<main>
+<h1>Explorations, round 3: the picker</h1>
+<p class="lede">The question screen and the option rows were two halves of one thing, and they're now one component, the picker. Two designs won. The band with a strip (B2) answers every question that has a fixed set of choices. Save to gets the search box with its options in a frame (G): you can pick a place, type to filter, type a path, or drag a file or folder onto the input. Section 02 plays the whole flow using both.</p>
+<div class="locked">
+  <div><span>DECIDED</span><b>Logo while idle, header bar while working</b>keycap hints · receipt card · your quality screen</div>
+  <div><span>DECIDED</span><b>Each mode owns a colour</b>convert = cyan, compress = green, PDF = coral</div>
+  <div><span>DECIDED</span><b>Picker: band with a strip</b>Save to: the search box, options in a frame</div>
+</div>
+<nav>
+  <a href="#picker">1 · The picker</a><a href="#play">2 · The flow, playing</a>
+  <a href="#cut">3 · What happened to round 2</a><a href="motion-2026-10.html">Motion → separate page</a>
+</nav>
+
+<!-- ============================================================ PICKER -->
+<section id="picker">
+  <h2><span class="n">01</span>The picker: band for choices, search for Save to</h2>
+  <p class="sub">The band runs on Format and PDF pages here; switch between them to see it take the PDF mode's colour. Save to uses the search box. It filters places as you type, and at the end of the loop a file is dragged onto the input to save next to that file.</p>
+  <ol class="rules three">
+    <li><b>Sizes are measured, never estimated.</b> Only the highlighted format is encoded. Moving away cancels the encode, and results are cached.</li>
+    <li><b>The mode's colour does the highlighting.</b> It's cyan here and coral for PDF. Switch to "PDF pages" to see it.</li>
+    <li><b>Answers collapse into a ✓ trail</b> above the next question.</li>
+  </ol>
+  <div class="switch"><span class="lab">question:</span>
+    <button data-q="format" class="on">Format</button><button data-q="pdf">PDF pages</button>
+  </div>
+  <div class="grid" id="variants"></div>
+</section>
+
+<!-- ============================================================ PLAYER -->
+<section id="play">
+  <h2><span class="n">02</span>The flow, playing</h2>
+  <p class="sub">The whole convert flow: the band for the format, the search box for Save to. Click a step to jump to it. Turn motion off to see the fallback for <code>NO_COLOR</code>, non-TTY and reduced-motion terminals: the same screens, with the final frame of every animation.</p>
+  <div class="player">
+    <div>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><em>forge — 80×24</em></div><pre id="screen"></pre></div>
+      <div class="tl"><i id="tl"></i></div>
+      <div class="controls">
+        <button id="pp">❚❚ pause</button><button id="rs">↺ restart</button>
+        <button id="mo" class="on">motion: on</button><button id="sp">speed: 1×</button>
+      </div>
+    </div>
+    <ol class="chapters" id="chapters"></ol>
+  </div>
+</section>
+
+<!-- ============================================================ CUT -->
+<section id="cut">
+  <h2><span class="n">03</span>What happened to round 2</h2>
+  <p class="sub">Round 2's question layouts (Q), option rows (Q's rows, R) and Save to ideas (S) were judged separately. Here's where each one ended up.</p>
+  <table>
+    <tr><th>Round 2</th><th>Now</th><th>Notes</th></tr>
+    <tr><td>R1 row speaks · R8 exact size</td><td class="keep">B2 · G</td><td>The highlighted row carries its measured size and nothing else.</td></tr>
+    <tr><td>R7 number keys</td><td class="drop">DROPPED</td><td>Tried as keycaps, faint digits and superscripts (K, K1–K3), then cut. In G, typing filters instead.</td></tr>
+    <tr><td>Q3 rail</td><td class="drop">DROPPED</td><td>You didn't like it.</td></tr>
+    <tr><td>Q5 row · Q6 side panel</td><td class="drop">DROPPED</td><td>Tried again in round 3 as pills (D) and a preview pane (F), then cut along with the plain list (A), radio buttons (C), the carousel (H), the wheel (J), cards (E), the tables (I, T) and the band with an arrow (B1).</td></tr>
+    <tr><td>Q1 · Q2 · Q4 · Q7</td><td class="drop">DROPPED</td><td>Q1 and Q2 change the card's shape on every question. Q4 gives up the card. Q7 needs 80 columns, and its before → after story is told by the receipt.</td></tr>
+    <tr><td>R2 · R3 · R4 · R5</td><td class="drop">DROPPED</td><td>Hint words, groups, the facts and the chip cursor all described rows with notes, and notes are gone.</td></tr>
+    <tr><td>S3 · S5 · S6 · S7</td><td class="drop">DROPPED</td><td>Save to is now the same picker as everything else. In G, typing a path replaces "Other…". The folder and the name stay separate steps.</td></tr>
+    <tr><td>R6 suggested · S4 recents</td><td class="later">LATER</td><td>Both are good, but each needs a decision of its own: whether the default highlight changes, and a new history file.</td></tr>
+  </table>
+</section>
+
+<footer>Convert · forge · explorations, round 3 · 2026-10-11 · Mockup. Colours come from <code>theme.ts</code> DARK, and the spinner frames from <code>cli/spinner.ts</code>. Only JPEG's 74.6 KB was measured in the app; the other sizes and timings are made up for the illustration. Round 2 was never committed. A copy is at <code>/tmp/explorations-2026-10.round2.bak.html</code>.</footer>
+</main>
+
+<script src="term-kit.js"></script>
+<script>
+// the decision: the band for fixed choices, the search box for Save to
+const BAND = VARIANTS.find(v => v.id === 'B2'), SEARCH = VARIANTS.find(v => v.id === 'G')
+const pickerFor = kind => kind === 'save' ? SEARCH : BAND
+
+/* ------------------------------------------------------------ variant cards */
+const LOOP = 4200
+const EVS = {
+  format: [[0, 0], [900, 1], [1700, 2], [2900, 1], [3200, 0]],
+  save:   [[0, 0], [900, 1], [1600, 2], [2600, 1], [2900, 0]],
+  pdf:    [[0, 0], [900, 1], [1600, 2], [2300, 3], [3200, 0]],
+}
+let QK = 'format'
+const CARDS = [{ V: BAND, kind: null }, { V: SEARCH, kind: 'save' }]
+const varEls = CARDS.map(({ V }) => {
+  const fig = document.createElement('figure')
+  fig.innerHTML = `<div class="vt"><span class="id">${V.id}</span><span class="name">${V.name}</span><span class="pick">CHOSEN</span></div>
+    <div class="term"><div class="bar"><i></i><i></i><i></i></div><pre></pre></div>
+    <p class="idea">${V.idea}</p><div class="from">from: ${V.from}</div>
+    <div class="pc"><div class="p"><h5>Pros</h5><ul>${V.pros.map(p => `<li>${p}</li>`).join('')}</ul></div><div class="c"><h5>Cons</h5><ul>${V.cons.map(p => `<li>${p}</li>`).join('')}</ul></div></div>`
+  document.getElementById('variants').appendChild(fig)
+  return fig.querySelector('pre')
+})
+document.querySelectorAll('.switch button').forEach(b => b.onclick = () => {
+  QK = b.dataset.q; document.querySelectorAll('.switch button').forEach(x => x.classList.toggle('on', x === b)); lastTick = -1
+})
+function drawVariants() {
+  const t = clock % LOOP
+  CARDS.forEach(({ V, kind }, i) => {
+    const k = kind || QK, ev = EVS[k], Q = makeQ(k, ev, t)
+    Q.typePath = true
+    const lines = V.render(Q, stateOf(ev, t)).map(l => [[' '], ...l])
+    while (lines.length < 14) lines.push([])
+    lines.push(hints(V.keys))
+    varEls[i].innerHTML = html(lines)
+  })
+}
+
+/* ------------------------------------------------------------------ player */
+const KEYS = kind => pickerFor(kind).keys.concat([['esc', 'back']])
+const EV_FMT = [[0, 0], [1500, 1], [2900, 2], [4000, 1], [4200, 0]]
+const EV_SAVE = [[0, 0], [800, 1], [1300, 2], [1900, 1], [2050, 0]]
+const EV_Q = [[0, 80], [700, 85], [1100, 90], [1600, 85], [1900, 80]]
+const pickerAt = (kind, ev, t, enter) => pickerFor(kind).render(makeQ(kind, ev, t), stateOf(ev, t, enter))
+const SCENES = [
+  { name: 'Idle', note: 'The launch sweep runs once, then the logo is still. The file is dropped onto the drop zone, which flashes once as it lands.', dur: 3700, draw: t => {
+      const dropped = t >= 1500, blink = !MOTION || Math.floor(t / 530) % 2 === 0
+      const caret = [' ', '', blink ? 'background:' + P.f : '']
+      const zone = dropZone(dropped ? [['~/Pictures/test.png'], caret] : [caret, ['drop a file or type a path', 'd']], W - 2, dropped ? fade('#3a4766', P.sel, (t - 1500) / 450) : P.sel)
+      const lines = [[], ...logo(t).map(l => [[' '], ...l]), [],
+        [[' '], ...pad([['Convert 0.1.0', 'f'], ['  · images · PDF · Word', 'd']], 56), ['saves to ', 'd'], ['~/Desktop']], [],
+        [[' '], [' ↔ convert ', 'b', fg(MODES.convert.c) + ';background:' + MODES.convert.bg], ['  type / to change mode', 'd']], [],
+        ...zone.map(l => [[' '], ...l])]
+      while (lines.length < H - 1) lines.push([])
+      lines.push(hints([['↵', 'send'], ['/', 'commands'], ['esc', 'clear'], ['ctrl-c', 'quit']]))
+      return lines
+    } },
+  { name: 'The file lands', note: 'The header bar wipes in from the left and the card draws top to bottom. All of it takes under 300 ms.', dur: 900, draw: t => {
+      const head = MOTION ? wipe([[sp(W)]], headerBar(), t / 260, P.bg, MODES.convert.bg) : headerBar()
+      return frame(head, fileCard().map((l, i) => (!MOTION || t > 90 + i * 45) ? l : []), null)
+    } },
+  { name: 'Format', note: 'Only the highlighted format is measured. AVIF is slow, so leaving it cancels the measurement. Coming back to JPEG is instant because the result is cached.', dur: 5000, draw: t =>
+      frame(headerBar(), [...fileCard(), [], ...pickerAt('format', EV_FMT, t, 4700)], KEYS('format')) },
+  { name: 'Quality', note: 'The answer above collapses to one ✓ line. The slider steps in fives, with each step a real key press.', dur: 2600, draw: t =>
+      frame(headerBar(), [...fileCard(), [], trail('Convert to', 'JPEG'), [], ...slider(cursor(EV_Q, t).idx, t, 2300)], [['←→', 'adjust'], ['↵', 'confirm'], ['esc', 'back']]) },
+  { name: 'Save to', note: 'The search box. Typing "sa" narrows to Same folder; clearing it brings the list back. Desktop carries the default tag.', dur: 3000, draw: t =>
+      frame(headerBar(), [...fileCard(), [], trail('Convert to', 'JPEG'), trail('Quality', '80'), [], ...pickerAt('save', EV_SAVE, t, 2700)], KEYS('save')) },
+  { name: 'Name', note: 'The input keeps the extension out of the way.', dur: 1600, draw: t =>
+      frame(headerBar(), [...fileCard(), [], trail('Convert to', 'JPEG'), trail('Quality', '80'), trail('Save to', '~/Desktop'), [], ...nameInput(t, 1300)], [['↵', 'save'], ['esc', 'clear / back']]) },
+  { name: 'Converting', note: 'A spinner, the true phase and the elapsed time. No percentage, because none can be honest for one file.', dur: 1800, draw: t =>
+      frame(headerBar(), [...fileCard(), [], trail('Convert to', 'JPEG'), trail('Quality', '80'), trail('Save to', '~/Desktop/test.jpg'), [], ...working(t)], [['esc', 'cancel']]) },
+  { name: 'Receipt', note: 'The card draws in and the "after" bar fills to the measured size, once. Then the screen is still.', dur: 4200, draw: t =>
+      frame(headerBar(), receipt(t), [['↵', 'convert another'], ['o', 'open'], ['s', 'show in Finder'], ['ctrl-c', 'quit']]) },
+]
+const TOTAL = SCENES.reduce((n, s) => n + s.dur, 0)
+const startOf = i => SCENES.slice(0, i).reduce((n, s) => n + s.dur, 0)
+
+const screen = document.getElementById('screen'), chapters = document.getElementById('chapters')
+SCENES.forEach((s, i) => {
+  const li = document.createElement('li')
+  li.innerHTML = `<b>${s.name}</b><p>${s.note}</p>`
+  li.onclick = () => { clock = startOf(i); playing = true; lastTick = -1; syncButtons() }
+  chapters.appendChild(li)
+})
+
+let clock = 0, playing = true, speed = 1, last = performance.now(), lastTick = -1
+const pp = document.getElementById('pp'), mo = document.getElementById('mo'), spd = document.getElementById('sp')
+function syncButtons() { pp.textContent = playing ? '❚❚ pause' : '▶ play'; mo.textContent = 'motion: ' + (MOTION ? 'on' : 'off'); mo.classList.toggle('on', MOTION); spd.textContent = 'speed: ' + speed + '×' }
+pp.onclick = () => { playing = !playing; syncButtons() }
+document.getElementById('rs').onclick = () => { clock = 0; playing = true; syncButtons() }
+mo.onclick = () => { MOTION = !MOTION; lastTick = -1; syncButtons() }
+spd.onclick = () => { speed = speed === 1 ? 0.5 : speed === 0.5 ? 0.25 : 1; syncButtons() }
+
+function drawPlayer() {
+  let t = clock % TOTAL, i = 0
+  while (t >= SCENES[i].dur) { t -= SCENES[i].dur; i++ }
+  screen.innerHTML = html(SCENES[i].draw(t))
+  ;[...chapters.children].forEach((li, j) => li.classList.toggle('now', j === i))
+  document.getElementById('tl').style.width = (clock % TOTAL) / TOTAL * 100 + '%'
+}
+
+/* -------------------------------------------------------------------- loop */
+// redraw at most 30 times a second: the rate a real terminal would get
+function tick(now) {
+  if (playing) clock += (now - last) * speed
+  last = now
+  const step = Math.floor(clock / 33)
+  if (step !== lastTick) { lastTick = step; drawVariants(); drawPlayer() }
+  requestAnimationFrame(tick)
+}
+syncButtons(); requestAnimationFrame(tick)
+</script>
+</body>
+</html>

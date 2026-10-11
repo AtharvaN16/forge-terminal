@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — terminal UI redesign exploration · 2026-10-11</title>
+<style>
+  :root {
+    /* Proposed palette — "Ember". One accent, drawn from the product's own
+       metaphor: metal at forging heat. Everything else is greyscale. */
+    --bg: #15161b;
+    --panel: #1b1d23;
+    --fg: #e7e9ee;
+    --dim: #8d93a3;
+    --faint: #4b5162;
+    --hair: #2a2d36;
+    --ember: #ff8a3d;
+    --ember-hot: #ffd2a1;
+    --ember-bg: #2a1c13;
+    --ok: #7fd49a;
+    --fail: #ff6f6f;
+    --warn: #e9c46a;
+    --sel: #23262f;
+
+    /* Document chrome (not terminal) */
+    --page: #0e0f12;
+    --ink: #d9dce3;
+    --muted: #8a8f9c;
+    --rule: #23252c;
+    --card: #14161a;
+    --mono: "Berkeley Mono", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15.5px/1.6 var(--sans); }
+  a { color: var(--ember); }
+  main { max-width: 1180px; margin: 0 auto; padding: 56px 28px 120px; }
+  header.top h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 10px; font-weight: 650; }
+  header.top p.lede { font-size: 18px; color: var(--muted); max-width: 760px; margin: 0; }
+  .eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ember); margin-bottom: 14px; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 28px 0 0; }
+  nav.toc a { font: 13px var(--mono); color: var(--muted); text-decoration: none; border: 1px solid var(--rule); padding: 5px 10px; border-radius: 999px; }
+  nav.toc a:hover { color: var(--ink); border-color: var(--faint); }
+  section { margin-top: 88px; }
+  section > h2 { font-size: 28px; letter-spacing: -0.01em; margin: 0 0 6px; font-weight: 640; }
+  section > h2 .n { font: 500 14px var(--mono); color: var(--ember); margin-right: 10px; vertical-align: 4px; }
+  section > p.sub { color: var(--muted); margin: 0 0 28px; max-width: 800px; }
+  h3 { font-size: 19px; margin: 34px 0 8px; font-weight: 620; }
+  p { max-width: 820px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 18px 20px; }
+  .card h4 { margin: 0 0 6px; font-size: 15.5px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .card .sig { margin-top: 10px; font: 12.5px/1.5 var(--mono); color: var(--ember); }
+  .tag { display: inline-block; font: 11.5px var(--mono); color: var(--muted); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; margin: 0 4px 4px 0; }
+
+  /* ---------- Terminal window ---------- */
+  .term {
+    background: var(--bg); border: 1px solid #262932; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 30px 80px -30px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.02) inset;
+    margin: 0;
+  }
+  .term .bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #121318; border-bottom: 1px solid #20232b; }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3d47; display: inline-block; }
+  .term .bar i:nth-child(1) { background: #ff5f57; } .term .bar i:nth-child(2) { background: #febc2e; } .term .bar i:nth-child(3) { background: #28c840; }
+  .term .bar span { flex: 1; text-align: center; font: 12px var(--mono); color: #6b7080; margin-right: 50px; }
+  .term pre { margin: 0; padding: 18px 20px 20px; font: 13.4px/1.3 var(--mono); color: var(--fg); white-space: pre; overflow-x: auto; }
+  .term.light { --bg: #fbfaf7; --fg: #1d2026; --dim: #6a6f7b; --faint: #b9bcc4; --hair: #e7e5df; --ember: #c2500e; --ember-hot: #e9873f; --ember-bg: #fbe9dc; --ok: #1f7a3c; --fail: #b3261e; --warn: #8a6100; --sel: #efede7; border-color: #dcd9d1; }
+  .term.light .bar { background: #efede8; border-color: #e0ddd5; }
+  .term.light .bar span { color: #8b8f99; }
+  figure { margin: 0; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; max-width: 760px; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  /* Terminal colour spans */
+  .f { color: var(--fg); } .d { color: var(--dim); } .x { color: var(--faint); }
+  .e { color: var(--ember); } .o { color: var(--ok); } .r { color: var(--fail); } .w { color: var(--warn); }
+  .b { font-weight: 700; } .u { text-decoration: underline; text-underline-offset: 3px; }
+  .eb { background: var(--ember-bg); color: var(--ember); }
+  .sl { background: var(--sel); }
+  .inv { background: var(--fg); color: var(--bg); }
+  .slot { color: var(--fg); border-bottom: 1px dotted var(--faint); }
+  .slot.on { color: var(--ember); border-bottom: 1px solid var(--ember); }
+  .shimmer {
+    background: linear-gradient(90deg, var(--dim) 0%, var(--dim) 35%, var(--ember) 45%, var(--ember-hot) 50%, var(--ember) 55%, var(--dim) 65%, var(--dim) 100%);
+    background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shimmer 2.2s linear infinite;
+  }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+  .cursor-blink { animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Fake inline images (kitty graphics / iTerm2 protocol stand-ins) */
+  .img { display: inline-block; vertical-align: top; border-radius: 3px; position: relative; overflow: hidden; }
+  .photo {
+    background:
+      radial-gradient(circle at 72% 30%, #ffe1a8 0 6%, transparent 7%),
+      linear-gradient(170deg, transparent 58%, #20314a 58.5% 70%, #142033 70.5%),
+      linear-gradient(160deg, transparent 50%, #3d4e6b 50.5% 62%, transparent 62.5%),
+      linear-gradient(180deg, #ff9d5c 0%, #ffb877 30%, #f6c89a 48%, #9fb3cf 60%, #445a7d 100%);
+  }
+  .photo.q30 { filter: contrast(1.15) saturate(1.3); image-rendering: pixelated; }
+  .photo.q30::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(90deg, rgba(0,0,0,.06) 1px, transparent 1px), linear-gradient(rgba(0,0,0,.06) 1px, transparent 1px); background-size: 8px 8px; }
+  .page { background: #f3f1ec; border-radius: 2px; position: relative; }
+  .page::before { content: ""; position: absolute; left: 14%; right: 14%; top: 14%; height: 52%; background: repeating-linear-gradient(180deg, #c9c6bf 0 2px, transparent 2px 6px); }
+  .page.sel { outline: 2px solid var(--ember); outline-offset: 2px; }
+  .page.cur { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  /* Annotations on the "today" frame */
+  .anno { position: relative; }
+  .pin { display: inline-block; min-width: 20px; height: 20px; border-radius: 10px; background: var(--ember); color: #1a0f07; font: 700 11.5px/20px var(--sans); text-align: center; padding: 0 6px; margin-right: 6px; }
+  ol.findings { padding-left: 0; list-style: none; margin: 0; }
+  ol.findings li { margin: 0 0 12px; display: flex; gap: 6px; align-items: flex-start; font-size: 14.5px; color: var(--ink); }
+  ol.findings li span.t { color: var(--muted); }
+
+  /* Directions */
+  .dir { margin-top: 56px; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  @media (max-width: 1000px) { .dir { grid-template-columns: 1fr; } }
+  .dir .meta h3 { margin-top: 0; font-size: 22px; }
+  .dir .meta h3 .letter { font: 600 13px var(--mono); color: var(--ember); border: 1px solid var(--ember); border-radius: 6px; padding: 1px 7px; margin-right: 10px; vertical-align: 3px; }
+  .dir .meta .pitch { color: var(--ink); font-size: 15.5px; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin-top: 14px; font-size: 14px; }
+  .pc h5 { margin: 0 0 4px; font: 600 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .pc ul { margin: 0; padding-left: 16px; color: var(--muted); }
+  .pc li { margin-bottom: 4px; }
+  .refs { margin-top: 12px; }
+
+  table.matrix { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+  table.matrix th, table.matrix td { border-bottom: 1px solid var(--rule); padding: 10px 10px; text-align: left; vertical-align: top; }
+  table.matrix th { font: 600 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  table.matrix td.s { font-family: var(--mono); white-space: nowrap; }
+  .dots { letter-spacing: 2px; color: var(--ember); } .dots .no { color: #3a3e49; }
+  tr.pick td { background: rgba(255,138,61,.05); }
+
+  .callout { border-left: 3px solid var(--ember); background: rgba(255,138,61,.05); padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 22px 0; max-width: 880px; }
+  .callout p { margin: 0; }
+  .story { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 22px; }
+  @media (max-width: 1000px) { .story { grid-template-columns: 1fr; } }
+  .story .wide { grid-column: 1 / -1; }
+  .story > figure, .dir > figure { min-width: 0; }
+  .story .term pre { font-size: 11.6px; }
+  .step-n { font: 600 12px var(--mono); color: var(--ember); margin-right: 6px; }
+
+  /* Tokens */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .sw { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; font: 12px/1.45 var(--mono); }
+  .sw .chip { height: 54px; }
+  .sw .lbl { padding: 8px 10px; color: var(--muted); }
+  .sw .lbl b { color: var(--ink); display: block; font-weight: 600; }
+  .kbd { font: 12.5px var(--mono); border: 1px solid var(--faint); border-bottom-width: 2px; padding: 0 6px; border-radius: 5px; color: var(--ink); }
+
+  /* Interactive demo */
+  .demo-wrap { outline: none; }
+  .demo-wrap:focus-visible .term, .demo-wrap.focused .term { box-shadow: 0 0 0 2px var(--ember), 0 30px 80px -30px rgba(0,0,0,.7); }
+  .demo-help { font: 12.5px var(--mono); color: var(--muted); margin-top: 10px; }
+  .demo-help .kbd { margin: 0 2px; }
+  .btnrow { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .btnrow button { font: 12.5px var(--mono); background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .btnrow button:hover { border-color: var(--faint); }
+  footer { margin-top: 100px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+
+<header class="top">
+  <div class="eyebrow">Convert · forge · design exploration</div>
+  <h1>Redesigning the terminal UI</h1>
+  <p class="lede">A survey of the best terminal interfaces as of October 2026, six deliberately different directions for <code>forge</code>, then one of them developed down to individual frames. Mockups only. No code has been changed.</p>
+  <nav class="toc">
+    <a href="#today">0 · Where it is today</a>
+    <a href="#market">1 · The market</a>
+    <a href="#principles">2 · Principles</a>
+    <a href="#broad">3 · Six directions</a>
+    <a href="#compare">4 · Compare</a>
+    <a href="#narrow">5 · The pick, in detail</a>
+    <a href="#demo">6 · Try it</a>
+    <a href="#system">7 · Design system</a>
+    <a href="#cost">8 · What it costs</a>
+  </nav>
+</header>
+
+<!-- ======================================================= 0 -->
+<section id="today">
+  <h2><span class="n">00</span>Where it is today</h2>
+  <p class="sub">Captured from the real binary (<code>dist/index.js</code> at <code>60ca343</code>) under tmux at 100×40, converting a transparent PNG to JPEG. The text is taken from the capture. Widths are condensed to fit the page, and colours approximate <code>theme.ts</code> DARK.</p>
+
+  <div class="grid2">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>forge — 100×40</span></div>
+<pre><span class="d">     ║</span>
+<span class="e">   ' ║ '</span>
+<span class="e"> *   ║   *</span>   <span class="f">███████╗ ██████╗ ██████╗  ██████╗ ███████╗</span>
+<span class="d">   █████</span>     <span class="f">██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝</span>
+<span class="e"> ▄▄▄▄▄▄▄▄▄</span>   <span class="f">█████╗  ██║   ██║██████╔╝██║  ███╗█████╗</span>
+<span class="d">▐█████████▌</span>  <span class="f">██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝</span>
+<span class="d"> ▀▀▀▐█▌▀▀▀</span>   <span class="f">██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗</span>
+<span class="d"> ▄▄██████▄</span>   <span class="f">╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝</span>  <span class="pin">1</span>
+
+<span class="f"> Convert 0.1.0</span><span class="d">  · image              /Users/…/Desktop</span>
+
+<span class="d"> current mode: </span><span style="color:#55c7d9">convert</span><span class="d">  use / to change</span>  <span class="pin">2</span>
+
+<span class="x">╭─ </span><span style="color:#63c1d8">PNG</span><span class="x"> ──────────────────────────────╮</span>
+<span class="x">│</span> test.png                           <span class="x">│</span>
+<span class="x">│</span> <span class="d">2756×774 · 122 KB · transparent</span>    <span class="x">│</span>
+<span class="x">╰────────────────────────────────────╯</span>
+
+<span style="color:#a68ce0">Convert PNG to</span>                         <span class="pin">3</span>
+<span class="e">❯ JPEG</span>  <span class="d">likely smaller</span>
+  WebP  <span class="d">likely smaller</span>               <span class="pin">4</span>
+  AVIF  <span class="d">likely smaller</span>
+  GIF   <span class="d">animation</span>
+  TIFF  <span class="d">archival</span>
+  PDF   <span class="d">document</span>
+<span class="x">──────────────────────────────────────────</span>
+<span class="e">↑↓</span><span class="d"> choose  │  </span><span class="e">↵</span><span class="d"> confirm  │  </span><span class="e">esc</span><span class="d"> back</span></pre>
+      </div>
+    </figure>
+    <div>
+      <figure>
+        <div class="term"><div class="bar"><i></i><i></i><i></i><span>after ↵ ↵ ↵ ↵ — the result</span></div>
+<pre><span class="o">✓ done</span>                                     <span class="pin">5</span>
+
+<span class="x">╭─ </span><span style="color:#63c1d8">PNG</span><span class="x"> ──────────╮     ╭─ </span><span style="color:#63c1d8">JPEG</span><span class="x"> ──────────╮</span>
+<span class="x">│</span> test.png       <span class="x">│</span> <span class="d">──→</span> <span class="x">│</span> test.jpg        <span class="x">│</span>
+<span class="x">╰────────────────╯     ╰─────────────────╯</span>
+
+  <span class="d">122 KB → 74.6 KB ·</span> <span class="o">39.1% smaller</span>
+
+<span class="x">──────────────────────────────────────────</span>
+<span class="e">↵</span><span class="d"> convert another │ </span><span class="e">o</span><span class="d"> open │ </span><span class="e">s</span><span class="d"> finder</span></pre>
+        </div>
+      </figure>
+      <h3 style="margin-top:22px">What the frames show</h3>
+      <ol class="findings">
+        <li><span class="pin">1</span><span><b>The mark takes 9 of 40 rows</b> <span class="t">(22%) on every launch, and then stays in scrollback. The hammer is charming once. By the hundredth launch it is in the way.</span></span></li>
+        <li><span class="pin">2</span><span><b>"Mode" is a state the user has to track.</b> <span class="t">The line restates it, and it has three colour pairs of its own. The verb could be part of the request instead of a global setting.</span></span></li>
+        <li><span class="pin">3</span><span><b>Five sequential questions for one conversion:</b> <span class="t">format → quality → destination → name → run. Every one needs its own ↵, and answered questions disappear (audit #14).</span></span></li>
+        <li><span class="pin">4</span><span><b>Three of six hints say "likely smaller".</b> <span class="t">The picker guesses even though the app could measure (audit #30).</span></span></li>
+        <li><span class="pin">5</span><span><b>The result never says where the file went</b> <span class="t">(audit #9). It spends 4 rows on two boxed filenames and 0 on the path.</span></span></li>
+        <li><span class="pin">·</span><span><b>Colour carries too many meanings:</b> <span class="t">18 palette tokens, including 3 mode fg/bg pairs. The amber accent, cyan tag, violet label and mode colour all compete in the same frame.</span></span></li>
+      </ol>
+    </div>
+  </div>
+  <div class="callout"><p><b>What to keep.</b> The foundations are right, and several were measured to get there: one persistent screen with history above the prompt, files probed by content, every target derived from <code>targetsFor()</code>, symbols paired with words so the UI survives <code>NO_COLOR</code>, honest indeterminate progress, and paste-to-attach. The redesign changes the <em>surface</em>, not those invariants.</p></div>
+</section>
+
+<!-- ======================================================= 1 -->
+<section id="market">
+  <h2><span class="n">01</span>The market, October 2026</h2>
+  <p class="sub" id="market-sub">The terminal interfaces most often cited as the best-made, and the move each is admired for. First what changed in the last year, then the apps grouped by layout model, because layout is the first decision this redesign has to make.</p>
+
+  <h3>What changed in 2025–26</h3>
+  <div class="grid2">
+    <div class="card"><h4>Agent CLIs became full-screen, and kept a way out</h4><p>Claude Code first rebuilt its Ink renderer to redraw only changed cells (Dec 2025). It then added an opt-in full-screen mode with a pinned prompt and click-to-expand tool output, which became the default for users who started after May 2026. <span class="kbd">[</span> writes the transcript back into your real scrollback. Gemini CLI v0.15 and Amp made similar moves; Amp built its own renderer and Gemini keeps history after exit.</p><div class="sig">↳ never trap the user's work in the full-screen buffer</div></div>
+    <div class="card"><h4>Renderers that never flicker</h4><p>Charm v2 shipped in Feb 2026 (Bubble Tea, Lip Gloss, Bubbles), with a renderer that only redraws changed cells, synchronized output, inline images and light/dark detection. opencode moved to OpenTUI (a Zig core with React bindings). Toad advertises updates as small as one character. Flicker now reads as a defect.</p><div class="sig">↳ relevant: audit #5, frames left behind after a resize</div></div>
+    <div class="card"><h4>The terminal draws progress itself</h4><p>Ghostty 1.2 (Sept 2025) and iTerm2 3.6.6+ render OSC 9;4 as a native progress bar in the tab and title bar. It has an <b>indeterminate</b> state, so a single-file conversion can show native activity without inventing a percentage, which fits invariant 7 exactly.</p><div class="sig">↳ adopted below, for free</div></div>
+    <div class="card"><h4>Terminal.app caught up partly</h4><p>macOS Tahoe's Terminal.app gained 24-bit colour and Powerline glyphs. There is still no reported image protocol (inferred: no coverage mentions one). The baseline for Forge is therefore truecolour, no images and no Nerd Font.</p><div class="sig">↳ images must be progressive enhancement</div></div>
+  </div>
+
+  <h3 style="margin-top:30px">Inline transcript: draws in scrollback</h3>
+  <div class="grid3">
+    <div class="card"><h4>Claude Code</h4><p>Prompt at the bottom with history above it. A spinner with rotating verbs and a per-character shimmer that stops when idle. Tool output collapses to one line; <code>/</code> and <code>@</code> open menus.</p><div class="sig">↳ shimmer only while working</div></div>
+    <div class="card"><h4>Gum / Huh</h4><p>One widget at a time (choose, filter, spin, input), each leaving one tidy line behind. Inline, with no screen takeover.</p><div class="sig">↳ an answer collapses to a single line</div></div>
+    <div class="card"><h4>Warp blocks · Toad</h4><p>Each command or turn is a typed block you can select, copy and refer to. Textual's <code>inline=True</code> mode renders under the shell prompt and leaves cleanly on exit.</p><div class="sig">↳ one turn = one addressable block</div></div>
+  </div>
+
+  <h3 style="margin-top:26px">Full-screen workbench</h3>
+  <div class="grid3">
+    <div class="card"><h4>yazi</h4><p>Three columns (Miller layout) with async previews. Chooses kitty, iTerm2 or Sixel itself and falls back to Chafa character art.</p><div class="sig">↳ capability detection with a fallback chain</div></div>
+    <div class="card"><h4>lazygit · k9s</h4><p>Panels that never move, a footer that shows the keys for the current context, <code>?</code> for every key. k9s adds a <code>:resource</code> command bar and breadcrumbs.</p><div class="sig">↳ stable layout, keys shown progressively</div></div>
+    <div class="card"><h4>btop · posting</h4><p>btop uses braille graphs and gradient meters whose colour maps to value. posting (Textual) has "jump mode", where letter labels let you focus any widget, plus a command palette.</p><div class="sig">↳ colour encodes magnitude, not decoration</div></div>
+  </div>
+
+  <h3 style="margin-top:26px">Palettes, pickers and themes</h3>
+  <div class="grid3">
+    <div class="card"><h4>fzf · television · atuin</h4><p>A fuzzy filter is the whole interface. television adds pluggable "channels" (data sources) and a preview pane.</p><div class="sig">↳ type intent, not structure</div></div>
+    <div class="card"><h4>Crush · opencode</h4><p>Crush has Charm's pastel truecolour personality. opencode's "system" theme adapts to the terminal background, and each colour has separate light and dark values.</p><div class="sig">↳ adapt to the user's terminal</div></div>
+    <div class="card"><h4>Codex CLI</h4><p>Full-screen Ratatui, restrained greyscale with one accent and diffs as the loud colour. Status lines follow the theme.</p><div class="sig">↳ colour reserved for what changed</div></div>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-top:18px">Sources: <a href="https://code.claude.com/docs/en/fullscreen">Claude Code full-screen</a> · <a href="https://steipete.me/posts/2025/signature-flicker">Claude Code renderer</a> · <a href="https://developers.googleblog.com/making-the-terminal-beautiful-one-pixel-at-a-time">Gemini CLI</a> · <a href="https://ampcode.com/news/look-ma-no-flicker">Amp</a> · <a href="https://charm.land/blog/v2">Charm v2</a> · <a href="https://github.com/anomalyco/opentui">OpenTUI</a> · <a href="https://simonwillison.net/2025/Jul/23/announcing-toad">Toad</a> · <a href="https://ghostty.org/docs/install/release-notes/1-2-0">Ghostty 1.2</a> · <a href="https://ghostty.org/docs/install/release-notes/1-3-0">1.3</a> · <a href="https://ghostty.org/docs/vt/osc/conemu">OSC 9;4</a> · <a href="https://www.macworld.com/article/2809620">Terminal.app on Tahoe</a>. The lazygit, k9s, btop, atuin and fzf descriptions come from long-standing behaviour and were not re-checked for 2026.</p>
+</section>
+
+<!-- ======================================================= 2 -->
+<section id="principles">
+  <h2><span class="n">02</span>What the best ones share</h2>
+  <p class="sub">Nine principles from the survey. Each one is used below to judge the directions.</p>
+  <div class="grid2" id="principles-list">
+    <div class="card"><h4>1 · One accent, greyscale for the rest</h4><p>Codex, Claude Code and Crush each have one brand colour, with structure carried by brightness. Semantic colour (ok, fail) appears only on the outcome.</p></div>
+    <div class="card"><h4>2 · Borders only where there is a boundary</h4><p>Rounded borders mark something the user can type into or a pane. Content gets whitespace and indentation, not boxes.</p></div>
+    <div class="card"><h4>3 · Answers stay visible</h4><p>An answered question collapses to one line and stays in the transcript, so the scrollback is a record, not a pile of dead pickers.</p></div>
+    <div class="card"><h4>4 · Show the real thing</h4><p>Measured sizes rather than "likely smaller". Real pixels where the terminal can draw them (kitty graphics, iTerm2, Sixel), with a graceful fallback.</p></div>
+    <div class="card"><h4>5 · Teach the scriptable form</h4><p>lazygit's command log and atuin's history show the command behind a UI action, so the TUI also teaches the CLI.</p></div>
+    <div class="card"><h4>6 · Motion means work is happening</h4><p>A shimmer or spinner appears only while something is actually running, and stops the instant it finishes. No intros that cannot be skipped.</p></div>
+    <div class="card"><h4>7 · Defaults you can accept in one key</h4><p>The best flows pre-fill a sensible answer and let ↵ accept all of it. You only have to get involved when you want something different.</p></div>
+    <div class="card"><h4>8 · Never flicker, never trap</h4><p>Redraw only what changed, inside synchronized output. Whatever the layout, the user's results must end up in their real scrollback.</p></div>
+    <div class="card"><h4>9 · Scale down gracefully</h4><p>Narrow widths, light themes, <code>NO_COLOR</code> and terminals without image support each get a deliberate layout, not a broken one.</p></div>
+  </div>
+</section>
+
+<!-- ======================================================= 3 -->
+<section id="broad">
+  <h2><span class="n">03</span>Go broad: six directions</h2>
+  <p class="sub">Each direction shows the same task: convert an iPhone photo, <code>IMG_4127.HEIC</code> (2.4 MB), to WebP and save it to the Desktop. They differ in layout model, input model and attitude, not in palette. All six use the proposed Ember palette so they can be compared fairly.</p>
+
+  <!-- A -->
+  <div class="dir">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>A · Transcript</span></div>
+<pre><span class="e">▄▄▄▄▄</span> <span class="b">Convert</span> <span class="x">0.2</span>                                 <span class="d">saves to ~/Desktop</span>
+
+<span class="o">✓</span> IMG_4126.HEIC <span class="d">→</span> IMG_4126.webp            <span class="d">2.3 MB → 398 KB</span>  <span class="o">−83%</span>
+  <span class="d u">~/Desktop/IMG_4126.webp</span>
+
+<span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 4032×3024 · 2.4 MB · has location</span>
+
+  <span class="o">✓</span> <span class="d">Convert to</span>  WebP
+  <span class="o">✓</span> <span class="d">Quality</span>     80
+  <span class="e">?</span> <span class="b">Save in</span>
+    <span class="e">❯ Desktop</span>        <span class="d">~/Desktop</span>
+      Same folder    <span class="d">~/Pictures/Trip</span>
+      Downloads      <span class="d">~/Downloads</span>
+      Other…
+
+<span class="x">──────────────────────────────────────────────────────────────</span>
+<span class="e">↑↓</span> <span class="d">choose</span>   <span class="e">↵</span> <span class="d">confirm</span>   <span class="e">esc</span> <span class="d">back</span>                       <span class="d">3 of 4</span></pre>
+      </div>
+    </figure>
+    <div class="meta">
+      <h3><span class="letter">A</span>Transcript</h3>
+      <p class="pitch">Today's model done properly. Questions still come one at a time, but each answer collapses to one line and stays. The banner shrinks to a 5-column mark, and receipts include the path.</p>
+      <div class="pc"><div><h5>Good</h5><ul><li>Smallest change from today</li><li>Scrollback becomes a real session log</li><li>Fits Ink's <code>&lt;Static&gt;</code> model exactly</li></ul></div><div><h5>Weak</h5><ul><li>Still about 4 keystrokes per conversion</li><li>Sequential: you cannot see the whole plan before committing</li></ul></div></div>
+      <div class="refs"><span class="tag">Claude Code</span><span class="tag">Codex CLI</span><span class="tag">Huh</span></div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="dir">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>B · Sentence</span></div>
+<pre><span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 4032×3024 · 2.4 MB</span>
+
+  Convert to <span class="slot on">WebP</span><span class="e">▾</span>  at quality <span class="slot">80</span><span class="x">▾</span>  into <span class="slot">~/Desktop</span><span class="x">▾</span>
+  <span class="d">→ IMG_4127.webp ·</span> <span class="f">412 KB</span><span class="d">,</span> <span class="o">83% smaller</span> <span class="d">· location removed</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="cursor-blink">▏</span>                                                          <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert</span>  <span class="e">tab</span> <span class="d">next</span>  <span class="e">↑↓</span> <span class="d">change</span>  <span class="e">c</span> <span class="d">copy as command</span>
+
+  <span class="x">$ forge IMG_4127.HEIC --to webp -q 80 -o ~/Desktop</span></pre>
+      </div>
+    </figure>
+    <div class="meta">
+      <h3><span class="letter">B</span>Sentence</h3>
+      <p class="pitch">The whole request is one editable sentence. The defaults are already filled in, so ↵ converts immediately, or Tab moves between the slots to change them. Underneath it, the equivalent CLI command updates as you edit.</p>
+      <div class="pc"><div><h5>Good</h5><ul><li><b>One keystroke</b> for the default case</li><li>See the whole plan before running</li><li>Teaches the CLI for free</li><li>Slots come from <code>targetsFor()</code>, so nothing is hardcoded</li></ul></div><div><h5>Weak</h5><ul><li>Slot editing is a new idiom to learn</li><li>Long sentences need a narrow-width layout</li></ul></div></div>
+      <div class="refs"><span class="tag">lazygit command log</span><span class="tag">atuin</span><span class="tag">Raycast arguments</span></div>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="dir">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>C · Workbench (alt screen)</span></div>
+<pre style="position:relative"><span class="img photo" style="position:absolute;left:calc(20px + 23ch);top:calc(18px + 1.3em);width:28ch;height:calc(1.3em * 6)"></span><span class="x">╭ </span><span class="d">Files</span><span class="x"> ─────────────╮</span><span class="x">╭ </span><span class="d">Preview</span><span class="x"> ───────────────────╮</span><span class="x">╭ </span><span class="e">Output</span><span class="x"> ──────────────╮</span>
+<span class="x">│</span><span class="d"> ~/Pictures/Trip</span>    <span class="x">│</span><span class="x">│</span>                            <span class="x">│</span><span class="x">│</span><span class="d"> FORMAT</span>               <span class="x">│</span>
+<span class="x">│</span><span class="d"> ▸ raw/</span>             <span class="x">│</span><span class="x">│</span>                            <span class="x">│</span><span class="x">│</span> <span class="e">❯ WebP</span>  412K <span class="o">−83%</span>    <span class="x">│</span>
+<span class="x">│</span> <span class="e b">● IMG_4127.HEIC</span>    <span class="x">│</span><span class="x">│</span>                            <span class="x">│</span><span class="x">│</span>   AVIF  298K <span class="o">−88%</span>    <span class="x">│</span>
+<span class="x">│</span> <span class="e">●</span> IMG_4128.HEIC    <span class="x">│</span><span class="x">│</span>                            <span class="x">│</span><span class="x">│</span>   JPEG  690K <span class="o">−71%</span>    <span class="x">│</span>
+<span class="x">│</span>   IMG_4129.HEIC    <span class="x">│</span><span class="x">│</span>                            <span class="x">│</span><span class="x">│</span>   PNG   9.1M <span class="w">+279%</span>   <span class="x">│</span>
+<span class="x">│</span>   IMG_4130.HEIC    <span class="x">│</span><span class="x">│</span>                            <span class="x">│</span><span class="x">│</span>                      <span class="x">│</span>
+<span class="x">│</span>   itinerary.pdf    <span class="x">│</span><span class="x">│</span><span class="d"> HEIC 4032×3024 · 2.4 MB</span>    <span class="x">│</span><span class="x">│</span><span class="d"> QUALITY </span><span class="e">━━━━━●</span><span class="x">━━</span> 80  <span class="x">│</span>
+<span class="x">│</span>   notes.docx       <span class="x">│</span><span class="x">│</span><span class="d"> iPhone 15 Pro · GPS</span>        <span class="x">│</span><span class="x">│</span><span class="d"> SAVE IN </span>~/Desktop    <span class="x">│</span>
+<span class="x">╰────────────────────╯╰────────────────────────────╯╰──────────────────────╯</span>
+ <span class="e">space</span> <span class="d">select</span>  <span class="e">↵</span> <span class="d">convert</span>  <span class="e">tab</span> <span class="d">pane</span>  <span class="e">/</span> <span class="d">filter</span>         <span class="d">2 selected · 4.8 MB</span></pre>
+      </div>
+    </figure>
+    <div class="meta">
+      <h3><span class="letter">C</span>Workbench</h3>
+      <p class="pitch">A full-screen, three-pane file manager built around conversion: browse on the left, a live image preview in the middle, the output plan on the right. You pick files from a folder instead of dropping them in.</p>
+      <div class="pc"><div><h5>Good</h5><ul><li>Best for working through a folder</li><li>Everything is visible at once</li><li>Most impressive in a screenshot</li></ul></div><div><h5>Weak</h5><ul><li>Gives up the transcript, so the session leaves no record</li><li>Conflicts with drag-and-drop, the product's core gesture</li><li>Ink is weak at alt-screen pane layout; this is really Ratatui or Bubble Tea territory</li></ul></div></div>
+      <div class="refs"><span class="tag">yazi</span><span class="tag">superfile</span><span class="tag">lazygit</span><span class="tag">harlequin</span></div>
+    </div>
+  </div>
+
+  <!-- D -->
+  <div class="dir">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>D · Palette</span></div>
+<pre><span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 4032×3024 · 2.4 MB</span>
+
+<span class="x">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> web sm<span class="cursor-blink">▏</span>                                                    <span class="x">│</span>
+<span class="x">├──────────────────────────────────────────────────────────────┤</span>
+<span class="x">│</span><span class="sl"> <span class="e">❯</span> Convert to <span class="e b">We</span>bP <span class="d">· </span><span class="e b">sm</span><span class="d">aller, modern</span>                   <span class="d">412 KB</span> </span><span class="x">│</span>
+<span class="x">│</span>   Convert to WebP <span class="d">· resize to 2048 px</span>                 <span class="d">188 KB</span> <span class="x">│</span>
+<span class="x">│</span>   Compress to under <span class="d">…</span> <span class="d">· pick a size</span>                          <span class="x">│</span>
+<span class="x">│</span>   Convert to JPEG <span class="d">· for the </span><span class="e b">web</span>                       <span class="d">690 KB</span> <span class="x">│</span>
+<span class="x">│</span>   <span class="d">recent ·</span> WebP q80 <span class="d">→ ~/Desktop</span>                              <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────────────────╯</span>
+  <span class="e">↑↓</span> <span class="d">choose</span>  <span class="e">↵</span> <span class="d">run</span>  <span class="e">→</span> <span class="d">adjust before running</span>       <span class="d">5 of 23 matches</span></pre>
+      </div>
+    </figure>
+    <div class="meta">
+      <h3><span class="letter">D</span>Palette</h3>
+      <p class="pitch">Intent first. Drop a file and type what you want ("web small", "under 2mb", "pages 3-5"). A fuzzy-ranked list of actions is derived from the file's capabilities, with your recent recipes listed first.</p>
+      <div class="pc"><div><h5>Good</h5><ul><li>Fastest for experts, with no menus to read</li><li>Scales to many actions as engines grow</li><li>Recipes give repeat use a single keystroke</li></ul></div><div><h5>Weak</h5><ul><li>A blank box is hard for beginners to discover</li><li>The ranking needs tuning, and a phrase-to-action vocabulary is a soft form of natural language, which the spec rules out</li></ul></div></div>
+      <div class="refs"><span class="tag">fzf</span><span class="tag">television</span><span class="tag">Raycast</span><span class="tag">Warp</span></div>
+    </div>
+  </div>
+
+  <!-- E -->
+  <div class="dir">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>E · Darkroom</span></div>
+<pre style="position:relative"><span class="e">●</span> <span class="b">IMG_4127.HEIC</span> <span class="d">→</span> WebP                                    <span class="d">1:1 crop</span>
+
+<span class="img photo" style="position:absolute;left:calc(20px + 2ch);top:calc(18px + 1.3em*2);width:30ch;height:calc(1.3em*9)"></span><span class="img photo q30" style="position:absolute;left:calc(20px + 34ch);top:calc(18px + 1.3em*2);width:30ch;height:calc(1.3em*9)"></span>
+
+
+
+
+
+
+
+
+
+  <span class="d">original  2.4 MB</span>                    <span class="f">quality 30</span>  <span class="f">128 KB</span> <span class="o">−95%</span>
+
+  <span class="d">quality</span>  <span class="x">10</span> <span class="e">━━━━━●</span><span class="x">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span> <span class="x">100</span>
+           <span class="d">smaller ←                      → sharper</span>
+  <span class="e">←→</span> <span class="d">quality</span>  <span class="e">z</span> <span class="d">zoom</span>  <span class="e">space</span> <span class="d">flip A/B</span>  <span class="e">↵</span> <span class="d">keep this</span></pre>
+      </div>
+    </figure>
+    <div class="meta">
+      <h3><span class="letter">E</span>Darkroom</h3>
+      <p class="pitch">Preview first. Before and after appear side by side as real pixels (over the kitty or iTerm2 image protocols), at a 1:1 crop so compression artifacts are visible. The slider re-encodes as you move it, so the size shown is the real size.</p>
+      <div class="pc"><div><h5>Good</h5><ul><li>Answers the real question: "is this quality acceptable?"</li><li>Makes compression trustworthy</li><li>Visually distinctive</li></ul></div><div><h5>Weak</h5><ul><li>Needs Ghostty, kitty, iTerm2 or WezTerm. Terminal.app (truecolour since Tahoe, but no image protocol) falls back to coarse ▀ half-blocks</li><li>Too heavy as the default for every conversion</li></ul></div></div>
+      <div class="refs"><span class="tag">yazi previews</span><span class="tag">Ghostty</span><span class="tag">chafa</span><span class="tag">Squoosh (web)</span></div>
+    </div>
+  </div>
+
+  <!-- F -->
+  <div class="dir">
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>F · Dispatch</span></div>
+<pre><span class="b">Converting 12 files</span> <span class="d">→ WebP q80 → ~/Desktop/converted</span>
+
+  <span class="e">████████████████████▌</span><span class="x">░░░░░░░░░░░░░░░░░░░░░░░</span>  <span class="f">5</span><span class="d"> of 12</span>
+
+  <span class="d">FILE                 BEFORE     AFTER              TIME</span>
+  <span class="o">✓</span> IMG_4120.HEIC       <span class="d">2.1 MB</span>     380 KB  <span class="o">−82%</span>      <span class="d">0.8s</span>
+  <span class="o">✓</span> IMG_4121.HEIC       <span class="d">2.6 MB</span>     455 KB  <span class="o">−83%</span>      <span class="d">0.9s</span>
+  <span class="o">✓</span> IMG_4122.HEIC       <span class="d">1.9 MB</span>     301 KB  <span class="o">−84%</span>      <span class="d">0.7s</span>
+  <span class="o">✓</span> screenshot.png      <span class="d">880 KB</span>     102 KB  <span class="o">−88%</span>      <span class="d">0.3s</span>
+  <span class="r">✕</span> broken.heic         <span class="d">0 B</span>        <span class="r">empty file — skipped</span>
+  <span class="e">◐</span> <span class="shimmer">IMG_4123.HEIC</span>       <span class="d">2.4 MB</span>     <span class="x">…</span>
+  <span class="e">◐</span> <span class="shimmer">IMG_4124.HEIC</span>       <span class="d">2.2 MB</span>     <span class="x">…</span>
+  <span class="x">· IMG_4125.HEIC       2.0 MB</span>
+  <span class="x">· 4 more</span>
+
+  <span class="d">so far</span>  <span class="f">7.5 MB → 1.2 MB</span>  <span class="o">−84%</span>          <span class="e">ctrl-c</span> <span class="d">stop after current</span></pre>
+      </div>
+    </figure>
+    <div class="meta">
+      <h3><span class="letter">F</span>Dispatch</h3>
+      <p class="pitch">Batches first. Drop a folder or forty files and get a live table: real per-file results, a bar driven by files finished (not invented), failures shown in place, and a running total.</p>
+      <div class="pc"><div><h5>Good</h5><ul><li>Fixes the weakest part of today's UI: multi-file (audit #6, #7, #16)</li><li>Every number shown is real</li><li>Looks like btop or k9s, which gives power users confidence</li></ul></div><div><h5>Weak</h5><ul><li>A layout only for batches, not a whole UI</li><li>Overkill for one file</li></ul></div></div>
+      <div class="refs"><span class="tag">btop</span><span class="tag">k9s</span><span class="tag">lazydocker</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= 4 -->
+<section id="compare">
+  <h2><span class="n">04</span>Compare</h2>
+  <p class="sub">Scored against the principles above and against Forge's own constraints: Ink, drag-and-drop input, macOS Terminal.app as the baseline, and the seven load-bearing invariants.</p>
+  <table class="matrix">
+    <thead><tr><th>Direction</th><th>Keys for default convert</th><th>Session record</th><th>Batch</th><th>Discoverable</th><th>Works in Terminal.app</th><th>Ink fit / cost</th></tr></thead>
+    <tbody>
+      <tr><td><b>A</b> Transcript</td><td class="s">4</td><td class="s dots">●●●</td><td class="s dots">●<span class="no">●●</span></td><td class="s dots">●●●</td><td class="s dots">●●●</td><td class="s dots">●●●</td></tr>
+      <tr class="pick"><td><b>B</b> Sentence</td><td class="s">1</td><td class="s dots">●●●</td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●●●</td><td class="s dots">●●<span class="no">●</span></td></tr>
+      <tr><td><b>C</b> Workbench</td><td class="s">2–3</td><td class="s dots"><span class="no">●●●</span></td><td class="s dots">●●●</td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●<span class="no">●●</span></td></tr>
+      <tr><td><b>D</b> Palette</td><td class="s">1–3</td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●<span class="no">●●</span></td><td class="s dots">●●●</td><td class="s dots">●●<span class="no">●</span></td></tr>
+      <tr><td><b>E</b> Darkroom</td><td class="s">2+</td><td class="s dots">●<span class="no">●●</span></td><td class="s dots"><span class="no">●●●</span></td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●<span class="no">●●</span></td><td class="s dots">●<span class="no">●●</span></td></tr>
+      <tr><td><b>F</b> Dispatch</td><td class="s">—</td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●●●</td><td class="s dots">●●<span class="no">●</span></td><td class="s dots">●●●</td><td class="s dots">●●<span class="no">●</span></td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><p><b>These directions are not mutually exclusive.</b> A is the right <em>container</em> (the transcript), B is the right <em>input</em> (one sentence with defaults), F is the right <em>batch view</em>, and E is a <em>peek</em> you open on demand. C and D lose: C abandons the transcript and the drop gesture, and D replaces a visible plan with a guessing game. The recommendation combines A, B, E and F.</p></div>
+</section>
+
+<!-- ======================================================= 5 -->
+<section id="narrow">
+  <h2><span class="n">05</span>Go narrow: the pick, frame by frame</h2>
+  <p class="sub"><b>Working name: "Ledger".</b> The transcript is the container, each request is one editable sentence, every finished job leaves a receipt, batches get a live table, and <span class="kbd">p</span> opens a preview. Every frame below is 88 columns wide unless labelled otherwise.</p>
+
+  <div class="story">
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>1 · launch</span></div>
+<pre><span class="e">▄▄▄▄▄</span> <span class="b">Convert</span> <span class="x">0.2</span>                                   <span class="d">saves to</span> <span class="f">~/Desktop</span>
+<span class="e"> ▀█▀ </span> <span class="d">images · HEIC · PDF · Word</span>
+
+<span class="x">╭─────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="d">Drop files here, or type a path</span>                           <span class="x">│</span>
+<span class="x">╰─────────────────────────────────────────────────────────────╯</span>
+  <span class="e">/</span> <span class="d">commands</span>   <span class="e">?</span> <span class="d">keys</span>   <span class="e">ctrl-c</span> <span class="d">quit</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">1</span>Two rows of identity, then the input.</b> The anvil shrinks to a 5×2 glyph mark. The hammer animation plays only on the very first launch and on <code>forge --about</code>, and any key skips it (audit #27). The default destination is labelled (audit #26). The only border on screen is the one around the input, because that is the only thing you can type into.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>2 · a file is dropped</span></div>
+<pre><span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 4032×3024 · 2.4 MB · iPhone 15 Pro · </span><span class="w">has GPS</span>
+
+  Convert to <span class="slot on">WebP</span><span class="e">▾</span>   quality <span class="slot">80</span><span class="x">▾</span>   into <span class="slot">~/Desktop</span><span class="x">▾</span>   as <span class="slot">IMG_4127.webp</span>
+  <span class="d">→</span> <span class="f">412 KB</span> <span class="o">83% smaller</span> <span class="d">· location stripped</span>                   <span class="x">measured</span>
+
+<span class="x">╭─────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="cursor-blink">▏</span>                                                         <span class="x">│</span>
+<span class="x">╰─────────────────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert</span>  <span class="e">tab</span> <span class="d">next</span>  <span class="e">↑↓</span> <span class="d">change</span>  <span class="e">p</span> <span class="d">preview</span>  <span class="e">esc</span> <span class="d">unstage</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">2</span>The whole plan in one sentence, already filled in.</b> Press ↵ and it runs. The slots come from <code>targetsFor()</code> plus the saved preferences. The size line is <em>measured</em>, not guessed (see the speculative encode in §8). The verb ("Convert to") is itself a slot, so "mode" disappears as a separate concept.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>3 · editing a slot</span></div>
+<pre><span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 4032×3024 · 2.4 MB</span>
+
+  Convert to <span class="slot on">WebP</span><span class="e">▴</span>   quality <span class="slot">80</span><span class="x">▾</span>   into <span class="slot">~/Desktop</span><span class="x">▾</span>
+             <span class="x">╭───────────────────────────────╮</span>
+             <span class="x">│</span><span class="sl"> <span class="e">❯ WebP</span>   <span class="f">412 KB</span>  <span class="o">−83%</span>  <span class="d">modern</span> </span><span class="x">│</span>
+             <span class="x">│</span>   AVIF   <span class="f">298 KB</span>  <span class="o">−88%</span>  <span class="d">newest</span> <span class="x">│</span>
+             <span class="x">│</span>   JPEG   <span class="f">690 KB</span>  <span class="o">−71%</span>  <span class="d">any app</span><span class="x">│</span>
+             <span class="x">│</span>   PNG    <span class="f">9.1 MB</span>  <span class="w">+279%</span> <span class="d">exact</span>  <span class="x">│</span>
+             <span class="x">│</span>   TIFF   <span class="x">measuring…</span>           <span class="x">│</span>
+             <span class="x">│</span>   PDF    <span class="d">one-page document</span>    <span class="x">│</span>
+             <span class="x">├───────────────────────────────┤</span>
+             <span class="x">│</span>   <span class="d">Compress instead…</span>           <span class="x">│</span>
+             <span class="x">╰───────────────────────────────╯</span>
+  <span class="e">↑↓</span> <span class="d">choose</span>  <span class="e">↵</span> <span class="d">pick</span>  <span class="e">esc</span> <span class="d">close</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">3</span>A slot opens as a small popover anchored under it.</b> Each format shows its real resulting size as soon as the background encode finishes, and "measuring…" until then. Nothing is invented. "Compress instead…" swaps the verb in the same sentence.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>4 · running, then the receipt</span></div>
+<pre><span class="e">◐</span> <span class="shimmer">Converting IMG_4127.HEIC to WebP</span>                               <span class="x">0.6s</span>
+
+<span class="x">┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  a moment later  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄</span>
+
+<span class="o">✓</span> IMG_4127.HEIC <span class="d">→</span> <span class="b">IMG_4127.webp</span>                 <span class="d">2.4 MB →</span> <span class="f">412 KB</span>  <span class="o">−83%</span>
+  <span class="d u">~/Desktop/IMG_4127.webp</span>                                         <span class="x">0.9s</span>
+  <span class="e">o</span> <span class="d">open</span>  <span class="e">r</span> <span class="d">reveal</span>  <span class="e">c</span> <span class="d">copy command</span>
+
+<span class="x">╭─────────────────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="d">Drop another, or ↑ to reuse WebP q80 → ~/Desktop</span>          <span class="x">│</span>
+<span class="x">╰─────────────────────────────────────────────────────────────╯</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">4</span>Ember shimmer while it works, then a three-line receipt.</b> A single file gets no percentage (invariant 7), only a heat shimmer, a real elapsed timer and an <b>indeterminate OSC 9;4</b> signal, so Ghostty and iTerm2 show native activity in the tab even when the window is in the background. The receipt leads with the path, which is a clickable OSC 8 link (audit #9). It is committed to scrollback, so a session reads as a log of what was done. ↑ brings back the last recipe.</figcaption>
+    </figure>
+
+    <figure class="wide">
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>5 · a batch: twelve files dropped at once (direction F, inside the transcript)</span></div>
+<pre><span class="e">●</span> <span class="b">12 files</span>  <span class="d">9 HEIC · 2 PNG · 1 HEIC (empty) · 31.4 MB</span>
+
+  Convert to <span class="slot">WebP</span><span class="x">▾</span>   quality <span class="slot">80</span><span class="x">▾</span>   into <span class="slot on">~/Desktop/converted</span><span class="e">▾</span>   names <span class="slot">keep</span><span class="x">▾</span>
+  <span class="w">⚠</span> <span class="d">broken.heic is empty and will be skipped — 11 will be converted</span>
+
+<span class="x">┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ↵  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄</span>
+
+  <span class="e">██████████████████████████▋</span><span class="x">░░░░░░░░░░░░░░░░░░░░░░░</span>  <span class="f">6</span><span class="d"> of 11</span>          <span class="d">so far</span> <span class="f">9.8 → 1.6 MB</span> <span class="o">−84%</span>
+  <span class="o">✓</span> IMG_4120.HEIC     <span class="d">2.1 MB →</span> 380 KB  <span class="o">−82%</span>        <span class="o">✓</span> IMG_4123.HEIC     <span class="d">2.4 MB →</span> 411 KB  <span class="o">−83%</span>
+  <span class="o">✓</span> IMG_4121.HEIC     <span class="d">2.6 MB →</span> 455 KB  <span class="o">−83%</span>        <span class="o">✓</span> screenshot.png    <span class="d">880 KB →</span> 102 KB  <span class="o">−88%</span>
+  <span class="o">✓</span> IMG_4122.HEIC     <span class="d">1.9 MB →</span> 301 KB  <span class="o">−84%</span>        <span class="o">✓</span> IMG_4124.HEIC     <span class="d">2.2 MB →</span> 390 KB  <span class="o">−82%</span>
+  <span class="e">◐</span> <span class="shimmer">IMG_4125.HEIC</span>     <span class="e">◐</span> <span class="shimmer">IMG_4126.HEIC</span>     <span class="x">· 3 waiting</span>                    <span class="e">ctrl-c</span> <span class="d">stop after these</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">5</span>A batch is the same sentence with a live table under it.</b> The bar counts finished files, which is real progress (invariant 7). The empty file is flagged <em>before</em> you press ↵ rather than after (audit #6, #7). When the batch finishes, the table collapses to one receipt line, "✓ 11 files → ~/Desktop/converted · 31.4 → 5.1 MB −84% · 1 skipped", with <span class="kbd">d</span> to expand it.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>6 · compress to a target size</span></div>
+<pre><span class="e">●</span> <span class="b">scan.jpg</span>  <span class="d">JPEG · 3508×2480 · 4.7 MB</span>
+
+  Compress to under <span class="slot on">1 MB</span><span class="e">▾</span>   keep <span class="slot">JPEG</span><span class="x">▾</span>   into <span class="slot">same folder</span><span class="x">▾</span>
+
+  <span class="e">◐</span> <span class="shimmer">Searching for the best quality under 1 MB</span>
+    <span class="e">●</span> <span class="d">q 75  1.9 MB</span>   <span class="e">●</span> <span class="d">q 52  1.2 MB</span>   <span class="e">●</span> <span class="d">q 38</span> <span class="o">940 KB ✓</span>   <span class="x">○ ○</span>
+
+<span class="o">✓</span> scan.jpg <span class="d">→</span> <span class="b">scan-small.jpg</span>                 <span class="d">4.7 MB →</span> <span class="f">940 KB</span>  <span class="o">−80%</span>
+  <span class="d u">~/Documents/scan-small.jpg</span> <span class="d">· quality 38</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">6</span>The verb changes and the sentence changes with it.</b> The existing attempt dots (●/○) are kept, but each dot is now labelled with its real trial. The search is visible, so the user can see why it chose quality 38.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>7 · PDF pages, in Ghostty / kitty / iTerm2</span></div>
+<pre><span class="e">●</span> <span class="b">contract.pdf</span>  <span class="d">PDF · 8 pages · 1.1 MB</span>
+
+  Extract pages <span class="slot on">2, 5–6</span><span class="e">▾</span>   into <span class="slot">same folder</span><span class="x">▾</span>   as <span class="slot">one file</span><span class="x">▾</span>
+
+  <span class="img page" style="width:44px;height:58px"></span>  <span class="img page sel" style="width:44px;height:58px"></span>  <span class="img page" style="width:44px;height:58px"></span>  <span class="img page" style="width:44px;height:58px"></span>  <span class="img page sel cur" style="width:44px;height:58px"></span>  <span class="img page sel" style="width:44px;height:58px"></span>  <span class="img page" style="width:44px;height:58px"></span>  <span class="img page" style="width:44px;height:58px"></span>
+
+   <span class="d">1</span>       <span class="e b">2</span>       <span class="d">3</span>       <span class="d">4</span>       <span class="e b">5</span>       <span class="e b">6</span>       <span class="d">7</span>       <span class="d">8</span>
+  <span class="e">←→</span> <span class="d">move</span>  <span class="e">space</span> <span class="d">toggle</span>  <span class="e">shift-→</span> <span class="d">range</span>  <span class="e">↵</span> <span class="d">extract 3 pages</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">7</span>Real page thumbnails where the terminal can draw them.</b> pdfium already renders pages for the PDF-to-image path, so thumbnails cost one small render per page. In Terminal.app the grid falls back to today's numbered cells, with a visible cursor under <code>NO_COLOR</code> (audit #10). The page slot accepts typed ranges too.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>8 · the preview peek (p)</span></div>
+<pre style="position:relative"><span class="e">●</span> <span class="b">IMG_4127.HEIC</span> <span class="d">→</span> WebP q<span class="slot on">80</span><span class="e">◂▸</span>                      <span class="x">1:1 crop · centre</span>
+
+<span class="img photo" style="position:absolute;left:calc(20px + 2ch);top:calc(18px + 1.3em*2);width:26ch;height:calc(1.3em*7)"></span><span class="img photo" style="position:absolute;left:calc(20px + 30ch);top:calc(18px + 1.3em*2);width:26ch;height:calc(1.3em*7);filter:saturate(.95) contrast(1.03)"></span>
+
+
+
+
+
+
+
+  <span class="d">original 2.4 MB</span>             <span class="f">412 KB</span> <span class="o">−83%</span>
+  <span class="e">←→</span> <span class="d">quality</span>  <span class="e">space</span> <span class="d">flip</span>  <span class="e">↵</span> <span class="d">keep</span>  <span class="e">esc</span> <span class="d">close</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">8</span>Darkroom (direction E) as a peek, not a mode.</b> <span class="kbd">p</span> expands a before/after view inline. ←→ adjusts the quality slot and the size re-measures. Closing it collapses back to the sentence. Shown only when the terminal reports image support; otherwise <span class="kbd">p</span> opens the file in Quick Look.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>9 · an error, written as a next step</span></div>
+<pre><span class="r">✕</span> <span class="b">Can't save into ~/Locked</span> <span class="d">— permission denied</span>
+  <span class="d">Nothing was written. IMG_4127.HEIC is still staged.</span>
+
+  Convert to <span class="slot">WebP</span><span class="x">▾</span>   quality <span class="slot">80</span><span class="x">▾</span>   into <span class="slot on r">~/Locked</span><span class="e">▾</span>
+  <span class="e">↵</span> <span class="d">pick another folder</span>   <span class="e">esc</span> <span class="d">unstage</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">9</span>Errors point at the slot that caused them.</b> It says the real cause rather than "Conversion failed" (audit #4), says what state things were left in, and puts focus on the slot that needs changing. There is no "run with --debug" in the shell.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>10 · 56 columns</span></div>
+<pre><span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 2.4 MB</span>
+
+  <span class="d">convert to</span>  <span class="slot on">WebP</span><span class="e">▾</span>
+  <span class="d">quality   </span>  <span class="slot">80</span><span class="x">▾</span>
+  <span class="d">into      </span>  <span class="slot">~/Desktop</span><span class="x">▾</span>
+  <span class="d">→</span> <span class="f">412 KB</span> <span class="o">−83%</span>
+
+<span class="x">╭──────────────────────────────────────────────────╮</span>
+<span class="x">│</span> <span class="e">›</span> <span class="cursor-blink">▏</span>                                              <span class="x">│</span>
+<span class="x">╰──────────────────────────────────────────────────╯</span>
+  <span class="e">↵</span> <span class="d">convert</span>  <span class="e">tab</span> <span class="d">next</span>  <span class="e">?</span> <span class="d">more keys</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">10</span>Below about 72 columns the sentence becomes a form.</b> Same slots and keys, stacked one per line. The hint bar keeps the three most important keys and moves the rest behind <span class="kbd">?</span>. The existing <code>bandFor()</code> width bands drive this.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term light"><div class="bar"><i></i><i></i><i></i><span>11 · light theme</span></div>
+<pre><span class="e">●</span> <span class="b">IMG_4127.HEIC</span>  <span class="d">HEIC · 4032×3024 · 2.4 MB</span>
+
+  Convert to <span class="slot on">WebP</span><span class="e">▾</span>   quality <span class="slot">80</span><span class="x">▾</span>   into <span class="slot">~/Desktop</span><span class="x">▾</span>
+  <span class="d">→</span> <span class="f">412 KB</span> <span class="o">83% smaller</span>
+
+<span class="o">✓</span> IMG_4126.HEIC <span class="d">→</span> <span class="b">IMG_4126.webp</span>         <span class="d">2.3 MB →</span> 398 KB <span class="o">−83%</span>
+  <span class="d u">~/Desktop/IMG_4126.webp</span></pre>
+      </div>
+      <figcaption><b><span class="step-n">11</span>Light.</b> The ember darkens to a burnt orange (#c2500e, about 5:1 on the background) so the one accent still passes AA as text.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="term" style="--ember:#e7e9ee;--ok:#e7e9ee;--fail:#e7e9ee;--warn:#e7e9ee;--dim:#e7e9ee;--faint:#e7e9ee;--ember-bg:transparent;"><div class="bar"><i></i><i></i><i></i><span>12 · NO_COLOR</span></div>
+<pre>● <span class="b">IMG_4127.HEIC</span>  HEIC · 4032×3024 · 2.4 MB
+
+  Convert to <span class="inv">[WebP]</span>▾   quality 80▾   into ~/Desktop▾
+  → 412 KB 83% smaller
+
+✓ IMG_4126.HEIC → IMG_4126.webp       2.3 MB → 398 KB −83%
+  ~/Desktop/IMG_4126.webp</pre>
+      </div>
+      <figcaption><b><span class="step-n">12</span>NO_COLOR.</b> Focus is shown with reverse video and [brackets], and the outcome with ✓/✕, never with colour alone. Every frame above still makes sense in monochrome.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ======================================================= 6 -->
+<section id="demo">
+  <h2><span class="n">06</span>Try the sentence</h2>
+  <p class="sub">Click the terminal, then use the keyboard. The option lists here are fixed sample data. In the real app they come from <code>targetsFor()</code>, and the sizes from a measured encode.</p>
+  <div class="demo-wrap" id="demo" tabindex="0">
+    <div class="term"><div class="bar"><i></i><i></i><i></i><span>forge — interactive</span></div>
+      <pre id="demo-screen"></pre>
+    </div>
+  </div>
+  <div class="demo-help"><span class="kbd">tab</span>/<span class="kbd">⇧tab</span> slot · <span class="kbd">↑</span><span class="kbd">↓</span> change · <span class="kbd">↵</span> convert · <span class="kbd">c</span> copy command · <span class="kbd">n</span> drop a different file</div>
+</section>
+
+<!-- ======================================================= 7 -->
+<section id="system">
+  <h2><span class="n">07</span>Design system</h2>
+  <p class="sub">The changes are mostly removals: three mode colour pairs, the tag colour and the label violet all go.</p>
+
+  <h3>Colour: from 18 tokens to 8, plus a selection fill</h3>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#15161b;border-bottom:1px solid var(--rule)"></div><div class="lbl"><b>bg</b>#15161b · user's terminal</div></div>
+    <div class="sw"><div class="chip" style="background:#e7e9ee"></div><div class="lbl"><b>fg</b>#e7e9ee · content</div></div>
+    <div class="sw"><div class="chip" style="background:#8d93a3"></div><div class="lbl"><b>dim</b>#8d93a3 · 5.9:1 · metadata</div></div>
+    <div class="sw"><div class="chip" style="background:#4b5162"></div><div class="lbl"><b>faint</b>#4b5162 · borders, rules only</div></div>
+    <div class="sw"><div class="chip" style="background:linear-gradient(90deg,#ff8a3d,#ffd2a1)"></div><div class="lbl"><b>ember</b>#ff8a3d · the one accent: focus, keys, work</div></div>
+    <div class="sw"><div class="chip" style="background:#7fd49a"></div><div class="lbl"><b>ok</b>#7fd49a · outcome only</div></div>
+    <div class="sw"><div class="chip" style="background:#ff6f6f"></div><div class="lbl"><b>fail</b>#ff6f6f · outcome only</div></div>
+    <div class="sw"><div class="chip" style="background:#e9c46a"></div><div class="lbl"><b>warn</b>#e9c46a · grew / skipped</div></div>
+  </div>
+  <p style="color:var(--muted);font-size:14px">Contrast figures are approximate against #15161b and should be re-measured the way <code>theme.ts</code> already documents its values. The ember is the hot-metal colour of the existing mark, kept as the only accent so focus is never ambiguous. A conversion that grew uses <code>warn</code> plus a "+" sign, which removes the need for a separate <code>larger</code> orange.</p>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card">
+      <h4>Glyphs</h4>
+      <p style="font-family:var(--mono);color:var(--ink);font-size:14px;line-height:1.9">
+        <span style="color:var(--ember)">●</span> staged &nbsp; <span style="color:var(--ember)">◐</span> working &nbsp; <span style="color:var(--ok)">✓</span> done &nbsp; <span style="color:var(--fail)">✕</span> failed &nbsp; <span style="color:var(--warn)">⚠</span> heads-up<br>
+        <span style="color:var(--ember)">▾</span> slot &nbsp; <span style="color:var(--ember)">❯</span> option cursor &nbsp; <span style="color:var(--ember)">›</span> prompt &nbsp; → transform<br>
+        <span style="color:var(--ember)">✧</span> offer (kept from today)
+      </p>
+      <p>No Nerd Font glyphs: Terminal.app users do not have them, and the current symbol set already survives every font.</p>
+    </div>
+    <div class="card">
+      <h4>Layout rules</h4>
+      <p>Two-space indent under a subject line. One blank line between blocks. A border only around the input and popovers. A rule (┄) only to separate the live region from the transcript. Right-aligned numbers so sizes line up across receipts.</p>
+    </div>
+    <div class="card">
+      <h4>Motion</h4>
+      <p>Three animations in total: the ember shimmer on the working verb, the ◐ spinner, and the hammer, which plays once ever. Each stops the frame its work stops. All are off under <code>NO_COLOR</code> or <code>FORGE_REDUCED_MOTION</code>.</p>
+    </div>
+    <div class="card">
+      <h4>Keys</h4>
+      <p><span class="kbd">↵</span> accept everything · <span class="kbd">tab</span> next slot · <span class="kbd">↑↓</span> change the focused slot (on an empty prompt, history) · <span class="kbd">p</span> preview · <span class="kbd">c</span> copy as command · <span class="kbd">o</span>/<span class="kbd">r</span> open/reveal last · <span class="kbd">esc</span> clear then back (as today) · <span class="kbd">/</span> commands · <span class="kbd">?</span> all keys.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= 8 -->
+<section id="cost">
+  <h2><span class="n">08</span>What it costs</h2>
+  <p class="sub">A rough mapping onto the current code. None of it touches <code>core/</code> or <code>engines/</code> beyond one new data function.</p>
+  <table class="matrix">
+    <thead><tr><th>Piece</th><th>Change</th><th>Size</th></tr></thead>
+    <tbody>
+      <tr><td><b>Sentence composer</b></td><td>New <code>Sentence</code> component that replaces the sequential <code>Select</code> → <code>Slider</code> → destination → name steps in <code>App.tsx</code>. A slot is <code>{label, value, options}</code> built from <code>targetsFor()</code> and the action option schemas, which already exist.</td><td class="s">L</td></tr>
+      <tr><td><b>Speculative encode</b></td><td>When the slots settle (debounced), encode for real into the atomic temp file. ↵ then only has to rename, so the size shown <em>is</em> the result. Fits invariant 6 directly. Needs cancellation, and a cap on input size so a 200 MB TIFF does not encode in the background.</td><td class="s">M</td></tr>
+      <tr><td><b>Receipts</b></td><td>Rewrite the result block in <code>blocks.tsx</code>: path first, OSC 8 link (<code>hyperlink.ts</code> exists), elapsed time, equivalent command.</td><td class="s">S</td></tr>
+      <tr><td><b>Equivalent command</b></td><td>A pure <code>intentToArgv()</code> in <code>cli/</code>, the inverse of <code>args.ts</code>. Unit-testable as a round trip, which also catches CLI/shell drift like audit #2.</td><td class="s">S</td></tr>
+      <tr><td><b>Batch table</b></td><td>Extend <code>Progress.tsx</code> with per-file rows from the existing run events. The bar is driven by completed jobs.</td><td class="s">M</td></tr>
+      <tr><td><b>Image protocol</b></td><td>Detect kitty / iTerm2 support (an <code>XTGETTCAP</code> or kitty graphics query, plus <code>TERM_PROGRAM</code>). Write images outside Ink's diff, the same way <code>intro.ts</code> already writes outside Ink. This is the riskiest piece: it is hard to reconcile with Ink's redraws, so prototype it first.</td><td class="s">L · risk</td></tr>
+      <tr><td><b>Native progress</b></td><td>Emit OSC 9;4 from the shell layer: state 3 (indeterminate) for a single file, a real percentage of completed jobs for a batch, cleared on finish. Terminals that do not support it ignore it.</td><td class="s">XS</td></tr>
+      <tr><td><b>Palette &amp; banner</b></td><td>Collapse <code>theme.ts</code> to 8 tokens and add a compact 2-row mark. First-run-only intro behind a preference flag.</td><td class="s">S</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Suggested order</h3>
+  <p>1. Palette, compact banner, receipts: cheap, visible, and they fix audit #9, #26, #27 on their own. 2. Sentence composer plus equivalent command: the core of the redesign. 3. Speculative encode, to turn "likely smaller" into real numbers. 4. Batch table. 5. Image previews, starting with a throwaway spike to prove Ink can coexist with the kitty protocol.</p>
+
+  <h3>Open questions for you</h3>
+  <ul style="color:var(--muted);max-width:820px">
+    <li>Is a 1-keystroke default worth the new slot idiom, or do you prefer A's question-by-question flow?</li>
+    <li>Is a background encode acceptable on battery or for large files? Without it, the sizes fall back to today's hint words.</li>
+    <li>Should the hammer intro survive at all, even first-run only?</li>
+    <li>Is Ghostty, kitty or iTerm2 a realistic target for your users, or is Terminal.app the whole audience? The answer decides whether the preview peek is worth building.</li>
+  </ul>
+</section>
+
+<footer>Convert / forge · TUI redesign exploration · 2026-10-11 · mockups only. The terminal frames are HTML approximations; colours, the shimmer and image cells stand in for what a truecolor terminal with the kitty graphics protocol would draw.</footer>
+</main>
+
+<script>
+/* ---------- Interactive sentence demo ---------- */
+(() => {
+  const el = document.getElementById('demo');
+  const out = document.getElementById('demo-screen');
+  const files = [
+    { name: 'IMG_4127.HEIC', meta: 'HEIC · 4032×3024 · 2.4 MB', bytes: 2.4e6, stem: 'IMG_4127', flag: 'cli' },
+    { name: 'logo.png', meta: 'PNG · 1024×1024 · 380 KB · transparent', bytes: 380e3, stem: 'logo' },
+  ];
+  let fi = 0;
+  const formats = [
+    { id: 'webp', label: 'WebP', ratio: 0.17 }, { id: 'avif', label: 'AVIF', ratio: 0.12 },
+    { id: 'jpeg', label: 'JPEG', ratio: 0.29 }, { id: 'png', label: 'PNG', ratio: 3.79 },
+  ];
+  const qualities = [60, 70, 80, 90];
+  const dests = ['~/Desktop', 'same folder', '~/Downloads', '~/Desktop/converted'];
+  const state = { slot: 0, f: 0, q: 2, d: 0, log: [], running: false, copied: false };
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const fmt = (b) => b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB';
+  const est = () => {
+    const f = formats[state.f]; const file = files[fi];
+    const qf = f.id === 'png' ? 1 : 0.55 + (qualities[state.q] - 60) / 60;
+    return file.bytes * f.ratio * qf * (file.name.endsWith('png') && f.id === 'png' ? 0.26 : 1);
+  };
+  const pad = (s, n) => s + ' '.repeat(Math.max(0, n - s.length));
+  const slot = (i, text) => `<span class="slot${state.slot === i ? ' on' : ''}">${esc(text)}</span><span class="${state.slot === i ? 'e' : 'x'}">▾</span>`;
+  function render() {
+    const file = files[fi], f = formats[state.f];
+    const after = est(); const pct = Math.round((1 - after / file.bytes) * 100);
+    const change = pct >= 0 ? `<span class="o">${pct}% smaller</span>` : `<span class="w">${-pct}% larger</span>`;
+    const qOn = f.id !== 'png';
+    let s = `<span class="e">▄▄▄▄▄</span> <span class="b">Convert</span> <span class="x">0.2</span>                                   <span class="d">saves to</span> <span class="f">~/Desktop</span>\n`;
+    s += `<span class="e"> ▀█▀ </span> <span class="d">images · HEIC · PDF · Word</span>\n\n`;
+    for (const r of state.log) s += r + '\n';
+    if (state.running) {
+      s += `<span class="e">◐</span> <span class="shimmer">Converting ${esc(file.name)} to ${f.label}</span>\n\n`;
+    } else {
+      s += `<span class="e">●</span> <span class="b">${esc(file.name)}</span>  <span class="d">${esc(file.meta)}</span>\n\n`;
+      s += `  Convert to ${slot(0, f.label)}   ` + (qOn ? `quality ${slot(1, String(qualities[state.q]))}   ` : `<span class="x">lossless</span>   `) + `into ${slot(2, dests[state.d])}\n`;
+      s += `  <span class="d">→ ${esc(file.stem)}.${f.id === 'jpeg' ? 'jpg' : f.id} ·</span> <span class="f">${fmt(after)}</span> ${change}\n\n`;
+    }
+    s += `<span class="x">╭─────────────────────────────────────────────────────────────╮</span>\n`;
+    s += `<span class="x">│</span> <span class="e">›</span> <span class="cursor-blink">▏</span>                                                         <span class="x">│</span>\n`;
+    s += `<span class="x">╰─────────────────────────────────────────────────────────────╯</span>\n`;
+    s += `  <span class="e">↵</span> <span class="d">convert</span>  <span class="e">tab</span> <span class="d">next</span>  <span class="e">↑↓</span> <span class="d">change</span>  <span class="e">c</span> <span class="d">copy as command</span>\n\n`;
+    const dest = dests[state.d] === 'same folder' ? '' : ` -o ${dests[state.d]}`;
+    const cmd = `$ forge ${file.name} --to ${f.id}${qOn ? ' -q ' + qualities[state.q] : ''}${dest}`;
+    s += `  <span class="${state.copied ? 'o' : 'x'}">${esc(cmd)}${state.copied ? '   ✓ copied' : ''}</span>`;
+    out.innerHTML = s;
+  }
+  function run() {
+    if (state.running) return;
+    state.running = true; render();
+    setTimeout(() => {
+      const file = files[fi], f = formats[state.f]; const after = est();
+      const pct = Math.round((1 - after / file.bytes) * 100);
+      const ext = f.id === 'jpeg' ? 'jpg' : f.id;
+      const dir = dests[state.d] === 'same folder' ? '~/Pictures' : dests[state.d];
+      const ch = pct >= 0 ? `<span class="o">−${pct}%</span>` : `<span class="w">+${-pct}%</span>`;
+      state.log.push(`<span class="o">✓</span> ${pad(esc(file.name) + ' <span class="d">→</span> <b>' + esc(file.stem) + '.' + ext + '</b>', 0)}      <span class="d">${fmt(file.bytes)} →</span> <span class="f">${fmt(after)}</span>  ${ch}\n  <span class="d u">${esc(dir)}/${esc(file.stem)}.${ext}</span>\n`);
+      if (state.log.length > 2) state.log.shift();
+      state.running = false; fi = (fi + 1) % files.length; state.slot = 0; render();
+    }, 1100);
+  }
+  el.addEventListener('focus', () => el.classList.add('focused'));
+  el.addEventListener('blur', () => el.classList.remove('focused'));
+  el.addEventListener('click', () => el.focus());
+  el.addEventListener('keydown', (e) => {
+    const qOn = formats[state.f].id !== 'png';
+    const slots = qOn ? [0, 1, 2] : [0, 2];
+    let handled = true; state.copied = false;
+    if (e.key === 'Tab') {
+      const i = slots.indexOf(state.slot);
+      state.slot = slots[(i + (e.shiftKey ? slots.length - 1 : 1)) % slots.length];
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      const key = ['f', 'q', 'd'][state.slot];
+      const len = [formats, qualities, dests][state.slot].length;
+      state[key] = (state[key] + dir + len) % len;
+      if (formats[state.f].id === 'png' && state.slot === 1) state.slot = 0;
+    } else if (e.key === 'Enter') { run(); }
+    else if (e.key === 'c') { state.copied = true; }
+    else if (e.key === 'n') { fi = (fi + 1) % files.length; }
+    else handled = false;
+    if (handled) { e.preventDefault(); render(); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
