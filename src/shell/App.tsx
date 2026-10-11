@@ -2013,6 +2013,7 @@ export function App({
               <Select
                 width={width}
                 items={modeSpec.choices}
+                initialValue={modeSpec.default}
                 onSubmit={(chosen) => {
                   setValues((v) => ({ ...v, mode: chosen }))
                   setStep(chosen === 'size' ? 'size' : 'quality')
@@ -2129,6 +2130,7 @@ export function App({
               <Select
                 width={width}
                 items={pagesSpec.choices}
+                initialValue={pagesSpec.default}
                 onSubmit={choosePages}
                 onCancel={() => setStep('target')}
                 showHints={band !== 'compact'}
@@ -2174,6 +2176,7 @@ export function App({
               <Select
                 width={width}
                 items={dpiSpec.choices}
+                initialValue={dpiSpec.default}
                 onSubmit={(dpi) => chooseDpi(source, dpi)}
                 onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
                 showHints={band !== 'compact'}

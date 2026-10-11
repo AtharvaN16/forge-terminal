@@ -271,3 +271,70 @@ describe('a hint with a tone', () => {
     expect(colourOf(lines[0])).not.toBe(colourOf(lines[1]))
   })
 })
+
+/**
+ * Audit #8: `OptionSpec.default` was dead — every Select opened on its first
+ * enabled row, so a spec whose default is not index 0 (Resolution, 150 dpi)
+ * silently answered with the wrong value on a plain Enter.
+ */
+describe('an initial value', () => {
+  const dpi: Choice[] = [
+    { value: '72', label: '72 dpi', hint: 'screen' },
+    { value: '150', label: '150 dpi', hint: 'default' },
+    { value: '300', label: '300 dpi', hint: 'print' },
+  ]
+
+  it('opens with the cursor on the named row', () => {
+    const { lastFrame } = render(
+      <Select width={60} items={dpi} initialValue="150" onSubmit={() => {}} />,
+    )
+    expect(plain(lastFrame())).toContain('❯ 150 dpi')
+    expect(plain(lastFrame())).not.toContain('❯ 72 dpi')
+  })
+
+  it('submits the named row on a plain Enter', async () => {
+    const onSubmit = vi.fn()
+    const { stdin } = render(
+      <Select width={60} items={dpi} initialValue="150" onSubmit={onSubmit} />,
+    )
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith('150')
+  })
+
+  it('moves relative to the named row', async () => {
+    const onSubmit = vi.fn()
+    const { stdin } = render(
+      <Select width={60} items={dpi} initialValue="150" onSubmit={onSubmit} />,
+    )
+    await settle()
+    stdin.write(DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith('300')
+  })
+
+  it('falls back to the first enabled row when the value names a disabled one', () => {
+    const { lastFrame } = render(
+      <Select
+        width={60}
+        items={[
+          { value: 'a', label: 'A', disabled: true },
+          { value: 'b', label: 'B' },
+        ]}
+        initialValue="a"
+        onSubmit={() => {}}
+      />,
+    )
+    expect(plain(lastFrame())).toContain('❯ B')
+  })
+
+  it('falls back to the first enabled row when the value matches nothing', () => {
+    const { lastFrame } = render(
+      <Select width={60} items={dpi} initialValue="600" onSubmit={() => {}} />,
+    )
+    expect(plain(lastFrame())).toContain('❯ 72 dpi')
+  })
+})
