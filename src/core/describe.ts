@@ -62,6 +62,10 @@ function verbFor(job: Job): string {
       return 'deleted from'
     case 'rotate':
       return 'rotated'
+    case 'boost':
+      return 'boosted'
+    case 'remove-background':
+      return 'cut out'
     default: {
       /**
        * A new `op` fails to compile here, in one place, rather than silently

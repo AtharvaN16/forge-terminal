@@ -216,6 +216,38 @@ so — and it encodes a candidate to find out rather than guessing:
   ↵ convert another · c convert to WebP · o open · s show in finder · ctrl-c close app
 ```
 
+## Boost resolution and remove background
+
+Two image operations that need a model, so they are optional extensions rather
+than part of the install. Nothing downloads until you ask:
+
+```bash
+forge extensions                        # list: installed or not, size, licence
+forge extensions add boost              # about 50 MB
+forge extensions add remove-background  # about 0.2 MB; needs macOS 14 or later
+forge extensions remove boost
+```
+
+```bash
+forge photo.jpg --boost            # photo-2x.png   (2x, the default)
+forge photo.jpg --boost 4          # photo-4x.png
+forge photo.jpg --remove-bg        # photo-cutout.png
+forge photo.jpg --remove-bg --to webp
+```
+
+Output goes beside the source unless `-o` says otherwise. Boost keeps
+transparency, and flattens it onto `--background` only when `--to` names a
+format that cannot carry it. A cutout must be saved in a format that holds
+transparency (PNG, WebP, AVIF, TIFF); JPEG is refused, because flattening would
+undo the cutout. Without the extension installed, either flag stops with
+`extension-missing` and the install command (exit 1). Output more than 16,384
+px on a side, or over 100 MP, is refused before anything runs.
+
+`forge probe` lists `boost` / `remove-background` among a file's `actions` only
+while that extension is installed, and `--json` results report `op: "boost"` or
+`op: "remove-background"`. `forge_convert` accepts `boost: 2 | 4` and
+`removeBackground: true`, with the same `extension-missing` tool error.
+
 ## PDF
 
 Five page operations, one flag each: merge, split, extract, delete and
@@ -685,7 +717,7 @@ Five tools, deliberately few:
 | --- | --- |
 | `forge_probe` | what files are and what Forge can do with them |
 | `forge_formats` | the capability matrix |
-| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`) |
+| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `boost: 2 \| 4` and `removeBackground`, which need the optional extensions) |
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
 

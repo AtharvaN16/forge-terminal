@@ -58,6 +58,29 @@ Outputs go beside the source unless `-o` names a folder (or, for one file, a
 filename). Page operations always write beside the source, take no `-o`, and
 never edit the original.
 
+## Optional extensions: boost and remove background
+
+Two image operations are not built in. They are small downloads, installed once:
+
+```bash
+forge extensions                       # what is installed
+forge extensions add boost             # about 50 MB; 2x / 4x resolution
+forge extensions add remove-background # about 0.2 MB; needs macOS 14 or later
+forge photo.jpg --boost --json         # photo-2x.png   (--boost 4 -> photo-4x.png)
+forge photo.jpg --remove-bg --json     # photo-cutout.png
+```
+
+`forge probe` lists `boost` / `remove-background` under `actions` only when that
+extension is installed, so trust the probe. `--json` results carry
+`op: "boost"` or `op: "remove-background"`. `--to` picks another output format;
+a cutout needs one that carries transparency (png, webp, avif, tiff) and
+anything else is refused with `invalid-arguments`. If the extension is missing
+the failure code is `extension-missing`, its hint is the install command, and
+the exit code is 1: ask the user before installing, since it downloads.
+Other codes: `no-subject` (no foreground found) and `boost-too-large`
+(the result would pass 16,384 px a side or 100 MP; the hint names the largest
+factor that fits).
+
 ## Encrypted PDFs
 
 Forge never prompts when there is no terminal. Send the password on stdin,
@@ -81,6 +104,7 @@ exit 1 and a hint; a wrong password has its own hint.
 - `unsupported-compress`: lossless (PNG) or a PDF with no images. Convert instead.
 - `unsupported-operation`: that page operation does not fit those files (PDFs only; merge needs two or more).
 - `encrypted-source`: a password is needed, or the one given was wrong.
+- `extension-missing`: run the hint's `forge extensions add <id>` (with the user's agreement), then retry.
 - `file-not-found`: check the path; probe reports it per file without failing the rest.
 
 ## MCP
@@ -89,5 +113,7 @@ If a `forge` MCP server is connected (tools `forge_probe`, `forge_formats`,
 `forge_convert`, `forge_compress`, `forge_pdf`), prefer it. It takes absolute
 paths and returns the same JSON as `structuredContent`. It never overwrites
 unless you pass `overwrite: true`, and an encrypted PDF takes a `password`
-argument. A hint that says `--force` means `overwrite: true` there;
+argument. `forge_convert` also takes `boost: 2 | 4` and `removeBackground: true`
+(images only; `to` is then the output format); without the extension they fail
+with `extension-missing`. A hint that says `--force` means `overwrite: true` there;
 `--password-stdin` means `password`.

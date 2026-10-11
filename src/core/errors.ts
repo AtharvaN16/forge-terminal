@@ -285,13 +285,13 @@ export function unsupportedPdf(source: SourceInfo): ForgeError {
  * well-formed and would succeed on other files, which makes it exit 1, while
  * `invalid-arguments` always means exit 2 (spec §3.4).
  */
-export function unsupportedOperation(action: string, reason: string): ForgeError {
+export function unsupportedOperation(action: string, reason: string, hint?: string): ForgeError {
   return new ForgeError({
     code: 'unsupported-operation',
     title: `Cannot ${action} these files`,
     detail: `Not available for these files: ${reason}.`,
-    hint: 'Page operations work on PDFs: --merge takes two or more, the others take one.',
-    shellHint: 'Use /pdf with a PDF staged — two or more for merge.',
+    hint: hint ?? 'Page operations work on PDFs: --merge takes two or more, the others take one.',
+    shellHint: hint ?? 'Use /pdf with a PDF staged — two or more for merge.',
   })
 }
 
@@ -407,7 +407,8 @@ export function encryptedSource(path: string, opts: { attempted?: boolean } = {}
  * rejects. Defaulted to `convert` because `core/plan.ts`, the other caller of
  * both refusals below, only ever builds conversions.
  */
-const takesOutputFlag = (op: Job['op']): boolean => op === 'convert'
+const takesOutputFlag = (op: Job['op']): boolean =>
+  op === 'convert' || op === 'boost' || op === 'remove-background'
 
 export function outputExists(path: string, op: Job['op'] = 'convert'): ForgeError {
   return new ForgeError({

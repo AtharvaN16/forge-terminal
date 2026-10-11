@@ -34,7 +34,10 @@ export type ProbeReport = {
   actions: string[]
 }
 
-export function describeSource(source: SourceInfo): ProbeReport {
+export function describeSource(
+  source: SourceInfo,
+  installed: ReadonlySet<string> = new Set(),
+): ProbeReport {
   const common = {
     path: resolve(source.path),
     kind: source.kind,
@@ -47,7 +50,7 @@ export function describeSource(source: SourceInfo): ProbeReport {
   const locked = source.kind === 'document' && source.encrypted === true
   const can = {
     targets: targetIdsFor(source).filter((t) => !locked || rasterises(t)),
-    actions: actionsFor([source])
+    actions: actionsFor([source], installed)
       .filter((a) => !locked || a.id === convertAction.id)
       .map((a) => a.id),
   }
@@ -66,5 +69,12 @@ export async function probeFiles(
   patterns: string[],
 ): Promise<{ probes: ProbeReport[]; failures: InputFailure[] }> {
   const resolved = await resolveInputs(patterns, { recursive: false })
-  return { probes: resolved.sources.map(describeSource), failures: resolved.failures }
+  // Lazy, and only for what is installed: probe lists an extension's action
+  // exactly when it would run, never otherwise (spec §5.3).
+  const { installedExtensionIds } = await import('../extensions/available.js')
+  const installed = await installedExtensionIds()
+  return {
+    probes: resolved.sources.map((s) => describeSource(s, installed)),
+    failures: resolved.failures,
+  }
 }

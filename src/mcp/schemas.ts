@@ -107,6 +107,18 @@ export const ConvertInput = z.object({
     .optional()
     .describe('Replace existing outputs. Default false — only when the user asked.'),
   recursive: z.boolean().optional().describe('Descend into subfolders of a folder input.'),
+  boost: z
+    .union([z.literal(2), z.literal(4)])
+    .optional()
+    .describe(
+      'Images only: enlarge 2 or 4 times with the optional boost extension, writing name-2x / name-4x. `to` is then the output format (png keeps transparency). Fails with extension-missing when it is not installed; the fix is `forge extensions add boost`.',
+    ),
+  removeBackground: z
+    .boolean()
+    .optional()
+    .describe(
+      'Images only: cut out the subject with the optional remove-background extension, writing name-cutout. `to` must carry transparency (png, webp, avif, tiff). Fails with extension-missing when it is not installed; the fix is `forge extensions add remove-background`.',
+    ),
 })
 
 export const CompressInput = z

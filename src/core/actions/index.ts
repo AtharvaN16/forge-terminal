@@ -1,7 +1,9 @@
 import type { Preferences } from '../../config/preferences.js'
+import type { ExtensionId } from '../../extensions/catalog.js'
 import type { Job, SourceInfo } from '../types.js'
 import { compressAction } from './compress.js'
 import { convertAction } from './convert.js'
+import { boostAction, removeBackgroundAction } from './extension.js'
 import { deleteAction, extractAction } from './extract.js'
 import { mergeAction } from './merge.js'
 import { rotateAction } from './rotate.js'
@@ -52,6 +54,11 @@ export interface Action {
   label: string
   hint: string
   /**
+   * Set on an action an optional extension provides. `actionsFor` only offers
+   * it when that extension is installed; the action itself stays pure data.
+   */
+  requires?: ExtensionId
+  /**
    * Whether this action can run against the staged list.
    *
    * Takes the list rather than one source because merge is defined by having
@@ -71,11 +78,13 @@ export interface Action {
 }
 
 export {
+  boostAction,
   compressAction,
   convertAction,
   deleteAction,
   extractAction,
   mergeAction,
+  removeBackgroundAction,
   rotateAction,
   splitAction,
 }
@@ -90,8 +99,26 @@ export const ACTIONS: Action[] = [
   rotateAction,
 ]
 
-export function actionsFor(sources: SourceInfo[]): Action[] {
-  return ACTIONS.filter((a) => a.appliesTo(sources))
+/** Contributed by optional extensions; never part of `ACTIONS`. */
+export const EXTENSION_ACTIONS: Action[] = [boostAction, removeBackgroundAction]
+
+/**
+ * What can be done with these sources.
+ *
+ * Stays synchronous: whether an extension is installed is disk state, so the
+ * caller reads it (once, asynchronously, via `installedExtensionIds()` in
+ * `src/extensions/available.ts`) and passes it in. Omitted means "nothing
+ * installed", so an extension action is never offered by accident — and
+ * `core/` never imports `src/extensions`.
+ */
+export function actionsFor(
+  sources: SourceInfo[],
+  installed: ReadonlySet<string> = new Set(),
+): Action[] {
+  return [
+    ...ACTIONS,
+    ...EXTENSION_ACTIONS.filter((a) => a.requires && installed.has(a.requires)),
+  ].filter((a) => a.appliesTo(sources))
 }
 
 export function unavailableReason(action: Action, sources: SourceInfo[]): string | undefined {

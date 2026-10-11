@@ -1,10 +1,16 @@
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
+import {
+  boostAction,
+  extensionTargetError,
+  removeBackgroundAction,
+} from '../core/actions/extension.js'
 import { ACTIONS, compressAction, convertAction, unavailableReason } from '../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
 import { formatMatrix, rasterises } from '../core/capabilities.js'
 import {
   encryptedSource,
+  extensionMissing,
   type ForgeError,
   invalidArguments,
   invalidPageRange,
@@ -13,6 +19,7 @@ import {
   unsupportedOperation,
 } from '../core/errors.js'
 import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
+import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -29,7 +36,13 @@ import type { RunSummary } from '../core/run.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
 import { openPdf } from '../engines/pdfium.js'
 import { VERSION } from '../shell/theme.js'
-import type { CompressIntent, ConvertIntent, Intent, PageOpIntent } from './args.js'
+import type {
+  CompressIntent,
+  ConvertIntent,
+  ExtensionOpIntent,
+  Intent,
+  PageOpIntent,
+} from './args.js'
 import type { ConfigIntent } from './config-command.js'
 import {
   reportBatch,
@@ -87,7 +100,7 @@ export interface ExecuteOptions {
 }
 
 /** The intents that convert, compress or edit files: everything `runIntent` accepts. */
-export type RunnableIntent = ConvertIntent | CompressIntent | PageOpIntent
+export type RunnableIntent = ConvertIntent | CompressIntent | PageOpIntent | ExtensionOpIntent
 
 /**
  * What a run did, as data. `renderRun` turns it into text or JSON, and
@@ -460,6 +473,76 @@ async function runCompress(intent: CompressIntent, opts: ExecuteOptions): Promis
   }
 }
 
+/**
+ * `--boost` / `--remove-bg`. The extension is checked first and by itself: a
+ * missing one is the command's problem, not each file's, and says how to fix
+ * it once. Everything after that is the shared plan-and-run path, so write
+ * safety and atomic writes are not reimplemented here.
+ */
+async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): Promise<RunReport> {
+  const kind = intent.kind
+  const refusal =
+    intent.op === 'remove-background' ? removeBackgroundTargetRefusal(intent.target) : undefined
+  if (refusal) return nothingRan(kind, [{ path: '', error: refusal }])
+
+  // Lazy: nothing in src/extensions loads unless one of these flags was given.
+  const { installed } = await import('../extensions/paths.js')
+  if (!(await installed(intent.op))) {
+    return nothingRan(kind, [{ path: '', error: extensionMissing(intent.op) }])
+  }
+
+  const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
+  const action = intent.op === 'boost' ? boostAction : removeBackgroundAction
+  const jobs: Job[] = []
+  const refused: InputFailure[] = []
+  for (const source of resolved.sources) {
+    if (!action.appliesTo([source])) {
+      refused.push({
+        path: source.path,
+        error: unsupportedOperation(
+          intent.op,
+          'it works on images, not documents',
+          'Try an image such as a JPEG, PNG, WebP or HEIC file.',
+        ),
+      })
+      continue
+    }
+    const wrongTarget = extensionTargetError(source, intent.target)
+    if (wrongTarget) {
+      refused.push({ path: source.path, error: wrongTarget })
+      continue
+    }
+    jobs.push(
+      ...action.plan([source], {
+        target: intent.target,
+        background: intent.options.background,
+        keepMetadata: intent.options.keepMetadata,
+        ...(intent.scale === undefined ? {} : { scale: intent.scale }),
+        ...(intent.options.quality === undefined ? {} : { quality: intent.options.quality }),
+        ...(intent.output === undefined ? {} : { output: intent.output }),
+        roots: resolved.roots,
+      }),
+    )
+  }
+
+  const batch = jobs.length > 1
+  if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
+  // One at a time: the extension queue serialises the heavy part anyway, and
+  // decoding several large images ahead of it would only hold memory.
+  const outcome = await runPlan(jobs, {
+    force: intent.force,
+    concurrency: 1,
+    onEvent: reportEvents(opts, batch),
+  })
+  return {
+    kind,
+    results: outcome.results,
+    failures: [...resolved.failures, ...refused, ...outcome.refusals, ...outcome.failures],
+    inputBytes: outcome.inputBytes,
+    outputBytes: outcome.outputBytes,
+  }
+}
+
 async function runConvert(intent: ConvertIntent, opts: ExecuteOptions): Promise<RunReport> {
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
 
@@ -547,6 +630,7 @@ export async function runIntent(
 ): Promise<RunReport> {
   try {
     if (intent.kind === 'pageop') return await runPageOp(intent)
+    if (intent.kind === 'extension-op') return await runExtensionOp(intent, opts)
     if (intent.kind === 'compress') return await runCompress(intent, opts)
     return await runConvert(intent, opts)
   } catch (e) {

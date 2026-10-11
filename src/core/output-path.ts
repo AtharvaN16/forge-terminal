@@ -68,6 +68,20 @@ export function resolveOutputPath(req: OutputRequest): string {
 }
 
 /**
+ * Where an extension job writes: `photo-2x.png`, `photo-cutout.webp`.
+ *
+ * `--output` reads as it does for a conversion: a directory gets the suffixed
+ * name (nested under `sourceRoot` for `--recursive`); anything else is the
+ * file to write, used as given.
+ */
+export function suffixedImagePath(req: OutputRequest & { suffix: string }): string {
+  const base = resolveOutputPath(req)
+  if (req.output && !looksLikeDirectory(req.output)) return base
+  const ext = extname(base)
+  return join(resolve(base, '..'), `${basename(base, ext)}-${req.suffix}${ext}`)
+}
+
+/**
  * The name spec §8's "keep both" choice writes to: ` (1)` before the
  * extension — `photo (1).webp`, never `photo.webp (1)`, so the file still
  * opens in the right application. The number counts up until it finds a name
