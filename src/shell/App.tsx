@@ -61,7 +61,7 @@ import { useBannerTransition } from './useBannerTransition.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
-import { bandFor, middleEllipsis } from './width.js'
+import { bandFor, CARD_WIDTH, middleEllipsis } from './width.js'
 
 /**
  * Everything below `App` is dumb and takes props; this is the only file
@@ -388,6 +388,8 @@ export function App({
   const width = measured
   const height = measuredHeight
   const band = bandFor(width)
+  // A picker's band stops where the file card above it does.
+  const pickerWidth = Math.min(width, CARD_WIDTH)
 
   /**
    * Seeded with the banner rather than having an effect push it, so it is
@@ -2253,9 +2255,11 @@ export function App({
 
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
+              </Box>
               <Select
-                width={width}
+                width={pickerWidth}
                 items={modeSpec.choices}
                 initialValue={modeSpec.default}
                 onSubmit={(chosen) => {
@@ -2320,9 +2324,11 @@ export function App({
 
           {step === 'target' && source && targetSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text>{targetSpec.label}</Text>
+              <Box marginBottom={1}>
+                <Text>{targetSpec.label}</Text>
+              </Box>
               <Select
-                width={width}
+                width={pickerWidth}
                 items={targetItems}
                 onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
                 speak={(item, budget) =>
@@ -2353,9 +2359,11 @@ export function App({
 
           {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
+              </Box>
               <Select
-                width={width}
+                width={pickerWidth}
                 items={pagesSpec.choices}
                 initialValue={pagesSpec.default}
                 onSubmit={choosePages}
@@ -2399,9 +2407,11 @@ export function App({
 
           {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
+              <Box marginBottom={1}>
+                <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
+              </Box>
               <Select
-                width={width}
+                width={pickerWidth}
                 items={dpiSpec.choices}
                 initialValue={dpiSpec.default}
                 onSubmit={(dpi) => chooseDpi(source, dpi)}
@@ -2507,7 +2517,7 @@ export function App({
             <Box flexDirection="column" marginBottom={1}>
               <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
               <Select
-                width={width}
+                width={pickerWidth}
                 items={[
                   { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
                   { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
@@ -2539,7 +2549,7 @@ export function App({
                 )} — you asked for ${formatBytes(sizeUnreachable.targetBytes)}.`}
               </Text>
               <Select
-                width={width}
+                width={pickerWidth}
                 items={[
                   {
                     value: 'lowest',
@@ -2744,7 +2754,7 @@ export function App({
               >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
               {pdfBlocked.failures[0].error.code === 'output-exists' ? (
                 <Select
-                  width={width}
+                  width={pickerWidth}
                   items={[
                     {
                       value: 'cancel',

@@ -64,9 +64,10 @@ describe('keycap hints', () => {
     }
   })
 
-  it('draws no rule above the hint bar', () => {
-    const f = frame(<HintBar width={60} pairs={pairs} />)
-    expect(f).not.toContain('─')
-    expect(f).toContain('confirm')
+  it('draws a rule the full width above the hint bar', () => {
+    const rows = frame(<HintBar width={60} pairs={pairs} />).split('\n')
+    const rule = rows.indexOf('─'.repeat(60))
+    expect(rule).toBeGreaterThan(-1)
+    expect(rows[rule + 1]).toContain('confirm')
   })
 })

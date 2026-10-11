@@ -5,10 +5,7 @@ import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
-import { bandFor, middleEllipsis } from '../width.js'
-
-/** The card never grows past this, however wide the terminal is. */
-const MAX_CARD = 52
+import { bandFor, CARD_WIDTH, middleEllipsis } from '../width.js'
 
 /**
  * A dropped file, framed, with its format inlined into the top border as a
@@ -55,7 +52,7 @@ export function FileCard({ source, width }: { source: SourceInfo; width: number 
 
   // Total drawn width, borders included. Capped so a wide terminal gets a
   // card rather than a rule stretching to the far edge.
-  const outer = Math.min(width, MAX_CARD)
+  const outer = Math.min(width, CARD_WIDTH)
   const inner = outer - 2 // the two vertical border glyphs
   const textWidth = inner - 2 // one column of padding on each side
 

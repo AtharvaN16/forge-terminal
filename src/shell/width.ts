@@ -2,6 +2,10 @@ import stringWidth from 'string-width'
 
 export type WidthBand = 'compact' | 'normal' | 'wide'
 
+/** The file card never grows past this, however wide the terminal is. The
+ * pickers under it keep their band to the same width, so the two line up. */
+export const CARD_WIDTH = 52
+
 /** Spec §13: <60 compact, 60-100 normal, >100 wide. */
 export function bandFor(columns: number): WidthBand {
   if (columns < 60) return 'compact'

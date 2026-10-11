@@ -102,6 +102,15 @@ describe('the picker (spec 2026-10-11 picker §1)', () => {
     expect(asked.every((v) => v === 'webp')).toBe(true)
   })
 
+  it('puts what the highlighted row says at the far end of its band', () => {
+    const frame = frameOf(
+      <Select width={50} items={formats} onSubmit={() => {}} speak={() => '74.6 KB'} />,
+    )
+    const row = frame.split('\n').find((l) => l.includes('74.6 KB')) ?? ''
+    expect(row.trimEnd().endsWith('74.6 KB')).toBe(true)
+    expect(row.trimEnd().length).toBe(48)
+  })
+
   it('puts a badge at the far end of its row, whether or not it is highlighted', () => {
     const tagged = [
       { value: 'a', label: 'Desktop' },

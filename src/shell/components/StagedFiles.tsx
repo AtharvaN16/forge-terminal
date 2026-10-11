@@ -6,13 +6,9 @@ import type { Stage } from '../stage.js'
 import { stageSummary } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
-import { bandFor, middleEllipsis } from '../width.js'
+import { bandFor, CARD_WIDTH, middleEllipsis } from '../width.js'
 import { FileCard } from './FileCard.js'
 
-/** The card never grows past this, however wide the terminal is — same cap
- * as `FileCard`, so a one-file and a many-file stage read as the same kind
- * of object. */
-const MAX_CARD = 52
 /** Beyond this many staged files, the rest are counted rather than listed —
  * spec §13: content is truncated, not wrapped. */
 const MAX_ROWS = 3
@@ -103,7 +99,7 @@ export function StagedFiles({ stage, width }: { stage: Stage; width: number }) {
   // `FileCard`: `inner` is the two vertical border glyphs removed, `textWidth`
   // is one column of padding on each side removed from that. Getting this
   // wrong by one column shears the frame.
-  const outer = Math.min(width, MAX_CARD)
+  const outer = Math.min(width, CARD_WIDTH)
   const inner = outer - 2
   const textWidth = inner - 2
   const rule = '─'.repeat(Math.max(0, inner - stringWidth(tag) - 3))

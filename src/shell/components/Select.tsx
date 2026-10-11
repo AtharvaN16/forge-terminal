@@ -251,10 +251,15 @@ export function Select({
                 {label}
               </Text>
               {spoken !== null && spoken !== undefined && spoken !== false ? (
-                <Text>
-                  {'  '}
-                  {spoken}
-                </Text>
+                // At the far end of the band, the way a badge is: the label
+                // stays a quiet column and the measurement lines up under
+                // the edge. The two columns of padding match `room`'s margin.
+                <>
+                  <Box flexGrow={1} />
+                  <Box paddingRight={2}>
+                    <Text>{spoken}</Text>
+                  </Box>
+                </>
               ) : shownHint ? (
                 // A tone is the row saying something about the choice rather
                 // than describing it — "likely bigger" on a lossless target.

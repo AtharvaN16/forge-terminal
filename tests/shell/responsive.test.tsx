@@ -50,6 +50,21 @@ async function frameAtDestination(width: number): Promise<string> {
 }
 
 describe('responsiveness', () => {
+  it('sets the target question apart from its choices, like a header', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const { stdin, lastFrame } = render(<App initialWidth={120} />)
+    stdin.write(jpg)
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+    const lines = (lastFrame() ?? '').split('\n')
+    const question = lines.findIndex((l) => /Convert JPEG to/.test(l))
+    expect(question).toBeGreaterThan(-1)
+    expect(lines[question + 1]?.replace(ANSI_ALL, '').trim()).toBe('')
+    expect(lines[question + 2]).toMatch(/▌/)
+  })
+
   it('draws no box around the drop area at any width', () => {
     // The drop area is a fill, not a frame: the fill is its own boundary and
     // a stroke around it only competed with the panel it outlined. Spec §13's
