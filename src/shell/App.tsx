@@ -53,7 +53,7 @@ import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
-import { colourProp, paletteFor, SYMBOLS } from './theme.js'
+import { colourProp, modeColours, modePalette, paletteFor, SYMBOLS } from './theme.js'
 import { useKeys } from './useKeys.js'
 import { useMouseRouting } from './useMouseRouting.js'
 import { bandFor, middleEllipsis } from './width.js'
@@ -405,7 +405,7 @@ export function App({
   const [theme, setTheme] = useState<'dark' | 'light' | undefined>(prefs.theme)
   /**
    * Derived straight from `theme`, not read from context: this component is
-   * the one that renders `<ThemeProvider palette={paletteFor(theme)}>` a few
+   * the one that renders `<ThemeProvider palette={palette}>` a few
    * hundred lines down, and a component can never consume a context value
    * from a provider it renders as its own descendant — that provider's value
    * only reaches components further down the tree. Reading `useTheme()` here
@@ -414,7 +414,7 @@ export function App({
    * so this file's own top-level elements — the mode header background among
    * them — never picked up a theme chosen or changed mid-session.
    */
-  const palette = paletteFor(theme)
+  const basePalette = paletteFor(theme)
   /**
    * Preferences as they stand *now*, seeded from what was loaded at launch.
    * `d` changes the default output mid-session, and the banner, the preset
@@ -431,6 +431,13 @@ export function App({
    * called, because until now there was nothing to choose between.
    */
   const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
+  /**
+   * What everything below is drawn in: the base palette with its role
+   * colours handed to the current mode (`modePalette`), so a screen tells
+   * one colour story. The base is kept for `modeColours`, which needs the
+   * mode fills as they are, and the banner reads `brand`, which never moves.
+   */
+  const palette = modePalette(basePalette, mode)
   const action = mode === 'compress' ? compressAction : convertAction
   /**
    * The mode banner's colours. `/pdf` has no `action` of its own — it opens
@@ -439,18 +446,7 @@ export function App({
    * derived from `action`, the same reason the banner text itself already
    * reads `mode` and not `action.id`.
    */
-  const modeBg =
-    mode === 'compress'
-      ? palette.modeCompressBg
-      : mode === 'pdf'
-        ? palette.modePdfBg
-        : palette.modeConvertBg
-  const modeColour =
-    mode === 'compress'
-      ? palette.modeCompress
-      : mode === 'pdf'
-        ? palette.modePdf
-        : palette.modeConvert
+  const { fg: modeColour, bg: modeBg } = modeColours(basePalette, mode)
 
   /** Where the target-size search has got to, for an honest counter. */
   /**
@@ -2081,7 +2077,7 @@ export function App({
   const rootRef = useRef<DOMElement | null>(null)
 
   return (
-    <ThemeProvider palette={paletteFor(theme)}>
+    <ThemeProvider palette={palette}>
       <ClickTargetProvider>
         <Box flexDirection="column" ref={rootRef}>
           {/* Inside the provider, deliberately — see `MouseRouter`. `revision`

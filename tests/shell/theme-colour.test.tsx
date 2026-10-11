@@ -42,14 +42,16 @@ describe('palettes actually reach the terminal', () => {
     expect(themed(DARK)).toContain('[38;2;')
   })
 
-  it('the dark theme emits its own accent', () => {
-    expect(themed(DARK)).toContain(rgb(DARK.accent))
+  // The idle prompt is in convert mode, and a mode draws its role colours —
+  // the prompt marker among them — in the mode's own colour (`modePalette`).
+  it('the dark theme emits its own convert colour', () => {
+    expect(themed(DARK)).toContain(rgb(DARK.modeConvert))
   })
 
-  it('the light theme emits its own accent, and not the dark one', () => {
+  it('the light theme emits its own convert colour, and not the dark one', () => {
     const frame = themed(LIGHT)
-    expect(frame).toContain(rgb(LIGHT.accent))
-    expect(frame).not.toContain(rgb(DARK.accent))
+    expect(frame).toContain(rgb(LIGHT.modeConvert))
+    expect(frame).not.toContain(rgb(DARK.modeConvert))
   })
 
   it('the two themes render genuinely different output', () => {
