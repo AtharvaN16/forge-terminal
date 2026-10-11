@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildPlan } from '../../src/core/plan.js'
 import { resolveInputs } from '../../src/core/resolve.js'
-import { type RunEvent, runJobs } from '../../src/core/run.js'
+import { pool, type RunEvent, resolveConcurrency, runJobs } from '../../src/core/run.js'
 import type { ConvertOptions, Job } from '../../src/core/types.js'
 import { probe } from '../../src/engines/registry.js'
 import { makeCorruptFile, makeJpeg, makeTempDir } from '../helpers/fixtures.js'
@@ -104,5 +104,39 @@ describe('runJobs', () => {
     const summary = await runJobs([], {})
     expect(summary.results).toEqual([])
     expect(summary.outputBytes).toBe(0)
+  })
+})
+
+describe('pool', () => {
+  it('runs at most `limit` tasks at once and every item exactly once', async () => {
+    let inFlight = 0
+    let peak = 0
+    const seen: number[] = []
+    await pool([0, 1, 2, 3, 4, 5, 6, 7], 3, async (item) => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((r) => setTimeout(r, 5))
+      seen.push(item)
+      inFlight -= 1
+    })
+    expect(peak).toBe(3)
+    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+  })
+
+  it('does nothing for no items', async () => {
+    let calls = 0
+    await pool([], 4, async () => {
+      calls += 1
+    })
+    expect(calls).toBe(0)
+  })
+})
+
+describe('resolveConcurrency', () => {
+  it('never collapses to zero workers', () => {
+    expect(resolveConcurrency(Number.NaN)).toBeGreaterThanOrEqual(1)
+    expect(resolveConcurrency(0)).toBe(1)
+    expect(resolveConcurrency(Number.POSITIVE_INFINITY)).toBeGreaterThanOrEqual(1)
+    expect(resolveConcurrency(3)).toBe(3)
   })
 })

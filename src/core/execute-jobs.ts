@@ -1,9 +1,15 @@
 import { engineForJob } from '../engines/registry.js'
-import type { Engine } from '../engines/types.js'
+import type { Engine, Measurer } from '../engines/types.js'
 import { findQuality } from './compress.js'
-import { type ForgeError, targetUnreachable, unsupportedCompress } from './errors.js'
+import {
+  conversionFailed,
+  type ForgeError,
+  isForgeError,
+  targetUnreachable,
+  unsupportedCompress,
+} from './errors.js'
 import type { InputFailure } from './resolve.js'
-import { type RunEvent, runJobs } from './run.js'
+import { pool, type RunEvent, resolveConcurrency, runJobs } from './run.js'
 import type { ConvertOptions, Job, Result } from './types.js'
 import { checkWriteSafety } from './write-safety.js'
 
@@ -24,6 +30,18 @@ export type PlanEvent =
       of: number
       /** `{}` for an image, `{ dpi: 120 }` for a document. */
       rung: Partial<ConvertOptions>
+    }
+  | {
+      type: 'search:settled'
+      job: Job
+      /** Searches finished so far, this one included. */
+      completed: number
+      /**
+       * How many jobs this run searches. Known before the first starts, so it
+       * is a real denominator (invariant 7). Several searches run at once, so
+       * this, not one job's attempt counter, is what a batch reports.
+       */
+      total: number
     }
 
 export interface RunPolicy {
@@ -82,6 +100,98 @@ export interface RunOutcome {
   outputBytes: number
 }
 
+/** What one job's search came to. */
+type Searched =
+  | { kind: 'ready' }
+  | { kind: 'refused'; failure: InputFailure }
+  | { kind: 'unreachable'; entry: UnreachableTarget }
+  | { kind: 'failed'; failure: InputFailure }
+  | { kind: 'cancelled' }
+
+/**
+ * Resolves one convert job's settings by search, walking the engine's ladder
+ * coarsest lever first.
+ *
+ * Never throws. A measurer or an encode that fails becomes this job's
+ * failure, so one bad file in a batch neither rejects the whole run nor
+ * leaves the other searches running with nobody waiting for them.
+ */
+async function searchJob(
+  job: Extract<Job, { op: 'convert' }>,
+  targetBytes: number,
+  resolveEngine: (job: Job) => Engine | undefined,
+  emit: (event: PlanEvent) => void,
+  signal: AbortSignal | undefined,
+): Promise<Searched> {
+  const path = job.sources[0].path
+  const failed = (e: unknown): Searched => ({
+    kind: 'failed',
+    failure: { path, error: isForgeError(e) ? e : conversionFailed(path, e) },
+  })
+
+  let measurer: Measurer | undefined
+  try {
+    measurer = await resolveEngine(job)?.measurer?.(job)
+  } catch (e) {
+    return failed(e)
+  }
+  if (!measurer || measurer.ladder.length === 0) {
+    return {
+      kind: 'refused',
+      failure: { path, error: unsupportedCompress(job.sources[0], job.target) },
+    }
+  }
+  const m = measurer
+  // The measurer may have done async I/O (reading, decoding a HEIC). An abort
+  // during that window must not still start a full-quality encode.
+  if (signal?.aborted) return { kind: 'cancelled' }
+
+  let smallest = Number.POSITIVE_INFINITY
+  let closest: (Partial<ConvertOptions> & { quality: number }) | undefined
+  try {
+    for (const rung of m.ladder) {
+      const found = await findQuality({
+        encode: (quality) => m.measure({ ...job.options, ...rung, quality }),
+        targetBytes,
+        onAttempt: (attempt, of) => emit({ type: 'search:attempt', job, attempt, of, rung }),
+        ...(signal === undefined ? {} : { signal }),
+      })
+
+      // A cancelled search has no answer: not a settled quality, and not a
+      // measured floor to offer as "use it anyway" either, since the ladder
+      // was abandoned partway. So this job neither runs nor becomes a
+      // question. It simply stops.
+      if (found.cancelled) return { kind: 'cancelled' }
+
+      if (found.bytes < smallest) {
+        smallest = found.bytes
+        closest = { ...rung, quality: found.quality }
+      }
+
+      if (!found.missed) {
+        // A fresh object, never a mutation: `buildPlan` hands every job the
+        // same `options`, so with searches overlapping, the last one to
+        // finish would otherwise decide everyone's quality.
+        job.options = { ...job.options, ...rung, quality: found.quality }
+        return { kind: 'ready' }
+      }
+    }
+  } catch (e) {
+    return failed(e)
+  }
+
+  const settings = closest ?? { quality: 1 }
+  return {
+    kind: 'unreachable',
+    entry: {
+      job,
+      smallest,
+      settings,
+      error: targetUnreachable(job.sources[0], targetBytes, smallest),
+    },
+  }
+}
+
 /**
  * Runs a set of jobs: refuse what is unsafe, resolve what needs searching, run
  * the rest.
@@ -103,10 +213,15 @@ export interface RunOutcome {
  * its overwrite step and calls again with `force`. That keeps this a plain
  * async function rather than something holding a promise across React
  * re-renders.
+ *
+ * Searches run through the same pool as conversions, so a batch's quality
+ * searches overlap instead of queueing. A cancel stops every in-flight search
+ * at its next encode boundary and starts no new one.
  */
 export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcome> {
   const emit = policy.onEvent ?? (() => {})
   const resolveEngine = policy.engineFor ?? engineForJob
+  const targetBytes = policy.targetBytes
 
   /**
    * Write safety first. It is a few `existsSync` calls; the search below is up
@@ -115,75 +230,51 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
    * changes `options`, never `outputs`, so the answer cannot depend on it.
    */
   const safe = checkWriteSafety(jobs, { force: policy.force })
+
+  /**
+   * Searches run through the same pool as conversions (spec §4.4): one file's
+   * eight encodes no longer wait for the previous file's. Each search's outcome
+   * is slotted by index, so the jobs that run, and the order they are reported
+   * in, are the same as if the searches had run one at a time.
+   */
+  const searching =
+    targetBytes === undefined ? 0 : safe.jobs.filter((job) => job.op === 'convert').length
+  const searched: Searched[] = []
+  let settled = 0
+
+  await pool(safe.jobs, resolveConcurrency(policy.concurrency), async (job, index) => {
+    // Only `convert` carries `ConvertOptions`; a page operation has no quality
+    // dial, so a target size is simply not applicable to one.
+    if (targetBytes === undefined || job.op !== 'convert') {
+      searched[index] = { kind: 'ready' }
+      return
+    }
+    // Checked before starting: after a cancel, no new search begins.
+    if (policy.signal?.aborted) {
+      searched[index] = { kind: 'cancelled' }
+      return
+    }
+    const outcome = await searchJob(job, targetBytes, resolveEngine, emit, policy.signal)
+    searched[index] = outcome
+    if (outcome.kind !== 'cancelled') {
+      settled += 1
+      emit({ type: 'search:settled', job, completed: settled, total: searching })
+    }
+  })
+
   const refusals: InputFailure[] = [...safe.failures]
   const unreachable: UnreachableTarget[] = []
+  const searchFailures: InputFailure[] = []
   const ready: Job[] = []
   let cancelled = false
 
-  for (const job of safe.jobs) {
-    // Only `convert` carries `ConvertOptions`; a page operation has no quality
-    // dial, so a target size is simply not applicable to one.
-    if (policy.targetBytes === undefined || job.op !== 'convert') {
-      ready.push(job)
-      continue
-    }
-
-    const measurer = await resolveEngine(job)?.measurer?.(job)
-    if (!measurer) {
-      refusals.push({
-        path: job.sources[0].path,
-        error: unsupportedCompress(job.sources[0], job.target),
-      })
-      continue
-    }
-
-    const targetBytes = policy.targetBytes
-    let smallest = Number.POSITIVE_INFINITY
-    let closest: (Partial<ConvertOptions> & { quality: number }) | undefined
-    let settled = false
-
-    for (const rung of measurer.ladder) {
-      const found = await findQuality({
-        encode: (quality) => measurer.measure({ ...job.options, ...rung, quality }),
-        targetBytes,
-        onAttempt: (attempt, of) => emit({ type: 'search:attempt', job, attempt, of, rung }),
-        ...(policy.signal === undefined ? {} : { signal: policy.signal }),
-      })
-
-      /**
-       * A cancelled search has no answer — not a settled quality, and not a
-       * measured floor to offer as "use it anyway" either, since the ladder
-       * was abandoned partway. So this job neither runs nor becomes a
-       * question: it simply stops.
-       */
-      if (found.cancelled) {
-        cancelled = true
-        break
-      }
-
-      if (found.bytes < smallest) {
-        smallest = found.bytes
-        closest = { ...rung, quality: found.quality }
-      }
-
-      if (!found.missed) {
-        Object.assign(job.options, rung, { quality: found.quality })
-        ready.push(job)
-        settled = true
-        break
-      }
-    }
-
-    if (cancelled) break
-
-    if (!settled && closest) {
-      unreachable.push({
-        job,
-        smallest,
-        settings: closest,
-        error: targetUnreachable(job.sources[0], targetBytes, smallest),
-      })
-    }
+  for (const [index, job] of safe.jobs.entries()) {
+    const outcome: Searched = searched[index] ?? { kind: 'ready' }
+    if (outcome.kind === 'ready') ready.push(job)
+    else if (outcome.kind === 'refused') refusals.push(outcome.failure)
+    else if (outcome.kind === 'failed') searchFailures.push(outcome.failure)
+    else if (outcome.kind === 'unreachable') unreachable.push(outcome.entry)
+    else cancelled = true
   }
 
   if (cancelled) {
@@ -208,7 +299,7 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
     results: done.results,
     refusals,
     unreachable,
-    failures: done.failures,
+    failures: [...searchFailures, ...done.failures],
     inputBytes: done.inputBytes,
     outputBytes: done.outputBytes,
   }
