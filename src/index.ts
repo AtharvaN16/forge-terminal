@@ -68,8 +68,10 @@ async function main(): Promise<void> {
       const { applyColourPreference } = await import('./shell/theme.js')
       applyColourPreference()
 
-      const { launchShell } = await import('./shell/launch.js')
-      await launchShell()
+      // boot.ts starts importing the shell and plays the intro at the same
+      // time. It is React-free, so nothing here gets ahead of the line above.
+      const { bootShell } = await import('./shell/boot.js')
+      await bootShell()
       return
     }
 

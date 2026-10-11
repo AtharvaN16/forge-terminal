@@ -1,27 +1,11 @@
 import { Box, Text } from 'ink'
-import { glyphColour, HEAT, MARK_AT_REST, MARK_WIDTH, REST_STEP } from '../mark.js'
+import { glyphColour, HEAT, MARK_AT_REST, MARK_WIDTH, REST_STEP, WORDMARK } from '../mark.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { bandFor } from '../width.js'
 
-/**
- * `█` is the letter face; `╔═╗║╚╝` is its edge. The edge is the whole point:
- * solid-slab block letters leave O and G, and E and F, with near-identical
- * silhouettes at this size, and the outline is what tells them apart. Six
- * rows rather than five, because five does not leave enough vertical room to
- * describe a letterform.
- *
- * Every row must be exactly the same length or the letters shear. Trailing
- * spaces are therefore significant, and a test pins it.
- */
-export const WORDMARK = [
-  '███████╗ ██████╗ ██████╗  ██████╗ ███████╗',
-  '██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝',
-  '█████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ',
-  '██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ',
-  '██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗',
-  '╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝',
-] as const
+/** Re-exported: the wordmark's data lives in mark.ts, beside the mark's. */
+export { WORDMARK }
 
 /** Re-exported so callers that only need the still mark do not reach past this. */
 export const MARK = MARK_AT_REST
