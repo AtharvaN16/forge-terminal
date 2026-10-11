@@ -1,5 +1,17 @@
 name: extensions
 
+# Release process (the catalogue in src/extensions/catalog.ts is the truth):
+#
+#   1. The archives the catalogue's sha256 values describe are kept in
+#      ~/Developer/forge-release-assets/ext-v1.0.0/. Publish exactly those:
+#        gh release create ext-<id>-v<version> <those .tar.gz files>
+#   2. This workflow then rebuilds from source as a check. It never replaces
+#      a published asset (no --clobber, ever): a rebuilt archive whose sha256
+#      differs from the catalogue fails the job, and an asset already on the
+#      release is downloaded and verified against the catalogue instead of
+#      overwritten. Only an archive the catalogue does not list (boost x64,
+#      built but not offered) and the release does not have is uploaded.
+
 on:
   push:
     tags:
@@ -69,13 +81,56 @@ jobs:
           fi
           cat dist-ext/assets.jsonl
 
-      - name: Upload to the GitHub Release
+      - name: Verify against the catalogue
+        shell: bash
+        run: |
+          # Prints the catalogued sha256 for an asset file name, or nothing if it is not catalogued.
+          catalogued() {
+            node -e '
+              const src = require("fs").readFileSync("src/extensions/catalog.ts", "utf8")
+              const at = src.indexOf("/" + process.argv[1] + "`")
+              if (at >= 0) process.stdout.write(/sha256: \x27([0-9a-f]{64})\x27/.exec(src.slice(at))[1])
+            ' "$1"
+          }
+          : > dist-ext/catalogued.txt
+          status=0
+          for f in dist-ext/out/*.tar.gz; do
+            name="$(basename "$f")"
+            want="$(catalogued "$name")"
+            got="$(shasum -a 256 "$f" | cut -d' ' -f1)"
+            if [ -z "$want" ]; then
+              echo "$name: not in the catalogue (built, not offered)"
+            elif [ "$want" = "$got" ]; then
+              echo "$name: matches the catalogue"
+              echo "$name" >> dist-ext/catalogued.txt
+            else
+              echo "::error::$name: rebuilt sha256 $got differs from the catalogue's $want"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Upload what the release lacks, verify what it has
         shell: bash
         env:
           TAG: ${{ steps.ref.outputs.tag }}
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Forge extension payload $TAG"
-          gh release upload "$TAG" dist-ext/out/*.tar.gz --clobber
+          have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          mkdir -p dist-ext/published
+          for f in dist-ext/out/*.tar.gz; do
+            name="$(basename "$f")"
+            if printf '%s\n' "$have" | grep -Fxq "$name"; then
+              # Already published: never replaced. A catalogued one must match its sha256.
+              gh release download "$TAG" --pattern "$name" --dir dist-ext/published
+              if grep -Fxq "$name" dist-ext/catalogued.txt; then
+                cmp "$f" "dist-ext/published/$name" || { echo "::error::$name on the release differs from the catalogue"; exit 1; }
+              fi
+              echo "$name: already on the release, left as is"
+            else
+              gh release upload "$TAG" "$f"
+            fi
+          done
 
       - name: Summary for the catalogue entry
         shell: bash
