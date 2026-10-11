@@ -5,7 +5,7 @@ import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { makeScannedPdf, makeTempDir } from '../helpers/fixtures.js'
 
-const run = (argv: string[]) => execute(parseArgs(['node', 'forge', ...argv]))
+const run = (argv: string[]) => execute(parseArgs(argv))
 
 /**
  * The compress path never called `checkWriteSafety`. Every other path did —

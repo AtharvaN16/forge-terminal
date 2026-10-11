@@ -5,7 +5,7 @@ import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { makePdf, makeScannedPdf, makeTempDir } from '../helpers/fixtures.js'
 
-const run = (argv: string[]) => execute(parseArgs(['node', 'forge', ...argv]))
+const run = (argv: string[]) => execute(parseArgs([...argv]))
 
 describe('compressing a PDF from the command line', () => {
   it('shrinks a scan by quality', async () => {
@@ -78,7 +78,7 @@ describe('reaching a size that quality alone cannot', () => {
 
 describe('--dpi on a compression', () => {
   it('is carried through when typed, so a scan can keep its resolution', () => {
-    const intent = parseArgs(['node', 'forge', 'scan.pdf', '--quality', '40', '--dpi', '300'])
+    const intent = parseArgs(['scan.pdf', '--quality', '40', '--dpi', '300'])
     expect(intent.kind).toBe('compress')
     if (intent.kind !== 'compress') return
     expect(intent.dpi).toBe(300)
@@ -88,15 +88,13 @@ describe('--dpi on a compression', () => {
     // Commander defaults --dpi to 150 for conversions, so this asserts the
     // parse can tell a real 150 from a fallback. Reading process.argv here
     // instead would pass in the shipped CLI and silently fail under test.
-    const intent = parseArgs(['node', 'forge', 'scan.pdf', '--quality', '40'])
+    const intent = parseArgs(['scan.pdf', '--quality', '40'])
     if (intent.kind !== 'compress') return
     expect(intent.dpi).toBeUndefined()
   })
 
   it('rejects a resolution outside the usable range', () => {
-    expect(() =>
-      parseArgs(['node', 'forge', 'scan.pdf', '--quality', '40', '--dpi', '9']),
-    ).toThrow()
+    expect(() => parseArgs(['scan.pdf', '--quality', '40', '--dpi', '9'])).toThrow()
   })
 })
 
@@ -130,7 +128,7 @@ describe('the search reports where it has got to', () => {
     const src = await makeScannedPdf(dir, 'scan.pdf', { dpi: 300, pages: 2 })
     const seen: string[] = []
 
-    await execute(parseArgs(['node', 'forge', src, '--max-size', '80kb']), {
+    await execute(parseArgs([src, '--max-size', '80kb']), {
       onSearch: (status) => seen.push(status),
     })
 
@@ -150,7 +148,7 @@ describe('the search reports where it has got to', () => {
     const dir = await makeTempDir()
     const src = await makeScannedPdf(dir, 'scan.pdf', { pages: 2 })
     const seen: string[] = []
-    await execute(parseArgs(['node', 'forge', src, '--quality', '50']), {
+    await execute(parseArgs([src, '--quality', '50']), {
       onSearch: (status) => seen.push(status),
     })
     expect(seen).toEqual([])
