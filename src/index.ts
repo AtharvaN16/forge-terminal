@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import * as nodeModule from 'node:module'
-import { parseArgs } from './cli/args.js'
+import { parseArgs, wantsJson } from './cli/args.js'
 import type { BatchProgress } from './cli/execute.js'
-import { fatalLines, guardUnsettled } from './cli/fatal.js'
+import { asForgeError, fatalLines, guardUnsettled } from './cli/fatal.js'
 import { type Spinner, startSpinner } from './cli/spinner.js'
-import { isForgeError, renderError } from './core/errors.js'
+import { invalidArguments, isForgeError, renderError } from './core/errors.js'
+import { errorJson } from './core/report-data.js'
 
 /**
  * Node's on-disk compile cache for every module loaded after this line, which
@@ -34,11 +35,14 @@ function onProgress({ completed, total }: BatchProgress): void {
 
 // Re-exported, not redeclared: theme.ts owns the value so the shell can
 // show it in the banner without importing the entrypoint and forming a cycle.
-export { VERSION } from './shell/theme.js'
+import { VERSION } from './shell/theme.js'
+
+export { VERSION }
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const debug = argv.includes('--debug')
+  const json = wantsJson(argv)
 
   try {
     // Parse first, import second (spec §4.2). `--version`, `--help` and every
@@ -55,6 +59,14 @@ async function main(): Promise<void> {
     // TTY stdout with a redirected stdin. Gating on stdout alone let those
     // through to Ink, whose ErrorBoundary then rendered the raw stack.
     if (intent.kind === 'shell') {
+      // --json asks for one document on stdout. The shell is the one thing that
+      // cannot produce one, so a bare `forge --json` is a usage error.
+      if (json) {
+        throw invalidArguments(
+          'No files given.',
+          'Name a file, for example: forge photo.jpg --to webp --json',
+        )
+      }
       if (!process.stdout.isTTY || !process.stdin.isTTY) {
         process.stderr.write(
           'Forge needs a file and a target format.\nTry: forge photo.jpg --to webp\n',
@@ -85,9 +97,13 @@ async function main(): Promise<void> {
      * file decides to animate it, and only on a terminal.
      */
     let spinner: Spinner | undefined
+    // Progress and the spinner are stderr decoration for a person at a
+    // terminal. Under --json they stay off entirely (spec §3.2).
+    const tty = Boolean(process.stderr.isTTY) && !json
     const result = await execute(intent, {
-      onProgress: process.stderr.isTTY ? onProgress : undefined,
-      ...(process.stderr.isTTY
+      json,
+      onProgress: tty ? onProgress : undefined,
+      ...(tty
         ? {
             onSearch: (status: string) => {
               spinner ??= startSpinner(process.stderr, 'finding the smallest that fits')
@@ -102,7 +118,8 @@ async function main(): Promise<void> {
     process.exitCode = result.exitCode
   } catch (e) {
     if (isForgeError(e)) {
-      process.stderr.write(`${renderError(e, { debug }).join('\n')}\n`)
+      if (json) process.stdout.write(`${JSON.stringify(errorJson(VERSION, e))}\n`)
+      else process.stderr.write(`${renderError(e, { debug }).join('\n')}\n`)
       process.exitCode = 2
       return
     }
@@ -126,7 +143,12 @@ async function main(): Promise<void> {
  * leaks through. Only this file prints.
  */
 function reportFatal(e: unknown): void {
-  process.stderr.write(`${fatalLines(e, process.argv.includes('--debug')).join('\n')}\n`)
+  const argv = process.argv.slice(2)
+  if (wantsJson(argv)) {
+    process.stdout.write(`${JSON.stringify(errorJson(VERSION, asForgeError(e)))}\n`)
+    return
+  }
+  process.stderr.write(`${fatalLines(e, argv.includes('--debug')).join('\n')}\n`)
 }
 
 let settled = false

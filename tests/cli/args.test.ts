@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseArgs } from '../../src/cli/args.js'
+import { parseArgs, wantsJson } from '../../src/cli/args.js'
 import { isForgeError } from '../../src/core/errors.js'
 
 function codeOf(argv: string[]): string {
@@ -144,5 +144,23 @@ describe('--max-size with --to', () => {
     const intent = parseArgs(['a.jpg', '--to', 'jpeg'])
     if (intent.kind !== 'convert') throw new Error('expected convert')
     expect(intent.maxBytes).toBeUndefined()
+  })
+})
+describe('--json', () => {
+  it('is accepted beside a conversion, --formats and config', () => {
+    expect(parseArgs(['a.jpg', '--to', 'webp', '--json'])).toMatchObject({ kind: 'convert' })
+    expect(parseArgs(['--formats', '--json'])).toEqual({ kind: 'formats' })
+    expect(parseArgs(['config', 'path', '--json'])).toEqual({ kind: 'config', action: 'path' })
+  })
+
+  it('wantsJson reads argv, and stops at --', () => {
+    expect(wantsJson(['a.jpg', '--json'])).toBe(true)
+    expect(wantsJson(['a.jpg'])).toBe(false)
+    expect(wantsJson(['--', '--json'])).toBe(false)
+  })
+
+  it("reports commander's own usage errors as invalid-arguments", () => {
+    expect(codeOf(['a.jpg', '--bogus'])).toBe('invalid-arguments')
+    expect(codeOf(['a.jpg', '--to'])).toBe('invalid-arguments')
   })
 })

@@ -1,4 +1,4 @@
-import { Command } from 'commander'
+import { Command, CommanderError } from 'commander'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
@@ -181,8 +181,19 @@ function parseMaxSize(raw: unknown): number {
   return bytes
 }
 
+/**
+ * Whether the caller asked for JSON. It is read from argv rather than from the
+ * parsed intent because it has to be known even when parsing fails: an argument
+ * error is reported in the same JSON shape as everything else (spec §3.2).
+ * Reading stops at `--`, after which everything is a filename.
+ */
+export function wantsJson(argv: string[]): boolean {
+  const end = argv.indexOf('--')
+  return (end === -1 ? argv : argv.slice(0, end)).includes('--json')
+}
+
 export function parseArgs(argv: string[]): Intent {
-  if (argv[0] === 'config') return parseConfigArgs(argv)
+  if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
 
   const program = new Command()
     .name('forge')
@@ -208,13 +219,36 @@ export function parseArgs(argv: string[]): Intent {
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
     .option('--password-stdin', "read an encrypted PDF's password from stdin")
+    .option('--json', 'print one JSON document on stdout instead of text')
     .helpOption('-h, --help', 'show this help')
     .version('0.1.0', '-V, --version', 'show the version')
     .addHelpText('after', EXIT_CODES_HELP)
+    .configureOutput({ outputError: () => {} })
     .exitOverride()
     .allowExcessArguments(false)
 
-  program.parse(argv, { from: 'user' })
+  try {
+    program.parse(argv, { from: 'user' })
+  } catch (e) {
+    /**
+     * Commander's own usage errors become Forge's, so they read like every
+     * other refusal and can be reported as JSON. Commander no longer prints
+     * them itself (`outputError` above). Help and version are not errors: they
+     * are rethrown for src/index.ts to exit 0 on.
+     */
+    if (
+      e instanceof CommanderError &&
+      e.code !== 'commander.helpDisplayed' &&
+      e.code !== 'commander.version'
+    ) {
+      const message = e.message.replace(/^error: /, '')
+      throw invalidArguments(
+        `${message.charAt(0).toUpperCase()}${message.slice(1)}.`,
+        'Run forge --help to see what Forge accepts.',
+      )
+    }
+    throw e
+  }
 
   const opts = program.opts()
   const inputs = program.args

@@ -1,5 +1,6 @@
 import { configPath, loadPreferences, savePreferences } from '../config/preferences.js'
 import { invalidArguments } from '../core/errors.js'
+import type { Warning } from '../core/types.js'
 
 export type ConfigKey = 'output' | 'theme' | 'quality'
 
@@ -12,7 +13,11 @@ export type ConfigIntent =
 
 export interface ConfigResult {
   stdout: string[]
-  exitCode: number
+  /** Always 0: a rejected value throws `invalid-arguments` instead (spec §3.4). */
+  exitCode: 0
+  /** The same facts as `stdout`, as data, for --json. */
+  config: Record<string, string | number | null>
+  warnings: Warning[]
 }
 
 /**
@@ -26,7 +31,7 @@ export interface ConfigResult {
  */
 export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
   if (intent.action === 'path') {
-    return { stdout: [configPath()], exitCode: 0 }
+    return { stdout: [configPath()], exitCode: 0, config: { path: configPath() }, warnings: [] }
   }
 
   if (intent.action === 'list') {
@@ -41,7 +46,17 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
     // A config that could not be read is reported here rather than swallowed:
     // this is the one command whose whole job is to say what the settings are.
     if (warning !== undefined) lines.unshift(`⚠ ${warning}`, '')
-    return { stdout: lines, exitCode: 0 }
+    return {
+      stdout: lines,
+      exitCode: 0,
+      config: {
+        output: prefs.defaultOutput,
+        theme: prefs.theme ?? null,
+        quality: prefs.quality,
+        path: configPath(),
+      },
+      warnings: warning === undefined ? [] : [{ code: 'config-unreadable', message: warning }],
+    }
   }
 
   const { key, value } = intent
@@ -51,7 +66,12 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
       throw invalidArguments(`Theme must be dark or light, not ${value}.`)
     }
     await savePreferences({ theme: value })
-    return { stdout: [`theme is now ${value}`], exitCode: 0 }
+    return {
+      stdout: [`theme is now ${value}`],
+      exitCode: 0,
+      config: { theme: value },
+      warnings: [],
+    }
   }
 
   if (key === 'quality') {
@@ -60,12 +80,17 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
       throw invalidArguments(`Quality must be a whole number between 1 and 100, not ${value}.`)
     }
     await savePreferences({ quality: n })
-    return { stdout: [`quality is now ${n}`], exitCode: 0 }
+    return { stdout: [`quality is now ${n}`], exitCode: 0, config: { quality: n }, warnings: [] }
   }
 
   if (value.trim().length === 0) {
     throw invalidArguments('Output must be a folder path.')
   }
   await savePreferences({ defaultOutput: value })
-  return { stdout: [`output is now ${value}`], exitCode: 0 }
+  return {
+    stdout: [`output is now ${value}`],
+    exitCode: 0,
+    config: { output: value },
+    warnings: [],
+  }
 }

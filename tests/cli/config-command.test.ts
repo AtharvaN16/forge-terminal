@@ -91,4 +91,23 @@ describe('forge config', () => {
     expect(exitCode).toBe(0)
     expect(stdout.join('\n')).toContain('⚠')
   })
+
+  it('returns its facts as data for --json', async () => {
+    const { config, warnings } = await runConfig({ kind: 'config', action: 'list' })
+    expect(config).toEqual({
+      output: '~/Desktop',
+      theme: null,
+      quality: 80,
+      path: join(dir, 'forge', 'config.json'),
+    })
+    expect(warnings).toEqual([])
+  })
+
+  it('turns an unreadable config into a coded warning', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(join(dir, 'forge'), { recursive: true })
+    await writeFile(join(dir, 'forge', 'config.json'), '{ not json')
+    const { warnings } = await runConfig({ kind: 'config', action: 'list' })
+    expect(warnings[0]?.code).toBe('config-unreadable')
+  })
 })
