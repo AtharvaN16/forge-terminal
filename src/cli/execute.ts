@@ -15,7 +15,8 @@ import {
 import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
-import { configJson, errorJson, formatsJson, runJson } from '../core/report-data.js'
+import { probeFiles } from '../core/probe-report.js'
+import { configJson, errorJson, formatsJson, probeJson, runJson } from '../core/report-data.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
@@ -23,7 +24,14 @@ import { openPdf } from '../engines/pdfium.js'
 import { VERSION } from '../shell/theme.js'
 import type { CompressIntent, ConvertIntent, Intent, PageOpIntent } from './args.js'
 import type { ConfigIntent } from './config-command.js'
-import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
+import {
+  reportBatch,
+  reportFailures,
+  reportFormats,
+  reportPageOp,
+  reportProbe,
+  reportSingle,
+} from './report.js'
 import { readPassword } from './stdin.js'
 
 export interface ExecuteResult {
@@ -574,6 +582,22 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
             stderr: [],
           }
         : { exitCode: 0, stdout: reportFormats(), stderr: [] }
+    }
+    if (intent.kind === 'probe') {
+      const { probes, failures } = await probeFiles(intent.inputs)
+      const exitCode = exitCodeFor(failures)
+      if (json) {
+        return {
+          exitCode,
+          stdout: [JSON.stringify(probeJson(VERSION, { probes, failures }))],
+          stderr: [],
+        }
+      }
+      return {
+        exitCode,
+        stdout: probes.flatMap((p, i) => [...(i > 0 ? [''] : []), ...reportProbe(p)]),
+        stderr: reportFailures(failures, { debug }),
+      }
     }
     if (intent.kind === 'shell') return { exitCode: 0, stdout: [], stderr: [] }
     return renderRun(await runIntent(intent, opts), { json, debug })

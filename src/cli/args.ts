@@ -87,10 +87,17 @@ export interface PageOpIntent {
   debug: boolean
 }
 
+/** `forge probe <files...>`: what each file is and what Forge can do with it (spec §3.3). */
+export interface ProbeIntent {
+  kind: 'probe'
+  inputs: string[]
+}
+
 export type Intent =
   | ConvertIntent
   | CompressIntent
   | PageOpIntent
+  | ProbeIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
   | ConfigIntent
@@ -187,6 +194,30 @@ function parseMaxSize(raw: unknown): number {
  * error is reported in the same JSON shape as everything else (spec §3.2).
  * Reading stops at `--`, after which everything is a filename.
  */
+/**
+ * Claimed before Commander for the same reason `config` is: Commander's
+ * variadic `[inputs...]` would otherwise read `probe` as a filename. Probe
+ * takes files and `--json` (read by `wantsJson`), and nothing else. A
+ * conversion flag here is a mistake worth naming, not one to ignore.
+ */
+function parseProbeArgs(argv: string[]): ProbeIntent {
+  const rest = argv.slice(1).filter((a) => a !== '--json')
+  const flag = rest.find((a) => a.startsWith('-'))
+  if (flag !== undefined) {
+    throw invalidArguments(
+      `forge probe takes files, not ${flag}.`,
+      'Try: forge probe photo.jpg --json',
+    )
+  }
+  if (rest.length === 0) {
+    throw invalidArguments(
+      'No files given.',
+      'Name a file, for example: forge probe scan.pdf --json',
+    )
+  }
+  return { kind: 'probe', inputs: rest }
+}
+
 export function wantsJson(argv: string[]): boolean {
   const end = argv.indexOf('--')
   return (end === -1 ? argv : argv.slice(0, end)).includes('--json')
@@ -194,6 +225,7 @@ export function wantsJson(argv: string[]): boolean {
 
 export function parseArgs(argv: string[]): Intent {
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
+  if (argv[0] === 'probe') return parseProbeArgs(argv)
 
   const program = new Command()
     .name('forge')

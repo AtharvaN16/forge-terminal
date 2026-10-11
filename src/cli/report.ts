@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path'
 import { readableFormats, writableFormats } from '../core/capabilities.js'
 import { renderError } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
+import type { ProbeReport } from '../core/probe-report.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import { formatBytes, percentChange } from '../core/units.js'
@@ -146,4 +147,24 @@ export function reportFormats(): string[] {
     lines.push('', `${names} ${verb} read only because Forge cannot yet write ${noun}.`)
   }
   return lines
+}
+
+/**
+ * A probe as text: the same facts `--json` gives, one file per block. Formats
+ * and actions are printed as their ids, which are what `--to` and the flags
+ * take.
+ */
+export function reportProbe(probe: ProbeReport, where: Where = {}): string[] {
+  const facts = [FORMATS[probe.format].label, formatBytes(probe.bytes)]
+  if (probe.width !== undefined && probe.height !== undefined) {
+    facts.push(`${probe.width}×${probe.height}`)
+  }
+  if (probe.pages !== undefined)
+    facts.push(`${probe.pages} ${probe.pages === 1 ? 'page' : 'pages'}`)
+  if (probe.encrypted) facts.push('password-protected')
+  return [
+    `${displayPath(probe.path, placesFor(where))} · ${facts.join(' · ')}`,
+    `  converts to  ${probe.targets.join(', ')}`,
+    `  actions      ${probe.actions.join(', ')}`,
+  ]
 }
