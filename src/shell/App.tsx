@@ -845,10 +845,9 @@ export function App({
 
   // esc at the prompt clears whatever is typed first (mirroring every other
   // text field), and only once that field is empty does it fall through to
-  // clearing a leftover stage — reachable when a run reported a failure and
-  // returned here without clearing what was staged (a partial batch is
-  // still there to retry, or to abandon). Empty stages are the common case
-  // and cost nothing extra to check.
+  // clearing a leftover stage — reachable when a PDF backed out of the
+  // convert picker kept its place for `/pdf` or a merge list. Empty stages
+  // are the common case and cost nothing extra to check.
   //
   // Gated on the command buffer being closed, for the same reason the
   // `step === 'result'` hook above is gated on `step`: Ink delivers input
@@ -1197,9 +1196,8 @@ export function App({
         if (!info) throw wholeError
         if (requestId.current !== id) return // superseded by a later submission
         // Drops accumulate rather than replace — dropping a second file onto
-        // a prompt that already has one staged (e.g. after a failed run
-        // returned here without clearing it) builds a batch instead of
-        // losing the first file. `addToStage` also drops an exact repeat of
+        // a prompt that already has one staged (a PDF kept for `/pdf`, say)
+        // builds a batch instead of losing the first file. `addToStage` also drops an exact repeat of
         // a path already staged. Computed once, synchronously, rather than
         // via the `setStage(s => ...)` updater form this used before: the
         // guard just below needs to know the resulting length *now*, to
@@ -1314,6 +1312,13 @@ export function App({
    * picker — an image has nothing else to do with a staged file, so
    * backing out means abandoning it. See `backToPromptKeepingStage` for the
    * other case.
+   *
+   * Also how a run that failed, was refused, or was abandoned at the
+   * "can't get that small" question ends. Phase 3's rule is that completing
+   * an action clears the stage, and a failure completes it as surely as a
+   * result does: leaving the file staged meant the natural recovery — drop it
+   * again, or drop another — appended to it instead, building a batch the
+   * convert flow then refused (UX audit #7).
    */
   const clearSource = () => {
     setStage(clearStage())
@@ -1676,8 +1681,11 @@ export function App({
       push({ kind: 'error', id: nextId(), error: refusal.error })
       // Writing over the source has no "replace" worth offering — there is
       // no outcome there that keeps the original. Back to the destination
-      // step, where choosing a different folder is the actual fix.
-      setStep(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
+      // step, where choosing a different folder is the actual fix. Any
+      // other refusal ends the action, and ending one clears the stage —
+      // see `clearSource`.
+      if (refusal.error.code === 'output-is-input') setStep('destination')
+      else clearSource()
       return
     }
 
@@ -1722,7 +1730,7 @@ export function App({
     } else {
       const failure = summary.failures[0]
       if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
-      setStep('idle')
+      clearSource()
     }
   }
 
@@ -1763,7 +1771,7 @@ export function App({
       // unhandled rejection instead of something the user ever sees. Render
       // it instead, exactly like submitPath does for probe().
       showError(e)
-      setStep('idle')
+      clearSource()
     } finally {
       converting.current = false
     }
@@ -1789,7 +1797,7 @@ export function App({
       void finishConversion(planned, destination, output, settled)
         .catch((e) => {
           showError(e)
-          setStep('idle')
+          clearSource()
         })
         .finally(() => {
           converting.current = false
@@ -2356,7 +2364,7 @@ export function App({
                 onSubmit={answerSizeUnreachable}
                 onCancel={() => {
                   setSizeUnreachable(null)
-                  setStep('idle')
+                  clearSource()
                 }}
                 showHints={band !== 'compact'}
               />

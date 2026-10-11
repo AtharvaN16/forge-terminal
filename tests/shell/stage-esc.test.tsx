@@ -2,11 +2,10 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
-import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { makePdf, makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
-const DOWN = `${ESC}[B`
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 
 const prefsFor = (dir: string) => ({
@@ -16,54 +15,36 @@ const prefsFor = (dir: string) => ({
 })
 
 /**
- * Stages `file`, then drives it through a real, deterministic failure — an
- * unreachable compress target size ("1b", which no real JPEG can ever hit)
- * — so the search comes up short and the shell asks the "can't get that
- * small" question. Escaping that question returns to the idle prompt
- * *without* clearing the stage. Duplicated from `batch-refusal.test.tsx`
- * rather than shared, matching this suite's existing convention of each
- * file keeping its own scenario helper (`toCompress`, `ontoAnExistingOutput`).
- * This is currently the one path in the app that leaves the idle prompt in
- * front of a non-empty stage — see the note above `convert()` in App.tsx —
- * which is what makes "open the palette while something is staged" reachable
- * through the real UI at all.
+ * Stages a PDF and backs out of the convert picker with esc, which returns
+ * to the idle prompt *without* clearing the stage — a PDF has `/pdf` and a
+ * merge list still ahead of it (`backToPromptKeepingStage` in App.tsx).
+ * Duplicated from `batch-refusal.test.tsx` rather than shared, matching this
+ * suite's existing convention of each file keeping its own scenario helper.
+ *
+ * This used to fail a compress search and escape the "can't get that small"
+ * question instead. That path now ends the action and clears the stage (UX
+ * audit #7), which leaves the PDF back-out as the way to reach "open the
+ * palette while something is staged" through the real UI.
  */
-async function stageOneThenFailBackToIdle(dir: string, file: string) {
+async function stageOneThenBackToIdle(dir: string, file: string) {
   const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
-  app.stdin.write('/compress')
-  await settle()
-  app.stdin.write(ENTER)
-  await settle(200)
   app.stdin.write(file)
   await settle()
-  app.stdin.write(ENTER) // stages the file, lands on the compress "mode" step
-  await settle(300)
-  app.stdin.write(DOWN) // "To a target size"
-  await settle()
-  app.stdin.write(ENTER)
-  await settle()
-  app.stdin.write('1b') // unreachable for any real JPEG
-  await settle()
-  app.stdin.write(ENTER) // submits the size -> destination step
-  await settle()
-  app.stdin.write(ENTER) // accepts the default destination -> rename step
-  await settle()
-  app.stdin.write(ENTER) // accepts the proposed name -> runs the search
-  await settle(3000) // up to 8 real encodes of a tiny fixture, plus render
+  app.stdin.write(ENTER) // stages the PDF, opens the convert picker
+  await settle(400)
   return app
 }
 
 describe('esc at the prompt', () => {
   it('closes the command palette without discarding a staged file', async () => {
     const dir = await makeTempDir()
-    const a = await makeJpeg(dir, 'a.jpg')
-    const app = await stageOneThenFailBackToIdle(dir, a)
-    // Sanity check on the setup: the search came up short and is now asking
-    // the "can't get that small" question, naming a.jpg.
-    expect(app.lastFrame() ?? '').toContain('a.jpg')
+    const a = await makePdf(dir, 'a.pdf', 2)
+    const app = await stageOneThenBackToIdle(dir, a)
+    // Sanity check on the setup: the picker is open for a.pdf.
+    expect(app.lastFrame() ?? '').toContain('Convert PDF to')
 
-    // Dismiss the question — same as any other refusal, esc goes back to the
-    // idle prompt without discarding what was staged.
+    // Back out of the picker — for a PDF, esc returns to the idle prompt
+    // without discarding what was staged.
     app.stdin.write(ESC)
     await settle()
 
@@ -85,7 +66,7 @@ describe('esc at the prompt', () => {
     expect(afterEsc).not.toContain("change a file's format")
     expect(afterEsc).toContain('drop a file or type a path')
 
-    // The stage really did survive: asking to /convert still has a.jpg to
+    // The stage really did survive: asking to /convert still has a.pdf to
     // act on, which only happens if the stage was never cleared. Landing
     // on the target picker (rather than staying at the idle prompt) is
     // only possible when a source is still staged.
@@ -93,17 +74,17 @@ describe('esc at the prompt', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').toContain('Convert JPEG to')
+    expect(app.lastFrame() ?? '').toContain('Convert PDF to')
   }, 20_000)
 
   it('clears a leftover stage when the typed fragment matches no command', async () => {
     const dir = await makeTempDir()
-    const a = await makeJpeg(dir, 'a.jpg')
-    const app = await stageOneThenFailBackToIdle(dir, a)
-    expect(app.lastFrame() ?? '').toContain('a.jpg')
+    const a = await makePdf(dir, 'a.pdf', 2)
+    const app = await stageOneThenBackToIdle(dir, a)
+    expect(app.lastFrame() ?? '').toContain('Convert PDF to')
 
-    // Dismiss the "can't get that small" question first — the idle prompt
-    // this test actually exercises only mounts once it is answered.
+    // Back out of the picker first — the idle prompt this test actually
+    // exercises only mounts once it is closed.
     app.stdin.write(ESC)
     await settle()
 
@@ -137,7 +118,7 @@ describe('esc at the prompt', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').not.toContain('Convert JPEG to')
+    expect(app.lastFrame() ?? '').not.toContain('Convert PDF to')
     expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
   }, 20_000)
 })

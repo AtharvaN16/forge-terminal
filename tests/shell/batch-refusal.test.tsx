@@ -7,7 +7,6 @@ import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
-const DOWN = `${ESC}[B`
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 
 const prefsFor = (dir: string) => ({
@@ -16,62 +15,18 @@ const prefsFor = (dir: string) => ({
   defaultOutput: dir,
 })
 
-/**
- * Stages `file`, then drives it through a real, deterministic failure —
- * asking to compress to a target size no actual JPEG can ever reach ("1b")
- * — so the search comes up short and the shell asks the "can't get that
- * small" question instead of writing anything. Escaping that question
- * returns to the prompt *without* clearing what was staged. That is the one
- * path in the app that leaves the idle prompt sitting in front of a
- * non-empty stage (see the long comment above `convert()` in App.tsx), which
- * is what makes a second drop actually reachable through the real UI rather
- * than by reaching into React state directly.
- */
-async function stageOneThenFailBackToIdle(dir: string, file: string) {
-  const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
-  app.stdin.write('/compress')
-  await settle()
-  app.stdin.write(ENTER)
-  await settle(200)
-  app.stdin.write(file)
-  await settle()
-  app.stdin.write(ENTER) // stages the file, lands on the compress "mode" step
-  await settle(300)
-  app.stdin.write(DOWN) // "To a target size"
-  await settle()
-  app.stdin.write(ENTER)
-  await settle()
-  app.stdin.write('1b') // unreachable for any real JPEG
-  await settle()
-  app.stdin.write(ENTER) // submits the size -> destination step
-  await settle()
-  app.stdin.write(ENTER) // accepts the default destination -> rename step
-  await settle()
-  app.stdin.write(ENTER) // accepts the proposed name -> runs the search
-  await settle(3000) // up to 8 real encodes of a tiny fixture, plus render
-  return app
-}
-
 describe('a staged batch refuses to convert or compress', () => {
   it('stages two files, runs /convert, and converts nothing', async () => {
     const dir = await makeTempDir()
     const a = await makeJpeg(dir, 'a.jpg')
     const b = await makeJpeg(dir, 'b.jpg')
 
-    const app = await stageOneThenFailBackToIdle(dir, a)
-    // Sanity check on the setup itself: the search came up short, and the
-    // "can't get that small" question it raises names `a.jpg` — proof
-    // nothing was cleared. Dismissing it (esc) is what actually lands back
-    // at the idle prompt with `a.jpg` still staged, not cleared — otherwise
-    // the rest of this test would pass for the wrong reason (nothing
-    // staged, so of course a second drop does not collide with anything).
-    expect(app.lastFrame() ?? '').toContain('a.jpg')
-    app.stdin.write(ESC)
-    await settle()
+    const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
 
-    app.stdin.write(b)
+    // Both at once, the way a real drag of two files pastes them.
+    app.stdin.write(`${a} ${b}`)
     await settle()
-    app.stdin.write(ENTER) // drops b.jpg while a.jpg is still staged
+    app.stdin.write(ENTER)
     await settle(300)
 
     // The staged card itself only renders once past the idle prompt (see
