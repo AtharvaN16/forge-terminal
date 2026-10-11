@@ -1,10 +1,16 @@
+import type { ShellMode } from './theme.js'
+
 export interface Command {
   /** Without the leading slash. */
   name: string
-  /** Shown beside the name in the palette. */
+  /** Shown beside the name in the list. */
   description: string
   /** Whether the command needs a staged file to mean anything. */
   needsSource: boolean
+  /** The mode it switches to, for the modes; its row's strip is that mode's colour. */
+  mode?: ShellMode
+  /** Which heading it sits under in the list. `undefined`: not listed at all. */
+  group?: 'modes' | 'settings'
 }
 
 /**
@@ -16,10 +22,34 @@ export interface Command {
  * commands were chosen over an action menu in the first place.
  */
 export const COMMANDS: Command[] = [
-  { name: 'convert', description: "change a file's format", needsSource: true },
-  { name: 'compress', description: 'make a file smaller', needsSource: true },
-  { name: 'pdf', description: 'page operations on a PDF', needsSource: true },
-  { name: 'theme', description: 'switch between light and dark', needsSource: false },
+  {
+    name: 'convert',
+    description: "change a file's format",
+    needsSource: true,
+    mode: 'convert',
+    group: 'modes',
+  },
+  {
+    name: 'compress',
+    description: 'make a file smaller',
+    needsSource: true,
+    mode: 'compress',
+    group: 'modes',
+  },
+  {
+    name: 'pdf',
+    description: 'page operations on a PDF',
+    needsSource: true,
+    mode: 'pdf',
+    group: 'modes',
+  },
+  {
+    name: 'theme',
+    description: 'switch between light and dark',
+    needsSource: false,
+    group: 'settings',
+  },
+  // Not a row: the list is the help. Typed, it opens the list (`listCommands`).
   { name: 'help', description: 'list these commands', needsSource: false },
   { name: 'boost', description: 'upscale an image 2x or 4x', needsSource: true },
   { name: 'remove-background', description: 'cut the subject out of a photo', needsSource: true },
@@ -41,11 +71,28 @@ export function isCommandBuffer(text: string): boolean {
   return !rest.includes('/') && !rest.includes(' ')
 }
 
-/** Commands whose name begins with `fragment`, for the palette to list. */
-export function matchCommands(fragment: string): Command[] {
-  const needle = fragment.trim().toLowerCase()
-  if (needle === '') return COMMANDS
-  return COMMANDS.filter((c) => c.name.startsWith(needle))
+export interface CommandList {
+  /** The listed commands that match, modes before settings. */
+  items: Command[]
+  /** What is typed after the slash, as far as it matches: drawn bright on each row. */
+  query: string
+  /** What is typed after the slash, as typed. */
+  typed: string
+}
+
+/**
+ * What the list shows for `fragment`, the text after the slash: every listed
+ * command whose name begins with it. `/help`, or the start of it, names no
+ * row — the list is the help — so it shows the whole list.
+ */
+export function listCommands(fragment: string): CommandList {
+  const typed = fragment.trim()
+  const needle = typed.toLowerCase()
+  const listed = COMMANDS.filter((c) => c.group !== undefined)
+  const items = listed.filter((c) => c.name.startsWith(needle))
+  if (items.length === 0 && needle !== '' && 'help'.startsWith(needle))
+    return { items: listed, query: '', typed }
+  return { items, query: needle, typed }
 }
 
 /**

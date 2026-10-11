@@ -9,15 +9,14 @@ const BACKSPACE = String.fromCharCode(127)
 const settle = (ms = 140) => new Promise((r) => setTimeout(r, ms))
 const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
 
-describe('the palette in the prompt', () => {
+describe('the command list in the prompt', () => {
   it('opens on a bare slash', async () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/')
     await settle()
     const frame = lastFrame() ?? ''
-    // The frame is height-clipped from the top, so assert on the first row and the last.
-    expect(frame).toContain('/convert')
-    expect(frame).toContain('/extensions')
+    expect(frame).toContain('/compress')
+    expect(frame).toContain('/theme')
   })
 
   it('narrows as you type', async () => {
@@ -33,24 +32,20 @@ describe('the palette in the prompt', () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/Users/me/photo.png')
     await settle()
-    // The open palette's key hints sit on the bottom row, inside the clipped frame;
-    // its rows would not show for a path anyway, since no command matches one.
-    expect(lastFrame() ?? '').not.toContain('↑↓ choose')
+    expect(lastFrame() ?? '').not.toContain('make a file smaller')
   })
 
   it('closes when the slash is deleted', async () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/')
     await settle()
-    expect(lastFrame() ?? '').toContain('/extensions')
-    expect(lastFrame() ?? '').toContain('↑↓ choose')
+    expect(lastFrame() ?? '').toContain('/compress')
     stdin.write(BACKSPACE)
     await settle()
-    expect(lastFrame() ?? '').not.toContain('/extensions')
-    expect(lastFrame() ?? '').not.toContain('↑↓ choose')
+    expect(lastFrame() ?? '').not.toContain('make a file smaller')
   })
 
-  it('runs /theme from the palette', async () => {
+  it('runs /theme from the list', async () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/theme')
     await settle()
@@ -72,15 +67,12 @@ describe('the palette in the prompt', () => {
     expect(all).not.toContain('could not be read')
   })
 
-  it('/help lists the commands', async () => {
-    const { stdin, lastFrame, frames } = render(<App initialWidth={100} prefs={prefs} />)
+  it('/help opens the whole list, which is the help', async () => {
+    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/help')
     await settle()
-    stdin.write(ENTER)
-    await settle(300)
-    const all = frames.join('') + (lastFrame() ?? '')
-    expect(all).toContain('/convert')
-    expect(all).toContain('/compress')
+    const frame = lastFrame() ?? ''
+    for (const name of ['/convert', '/compress', '/pdf', '/theme']) expect(frame).toContain(name)
   })
 
   it('/pdf with nothing staged arms pdf mode and keeps the drop area open', async () => {

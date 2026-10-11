@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COMMANDS, isCommandBuffer, matchCommands, parseCommand } from '../../src/shell/commands.js'
+import { COMMANDS, isCommandBuffer, listCommands, parseCommand } from '../../src/shell/commands.js'
 
 describe('isCommandBuffer', () => {
   it('is true only for a buffer that opens with a slash', () => {
@@ -29,19 +29,43 @@ describe('isCommandBuffer', () => {
   })
 })
 
-describe('matchCommands', () => {
-  it('returns everything for an empty fragment', () => {
-    expect(matchCommands('')).toEqual(COMMANDS)
+describe('listCommands', () => {
+  const names = (fragment: string) => listCommands(fragment).items.map((c) => c.name)
+
+  it('lists the modes, then the settings, for a bare slash, with no /help row', () => {
+    expect(names('')).toEqual(['convert', 'compress', 'pdf', 'theme'])
+    expect(listCommands('').items.map((c) => c.group)).toEqual([
+      'modes',
+      'modes',
+      'modes',
+      'settings',
+    ])
   })
 
-  it('prefix-matches, case-insensitively', () => {
-    expect(matchCommands('co').map((c) => c.name)).toEqual(['convert', 'compress'])
-    expect(matchCommands('CO').map((c) => c.name)).toEqual(['convert', 'compress'])
-    expect(matchCommands('comp').map((c) => c.name)).toEqual(['compress'])
+  it('prefix-matches, case-insensitively, and returns the typed part to draw bright', () => {
+    expect(names('co')).toEqual(['convert', 'compress'])
+    expect(listCommands('CO').query).toBe('co')
+    expect(names('comp')).toEqual(['compress'])
+  })
+
+  it('opens the whole list for /help, and for the start of it', () => {
+    for (const typed of ['help', 'he', 'h']) {
+      expect(names(typed)).toEqual(['convert', 'compress', 'pdf', 'theme'])
+      expect(listCommands(typed).query).toBe('')
+    }
   })
 
   it('returns nothing for a fragment that matches nothing', () => {
-    expect(matchCommands('zzz')).toEqual([])
+    expect(listCommands('zzz').items).toEqual([])
+  })
+
+  it('names the mode each mode command switches to', () => {
+    expect(listCommands('').items.map((c) => c.mode)).toEqual([
+      'convert',
+      'compress',
+      'pdf',
+      undefined,
+    ])
   })
 })
 

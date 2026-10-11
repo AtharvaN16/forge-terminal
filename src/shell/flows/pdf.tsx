@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_PREFERENCES, type Preferences } from '../../config/preferences.js'
 import type { Action, Choice, OptionSpec } from '../../core/actions/index.js'
 import { ACTIONS, unavailableReason } from '../../core/actions/index.js'
@@ -9,6 +9,7 @@ import { everyNCuts, everyPageCuts } from '../../core/actions/split.js'
 import { isForgeError } from '../../core/errors.js'
 import { formatRanges, parseRanges } from '../../core/pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
+import type { Trail } from '../bar-art.js'
 import { HintBar } from '../components/HintBar.js'
 import { MergeList } from '../components/MergeList.js'
 import { gridLayout, PageGrid } from '../components/PageGrid.js'
@@ -19,6 +20,7 @@ import { Slider } from '../components/Slider.js'
 import type { Stage } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
+import { pdfTrail } from '../trail.js'
 import { useKeys } from '../useKeys.js'
 import { bandFor, middleEllipsis } from '../width.js'
 
@@ -108,6 +110,8 @@ export interface PdfFlowProps {
   onDone: (jobs: Job[]) => void
   onCancel: () => void
   prefs?: Preferences
+  /** Where the conversation is, for the header bar above it, whenever that changes. */
+  onTrail?: ((trail: Trail) => void) | undefined
 }
 
 /**
@@ -122,6 +126,7 @@ export function PdfFlow({
   onDone,
   onCancel,
   prefs = DEFAULT_PREFERENCES,
+  onTrail,
 }: PdfFlowProps) {
   const palette = useTheme()
   const band = bandFor(width)
@@ -150,6 +155,14 @@ export function PdfFlow({
 
   const specs: OptionSpec[] = action ? action.options(stage.sources, values, prefs) : []
   const spec = specs[specIndex]
+
+  const trail = pdfTrail({ step, action, specs, specIndex, values })
+  // Keyed on what the trail says, not on the object, which is new every render.
+  const trailKey = JSON.stringify(trail)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trailKey stands for trail
+  useEffect(() => {
+    onTrail?.(trail)
+  }, [trailKey, onTrail])
 
   const jobs = useMemo(
     () => planJobs(action, stage.sources, values, mergeOrder, mergeOutputOverride),

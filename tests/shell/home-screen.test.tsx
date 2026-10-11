@@ -4,7 +4,7 @@ import { Home, homeKeys, homeLayout, Suggestions } from '../../src/shell/compone
 import { Prompt } from '../../src/shell/components/Prompt.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette, type ShellMode } from '../../src/shell/theme.js'
-import { ansiRow, describeRow, type FixtureFrame, fixtureRow, MOCKUP } from './home-cells.js'
+import { ansiRow, describeRow, type FixtureFrame, homeRow, MOCKUP } from './home-cells.js'
 
 vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
@@ -50,7 +50,7 @@ function screen({
             ? (rows) => <Suggestions items={items} selected={0} width={width} rows={rows} />
             : undefined
         }
-        keys={homeKeys({ typing, completions: items.length, palette: false })}
+        keys={homeKeys({ typing, completions: items.length, commands: false })}
       />
     </ThemeProvider>,
   )
@@ -62,7 +62,7 @@ function expectFrame(frame: FixtureFrame, skip: number[] = []) {
   for (let row = 0; row < 24; row++) {
     if (skip.includes(row)) continue
     const actual = ansiRow(lines[row] ?? '')
-    expect(describeRow(actual, fixtureRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
+    expect(describeRow(actual, homeRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
   }
 }
 
@@ -129,12 +129,12 @@ describe('the key row (F1)', () => {
       .map((c) => c.ch)
       .join('')
     expect(keys).toContain('send')
-    expect(keys).toContain('commands')
+    expect(keys).toContain('esc clear')
     expect(keys).not.toContain('ctrl-c quit')
   })
 
   it('offers only what works: no tab or arrows without completions', () => {
-    expect(homeKeys({ typing: true, completions: 0, palette: false })).toEqual({
+    expect(homeKeys({ typing: true, completions: 0, commands: false })).toEqual({
       main: [['↵', 'send']],
       foot: [
         ['esc', 'clear'],

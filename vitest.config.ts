@@ -6,6 +6,12 @@ export default defineConfig({
     testTimeout: 20_000,
     globalSetup: ['tests/helpers/temp-root.ts'],
     /**
+     * The header bar's chip has slanted ends only in terminals that draw them
+     * (see `slantedChips`), so its cells would depend on which terminal ran
+     * the suite. Plain everywhere, unless a test asks for slants itself.
+     */
+    env: { FORGE_POWERLINE: '0' },
+    /**
      * Capped well below the machine's core count on purpose.
      *
      * Nineteen shell test files drive Ink through `ink-testing-library` and

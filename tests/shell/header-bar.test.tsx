@@ -1,55 +1,142 @@
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { render } from 'ink-testing-library'
-import stringWidth from 'string-width'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { trailBarRow } from '../../src/shell/bar-art.js'
 import { HeaderBar, isWorking } from '../../src/shell/components/HeaderBar.js'
+import { slantedChips } from '../../src/shell/glyphs.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
-import { DARK } from '../../src/shell/theme.js'
+import { DARK, modePalette, type ShellMode } from '../../src/shell/theme.js'
+import {
+  ansiRow,
+  type Cell,
+  describeRow,
+  type FixtureFrame,
+  fixtureRow,
+  loadFixture,
+  runsRow,
+} from './home-cells.js'
 
-const desktop = join(homedir(), 'Desktop')
-const frame = (p: Partial<Parameters<typeof HeaderBar>[0]> = {}) =>
-  render(
-    <ThemeProvider palette={DARK}>
-      <HeaderBar mode="convert" defaultOutput={desktop} width={90} {...p} />
-    </ThemeProvider>,
-  ).lastFrame() ?? ''
+vi.hoisted(() => {
+  process.env.FORCE_COLOR = '3'
+  process.env.NO_COLOR = ''
+})
 
-// ink-testing-library trims trailing spaces from a frame, so the bar's last
-// padding column (filled with the mode colour in a real terminal) is not
-// visible here: a bar that ends exactly at the edge measures width - 1.
-describe('header bar', () => {
-  it('names the product and the mode, with the default folder on the right', () => {
-    const f = frame()
-    expect(f).toMatch(/^ ↔ FORGE {3}convert +~\/Desktop$/)
-    expect(stringWidth(f)).toBe(89)
+type BarFrame = FixtureFrame & { at: number }
+const BARS = loadFixture('bar-mockup.json') as BarFrame[]
+
+/** The mockup's questions and answers, per mode (its TRAIL). */
+const TRAIL: Record<ShellMode, { steps: string[]; answers: string[] }> = {
+  convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop'] },
+  compress: { steps: ['Method', 'Quality', 'Save to', 'Name'], answers: ['By quality', '70'] },
+  pdf: { steps: ['Action', 'Pages', 'Save to'], answers: ['Split', '1-3, 7'] },
+}
+const trailAt = (mode: ShellMode, at: number) => ({
+  answers: TRAIL[mode].answers.slice(0, at),
+  current: TRAIL[mode].steps[at],
+})
+
+const text = (cells: Cell[]) => cells.map((c) => c.ch).join('')
+
+describe('the header bar, against the decided mockup (04)', () => {
+  for (const bar of BARS) {
+    it(`${bar.mode}, at question ${bar.at + 1}`, () => {
+      const row = trailBarRow({
+        width: 80,
+        palette: modePalette(DARK, bar.mode),
+        mode: bar.mode,
+        trail: trailAt(bar.mode, bar.at),
+        slanted: true,
+      })
+      expect(describeRow(runsRow(row), fixtureRow(bar, 0))).toBe('equal')
+    })
+  }
+
+  it('draws the same cells through Ink', () => {
+    const bar = BARS[2] as BarFrame
+    const { lastFrame } = render(
+      <ThemeProvider palette={modePalette(DARK, 'convert')}>
+        <HeaderBar mode="convert" trail={trailAt('convert', 2)} width={80} slanted />
+      </ThemeProvider>,
+    )
+    const lines = (lastFrame() ?? '').split('\n')
+    expect(lines).toHaveLength(1)
+    expect(describeRow(ansiRow(lines[0] ?? ''), fixtureRow(bar, 0))).toBe('equal')
   })
-  it('carries the staged file when given one', () => {
-    expect(frame({ detail: 'report.pdf' })).toContain('convert · report.pdf')
+})
+
+describe('the header bar beyond the mockup', () => {
+  const row = (p: Partial<Parameters<typeof trailBarRow>[0]> = {}) =>
+    runsRow(
+      trailBarRow({
+        width: 80,
+        palette: DARK,
+        mode: 'convert',
+        trail: trailAt('convert', 2),
+        slanted: true,
+        ...p,
+      }),
+      p.width ?? 80,
+    )
+
+  it('falls back to a plain filled chip, the trail where it was', () => {
+    const plain = row({ slanted: false })
+    const slanted = row()
+    expect(text(plain)).toMatch(/^ {2} convert ╱+ JPEG ╱ 80 ╱ Save to ╱╱ {2}$/)
+    // The chip loses its two slanted ends, so the hatching starts two cells earlier.
+    expect(text(plain).indexOf('╱')).toBe(text(slanted).indexOf('╱') - 2)
+    expect(text(plain).slice(-20)).toBe(text(slanted).slice(-20))
+    expect(plain[2]).toMatchObject({ ch: ' ', bg: DARK.modeConvert })
   })
-  it('uses each mode marker', () => {
-    expect(frame({ mode: 'compress' })).toContain('↓ FORGE   compress')
-    expect(frame({ mode: 'pdf' })).toContain('▣ FORGE   pdf')
+
+  it('is the chip and hatching alone with no trail', () => {
+    expect(text(row({ trail: { answers: [] } }))).toMatch(/^ {2} convert ╱+ {2}$/)
   })
-  it('shrinks to the marker and mode when compact', () => {
-    const f = frame({ width: 50 })
-    expect(f).toBe(' ↔ convert')
-  })
-  it('ellipses a long staged filename so the bar stays one row', () => {
-    const long = 'Screenshot 2026-08-17 at 3.52.36 PM with a really long tail name.png'
-    for (const width of [60, 80]) {
-      const f = frame({ detail: long, width })
-      expect(f.split('\n')).toHaveLength(1)
-      expect(f).toContain('↔ FORGE')
-      expect(f).toContain('~/Desktop')
-      expect(stringWidth(f)).toBeLessThanOrEqual(width)
+
+  it('drops the oldest answers first when the row is too narrow, and never overflows', () => {
+    expect(text(row({ width: 40 }))).toContain(' JPEG ╱ 80 ╱ Save to ')
+    const narrow = text(row({ width: 34 }))
+    expect(narrow).toContain(' 80 ╱ Save to ')
+    expect(narrow).not.toContain('JPEG')
+    for (const width of [20, 30, 40, 60, 120]) {
+      const cells = row({ width })
+      expect(cells.findLastIndex((c) => c.ch !== ' ')).toBeLessThan(width - 2)
+      expect(text(cells)).toContain('convert')
     }
   })
 
-  it('ellipses a long default folder instead of overflowing', () => {
-    const f = frame({ defaultOutput: join(homedir(), 'deep/'.repeat(30), 'out'), width: 70 })
-    expect(stringWidth(f)).toBe(69)
-    expect(f).toContain('…')
+  it('keeps the hatching on absolute columns, like the home band', () => {
+    const a = row({ trail: { answers: [] } })
+    const b = row({ trail: { answers: ['JPEG'], current: 'Quality' } })
+    // Column 20 is hatching in both, so it is the same colour in both.
+    expect(a[20]).toEqual(b[20])
+  })
+})
+
+describe('slantedChips: whether the terminal draws the slants itself', () => {
+  it('is on in the terminals that draw them natively', () => {
+    for (const env of [
+      { TERM_PROGRAM: 'iTerm.app' },
+      { TERM_PROGRAM: 'WezTerm' },
+      { TERM_PROGRAM: 'ghostty' },
+      { TERM_PROGRAM: 'vscode' },
+      { TERM: 'xterm-kitty' },
+      { TERM: 'xterm-ghostty' },
+    ])
+      expect(slantedChips(env), JSON.stringify(env)).toBe(true)
+  })
+
+  it('is off anywhere it cannot be sure, Apple Terminal included', () => {
+    expect(slantedChips({ TERM_PROGRAM: 'Apple_Terminal' })).toBe(false)
+    expect(slantedChips({ TERM_PROGRAM: 'tmux' })).toBe(false)
+    expect(slantedChips({})).toBe(false)
+  })
+
+  it('is off under NO_COLOR', () => {
+    expect(slantedChips({ TERM_PROGRAM: 'iTerm.app', NO_COLOR: '1' })).toBe(false)
+  })
+
+  it('does what FORGE_POWERLINE says, either way', () => {
+    expect(slantedChips({ TERM_PROGRAM: 'Apple_Terminal', FORGE_POWERLINE: '1' })).toBe(true)
+    expect(slantedChips({ TERM_PROGRAM: 'iTerm.app', FORGE_POWERLINE: '0' })).toBe(false)
   })
 })
 

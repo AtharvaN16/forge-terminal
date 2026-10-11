@@ -8,6 +8,7 @@
  * terminal draws nothing there either way.
  */
 import { readFileSync } from 'node:fs'
+import { DARK } from '../../src/shell/theme.js'
 
 export interface Cell {
   ch: string
@@ -24,9 +25,12 @@ export interface FixtureFrame {
   rows: FixtureRun[][]
 }
 
-export const MOCKUP = JSON.parse(
-  readFileSync(new URL('./fixtures/home-mockup.json', import.meta.url), 'utf8'),
-) as FixtureFrame[]
+/** A fixture made by scripts/home-mockup-fixture.mjs, by file name. */
+export function loadFixture(name: string): unknown {
+  return JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'))
+}
+
+export const MOCKUP = loadFixture('home-mockup.json') as FixtureFrame[]
 
 function normalise(cell: Cell): Cell {
   if (cell.ch === ' ' && cell.bg === null) return { ch: ' ', fg: null, bg: null, b: false }
@@ -47,6 +51,15 @@ export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[]
     for (const ch of text) cells.push({ ch, fg, bg, b })
   }
   return pad(cells, width)
+}
+
+/**
+ * A row of a home frame (80 × 24). The mockup leaves the row above the keys
+ * blank; home has since put a rule there, in the border colour.
+ */
+export function homeRow(frame: FixtureFrame, row: number): Cell[] {
+  if (row === 22) return runsRow([{ text: '─'.repeat(80), fg: DARK.border }])
+  return fixtureRow(frame, row)
 }
 
 export interface Run {

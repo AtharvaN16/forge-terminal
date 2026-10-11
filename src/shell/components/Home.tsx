@@ -1,8 +1,10 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import stringWidth from 'string-width'
+import type { CommandList } from '../commands.js'
 import {
   brandRows,
+  commandRows,
   HOME_MARGIN,
   MODE_KINDS,
   type Row,
@@ -17,7 +19,7 @@ import { middleEllipsis } from '../width.js'
 /**
  * The home screen (mockups/flow-parts-2026-10.html, tab 3): the brand band,
  * the drop zone block, the field on its own line, whatever the field has to
- * offer in a list below it, and the keys on the last row.
+ * offer in a list below it, and the keys on the last row under a rule.
  *
  * It fills the terminal's height exactly, so the keys sit on the bottom row
  * and Ink draws it as a full screen — no line below it, no scrolling. What a
@@ -29,7 +31,7 @@ import { middleEllipsis } from '../width.js'
 const BASE = 6
 /** The brand band and the blank row under it. */
 const BRAND = 4
-/** The list's blank first row, three entries and a blank before the keys. */
+/** The list's blank first row, three entries and the rule above the keys. */
 const LIST_MIN = 5
 const SURFACE_MAX = 8
 const SURFACE_MIN = 4
@@ -68,20 +70,22 @@ export interface KeySet {
 export function homeKeys({
   typing,
   completions,
-  palette,
+  commands,
 }: {
   typing: boolean
   completions: number
-  palette: boolean
+  /** The command list is open. */
+  commands: boolean
 }): KeySet {
-  if (palette) {
+  if (commands) {
     return {
       main: [
         ['↵', 'run'],
-        ['esc', 'close'],
+        ['esc', 'back'],
       ],
       foot: [
         ['↑↓', 'choose'],
+        ['type', 'filter'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -108,11 +112,9 @@ export function homeKeys({
       ],
     }
   }
+  // No "/ commands": the tab row says it.
   return {
-    main: [
-      ['↵', 'send'],
-      ['/', 'commands'],
-    ],
+    main: [['↵', 'send']],
     foot: [
       ['1–3', 'mode'],
       ['esc', 'clear'],
@@ -123,7 +125,7 @@ export function homeKeys({
 }
 
 /** One drawn row. Never wraps: the art is laid out to the width already. */
-function Runs({ row }: { row: Row }) {
+export function Runs({ row }: { row: Row }) {
   return (
     <Box flexShrink={0}>
       <Text wrap="truncate">
@@ -144,6 +146,31 @@ function Runs({ row }: { row: Row }) {
 }
 
 const Gap = () => <Box height={1} flexShrink={0} />
+
+/**
+ * The command list where there is no drop surface to swap it into — under
+ * the field while a file waits — drawn the same way as on home's panel, on
+ * the terminal's own background.
+ */
+export function CommandMenu({
+  width,
+  commands,
+}: {
+  width: number
+  commands: CommandList & { selected: number }
+}) {
+  const palette = useTheme()
+  const rows = commandRows({ width, palette, ...commands, rows: 0, max: 12, panel: false })
+  return (
+    <Box flexDirection="column" flexShrink={0} marginBottom={1}>
+      {/* Without the blank rows that pad it on the panel: the field above has its own margin. */}
+      {rows.slice(1, -1).map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: positional rows
+        <Runs key={i} row={row} />
+      ))}
+    </Box>
+  )
+}
 
 /**
  * Keys as caps on the left — what this screen is for — and everything else as
@@ -261,6 +288,7 @@ export function Home({
   savesTo,
   field,
   list,
+  commands,
   keys,
 }: {
   width: number
@@ -274,11 +302,27 @@ export function Home({
   field: ReactNode
   /** What sits under the field, given how many entries it has room for. */
   list?: ((rows: number) => ReactNode) | undefined
+  /**
+   * The field holds a command: "/ commands" is the active tab and the list
+   * takes the drop surface's place, in place — nothing else moves.
+   */
+  commands?: (CommandList & { selected: number }) | undefined
   keys: KeySet
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height)
   const art = { width, palette, mode }
+  const panel = commands
+    ? commandRows({
+        ...art,
+        ...commands,
+        rows: layout.surface,
+        // What the list below the field would have had is free while it is open.
+        max: layout.surface + layout.list,
+      })
+    : layout.surface > 0
+      ? surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+      : []
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -292,23 +336,21 @@ export function Home({
           <Gap />
         </>
       ) : null}
-      {tabRows({ ...art, savesTo }).map((row, i) => (
+      {tabRows({ ...art, savesTo, commands: commands !== undefined }).map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
         <Runs key={`tabs${i}`} row={row} />
       ))}
-      {layout.surface > 0
-        ? surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] }).map(
-            (row, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
-              <Runs key={`surface${i}`} row={row} />
-            ),
-          )
-        : null}
+      {panel.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
+        <Runs key={`surface${i}`} row={row} />
+      ))}
       <Gap />
       <Box flexShrink={0}>{field}</Box>
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
         {list?.(Math.max(1, layout.list - 2))}
       </Box>
+      {/* The rule takes the list's last row, so the layout is unchanged. */}
+      <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
       <KeyRow {...keys} width={width} />
     </Box>
   )

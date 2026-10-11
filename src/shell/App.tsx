@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -31,16 +31,16 @@ import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import { displayPath } from '../utils/display-path.js'
 import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
+import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
-import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
+import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
-import { CommandPalette } from './components/CommandPalette.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
-import { Home, homeKeys, Suggestions } from './components/Home.js'
+import { CommandMenu, Home, homeKeys, Suggestions } from './components/Home.js'
 import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
 import { Progress } from './components/Progress.js'
@@ -64,12 +64,12 @@ import { writeToTerminal } from './terminal-write.js'
 import {
   colourProp,
   MODE_ORDER,
-  modeColours,
   modePalette,
   paletteFor,
   type ShellMode,
   SYMBOLS,
 } from './theme.js'
+import { answerFor, type Question, trailFor } from './trail.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
@@ -467,15 +467,6 @@ export function App({
    */
   const palette = modePalette(basePalette, mode)
   const action = mode === 'compress' ? compressAction : convertAction
-  /**
-   * The mode banner's colours. `/pdf` has no `action` of its own — it opens
-   * `PdfFlow` directly rather than walking `convertAction`/`compressAction`'s
-   * option-spec wizard — so this is keyed off `mode` again rather than
-   * derived from `action`, the same reason the banner text itself already
-   * reads `mode` and not `action.id`.
-   */
-  const { fg: modeColour, bg: modeBg } = modeColours(basePalette, mode)
-
   /** Where the target-size search has got to, for an honest counter. */
   /**
    * `dpi` names the rung a document search is on. Without it, a search
@@ -578,45 +569,26 @@ export function App({
   /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
   const working = isWorking(step, stage.sources.length)
   /**
-   * The mode line shown at an empty idle prompt, under the full logo. Once
-   * there is work on screen — a staged file, any wizard step, a result —
-   * `HeaderBar` replaces it (see `working`), so this only ever describes the
-   * empty prompt, where `/` really does open the command palette.
+   * The command list, while the field holds a command (see
+   * `isCommandBuffer`): what matches, and which row ↵ runs. The choice is
+   * kept against the text it was made for, so typing — which changes the
+   * list — starts it over at the first row without an extra render.
    */
-  const modeLine = () => (
-    <>
-      <Text color={colourProp(modeColour)} bold>
-        {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
-      </Text>
-      <Text color={colourProp(palette.dim)}>
-        {band === 'compact' ? '  / to change' : '  use / to change mode'}
-      </Text>
-    </>
-  )
-  /**
-   * Whether `CommandPalette`'s `<Select>` is currently mounted and
-   * interactive — that is, whether the typed fragment has at least one
-   * match. `isCommandBuffer` alone is not enough: it is true the instant
-   * text starts with `/` and has no further `/` or space, which includes
-   * fragments like `/U` that match nothing. `CommandPalette` renders a
-   * plain, non-interactive "no command matches" `<Text>` in that state — no
-   * `<Select>`, no `useInput` — so nothing would be left to consume escape
-   * if the stage hook below were gated on `isCommandBuffer` alone. Calling
-   * the same `matchCommands` that `CommandPalette` itself calls to choose
-   * between `<Select>` and that message is what keeps this from drifting
-   * out of sync with what actually mounts, the way `isCommandBuffer` did.
-   *
-   * Also handed to `Prompt` as `disableSubmit`: while `Select` is mounted it
-   * owns Enter the same way it owns escape, for the same reason — see
-   * `disableSubmit`'s own doc comment for what the two of them racing on one
-   * keystroke actually did.
-   */
-  const paletteOwnsEscape = isCommandBuffer(text) && matchCommands(text.slice(1)).length > 0
+  const [commandChoice, setCommandChoice] = useState({ text: '', at: 0 })
+  const commandList = isCommandBuffer(text) ? listCommands(text.slice(1)) : undefined
+  const commands = commandList && {
+    ...commandList,
+    selected: commandChoice.text === text ? commandChoice.at : 0,
+  }
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   /** Destination and proposed stem while the rename field is open. */
   const [renaming, setRenaming] = useState<PendingRename | null>(null)
+  /** The name given at Name, for the header bar's trail while the file is written. */
+  const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
+  /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
+  const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -672,12 +644,57 @@ export function App({
   }
 
   /**
+   * `1`–`3` on a screen with no text field — the pickers and the quality
+   * slider — move the file to that mode, as its command would (see
+   * `runCommand` for what that means for the file). Screens that take text
+   * leave the digits to the field.
+   */
+  useKeys(
+    (input, key) => {
+      const next = MODE_ORDER[Number(input) - 1]
+      if (!/^[1-3]$/.test(input) || key.ctrl || key.meta || !next || next === mode) return
+      const command = COMMANDS.find((c) => c.mode === next)
+      if (command) runCommand(command)
+    },
+    { isActive: ['mode', 'target', 'pages', 'dpi', 'quality'].includes(step) },
+  )
+
+  /**
+   * Keys the command list takes before the field sees them, while it is
+   * open: ↑↓ choose a row and ↵ runs it. ↵ with nothing listed falls through
+   * to the field, which reports that no command matches.
+   */
+  const commandKey = (_input: string, key: Key): boolean => {
+    if (!commands) return false
+    const last = commands.items.length - 1
+    if (key.downArrow || key.upArrow) {
+      const step = key.downArrow ? 1 : -1
+      // From the previous choice, not this render's: two presses can land
+      // before the screen catches up.
+      setCommandChoice((prev) => {
+        const from = prev.text === textRef.current ? prev.at : 0
+        return { text: textRef.current, at: Math.max(0, Math.min(last, from + step)) }
+      })
+      return true
+    }
+    if (key.return) {
+      const command = commands.items[commands.selected]
+      if (!command) return false
+      runCommand(command)
+      return true
+    }
+    return key.tab
+  }
+
+  /**
    * Keys the home screen takes before the field sees them: `1`–`3` pick a
    * mode, but only on an empty field, so a path can still have digits in it;
-   * Tab and the arrows act on the completions. Tab is never typed — a tab
-   * character in a path is never what was meant.
+   * Tab and the arrows act on the completions, or on the command list while
+   * it is open. Tab is never typed — a tab character in a path is never what
+   * was meant.
    */
   const homeKey = (input: string, key: Key, value: string): boolean => {
+    if (commandKey(input, key)) return true
     if (value === '') {
       const next = MODE_ORDER[Number(input) - 1]
       if (/^[1-3]$/.test(input) && !key.ctrl && !key.meta && next) {
@@ -976,15 +993,9 @@ export function App({
   // convert picker kept its place for `/pdf` or a merge list. Empty stages
   // are the common case and cost nothing extra to check.
   //
-  // Gated on the command buffer being closed, for the same reason the
-  // `step === 'result'` hook above is gated on `step`: Ink delivers input
-  // to every mounted `useInput` regardless of what else is on screen.
-  // `CommandPalette`'s `Select` (`isActive` default `true`) already owns
-  // escape while `/convert` or similar is being typed — its `onCancel`
-  // clears the text buffer — so an ungated hook here would fire on the very
-  // same keystroke and silently discard the stage as a side effect of
-  // someone backing out of a half-typed command, not asking to clear
-  // anything.
+  // This is also how esc leaves the command list: the list is only open
+  // while the field holds a command, so clearing the field closes it — and,
+  // the field not being empty, never touches the stage on the same press.
   useKeys(
     (_input, key) => {
       if (!key.escape) return
@@ -995,7 +1006,7 @@ export function App({
       if (stage.sources.length === 0 && stage.failures.length === 0) return
       setStage(clearStage())
     },
-    { isActive: step === 'idle' && !paletteOwnsEscape },
+    { isActive: step === 'idle' },
   )
 
   /**
@@ -1702,6 +1713,7 @@ export function App({
     const stem = dot > 0 ? proposed.slice(0, dot) : proposed
     const ext = dot > 0 ? proposed.slice(dot) : ''
     setRenaming({ destination, stem, ext })
+    setSavedAs(undefined)
     setText(stem)
     setStep('rename')
   }
@@ -1748,6 +1760,9 @@ export function App({
    */
   const confirmDestination = (destination: string) => {
     if (!source) return
+    // Not read by the action, which is always handed the destination
+    // directly; kept for the header bar's trail.
+    setValues((v) => ({ ...v, destination }))
     if (extRun) {
       void runExtensionJob(destination)
       return
@@ -1786,6 +1801,7 @@ export function App({
     const stem = raw.trim().replace(/\//g, '-') || renaming.stem
     setText('')
     setRenaming(null)
+    setSavedAs(`${stem}${renaming.ext}`)
     void convert(renaming.destination, {
       output: `${renaming.destination}/${stem}${renaming.ext}`,
     })
@@ -1979,6 +1995,12 @@ export function App({
     const result = summary.results[0]
     if (result) {
       setLastResult(result)
+      push({
+        kind: 'bar',
+        id: nextId(),
+        mode,
+        trail: doneTrail({ destination, name: basename(result.job.outputs[0] ?? output) }),
+      })
       push({ kind: 'result', id: nextId(), result })
       setStep('result')
 
@@ -2246,6 +2268,15 @@ export function App({
           })
         },
       })
+      const [first] = summary.results
+      if (first) {
+        push({
+          kind: 'bar',
+          id: nextId(),
+          mode,
+          trail: doneTrail({ destination: dirname(first.job.outputs[0] ?? '') }),
+        })
+      }
       for (const result of summary.results) {
         push({
           kind: 'note',
@@ -2377,6 +2408,62 @@ export function App({
   const destinationSpec = specFor('destination')
 
   /**
+   * Every answer given so far in convert or compress, as the user would say
+   * it, for the header bar's trail. `trailFor` decides which of them are
+   * behind the screen on now. A folder is said by its own name, as Save to
+   * lists it; `destination` is a path.
+   */
+  const trailAnswers = (
+    extra: { destination?: string; name?: string | undefined } = {},
+  ): Partial<Record<Question, string>> => {
+    const folder = extra.destination ?? (values.destination as string | undefined)
+    const bySize = mode === 'compress' && values.mode === 'size'
+    return {
+      mode: modeSpec ? answerFor(modeSpec, values.mode) : undefined,
+      target:
+        typeof values.target === 'string' && values.target in FORMATS
+          ? FORMATS[values.target as FormatId].label
+          : undefined,
+      pages: pagesSpec ? answerFor(pagesSpec, values.pages) : undefined,
+      dpi: dpiSpec ? answerFor(dpiSpec, values.dpi) : undefined,
+      size: bySize && typeof values.size === 'string' ? values.size : undefined,
+      quality:
+        !bySize && qualitySpec && typeof values.quality === 'number'
+          ? String(values.quality)
+          : undefined,
+      destination: folder ? basename(displayPath(folder)) : undefined,
+      name: extra.name ?? savedAs,
+    }
+  }
+
+  /** The trail a finished run is recorded with: every answer, then "Done". */
+  const doneTrail = (extra: { destination?: string; name?: string }): Trail => ({
+    answers:
+      mode === 'pdf'
+        ? pdfTrailNow.answers
+        : trailFor({ mode, step: 'result', answers: trailAnswers(extra) }).answers,
+    current: 'Done',
+  })
+
+  /** The header bar's trail for the screen on now. */
+  const barTrail = (): Trail => {
+    if (step === 'pdf') return pdfTrailNow
+    if (mode === 'pdf' && (step === 'pdf-running' || step === 'pdf-blocked')) {
+      return {
+        answers: pdfTrailNow.answers,
+        current: step === 'pdf-running' ? 'Running' : 'Overwrite',
+      }
+    }
+    const waiting =
+      stage.sources.length > 1
+        ? `${stage.sources.length} files`
+        : source
+          ? basename(source.path)
+          : undefined
+    return trailFor({ mode, step, answers: trailAnswers(), waiting })
+  }
+
+  /**
    * The Box the whole frame is measured from. `useFrameOrigin` needs its
    * height to place the frame, and `<Static>` is excluded from this Box's
    * layout (measured against Ink 7.1.1) — which is what makes the height the
@@ -2395,39 +2482,14 @@ export function App({
           <MouseRouter rootRef={rootRef} revision={history.length} />
           {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
-          {/* Which action the next file goes through, always — including the
-            default. An earlier version showed this only for compress, on the
-            reasoning that convert is what dropping a file already does; but
-            a mode you cannot see is one you can be in by accident, and the
-            cost of saying so is one line. `/pdf` armed the same way now
-            shows here too — the hub's five page operations are exactly as
-            much "a mode" as compress's wizard is, and hiding it while inside
-            the hub would reintroduce the same invisible-mode risk this
-            banner exists to close.
-            No rule of its own above it: a fenced-off history already gets
-            the heavier `╍` separator (see `blocks.tsx`), and stacking this
-            box's own rule on top of that read as two dividers doing the same
-            job. Skipped for `result` entirely — that screen draws it itself,
-            grouped with the keyboard hints instead of sitting between the
-            finished job and its own links. See the `HintBar` replacement
-            inside the `result` step below. */}
-          {step !== 'theme' && step !== 'result' && !onHome ? (
-            working ? (
-              <Box marginBottom={1}>
-                <HeaderBar
-                  mode={mode}
-                  detail={
-                    step === 'idle' && source && !stagedBatch ? basename(source.path) : undefined
-                  }
-                  defaultOutput={livePrefs.defaultOutput}
-                  width={width}
-                />
-              </Box>
-            ) : (
-              <Box width={width} marginBottom={1} paddingX={1} backgroundColor={colourProp(modeBg)}>
-                {modeLine()}
-              </Box>
-            )
+          {/* The header bar: which mode, and the trail of answers so far —
+            on every screen after home. Not on Done: the run's own bar, its
+            trail ending in "Done", went into the scrollback above the result
+            card, which it heads (see `doneTrail`). */}
+          {working && !onHome && step !== 'result' ? (
+            <Box marginBottom={1}>
+              <HeaderBar mode={mode} trail={barTrail()} width={width} />
+            </Box>
           ) : null}
 
           {/* The staged list, shown live rather than committed to scrollback,
@@ -2473,6 +2535,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
+                  ['1–3', 'mode'],
                   ['esc', 'remove file'],
                 ]}
               />
@@ -2550,6 +2613,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
+                  ['1–3', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2574,6 +2638,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
+                  ['1–3', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2622,6 +2687,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
+                  ['1–3', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2645,6 +2711,7 @@ export function App({
                 pairs={[
                   ['←→', 'adjust'],
                   ['↵', 'confirm'],
+                  ['1–3', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2915,9 +2982,6 @@ export function App({
                     ['ctrl-c', 'close app'],
                   ]}
                 />
-                <Box marginTop={1}>
-                  <HeaderBar mode={mode} defaultOutput={livePrefs.defaultOutput} width={width} />
-                </Box>
               </Box>
             </Box>
           ) : null}
@@ -2967,6 +3031,7 @@ export function App({
               // field, clears the stage the same way it already does
               // everywhere else in this file.
               onCancel={backToPromptKeepingStage}
+              onTrail={setPdfTrailNow}
             />
           ) : null}
 
@@ -3065,62 +3130,39 @@ export function App({
                   variant="home"
                   width={width}
                   rawOnSubmit
-                  disableSubmit={paletteOwnsEscape}
                   intercept={homeKey}
                 />
               }
+              commands={commands}
               list={
-                isCommandBuffer(text)
-                  ? () => (
-                      <Box marginTop={1}>
-                        <CommandPalette
-                          fragment={text.slice(1)}
-                          width={width}
-                          onRun={runCommand}
-                          onCancel={() => setText('')}
-                        />
-                      </Box>
+                completions.length > 0
+                  ? (rows) => (
+                      <Suggestions
+                        items={completions.map((c) => c.label)}
+                        selected={chosen}
+                        width={width}
+                        rows={rows}
+                      />
                     )
-                  : completions.length > 0
-                    ? (rows) => (
-                        <Suggestions
-                          items={completions.map((c) => c.label)}
-                          selected={chosen}
-                          width={width}
-                          rows={rows}
-                        />
-                      )
-                    : undefined
+                  : undefined
               }
               keys={homeKeys({
                 typing: text !== '',
                 completions: completions.length,
-                palette: isCommandBuffer(text),
+                commands: commands !== undefined,
               })}
             />
           ) : null}
 
           {step === 'idle' && !onHome ? (
             <Box flexDirection="column">
-              {/* Ink delivers input to every mounted useInput, so Prompt and
-                the palette's Select are both live while this is open — which
-                is what makes typing narrow the list and the arrows move the
-                selection at the same time. */}
-              {isCommandBuffer(text) ? (
-                <CommandPalette
-                  fragment={text.slice(1)}
-                  width={width}
-                  onRun={runCommand}
-                  onCancel={() => setText('')}
-                />
-              ) : null}
               {/* A PDF sitting here — via a refused mixed batch, a multi-PDF
                 merge stage, or backing out of the target picker with
                 `backToPromptKeepingStage` — has a command that is not
                 otherwise visible. Commands are only worth having if they
-                can be found (the same reasoning behind the palette itself);
+                can be found (the same reasoning behind the command list);
                 a document on the bench with no visible next step fails that
-                test. Suppressed once a command is being typed — the palette
+                test. Suppressed once a command is being typed — the list
                 is already doing this job then. The target picker has its
                 own copy of this same line for the moment a solo drop goes
                 straight there instead of stopping here. */}
@@ -3141,23 +3183,32 @@ export function App({
                 variant={band === 'compact' ? 'plain' : 'drop'}
                 width={width}
                 rawOnSubmit
-                disableSubmit={paletteOwnsEscape}
+                intercept={commandKey}
               />
+              {/* No drop surface to swap the list into here, so it sits
+                under the field, drawn as it is on home. */}
+              {commands ? <CommandMenu width={width} commands={commands} /> : null}
               <HintBar
                 width={width}
                 pairs={
-                  band === 'compact'
+                  commands
                     ? [
-                        ['↵', 'send'],
-                        ['/', 'commands'],
+                        ['↵', 'run'],
+                        ['esc', 'back'],
+                        ['↑↓', 'choose'],
                       ]
-                    : [
-                        ['↵', 'send'],
-                        ['/', 'commands'],
-                        ['esc', 'clear'],
-                        ['ctrl-n', 'new'],
-                        ['ctrl-c', 'close app'],
-                      ]
+                    : band === 'compact'
+                      ? [
+                          ['↵', 'send'],
+                          ['/', 'commands'],
+                        ]
+                      : [
+                          ['↵', 'send'],
+                          ['/', 'commands'],
+                          ['esc', 'clear'],
+                          ['ctrl-n', 'new'],
+                          ['ctrl-c', 'close app'],
+                        ]
                 }
               />
             </Box>
