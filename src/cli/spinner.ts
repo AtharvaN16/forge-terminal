@@ -20,7 +20,7 @@
  */
 
 /** Braille dots: one column wide in every terminal font that has them. */
-const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 interface Writable {
   write(chunk: string): unknown
@@ -52,7 +52,9 @@ export function startSpinner(stream: Writable, label: string): Spinner {
 
   const draw = () => {
     if (stopped) return
-    stream.write(`\r${' '.repeat(WIDTH)}\r${FRAMES[frame % FRAMES.length]} ${label}${text}`)
+    stream.write(
+      `\r${' '.repeat(WIDTH)}\r${SPINNER_FRAMES[frame % SPINNER_FRAMES.length]} ${label}${text}`,
+    )
   }
 
   return {
