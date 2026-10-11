@@ -131,10 +131,21 @@ describe('reportBatch', () => {
     expect(text).toContain('→')
   })
 
-  it('names the output directory when one was given', async () => {
+  it('lists every output path, not just a count (spec §1, item 2)', async () => {
     const dir = await makeTempDir()
-    const text = reportBatch(await convertAll(dir, 2), './dist/').join('\n')
-    expect(text).toContain('./dist/')
+    const summary = await convertAll(dir, 3)
+    const text = reportBatch(summary, { cwd: dir }).join('\n')
+    expect(text).toContain('3 converted')
+    for (let i = 0; i < 3; i++) expect(text).toContain(`  f${i}.webp`)
+  })
+
+  it('shows each output relative to cwd, the way a single result does', async () => {
+    const dir = await makeTempDir()
+    const parent = join(dir, '..')
+    const lines = reportBatch(await convertAll(dir, 2), { cwd: parent })
+    const folder = dir.slice(parent.length + 1)
+    expect(lines).toContain(`  ${folder}/f0.webp`)
+    expect(lines).toContain(`  ${folder}/f1.webp`)
   })
 })
 

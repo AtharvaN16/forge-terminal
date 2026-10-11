@@ -150,3 +150,25 @@ export function glyphColour(
   if (ch === '█' && row < FACE_ROW) return step.hot ? heat : steel
   return steel
 }
+
+/**
+ * `█` is the letter face; `╔═╗║╚╝` is its edge. The edge is the whole point:
+ * solid-slab block letters leave O and G, and E and F, with near-identical
+ * silhouettes at this size, and the outline is what tells them apart. Six
+ * rows rather than five, because five does not leave enough vertical room to
+ * describe a letterform.
+ *
+ * Every row must be exactly the same length or the letters shear. Trailing
+ * spaces are therefore significant, and a test pins it.
+ *
+ * Lives here, not in `components/Banner.tsx`, so `intro.ts`, which plays
+ * before Ink exists, can draw it without importing Ink (spec §4.3).
+ */
+export const WORDMARK = [
+  '███████╗ ██████╗ ██████╗  ██████╗ ███████╗',
+  '██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝',
+  '█████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ',
+  '██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ',
+  '██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗',
+  '╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝',
+] as const

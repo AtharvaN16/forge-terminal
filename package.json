@@ -30,7 +30,8 @@
     "forge": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "engines": {
     "node": ">=20"
@@ -40,40 +41,44 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
     "dev": "tsx src/index.ts",
+    "bench": "node scripts/bench.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.typecheck.json",
-    "lint": "biome check src tests",
-    "format": "biome format --write src tests",
-    "prepublishOnly": "rm -rf dist && npm run build && npm run typecheck && npm run lint && npm test"
+    "lint": "biome check src tests scripts",
+    "format": "biome format --write src tests scripts",
+    "prepublishOnly": "npm run build && npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
     "@hyzyla/pdfium": "^2.1.13",
-    "adm-zip": "^0.6.0",
-    "cfb": "^1.2.2",
-    "commander": "^15.0.0",
-    "docx": "^9.7.1",
-    "ink": "^7.1.1",
-    "mammoth": "^1.12.1",
-    "pdf-lib": "^1.17.1",
-    "pdf-parse": "^2.4.5",
-    "react": "^19.2.8",
-    "sharp": "^0.35.3",
-    "string-width": "^8.2.2",
-    "supports-hyperlinks": "^4.5.0",
-    "tinyglobby": "^0.2.17",
-    "word-extractor": "^1.0.4"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.9",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/word-extractor": "^1.0.6",
+    "adm-zip": "^0.6.1",
+    "cfb": "^1.2.2",
+    "commander": "^15.0.0",
+    "docx": "^9.10.0",
+    "esbuild": "^0.28.2",
+    "ink": "^7.1.1",
     "ink-testing-library": "^4.0.0",
+    "mammoth": "^1.13.0",
+    "pdf-lib": "^1.17.1",
+    "react": "^19.3.0",
+    "string-width": "^8.3.0",
+    "supports-hyperlinks": "^4.6.0",
+    "tinyglobby": "^0.2.17",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "word-extractor": "^1.0.4",
+    "zod": "^4.6.5"
   }
 }

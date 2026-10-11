@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
-import { ACTIONS, convertAction, unavailableReason } from '../core/actions/index.js'
+import { ACTIONS, compressAction, convertAction, unavailableReason } from '../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
-import { rasterises } from '../core/capabilities.js'
+import { formatMatrix, rasterises } from '../core/capabilities.js'
 import {
   encryptedSource,
   type ForgeError,
@@ -10,15 +10,28 @@ import {
   invalidPageRange,
   isForgeError,
   unsupportedCompress,
+  unsupportedOperation,
 } from '../core/errors.js'
-import { runPlan } from '../core/execute-jobs.js'
+import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
+import { probeFiles } from '../core/probe-report.js'
+import { configJson, errorJson, formatsJson, probeJson, runJson } from '../core/report-data.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
+import type { RunSummary } from '../core/run.js'
 import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
 import { openPdf } from '../engines/pdfium.js'
-import type { Intent, PageOpIntent } from './args.js'
-import { reportBatch, reportFailures, reportFormats, reportPageOp, reportSingle } from './report.js'
+import { VERSION } from '../shell/theme.js'
+import type { CompressIntent, ConvertIntent, Intent, PageOpIntent } from './args.js'
+import type { ConfigIntent } from './config-command.js'
+import {
+  reportBatch,
+  reportFailures,
+  reportFormats,
+  reportPageOp,
+  reportProbe,
+  reportSingle,
+} from './report.js'
 import { readPassword } from './stdin.js'
 
 export interface ExecuteResult {
@@ -35,6 +48,12 @@ export interface BatchProgress {
 
 export interface ExecuteOptions {
   /**
+   * Whether a password may be asked for (prompt or --password-stdin). Default
+   * true. The MCP server passes false: its stdin is the protocol stream, so
+   * reading it would corrupt the session (spec §3.5, "there is no prompt").
+   */
+  interactive?: boolean
+  /**
    * Called only for a batch (more than one job) and only driven by real
    * job:done / job:error events — never a fabricated percentage. execute()
    * itself never prints; this callback is how src/index.ts, the only layer
@@ -43,7 +62,7 @@ export interface ExecuteOptions {
   onProgress?: (progress: BatchProgress) => void
   /**
    * Called during a target-size search with a human-readable position, e.g.
-   * `150 dpi · attempt 3 of 8`.
+   * `150 dpi · attempt 3 of 8`, or `3 of 50 searched` for a batch.
    *
    * A status string rather than a spinner, so this file stays ignorant of how
    * — or whether — anything is drawn; `src/index.ts` owns that and gates it on
@@ -51,6 +70,34 @@ export interface ExecuteOptions {
    * sequence, never an invented percentage (invariant 7).
    */
   onSearch?: (status: string) => void
+  /**
+   * Render as one JSON document on stdout instead of text (spec §3.2). Under
+   * --json, stdout carries exactly that document and stderr carries nothing.
+   */
+  json?: boolean
+}
+
+/** The intents that convert, compress or edit files: everything `runIntent` accepts. */
+export type RunnableIntent = ConvertIntent | CompressIntent | PageOpIntent
+
+/**
+ * What a run did, as data. `renderRun` turns it into text or JSON, and
+ * `src/mcp/tools.ts` into an MCP result. It is one object so the three cannot
+ * drift. `failures` holds every refusal and failure, in the order the text
+ * reporter prints them.
+ */
+export interface RunReport extends RunSummary {
+  kind: RunnableIntent['kind']
+}
+
+/**
+ * The exit-code contract (spec §3.4). If the same flags could succeed on a
+ * different file, it is 1. If the command itself is wrong, it is 2. The only
+ * failure that is the command's own fault is `invalid-arguments`.
+ */
+export function exitCodeFor(failures: InputFailure[]): 0 | 1 | 2 {
+  if (failures.length === 0) return 0
+  return failures.some((f) => f.error.code === 'invalid-arguments') ? 2 : 1
 }
 
 /**
@@ -97,6 +144,26 @@ function pageOpValues(intent: PageOpIntent, sources: SourceInfo[]): Record<strin
 }
 
 /**
+ * Asks for the password at most once per run, then hands the same answer to
+ * every encrypted source. Stdin carries one line and is let go after it, so a
+ * second read would wait on a stream that has already finished; a prompt per
+ * file would be a nuisance besides. Nothing is asked until the first encrypted
+ * source needs it (invariant 8 — never for a file that is not encrypted).
+ *
+ * An empty stdin means no password was given at all, so it becomes
+ * `undefined` and the caller reports the missing-password hint, not
+ * "That password didn't open it".
+ */
+function passwordOnce(stdin: boolean, interactive: boolean): () => Promise<string | undefined> {
+  let answer: Promise<string | undefined> | undefined
+  return () => {
+    if (!interactive) return Promise.resolve(undefined)
+    answer ??= readPassword({ stdin }).then((p) => (stdin && p === '' ? undefined : p))
+    return answer
+  }
+}
+
+/**
  * Builds one rasterisation job for one encrypted-or-not document source:
  * prompts for a password only when the source is actually encrypted
  * (invariant 8 — never for a file that is not), then hands the actual
@@ -122,6 +189,7 @@ async function buildRasterJob(
     dpi?: number
     pages?: string
     passwordStdin?: boolean
+    password?: string
     /**
      * Carries every `ConvertOptions` field the user set — `--background`,
      * `--quality`, `--keep-metadata`. Each one is forwarded into `plan()`
@@ -131,6 +199,7 @@ async function buildRasterJob(
      */
     options: ConvertOptions
   },
+  askPassword: () => Promise<string | undefined>,
   /**
    * The root this source was scanned under, when `--recursive` found it
    * inside one. Threaded through so `rasterOutputPaths` recreates the source
@@ -142,7 +211,13 @@ async function buildRasterJob(
   if (source.encrypted) {
     // Never for an unencrypted file — asking would be a prompt nobody
     // expected and, worse, a password nothing is actually locked with.
-    password = await readPassword({ stdin: intent.passwordStdin ?? false })
+    password = intent.password ?? (await askPassword())
+    // No --password-stdin and no terminal to ask on. Refuse now rather than
+    // wait for input that cannot come. The hint names --password-stdin,
+    // which is exactly what is missing.
+    if (password === undefined) {
+      return { failure: { path: source.path, error: encryptedSource(source.path) } }
+    }
     let doc: Awaited<ReturnType<typeof openPdf>>
     try {
       doc = await openPdf(await readFile(source.path), password)
@@ -157,7 +232,9 @@ async function buildRasterJob(
       // attempted password from surfacing, and re-wrapping a message that
       // might echo caller input is a needless way to risk that. The existing
       // encrypted-source error already says what to do differently.
-      return { failure: { path: source.path, error: encryptedSource(source.path) } }
+      return {
+        failure: { path: source.path, error: encryptedSource(source.path, { attempted: true }) },
+      }
     }
     // Outside the catch above, deliberately: this document only exists to
     // check the password, not to render anything, and the engine opens its
@@ -204,187 +281,191 @@ async function buildRasterJob(
   return { job }
 }
 
-export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
-  // Routed here rather than in src/index.ts so there is exactly one place
-  // that turns an Intent into an ExecuteResult. The import is lazy because a
-  // plain conversion has no reason to touch the config layer at all.
-  if (intent.kind === 'config') {
-    const { runConfig } = await import('./config-command.js')
-    const result = await runConfig(intent)
-    return { exitCode: result.exitCode as 0 | 1 | 2, stdout: result.stdout, stderr: [] }
+/**
+ * Turns `runPlan`'s events into the two callbacks `src/index.ts` draws from.
+ * Shared by the compress and convert paths, so a target-size search reports
+ * the same way whichever flag asked for it. The rung is named as well as the
+ * attempt: without it a search that drops from 150 to 120 dpi looks like the
+ * counter restarting for no reason.
+ */
+function reportEvents(opts: ExecuteOptions, batch: boolean): (event: PlanEvent) => void {
+  return (event) => {
+    if (event.type === 'search:attempt') {
+      // A single file's search reports its real position. In a batch several
+      // searches run at once (spec §4.4), and their attempt counters would
+      // interleave into one number jumping about, so a batch reports finished
+      // files instead (below).
+      if (!batch) {
+        opts.onSearch?.(
+          event.rung.dpi === undefined
+            ? `attempt ${event.attempt} of ${event.of}`
+            : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
+        )
+      }
+      return
+    }
+    if (event.type === 'search:settled') {
+      if (batch) opts.onSearch?.(`${event.completed} of ${event.total} searched`)
+      return
+    }
+    if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
+      opts.onProgress?.({ completed: event.completed, total: event.total })
+    }
   }
+}
 
-  if (intent.kind === 'formats') {
-    return { exitCode: 0, stdout: reportFormats(), stderr: [] }
-  }
+const nothingRan = (kind: RunReport['kind'], failures: InputFailure[]): RunReport => ({
+  kind,
+  results: [],
+  failures,
+  inputBytes: 0,
+  outputBytes: 0,
+})
 
-  if (intent.kind === 'shell') {
-    return { exitCode: 0, stdout: [], stderr: [] }
-  }
+/**
+ * A page operation is never a batch of separate conversions — it is one
+ * `Action` (Task 10) turning a fixed set of sources into a `Job`, the same
+ * way the shell hub does. Resolved and probed like every other path, so a
+ * missing file or an unreadable PDF is reported the same way.
+ */
+async function runPageOp(intent: PageOpIntent): Promise<RunReport> {
+  const resolved = await resolveInputs(intent.inputs, { recursive: false })
+  if (resolved.sources.length === 0) return nothingRan('pageop', resolved.failures)
+
+  const action = ACTIONS.find((a) => a.id === intent.action)
+  if (!action) throw new Error(`no action registered for "${intent.action}"`)
 
   /**
-   * A page operation is never a batch of separate conversions — it is one
-   * `Action` (Task 10) turning a fixed set of sources into a `Job`, the same
-   * way the shell hub does. Resolved and probed like every other path, so a
-   * missing file or an unreadable PDF is reported the same way.
+   * Some refusals are about *these files*: a JPEG handed to --merge, a split
+   * point past the last page, a range that selects nothing. Those are failures
+   * (exit 1), not usage errors, because the same flags would succeed on a
+   * different file (spec §3.4).
    */
-  if (intent.kind === 'pageop') {
-    const resolved = await resolveInputs(intent.inputs, { recursive: false })
-
-    if (resolved.sources.length === 0) {
-      return {
-        exitCode: 1,
-        stdout: [],
-        stderr: reportFailures(resolved.failures, { debug: intent.debug }),
-      }
-    }
-
-    const action = ACTIONS.find((a) => a.id === intent.action)
-    if (!action) throw new Error(`no action registered for "${intent.action}"`)
-
-    if (!action.appliesTo(resolved.sources)) {
-      const reason = unavailableReason(action, resolved.sources) ?? 'not available for these files'
-      throw invalidArguments(`Cannot ${intent.action}: ${reason}.`)
-    }
-
-    const values = pageOpValues(intent, resolved.sources)
-    const planned = action.plan(resolved.sources, values)
-
-    // `action.plan()` bypasses `buildPlan` — its one-source-one-target shape
-    // does not fit merge's several sources or split's several outputs — but
-    // `runPlan` is arity-agnostic, so the write-safety rules arrive for free
-    // rather than having to be applied here by hand.
-    const outcome = await runPlan(planned, { force: intent.force })
-
-    const failures = [...resolved.failures, ...outcome.refusals, ...outcome.failures]
-    const stdout = outcome.results.length === 0 ? [] : reportPageOp(outcome)
-
-    return {
-      exitCode: failures.length > 0 ? 1 : 0,
-      stdout,
-      stderr: reportFailures(failures, { debug: intent.debug }),
-    }
+  const first = resolved.sources[0]?.path ?? ''
+  if (!action.appliesTo(resolved.sources)) {
+    const reason = unavailableReason(action, resolved.sources) ?? 'not available for these files'
+    return nothingRan('pageop', [
+      ...resolved.failures,
+      { path: first, error: unsupportedOperation(intent.action, reason) },
+    ])
   }
 
+  let planned: Job[]
+  try {
+    planned = action.plan(resolved.sources, pageOpValues(intent, resolved.sources))
+  } catch (e) {
+    if (!isForgeError(e)) throw e
+    return nothingRan('pageop', [...resolved.failures, { path: first, error: e }])
+  }
+
+  // `action.plan()` bypasses `buildPlan` — its one-source-one-target shape
+  // does not fit merge's several sources or split's several outputs — but
+  // `runPlan` is arity-agnostic, so the write-safety rules arrive for free
+  // rather than having to be applied here by hand.
+  const outcome = await runPlan(planned, { force: intent.force })
+  return {
+    kind: 'pageop',
+    results: outcome.results,
+    failures: [...resolved.failures, ...outcome.refusals, ...outcome.failures],
+    inputBytes: outcome.inputBytes,
+    outputBytes: outcome.outputBytes,
+  }
+}
+
+/**
+ * Compression keeps each file's own format, so there is no single target
+ * for the whole batch — every source is its own. Planned per file and run
+ * through the same `runPlan` every other path uses, so write safety, the
+ * target-size search, concurrency and atomic writes are shared rather than
+ * reimplemented.
+ */
+async function runCompress(intent: CompressIntent, opts: ExecuteOptions): Promise<RunReport> {
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
 
-  /**
-   * Compression keeps each file's own format, so there is no single target
-   * for the whole batch — every source is its own. Planned per file and run
-   * through the same `runPlan` every other path uses, so write safety, the
-   * target-size search, concurrency and atomic writes are shared rather than
-   * reimplemented — this path used to reimplement the search and skip write
-   * safety entirely.
-   */
-  if (intent.kind === 'compress') {
-    const { compressAction } = await import('../core/actions/index.js')
-
-    const jobs: Job[] = []
-    const refusals: InputFailure[] = []
-    for (const source of resolved.sources) {
-      if (!compressAction.appliesTo([source])) {
-        refusals.push({ path: source.path, error: unsupportedCompress(source) })
-        continue
-      }
-      /**
-       * `--output` reads the way it does for a conversion. A directory gets
-       * the action's own `-small` name, nested under `--recursive` exactly as
-       * `resolveOutputPath` nests a conversion; anything else is the file to
-       * write. Several sources aimed at one file collide in `runPlan`'s
-       * write-safety pass, which already says so plainly.
-       */
-      const explicitFile =
-        intent.output !== undefined && !looksLikeDirectory(intent.output)
-          ? resolve(intent.output)
-          : undefined
-      const destination =
-        intent.output === undefined || explicitFile !== undefined
-          ? dirname(source.path)
-          : dirname(
-              resolveOutputPath({
-                sourcePath: source.path,
-                target: source.format,
-                output: intent.output,
-                sourceRoot: resolved.roots.get(source.path),
-              }),
-            )
-      const [planned] = compressAction.plan([source], {
-        mode: intent.maxBytes === undefined ? 'quality' : 'size',
-        ...(intent.quality === undefined ? {} : { quality: intent.quality }),
-        destination,
-      })
-      if (planned?.op !== 'convert') continue
-      if (explicitFile !== undefined) planned.outputs = [explicitFile]
-      // A typed `--dpi` applies to both modes. It was originally threaded
-      // only into the target-size search, so quality mode silently kept the
-      // engine default and produced the same bytes whatever was passed.
-      if (intent.dpi !== undefined) planned.options.dpi = intent.dpi
-      jobs.push(planned)
+  const jobs: Job[] = []
+  const refusals: InputFailure[] = []
+  for (const source of resolved.sources) {
+    if (!compressAction.appliesTo([source])) {
+      refusals.push({ path: source.path, error: unsupportedCompress(source) })
+      continue
     }
-
-    const batch = jobs.length > 1
-    if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
-
-    const outcome = await runPlan(jobs, {
-      force: intent.force,
-      ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
-      ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
-      onEvent: (event) => {
-        if (event.type === 'search:attempt') {
-          // The rung is named as well as the attempt: without it a search that
-          // drops from 150 to 120 dpi looks like the counter simply restarting
-          // for no reason.
-          opts.onSearch?.(
-            event.rung.dpi === undefined
-              ? `attempt ${event.attempt} of ${event.of}`
-              : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
+    /**
+     * `--output` reads the way it does for a conversion. A directory gets
+     * the action's own `-small` name, nested under `--recursive` exactly as
+     * `resolveOutputPath` nests a conversion; anything else is the file to
+     * write. Several sources aimed at one file collide in `runPlan`'s
+     * write-safety pass, which already says so plainly.
+     */
+    const explicitFile =
+      intent.output !== undefined && !looksLikeDirectory(intent.output)
+        ? resolve(intent.output)
+        : undefined
+    const destination =
+      intent.output === undefined || explicitFile !== undefined
+        ? dirname(source.path)
+        : dirname(
+            resolveOutputPath({
+              sourcePath: source.path,
+              target: source.format,
+              output: intent.output,
+              sourceRoot: resolved.roots.get(source.path),
+            }),
           )
-          return
-        }
-        if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
-          opts.onProgress?.({ completed: event.completed, total: event.total })
-        }
-      },
+    const [planned] = compressAction.plan([source], {
+      mode: intent.maxBytes === undefined ? 'quality' : 'size',
+      ...(intent.quality === undefined ? {} : { quality: intent.quality }),
+      destination,
     })
+    if (planned?.op !== 'convert') continue
+    if (explicitFile !== undefined) planned.outputs = [explicitFile]
+    // A typed `--dpi` applies to both modes. It was originally threaded
+    // only into the target-size search, so quality mode silently kept the
+    // engine default and produced the same bytes whatever was passed.
+    if (intent.dpi !== undefined) planned.options.dpi = intent.dpi
+    jobs.push(planned)
+  }
 
-    // `resolved.failures` first, as the conversion path below orders them.
-    // It was missing here, so a file that did not exist was dropped silently
-    // and the run exited 0 having done nothing.
-    const failures = [
+  const batch = jobs.length > 1
+  if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
+
+  const outcome = await runPlan(jobs, {
+    force: intent.force,
+    ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
+    ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
+    onEvent: reportEvents(opts, batch),
+  })
+
+  return {
+    kind: 'compress',
+    results: outcome.results,
+    // `resolved.failures` first, as the conversion path orders them.
+    failures: [
       ...resolved.failures,
       ...refusals,
       ...outcome.refusals,
       ...outcome.unreachable.map((u) => ({ path: u.job.sources[0].path, error: u.error })),
       ...outcome.failures,
-    ]
-    const stdout =
-      outcome.results.length === 0
-        ? []
-        : outcome.results.length === 1
-          ? reportSingle(outcome)
-          : reportBatch(outcome, intent.output)
-
-    return {
-      exitCode: failures.length > 0 ? 1 : 0,
-      stdout,
-      stderr: reportFailures(failures, { debug: intent.debug }),
-    }
+    ],
+    inputBytes: outcome.inputBytes,
+    outputBytes: outcome.outputBytes,
   }
+}
+
+async function runConvert(intent: ConvertIntent, opts: ExecuteOptions): Promise<RunReport> {
+  const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
 
   /**
    * A document source only takes this rasterising path when the target is
    * one `pdfiumEngine` actually writes — `--to pdf` (embedding, not
-   * rasterising) stays on `buildPlan`'s existing one-output-per-source path,
-   * unchanged by this phase. `buildPlan` never sees these sources at all: it
-   * cannot express "many outputs from one source", which is exactly what a
-   * multi-page render is (see `Job`'s `convert` variant in `core/types.ts`).
+   * rasterising) stays on `buildPlan`'s existing one-output-per-source path.
+   * `buildPlan` never sees these sources at all: it cannot express "many
+   * outputs from one source", which is exactly what a multi-page render is.
    *
    * `format === 'pdf'` matters as much as `wantsRaster` does: pdfium only
    * ever reads `pdf`, so a docx/doc source can never actually be rasterised
    * regardless of the target. Without this, `forge report.docx --to jpeg`
-   * was routed into `buildRasterJob` anyway and crashed with an uncaught
-   * "requires at least one selected page" instead of the clean
-   * `unsupported-target` refusal `buildPlan` already produces for it below.
+   * was routed into `buildRasterJob` anyway and crashed instead of getting
+   * the clean `unsupported-target` refusal `buildPlan` produces for it.
    */
   const isDocument = (s: SourceInfo): s is DocumentInfo =>
     s.kind === 'document' && s.format === 'pdf'
@@ -395,37 +476,28 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     : resolved.sources
 
   const documentJobs: Job[] = []
-  const documentFailures: { path: string; error: ForgeError }[] = []
+  const documentFailures: InputFailure[] = []
+  const askPassword = passwordOnce(intent.passwordStdin ?? false, opts.interactive ?? true)
   for (const source of documentSources) {
-    const built = await buildRasterJob(source, intent, resolved.roots.get(source.path))
+    const built = await buildRasterJob(source, intent, askPassword, resolved.roots.get(source.path))
     if ('failure' in built) documentFailures.push(built.failure)
     else documentJobs.push(built.job)
   }
-  const planRequest = {
+  const plan = await buildPlan({
     resolved: { sources: otherSources, failures: [], roots: resolved.roots },
     target: intent.target,
     options: intent.options,
     force: intent.force,
     ...(intent.output === undefined ? {} : { output: intent.output }),
-  }
-  const plan = await buildPlan(planRequest)
+  })
 
   /**
    * One write-safety pass over every job this run plans, whatever path
-   * planned it — `runPlan` does it, over the union.
-   *
-   * Two independent passes — one over the raster jobs, one over the rest —
+   * planned it — `runPlan` does it, over the union. Two independent passes
    * would each see only half the outputs, so a `doc.pdf` rasterising to
    * `doc-1.jpg` and a `doc-1.png` converting to the same name would collide
-   * in neither. That is `outputCollision`'s exact case, and it is the one
-   * refusal `--force` must never suppress: silently writing one file and
-   * reporting two converted breaks invariant 6 (a multi-output job is
-   * all-or-nothing) and invariant 7 (the summary never asserts something
-   * untrue).
-   *
-   * Document jobs go last so an ordinary one-source-one-output conversion
-   * keeps the name it would have had on its own, and the multi-output
-   * rasterisation is the side told to go elsewhere.
+   * in neither (invariants 6 and 7). Document jobs go last so an ordinary
+   * one-source-one-output conversion keeps the name it would have had alone.
    */
   const allJobs = [...plan.jobs, ...documentJobs]
   const isBatch = allJobs.length > 1
@@ -434,29 +506,132 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   const outcome = await runPlan(allJobs, {
     force: intent.force,
     ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
-    onEvent: (event) => {
-      if (isBatch && (event.type === 'job:done' || event.type === 'job:error')) {
-        opts.onProgress?.({ completed: event.completed, total: event.total })
-      }
-    },
+    ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
+    onEvent: reportEvents(opts, isBatch),
   })
 
-  const failures = [
-    ...resolved.failures,
-    ...documentFailures,
-    ...plan.failures,
-    ...outcome.refusals,
-    ...outcome.failures,
-  ]
+  return {
+    kind: 'convert',
+    results: outcome.results,
+    failures: [
+      ...resolved.failures,
+      ...documentFailures,
+      ...plan.failures,
+      ...outcome.refusals,
+      ...outcome.unreachable.map((u) => ({ path: u.job.sources[0].path, error: u.error })),
+      ...outcome.failures,
+    ],
+    inputBytes: outcome.inputBytes,
+    outputBytes: outcome.outputBytes,
+  }
+}
 
+/**
+ * Runs a conversion, compression or page operation and returns what happened
+ * as data. It never prints and never throws a ForgeError: one that escapes is
+ * reported as a command-level failure. The CLI renders the result (`renderRun`)
+ * and the MCP server returns it (`src/mcp/tools.ts`).
+ */
+export async function runIntent(
+  intent: RunnableIntent,
+  opts: ExecuteOptions = {},
+): Promise<RunReport> {
+  try {
+    if (intent.kind === 'pageop') return await runPageOp(intent)
+    if (intent.kind === 'compress') return await runCompress(intent, opts)
+    return await runConvert(intent, opts)
+  } catch (e) {
+    if (!isForgeError(e)) throw e
+    return nothingRan(intent.kind, [{ path: '', error: e }])
+  }
+}
+
+/** One report, rendered as text or as the §3.2 JSON document. */
+export function renderRun(
+  report: RunReport,
+  opts: { json: boolean; debug: boolean },
+): ExecuteResult {
+  const exitCode = exitCodeFor(report.failures)
+  if (opts.json) {
+    return { exitCode, stdout: [JSON.stringify(runJson(VERSION, report))], stderr: [] }
+  }
   const stdout =
-    outcome.results.length === 0
+    report.results.length === 0
       ? []
-      : outcome.results.length === 1
-        ? reportSingle(outcome)
-        : reportBatch(outcome, intent.output)
+      : report.kind === 'pageop'
+        ? reportPageOp(report)
+        : report.results.length === 1
+          ? reportSingle(report)
+          : reportBatch(report)
+  return { exitCode, stdout, stderr: reportFailures(report.failures, { debug: opts.debug }) }
+}
 
-  const stderr = reportFailures(failures, { debug: intent.debug })
+function renderCommandFailure(
+  error: ForgeError,
+  opts: { json: boolean; debug: boolean },
+): ExecuteResult {
+  const failures = [{ path: '', error }]
+  const exitCode = exitCodeFor(failures)
+  if (opts.json) {
+    return { exitCode, stdout: [JSON.stringify(errorJson(VERSION, error))], stderr: [] }
+  }
+  return { exitCode, stdout: [], stderr: reportFailures(failures, { debug: opts.debug }) }
+}
 
-  return { exitCode: failures.length > 0 ? 1 : 0, stdout, stderr }
+async function runConfigCommand(intent: ConfigIntent, json: boolean): Promise<ExecuteResult> {
+  // Lazy: a plain conversion has no reason to touch the config layer at all.
+  const { runConfig } = await import('./config-command.js')
+  const result = await runConfig(intent)
+  if (json) {
+    return {
+      exitCode: 0,
+      stdout: [JSON.stringify(configJson(VERSION, result.config, result.warnings))],
+      stderr: [],
+    }
+  }
+  return { exitCode: 0, stdout: result.stdout, stderr: [] }
+}
+
+/**
+ * Turns an Intent into an ExecuteResult: the one place that does. It never
+ * prints, and never throws a ForgeError — one that escapes (a refused config
+ * value, say) is reported and given an exit code by the §3.4 rule.
+ * src/index.ts writes what it returns.
+ */
+export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
+  const json = opts.json ?? false
+  const debug = 'debug' in intent ? intent.debug : false
+  try {
+    if (intent.kind === 'config') return await runConfigCommand(intent, json)
+    if (intent.kind === 'formats') {
+      return json
+        ? {
+            exitCode: 0,
+            stdout: [JSON.stringify(formatsJson(VERSION, formatMatrix()))],
+            stderr: [],
+          }
+        : { exitCode: 0, stdout: reportFormats(), stderr: [] }
+    }
+    if (intent.kind === 'probe') {
+      const { probes, failures } = await probeFiles(intent.inputs)
+      const exitCode = exitCodeFor(failures)
+      if (json) {
+        return {
+          exitCode,
+          stdout: [JSON.stringify(probeJson(VERSION, { probes, failures }))],
+          stderr: [],
+        }
+      }
+      return {
+        exitCode,
+        stdout: probes.flatMap((p, i) => [...(i > 0 ? [''] : []), ...reportProbe(p)]),
+        stderr: reportFailures(failures, { debug }),
+      }
+    }
+    if (intent.kind === 'shell') return { exitCode: 0, stdout: [], stderr: [] }
+    return renderRun(await runIntent(intent, opts), { json, debug })
+  } catch (e) {
+    if (!isForgeError(e)) throw e
+    return renderCommandFailure(e, { json, debug })
+  }
 }

@@ -1,8 +1,9 @@
-import { Command } from 'commander'
+import { Command, CommanderError } from 'commander'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
 import { parseSize } from '../core/units.js'
+import { VERSION } from '../shell/theme.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
 
 export interface ConvertIntent {
@@ -21,6 +22,18 @@ export interface ConvertIntent {
   pages?: string
   /** Read an encrypted source's password from stdin instead of prompting. */
   passwordStdin?: boolean
+  /**
+   * An encrypted source's password, supplied directly. Only the MCP server sets
+   * this, from its tool argument. The CLI has no flag for it, by design
+   * (invariant 8: never from argv).
+   */
+  password?: string
+  /**
+   * Set by --max-size alongside --to: the converted file must fit this many
+   * bytes, and the search decides the quality. It used to be parsed and then
+   * dropped on this path (spec §4.6).
+   */
+  maxBytes?: number
 }
 
 /**
@@ -81,10 +94,17 @@ export interface PageOpIntent {
   debug: boolean
 }
 
+/** `forge probe <files...>`: what each file is and what Forge can do with it (spec §3.3). */
+export interface ProbeIntent {
+  kind: 'probe'
+  inputs: string[]
+}
+
 export type Intent =
   | ConvertIntent
   | CompressIntent
   | PageOpIntent
+  | ProbeIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
   | ConfigIntent
@@ -153,8 +173,73 @@ function parseConcurrency(raw: string): number {
   return n
 }
 
+/**
+ * The exit-code contract (spec §3.4), printed under --help and in the README.
+ * The rule behind it: if the same flags could succeed on a different file, a
+ * refusal is 1; otherwise it is 2.
+ */
+export const EXIT_CODES_HELP = `
+Exit codes:
+  0  every input succeeded
+  1  the command was understood, and at least one input failed or was refused
+  2  the command itself was invalid: an unknown flag, a missing argument, contradictory flags`
+
+/** The subcommands Commander does not know about, because `parseArgs` claims them first. */
+export const COMMANDS_HELP = `
+Other commands:
+  forge probe <files...>   what each file is and what Forge can do with it
+  forge config [list | path | set <setting> <value>]
+  forge mcp                run as a local MCP server over stdio, for AI agents`
+
+function parseMaxSize(raw: unknown): number {
+  const bytes = parseSize(String(raw))
+  if (bytes === undefined) {
+    throw invalidArguments(
+      `${raw} is not a size.`,
+      'Try a number with a unit, for example 500kb, 2mb or 1.5mb.',
+    )
+  }
+  return bytes
+}
+
+/**
+ * Claimed before Commander for the same reason `config` is: Commander's
+ * variadic `[inputs...]` would otherwise read `probe` as a filename. Probe
+ * takes files and `--json` (read by `wantsJson`), and nothing else. A
+ * conversion flag here is a mistake worth naming, not one to ignore.
+ */
+function parseProbeArgs(argv: string[]): ProbeIntent {
+  const rest = argv.slice(1).filter((a) => a !== '--json')
+  const flag = rest.find((a) => a.startsWith('-'))
+  if (flag !== undefined) {
+    throw invalidArguments(
+      `forge probe takes files, not ${flag}.`,
+      'Try: forge probe photo.jpg --json',
+    )
+  }
+  if (rest.length === 0) {
+    throw invalidArguments(
+      'No files given.',
+      'Name a file, for example: forge probe scan.pdf --json',
+    )
+  }
+  return { kind: 'probe', inputs: rest }
+}
+
+/**
+ * Whether the caller asked for JSON. It is read from argv rather than from the
+ * parsed intent because it has to be known even when parsing fails: an argument
+ * error is reported in the same JSON shape as everything else (spec §3.2).
+ * Reading stops at `--`, after which everything is a filename.
+ */
+export function wantsJson(argv: string[]): boolean {
+  const end = argv.indexOf('--')
+  return (end === -1 ? argv : argv.slice(0, end)).includes('--json')
+}
+
 export function parseArgs(argv: string[]): Intent {
-  if (argv[0] === 'config') return parseConfigArgs(argv)
+  if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
+  if (argv[0] === 'probe') return parseProbeArgs(argv)
 
   const program = new Command()
     .name('forge')
@@ -180,12 +265,43 @@ export function parseArgs(argv: string[]): Intent {
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
     .option('--password-stdin', "read an encrypted PDF's password from stdin")
+    .option('--json', 'print one JSON document on stdout instead of text')
     .helpOption('-h, --help', 'show this help')
-    .version('0.1.0', '-V, --version', 'show the version')
+    .version(VERSION, '-V, --version', 'show the version')
+    .addHelpText('after', `${COMMANDS_HELP}\n${EXIT_CODES_HELP}`)
+    .configureOutput({ outputError: () => {} })
     .exitOverride()
     .allowExcessArguments(false)
 
-  program.parse(argv, { from: 'user' })
+  try {
+    program.parse(argv, { from: 'user' })
+  } catch (e) {
+    /**
+     * Commander's own usage errors become Forge's, so they read like every
+     * other refusal and can be reported as JSON. Commander no longer prints
+     * them itself (`outputError` above). Help and version are not errors: they
+     * are rethrown for src/index.ts to exit 0 on.
+     */
+    if (
+      e instanceof CommanderError &&
+      e.code !== 'commander.helpDisplayed' &&
+      e.code !== 'commander.version'
+    ) {
+      // Commander appends a suggestion on a second line, in parentheses:
+      // "unknown option '--tox'\n(Did you mean --to?)". That is a hint, not
+      // part of what went wrong.
+      const [first = '', ...rest] = e.message.replace(/^error: /, '').split('\n')
+      const suggestion = rest
+        .join(' ')
+        .trim()
+        .replace(/^\((.*)\)\.?$/, '$1')
+      throw invalidArguments(
+        `${first.charAt(0).toUpperCase()}${first.slice(1).replace(/\.$/, '')}.`,
+        suggestion || 'Run forge --help to see what Forge accepts.',
+      )
+    }
+    throw e
+  }
 
   const opts = program.opts()
   const inputs = program.args
@@ -295,29 +411,23 @@ export function parseArgs(argv: string[]): Intent {
     return { kind: 'shell' }
   }
 
+  // Both paths: they answer the same question two ways, with or without --to.
+  if (opts.quality !== undefined && opts.maxSize !== undefined) {
+    throw invalidArguments(
+      'Use either --quality or --max-size, not both.',
+      'They are two ways of asking for the same thing, and Forge will not guess which wins.',
+    )
+  }
+
   /**
    * Quality or a size ceiling, with no target format, means compression: keep
    * the format, make the file smaller.
    */
   if (!opts.to && (opts.quality !== undefined || opts.maxSize !== undefined)) {
-    if (opts.quality !== undefined && opts.maxSize !== undefined) {
-      throw invalidArguments(
-        'Use either --quality or --max-size, not both.',
-        'They are two ways of asking for the same thing, and Forge will not guess which wins.',
-      )
-    }
     if (inputs.length === 0) {
       throw invalidArguments(
         'No files given.',
         'Name a file, for example: forge photo.jpg --max-size 500kb',
-      )
-    }
-
-    const maxBytes = opts.maxSize === undefined ? undefined : parseSize(String(opts.maxSize))
-    if (opts.maxSize !== undefined && maxBytes === undefined) {
-      throw invalidArguments(
-        `${opts.maxSize} is not a size.`,
-        'Try a number with a unit, for example 500kb, 2mb or 1.5mb.',
       )
     }
 
@@ -335,7 +445,7 @@ export function parseArgs(argv: string[]): Intent {
       debug: Boolean(opts.debug),
     }
     if (opts.quality !== undefined) compress.quality = parseQuality(String(opts.quality))
-    if (maxBytes !== undefined) compress.maxBytes = maxBytes
+    if (opts.maxSize !== undefined) compress.maxBytes = parseMaxSize(opts.maxSize)
     // Carried, not dropped: this branch used to have no field for it, so
     // `-o` was parsed and silently ignored while the output-exists refusal
     // told the user to "choose a different --output".
@@ -406,6 +516,7 @@ export function parseArgs(argv: string[]): Intent {
   // the source's page count, which is only known once resolveInputs/probe
   // has actually read the file (src/cli/execute.ts does that per source).
   if (opts.pages !== undefined) intent.pages = String(opts.pages)
+  if (opts.maxSize !== undefined) intent.maxBytes = parseMaxSize(opts.maxSize)
   if (opts.concurrency !== undefined)
     intent.concurrency = parseConcurrency(String(opts.concurrency))
   return intent

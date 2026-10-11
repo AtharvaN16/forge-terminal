@@ -128,17 +128,26 @@ export type Job =
   | { op: 'delete'; sources: [DocumentInfo]; outputs: [string]; pages: number[] }
   | { op: 'rotate'; sources: [DocumentInfo]; outputs: [string]; turns: 1 | 2 | 3 }
 
+/**
+ * Every warning's stable identifier. --json and the MCP server print it, so a
+ * consumer can act on a warning without parsing its prose. A code is never
+ * renamed or removed in a minor version (spec §3.2).
+ */
+export type WarningCode =
+  | 'animation-flattened'
+  /** A PDF held nothing this could re-encode, so its size barely moved. */
+  | 'pdf-no-images'
+  /** Some images were re-encoded and some were left alone. */
+  | 'pdf-images-skipped'
+  /** Image resolution was reduced, which is the loss worth naming. */
+  | 'pdf-downsampled'
+  /** The npm fallback ran instead of LibreOffice — tables, images and layout were not preserved. */
+  | 'word-basic-fidelity'
+  /** `forge config` could not read its settings file and fell back to defaults. */
+  | 'config-unreadable'
+
 export interface Warning {
-  code:
-    | 'animation-flattened'
-    /** A PDF held nothing this could re-encode, so its size barely moved. */
-    | 'pdf-no-images'
-    /** Some images were re-encoded and some were left alone. */
-    | 'pdf-images-skipped'
-    /** Image resolution was reduced, which is the loss worth naming. */
-    | 'pdf-downsampled'
-    /** The npm fallback ran instead of LibreOffice — tables, images and layout were not preserved. */
-    | 'word-basic-fidelity'
+  code: WarningCode
   message: string
 }
 

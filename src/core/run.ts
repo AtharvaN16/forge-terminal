@@ -24,6 +24,41 @@ export function defaultConcurrency(): number {
   return Math.max(1, Math.min(cpus().length, 4))
 }
 
+/**
+ * A worker count from what the caller asked for. A value that is not a
+ * finite number (NaN from a bad parse, Infinity, ...) must never collapse the
+ * pool to zero, which would silently do nothing while still resolving.
+ */
+export function resolveConcurrency(requested?: number): number {
+  const finite = requested !== undefined && Number.isFinite(requested) ? requested : undefined
+  return Math.max(1, finite ?? defaultConcurrency())
+}
+
+/**
+ * Runs `task` once per item, at most `limit` at a time, starting them in
+ * order. The one concurrency pool in Forge: conversions (`runJobs`) and
+ * target-size searches (`runPlan`) both go through it, so a search cannot
+ * oversubscribe the libuv threadpool that Sharp already shares with them.
+ *
+ * `task` must not throw. A rejection would leave the other workers running
+ * with nobody waiting for them.
+ */
+export async function pool<T>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let cursor = 0
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const index = cursor++
+      await task(items[index] as T, index)
+    }
+  }
+  const workers = Math.min(resolveConcurrency(limit), items.length)
+  await Promise.all(Array.from({ length: workers }, worker))
+}
+
 export async function runJobs(
   jobs: Job[],
   opts: {
@@ -39,59 +74,48 @@ export async function runJobs(
 ): Promise<RunSummary> {
   const emit = opts.onEvent ?? (() => {})
   const resolveEngine = opts.engineFor ?? engineForJob
-  // A caller-supplied concurrency that is not a finite number (NaN from a bad
-  // parse, Infinity, ...) must never be allowed to collapse the worker count
-  // to zero — that would silently convert nothing while still resolving.
-  const requested = Number.isFinite(opts.concurrency) ? opts.concurrency : undefined
-  const limit = Math.max(1, requested ?? defaultConcurrency())
+  const limit = resolveConcurrency(opts.concurrency)
   const total = jobs.length
 
-  const results: Result[] = []
-  const failures: InputFailure[] = []
+  // Slotted by job index and compacted at the end, so results and failures
+  // are reported in the order the jobs were given, not the order they finished.
+  const resultAt: (Result | undefined)[] = []
+  const failureAt: (InputFailure | undefined)[] = []
   let completed = 0
-  let cursor = 0
 
-  async function worker(): Promise<void> {
-    while (cursor < total) {
-      const index = cursor++
-      const job = jobs[index]
-      if (!job) return
+  await pool(jobs, limit, async (job, index) => {
+    emit({ type: 'job:start', job, index, total })
 
-      emit({ type: 'job:start', job, index, total })
-
-      const engine = resolveEngine(job)
-      if (!engine) {
-        completed++
-        const path = job.sources[0].path
-        const failure: InputFailure = {
-          path,
-          error: conversionFailed(path, new Error(`no engine runs ${job.op}`)),
-        }
-        failures.push(failure)
-        emit({ type: 'job:error', job, failure, completed, total })
-        continue
+    const engine = resolveEngine(job)
+    if (!engine) {
+      completed++
+      const path = job.sources[0].path
+      const failure: InputFailure = {
+        path,
+        error: conversionFailed(path, new Error(`no engine runs ${job.op}`)),
       }
-
-      try {
-        const result = await engine.run(job, (progress) =>
-          emit({ type: 'job:phase', job, progress }),
-        )
-        results.push(result)
-        completed++
-        emit({ type: 'job:done', job, result, completed, total })
-      } catch (e) {
-        completed++
-        const path = job.sources[0].path
-        const error = isForgeError(e) ? e : conversionFailed(path, e)
-        const failure: InputFailure = { path, error }
-        failures.push(failure)
-        emit({ type: 'job:error', job, failure, completed, total })
-      }
+      failureAt[index] = failure
+      emit({ type: 'job:error', job, failure, completed, total })
+      return
     }
-  }
 
-  await Promise.all(Array.from({ length: Math.min(limit, total) }, worker))
+    try {
+      const result = await engine.run(job, (progress) => emit({ type: 'job:phase', job, progress }))
+      resultAt[index] = result
+      completed++
+      emit({ type: 'job:done', job, result, completed, total })
+    } catch (e) {
+      completed++
+      const path = job.sources[0].path
+      const error = isForgeError(e) ? e : conversionFailed(path, e)
+      const failure: InputFailure = { path, error }
+      failureAt[index] = failure
+      emit({ type: 'job:error', job, failure, completed, total })
+    }
+  })
 
+  const results = resultAt.filter((r): r is Result => r !== undefined)
+  const failures = failureAt.filter((f): f is InputFailure => f !== undefined)
   const summary: RunSummary = {
     results,
     failures,

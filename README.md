@@ -402,6 +402,8 @@ Forge can **read** a password-protected PDF — probing and `--to jpeg`/`--to
 png` both work once it has the password. Page operations (`--merge`,
 `--split`, `--extract`, `--delete`, `--rotate`) refuse an encrypted PDF
 outright: they rewrite the file, and Forge cannot write an encrypted one.
+`forge probe` says so: for an encrypted PDF it lists only the image formats
+as targets and `convert` as the only action.
 
 It cannot **remove** a password either; there is no unlock or decrypt-and-resave
 feature, on purpose. The only libraries that can decrypt and rewrite a PDF
@@ -419,8 +421,8 @@ $ echo -n "hunter2" | forge locked-hunter2.pdf --to png --password-stdin
   2.7 KB → 22.4 KB total
 ```
 
-or leave `--password-stdin` off and Forge prompts on stderr, reading one
-line without echoing it back:
+or, at a terminal, leave `--password-stdin` off and Forge prompts on stderr,
+reading one line without echoing it back:
 
 ```
 $ forge locked-hunter2.pdf --to jpeg
@@ -430,8 +432,8 @@ Password:
   2.7 KB → 16.6 KB total
 ```
 
-A wrong password gets the same message an unattempted password does — Forge
-doesn't echo back anything about the attempt itself:
+A wrong password is told apart from a missing one, and Forge never echoes the
+attempt itself:
 
 ```
 $ echo -n "wrongpass" | forge locked-hunter2.pdf --to png --password-stdin
@@ -439,8 +441,13 @@ $ echo -n "wrongpass" | forge locked-hunter2.pdf --to png --password-stdin
 
   locked-hunter2.pdf is password-protected.
 
-  Convert it to images instead:  forge locked-hunter2.pdf --to jpeg --password-stdin
+  That password didn't open it. Check it and try again.
 ```
+
+`--password-stdin` reads one line, so a pipe that stays open after sending
+the password does not hold Forge up. Without a terminal (piped, scripted, or
+driven by an agent) Forge never prompts: an encrypted PDF without
+`--password-stdin` fails at once with exit 1.
 
 ### In the shell
 
@@ -467,15 +474,16 @@ multi-page render has a real count to report against.
 
 ### Not yet
 
-This phase adds PDF↔image conversion and reading a password-protected PDF
-(see [PDF → image](#pdf--image) and [Encrypted PDFs](#encrypted-pdfs)
-above — including in the shell). Still not implemented: compressing a PDF
-and splitting one to a target size, which are phase 4b, and Markdown, HTML
-and Office conversion, which are phase 5. Removing a password from a PDF is
-not planned at all — see [Encrypted PDFs](#encrypted-pdfs) for why.
-Separately, and not specific to PDFs: the shell refuses to convert or
-compress several staged files at once today — that's a deliberate limit
-while batch handling through the shell is still unbuilt, not a bug.
+PDF↔image conversion, reading a password-protected PDF (see [PDF →
+image](#pdf--image) and [Encrypted PDFs](#encrypted-pdfs) above — including
+in the shell), and compressing a PDF that holds images (`forge scan.pdf
+--max-size 2mb`) all work. A PDF that is only text and layout has nothing
+compression can shrink, and Forge says so. Still not implemented: Markdown,
+HTML and Office conversion beyond Word. Removing a password from a PDF is not
+planned at all — see [Encrypted PDFs](#encrypted-pdfs) for why. Separately,
+and not specific to PDFs: the shell refuses to convert or compress several
+staged files at once today — that's a deliberate limit while batch handling
+through the shell is still unbuilt, not a bug.
 
 ## Usage
 
@@ -589,8 +597,9 @@ deep, unless you pass `--recursive`):
 $ forge photos --to webp -o ./out/
 ✓ 3 converted
   6.2 KB → 1.9 KB · 69.6% smaller
-
-Output: ./out/
+  out/photo1.webp
+  out/photo2.webp
+  out/photo3.webp
 ```
 
 With `--recursive`, the source tree is recreated under the output directory
@@ -600,8 +609,10 @@ instead of being flattened:
 $ forge photos --to png -o ./t/ --recursive
 ✓ 4 converted
   8.3 KB → 1.7 KB · 80% smaller
-
-Output: ./t/
+  t/photo1.png
+  t/photo2.png
+  t/photo3.png
+  t/sub/deeper/bottom.png
 ```
 
 ```
@@ -649,6 +660,159 @@ Try: forge photo.jpg --to webp
 $ echo $?
 2
 ```
+
+## Use with AI agents
+
+Tell an agent *"take this image and use Forge on it"* and it can: Forge is
+local, private, and built to be driven without a person at the keyboard.
+
+### As an MCP server
+
+```bash
+claude mcp add forge -- forge mcp     # Claude Code
+codex mcp add forge -- forge mcp      # Codex / ChatGPT desktop's Codex
+```
+
+Claude Desktop and Cursor:
+
+```json
+{ "mcpServers": { "forge": { "command": "forge", "args": ["mcp"] } } }
+```
+
+Five tools, deliberately few:
+
+| Tool | Does |
+| --- | --- |
+| `forge_probe` | what files are and what Forge can do with them |
+| `forge_formats` | the capability matrix |
+| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`) |
+| `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
+| `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
+
+Paths must be absolute. Results come back as structured content in the
+`--json` shape below, with a `file://` link to every output, and never as
+file contents. Nothing is overwritten unless the call passes
+`overwrite: true`. An encrypted PDF takes a `password` argument to
+`forge_convert`; there is no prompt. The server speaks MCP over stdio,
+negotiates protocol revision 2025-11-25 with current Claude Code, writes
+nothing but protocol messages to stdout, and exits when its client closes
+stdin.
+
+**Limitation:** an image pasted into a chat app is not a file on disk, so a
+path-based tool cannot see it. Agents with file access (Claude Code, Cursor,
+Codex) are the natural fit.
+
+### As a CLI, with the skill
+
+[`skills/forge/SKILL.md`](skills/forge/SKILL.md) teaches an agent with a
+shell to probe before converting, pass `--json`, read exit codes, and never
+pass `--force` unless asked. For Claude Code, copy it to
+`~/.claude/skills/forge/SKILL.md`. It ships in the npm package: after
+`npm install -g forge-terminal` it is at
+`$(npm root -g)/forge-terminal/skills/forge/SKILL.md`.
+
+### `forge probe`
+
+```
+$ forge probe locked.pdf photo.png
+locked.pdf · PDF · 2.7 KB · 3 pages · password-protected
+  converts to  jpeg, png, pdf, docx
+  actions      convert, split, extract, delete, rotate
+
+photo.png · PNG · 122 KB · 2756×774
+  converts to  jpeg, png, webp, avif, gif, tiff, pdf
+  actions      convert
+```
+
+With `--json`:
+
+```json
+{"forge":"0.1.0","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+```
+
+`targets` and `actions` come from the engines' own capabilities, so they are
+always true for that file. `format` is read from the file's content, not its
+name. `actions` lists `convert` plus what else applies: `compress`,
+`split`, `extract`, `delete`, `rotate`; `merge` appears only when several
+PDFs are probed together. `compress` appears when quality or size can be
+reduced: lossy images, and PDFs that contain compressible images (a PNG has
+only `convert`). Run it as `--quality N` or `--max-size S` without `--to`;
+its `--json` result reports `op: "convert"`. The encrypted PDF above omits
+`compress` and `merge`; a plain PDF with images would also list `compress`.
+A probe has `width`/`height` for an image,
+`pages` and `encrypted` for a PDF. Probing writes nothing. A file that cannot
+be probed goes in `failures` and does not stop the others.
+
+### `--json`
+
+Every command accepts `--json`. stdout then carries exactly one JSON document
+on one line, and nothing else: no colour, no glyphs, no progress. Every
+document has `forge` (the version), `ok` (true only if every input
+succeeded) and `failures`. A conversion, compression or page operation adds
+`results`:
+
+```jsonc
+{
+  "forge": "0.1.0",
+  "ok": false,
+  "results": [
+    {
+      "op": "convert",                  // convert | merge | split | extract | delete | rotate
+      "source": "/abs/photo.heic",      // = sources[0]
+      "sources": ["/abs/photo.heic"],   // all of them, for a merge
+      "outputs": ["/abs/photo.webp"],   // always absolute, always every file written
+      "inputBytes": 52074,
+      "outputBytes": 42684,
+      "warnings": [{ "code": "animation-flattened", "message": "…" }]
+    }
+  ],
+  "failures": [
+    {
+      "path": "/abs/locked.pdf",        // absent for a command-level error
+      "code": "encrypted-source",       // a stable ErrorCode
+      "title": "…", "detail": "…", "hint": "…"
+    }
+  ]
+}
+```
+
+`--formats --json` returns `formats` (`id`, `label`, `extensions`, `read`,
+`write`, `lossy`). `forge probe --json` returns `probes`. `forge config
+--json` returns `config` and `warnings`. An argument error is a document with
+one `invalid-arguments` failure and exit code 2. Fields are not renamed or
+removed within a minor version; the `forge` field says which version you are
+reading. `--help` and `--version` print text even with `--json`.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Every input succeeded |
+| 1 | The command was understood, and at least one input failed or was refused |
+| 2 | The command itself was invalid: an unknown flag, a missing argument, contradictory flags |
+
+If the same flags could succeed on a different file, it's 1; otherwise it's 2.
+The table is also in `forge --help`.
+
+### No terminal, no prompt
+
+Without a TTY, Forge never waits for input. An encrypted PDF without
+`--password-stdin` fails at once (exit 1), and `--password-stdin` reads a
+single line, so a pipe left open by the caller does not hold it up.
+
+### By hand, before a release
+
+Registering a server in a real agent config is a human step, so it is not
+part of the test suite:
+
+1. `npm run build && npm link`, then `claude mcp add forge -- forge mcp`. In
+   Claude Code: "convert ~/Desktop/x.heic to jpeg", "compress it to 200kb",
+   "split ~/Desktop/doc.pdf into pages". Each must succeed and name its
+   outputs. `/mcp` should show the server connected.
+2. Repeat in Claude Desktop with the `mcpServers` snippet above, and record
+   which protocol revision it negotiates (its MCP log shows the `initialize`
+   exchange).
+3. If either client cannot connect, read its MCP log before changing code.
 
 ## Interactive shell
 
@@ -912,8 +1076,14 @@ src/
 │
 ├── cli/
 │   ├── args.ts          Commander wiring → Intent
-│   ├── execute.ts       runs an Intent, returns exit code + stdout/stderr
+│   ├── execute.ts       runIntent() → RunReport (data); execute() renders text or --json
 │   └── report.ts        stdout formatting (success, batch, errors, --formats)
+│
+├── mcp/                the MCP server — a third front end, loaded only by `forge mcp`
+│   ├── server.ts        createForgeServer(): five tools; runMcpServer(): stdio
+│   ├── tools.ts         tool handlers → the same intents and runIntent() the CLI uses
+│   ├── schemas.ts       zod input/output schemas, vocabularies read from core/actions
+│   └── stdout-guard.ts  stdout belongs to the protocol; stray writes go to stderr
 │
 ├── shell/              the interactive shell (Ink + React) — the only place
 │   │                    that renders to a real terminal frame by frame
@@ -959,7 +1129,7 @@ dynamically imports `shell/launch.js` and hands off to it instead.
 
 ```bash
 npm run dev          # run from source with tsx, no build step
-npm run build         # tsc -p tsconfig.json → dist/
+npm run build         # one esbuild bundle → dist/ (scripts/build.mjs)
 npm run typecheck     # tsc --noEmit over src + tests
 npm run lint          # biome check src tests
 npm run format         # biome format --write src tests
@@ -976,7 +1146,7 @@ npm test        # vitest run
 npm run test:watch
 ```
 
-789 tests, all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
+1413 tests (4 skipped), all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
 animated GIFs, HEIC/AVIF samples) are generated by Sharp — or, for HEIC,
 `sips` — at test time, never committed as binaries; the one exception is
 `tests/fixtures/locked-hunter2.pdf`, a real encrypted PDF (password
@@ -1026,7 +1196,7 @@ Not yet built, in rough order:
   `Engine` interface `image.ts` and the PDF engine already implement, so the
   CLI and format menu won't need to change to support it. The PDF engine
   itself now covers page operations and PDF↔image (see [PDF](#pdf) above);
-  PDF compression and splitting to a target size are still to come.
+  splitting a PDF to a target size is still to come.
 
 Explicitly out of scope for 0.1: HEIC encoding (the underlying library
 can't), DOCX/PPTX/SVG output, MP4/MP3, recursive watch mode, config files,

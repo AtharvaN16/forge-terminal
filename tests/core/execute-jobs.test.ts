@@ -277,3 +277,138 @@ describe('runPlan cancellation', () => {
     expect(engine.run).not.toHaveBeenCalled()
   })
 })
+
+describe('runPlan searches in parallel', () => {
+  /** A stub whose `measure` waits, so overlapping searches are observable. */
+  const slowEngine = (fitsAt: number, onMeasure: () => void = () => {}) => {
+    let inFlight = 0
+    const stats = { peak: 0, measures: 0 }
+    const engine: Engine = {
+      id: 'slow',
+      reads: new Set(['pdf']),
+      writes: new Set(['pdf']),
+      ops: new Set<Job['op']>(['convert']),
+      probe: vi.fn(),
+      run: vi.fn(async (job: Job) => ({ job, outputBytes: 1, warnings: [] })),
+      measurer: vi.fn(async () => ({
+        ladder: [{}],
+        measure: async (options: ConvertOptions) => {
+          inFlight += 1
+          stats.peak = Math.max(stats.peak, inFlight)
+          stats.measures += 1
+          onMeasure()
+          await new Promise((r) => setTimeout(r, 5))
+          inFlight -= 1
+          return (options.quality ?? 100) <= fitsAt ? 100 : 1_000_000
+        },
+      })),
+    }
+    return { engine, stats }
+  }
+
+  it('searches up to `concurrency` files at once', async () => {
+    const { engine, stats } = slowEngine(50)
+    const jobs = [jobFor(), jobFor(), jobFor(), jobFor()]
+    const outcome = await runPlan(jobs, {
+      force: true,
+      targetBytes: 500,
+      concurrency: 4,
+      engineFor: () => engine,
+    })
+    expect(stats.peak).toBe(4)
+    expect(outcome.results).toHaveLength(4)
+  })
+
+  it('runs the settled jobs in their original order, whichever search finished first', async () => {
+    const { engine } = slowEngine(50)
+    const jobs = [jobFor(), jobFor(), jobFor()]
+    await runPlan(jobs, { force: true, targetBytes: 500, concurrency: 3, engineFor: () => engine })
+    const ran = (engine.run as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => (c[0] as Job).outputs[0],
+    )
+    expect(ran).toEqual(jobs.map((j) => j.outputs[0]))
+  })
+
+  it('reports each finished search as a real count, never a percentage', async () => {
+    const { engine } = slowEngine(50)
+    const settled: Array<{ completed: number; total: number }> = []
+    await runPlan([jobFor(), jobFor(), jobFor()], {
+      force: true,
+      targetBytes: 500,
+      engineFor: () => engine,
+      onEvent: (event) => {
+        if (event.type === 'search:settled') {
+          settled.push({ completed: event.completed, total: event.total })
+        }
+      },
+    })
+    expect(settled.map((s) => s.completed)).toEqual([1, 2, 3])
+    expect(settled.every((s) => s.total === 3)).toBe(true)
+  })
+
+  it('refuses unsafe writes before any search starts', async () => {
+    const d = await makeTempDir()
+    const existing = join(d, 'taken.pdf')
+    await writeFile(existing, 'already here')
+    const { engine } = slowEngine(50)
+    const outcome = await runPlan([jobFor(existing), jobFor()], {
+      force: false,
+      targetBytes: 500,
+      engineFor: () => engine,
+    })
+    expect(outcome.refusals.map((r) => r.error.code)).toEqual(['output-exists'])
+    // One measurer: the refused job was never searched.
+    expect(engine.measurer).toHaveBeenCalledTimes(1)
+  })
+
+  // Review Focus 1.
+  it('on cancel, writes nothing and starts no encode after it resolves', async () => {
+    const controller = new AbortController()
+    const { engine, stats } = slowEngine(0, () => {
+      // Abort on the third measure. Four searches are in flight by then.
+      if (stats.measures === 3) controller.abort()
+    })
+    const outcome = await runPlan([jobFor(), jobFor(), jobFor(), jobFor(), jobFor(), jobFor()], {
+      force: true,
+      targetBytes: 500,
+      concurrency: 4,
+      engineFor: () => engine,
+      signal: controller.signal,
+    })
+    expect(outcome.cancelled).toBe(true)
+    expect(outcome.results).toEqual([])
+    expect(engine.run).not.toHaveBeenCalled()
+    // Searches really overlapped, and every in-flight one stopped at its next
+    // encode boundary: 4 started, the abort came on the 3rd, so at most the
+    // 4 first encodes ever ran.
+    expect(stats.peak).toBeGreaterThan(1)
+    expect(stats.measures).toBeLessThanOrEqual(4)
+    const atResolve = stats.measures
+    await new Promise((r) => setTimeout(r, 30))
+    expect(stats.measures).toBe(atResolve)
+  })
+
+  // Review Focus 2.
+  it('reports a search that throws as that file failing, and still runs the rest', async () => {
+    const good = stubEngine([{}], ({ quality }) => ((quality ?? 100) <= 50 ? 100 : 1_000_000))
+    const bad: Engine = {
+      ...good,
+      measurer: vi.fn(async () => ({
+        ladder: [{}],
+        measure: async () => {
+          throw new Error('decoder blew up')
+        },
+      })),
+    }
+    const broken = jobFor()
+    const fine = jobFor()
+    const outcome = await runPlan([broken, fine], {
+      force: true,
+      targetBytes: 500,
+      engineFor: (job) => (job === broken ? bad : good),
+    })
+    expect(outcome.failures).toHaveLength(1)
+    expect(outcome.failures[0]?.error.code).toBe('conversion-failed')
+    expect(outcome.results.map((r) => r.job)).toEqual([fine])
+  })
+})

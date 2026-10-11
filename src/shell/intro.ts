@@ -1,4 +1,3 @@
-import { WORDMARK } from './components/Banner.js'
 import {
   composeMark,
   glyphColour,
@@ -9,6 +8,7 @@ import {
   REST_STEP,
   SWING,
   type SwingStep,
+  WORDMARK,
 } from './mark.js'
 import type { Palette } from './theme.js'
 import { bandFor } from './width.js'

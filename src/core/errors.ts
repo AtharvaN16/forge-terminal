@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'heic-decoder-unavailable'
   | 'unsupported-compress'
   | 'unsupported-pdf'
+  | 'unsupported-operation'
   | 'target-unreachable'
   | 'unsupported-target'
   | 'corrupt-source'
@@ -30,6 +31,9 @@ export type ErrorCode =
   | 'empty-selection'
   | 'invalid-dpi'
   | 'unexpected'
+
+/** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
+export type { WarningCode } from './types.js'
 
 interface ForgeErrorInit {
   code: ErrorCode
@@ -176,23 +180,53 @@ export function heicDecoderUnavailable(path: string): ForgeError {
  * promise something the encoder cannot do. Naming that is better than a
  * silent no-op, and the hint points at the thing that *would* work.
  */
-export function unsupportedCompress(source: SourceInfo): ForgeError {
+export function unsupportedCompress(source: SourceInfo, target?: FormatId): ForgeError {
   const name = basename(source.path)
+
+  /**
+   * A conversion asked to fit a size. The size applies to the target, so the
+   * refusal must name the target: telling `photo.jpg --to png --max-size`
+   * that photo.jpg is lossless would be false. Same code as the compression
+   * refusals below, because it is the same refusal with a different subject.
+   */
+  if (target !== undefined && target !== source.format) {
+    const label = FORMATS[target].label
+    if (!FORMATS[target].lossy) {
+      return new ForgeError({
+        code: 'unsupported-compress',
+        title: 'Cannot fit that to a size',
+        detail: `${label} is lossless — there is no quality to trade away, so ${name} cannot be made to fit as ${label}.`,
+        hint: 'Drop --max-size, or choose a lossy target. forge --formats lists them.',
+        shellHint: 'Choose a lossy target to aim for a size.',
+      })
+    }
+    return new ForgeError({
+      code: 'unsupported-compress',
+      title: 'Cannot fit that to a size',
+      detail: `Forge cannot search ${name} → ${label} toward a size yet.`,
+      hint: 'Convert it first, then compress the result with --max-size.',
+      shellHint: 'Convert it first, then /compress the result to a size.',
+    })
+  }
 
   /**
    * A PDF gets its own wording because the lossless line below is FALSE for
    * one. A PDF is a container: its pages are usually JPEGs, and re-encoding
    * them measured 79% smaller on a photo brochure. Telling someone there is
    * "no quality to trade away" sent them hunting for a workaround that does
-   * not exist, when the real answer is that Forge has not built this yet.
+   * not exist; a PDF with images does compress; this refusal only reaches one with nothing re-encodable in it.
    */
   if (source.kind === 'document' && source.format === 'pdf') {
+    const skipped = source.images?.skipped ?? 0
     return new ForgeError({
       code: 'unsupported-compress',
-      title: 'Forge cannot compress a PDF yet',
-      detail: `${name} is a PDF. Compression works on images for now.`,
-      hint: 'Try a page operation such as --extract, or --to <format> to turn its pages into images.',
-      shellHint: 'Try /pdf for page operations, or /convert to turn its pages into images.',
+      title: 'Nothing to compress',
+      detail:
+        skipped > 0
+          ? `${name}'s images are a kind Forge cannot re-encode, so there is nothing to make smaller.`
+          : `${name} has no images — it is text and layout, which compression cannot shrink.`,
+      hint: 'Try a page operation such as --extract to keep fewer pages, or --to <format> to turn its pages into images.',
+      shellHint: 'Try /pdf to keep fewer pages, or /convert to turn its pages into images.',
     })
   }
 
@@ -232,6 +266,26 @@ export function unsupportedPdf(source: SourceInfo): ForgeError {
     title: '/pdf needs a PDF',
     detail: `${name} is ${FORMATS[source.format].label}, not a PDF.`,
     hint: 'Converting it instead.',
+  })
+}
+
+/**
+ * A page operation that does not fit the files it was given: a JPEG handed to
+ * --merge, a single PDF handed to --merge, a one-page PDF handed to --split.
+ * `reason` is the action's own `unavailable()` text, the same words the shell's
+ * /pdf hub shows beside a dimmed row.
+ *
+ * This gets its own code rather than `invalid-arguments`. The command was
+ * well-formed and would succeed on other files, which makes it exit 1, while
+ * `invalid-arguments` always means exit 2 (spec §3.4).
+ */
+export function unsupportedOperation(action: string, reason: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-operation',
+    title: `Cannot ${action} these files`,
+    detail: `Not available for these files: ${reason}.`,
+    hint: 'Page operations work on PDFs: --merge takes two or more, the others take one.',
+    shellHint: 'Use /pdf with a PDF staged — two or more for merge.',
   })
 }
 
@@ -317,18 +371,24 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
  * whatever pdf-lib does partway through — a generic parse failure at the
  * last step would not tell the user what is actually wrong.
  */
-export function encryptedSource(path: string): ForgeError {
+export function encryptedSource(path: string, opts: { attempted?: boolean } = {}): ForgeError {
   const name = basename(path)
   return new ForgeError({
     code: 'encrypted-source',
     title: 'This PDF is password-protected',
     detail: `${name} is password-protected.`,
-    // Forge cannot decrypt-and-write a PDF — the only libraries that can are
-    // AGPL, and Forge is MIT (see the phase-4a spec's ruling on this). The
-    // shell also has no password field by design (spec §8), so this points
-    // at the one front end that reads an encrypted PDF rather than only
-    // refusing.
-    hint: `Convert it to images instead:  forge ${name} --to jpeg --password-stdin`,
+    hint: opts.attempted
+      ? // A password was given and it did not open the file. The old hint
+        // suggested --password-stdin, the flag that had just been used, which
+        // sent people round in a circle (spec §3.1). It deliberately says
+        // nothing about the attempt itself (invariant 8).
+        "That password didn't open it. Check it and try again."
+      : // Forge cannot decrypt-and-write a PDF — the only libraries that can
+        // are AGPL, and Forge is MIT (see the phase-4a spec's ruling on this).
+        // The shell also has no password field by design (spec §8), so this
+        // points at the one front end that reads an encrypted PDF rather than
+        // only refusing.
+        `Convert it to images instead:  forge ${name} --to jpeg --password-stdin`,
   })
 }
 

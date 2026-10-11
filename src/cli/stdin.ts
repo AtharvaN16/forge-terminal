@@ -2,20 +2,54 @@ import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 
 /**
+ * The first line of `input`, without its line ending, after which the stream
+ * is let go.
+ *
+ * It reads one line rather than reading until EOF. An agent harness often gives
+ * Forge a stdin pipe, writes the password to it, and never closes it. Reading
+ * to EOF waited on that pipe forever (spec §3.1).
+ *
+ * If the stream ends before a newline arrives (`echo -n`), readline still emits
+ * what was sent as a final line. If it ends with nothing at all, the result is ''.
+ *
+ * Pausing and unref-ing afterwards is what lets the process exit while the
+ * writer still holds the pipe open. readline's close() pauses the stream but
+ * leaves its handle keeping the event loop alive.
+ */
+function readFirstLine(input: NodeJS.ReadableStream): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input, terminal: false })
+    let done = false
+    const finish = (line: string) => {
+      if (done) return
+      done = true
+      rl.close()
+      input.pause()
+      const handle = input as { unref?: () => void }
+      handle.unref?.()
+      resolve(line.replace(/\r$/, ''))
+    }
+    rl.once('line', finish)
+    rl.once('close', () => finish(''))
+  })
+}
+
+/**
  * A password, never from argv.
  *
  * An argument lands in shell history and in `ps` output, and PDF passwords
  * are reused often enough that leaking one leaks more than one file. Reading
  * stdin or prompting costs the same keystrokes and avoids both.
+ *
+ * Returns `undefined` when there is no way to ask: `--password-stdin` was not
+ * given and stdin is not a terminal. Forge never prompts without a TTY. A prompt
+ * nobody can see hangs forever on an open pipe, and on a closed one it left Node
+ * to exit 13 on an await that could never settle. The caller refuses with
+ * `encrypted-source` instead, and that error's hint names --password-stdin.
  */
-export async function readPassword(opts: { stdin: boolean }): Promise<string> {
-  if (opts.stdin) {
-    const chunks: Buffer[] = []
-    for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk))
-    return Buffer.concat(chunks)
-      .toString('utf8')
-      .replace(/\r?\n$/, '')
-  }
+export async function readPassword(opts: { stdin: boolean }): Promise<string | undefined> {
+  if (opts.stdin) return readFirstLine(process.stdin)
+  if (!process.stdin.isTTY) return undefined
 
   // Use a null stream for readline's output to prevent echoing typed characters.
   // readline writes input echo to this stream, which we buffer but do not forward to

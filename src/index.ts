@@ -1,9 +1,23 @@
 #!/usr/bin/env node
-import { parseArgs } from './cli/args.js'
+import * as nodeModule from 'node:module'
+import { parseArgs, wantsJson } from './cli/args.js'
 import type { BatchProgress } from './cli/execute.js'
-import { execute } from './cli/execute.js'
+import { asForgeError, fatalLines, guardUnsettled } from './cli/fatal.js'
 import { type Spinner, startSpinner } from './cli/spinner.js'
-import { isForgeError, renderError } from './core/errors.js'
+import { invalidArguments, isForgeError, renderError } from './core/errors.js'
+import { errorJson } from './core/report-data.js'
+
+/**
+ * Node's on-disk compile cache for every module loaded after this line, which
+ * is all of the heavy ones because they are imported dynamically below.
+ * Measured at -25 ms per run (spec §4.2.3).
+ *
+ * A namespace import plus an optional call, never `import { enableCompileCache }`:
+ * the function arrived in Node 22.1, `engines` allows 20, and a missing named
+ * export from a built-in is a link error that would stop Forge from starting
+ * at all.
+ */
+nodeModule.enableCompileCache?.()
 
 /**
  * Prints "Converting N files" once, then a completion counter as jobs finish.
@@ -21,13 +35,31 @@ function onProgress({ completed, total }: BatchProgress): void {
 
 // Re-exported, not redeclared: theme.ts owns the value so the shell can
 // show it in the banner without importing the entrypoint and forming a cycle.
-export { VERSION } from './shell/theme.js'
+import { VERSION } from './shell/theme.js'
+
+export { VERSION }
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const debug = argv.includes('--debug')
+  const json = wantsJson(argv)
 
   try {
+    /**
+     * `forge mcp` is a server, not a command. It owns stdin and stdout until
+     * the client hangs up, so it is routed before argument parsing and never
+     * reaches execute(). The import is lazy, so no other command loads the
+     * MCP SDK (spec §3.5).
+     */
+    if (argv[0] === 'mcp') {
+      const { runMcpServer } = await import('./mcp/server.js')
+      await runMcpServer(argv.slice(1))
+      return
+    }
+
+    // Parse first, import second (spec §4.2). `--version`, `--help` and every
+    // usage error are answered inside parseArgs, by Commander, before any
+    // engine, library or shell module is loaded.
     const intent = parseArgs(argv)
 
     // The shell is only ever launched from a real terminal. Piped or scripted
@@ -39,6 +71,14 @@ async function main(): Promise<void> {
     // TTY stdout with a redirected stdin. Gating on stdout alone let those
     // through to Ink, whose ErrorBoundary then rendered the raw stack.
     if (intent.kind === 'shell') {
+      // --json asks for one document on stdout. The shell is the one thing that
+      // cannot produce one, so a bare `forge --json` is a usage error.
+      if (json) {
+        throw invalidArguments(
+          'No files given.',
+          'Name a file, for example: forge photo.jpg --to webp --json',
+        )
+      }
       if (!process.stdout.isTTY || !process.stdin.isTTY) {
         process.stderr.write(
           'Forge needs a file and a target format.\nTry: forge photo.jpg --to webp\n',
@@ -52,10 +92,15 @@ async function main(): Promise<void> {
       const { applyColourPreference } = await import('./shell/theme.js')
       applyColourPreference()
 
-      const { launchShell } = await import('./shell/launch.js')
-      await launchShell()
+      // boot.ts starts importing the shell and plays the intro at the same
+      // time. It is React-free, so nothing here gets ahead of the line above.
+      const { bootShell } = await import('./shell/boot.js')
+      await bootShell()
       return
     }
+
+    // Only now, with real work to do, is the engine layer loaded.
+    const { execute } = await import('./cli/execute.js')
 
     /**
      * The spinner is created on the first search callback rather than up
@@ -64,9 +109,22 @@ async function main(): Promise<void> {
      * file decides to animate it, and only on a terminal.
      */
     let spinner: Spinner | undefined
+    // Progress and the spinner are stderr decoration for a person at a
+    // terminal. Under --json they stay off entirely (spec §3.2).
+    const tty = Boolean(process.stderr.isTTY) && !json
     const result = await execute(intent, {
-      onProgress: process.stderr.isTTY ? onProgress : undefined,
-      ...(process.stderr.isTTY
+      json,
+      onProgress: tty
+        ? (progress: BatchProgress) => {
+            // The spinner redraws its line in place and the counter prints
+            // whole lines, so the two would share one row ("⠸ finding … 1/3").
+            // Once a job finishes the counter is the better signal; the
+            // spinner goes for good (a stopped one ignores later updates).
+            if (progress.completed > 0) spinner?.stop()
+            onProgress(progress)
+          }
+        : undefined,
+      ...(tty
         ? {
             onSearch: (status: string) => {
               spinner ??= startSpinner(process.stderr, 'finding the smallest that fits')
@@ -81,7 +139,8 @@ async function main(): Promise<void> {
     process.exitCode = result.exitCode
   } catch (e) {
     if (isForgeError(e)) {
-      process.stderr.write(`${renderError(e, { debug }).join('\n')}\n`)
+      if (json) process.stdout.write(`${JSON.stringify(errorJson(VERSION, e))}\n`)
+      else process.stderr.write(`${renderError(e, { debug }).join('\n')}\n`)
       process.exitCode = 2
       return
     }
@@ -99,4 +158,27 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+/**
+ * Prints an error that main() did not turn into a Forge answer itself. There is
+ * never a raw stack trace (unless --debug), and Node's own exit code never
+ * leaks through. Only this file prints.
+ */
+function reportFatal(e: unknown): void {
+  const argv = process.argv.slice(2)
+  if (wantsJson(argv)) {
+    process.stdout.write(`${JSON.stringify(errorJson(VERSION, asForgeError(e)))}\n`)
+    return
+  }
+  process.stderr.write(`${fatalLines(e, argv.includes('--debug')).join('\n')}\n`)
+}
+
+let settled = false
+guardUnsettled(() => settled, reportFatal)
+try {
+  await main()
+} catch (e) {
+  reportFatal(e)
+  process.exitCode = 1
+} finally {
+  settled = true
+}

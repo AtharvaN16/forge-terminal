@@ -1,0 +1,34 @@
+[
+  {
+    "file": "columns.pdf",
+    "columns": 2,
+    "font": "Helvetica",
+    "lines": [
+      "Column text sentence number 1. Column text sentence number 2. Column text sentence number 3. Column text sentence number 4. Column text sentence number 5. Column text sentence number 6. Column text sentence number 7. Column text sentence number 8. Column text sentence number 9. Column text sentence number 10. Column text sentence number 11. Column text sentence number 12. Column text sentence number 13. Column text sentence number 14. Column text sentence number 15. Column text sentence number 16. Column text sentence number 17. Column text sentence number 18. Column text sentence number 19. Column text sentence number 20. Column text sentence number 21. Column text sentence number 22. Column text sentence number 23. Column text sentence number 24. Column text sentence number 25. Column text sentence number 26. Column text sentence number 27. Column text sentence number 28. Column text sentence number 29. Column text sentence number 30. Column text sentence number 31. Column text sentence number 32. Column text sentence number 33. Column text sentence number 34. Column text sentence number 35. Column text sentence number 36. Column text sentence number 37. Column text sentence number 38. Column text sentence number 39. Column text sentence number 40. Column text sentence number 41. Column text sentence number 42. Column text sentence number 43. Column text sentence number 44. Column text sentence number 45. Column text sentence number 46. Column text sentence number 47. Column text sentence number 48. Column text sentence number 49. Column text sentence number 50. Column text sentence number 51. Column text sentence number 52. Column text sentence number 53. Column text sentence number 54. Column text sentence number 55. Column text sentence number 56. Column text sentence number 57. Column text sentence number 58. Column text sentence number 59. Column text sentence number 60. Column text sentence number 61. Column text sentence number 62. Column text sentence number 63. Column text sentence number 64. Column text sentence number 65. Column text sentence number 66. Column text sentence number 67. Column text sentence number 68. Column text sentence number 69. Column text sentence number 70. Column text sentence number 71. Column text sentence number 72. Column text sentence number 73. Column text sentence number 74. Column text sentence number 75. Column text sentence number 76. Column text sentence number 77. Column text sentence number 78. Column text sentence number 79. Column text sentence number 80. Column text sentence number 81. Column text sentence number 82. Column text sentence number 83. Column text sentence number 84. Column text sentence number 85. Column text sentence number 86. Column text sentence number 87. Column text sentence number 88. Column text sentence number 89. Column text sentence number 90."
+    ]
+  },
+  {
+    "file": "hebrew.pdf",
+    "columns": 1,
+    "font": "Arial Hebrew",
+    "lines": ["שלום עולם וברוכים הבאים"]
+  },
+  {
+    "file": "arabic.pdf",
+    "columns": 1,
+    "font": "Geeza Pro",
+    "lines": ["مرحبا بالعالم", "النص العربي"]
+  },
+  {
+    "file": "cjk.pdf",
+    "columns": 1,
+    "font": "Hiragino Sans",
+    "lines": ["日本語のテキストです", "中文文本示例", "한국어 텍스트"]
+  },
+  {
+    "file": "ligatures.pdf",
+    "columns": 1,
+    "font": "Hoefler Text",
+    "lines": ["office affine flight waffle efficient"]
+  }
+]

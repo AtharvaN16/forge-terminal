@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { parseArgs } from '../../src/cli/args.js'
-import { isForgeError } from '../../src/core/errors.js'
+import { parseArgs, wantsJson } from '../../src/cli/args.js'
+import { type ForgeError, isForgeError } from '../../src/core/errors.js'
+import { VERSION } from '../../src/shell/theme.js'
 
 function codeOf(argv: string[]): string {
   try {
@@ -108,5 +110,93 @@ describe('parseArgs', () => {
     expect(parseArgs(['a.jpg', '--to', 'webp', '--concurrency', '3'])).toMatchObject({
       concurrency: 3,
     })
+  })
+})
+
+describe('--max-size with --to', () => {
+  const codeOf = (fn: () => unknown): string | undefined => {
+    try {
+      fn()
+    } catch (e) {
+      return isForgeError(e) ? e.code : 'unknown'
+    }
+    return undefined
+  }
+
+  it('is a conversion that carries the size', () => {
+    const intent = parseArgs(['a.jpg', '--to', 'jpeg', '--max-size', '50kb'])
+    if (intent.kind !== 'convert') throw new Error('expected convert')
+    expect(intent.target).toBe('jpeg')
+    expect(intent.maxBytes).toBe(50_000)
+  })
+
+  it('refuses --quality alongside it, as compression already does', () => {
+    expect(
+      codeOf(() => parseArgs(['a.jpg', '--to', 'webp', '--quality', '60', '--max-size', '1mb'])),
+    ).toBe('invalid-arguments')
+  })
+
+  it('refuses a size it cannot read', () => {
+    expect(codeOf(() => parseArgs(['a.jpg', '--to', 'jpeg', '--max-size', 'banana']))).toBe(
+      'invalid-arguments',
+    )
+  })
+
+  it('leaves maxBytes unset when --max-size is absent', () => {
+    const intent = parseArgs(['a.jpg', '--to', 'jpeg'])
+    if (intent.kind !== 'convert') throw new Error('expected convert')
+    expect(intent.maxBytes).toBeUndefined()
+  })
+})
+describe('--json', () => {
+  it('is accepted beside a conversion, --formats and config', () => {
+    expect(parseArgs(['a.jpg', '--to', 'webp', '--json'])).toMatchObject({ kind: 'convert' })
+    expect(parseArgs(['--formats', '--json'])).toEqual({ kind: 'formats' })
+    expect(parseArgs(['config', 'path', '--json'])).toEqual({ kind: 'config', action: 'path' })
+  })
+
+  it('wantsJson reads argv, and stops at --', () => {
+    expect(wantsJson(['a.jpg', '--json'])).toBe(true)
+    expect(wantsJson(['a.jpg'])).toBe(false)
+    expect(wantsJson(['--', '--json'])).toBe(false)
+  })
+
+  it("reports commander's own usage errors as invalid-arguments", () => {
+    expect(codeOf(['a.jpg', '--bogus'])).toBe('invalid-arguments')
+    expect(codeOf(['a.jpg', '--to'])).toBe('invalid-arguments')
+  })
+})
+
+describe('usage errors from Commander', () => {
+  function errorOf(argv: string[]): ForgeError {
+    try {
+      parseArgs(argv)
+    } catch (e) {
+      if (isForgeError(e)) return e
+      throw e
+    }
+    throw new Error('expected an error')
+  }
+
+  it('puts the suggestion in the hint, not in the detail', () => {
+    const e = errorOf(['a.jpg', '--tox', 'png'])
+    expect(e.detail).toBe("Unknown option '--tox'.")
+    expect(e.detail).not.toContain('\n')
+    expect(e.hint).toBe('Did you mean --to?')
+  })
+
+  it('keeps the generic hint when Commander has no suggestion', () => {
+    const e = errorOf(['a.jpg', '--zzzzzz'])
+    expect(e.detail).toBe("Unknown option '--zzzzzz'.")
+    expect(e.hint).toBe('Run forge --help to see what Forge accepts.')
+  })
+})
+
+describe('the version', () => {
+  it('is the one in package.json, wherever it is shown', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+    // src/cli/args.ts prints this same constant for --version, and the
+    // bundle test checks that output against it.
+    expect(VERSION).toBe(pkg.version)
   })
 })

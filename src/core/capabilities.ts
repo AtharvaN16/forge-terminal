@@ -65,3 +65,31 @@ export function writableFormats(): FormatId[] {
 export function rasterises(target: FormatId): boolean {
   return pdfiumEngine.writes.has(target)
 }
+
+/** One row of the capability matrix: `forge --formats --json` and `forge_formats`. */
+export interface FormatCapability {
+  id: FormatId
+  label: string
+  extensions: string[]
+  read: boolean
+  write: boolean
+  lossy: boolean
+}
+
+/**
+ * Every format any registered engine reads or writes, as data. Derived from
+ * the engines, exactly as `reportFormats` is, so the text table, the JSON and
+ * the MCP tool can never offer different formats (invariant 2).
+ */
+export function formatMatrix(): FormatCapability[] {
+  const readable = new Set(readableFormats())
+  const writable = new Set(writableFormats())
+  return sortByRegistryOrder([...new Set([...readable, ...writable])]).map((id) => ({
+    id,
+    label: FORMATS[id].label,
+    extensions: [...FORMATS[id].extensions],
+    read: readable.has(id),
+    write: writable.has(id),
+    lossy: FORMATS[id].lossy,
+  }))
+}

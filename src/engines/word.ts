@@ -3,15 +3,18 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import { promisify } from 'node:util'
-import AdmZip from 'adm-zip'
-import { find as cfbFind, parse as cfbParse } from 'cfb'
-import mammoth from 'mammoth'
-import { PDFDocument as PDFLibDocument, StandardFonts } from 'pdf-lib'
-import { PDFParse } from 'pdf-parse'
-import WordExtractor from 'word-extractor'
 import { writeAtomic } from '../core/atomic.js'
 import { conversionFailed, encryptedSource } from '../core/errors.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result, Warning } from '../core/types.js'
+import {
+  loadAdmZip,
+  loadCfb,
+  loadDocx,
+  loadMammoth,
+  loadPdfLib,
+  loadWordExtractor,
+} from './libs.js'
+import { extractPdfText } from './pdfium.js'
 import type { Engine } from './types.js'
 
 const execFileAsync = promisify(execFile)
@@ -23,12 +26,14 @@ const OLE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
  * `.xls`, `.ppt` and `.msi`, so the magic bytes alone are not enough. The
  * `WordDocument` stream is what only a legacy Word document has.
  */
-function looksLikeDoc(bytes: Buffer): boolean {
+async function looksLikeDoc(bytes: Buffer): Promise<boolean> {
   if (bytes.length < OLE_MAGIC.length || !bytes.subarray(0, OLE_MAGIC.length).equals(OLE_MAGIC)) {
     return false
   }
+  // Loaded only once the OLE magic matched: most files are not compound files.
+  const cfb = await loadCfb()
   try {
-    return cfbFind(cfbParse(bytes), 'WordDocument') !== null
+    return cfb.find(cfb.parse(bytes), 'WordDocument') !== null
   } catch {
     return false
   }
@@ -47,7 +52,8 @@ interface DocxProbeResult {
  * plain regex rather than a full XML parser — the same light-touch style
  * `heic.ts` already uses for one-off values (`pixelWidth`, `hasAlpha`).
  */
-function readDocx(bytes: Buffer): DocxProbeResult | undefined {
+async function readDocx(bytes: Buffer): Promise<DocxProbeResult | undefined> {
+  const AdmZip = await loadAdmZip()
   // One try/catch around the whole read, matching `looksLikeDoc` above:
   // `adm-zip` only validates the fixed-size End Of Central Directory record
   // at construction — it defers parsing the central directory itself to the
@@ -73,7 +79,7 @@ function readDocx(bytes: Buffer): DocxProbeResult | undefined {
 export async function probe(path: string): Promise<DocumentInfo> {
   const bytes = await readFile(path)
 
-  const docx = readDocx(bytes)
+  const docx = await readDocx(bytes)
   if (docx) {
     return {
       kind: 'document',
@@ -85,7 +91,7 @@ export async function probe(path: string): Promise<DocumentInfo> {
     }
   }
 
-  if (looksLikeDoc(bytes)) {
+  if (await looksLikeDoc(bytes)) {
     return {
       kind: 'document',
       path,
@@ -199,26 +205,23 @@ function splitParagraphs(text: string): string[] {
  */
 export async function extractPlainText(source: DocumentInfo): Promise<string[]> {
   if (source.format === 'docx') {
+    const mammoth = await loadMammoth()
     const { value } = await mammoth.extractRawText({ path: source.path })
     return splitParagraphs(value)
   }
 
   if (source.format === 'doc') {
+    const WordExtractor = await loadWordExtractor()
     const extractor = new WordExtractor()
     const doc = await extractor.extract(source.path)
     return splitParagraphs(doc.getBody())
   }
 
   // source.format === 'pdf'
-  const parser = new PDFParse({ data: await readFile(source.path) })
-  try {
-    const { pages } = await parser.getText()
-    return pages.flatMap((page, i) =>
-      i === 0 ? splitParagraphs(page.text) : [PAGE_BREAK, ...splitParagraphs(page.text)],
-    )
-  } finally {
-    await parser.destroy()
-  }
+  const pages = await extractPdfText(await readFile(source.path))
+  return pages.flatMap((text, i) =>
+    i === 0 ? splitParagraphs(text) : [PAGE_BREAK, ...splitParagraphs(text)],
+  )
 }
 
 const PDF_PAGE_WIDTH = 612
@@ -234,7 +237,8 @@ const PDF_LINE_HEIGHT = 14
  * Helvetica metrics rather than guessing a character count per line.
  */
 export async function layoutAsPdf(paragraphs: string[]): Promise<Uint8Array> {
-  const doc = await PDFLibDocument.create()
+  const { PDFDocument, StandardFonts } = await loadPdfLib()
+  const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const maxWidth = PDF_PAGE_WIDTH - PDF_MARGIN * 2
 
@@ -272,49 +276,6 @@ export async function layoutAsPdf(paragraphs: string[]): Promise<Uint8Array> {
   }
 
   return doc.save()
-}
-
-type DocxModule = typeof import('docx')
-
-let docxModule: Promise<DocxModule> | undefined
-
-/**
- * `docx` is loaded on first use, not at startup, and with
- * `globalThis.localStorage` hidden while it evaluates.
- *
- * Its bundle inlines the browser build of `util-deprecate`, whose
- * `deprecate()` probes `globalThis.localStorage` for `noDeprecation` — and
- * calls it at module top level (readable-stream's `_writableState.buffer`).
- * On Node 26 `localStorage` is a global getter that emits an
- * ExperimentalWarning on stderr when `--localstorage-file` is absent, so a
- * static import put that warning on every invocation, `--version` included.
- *
- * Loading lazily keeps it off every path that never writes a docx. Hiding
- * the getter for the duration of the import keeps it off the path that does.
- * Nothing is filtered: the warning is never raised, and every other Node
- * warning still prints. Without a backing file Node's `localStorage` is
- * unusable anyway, so `docx` sees exactly the "no localStorage" it would
- * have concluded, and nothing in Forge reads it while it is hidden.
- */
-function loadDocx(): Promise<DocxModule> {
-  docxModule ??= importWithoutLocalStorage()
-  return docxModule
-}
-
-async function importWithoutLocalStorage(): Promise<DocxModule> {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
-  if (!descriptor?.configurable) return import('docx')
-  Object.defineProperty(globalThis, 'localStorage', {
-    value: undefined,
-    configurable: true,
-    enumerable: descriptor.enumerable ?? false,
-    writable: true,
-  })
-  try {
-    return await import('docx')
-  } finally {
-    Object.defineProperty(globalThis, 'localStorage', descriptor)
-  }
 }
 
 /** One docx paragraph per line, `PAGE_BREAK` sentinels becoming real page breaks. */
@@ -384,7 +345,7 @@ async function run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
   // probing always reports false — see probe()'s comment) — a pdf -> docx
   // job reaching this engine. Refusing with the named `encryptedSource`
   // error here matches `pdfiumEngine`'s own refusal for the same case,
-  // rather than letting pdf-parse throw and surfacing a generic
+  // rather than letting pdfium's load fail and surfacing a generic
   // conversion-failed with no hint about --password-stdin.
   if (source.encrypted) throw encryptedSource(source.path)
 

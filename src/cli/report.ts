@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path'
 import { readableFormats, writableFormats } from '../core/capabilities.js'
 import { renderError } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
+import type { ProbeReport } from '../core/probe-report.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import { formatBytes, percentChange } from '../core/units.js'
@@ -75,19 +76,28 @@ export function reportSingle(summary: RunSummary, where: Where = {}): string[] {
   return lines
 }
 
-export function reportBatch(summary: RunSummary, output?: string): string[] {
+/**
+ * Two or more results. Every output is named, not just counted. A batch that
+ * reported "✓ 3 converted" left the reader, often an agent, to guess where the
+ * files went (spec §1, item 2). There is one line per file written, so a PDF
+ * rasterised inside the batch lists each of its pages.
+ */
+export function reportBatch(summary: RunSummary, where: Where = {}): string[] {
   const lines = [
     `✓ ${summary.results.length} converted`,
     `  ${formatBytes(summary.inputBytes)} → ${formatBytes(summary.outputBytes)} · ${changePhrase(summary.inputBytes, summary.outputBytes)}`,
   ]
+  for (const result of summary.results) {
+    for (const output of result.job.outputs) {
+      lines.push(`  ${displayPath(output, placesFor(where))}`)
+    }
+  }
 
   const warnings = summary.results.flatMap((r) => r.warnings)
   if (warnings.length > 0) {
     lines.push('')
     for (const w of warnings) lines.push(`⚠ ${w.message}`)
   }
-
-  if (output) lines.push('', `Output: ${output}`)
   return lines
 }
 
@@ -137,4 +147,24 @@ export function reportFormats(): string[] {
     lines.push('', `${names} ${verb} read only because Forge cannot yet write ${noun}.`)
   }
   return lines
+}
+
+/**
+ * A probe as text: the same facts `--json` gives, one file per block. Formats
+ * and actions are printed as their ids, which are what `--to` and the flags
+ * take.
+ */
+export function reportProbe(probe: ProbeReport, where: Where = {}): string[] {
+  const facts = [FORMATS[probe.format].label, formatBytes(probe.bytes)]
+  if (probe.width !== undefined && probe.height !== undefined) {
+    facts.push(`${probe.width}×${probe.height}`)
+  }
+  if (probe.pages !== undefined)
+    facts.push(`${probe.pages} ${probe.pages === 1 ? 'page' : 'pages'}`)
+  if (probe.encrypted) facts.push('password-protected')
+  return [
+    `${displayPath(probe.path, placesFor(where))} · ${facts.join(' · ')}`,
+    `  converts to  ${probe.targets.join(', ')}`,
+    `  actions      ${probe.actions.join(', ')}`,
+  ]
 }

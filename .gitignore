@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.bundle-test/
 coverage/
 *.tsbuildinfo
 .DS_Store

@@ -2,6 +2,11 @@ import { PassThrough, Readable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readPassword } from '../../src/cli/stdin.js'
 
+/** A stdin that claims to be a terminal — the only kind Forge may prompt on. */
+function tty<T extends object>(stream: T): T & { isTTY: true } {
+  return Object.assign(stream, { isTTY: true as const })
+}
+
 describe('readPassword', () => {
   let originalStdin: NodeJS.ReadableStream
   let originalStderr: NodeJS.WritableStream
@@ -57,12 +62,24 @@ describe('readPassword', () => {
       expect(password).toBe('hunter2')
     })
 
-    it('does not strip internal newlines, only trailing', async () => {
-      const input = 'line1\nline2\n'
-      const stream = Readable.from([input])
+    it('reads only the first line, so a pipe that stays open is never waited on', async () => {
+      const stream = Readable.from(['line1\nline2\n'])
       Object.defineProperty(process, 'stdin', { value: stream, configurable: true })
-      const password = await readPassword({ stdin: true })
-      expect(password).toBe('line1\nline2')
+      expect(await readPassword({ stdin: true })).toBe('line1')
+    })
+
+    it('keeps a password sent without a trailing newline (echo -n)', async () => {
+      const stream = Readable.from(['hunter2'])
+      Object.defineProperty(process, 'stdin', { value: stream, configurable: true })
+      expect(await readPassword({ stdin: true })).toBe('hunter2')
+    })
+
+    it('returns as soon as a line arrives on a stream that never ends', async () => {
+      const stream = new PassThrough()
+      Object.defineProperty(process, 'stdin', { value: stream, configurable: true })
+      const pending = readPassword({ stdin: true })
+      stream.write('hunter2\n')
+      expect(await pending).toBe('hunter2')
     })
   })
 
@@ -77,7 +94,7 @@ describe('readPassword', () => {
     // during review — that was a one-off check, not standing automated coverage.
 
     it('writes prompt and trailing newline to stderr', async () => {
-      const inputStream = Readable.from(['mypassword\n'])
+      const inputStream = tty(Readable.from(['mypassword\n']))
       const stderrWrites: string[] = []
       const mockStderr = new PassThrough()
 
@@ -96,7 +113,7 @@ describe('readPassword', () => {
     })
 
     it('does not echo typed characters to the output stream', async () => {
-      const inputStream = Readable.from(['secret123\n'])
+      const inputStream = tty(Readable.from(['secret123\n']))
       const stderrWrites: string[] = []
       const mockStderr = new PassThrough()
 
@@ -125,7 +142,7 @@ describe('readPassword', () => {
     it('releases stdin when the prompt completes', async () => {
       // Never ended, so readline's own auto-close on input 'end' cannot fire. The only
       // thing that can release stdin here is the explicit rl.close() in the finally block.
-      const inputStream = new PassThrough()
+      const inputStream = tty(new PassThrough())
       const mockStderr = new PassThrough()
       mockStderr.resume()
 
@@ -142,6 +159,24 @@ describe('readPassword', () => {
       // holds stdin. Asserted rather than isPaused() because the listener is the thing
       // that actually keeps stdin captured; pausing is a downstream side effect.
       expect(inputStream.listenerCount('keypress')).toBe(0)
+    })
+  })
+
+  describe('without a terminal', () => {
+    it('never prompts and never reads stdin — it returns undefined', async () => {
+      const explosive = new Readable({
+        read() {
+          this.destroy(new Error('stdin was read with no terminal and no --password-stdin'))
+        },
+      })
+      const stderrWrites: string[] = []
+      const mockStderr = new PassThrough()
+      mockStderr.on('data', (chunk) => stderrWrites.push(chunk.toString('utf8')))
+      Object.defineProperty(process, 'stdin', { value: explosive, configurable: true })
+      Object.defineProperty(process, 'stderr', { value: mockStderr, configurable: true })
+
+      expect(await readPassword({ stdin: false })).toBeUndefined()
+      expect(stderrWrites.join('')).toBe('')
     })
   })
 })
