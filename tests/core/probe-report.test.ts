@@ -72,7 +72,7 @@ describe('probeFiles', () => {
 
   it('reads a real file whose name contains glob characters as that file', async () => {
     const dir = await makeTempDir()
-    const pdf = await makePdf(dir, 'Scan [2024].pdf', 2)
+    const pdf = await makePdf(dir, 'Scan [a] {b}.pdf', 2)
     const { probes, failures } = await probeFiles([pdf])
     expect(failures).toEqual([])
     expect(probes.map((p) => p.path)).toEqual([pdf])
