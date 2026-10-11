@@ -10,6 +10,7 @@ import {
   permissionDenied,
   renderError,
   selfCollision,
+  targetUnreachable,
   unsupportedCompress,
   unsupportedTarget,
 } from '../../src/core/errors.js'
@@ -124,7 +125,60 @@ describe('refusing to compress', () => {
   })
 
   it('points a PDF at what does work, not at a smaller format', () => {
+    // In the shell, where `/pdf` is something you can actually type.
     const e = unsupportedCompress(pdf)
-    expect(`${e.title} ${e.detail} ${e.hint ?? ''}`).toContain('/pdf')
+    expect(e.shellHint).toContain('/pdf')
+  })
+})
+
+/**
+ * A slash command only exists inside the shell. The same constructors feed
+ * the CLI's `renderError`, which printed "Try a larger target, or /convert to
+ * a smaller format" to someone at a bash prompt with no `/convert` to type.
+ * Each surface gets its own phrasing: `hint` for the CLI, `shellHint` for the
+ * shell's history block.
+ */
+describe('hints speak the surface that shows them', () => {
+  const slashCommand = /(^|\s)\/(convert|pdf|compress)\b/
+  const lossless: SourceInfo = { ...source, path: '/tmp/logo.png', format: 'png' }
+  const pdf: SourceInfo = {
+    kind: 'document',
+    path: '/tmp/brochure.pdf',
+    format: 'pdf',
+    bytes: 1_400_000,
+    pages: 7,
+    encrypted: false,
+  }
+  const docx: SourceInfo = {
+    kind: 'document',
+    path: '/tmp/report.docx',
+    format: 'docx',
+    bytes: 40_000,
+    pages: 2,
+    encrypted: false,
+  }
+  const cases = [
+    ['a lossless image', unsupportedCompress(lossless)],
+    ['a PDF with nothing to compress', unsupportedCompress(pdf)],
+    ['a Word document', unsupportedCompress(docx)],
+    ['an unreachable size', targetUnreachable(source, 1_000, 11_600)],
+  ] as const
+
+  for (const [name, e] of cases) {
+    it(`never tells the CLI to type a slash command — ${name}`, () => {
+      expect(e.hint).toBeTruthy()
+      expect(e.hint).not.toMatch(slashCommand)
+      expect(renderError(e).join('\n')).not.toMatch(slashCommand)
+    })
+
+    it(`keeps the shell's slash-command phrasing — ${name}`, () => {
+      expect(e.shellHint).toMatch(slashCommand)
+    })
+  }
+
+  it('names the CLI flags that do the same job instead', () => {
+    expect(targetUnreachable(source, 1_000, 11_600).hint).toContain('--max-size')
+    expect(unsupportedCompress(lossless).hint).toContain('--to')
+    expect(unsupportedCompress(docx).hint).toContain('--to')
   })
 })

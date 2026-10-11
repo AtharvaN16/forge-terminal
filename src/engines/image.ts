@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, mkdir, rename, rm, stat } from 'node:fs/promises'
+import { access, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import sharp from 'sharp'
+import { prepareOutputDir } from '../core/atomic.js'
 import {
+  classifyWriteError,
   conversionFailed,
   corruptFormatSource,
   corruptSource,
@@ -13,7 +15,6 @@ import {
   isForgeError,
   notADirectory,
   notAFile,
-  outputInvalid,
   pathTooLong,
   permissionDenied,
   symlinkLoop,
@@ -211,11 +212,7 @@ export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sha
  */
 async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
   const dir = dirname(output)
-  try {
-    await mkdir(dir, { recursive: true })
-  } catch (cause) {
-    throw outputInvalid(output, cause)
-  }
+  await prepareOutputDir(output)
 
   const temp = join(dir, `.forge-tmp-${randomBytes(6).toString('hex')}-${basename(output)}`)
   try {
@@ -226,7 +223,7 @@ async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
     // `force` only swallows ENOENT. A cleanup failure (EACCES, EBUSY, ...)
     // must never replace the real encode error that is about to be thrown.
     await rm(temp, { force: true }).catch(() => {})
-    throw cause
+    throw classifyWriteError(output, cause)
   }
 }
 
