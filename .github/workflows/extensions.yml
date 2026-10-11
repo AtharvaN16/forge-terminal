@@ -1,0 +1,93 @@
+name: extensions
+
+on:
+  push:
+    tags:
+      - 'ext-boost-v*'
+      - 'ext-remove-background-v*'
+  workflow_dispatch:
+    inputs:
+      id:
+        description: 'Extension id'
+        required: true
+        type: choice
+        options: [boost, remove-background]
+      version:
+        description: 'Version (no leading v); a release ext-<id>-v<version> must exist or will be created'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-14
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve id, version and tag
+        id: ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            id="${{ inputs.id }}"; version="${{ inputs.version }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            rest="${tag#ext-}"
+            id="${rest%-v*}"; version="${rest##*-v}"
+          fi
+          case "$id" in boost|remove-background) ;; *) echo "unknown extension id: $id" >&2; exit 1 ;; esac
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=ext-$id-v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and package
+        shell: bash
+        env:
+          ID: ${{ steps.ref.outputs.id }}
+          VERSION: ${{ steps.ref.outputs.version }}
+        run: |
+          mkdir -p dist-ext/out
+          : > dist-ext/assets.jsonl
+          if [ "$ID" = "boost" ]; then
+            for arch in arm64 x64; do
+              node extensions/boost/build.mjs --arch "$arch" --out "dist-ext/payload-$arch"
+              node scripts/package-extension.mjs boost "$VERSION" "$arch" "dist-ext/payload-$arch" dist-ext/out >> dist-ext/assets.jsonl
+            done
+          else
+            bash extensions/remove-background/build.sh dist-ext/payload-universal
+            node scripts/package-extension.mjs remove-background "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
+          fi
+          cat dist-ext/assets.jsonl
+
+      - name: Upload to the GitHub Release
+        shell: bash
+        env:
+          TAG: ${{ steps.ref.outputs.tag }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Forge extension payload $TAG"
+          gh release upload "$TAG" dist-ext/out/*.tar.gz --clobber
+
+      - name: Summary for the catalogue entry
+        shell: bash
+        env:
+          TAG: ${{ steps.ref.outputs.tag }}
+        run: |
+          {
+            echo "### $TAG"
+            echo
+            echo "Update the catalogue entry with these values:"
+            echo
+            echo '```json'
+            cat dist-ext/assets.jsonl
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
