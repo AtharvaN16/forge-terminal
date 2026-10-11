@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, rename, rm, stat } from 'node:fs/promises'
+import { access, readFile, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import { prepareOutputDir } from '../core/atomic.js'
@@ -24,6 +24,7 @@ import { FORMATS } from '../core/formats.js'
 import type {
   ConvertOptions,
   FormatId,
+  ImageInfo,
   Job,
   Progress,
   Result,
@@ -247,6 +248,12 @@ async function pipelineFor(
   target: FormatId,
   options: ConvertOptions,
   animated: boolean,
+  /**
+   * The source already in memory, for the target-size search, which encodes
+   * from the same bytes up to eight times. A HEIC arrives here already
+   * decoded to PNG (see `readOnce`), so it skips the sips step.
+   */
+  input?: Buffer,
 ): Promise<{ pipeline: Sharp; cleanup: () => Promise<void> }> {
   // The image engine only ever builds a pipeline for an image — the registry
   // routes jobs to an engine by `reads`/`writes`, so a document source
@@ -261,16 +268,17 @@ async function pipelineFor(
    * pipeline runs on that. Everything downstream is unchanged; only the file
    * Sharp opens differs.
    */
-  if (source.format === 'heic' && !(await heicDecodable())) {
+  if (input === undefined && source.format === 'heic' && !(await heicDecodable())) {
     throw heicDecoderUnavailable(source.path)
   }
-  const heic = source.format === 'heic' ? await decodeHeic(source.path) : undefined
+  const heic =
+    input === undefined && source.format === 'heic' ? await decodeHeic(source.path) : undefined
   const cleanup = async () => {
     await heic?.cleanup()
   }
 
   const sharp = await loadSharp()
-  let pipeline = sharp(heic?.path ?? source.path, animated ? { animated: true } : {})
+  let pipeline = sharp(input ?? heic?.path ?? source.path, animated ? { animated: true } : {})
 
   // Rule 1: EXIF orientation, before anything else. Verified safe on
   // animated input — page count survives.
@@ -370,6 +378,27 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
 }
 
 /**
+ * The source's bytes, read once for a search that encodes from them
+ * repeatedly. A HEIC is decoded through sips here, once, and handed on as the
+ * decoded PNG. Per attempt that decode was the most expensive step.
+ *
+ * Bytes rather than decoded pixels on purpose: encoding from a buffer runs
+ * the same libvips decode as encoding from the file, so every measured size
+ * is byte-identical to the real encode, and the quality the search settles on
+ * cannot move (spec §3).
+ */
+async function readOnce(source: ImageInfo): Promise<Buffer> {
+  if (source.format !== 'heic') return readFile(source.path)
+  if (!(await heicDecodable())) throw heicDecoderUnavailable(source.path)
+  const decoded = await decodeHeic(source.path)
+  try {
+    return await readFile(decoded.path)
+  } finally {
+    await decoded.cleanup()
+  }
+}
+
+/**
  * One rung: an image has a single lever, quality.
  *
  * The resolution ladder lives in the PDF engine, which is the only module that
@@ -383,9 +412,15 @@ async function measurer(job: Job): Promise<Measurer | undefined> {
   // dial that is not connected to anything.
   if (!FORMATS[job.target].lossy) return undefined
   const source = job.sources[0]
+  if (source.kind !== 'image') return undefined
+
+  const input = await readOnce(source)
   return {
     ladder: [{}],
-    measure: async (options) => (await encodeToBuffer(source, job.target, options)).length,
+    measure: async (options) => {
+      const { pipeline } = await pipelineFor(source, job.target, options, false, input)
+      return (await encode(pipeline, job.target, options.quality).toBuffer()).length
+    },
   }
 }
 

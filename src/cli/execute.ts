@@ -44,7 +44,7 @@ export interface ExecuteOptions {
   onProgress?: (progress: BatchProgress) => void
   /**
    * Called during a target-size search with a human-readable position, e.g.
-   * `150 dpi · attempt 3 of 8`.
+   * `150 dpi · attempt 3 of 8`, or `3 of 50 searched` for a batch.
    *
    * A status string rather than a spinner, so this file stays ignorant of how
    * — or whether — anything is drawn; `src/index.ts` owns that and gates it on
@@ -233,11 +233,21 @@ async function buildRasterJob(
 function reportEvents(opts: ExecuteOptions, batch: boolean): (event: PlanEvent) => void {
   return (event) => {
     if (event.type === 'search:attempt') {
-      opts.onSearch?.(
-        event.rung.dpi === undefined
-          ? `attempt ${event.attempt} of ${event.of}`
-          : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
-      )
+      // A single file's search reports its real position. In a batch several
+      // searches run at once (spec §4.4), and their attempt counters would
+      // interleave into one number jumping about, so a batch reports finished
+      // files instead (below).
+      if (!batch) {
+        opts.onSearch?.(
+          event.rung.dpi === undefined
+            ? `attempt ${event.attempt} of ${event.of}`
+            : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
+        )
+      }
+      return
+    }
+    if (event.type === 'search:settled') {
+      if (batch) opts.onSearch?.(`${event.completed} of ${event.total} searched`)
       return
     }
     if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
