@@ -1,6 +1,16 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, rmdir, statfs, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  statfs,
+  writeFile,
+} from 'node:fs/promises'
 import { release } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -8,6 +18,7 @@ import { pipeline } from 'node:stream/promises'
 import { gunzip } from 'node:zlib'
 import {
   extensionCorrupt,
+  extensionDiskFull,
   extensionDownloadFailed,
   extensionUnsupported,
   invalidArguments,
@@ -132,6 +143,44 @@ function assetUrl(url: string): string {
   return `${base.replace(/\/+$/, '')}/${url.slice(url.lastIndexOf('/') + 1)}`
 }
 
+/** Older than this, a download or staging dir belongs to no running install. */
+const STALE_MS = 10 * 60 * 1000
+
+/**
+ * Removes what an interrupted install left behind: `<root>/.download-*` and
+ * `<root>/<id>/.staging-*`. Age-based — a live install's temp files are
+ * younger than any install takes — so two installs at once cannot collide.
+ */
+async function sweepDebris(root: string): Promise<void> {
+  const cutoff = Date.now() - STALE_MS
+  const sweep = async (dir: string, prefix: string) => {
+    for (const name of await readdir(dir).catch(() => [] as string[])) {
+      if (!name.startsWith(prefix)) continue
+      const path = join(dir, name)
+      const age = await stat(path).catch(() => undefined)
+      if (age !== undefined && age.mtimeMs < cutoff) {
+        await rm(path, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+  }
+  await sweep(root, '.download-')
+  for (const entry of CATALOG) {
+    const base = join(root, entry.id)
+    await sweep(base, '.staging-')
+    await sweep(base, '.current-')
+    // A directory that held only debris goes too.
+    await rmdir(base).catch(() => {})
+  }
+}
+
+/** Something the user can act on: a full disk is not a dropped connection or a bad archive. */
+function diskFull(cause: unknown): boolean {
+  return (cause as NodeJS.ErrnoException | undefined)?.code === 'ENOSPC'
+}
+
+/** The tap's refusal of a download that runs past its published size. */
+class TooLarge extends Error {}
+
 /**
  * Download, verify, extract, swap (spec §4.3). Every temp file lives under the
  * extensions root and is removed on any outcome, so a failure at any step
@@ -152,6 +201,7 @@ export async function installExtension(
       `Try one of: ${CATALOG.map((e) => e.id).join(', ')}.`,
     )
   }
+  await sweepDebris(extensionsRoot())
   const support = supportFor(entry)
   const asset = assetFor(entry)
   if (!support.supported || asset === undefined) {
@@ -167,7 +217,7 @@ export async function installExtension(
   try {
     const fs = await statfs(root)
     if (fs.bavail * fs.bsize < asset.bytes * 2.5) {
-      throw extensionDownloadFailed(
+      throw extensionDiskFull(
         id,
         `not enough free disk space (about ${formatBytes(Math.ceil(asset.bytes * 2.5))} needed).`,
       )
@@ -185,7 +235,7 @@ export async function installExtension(
     try {
       res = await fetcher(assetUrl(asset.url), { signal: opts.signal })
     } catch {
-      throw extensionDownloadFailed(id, `could not reach ${new URL(asset.url).host}.`)
+      throw extensionDownloadFailed(id, `could not reach ${new URL(assetUrl(asset.url)).host}.`)
     }
     if (!res.ok || res.body === null) {
       throw extensionDownloadFailed(id, `the server answered ${res.status}.`)
@@ -195,8 +245,9 @@ export async function installExtension(
     let received = 0
     const tap = new Transform({
       transform(chunk: Buffer, _enc, cb) {
-        hash.update(chunk)
         received += chunk.length
+        if (received > asset.bytes) return cb(new TooLarge())
+        hash.update(chunk)
         opts.onProgress?.(received, asset.bytes)
         cb(null, chunk)
       },
@@ -210,6 +261,10 @@ export async function installExtension(
       )
     } catch (cause) {
       if (opts.signal?.aborted) throw cause
+      if (cause instanceof TooLarge) {
+        throw extensionCorrupt(id, 'the download is larger than its published size.')
+      }
+      if (diskFull(cause)) throw extensionDiskFull(id, 'the disk filled up during the download.')
       throw extensionDownloadFailed(id, 'the connection dropped before the download finished.')
     }
     if (received < asset.bytes) {
@@ -224,6 +279,7 @@ export async function installExtension(
       await extractTar(await gunzipAsync(await readFile(archive)), staging)
       await verifyStaged(staging, entry)
     } catch (cause) {
+      if (diskFull(cause)) throw extensionDiskFull(id, 'the disk filled up while unpacking.')
       throw extensionCorrupt(
         id,
         cause instanceof Error ? cause.message : 'the archive could not be unpacked.',
@@ -261,8 +317,10 @@ export async function removeExtension(id: string): Promise<boolean> {
       `Try one of: ${CATALOG.map((e) => e.id).join(', ')}.`,
     )
   }
+  await sweepDebris(extensionsRoot())
   const base = join(extensionsRoot(), entry.id)
-  const existed = (await readdir(base).catch(() => [])).length > 0
+  // Leftover temp files from an interrupted install are not an installed extension.
+  const existed = (await readdir(base).catch(() => [] as string[])).some((n) => !n.startsWith('.'))
   await rm(base, { recursive: true, force: true })
   return existed
 }

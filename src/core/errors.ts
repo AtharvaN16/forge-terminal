@@ -615,6 +615,17 @@ export function extensionDownloadFailed(id: string, detail: string): ForgeError 
   })
 }
 
+/** A download that failed for want of disk space: same code, but the hint is not "check your connection". */
+export function extensionDiskFull(id: string, detail: string): ForgeError {
+  return new ForgeError({
+    code: 'extension-download-failed',
+    title: 'Not enough disk space',
+    detail: `${id}: ${detail}`,
+    hint: `Free some disk space, then run: forge extensions add ${id}`,
+    shellHint: 'Free some disk space, then try again from /extensions.',
+  })
+}
+
 export function noSubject(path: string): ForgeError {
   return new ForgeError({
     code: 'no-subject',

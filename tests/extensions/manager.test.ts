@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto'
-import { access, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -75,6 +85,9 @@ beforeAll(async () => {
     const body = routes.get(req.url ?? '')
     if (body === undefined) {
       res.writeHead(404).end()
+    } else if (req.url?.startsWith('/oversized')) {
+      // More bytes than the catalogue says the asset has.
+      res.writeHead(200).end(Buffer.concat([body, Buffer.alloc(4096)]))
     } else if (req.url?.startsWith('/cut-short')) {
       // Promise the full length, send half, then drop the connection.
       res.writeHead(200, { 'content-length': body.length })
@@ -178,7 +191,10 @@ describe('installing an extension', () => {
   it('an archive entry that climbs out of the install directory is refused', async () => {
     h.catalog = [entryFor('1.0.0', payload('1.0.0', { extraName: '../escape' }), '/v1.tgz')]
     expect(await codeOf(installExtension('remove-background'))).toBe('extension-corrupt')
-    await expect(access(join(config, 'forge', 'extensions', 'escape'))).rejects.toThrow()
+    // `../escape` from `<id>/.staging-*` would land in `<id>/escape`.
+    await expect(
+      access(join(config, 'forge', 'extensions', 'remove-background', 'escape')),
+    ).rejects.toThrow()
     expect(await leftovers()).toEqual([])
   })
 
@@ -196,6 +212,48 @@ describe('installing an extension', () => {
     expect(await codeOf(installExtension('remove-background', { fetchImpl }))).toBe(
       'extension-download-failed',
     )
+  })
+
+  it('stops a download that runs past its published size', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/oversized.tgz')]
+    const err = await installExtension('remove-background').catch((e: unknown) => e)
+    expect(isForgeError(err) && err.detail).toBe(
+      'remove-background: the download is larger than its published size.',
+    )
+    expect(await leftovers()).toEqual([])
+  })
+
+  it('names the mirror it could not reach when FORGE_EXTENSIONS_BASE_URL is set', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed')
+    }) as typeof fetch
+    vi.stubEnv('FORGE_EXTENSIONS_BASE_URL', 'https://mirror.example.com/forge')
+    try {
+      const err = await installExtension('remove-background', { fetchImpl }).catch((e) => e)
+      expect(isForgeError(err) && err.detail).toBe(
+        'remove-background: could not reach mirror.example.com.',
+      )
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('sweeps stale debris from an interrupted install, but not a live one', async () => {
+    const root = extensionsRoot()
+    const old = new Date(Date.now() - 60 * 60 * 1000)
+    await mkdir(join(root, 'remove-background', '.staging-y'), { recursive: true })
+    await writeFile(join(root, '.download-x.tar.gz'), 'partial')
+    await writeFile(join(root, '.download-live.tar.gz'), 'in progress elsewhere')
+    await utimes(join(root, 'remove-background', '.staging-y'), old, old)
+    await utimes(join(root, '.download-x.tar.gz'), old, old)
+
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    await installExtension('remove-background')
+    const left = await leftovers()
+    expect(left).not.toContain('.download-x.tar.gz')
+    expect(left).not.toContain('remove-background/.staging-y')
+    expect(left).toContain('.download-live.tar.gz')
   })
 
   it('an unknown id is a usage error', async () => {
@@ -241,6 +299,13 @@ describe('removing', () => {
     expect(await installed('remove-background')).toBeUndefined()
     expect(await leftovers()).toEqual([])
     expect(await removeExtension('remove-background')).toBe(false)
+  })
+
+  it('does not say it removed anything when only install debris was there', async () => {
+    h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+    await mkdir(join(extensionsRoot(), 'remove-background', '.staging-y'), { recursive: true })
+    expect(await removeExtension('remove-background')).toBe(false)
+    expect(await leftovers()).toEqual([])
   })
 })
 
