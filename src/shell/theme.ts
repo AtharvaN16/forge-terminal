@@ -12,6 +12,15 @@ export const SYMBOLS = {
   cursor: '❯',
   arrow: '→',
   /**
+   * An offer the user can take or ignore — a better format, a merge worth
+   * making. Deliberately not `warn`: nothing has gone wrong when one of
+   * these appears, the file asked for is already written and correct, and
+   * `⚠` is what this shell puts in front of a skipped file, a size it could
+   * not read and a command it refused. A glyph that means two opposite
+   * things means neither.
+   */
+  tip: '✧',
+  /**
    * The arrow drawn between two things rather than inside a sentence — the
    * before and after of a conversion. Long enough to read as a connector at
    * a glance; the short one still serves inline text like "4 MB → 1 MB".
@@ -43,7 +52,11 @@ export interface Palette {
   fg: string
   /** Secondary text — sizes, hints, paths. */
   dim: string
-  /** The one accent: cursor, selected marker, wordmark edge. */
+  /**
+   * The one accent: cursor, selected marker, wordmark edge — and the
+   * sentence of an offer, which is drawn in the same colour as the key that
+   * takes it so the two read as one thing.
+   */
   accent: string
   ok: string
   warn: string

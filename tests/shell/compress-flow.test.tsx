@@ -5,6 +5,7 @@ import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
+import { SYMBOLS } from '../../src/shell/theme.js'
 import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const ENTER = String.fromCharCode(13)
@@ -157,6 +158,27 @@ describe('the format suggestion', () => {
     // actual encode, not an estimate.
     expect(all).toContain('WebP would be')
     expect(all).toMatch(/\d+% smaller again/)
+  }, 30_000)
+
+  /**
+   * The sentence is an offer, not a problem: the file the user asked for is
+   * already written and correct. Drawn with the warning glyph it read as
+   * something having gone wrong — `\u26a0` is what this shell puts in front of a
+   * skipped file, a bad size and a refused command, and it should keep
+   * meaning only that.
+   */
+  it('reads as an offer rather than a warning', async () => {
+    const { stdin, lastFrame, frames } = await toCompress()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    await finish(stdin)
+    await settle(600)
+
+    const all = frames.join('') + (lastFrame() ?? '')
+    expect(all).toContain(`${SYMBOLS.tip} WebP would be`)
+    expect(all).not.toContain(`${SYMBOLS.warn} WebP would be`)
   }, 30_000)
 
   it('offers a key to act on it', async () => {

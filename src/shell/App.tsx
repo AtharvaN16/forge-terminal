@@ -735,12 +735,19 @@ export function App({
 
   /**
    * Tab moves between the amount and the unit row; left/right walk the units
-   * once it has focus.
+   * once it has focus, and enter confirms the field from either half.
    *
-   * Left/right are claimed only while the row is focused, so the caret keys
-   * `Prompt` needs keep working in the amount — Ink hands every keystroke to
-   * both hooks, so anything this one swallows unconditionally would be taken
-   * away from the field beside it.
+   * Left/right and enter are claimed only while the row is focused, so the
+   * caret keys and submit `Prompt` needs keep working in the amount — Ink
+   * hands every keystroke to both hooks, so anything this one swallows
+   * unconditionally would be taken away from the field beside it, and enter
+   * in particular would submit twice.
+   *
+   * Enter is here because the unit row is one half of a single answer rather
+   * than a step of its own: the amount and its unit are the same question,
+   * and having to tab back onto the amount to say yes to them made the row a
+   * dead end — the hint bar names `↵ confirm` first, and it was the one key
+   * there that did nothing.
    */
   useKeys(
     (_input, key) => {
@@ -749,6 +756,10 @@ export function App({
         return
       }
       if (!unitFocused) return
+      if (key.return) {
+        submitSize(text)
+        return
+      }
       const delta = key.rightArrow ? 1 : key.leftArrow ? -1 : 0
       if (delta === 0) return
       setSizeUnit((current) => {
@@ -1480,6 +1491,11 @@ export function App({
     setSizeError(undefined)
     setValues((v) => ({ ...v, size: raw, targetBytes: bytes }))
     setText('')
+    // Both halves of the field are left as they were found. Clearing the
+    // amount without releasing the unit row would hand the next visit an
+    // inert amount field — the caret would be in it, and typing would go to
+    // the units instead.
+    setUnitFocused(false)
     setStep('destination')
   }
 
@@ -2352,11 +2368,15 @@ export function App({
             <Box flexDirection="column" marginBottom={1}>
               {/* Measured, not estimated: this number came from actually
                 encoding a candidate. Offered rather than applied — the file
-                the user asked for is already written. */}
+                the user asked for is already written, which is also why this
+                is drawn as an offer and not a warning. `SYMBOLS.warn` in
+                front of it said something had gone wrong when nothing had;
+                `accent` is the colour of the `c` key below that takes the
+                offer, so the sentence and its key read as one thing. */}
               {suggestion ? (
                 <Box marginBottom={1}>
-                  <Text color={colourProp(palette.warn)}>
-                    {`${SYMBOLS.warn} ${FORMATS[suggestion.target].label} would be ${formatBytes(
+                  <Text color={colourProp(palette.accent)}>
+                    {`${SYMBOLS.tip} ${FORMATS[suggestion.target].label} would be ${formatBytes(
                       suggestion.bytes,
                     )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
                   </Text>
@@ -2376,8 +2396,8 @@ export function App({
                 are exactly what `mergeAction` combines. */}
               {mergeOffer ? (
                 <Box marginBottom={1}>
-                  <Text color={colourProp(palette.warn)}>
-                    {`${SYMBOLS.warn} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`}
+                  <Text color={colourProp(palette.accent)}>
+                    {`${SYMBOLS.tip} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`}
                   </Text>
                 </Box>
               ) : null}

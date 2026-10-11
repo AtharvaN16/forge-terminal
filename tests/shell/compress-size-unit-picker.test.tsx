@@ -53,4 +53,26 @@ describe('the target-size field', () => {
     // what it understood rather than making the user guess.
     expect(app.lastFrame()).toContain('500 MB')
   }, 30_000)
+
+  /**
+   * The unit row is one half of a single answer, not a step of its own, so
+   * confirming it confirms the field. Requiring a tab back onto the amount
+   * first made the row a place you could get stuck: every other key the hint
+   * bar names works there, and the one it names first did nothing.
+   */
+  it('confirms from the unit row, without tabbing back to the amount', async () => {
+    const app = await toSizeField()
+
+    app.stdin.write('500')
+    await settle()
+    app.stdin.write(TAB)
+    await settle()
+    app.stdin.write(RIGHT)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(400)
+
+    // 'Save to' is the destination step: the size was taken, unit and all.
+    expect(app.lastFrame()).toContain('Save to')
+  }, 30_000)
 })
