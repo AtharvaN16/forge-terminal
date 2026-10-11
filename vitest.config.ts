@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     testTimeout: 20_000,
+    globalSetup: ['tests/helpers/temp-root.ts'],
     /**
      * Capped well below the machine's core count on purpose.
      *
