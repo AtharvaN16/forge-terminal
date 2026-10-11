@@ -122,6 +122,17 @@ async function writeCurrent(base: string, version: string): Promise<void> {
 }
 
 /**
+ * FORGE_EXTENSIONS_BASE_URL redirects downloads to a mirror or a local test
+ * server: the asset's file name is appended to it. The sha256 and size in the
+ * catalogue still apply, so a mirror cannot substitute different bytes.
+ */
+function assetUrl(url: string): string {
+  const base = process.env.FORGE_EXTENSIONS_BASE_URL
+  if (base === undefined || base === '') return url
+  return `${base.replace(/\/+$/, '')}/${url.slice(url.lastIndexOf('/') + 1)}`
+}
+
+/**
  * Download, verify, extract, swap (spec §4.3). Every temp file lives under the
  * extensions root and is removed on any outcome, so a failure at any step
  * leaves the previous install untouched and nothing partial behind.
@@ -172,7 +183,7 @@ export async function installExtension(
     const fetcher = opts.fetchImpl ?? fetch
     let res: Response
     try {
-      res = await fetcher(asset.url, { signal: opts.signal })
+      res = await fetcher(assetUrl(asset.url), { signal: opts.signal })
     } catch {
       throw extensionDownloadFailed(id, `could not reach ${new URL(asset.url).host}.`)
     }
