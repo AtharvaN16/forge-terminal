@@ -1,13 +1,17 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
 import { describe, expect, it, vi } from 'vitest'
 import type { PathPreset } from '../../src/core/actions/index.js'
-import { PathInput } from '../../src/shell/components/PathInput.js'
+import { destinationRows, PathInput } from '../../src/shell/components/PathInput.js'
 import { middleEllipsis } from '../../src/shell/width.js'
+import { makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
+const TAB = '\t'
 const settle = () => new Promise((r) => setTimeout(r, 60))
 
 const presets: PathPreset[] = [
@@ -33,28 +37,40 @@ function props(over: Partial<Parameters<typeof PathInput>[0]> = {}) {
   }
 }
 
-describe('PathInput', () => {
-  it('lists the presets plus a typing option', () => {
+describe('Save to, framed (spec 2026-10-11 picker §3)', () => {
+  it('puts the question in the frame and counts the places', () => {
     const frame = render(<PathInput {...props()} />).lastFrame() ?? ''
+    const lines = frame.split('\n')
+    expect(lines[0]).toMatch(/^╭─ Save to ─+╮$/)
+    expect(lines[1]).toContain('type to filter, or drop a file')
+    expect(lines[1]).toContain('3/3')
+    expect(lines[2]).toMatch(/^├─+┤$/)
     expect(frame).toContain('Same folder')
     expect(frame).toContain('New subfolder')
     expect(frame).toContain('Downloads')
-    expect(frame).toContain('Type a path')
+    expect(frame).not.toContain('Type a path')
+    expect(lines.at(-1)).toMatch(/^╰─+╯$/)
   })
 
-  it('shows the resolved output for the highlighted preset', () => {
-    const frame = render(<PathInput {...props()} />).lastFrame() ?? ''
-    expect(frame).toContain('/Users/me/Desktop/photo.webp')
-  })
-
-  it('updates the preview as the highlight moves', async () => {
+  it('shows the resolved output on the highlighted place only', async () => {
     const { stdin, lastFrame } = render(<PathInput {...props()} />)
+    expect(lastFrame()).toContain('/Users/me/Desktop/photo.webp')
     stdin.write(DOWN)
     await settle()
     expect(lastFrame()).toContain('/Users/me/Desktop/converted/photo.webp')
+    expect(lastFrame()).not.toContain('/Users/me/Desktop/photo.webp')
   })
 
-  it('submits the chosen preset path', async () => {
+  it('tags the default place at the far end of its row, highlighted or not', () => {
+    const frame =
+      render(
+        <PathInput {...props({ width: 70, defaultPath: '/Users/me/Downloads' })} />,
+      ).lastFrame() ?? ''
+    const row = frame.split('\n').find((l) => l.includes('Downloads')) ?? ''
+    expect(row).toMatch(/★ default │$/)
+  })
+
+  it('submits the chosen place', async () => {
     const onSubmit = vi.fn()
     const { stdin } = render(<PathInput {...props({ onSubmit })} />)
     stdin.write(DOWN)
@@ -64,134 +80,124 @@ describe('PathInput', () => {
     expect(onSubmit).toHaveBeenCalledWith('/Users/me/Desktop/converted')
   })
 
-  it('switches to a text field when the typing option is chosen', async () => {
-    const { stdin, lastFrame } = render(<PathInput {...props()} />)
-    stdin.write(DOWN + DOWN + DOWN)
+  it('narrows the places as you type', async () => {
+    const onSubmit = vi.fn()
+    const { stdin, lastFrame } = render(<PathInput {...props({ onSubmit })} />)
+    stdin.write('do')
     await settle()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Downloads')
+    expect(frame).not.toContain('Same folder')
+    expect(frame).toContain('1/3')
     stdin.write(ENTER)
     await settle()
-    expect(lastFrame()).toContain('›')
+    expect(onSubmit).toHaveBeenCalledWith('/Users/me/Downloads')
   })
 
-  it('clears the typed text on the first escape, then cancels out on the second', async () => {
+  it('no match keeps esc working, and enter does nothing', async () => {
+    const onSubmit = vi.fn()
     const onCancel = vi.fn()
-    const { stdin, lastFrame } = render(<PathInput {...props({ onCancel })} />)
-    stdin.write(DOWN + DOWN + DOWN) // "Type a path…"
+    const { stdin, lastFrame } = render(<PathInput {...props({ onSubmit, onCancel })} />)
+    stdin.write('zzz')
     await settle()
+    expect(lastFrame()).toContain('no match')
+    expect(lastFrame()).toContain('0/3')
     stdin.write(ENTER)
     await settle()
-    stdin.write('/Users/me/partial')
-    await settle()
-    expect(lastFrame()).toContain('/Users/me/partial')
-
+    expect(onSubmit).not.toHaveBeenCalled()
     stdin.write(ESC)
     await settle()
-    expect(lastFrame()).not.toContain('/Users/me/partial')
+    expect(lastFrame()).not.toContain('zzz')
     expect(onCancel).not.toHaveBeenCalled()
-
-    stdin.write(ESC) // nothing left to clear -> cancels
+    stdin.write(ESC)
     await settle()
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('unescapes a dropped path typed into the field', async () => {
+  it('takes a typed folder as the place to save', async () => {
     const onSubmit = vi.fn()
-    const { stdin } = render(<PathInput {...props({ onSubmit })} />)
-    stdin.write(DOWN + DOWN + DOWN)
-    await settle()
-    stdin.write(ENTER)
-    await settle()
+    const { stdin, lastFrame } = render(<PathInput {...props({ onSubmit })} />)
     stdin.write('/Users/me/My\\ Folder')
     await settle()
+    expect(lastFrame()).toContain('Use this folder')
     stdin.write(ENTER)
     await settle()
     expect(onSubmit).toHaveBeenCalledWith('/Users/me/My Folder')
   })
 
-  it('submits the text without the CR when text and Enter arrive in one write', async () => {
+  it('classifies an escaped dropped file, and saves next to it', async () => {
+    const dir = join(await makeTempDir(), 'x y')
+    await mkdir(dir)
+    await writeFile(join(dir, 'a.png'), 'png')
+    const onSubmit = vi.fn()
+    const { stdin, lastFrame } = render(<PathInput {...props({ onSubmit })} />)
+    // What a drag from Finder pastes: the path, shell-escaped, in one chunk.
+    stdin.write(join(dir, 'a.png').replace(/ /g, '\\ '))
+    await settle()
+    expect(lastFrame()).toContain('Next to a.png')
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith(dir)
+  })
+
+  it('makes the highlighted place the default with tab', async () => {
+    const onMakeDefault = vi.fn()
+    const { stdin } = render(<PathInput {...props({ onMakeDefault })} />)
+    stdin.write(DOWN)
+    await settle()
+    stdin.write(TAB)
+    await settle()
+    expect(onMakeDefault).toHaveBeenCalledWith('/Users/me/Desktop/converted')
+  })
+
+  it('does not offer a typed path as a default', async () => {
+    const onMakeDefault = vi.fn()
+    const { stdin } = render(<PathInput {...props({ onMakeDefault })} />)
+    stdin.write('/tmp/somewhere')
+    await settle()
+    stdin.write(TAB)
+    await settle()
+    expect(onMakeDefault).not.toHaveBeenCalled()
+  })
+
+  it('submits the path without the CR when text and Enter arrive in one write', async () => {
     // Ink does not split a chunk containing both text and a line ending:
-    // "abc" + CR arrives as ONE event whose `input` is "abc\r" and whose
+    // "/abc" + CR arrives as ONE event whose `input` is "/abc\r" and whose
     // `key.return` is false. A handler that only checks `key.return` would
     // never submit, and would append a raw \r to the buffer instead.
     const onSubmit = vi.fn()
     const { stdin } = render(<PathInput {...props({ onSubmit })} />)
-    stdin.write(DOWN + DOWN + DOWN)
+    stdin.write(`/abc${ENTER}`)
     await settle()
-    stdin.write(ENTER)
-    await settle()
-    stdin.write(`abc${ENTER}`)
-    await settle()
-    expect(onSubmit).toHaveBeenCalledWith('abc')
+    expect(onSubmit).toHaveBeenCalledWith('/abc')
   })
 
   it('submits the unescaped path when a dropped path with a trailing CR arrives in one write', async () => {
-    // The realistic drag-and-drop-with-newline case: a path copied from a
-    // file listing, editor, or multi-line selection carries a trailing
-    // newline, so the pasted path and the terminal's Enter land in the same
-    // chunk.
     const onSubmit = vi.fn()
     const { stdin } = render(<PathInput {...props({ onSubmit })} />)
-    stdin.write(DOWN + DOWN + DOWN)
-    await settle()
-    stdin.write(ENTER)
-    await settle()
     stdin.write(`/Users/me/My\\ Folder${ENTER}`)
     await settle()
     expect(onSubmit).toHaveBeenCalledWith('/Users/me/My Folder')
   })
 
   /**
-   * A preset's hint is its absolute path, and absolute paths are routinely
-   * longer than the terminal. Unbudgeted, they overflowed at 40, 55 and 80
-   * columns — measured on the real destination step. Spec §13: truncate with
-   * a middle ellipsis, never wrap, never overflow.
-   */
-  it('truncates preset hints to fit the terminal', () => {
-    const deep: PathPreset[] = [
-      { label: 'Same folder', path: '/Users/me/Documents/Projects/2026/Photography/Raw exports' },
-    ]
-    // The preview is the caller's to size (App.tsx budgets it against the
-    // same width); this mirrors what it does, so the assertion below is
-    // measuring the hints.
-    const sized = (path: string) => middleEllipsis(`${path}/photo.webp`, 55 - 4)
-    const frame =
-      render(<PathInput {...props({ presets: deep, width: 55, preview: sized })} />).lastFrame() ??
-      ''
-    for (const line of frame.split('\n')) expect(stringWidth(line)).toBeLessThanOrEqual(55)
-    expect(frame).toContain('…')
-    expect(frame).toContain('Same folder')
-  })
-
-  /**
-   * Mouse support means this shell now receives, on the same stdin channel
-   * as typed text, sequences it never used to: a DSR reply to the
-   * cursor-position query `useFrameOrigin` sends (provoked here by entering
-   * typing mode, which changes the frame height), and a press-and-release
-   * pair for every click. Ink strips the leading ESC from anything its own
-   * parser could not resolve, so both arrive looking like ordinary text
-   * starting with `[` — exactly what a real terminal with mouse reporting on
-   * would deliver mid-edit. Fed with no guard, they used to land in the
-   * buffer; see `isStrayEscapeSequence` in `src/shell/mouse.ts`.
+   * Mouse support means this shell receives, on the same stdin channel as
+   * typed text, a DSR reply to the cursor-position query and a press-and-
+   * release pair for every click. Ink strips the leading ESC from anything
+   * its parser could not resolve, so both arrive looking like text starting
+   * with `[`. See `isStrayEscapeSequence` in `src/shell/mouse.ts`.
    */
   it('filters a DSR reply and a mouse report out of a typed path, without blocking legal brackets', async () => {
     const onSubmit = vi.fn()
     const { stdin } = render(<PathInput {...props({ onSubmit })} />)
-    stdin.write(DOWN + DOWN + DOWN)
-    await settle()
-    stdin.write(ENTER)
-    await settle()
     stdin.write('/tmp/a')
     await settle()
-    // A DSR reply (cursor-position query answer).
     stdin.write('\x1b[24;1R')
     await settle()
-    // A left-click's press report, immediately followed by its release —
-    // every click delivers both.
     stdin.write('\x1b[<0;12;34M')
     await settle()
     stdin.write('\x1b[<0;12;34m')
     await settle()
-    // Brackets are legal in filenames and must still type normally.
     stdin.write('shot[1].png')
     await settle()
     stdin.write(ENTER)
@@ -199,11 +205,42 @@ describe('PathInput', () => {
     expect(onSubmit).toHaveBeenCalledWith('/tmp/ashot[1].png')
   })
 
-  it('drops the hints entirely when the caller says the band is compact', () => {
+  it('never draws past the width it was given', () => {
+    const deep: PathPreset[] = [
+      { label: 'Same folder', path: '/Users/me/Documents/Projects/2026/Photography/Raw exports' },
+    ]
+    for (const width of [40, 55, 80]) {
+      const sized = (path: string) => middleEllipsis(`${path}/photo.webp`, width - 4)
+      const frame =
+        render(
+          <PathInput
+            {...props({ presets: deep, width, preview: sized, defaultPath: deep[0]?.path ?? '' })}
+          />,
+        ).lastFrame() ?? ''
+      for (const line of frame.split('\n')) expect(stringWidth(line)).toBeLessThanOrEqual(width)
+      expect(frame).toContain('Same folder')
+    }
+  })
+
+  it('drops the paths entirely when the caller says the band is compact', () => {
     const frame =
       render(<PathInput {...props({ width: 40, showHints: false })} />).lastFrame() ?? ''
     expect(frame).toContain('Same folder')
-    expect(frame).not.toContain('/Users/me/Desktop\n')
+    expect(frame).not.toContain('/Users/me/Desktop')
     for (const line of frame.split('\n')) expect(stringWidth(line)).toBeLessThanOrEqual(40)
+  })
+})
+
+describe('destinationRows', () => {
+  it('lists every place for empty text, tagging the default', () => {
+    const rows = destinationRows('', presets, '/Users/me/Downloads', preview)
+    expect(rows.map((r) => r.label)).toEqual(['Same folder', 'New subfolder', 'Downloads'])
+    expect(rows[2]?.badge).toBe('default')
+  })
+
+  it('treats ~ and / as a path, not a filter', () => {
+    expect(destinationRows('~/out', presets, '', preview).map((r) => r.label)).toEqual([
+      'Use this folder',
+    ])
   })
 })

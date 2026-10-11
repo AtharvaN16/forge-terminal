@@ -2435,18 +2435,20 @@ export function App({
                 defaultPath={expandTilde(livePrefs.defaultOutput)}
                 onMakeDefault={makeDefault}
               />
-              {/* Four pairs is 45 columns — wider than a compact terminal.
-                Spec §13 drops hints there rather than overflowing, and the
-                shorter pair still names the key that is unique to this step. */}
+              {/* Wider than a compact terminal. Spec §13 drops hints there
+                rather than overflowing, and the shorter pair still names the
+                key that is unique to this step. Tab, not d: letters type into
+                the search box now. */}
               <HintBar
                 width={width}
                 pairs={
                   band === 'compact'
-                    ? [['d', 'make default']]
+                    ? [['tab', 'make default']]
                     : [
+                        ['type', 'filter'],
                         ['↑↓', 'choose'],
-                        ['↵', 'next'],
-                        ['d', 'make default'],
+                        ['↵', 'save here'],
+                        ['tab', 'make default'],
                       ]
                 }
               />

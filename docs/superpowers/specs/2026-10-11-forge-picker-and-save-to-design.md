@@ -89,8 +89,8 @@ the intro animation (`intro.ts`, `launch.tsx`) in parallel.
   file`. The match count `n/N` sits dim at the right end of the input line.
 - **Typing filters** the places by a case-insensitive substring of their
   label. The "Type a path…" row is gone, because the input now does its job.
-- **Path mode.** It applies when the unescaped text starts with `/` or `~`,
-  which is what a drag from Finder pastes. The list then has a single row:
+- **Path mode.** It applies when the unescaped text starts with `/`, `~` or
+  `.`. A drag from Finder pastes `/…`, and `.` covers a relative path. The list then has a single row:
   - an existing **file** → `Next to <name>`, which saves to the file's folder;
   - anything else → `Use this folder`, which saves to that path.
 

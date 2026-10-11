@@ -10,6 +10,8 @@ import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
+/** Tab, not d: letters type into Save to's search box. */
+const TAB = '\t'
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 
 let cfg: string
@@ -58,11 +60,11 @@ describe('making a destination the default', () => {
     expect(lastFrame() ?? '').toContain('make default')
   })
 
-  it('d writes the highlighted folder to config', async () => {
+  it('tab writes the highlighted folder to config', async () => {
     const { stdin, dir } = await toDestination()
     stdin.write(DOWN)
     await settle()
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(400)
     const stored = (await loadPreferences()).prefs.defaultOutput
     expect(stored).not.toBe(dir)
@@ -73,7 +75,7 @@ describe('making a destination the default', () => {
     const { stdin, lastFrame } = await toDestination()
     stdin.write(DOWN)
     await settle()
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(400)
     expect(lastFrame() ?? '').toContain('Save to')
   })
@@ -82,7 +84,7 @@ describe('making a destination the default', () => {
     const { stdin, lastFrame } = await toDestination()
     stdin.write(DOWN)
     await settle()
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(400)
     expect(lastFrame() ?? '').toMatch(/default output is now/i)
   })
@@ -91,22 +93,20 @@ describe('making a destination the default', () => {
     const { stdin, lastFrame } = await toDestination()
     stdin.write(DOWN)
     await settle()
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(400)
-    // Exactly one *preset row* carries the tag, wherever it has moved to.
-    // Matching on the trailing tag rather than the word: the keyboard hint
-    // ("d make default") and the confirmation note both say "default" too.
-    // The badge is bracketed, which is what separates it from the keyboard
-    // hint ("d make default") and from the confirmation note.
+    // Exactly one *place* carries the tag, wherever it has moved to.
+    // Matching on the starred tag rather than the word: the keyboard hint
+    // ("tab make default") and the confirmation note both say "default" too.
     const tagged = (lastFrame() ?? '').split('\n').filter((l) => l.includes('★ default'))
     expect(tagged.length).toBe(1)
   })
 
-  it('d on the row that is already default is a no-op, not an error', async () => {
+  it('tab on the row that is already default is a no-op, not an error', async () => {
     const { stdin, lastFrame } = await toDestination()
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(300)
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(300)
     expect(lastFrame() ?? '').not.toContain('✕')
   })
@@ -115,7 +115,7 @@ describe('making a destination the default', () => {
     const { stdin, lastFrame } = await toDestination()
     stdin.write(DOWN)
     await settle()
-    stdin.write('d')
+    stdin.write(TAB)
     await settle(400)
     const stored = (await loadPreferences()).prefs.defaultOutput
     expect(lastFrame() ?? '').toContain(stored.split('/').pop() ?? stored)
