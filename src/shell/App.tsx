@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { Box, type DOMElement, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,6 +12,7 @@ import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
 import {
+  ForgeError,
   isForgeError,
   unexpectedError,
   unsupportedCompress,
@@ -19,7 +21,7 @@ import {
 import { runPlan } from '../core/execute-jobs.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
-import type { InputFailure } from '../core/resolve.js'
+import { type InputFailure, resolveDirectory } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
@@ -47,9 +49,11 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
+import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
+import { writeToTerminal } from './terminal-write.js'
 import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { useKeys } from './useKeys.js'
 import { useMouseRouting } from './useMouseRouting.js'
@@ -172,6 +176,20 @@ interface PendingPdfRefusal {
 
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
+
+/**
+ * `emptyDirectory`'s hint names `--recursive`, a flag the shell has no way to
+ * pass. Every other error reads the same in both places.
+ */
+function forShell(error: ForgeError): ForgeError {
+  if (error.code !== 'empty-directory') return error
+  return new ForgeError({
+    code: error.code,
+    title: error.title,
+    detail: error.detail,
+    hint: 'Only files directly inside a folder are read — drop the files themselves, or the folder that holds them.',
+  })
+}
 
 /**
  * One line for the history, once a page-operation job has actually run.
@@ -298,20 +316,53 @@ export function App({
   initialHeight,
   prefs = APP_DEFAULT_PREFS,
   configWarning,
+  introShown = false,
 }: {
   initialWidth?: number
   initialHeight?: number
   prefs?: Preferences
   configWarning?: string
+  /** `playIntro` drew the banner before Ink mounted — see `historyForRedraw`. */
+  introShown?: boolean
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
   /** Only `PdfFlow`'s page grid needs this — see `gridLayout`. */
   const [measuredHeight, setMeasuredHeight] = useState(initialHeight ?? stdout?.rows ?? 24)
 
+  /**
+   * Bumped to remount `<Static>`, which replays every history block. See
+   * `redraw.ts` for why a width change has to clear the screen and redraw.
+   */
+  const [staticGeneration, setStaticGeneration] = useState(0)
+  /** Whether `playIntro`'s banner is still only on screen, not in history. */
+  const introPending = useRef(introShown)
+  /** For the intro banner's redraw — the default output can change mid-session. */
+  const defaultOutputRef = useRef(prefs.defaultOutput)
+
   useEffect(() => {
     if (initialWidth !== undefined || !stdout) return
-    const onResize = () => setMeasured(stdout.columns ?? 80)
+    let drawnAt = stdout.columns ?? 80
+    const onResize = () => {
+      const columns = stdout.columns ?? 80
+      // Height alone reflows nothing, so only a width change pays for a redraw.
+      if (columns !== drawnAt) {
+        drawnAt = columns
+        writeToTerminal(CLEAR_SCREEN, stdout)
+        const intro: HistoryBlock | undefined = introPending.current
+          ? {
+              kind: 'banner',
+              id: nextId(),
+              width: columns,
+              defaultOutput: defaultOutputRef.current,
+            }
+          : undefined
+        introPending.current = false
+        setHistory((h) => historyForRedraw(h, columns, intro))
+        setStaticGeneration((g) => g + 1)
+      }
+      setMeasured(columns)
+    }
     stdout.on('resize', onResize)
     return () => {
       stdout.off('resize', onResize)
@@ -386,6 +437,7 @@ export function App({
    * relaunch — so they all read this, never the `prefs` prop.
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
+  defaultOutputRef.current = livePrefs.defaultOutput
   const [step, setStep] = useState<Step>(prefs.theme === undefined ? 'theme' : 'idle')
   /**
    * Which action the staged file is being put through. Dropping a file means
@@ -657,6 +709,38 @@ export function App({
   }, [push])
 
   /**
+   * Refuses a drop that would stage several files nothing can act on
+   * together, *before* staging it — so no card is drawn for a batch the
+   * shell is about to turn down. Only a merge consumes several staged files,
+   * and merge takes PDFs; staging two images used to probe both, draw a rich
+   * card, and refuse only once the user tried to go on (UX audit #6).
+   *
+   * Says what did happen (nothing was staged), why, and what to do instead:
+   * clear what is already staged, or convert several files from the flag
+   * CLI, which is where spec §10 puts batch conversion until the shell has
+   * it.
+   */
+  const refuseUnstageable = useCallback(
+    (dropped: SourceInfo[], staged: SourceInfo[]) => {
+      const names = (list: SourceInfo[]) => list.map((s) => basename(s.path)).join(', ')
+      const what =
+        dropped.length === 1
+          ? `${names(dropped)} was not staged`
+          : `${dropped.length} files were not staged`
+      const next =
+        staged.length > 0
+          ? `${names(staged)} is still staged — esc clears it.`
+          : 'To convert several files at once, use the command line: forge <files> --to <format>.'
+      push({
+        kind: 'note',
+        id: nextId(),
+        text: `${SYMBOLS.warn} ${what}: only PDFs can be staged together, to merge with /pdf. ${next}`,
+      })
+    },
+    [push],
+  )
+
+  /**
    * Whether `convertAction` actually has somewhere to send this source.
    * `convertAction.appliesTo` only checks `sources.length >= 1` — that was
    * never enough on its own to guarantee a real choice: before a
@@ -809,10 +893,9 @@ export function App({
 
   // esc at the prompt clears whatever is typed first (mirroring every other
   // text field), and only once that field is empty does it fall through to
-  // clearing a leftover stage — reachable when a run reported a failure and
-  // returned here without clearing what was staged (a partial batch is
-  // still there to retry, or to abandon). Empty stages are the common case
-  // and cost nothing extra to check.
+  // clearing a leftover stage — reachable when a PDF backed out of the
+  // convert picker kept its place for `/pdf` or a merge list. Empty stages
+  // are the common case and cost nothing extra to check.
   //
   // Gated on the command buffer being closed, for the same reason the
   // `step === 'result'` hook above is gated on `step`: Ink delivers input
@@ -1063,6 +1146,31 @@ export function App({
     ],
   )
 
+  /**
+   * Stages what a multi-path drop or a folder resolved to — or refuses it
+   * before staging, when it would leave several files nothing can act on
+   * together (see `refuseUnstageable`). Failures ride along on the stage and
+   * are listed beside the card. One file goes to its target picker the way a
+   * single drop does; several make a merge list and wait at the prompt.
+   */
+  const stageSeveral = useCallback(
+    (infos: SourceInfo[], failures: InputFailure[]) => {
+      const next = addToStage(stage, infos, failures)
+      if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
+        refuseUnstageable(infos, stage.sources)
+        return
+      }
+      setStage(next)
+      setValues({})
+      if (next.sources.length > 1) {
+        setStep('idle')
+        return
+      }
+      setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
+    },
+    [stage, pdfActionsApply, refuseUnstageable, hasConvertTarget],
+  )
+
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
@@ -1141,19 +1249,38 @@ export function App({
             }
           }
           if (requestId.current !== id) return // superseded by a later submission
-          const next = addToStage(stage, infos, failures)
-          setStage(next)
-          setValues({})
-          if (next.sources.length > 1) {
-            if (!pdfActionsApply(next.sources)) {
-              refuseBatch()
-              return
-            }
-            setStep('idle')
+          stageSeveral(infos, failures)
+          return
+        }
+      }
+
+      /**
+       * A folder. Phase 3 §4 has the prompt accept one the way the CLI does,
+       * through `resolve.ts`; probed whole as a file instead, it was refused
+       * as "Not a file" under a CLI hint recommending a directory of images
+       * (UX audit #11). Non-recursive, as the CLI is without `--recursive`.
+       * One file inside is treated as that file dropped on its own, so the
+       * armed mode still decides where it goes; several go through the same
+       * rule as a multi-path drop.
+       */
+      if (!info && isForgeError(wholeError) && wholeError.code === 'not-a-file') {
+        const dir = unescapePath(trimmed)
+        const isDirectory = await stat(dir).then(
+          (s) => s.isDirectory(),
+          () => false,
+        )
+        if (isDirectory) {
+          const found = await resolveDirectory(dir, { recursive: false })
+          if (requestId.current !== id) return // superseded by a later submission
+          if (found.sources.length === 0) {
+            for (const failure of found.failures) showError(forShell(failure.error))
             return
           }
-          setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
-          return
+          if (found.sources.length > 1 || found.failures.length > 0) {
+            stageSeveral(found.sources, found.failures)
+            return
+          }
+          info = found.sources[0]
         }
       }
 
@@ -1161,14 +1288,18 @@ export function App({
         if (!info) throw wholeError
         if (requestId.current !== id) return // superseded by a later submission
         // Drops accumulate rather than replace — dropping a second file onto
-        // a prompt that already has one staged (e.g. after a failed run
-        // returned here without clearing it) builds a batch instead of
-        // losing the first file. `addToStage` also drops an exact repeat of
-        // a path already staged. Computed once, synchronously, rather than
-        // via the `setStage(s => ...)` updater form this used before: the
-        // guard just below needs to know the resulting length *now*, to
-        // decide whether to advance into the wizard at all.
+        // a prompt that already has one staged (a PDF kept for `/pdf`, say)
+        // builds a batch instead of losing the first file — but only a
+        // batch something can act on (see `refuseUnstageable`). `addToStage`
+        // also drops an exact repeat of a path already staged. Computed
+        // once, synchronously, rather than via the `setStage(s => ...)`
+        // updater form this used before: the guards just below need to know
+        // the resulting list *now*, to decide whether to stage it at all.
         const next = addToStage(stage, [info], [])
+        if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
+          refuseUnstageable([info], stage.sources)
+          return
+        }
         setStage(next)
         setValues({})
         if (next.sources.length > 1) {
@@ -1177,16 +1308,12 @@ export function App({
           // convert. Merge ordering made staging several files the *point*,
           // and left the message contradicting the `/pdf` signpost two lines
           // below it — "drop a single file, or esc to clear the list" about a
-          // list the user was deliberately building. `pdfActionsApply` is
-          // already this file's single answer to "do the page operations
-          // apply here", so it decides. What replaces the refusal is not
-          // another line of prose: the staged card (rendered at idle from
-          // two files up — see the gate in the JSX below) says what is
-          // staged, and the existing signpost says where to take it.
-          if (!pdfActionsApply(next.sources)) {
-            refuseBatch()
-            return
-          }
+          // list the user was deliberately building. A batch the page
+          // operations cannot use is now refused before it is staged, just
+          // above; what reaches here is a merge list, and the staged card
+          // (rendered at idle from two files up — see the gate in the JSX
+          // below) says what is staged while the existing signpost says
+          // where to take it.
           setStep('idle')
           return
         }
@@ -1261,7 +1388,8 @@ export function App({
       runCommand,
       mode,
       stage,
-      refuseBatch,
+      stageSeveral,
+      refuseUnstageable,
       hasConvertTarget,
       pdfActionsApply,
       fenceOff,
@@ -1278,6 +1406,13 @@ export function App({
    * picker — an image has nothing else to do with a staged file, so
    * backing out means abandoning it. See `backToPromptKeepingStage` for the
    * other case.
+   *
+   * Also how a run that failed, was refused, or was abandoned at the
+   * "can't get that small" question ends. Phase 3's rule is that completing
+   * an action clears the stage, and a failure completes it as surely as a
+   * result does: leaving the file staged meant the natural recovery — drop it
+   * again, or drop another — appended to it instead, building a batch the
+   * convert flow then refused (UX audit #7).
    */
   const clearSource = () => {
     setStage(clearStage())
@@ -1640,8 +1775,11 @@ export function App({
       push({ kind: 'error', id: nextId(), error: refusal.error })
       // Writing over the source has no "replace" worth offering — there is
       // no outcome there that keeps the original. Back to the destination
-      // step, where choosing a different folder is the actual fix.
-      setStep(refusal.error.code === 'output-is-input' ? 'destination' : 'idle')
+      // step, where choosing a different folder is the actual fix. Any
+      // other refusal ends the action, and ending one clears the stage —
+      // see `clearSource`.
+      if (refusal.error.code === 'output-is-input') setStep('destination')
+      else clearSource()
       return
     }
 
@@ -1686,7 +1824,7 @@ export function App({
     } else {
       const failure = summary.failures[0]
       if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
-      setStep('idle')
+      clearSource()
     }
   }
 
@@ -1727,7 +1865,7 @@ export function App({
       // unhandled rejection instead of something the user ever sees. Render
       // it instead, exactly like submitPath does for probe().
       showError(e)
-      setStep('idle')
+      clearSource()
     } finally {
       converting.current = false
     }
@@ -1753,7 +1891,7 @@ export function App({
       void finishConversion(planned, destination, output, settled)
         .catch((e) => {
           showError(e)
-          setStep('idle')
+          clearSource()
         })
         .finally(() => {
           converting.current = false
@@ -2008,7 +2146,7 @@ export function App({
               <StagedFiles stage={stage} width={width} />
             </Box>
           ) : null}
-          <Static items={history}>
+          <Static key={staticGeneration} items={history}>
             {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
           </Static>
 
@@ -2328,7 +2466,7 @@ export function App({
                 onSubmit={answerSizeUnreachable}
                 onCancel={() => {
                   setSizeUnreachable(null)
-                  setStep('idle')
+                  clearSource()
                 }}
                 showHints={band !== 'compact'}
               />

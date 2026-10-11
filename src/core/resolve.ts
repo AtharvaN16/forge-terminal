@@ -48,6 +48,48 @@ async function directoryEntries(dir: string, recursive: boolean): Promise<string
  * still rethrown for an explicitly named path, since that is an unanticipated
  * failure shape rather than a plain "this file could not be read".
  */
+async function addDirectory(
+  dir: string,
+  recursive: boolean,
+  failures: InputFailure[],
+  add: (path: string, root: string, explicit: boolean) => Promise<void>,
+): Promise<void> {
+  const entries = await directoryEntries(dir, recursive)
+  if (entries.length === 0) {
+    failures.push({ path: dir, error: emptyDirectory(dir) })
+    return
+  }
+  for (const entry of entries) await add(entry, dir, false)
+}
+
+/**
+ * Every file a directory holds, probed — the directory branch of
+ * `resolveInputs` on its own.
+ *
+ * For a caller that already knows its path is a directory and must not have
+ * it read as a glob: `resolveInputs` treats any `[`, `{`, `*` or `?` in a
+ * pattern as glob syntax, and a folder named `Photos [2024]` would match
+ * nothing. The interactive shell resolves a dropped folder through this.
+ */
+export async function resolveDirectory(
+  dir: string,
+  opts: { recursive: boolean },
+): Promise<ResolvedInput> {
+  const sources: SourceInfo[] = []
+  const failures: InputFailure[] = []
+  const roots = new Map<string, string>()
+  const abs = resolvePath(dir)
+  await addDirectory(abs, opts.recursive, failures, async (path, root) => {
+    try {
+      sources.push(await probe(path))
+      roots.set(path, root)
+    } catch (e) {
+      if (isForgeError(e)) failures.push({ path, error: e })
+    }
+  })
+  return { sources, failures, roots }
+}
+
 export async function resolveInputs(
   patterns: string[],
   opts: { recursive: boolean },
@@ -87,12 +129,7 @@ export async function resolveInputs(
     }
 
     if (stats.isDirectory()) {
-      const entries = await directoryEntries(abs, opts.recursive)
-      if (entries.length === 0) {
-        failures.push({ path: abs, error: emptyDirectory(abs) })
-        continue
-      }
-      for (const entry of entries) await add(entry, abs, false)
+      await addDirectory(abs, opts.recursive, failures, add)
       continue
     }
 

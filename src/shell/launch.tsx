@@ -38,7 +38,11 @@ export async function launchShell(): Promise<void> {
 
   const instance = render(
     <ThemeProvider palette={palette}>
-      <App prefs={prefs} {...(warning === undefined ? {} : { configWarning: warning })} />
+      <App
+        prefs={prefs}
+        introShown={prefs.theme !== undefined}
+        {...(warning === undefined ? {} : { configWarning: warning })}
+      />
     </ThemeProvider>,
     {
       /**

@@ -413,14 +413,18 @@ Dropping a file into a terminal pastes a shell-escaped path —
 normalises backslash escapes, surrounding quotes, and `~`. This is the entire
 mechanism; no drop-target API exists or is needed.
 
-**One path per drop.** The flow above is single-file from `probe` through to
-the result, so a drop is read as exactly one path — a paste carrying several
-is treated as one path and fails to probe as such. Splitting a paste on
-unescaped whitespace is written and tested (`splitPastedPaths` in
-`unescape-path.ts`) but deliberately not wired in: making the shell
-multi-file is the batch feature on the roadmap, a product decision, not
-something the drag-and-drop mechanism should make on its own. Until then the
-flag CLI is where a folder or a glob gets converted.
+**Several paths per drop, staged only when something can use them.** A real
+drag of several files pastes every escaped path on one line; `submitPath`
+tries the line whole first, then splits it with `splitPastedPaths`. Phase 3
+made several staged files meaningful — a `/pdf` merge list — so a drop that
+yields several PDFs (or adds a PDF to a staged one) is staged and shown as a
+card. A dropped folder resolves the same way, through `resolveDirectory`
+(non-recursive, as the CLI is without `--recursive`); a folder holding one
+file is that file dropped on its own. Anything else that would leave several files staged is refused *before*
+staging, with the reason and the way out: the conversion flow is still
+single-file from `probe` through to the result, and making it multi-file is
+the batch feature on the roadmap, a product decision. Until then the flag CLI
+is where several files, a folder or a glob get converted.
 
 ### Clickable links
 
@@ -512,7 +516,10 @@ Three width bands: `< 60` compact (drop the box border and choice hints),
 `60–100` normal, `> 100` wide (show full paths and dimensions). Content is
 truncated with a middle ellipsis rather than wrapped; nothing overflows
 horizontally. Width changes are observed by listening for `resize` on the stream returned
-by Ink’s `useStdout()`.
+by Ink’s `useStdout()`. The terminal reflows what is already on screen when
+its width changes, and Ink erases by lines written rather than rows shown, so a
+width change clears the screen and scrollback and replays history through a
+fresh `<Static>` at the new width (`shell/redraw.ts`).
 
 Every status carries a symbol and a word — `✓ done`, `✕ failed`, `⚠ warning` —
 so colour is never the sole carrier of meaning. Selected rows are marked with

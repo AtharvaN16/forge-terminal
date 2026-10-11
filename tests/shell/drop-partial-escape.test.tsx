@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { App } from '../../src/shell/App.js'
-import { makePng, makeTempDir } from '../helpers/fixtures.js'
+import { makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -39,8 +39,10 @@ describe('a single dropped path with one unescaped space', () => {
 
   it('still splits a genuine multi-file drop of real files', async () => {
     const dir = await makeTempDir()
-    const a = await makePng(dir, 'a.png')
-    const b = await makePng(dir, 'b.png')
+    // PDFs, because only a merge list stages several files at once — two
+    // images would be (correctly) refused before staging.
+    const a = await makePdf(dir, 'a.pdf', 1)
+    const b = await makePdf(dir, 'b.pdf', 1)
 
     const { stdin, lastFrame } = render(<App initialWidth={80} />)
     stdin.write(`${a} ${b}`)
@@ -50,9 +52,9 @@ describe('a single dropped path with one unescaped space', () => {
 
     const frame = lastFrame() ?? ''
     // Both real files staged — the whole-string attempt fails (no file
-    // literally named "a.png <space> b.png"), so it correctly falls through
+    // literally named "a.pdf <space> b.pdf"), so it correctly falls through
     // to splitting, unchanged from before this fix.
-    expect(frame).toContain('a.png')
-    expect(frame).toContain('b.png')
+    expect(frame).toContain('a.pdf')
+    expect(frame).toContain('b.pdf')
   })
 })

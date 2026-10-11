@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { resolveInputs } from '../../src/core/resolve.js'
+import { resolveDirectory, resolveInputs } from '../../src/core/resolve.js'
 import { makeCorruptFile, makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const names = (paths: { path: string }[]) => paths.map((s) => basename(s.path)).sort()
@@ -99,5 +99,31 @@ describe('resolveInputs', () => {
     const a = await makeJpeg(dir, 'a.jpg')
     const { sources } = await resolveInputs([a, a], { recursive: false })
     expect(sources).toHaveLength(1)
+  })
+})
+
+describe('resolveDirectory', () => {
+  it('reads a folder whose name looks like a glob as a folder', async () => {
+    const dir = join(await makeTempDir(), 'Photos [2024]')
+    await mkdir(dir)
+    await makeJpeg(dir, 'a.jpg')
+    await makePng(dir, 'b.png')
+    const { sources, failures } = await resolveDirectory(dir, { recursive: false })
+    expect(names(sources)).toEqual(['a.jpg', 'b.png'])
+    expect(failures).toEqual([])
+  })
+
+  it('reports an empty folder, and a file that will not probe, as failures', async () => {
+    const empty = join(await makeTempDir(), 'empty')
+    await mkdir(empty)
+    const none = await resolveDirectory(empty, { recursive: false })
+    expect(none.failures[0]?.error.code).toBe('empty-directory')
+
+    const dir = await makeTempDir()
+    await makeJpeg(dir, 'a.jpg')
+    await makeCorruptFile(dir, 'broken.png')
+    const { sources, failures } = await resolveDirectory(dir, { recursive: false })
+    expect(names(sources)).toEqual(['a.jpg'])
+    expect(names(failures)).toEqual(['broken.png'])
   })
 })
