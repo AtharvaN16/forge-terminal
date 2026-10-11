@@ -60,12 +60,13 @@ never edit the original.
 
 ## Optional extensions: boost and remove background
 
-Two image operations are not built in. They are small downloads, installed once:
+Two image operations are not built in. They are small downloads, installed once,
+and need macOS 14 or later:
 
 ```bash
 forge extensions                       # what is installed
-forge extensions add boost             # about 50 MB; 2x / 4x resolution
-forge extensions add remove-background # about 0.2 MB; needs macOS 14 or later
+forge extensions add boost             # about 15 MB; 2x / 4x; Apple Silicon only for now
+forge extensions add remove-background # about 32 KB
 forge photo.jpg --boost --json         # photo-2x.png   (--boost 4 -> photo-4x.png)
 forge photo.jpg --remove-bg --json     # photo-cutout.png
 ```

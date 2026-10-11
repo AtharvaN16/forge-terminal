@@ -219,12 +219,13 @@ so — and it encodes a candidate to find out rather than guessing:
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather
-than part of the install. Nothing downloads until you ask:
+than part of the install. Both need macOS 14 or later. Nothing downloads until
+you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
-forge extensions add boost              # about 50 MB
-forge extensions add remove-background  # about 0.2 MB; needs macOS 14 or later
+forge extensions add boost              # about 15 MB; Apple Silicon only for now
+forge extensions add remove-background  # about 32 KB
 forge extensions remove boost
 ```
 

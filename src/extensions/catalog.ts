@@ -31,16 +31,14 @@ export const CATALOG: readonly CatalogEntry[] = [
     summary: 'Upscale images 2x or 4x with a local AI model',
     version: '1.0.0',
     minMacos: 14,
+    // Apple Silicon only for now. An x64 build exists (CI still makes it) but
+    // has never been run, and its CPU fallback would look frozen on an Intel
+    // Mac, so Intel is told there is no build rather than offered that.
     assets: {
       arm64: {
         url: `${RELEASES}/ext-boost-v1.0.0/forge-ext-boost-1.0.0-arm64.tar.gz`,
         bytes: 14866271,
         sha256: 'cc669b3abf183fb65251b8399700ba5bab65e2623e0fcc716af1c18f4e5d77e9',
-      },
-      x64: {
-        url: `${RELEASES}/ext-boost-v1.0.0/forge-ext-boost-1.0.0-x64.tar.gz`,
-        bytes: 16061393,
-        sha256: 'ec3ff921d067be9d4951a60fc3293ff1252ca660148296644d98c8abe13f38d6',
       },
     },
     licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
