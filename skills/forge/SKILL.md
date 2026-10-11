@@ -11,11 +11,13 @@ Forge converts files on this Mac. Nothing is uploaded.
 
 1. **Probe first.** `forge probe <file…> --json`. Each entry in `probes` has
    `format` (read from the file's content, not its name), `targets` (every
-   format the file can become) and `actions` (the page operations that apply:
+   format the file can become) and `actions` (what else applies: `compress`,
    `split`, `extract`, `delete`, `rotate`; `merge` only appears when you give
    two or more PDFs; `convert` is always there). Use these lists; do not
-   guess. Compression is not an action: it is `--quality` or `--max-size`
-   without `--to`.
+   guess. `compress` appears when quality or size can be reduced: lossy
+   images, and PDFs that contain compressible images (a PNG has only
+   `convert`). Run it as `--quality N` or `--max-size S` without `--to`. A
+   compress run reports `op: "convert"` in `--json` results.
 2. **Pass `--json`.** stdout is then exactly one JSON document, on one line.
    Read `ok`, `results[].outputs` (the absolute path of every file written)
    and `failures[]` (`path`, `code`, `title`, `detail`, `hint`).
