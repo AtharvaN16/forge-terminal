@@ -351,6 +351,9 @@ export function outputExists(path: string, op: Job['op'] = 'convert'): ForgeErro
     hint: takesOutputFlag(op)
       ? 'Pass --force to replace it, or choose a different --output.'
       : 'Pass --force to replace it, or move the existing file out of the way.',
+    // The shell has no --force or --output: it asks instead (Replace, and
+    // Keep both for a conversion) whenever it meets an existing file.
+    shellHint: 'Run it again and Forge will ask before replacing it.',
   })
 }
 
@@ -366,6 +369,7 @@ export function outputCollision(paths: [string, string], output: string): ForgeE
     title: 'Two files want the same output',
     detail: `${basename(paths[0])} and ${basename(paths[1])} would both become ${basename(output)}.`,
     hint: 'Convert them separately, or use --output to send them to different folders.',
+    shellHint: 'Convert them one at a time.',
   })
 }
 
@@ -398,6 +402,11 @@ export function outputIsInput(path: string, op: Job['op'] = 'convert'): ForgeErr
     hint: takesOutputFlag(op)
       ? 'Choose a different --output, or pass --force to overwrite in place.'
       : 'Move or rename that file first, or pass --force to overwrite it in place.',
+    // The shell deliberately offers no in-place overwrite: a conversion goes
+    // back to its destination step, a page operation back to /pdf.
+    shellHint: takesOutputFlag(op)
+      ? 'Choose a different folder to save it in.'
+      : 'Move or rename that file first.',
   })
 }
 
@@ -451,6 +460,8 @@ export function emptyDirectory(path: string): ForgeError {
     title: 'No images found',
     detail: `${basename(path)} contains no images Forge can convert.`,
     hint: 'Try --recursive to look inside subfolders.',
+    // The shell takes dropped files, not folders, and has no --recursive.
+    shellHint: 'Drop the files themselves instead.',
   })
 }
 
