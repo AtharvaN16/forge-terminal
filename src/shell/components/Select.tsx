@@ -200,7 +200,14 @@ export function Select({
         // unavailable action must never draw the marker or go bold.
         const selected = i === index && !item.disabled
         const marker = selected ? `${SYMBOLS.strip} ` : '  '
-        const label = item.label.padEnd(labelWidth)
+        const badge = item.badge ? `${SYMBOLS.star} ${item.badge}` : ''
+        // A label wider than its row is cut, never wrapped: Save to feeds this
+        // list labels built from whatever file was dropped on it.
+        const labelRoom = Math.max(
+          1,
+          width - stringWidth(marker) - (badge ? stringWidth(badge) + 2 : 0),
+        )
+        const label = middleEllipsis(item.label, labelRoom).padEnd(Math.min(labelWidth, labelRoom))
 
         /**
          * Rows are names. Only the highlighted row says more — its hint, or
@@ -208,7 +215,6 @@ export function Select({
          * with one sentence in it. A disabled row keeps its hint, because
          * there the hint is the reason the row cannot be chosen.
          */
-        const badge = item.badge ? `${SYMBOLS.star} ${item.badge}` : ''
         const used = stringWidth(marker) + stringWidth(label) + (badge ? stringWidth(badge) + 2 : 0)
         const room = Math.max(0, width - used - 2)
         const spoken = selected && showHints && speak ? speak(item, room) : null

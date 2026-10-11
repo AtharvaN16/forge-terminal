@@ -57,12 +57,18 @@ function Filled({
   }
   const parts: Array<Segment & { bg: string }> = []
   let col = 0
+  // Counted in terminal columns, not characters: a wide glyph in the folder
+  // path takes two cells, and the edge is a cell position.
   for (const seg of segments) {
-    const chars = [...seg.text]
-    const left = Math.max(0, Math.min(chars.length, wipe.edge - col))
-    if (left > 0) parts.push({ ...seg, text: chars.slice(0, left).join(''), bg })
-    if (left < chars.length) parts.push({ ...seg, text: chars.slice(left).join(''), bg: wipe.from })
-    col += chars.length
+    let before = ''
+    let after = ''
+    for (const ch of seg.text) {
+      if (col < wipe.edge) before += ch
+      else after += ch
+      col += stringWidth(ch)
+    }
+    if (before) parts.push({ ...seg, text: before, bg })
+    if (after) parts.push({ ...seg, text: after, bg: wipe.from })
   }
   return (
     <Box width={width}>

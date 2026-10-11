@@ -160,6 +160,31 @@ describe('Save to, framed (spec 2026-10-11 picker §3)', () => {
     expect(onMakeDefault).not.toHaveBeenCalled()
   })
 
+  it('submits the pasted path, not a stale place, when Enter lands before a redraw', async () => {
+    // A drop and its Enter can both be read before React re-renders. The
+    // list on screen is still the places then, and must not take the Enter.
+    const onSubmit = vi.fn()
+    const { stdin } = render(<PathInput {...props({ onSubmit })} />)
+    stdin.write('/tmp/foo')
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit).toHaveBeenCalledWith('/tmp/foo')
+  })
+
+  it('cuts a long dropped file name to the frame rather than wrapping it', async () => {
+    const dir = await makeTempDir()
+    const name = 'Screenshot 2026-10-11 at 10.42.13 AM with a really long name.png'
+    await writeFile(join(dir, name), 'png')
+    const { stdin, lastFrame } = render(<PathInput {...props({ width: 40 })} />)
+    stdin.write(join(dir, name).replace(/ /g, '\\ '))
+    await settle()
+    const lines = (lastFrame() ?? '').split('\n')
+    expect(lines.filter((l) => l.includes('Next to')).length).toBe(1)
+    expect(lines.length).toBe(5)
+    for (const line of lines) expect(stringWidth(line)).toBeLessThanOrEqual(40)
+  })
+
   it('submits the path without the CR when text and Enter arrive in one write', async () => {
     // Ink does not split a chunk containing both text and a line ending:
     // "/abc" + CR arrives as ONE event whose `input` is "/abc\r" and whose

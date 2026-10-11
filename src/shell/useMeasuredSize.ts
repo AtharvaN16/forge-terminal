@@ -58,6 +58,7 @@ export function useMeasuredSize({
     }
   }, [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `resetKey` is read through `results`, which a reset replaces — the effect has to re-run to measure for the new source
   useEffect(() => {
     const pump = () => {
       const target = wanted.current

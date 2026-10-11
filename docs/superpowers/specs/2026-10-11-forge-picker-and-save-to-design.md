@@ -48,16 +48,20 @@ the intro animation (`intro.ts`, `launch.tsx`) in parallel.
 
 ## 2. Measured sizes in the format picker
 
-- These apply only to the `target` step, for a single staged **image** source.
-  Documents and batches get no size, and the row then shows nothing beyond
-  its name.
+- These apply only to the `target` step, for a single staged **image** source
+  of at most 12 megapixels, and only outside the compact band. An encode
+  cannot be stopped part-way: on a larger photo one AVIF measurement takes
+  seconds of CPU, and it could still be running when the conversion starts.
+  Documents, batches and larger images get no size, and the row then shows
+  nothing beyond its name.
 - Only the highlighted format is measured. The measurement is
   `encodeToBuffer(source, target, { quality })`, using the quality the
   conversion would start from (`livePrefs.quality`).
 - Measuring starts 150 ms after the highlight settles, and only one encode is
   in flight at a time. A result that arrives after the highlight has moved
   away is cached, but not shown on another row. Results are cached per
-  (source, target) for as long as the step is open.
+  target, and the cache is cleared whenever the source's path, its size, or
+  the quality changes.
 - **While waiting**, the row says `measuring…`.
 - **Once measured**, the row says `74.6 KB  39% smaller` in `ok`, or
   `7% larger` in `larger`. The saving is computed against the source's own
@@ -107,8 +111,12 @@ the intro animation (`intro.ts`, `launch.tsx`) in parallel.
 - **The hint bar** for the destination step becomes `type filter`,
   `↑↓ choose`, `↵ save here`, `tab make default`. In the compact band it is
   `tab make default` alone.
-- **The no-match row.** When a filter matches nothing, a single dim row reads
-  `no match — type a full path, or drop a file`.
+- **The no-match row.** When a filter matches nothing, a single disabled row
+  reads `no match`, with the hint `type a path, or drop a file`. Enter does
+  nothing on it, and esc still clears the text.
+- **Enter before a redraw.** A drop and the Enter after it can both arrive
+  before the list redraws. When that happens, Enter is resolved from the text
+  itself, never from the stale list on screen.
 
 ## 4. Motion
 

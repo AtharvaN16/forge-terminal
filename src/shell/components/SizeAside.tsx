@@ -5,8 +5,11 @@ import { colourProp } from '../theme.js'
 import type { MeasuredSize } from '../useMeasuredSize.js'
 import { Shimmer } from './Shimmer.js'
 
-/** Below this the sentence would be cut mid-number, so it is not said at all. */
-const NEEDS = 22
+/**
+ * The longest sentence this says ("1023.9 KB  about the same") is 25
+ * columns. With less room it would wrap, so it is not said at all.
+ */
+const NEEDS = 25
 
 /**
  * What the highlighted format says about itself: its measured size and how

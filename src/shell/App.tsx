@@ -296,6 +296,13 @@ function MouseRouter({
 }
 
 /** Sentinel `Select` value for the convert-target picker's row into `/pdf`. */
+/**
+ * The largest image whose formats are measured as they are highlighted: 12
+ * megapixels, a typical phone photo. Above it a single encode (AVIF, worst
+ * case) runs long enough to overlap the conversion the user then asks for.
+ */
+const MEASURE_MAX_PIXELS = 12_000_000
+
 const GOTO_PDF = '__goto-pdf__'
 
 /** The `/pdf` command, looked up once rather than re-found on every render. */
@@ -1028,13 +1035,24 @@ export function App({
    * targets go through another engine, and a batch has no one size to quote.
    * The encode is the conversion's own plan at the quality the slider will
    * open on, so the number is the one the default answers would produce.
+   *
+   * Not in the compact band, where the row has no room to say it, and not
+   * above MEASURE_MAX_PIXELS: an encode cannot be stopped part-way, and on a
+   * large photo one AVIF measurement is seconds of CPU that could still be
+   * running when the real conversion starts.
    */
   const [targetHighlight, setTargetHighlight] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (step !== 'target') setTargetHighlight(undefined)
   }, [step])
   const measureTarget = useMemo<MeasureFn | undefined>(() => {
-    if (!source || source.kind !== 'image' || stage.sources.length !== 1 || mode !== 'convert') {
+    if (
+      source?.kind !== 'image' ||
+      stage.sources.length !== 1 ||
+      mode !== 'convert' ||
+      band === 'compact' ||
+      source.width * source.height > MEASURE_MAX_PIXELS
+    ) {
       return undefined
     }
     return async (target) => {
@@ -1043,10 +1061,10 @@ export function App({
         quality: livePrefs.quality,
         destination: expandTilde(livePrefs.defaultOutput),
       })
-      if (!planned || planned.op !== 'convert') throw new Error('nothing to measure')
+      if (planned?.op !== 'convert') throw new Error('nothing to measure')
       return (await encodeToBuffer(source, planned.target, planned.options)).length
     }
-  }, [source, stage.sources.length, mode, livePrefs.quality, livePrefs.defaultOutput])
+  }, [source, stage.sources.length, mode, band, livePrefs.quality, livePrefs.defaultOutput])
   const firstTarget = (() => {
     const spec = specFor('target')
     return spec?.kind === 'select' ? spec.choices.find((c) => !c.disabled)?.value : undefined
@@ -1054,7 +1072,8 @@ export function App({
   const targetSize = useMeasuredSize({
     highlighted: step === 'target' ? (targetHighlight ?? firstTarget) : undefined,
     measure: measureTarget,
-    resetKey: source?.path,
+    // A size belongs to this file, as it is now, at this quality.
+    resetKey: source ? `${source.path}|${source.bytes}|${livePrefs.quality}` : undefined,
   })
 
   /**

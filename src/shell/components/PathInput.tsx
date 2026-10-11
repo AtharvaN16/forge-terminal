@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs'
 import { basename, dirname } from 'node:path'
 import { Box, Text } from 'ink'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { expandTilde } from '../../config/preferences.js'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
@@ -138,7 +138,15 @@ export function PathInput({
     setText(next)
   }
 
-  const rows = destinationRows(text, presets, defaultPath, preview)
+  // Memoised on the text: in path mode each call stats the disk, and a redraw
+  // (the drop flash runs ~14 of them) must not stat it again each time.
+  const rows = useMemo(
+    () => destinationRows(text, presets, defaultPath, preview),
+    [text, presets, defaultPath, preview],
+  )
+  /** The text the list on screen was built from. */
+  const drawnText = useRef(text)
+  drawnText.current = text
   const listKey = rows.map((r) => r.value).join('\n')
   const [highlight, setHighlight] = useState({ listKey, index: 0 })
   const isPath = PATHLIKE.test(unescapePath(text.trim()))
@@ -150,8 +158,22 @@ export function PathInput({
   )
 
   useKeys((input, key) => {
+    /**
+     * Enter normally belongs to the list. But a dropped path and the Enter
+     * after it can both arrive before React redraws, and then the list on
+     * screen is still built from the old text — it would save to whichever
+     * place happened to be highlighted. So when the text has moved on since
+     * the last draw, Enter is resolved here from the text itself, and the
+     * list's own submit stands down (see `onSubmit` below).
+     */
+    if (key.return) {
+      if (textRef.current === drawnText.current) return
+      const row = destinationRows(textRef.current, presets, defaultPath, preview)[0]
+      if (row && !row.disabled) onSubmit(row.value)
+      return
+    }
     // The list's keys: Select acts on these.
-    if (key.return || key.escape || key.upArrow || key.downArrow) return
+    if (key.escape || key.upArrow || key.downArrow) return
     if (key.tab) {
       const row = rows[highlight.listKey === listKey ? highlight.index : 0]
       if (!isPath && row && !row.disabled && row.value !== defaultPath) onMakeDefault?.(row.value)
@@ -253,6 +275,9 @@ export function PathInput({
           items={rows}
           onHighlight={(index) => setHighlight({ listKey, index })}
           onSubmit={(value) => {
+            // A stale list: the text changed since it was drawn, and the
+            // handler above has already submitted what the text says.
+            if (textRef.current !== drawnText.current) return
             if (value !== NO_MATCH) onSubmit(value)
           }}
           onCancel={() => {
