@@ -47,16 +47,16 @@ function harness(
 }
 
 describe('bootShell', () => {
-  it('starts loading the shell before the intro plays, so the two overlap', async () => {
+  it('starts the intro first, then loads the shell underneath it', async () => {
     const { deps, events } = harness(themed, { introMs: 40, loadMs: 20 })
     await bootShell(deps)
-    expect(events).toEqual(['load:start', 'intro:start', 'load:end', 'intro:end', 'launch'])
+    expect(events).toEqual(['intro:start', 'load:start', 'load:end', 'intro:end', 'launch'])
   })
 
   it('waits for a slow load after a fast intro, and only then launches', async () => {
     const { deps, events } = harness(themed, { introMs: 10, loadMs: 60 })
     await bootShell(deps)
-    expect(events).toEqual(['load:start', 'intro:start', 'intro:end', 'load:end', 'launch'])
+    expect(events).toEqual(['intro:start', 'load:start', 'intro:end', 'load:end', 'launch'])
   })
 
   it('skips the intro on first run, when no theme has been chosen, and still launches', async () => {
@@ -90,7 +90,7 @@ describe('bootShell', () => {
         loadFails: new Error('chunk missing'),
       })
       await expect(bootShell(deps)).rejects.toThrow('chunk missing')
-      expect(events).toEqual(['load:start', 'intro:start', 'intro:end'])
+      expect(events).toEqual(['intro:start', 'load:start', 'intro:end'])
       await later(10)
       expect(unhandled).toEqual([])
     })
