@@ -133,6 +133,8 @@ describe('forge_convert', () => {
           this.destroy(new Error('the MCP server read stdin'))
         },
       })
+      // A TTY, so that a prompt would attach readline and trip the read guard.
+      Object.assign(explosive, { isTTY: true })
       Object.defineProperty(process, 'stdin', { value: explosive, configurable: true })
       const out = await call('forge_convert', { paths: [await locked()], to: 'png' })
       expect(out.isError).toBe(true)

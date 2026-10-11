@@ -18,7 +18,7 @@ export const INSTRUCTIONS = [
   'Every path must be absolute.',
   'Call forge_probe first: it says what a file is, every format it can become, and every action that applies.',
   'Nothing is overwritten unless you pass overwrite: true — only do that when the user asked to replace a file.',
-  'A failure hint that mentions --force means overwrite: true here; --output means the output argument.',
+  'A failure hint that mentions --force means overwrite: true here; --output means the output argument; --password-stdin means the password argument.',
 ].join(' ')
 
 const READS = { readOnlyHint: true, openWorldHint: false } as const
