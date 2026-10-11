@@ -183,6 +183,13 @@ Exit codes:
   1  the command was understood, and at least one input failed or was refused
   2  the command itself was invalid: an unknown flag, a missing argument, contradictory flags`
 
+/** The subcommands Commander does not know about, because `parseArgs` claims them first. */
+export const COMMANDS_HELP = `
+Other commands:
+  forge probe <files...>   what each file is and what Forge can do with it
+  forge config [list | path | set <setting> <value>]
+  forge mcp                run as a local MCP server over stdio, for AI agents`
+
 function parseMaxSize(raw: unknown): number {
   const bytes = parseSize(String(raw))
   if (bytes === undefined) {
@@ -260,7 +267,7 @@ export function parseArgs(argv: string[]): Intent {
     .option('--json', 'print one JSON document on stdout instead of text')
     .helpOption('-h, --help', 'show this help')
     .version('0.1.0', '-V, --version', 'show the version')
-    .addHelpText('after', EXIT_CODES_HELP)
+    .addHelpText('after', `${COMMANDS_HELP}\n${EXIT_CODES_HELP}`)
     .configureOutput({ outputError: () => {} })
     .exitOverride()
     .allowExcessArguments(false)

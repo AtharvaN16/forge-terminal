@@ -659,6 +659,154 @@ $ echo $?
 2
 ```
 
+## Use with AI agents
+
+Tell an agent *"take this image and use Forge on it"* and it can: Forge is
+local, private, and built to be driven without a person at the keyboard.
+
+### As an MCP server
+
+```bash
+claude mcp add forge -- forge mcp     # Claude Code
+codex mcp add forge -- forge mcp      # Codex / ChatGPT desktop's Codex
+```
+
+Claude Desktop and Cursor:
+
+```json
+{ "mcpServers": { "forge": { "command": "forge", "args": ["mcp"] } } }
+```
+
+Five tools, deliberately few:
+
+| Tool | Does |
+| --- | --- |
+| `forge_probe` | what files are and what Forge can do with them |
+| `forge_formats` | the capability matrix |
+| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`) |
+| `forge_compress` | compress by `quality` or to a `maxSize` (`password` is not taken: compression refuses encrypted PDFs) |
+| `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
+
+Paths must be absolute. Results come back as structured content in the
+`--json` shape below, with a `file://` link to every output, and never as
+file contents. Nothing is overwritten unless the call passes
+`overwrite: true`. An encrypted PDF takes a `password` argument to
+`forge_convert`; there is no prompt. The server speaks MCP over stdio,
+negotiates protocol revision 2025-11-25 with current Claude Code, writes
+nothing but protocol messages to stdout, and exits when its client closes
+stdin.
+
+**Limitation:** an image pasted into a chat app is not a file on disk, so a
+path-based tool cannot see it. Agents with file access (Claude Code, Cursor,
+Codex) are the natural fit.
+
+### As a CLI, with the skill
+
+[`skills/forge/SKILL.md`](skills/forge/SKILL.md) teaches an agent with a
+shell to probe before converting, pass `--json`, read exit codes, and never
+pass `--force` unless asked. For Claude Code, copy it to
+`~/.claude/skills/forge/SKILL.md`. It lives in the repository; the npm
+package ships only `dist/`.
+
+### `forge probe`
+
+```
+$ forge probe locked.pdf photo.png
+locked.pdf · PDF · 2.7 KB · 3 pages · password-protected
+  converts to  jpeg, png, pdf, docx
+  actions      convert, split, extract, delete, rotate
+
+photo.png · PNG · 122 KB · 2756×774
+  converts to  jpeg, png, webp, avif, gif, tiff, pdf
+  actions      convert
+```
+
+With `--json`:
+
+```json
+{"forge":"0.1.0","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+```
+
+`targets` and `actions` come from the engines' own capabilities, so they are
+always true for that file. `format` is read from the file's content, not its
+name. `actions` lists `convert` plus the page operations that apply
+(`split`, `extract`, `delete`, `rotate`); `merge` appears only when several
+PDFs are probed together. Compression is not an action: it is `--quality` or
+`--max-size` without `--to`. A probe has `width`/`height` for an image,
+`pages` and `encrypted` for a PDF. Probing writes nothing. A file that cannot
+be probed goes in `failures` and does not stop the others.
+
+### `--json`
+
+Every command accepts `--json`. stdout then carries exactly one JSON document
+on one line, and nothing else: no colour, no glyphs, no progress. Every
+document has `forge` (the version), `ok` (true only if every input
+succeeded) and `failures`. A conversion, compression or page operation adds
+`results`:
+
+```jsonc
+{
+  "forge": "0.1.0",
+  "ok": false,
+  "results": [
+    {
+      "op": "convert",                  // convert | merge | split | extract | delete | rotate
+      "source": "/abs/photo.heic",      // = sources[0]
+      "sources": ["/abs/photo.heic"],   // all of them, for a merge
+      "outputs": ["/abs/photo.webp"],   // always absolute, always every file written
+      "inputBytes": 52074,
+      "outputBytes": 42684,
+      "warnings": [{ "code": "animation-flattened", "message": "…" }]
+    }
+  ],
+  "failures": [
+    {
+      "path": "/abs/locked.pdf",        // absent for a command-level error
+      "code": "encrypted-source",       // a stable ErrorCode
+      "title": "…", "detail": "…", "hint": "…"
+    }
+  ]
+}
+```
+
+`--formats --json` returns `formats` (`id`, `label`, `extensions`, `read`,
+`write`, `lossy`). `forge probe --json` returns `probes`. `forge config
+--json` returns `config` and `warnings`. An argument error is a document with
+one `invalid-arguments` failure and exit code 2. Fields are not renamed or
+removed within a minor version; the `forge` field says which version you are
+reading. `--help` and `--version` stay text.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Every input succeeded |
+| 1 | The command was understood, and at least one input failed or was refused |
+| 2 | The command itself was invalid: an unknown flag, a missing argument, contradictory flags |
+
+If the same flags could succeed on a different file, it's 1; otherwise it's 2.
+The table is also in `forge --help`.
+
+### No terminal, no prompt
+
+Without a TTY, Forge never waits for input. An encrypted PDF without
+`--password-stdin` fails at once (exit 1), and `--password-stdin` reads a
+single line, so a pipe left open by the caller does not hold it up.
+
+### By hand, before a release
+
+Registering a server in a real agent config is a human step, so it is not
+part of the test suite:
+
+1. `npm run build && npm link`, then `claude mcp add forge -- forge mcp`. In
+   Claude Code: "convert ~/Desktop/x.heic to jpeg", "compress it to 200kb",
+   "split ~/Desktop/doc.pdf into pages". Each must succeed and name its
+   outputs. `/mcp` should show the server connected.
+2. Repeat in Claude Desktop with the `mcpServers` snippet above, and record
+   which protocol revision it negotiates (its MCP log shows the `initialize`
+   exchange).
+3. If either client cannot connect, read its MCP log before changing code.
+
 ## Interactive shell
 
 Ink/React are only loaded (via a dynamic `import()`) once the TTY check
@@ -921,8 +1069,14 @@ src/
 │
 ├── cli/
 │   ├── args.ts          Commander wiring → Intent
-│   ├── execute.ts       runs an Intent, returns exit code + stdout/stderr
+│   ├── execute.ts       runIntent() → RunReport (data); execute() renders text or --json
 │   └── report.ts        stdout formatting (success, batch, errors, --formats)
+│
+├── mcp/                the MCP server — a third front end, loaded only by `forge mcp`
+│   ├── server.ts        createForgeServer(): five tools; runMcpServer(): stdio
+│   ├── tools.ts         tool handlers → the same intents and runIntent() the CLI uses
+│   ├── schemas.ts       zod input/output schemas, vocabularies read from core/actions
+│   └── stdout-guard.ts  stdout belongs to the protocol; stray writes go to stderr
 │
 ├── shell/              the interactive shell (Ink + React) — the only place
 │   │                    that renders to a real terminal frame by frame
@@ -968,7 +1122,7 @@ dynamically imports `shell/launch.js` and hands off to it instead.
 
 ```bash
 npm run dev          # run from source with tsx, no build step
-npm run build         # tsc -p tsconfig.json → dist/
+npm run build         # one esbuild bundle → dist/ (scripts/build.mjs)
 npm run typecheck     # tsc --noEmit over src + tests
 npm run lint          # biome check src tests
 npm run format         # biome format --write src tests
@@ -985,7 +1139,7 @@ npm test        # vitest run
 npm run test:watch
 ```
 
-789 tests, all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
+1412 tests (4 skipped), all passing. Fixtures (transparent PNGs, EXIF-rotated JPEGs,
 animated GIFs, HEIC/AVIF samples) are generated by Sharp — or, for HEIC,
 `sips` — at test time, never committed as binaries; the one exception is
 `tests/fixtures/locked-hunter2.pdf`, a real encrypted PDF (password

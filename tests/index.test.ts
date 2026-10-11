@@ -51,6 +51,13 @@ describe('CLI exit codes', () => {
     expect((await spawn(['a.jpg', '--to'])).exitCode).toBe(2)
   })
 
+  it('names probe, config and mcp in --help', async () => {
+    const result = await spawn(['--help'])
+    expect(result.stdout).toContain('forge probe')
+    expect(result.stdout).toContain('forge config')
+    expect(result.stdout).toContain('forge mcp')
+  })
+
   it('prints the exit-code contract in --help', async () => {
     const result = await spawn(['--help'])
     expect(result.exitCode).toBe(0)
