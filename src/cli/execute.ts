@@ -10,6 +10,7 @@ import {
   invalidPageRange,
   isForgeError,
   unsupportedCompress,
+  unsupportedOperation,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
@@ -51,6 +52,16 @@ export interface ExecuteOptions {
    * sequence, never an invented percentage (invariant 7).
    */
   onSearch?: (status: string) => void
+}
+
+/**
+ * The exit-code contract (spec §3.4). If the same flags could succeed on a
+ * different file, it is 1. If the command itself is wrong, it is 2. The only
+ * failure that is the command's own fault is `invalid-arguments`.
+ */
+export function exitCodeFor(failures: InputFailure[]): 0 | 1 | 2 {
+  if (failures.length === 0) return 0
+  return failures.some((f) => f.error.code === 'invalid-arguments') ? 2 : 1
 }
 
 /**
@@ -212,7 +223,28 @@ async function buildRasterJob(
   return { job }
 }
 
+/**
+ * Never throws a ForgeError. One that escapes a branch is still a Forge
+ * answer, so it is reported and given an exit code by the §3.4 rule. A config
+ * value that is refused is the main case: `runConfig` throws
+ * `invalid-arguments`, which lands on stderr with exit 2.
+ */
 export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promise<ExecuteResult> {
+  try {
+    return await executeIntent(intent, opts)
+  } catch (e) {
+    if (!isForgeError(e)) throw e
+    const failures = [{ path: '', error: e }]
+    const debug = 'debug' in intent ? intent.debug : false
+    return {
+      exitCode: exitCodeFor(failures),
+      stdout: [],
+      stderr: reportFailures(failures, { debug }),
+    }
+  }
+}
+
+async function executeIntent(intent: Intent, opts: ExecuteOptions): Promise<ExecuteResult> {
   // Routed here rather than in src/index.ts so there is exactly one place
   // that turns an Intent into an ExecuteResult. The import is lazy because a
   // plain conversion has no reason to touch the config layer at all.
@@ -241,7 +273,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
 
     if (resolved.sources.length === 0) {
       return {
-        exitCode: 1,
+        exitCode: exitCodeFor(resolved.failures),
         stdout: [],
         stderr: reportFailures(resolved.failures, { debug: intent.debug }),
       }
@@ -250,13 +282,34 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     const action = ACTIONS.find((a) => a.id === intent.action)
     if (!action) throw new Error(`no action registered for "${intent.action}"`)
 
-    if (!action.appliesTo(resolved.sources)) {
-      const reason = unavailableReason(action, resolved.sources) ?? 'not available for these files'
-      throw invalidArguments(`Cannot ${intent.action}: ${reason}.`)
+    /**
+     * Some refusals are about *these files*: a JPEG handed to --merge, a split
+     * point past the last page, a range that selects nothing. Those are failures
+     * (exit 1), not usage errors, because the same flags would succeed on a
+     * different file (spec §3.4). They used to be thrown, and surfaced as exit 2.
+     */
+    const first = resolved.sources[0]?.path ?? ''
+    const refuse = (error: ForgeError): ExecuteResult => {
+      const failures = [...resolved.failures, { path: first, error }]
+      return {
+        exitCode: exitCodeFor(failures),
+        stdout: [],
+        stderr: reportFailures(failures, { debug: intent.debug }),
+      }
     }
 
-    const values = pageOpValues(intent, resolved.sources)
-    const planned = action.plan(resolved.sources, values)
+    if (!action.appliesTo(resolved.sources)) {
+      const reason = unavailableReason(action, resolved.sources) ?? 'not available for these files'
+      return refuse(unsupportedOperation(intent.action, reason))
+    }
+
+    let planned: Job[]
+    try {
+      planned = action.plan(resolved.sources, pageOpValues(intent, resolved.sources))
+    } catch (e) {
+      if (!isForgeError(e)) throw e
+      return refuse(e)
+    }
 
     // `action.plan()` bypasses `buildPlan` — its one-source-one-target shape
     // does not fit merge's several sources or split's several outputs — but
@@ -268,7 +321,7 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
     const stdout = outcome.results.length === 0 ? [] : reportPageOp(outcome)
 
     return {
-      exitCode: failures.length > 0 ? 1 : 0,
+      exitCode: exitCodeFor(failures),
       stdout,
       stderr: reportFailures(failures, { debug: intent.debug }),
     }

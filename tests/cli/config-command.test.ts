@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runConfig } from '../../src/cli/config-command.js'
+import { execute } from '../../src/cli/execute.js'
 import { loadPreferences } from '../../src/config/preferences.js'
 
 let dir: string
@@ -61,27 +62,25 @@ describe('forge config', () => {
     expect((await loadPreferences()).prefs.quality).toBe(55)
   })
 
-  it('rejects an invalid theme with exit code 2 and leaves config untouched', async () => {
-    const { exitCode, stdout } = await runConfig({
-      kind: 'config',
-      action: 'set',
-      key: 'theme',
-      value: 'chartreuse',
-    })
-    expect(exitCode).toBe(2)
-    expect(stdout.join('\n')).toContain('dark')
+  it('rejects an invalid theme as a usage error and leaves config untouched', async () => {
+    await expect(
+      runConfig({ kind: 'config', action: 'set', key: 'theme', value: 'chartreuse' }),
+    ).rejects.toMatchObject({ code: 'invalid-arguments', detail: expect.stringContaining('dark') })
     expect((await loadPreferences()).prefs.theme).toBeUndefined()
   })
 
-  it('rejects an out-of-range quality with exit code 2', async () => {
-    const { exitCode } = await runConfig({
-      kind: 'config',
-      action: 'set',
-      key: 'quality',
-      value: '500',
-    })
-    expect(exitCode).toBe(2)
+  it('rejects an out-of-range quality as a usage error', async () => {
+    await expect(
+      runConfig({ kind: 'config', action: 'set', key: 'quality', value: '500' }),
+    ).rejects.toMatchObject({ code: 'invalid-arguments' })
     expect((await loadPreferences()).prefs.quality).toBe(80)
+  })
+
+  it('writes a rejected value to stderr with exit 2, nothing to stdout', async () => {
+    const out = await execute({ kind: 'config', action: 'set', key: 'theme', value: 'chartreuse' })
+    expect(out.exitCode).toBe(2)
+    expect(out.stdout).toEqual([])
+    expect(out.stderr.join('\n')).toContain('dark or light')
   })
 
   it('surfaces a config warning in the listing rather than hiding it', async () => {
