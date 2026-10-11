@@ -1,12 +1,17 @@
 /**
- * Captures the decided home screen from mockups/flow-parts-2026-10.html as
- * cell data, so tests/shell/home-screen.test.tsx can hold the shell to it
- * cell for cell.
+ * Captures the decided screens from mockups/flow-parts-2026-10.html as cell
+ * data, so the shell's tests can hold it to them cell for cell:
+ *
+ * - tests/shell/fixtures/home-mockup.json — the four "Home ✓" states.
+ * - tests/shell/fixtures/commands-mockup.json — the four steps of N6, the
+ *   commands as a fourth tab of home ("Commands ✓", 04a).
+ * - tests/shell/fixtures/bar-mockup.json — the header bar (04), one row per
+ *   mode and question.
  *
  * The mockup draws every frame as ANSI written into xterm.js. This runs the
- * page's own script under a stub DOM, catches the rows it draws for the four
- * "Home ✓" states, and parses each into an 80×24 grid of
- * cells, stored per row as runs of one style. Run it again whenever the mockup changes:
+ * page's own script under a stub DOM, catches the rows it draws, and parses
+ * each into a grid of cells, stored per row as runs of one style. Run it
+ * again whenever the mockup changes:
  *
  *   node scripts/home-mockup-fixture.mjs
  */
@@ -16,13 +21,32 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const html = readFileSync(`${root}mockups/flow-parts-2026-10.html`, 'utf8')
 const HOOK = 'const rows = homeScreen(FINAL, s)'
+const RENDER = '/* ------------------------------------------------------------- render */'
+/** The bar at every question of convert, and at the second of compress and pdf, as the mockup shows it. */
+const BARS = [
+  ['convert', 0],
+  ['convert', 1],
+  ['convert', 2],
+  ['convert', 3],
+  ['compress', 1],
+  ['pdf', 1],
+]
 const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((m) => m[1])
   .join('\n')
   // Catch the decided screen at the one call that draws it, rather than by
   // the order frames happen to be written in: the page grows other sections.
   .replace(HOOK, `${HOOK}; globalThis.__home.push({ label: s.label, rows })`)
+  // Tab 4's frames are built by functions in scope just before the page
+  // starts drawing, so they are called there, before any DOM work can fail.
+  .replace(
+    RENDER,
+    `globalThis.__n6 = N6SEQ.map((st) => ({ label: st.label, rows: st.rows() }))
+globalThis.__bar = ${JSON.stringify(BARS)}.map(([m, at]) => ({ mode: m, at, rows: [trailBarRight({ convert: CV_, compress: CM_, pdf: PDF_ }[m], at)] }))
+${RENDER}`,
+  )
 if (!script.includes('globalThis.__home')) throw new Error(`mockup no longer contains "${HOOK}"`)
+if (!script.includes('globalThis.__n6')) throw new Error(`mockup no longer contains "${RENDER}"`)
 globalThis.__home = []
 
 const el = () => {
@@ -129,4 +153,31 @@ writeFileSync(
   `${root}tests/shell/fixtures/home-mockup.json`,
   `${JSON.stringify(frames, null, 1)}\n`,
 )
-console.log(`wrote ${frames.length} frames`)
+
+const N6 = [
+  { label: '1 · home', mode: 'convert', text: '' },
+  { label: '2 · typed /', mode: 'convert', text: '/', selected: 'convert' },
+  { label: '3 · typed /co, then ↓', mode: 'convert', text: '/co', selected: 'compress' },
+  { label: '4 · pressed ↵', mode: 'compress', text: '' },
+]
+if (globalThis.__n6?.length !== N6.length) throw new Error('expected the four N6 steps')
+const commands = N6.map((step, i) => {
+  const { label, rows } = globalThis.__n6[i]
+  if (label !== step.label) throw new Error(`step ${i} is "${label}", expected "${step.label}"`)
+  return { ...step, rows: cells(rows.slice(0, 24).join('\r\n'), 80, 24).map(runs) }
+})
+writeFileSync(
+  `${root}tests/shell/fixtures/commands-mockup.json`,
+  `${JSON.stringify(commands, null, 1)}\n`,
+)
+
+const bars = globalThis.__bar.map(({ mode, at, rows }) => ({
+  label: `${mode} at ${at}`,
+  mode,
+  at,
+  rows: cells(rows[0], 80, 1).map(runs),
+}))
+writeFileSync(`${root}tests/shell/fixtures/bar-mockup.json`, `${JSON.stringify(bars, null, 1)}\n`)
+console.log(
+  `wrote ${frames.length} home frames, ${commands.length} commands steps, ${bars.length} bars`,
+)

@@ -9,7 +9,7 @@ const BACKSPACE = String.fromCharCode(127)
 const settle = (ms = 140) => new Promise((r) => setTimeout(r, ms))
 const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
 
-describe('the palette in the prompt', () => {
+describe('the command list in the prompt', () => {
   it('opens on a bare slash', async () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/')
@@ -45,7 +45,7 @@ describe('the palette in the prompt', () => {
     expect(lastFrame() ?? '').not.toContain('make a file smaller')
   })
 
-  it('runs /theme from the palette', async () => {
+  it('runs /theme from the list', async () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/theme')
     await settle()
@@ -67,15 +67,12 @@ describe('the palette in the prompt', () => {
     expect(all).not.toContain('could not be read')
   })
 
-  it('/help lists the commands', async () => {
-    const { stdin, lastFrame, frames } = render(<App initialWidth={100} prefs={prefs} />)
+  it('/help opens the whole list, which is the help', async () => {
+    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/help')
     await settle()
-    stdin.write(ENTER)
-    await settle(300)
-    const all = frames.join('') + (lastFrame() ?? '')
-    expect(all).toContain('/convert')
-    expect(all).toContain('/compress')
+    const frame = lastFrame() ?? ''
+    for (const name of ['/convert', '/compress', '/pdf', '/theme']) expect(frame).toContain(name)
   })
 
   it('/pdf with nothing staged arms pdf mode and keeps the drop area open', async () => {

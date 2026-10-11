@@ -223,9 +223,8 @@ describe('knowing which mode you are in', () => {
   it('names the mode once compress is active', async () => {
     const { lastFrame } = await toCompress()
     const frame = lastFrame() ?? ''
-    // Once a file is on screen the header bar names the mode, replacing
-    // the `current mode:` line the empty prompt shows.
-    expect(frame).toContain('↓ FORGE   compress')
+    // Once a file is on screen the header bar names the mode: its chip.
+    expect(frame).toMatch(/^ {3}compress ╱/m)
   })
 
   it('names convert too — a mode you cannot see is one you can be in by accident', async () => {
@@ -238,7 +237,7 @@ describe('knowing which mode you are in', () => {
     stdin.write(ENTER)
     await settle(400)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('↔ FORGE   convert')
+    expect(frame).toMatch(/^ {3}convert ╱/m)
     expect(frame).not.toContain('compress')
   }, 20_000)
 
@@ -278,10 +277,10 @@ describe('knowing which mode you are in', () => {
   }, 20_000)
 })
 
-describe('the palette is discoverable', () => {
-  it('the prompt hints mention the slash', () => {
+describe('the commands are discoverable', () => {
+  it('home names them as a tab of their own', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     const frame = render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? ''
-    expect(frame).toContain(' /  commands')
+    expect(frame).toContain('/ commands')
   })
 })

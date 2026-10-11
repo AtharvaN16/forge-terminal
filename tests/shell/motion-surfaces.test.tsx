@@ -1,5 +1,3 @@
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HeaderBar } from '../../src/shell/components/HeaderBar.js'
@@ -55,33 +53,37 @@ describe('WorkingLine', () => {
 })
 
 describe('HeaderBar mode wipe', () => {
-  const desktop = join(homedir(), 'Desktop')
+  const trail = { answers: [], current: 'Format' }
   const bar = (mode: 'convert' | 'compress') =>
-    inTheme(<HeaderBar mode={mode} defaultOutput={desktop} width={90} />)
+    inTheme(<HeaderBar mode={mode} trail={trail} width={80} slanted />)
+  const fgOf = (hex: string) =>
+    `38;2;${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')}`
+  /** Where the bar's hatching on the far right is, by colour: the last ╱ drawn. */
+  const lastHatch = (frame: string) => frame.slice(frame.lastIndexOf('╱') - 30)
 
-  it('wipes the new mode’s fill in from the left, then rests on it', async () => {
+  it('wipes the new mode in from the left, then rests on it', async () => {
     setMotionForTests(true)
     const app = render(bar('convert'))
+    const before = lastHatch(app.lastFrame() ?? '')
     app.rerender(bar('compress'))
     await advance(99)
     const mid = app.lastFrame() ?? ''
-    expect(mid).toContain(bgOf(DARK.modeCompressBg))
-    expect(mid).toContain(bgOf(DARK.modeConvertBg))
-    expect(mid.indexOf(bgOf(DARK.modeCompressBg))).toBeLessThan(
-      mid.indexOf(bgOf(DARK.modeConvertBg)),
-    )
+    // The chip, on the left, is already compress's; the far end still convert's.
+    expect(mid).toContain(bgOf(DARK.modeCompress))
+    expect(plain(mid)).toContain(' compress ')
+    expect(lastHatch(mid)).toBe(before)
     await advance(300)
     const done = app.lastFrame() ?? ''
-    expect(done).toContain(bgOf(DARK.modeCompressBg))
-    expect(done).not.toContain(bgOf(DARK.modeConvertBg))
-    expect(plain(done)).toContain('↓ FORGE   compress')
+    expect(lastHatch(done)).not.toBe(before)
+    expect(done).not.toContain(fgOf(DARK.modeConvert))
   })
 
-  it('cuts straight to the new fill when motion is off', () => {
+  it('cuts straight to the new mode when motion is off', () => {
     setMotionForTests(false)
     const app = render(bar('convert'))
     app.rerender(bar('compress'))
-    expect(app.lastFrame()).not.toContain(bgOf(DARK.modeConvertBg))
+    expect(app.lastFrame()).not.toContain(bgOf(DARK.modeConvert))
+    expect(plain(app.lastFrame())).toContain(' compress ')
   })
 })
 

@@ -1,0 +1,153 @@
+import { render } from 'ink-testing-library'
+import { describe, expect, it, vi } from 'vitest'
+import { listCommands } from '../../src/shell/commands.js'
+import { Home, homeKeys } from '../../src/shell/components/Home.js'
+import { Prompt } from '../../src/shell/components/Prompt.js'
+import { ThemeProvider } from '../../src/shell/ThemeContext.js'
+import { DARK, modePalette, type ShellMode } from '../../src/shell/theme.js'
+import { ansiRow, describeRow, type FixtureFrame, homeRow, loadFixture } from './home-cells.js'
+
+vi.hoisted(() => {
+  process.env.FORCE_COLOR = '3'
+  process.env.NO_COLOR = ''
+})
+
+type Step = FixtureFrame & { selected?: string }
+const STEPS = loadFixture('commands-mockup.json') as Step[]
+
+/** Home with `text` in the field and, when it opens a command, the list in the panel. */
+function screen({
+  mode,
+  text,
+  selected,
+  width = 80,
+  height = 24,
+}: {
+  mode: ShellMode
+  text: string
+  selected?: string | undefined
+  width?: number
+  height?: number
+}) {
+  const list = text.startsWith('/') ? listCommands(text.slice(1)) : undefined
+  const commands = list && {
+    ...list,
+    selected: Math.max(
+      0,
+      list.items.findIndex((c) => c.name === selected),
+    ),
+  }
+  return render(
+    <ThemeProvider palette={modePalette(DARK, mode)}>
+      <Home
+        width={width}
+        height={height}
+        mode={mode}
+        typing={text !== ''}
+        savesTo="~/Desktop"
+        commands={commands}
+        field={
+          <Prompt
+            value={text}
+            onChange={() => {}}
+            onSubmit={() => {}}
+            placeholder="or type a path"
+            isActive
+            variant="home"
+            width={width}
+          />
+        }
+        keys={homeKeys({ typing: text !== '', completions: 0, commands: commands !== undefined })}
+      />
+    </ThemeProvider>,
+  )
+}
+
+function expectStep(step: Step, skip: number[] = []) {
+  const lines = (screen(step).lastFrame() ?? '').split('\n')
+  expect(lines).toHaveLength(24)
+  for (let row = 0; row < 24; row++) {
+    if (skip.includes(row)) continue
+    const actual = ansiRow(lines[row] ?? '')
+    expect(describeRow(actual, homeRow(step, row)), `${step.label}, row ${row}`).toBe('equal')
+  }
+}
+
+describe('commands as a fourth tab of home (N6), against the decided mockup', () => {
+  const [rest, slash, filtered, after] = STEPS as [Step, Step, Step, Step]
+
+  it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest))
+  it('2 · typed /: the tab lights and the panel holds the list', () => expectStep(slash))
+  it('3 · typed /co, then ↓: the list narrows and the strip moves', () => expectStep(filtered))
+  // Row 11 is compress's kinds line, which leaves out the mockup's "video":
+  // compress has no video engine (see home-screen.test.tsx).
+  it('4 · pressed ↵ on /compress: compress, with the dots back', () => expectStep(after, [11]))
+})
+
+describe('the list in the panel', () => {
+  const text = (frame: string | undefined) =>
+    (frame ?? '').split('\n').map((l) =>
+      ansiRow(l)
+        .map((c) => c.ch)
+        .join(''),
+    )
+
+  it('has no /help row, and /help typed opens the whole list', () => {
+    const lines = text(screen({ mode: 'convert', text: '/help' }).lastFrame())
+    const rows = lines.filter((l) => !l.includes('›'))
+    expect(rows.join('\n')).not.toContain('/help')
+    for (const name of ['/convert', '/compress', '/pdf', '/theme'])
+      expect(lines.some((l) => l.includes(name))).toBe(true)
+  })
+
+  it('says so in the panel when nothing matches', () => {
+    const lines = text(screen({ mode: 'convert', text: '/zz' }).lastFrame())
+    expect(lines.some((l) => l.includes('no command matches /zz'))).toBe(true)
+    expect(lines.some((l) => l.includes('Drop a file here'))).toBe(false)
+  })
+
+  it('never says "or press" on a row', () => {
+    const frame = text(screen({ mode: 'convert', text: '/', selected: 'pdf' }).lastFrame())
+    expect(frame.join('\n')).not.toContain('or press')
+  })
+
+  it('fills exactly the height it is given, list and all', () => {
+    for (const height of [12, 16, 19, 20, 24, 30]) {
+      const lines = (screen({ mode: 'convert', text: '/', height }).lastFrame() ?? '').split('\n')
+      expect(lines, `height ${height}`).toHaveLength(height)
+      expect(lines.at(-1), `height ${height}`).toContain('run')
+    }
+  })
+
+  it('never draws past the width it is given', () => {
+    for (const width of [40, 60, 100]) {
+      const lines = (screen({ mode: 'convert', text: '/', width }).lastFrame() ?? '').split('\n')
+      for (const line of lines)
+        expect(ansiRow(line, 400).findLastIndex((c) => c.ch !== ' ' || c.bg !== null)).toBeLessThan(
+          width,
+        )
+    }
+  })
+})
+
+describe('the key row while the list is open', () => {
+  it('runs, goes back, and says typing filters', () => {
+    expect(homeKeys({ typing: true, completions: 0, commands: true })).toEqual({
+      main: [
+        ['↵', 'run'],
+        ['esc', 'back'],
+      ],
+      foot: [
+        ['↑↓', 'choose'],
+        ['type', 'filter'],
+        ['ctrl-c', 'quit'],
+      ],
+    })
+  })
+
+  it('no longer says "/ commands" at rest: the tab row does', () => {
+    expect(homeKeys({ typing: false, completions: 0, commands: false }).main).toEqual([
+      ['↵', 'send'],
+    ])
+  })
+})

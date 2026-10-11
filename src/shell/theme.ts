@@ -143,6 +143,16 @@ export interface Palette {
   faint: string
   /** The band behind the chosen path completion on the home screen. */
   listBand: string
+  /**
+   * The band behind the chosen command when the list sits inside the drop
+   * surface, one step up from `selectionBg`, which is that surface's fill.
+   */
+  panelBand: string
+  /**
+   * Text on a mode's own colour: the header bar's mode chip. Empty means
+   * the terminal's own foreground.
+   */
+  ink: string
 }
 
 export const DARK: Palette = {
@@ -187,6 +197,8 @@ export const DARK: Palette = {
   // One step up from `selectionBg`, so the band reads on the terminal and is
   // not mistaken for the drop surface above it.
   listBand: '#2a3242',
+  panelBand: '#33405a',
+  ink: '#0c1d22',
 }
 
 export const LIGHT: Palette = {
@@ -224,6 +236,10 @@ export const LIGHT: Palette = {
   violet: '#6141ad',
   faint: '#c4bfb6',
   listBand: '#e2dccf',
+  // One step down from `selectionBg`, as dark's is one step up from it.
+  panelBand: '#dcd4c4',
+  // The light theme's mode colours are deep, so the chip's text is light.
+  ink: '#ffffff',
 }
 
 /**
@@ -265,6 +281,8 @@ export const NEUTRAL: Palette = {
   violet: 'magenta',
   faint: 'gray',
   listBand: '',
+  panelBand: '',
+  ink: '',
 }
 
 export type ShellMode = 'convert' | 'compress' | 'pdf'

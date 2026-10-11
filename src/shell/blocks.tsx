@@ -4,11 +4,13 @@ import type { ForgeError } from '../core/errors.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
 import { displayPath } from '../utils/display-path.js'
+import type { Trail } from './bar-art.js'
 import { FileCard } from './components/FileCard.js'
+import { HeaderBar } from './components/HeaderBar.js'
 import { ReceiptCard } from './components/ReceiptCard.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { useTheme } from './ThemeContext.js'
-import { colourProp, SYMBOLS } from './theme.js'
+import { colourProp, type ShellMode, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -28,6 +30,12 @@ export type HistoryBlock =
    * conversion result carries.
    */
   | { kind: 'note'; id: string; text: string; savedTo?: string }
+  /**
+   * The header bar as it stood when a run finished, its trail ending in
+   * "Done": it heads the result below it, and stays with it in the
+   * scrollback as the record of what was chosen.
+   */
+  | { kind: 'bar'; id: string; mode: ShellMode; trail: Trail }
 
 function changePhrase(from: number, to: number): string {
   const { pct, direction } = percentChange(from, to)
@@ -74,6 +82,14 @@ function SavedTo({ output, width }: { output: string; width: number }) {
 
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
   const palette = useTheme()
+
+  if (block.kind === 'bar') {
+    return (
+      <Box marginBottom={1}>
+        <HeaderBar mode={block.mode} trail={block.trail} width={width} />
+      </Box>
+    )
+  }
 
   if (block.kind === 'separator') {
     // Heavy double-dash, not the light one used for ordinary borders: this

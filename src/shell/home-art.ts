@@ -1,4 +1,5 @@
 import stringWidth from 'string-width'
+import type { Command } from './commands.js'
 import {
   MODE_ORDER,
   modeColours,
@@ -69,8 +70,8 @@ export function gradientAt(i: number, n: number, stops: readonly string[]): stri
   return mix(stops[k] ?? first, stops[Math.min(stops.length - 1, k + 1)] ?? first, p - k)
 }
 
-const blank = (n: number): Run => ({ text: ' '.repeat(Math.max(0, n)) })
-const width = (row: Row) => row.reduce((n, run) => n + stringWidth(run.text), 0)
+export const blank = (n: number): Run => ({ text: ' '.repeat(Math.max(0, n)) })
+export const width = (row: Row) => row.reduce((n, run) => n + stringWidth(run.text), 0)
 
 /** What the drop surface lists under "Drop a file here", by mode. */
 export const MODE_KINDS: Record<ShellMode, string> = {
@@ -84,7 +85,13 @@ export const MODE_KINDS: Record<ShellMode, string> = {
  * Diagonal hatching whose colour follows the absolute column, `from` onwards,
  * so the three stacked rows line up into one band.
  */
-function hatch(from: number, n: number, row: number, span: number, stops: string[]): Run[] {
+export function hatch(
+  from: number,
+  n: number,
+  row: number,
+  span: number,
+  stops: readonly string[],
+): Run[] {
   const runs: Run[] = []
   for (let i = 0; i < n; i++) {
     runs.push({ text: '╱', fg: gradientAt(from + i + row * 2, span, stops) })
@@ -145,52 +152,60 @@ export function brandRows({
 }
 
 /**
- * The numbered modes. The active one is a folder tab — a half-cell lip on the
- * row above, and its label on the panel's fill — so it reads as part of the
- * surface below it. Where the output goes sits at the right end of the row,
- * and is the first thing to go when the row is too narrow for both.
+ * The numbered modes, then "/ commands". The active one is a folder tab — a
+ * half-cell lip on the row above, and its label on the panel's fill — so it
+ * reads as part of the surface below it. "/ commands" is always there, dim
+ * at rest; while the field holds a command it is the active tab, and no mode
+ * is. Where the output goes sits at the right end of the row, and is the
+ * first thing to go when the row is too narrow for both.
  */
 export function tabRows({
   width: columns,
   palette,
   mode,
   savesTo,
+  commands = false,
 }: {
   width: number
   palette: Palette
   mode: ShellMode
   savesTo: string
+  /** The command list is open: "/ commands" is the active tab. */
+  commands?: boolean
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
   const fill = palette.selectionBg
   const top: Row = [blank(M)]
   const tabs: Row = []
-  MODE_ORDER.forEach((m, i) => {
-    const n = String(i + 1)
-    const w = n.length + m.length + 3
-    if (m === mode) {
+  const tab = (key: string, keyColour: string, name: string, active: boolean) => {
+    const w = key.length + name.length + 3
+    if (active) {
       top.push({ text: '▄'.repeat(w), fg: fill })
       tabs.push(
         { text: ' ', bg: fill },
-        { text: n, fg: modeColours(palette, m).fg, bg: fill, bold: true },
+        { text: key, fg: keyColour, bg: fill, bold: true },
         { text: ' ', bg: fill },
-        { text: m, fg: palette.fg, bg: fill, bold: true },
+        { text: name, fg: palette.fg, bg: fill, bold: true },
         { text: ' ', bg: fill },
       )
     } else {
       top.push(blank(w))
       tabs.push(
         blank(1),
-        { text: n, fg: palette.border },
+        { text: key, fg: palette.border, bold: key === '/' },
         blank(1),
-        { text: m, fg: palette.dim },
+        { text: name, fg: palette.dim },
         blank(1),
       )
     }
     top.push(blank(1))
     tabs.push(blank(1))
+  }
+  MODE_ORDER.forEach((m, i) => {
+    tab(String(i + 1), modeColours(palette, m).fg, m, !commands && m === mode)
   })
+  tab('/', modeColours(palette, mode).fg, 'commands', commands)
 
   const saves: Row = [
     { text: 'saves to', fg: palette.border },
@@ -204,8 +219,106 @@ export function tabRows({
   return [top, row]
 }
 
+/** How wide a command's name column is, slash included. */
+const NAME_COLUMN = 12
+
+/**
+ * The commands, drawn on the drop surface's fill in place of its dots: the
+ * modes, then the settings, each under a dim heading and only when something
+ * in it matches. A row is the slash, what has been typed (bright), the rest
+ * of the name and its description. The chosen row is the picker's — a band
+ * with a `▌` strip — and the strip takes the colour of the mode the command
+ * would switch to.
+ *
+ * At least `rows` tall, so it takes the surface's place exactly; taller when
+ * the list needs it, up to `max`, past which the rows scroll to keep the
+ * chosen one in view.
+ */
+export function commandRows({
+  width: columns,
+  rows: h,
+  max = h,
+  palette,
+  items,
+  query,
+  typed,
+  selected,
+  panel = true,
+}: {
+  width: number
+  rows: number
+  max?: number
+  palette: Palette
+  items: Command[]
+  query: string
+  typed: string
+  selected: number
+  /**
+   * On the drop surface's fill (home), or on the terminal's own background
+   * under a field that has no surface to swap it into.
+   */
+  panel?: boolean
+}): Row[] {
+  const M = HOME_MARGIN
+  const W = columns - M * 2
+  const fill = panel ? palette.selectionBg : ''
+  const band = panel ? palette.panelBand : palette.listBand
+  const line = (runs: Run[]): Row => {
+    const row = runs.map((run) => ({ ...run, bg: run.bg ?? fill }))
+    return [blank(M), ...row, { text: ' '.repeat(Math.max(0, W - width(row))), bg: fill }]
+  }
+
+  const lines: Row[] = []
+  let chosenLine = 0
+  for (const group of ['modes', 'settings'] as const) {
+    const members = items.filter((c) => c.group === group)
+    if (members.length === 0) continue
+    if (lines.length > 0) lines.push(line([]))
+    lines.push(line([{ text: '    ' }, { text: group, fg: palette.border }]))
+    for (const c of members) {
+      const chosen = items.indexOf(c) === selected
+      const rest = c.name.slice(query.length)
+      const name: Run[] = [
+        { text: `/${query}`, fg: palette.fg, bold: true },
+        { text: rest, fg: chosen ? palette.fg : palette.dim, bold: chosen },
+        { text: ' '.repeat(Math.max(1, NAME_COLUMN - 1 - c.name.length)) },
+      ]
+      if (!chosen) {
+        lines.push(line([{ text: '    ' }, ...name, { text: c.description, fg: palette.border }]))
+        continue
+      }
+      chosenLine = lines.length
+      const strip = c.mode ? modeColours(palette, c.mode).fg : palette.fg
+      const inner: Run[] = [
+        { text: '▌', fg: strip },
+        { text: ' ' },
+        ...name,
+        { text: c.description, fg: palette.dim },
+      ].map((run) => ({ ...run, bg: band }))
+      const bandWidth = Math.max(0, W - 4)
+      lines.push(
+        line([
+          { text: '  ' },
+          ...inner,
+          { text: ' '.repeat(Math.max(0, bandWidth - width(inner))), bg: band },
+        ]),
+      )
+    }
+  }
+  if (items.length === 0) {
+    lines.push(line([{ text: '    ' }, { text: `no command matches /${typed}`, fg: palette.dim }]))
+  }
+
+  const room = Math.max(1, max - 2)
+  const start = Math.min(Math.max(0, chosenLine - room + 1), Math.max(0, lines.length - room))
+  const shown = lines.slice(start, start + room)
+  const out = [line([]), ...shown, line([])]
+  while (out.length < h) out.push(line([]))
+  return out
+}
+
 /** Shortens `text` to `max` columns with a trailing ellipsis. */
-function clip(text: string, max: number): string {
+export function clip(text: string, max: number): string {
   if (stringWidth(text) <= max) return text
   let out = ''
   for (const ch of text) {

@@ -56,7 +56,37 @@ describe('the staged file is never invisible', () => {
     // `mode` is genuinely 'pdf' here now — `/pdf` arms it the same way
     // `/compress` arms 'compress' — so the banner says so rather than being
     // suppressed as a would-be lie about still being in convert mode.
-    expect(frame).toContain('▣ FORGE   pdf')
+    expect(frame).toMatch(/^ {3}pdf ╱+ Action ╱╱$/m)
+  })
+})
+
+describe('the command list with a file waiting', () => {
+  const DOWN = `${ESC}[B`
+
+  it('opens under the field, grouped as on home', async () => {
+    const { stdin, lastFrame } = await stagePdfAtIdle()
+    stdin.write('/')
+    await settle()
+    const lines = (lastFrame() ?? '').split('\n')
+    const field = lines.findIndex((l) => l.includes('› /'))
+    expect(field).toBeGreaterThan(-1)
+    const below = lines.slice(field + 1).join('\n')
+    expect(below).toMatch(/modes[\s\S]*▌ \/convert[\s\S]*settings[\s\S]*\/theme/)
+    expect(below).not.toContain('or press')
+  })
+
+  it('applies the chosen mode to the waiting file', async () => {
+    const { stdin, lastFrame } = await stagePdfAtIdle()
+    stdin.write('/')
+    await settle()
+    stdin.write(DOWN)
+    stdin.write(DOWN)
+    await settle()
+    expect(lastFrame() ?? '').toContain('▌ /pdf')
+    stdin.write(ENTER)
+    await settle(400)
+    // runCommand's rule for /pdf with a PDF waiting: open the hub on it.
+    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
   })
 })
 
