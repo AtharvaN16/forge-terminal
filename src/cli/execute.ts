@@ -12,7 +12,7 @@ import {
   unsupportedCompress,
   unsupportedOperation,
 } from '../core/errors.js'
-import { runPlan } from '../core/execute-jobs.js'
+import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
@@ -224,6 +224,29 @@ async function buildRasterJob(
 }
 
 /**
+ * Turns `runPlan`'s events into the two callbacks `src/index.ts` draws from.
+ * Shared by the compress and convert paths, so a target-size search reports
+ * the same way whichever flag asked for it. The rung is named as well as the
+ * attempt: without it a search that drops from 150 to 120 dpi looks like the
+ * counter restarting for no reason.
+ */
+function reportEvents(opts: ExecuteOptions, batch: boolean): (event: PlanEvent) => void {
+  return (event) => {
+    if (event.type === 'search:attempt') {
+      opts.onSearch?.(
+        event.rung.dpi === undefined
+          ? `attempt ${event.attempt} of ${event.of}`
+          : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
+      )
+      return
+    }
+    if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
+      opts.onProgress?.({ completed: event.completed, total: event.total })
+    }
+  }
+}
+
+/**
  * Never throws a ForgeError. One that escapes a branch is still a Forge
  * answer, so it is reported and given an exit code by the §3.4 rule. A config
  * value that is refused is the main case: `runConfig` throws
@@ -390,22 +413,7 @@ async function executeIntent(intent: Intent, opts: ExecuteOptions): Promise<Exec
       force: intent.force,
       ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
       ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
-      onEvent: (event) => {
-        if (event.type === 'search:attempt') {
-          // The rung is named as well as the attempt: without it a search that
-          // drops from 150 to 120 dpi looks like the counter simply restarting
-          // for no reason.
-          opts.onSearch?.(
-            event.rung.dpi === undefined
-              ? `attempt ${event.attempt} of ${event.of}`
-              : `${event.rung.dpi} dpi · attempt ${event.attempt} of ${event.of}`,
-          )
-          return
-        }
-        if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
-          opts.onProgress?.({ completed: event.completed, total: event.total })
-        }
-      },
+      onEvent: reportEvents(opts, batch),
     })
 
     // `resolved.failures` first, as the conversion path below orders them.
@@ -495,11 +503,8 @@ async function executeIntent(intent: Intent, opts: ExecuteOptions): Promise<Exec
   const outcome = await runPlan(allJobs, {
     force: intent.force,
     ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
-    onEvent: (event) => {
-      if (isBatch && (event.type === 'job:done' || event.type === 'job:error')) {
-        opts.onProgress?.({ completed: event.completed, total: event.total })
-      }
-    },
+    ...(intent.maxBytes === undefined ? {} : { targetBytes: intent.maxBytes }),
+    onEvent: reportEvents(opts, isBatch),
   })
 
   const failures = [
@@ -507,6 +512,7 @@ async function executeIntent(intent: Intent, opts: ExecuteOptions): Promise<Exec
     ...documentFailures,
     ...plan.failures,
     ...outcome.refusals,
+    ...outcome.unreachable.map((u) => ({ path: u.job.sources[0].path, error: u.error })),
     ...outcome.failures,
   ]
 

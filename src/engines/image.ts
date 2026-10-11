@@ -377,6 +377,11 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
  */
 async function measurer(job: Job): Promise<Measurer | undefined> {
   if (job.op !== 'convert') return undefined
+  // A lossless target has no quality to search: `encode` ignores quality for
+  // PNG, GIF and TIFF, so every attempt would measure the same bytes.
+  // Declining makes `runPlan` refuse with a reason instead of "searching" a
+  // dial that is not connected to anything.
+  if (!FORMATS[job.target].lossy) return undefined
   const source = job.sources[0]
   return {
     ladder: [{}],
