@@ -33,7 +33,9 @@ describe('the palette in the prompt', () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/Users/me/photo.png')
     await settle()
-    expect(lastFrame() ?? '').not.toContain('make a file smaller')
+    // The open palette's key hints sit on the bottom row, inside the clipped frame;
+    // its rows would not show for a path anyway, since no command matches one.
+    expect(lastFrame() ?? '').not.toContain('↑↓ choose')
   })
 
   it('closes when the slash is deleted', async () => {
@@ -41,9 +43,11 @@ describe('the palette in the prompt', () => {
     stdin.write('/')
     await settle()
     expect(lastFrame() ?? '').toContain('/extensions')
+    expect(lastFrame() ?? '').toContain('↑↓ choose')
     stdin.write(BACKSPACE)
     await settle()
-    expect(lastFrame() ?? '').not.toContain('make a file smaller')
+    expect(lastFrame() ?? '').not.toContain('/extensions')
+    expect(lastFrame() ?? '').not.toContain('↑↓ choose')
   })
 
   it('runs /theme from the palette', async () => {

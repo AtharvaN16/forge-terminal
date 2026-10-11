@@ -1,6 +1,8 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   access,
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
@@ -173,6 +175,41 @@ describe('installing an extension', () => {
         'remove-background/current',
       ].sort(),
     )
+  })
+
+  it('installs an archive made by scripts/package-extension.mjs, long paths included', async () => {
+    const work = await mkdtemp(join(tmpdir(), 'forge-pkg-'))
+    try {
+      const payloadDir = join(work, 'payload')
+      // Past ustar's 100-byte name field, so the packager must use the prefix field.
+      const deep = `${'models/'.repeat(16)}weights.bin`
+      expect(deep.length).toBeGreaterThan(100)
+      await mkdir(join(payloadDir, deep, '..'), { recursive: true })
+      await writeFile(join(payloadDir, deep), Buffer.alloc(900, 3))
+      await writeFile(join(payloadDir, 'forge-cutout'), '#!/bin/sh\necho hi\n')
+      await chmod(join(payloadDir, 'forge-cutout'), 0o755)
+      const made = JSON.parse(
+        execFileSync(
+          'node',
+          [
+            join(process.cwd(), 'scripts/package-extension.mjs'),
+            'remove-background',
+            '1.0.0',
+            'universal',
+            payloadDir,
+            join(work, 'out'),
+          ],
+          { encoding: 'utf8' },
+        ),
+      ) as { asset: string }
+      const archive = await readFile(join(work, 'out', made.asset))
+      h.catalog = [entryFor('1.0.0', archive, `/${made.asset}`)]
+
+      const ext = await installExtension('remove-background')
+      expect(await readFile(join(ext.entry, '..', deep))).toEqual(Buffer.alloc(900, 3))
+    } finally {
+      await rm(work, { recursive: true, force: true })
+    }
   })
 
   it('a download that does not match its checksum is extension-corrupt and leaves nothing', async () => {
