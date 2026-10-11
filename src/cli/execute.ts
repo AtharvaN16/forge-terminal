@@ -431,7 +431,7 @@ async function executeIntent(intent: Intent, opts: ExecuteOptions): Promise<Exec
         ? []
         : outcome.results.length === 1
           ? reportSingle(outcome)
-          : reportBatch(outcome, intent.output)
+          : reportBatch(outcome)
 
     return {
       exitCode: failures.length > 0 ? 1 : 0,
@@ -521,7 +521,7 @@ async function executeIntent(intent: Intent, opts: ExecuteOptions): Promise<Exec
       ? []
       : outcome.results.length === 1
         ? reportSingle(outcome)
-        : reportBatch(outcome, intent.output)
+        : reportBatch(outcome)
 
   const stderr = reportFailures(failures, { debug: intent.debug })
 

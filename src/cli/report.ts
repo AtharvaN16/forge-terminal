@@ -75,19 +75,28 @@ export function reportSingle(summary: RunSummary, where: Where = {}): string[] {
   return lines
 }
 
-export function reportBatch(summary: RunSummary, output?: string): string[] {
+/**
+ * Two or more results. Every output is named, not just counted. A batch that
+ * reported "✓ 3 converted" left the reader, often an agent, to guess where the
+ * files went (spec §1, item 2). There is one line per file written, so a PDF
+ * rasterised inside the batch lists each of its pages.
+ */
+export function reportBatch(summary: RunSummary, where: Where = {}): string[] {
   const lines = [
     `✓ ${summary.results.length} converted`,
     `  ${formatBytes(summary.inputBytes)} → ${formatBytes(summary.outputBytes)} · ${changePhrase(summary.inputBytes, summary.outputBytes)}`,
   ]
+  for (const result of summary.results) {
+    for (const output of result.job.outputs) {
+      lines.push(`  ${displayPath(output, placesFor(where))}`)
+    }
+  }
 
   const warnings = summary.results.flatMap((r) => r.warnings)
   if (warnings.length > 0) {
     lines.push('')
     for (const w of warnings) lines.push(`⚠ ${w.message}`)
   }
-
-  if (output) lines.push('', `Output: ${output}`)
   return lines
 }
 

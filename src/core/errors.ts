@@ -32,6 +32,9 @@ export type ErrorCode =
   | 'invalid-dpi'
   | 'unexpected'
 
+/** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
+export type { WarningCode } from './types.js'
+
 interface ForgeErrorInit {
   code: ErrorCode
   title: string
@@ -211,15 +214,19 @@ export function unsupportedCompress(source: SourceInfo, target?: FormatId): Forg
    * one. A PDF is a container: its pages are usually JPEGs, and re-encoding
    * them measured 79% smaller on a photo brochure. Telling someone there is
    * "no quality to trade away" sent them hunting for a workaround that does
-   * not exist, when the real answer is that Forge has not built this yet.
+   * not exist; a PDF with images does compress; this refusal only reaches one with nothing re-encodable in it.
    */
   if (source.kind === 'document' && source.format === 'pdf') {
+    const skipped = source.images?.skipped ?? 0
     return new ForgeError({
       code: 'unsupported-compress',
-      title: 'Forge cannot compress a PDF yet',
-      detail: `${name} is a PDF. Compression works on images for now.`,
-      hint: 'Try a page operation such as --extract, or --to <format> to turn its pages into images.',
-      shellHint: 'Try /pdf for page operations, or /convert to turn its pages into images.',
+      title: 'Nothing to compress',
+      detail:
+        skipped > 0
+          ? `${name}'s images are a kind Forge cannot re-encode, so there is nothing to make smaller.`
+          : `${name} has no images — it is text and layout, which compression cannot shrink.`,
+      hint: 'Try a page operation such as --extract to keep fewer pages, or --to <format> to turn its pages into images.',
+      shellHint: 'Try /pdf to keep fewer pages, or /convert to turn its pages into images.',
     })
   }
 

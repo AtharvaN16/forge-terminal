@@ -74,7 +74,7 @@ describe('a change of flow is fenced off from what came before', () => {
     stdin.write(ENTER)
     await settle(400)
     const refused = lastFrame() ?? ''
-    expect(refused).toContain('cannot compress a PDF yet')
+    expect(refused).toContain('Nothing to compress')
 
     stdin.write('/pdf')
     await settle()

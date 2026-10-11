@@ -472,15 +472,16 @@ multi-page render has a real count to report against.
 
 ### Not yet
 
-This phase adds PDF↔image conversion and reading a password-protected PDF
-(see [PDF → image](#pdf--image) and [Encrypted PDFs](#encrypted-pdfs)
-above — including in the shell). Still not implemented: compressing a PDF
-and splitting one to a target size, which are phase 4b, and Markdown, HTML
-and Office conversion, which are phase 5. Removing a password from a PDF is
-not planned at all — see [Encrypted PDFs](#encrypted-pdfs) for why.
-Separately, and not specific to PDFs: the shell refuses to convert or
-compress several staged files at once today — that's a deliberate limit
-while batch handling through the shell is still unbuilt, not a bug.
+PDF↔image conversion, reading a password-protected PDF (see [PDF →
+image](#pdf--image) and [Encrypted PDFs](#encrypted-pdfs) above — including
+in the shell), and compressing a PDF that holds images (`forge scan.pdf
+--max-size 2mb`) all work. A PDF that is only text and layout has nothing
+compression can shrink, and Forge says so. Still not implemented: Markdown,
+HTML and Office conversion beyond Word. Removing a password from a PDF is not
+planned at all — see [Encrypted PDFs](#encrypted-pdfs) for why. Separately,
+and not specific to PDFs: the shell refuses to convert or compress several
+staged files at once today — that's a deliberate limit while batch handling
+through the shell is still unbuilt, not a bug.
 
 ## Usage
 
@@ -594,8 +595,9 @@ deep, unless you pass `--recursive`):
 $ forge photos --to webp -o ./out/
 ✓ 3 converted
   6.2 KB → 1.9 KB · 69.6% smaller
-
-Output: ./out/
+  out/photo1.webp
+  out/photo2.webp
+  out/photo3.webp
 ```
 
 With `--recursive`, the source tree is recreated under the output directory
@@ -605,8 +607,10 @@ instead of being flattened:
 $ forge photos --to png -o ./t/ --recursive
 ✓ 4 converted
   8.3 KB → 1.7 KB · 80% smaller
-
-Output: ./t/
+  t/photo1.png
+  t/photo2.png
+  t/photo3.png
+  t/sub/deeper/bottom.png
 ```
 
 ```
@@ -1031,7 +1035,7 @@ Not yet built, in rough order:
   `Engine` interface `image.ts` and the PDF engine already implement, so the
   CLI and format menu won't need to change to support it. The PDF engine
   itself now covers page operations and PDF↔image (see [PDF](#pdf) above);
-  PDF compression and splitting to a target size are still to come.
+  splitting a PDF to a target size is still to come.
 
 Explicitly out of scope for 0.1: HEIC encoding (the underlying library
 can't), DOCX/PPTX/SVG output, MP4/MP3, recursive watch mode, config files,

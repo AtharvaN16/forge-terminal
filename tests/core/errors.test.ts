@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   conversionFailed,
   corruptSource,
@@ -15,8 +15,9 @@ import {
   targetUnreachable,
   unsupportedCompress,
   unsupportedTarget,
+  type WarningCode,
 } from '../../src/core/errors.js'
-import type { SourceInfo } from '../../src/core/types.js'
+import type { SourceInfo, Warning } from '../../src/core/types.js'
 
 const source: SourceInfo = {
   kind: 'image',
@@ -245,5 +246,36 @@ describe('write-safety hints in the shell name no CLI flags', () => {
 
   it('sends a conversion onto its own input to a different folder', () => {
     expect(outputIsInput('/tmp/photo.jpg').shellHint).toMatch(/folder/i)
+  })
+})
+
+describe('WarningCode', () => {
+  it('is the type of every Warning code', () => {
+    expectTypeOf<Warning['code']>().toEqualTypeOf<WarningCode>()
+  })
+})
+
+describe('unsupportedCompress for a PDF', () => {
+  const pdf = (images: { compressible: number; skipped: number }): SourceInfo => ({
+    kind: 'document',
+    path: '/tmp/notes.pdf',
+    format: 'pdf',
+    bytes: 1000,
+    pages: 2,
+    encrypted: false,
+    images,
+  })
+
+  it('says a text-only PDF has nothing to compress, not that Forge cannot yet', () => {
+    const e = unsupportedCompress(pdf({ compressible: 0, skipped: 0 }))
+    expect(e.title).toBe('Nothing to compress')
+    expect(e.detail).toContain('no images')
+    expect(`${e.title} ${e.detail} ${e.hint}`).not.toMatch(/\byet\b/)
+  })
+
+  it('says when the images are a kind Forge cannot re-encode', () => {
+    expect(unsupportedCompress(pdf({ compressible: 0, skipped: 3 })).detail).toContain(
+      'cannot re-encode',
+    )
   })
 })
