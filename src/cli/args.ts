@@ -22,6 +22,12 @@ export interface ConvertIntent {
   /** Read an encrypted source's password from stdin instead of prompting. */
   passwordStdin?: boolean
   /**
+   * An encrypted source's password, supplied directly. Only the MCP server sets
+   * this, from its tool argument. The CLI has no flag for it, by design
+   * (invariant 8: never from argv).
+   */
+  password?: string
+  /**
    * Set by --max-size alongside --to: the converted file must fit this many
    * bytes, and the search decides the quality. It used to be parsed and then
    * dropped on this path (spec §4.6).

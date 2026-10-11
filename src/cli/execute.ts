@@ -48,6 +48,12 @@ export interface BatchProgress {
 
 export interface ExecuteOptions {
   /**
+   * Whether a password may be asked for (prompt or --password-stdin). Default
+   * true. The MCP server passes false: its stdin is the protocol stream, so
+   * reading it would corrupt the session (spec §3.5, "there is no prompt").
+   */
+  interactive?: boolean
+  /**
    * Called only for a batch (more than one job) and only driven by real
    * job:done / job:error events — never a fabricated percentage. execute()
    * itself never prints; this callback is how src/index.ts, the only layer
@@ -163,6 +169,7 @@ async function buildRasterJob(
     dpi?: number
     pages?: string
     passwordStdin?: boolean
+    password?: string
     /**
      * Carries every `ConvertOptions` field the user set — `--background`,
      * `--quality`, `--keep-metadata`. Each one is forwarded into `plan()`
@@ -172,6 +179,7 @@ async function buildRasterJob(
      */
     options: ConvertOptions
   },
+  interactive: boolean,
   /**
    * The root this source was scanned under, when `--recursive` found it
    * inside one. Threaded through so `rasterOutputPaths` recreates the source
@@ -183,7 +191,9 @@ async function buildRasterJob(
   if (source.encrypted) {
     // Never for an unencrypted file — asking would be a prompt nobody
     // expected and, worse, a password nothing is actually locked with.
-    password = await readPassword({ stdin: intent.passwordStdin ?? false })
+    password =
+      intent.password ??
+      (interactive ? await readPassword({ stdin: intent.passwordStdin ?? false }) : undefined)
     // No --password-stdin and no terminal to ask on. Refuse now rather than
     // wait for input that cannot come. The hint names --password-stdin,
     // which is exactly what is missing.
@@ -450,7 +460,12 @@ async function runConvert(intent: ConvertIntent, opts: ExecuteOptions): Promise<
   const documentJobs: Job[] = []
   const documentFailures: InputFailure[] = []
   for (const source of documentSources) {
-    const built = await buildRasterJob(source, intent, resolved.roots.get(source.path))
+    const built = await buildRasterJob(
+      source,
+      intent,
+      opts.interactive ?? true,
+      resolved.roots.get(source.path),
+    )
     if ('failure' in built) documentFailures.push(built.failure)
     else documentJobs.push(built.job)
   }
