@@ -19,7 +19,6 @@ const ENGINE_LIBRARIES = [
   'docx',
   'adm-zip',
   'cfb',
-  'pdf-parse',
 ]
 const SHELL_LIBRARIES = ['ink', 'react']
 

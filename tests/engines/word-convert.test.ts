@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import mammoth from 'mammoth'
-import { PDFParse } from 'pdf-parse'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { extractPdfText } from '../../src/engines/pdfium.js'
 import { probe } from '../../src/engines/registry.js'
 import {
   forceLibreOfficeForTests,
@@ -45,9 +45,7 @@ describe('wordEngine.run — npm fallback', () => {
     )
     expect(result.outputBytes).toBeGreaterThan(0)
     expect(result.warnings.map((w) => w.code)).toContain('word-basic-fidelity')
-    const parser = new PDFParse({ data: await readFile(output) })
-    const { text } = await parser.getText()
-    await parser.destroy()
+    const text = (await extractPdfText(await readFile(output))).join('\n')
     expect(text).toContain('Hello from a docx.')
   })
 
@@ -71,9 +69,7 @@ describe('wordEngine.run — npm fallback', () => {
       () => {},
     )
     expect(result.outputBytes).toBeGreaterThan(0)
-    const parser = new PDFParse({ data: await readFile(output) })
-    const { text } = await parser.getText()
-    await parser.destroy()
+    const text = (await extractPdfText(await readFile(output))).join('\n')
     expect(text).toContain('Hello from a legacy doc.')
   })
 

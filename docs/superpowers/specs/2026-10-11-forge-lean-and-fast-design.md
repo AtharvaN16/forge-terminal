@@ -91,6 +91,24 @@ no-LibreOffice path.
 - `pdf-parse` is removed from `dependencies`. This restores the "no native
   bindings beyond Sharp" property from the 4a spec (lines 84-87).
 
+**Comparison results** (`tests/engines/pdf-text-compare.test.ts`, run before
+the switch, then removed with pdf-parse). Recall is the share of expected
+words found. "In order" means the whole text appears in reading order.
+
+| Fixture | pdf-parse | pdfium |
+| --- | --- | --- |
+| two-column layout | 1.0, in order | 1.0, in order |
+| Hebrew (RTL) | 1.0, words reversed | 1.0, in order |
+| Arabic (RTL) | 1.0, words reversed | 1.0, in order |
+| CJK (ja/zh/ko) | 0.0, nothing extracted | 1.0, in order |
+| ligatures (fi, ffi) | 1.0, in order | 1.0, in order |
+| Type3 font | 0.8, last glyphs dropped | 1.0, in order |
+| scanned, image-only | empty, nothing invented | empty, nothing invented |
+
+pdfium is at least as good on every fixture, so the switch proceeds with no
+known limitation. A scanned PDF still converts to an empty document; OCR is
+out of scope.
+
 ### 4.2 Load only what the command needs
 
 Today `src/index.ts` statically imports `src/cli/execute.ts` (237 ms on its

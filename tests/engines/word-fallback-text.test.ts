@@ -2,8 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
 import mammoth from 'mammoth'
-import { PDFParse } from 'pdf-parse'
 import { describe, expect, it } from 'vitest'
+import { extractPdfText } from '../../src/engines/pdfium.js'
 import { probe } from '../../src/engines/registry.js'
 import {
   buildDocx,
@@ -102,9 +102,7 @@ describe('layoutAsPdf', () => {
     await writeFile(path, bytes)
     expect(await pdfPageCount(path)).toBe(1)
 
-    const parser = new PDFParse({ data: await readFile(path) })
-    const { text } = await parser.getText()
-    await parser.destroy()
+    const text = (await extractPdfText(await readFile(path))).join('\n')
     expect(text).toContain(hugeWord)
   })
 })
