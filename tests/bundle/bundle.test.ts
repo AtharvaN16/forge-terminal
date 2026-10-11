@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import * as nodeModule from 'node:module'
 import { tmpdir } from 'node:os'
@@ -125,7 +125,14 @@ describe('the bundle', { timeout: 30_000 }, () => {
     const packages = packagesIn(urls)
     expect(packages).not.toContain('sharp')
     expect(packages).not.toContain('@hyzyla/pdfium')
-    for (const entry of ['src/cli/execute.ts', 'src/shell/boot.ts', 'src/shell/launch.tsx']) {
+    expect(packages).not.toContain('@modelcontextprotocol/server')
+    expect(packages).not.toContain('zod')
+    for (const entry of [
+      'src/cli/execute.ts',
+      'src/shell/boot.ts',
+      'src/shell/launch.tsx',
+      'src/mcp/server.ts',
+    ]) {
       expect(
         urls.some((u) => u.endsWith(chunkFor(entry))),
         entry,
@@ -212,6 +219,75 @@ describe('the bundle', { timeout: 30_000 }, () => {
     const outPath = join(dir, 's-small.pdf')
     expect((await stat(outPath)).size).toBeLessThanOrEqual(150 * 1024)
     expect((await PDFDocument.load(await readFile(outPath))).getPageCount()).toBe(2)
+  })
+
+  it('keeps the MCP server out of the entry chunk', async () => {
+    const entryText = await readFile(bin, 'utf8')
+    expect(entryText).not.toContain('forge_convert')
+    expect(entryText).not.toContain('StdioServerTransport')
+    expect(chunkFor('src/mcp/server.ts')).not.toBe(chunkFor('src/index.ts'))
+  })
+
+  it('serves forge mcp from the lazy chunk: list, convert, then exit when stdin closes', async () => {
+    const dir = await makeTempDir()
+    const jpeg = await makeJpeg(dir, 'm.jpg')
+    const child = spawn(process.execPath, [bin, 'mcp'], {
+      cwd: elsewhere,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const messages: Array<{ id?: number; result?: Record<string, unknown> }> = []
+    let partial = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+      partial += chunk
+      for (let nl = partial.indexOf('\n'); nl !== -1; nl = partial.indexOf('\n')) {
+        messages.push(JSON.parse(partial.slice(0, nl)))
+        partial = partial.slice(nl + 1)
+      }
+    })
+    child.stderr.resume()
+    const exited = new Promise<number | null>((resolve) => child.on('close', resolve))
+    const reply = async (id: number) => {
+      for (let i = 0; i < 750; i++) {
+        const found = messages.find((m) => m.id === id)
+        if (found) return found.result ?? {}
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      throw new Error(`no reply to request ${id}`)
+    }
+    const send = (m: object) => child.stdin.write(`${JSON.stringify(m)}\n`)
+
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 't', version: '0' },
+      },
+    })
+    expect((await reply(1)).protocolVersion).toBe('2025-11-25')
+    send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    send({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
+    const tools = (await reply(2)).tools as Array<{ name: string }>
+    expect(tools.map((t) => t.name)).toContain('forge_convert')
+    send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'forge_convert', arguments: { paths: [jpeg], to: 'webp' } },
+    })
+    expect((await reply(3)).isError).toBeFalsy()
+    expect(await readdir(dir)).toContain('m.webp')
+
+    child.stdin.end()
+    const code = await Promise.race([
+      exited,
+      new Promise<'hung'>((r) => setTimeout(() => r('hung'), 10_000)),
+    ])
+    if (code === 'hung') child.kill()
+    expect(code).toBe(0)
+    expect(partial).toBe('')
   })
 
   it('loads the shell chunk: Ink, React and yoga', async () => {

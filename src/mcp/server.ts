@@ -1,4 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server'
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
+import { invalidArguments } from '../core/errors.js'
 import { VERSION } from '../shell/theme.js'
 import {
   CompressInput,
@@ -10,6 +12,7 @@ import {
   ProbeOutput,
   RunOutput,
 } from './schemas.js'
+import { claimStdout } from './stdout-guard.js'
 import { compressTool, convertTool, formatsTool, pdfTool, probeTool } from './tools.js'
 
 /** What a client tells its model about Forge as a whole. */
@@ -107,4 +110,24 @@ export function createForgeServer(): McpServer {
   )
 
   return server
+}
+
+/**
+ * `forge mcp`: serves the tools over stdio until the client hangs up.
+ *
+ * It uses `StdioServerTransport`, a 2025-era server. With Claude Code 2.1.292
+ * it negotiates protocol 2025-11-25, which is what Claude Code asks for (see
+ * the plan's verified SDK facts). The transport closes itself on stdin EOF.
+ * Nothing else holds the event loop, so the process then exits 0 on its own,
+ * after any response already written has flushed.
+ */
+export async function runMcpServer(args: string[]): Promise<void> {
+  if (args.length > 0) {
+    throw invalidArguments(
+      `forge mcp takes no arguments, got: ${args.join(' ')}.`,
+      'Register it with your agent, for example: claude mcp add forge -- forge mcp',
+    )
+  }
+  const protocol = claimStdout()
+  await createForgeServer().connect(new StdioServerTransport(process.stdin, protocol))
 }

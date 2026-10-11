@@ -21,6 +21,8 @@ const ENGINE_LIBRARIES = [
   'cfb',
 ]
 const SHELL_LIBRARIES = ['ink', 'react']
+// Only `forge mcp` may load these (spec §3.5).
+const MCP_LIBRARIES = ['@modelcontextprotocol/server', 'zod']
 
 async function loadedBy(...args: string[]) {
   const run = await modulesLoaded([entry, ...args])
@@ -34,7 +36,7 @@ describe('a command loads only what it needs', () => {
     const { exitCode, stdout, packages, urls } = await loadedBy('--version')
     expect(exitCode).toBe(0)
     expect(stdout.trim()).toBe('0.1.0')
-    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES]) {
+    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES, ...MCP_LIBRARIES]) {
       expect(packages, name).not.toContain(name)
     }
     expect(loadedExecute(urls)).toBe(false)
@@ -43,7 +45,7 @@ describe('a command loads only what it needs', () => {
   it('--help loads none of them either', async () => {
     const { exitCode, packages, urls } = await loadedBy('--help')
     expect(exitCode).toBe(0)
-    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES]) {
+    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES, ...MCP_LIBRARIES]) {
       expect(packages, name).not.toContain(name)
     }
     expect(loadedExecute(urls)).toBe(false)
@@ -52,7 +54,7 @@ describe('a command loads only what it needs', () => {
   it('a usage error is answered before anything heavy loads', async () => {
     const { exitCode, packages } = await loadedBy('--bogus')
     expect(exitCode).toBe(2)
-    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES]) {
+    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES, ...MCP_LIBRARIES]) {
       expect(packages, name).not.toContain(name)
     }
   })
@@ -63,7 +65,7 @@ describe('a command loads only what it needs', () => {
     const { exitCode, stdout, packages } = await loadedBy('--formats')
     expect(exitCode).toBe(0)
     expect(stdout).toContain('HEIC')
-    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES]) {
+    for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES, ...MCP_LIBRARIES]) {
       expect(packages, name).not.toContain(name)
     }
   })

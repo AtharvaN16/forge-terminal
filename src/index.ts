@@ -45,6 +45,18 @@ async function main(): Promise<void> {
   const json = wantsJson(argv)
 
   try {
+    /**
+     * `forge mcp` is a server, not a command. It owns stdin and stdout until
+     * the client hangs up, so it is routed before argument parsing and never
+     * reaches execute(). The import is lazy, so no other command loads the
+     * MCP SDK (spec §3.5).
+     */
+    if (argv[0] === 'mcp') {
+      const { runMcpServer } = await import('./mcp/server.js')
+      await runMcpServer(argv.slice(1))
+      return
+    }
+
     // Parse first, import second (spec §4.2). `--version`, `--help` and every
     // usage error are answered inside parseArgs, by Commander, before any
     // engine, library or shell module is loaded.
