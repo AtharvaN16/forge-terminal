@@ -1,6 +1,8 @@
 import { Box, Text } from 'ink'
+import { useRef } from 'react'
 import stringWidth from 'string-width'
 import { displayPath } from '../../utils/display-path.js'
+import { easeOut, motionEnabled, useTween } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, MODE_MARKERS, modeColours, type ShellMode } from '../theme.js'
 import { bandFor, middleEllipsis } from '../width.js'
@@ -13,6 +15,70 @@ import { bandFor, middleEllipsis } from '../width.js'
 export function isWorking(step: string, staged: number): boolean {
   if (step === 'theme') return false
   return !(step === 'idle' && staged === 0)
+}
+
+/** How long a new mode's fill takes to cross the bar. */
+const WIPE_MS = 260
+
+interface Segment {
+  text: string
+  color?: string | undefined
+  bold?: boolean
+}
+
+/**
+ * The bar's segments on its fill. Mid-wipe, every cell left of `edge` is on
+ * the new fill and every cell right of it still on the old one, so the new
+ * mode's colour sweeps in from the left — the change itself says the mode
+ * changed. The words are the new mode's throughout.
+ */
+function Filled({
+  segments,
+  width,
+  bg,
+  wipe,
+}: {
+  segments: Segment[]
+  width: number
+  bg: string
+  wipe?: { edge: number; from: string } | undefined
+}) {
+  if (!wipe) {
+    return (
+      <Box width={width} backgroundColor={colourProp(bg)}>
+        {segments.map((seg, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed, ordered set of segments
+          <Text key={i} color={colourProp(seg.color ?? '')} bold={seg.bold ?? false}>
+            {seg.text}
+          </Text>
+        ))}
+      </Box>
+    )
+  }
+  const parts: Array<Segment & { bg: string }> = []
+  let col = 0
+  for (const seg of segments) {
+    const chars = [...seg.text]
+    const left = Math.max(0, Math.min(chars.length, wipe.edge - col))
+    if (left > 0) parts.push({ ...seg, text: chars.slice(0, left).join(''), bg })
+    if (left < chars.length) parts.push({ ...seg, text: chars.slice(left).join(''), bg: wipe.from })
+    col += chars.length
+  }
+  return (
+    <Box width={width}>
+      {parts.map((part, i) => (
+        <Text
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed, ordered set of segments
+          key={i}
+          color={colourProp(part.color ?? '')}
+          bold={part.bold ?? false}
+          backgroundColor={colourProp(part.bg)}
+        >
+          {part.text}
+        </Text>
+      ))}
+    </Box>
+  )
 }
 
 /**
@@ -38,15 +104,30 @@ export function HeaderBar({
   const { fg, bg } = modeColours(palette, mode)
   const marker = MODE_MARKERS[mode]
 
+  // The fill the bar had before the mode last changed, captured during
+  // render so the first frame of a change already knows where it came from.
+  const last = useRef({ mode, from: bg })
+  if (last.current.mode !== mode) {
+    last.current = { mode, from: modeColours(palette, last.current.mode).bg }
+  }
+  const k = easeOut(useTween(mode, WIPE_MS, { enabled: motionEnabled(palette.name) }))
+  const wipe =
+    k < 1 && last.current.from !== bg
+      ? { edge: Math.round(k * width), from: last.current.from }
+      : undefined
+
   if (bandFor(width) === 'compact') {
     const text = ` ${marker} ${mode}`
     return (
-      <Box width={width} backgroundColor={colourProp(bg)}>
-        <Text color={colourProp(fg)} bold>
-          {text}
-        </Text>
-        <Text>{' '.repeat(Math.max(0, width - stringWidth(text)))}</Text>
-      </Box>
+      <Filled
+        width={width}
+        bg={bg}
+        wipe={wipe}
+        segments={[
+          { text, color: fg, bold: true },
+          { text: ' '.repeat(Math.max(0, width - stringWidth(text))) },
+        ]}
+      />
     )
   }
 
@@ -64,14 +145,17 @@ export function HeaderBar({
     detail && detailRoom >= 8 ? `${modeText} · ${middleEllipsis(detail, detailRoom)}` : modeText
   const gap = Math.max(1, width - stringWidth(brand) - stringWidth(middle) - stringWidth(right) - 1)
   return (
-    <Box width={width} backgroundColor={colourProp(bg)}>
-      <Text color={colourProp(fg)} bold>
-        {brand}
-      </Text>
-      <Text color={colourProp(palette.dim)}>{middle}</Text>
-      <Text>{' '.repeat(gap)}</Text>
-      <Text color={colourProp(palette.dim)}>{right}</Text>
-      <Text> </Text>
-    </Box>
+    <Filled
+      width={width}
+      bg={bg}
+      wipe={wipe}
+      segments={[
+        { text: brand, color: fg, bold: true },
+        { text: middle, color: palette.dim },
+        { text: ' '.repeat(gap) },
+        { text: right, color: palette.dim },
+        { text: ' ' },
+      ]}
+    />
   )
 }

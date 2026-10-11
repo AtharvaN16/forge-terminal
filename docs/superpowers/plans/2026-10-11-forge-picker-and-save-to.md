@@ -265,5 +265,5 @@ from `d` to tab and from `[default]` to `★ default`.
 - [ ] **Step 4: Run them plus `receipt-card*`, `header-bar` and
   `mode-colour-app`, and check they pass.**
 - [ ] **Step 5: Run `npm test` and the typecheck, then commit** with the
-  message `feat(shell): motion — spinner and elapsed time, bars draw once,
-  mode wipe`.
+  message `feat(shell): motion — spinner and elapsed time,
+  mode wipe` (bars draw once deferred: the receipt is <Static>).

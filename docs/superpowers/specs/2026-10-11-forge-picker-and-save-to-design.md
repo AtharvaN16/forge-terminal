@@ -126,8 +126,13 @@ slower, and stops when it has finished.
 | Measuring shimmer | target picker | A band of light moves along `measuring…` while an encode is running. |
 | Drop flash | `PathInput` | When a path arrives as one pasted chunk, the input line flashes in `band` and fades back over 450 ms. |
 | Spinner and elapsed time | `converting` step, single file | The `cli/spinner.ts` frames, followed by the existing label and the real elapsed seconds. There is no percentage. Batch and target-size progress are unchanged. |
-| Bars draw once | `ReceiptCard` | The "after" bar fills from empty to its measured length over 500 ms, once, when the card mounts. |
 | Mode wipe | `HeaderBar` | When the mode changes, the new mode's fill wipes in from the left over 260 ms. |
+
+**Deferred: bars draw once.** The receipt card is printed through Ink's
+`<Static>`, which writes it to scrollback once and never redraws it. An
+animation there would permanently print its first, empty frame. Making it
+animate would mean changing how results reach the screen, which is outside
+this change.
 
 Helpers live in `src/shell/motion.ts`: `motionEnabled`, `mix`, `useTween`
 (0→1 over a duration, restarted by a key) and `useTicker` (frame counter

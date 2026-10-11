@@ -48,6 +48,7 @@ import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
+import { WorkingLine } from './components/WorkingLine.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
 import { type BannerState, CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -2549,9 +2550,11 @@ export function App({
 
           {step === 'converting' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.dim)}>
-                {attempt ? 'Finding the right quality…' : 'Converting…'}
-              </Text>
+              {attempt ? (
+                <Text color={colourProp(palette.dim)}>Finding the right quality…</Text>
+              ) : (
+                <WorkingLine label="Converting…" />
+              )}
               {/* One dot per attempt the search may take — `of` is
                   `maxAttempts()` for this rung, known before the search
                   starts, so the row is a real bounded sequence rather than a
