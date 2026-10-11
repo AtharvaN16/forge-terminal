@@ -460,8 +460,9 @@ export function emptyDirectory(path: string): ForgeError {
     title: 'No images found',
     detail: `${basename(path)} contains no images Forge can convert.`,
     hint: 'Try --recursive to look inside subfolders.',
-    // The shell takes dropped files, not folders, and has no --recursive.
-    shellHint: 'Drop the files themselves instead.',
+    // The shell reads a dropped folder non-recursively and has no --recursive.
+    shellHint:
+      'Only files directly inside a folder are read — drop the files themselves, or the folder that holds them.',
   })
 }
 

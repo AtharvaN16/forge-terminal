@@ -12,7 +12,6 @@ import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
 import {
-  ForgeError,
   isForgeError,
   unexpectedError,
   unsupportedCompress,
@@ -176,20 +175,6 @@ interface PendingPdfRefusal {
 
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
-
-/**
- * `emptyDirectory`'s hint names `--recursive`, a flag the shell has no way to
- * pass. Every other error reads the same in both places.
- */
-function forShell(error: ForgeError): ForgeError {
-  if (error.code !== 'empty-directory') return error
-  return new ForgeError({
-    code: error.code,
-    title: error.title,
-    detail: error.detail,
-    hint: 'Only files directly inside a folder are read — drop the files themselves, or the folder that holds them.',
-  })
-}
 
 /**
  * One line for the history, once a page-operation job has actually run.
@@ -1273,7 +1258,7 @@ export function App({
           const found = await resolveDirectory(dir, { recursive: false })
           if (requestId.current !== id) return // superseded by a later submission
           if (found.sources.length === 0) {
-            for (const failure of found.failures) showError(forShell(failure.error))
+            for (const failure of found.failures) showError(failure.error)
             return
           }
           if (found.sources.length > 1 || found.failures.length > 0) {
