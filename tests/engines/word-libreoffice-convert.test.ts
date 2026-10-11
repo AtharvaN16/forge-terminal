@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { PDFParse } from 'pdf-parse'
 import { describe, expect, it } from 'vitest'
+import { extractPdfText } from '../../src/engines/pdfium.js'
 import { probe } from '../../src/engines/registry.js'
 import {
   libreOfficeAvailable,
@@ -44,9 +44,7 @@ describe('wordEngine.run — LibreOffice path', () => {
     )
     expect(result.outputBytes).toBeGreaterThan(0)
     expect(result.warnings).toEqual([])
-    const parser = new PDFParse({ data: await readFile(output) })
-    const { text } = await parser.getText()
-    await parser.destroy()
+    const text = (await extractPdfText(await readFile(output))).join('\n')
     expect(text).toContain('Hello from LibreOffice.')
   }, 30_000)
 

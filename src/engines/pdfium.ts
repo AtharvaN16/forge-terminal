@@ -35,6 +35,30 @@ export async function openPdf(bytes: Uint8Array, password?: string): Promise<PDF
   return await lib.loadDocument(bytes, password)
 }
 
+/**
+ * The text of every page, in page order, one string per page, with pdfium's
+ * own `\r\n` line breaks (word.ts's `splitParagraphs` already splits on them).
+ *
+ * Replaces pdf-parse, which cost 83 MB installed and loaded Skia through
+ * pdf.js's canvas binding (spec §4.1). Measured against it on the §4.1
+ * fixture set, pdfium was as good or better on every one.
+ *
+ * Unlocked documents only: word.ts refuses an encrypted source before this
+ * is reached, and a locked one rejects here instead of reading as blank.
+ * A fresh `getPage` per index, as in `run` below: a `PDFiumPage` is not
+ * reused.
+ */
+export async function extractPdfText(bytes: Uint8Array): Promise<string[]> {
+  const doc = await openPdf(bytes)
+  try {
+    const pages: string[] = []
+    for (let i = 0; i < doc.getPageCount(); i++) pages.push(doc.getPage(i).getText())
+    return pages
+  } finally {
+    doc.destroy()
+  }
+}
+
 export const pdfiumEngine: Engine = {
   id: 'pdfium',
   reads: READS,

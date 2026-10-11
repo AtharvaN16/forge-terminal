@@ -474,3 +474,59 @@ export async function makeScannedPdf(
   await writeFile(path, await doc.save())
   return path
 }
+
+/**
+ * A one-page PDF whose only font is Type3: glyphs drawn by content-stream
+ * procedures rather than an embedded font program, the way TeX bitmap fonts
+ * and some report generators ship text. Every letter is the same filled
+ * square. A ToUnicode CMap is what makes the text extractable, as it is in
+ * real Type3 PDFs.
+ *
+ * Hand-assembled because pdf-lib cannot write a Type3 font. `text` must be
+ * uppercase A-Z and spaces.
+ */
+export async function makeType3Pdf(dir: string, name: string, text: string): Promise<string> {
+  if (!/^[A-Z ]+$/.test(text)) throw new Error('makeType3Pdf draws only A-Z and spaces')
+  const letters = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']
+  const stream = (body: string) =>
+    `<< /Length ${Buffer.byteLength(body, 'latin1')} >>\nstream\n${body}\nendstream`
+  const cmap = [
+    '/CIDInit /ProcSet findresource begin',
+    '12 dict begin',
+    'begincmap',
+    '/CMapName /ForgeType3 def',
+    '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def',
+    '1 begincodespacerange <00> <FF> endcodespacerange',
+    '1 beginbfrange <20> <5A> <0020> endbfrange',
+    'endcmap',
+    'CMapName currentdict /CMap defineresource pop',
+    'end',
+    'end',
+  ].join('\n')
+  const widths = Array.from({ length: 0x5a - 0x20 + 1 }, (_, i) => (i === 0 ? 500 : 1000)).join(' ')
+  const procs = ['/space 6 0 R', ...letters.map((l) => `/${l} 7 0 R`)].join(' ')
+  const differences = `[32 /space 65 ${letters.map((l) => `/${l}`).join(' ')}]`
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    stream(`BT /F1 24 Tf 72 700 Td (${text}) Tj ET`),
+    `<< /Type /Font /Subtype /Type3 /FontBBox [0 0 750 750] /FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << ${procs} >> /Encoding << /Type /Encoding /Differences ${differences} >> /FirstChar 32 /LastChar 90 /Widths [${widths}] /Resources << >> /ToUnicode 8 0 R >>`,
+    stream('500 0 d0'),
+    stream('1000 0 0 0 750 750 d1 0 0 750 750 re f'),
+    stream(cmap),
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  for (const [i, body] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'))
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`
+  }
+  const xref = Buffer.byteLength(pdf, 'latin1')
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  const path = join(dir, name)
+  await writeFile(path, Buffer.from(pdf, 'latin1'))
+  return path
+}

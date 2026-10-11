@@ -20,3 +20,19 @@ that wrote it.
 
 Verified against PDFium: rejected with no password
 (`Password required or incorrect password`), opens with `hunter2`, 3 pages.
+
+## `text/`
+
+PDF text-extraction fixtures for spec §4.1: `columns.pdf`, `hebrew.pdf`,
+`arabic.pdf`, `cjk.pdf` and `ligatures.pdf`, each one page. The text drawn on
+each page is in `manifest.json`, which the tests read as ground truth.
+
+Generated once on macOS by CoreText, which lays out right-to-left scripts,
+CJK and ligatures the way a Mac app's "Save as PDF" does:
+
+    swift scripts/make-text-fixtures.swift tests/fixtures/text/manifest.json tests/fixtures/text
+
+They embed subsets of macOS system fonts, as any PDF saved on a Mac does.
+They are test data only and never ship (`files` in package.json is `dist`).
+The Type3 and scanned cases are built at test time instead
+(`makeType3Pdf`, `makeScannedPdf` in `tests/helpers/fixtures.ts`).

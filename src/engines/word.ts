@@ -14,6 +14,7 @@ import {
   loadPdfLib,
   loadWordExtractor,
 } from './libs.js'
+import { extractPdfText } from './pdfium.js'
 import type { Engine } from './types.js'
 
 const execFileAsync = promisify(execFile)
@@ -217,16 +218,10 @@ export async function extractPlainText(source: DocumentInfo): Promise<string[]> 
   }
 
   // source.format === 'pdf'
-  const { PDFParse } = await import('pdf-parse')
-  const parser = new PDFParse({ data: await readFile(source.path) })
-  try {
-    const { pages } = await parser.getText()
-    return pages.flatMap((page, i) =>
-      i === 0 ? splitParagraphs(page.text) : [PAGE_BREAK, ...splitParagraphs(page.text)],
-    )
-  } finally {
-    await parser.destroy()
-  }
+  const pages = await extractPdfText(await readFile(source.path))
+  return pages.flatMap((text, i) =>
+    i === 0 ? splitParagraphs(text) : [PAGE_BREAK, ...splitParagraphs(text)],
+  )
 }
 
 const PDF_PAGE_WIDTH = 612
@@ -350,7 +345,7 @@ async function run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
   // probing always reports false — see probe()'s comment) — a pdf -> docx
   // job reaching this engine. Refusing with the named `encryptedSource`
   // error here matches `pdfiumEngine`'s own refusal for the same case,
-  // rather than letting pdf-parse throw and surfacing a generic
+  // rather than letting pdfium's load fail and surfacing a generic
   // conversion-failed with no hint about --password-stdin.
   if (source.encrypted) throw encryptedSource(source.path)
 
