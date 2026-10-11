@@ -47,9 +47,11 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
+import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
+import { writeToTerminal } from './terminal-write.js'
 import { colourProp, paletteFor, SYMBOLS } from './theme.js'
 import { useKeys } from './useKeys.js'
 import { useMouseRouting } from './useMouseRouting.js'
@@ -298,20 +300,53 @@ export function App({
   initialHeight,
   prefs = APP_DEFAULT_PREFS,
   configWarning,
+  introShown = false,
 }: {
   initialWidth?: number
   initialHeight?: number
   prefs?: Preferences
   configWarning?: string
+  /** `playIntro` drew the banner before Ink mounted — see `historyForRedraw`. */
+  introShown?: boolean
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
   /** Only `PdfFlow`'s page grid needs this — see `gridLayout`. */
   const [measuredHeight, setMeasuredHeight] = useState(initialHeight ?? stdout?.rows ?? 24)
 
+  /**
+   * Bumped to remount `<Static>`, which replays every history block. See
+   * `redraw.ts` for why a width change has to clear the screen and redraw.
+   */
+  const [staticGeneration, setStaticGeneration] = useState(0)
+  /** Whether `playIntro`'s banner is still only on screen, not in history. */
+  const introPending = useRef(introShown)
+  /** For the intro banner's redraw — the default output can change mid-session. */
+  const defaultOutputRef = useRef(prefs.defaultOutput)
+
   useEffect(() => {
     if (initialWidth !== undefined || !stdout) return
-    const onResize = () => setMeasured(stdout.columns ?? 80)
+    let drawnAt = stdout.columns ?? 80
+    const onResize = () => {
+      const columns = stdout.columns ?? 80
+      // Height alone reflows nothing, so only a width change pays for a redraw.
+      if (columns !== drawnAt) {
+        drawnAt = columns
+        writeToTerminal(CLEAR_SCREEN, stdout)
+        const intro: HistoryBlock | undefined = introPending.current
+          ? {
+              kind: 'banner',
+              id: nextId(),
+              width: columns,
+              defaultOutput: defaultOutputRef.current,
+            }
+          : undefined
+        introPending.current = false
+        setHistory((h) => historyForRedraw(h, columns, intro))
+        setStaticGeneration((g) => g + 1)
+      }
+      setMeasured(columns)
+    }
     stdout.on('resize', onResize)
     return () => {
       stdout.off('resize', onResize)
@@ -386,6 +421,7 @@ export function App({
    * relaunch — so they all read this, never the `prefs` prop.
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
+  defaultOutputRef.current = livePrefs.defaultOutput
   const [step, setStep] = useState<Step>(prefs.theme === undefined ? 'theme' : 'idle')
   /**
    * Which action the staged file is being put through. Dropping a file means
@@ -2003,7 +2039,7 @@ export function App({
               <StagedFiles stage={stage} width={width} />
             </Box>
           ) : null}
-          <Static items={history}>
+          <Static key={staticGeneration} items={history}>
             {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
           </Static>
 

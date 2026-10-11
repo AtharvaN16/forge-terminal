@@ -512,7 +512,10 @@ Three width bands: `< 60` compact (drop the box border and choice hints),
 `60–100` normal, `> 100` wide (show full paths and dimensions). Content is
 truncated with a middle ellipsis rather than wrapped; nothing overflows
 horizontally. Width changes are observed by listening for `resize` on the stream returned
-by Ink’s `useStdout()`.
+by Ink’s `useStdout()`. The terminal reflows what is already on screen when
+its width changes, and Ink erases by lines written rather than rows shown, so a
+width change clears the screen and scrollback and replays history through a
+fresh `<Static>` at the new width (`shell/redraw.ts`).
 
 Every status carries a symbol and a word — `✓ done`, `✕ failed`, `⚠ warning` —
 so colour is never the sole carrier of meaning. Selected rows are marked with
