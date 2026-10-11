@@ -25,7 +25,8 @@ export const loadPdfium = lazy(() => import('@hyzyla/pdfium'))
 export const loadMammoth = lazy(async () => (await import('mammoth')).default)
 export const loadWordExtractor = lazy(async () => (await import('word-extractor')).default)
 export const loadAdmZip = lazy(async () => (await import('adm-zip')).default)
-export const loadCfb = lazy(() => import('cfb'))
+// CommonJS with no ESM build: a bundler's import() yields only { default }.
+export const loadCfb = lazy(async () => (await import('cfb')).default)
 
 type DocxModule = typeof import('docx')
 
