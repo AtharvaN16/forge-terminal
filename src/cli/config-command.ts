@@ -1,4 +1,5 @@
 import { configPath, loadPreferences, savePreferences } from '../config/preferences.js'
+import { invalidArguments } from '../core/errors.js'
 
 export type ConfigKey = 'output' | 'theme' | 'quality'
 
@@ -19,8 +20,9 @@ export interface ConfigResult {
  * `cli/` does: the caller owns the streams, so this stays testable without
  * capturing stdout.
  *
- * Exit codes follow spec §9 — 0 for success, 2 for a usage error. A rejected
- * value writes nothing, so a typo never half-applies.
+ * Exit codes follow spec §3.4: a rejected value is a usage error, thrown as
+ * invalid-arguments so it is printed on stderr with exit 2. A rejected value
+ * writes nothing, so a typo never half-applies.
  */
 export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
   if (intent.action === 'path') {
@@ -46,7 +48,7 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
 
   if (key === 'theme') {
     if (value !== 'dark' && value !== 'light') {
-      return { stdout: [`Theme must be dark or light, not ${value}.`], exitCode: 2 }
+      throw invalidArguments(`Theme must be dark or light, not ${value}.`)
     }
     await savePreferences({ theme: value })
     return { stdout: [`theme is now ${value}`], exitCode: 0 }
@@ -55,17 +57,14 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
   if (key === 'quality') {
     const n = Number(value)
     if (!Number.isInteger(n) || n < 1 || n > 100) {
-      return {
-        stdout: [`Quality must be a whole number between 1 and 100, not ${value}.`],
-        exitCode: 2,
-      }
+      throw invalidArguments(`Quality must be a whole number between 1 and 100, not ${value}.`)
     }
     await savePreferences({ quality: n })
     return { stdout: [`quality is now ${n}`], exitCode: 0 }
   }
 
   if (value.trim().length === 0) {
-    return { stdout: ['Output must be a folder path.'], exitCode: 2 }
+    throw invalidArguments('Output must be a folder path.')
   }
   await savePreferences({ defaultOutput: value })
   return { stdout: [`output is now ${value}`], exitCode: 0 }

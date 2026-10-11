@@ -153,6 +153,17 @@ function parseConcurrency(raw: string): number {
   return n
 }
 
+/**
+ * The exit-code contract (spec §3.4), printed under --help and in the README.
+ * The rule behind it: if the same flags could succeed on a different file, a
+ * refusal is 1; otherwise it is 2.
+ */
+export const EXIT_CODES_HELP = `
+Exit codes:
+  0  every input succeeded
+  1  the command was understood, and at least one input failed or was refused
+  2  the command itself was invalid: an unknown flag, a missing argument, contradictory flags`
+
 export function parseArgs(argv: string[]): Intent {
   if (argv[0] === 'config') return parseConfigArgs(argv)
 
@@ -182,6 +193,7 @@ export function parseArgs(argv: string[]): Intent {
     .option('--password-stdin', "read an encrypted PDF's password from stdin")
     .helpOption('-h, --help', 'show this help')
     .version('0.1.0', '-V, --version', 'show the version')
+    .addHelpText('after', EXIT_CODES_HELP)
     .exitOverride()
     .allowExcessArguments(false)
 

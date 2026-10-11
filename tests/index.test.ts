@@ -51,6 +51,13 @@ describe('CLI exit codes', () => {
     expect((await spawn(['a.jpg', '--to'])).exitCode).toBe(2)
   })
 
+  it('prints the exit-code contract in --help', async () => {
+    const result = await spawn(['--help'])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('Exit codes:')
+    expect(result.stdout).toMatch(/2\s+the command itself was invalid/)
+  })
+
   it('exits 0 for --help and --version', async () => {
     expect((await spawn(['--help'])).exitCode).toBe(0)
     expect((await spawn(['--version'])).exitCode).toBe(0)

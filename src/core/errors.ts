@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'heic-decoder-unavailable'
   | 'unsupported-compress'
   | 'unsupported-pdf'
+  | 'unsupported-operation'
   | 'target-unreachable'
   | 'unsupported-target'
   | 'corrupt-source'
@@ -232,6 +233,26 @@ export function unsupportedPdf(source: SourceInfo): ForgeError {
     title: '/pdf needs a PDF',
     detail: `${name} is ${FORMATS[source.format].label}, not a PDF.`,
     hint: 'Converting it instead.',
+  })
+}
+
+/**
+ * A page operation that does not fit the files it was given: a JPEG handed to
+ * --merge, a single PDF handed to --merge, a one-page PDF handed to --split.
+ * `reason` is the action's own `unavailable()` text, the same words the shell's
+ * /pdf hub shows beside a dimmed row.
+ *
+ * This gets its own code rather than `invalid-arguments`. The command was
+ * well-formed and would succeed on other files, which makes it exit 1, while
+ * `invalid-arguments` always means exit 2 (spec §3.4).
+ */
+export function unsupportedOperation(action: string, reason: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-operation',
+    title: `Cannot ${action} these files`,
+    detail: `Not available for these files: ${reason}.`,
+    hint: 'Page operations work on PDFs: --merge takes two or more, the others take one.',
+    shellHint: 'Use /pdf with a PDF staged — two or more for merge.',
   })
 }
 
