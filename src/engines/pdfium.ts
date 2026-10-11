@@ -1,11 +1,10 @@
 import { readFile, rm } from 'node:fs/promises'
-import type { PDFiumDocument } from '@hyzyla/pdfium'
-import { PDFiumLibrary } from '@hyzyla/pdfium'
-import sharp from 'sharp'
+import type { PDFiumDocument, PDFiumLibrary } from '@hyzyla/pdfium'
 import { writeAtomic } from '../core/atomic.js'
 import { encryptedSource } from '../core/errors.js'
 import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
 import { encode } from './image.js'
+import { loadPdfium, loadSharp } from './libs.js'
 import type { Engine } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
@@ -15,10 +14,12 @@ const OPS: ReadonlySet<Job['op']> = new Set<Job['op']>(['convert'])
 // PDFiumLibrary.init() compiles the wasm module. It costs real time and there
 // is no reason to pay it per file, so it is memoised for the process. The
 // promise itself is cached, not the resolved value, so two concurrent callers
-// share one initialisation rather than racing two.
-let library: Promise<Awaited<ReturnType<typeof PDFiumLibrary.init>>> | undefined
-function getLibrary() {
-  library ??= PDFiumLibrary.init()
+// share one initialisation rather than racing two. The library module itself
+// loads on the same first call (libs.ts), so a command that never opens a PDF
+// never reads the wasm.
+let library: Promise<PDFiumLibrary> | undefined
+function getLibrary(): Promise<PDFiumLibrary> {
+  library ??= loadPdfium().then((pdfium) => pdfium.PDFiumLibrary.init())
   return library
 }
 
@@ -108,6 +109,7 @@ export const pdfiumEngine: Engine = {
     // the vector page, not a decode of a file carrying its own EXIF/ICC
     // data, so there is nothing for "keep metadata" to act on.
 
+    const sharp = await loadSharp()
     const doc = await openPdf(await readFile(source.path), job.options.password)
     try {
       const written: string[] = []

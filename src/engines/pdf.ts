@@ -1,12 +1,10 @@
 import { readFile, rm, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
-import { degrees, PDFDocument } from 'pdf-lib'
-import sharp from 'sharp'
+import type { PDFDocument } from 'pdf-lib'
 import { writeAtomic } from '../core/atomic.js'
 import { emptySelection, encryptedSource } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
-import { compressPdf, surveyDocument } from '../core/pdf-compress.js'
 import type {
   DocumentInfo,
   FormatId,
@@ -16,7 +14,15 @@ import type {
   Result,
   Warning,
 } from '../core/types.js'
+import { lazy, loadPdfLib, loadSharp } from './libs.js'
 import type { Engine, Measurer } from './types.js'
+
+/**
+ * `compressPdf` and `surveyDocument` live in core but import pdf-lib and Sharp
+ * at their own top level, so the module loads on first use, the same as the
+ * libraries in libs.ts.
+ */
+const loadPdfCompress = lazy(() => import('../core/pdf-compress.js'))
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
   'pdf',
@@ -38,10 +44,12 @@ const WRITES: ReadonlySet<FormatId> = new Set<FormatId>(['pdf'])
  * reads", which is both wrong and unactionable.
  */
 async function load(path: string): Promise<PDFDocument> {
-  return PDFDocument.load(await readFile(path), { ignoreEncryption: true })
+  const pdfLib = await loadPdfLib()
+  return pdfLib.PDFDocument.load(await readFile(path), { ignoreEncryption: true })
 }
 
 async function probe(path: string): Promise<DocumentInfo> {
+  const { surveyDocument } = await loadPdfCompress()
   const doc = await load(path)
   const { size } = await stat(path)
   return {
@@ -112,6 +120,7 @@ function assertUnencrypted(sources: readonly { path: string; encrypted?: boolean
  * sharp's EXIF auto-orient and a no-op when there is nothing to apply.
  */
 async function embedBytes(doc: PDFDocument, source: ImageInfo, raw: Buffer) {
+  const sharp = await loadSharp()
   const embeddable = source.format === 'jpeg' || source.format === 'png'
   const orientation = embeddable ? (await sharp(raw).metadata()).orientation : undefined
 
@@ -180,7 +189,8 @@ async function imageToPdf(
   const raw = await readFile(source.path)
 
   onPhase({ phase: 'encoding' })
-  const doc = await PDFDocument.create()
+  const pdfLib = await loadPdfLib()
+  const doc = await pdfLib.PDFDocument.create()
   const embedded = await embedBytes(doc, source, raw)
   const page = doc.addPage([embedded.width, embedded.height])
   page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height })
@@ -195,7 +205,8 @@ async function merge(
   onPhase: (p: Progress) => void,
 ): Promise<Result> {
   assertUnencrypted(job.sources.filter((s) => s.kind === 'document'))
-  const out = await PDFDocument.create()
+  const pdfLib = await loadPdfLib()
+  const out = await pdfLib.PDFDocument.create()
 
   for (const source of job.sources) {
     onPhase({ phase: 'reading' })
@@ -224,6 +235,7 @@ async function split(
 ): Promise<Result> {
   const source = job.sources[0]
   assertUnencrypted([source])
+  const pdfLib = await loadPdfLib()
 
   onPhase({ phase: 'reading' })
   const src = await load(source.path)
@@ -233,7 +245,7 @@ async function split(
   let outputBytes = 0
   try {
     for (const [i, range] of ranges.entries()) {
-      const out = await PDFDocument.create()
+      const out = await pdfLib.PDFDocument.create()
       const indices = Array.from({ length: range.to - range.from + 1 }, (_, n) => range.from + n)
       const pages = await out.copyPages(src, indices)
       for (const page of pages) out.addPage(page)
@@ -258,7 +270,8 @@ async function split(
 
 /** Copy an explicit page list into a new document, in the order given. */
 async function pagesInto(src: PDFDocument, indices: number[]): Promise<Uint8Array> {
-  const out = await PDFDocument.create()
+  const pdfLib = await loadPdfLib()
+  const out = await pdfLib.PDFDocument.create()
   const pages = await out.copyPages(src, indices)
   for (const page of pages) out.addPage(page)
   return out.save()
@@ -344,6 +357,7 @@ async function rotate(
 ): Promise<Result> {
   const source = job.sources[0]
   assertUnencrypted([source])
+  const pdfLib = await loadPdfLib()
 
   onPhase({ phase: 'reading' })
   const doc = await load(source.path)
@@ -354,7 +368,7 @@ async function rotate(
     // why spec §6 pins the stored form to 0–270 rather than trusting it.
     const turned = page.getRotation().angle + job.turns * 90
     const next = ((turned % 360) + 360) % 360
-    page.setRotation(degrees(next))
+    page.setRotation(pdfLib.degrees(next))
   }
 
   onPhase({ phase: 'writing' })
@@ -383,6 +397,7 @@ async function compressDocument(
 ): Promise<Result> {
   const source = job.sources[0]
   assertUnencrypted([source])
+  const { compressPdf } = await loadPdfCompress()
   onPhase({ phase: 'reading' })
   const original = await readFile(source.path)
 
@@ -465,6 +480,7 @@ async function measurer(job: Job): Promise<Measurer | undefined> {
   // An image going to PDF is an embedding, not a compression: there is no
   // resolution ladder to walk, so decline rather than invent one.
   if (source.kind !== 'document') return undefined
+  const { compressPdf } = await loadPdfCompress()
 
   const original = await readFile(source.path)
 

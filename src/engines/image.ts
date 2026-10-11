@@ -3,7 +3,6 @@ import { constants } from 'node:fs'
 import { access, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
-import sharp from 'sharp'
 import { prepareOutputDir } from '../core/atomic.js'
 import {
   classifyWriteError,
@@ -32,6 +31,7 @@ import type {
   Warning,
 } from '../core/types.js'
 import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
+import { loadSharp } from './libs.js'
 import type { Engine, Measurer } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -144,6 +144,9 @@ async function probe(path: string): Promise<SourceInfo> {
     }
   }
 
+  // Loaded here, after the HEIC branch: a HEIC is measured with sips and
+  // never needs Sharp to probe.
+  const sharp = await loadSharp()
   let meta: Metadata
   try {
     meta = await sharp(path).metadata()
@@ -266,6 +269,7 @@ async function pipelineFor(
     await heic?.cleanup()
   }
 
+  const sharp = await loadSharp()
   let pipeline = sharp(heic?.path ?? source.path, animated ? { animated: true } : {})
 
   // Rule 1: EXIF orientation, before anything else. Verified safe on

@@ -1,9 +1,21 @@
 #!/usr/bin/env node
+import * as nodeModule from 'node:module'
 import { parseArgs } from './cli/args.js'
 import type { BatchProgress } from './cli/execute.js'
-import { execute } from './cli/execute.js'
 import { type Spinner, startSpinner } from './cli/spinner.js'
 import { isForgeError, renderError } from './core/errors.js'
+
+/**
+ * Node's on-disk compile cache for every module loaded after this line, which
+ * is all of the heavy ones because they are imported dynamically below.
+ * Measured at -25 ms per run (spec §4.2.3).
+ *
+ * A namespace import plus an optional call, never `import { enableCompileCache }`:
+ * the function arrived in Node 22.1, `engines` allows 20, and a missing named
+ * export from a built-in is a link error that would stop Forge from starting
+ * at all.
+ */
+nodeModule.enableCompileCache?.()
 
 /**
  * Prints "Converting N files" once, then a completion counter as jobs finish.
@@ -28,6 +40,9 @@ async function main(): Promise<void> {
   const debug = argv.includes('--debug')
 
   try {
+    // Parse first, import second (spec §4.2). `--version`, `--help` and every
+    // usage error are answered inside parseArgs, by Commander, before any
+    // engine, library or shell module is loaded.
     const intent = parseArgs(argv)
 
     // The shell is only ever launched from a real terminal. Piped or scripted
@@ -56,6 +71,9 @@ async function main(): Promise<void> {
       await launchShell()
       return
     }
+
+    // Only now, with real work to do, is the engine layer loaded.
+    const { execute } = await import('./cli/execute.js')
 
     /**
      * The spinner is created on the first search callback rather than up
