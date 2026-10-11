@@ -418,7 +418,9 @@ drag of several files pastes every escaped path on one line; `submitPath`
 tries the line whole first, then splits it with `splitPastedPaths`. Phase 3
 made several staged files meaningful — a `/pdf` merge list — so a drop that
 yields several PDFs (or adds a PDF to a staged one) is staged and shown as a
-card. Anything else that would leave several files staged is refused *before*
+card. A dropped folder resolves the same way, through `resolveDirectory`
+(non-recursive, as the CLI is without `--recursive`); a folder holding one
+file is that file dropped on its own. Anything else that would leave several files staged is refused *before*
 staging, with the reason and the way out: the conversion flow is still
 single-file from `probe` through to the result, and making it multi-file is
 the batch feature on the roadmap, a product decision. Until then the flag CLI

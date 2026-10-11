@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { Box, type DOMElement, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,6 +12,7 @@ import type { OptionSpec } from '../core/actions/index.js'
 import { compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
 import {
+  ForgeError,
   isForgeError,
   unexpectedError,
   unsupportedCompress,
@@ -19,7 +21,7 @@ import {
 import { runPlan } from '../core/execute-jobs.js'
 import { FORMATS, primaryExtension } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
-import type { InputFailure } from '../core/resolve.js'
+import { type InputFailure, resolveDirectory } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
@@ -174,6 +176,20 @@ interface PendingPdfRefusal {
 
 let blockSeq = 0
 const nextId = () => `b${++blockSeq}`
+
+/**
+ * `emptyDirectory`'s hint names `--recursive`, a flag the shell has no way to
+ * pass. Every other error reads the same in both places.
+ */
+function forShell(error: ForgeError): ForgeError {
+  if (error.code !== 'empty-directory') return error
+  return new ForgeError({
+    code: error.code,
+    title: error.title,
+    detail: error.detail,
+    hint: 'Only files directly inside a folder are read — drop the files themselves, or the folder that holds them.',
+  })
+}
 
 /**
  * One line for the history, once a page-operation job has actually run.
@@ -1130,6 +1146,31 @@ export function App({
     ],
   )
 
+  /**
+   * Stages what a multi-path drop or a folder resolved to — or refuses it
+   * before staging, when it would leave several files nothing can act on
+   * together (see `refuseUnstageable`). Failures ride along on the stage and
+   * are listed beside the card. One file goes to its target picker the way a
+   * single drop does; several make a merge list and wait at the prompt.
+   */
+  const stageSeveral = useCallback(
+    (infos: SourceInfo[], failures: InputFailure[]) => {
+      const next = addToStage(stage, infos, failures)
+      if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
+        refuseUnstageable(infos, stage.sources)
+        return
+      }
+      setStage(next)
+      setValues({})
+      if (next.sources.length > 1) {
+        setStep('idle')
+        return
+      }
+      setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
+    },
+    [stage, pdfActionsApply, refuseUnstageable, hasConvertTarget],
+  )
+
   const submitPath = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim()
@@ -1208,19 +1249,38 @@ export function App({
             }
           }
           if (requestId.current !== id) return // superseded by a later submission
-          const next = addToStage(stage, infos, failures)
-          if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
-            refuseUnstageable(infos, stage.sources)
-            return
-          }
-          setStage(next)
-          setValues({})
-          if (next.sources.length > 1) {
-            setStep('idle')
-            return
-          }
-          setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
+          stageSeveral(infos, failures)
           return
+        }
+      }
+
+      /**
+       * A folder. Phase 3 §4 has the prompt accept one the way the CLI does,
+       * through `resolve.ts`; probed whole as a file instead, it was refused
+       * as "Not a file" under a CLI hint recommending a directory of images
+       * (UX audit #11). Non-recursive, as the CLI is without `--recursive`.
+       * One file inside is treated as that file dropped on its own, so the
+       * armed mode still decides where it goes; several go through the same
+       * rule as a multi-path drop.
+       */
+      if (!info && isForgeError(wholeError) && wholeError.code === 'not-a-file') {
+        const dir = unescapePath(trimmed)
+        const isDirectory = await stat(dir).then(
+          (s) => s.isDirectory(),
+          () => false,
+        )
+        if (isDirectory) {
+          const found = await resolveDirectory(dir, { recursive: false })
+          if (requestId.current !== id) return // superseded by a later submission
+          if (found.sources.length === 0) {
+            for (const failure of found.failures) showError(forShell(failure.error))
+            return
+          }
+          if (found.sources.length > 1 || found.failures.length > 0) {
+            stageSeveral(found.sources, found.failures)
+            return
+          }
+          info = found.sources[0]
         }
       }
 
@@ -1328,6 +1388,7 @@ export function App({
       runCommand,
       mode,
       stage,
+      stageSeveral,
       refuseUnstageable,
       hasConvertTarget,
       pdfActionsApply,
