@@ -1844,7 +1844,12 @@ export function App({
         },
       })
       for (const result of summary.results) {
-        push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} ${describePdfResult(result)}` })
+        push({
+          kind: 'note',
+          id: nextId(),
+          text: `${SYMBOLS.ok} ${describePdfResult(result)}`,
+          savedTo: result.job.outputs[0],
+        })
         // Warnings used to stop here: only the note was pushed, and
         // `result.warnings` was never read. No page operation emits one today,
         // so this is a guard against the next one that does rather than a live

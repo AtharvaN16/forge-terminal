@@ -48,5 +48,7 @@ describe('the result of rasterising a multi-page document', () => {
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('3 files')
+    // Audit #9: and where they went.
+    expect(frame).toContain('saved to ')
   }, 60_000)
 })
