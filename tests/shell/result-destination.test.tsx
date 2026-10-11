@@ -55,9 +55,9 @@ describe('the result says where the file went', () => {
     expect(frameOf(resultIn(desktop), 50)).toContain('saved to ~/Desktop')
   })
 
-  it('names it in the stacked layout for a long name', () => {
+  it('names it when a long name puts the names on two lines', () => {
     const frame = frameOf(resultIn(desktop, 'Screenshot 2026-08-17 at 3.52.36 PM.jpg'), 92)
-    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(2) // really stacked
+    expect(frame).toContain('──→ ') // really on two lines
     expect(frame).toContain('saved to ~/Desktop')
   })
 

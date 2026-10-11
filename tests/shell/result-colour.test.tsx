@@ -27,9 +27,8 @@ const source: SourceInfo = {
 }
 
 /**
- * The colour immediately wrapping `needle`: the raw SGR escape sequence
- * that most recently preceded it, plus whatever plain text sits between
- * that code and `needle` itself. Comparing these strings rather than
+ * The colour immediately wrapping `needle`: the raw SGR colour sequence
+ * that most recently preceded it. Comparing these strings rather than
  * parsing them into named colours is enough — `ok` and `warn` differ in
  * every palette this app ships (`green`/`yellow` in `NEUTRAL`, two
  * distinct hexes in `DARK`/`LIGHT`), so two different literal results here
@@ -40,9 +39,13 @@ function colourAround(frame: string, needle: string): string {
   const at = frame.indexOf(needle)
   if (at === -1) throw new Error(`"${needle}" not found in frame`)
   const before = frame.slice(0, at)
-  const lastEscape = before.lastIndexOf('\x1b[')
-  if (lastEscape === -1) throw new Error(`no colour code before "${needle}"`)
-  return before.slice(lastEscape, before.indexOf('m', lastEscape) + 1)
+  // Colour codes only: a bold `\x1b[1m` can sit between the colour and the
+  // text, and it says nothing about which token was used.
+  const COLOUR = new RegExp(`${String.fromCharCode(27)}\\[(?:3[0-79]|9[0-7]|38;[0-9;]+)m`, 'g')
+  const colours = [...before.matchAll(COLOUR)]
+  const last = colours.at(-1)
+  if (!last) throw new Error(`no colour code before "${needle}"`)
+  return last[0]
 }
 
 describe('the size-change colour', () => {
@@ -64,7 +67,7 @@ describe('the size-change colour', () => {
     const block: HistoryBlock = { kind: 'result', id: 'r-larger', result }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''
     expect(frame).toContain('larger')
-    const doneColour = colourAround(frame, '✓ done')
+    const doneColour = colourAround(frame, '✓ DONE')
     const largerColour = colourAround(frame, 'larger')
     expect(largerColour).not.toBe(doneColour)
   })
@@ -83,7 +86,7 @@ describe('the size-change colour', () => {
     }
     const block: HistoryBlock = { kind: 'result', id: 'r-smaller', result }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''
-    const doneColour = colourAround(frame, '✓ done')
+    const doneColour = colourAround(frame, '✓ DONE')
     const smallerColour = colourAround(frame, 'smaller')
     expect(smallerColour).toBe(doneColour)
   })

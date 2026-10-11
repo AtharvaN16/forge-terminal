@@ -1,13 +1,12 @@
 import { basename, dirname } from 'node:path'
 import { Box, Text } from 'ink'
-import stringWidth from 'string-width'
 import type { ForgeError } from '../core/errors.js'
-import { FORMATS } from '../core/formats.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
 import { displayPath } from '../utils/display-path.js'
 import { Banner } from './components/Banner.js'
 import { FileCard } from './components/FileCard.js'
+import { ReceiptCard } from './components/ReceiptCard.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { useTheme } from './ThemeContext.js'
 import { colourProp, SYMBOLS, VERSION } from './theme.js'
@@ -171,40 +170,12 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   if (job.op !== 'convert') {
     throw new Error(`HistoryEntry cannot render a "${job.op}" result yet`)
   }
-  const fromLabel = FORMATS[job.sources[0].format].label
-  const toLabel = FORMATS[job.target].label
-
   /**
-   * Two framed names with an arrow between them, so a finished conversion
-   * reads as a before and an after rather than as a sentence. The saving sits
-   * underneath, because it is the answer to "was that worth it?" and belongs
-   * on its own line rather than competing with the filenames.
-   *
-   * Below the normal band there is no room for two boxes side by side — a
-   * pair needs roughly 2x22 columns plus the arrow — so the compact band
-   * keeps the single-line form.
+   * The normal and wide bands get the receipt card (`ReceiptCard`). The
+   * compact band has no room for a card and keeps this single-line form.
    */
   const band = bandFor(width)
-  const fromName = basename(job.sources[0].path)
-  const toName = basename(job.outputs[0])
-
-  /**
-   * Side by side each box gets under half the terminal, which a real
-   * filename — "Screenshot 2026-08-17 at 3.52.36 PM.png" — does not fit
-   * inside. Rather than ellipsing the middle out of both names, the pair
-   * stacks vertically when either is too long: one box per row, each with
-   * the full width, and the arrow between them turns downward.
-   *
-   * Truncation is then a last resort rather than the normal case.
-   */
-  const sideBySideText = Math.min(30, Math.floor((Math.min(width, 76) - 5) / 2)) - 4
-  const fitsSideBySide =
-    stringWidth(fromName) <= sideBySideText && stringWidth(toName) <= sideBySideText
-
-  const paired = band !== 'compact' && width >= 56
-  const stacked = paired && !fitsSideBySide
-
-  if (!paired) {
+  if (band === 'compact') {
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Text>
@@ -231,132 +202,5 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
     )
   }
 
-  // Two boxes and the arrow gutter share the row; each box carries its own
-  // border, so the text inside is the box width less the two frame glyphs
-  // and a column of padding on each side.
-  // The connector is ` ──→ ` — five columns — and the top and bottom edges
-  // must span the same gap, or the boxes stop lining up.
-  const CONNECTOR = ` ${SYMBOLS.longArrow} `
-  const boxWidth = Math.min(30, Math.floor((Math.min(width, 76) - CONNECTOR.length) / 2))
-  const textWidth = boxWidth - 4
-
-  const cell = (label: string, name: string) => {
-    const rule = '─'.repeat(Math.max(0, boxWidth - 2 - stringWidth(label) - 3))
-    const shown = middleEllipsis(name, textWidth)
-    const pad = ' '.repeat(Math.max(0, textWidth - stringWidth(shown)))
-    return {
-      top: (
-        <>
-          <Text color={colourProp(palette.border)}>{'╭─ '}</Text>
-          <Text color={colourProp(palette.tag)}>{label}</Text>
-          <Text color={colourProp(palette.border)}>{` ${rule}╮`}</Text>
-        </>
-      ),
-      mid: (
-        <>
-          <Text color={colourProp(palette.border)}>{'│ '}</Text>
-          <Text color={colourProp(palette.fg)}>{`${shown}${pad}`}</Text>
-          <Text color={colourProp(palette.border)}>{' │'}</Text>
-        </>
-      ),
-      bottom: <Text color={colourProp(palette.border)}>{`╰${'─'.repeat(boxWidth - 2)}╯`}</Text>,
-    }
-  }
-
-  if (stacked) {
-    const full = Math.min(width, 76)
-    const fullText = full - 4
-
-    const wide = (label: string, name: string) => {
-      const rule = '─'.repeat(Math.max(0, full - 2 - stringWidth(label) - 3))
-      const shown = middleEllipsis(name, fullText)
-      const pad = ' '.repeat(Math.max(0, fullText - stringWidth(shown)))
-      return (
-        <Box flexDirection="column">
-          <Text>
-            <Text color={colourProp(palette.border)}>{'╭─ '}</Text>
-            <Text color={colourProp(palette.tag)}>{label}</Text>
-            <Text color={colourProp(palette.border)}>{` ${rule}╮`}</Text>
-          </Text>
-          <Text>
-            <Text color={colourProp(palette.border)}>{'│ '}</Text>
-            <Text color={colourProp(palette.fg)}>{`${shown}${pad}`}</Text>
-            <Text color={colourProp(palette.border)}>{' │'}</Text>
-          </Text>
-          <Text color={colourProp(palette.border)}>{`╰${'─'.repeat(full - 2)}╯`}</Text>
-        </Box>
-      )
-    }
-
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
-        <Box marginTop={1} flexDirection="column">
-          {wide(fromLabel, fromName)}
-          <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}│`}</Text>
-          <Text color={colourProp(palette.dim)}>{`${' '.repeat(Math.floor(full / 2))}▼`}</Text>
-          {wide(toLabel, toName)}
-        </Box>
-        <Box marginTop={1}>
-          <Text>
-            <Text color={colourProp(palette.dim)}>
-              {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
-            </Text>
-            <Text color={colourProp(palette[changeColour(job.sources[0].bytes, outputBytes)])}>
-              {changePhrase(job.sources[0].bytes, outputBytes)}
-            </Text>
-          </Text>
-        </Box>
-        <SavedTo output={job.outputs[0]} width={width} />
-        {warnings.map((w) => (
-          <Text key={w.message} color={colourProp(palette.warn)}>
-            {SYMBOLS.warn} {w.message}
-          </Text>
-        ))}
-      </Box>
-    )
-  }
-
-  const from = cell(fromLabel, fromName)
-  const to = cell(toLabel, toName)
-  const gutter = ' '.repeat(CONNECTOR.length)
-
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
-      <Box marginTop={1} flexDirection="column">
-        <Text>
-          {from.top}
-          <Text>{gutter}</Text>
-          {to.top}
-        </Text>
-        <Text>
-          {from.mid}
-          <Text color={colourProp(palette.dim)}>{CONNECTOR}</Text>
-          {to.mid}
-        </Text>
-        <Text>
-          {from.bottom}
-          <Text>{gutter}</Text>
-          {to.bottom}
-        </Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text>
-          <Text color={colourProp(palette.dim)}>
-            {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
-          </Text>
-          <Text color={colourProp(palette[changeColour(job.sources[0].bytes, outputBytes)])}>
-            {changePhrase(job.sources[0].bytes, outputBytes)}
-          </Text>
-        </Text>
-      </Box>
-      <SavedTo output={job.outputs[0]} width={width} />
-      {warnings.map((w) => (
-        <Text key={w.message} color={colourProp(palette.warn)}>
-          {SYMBOLS.warn} {w.message}
-        </Text>
-      ))}
-    </Box>
-  )
+  return <ReceiptCard result={block.result} width={width} />
 }

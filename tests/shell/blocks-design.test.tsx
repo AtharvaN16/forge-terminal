@@ -96,7 +96,7 @@ describe('result block', () => {
 
   it('carries symbol and word, not colour alone', () => {
     const frame = frameOf(<HistoryEntry block={{ kind: 'result', id: 'r1', result }} width={80} />)
-    expect(frame).toContain('✓ done')
+    expect(frame).toContain('✓ DONE')
     expect(frame).toContain('diagram.png')
     expect(frame).toContain('diagram.webp')
   })
@@ -113,9 +113,7 @@ describe('result block', () => {
   })
 })
 
-describe('result block, paired form', () => {
-  // Short names on purpose: this block is about the side-by-side layout, and
-  // a long name legitimately switches it to the stacked one.
+describe('result block, receipt card', () => {
   const result: Result = {
     job: {
       op: 'convert',
@@ -129,37 +127,29 @@ describe('result block, paired form', () => {
   }
   const block = { kind: 'result' as const, id: 'r2', result }
 
-  it('frames the source and the output as a before and an after', () => {
+  it('shows the source becoming the output on one line', () => {
+    expect(frameOf(<HistoryEntry block={block} width={100} />)).toContain(
+      'diagram.png  ──→  diagram.gif',
+    )
+  })
+
+  it('puts each size on its own bar, with the saving beside the after one', () => {
+    const lines = frameOf(<HistoryEntry block={block} width={100} />).split('\n')
+    const before = lines.find((l) => l.includes('before')) ?? ''
+    const after = lines.find((l) => l.includes('after')) ?? ''
+    expect(before).toContain('348 KB')
+    expect(before).toContain('█')
+    expect(after).toContain('133 KB')
+    expect(after).toMatch(/\d+% smaller/)
+  })
+
+  it('is one card with one top and one bottom edge', () => {
     const frame = frameOf(<HistoryEntry block={block} width={100} />)
-    expect(frame).toContain('╭─ PNG')
-    expect(frame).toContain('╭─ GIF')
-    expect(frame).toContain('→')
+    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(1)
+    expect(frame.split('\n').filter((l) => l.includes('╰'))).toHaveLength(1)
   })
 
-  it('still says done in words, not colour alone', () => {
-    expect(frameOf(<HistoryEntry block={block} width={100} />)).toContain('✓ done')
-  })
-
-  it('puts the sizes and the saving on their own line', () => {
-    const frame = frameOf(<HistoryEntry block={block} width={100} />)
-    const line = frame.split('\n').find((l) => l.includes('%')) ?? ''
-    expect(line).toContain('348 KB')
-    expect(line).toContain('133 KB')
-    expect(line).toMatch(/\d+% smaller/)
-    expect(line).not.toContain('│')
-  })
-
-  it('keeps both boxes the same height and aligned', () => {
-    const frame = frameOf(<HistoryEntry block={block} width={100} />)
-    const tops = frame.split('\n').filter((l) => l.includes('╭'))
-    const bottoms = frame.split('\n').filter((l) => l.includes('╰'))
-    // Both boxes share one line for each edge, so there is exactly one of each.
-    expect(tops).toHaveLength(1)
-    expect(bottoms).toHaveLength(1)
-    expect(tops[0]?.split('╭')).toHaveLength(3) // two boxes on that line
-  })
-
-  it('falls back to the single-line form when two boxes will not fit', () => {
+  it('falls back to the single-line form when a card will not fit', () => {
     const frame = frameOf(<HistoryEntry block={block} width={50} />)
     expect(frame).not.toContain('╭')
     expect(frame).toContain('✓ done')
@@ -189,11 +179,9 @@ describe('result block, long names', () => {
   }
   const block = { kind: 'result' as const, id: 'r3', result }
 
-  it('stacks the boxes when a name will not fit side by side', () => {
+  it('gives each name its own line when they will not share one', () => {
     const frame = frameOf(<HistoryEntry block={block} width={92} />)
-    // One box per row means two top edges, not one shared line.
-    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(2)
-    expect(frame).toContain('▼')
+    expect(frame).toContain('──→ Screenshot 2026-08-17 at 3.52.36 PM.gif')
   })
 
   it('shows the full names rather than ellipsing both', () => {
@@ -203,7 +191,7 @@ describe('result block, long names', () => {
     expect(frame).not.toContain('…')
   })
 
-  it('still pairs them side by side when both names are short', () => {
+  it('still shares one line when both names are short', () => {
     const short: Result = {
       ...result,
       job: {
@@ -217,10 +205,10 @@ describe('result block, long names', () => {
     const frame = frameOf(
       <HistoryEntry block={{ kind: 'result', id: 'r4', result: short }} width={92} />,
     )
-    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(1)
+    expect(frame).toContain('a.png  ──→  a.gif')
   })
 
-  it('never overflows, stacked or paired', () => {
+  it('never overflows, whatever the names', () => {
     for (const w of [56, 60, 80, 92, 120]) {
       const frame = frameOf(<HistoryEntry block={block} width={w} />)
       for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
