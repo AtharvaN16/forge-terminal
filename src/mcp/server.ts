@@ -80,7 +80,7 @@ export function createForgeServer(): McpServer {
       outputSchema: RunOutput,
       annotations: WRITES,
     },
-    (args) => convertTool(args),
+    (args, ctx) => convertTool(args, ctx.mcpReq.signal),
   )
 
   server.registerTool(

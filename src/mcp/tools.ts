@@ -39,8 +39,14 @@ function oneWriterAtATime<T>(work: () => Promise<T>): Promise<T> {
   return run
 }
 
-const runWriting = (intent: Parameters<typeof runIntent>[0]): Promise<RunReport> =>
-  oneWriterAtATime(() => runIntent(intent, NO_PROMPT))
+/** `signal` is the tool call's own: a client that cancels the call kills an extension's child. */
+const runWriting = (
+  intent: Parameters<typeof runIntent>[0],
+  signal?: AbortSignal,
+): Promise<RunReport> =>
+  oneWriterAtATime(() =>
+    runIntent(intent, signal === undefined ? NO_PROMPT : { ...NO_PROMPT, signal }),
+  )
 
 function failureLine(f: FailureJson): string {
   const where = f.path === undefined ? '' : ` (${f.path})`
@@ -98,7 +104,10 @@ export function formatsTool(): CallToolResult {
   return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
 }
 
-export async function convertTool(args: ConvertArgs): Promise<CallToolResult> {
+export async function convertTool(
+  args: ConvertArgs,
+  signal?: AbortSignal,
+): Promise<CallToolResult> {
   if (args.boost !== undefined || args.removeBackground === true) {
     if (args.boost !== undefined && args.removeBackground === true) {
       return refuse(
@@ -123,7 +132,7 @@ export async function convertTool(args: ConvertArgs): Promise<CallToolResult> {
       ...(args.boost === undefined ? {} : { scale: args.boost }),
       ...(args.output === undefined ? {} : { output: args.output }),
     }
-    return fromReport(await runWriting(op))
+    return fromReport(await runWriting(op, signal))
   }
   const intent: ConvertIntent = {
     kind: 'convert',

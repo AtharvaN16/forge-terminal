@@ -1,11 +1,14 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { Client } from '@modelcontextprotocol/client'
+import { InMemoryTransport } from '@modelcontextprotocol/server'
 import { afterEach, describe, expect, it } from 'vitest'
 import { boostAction } from '../../src/core/actions/extension.js'
 import { conversionFailed } from '../../src/core/errors.js'
 import { runPlan } from '../../src/core/execute-jobs.js'
 import { extensionEngine } from '../../src/engines/extension.js'
 import { probe } from '../../src/engines/registry.js'
+import { createForgeServer } from '../../src/mcp/server.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
 
@@ -128,5 +131,41 @@ setTimeout(() => {}, 60000)`,
     })
     expect(outcome.cancelled).toBe(true)
     expect(outcome.failures.map((f) => f.path)).toEqual([sources[0]?.path])
+  })
+})
+
+describe('cancelling an MCP tool call', () => {
+  it('kills the extension child and writes nothing', async () => {
+    const home = await fake.home()
+    await fake.install(home, 'boost')
+    const dir = await makeTempDir()
+    const pidFile = join(dir, 'pid')
+    writeFileSync(
+      join(home, 'forge', 'extensions', 'boost', '1.0.0', 'runner.mjs'),
+      `import { writeFileSync } from 'node:fs'
+writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))
+setTimeout(() => {}, 60000)`,
+    )
+    const src = await makeTransparentPng(dir, 'photo.png')
+    const [c, s] = InMemoryTransport.createLinkedPair()
+    await createForgeServer().connect(s)
+    const client = new Client({ name: 'test', version: '0' })
+    await client.connect(c)
+    try {
+      const controller = new AbortController()
+      const call = client.callTool(
+        { name: 'forge_convert', arguments: { paths: [src], to: 'png', boost: 2 } },
+        { signal: controller.signal },
+      )
+      call.catch(() => {})
+      await until(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '')
+      const pid = Number(readFileSync(pidFile, 'utf8'))
+      controller.abort()
+      await until(() => !alive(pid))
+      expect(alive(pid)).toBe(false)
+      expect(existsSync(join(dir, 'photo-2x.png'))).toBe(false)
+    } finally {
+      await client.close()
+    }
   })
 })
