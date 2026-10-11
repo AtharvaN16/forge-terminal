@@ -35,6 +35,17 @@ describe('header bar', () => {
     const f = frame({ width: 50 })
     expect(f).toBe(' ↔ convert')
   })
+  it('ellipses a long staged filename so the bar stays one row', () => {
+    const long = 'Screenshot 2026-08-17 at 3.52.36 PM with a really long tail name.png'
+    for (const width of [60, 80]) {
+      const f = frame({ detail: long, width })
+      expect(f.split('\n')).toHaveLength(1)
+      expect(f).toContain('↔ FORGE')
+      expect(f).toContain('~/Desktop')
+      expect(stringWidth(f)).toBeLessThanOrEqual(width)
+    }
+  })
+
   it('ellipses a long default folder instead of overflowing', () => {
     const f = frame({ defaultOutput: join(homedir(), 'deep/'.repeat(30), 'out'), width: 70 })
     expect(stringWidth(f)).toBe(69)

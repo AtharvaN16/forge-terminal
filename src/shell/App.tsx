@@ -49,12 +49,13 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
-import { type BannerState, bannerTransition, CLEAR_SCREEN, historyForRedraw } from './redraw.js'
+import { type BannerState, CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
 import { colourProp, modeColours, modePalette, paletteFor, SYMBOLS } from './theme.js'
+import { useBannerTransition } from './useBannerTransition.js'
 import { useKeys } from './useKeys.js'
 import { useMouseRouting } from './useMouseRouting.js'
 import { bandFor, middleEllipsis } from './width.js'
@@ -560,31 +561,28 @@ export function App({
   const stagedBatch = stage.sources.length > 1
   /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
   const working = isWorking(step, stage.sources.length)
-  /**
-   * The full logo belongs to an empty prompt: when work starts it is cleared
-   * away, and when the prompt is empty again it is replayed on top of
-   * history. Fires on that edge only; history and width are read as they
-   * stand at the moment it fires.
-   */
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fires on the working/idle edge only
-  useEffect(() => {
-    const next = bannerTransition(history, working, bannerState.current, () => ({
+  useBannerTransition({
+    working,
+    history,
+    setHistory,
+    bannerState,
+    makeBanner: () => ({
       kind: 'banner',
       id: nextId(),
       width,
       defaultOutput: livePrefs.defaultOutput,
-    }))
-    if (!next) return
-    bannerState.current = next.state
+    }),
+    width,
     // Through Ink's own `write`, not straight to the stream: Ink only
     // rewrites rows that changed, so a frame cleared behind its back stayed
     // blank until something on it moved. `write` erases the frame, writes the
     // clear, and repaints the frame after it. TTY only, like every control
     // sequence this shell writes — see `writeToTerminal`.
-    if (stdout?.isTTY) writeAboveFrame(CLEAR_SCREEN)
-    setHistory(historyForRedraw(next.history, width))
-    setStaticGeneration((g) => g + 1)
-  }, [working])
+    clear: () => {
+      if (stdout?.isTTY) writeAboveFrame(CLEAR_SCREEN)
+    },
+    remountStatic: () => setStaticGeneration((g) => g + 1),
+  })
   /**
    * The mode line shown at an empty idle prompt, under the full logo. Once
    * there is work on screen — a staged file, any wizard step, a result —

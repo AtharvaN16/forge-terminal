@@ -51,9 +51,17 @@ export function HeaderBar({
   }
 
   const brand = ` ${marker} FORGE `
-  const middle = `  ${mode}${detail ? ` · ${detail}` : ''}`
-  const room = width - stringWidth(brand) - stringWidth(middle) - 3
-  const right = middleEllipsis(displayPath(defaultOutput), Math.max(4, room))
+  const modeText = `  ${mode}`
+  // What the folder and the staged name share: everything but the brand,
+  // the mode, a two-column gap and the trailing pad. The folder is the
+  // setting this bar exists to show, so it is fitted first (up to 30
+  // columns); the name gets what is left, or is dropped when that is too
+  // little to read — the file card below names it anyway.
+  const shared = width - stringWidth(brand) - stringWidth(modeText) - 3
+  const right = middleEllipsis(displayPath(defaultOutput), Math.max(4, Math.min(30, shared)))
+  const detailRoom = shared - stringWidth(right) - 3 // ' · '
+  const middle =
+    detail && detailRoom >= 8 ? `${modeText} · ${middleEllipsis(detail, detailRoom)}` : modeText
   const gap = Math.max(1, width - stringWidth(brand) - stringWidth(middle) - stringWidth(right) - 1)
   return (
     <Box width={width} backgroundColor={colourProp(bg)}>
