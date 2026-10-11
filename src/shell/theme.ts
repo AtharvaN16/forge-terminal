@@ -10,6 +10,14 @@ export const SYMBOLS = {
   fail: '✕',
   warn: '⚠',
   cursor: '❯',
+  /**
+   * The picker's selected-row marker: the left edge of its band. A shape as
+   * well as a colour, so the selection still reads under NO_COLOR, where the
+   * band itself is not drawn.
+   */
+  strip: '▌',
+  /** Marks the saved default among Save to's places. */
+  star: '★',
   arrow: '→',
   /**
    * An offer the user can take or ignore — a better format, a merge worth
@@ -88,6 +96,19 @@ export interface Palette {
   /** Fill behind the selected row. Empty means "draw no band". */
   selectionBg: string
   /**
+   * The picker's band behind its selected row. `selectionBg` outside a mode;
+   * `modePalette` hands it the mode's own fill, so the highlight is drawn in
+   * the screen's colour. Kept apart from `selectionBg` because that one is
+   * also the drop area's fill, which does not follow the mode.
+   */
+  band: string
+  /**
+   * The terminal background this theme is designed against. Never painted —
+   * motion fades a band in from it and back out to it, so a fade starts from
+   * the colour that is (near enough) already on screen. Empty: no fades.
+   */
+  canvas: string
+  /**
    * Fill behind selected *text* inside an input. Deliberately not
    * `selectionBg`: that one is the drop area's own fill, so a selection drawn
    * in it would be invisible against the box it sits in. Empty means "no
@@ -136,6 +157,9 @@ export const DARK: Palette = {
   // The old #39404f measured 1.60:1 and was effectively invisible.
   border: '#5f6879',
   selectionBg: '#252c3a',
+  band: '#252c3a',
+  // The background every contrast figure in this palette was measured on.
+  canvas: '#1e1e1e',
   // Clearly distinct from selectionBg above, which is the drop area's own
   // fill — a selection has to read against that, not blend into it.
   textSelectionBg: '#3f5c86',
@@ -170,6 +194,8 @@ export const LIGHT: Palette = {
   // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
   border: '#9a9184',
   selectionBg: '#eae4d8',
+  band: '#eae4d8',
+  canvas: '#ffffff',
   textSelectionBg: '#b9cfe8',
   brand: '#9a6005',
   // `fg` (#23262d) on this fill measures about 12:1.
@@ -204,6 +230,8 @@ export const NEUTRAL: Palette = {
   modePdfBg: '',
   border: 'gray',
   selectionBg: '',
+  band: '',
+  canvas: '',
   // No colour is asserted before the theme is known, so a selection in this
   // palette is drawn with reverse video instead.
   textSelectionBg: '',
@@ -227,12 +255,13 @@ export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: stri
 /**
  * The palette a screen is drawn in while the shell is in `mode`: the three
  * role colours — accent, tag, label — become the mode's own, so one screen
- * tells one colour story instead of four. Outcome colours (`ok`, `fail`,
+ * tells one colour story instead of four. The picker's `band` takes the
+ * mode's fill for the same reason. Outcome colours (`ok`, `fail`,
  * `warn`, `larger`) and the `brand` never move.
  */
 export function modePalette(p: Palette, mode: ShellMode): Palette {
-  const { fg } = modeColours(p, mode)
-  return { ...p, accent: fg, tag: fg, label: fg }
+  const { fg, bg } = modeColours(p, mode)
+  return { ...p, accent: fg, tag: fg, label: fg, band: bg === '' ? p.band : bg }
 }
 
 export function paletteFor(theme: 'dark' | 'light' | undefined): Palette {

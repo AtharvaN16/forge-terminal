@@ -43,10 +43,12 @@ import { Progress } from './components/Progress.js'
 import { Prompt } from './components/Prompt.js'
 import { ResultLinks } from './components/ResultLinks.js'
 import { Select } from './components/Select.js'
+import { SizeAside } from './components/SizeAside.js'
 import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
+import { WorkingLine } from './components/WorkingLine.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
 import { type BannerState, CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -57,6 +59,7 @@ import { writeToTerminal } from './terminal-write.js'
 import { colourProp, modeColours, modePalette, paletteFor, SYMBOLS } from './theme.js'
 import { useBannerTransition } from './useBannerTransition.js'
 import { useKeys } from './useKeys.js'
+import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
 import { bandFor, middleEllipsis } from './width.js'
 
@@ -293,6 +296,13 @@ function MouseRouter({
 }
 
 /** Sentinel `Select` value for the convert-target picker's row into `/pdf`. */
+/**
+ * The largest image whose formats are measured as they are highlighted: 12
+ * megapixels, a typical phone photo. Above it a single encode (AVIF, worst
+ * case) runs long enough to overlap the conversion the user then asks for.
+ */
+const MEASURE_MAX_PIXELS = 12_000_000
+
 const GOTO_PDF = '__goto-pdf__'
 
 /** The `/pdf` command, looked up once rather than re-found on every render. */
@@ -1018,6 +1028,53 @@ export function App({
   )
 
   const specFor = useCallback((id: string) => specs.find((s) => s.id === id), [specs])
+
+  /**
+   * The format picker's highlighted row and its measured size (spec
+   * 2026-10-11 picker §2). Only a lone image is measured: a document's
+   * targets go through another engine, and a batch has no one size to quote.
+   * The encode is the conversion's own plan at the quality the slider will
+   * open on, so the number is the one the default answers would produce.
+   *
+   * Not in the compact band, where the row has no room to say it, and not
+   * above MEASURE_MAX_PIXELS: an encode cannot be stopped part-way, and on a
+   * large photo one AVIF measurement is seconds of CPU that could still be
+   * running when the real conversion starts.
+   */
+  const [targetHighlight, setTargetHighlight] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (step !== 'target') setTargetHighlight(undefined)
+  }, [step])
+  const measureTarget = useMemo<MeasureFn | undefined>(() => {
+    if (
+      source?.kind !== 'image' ||
+      stage.sources.length !== 1 ||
+      mode !== 'convert' ||
+      band === 'compact' ||
+      source.width * source.height > MEASURE_MAX_PIXELS
+    ) {
+      return undefined
+    }
+    return async (target) => {
+      const [planned] = convertAction.plan([source], {
+        target,
+        quality: livePrefs.quality,
+        destination: expandTilde(livePrefs.defaultOutput),
+      })
+      if (planned?.op !== 'convert') throw new Error('nothing to measure')
+      return (await encodeToBuffer(source, planned.target, planned.options)).length
+    }
+  }, [source, stage.sources.length, mode, band, livePrefs.quality, livePrefs.defaultOutput])
+  const firstTarget = (() => {
+    const spec = specFor('target')
+    return spec?.kind === 'select' ? spec.choices.find((c) => !c.disabled)?.value : undefined
+  })()
+  const targetSize = useMeasuredSize({
+    highlighted: step === 'target' ? (targetHighlight ?? firstTarget) : undefined,
+    measure: measureTarget,
+    // A size belongs to this file, as it is now, at this quality.
+    resetKey: source ? `${source.path}|${source.bytes}|${livePrefs.quality}` : undefined,
+  })
 
   /**
    * `probe()` is genuinely I/O-bound (`stat`, `access`, then sharp reading
@@ -2089,6 +2146,30 @@ export function App({
   const modeSpec = specFor('mode')
   const sizeSpec = specFor('size')
   const targetSpec = specFor('target')
+  // A PDF reaching the format picker still has page operations on the table
+  // too — see `backToPromptKeepingStage`. A dim line below the list used to
+  // be the only pointer to `/pdf`, which said where to go but not how to get
+  // there short of escaping and typing the command from memory. This is that
+  // same pointer, reachable the way JPEG or PNG are: a disabled, unlabelled
+  // row first, so it reads as its own group rather than a sixth format
+  // (`nextEnabledIndex` in Select already skips a disabled row when the
+  // cursor walks past it), then the row itself.
+  //
+  // `format === 'pdf'` matters as much as `kind` does: a docx/doc source has
+  // no page operations `/pdf` could offer it, so the row would be a dead end.
+  const targetItems =
+    targetSpec?.kind !== 'select'
+      ? []
+      : source?.kind === 'document' && source.format === 'pdf'
+        ? [
+            ...targetSpec.choices,
+            { value: '__gap__', label: '', hint: '', disabled: true },
+            // The pointer is the label itself: a picker row only speaks while
+            // highlighted, and this one has to be read before anyone would
+            // think to highlight it.
+            { value: GOTO_PDF, label: '/pdf for more options' },
+          ]
+        : targetSpec.choices
   const pagesSpec = specFor('pages')
   const dpiSpec = specFor('dpi')
   const qualitySpec = specFor('quality')
@@ -2242,29 +2323,12 @@ export function App({
               <Text>{targetSpec.label}</Text>
               <Select
                 width={width}
-                items={
-                  // A PDF reaching this screen still has page operations on
-                  // the table too — see `backToPromptKeepingStage`. A dim
-                  // line below the list used to be the only pointer to
-                  // `/pdf`, which said where to go but not how to get there
-                  // short of escaping and typing the command from memory.
-                  // This is that same pointer, but reachable the way JPEG
-                  // or PNG are: a disabled, unlabelled row first, so it
-                  // reads as its own group rather than a sixth format
-                  // (`nextEnabledIndex` in Select already skips a disabled
-                  // row when the cursor walks past it), then the row
-                  // itself.
-                  //
-                  // `format === 'pdf'` matters as much as `kind` does: a
-                  // docx/doc source has no page operations `/pdf` could
-                  // offer it, so the row would be a dead end for it.
-                  source.kind === 'document' && source.format === 'pdf'
-                    ? [
-                        ...targetSpec.choices,
-                        { value: '__gap__', label: '', hint: '', disabled: true },
-                        { value: GOTO_PDF, label: '/pdf', hint: 'for more options' },
-                      ]
-                    : targetSpec.choices
+                items={targetItems}
+                onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
+                speak={(item, budget) =>
+                  item.value === GOTO_PDF ? null : (
+                    <SizeAside size={targetSize} sourceBytes={source.bytes} budget={budget} />
+                  )
                 }
                 onSubmit={(target) => {
                   if (target === GOTO_PDF) {
@@ -2391,18 +2455,20 @@ export function App({
                 defaultPath={expandTilde(livePrefs.defaultOutput)}
                 onMakeDefault={makeDefault}
               />
-              {/* Four pairs is 45 columns — wider than a compact terminal.
-                Spec §13 drops hints there rather than overflowing, and the
-                shorter pair still names the key that is unique to this step. */}
+              {/* Wider than a compact terminal. Spec §13 drops hints there
+                rather than overflowing, and the shorter pair still names the
+                key that is unique to this step. Tab, not d: letters type into
+                the search box now. */}
               <HintBar
                 width={width}
                 pairs={
                   band === 'compact'
-                    ? [['d', 'make default']]
+                    ? [['tab', 'make default']]
                     : [
+                        ['type', 'filter'],
                         ['↑↓', 'choose'],
-                        ['↵', 'next'],
-                        ['d', 'make default'],
+                        ['↵', 'save here'],
+                        ['tab', 'make default'],
                       ]
                 }
               />
@@ -2503,9 +2569,11 @@ export function App({
 
           {step === 'converting' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.dim)}>
-                {attempt ? 'Finding the right quality…' : 'Converting…'}
-              </Text>
+              {attempt ? (
+                <Text color={colourProp(palette.dim)}>Finding the right quality…</Text>
+              ) : (
+                <WorkingLine label="Converting…" />
+              )}
               {/* One dot per attempt the search may take — `of` is
                   `maxAttempts()` for this rung, known before the search
                   starts, so the row is a real bounded sequence rather than a

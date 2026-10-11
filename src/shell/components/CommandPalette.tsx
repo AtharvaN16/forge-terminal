@@ -57,6 +57,8 @@ export function CommandPalette({
           if (command) onRun(command)
         }}
         onCancel={onCancel}
+        // A command's description is how you find it, so every row keeps one.
+        hints="every"
       />
     </Box>
   )

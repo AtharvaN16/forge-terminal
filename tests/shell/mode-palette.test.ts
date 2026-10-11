@@ -29,6 +29,18 @@ describe('modePalette', () => {
     expect(c.brand).toBe(DARK.brand)
   })
 
+  it('gives the picker band to the mode, and leaves the drop area fill alone', () => {
+    expect(modePalette(DARK, 'convert').band).toBe(DARK.modeConvertBg)
+    expect(modePalette(DARK, 'pdf').band).toBe(DARK.modePdfBg)
+    expect(modePalette(LIGHT, 'compress').band).toBe(LIGHT.modeCompressBg)
+    expect(modePalette(DARK, 'pdf').selectionBg).toBe(DARK.selectionBg)
+  })
+
+  it('keeps the band empty where no fill is known', () => {
+    expect(modePalette(NEUTRAL, 'convert').band).toBe('')
+    expect(NEUTRAL.canvas).toBe('')
+  })
+
   it('keeps NEUTRAL on ANSI names so first run reads on any background', () => {
     expect(modePalette(NEUTRAL, 'convert').accent).toBe('cyan')
   })

@@ -28,7 +28,7 @@ describe('the screen is drawn in the mode colour', () => {
     app.stdin.write(ENTER)
     await settle()
     const frame = app.lastFrame() ?? ''
-    expect(frame).toContain('❯')
+    expect(frame).toContain('▌')
     expect(frame).toContain(rgb(DARK.modeConvert))
     expect(frame).not.toContain(rgb(DARK.accent))
   })

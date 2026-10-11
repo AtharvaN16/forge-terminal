@@ -83,7 +83,9 @@ describe('responsiveness', () => {
     const normal = await frameAtDestination(80)
     expect(compact).toContain('Same folder')
     expect(compact).not.toContain('/forge-test-')
-    expect(normal).toContain('forge-test-')
+    // Only the highlighted place speaks, so the path shown is its own.
+    expect(normal).toMatch(/▌ Desktop\s+\/\S*Desktop/)
+    expect(compact).not.toMatch(/▌ Desktop\s+\/\S*Desktop/)
   })
 })
 
