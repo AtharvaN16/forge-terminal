@@ -109,7 +109,8 @@ export const EXTENSION_ACTIONS: Action[] = [boostAction, removeBackgroundAction]
  * caller reads it (once, asynchronously, via `installedExtensionIds()` in
  * `src/extensions/available.ts`) and passes it in. Omitted means "nothing
  * installed", so an extension action is never offered by accident — and
- * `core/` never imports `src/extensions`.
+ * this module stays free of `src/extensions`. (`core/probe-report.ts` is the
+ * one place in core that reaches it, lazily, to read that disk state.)
  */
 export function actionsFor(
   sources: SourceInfo[],
