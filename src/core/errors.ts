@@ -30,6 +30,8 @@ export type ErrorCode =
   | 'invalid-page-range'
   | 'empty-selection'
   | 'invalid-dpi'
+  | 'no-subject'
+  | 'boost-too-large'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -577,6 +579,24 @@ export function conversionFailed(path: string, cause: unknown): ForgeError {
     // The shell has no --debug of its own; the command line does.
     shellHint: 'Run the same conversion with forge --debug from the command line to see why.',
     cause,
+  })
+}
+
+export function noSubject(path: string): ForgeError {
+  return new ForgeError({
+    code: 'no-subject',
+    title: 'No subject found',
+    detail: `No clear subject could be found in ${basename(path)}.`,
+    hint: 'Try a photo with a distinct foreground subject.',
+  })
+}
+
+export function boostTooLarge(path: string, maxScale: number): ForgeError {
+  return new ForgeError({
+    code: 'boost-too-large',
+    title: 'Too large to boost',
+    detail: `${basename(path)} is too large to enlarge${maxScale >= 2 ? ` more than ${maxScale}x` : ''}.`,
+    hint: 'Use a smaller source image or a lower scale.',
   })
 }
 
