@@ -390,10 +390,10 @@ describe('the /pdf signpost', () => {
  * idle *with the file still staged* (`backToPromptKeepingStage`), which is
  * what makes it possible to reach a mixed stage through the real UI at
  * all: drop the PDF, back out of its picker, then drop an image on top.
- * The second drop is refused as a batch (`refuseBatch`) before it ever
- * reaches a wizard step, which is what leaves both files sitting in a
- * mixed, idle stage — a JPEG genuinely staged, exactly the reviewer's
- * scenario, reached through real UI paths rather than injected test state.
+ * That second drop used to be staged and then refused, leaving a mixed idle
+ * stage. Since UX audit #6 it is refused *before* staging
+ * (`refuseUnstageable`), so the mixed stage can no longer be built through
+ * the UI; the guard stays as defence, and this test pins the new path.
  */
 describe('/pdf refuses a stage nothing applies to', () => {
   it('does not open the hub for a mixed stage, and says why', async () => {
@@ -413,15 +413,18 @@ describe('/pdf refuses a stage nothing applies to', () => {
     stdin.write(jpeg)
     await settle()
     stdin.write(ENTER)
-    await settle(400) // refused as a batch, still idle — now [doc.pdf, photo.jpg]
+    await settle(400) // refused before staging — still just [doc.pdf]
+    expect(lastFrame() ?? '').toContain('photo.jpg was not staged')
 
     stdin.write('/pdf')
     await settle()
     stdin.write(ENTER)
     await settle(300)
 
+    // No mixed stage was ever built, so the hub opens for the PDF that is
+    // actually staged rather than refusing a stage that does not exist.
     const frame = lastFrame() ?? ''
-    expect(frame).not.toContain('PDF — choose an operation')
-    expect(frame).toContain('/pdf needs the staged files to be PDFs')
+    expect(frame).not.toContain('/pdf needs the staged files to be PDFs')
+    expect(frame).toContain('PDF — choose an operation')
   }, 20_000)
 })
