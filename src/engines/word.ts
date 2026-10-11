@@ -5,7 +5,6 @@ import { basename, extname, join } from 'node:path'
 import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
 import { find as cfbFind, parse as cfbParse } from 'cfb'
-import { Document as DocxDocument, Packer, PageBreak, Paragraph } from 'docx'
 import mammoth from 'mammoth'
 import { PDFDocument as PDFLibDocument, StandardFonts } from 'pdf-lib'
 import { PDFParse } from 'pdf-parse'
@@ -275,8 +274,52 @@ export async function layoutAsPdf(paragraphs: string[]): Promise<Uint8Array> {
   return doc.save()
 }
 
+type DocxModule = typeof import('docx')
+
+let docxModule: Promise<DocxModule> | undefined
+
+/**
+ * `docx` is loaded on first use, not at startup, and with
+ * `globalThis.localStorage` hidden while it evaluates.
+ *
+ * Its bundle inlines the browser build of `util-deprecate`, whose
+ * `deprecate()` probes `globalThis.localStorage` for `noDeprecation` — and
+ * calls it at module top level (readable-stream's `_writableState.buffer`).
+ * On Node 26 `localStorage` is a global getter that emits an
+ * ExperimentalWarning on stderr when `--localstorage-file` is absent, so a
+ * static import put that warning on every invocation, `--version` included.
+ *
+ * Loading lazily keeps it off every path that never writes a docx. Hiding
+ * the getter for the duration of the import keeps it off the path that does.
+ * Nothing is filtered: the warning is never raised, and every other Node
+ * warning still prints. Without a backing file Node's `localStorage` is
+ * unusable anyway, so `docx` sees exactly the "no localStorage" it would
+ * have concluded, and nothing in Forge reads it while it is hidden.
+ */
+function loadDocx(): Promise<DocxModule> {
+  docxModule ??= importWithoutLocalStorage()
+  return docxModule
+}
+
+async function importWithoutLocalStorage(): Promise<DocxModule> {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  if (!descriptor?.configurable) return import('docx')
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: undefined,
+    configurable: true,
+    enumerable: descriptor.enumerable ?? false,
+    writable: true,
+  })
+  try {
+    return await import('docx')
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', descriptor)
+  }
+}
+
 /** One docx paragraph per line, `PAGE_BREAK` sentinels becoming real page breaks. */
 export async function buildDocx(paragraphs: string[]): Promise<Buffer> {
+  const { Document: DocxDocument, Packer, PageBreak, Paragraph } = await loadDocx()
   const children = paragraphs.map((p) =>
     p === PAGE_BREAK ? new Paragraph({ children: [new PageBreak()] }) : new Paragraph(p),
   )

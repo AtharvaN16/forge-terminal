@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { makeJpeg, makeTempDir } from './helpers/fixtures.js'
+import { makeDocx, makeJpeg, makeTempDir, makeTextPdf } from './helpers/fixtures.js'
 
 const run = promisify(execFile)
 const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx')
@@ -80,6 +80,37 @@ describe('CLI batch progress', () => {
     const dir = await makeTempDir()
     for (let i = 0; i < 3; i++) await makeJpeg(dir, `f${i}.jpg`)
     const result = await spawn([dir, '--to', 'webp'])
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+  })
+})
+
+/**
+ * `docx` bundles a browser build of `util-deprecate`, which reads
+ * `globalThis.localStorage` while the module evaluates. On Node 26 that
+ * getter emits an ExperimentalWarning when `--localstorage-file` is absent,
+ * so loading `docx` at all used to put a warning on stderr for every
+ * invocation — `--version` included. Scripts that check stderr saw noise.
+ */
+describe('stderr hygiene', () => {
+  it('prints nothing on stderr for --version', async () => {
+    const result = await spawn(['--version'])
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+  })
+
+  it('prints nothing on stderr for a conversion that writes a docx', async () => {
+    const dir = await makeTempDir()
+    const pdf = await makeTextPdf(dir, 'notes.pdf', ['Hello from Forge.'])
+    const result = await spawn([pdf, '--to', 'docx'])
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+  })
+
+  it('prints nothing on stderr for a conversion that reads a docx', async () => {
+    const dir = await makeTempDir()
+    const docx = await makeDocx(dir, 'notes.docx')
+    const result = await spawn([docx, '--to', 'pdf'])
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
   })
