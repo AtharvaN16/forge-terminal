@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
-import { fileNotFound } from '../../src/core/errors.js'
+import { fileNotFound, targetUnreachable } from '../../src/core/errors.js'
 import type { Result, SourceInfo } from '../../src/core/types.js'
 import { type HistoryBlock, HistoryEntry } from '../../src/shell/blocks.js'
 import { FileCard } from '../../src/shell/components/FileCard.js'
@@ -101,6 +101,17 @@ describe('HistoryEntry', () => {
     expect(frame).toContain('File not found')
     expect(frame).toContain('ghost.jpg')
     expect(frame).toContain('Check the filename')
+  })
+
+  it('shows the shell phrasing of a hint, not the CLI one', () => {
+    // `targetUnreachable` carries both: `--max-size` for the CLI, `/convert`
+    // here, where the slash command is the thing you can actually type.
+    const error = targetUnreachable(source, 1_000, 11_600)
+    const frame =
+      render(<HistoryEntry block={{ kind: 'error', id: 'e2', error }} width={80} />).lastFrame() ??
+      ''
+    expect(frame).toContain('/convert')
+    expect(frame).not.toContain('--max-size')
   })
 
   it('renders a plain note', () => {

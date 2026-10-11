@@ -118,9 +118,11 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
         <Text color={colourProp(palette.fg)} wrap="wrap">
           {e.detail}
         </Text>
-        {e.hint ? (
+        {/* The shell's own phrasing where it has one: `hint` is written for
+            the CLI, and a slash command or a flag only exists on one side. */}
+        {(e.shellHint ?? e.hint) ? (
           <Text color={colourProp(palette.dim)} wrap="wrap">
-            {e.hint}
+            {e.shellHint ?? e.hint}
           </Text>
         ) : null}
       </Box>

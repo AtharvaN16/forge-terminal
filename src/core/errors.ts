@@ -36,6 +36,7 @@ interface ForgeErrorInit {
   title: string
   detail: string
   hint?: string
+  shellHint?: string
   cause?: unknown
 }
 
@@ -43,7 +44,18 @@ export class ForgeError extends Error {
   readonly code: ErrorCode
   readonly title: string
   readonly detail: string
+  /** The way forward, phrased for the CLI — flags, not slash commands. */
   readonly hint?: string
+  /**
+   * The same advice phrased for the interactive shell, where it differs.
+   *
+   * A slash command (`/convert`, `/pdf`) is only something you can type
+   * inside the shell; printed by the CLI it is advice nobody can follow. The
+   * reverse holds for flags like `--debug`. Absent means `hint` reads the
+   * same on both surfaces. Data only — choosing which to show is the
+   * renderer's job (`renderError` for the CLI, `shell/blocks.tsx`).
+   */
+  readonly shellHint?: string
 
   constructor(init: ForgeErrorInit) {
     super(
@@ -55,6 +67,7 @@ export class ForgeError extends Error {
     this.title = init.title
     this.detail = init.detail
     this.hint = init.hint
+    this.shellHint = init.shellHint
   }
 }
 
@@ -178,7 +191,8 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
       code: 'unsupported-compress',
       title: 'Forge cannot compress a PDF yet',
       detail: `${name} is a PDF. Compression works on images for now.`,
-      hint: 'Try /pdf for page operations, or /convert to turn its pages into images.',
+      hint: 'Try a page operation such as --extract, or --to <format> to turn its pages into images.',
+      shellHint: 'Try /pdf for page operations, or /convert to turn its pages into images.',
     })
   }
 
@@ -190,7 +204,8 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
       code: 'unsupported-compress',
       title: 'Nothing to compress',
       detail: `${name} is ${FORMATS[source.format].label}, which has no images Forge can re-encode.`,
-      hint: 'Use /convert to change it to PDF instead.',
+      hint: `Use --to pdf to change it to PDF instead: forge ${name} --to pdf`,
+      shellHint: 'Use /convert to change it to PDF instead.',
     })
   }
 
@@ -198,7 +213,8 @@ export function unsupportedCompress(source: SourceInfo): ForgeError {
     code: 'unsupported-compress',
     title: 'Nothing to compress',
     detail: `${name} is ${FORMATS[source.format].label}, which is lossless — there is no quality to trade away.`,
-    hint: 'Use /convert to change it to a smaller format instead.',
+    hint: 'Use --to to change it to a smaller format instead. forge --formats lists them.',
+    shellHint: 'Use /convert to change it to a smaller format instead.',
   })
 }
 
@@ -233,7 +249,8 @@ export function targetUnreachable(
     code: 'target-unreachable',
     title: 'Cannot get that small',
     detail: `${basename(source.path)} is ${formatBytes(smallest)} even at the lowest quality, which is still over ${formatBytes(targetBytes)}.`,
-    hint: 'Try a larger target, or /convert to a smaller format.',
+    hint: 'Try a larger --max-size, or --to a smaller format.',
+    shellHint: 'Try a larger target, or /convert to a smaller format.',
   })
 }
 
