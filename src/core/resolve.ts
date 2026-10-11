@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { resolve as resolvePath } from 'node:path'
 import { glob } from 'tinyglobby'
@@ -113,13 +114,23 @@ export async function resolveInputs(
   }
 
   for (const pattern of patterns) {
-    if (isGlob(pattern)) {
+    const abs = resolvePath(pattern)
+
+    /**
+     * A name that exists on disk is that file or folder, even when it contains
+     * glob characters. `Scan [2024].pdf` is a real file, and reading it as a
+     * character class matched nothing and reported nothing, so the run looked
+     * like a success. Only a pattern that names nothing literally gets expanded.
+     */
+    if (isGlob(pattern) && !existsSync(abs)) {
       const matches = await glob([pattern], { absolute: true, onlyFiles: true })
+      // A glob that matches nothing is reported, not skipped. A run that did
+      // nothing must not read as success (spec §3.2: ok only if every input
+      // succeeded).
+      if (matches.length === 0) failures.push({ path: abs, error: fileNotFound(abs) })
       for (const m of matches.sort()) await add(m, undefined, false)
       continue
     }
-
-    const abs = resolvePath(pattern)
     let stats: Awaited<ReturnType<typeof stat>>
     try {
       stats = await stat(abs)

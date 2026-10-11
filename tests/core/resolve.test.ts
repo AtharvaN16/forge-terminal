@@ -100,6 +100,21 @@ describe('resolveInputs', () => {
     const { sources } = await resolveInputs([a, a], { recursive: false })
     expect(sources).toHaveLength(1)
   })
+
+  it('reads a file whose name contains glob characters literally', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'Photo [1].jpg')
+    const { sources, failures } = await resolveInputs([a], { recursive: false })
+    expect(names(sources)).toEqual(['Photo [1].jpg'])
+    expect(failures).toEqual([])
+  })
+
+  it('reports a glob that matches nothing, instead of silently doing nothing', async () => {
+    const dir = await makeTempDir()
+    const { sources, failures } = await resolveInputs([join(dir, '*.png')], { recursive: false })
+    expect(sources).toEqual([])
+    expect(failures[0]?.error.code).toBe('file-not-found')
+  })
 })
 
 describe('resolveDirectory', () => {
