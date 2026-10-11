@@ -50,7 +50,7 @@ describe('/pdf mode arming', () => {
     await settle(400)
     const frame = app.lastFrame() ?? ''
     expect(frame.toLowerCase()).toContain('not a pdf')
-    expect(frame).toContain('current mode: convert')
+    expect(frame).toContain('↔ FORGE   convert')
     expect(frame).toContain('Convert JPEG to')
   })
 
@@ -68,7 +68,7 @@ describe('/pdf mode arming', () => {
     app.stdin.write(ESC)
     await settle()
     // Back at idle, still armed, and a.pdf was not dropped from the stage.
-    expect(app.lastFrame() ?? '').toContain('current mode: pdf')
+    expect(app.lastFrame() ?? '').toContain('▣ FORGE   pdf')
 
     app.stdin.write(b)
     await settle()

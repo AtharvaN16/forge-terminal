@@ -56,7 +56,7 @@ describe('the staged file is never invisible', () => {
     // `mode` is genuinely 'pdf' here now — `/pdf` arms it the same way
     // `/compress` arms 'compress' — so the banner says so rather than being
     // suppressed as a would-be lie about still being in convert mode.
-    expect(frame).toContain('current mode: pdf')
+    expect(frame).toContain('▣ FORGE   pdf')
   })
 })
 

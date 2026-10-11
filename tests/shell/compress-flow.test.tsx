@@ -222,8 +222,9 @@ describe('knowing which mode you are in', () => {
   it('names the mode once compress is active', async () => {
     const { lastFrame } = await toCompress()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('current mode: compress')
-    expect(frame).toContain('use / to change mode')
+    // Once a file is on screen the header bar names the mode, replacing
+    // the `current mode:` line the empty prompt shows.
+    expect(frame).toContain('↓ FORGE   compress')
   })
 
   it('names convert too — a mode you cannot see is one you can be in by accident', async () => {
@@ -236,9 +237,8 @@ describe('knowing which mode you are in', () => {
     stdin.write(ENTER)
     await settle(400)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('current mode: convert')
-    expect(frame).not.toContain('current mode: compress')
-    expect(frame).toContain('use / to change mode')
+    expect(frame).toContain('↔ FORGE   convert')
+    expect(frame).not.toContain('compress')
   }, 20_000)
 
   it('names the mode before any file is dropped', () => {

@@ -34,6 +34,7 @@ import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
 import { CommandPalette } from './components/CommandPalette.js'
+import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -547,31 +548,22 @@ export function App({
    * and refuse instead of quietly picking `stage.sources[0]` for the user.
    */
   const stagedBatch = stage.sources.length > 1
+  /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
+  const working = isWorking(step, stage.sources.length)
   /**
-   * The banner's actual content, with no Box of its own — split out so it
-   * can sit inside two different containers: the highlighted bar shown at
-   * the top of every other step, and (for `result`) a plain row stacked
-   * with the keyboard hints instead. Kept as one function so the two never
-   * drift apart on what the banner actually says.
-   *
-   * `showHint` is false only for `result`: typing `/` there does nothing —
-   * the idle prompt that opens the command palette isn't mounted, and
-   * `result`'s own keys are `↵`/`o`/`s`/`q`, none of which gets back to it —
-   * so "use / to change mode" would be pointing at a door that isn't there.
+   * The mode line shown at an empty idle prompt, under the full logo. Once
+   * there is work on screen — a staged file, any wizard step, a result —
+   * `HeaderBar` replaces it (see `working`), so this only ever describes the
+   * empty prompt, where `/` really does open the command palette.
    */
-  const modeLine = (showHint: boolean) => (
+  const modeLine = () => (
     <>
       <Text color={colourProp(modeColour)} bold>
         {band === 'compact' ? `${mode}` : `current mode: ${mode}`}
       </Text>
-      {step === 'idle' && source && !stagedBatch ? (
-        <Text color={colourProp(palette.fg)} bold>{`  ${basename(source.path)}`}</Text>
-      ) : null}
-      {showHint ? (
-        <Text color={colourProp(palette.dim)}>
-          {band === 'compact' ? '  / to change' : '  use / to change mode'}
-        </Text>
-      ) : null}
+      <Text color={colourProp(palette.dim)}>
+        {band === 'compact' ? '  / to change' : '  use / to change mode'}
+      </Text>
     </>
   )
   /**
@@ -2104,9 +2096,22 @@ export function App({
             finished job and its own links. See the `HintBar` replacement
             inside the `result` step below. */}
           {step !== 'theme' && step !== 'result' ? (
-            <Box width={width} marginBottom={1} paddingX={1} backgroundColor={colourProp(modeBg)}>
-              {modeLine(true)}
-            </Box>
+            working ? (
+              <Box marginBottom={1}>
+                <HeaderBar
+                  mode={mode}
+                  detail={
+                    step === 'idle' && source && !stagedBatch ? basename(source.path) : undefined
+                  }
+                  defaultOutput={livePrefs.defaultOutput}
+                  width={width}
+                />
+              </Box>
+            ) : (
+              <Box width={width} marginBottom={1} paddingX={1} backgroundColor={colourProp(modeBg)}>
+                {modeLine()}
+              </Box>
+            )
           ) : null}
 
           {/* The staged list, shown live rather than committed to scrollback,
@@ -2568,8 +2573,8 @@ export function App({
                     ['ctrl-c', 'close app'],
                   ]}
                 />
-                <Box width={width} paddingX={1} marginTop={1} backgroundColor={colourProp(modeBg)}>
-                  {modeLine(false)}
+                <Box marginTop={1}>
+                  <HeaderBar mode={mode} defaultOutput={livePrefs.defaultOutput} width={width} />
                 </Box>
               </Box>
             </Box>
