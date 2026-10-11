@@ -7,11 +7,13 @@
  * Run on demand and before a release. Never in the unit suite, where
  * wall-clock assertions would be flaky (spec §7).
  *
- *   node scripts/bench.mjs [--runs 11] [--shell-runs 7] [--batch-runs 3]
+ *   node scripts/bench.mjs [--runs 11] [--shell-runs 11] [--batch-runs 3]
  *                          [--skip install,version,overhead,shell,batch]
  *                          [--no-build] [--prompt-marker ›] [--keep]
  *
- * Each figure is a median, after one discarded warm-up run. The sample photo
+ * Each figure is a median, after one discarded warm-up run. Acceptance needs
+ * at least 11 samples per row: --batch-runs defaults to 3 (a batch takes
+ * ~35 s), so for release acceptance run with --batch-runs 11. The sample photo
  * is `Test Images/test.png` converted by `sips`, byte-identical to the one
  * the spec's baseline was measured with (152,033 bytes, 2756×774). Installing
  * needs the npm registry, because sharp and pdfium are real dependencies.
@@ -27,7 +29,7 @@ const ROOT = resolve(import.meta.dirname, '..')
 const { values } = parseArgs({
   options: {
     runs: { type: 'string', default: '11' },
-    'shell-runs': { type: 'string', default: '7' },
+    'shell-runs': { type: 'string', default: '11' },
     'batch-runs': { type: 'string', default: '3' },
     skip: { type: 'string', default: '' },
     'no-build': { type: 'boolean', default: false },
@@ -50,7 +52,11 @@ const TARGETS = {
   batch: { label: '50 JPEGs, --max-size 50kb', unit: 's', baseline: 36, target: 12 },
 }
 
-const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b)
+  const mid = Math.floor(s.length / 2)
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** Median wall time of `n` spawned runs, after one discarded warm-up. */
@@ -204,10 +210,12 @@ await sharp(process.argv[2]).rotate().keepIccProfile().webp({ quality: 80 }).toF
   else rmSync(work, { recursive: true, force: true })
 }
 
+const SAMPLES = { version: runs, overhead: runs, shell: shellRuns, batch: batchRuns }
 const cell = (v, unit) => `${unit === 's' ? v.toFixed(1) : v.toFixed(0)} ${unit}`.padStart(11)
 let missed = 0
+const short = []
 console.log(
-  `\n${'measure'.padEnd(34)}${'0.1.0'.padStart(11)}${'now'.padStart(11)}${'target'.padStart(11)}`,
+  `\n${'measure'.padEnd(34)}${'0.1.0'.padStart(11)}${'now'.padStart(11)}${'target'.padStart(11)}${'runs'.padStart(6)}`,
 )
 for (const [key, t] of Object.entries(TARGETS)) {
   const v = results[key]
@@ -217,9 +225,16 @@ for (const [key, t] of Object.entries(TARGETS)) {
   }
   const ok = v <= t.target
   if (!ok) missed += 1
+  const n = SAMPLES[key]
+  if (n !== undefined && n < 11) short.push(key)
   console.log(
-    `${t.label.padEnd(34)}${cell(t.baseline, t.unit)}${cell(v, t.unit)}${cell(t.target, t.unit)}  ${ok ? 'ok' : 'MISSED'}`,
+    `${t.label.padEnd(34)}${cell(t.baseline, t.unit)}${cell(v, t.unit)}${cell(t.target, t.unit)}${String(n ?? '-').padStart(6)}  ${ok ? 'ok' : 'MISSED'}`,
   )
 }
 for (const note of notes) console.log(`  ${note}`)
+if (short.length > 0) {
+  console.log(
+    `Not acceptance-grade: ${short.join(', ')} used fewer than 11 runs. For release acceptance run with --batch-runs 11.`,
+  )
+}
 process.exitCode = missed > 0 ? 1 : 0
