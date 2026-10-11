@@ -49,7 +49,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
-import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
+import { type BannerState, bannerTransition, CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
@@ -308,7 +308,10 @@ export function App({
   initialHeight?: number
   prefs?: Preferences
   configWarning?: string
-  /** `playIntro` drew the banner before Ink mounted — see `historyForRedraw`. */
+  /**
+   * `playIntro` drew the banner before Ink mounted, so it is on screen but
+   * not in history — see `bannerTransition` and `historyForRedraw`.
+   */
   introShown?: boolean
 }) {
   const { stdout } = useStdout()
@@ -321,8 +324,11 @@ export function App({
    * `redraw.ts` for why a width change has to clear the screen and redraw.
    */
   const [staticGeneration, setStaticGeneration] = useState(0)
-  /** Whether `playIntro`'s banner is still only on screen, not in history. */
-  const introPending = useRef(introShown)
+  /**
+   * Whether this session draws a logo at all, and whether it is on screen
+   * right now. It comes and goes with `working` — see `bannerTransition`.
+   */
+  const bannerState = useRef<BannerState>({ enabled: introShown, onScreen: introShown })
   /** For the intro banner's redraw — the default output can change mid-session. */
   const defaultOutputRef = useRef(prefs.defaultOutput)
 
@@ -335,16 +341,20 @@ export function App({
       if (columns !== drawnAt) {
         drawnAt = columns
         writeToTerminal(CLEAR_SCREEN, stdout)
-        const intro: HistoryBlock | undefined = introPending.current
-          ? {
-              kind: 'banner',
-              id: nextId(),
-              width: columns,
-              defaultOutput: defaultOutputRef.current,
-            }
-          : undefined
-        introPending.current = false
-        setHistory((h) => historyForRedraw(h, columns, intro))
+        // A logo on screen but not in history is `playIntro`'s, which the
+        // clear has just erased with nothing to put it back.
+        setHistory((h) => {
+          const intro: HistoryBlock | undefined =
+            bannerState.current.onScreen && !h.some((b) => b.kind === 'banner')
+              ? {
+                  kind: 'banner',
+                  id: nextId(),
+                  width: columns,
+                  defaultOutput: defaultOutputRef.current,
+                }
+              : undefined
+          return historyForRedraw(h, columns, intro)
+        })
         setStaticGeneration((g) => g + 1)
       }
       setMeasured(columns)
@@ -550,6 +560,26 @@ export function App({
   const stagedBatch = stage.sources.length > 1
   /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
   const working = isWorking(step, stage.sources.length)
+  /**
+   * The full logo belongs to an empty prompt: when work starts it is cleared
+   * away, and when the prompt is empty again it is replayed on top of
+   * history. Fires on that edge only; history and width are read as they
+   * stand at the moment it fires.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fires on the working/idle edge only
+  useEffect(() => {
+    const next = bannerTransition(history, working, bannerState.current, () => ({
+      kind: 'banner',
+      id: nextId(),
+      width,
+      defaultOutput: livePrefs.defaultOutput,
+    }))
+    if (!next) return
+    bannerState.current = next.state
+    if (stdout) writeToTerminal(CLEAR_SCREEN, stdout)
+    setHistory(historyForRedraw(next.history, width))
+    setStaticGeneration((g) => g + 1)
+  }, [working])
   /**
    * The mode line shown at an empty idle prompt, under the full logo. Once
    * there is work on screen — a staged file, any wizard step, a result —
@@ -1461,6 +1491,7 @@ export function App({
     setTheme(next)
     setStep('idle')
     // The picker owned the screen until now.
+    bannerState.current = { enabled: true, onScreen: true }
     push({ kind: 'banner', id: nextId(), width, defaultOutput: livePrefs.defaultOutput })
     savePreferences({ theme: next }).catch(showError)
   }
