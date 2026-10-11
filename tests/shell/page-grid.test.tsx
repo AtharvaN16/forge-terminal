@@ -381,3 +381,90 @@ describe('PageGrid keyboard interaction', () => {
     expect(onToggleView).toHaveBeenCalledWith([0])
   })
 })
+
+/**
+ * Audit #10: focus used to be a background tint and nothing else, so with
+ * colour stripped (`NO_COLOR`, or this suite, which renders without any SGR
+ * at all) every cell looked identical and the cursor was invisible. Focus
+ * gets the same treatment selection already has — a glyph, not a colour.
+ */
+describe('PageGrid focus without colour', () => {
+  const base = { pageCount: 4, selected: [], cuts: [], onSubmit: () => {}, width: 80, height: 24 }
+
+  const frameOf = (props: Record<string, unknown>) =>
+    render(createElement(PageGrid, { ...base, ...props } as never))
+
+  it('renders with no colour at all, so what follows is what NO_COLOR sees', () => {
+    const { lastFrame } = frameOf({ mode: 'cell' })
+    expect(lastFrame() ?? '').not.toContain(`${ESC}[`)
+  })
+
+  it('draws the focused cell in a heavy frame and every other cell in the light one', () => {
+    const rows = (frameOf({ mode: 'cell' }).lastFrame() ?? '').split('\n')
+    const top = rows.find((l) => l.includes('╮') || l.includes('┓')) ?? ''
+    const numbers = rows.find((l) => l.includes(' 1 ')) ?? ''
+    const bottom = rows.find((l) => l.includes('╯') || l.includes('┛')) ?? ''
+    expect(top.startsWith('┏━━━┓')).toBe(true)
+    expect(numbers.startsWith('┃ 1 ┃')).toBe(true)
+    expect(bottom.startsWith('┗━━━┛')).toBe(true)
+    // Exactly one heavy cell: the other three keep the light frame.
+    expect(top.split('┏')).toHaveLength(2)
+    expect(top.split('╭')).toHaveLength(4)
+  })
+
+  it('moves the heavy frame with the cursor', async () => {
+    const { stdin, lastFrame } = frameOf({ mode: 'cell' })
+    stdin.write(RIGHT + RIGHT)
+    await settle()
+    const numbers = (lastFrame() ?? '').split('\n').find((l) => l.includes(' 1 ')) ?? ''
+    expect(numbers).toContain('│ 1 │')
+    expect(numbers).toContain('┃ 3 ┃')
+  })
+
+  it('keeps a selected page marked when the cursor is on it', () => {
+    const rows = (frameOf({ mode: 'cell', selected: [0] }).lastFrame() ?? '').split('\n')
+    expect(rows.join('\n')).toContain('┏━✓━┓')
+  })
+
+  it('keeps every line of a row the same width with the focus drawn', () => {
+    const rows = (frameOf({ mode: 'cell' }).lastFrame() ?? '')
+      .split('\n')
+      .filter((l) => /[╭│╰┏┃┗]/.test(l))
+    expect(new Set(rows.map((l) => stringWidth(l))).size).toBe(1)
+  })
+
+  it('points at the focused gap in gap mode', async () => {
+    const { stdin, lastFrame } = frameOf({ mode: 'gap' })
+    const markers = (frame: string) => {
+      const lines = frame.split('\n')
+      const top = lines.find((l) => l.includes('╮')) ?? ''
+      const bottom = lines.find((l) => l.includes('╯')) ?? ''
+      return { top: top.indexOf('▼'), bottom: bottom.indexOf('▲') }
+    }
+    const before = markers(lastFrame() ?? '')
+    expect(before.top).toBeGreaterThan(-1)
+    expect(before.bottom).toBe(before.top)
+    // The marker sits over the gap's own glyph on the number line.
+    const numbers = (lastFrame() ?? '').split('\n').find((l) => l.includes(' 1 ')) ?? ''
+    expect(numbers[before.top]).toBe('┆')
+
+    stdin.write(RIGHT)
+    await settle()
+    const after = markers(lastFrame() ?? '')
+    expect(after.top).toBeGreaterThan(before.top)
+    expect((lastFrame() ?? '').split('▼')).toHaveLength(2) // only ever one
+  })
+
+  it('points at a row-boundary gap too, without changing the row width', async () => {
+    // perRow is 4 at width 40, so 8 pages make two full rows and gap 3 (after
+    // page 4) is the first row's trailing gap.
+    const { stdin, lastFrame } = frameOf({ mode: 'gap', pageCount: 8, width: 40 })
+    stdin.write(RIGHT + RIGHT + RIGHT)
+    await settle()
+    const lines = (lastFrame() ?? '').split('\n')
+    const top = lines.find((l) => l.includes('▼')) ?? ''
+    expect(top.endsWith('──▼')).toBe(true)
+    const rowOne = lines.filter((l) => /[╭│╰]/.test(l)).slice(0, 3)
+    expect(new Set(rowOne.map((l) => stringWidth(l))).size).toBe(1)
+  })
+})

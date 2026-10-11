@@ -289,17 +289,22 @@ export function PageGrid({
   const cursorBg = colourProp(palette.selectionBg)
   const border = colourProp(palette.border)
 
-  const dashes = '─'.repeat(Math.max(0, cellWidth - 2))
-  const plainTop = `╭${dashes}╮`
-  const plainBottom = `╰${dashes}╯`
+  /**
+   * The focused cell is drawn in a heavy frame, every other in the light one.
+   * The background tint alone used to be the only sign of focus, and
+   * `NO_COLOR` strips it — leaving a row of identical boxes and no cursor at
+   * all (spec §13: "not colour alone"). Heavy box-drawing is one column per
+   * glyph like the light set, so the row's width does not move with focus.
+   * Cell mode only, where `┃` is never a cut mark — gaps there are blank.
+   */
+  const LIGHT = { tl: '╭', tr: '╮', bl: '╰', br: '╯', h: '─', v: '│' }
+  const HEAVY = { tl: '┏', tr: '┓', bl: '┗', br: '┛', h: '━', v: '┃' }
 
   // Centres a single-column mark in the top border's inner run, the same
   // width the plain border's dashes fill.
   const innerWidth = Math.max(0, cellWidth - 2)
   const leftPad = Math.max(0, Math.floor((innerWidth - 1) / 2))
   const rightPad = Math.max(0, innerWidth - 1 - leftPad)
-  const markedTopLeft = `╭${'─'.repeat(leftPad)}`
-  const markedTopRight = `${'─'.repeat(rightPad)}╮`
 
   const gapSegment = (
     lineKind: 'top' | 'number' | 'bottom',
@@ -333,6 +338,23 @@ export function PageGrid({
         </Text>
       )
     }
+    // The focused gap is pointed at from above and below — the tint alone
+    // vanishes under `NO_COLOR`. The marks sit in the gap's glyph column:
+    // the middle of an ordinary gap, the last column of a trailing one
+    // (right-aligned above for the same Ink trim reason).
+    if (cursorHere) {
+      const mark = lineKind === 'top' ? '▼' : '▲'
+      const pad = isTrailing ? '─'.repeat(GAP - 1) : ' '
+      return (
+        <Text key={`${lineKind}${c}`} backgroundColor={bg}>
+          <Text color={border}>{pad}</Text>
+          <Text bold color={colourProp(palette.accent)}>
+            {mark}
+          </Text>
+          {isTrailing ? null : <Text color={border}> </Text>}
+        </Text>
+      )
+    }
     // Border lines: blank for an ordinary gap. The row's trailing gap would
     // otherwise be three whitespace columns at the very end of the line —
     // exactly what Ink's trim removes — vanishing from the printed width
@@ -361,34 +383,35 @@ export function PageGrid({
       const cellCursor = mode === 'cell' && cursor.row === r && cursor.col === c
       const cellBg = cellCursor ? cursorBg : undefined
       const isSelected = selectedSet.has(pageIndex)
+      const g = cellCursor ? HEAVY : LIGHT
 
       topSegs.push(
         isSelected ? (
           <Text key={`t${c}`} backgroundColor={cellBg}>
-            <Text color={border}>{markedTopLeft}</Text>
+            <Text color={border}>{`${g.tl}${g.h.repeat(leftPad)}`}</Text>
             <Text color={colourProp(palette.ok)}>{SYMBOLS.ok}</Text>
-            <Text color={border}>{markedTopRight}</Text>
+            <Text color={border}>{`${g.h.repeat(rightPad)}${g.tr}`}</Text>
           </Text>
         ) : (
           <Text key={`t${c}`} backgroundColor={cellBg} color={border}>
-            {plainTop}
+            {`${g.tl}${g.h.repeat(innerWidth)}${g.tr}`}
           </Text>
         ),
       )
 
       numSegs.push(
         <Text key={`n${c}`} backgroundColor={cellBg}>
-          <Text color={border}>{'│'}</Text>
-          <Text color={colourProp(palette.fg)}>
+          <Text color={border}>{g.v}</Text>
+          <Text bold={cellCursor} color={colourProp(palette.fg)}>
             {`${String(pageNumber).padStart(Math.max(0, cellWidth - 3))} `}
           </Text>
-          <Text color={border}>{'│'}</Text>
+          <Text color={border}>{g.v}</Text>
         </Text>,
       )
 
       bottomSegs.push(
         <Text key={`b${c}`} backgroundColor={cellBg} color={border}>
-          {plainBottom}
+          {`${g.bl}${g.h.repeat(innerWidth)}${g.br}`}
         </Text>,
       )
 
