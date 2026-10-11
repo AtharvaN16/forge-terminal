@@ -344,6 +344,10 @@ started.
   `FileCard` uses to inline its format tag.
 - **Gap mode** — the cursor is between pages; space cuts there. Used by split.
   `┃` is a cut, `┆` is not.
+- **Focus is a glyph, not a tint** (§13). The focused cell is drawn in a heavy
+  frame (`┏━━━┓ ┃ 3 ┃ ┗━━━┛`); the focused gap is pointed at with `▼` above
+  and `▲` below. The background tint stays, but survives `NO_COLOR` only as
+  decoration.
 
 Geometry, all of which has bitten this design once already:
 

@@ -1,12 +1,14 @@
-import { basename } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { Box, Text } from 'ink'
 import stringWidth from 'string-width'
 import type { ForgeError } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
+import { displayPath } from '../utils/display-path.js'
 import { Banner } from './components/Banner.js'
 import { FileCard } from './components/FileCard.js'
+import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { useTheme } from './ThemeContext.js'
 import { colourProp, SYMBOLS, VERSION } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
@@ -29,7 +31,12 @@ export type HistoryBlock =
   | { kind: 'file'; id: string; source: SourceInfo }
   | { kind: 'result'; id: string; result: Result }
   | { kind: 'error'; id: string; error: ForgeError }
-  | { kind: 'note'; id: string; text: string }
+  /**
+   * `savedTo` is an output path, for a note that reports written files (a
+   * page operation, a rasterisation) — it adds the same "saved to" line a
+   * conversion result carries.
+   */
+  | { kind: 'note'; id: string; text: string; savedTo?: string }
 
 function changePhrase(from: number, to: number): string {
   const { pct, direction } = percentChange(from, to)
@@ -46,6 +53,32 @@ function changePhrase(from: number, to: number): string {
  */
 function changeColour(from: number, to: number): 'ok' | 'larger' {
   return percentChange(from, to).direction === 'larger' ? 'larger' : 'ok'
+}
+
+/**
+ * The folder a result was written to. Two filenames and a size used to be
+ * the whole result, so a destination typed with a stray leading `d` created
+ * `d/…/out/` three levels deep and nothing on screen said so (audit #9).
+ *
+ * The folder rather than the full path — the filename is already in the card
+ * above. `~`-abbreviated and middle-ellipsed to the width, and an OSC 8 link
+ * to the folder where the terminal has them, through the same `fileLink`
+ * `ResultLinks` uses. This lives in history, not the live result screen, so
+ * the answer is still in the scrollback after the next conversion starts.
+ */
+function SavedTo({ output, width }: { output: string; width: number }) {
+  const palette = useTheme()
+  const folder = dirname(output)
+  const prefix = '  saved to '
+  const shown = middleEllipsis(displayPath(folder), Math.max(8, width - prefix.length))
+  return (
+    <Text>
+      <Text color={colourProp(palette.dim)}>{prefix}</Text>
+      <Text color={colourProp(palette.fg)}>
+        {hyperlinksSupported() ? fileLink(shown, folder) : shown}
+      </Text>
+    </Text>
+  )
 }
 
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
@@ -80,8 +113,9 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
   if (block.kind === 'note') {
     return (
-      <Box marginBottom={1}>
+      <Box flexDirection="column" marginBottom={1}>
         <Text color={colourProp(palette.dim)}>{block.text}</Text>
+        {block.savedTo ? <SavedTo output={block.savedTo} width={width} /> : null}
       </Box>
     )
   }
@@ -187,6 +221,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
             {changePhrase(job.sources[0].bytes, outputBytes)}
           </Text>
         </Text>
+        <SavedTo output={job.outputs[0]} width={width} />
         {warnings.map((w) => (
           <Text key={w.message} color={colourProp(palette.warn)}>
             {SYMBOLS.warn} {w.message}
@@ -272,6 +307,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
             </Text>
           </Text>
         </Box>
+        <SavedTo output={job.outputs[0]} width={width} />
         {warnings.map((w) => (
           <Text key={w.message} color={colourProp(palette.warn)}>
             {SYMBOLS.warn} {w.message}
@@ -315,6 +351,7 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
           </Text>
         </Text>
       </Box>
+      <SavedTo output={job.outputs[0]} width={width} />
       {warnings.map((w) => (
         <Text key={w.message} color={colourProp(palette.warn)}>
           {SYMBOLS.warn} {w.message}

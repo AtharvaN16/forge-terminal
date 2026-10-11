@@ -1844,7 +1844,12 @@ export function App({
         },
       })
       for (const result of summary.results) {
-        push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} ${describePdfResult(result)}` })
+        push({
+          kind: 'note',
+          id: nextId(),
+          text: `${SYMBOLS.ok} ${describePdfResult(result)}`,
+          savedTo: result.job.outputs[0],
+        })
         // Warnings used to stop here: only the note was pushed, and
         // `result.warnings` was never read. No page operation emits one today,
         // so this is a guard against the next one that does rather than a live
@@ -2013,6 +2018,7 @@ export function App({
               <Select
                 width={width}
                 items={modeSpec.choices}
+                initialValue={modeSpec.default}
                 onSubmit={(chosen) => {
                   setValues((v) => ({ ...v, mode: chosen }))
                   setStep(chosen === 'size' ? 'size' : 'quality')
@@ -2129,6 +2135,7 @@ export function App({
               <Select
                 width={width}
                 items={pagesSpec.choices}
+                initialValue={pagesSpec.default}
                 onSubmit={choosePages}
                 onCancel={() => setStep('target')}
                 showHints={band !== 'compact'}
@@ -2174,6 +2181,7 @@ export function App({
               <Select
                 width={width}
                 items={dpiSpec.choices}
+                initialValue={dpiSpec.default}
                 onSubmit={(dpi) => chooseDpi(source, dpi)}
                 onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
                 showHints={band !== 'compact'}

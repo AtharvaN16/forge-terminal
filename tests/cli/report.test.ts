@@ -1,6 +1,12 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { reportBatch, reportFailures, reportFormats, reportSingle } from '../../src/cli/report.js'
+import {
+  reportBatch,
+  reportFailures,
+  reportFormats,
+  reportPageOp,
+  reportSingle,
+} from '../../src/cli/report.js'
 import { readableFormats, writableFormats } from '../../src/core/capabilities.js'
 import { fileNotFound } from '../../src/core/errors.js'
 import { FORMATS } from '../../src/core/formats.js'
@@ -55,6 +61,65 @@ describe('reportSingle', () => {
     expect(text).toContain('doc-1.jpg')
     expect(text).toContain('doc-2.jpg')
     expect(text).toContain('doc-3.jpg')
+  })
+
+  /**
+   * Audit #9: `-o out/` and `-o deep/nested/dir/` printed byte-identical
+   * success lines — the one thing the report must answer is where the file
+   * went.
+   */
+  it('says where the output went, relative to cwd', async () => {
+    const dir = await makeTempDir()
+    const summary = await convertAll(dir, 1)
+    const output = summary.results[0]?.job.outputs[0] ?? ''
+    const parent = join(dir, '..')
+    const [first] = reportSingle(summary, { cwd: parent })
+    const rel = output.slice(parent.length + 1)
+    expect(rel).toContain('/') // really in a subfolder of cwd
+    expect(first).toBe(`✓ f0.jpg → ${rel}`)
+  })
+
+  it('stays a bare name when the output is right here in cwd', async () => {
+    const dir = await makeTempDir()
+    const [first] = reportSingle(await convertAll(dir, 1), { cwd: dir })
+    expect(first).toBe('✓ f0.jpg → f0.webp')
+  })
+
+  it('abbreviates home rather than climbing out of cwd', async () => {
+    const dir = await makeTempDir()
+    const [first] = reportSingle(await convertAll(dir, 1), { cwd: '/nowhere', home: dir })
+    expect(first).toBe('✓ f0.jpg → ~/f0.webp')
+  })
+
+  it('names the folder of a multi-page rasterisation', async () => {
+    const dir = await makeTempDir()
+    const src = await makeMarkedPdf(dir, 'doc.pdf', [1, 2])
+    const info = await probe(src)
+    if (info.kind !== 'document') throw new Error('expected a document')
+    const job: Job = {
+      op: 'convert',
+      sources: [info],
+      outputs: [join(dir, 'doc-1.jpg'), join(dir, 'doc-2.jpg')],
+      target: 'jpeg',
+      options: { ...options, dpi: 72, pages: [0, 1] },
+    }
+    const summary = await runJobs([job], {})
+    expect(reportSingle(summary, { cwd: '/nowhere', home: dir })[0]).toBe(
+      '✓ doc.pdf → 2 files in ~/',
+    )
+    // Right here in cwd, the folder goes without saying.
+    expect(reportSingle(summary, { cwd: dir })[0]).toBe('✓ doc.pdf → 2 files')
+  })
+})
+
+describe('reportPageOp', () => {
+  it('says which folder the files went to', async () => {
+    const dir = await makeTempDir()
+    const summary = await convertAll(dir, 1)
+    expect(reportPageOp(summary, { cwd: '/nowhere', home: dir })[0]).toBe(
+      '✓ 1 file · f0.webp in ~/',
+    )
+    expect(reportPageOp(summary, { cwd: dir })[0]).toBe('✓ 1 file · f0.webp')
   })
 })
 

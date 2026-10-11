@@ -65,6 +65,9 @@ const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
 const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching SGR escapes is the point
+const ANSI = /\u001b\[[0-9;]*m/g
+const plain = (frame: string | undefined) => (frame ?? '').replace(ANSI, '')
 
 const prefsFor = (dir: string) => ({
   ...DEFAULT_PREFERENCES,
@@ -153,8 +156,10 @@ describe('the shell — page and resolution steps, live progress', () => {
     stdin.write(ENTER) // "All pages" (default, first choice) -> dpi step
     await settle(300)
     expect(lastFrame() ?? '').toContain('Resolution')
+    // Audit #8: the step opens on the spec's default (150), not its first row.
+    expect(plain(lastFrame())).toContain('❯ 150 dpi')
 
-    stdin.write(DOWN + DOWN) // 72 -> 150 -> 300 dpi
+    stdin.write(DOWN) // 150 -> 300 dpi
     await settle()
     stdin.write(ENTER) // -> quality (jpeg is lossy)
     await settle(300)

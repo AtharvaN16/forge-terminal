@@ -408,6 +408,7 @@ export function PdfFlow({
           <Select
             width={width}
             items={spec.choices}
+            initialValue={spec.default}
             onSubmit={chooseSplitMode}
             onCancel={backFromOptions}
             showHints={band !== 'compact'}
@@ -491,8 +492,12 @@ export function PdfFlow({
         <Box flexDirection="column" marginBottom={1}>
           <Text color={colourProp(palette.label)}>{spec.label}</Text>
           <Select
+            // Keyed by spec so two select specs in a row each mount fresh and
+            // open on their own default, not on the previous one's cursor.
+            key={spec.id}
             width={width}
             items={spec.choices}
+            initialValue={spec.default}
             onSubmit={answerSpec}
             onCancel={backFromOptions}
             showHints={band !== 'compact'}

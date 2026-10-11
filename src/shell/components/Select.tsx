@@ -21,12 +21,28 @@ interface SelectProps {
    * truncated rather than wrapped or allowed to overflow (spec §13).
    */
   width: number
+  /**
+   * The value the cursor opens on — an `OptionSpec`'s `default`. Read once,
+   * at mount, like any initial state. Falls back to the first enabled row
+   * when it names nothing, or names a disabled row: the cursor never rests
+   * where Enter would do nothing.
+   */
+  initialValue?: string
 }
 
 /** The first row that isn't `disabled`, or 0 if every row is (nothing to land on anyway). */
 function firstEnabled(items: Choice[]): number {
   const i = items.findIndex((item) => !item.disabled)
   return i === -1 ? 0 : i
+}
+
+/** Where the cursor opens: `initialValue`'s row if it is a live one, else `firstEnabled`. */
+function initialIndex(items: Choice[], initialValue: string | undefined): number {
+  if (initialValue !== undefined) {
+    const i = items.findIndex((item) => item.value === initialValue && !item.disabled)
+    if (i !== -1) return i
+  }
+  return firstEnabled(items)
 }
 
 /**
@@ -69,9 +85,10 @@ export function Select({
   onHighlight,
   isActive = true,
   width,
+  initialValue,
 }: SelectProps) {
   const palette = useTheme()
-  const [index, setIndex] = useState(() => firstEnabled(items))
+  const [index, setIndex] = useState(() => initialIndex(items, initialValue))
 
   /**
    * `useInput` handlers are synchronous, but `useState` updates are not —
@@ -84,7 +101,7 @@ export function Select({
    * render's closure was created, not what the frame the user is looking
    * at actually shows.
    */
-  const indexRef = useRef(firstEnabled(items))
+  const indexRef = useRef(initialIndex(items, initialValue))
 
   /**
    * The next enabled row in `delta`'s direction, or the current one if
