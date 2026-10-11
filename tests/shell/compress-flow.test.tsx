@@ -279,6 +279,6 @@ describe('the palette is discoverable', () => {
   it('the prompt hints mention the slash', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     const frame = render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? ''
-    expect(frame).toContain('/ commands')
+    expect(frame).toContain(' /  commands')
   })
 })

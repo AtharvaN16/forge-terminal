@@ -57,7 +57,7 @@ describe('result screen links, gated on terminal support', () => {
     expect(frame).not.toContain('Open file')
     expect(frame).not.toContain('Show in Finder')
     // The same actions, still reachable without a mouse.
-    expect(frame).toContain('o open')
+    expect(frame).toContain(' o  open')
     expect(frame).toContain('show in finder')
     vi.doUnmock('../../src/shell/mouse.js')
   })

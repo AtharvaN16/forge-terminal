@@ -2547,22 +2547,14 @@ export function App({
                   onReveal={revealLastResult}
                 />
               ) : null}
-              {/* `HintBar` itself, not reused here: the mode line sits below
-                its hints, which `HintBar`'s own props have no room for and
-                which every *other* step has no reason to grow. Same rule,
-                same border styling, so this remains indistinguishable from
-                `HintBar` visually — the only change from a plain `<HintBar>`
-                is what is stacked below it. */}
-              <Box
-                flexDirection="column"
-                width={width}
-                borderStyle="single"
-                borderColor={colourProp(palette.border)}
-                borderBottom={false}
-                borderLeft={false}
-                borderRight={false}
-              >
+              {/* Not `HintBar` itself: the mode line sits below its hints,
+                which `HintBar`'s own props have no room for and which every
+                *other* step has no reason to grow. Same spacing as
+                `HintBar`, so the two read the same — the only difference is
+                what is stacked below. */}
+              <Box flexDirection="column" width={width} marginTop={1}>
                 <Hints
+                  compact={band === 'compact'}
                   pairs={[
                     ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
                     ...(suggestion

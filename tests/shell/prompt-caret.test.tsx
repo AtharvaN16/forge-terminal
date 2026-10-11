@@ -122,11 +122,13 @@ describe('rename field', () => {
 })
 
 describe('hint bar', () => {
-  it('draws exactly one rule above the hints', async () => {
+  // Keycaps are their own boundary, so the hints no longer sit under a
+  // rule — and the rename field must not bring one of its own back.
+  it('draws no rule above the hints', async () => {
     const { lastFrame } = await toRename()
     const rules = plain(lastFrame())
       .split('\n')
       .filter((l) => /^─+$/.test(l.trim()))
-    expect(rules.length).toBe(1)
+    expect(rules.length).toBe(0)
   })
 })
