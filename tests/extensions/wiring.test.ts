@@ -45,6 +45,23 @@ describe('--boost with an installed extension', () => {
     const meta = await sharp(join(dir, 'logo-4x.jpg')).metadata()
     expect([meta.width, meta.hasAlpha]).toEqual([128, false])
   })
+  it('names the factor a too-wide source can take, and runs nothing', async () => {
+    await fake.install(home, 'boost')
+    const dir = await makeTempDir()
+    // 4x would be 16400 px wide, past the 16384 px limit; 2x fits.
+    const src = join(dir, 'banner.png')
+    await sharp({ create: { width: 4100, height: 50, channels: 3, background: '#fff' } })
+      .png()
+      .toFile(src)
+
+    const out = await forge(src, '--boost', '4')
+    const said = out.stderr.join('\n')
+    expect(out.exitCode).toBe(1)
+    expect(said).toContain('banner.png')
+    expect(said).toContain('2x is the most it can take')
+    expect(said).toContain('--boost 2')
+    expect(existsSync(join(dir, 'banner-4x.png'))).toBe(false)
+  })
 })
 
 describe('--remove-bg', () => {

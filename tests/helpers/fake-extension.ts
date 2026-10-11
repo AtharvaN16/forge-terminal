@@ -10,7 +10,8 @@ import { makeTempDir } from './fixtures.js'
  * and obeying the child-process contract. It points XDG_CONFIG_HOME at a
  * fresh temp dir and returns it; the previous value is restored by `restore`.
  *
- * The stand-in boost enlarges the PNG by `--scale` with plain resize; the
+ * The stand-in boost enlarges the PNG by `--scale` with plain resize, keeping
+ * whatever channels it was given (so alpha Forge drops stays dropped); the
  * stand-in cutout makes the top-left pixel column transparent. Neither is
  * the real model, which is the point: Forge's side of the contract is what
  * is under test.
@@ -22,7 +23,7 @@ import sharp from '${sharpUrl}'
 const a = process.argv.slice(2)
 const get = (k) => a[a.indexOf(k) + 1]
 const scale = Number(get('--scale'))
-const img = sharp(get('--in')).ensureAlpha()
+const img = sharp(get('--in'))
 const { width, height } = await img.metadata()
 await img.resize(width * scale, height * scale).png().toFile(get('--out'))
 console.log(JSON.stringify({ ok: true, width: width * scale, height: height * scale, ms: 1 }))
