@@ -50,7 +50,7 @@ async function toDestination() {
 describe('making a destination the default', () => {
   it('marks the current default in the list', async () => {
     const { lastFrame } = await toDestination()
-    expect(lastFrame() ?? '').toContain('[default]')
+    expect(lastFrame() ?? '').toContain('★ default')
   })
 
   it('offers the key in the hints', async () => {
@@ -98,7 +98,7 @@ describe('making a destination the default', () => {
     // ("d make default") and the confirmation note both say "default" too.
     // The badge is bracketed, which is what separates it from the keyboard
     // hint ("d make default") and from the confirmation note.
-    const tagged = (lastFrame() ?? '').split('\n').filter((l) => l.includes('[default]'))
+    const tagged = (lastFrame() ?? '').split('\n').filter((l) => l.includes('★ default'))
     expect(tagged.length).toBe(1)
   })
 

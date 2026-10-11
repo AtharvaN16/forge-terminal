@@ -2262,7 +2262,10 @@ export function App({
                     ? [
                         ...targetSpec.choices,
                         { value: '__gap__', label: '', hint: '', disabled: true },
-                        { value: GOTO_PDF, label: '/pdf', hint: 'for more options' },
+                        // The pointer is the label itself: a picker row only
+                        // speaks while highlighted, and this one has to be
+                        // read before anyone would think to highlight it.
+                        { value: GOTO_PDF, label: '/pdf for more options' },
                       ]
                     : targetSpec.choices
                 }

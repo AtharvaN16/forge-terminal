@@ -45,7 +45,7 @@ describe('Select', () => {
   it('marks the first item with a cursor and bold, not colour alone', () => {
     const { lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     const frame = lastFrame() ?? ''
-    expect(plain(frame)).toContain('❯ WebP')
+    expect(plain(frame)).toContain('▌ WebP')
     expect(plain(frame)).toContain('  PNG')
     // The glyph alone isn't the requirement — §13 demands bold too, so pin
     // the actual SGR bold-on sequence to the selected row and nowhere else.
@@ -65,7 +65,7 @@ describe('Select', () => {
     const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(DOWN)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ PNG')
+    expect(plain(lastFrame())).toContain('▌ PNG')
   })
 
   it('moves the cursor up', async () => {
@@ -74,17 +74,17 @@ describe('Select', () => {
     await settle()
     stdin.write(UP)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ WebP')
+    expect(plain(lastFrame())).toContain('▌ WebP')
   })
 
   it('stops at the ends rather than wrapping', async () => {
     const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(UP)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ WebP')
+    expect(plain(lastFrame())).toContain('▌ WebP')
     stdin.write(DOWN + DOWN + DOWN + DOWN)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ AVIF')
+    expect(plain(lastFrame())).toContain('▌ AVIF')
   })
 
   it('submits the highlighted value on enter', async () => {
@@ -106,7 +106,7 @@ describe('Select', () => {
     const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={onSubmit} />)
     stdin.write(DOWN + DOWN + ENTER)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ AVIF')
+    expect(plain(lastFrame())).toContain('▌ AVIF')
     expect(onSubmit).toHaveBeenCalledWith('avif')
   })
 
@@ -126,7 +126,7 @@ describe('Select', () => {
     await settle()
     stdin.write(ENTER)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ WebP')
+    expect(plain(lastFrame())).toContain('▌ WebP')
     expect(onHighlight).not.toHaveBeenCalled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -183,7 +183,7 @@ describe('Select disabled rows', () => {
 
   it('starts the cursor on the first enabled row, not row zero', () => {
     const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
-    expect(plain(lastFrame())).toContain('❯ Split')
+    expect(plain(lastFrame())).toContain('▌ Split')
   })
 
   it('skips a disabled row when moving down', async () => {
@@ -197,7 +197,7 @@ describe('Select disabled rows', () => {
     )
     stdin.write(DOWN)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ Extract')
+    expect(plain(lastFrame())).toContain('▌ Extract')
   })
 
   it('skips a disabled row when moving up', async () => {
@@ -213,7 +213,7 @@ describe('Select disabled rows', () => {
     await settle()
     stdin.write(UP)
     await settle()
-    expect(plain(lastFrame())).toContain('❯ Split')
+    expect(plain(lastFrame())).toContain('▌ Split')
   })
 
   it('never submits a disabled row', async () => {
@@ -230,7 +230,7 @@ describe('Select disabled rows', () => {
     const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
     const frame = lastFrame() ?? ''
     const mergeLine = frame.split('\n').find((l) => plain(l).includes('Merge')) ?? ''
-    expect(plain(mergeLine)).not.toContain('❯')
+    expect(plain(mergeLine)).not.toContain('▌')
     expect(mergeLine).not.toContain(BOLD_ON)
   })
 
@@ -249,26 +249,21 @@ describe('a hint with a tone', () => {
    * cannot quietly turn this back into ordinary text.
    */
   it('draws it in a different colour from a plain hint', () => {
-    const rendered = render(
-      <Select
-        width={60}
-        items={[
-          { value: 'png', label: 'PNG', hint: 'likely bigger', tone: 'warn' },
-          { value: 'gif', label: 'GIF', hint: 'likely bigger' },
-        ]}
-        onSubmit={() => {}}
-      />,
-    )
-
-    const lines = (rendered.lastFrame() ?? '').split('\n')
-    // The colour run opening the phrase, on each row: everything from the
-    // last escape before "likely bigger" up to the phrase itself.
+    // Only the highlighted row speaks, so each hint is drawn from the top row.
+    const firstLine = (items: Choice[]) =>
+      (render(<Select width={60} items={items} onSubmit={() => {}} />).lastFrame() ?? '').split(
+        '\n',
+      )[0]
+    const toned = firstLine([{ value: 'png', label: 'PNG', hint: 'likely bigger', tone: 'warn' }])
+    const plainHint = firstLine([{ value: 'gif', label: 'GIF', hint: 'likely bigger' }])
+    // The colour run opening the phrase: everything from the last escape
+    // before "likely bigger" up to the phrase itself.
     const colourOf = (line: string | undefined) =>
       new RegExp(`(${ESC}\\[[0-9;]*m)(?=\\s*likely bigger)`).exec(line ?? '')?.[1]
 
-    expect(colourOf(lines[0])).toBeDefined()
-    expect(colourOf(lines[1])).toBeDefined()
-    expect(colourOf(lines[0])).not.toBe(colourOf(lines[1]))
+    expect(colourOf(toned)).toBeDefined()
+    expect(colourOf(plainHint)).toBeDefined()
+    expect(colourOf(toned)).not.toBe(colourOf(plainHint))
   })
 })
 
@@ -288,8 +283,8 @@ describe('an initial value', () => {
     const { lastFrame } = render(
       <Select width={60} items={dpi} initialValue="150" onSubmit={() => {}} />,
     )
-    expect(plain(lastFrame())).toContain('❯ 150 dpi')
-    expect(plain(lastFrame())).not.toContain('❯ 72 dpi')
+    expect(plain(lastFrame())).toContain('▌ 150 dpi')
+    expect(plain(lastFrame())).not.toContain('▌ 72 dpi')
   })
 
   it('submits the named row on a plain Enter', async () => {
@@ -328,13 +323,13 @@ describe('an initial value', () => {
         onSubmit={() => {}}
       />,
     )
-    expect(plain(lastFrame())).toContain('❯ B')
+    expect(plain(lastFrame())).toContain('▌ B')
   })
 
   it('falls back to the first enabled row when the value matches nothing', () => {
     const { lastFrame } = render(
       <Select width={60} items={dpi} initialValue="600" onSubmit={() => {}} />,
     )
-    expect(plain(lastFrame())).toContain('❯ 72 dpi')
+    expect(plain(lastFrame())).toContain('▌ 72 dpi')
   })
 })

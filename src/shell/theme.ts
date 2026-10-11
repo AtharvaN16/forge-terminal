@@ -10,6 +10,14 @@ export const SYMBOLS = {
   fail: '✕',
   warn: '⚠',
   cursor: '❯',
+  /**
+   * The picker's selected-row marker: the left edge of its band. A shape as
+   * well as a colour, so the selection still reads under NO_COLOR, where the
+   * band itself is not drawn.
+   */
+  strip: '▌',
+  /** Marks the saved default among Save to's places. */
+  star: '★',
   arrow: '→',
   /**
    * An offer the user can take or ignore — a better format, a merge worth

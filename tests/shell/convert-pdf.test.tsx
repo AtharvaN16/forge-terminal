@@ -157,7 +157,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     await settle(300)
     expect(lastFrame() ?? '').toContain('Resolution')
     // Audit #8: the step opens on the spec's default (150), not its first row.
-    expect(plain(lastFrame())).toContain('❯ 150 dpi')
+    expect(plain(lastFrame())).toContain('▌ 150 dpi')
 
     stdin.write(DOWN) // 150 -> 300 dpi
     await settle()

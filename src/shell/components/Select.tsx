@@ -3,6 +3,7 @@ import { type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { useClickTarget } from '../ClickTargets.js'
+import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -28,7 +29,22 @@ interface SelectProps {
    * where Enter would do nothing.
    */
   initialValue?: string
+  /**
+   * What the highlighted row says instead of its hint — a measured size, say.
+   * Called for that row only, with the columns left for it.
+   */
+  speak?: (item: Choice, budget: number) => ReactNode
+  /**
+   * Which rows show their hint. A question's choices are names, and only the
+   * highlighted one says more (`highlighted`, the default). A list whose
+   * hints are how you find the row at all — the command palette — shows
+   * `every` one.
+   */
+  hints?: 'highlighted' | 'every'
 }
+
+/** How long the band takes to move between rows. */
+const GLIDE_MS = 140
 
 /** The first row that isn't `disabled`, or 0 if every row is (nothing to land on anyway). */
 function firstEnabled(items: Choice[]): number {
@@ -86,9 +102,20 @@ export function Select({
   isActive = true,
   width,
   initialValue,
+  speak,
+  hints = 'highlighted',
 }: SelectProps) {
   const palette = useTheme()
   const [index, setIndex] = useState(() => initialIndex(items, initialValue))
+
+  /**
+   * The band glides: it fades in on the new row and out of the one it left.
+   * `from` is that row, captured during render so the first frame of a move
+   * already knows it.
+   */
+  const glide = useRef({ from: index, to: index })
+  if (glide.current.to !== index) glide.current = { from: glide.current.to, to: index }
+  const k = easeOut(useTween(index, GLIDE_MS, { enabled: motionEnabled(palette.name) }))
 
   /**
    * `useInput` handlers are synchronous, but `useState` updates are not —
@@ -156,34 +183,41 @@ export function Select({
 
   const labelWidth = Math.max(0, ...items.map((i) => stringWidth(i.label)))
 
+  /** The band behind row `i` right now, or nothing. */
+  const bandFor = (i: number, selected: boolean): string | undefined => {
+    if (palette.band === '') return undefined
+    if (selected) return mix(palette.canvas, palette.band, k)
+    if (i === glide.current.from && k < 1) return mix(palette.band, palette.canvas, k)
+    return undefined
+  }
+
   return (
     <Box flexDirection="column">
       {items.map((item, i) => {
         // A disabled row is never the live selection, even if `index`
         // somehow pointed at one (it shouldn't — `move` and the initial
         // index both skip disabled rows) — the dim hub row for an
-        // unavailable action must never draw the cursor or go bold.
+        // unavailable action must never draw the marker or go bold.
         const selected = i === index && !item.disabled
-        const cursor = selected ? `${SYMBOLS.cursor} ` : '  '
+        const marker = selected ? `${SYMBOLS.strip} ` : '  '
         const label = item.label.padEnd(labelWidth)
-        const hint = showHints && item.hint ? `  ${item.hint}` : ''
 
         /**
-         * The band hugs the content rather than filling the row edge to edge,
-         * because Ink trims trailing whitespace from every rendered line —
-         * measured: a Text of "❯ WebP" plus twenty spaces comes back six
-         * columns wide. A padded band is therefore not merely wasteful, it
-         * does not exist. Hugging the content is also what the reference
-         * implementations actually draw.
-         *
-         * The hint is budgeted in terminal columns via `middleEllipsis`, not
-         * code units, for the reason documented there: a CJK glyph is two
-         * columns and one code point, so a length-based budget overflows the
-         * terminal by exactly the difference.
+         * Rows are names. Only the highlighted row says more — its hint, or
+         * whatever `speak` puts there — so the list reads as one quiet column
+         * with one sentence in it. A disabled row keeps its hint, because
+         * there the hint is the reason the row cannot be chosen.
          */
-        const badgeWidth = item.badge ? stringWidth(item.badge) + 5 : 0
-        const used = stringWidth(cursor) + stringWidth(label) + badgeWidth
-        const shownHint = hint === '' ? '' : middleEllipsis(hint, Math.max(0, width - used))
+        const badge = item.badge ? `${SYMBOLS.star} ${item.badge}` : ''
+        const used = stringWidth(marker) + stringWidth(label) + (badge ? stringWidth(badge) + 2 : 0)
+        const room = Math.max(0, width - used - 2)
+        const spoken = selected && showHints && speak ? speak(item, room) : null
+        const speaks = hints === 'every' ? showHints && !spoken : selected && showHints && !speak
+        const hintText = item.disabled || speaks ? (item.hint ?? '') : ''
+        // Budgeted in terminal columns via `middleEllipsis`, not code units:
+        // a CJK glyph is two columns and one code point.
+        const shownHint = hintText === '' ? '' : middleEllipsis(hintText, room)
+        const bg = bandFor(i, selected)
 
         return (
           <SelectRow
@@ -193,12 +227,13 @@ export function Select({
             onChoose={() => onSubmit(item.value)}
             onPointer={() => highlightRow(i)}
           >
-            <Text
-              {...(selected && palette.selectionBg !== ''
-                ? { backgroundColor: palette.selectionBg }
-                : {})}
-            >
-              <Text {...(selected ? { color: colourProp(palette.accent) } : {})}>{cursor}</Text>
+            {/*
+              The band is a Box of exactly `width` columns rather than padded
+              Text: Ink trims trailing whitespace from every rendered line, so
+              a padded Text band would stop where the words do.
+            */}
+            <Box width={width} {...(bg ? { backgroundColor: bg } : {})}>
+              <Text color={colourProp(palette.accent)}>{marker}</Text>
               <Text
                 bold={selected}
                 {...(item.disabled
@@ -209,10 +244,14 @@ export function Select({
               >
                 {label}
               </Text>
-              {shownHint ? (
+              {spoken !== null && spoken !== undefined && spoken !== false ? (
+                <Text>
+                  {'  '}
+                  {spoken}
+                </Text>
+              ) : shownHint ? (
                 // A tone is the row saying something about the choice rather
                 // than describing it — "likely bigger" on a lossless target.
-                // Dim otherwise, which is every ordinary hint.
                 <Text
                   color={colourProp(
                     item.tone === 'warn'
@@ -222,15 +261,16 @@ export function Select({
                         : palette.dim,
                   )}
                 >
-                  {shownHint}
+                  {`  ${shownHint}`}
                 </Text>
               ) : null}
-              {item.badge ? (
-                // Accent, bracketed and spaced: as a plain dim suffix it read as
-                // the tail of the path it followed rather than a label about it.
-                <Text color={colourProp(palette.accent)}>{`   [${item.badge}]`}</Text>
+              {badge ? (
+                <>
+                  <Box flexGrow={1} />
+                  <Text color={colourProp(palette.accent)}>{badge}</Text>
+                </>
               ) : null}
-            </Text>
+            </Box>
           </SelectRow>
         )
       })}
