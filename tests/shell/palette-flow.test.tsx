@@ -15,8 +15,9 @@ describe('the palette in the prompt', () => {
     stdin.write('/')
     await settle()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('/compress')
-    expect(frame).toContain('/theme')
+    // The frame is height-clipped from the top, so assert on the first row and the last.
+    expect(frame).toContain('/convert')
+    expect(frame).toContain('/extensions')
   })
 
   it('narrows as you type', async () => {
@@ -39,7 +40,7 @@ describe('the palette in the prompt', () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/')
     await settle()
-    expect(lastFrame() ?? '').toContain('/compress')
+    expect(lastFrame() ?? '').toContain('/extensions')
     stdin.write(BACKSPACE)
     await settle()
     expect(lastFrame() ?? '').not.toContain('make a file smaller')

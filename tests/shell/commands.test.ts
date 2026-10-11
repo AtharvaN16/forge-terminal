@@ -70,10 +70,13 @@ describe('parseCommand', () => {
 describe('the registry', () => {
   it('carries every command the shell can run', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
+      'boost',
       'compress',
       'convert',
+      'extensions',
       'help',
       'pdf',
+      'remove-background',
       'theme',
     ])
   })

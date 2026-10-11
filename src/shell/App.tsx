@@ -52,6 +52,7 @@ import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { WorkingLine } from './components/WorkingLine.js'
+import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -82,6 +83,8 @@ import { bandFor, CARD_WIDTH, middleEllipsis } from './width.js'
 export type Step =
   | 'theme'
   | 'idle'
+  /** `/extensions`, and the install offer for Boost / Remove background. */
+  | 'extensions'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -437,6 +440,8 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
+  /** Set when /boost or /remove-background opened the extensions screen as an offer. */
+  const [extOffer, setExtOffer] = useState<string | undefined>()
   const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
   /**
    * What everything below is drawn in: the base palette with its role
@@ -1145,6 +1150,26 @@ export function App({
 
       if (command.name === 'theme') {
         setStep('theme')
+        return
+      }
+
+      if (command.name === 'extensions') {
+        setExtOffer(undefined)
+        setStep('extensions')
+        return
+      }
+
+      if (command.name === 'boost' || command.name === 'remove-background') {
+        if (source?.kind !== 'image') {
+          push({
+            kind: 'note',
+            id: nextId(),
+            text: `${SYMBOLS.warn} /${command.name} needs an image.`,
+          })
+          return
+        }
+        setExtOffer(command.name)
+        setStep('extensions')
         return
       }
 
@@ -2719,6 +2744,32 @@ export function App({
                 </Box>
               </Box>
             </Box>
+          ) : null}
+
+          {step === 'extensions' ? (
+            <ExtensionsFlow
+              width={width}
+              {...(extOffer ? { only: extOffer } : {})}
+              onInstalled={(id) => {
+                // HOOK(W2a): the extension is present, so run `id` ('boost' |
+                // 'remove-background') on the staged image here. The action
+                // objects live in src/core/actions (W2a); until they land
+                // this only reports readiness.
+                if (extOffer === undefined) return
+                setExtOffer(undefined)
+                setStep('idle')
+                push({
+                  kind: 'note',
+                  id: nextId(),
+                  text: `${SYMBOLS.ok} ${id} is installed and ready.`,
+                })
+              }}
+              onError={(error) => push({ kind: 'error', id: nextId(), error })}
+              onClose={() => {
+                setExtOffer(undefined)
+                setStep('idle')
+              }}
+            />
           ) : null}
 
           {step === 'pdf' ? (

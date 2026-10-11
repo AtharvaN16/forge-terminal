@@ -21,6 +21,9 @@ export const COMMANDS: Command[] = [
   { name: 'pdf', description: 'page operations on a PDF', needsSource: true },
   { name: 'theme', description: 'switch between light and dark', needsSource: false },
   { name: 'help', description: 'list these commands', needsSource: false },
+  { name: 'boost', description: 'upscale an image 2x or 4x', needsSource: true },
+  { name: 'remove-background', description: 'cut the subject out of a photo', needsSource: true },
+  { name: 'extensions', description: 'install optional features', needsSource: false },
 ]
 
 /**
