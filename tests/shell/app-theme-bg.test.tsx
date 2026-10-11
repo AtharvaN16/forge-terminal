@@ -44,19 +44,22 @@ afterEach(() => {
  * the live `theme` state. A component cannot read context from a provider it
  * renders as its own descendant, so App's own elements — the mode header
  * background among them — kept the launch palette forever.
+ *
+ * The empty prompt is the home screen now, whose brand band starts in the
+ * mode's own colour, so that is the colour these look for.
  */
-describe('mode header background follows the chosen theme', () => {
-  it('paints the dark palette background when launched with the dark theme', () => {
+describe('the screen follows the chosen theme', () => {
+  it('draws in the dark palette when launched with the dark theme', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     const frame = render(<App initialWidth={80} prefs={prefs} />).lastFrame() ?? ''
-    expect(frame).toContain(rgb(DARK.modeConvertBg))
+    expect(frame).toContain(rgb(DARK.modeConvert))
   })
 
-  it('paints the light palette background when launched with the light theme', () => {
+  it('draws in the light palette when launched with the light theme', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'light' as const }
     const frame = render(<App initialWidth={80} prefs={prefs} />).lastFrame() ?? ''
-    expect(frame).toContain(rgb(LIGHT.modeConvertBg))
-    expect(frame).not.toContain(rgb(DARK.modeConvertBg))
+    expect(frame).toContain(rgb(LIGHT.modeConvert))
+    expect(frame).not.toContain(rgb(DARK.modeConvert))
   })
 
   /**
@@ -64,10 +67,10 @@ describe('mode header background follows the chosen theme', () => {
    * components that call `useTheme()` themselves, but not the bands App draws
    * from its own `palette` — so the background visibly did not change.
    */
-  it('repaints the background when /theme switches the theme mid-session', async () => {
+  it('redraws in the new palette when /theme switches the theme mid-session', async () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'light' as const }
     const { stdin, lastFrame } = render(<App initialWidth={80} prefs={prefs} />)
-    expect(lastFrame() ?? '').toContain(rgb(LIGHT.modeConvertBg))
+    expect(lastFrame() ?? '').toContain(rgb(LIGHT.modeConvert))
 
     stdin.write('/theme')
     await settle()
@@ -77,7 +80,7 @@ describe('mode header background follows the chosen theme', () => {
     await settle(300)
 
     const frame = lastFrame() ?? ''
-    expect(frame).toContain(rgb(DARK.modeConvertBg))
-    expect(frame).not.toContain(rgb(LIGHT.modeConvertBg))
+    expect(frame).toContain(rgb(DARK.modeConvert))
+    expect(frame).not.toContain(rgb(LIGHT.modeConvert))
   })
 })

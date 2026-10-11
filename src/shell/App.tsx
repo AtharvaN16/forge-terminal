@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises'
 import { basename } from 'node:path'
-import { Box, type DOMElement, Static, Text, useStdout } from 'ink'
+import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -28,15 +28,18 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
+import { displayPath } from '../utils/display-path.js'
 import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, matchCommands, parseCommand } from './commands.js'
+import { type Completion, completePath } from './complete.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
+import { Home, homeKeys, Suggestions } from './components/Home.js'
 import { PageGrid } from './components/PageGrid.js'
 import { PathInput } from './components/PathInput.js'
 import { Progress } from './components/Progress.js'
@@ -51,13 +54,20 @@ import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { WorkingLine } from './components/WorkingLine.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
-import { type BannerState, CLEAR_SCREEN, historyForRedraw } from './redraw.js'
+import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
-import { colourProp, modeColours, modePalette, paletteFor, SYMBOLS } from './theme.js'
-import { useBannerTransition } from './useBannerTransition.js'
+import {
+  colourProp,
+  MODE_ORDER,
+  modeColours,
+  modePalette,
+  paletteFor,
+  type ShellMode,
+  SYMBOLS,
+} from './theme.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
@@ -313,19 +323,13 @@ export function App({
   initialHeight,
   prefs = APP_DEFAULT_PREFS,
   configWarning,
-  introShown = false,
 }: {
   initialWidth?: number
   initialHeight?: number
   prefs?: Preferences
   configWarning?: string
-  /**
-   * `playIntro` drew the banner before Ink mounted, so it is on screen but
-   * not in history — see `bannerTransition` and `historyForRedraw`.
-   */
-  introShown?: boolean
 }) {
-  const { stdout, write: writeAboveFrame } = useStdout()
+  const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
   /** Only `PdfFlow`'s page grid needs this — see `gridLayout`. */
   const [measuredHeight, setMeasuredHeight] = useState(initialHeight ?? stdout?.rows ?? 24)
@@ -335,13 +339,6 @@ export function App({
    * `redraw.ts` for why a width change has to clear the screen and redraw.
    */
   const [staticGeneration, setStaticGeneration] = useState(0)
-  /**
-   * Whether this session draws a logo at all, and whether it is on screen
-   * right now. It comes and goes with `working` — see `bannerTransition`.
-   */
-  const bannerState = useRef<BannerState>({ enabled: introShown, onScreen: introShown })
-  /** For the intro banner's redraw — the default output can change mid-session. */
-  const defaultOutputRef = useRef(prefs.defaultOutput)
 
   useEffect(() => {
     if (initialWidth !== undefined || !stdout) return
@@ -352,20 +349,7 @@ export function App({
       if (columns !== drawnAt) {
         drawnAt = columns
         writeToTerminal(CLEAR_SCREEN, stdout)
-        // A logo on screen but not in history is `playIntro`'s, which the
-        // clear has just erased with nothing to put it back.
-        setHistory((h) => {
-          const intro: HistoryBlock | undefined =
-            bannerState.current.onScreen && !h.some((b) => b.kind === 'banner')
-              ? {
-                  kind: 'banner',
-                  id: nextId(),
-                  width: columns,
-                  defaultOutput: defaultOutputRef.current,
-                }
-              : undefined
-          return historyForRedraw(h, columns, intro)
-        })
+        setHistory((h) => historyForRedraw(h, columns))
         setStaticGeneration((g) => g + 1)
       }
       setMeasured(columns)
@@ -446,7 +430,6 @@ export function App({
    * relaunch — so they all read this, never the `prefs` prop.
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
-  defaultOutputRef.current = livePrefs.defaultOutput
   const [step, setStep] = useState<Step>(prefs.theme === undefined ? 'theme' : 'idle')
   /**
    * Which action the staged file is being put through. Dropping a file means
@@ -573,28 +556,6 @@ export function App({
   const stagedBatch = stage.sources.length > 1
   /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
   const working = isWorking(step, stage.sources.length)
-  useBannerTransition({
-    working,
-    history,
-    setHistory,
-    bannerState,
-    makeBanner: () => ({
-      kind: 'banner',
-      id: nextId(),
-      width,
-      defaultOutput: livePrefs.defaultOutput,
-    }),
-    width,
-    // Through Ink's own `write`, not straight to the stream: Ink only
-    // rewrites rows that changed, so a frame cleared behind its back stayed
-    // blank until something on it moved. `write` erases the frame, writes the
-    // clear, and repaints the frame after it. TTY only, like every control
-    // sequence this shell writes — see `writeToTerminal`.
-    clear: () => {
-      if (stdout?.isTTY) writeAboveFrame(CLEAR_SCREEN)
-    },
-    remountStatic: () => setStaticGeneration((g) => g + 1),
-  })
   /**
    * The mode line shown at an empty idle prompt, under the full logo. Once
    * there is work on screen — a staged file, any wizard step, a result —
@@ -649,6 +610,77 @@ export function App({
    */
   const textRef = useRef('')
   textRef.current = text
+
+  /**
+   * An empty prompt is the home screen (mockups/flow-parts-2026-10.html,
+   * tab 3). Anything staged makes it a working screen again, header bar and
+   * all — the home screen has nowhere to show a stage.
+   */
+  const onHome = step === 'idle' && !working
+
+  /** Path completions for the home field, and which one Tab would take. */
+  const [completions, setCompletions] = useState<Completion[]>([])
+  const [chosen, setChosen] = useState(0)
+
+  useEffect(() => {
+    if (!onHome || text.trim() === '' || isCommandBuffer(text)) {
+      setCompletions((c) => (c.length === 0 ? c : []))
+      return
+    }
+    let live = true
+    completePath(text).then(
+      (found) => {
+        if (!live || textRef.current !== text) return
+        setCompletions(found)
+        setChosen(0)
+      },
+      () => {
+        if (live) setCompletions([])
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [onHome, text])
+
+  /** Same as `/convert`, `/compress` or `/pdf` with nothing staged. */
+  const switchMode = (next: ShellMode) => {
+    if (next === mode) return
+    setMode(next)
+    setValues({})
+  }
+
+  /**
+   * Keys the home screen takes before the field sees them: `1`–`3` pick a
+   * mode, but only on an empty field, so a path can still have digits in it;
+   * Tab and the arrows act on the completions. Tab is never typed — a tab
+   * character in a path is never what was meant.
+   */
+  const homeKey = (input: string, key: Key, value: string): boolean => {
+    if (value === '') {
+      const next = MODE_ORDER[Number(input) - 1]
+      if (/^[1-3]$/.test(input) && !key.ctrl && !key.meta && next) {
+        switchMode(next)
+        return true
+      }
+      return key.tab
+    }
+    if (key.tab) {
+      const pick = completions[chosen]
+      if (pick) setText(pick.insert)
+      return true
+    }
+    if (completions.length === 0) return false
+    if (key.downArrow) {
+      setChosen((i) => Math.min(completions.length - 1, i + 1))
+      return true
+    }
+    if (key.upArrow) {
+      setChosen((i) => Math.max(0, i - 1))
+      return true
+    }
+    return false
+  }
 
   const push = useCallback((block: HistoryBlock) => {
     setHistory((h) => [...h, block])
@@ -1552,9 +1584,6 @@ export function App({
   const chooseTheme = (next: 'dark' | 'light') => {
     setTheme(next)
     setStep('idle')
-    // The picker owned the screen until now.
-    bannerState.current = { enabled: true, onScreen: true }
-    push({ kind: 'banner', id: nextId(), width, defaultOutput: livePrefs.defaultOutput })
     savePreferences({ theme: next }).catch(showError)
   }
 
@@ -2212,7 +2241,7 @@ export function App({
             grouped with the keyboard hints instead of sitting between the
             finished job and its own links. See the `HintBar` replacement
             inside the `result` step below. */}
-          {step !== 'theme' && step !== 'result' ? (
+          {step !== 'theme' && step !== 'result' && !onHome ? (
             working ? (
               <Box marginBottom={1}>
                 <HeaderBar
@@ -2792,7 +2821,59 @@ export function App({
             </Box>
           ) : null}
 
-          {step === 'idle' ? (
+          {onHome ? (
+            <Home
+              width={width}
+              height={height}
+              mode={mode}
+              typing={text !== ''}
+              savesTo={displayPath(livePrefs.defaultOutput)}
+              field={
+                <Prompt
+                  value={text}
+                  onChange={setText}
+                  onSubmit={submitPath}
+                  placeholder="or type a path"
+                  isActive
+                  variant="home"
+                  width={width}
+                  rawOnSubmit
+                  disableSubmit={paletteOwnsEscape}
+                  intercept={homeKey}
+                />
+              }
+              list={
+                isCommandBuffer(text)
+                  ? () => (
+                      <Box marginTop={1}>
+                        <CommandPalette
+                          fragment={text.slice(1)}
+                          width={width}
+                          onRun={runCommand}
+                          onCancel={() => setText('')}
+                        />
+                      </Box>
+                    )
+                  : completions.length > 0
+                    ? (rows) => (
+                        <Suggestions
+                          items={completions.map((c) => c.label)}
+                          selected={chosen}
+                          width={width}
+                          rows={rows}
+                        />
+                      )
+                    : undefined
+              }
+              keys={homeKeys({
+                typing: text !== '',
+                completions: completions.length,
+                palette: isCommandBuffer(text),
+              })}
+            />
+          ) : null}
+
+          {step === 'idle' && !onHome ? (
             <Box flexDirection="column">
               {/* Ink delivers input to every mounted useInput, so Prompt and
                 the palette's Select are both live while this is open — which

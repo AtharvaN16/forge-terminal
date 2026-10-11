@@ -78,6 +78,14 @@
   .state:first-child { margin-top:0; }
   footer { margin-top:90px; color:var(--muted); font-size:13px; border-top:1px solid var(--rule); padding-top:16px; }
   code { font:.9em var(--mono); background:#1c1e24; padding:1px 5px; border-radius:4px; }
+  .flowmap { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:0 0 28px; font:13px var(--mono); }
+  .flowmap .step { display:inline-flex; gap:7px; align-items:center; padding:6px 10px; border:1px solid var(--rule); border-radius:8px; color:#e4e8f0; text-decoration:none; cursor:pointer; }
+  .flowmap .step b { color:var(--cyan); } .flowmap .ar { color:var(--muted); }
+  .flowmap i { font-style:normal; display:inline-flex; gap:4px; }
+  .flowmap .branch { flex-basis:100%; margin-top:8px; color:var(--muted); }
+  .k-yes, .k-no { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; }
+  .k-yes { background:#12282e; color:var(--cyan); } .k-no { background:#1c1e24; color:#5f6879; text-decoration:line-through; }
+  details.earlier { margin-top:46px; } details.earlier summary { cursor:pointer; font:600 13px var(--mono); color:var(--muted); margin-bottom:16px; }
 </style>
 </head>
 <body>
@@ -90,9 +98,10 @@
 </div>
 <div class="tabs" id="tabs">
   <span class="lbl">NOW</span>
-  <a href="#keys">1 · Key hints ✓</a><a href="#home">2 · Home</a><a href="#drop">3 · Drop zone</a>
+  <a href="#keys">1 · Key hints ✓</a><a href="#drop">2 · Drop zone ✓</a><a href="#home">3 · Home</a>
+  <a href="#palette">4 · Commands</a>
   <span class="lbl">LATER</span>
-  <a class="later" href="#palette">4 · Commands</a><a class="later" href="#working">5 · Working</a><a class="later" href="#name">6 · Naming</a><a class="later" href="#errors">7 · Errors</a>
+  <a class="later" href="#working">5 · Working</a><a class="later" href="#name">6 · Naming</a><a class="later" href="#errors">7 · Errors</a>
 </div>
 
 <!-- ====================================================== KEYS -->
@@ -104,22 +113,47 @@
 </section>
 
 <section class="tab" id="home">
-  <h2><span class="n">02</span>Home, in eight directions</h2>
-  <p class="sub">The whole first screen, redrawn eight ways. Each one is a complete visual language on its own: logo, mode, where files go, the drop zone and the keys all follow it. No mixing with today's screen. The drop zone is explored separately in the next tab, so judge these on the overall feel.</p>
+  <h2><span class="n">03</span>Home ✓ the whole screen</h2>
+  <p class="sub">Decided: <b>T4, the hatched band</b>, with the <b>version on its baseline (V2)</b>, over <b>D2</b>, with the <b>F1</b> key row. Four states of the one screen: empty, typing a path, after pressing <code>2</code>, and typing in pdf mode. The band, the tab, the dots, the prompt and the selection strip all take the mode's colours.</p>
+  <div class="grid" id="final-grid"></div>
+  <h2 style="margin-top:56px"><span class="n">03a</span>Where the version goes</h2>
+  <p class="sub">Six places for the version, each with the block underneath. Picked: V2.</p>
+  <div class="grid" id="ver-grid"></div>
+  <h2 style="margin-top:56px"><span class="n">03b</span>Home, with D2 in place</h2>
+  <p class="sub">D2 is decided, so it is fixed in every screen below: same block, same field, same suggestions, same keys. Only the brand above it changes. Each is a full 80 × 24 screen, empty and while typing, so you can see the whole thing fits.</p>
+  <div class="grid" id="home2-grid"></div>
+  <details class="earlier"><summary>Round one: the home screen in eight directions</summary>
+  <p class="sub">The whole first screen, redrawn eight ways, before the drop zone was decided. Kept for reference.</p>
   <div class="grid" id="home-grid"></div>
+  </details>
 </section>
 
 <section class="tab" id="drop">
-  <h2><span class="n">03</span>The drop zone, on its own</h2>
-  <p class="sub">Only the drop zone, out of any screen, so the idea is the only thing you're looking at. Each is shown empty and while typing a path. Whichever you like can sit inside whichever home direction you like.</p>
-  <div class="rule"><b>Real terminal frames.</b> Every frame is ANSI written into xterm.js at 80 columns, drawn as a terminal draws it. The typing frames show <b>path completion</b> (Tab finishes a folder name), which is new and optional.</div>
+  <h2><span class="n">02</span>The drop zone ✓ D2</h2>
+  <p class="sub">Decided: <b>D2, dots in the gradient.</b> Every variant has the same three parts in the same places, so the only thing that changes between them is the surface. Each is shown empty, while typing a path, and after pressing <code>2</code>.</p>
+  <div class="rule"><b>The anatomy, fixed.</b> <b>1 · The block:</b> numbered modes fused to the drop surface, nothing to type inside it. <b>2 · The field:</b> its own line below the block, lined up with the block's text. <b>3 · Suggestions:</b> their own list, a row clear of the field, using the picker's band and strip. While you type, the block steps back so the field leads. <code>1</code> <code>2</code> <code>3</code> switch mode while the field is empty; once you have typed, they are just characters.</div>
   <div class="grid" id="drop-grid"></div>
 </section>
 
+
 <section class="tab" id="palette">
-  <h2><span class="n">04</span>The <code>/</code> command list</h2>
-  <p class="sub">What appears when you type <code>/</code>. Today it's a plain list of five commands above the prompt.</p>
-  <div class="grid" id="palette-grid"></div>
+  <h2><span class="n">04</span>The hatched header bar, eight ways</h2>
+  <p class="sub">The one row at the top of every screen after home. Each way is shown in all three modes (blue convert, green compress, red pdf), then on the Format screen so you can judge it in use, next to the file card and the picker.</p>
+  <div class="grid" id="bars-grid"></div>
+  <h2 style="margin-top:56px"><span class="n">04a</span>The commands menu, round two</h2>
+  <p class="sub">From your notes on round one. The hatched title from M3 moves up to become <b>the header bar</b> on every screen after home, in the mode's colours: blue for convert, green for compress. Under it, six menus built from what you liked: M1's frame, M4's tab without the dots, and M6's filled panel with the list set left. Each is shown in convert after typing <code>/</code> and <code>/co</code>, and in compress so you can see the bar turn green.</p>
+  <div class="grid" id="bar-grid"></div>
+  <div class="grid" id="menu2-grid" style="margin-top:30px"></div>
+  <h2 style="margin-top:56px"><span class="n">04b</span>Round one: the commands menu (the ones you liked)</h2>
+  <p class="sub">The page <code>/</code> opens from home. M2, M5 and M7 are removed. The content is the same in all of them: the three modes, each teaching its number key when selected, then the settings (theme for now). Each is shown after typing <code>/</code>, and after typing <code>/co</code> and moving down to /compress, so you can see filtering too.</p>
+  <div class="grid" id="menu-grid"></div>
+  <h2 style="margin-top:56px"><span class="n">04c</span>Where commands live, across the whole flow</h2>
+  <p class="sub">Every screen from launch to done. The rule: <b><code>/</code> opens the commands page from the field only</b> (home, or home with a file waiting), and <b><code>1</code> <code>2</code> <code>3</code> switch mode on any screen without a text field</b>. Screens that take text (Save to, Name) leave both alone. Click a step to jump to it. The picker and Save to are drawn in the styles decided in the other session, as stand-ins.</p>
+  <div class="flowmap" id="flow-map"></div>
+  <div class="grid" id="flow-grid"></div>
+  <h2 style="margin-top:56px"><span class="n">04d</span>Commands, on a page of their own</h2>
+  <p class="sub">Typing <code>/</code> leaves the home screen for a commands page, so nothing about commands lives on home. Because the tabs are not on this page, the modes are worth listing here: it is the one place that names all three with what they do. Each page is shown after typing <code>/</code>, and after typing <code>/th</code>. Esc goes back to home.</p>
+  <div class="grid" id="cmdpage-grid"></div>
 </section>
 
 <!-- ====================================================== WORKING -->
@@ -1291,213 +1325,1008 @@ const HOMES = [
   },
 ]
 
-/* =========================================================== DROP ZONE */
-const ZPH = new RegExp(PH.replace(/[.,]/g, '\\$&'))
+/* =========================================================== DROP ZONE
+   Round 2. One anatomy for every variant, so only the surface changes:
+   the block (numbered tabs fused to the drop surface), then the path field
+   on its own line, then the suggestions as their own list. */
+const W = 76, M = 2                       // block width, and the margin either side
+const IN = ' '.repeat(M + 2)              // where the field and the list start
+const MODES = [
+  { n: 1, name: 'convert', c: K.m, tint: K.mbg, g: CV, kinds: KINDS },
+  { n: 2, name: 'compress', c: H.comp, tint: '#15301f', g: [H.comp, K.m], kinds: 'images · PDF · video' },
+  { n: 3, name: 'pdf', c: H.pdf, tint: '#3a1a14', g: [H.pdf, K.amber], kinds: 'split · merge · rotate' },
+]
+const BAND = '#2a3242'
+/** A download arrow: a two-cell shaft, then a head that narrows one cell a side per half row (45° at 1:2 cells). */
+const DOWN = ['   ██   ', '   ██   ', '▀██████▀', '  ▀██▀  ']
 const TYPED = /~\/Desk(?!t)/
-const zIn = (t, ph = PH, pc = K.m) => (t ? `${xf(pc, xB('›'))} ~/Desk` : `${xf(pc, xB('›'))} ${xf(K.d, ph)}`)
-const zComp = (hl = H.hl, n = 3) => ['~/Desktop/', '~/Desktop/converted/', '~/Desktop/receipts/'].slice(0, n)
-  .map((p, i) => (i ? xf(K.d, p) : xb(hl, xf(K.fg, xB(` ${p} `))))).join('   ')
-const target = (dim) => `${xf(dim ? K.x : K.m, xB('⇣'))}  ${xf(dim ? K.d : K.fg, xB('Drop a file here'))}`
-const kinds = (dim) => xf(dim ? K.x : K.d, KINDS)
+const ST = [
+  { mode: MODES[0], typing: false, label: 'empty' },
+  { mode: MODES[0], typing: true, label: 'typing ~/Desk' },
+  { mode: MODES[1], typing: false, label: 'pressed 2' },
+]
+const tabLabel = (m, s, bright = K.fg) => (m === s.mode
+  ? `${xf(m.c, xB(String(m.n)))} ${xf(bright, xB(m.name))}`
+  : `${xf(K.x, String(m.n))} ${xf(K.d, m.name)}`)
+const SAVES = `${xf(K.x, 'saves to')} ${xf(K.d, '~/Desktop')}`
+const title = (s) => `${xf(s.typing ? K.x : s.mode.c, xB('↓'))}  ${xf(s.typing ? K.d : K.fg, xB('Drop a file here'))}`
+const sub = (s) => xf(s.typing ? K.faint : K.d, s.mode.kinds)
 
-const ZONES2 = [
+/** A w×h surface. dot(c, r) gives a dot colour or null. The lines are centred
+ *  inside one clean rectangle knocked out of the dots, so the edges never fray. */
+const surface = ({ w = W, h = 8, bg = P, dot = () => null, lines, pad = 4, padRows = 0, glyph = '·', lead = ' '.repeat(M) }) => {
+  const top = Math.floor((h - lines.length) / 2)
+  // Widen the cut-out until each side meets a dot, so the gap either side matches.
+  const isDot = (c) => !!dot(c, top)
+  let a = Math.floor((w - Math.max(...lines.map(vis)) - pad * 2) / 2), b = w - a
+  while (a > 0 && !isDot(a - 1)) a--
+  while (b < w && !isDot(b)) b++
+  const tw = b - a
+  const rows = []
+  for (let r = 0; r < h; r++) {
+    const li = r - top
+    const clear = r >= top - padRows && r < top + lines.length + padRows
+    let out = '', c = 0
+    while (c < w) {
+      if (clear && c === a) { out += li >= 0 && li < lines.length ? xpad(X.center(lines[li], tw), tw) : ' '.repeat(tw); c += tw; continue }
+      const col = r >= 1 && r <= h - 2 ? dot(c, r) : null   // a clear row inside the top and bottom edges
+      out += col ? xf(col, glyph) : ' '; c++
+    }
+    rows.push(lead + (bg ? on(bg, out, w) : xpad(out, w)))
+  }
+  return rows
+}
+const GRID = (c) => c % 3 === 0 && c >= 3 && c <= W - 4   // 3 cells in from each edge, like the spacing
+const fade = (s, near, far) => (s.typing ? X.mix(P, far, 0.45) : far)
+
+/* ---------------------------------------------------------- tab styles */
+/** Folder tab: the active tab shares the surface's fill and has a half-cell top. */
+const folderTabs = (s, fill = P) => {
+  let top = '', row = '', c = 0
+  for (const m of MODES) {
+    const lab = ` ${tabLabel(m, s)} `, w = vis(lab)
+    if (m === s.mode) { top += xf(fill, '▄'.repeat(w)); row += on(fill, lab, w) } else { top += ' '.repeat(w); row += lab }
+    top += ' '; row += ' '; c += w + 1
+  }
+  return [' '.repeat(M) + top, ' '.repeat(M) + xr(row, SAVES + ' ', W)]
+}
+/** Tabs set into a frame's top edge, with the line running between them. */
+const edgeTabs = (s, col, corners = ['╭', '─', '╮']) => {
+  const ins = []
+  let at = 2
+  for (const m of MODES) { const lab = ` ${tabLabel(m, s)} `; ins.push({ at, s: lab }); at += vis(lab) + 2 }
+  const rt = ` ${SAVES} `
+  ins.push({ at: W - 2 - vis(rt), s: rt })
+  return ' '.repeat(M) + edgeX(W, corners, col, ins)
+}
+const framed = (rows, col, v = '│') => rows.map((r) => ' '.repeat(M) + xf(col(0), v) + r + xf(col(W - 1), v))
+
+/* -------------------------------------------------------------- variants */
+const DROPS = [
   {
-    id: 'Z1', name: 'The block',
-    idea: 'Your F block: a strip in the mode\'s tint over a filled panel, with the typing line in the middle. Status lives in the strip, so there is no separate mode bar.',
-    rows: (t) => [
-      on(K.mbg, xr(` ${xf(K.m, xB('↔ convert'))}   ${xf(K.d, 'saves to ~/Desktop')}`, xf(K.d, '/ to change mode '), N)),
-      on(P, ''),
-      on(P, '  ' + zIn(t)),
-      on(P, t ? '    ' + zComp() : ''),
+    id: 'D1', name: 'Folder tab on dots',
+    idea: 'Z7 and Z9 as one object. The active mode is a tab pulled up out of the dotted surface, so the mode and the place you drop are a single thing. Every other mode is plain text beside it. The words sit in a clean rectangle cut out of the dots.',
+    block: (s) => [
+      ...folderTabs(s),
+      ...surface({ lines: [title(s), sub(s)], dot: (c) => GRID(c) && fade(s, 0, '#414a5c') }),
     ],
   },
   {
-    id: 'Z2', name: 'A slab with a pill inside',
-    idea: 'Today\'s fill, finished with half-cell edges and quarter-cell corners, so the slab has soft, clipped corners instead of a hard rectangle. The typing line is a darker pill set into it, finished the same way.',
-    rows: (t) => [
-      xf(P, '▗' + '▄'.repeat(N - 2) + '▖'),
-      on(P, X.center(target(t), N)),
-      on(P, X.center(kinds(t), N)),
-      on(P, ''),
-      on(P, '   ' + xf(H.inset, '▗' + '▄'.repeat(N - 8) + '▖')),
-      on(P, '   ' + on(H.inset, '  ' + zIn(t), N - 6)),
-      on(P, '   ' + xf(H.inset, '▝' + '▀'.repeat(N - 8) + '▘')),
-      on(P, t ? '     ' + zComp('#3a4762') : ''),
-      xf(P, '▝' + '▀'.repeat(N - 2) + '▘'),
+    id: 'D2', name: 'Dots in the gradient', pick: true,
+    idea: 'D1, with the cyan-to-violet you liked carried by the dots instead of a stroke. They are faint at the edges and fainter still near the words, so the colour is a texture, never a decoration. Each mode brings its own pair of colours.',
+    block: (s) => [
+      ...folderTabs(s),
+      ...surface({
+        lines: [title(s), sub(s)],
+        dot: (c, r) => {
+          if (!GRID(c)) return null
+          const col = gcol(c + r * 2, W + 14, s.mode.g)
+          const dx = Math.abs(c - W / 2) / (W / 2), dy = Math.abs(r - 3.5) / 3.5
+          const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+          return X.mix(P, col, s.typing ? k * 0.45 : k)
+        },
+      }),
     ],
   },
   {
-    id: 'Z3', name: 'A window in the hatching',
-    idea: 'The zone is a field of quiet hatching, and the panel is a window cut into it. While you type, the hatching fades back so the field leads.',
-    rows: (t) => {
-      const st = t ? ['#1d3439', '#2a2638'] : ['#2b6873', '#55477c']
-      const w = N - 12
-      const r = (i, s) => hatchAt(0, 6, i, st) + on(P, s, w) + hatchAt(N - 6, 6, i, st)
-      return [
-        hatchAt(0, N, 0, st),
-        r(1, ''), r(2, X.center(target(t), w)), r(3, X.center(kinds(t), w)), r(4, ''),
-        r(5, '  ' + zIn(t)),
-        r(6, t ? '    ' + zComp() : ''),
-        hatchAt(0, N, 7, st),
-      ]
-    },
-  },
-  {
-    id: 'Z4', name: 'A hatched frame', pick: true,
-    idea: 'The hatching becomes the stroke: a frame of ╱╱╱ in cyan to violet around the filled panel, with the mode and the folder knocked out of its top edge. The frame dims while you type.',
-    rows: (t) => {
-      const st = t ? ['#2c4a52', '#3b3452'] : CV
-      const label = ` ${xf(K.fg, xB('↔ convert'))}  ${xf(K.d, 'saves to ~/Desktop')} `
-      const r = (i, s) => hatchAt(0, 2, i, st) + on(P, s, N - 4) + hatchAt(N - 2, 2, i, st)
-      const body = ['', X.center(target(t), N - 4), X.center(kinds(t), N - 4), '', '  ' + zIn(t), t ? '    ' + zComp() : '']
-      return [
-        hatchAt(0, 2, 0, st) + label + hatchAt(2 + vis(label), N - 2 - vis(label), 0, st),
-        ...body.map((s, i) => r(i + 1, s)),
-        hatchAt(0, N, body.length + 1, st),
-      ]
-    },
-  },
-  {
-    id: 'Z5', name: 'A form field',
-    idea: 'No fill at all. A title, a line of help, and the input, joined by one thick bar in the mode colour, the way Charm\'s forms mark the focused field. The bar brightens while you type.',
-    rows: (t) => {
-      const b = xf(t ? '#9be8f3' : K.m, '┃')
-      return [
-        `  ${b} ${xf(K.fg, xB('Drop a file'))}`,
-        `  ${b} ${xf(K.d, 'or type its path. Images, HEIC, PDF and Word.')}`,
-        `  ${b}`,
-        `  ${b} ${t ? `${xf(K.violet, xB('>'))} ~/Desk` : `${xf(K.violet, xB('>'))} ${xf(K.x, PH)}`}`,
-        t ? `  ${b}   ${zComp('#3b3452')}` : '',
-      ]
-    },
-  },
-  {
-    id: 'Z6', name: 'A gradient stroke',
-    idea: 'A rounded frame whose stroke runs cyan to violet, cell by cell, with the mode set into the top-left edge and the folder into the top-right. The divider over the typing line picks up the gradient while you type.',
-    rows: (t) => {
-      const col = (c) => gcol(c, N, CV)
-      const side = (s) => xf(col(0), '│') + xpad(s, N - 2) + xf(col(N - 1), '│')
-      const rt = ` ${xf(K.d, 'saves to ~/Desktop')} `
-      return [
-        edgeX(N, ['╭', '─', '╮'], col, [{ at: 2, s: ` ${xf(K.m, xB('↔ convert'))} ` }, { at: N - 2 - vis(rt), s: rt }]),
-        side(''), side(X.center(target(t), N - 2)), side(X.center(kinds(t), N - 2)), side(''),
-        edgeX(N, ['├', '─', '┤'], (c) => (t || c === 0 || c === N - 1 ? col(c) : '#343b4a')),
-        side(' ' + zIn(t)),
-        ...(t ? [side('   ' + zComp())] : []),
-        edgeX(N, ['╰', '─', '╯'], col),
-      ]
-    },
-  },
-  {
-    id: 'Z7', name: 'A folder tab',
-    idea: 'The modes sit on top as tabs, and the active one is fused to the panel, with a half-cell top edge, so the zone looks like a folder with its tab pulled up. Switching mode moves the tab.',
-    rows: (t) => [
-      '  ' + xf(P, '▄'.repeat(13)),
-      xr('  ' + on(P, ` ${xf(K.m, xB('↔ convert'))}`, 13) + `   ${xf(K.d, '↓ compress')}    ${xf(K.d, '▣ pdf')}`, xf(K.x, 'saves to ~/Desktop  '), N),
-      on(P, ''),
-      on(P, X.center(target(t), N)),
-      on(P, X.center(kinds(t), N)),
-      on(P, ''),
-      on(P, '  ' + zIn(t)),
-      on(P, t ? '    ' + zComp() : ''),
+    id: 'D3', name: 'Strip over dots',
+    idea: 'Z1\'s strip, kept for what you liked about it: the top bar and the drop area are one block. The strip is tinted by the mode and holds the numbered modes and the folder; the dotted surface is under it. Nothing to type inside it any more.',
+    block: (s) => [
+      ' '.repeat(M) + xf(s.mode.tint, '▄'.repeat(W)),
+      ' '.repeat(M) + on(s.mode.tint, xr(' ' + MODES.map((m) => tabLabel(m, s)).join('    '), SAVES + ' ', W), W),
+      ...surface({ lines: [title(s), sub(s)], dot: (c) => GRID(c) && fade(s, 0, '#414a5c') }),
     ],
   },
   {
-    id: 'Z8', name: 'A big arrow',
-    idea: 'A large arrow drawn in block characters, in the cyan-to-violet gradient, with the words set beside it rather than under it. The typing line sits at the arrow\'s point. The arrow greys out while you type.',
-    rows: (t) => {
-      const right = ['', xf(K.fg, xB('Drop a file here')), kinds(t), '', zIn(t, 'or type a path')]
+    id: 'D4', name: 'Gradient stroke',
+    idea: 'Z6, simplified. One rounded line runs cyan to violet, the modes and the folder are set into its top edge, and inside there is nothing but the two lines of words. No divider, no field: it is only the target.',
+    block: (s) => {
+      const col = (c) => (s.typing ? X.mix(K.bg, gcol(c, W, s.mode.g), 0.45) : gcol(c, W, s.mode.g))
       return [
-        on(P, ''),
-        ...ARROW.map((r, i) => on(P, '     ' + xf(t ? '#3d4658' : gcol(i, 5, CV), r) + '     ' + right[i])),
-        on(P, t ? ' '.repeat(20) + zComp() : ''),
-      ]
-    },
-    ph: /or type a path/,
-  },
-  {
-    id: 'Z9', name: 'A dotted surface',
-    idea: 'The fill carries a faint dot grid, like a cutting mat or a design canvas, with the words knocked out of it. It says "surface you put things on" without an arrow. The dots fade while you type.',
-    rows: (t) => {
-      const dc = t ? '#2c3342' : '#414a5c'
-      const dots = (n, c0) => { let s = ''; for (let i = 0; i < n; i++) s += (c0 + i) % 3 === 1 ? '·' : ' '; return xf(dc, s) }
-      const knock = (s) => { const w = vis(s) + 4, a = Math.floor((N - w) / 2); return dots(a, 0) + '  ' + s + '  ' + dots(N - a - w, a + w) }
-      return [
-        on(P, dots(N, 0)), on(P, dots(N, 0)),
-        on(P, knock(target(t))), on(P, knock(kinds(t))),
-        on(P, dots(N, 0)),
-        on(P, '  ' + on(H.inset, ' ' + zIn(t), N - 4)),
-        on(P, t ? '    ' + zComp() : dots(N, 0)),
+        edgeTabs(s, col),
+        ...framed(surface({ w: W - 2, h: 6, bg: null, lead: '', lines: [title(s), sub(s)] }), col),
+        ' '.repeat(M) + edgeX(W, ['╰', '─', '╯'], col),
       ]
     },
   },
   {
-    id: 'Z10', name: 'A raised card',
-    idea: 'The panel casts a one-cell shadow down and to the right, drawn with a darker colour and half blocks. A small physical touch: the card looks lifted off the terminal, ready to take a file.',
-    rows: (t) => {
-      const SH = '#101114', cw = N - 2
+    id: 'D5', name: 'Gradient stroke around dots',
+    idea: 'D4\'s line around D1\'s dots, with no fill: the dots sit straight on the terminal\'s own background, so the frame does the containing and the dots do the "put it here".',
+    block: (s) => {
+      const col = (c) => (s.typing ? X.mix(K.bg, gcol(c, W, s.mode.g), 0.45) : gcol(c, W, s.mode.g))
       return [
-        on(P, '', cw) + xf(SH, '▄'),
-        on(P, X.center(target(t), cw), cw) + xf(SH, '█'),
-        on(P, X.center(kinds(t), cw), cw) + xf(SH, '█'),
-        on(P, '', cw) + xf(SH, '█'),
-        on(P, '  ' + zIn(t), cw) + xf(SH, '█'),
-        on(P, t ? '    ' + zComp() : '', cw) + xf(SH, '█'),
-        ' ' + xf(SH, '▀'.repeat(cw)),
+        edgeTabs(s, col),
+        ...framed(surface({ w: W - 2, h: 8, bg: null, lead: '', lines: [title(s), sub(s)], dot: (c) => c % 3 === 2 && (s.typing ? '#2a2f3a' : '#3a4150') }), col),
+        ' '.repeat(M) + edgeX(W, ['╰', '─', '╯'], col),
       ]
     },
   },
   {
-    id: 'Z11', name: 'Drop on the left, type on the right',
-    idea: 'Two clear targets side by side: a dashed square that says "drop here", and a field for a path. Neither gesture hides inside the other, and the folder and kinds sit with the field.',
-    rows: (t) => {
-      const dc = t ? '#3d4658' : K.m, bw = 24
-      const L = ['╭' + '╌'.repeat(bw - 2) + '╮', ...['', X.center(xf(t ? K.x : K.m, xB('⇣')), bw - 2), X.center(xf(t ? K.d : K.fg, xB('drop here')), bw - 2), ''].map((s) => xf(dc, '╎') + xpad(s, bw - 2) + xf(dc, '╎')), '╰' + '╌'.repeat(bw - 2) + '╯']
-      const Lc = L.map((s, i) => (i === 0 || i === L.length - 1 ? xf(dc, s) : s))
-      const R = [
-        `${xf(K.m, xB('↔ convert'))}  ${xf(K.d, 'saves to ~/Desktop')}`,
-        '',
-        on(P, ' ' + zIn(t, 'or type a path'), 50),
-        t ? '  ' + zComp(H.hl, 2) : '',
-        xf(K.x, KINDS),
-        '',
-      ]
-      return Lc.map((l, i) => '  ' + l + '    ' + R[i])
-    },
-    ph: /or type a path/,
-  },
-  {
-    id: 'Z12', name: 'Just an underline',
-    idea: 'Editorial and almost bare: a bold line of words, and a field that is only a thin rule under the text (▔), which turns into the gradient while you type. It leans on type rather than boxes.',
-    rows: (t) => [
-      `  ${xf(K.fg, xB('Drop a file'))}  ${xf(K.d, 'or type its path')}`,
-      '',
-      `  ${xf(K.m, xB('›'))} ${t ? '~/Desk' : xf(K.x, '~/Pictures/photo.heic')}`,
-      '  ' + (t ? xg('▔'.repeat(N - 4), CV) : xf('#2f6670', '▔'.repeat(N - 4))),
-      t ? '    ' + zComp() : `  ${xf(K.x, KINDS)}`,
-    ],
-    ph: /~\/Pictures\/photo\.heic/,
-  },
-  {
-    id: 'Z13', name: 'A gradient fill',
-    idea: 'The panel itself carries the cyan-to-violet gradient as a very dark fill, cell by cell, so the colour you liked is the material rather than a decoration on it.',
-    rows: (t) => {
-      const st = t ? ['#16262b', '#1f1b2c'] : ['#123039', '#2a2242']
-      const hl = (s) => s
+    id: 'D6', name: 'Dashed gradient edge',
+    idea: 'The oldest drop-zone signal there is, a dashed outline, drawn in the gradient. It reads as "drop here" before you read a word, which is what lets everything inside it stay quiet.',
+    block: (s) => {
+      const col = (c) => (s.typing ? X.mix(K.bg, gcol(c, W, s.mode.g), 0.45) : gcol(c, W, s.mode.g))
       return [
-        gradFill('', N, st),
-        gradFill(X.center(target(t), N), N, st),
-        gradFill(X.center(kinds(t), N), N, st),
-        gradFill('', N, st),
-        gradFill('  ' + zIn(t), N, st),
-        gradFill(t ? '    ' + hl(`${xf(K.fg, xB('~/Desktop/'))}   ${xf(K.d, '~/Desktop/converted/')}   ${xf(K.d, '~/Desktop/receipts/')}`) : '', N, st),
+        edgeTabs(s, col, ['╭', '╌', '╮']),
+        ...framed(surface({ w: W - 2, h: 6, bg: null, lead: '', lines: [title(s), sub(s)] }), col, '╎'),
+        ' '.repeat(M) + edgeX(W, ['╰', '╌', '╯'], col),
       ]
+    },
+  },
+  {
+    id: 'D7', name: 'Hatched mat',
+    idea: 'Z3 and Z4 as one, quieter. The drop surface is a plain panel lying on a mat of dim hatching, two cells at the sides and one row top and bottom, so the margin looks even. The modes are knocked out of the mat\'s top row.',
+    block: (s) => {
+      const st = s.typing ? [X.mix(K.bg, s.mode.g[0], 0.22), X.mix(K.bg, s.mode.g[1], 0.22)] : [X.mix(K.bg, s.mode.g[0], 0.5), X.mix(K.bg, s.mode.g[1], 0.5)]
+      const h = (c0, n, r) => hatchAt(M + c0, n, r, st)
+      const tabs = ' ' + MODES.map((m) => tabLabel(m, s)).join('   ') + ' '
+      const rt = ` ${SAVES} `
+      const body = surface({ w: W - 4, h: 6, lead: '', lines: [title(s), sub(s)] })
+      return [
+        ' '.repeat(M) + h(0, 2, 0) + tabs + h(2 + vis(tabs), W - 4 - vis(tabs) - vis(rt), 0) + rt + h(W - 2, 2, 0),
+        ...body.map((r, i) => ' '.repeat(M) + h(0, 2, i + 1) + r + h(W - 2, 2, i + 1)),
+        ' '.repeat(M) + h(0, W, body.length + 1),
+      ]
+    },
+  },
+  {
+    id: 'D8', name: 'Arrow on dots',
+    idea: 'D1 with the one part of Z8 worth keeping: the big arrow, in the mode\'s gradient, with the words beside it. The arrow and the words are cut out of the dots together as one group.',
+    block: (s) => {
+      const tx = ['', xf(s.typing ? K.d : K.fg, xB('Drop a file here')), sub(s), '']
+      const raw = DOWN.map((r, i) => xf(s.typing ? '#3d4658' : gcol(i, DOWN.length, s.mode.g), r) + '    ' + tx[i])
+      const lines = raw.map((l) => xpad(l, Math.max(...raw.map(vis))))   // one width, so the arrow stays one column
+      return [
+        ...folderTabs(s),
+        ...surface({ lines, pad: 4, dot: (c) => GRID(c) && fade(s, 0, '#414a5c') }),
+        ]
     },
   },
 ]
 
+/** The field, on its own line under the block. */
+const field = (s) => IN + xf(s.mode.c, xB('›')) + ' ' + (s.typing ? xf(K.fg, '~/Desk') : xf(K.x, 'or type a path'))
+/** Suggestions: their own list, a row clear of the field, in the picker's band-and-strip. */
+const suggestions = (s) => (s.typing ? [
+  '',
+  IN + on(BAND, xf(s.mode.c, '▌') + ' ' + xf(K.fg, xB('~/Desktop/')), 34),
+  IN + '  ' + xf(K.d, '~/Desktop/converted/'),
+  IN + '  ' + xf(K.d, '~/Desktop/receipts/'),
+  '',
+  IN + '  ' + xf(K.x, 'tab completes · ↑↓ choose'),
+] : [])
+const screen = (d, s) => ['', ...d.block(s), '', field(s), ...suggestions(s), '']
+
+/* ====================================================== HOME, WITH D2
+   D2 is decided, so it is fixed here. Only the brand above it changes. */
+const D2 = DROPS.find((d) => d.id === 'D2')
+/** FORGE as a 4×5 pixel font, one pixel per dot of the surface's grid. */
+const PIX = {
+  F: ['████', '█   ', '███ ', '█   ', '█   '],
+  O: [' ██ ', '█  █', '█  █', '█  █', ' ██ '],
+  R: ['███ ', '█  █', '███ ', '█ █ ', '█  █'],
+  G: [' ███', '█   ', '█ ██', '█  █', ' ███'],
+  E: ['████', '█   ', '███ ', '█   ', '████'],
+}
+const WORD = [0, 1, 2, 3, 4].map((r) => [...'FORGE'].map((ch) => PIX[ch][r]).join(' '))   // 24 pixels wide
+/** The wordmark lit on the same 3-cell grid as the drop surface, so its columns line up with the dots below. */
+const dotMark = (s, { off = false } = {}) => WORD.map((row, r) => {
+  let out = ' '.repeat(M + 3)
+  for (let i = 0; i < row.length; i++) {
+    const lit = row[i] === '█'
+    out += lit ? xf(gcol(i * 3 + r * 2, 72 + 8, s.mode.g), '●') : off ? xf('#3a4252', '·') : ' '
+    if (i < row.length - 1) out += '  '
+  }
+  return out
+})
+const nameLine = (s, lead = M + 1) => ' '.repeat(lead) + `${xf(K.fg, xB('Convert'))} ${xf(K.x, '0.1.0')}`
+const keys = (s) => keysF1(s.typing
+  ? { main: [['↵', 'send'], ['tab', 'complete']], foot: [['↑↓', 'choose'], ['esc', 'clear'], ['ctrl-c', 'quit']], lead: M + 1 }
+  : { foot: [['1–3', 'mode'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']], lead: M + 1 })
+
+const HEADS = [
+  {
+    id: 'T1', name: 'The wordmark, lit in the dots',
+    idea: 'FORGE drawn as a 4×5 pixel font, one pixel per dot, on the very grid the drop surface uses: its 24 columns are the surface\'s 24 columns. The logo and the drop zone become one material, and the gradient runs through both.',
+    head: (s) => dotMark(s),
+  },
+  {
+    id: 'T2', name: 'Lit dots on an unlit grid',
+    idea: 'T1 with the unlit pixels shown as faint dots, like a dot-matrix sign that is switched on. More texture, and the grid reads as deliberate before you look at the drop zone.',
+    head: (s) => dotMark(s, { off: true }),
+  },
+  {
+    id: 'T3', name: 'A gradient wordmark',
+    idea: 'The three-row half-block FORGE from Home A, painted in the mode\'s gradient, with the name and version beside it. Compact, so the drop zone gets the room.',
+    head: (s) => WM3.map((r, i) => ' '.repeat(M + 1) + xg(r, s.mode.g) + (i === 1 ? '    ' + `${xf(K.fg, xB('Convert'))} ${xf(K.x, '0.1.0')}` : '')),
+  },
+  {
+    id: 'T4', name: 'The hatched band ✓',
+    idea: 'Home A\'s band: FORGE knocked out of a strip of ╱╱╱ in the gradient. The loudest of the set, and the only one with a second texture next to the dots.',
+    head: (s) => WM3.map((r, i) => ' '.repeat(M) + hatchAt(M, 1, i, s.mode.g) + ' ' + xf(K.fg, xB(r)) + ' ' + hatchAt(M + 27, W - 27, i, s.mode.g)),
+  },
+  {
+    id: 'T5', name: 'Name only',
+    idea: 'No logo. The name in bold and the version in grey, set where the tabs start. Everything visual is left to the drop zone, which is the only thing on screen you act on.',
+    head: (s) => [nameLine(s)],
+  },
+]
+/** One full screen: brand, block, field, the suggestions, and the keys on the last row. */
+const homeScreen = (h, s) => {
+  const list = s.typing ? suggestions(s).slice(0, 4) : []   // the key row carries the hint
+  return fill24(['', ...h.head(s), '', ...D2.block(s), '', field(s), ...list], keys(s))
+}
+
+
+/* ============================================ T4 · WHERE THE VERSION GOES */
+const VER = 'v0.1.0'
+/** One row of the hatched band. The run of hatching after the word can carry a label, knocked out of it. */
+const bandRow = (s, i, { lab = null, at = 'end', tail = 2 } = {}) => {
+  const g = s.mode.g, c0 = M + 27, n = W - 27
+  const lead = ' '.repeat(M) + hatchAt(M, 1, i, g) + ' ' + xf(K.fg, xB(WM3[i])) + ' '
+  if (!lab) return lead + hatchAt(c0, n, i, g)
+  const w = vis(lab)
+  return at === 'start'
+    ? lead + hatchAt(c0, tail, i, g) + lab + hatchAt(c0 + tail + w, n - tail - w, i, g)
+    : lead + hatchAt(c0, n - tail - w, i, g) + lab + hatchAt(c0 + n - tail, tail, i, g)
+}
+const vtxt = xf(K.d, VER)
+const VERS = [
+  {
+    id: 'V1', name: 'End of the middle row',
+    idea: 'The version is knocked out of the hatching at the far end of the middle row, level with the centre of the letters. The band still reads as one strip; the version is the last thing in it.',
+    head: (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 1 ? { lab: ` ${vtxt} ` } : {})),
+  },
+  {
+    id: 'V2', name: 'On the baseline ✓',
+    idea: 'Same place, bottom row, so the version sits on the baseline of FORGE, like a footnote. Quieter: the eye meets it last.',
+    head: (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 2 ? { lab: ` ${vtxt} ` } : {})),
+  },
+  {
+    id: 'V3', name: 'Name and version after the word',
+    idea: 'Convert and the version follow FORGE inside the band, on the middle row, so the product name and the command name read together: FORGE · Convert v0.1.0.',
+    head: (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 1 ? { lab: ` ${xf(K.fg, xB('Convert'))} ${xf(K.x, VER)} `, at: 'start' } : {})),
+  },
+  {
+    id: 'V4', name: 'A chip in the hatching',
+    idea: 'The version as a small filled chip in the mode\'s colour, set into the middle row. The loudest: it makes the version a badge, which suits a build you want people to notice.',
+    head: (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 1 ? { lab: ' ' + xb(s.mode.c, xf(K.ink, xB(` ${VER} `))) + ' ' } : {})),
+  },
+  {
+    id: 'V5', name: 'Under the band',
+    idea: 'The band stays whole; the name and version sit on a line of their own just under it, right-aligned to the same edge as "saves to ~/Desktop", so the right side of the screen has one clean edge.',
+    head: (s) => [0, 1, 2].map((i) => bandRow(s, i)).concat([xr('', `${xf(K.d, 'Convert')} ${xf(K.x, VER)} `, M + W)]),
+  },
+  {
+    id: 'V6', name: 'A window in the band',
+    idea: 'A clean rectangle cut through all three rows of hatching at the right end, with the version in the middle. It is the same move as the drop surface, where the words sit in a rectangle cut out of the dots, so the header and the block speak one language.',
+    head: (s) => {
+      const box = ' '.repeat(vis(VER) + 4)
+      return [0, 1, 2].map((i) => bandRow(s, i, { lab: i === 1 ? `  ${vtxt}  ` : box }))
+    },
+  },
+]
+const verScreen = (v, s) => ['', ...v.head(s), '', ...D2.block(s), '']
+
+
+/* ============================================================ HOME, FINAL */
+const FINAL = { head: (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 2 ? { lab: ` ${vtxt} ` } : {})) }
+
+/* ============================================================ 4 · COMMANDS
+   The home screen is decided, so every variant is drawn inside it: what
+   happens when the field starts with "/". */
+const CMD = [
+  { name: 'convert', d: "change a file's format", mode: MODES[0] },
+  { name: 'compress', d: 'make a file smaller', mode: MODES[1] },
+  { name: 'pdf', d: 'page operations on a PDF', mode: MODES[2] },
+  { name: 'theme', d: 'switch between light and dark' },
+  { name: 'help', d: 'list these commands' },
+]
+const CS = [
+  { q: '', sel: 'convert', label: 'typed /' },
+  { q: 'co', sel: 'compress', label: 'typed /co, then ↓' },
+]
+const cmdMatch = (q) => CMD.filter((c) => c.name.startsWith(q))
+const cmdField = (s, q) => IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q)
+const cmdCursor = (rows) => cursorAt(rows, /› \/\S*$/, true)
+const cmdKeys = (nav = '↑↓') => keysF1({ main: [['↵', 'run'], ['esc', 'close']], foot: [[nav, 'choose'], ['ctrl-c', 'quit']], lead: M + 1 })
+/** The typed part of a name is bright, the rest follows it. */
+const cmdName = (c, q, sel) => xf(K.fg, xB('/' + q)) + (sel ? xf(K.fg, xB(c.name.slice(q.length))) : xf(K.d, c.name.slice(q.length)))
+/** One row, in the picker's band and strip. The strip takes the colour of the mode it would switch to. */
+const cmdRow = (c, q, sel, { band = BAND, w = 60 } = {}) => {
+  const name = xpad(cmdName(c, q, sel), 12)
+  if (!sel) return '  ' + name + xf(K.x, c.d)
+  const key = c.mode ? xf(K.x, `or press ${c.mode.n}`) : ''
+  return on(band, xr(xf(c.mode ? c.mode.c : K.fg, '▌') + ' ' + name + xf(K.d, c.d), key + ' ', w), w)
+}
+const cmdBase = (s) => ['', ...FINAL.head(s), '']
+
+const CMDV = [
+  {
+    id: 'C1', name: 'Like the suggestions',
+    idea: 'The same list the path suggestions use, a row clear of the field, with a band and strip on the selected row. One list component for everything you type into the field. The strip takes the colour of the mode the command would switch to, and only the selected row says which number key does the same.',
+    screen: (c) => {
+      const s = { mode: MODES[0], typing: true }
+      return fill24([...cmdBase(s), ...D2.block(s), '', cmdField(s, c.q), '', ...cmdMatch(c.q).map((m) => IN + cmdRow(m, c.q, m.name === c.sel))], cmdKeys())
+    },
+  },
+  {
+    id: 'C2', name: 'Preview as you move', pick: true,
+    idea: 'C1, plus the screen turns the colour of the highlighted mode while you move through the list: land on /compress and the band, the tab and the dots go green before you press ↵. Esc puts it back. You see what a command does before you run it. Theme and help leave the screen alone.',
+    screen: (c) => {
+      const picked = CMD.find((m) => m.name === c.sel)
+      const s = { mode: picked.mode ?? MODES[0], typing: true }
+      return fill24([...cmdBase(s), ...D2.block(s), '', cmdField(s, c.q), '', ...cmdMatch(c.q).map((m) => IN + cmdRow(m, c.q, m.name === c.sel))], cmdKeys())
+    },
+  },
+  {
+    id: 'C3', name: 'The panel becomes the menu',
+    idea: 'While the field starts with /, nothing can be dropped, so the drop surface hands its space to the list: the dots clear and the commands sit inside the panel, under the same tabs. The field stays on its own line below. Delete the slash and the dots come back.',
+    screen: (c) => {
+      const s = { mode: MODES[0], typing: true }
+      const list = cmdMatch(c.q).map((m) => '  ' + cmdRow(m, c.q, m.name === c.sel, { band: H.hl, w: W - 4 }))
+      const body = ['', ...list]
+      while (body.length < 8) body.push('')
+      return fill24([...cmdBase(s), ...folderTabs(s), ...body.map((r) => ' '.repeat(M) + on(P, r, W)), '', cmdField(s, c.q)], cmdKeys())
+    },
+  },
+  {
+    id: 'C4', name: 'Grouped, with the block folded',
+    idea: 'The block folds down to its tab row and one line of dots, which leaves room for the list in two small groups: the modes, then the app. Folding says "the drop zone is resting" more plainly than dimming it.',
+    screen: (c) => {
+      const s = { mode: MODES[0], typing: true }
+      const dots = surface({ h: 3, lines: [''], pad: 0, dot: (x) => GRID(x) && X.mix(P, '#414a5c', 0.6) })
+      const ms = cmdMatch(c.q)
+      const grp = (label, items) => (items.length ? ['', IN + '  ' + xf(K.x, label), ...items.map((m) => IN + cmdRow(m, c.q, m.name === c.sel))] : [])
+      return fill24([...cmdBase(s), ...folderTabs(s), ...dots, '', cmdField(s, c.q),
+        ...grp('modes', ms.filter((m) => m.mode)), ...grp('app', ms.filter((m) => !m.mode))], cmdKeys())
+    },
+  },
+  {
+    id: 'C5', name: 'A row of chips',
+    idea: 'The commands on one line under the field, the selected one filled in its mode\'s colour, and its description on the line below. Only two rows tall, so the drop zone barely moves. ←→ to choose, since the list runs sideways.',
+    screen: (c) => {
+      const s = { mode: MODES[0], typing: true }
+      const ms = cmdMatch(c.q), pick = ms.find((m) => m.name === c.sel)
+      const chip = (m) => (m === pick ? xb(m.mode ? m.mode.c : K.fg, xf(K.ink, xB(` /${m.name} `))) : xf(K.d, ` /${m.name} `))
+      return fill24([...cmdBase(s), ...D2.block(s), '', cmdField(s, c.q), '',
+        IN + ms.map(chip).join(' '), IN + '  ' + xf(K.d, pick.d) + (pick.mode ? xf(K.x, `  ·  or press ${pick.mode.n}`) : '')], cmdKeys('←→'))
+    },
+  },
+]
+
+/* ===================================== 4 · COMMANDS: WHAT THE LIST IS FOR */
+const d2dot = (s) => (c, r) => {
+  if (!GRID(c)) return null
+  const col = gcol(c + r * 2, W + 14, s.mode.g)
+  const dx = Math.abs(c - W / 2) / (W / 2), dy = Math.abs(r - 3.5) / 3.5
+  const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+  return X.mix(P, col, s.typing ? k * 0.45 : k)
+}
+/** The drop zone holding a file: the same block, with the file in the cut-out. A stand-in, not yet designed. */
+const stagedBlock = (s) => [
+  ...folderTabs(s),
+  ...surface({ lines: [xf(s.typing ? K.d : K.fg, xB('test.png')), xf(s.typing ? K.faint : K.d, 'PNG · 2756×774 · 122 KB · transparent')], dot: d2dot(s) }),
+]
+const FILE_CMD = {
+  convert: 'pick a new format for test.png',
+  compress: 'make test.png smaller',
+  pdf: 'needs a PDF',
+}
+const kRow = (c, sel, file) => {
+  const off = file && c.name === 'pdf'
+  if (off) return IN + '  ' + xpad(xf(K.faint, '/' + c.name), 12) + xf(K.faint, FILE_CMD.pdf)
+  return IN + cmdRow(file && FILE_CMD[c.name] ? { ...c, d: FILE_CMD[c.name] } : c, '', sel)
+}
+const KS = [
+  { label: 'a file waiting, typed /', file: true },
+  { label: 'home, typed /', file: false },
+]
+const kScreen = (list, selName, k) => {
+  const s = { mode: MODES[0], typing: true }
+  const block = k.file ? stagedBlock(s) : D2.block(s)
+  return fill24([...cmdBase(s), ...block, '', cmdField(s, ''), '', ...list.map((c) => kRow(c, c.name === selName, k.file))], cmdKeys())
+}
+const KV = [
+  {
+    id: 'K1', name: 'Everything, as today',
+    idea: 'All five, as the app has them now. With a file waiting, the mode commands act on that file, so their descriptions name it, and /pdf greys out with the reason (the app already refuses it for an image). But the tabs right above do the same three things with 1, 2 and 3, so three of the five rows repeat what is on screen.',
+    screen: (k) => kScreen(CMD, 'convert', k),
+  },
+  {
+    id: 'K2', name: 'Only what has no other home', pick: true,
+    idea: 'The list holds only what the screen cannot show: theme and help. The modes stay on the tabs and their number keys; typing /compress in full still works, it just is not listed. Two rows today, and the place /merge, /split or a Save to setting land later.',
+    screen: (k) => kScreen(CMD.filter((c) => !c.mode), 'theme', k),
+  },
+]
+
+/* ===================================== 4 · COMMANDS: A PAGE OF THEIR OWN */
+const MARK = { convert: '↔', compress: '↓', pdf: '▣' }
+/** Today's header bar, which takes over from the logo once you leave the empty home screen. */
+const hdrBar = (s) => on(s.mode.tint, xr(` ${xf(s.mode.c, xB(`${MARK[s.mode.name]} FORGE`))}   ${xf(K.d, s.mode.name)}`, xf(K.d, '~/Desktop') + ' ', N))
+const EDGE = '#3d4350'
+const PS = [
+  { q: '', sel: 'convert', label: 'typed /' },
+  { q: 'th', sel: 'theme', label: 'typed /th' },
+]
+const pageKeys = () => keysF1({ main: [['↵', 'run'], ['esc', 'back']], foot: [['↑↓', 'choose'], ['ctrl-c', 'quit']], lead: M + 1 })
+/** Rows for the page: the modes, then the app, under quiet headings. The tabs are not on this page, so the modes are listed. */
+const pageList = (q, sel, w) => {
+  const ms = cmdMatch(q), out = []
+  const grp = (label, items) => { if (!items.length) return; if (out.length) out.push(''); out.push('  ' + xf(K.x, label)); items.forEach((m) => out.push(cmdRow(m, q, m.name === sel, { w }))) }
+  grp('modes', ms.filter((m) => m.mode)); grp('app', ms.filter((m) => !m.mode))
+  return out
+}
+/** The Save to search box, reused: a frame with its name in the top edge, the input, a divider, then the list. */
+const searchFrame = (s, q, sel) => {
+  const iw = W - 4, ms = cmdMatch(q), E = (t) => xf(EDGE, t)
+  const side = (r) => ' '.repeat(M) + E('│ ') + xpad(r, iw) + E(' │')
+  return [
+    ' '.repeat(M) + E('╭─ ') + xf(s.mode.c, xB('Commands')) + E(' ' + '─'.repeat(W - 14) + '╮'),
+    side(xr(xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q), xf(K.x, `${ms.length}/${CMD.length}`), iw)),
+    ' '.repeat(M) + E('├' + '─'.repeat(W - 2) + '┤'),
+    side(''),
+    ...pageList(q, sel, iw).map(side),
+    side(''),
+    ' '.repeat(M) + E('╰' + '─'.repeat(W - 2) + '╯'),
+  ]
+}
+const PAGES = [
+  {
+    id: 'P1', name: 'The Save to search box, for commands', pick: true,
+    idea: 'Typing / leaves the home screen. The logo hands over to the header bar, as it does whenever you are working, and the page is the same framed search box Save to uses: its name in the top edge, the input, a divider, the list. One component for "type to find something". The tabs are not on this page, so the modes are listed, in their own group, each teaching its number key when selected.',
+    screen: (p) => { const s = { mode: MODES[0], typing: true }; return fill24([hdrBar(s), '', ...searchFrame(s, p.q, p.sel)], pageKeys()) },
+  },
+  {
+    id: 'P2', name: 'A list, with the command line at the bottom',
+    idea: 'The page reads like the format picker: a title in the mode\'s colour and a count, then the list. What you type stays on the bottom line, above the keys, the way vim and lazygit keep their command line at the foot of the screen. The list grows down from the top and the field never moves.',
+    screen: (p) => {
+      const s = { mode: MODES[0], typing: true }, ms = cmdMatch(p.q)
+      const body = [hdrBar(s), '', ' '.repeat(M + 2) + xr(xf(s.mode.c, xB('Commands')), xf(K.x, `${ms.length}/${CMD.length}`), W - 3), '', ...pageList(p.q, p.sel, 60).map((r) => ' '.repeat(M) + r)]
+      while (body.length < 21) body.push('')
+      return fill24([...body, ' '.repeat(M) + xf(EDGE, '─'.repeat(W)), cmdField(s, p.q)], pageKeys())
+    },
+  },
+  {
+    id: 'P3', name: 'The search box, under the band',
+    idea: 'P1\'s page, but the brand band stays at the top instead of the header bar, so the commands still feel like part of home rather than a different place. The drop zone and its tabs are gone while the page is open.',
+    screen: (p) => { const s = { mode: MODES[0], typing: true }; return fill24([...cmdBase(s), ...searchFrame(s, p.q, p.sel)], pageKeys()) },
+  },
+]
+
+/* ================================= 4 · THE WHOLE FLOW: WHERE COMMANDS LIVE
+   Every screen from launch to done, in the decided language. Screens other
+   teams own (the picker, Save to) are drawn in their decided styles as
+   stand-ins. Each says whether / and 1–3 work there. */
+const CV_ = { mode: MODES[0], typing: false }
+const CP_ = { mode: MODES[1], typing: false }
+/** The file card: a rounded frame, the format in the top edge. */
+const fcard = (s, w = 52, dim = false) => {
+  const E = (t) => xf(K.x, t), side = (r) => ' '.repeat(M) + E('│ ') + xpad(r, w - 4) + E(' │')
+  return [
+    ' '.repeat(M) + E('╭─ ') + xf(s.mode.c, xB('PNG')) + E(' ' + '─'.repeat(w - 8) + '╮'),
+    side(xf(dim ? K.d : K.fg, xB('test.png'))),
+    side(xf(K.d, '2756×774 · 122 KB · transparent')),
+    ' '.repeat(M) + E('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const qTitle = (s, t, count) => ' '.repeat(M + 1) + xr(xf(s.mode.c, xB(t)), xf(K.x, count), 64)
+/** The picker's band and strip; only the highlighted row says more. */
+const pick = (s, rows, sel, nw = 10) => rows.map(([name, more], i) => (i === sel
+  ? ' '.repeat(M) + on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(name)), nw) + (more ?? ''), 64)
+  : ' '.repeat(M) + '  ' + xf(K.d, name)))
+const stepKeys = (main, foot) => keysF1({ main, foot, lead: M + 1 })
+const FMTS = ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF']
+const CMDF = CMD.filter((c) => c.name !== 'help')   // the page is the help
+const flowPage = (s) => {
+  const iw = W - 4, E = (t) => xf(EDGE, t), side = (r) => ' '.repeat(M) + E('│ ') + xpad(r, iw) + E(' │')
+  const grp = (label, items) => ['  ' + xf(K.x, label), ...items.map((m) => cmdRow(m, '', m.name === 'convert', { w: iw }))]
+  return [
+    ' '.repeat(M) + E('╭─ ') + xf(s.mode.c, xB('Commands')) + E(' ' + '─'.repeat(W - 14) + '╮'),
+    side(xr(xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/'), xf(K.x, `${CMDF.length}/${CMDF.length}`), iw)),
+    ' '.repeat(M) + E('├' + '─'.repeat(W - 2) + '┤'),
+    side(''),
+    ...grp('modes', CMDF.filter((m) => m.mode)).map(side),
+    side(''),
+    ...grp('settings', CMDF.filter((m) => !m.mode)).map(side),
+    side(''),
+    ' '.repeat(M) + E('╰' + '─'.repeat(W - 2) + '╯'),
+  ]
+}
+
+const FLOW = [
+  {
+    n: 1, name: 'Home', slash: true, digits: true,
+    note: 'Where everything starts. <code>/</code> opens the commands page; <code>1</code> <code>2</code> <code>3</code> switch the tab. Drop a file or type a path to go on.',
+    rows: () => homeScreen(FINAL, CV_),
+    cursor: /or type a path/,
+  },
+  {
+    n: 2, name: 'Commands page', slash: true, digits: false, from: 'typed / on home',
+    note: 'Its own page: the header bar takes over from the logo, and the framed search box is the same one Save to uses. <b>modes</b> and <b>settings</b>, nothing else; the page is the help, so <code>/help</code> just opens it. The selected mode shows its number key. Esc goes back home.',
+    rows: () => fill24([hdrBar(CV_), '', ...flowPage(CV_)], stepKeys([['↵', 'run'], ['esc', 'back']], [['type', 'filter'], ['↑↓', 'choose'], ['ctrl-c', 'quit']])),
+    cursor: /› \//, after: true,
+  },
+  {
+    n: 3, name: 'Format', slash: false, digits: true, from: 'dropped test.png',
+    note: 'One question. No <code>/</code>: a second question on top of this one would break "one per screen". But <code>1</code> <code>2</code> <code>3</code> work, because "I dropped this to convert it, actually I want to compress it" is a real mid-flow change. The key row says so.',
+    rows: () => fill24([hdrBar(CV_), '', ...fcard(CV_), '', qTitle(CV_, 'Convert to', '1/6'), '',
+      ...pick(CV_, FMTS.map((f, i) => [f, i === 0 ? `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}` : '']), 0)],
+    stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']])),
+  },
+  {
+    n: 4, name: 'Pressed 2', slash: false, digits: true, from: 'pressed 2 on Format',
+    note: 'The same file, now in compress. The header bar sweeps to green from the left (the wipe it already has), the card\'s tag follows, and the question is compress\'s first one. <code>1</code> takes it straight back to the format list.',
+    rows: () => fill24([hdrBar(CP_), '', ...fcard(CP_), '', qTitle(CP_, 'Compress test.png', '1/2'), '',
+      ...pick(CP_, [['By quality', xf(K.d, 'pick a level, see the result')], ['To a target size']], 0, 18)],
+    stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']])),
+  },
+  {
+    n: 5, name: 'Quality', slash: false, digits: true, from: 'chose JPEG',
+    note: 'Still a question with no text field, so the digits still switch mode. ←→ moves the slider; the size beside it is measured, not guessed.',
+    rows: () => fill24([hdrBar(CV_), '', ...fcard(CV_), '', qTitle(CV_, 'Quality', 'JPEG'), '',
+      ' '.repeat(M + 1) + xf(K.m, '━'.repeat(30)) + xf(K.fg, xB('●')) + xf(K.faint, '━'.repeat(8)) + '  ' + xf(K.fg, xB('80')),
+      '', ' '.repeat(M + 1) + `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}`],
+    stepKeys([['←→', 'adjust'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']])),
+  },
+  {
+    n: 6, name: 'Save to', slash: false, digits: false, from: 'confirmed 80',
+    note: 'This screen takes text: you can filter places or type a path, and a path starts with <code>/</code> or <code>~</code>. So neither <code>/</code> nor the digits mean anything here; they are just characters.',
+    rows: () => {
+      const s = CV_, iw = 60, E = (t) => xf(EDGE, t), side = (r) => ' '.repeat(M) + E('│ ') + xpad(r, iw) + E(' │')
+      const places = [['Desktop', '~/Desktop/'], ['Same folder', '/tmp/forge-cap/'], ['Downloads', '~/Downloads/'], ['New subfolder', '~/Desktop/converted/']]
+      return fill24([hdrBar(s), '', ...fcard(s), '',
+        ' '.repeat(M) + E('╭─ ') + xf(s.mode.c, xB('Save to')) + E(' ' + '─'.repeat(iw - 8) + '╮'),
+        side(xr(xf(s.mode.c, xB('›')) + ' ' + xf(K.x, 'type to filter, or drop a file'), xf(K.x, '4/4'), iw)),
+        ' '.repeat(M) + E('├' + '─'.repeat(iw + 2) + '┤'),
+        ...places.map(([n, p], i) => side(i === 0 ? on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(n)), 15) + xf(K.d, p) + xf(K.fg, xB('test.jpg')), iw) : '  ' + xf(K.d, n))),
+        ' '.repeat(M) + E('╰' + '─'.repeat(iw + 2) + '╯')],
+      stepKeys([['↑↓', 'choose'], ['↵', 'save here']], [['type', 'filter'], ['esc', 'back'], ['ctrl-c', 'quit']]))
+    },
+    cursor: /type to filter/,
+  },
+  {
+    n: 7, name: 'Name', slash: false, digits: false, from: 'chose Desktop',
+    note: 'A text field, so again neither. Digits are part of file names.',
+    rows: () => fill24([hdrBar(CV_), '', ...fcard(CV_), '', qTitle(CV_, 'Name the file', ''), '',
+      ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.fg, 'test') + xf(K.x, '.jpg')],
+    stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']])),
+    cursor: /› test/, after: true,
+  },
+  {
+    n: 8, name: 'Working', slash: false, digits: false, from: 'pressed ↵',
+    note: 'Nothing to choose, so nothing to switch. Esc stops it; nothing is written until it finishes.',
+    rows: () => fill24([hdrBar(CV_), '', ...fcard(CV_, 52, true), '',
+      ' '.repeat(M + 1) + xf(K.m, xB('⠋')) + ' ' + xf(K.fg, 'Converting to JPEG') + xf(K.x, '  ·  0.8s')],
+    stepKeys([['esc', 'stop']], [['ctrl-c', 'quit']])),
+  },
+  {
+    n: 9, name: 'Done', slash: false, digits: false, from: 'finished',
+    note: 'The receipt. Its keys are letters (<code>o</code> open, <code>s</code> show in Finder). ↵ goes back to home, where <code>/</code> and the tabs are again.',
+    rows: () => {
+      const E = (t) => xf(K.x, t), w = 30
+      const c2 = (tag, name, col) => [E('╭─ ') + xf(col, xB(tag)) + E(' ' + '─'.repeat(w - 5 - tag.length) + '╮'), E('│ ') + xpad(xf(K.fg, xB(name)), w - 4) + E(' │'), E('╰' + '─'.repeat(w - 2) + '╯')]
+      const a = c2('PNG', 'test.png', K.d), b = c2('JPEG', 'test.jpg', K.m)
+      return fill24([hdrBar(CV_), '', ' '.repeat(M + 1) + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, xB('Done')), '',
+        ...a.map((r, i) => ' '.repeat(M) + r + (i === 1 ? xf(K.x, ' ──→ ') : '     ') + b[i]), '',
+        ' '.repeat(M + 2) + `${xf(K.d, '122 KB')} ${xf(K.x, '→')} ${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}`,
+        ' '.repeat(M + 2) + xf(K.d, 'saved to ~/Desktop')],
+      stepKeys([['↵', 'convert another'], ['o', 'open']], [['s', 'show in Finder'], ['ctrl-c', 'quit']]))
+    },
+  },
+  {
+    n: 10, name: 'Back out: file waiting', slash: true, digits: true, from: 'esc on Format', branch: true,
+    note: 'A side branch: esc from the format list leaves the file waiting in the drop zone. You are back at the field, so <code>/</code> works, and on the commands page the modes act on this file ("make test.png smaller"). The header bar is up because there is work on screen.',
+    rows: () => fill24([hdrBar(CV_), '', ...stagedBlock(CV_), '', IN + xf(K.m, xB('›')) + ' ' + xf(K.x, '↵ to pick a format, or drop another')],
+      keys(CV_)),
+    cursor: /↵ to pick a format/,
+  },
+]
+
+/* ===================================== 4 · THE COMMANDS MENU, SEVEN WAYS
+   Same content everywhere: the three modes, then the settings (theme). Same
+   two states: typed /, and typed /co then ↓. Only the drawing changes. */
+const MS = [
+  { q: '', sel: 'convert', label: 'typed /' },
+  { q: 'co', sel: 'compress', label: 'typed /co, then ↓' },
+]
+const mHit = (q) => CMDF.filter((c) => c.name.startsWith(q))
+const mKeys = (nav = '↑↓') => keysF1({ main: [['↵', 'run'], ['esc', 'back']], foot: [[nav, 'choose'], ['type', 'filter'], ['ctrl-c', 'quit']], lead: M + 1 })
+const mInput = (s, q, lead = IN) => lead + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q)
+/** modes, then settings, as rows; each group only if something in it matches. */
+const mGroups = (q, row, head = (l) => '  ' + xf(K.x, l)) => {
+  const hits = mHit(q), out = []
+  for (const [label, items] of [['modes', hits.filter((m) => m.mode)], ['settings', hits.filter((m) => !m.mode)]]) {
+    if (!items.length) continue
+    if (out.length) out.push('')
+    out.push(head(label), ...items.map(row))
+  }
+  return out
+}
+const wrapW = (t, w) => { const out = []; let line = ''; for (const word of t.split(' ')) { if (line && (line + ' ' + word).length > w) { out.push(line); line = word } else line = line ? line + ' ' + word : word } return [...out, line] }
+const page = (rows, nav) => fill24([hdrBar(CV_), '', ...rows], mKeys(nav))
+
+const MENUS = [   // M2, M5 and M7 removed: not liked
+  {
+    id: 'M1', name: 'The search frame',
+    idea: 'Where we left it: the Save to search box. A frame with its name in the top edge, the input and a count, a divider, then the list in two groups.',
+    screen: (m) => {
+      const s = CV_, iw = W - 4, E = (t) => xf(EDGE, t), side = (r) => ' '.repeat(M) + E('│ ') + xpad(r, iw) + E(' │')
+      return page([
+        ' '.repeat(M) + E('╭─ ') + xf(s.mode.c, xB('Commands')) + E(' ' + '─'.repeat(W - 14) + '╮'),
+        side(xr(mInput(s, m.q, ''), xf(K.x, `${mHit(m.q).length}/${CMDF.length}`), iw)),
+        ' '.repeat(M) + E('├' + '─'.repeat(W - 2) + '┤'),
+        side(''), ...mGroups(m.q, (c) => cmdRow(c, m.q, c.name === m.sel, { w: iw })).map(side), side(''),
+        ' '.repeat(M) + E('╰' + '─'.repeat(W - 2) + '╯'),
+      ])
+    },
+  },
+  {
+    id: 'M3', name: 'Under a hatched title',
+    idea: 'The home band, cut down to one row: "Commands" and the count knocked out of a strip of ╱ in the mode\'s gradient. Below it, no frame at all: the input, then the list. The page belongs to home by its texture, not by a box.',
+    screen: (m) => {
+      const s = CV_, g = s.mode.g, lab = ` ${xf(K.fg, xB('Commands'))} `, cnt = ` ${xf(K.d, `${mHit(m.q).length}/${CMDF.length}`)} `
+      const band = ' '.repeat(M) + hatchAt(M, 1, 0, g) + lab + hatchAt(M + 1 + vis(lab), W - 3 - vis(lab) - vis(cnt), 0, g) + cnt + hatchAt(M + W - 2, 2, 0, g)
+      return page([band, '', mInput(s, m.q), '', ...mGroups(m.q, (c) => IN + cmdRow(c, m.q, c.name === m.sel), (l) => IN + '  ' + xf(K.x, l))])
+    },
+  },
+  {
+    id: 'M4', name: 'On the dotted surface',
+    idea: 'The home block, reused. A single tab, "/ commands", is pulled up out of the dotted panel, and the list sits in a clean rectangle cut out of the dots. The input stays below the block, exactly where the path field is on home, so the page looks like home with its contents swapped.',
+    screen: (m) => {
+      const s = CV_, tab = ` ${xf(s.mode.c, xB('/'))} ${xf(K.fg, xB('commands'))} `
+      const list = mGroups(m.q, (c) => cmdRow(c, m.q, c.name === m.sel, { w: 51, band: H.hl }))
+      const lines = list.map((l) => xpad(l, 51))
+      const h = Math.max(8, lines.length + 4)
+      return page([
+        ' '.repeat(M) + xf(P, '▄'.repeat(vis(tab))),
+        ' '.repeat(M) + xr(on(P, tab, vis(tab)), xf(K.x, `${mHit(m.q).length}/${CMDF.length}`) + ' ', W),
+        ...surface({ h, lines, pad: 2, padRows: 1, dot: d2dot(s) }),
+        '', mInput(s, m.q),
+      ])
+    },
+  },
+  {
+    id: 'M6', name: 'A spotlight',
+    idea: 'A small filled panel in the middle of an otherwise empty screen, like Raycast or Spotlight: the input on a darker inset at the top, the list below. Everything around it is quiet, so the menu is the only thing on screen.',
+    screen: (m) => {
+      const s = CV_, pw = 58, lead = ' '.repeat(Math.floor((N - pw) / 2)), row = (r, bg = P) => lead + on(bg, r, pw)
+      const list = mGroups(m.q, (c) => '  ' + cmdRow(c, m.q, c.name === m.sel, { w: pw - 4, band: H.hl }), (l) => '    ' + xf(K.x, l))
+      return page(['', '',
+        lead + xf(P, '▄'.repeat(pw)),
+        row(xr(mInput(s, m.q, '  '), xf(K.x, `${mHit(m.q).length}/${CMDF.length}`) + '  ', pw), H.inset),
+        row(''), ...list.map((r) => row(r)), row(''),
+        lead + xf(P, '▀'.repeat(pw)),
+      ])
+    },
+  },
+]
+
+/* ============================= 4 · THE COMMANDS MENU, ROUND TWO
+   The hatched title becomes the header bar every screen after home uses,
+   in the mode's colours. Under it, the menu mixes what you liked: M1's
+   frame, M4's tab (no dots), M6's filled panel with a left-aligned list. */
+/** The header bar, hatched: the mode and the folder knocked out of one row of ╱ in the mode's colours. */
+const hatchBar = (s) => {
+  const g = s.mode.g
+  const a = ` ${xf(s.mode.c, xB(s.mode.name))} `, b = ` ${xf(K.d, '~/Desktop')} `
+  const mid = W - 1 - vis(a) - vis(b) - 2   // the block's width, lined up with home's band
+  return ' '.repeat(M) + hatchAt(M, 1, 0, g) + a + hatchAt(M + 1 + vis(a), mid, 0, g) + b + hatchAt(M + W - 2, 2, 0, g)
+}
+const CM_ = { mode: MODES[1], typing: false }
+const MS2 = [
+  { q: '', sel: 'convert', label: 'convert · typed /', s: CV_ },
+  { q: 'co', sel: 'compress', label: 'convert · typed /co, then ↓', s: CV_ },
+  { q: '', sel: 'convert', label: 'compress · typed /', s: CM_ },
+]
+const page2 = (s, rows) => fill24([hatchBar(s), '', ...rows], mKeys())
+const count = (q) => xf(K.x, `${mHit(q).length}/${CMDF.length}`)
+/** A left-aligned list on a fill, the way M6 sets it. */
+const panelList = (q, sel, w, lead = '  ') => mGroups(q, (c) => lead + cmdRow(c, q, c.name === sel, { w: w - vis(lead) - 2, band: H.hl }), (l) => lead + '  ' + xf(K.x, l))
+/** M4's tab, without the dots: one tab pulled up out of a plain filled panel. */
+const tabTop = (tab, right = '', fill = P) => [' '.repeat(M) + xf(fill, '▄'.repeat(vis(tab))), ' '.repeat(M) + xr(on(fill, tab, vis(tab)), right ? right + ' ' : '', W)]
+const cmdTab = (s) => ` ${xf(s.mode.c, xB('/'))} ${xf(K.fg, xB('commands'))} `
+
+const MENUS2 = [
+  {
+    id: 'N1', name: 'The frame, under the hatched bar',
+    idea: 'M1 as you liked it, with the hatched header bar on top. The bar carries the colour; the frame stays grey and quiet, so the only colour on the page is the bar, the strip and the selected name.',
+    screen: (m) => {
+      const s = m.s, iw = W - 4, E = (t) => xf(EDGE, t), side = (r) => ' '.repeat(M) + E('│ ') + xpad(r, iw) + E(' │')
+      return page2(s, [
+        ' '.repeat(M) + E('╭─ ') + xf(K.fg, xB('Commands')) + E(' ' + '─'.repeat(W - 14) + '╮'),
+        side(xr(mInput(s, m.q, ''), count(m.q), iw)),
+        ' '.repeat(M) + E('├' + '─'.repeat(W - 2) + '┤'),
+        side(''), ...mGroups(m.q, (c) => cmdRow(c, m.q, c.name === m.sel, { w: iw })).map(side), side(''),
+        ' '.repeat(M) + E('╰' + '─'.repeat(W - 2) + '╯'),
+      ])
+    },
+  },
+  {
+    id: 'N2', name: 'A tab on a plain panel, the field below',
+    idea: 'M4 without the dots. "/ commands" is a tab pulled up out of a plain filled panel, exactly where home\'s mode tab sits, and the list is set left inside it. The field stays below the panel, where the path field is on home, so the page is home\'s layout with the drop surface swapped for the list.',
+    screen: (m) => {
+      const s = m.s, body = ['', ...panelList(m.q, m.sel, W), '']
+      while (body.length < 8) body.push('')
+      return page2(s, [...tabTop(cmdTab(s), count(m.q)), ...body.map((r) => ' '.repeat(M) + on(P, r, W)), '', mInput(s, m.q)])
+    },
+  },
+  {
+    id: 'N3', name: 'A tab on a panel, the field inside',
+    idea: 'N2 with M6\'s darker input strip moved into the top of the panel, so the tab, the field and the list are one object. Nothing sits below it.',
+    screen: (m) => {
+      const s = m.s, body = ['', ...panelList(m.q, m.sel, W), '']
+      while (body.length < 7) body.push('')
+      return page2(s, [...tabTop(cmdTab(s), '', H.inset),   // the tab shares the input strip's fill
+        ' '.repeat(M) + on(H.inset, xr(mInput(s, m.q, '  '), count(m.q) + '  ', W), W),
+        ...body.map((r) => ' '.repeat(M) + on(P, r, W))])
+    },
+  },
+  {
+    id: 'N4', name: 'M6, full width',
+    idea: 'M6\'s panel, widened to the home block\'s width and lined up with it on the left: soft half-cell top and bottom, the input on a darker strip, the list set left. No tab, no frame, just one filled shape.',
+    screen: (m) => {
+      const s = m.s
+      return page2(s, [
+        ' '.repeat(M) + xf(P, '▄'.repeat(W)),
+        ' '.repeat(M) + on(H.inset, xr(mInput(s, m.q, '  '), count(m.q) + '  ', W), W),
+        ...['', ...panelList(m.q, m.sel, W), ''].map((r) => ' '.repeat(M) + on(P, r, W)),
+        ' '.repeat(M) + xf(P, '▀'.repeat(W)),
+      ])
+    },
+  },
+  {
+    id: 'N5', name: 'The frame, filled',
+    idea: 'M1\'s frame and M6\'s fill together: the rounded line and the title in its top edge, a filled inside, and the input on the darker strip in place of the divider. The frame gives the edge; the fill gives the weight.',
+    screen: (m) => {
+      const s = m.s, iw = W - 2, E = (t) => xb(P, xf(EDGE, t))
+      const side = (r, bg = P) => ' '.repeat(M) + E('│') + on(bg, r, iw) + E('│')
+      return page2(s, [
+        ' '.repeat(M) + E('╭─ ') + xb(P, xf(K.fg, xB('Commands'))) + E(' ' + '─'.repeat(W - 14) + '╮'),
+        side(xr(mInput(s, m.q, '  '), count(m.q) + '  ', iw), H.inset),
+        side(''), ...panelList(m.q, m.sel, iw).map((r) => side(r)), side(''),
+        ' '.repeat(M) + E('╰' + '─'.repeat(W - 2) + '╯'),
+      ])
+    },
+  },
+  {
+    id: 'N6', name: 'Commands as a fourth tab',
+    idea: 'Home\'s whole tab row, with "/ commands" added at the end and pulled up as the active tab. The three modes stay in the row, so the page reads as one more tab of home rather than a different place. (The digits type into the field here, so the modes are chosen from the list, not the row.) The list is set left in a plain panel and the field is below, as on home.',
+    screen: (m) => {
+      const s = m.s
+      let top = '', row = ''
+      for (const mo of MODES) { const lab = ` ${xf(K.x, String(mo.n))} ${xf(K.d, mo.name)} `; top += ' '.repeat(vis(lab) + 1); row += lab + ' ' }
+      const tab = cmdTab(s)
+      top += xf(P, '▄'.repeat(vis(tab))); row += on(P, tab, vis(tab))
+      const body = ['', ...panelList(m.q, m.sel, W), '']
+      while (body.length < 8) body.push('')
+      return page2(s, [' '.repeat(M) + top, ' '.repeat(M) + xr(row, count(m.q) + ' ', W), ...body.map((r) => ' '.repeat(M) + on(P, r, W)), '', mInput(s, m.q)])
+    },
+  },
+]
+
+/* ============================ 4 · THE HATCHED HEADER BAR, EIGHT WAYS
+   One row at the top of every screen after home. Each way is shown in all
+   three modes, then on the Format screen so you see it in use. */
+const PDF_ = { mode: MODES[2], typing: false }
+const lead2 = ' '.repeat(M)
+/** Hatching in any colour function, cell by cell, at absolute columns. */
+const hatchFn = (c0, n, col, glyph = (i) => '╱') => { let o = ''; for (let i = 0; i < n; i++) { const g = glyph(c0 + i); o += g === ' ' ? ' ' : xf(col(c0 + i), g) } return o }
+const forge = ` ${xf(K.fg, xB('FORGE'))} `
+const modeLab = (s) => ` ${xf(s.mode.c, xB(s.mode.name))} `
+const folder = ` ${xf(K.d, '~/Desktop')} `
+/** The steps each mode walks through, for the bar that doubles as a track. */
+const STEPS = { convert: ['Format', 'Quality', 'Save to', 'Name'], compress: ['Method', 'Quality', 'Save to', 'Name'], pdf: ['Action', 'Pages', 'Save to'] }
+/** Lay out [left labels] … [right label] over a hatch, hatching every gap. */
+const hatchRow = (parts, right, col, glyph) => {
+  let o = lead2, c = M
+  const gap = (n) => { o += hatchFn(c, n, col, glyph); c += n }
+  gap(1)
+  for (const p of parts) { o += p; c += vis(p); gap(1) }
+  const r = vis(right), fill = M + W - 2 - r - c
+  gap(fill); o += right; c += r; gap(2)
+  return o
+}
+const grad = (s) => (c) => gcol(c, N + 8, s.mode.g)
+
+const BARS = [
+  {
+    id: 'B1', name: 'Full width, in the gradient',
+    idea: 'Round two\'s bar: the mode and the folder knocked out of a full row of hatching that runs through the mode\'s two colours.',
+    bar: (s) => hatchRow([modeLab(s)], folder, grad(s)),
+  },
+  {
+    id: 'B2', name: 'Full width, one colour',
+    idea: 'The same row in the mode\'s single colour, dimmed, so convert reads as plainly blue and compress as plainly green. Calmer than the gradient; the mode name is the only bright thing.',
+    bar: (s) => hatchRow([modeLab(s)], folder, () => X.mix(K.bg, s.mode.c, 0.55)),
+  },
+  {
+    id: 'B3', name: 'Fading to the right',
+    idea: 'Bright where the mode is, fading almost to nothing by the folder. The colour gathers on the left, where you read first, and the right end stays quiet.',
+    bar: (s) => hatchRow([modeLab(s)], folder, (c) => X.mix(s.mode.c, K.bg, Math.min(0.88, (c - M) / (W * 0.85)))),
+  },
+  {
+    id: 'B4', name: 'A short band on the left',
+    idea: 'The hatching only runs as far as a short band behind the mode, then stops. The folder sits on plain background at the far right. Half the texture, the same signal.',
+    bar: (s) => {
+      const left = lead2 + hatchFn(M, 1, grad(s)) + modeLab(s)
+      const c = vis(left)
+      return xr(left + hatchFn(c, 16, grad(s)), folder.trimStart(), M + W)
+    },
+  },
+  {
+    id: 'B5', name: 'The mode as a filled chip',
+    idea: 'The hatching runs the whole row, but the mode is a solid chip in its own colour set into it. The chip is what changes when the mode does; the hatching is just texture.',
+    bar: (s) => hatchRow([' ' + xb(s.mode.c, xf(K.ink, xB(` ${s.mode.name} `))) + ' '], folder, (c) => X.mix(K.bg, gcol(c, N + 8, s.mode.g), 0.6)),
+  },
+  {
+    id: 'B6', name: 'Hatching only round the mode',
+    idea: 'Plain text for the folder, and a short run of hatching either side of the mode name, like brackets. The least texture of the set; all of it says which mode.',
+    bar: (s) => xr(lead2 + hatchFn(M, 3, () => s.mode.c) + modeLab(s) + hatchFn(M + 3 + vis(modeLab(s)), 3, () => s.mode.c), folder.trimStart(), M + W),
+  },
+  {
+    id: 'B7', name: 'Sparse hatching',
+    idea: 'B1 with every other cell left empty, so the hatching reads as a light texture rather than a solid strip. Closer in weight to the dots on home.',
+    bar: (s) => hatchRow([modeLab(s)], folder, grad(s), (c) => (c % 2 ? ' ' : '╱')),
+  },
+  {
+    id: 'B8', name: 'The hatching as a step track',
+    idea: 'The bar shows where you are in the flow: the steps follow the mode, and the hatching fills up to the step you are on. Not progress of the conversion (that is never shown), just how many questions are left.',
+    bar: (s, at = 0) => {
+      const steps = STEPS[s.mode.name]
+      let o = lead2 + hatchFn(M, 1, grad(s)) + modeLab(s), c = vis(o)
+      steps.forEach((st, i) => {
+        const lab = ` ${i < at ? xf(K.d, st) : i === at ? xf(K.fg, xB(st)) : xf(K.x, st)} `
+        o += (i <= at ? hatchFn(c, 2, grad(s)) : '  ') + lab; c += 2 + vis(lab)
+      })
+      return xr(o, folder.trimStart(), M + W)
+    },
+    at: { convert: 0, compress: 1, pdf: 2 },
+  },
+]
+/** The Format screen from the flow, with the bar swapped in. */
+const fmtWith = (bar) => {
+  const s = CV_
+  const rows = fill24([bar, '', ...fcard(s), '', qTitle(s, 'Convert to', '1/6'), '',
+    ...pick(s, FMTS.map((f, i) => [f, i === 0 ? `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}` : '']), 0)],
+  stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']]))
+  rows[rows.length - 1] += '\x1b[?25l'
+  return rows
+}
+
 /* ------------------------------------------------------------- render */
 const frame = (el, rows, cursor, lines) => xtermFrame(el, rows, cursor, N, lines)
+for (const b of BARS) {
+  const g = document.getElementById('bars-grid')
+  const fg = document.createElement('figure')
+  fg.innerHTML = `<div class="vt"><span class="id">${b.id}</span><span class="name">${b.name}</span>${b.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    <div class="state">convert · compress · pdf</div><div class="term"><div class="xt"></div></div>
+    <div class="state">on the format screen</div><div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>
+    <p class="idea">${b.idea}</p>`
+  g.appendChild(fg)
+  const [a, z] = fg.querySelectorAll('.xt')
+  const strip = ['', b.bar(CV_, b.at?.convert), '', b.bar(CM_, b.at?.compress), '', b.bar(PDF_, b.at?.pdf), '']
+  strip[strip.length - 1] += '\x1b[?25l'
+  frame(a, strip, [7, 1], 7)
+  frame(z, fmtWith(b.bar(CV_, b.at?.convert)), [24, 80])
+}
+{
+  const g = document.getElementById('bar-grid')
+  const fg = document.createElement('figure')
+  fg.className = 'wide'
+  fg.innerHTML = `<div class="vt"><span class="id">BAR</span><span class="name">The hatched header bar, in each mode</span></div><div class="term"><div class="xt"></div></div>
+    <p class="idea">One row, the width of the screen. The mode in its own colour and the folder are knocked out of the hatching; the hatching carries the mode's colours, so the bar says which mode you are in from across the room. It replaces today's filled header bar on every screen after home.</p>`
+  g.appendChild(fg)
+  const rows = ['', hatchBar(CV_), '', hatchBar(CM_), '', hatchBar({ mode: MODES[2] }), '']
+  rows[rows.length - 1] += '\x1b[?25l'
+  frame(fg.querySelector('.xt'), rows, [7, 1], 7)
+}
+for (const v of MENUS2) {
+  const g = document.getElementById('menu2-grid')
+  const fg = document.createElement('figure')
+  fg.innerHTML = `<div class="vt"><span class="id">${v.id}</span><span class="name">${v.name}</span>${v.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${MS2.map((p) => `<div class="state">${p.label}</div><div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>`).join('')}
+    <p class="idea">${v.idea}</p>`
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  MS2.forEach((p, i) => { const rows = v.screen(p); frame(els[i], rows, cursorAt(rows, /› \/\S*/, true)) })
+}
+for (const v of MENUS) {
+  const g = document.getElementById('menu-grid')
+  const fg = document.createElement('figure')
+  fg.innerHTML = `<div class="vt"><span class="id">${v.id}</span><span class="name">${v.name}</span>${v.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${MS.map((p) => `<div class="state">${p.label}</div><div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>`).join('')}
+    <p class="idea">${v.idea}</p>`
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  MS.forEach((p, i) => { const rows = v.screen(p); frame(els[i], rows, cursorAt(rows, /› \/\S*/, true)) })
+}
+{
+  const map = document.getElementById('flow-map')
+  const yes = (b, t) => `<span class="${b ? 'k-yes' : 'k-no'}">${t}</span>`
+  map.innerHTML = FLOW.filter((f) => !f.branch).map((f) => `<a href="#palette" data-n="${f.n}" class="step"><b>${f.n}</b> ${f.name}<i>${yes(f.slash, '/')}${yes(f.digits, '1–3')}</i></a>`).join('<span class="ar">→</span>')
+    + `<div class="branch">esc on 3 → <a class="step" data-n="10"><b>10</b> File waiting<i>${yes(true, '/')}${yes(true, '1–3')}</i></a> · ↵ on 9 → back to <b>1</b></div>`
+  const g = document.getElementById('flow-grid')
+  for (const f of FLOW) {
+    const fg = document.createElement('figure')
+    fg.id = `flow-${f.n}`
+    fg.innerHTML = `<div class="vt"><span class="id">${f.n}</span><span class="name">${f.name}</span><span class="after">${yes(f.slash, '/')} ${yes(f.digits, '1–3')}</span></div>
+      ${f.from ? `<div class="state">${f.from}</div>` : '<div class="state">launch</div>'}<div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>
+      <p class="idea">${f.note}</p>`
+    g.appendChild(fg)
+    const rows = f.rows()
+    if (!f.cursor) rows[rows.length - 1] += '\x1b[?25l'   // nothing to type on this screen, so no caret
+    frame(fg.querySelector('.xt'), rows, f.cursor ? cursorAt(rows, f.cursor, !!f.after) : [24, 80])
+  }
+  map.querySelectorAll('.step').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); document.getElementById(`flow-${a.dataset.n}`).scrollIntoView({ behavior: 'smooth', block: 'start' }) }))
+}
+for (const v of PAGES) {
+  const g = document.getElementById('cmdpage-grid')
+  const fg = document.createElement('figure')
+  fg.innerHTML = `<div class="vt"><span class="id">${v.id}</span><span class="name">${v.name}</span>${v.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${PS.map((p) => `<div class="state">${p.label}</div><div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>`).join('')}
+    <p class="idea">${v.idea}</p>`
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  PS.forEach((p, i) => { const rows = v.screen(p); frame(els[i], rows, cursorAt(rows, /› \/\S*/, true)) })
+}
+{
+  const g = document.getElementById('final-grid')
+  const all = [...ST, { ...ST[1], mode: MODES[2], label: 'pressed 3, typing' }]
+  for (const s of all) {
+    const fg = document.createElement('figure')
+    fg.innerHTML = `<div class="state">${s.label}</div><div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>`
+    g.appendChild(fg)
+    const rows = homeScreen(FINAL, s)
+    frame(fg.querySelector('.xt'), rows, s.typing ? cursorAt(rows, TYPED, true) : cursorAt(rows, /or type a path/))
+  }
+}
+for (const v of VERS) {
+  const g = document.getElementById('ver-grid')
+  const fg = document.createElement('figure')
+  const states = [ST[0], ST[2]]
+  fg.innerHTML = `<div class="vt"><span class="id">${v.id}</span><span class="name">${v.name}</span>${v.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${states.map((s) => `<div class="state">${s.label}</div><div class="term"><div class="xt"></div></div>`).join('')}
+    <p class="idea">${v.idea}</p>`
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  const lines = Math.max(...states.map((s) => verScreen(v, s).length))
+  states.forEach((s, i) => frame(els[i], verScreen(v, s), [lines, 1], lines))
+}
+for (const h of HEADS) {
+  const g = document.getElementById('home2-grid')
+  const fg = document.createElement('figure')
+  const states = [ST[0], ST[1]]
+  fg.innerHTML = `<div class="vt"><span class="id">${h.id}</span><span class="name">${h.name}</span>${h.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${states.map((s) => `<div class="state">${s.label}</div><div class="term"><div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div><div class="xt"></div></div>`).join('')}
+    <p class="idea">${h.idea}</p>`
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  states.forEach((s, i) => {
+    const rows = homeScreen(h, s)
+    frame(els[i], rows, s.typing ? cursorAt(rows, TYPED, true) : cursorAt(rows, /or type a path/))
+  })
+}
 for (const h of HOMES) {
   const g = document.getElementById('home-grid')
   const fg = document.createElement('figure')
@@ -1508,69 +2337,21 @@ for (const h of HOMES) {
   const rows = fill24(h.screen())
   frame(fg.querySelector('.xt'), rows, cursorAt(rows, /Drop a file, or (type a path|search)|(?<=› )or type a path/))
 }
-for (const z of ZONES2) {
+for (const d of DROPS) {
   const g = document.getElementById('drop-grid')
   const fg = document.createElement('figure')
-  const states = [false, true].map((t) => ['', ...z.rows(t), ''])
+  const states = ST.map((s) => screen(d, s))
   const lines = Math.max(...states.map((r) => r.length))
-  fg.innerHTML = `<div class="vt"><span class="id">${z.id}</span><span class="name">${z.name}</span>${z.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
-    <div class="state">empty</div><div class="term"><div class="xt"></div></div>
-    <div class="state">typing ~/Desk</div><div class="term"><div class="xt"></div></div>
-    <p class="idea">${z.idea}</p>`
+  fg.innerHTML = `<div class="vt"><span class="id">${d.id}</span><span class="name">${d.name}</span>${d.pick ? '<span class="pick">MY PICK</span>' : ''}</div>
+    ${ST.map((s) => `<div class="state">${s.label}</div><div class="term"><div class="xt"></div></div>`).join('')}
+    <p class="idea">${d.idea}</p>`
   g.appendChild(fg)
-  const [a, b] = fg.querySelectorAll('.xt')
-  frame(a, states[0], cursorAt(states[0], z.ph ?? ZPH), lines)
-  frame(b, states[1], cursorAt(states[1], TYPED, true), lines)
+  fg.querySelectorAll('.xt').forEach((el, i) => frame(el, states[i], ST[i].typing ? cursorAt(states[i], TYPED, true) : cursorAt(states[i], /or type a path/), lines))
 }
+if (typeof module !== 'undefined') module.exports = { HOMES, DROPS, strip, vis }
 }
 
 /* ======================================================= 3 · COMMANDS */
-const CMDS = [['convert', "change a file's format"], ['compress', 'make a file smaller'], ['pdf', 'page operations on a PDF'], ['theme', 'switch between light and dark'], ['help', 'list these commands']]
-fig('palette-grid', { id: 'TODAY', today: true, name: 'A plain list above the prompt',
-  html: termRaw(todayLines('slash', 10, 99), '80 columns'),
-  cons: ['Modes and app settings are mixed together', 'Nothing says which commands need a file'] })
-fig('palette-grid', { id: 'P1', name: 'Modes as coloured chips, settings below', pick: true,
-  html: term(80, [modeLine(80), blank(),
-    line([S('  '), S(' ↔ convert ', C.ink, { bg: C.m, b: true }), S('   '), S(' ⇣ compress ', C.mk, { bg: '#182c1e', b: true }), S('   '), S(' ▣ pdf ', C.mp, { bg: '#361c16', b: true })]),
-    line([S("  change a file's format", C.d), S('   '), S('make a file smaller', C.d), S('   '), S('pages', C.d)]),
-    blank(),
-    line([S('  /theme', C.f), S('   light or dark', C.d), S('       '), S('/help', C.f), S('   all commands', C.d)]),
-    blank(), line([S(' '), S('›', C.m), S(' /'), S('▏', C.f)], C.sel), blank(),
-    ...keyRow([['←→','choose'],['↵','switch'],['esc','close']], 'cap', 2, 80)], '80 columns'),
-  idea: 'The three modes are drawn in their own colours, the same colours the screen turns once you pick one. Settings sit quietly underneath.',
-  pros: ['Teaches the mode colours before you need them', 'Separates "what to do" from "how the app looks"', 'Builds on the mode-colour decision'],
-  cons: ['←→ to choose a mode, ↑↓ for settings: two directions', 'More layout code than a list'] })
-fig('palette-grid', { id: 'P2', name: 'A card with match highlighting',
-  html: term(80, (() => { const W = 56, inner = W - 2
-    const row = ([n, d], sel, hl) => line([S('│', C.x), ...pad([S(sel ? ' ❯ ' : '   ', C.m, sel ? { bg: C.sel } : {}), S('/', C.d, sel ? { bg: C.sel } : {}), S(n.slice(0, hl), C.m, { b: true, ...(sel ? { bg: C.sel } : {}) }), S(n.slice(hl).padEnd(10), C.f, sel ? { bg: C.sel, b: true } : {}), S(d, C.d, sel ? { bg: C.sel } : {})], inner, sel ? { bg: C.sel } : {}), S('│', C.x)])
-    return [modeLine(80), blank(), line([S('╭─ ', C.x), S('commands', C.m, { b: true }), S(' ' + '─'.repeat(inner - 11) + '╮', C.x)]),
-      row(CMDS[0], true, 2), row(CMDS[1], false, 2),
-      line([S('╰' + '─'.repeat(inner) + '╯', C.x)]),
-      line([S(' '), S('›', C.m), S(' /co'), S('▏', C.f)], C.sel), blank(), ...keyRow([['↑↓','choose'],['↵','run'],['esc','close']], 'cap', 2, 80)] })(), '80 columns · after typing /co'),
-  idea: 'The list narrows as you type, and the matching letters light up, the way fzf and Raycast do it.',
-  pros: ['Fast once you know the commands', 'Scales if commands are added'],
-  cons: ['With five commands, filtering barely matters', 'Another bordered box on screen'] })
-fig('palette-grid', { id: 'P3', name: 'Inline completion',
-  html: term(80, [modeLine(80), blank(), line([S(' '), S('›', C.m), S(' /co'), S('▏', C.f), S('nvert', C.x)], C.sel),
-    line([S('   ', C.d), S("change a file's format", C.d), S('     tab: ', C.x), S('/compress', C.d)]), blank(),
-    ...keyRow([['→','accept'],['tab','next match'],['esc','close']], 'cap', 2, 80)], '80 columns · after typing /co'),
-  idea: 'No list at all: the rest of the best match is written in faint text after what you typed, like fish shell. → accepts it.',
-  pros: ['Almost no chrome', 'Fast for people who already know the commands'],
-  cons: ['Hides the other commands, so it is hard to discover what exists', 'Not obvious to newcomers'] })
-fig('palette-grid', { id: 'P4', name: 'Today, grouped',
-  html: term(80, [modeLine(80), blank(),
-    line([S('  MODES', C.x)]),
-    line([S('❯ /convert   ', C.m, { bg: C.sel, b: true }), S("change a file's format        ", C.d, { bg: C.sel })]),
-    line([S('  /compress  '), S('make a file smaller', C.d)]),
-    line([S('  /pdf       '), S('page operations on a PDF', C.d)]),
-    line([S('  APP', C.x)]),
-    line([S('  /theme     '), S('switch between light and dark', C.d)]),
-    line([S('  /help      '), S('list these commands', C.d)]),
-    line([S(' '), S('›', C.m), S(' /'), S('▏', C.f)], C.sel), blank(), ...keyRow([['↑↓','choose'],['↵','run'],['esc','close']], 'cap', 2, 80)], '80 columns'),
-  idea: 'Today\'s list with two small headings.',
-  pros: ['The smallest change', 'Keeps ↑↓ everywhere'],
-  cons: ['Still a plain list'] })
-
 /* ======================================================= 4 · WORKING */
 const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 const sp = () => S('⠋', C.m, { cls: 'spin', b: true })

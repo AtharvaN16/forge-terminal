@@ -168,7 +168,7 @@ describe('esc at the idle prompt', () => {
     app.stdin.write(ENTER)
     await settle(300)
     expect(app.lastFrame() ?? '').not.toContain('Convert PDF to')
-    expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
+    expect(app.lastFrame() ?? '').toContain('Drop a file here')
   }, 20_000)
 })
 
@@ -187,7 +187,7 @@ describe('ctrl-n starts a new session', () => {
     app.stdin.write(CTRL_N)
     await settle()
 
-    expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
+    expect(app.lastFrame() ?? '').toContain('Drop a file here')
   })
 
   it('leaves nothing staged behind, so the next drop starts completely fresh', async () => {

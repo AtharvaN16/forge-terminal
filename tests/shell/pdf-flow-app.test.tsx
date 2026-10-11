@@ -165,7 +165,7 @@ describe('/pdf end to end through App', () => {
 
     const frame = lastFrame() ?? ''
     // Back at the ordinary prompt: the stage cleared.
-    expect(frame).toContain('drop a file or type a path')
+    expect(frame).toContain('Drop a file here')
 
     const written = (await readdir(dir)).filter((f) => f !== 'doc.pdf')
     expect(written).toEqual(['doc-rotated.pdf'])
@@ -231,7 +231,7 @@ describe('esc on the target picker for an image', () => {
     await settle(300)
 
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('drop a file or type a path')
+    expect(frame).toContain('Drop a file here')
     expect(frame).not.toContain('Convert JPEG to')
 
     // The stronger proof: with `backToPromptKeepingStage` instead of
@@ -244,7 +244,7 @@ describe('esc on the target picker for an image', () => {
     await settle(300)
     const afterConvert = lastFrame() ?? ''
     expect(afterConvert).not.toContain('Convert JPEG to')
-    expect(afterConvert).toContain('drop a file or type a path')
+    expect(afterConvert).toContain('Drop a file here')
   }, 20_000)
 })
 
@@ -318,7 +318,7 @@ describe('/pdf refuses to overwrite without asking', () => {
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('rotated 90')
-    expect(frame).toContain('drop a file or type a path') // back at idle, stage cleared
+    expect(frame).toContain('Drop a file here') // back at idle, stage cleared
   }, 20_000)
 })
 

@@ -134,8 +134,9 @@ export function useFrameOrigin(
      * `entry.verify` is false for a query that cannot have raced (see
      * `PendingQuery`), and its reply is trusted outright. Otherwise: a reply
      * consistent with the paint having caught up satisfies `position.row -
-     * originRef.current === entry.height` (the frame's top has not moved,
-     * only its height did — the case this hook can retry safely). A reply
+     * originRef.current === entry.height` (one less for a full-screen frame —
+     * the frame's top has not moved, only its height did — the case this
+     * hook can retry safely). A reply
      * that fails this is not trustworthy either way — the paint may not have
      * landed, or the frame moved for a reason this hook does not model — so
      * it is dropped and a fresh, verified query goes out against the
@@ -144,11 +145,10 @@ export function useFrameOrigin(
      * against and is always trusted: nothing can be mid-throttle before the
      * first paint has ever happened.
      */
-    if (
-      entry.verify &&
-      originRef.current !== null &&
-      position.row - originRef.current !== entry.height
-    ) {
+    // Read at the reply, as Ink reads it at the paint: a frame at least this
+    // tall leaves the cursor on its own last line (`frameTopFromCursor`).
+    const top = frameTopFromCursor(position.row, entry.height, stdout?.rows)
+    if (entry.verify && originRef.current !== null && top !== originRef.current) {
       if (pending.current.length < MAX_PENDING_QUERIES) {
         const node = rootRef.current
         if (node) {
@@ -160,9 +160,8 @@ export function useFrameOrigin(
       return
     }
 
-    const next = frameTopFromCursor(position.row, entry.height)
-    originRef.current = next
-    setOrigin(next)
+    originRef.current = top
+    setOrigin(top)
   })
 
   // No dependency array: the frame's height is only knowable after a render,

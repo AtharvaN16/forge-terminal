@@ -5,6 +5,7 @@ import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
+import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { SYMBOLS } from '../../src/shell/theme.js'
 import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
 
@@ -242,9 +243,11 @@ describe('knowing which mode you are in', () => {
   }, 20_000)
 
   it('names the mode before any file is dropped', () => {
+    // The home screen says it with the drop zone's kinds line, which is the
+    // mode's own.
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     expect(render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? '').toContain(
-      'current mode: convert',
+      MODE_KINDS.convert,
     )
   })
 
@@ -270,8 +273,8 @@ describe('knowing which mode you are in', () => {
     stdin.write(ENTER)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).not.toContain('current mode: compress')
-    expect(frame).toContain('current mode: convert')
+    expect(frame).not.toContain(MODE_KINDS.compress)
+    expect(frame).toContain(MODE_KINDS.convert)
   }, 20_000)
 })
 

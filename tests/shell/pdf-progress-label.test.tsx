@@ -110,10 +110,10 @@ describe('a running split names itself correctly, not RENDERING', () => {
 
     const finalFrame = await waitFor(
       lastFrame,
-      (f) => f.includes('drop a file or type a path'),
+      (f) => f.includes('Drop a file here'),
       25_000, // the split itself has to finish here; the suite runs 16 files at once
     )
-    expect(finalFrame).toContain('drop a file or type a path')
+    expect(finalFrame).toContain('Drop a file here')
 
     const written = (await readdir(dir)).filter((f) => f !== 'doc.pdf')
     expect(written).toHaveLength(300)

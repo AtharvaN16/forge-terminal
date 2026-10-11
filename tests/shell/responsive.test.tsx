@@ -127,13 +127,13 @@ describe('colour', () => {
 
   it('emits no ANSI at all when NO_COLOR is set', async () => {
     const frame = await frameWith({ NO_COLOR: '1' })
-    expect(frame).toContain('drop a file')
+    expect(frame).toContain('Drop a file')
     expect(frame).not.toMatch(ANSI)
   })
 
   it('still emits colour when NO_COLOR is not set', async () => {
     const frame = await frameWith({})
-    expect(frame).toContain('drop a file')
+    expect(frame).toContain('Drop a file')
     expect(frame).toMatch(ANSI)
   })
 })

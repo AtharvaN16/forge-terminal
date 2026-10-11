@@ -119,6 +119,6 @@ describe('esc at the prompt', () => {
     app.stdin.write(ENTER)
     await settle(300)
     expect(app.lastFrame() ?? '').not.toContain('Convert PDF to')
-    expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
+    expect(app.lastFrame() ?? '').toContain('Drop a file here')
   }, 20_000)
 })

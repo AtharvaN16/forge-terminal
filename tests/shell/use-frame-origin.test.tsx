@@ -60,6 +60,28 @@ describe('useFrameOrigin', () => {
     app.unmount()
   })
 
+  it('reads a frame as tall as the terminal with the cursor on its last line', async () => {
+    const app = render(<Harness revision={0} lines={23} />)
+    // A 24-line frame in a 24-row terminal: Ink drops the trailing newline,
+    // so the cursor ends on row 23, the frame's own last line, not past it.
+    Object.defineProperty(app.stdout, 'rows', { value: 24, configurable: true })
+    await act(async () => {
+      reportHandlers[0]?.({ row: 23, col: 0 })
+    })
+    expect(app.lastFrame()).toContain('origin=0')
+
+    // And a later verified reply for the same full-screen frame is trusted,
+    // not mistaken for a race and re-queried.
+    app.rerender(<Harness revision={1} lines={23} />)
+    writes.length = 0
+    await act(async () => {
+      reportHandlers[0]?.({ row: 23, col: 0 })
+    })
+    expect(writes.filter((w) => w.includes('[6n'))).toHaveLength(0)
+    expect(app.lastFrame()).toContain('origin=0')
+    app.unmount()
+  })
+
   it('recalibrates when the revision changes', () => {
     const app = render(<Harness revision={0} lines={2} />)
     reportHandlers[0]?.({ row: 10, col: 0 })

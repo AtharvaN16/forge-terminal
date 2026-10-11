@@ -2,6 +2,7 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
+import { MODE_KINDS } from '../../src/shell/home-art.js'
 
 const ENTER = String.fromCharCode(13)
 const BACKSPACE = String.fromCharCode(127)
@@ -90,7 +91,7 @@ describe('the palette in the prompt', () => {
     stdin.write(ENTER)
     await settle(250)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('current mode: pdf')
-    expect(frame).toContain('drop a file or type a path')
+    expect(frame).toContain(MODE_KINDS.pdf)
+    expect(frame).toContain('Drop a file here')
   })
 })

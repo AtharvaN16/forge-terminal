@@ -81,7 +81,15 @@ export function containsPoint(rect: Rect, point: Point): boolean {
  * so the frame's first line is `frameHeight` rows above it. Measured against
  * Ink 7.1.1; a version that parks the cursor elsewhere breaks this and the
  * calibration test in `use-frame-origin.test.tsx` is what will say so.
+ *
+ * The exception is a frame at least as tall as the terminal (`viewportRows`),
+ * such as the home screen: Ink writes it without the trailing newline, so the
+ * cursor stays on the frame's last line.
  */
-export function frameTopFromCursor(cursorRow: number, frameHeight: number): number {
-  return cursorRow - frameHeight
+export function frameTopFromCursor(
+  cursorRow: number,
+  frameHeight: number,
+  viewportRows = Number.POSITIVE_INFINITY,
+): number {
+  return frameHeight >= viewportRows ? cursorRow - frameHeight + 1 : cursorRow - frameHeight
 }

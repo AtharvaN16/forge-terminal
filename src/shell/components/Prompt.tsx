@@ -1,4 +1,4 @@
-import { Box, type DOMElement, Text } from 'ink'
+import { Box, type DOMElement, type Key, Text } from 'ink'
 import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { unescapePath } from '../../utils/unescape-path.js'
@@ -107,9 +107,17 @@ interface PromptProps {
   /**
    * `drop` is the three-line target you drag a file onto; `field` is a filled
    * single line for a short answer such as a filename. `plain` is the
-   * unfilled fallback used in the compact band.
+   * unfilled fallback used in the compact band. `home` is the home screen's
+   * field: one unfilled line, four columns in, under the drop zone.
    */
-  variant: 'drop' | 'field' | 'plain'
+  variant: 'drop' | 'field' | 'plain' | 'home'
+  /**
+   * Offered every key before the field acts on it, with the text as it is
+   * right now; returning true consumes the key. How the home screen takes
+   * `1`–`3` on an empty field, and Tab and the arrows for its completions,
+   * without the field typing them.
+   */
+  intercept?: (input: string, key: Key, value: string) => boolean
   /**
    * Skips this component's own `unescapePath` call, handing `onSubmit` the
    * buffer exactly as typed or pasted.
@@ -191,6 +199,7 @@ export function Prompt({
   width,
   rawOnSubmit = false,
   disableSubmit = false,
+  intercept,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -307,6 +316,8 @@ export function Prompt({
 
   useKeys(
     (input, key) => {
+      if (intercept?.(input, key, valueRef.current)) return
+
       /**
        * Escape clears the field rather than acting as a second "back" key
        * alongside whatever the owning step already does with it: with text
@@ -649,7 +660,7 @@ export function Prompt({
    * 0. Both the click inset below and the continuation-row math in `onClick`
    * need this number, so it is computed once.
    */
-  const markerWidth = variant === 'plain' ? 4 : 2
+  const markerWidth = variant === 'home' ? 6 : variant === 'plain' ? 4 : 2
 
   useClickTarget({
     id: 'prompt-line',
@@ -794,6 +805,32 @@ export function Prompt({
    * which is the right outcome either way.
    */
   const bg = palette.selectionBg === '' ? undefined : palette.selectionBg
+
+  if (variant === 'home') {
+    // The caret sits on the placeholder's first letter, not in front of it,
+    // so the words start right after the marker whether or not the field is
+    // focused — where the terminal's own cursor would be.
+    const [first = ' ', ...rest] = Array.from(placeholder)
+    return (
+      <Box ref={lineRef} width={width}>
+        <Text wrap="wrap">
+          <Text>{'    '}</Text>
+          <Text color={colourProp(palette.accent)} bold>
+            {'›'}
+          </Text>
+          <Text> </Text>
+          {value || span ? (
+            line
+          ) : (
+            <Text color={colourProp(palette.border)}>
+              {isActive ? caretGlyph(first) : first}
+              {rest.join('')}
+            </Text>
+          )}
+        </Text>
+      </Box>
+    )
+  }
 
   if (!bg || variant === 'plain') {
     // No colour: there is no fill to draw, so the prompt is just its line.

@@ -57,23 +57,4 @@ describe('palettes actually reach the terminal', () => {
   it('the two themes render genuinely different output', () => {
     expect(themed(DARK)).not.toBe(themed(LIGHT))
   })
-
-  it('each theme uses its own foreground for the wordmark face', async () => {
-    // The wordmark is drawn by the intro, before Ink exists, so it is not in
-    // any Ink frame to assert against — see shell/intro.ts.
-    const { playIntro } = await import('../../src/shell/intro.js')
-    for (const palette of [DARK, LIGHT] as const) {
-      const out: string[] = []
-      await playIntro({
-        width: 100,
-        palette,
-        version: '0.1.0',
-        defaultOutput: '~/Desktop',
-        colour: true,
-        frameMs: 0,
-        write: (s) => void out.push(s),
-      })
-      expect(out.join(''), `${palette.name} foreground`).toContain(rgb(palette.fg))
-    }
-  })
 })

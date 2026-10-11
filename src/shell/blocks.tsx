@@ -4,12 +4,11 @@ import type { ForgeError } from '../core/errors.js'
 import type { Result, SourceInfo } from '../core/types.js'
 import { formatBytes, percentChange } from '../core/units.js'
 import { displayPath } from '../utils/display-path.js'
-import { Banner } from './components/Banner.js'
 import { FileCard } from './components/FileCard.js'
 import { ReceiptCard } from './components/ReceiptCard.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { useTheme } from './ThemeContext.js'
-import { colourProp, SYMBOLS, VERSION } from './theme.js'
+import { colourProp, SYMBOLS } from './theme.js'
 import { bandFor, middleEllipsis } from './width.js'
 
 /**
@@ -19,13 +18,6 @@ import { bandFor, middleEllipsis } from './width.js'
  * or decides what went wrong.
  */
 export type HistoryBlock =
-  /**
-   * The banner. It lives in history rather than in the live tree because
-   * Ink flushes `<Static>` output above everything that re-renders — a
-   * banner in the dynamic tree is redrawn *below* the scrollback on every
-   * update, which is how it ended up in the middle of the session.
-   */
-  | { kind: 'banner'; id: string; width: number; defaultOutput: string }
   | { kind: 'separator'; id: string; width: number }
   | { kind: 'file'; id: string; source: SourceInfo }
   | { kind: 'result'; id: string; result: Result }
@@ -82,10 +74,6 @@ function SavedTo({ output, width }: { output: string; width: number }) {
 
 export function HistoryEntry({ block, width }: { block: HistoryBlock; width: number }) {
   const palette = useTheme()
-
-  if (block.kind === 'banner') {
-    return <Banner width={block.width} version={VERSION} defaultOutput={block.defaultOutput} />
-  }
 
   if (block.kind === 'separator') {
     // Heavy double-dash, not the light one used for ordinary borders: this

@@ -87,4 +87,11 @@ describe('frameTopFromCursor', () => {
   it('handles a frame flush against the top of the screen', () => {
     expect(frameTopFromCursor(3, 3)).toBe(0)
   })
+
+  it('reads a full-screen frame from a cursor on its last line', () => {
+    // A frame as tall as the terminal is written without a trailing newline
+    // (the home screen), so the cursor is on its last line, not past it.
+    expect(frameTopFromCursor(23, 24, 24)).toBe(0)
+    expect(frameTopFromCursor(10, 3, 24)).toBe(7)
+  })
 })

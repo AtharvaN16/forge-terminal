@@ -1,0 +1,133 @@
+/**
+ * Cell-level comparison against the decided home screen
+ * (tests/shell/fixtures/home-mockup.json, made by
+ * scripts/home-mockup-fixture.mjs from the mockup).
+ *
+ * A cell is its glyph, foreground, background and weight. A blank cell with
+ * no background is blank whatever its foreground or weight say, because a
+ * terminal draws nothing there either way.
+ */
+import { readFileSync } from 'node:fs'
+
+export interface Cell {
+  ch: string
+  fg: string | null
+  bg: string | null
+  b: boolean
+}
+
+type FixtureRun = [string, string | null, string | null, boolean]
+export interface FixtureFrame {
+  label: string
+  mode: 'convert' | 'compress' | 'pdf'
+  text: string
+  rows: FixtureRun[][]
+}
+
+export const MOCKUP = JSON.parse(
+  readFileSync(new URL('./fixtures/home-mockup.json', import.meta.url), 'utf8'),
+) as FixtureFrame[]
+
+function normalise(cell: Cell): Cell {
+  if (cell.ch === ' ' && cell.bg === null) return { ch: ' ', fg: null, bg: null, b: false }
+  if (cell.ch === ' ') return { ...cell, fg: null, b: false }
+  return cell
+}
+
+/** A row padded with blank cells to `width`, normalised. */
+function pad(cells: Cell[], width: number): Cell[] {
+  const out = cells.slice(0, width).map(normalise)
+  while (out.length < width) out.push({ ch: ' ', fg: null, bg: null, b: false })
+  return out
+}
+
+export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[] {
+  const cells: Cell[] = []
+  for (const [text, fg, bg, b] of frame.rows[row] ?? []) {
+    for (const ch of text) cells.push({ ch, fg, bg, b })
+  }
+  return pad(cells, width)
+}
+
+export interface Run {
+  text: string
+  fg?: string | undefined
+  bg?: string | undefined
+  bold?: boolean | undefined
+}
+
+export function runsRow(runs: Run[], width = 80): Cell[] {
+  const cells: Cell[] = []
+  for (const run of runs) {
+    for (const ch of run.text) {
+      cells.push({ ch, fg: run.fg ?? null, bg: run.bg ?? null, b: run.bold ?? false })
+    }
+  }
+  return pad(cells, width)
+}
+
+const hex = (r: number, g: number, b: number) =>
+  `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`
+
+/**
+ * One rendered line of Ink output, as cells. Reads the SGR codes chalk emits
+ * at colour level 3 — truecolour foreground and background, bold, and their
+ * resets. Inverse (the caret) is ignored: the mockup draws the terminal's
+ * own cursor there, which is not a cell attribute.
+ */
+export function ansiRow(line: string, width = 80): Cell[] {
+  const cells: Cell[] = []
+  let fg: string | null = null
+  let bg: string | null = null
+  let b = false
+  const ESC = String.fromCharCode(27)
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m|${ESC}\\]8;[^\\u0007]*\\u0007|([^${ESC}])`, 'gu')
+  for (const m of line.matchAll(re)) {
+    if (m[1] !== undefined) {
+      const p = m[1] === '' ? [0] : m[1].split(';').map(Number)
+      for (let i = 0; i < p.length; i++) {
+        const v = p[i]
+        if (v === 38 && p[i + 1] === 2) {
+          fg = hex(p[i + 2] ?? 0, p[i + 3] ?? 0, p[i + 4] ?? 0)
+          i += 4
+        } else if (v === 48 && p[i + 1] === 2) {
+          bg = hex(p[i + 2] ?? 0, p[i + 3] ?? 0, p[i + 4] ?? 0)
+          i += 4
+        } else if (v === 39) fg = null
+        else if (v === 49) bg = null
+        else if (v === 1) b = true
+        else if (v === 22) b = false
+        else if (v === 0) {
+          fg = null
+          bg = null
+          b = false
+        }
+      }
+    } else if (m[2] !== undefined) {
+      cells.push({ ch: m[2], fg, bg, b })
+    }
+  }
+  return pad(cells, width)
+}
+
+/** The first differing column, for a readable failure; -1 when equal. */
+export function firstDifference(a: Cell[], b: Cell[]): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (JSON.stringify(a[i]) !== JSON.stringify(b[i])) return i
+  }
+  return -1
+}
+
+/** Compares two rows and reports where and how they first differ. */
+export function describeRow(actual: Cell[], expected: Cell[]): string {
+  const at = firstDifference(actual, expected)
+  if (at === -1) return 'equal'
+  const text = (cells: Cell[]) => cells.map((c) => c.ch).join('')
+  return [
+    `differ at column ${at}:`,
+    `  actual   ${JSON.stringify(actual[at])}`,
+    `  expected ${JSON.stringify(expected[at])}`,
+    `  actual   |${text(actual)}|`,
+    `  expected |${text(expected)}|`,
+  ].join('\n')
+}

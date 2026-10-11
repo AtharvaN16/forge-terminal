@@ -183,7 +183,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     expect(caughtDone).toBeLessThan(10)
 
     // Let the run finish.
-    const finalFrame = await waitFor(lastFrame, (f) => f.includes('drop a file or type a path'))
+    const finalFrame = await waitFor(lastFrame, (f) => f.includes('Drop a file here'))
 
     const written = (await readdir(dir)).filter((f) => f !== 'doc.pdf').sort()
     expect(written).toEqual([
@@ -201,7 +201,7 @@ describe('the shell — page and resolution steps, live progress', () => {
 
     // Back at the ordinary prompt, stage cleared — the same landing spot
     // `/pdf`'s other page operations use, not the single-file result screen.
-    expect(finalFrame).toContain('drop a file or type a path')
+    expect(finalFrame).toContain('Drop a file here')
   }, 30_000)
 
   /**

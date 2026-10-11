@@ -130,6 +130,19 @@ export interface Palette {
    * `Hints` then brackets the key instead, so it still reads as a key.
    */
   keycapBg: string
+  /**
+   * The far end of convert's gradient (`modeGradient`). Its own field rather
+   * than `label`, which has the same value but is handed to the mode by
+   * `modePalette`.
+   */
+  violet: string
+  /**
+   * Quieter than `border`: text that is still there but has stepped back,
+   * such as the drop zone's kinds line while a path is being typed.
+   */
+  faint: string
+  /** The band behind the chosen path completion on the home screen. */
+  listBand: string
 }
 
 export const DARK: Palette = {
@@ -169,6 +182,11 @@ export const DARK: Palette = {
   brand: '#e5a23c',
   // `fg` (#e4e8f0) on this fill measures about 11:1.
   keycapBg: '#2e3340',
+  violet: '#a68ce0',
+  faint: '#3d4350',
+  // One step up from `selectionBg`, so the band reads on the terminal and is
+  // not mistaken for the drop surface above it.
+  listBand: '#2a3242',
 }
 
 export const LIGHT: Palette = {
@@ -203,6 +221,9 @@ export const LIGHT: Palette = {
   brand: '#9a6005',
   // `fg` (#23262d) on this fill measures about 12:1.
   keycapBg: '#e4e1da',
+  violet: '#6141ad',
+  faint: '#c4bfb6',
+  listBand: '#e2dccf',
 }
 
 /**
@@ -241,9 +262,15 @@ export const NEUTRAL: Palette = {
   brand: 'yellow',
   // No fill is asserted before the theme is known; keys are bracketed.
   keycapBg: '',
+  violet: 'magenta',
+  faint: 'gray',
+  listBand: '',
 }
 
 export type ShellMode = 'convert' | 'compress' | 'pdf'
+
+/** The modes in the order they are numbered on the home screen: 1, 2, 3. */
+export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf']
 
 /** Paired with the mode's name wherever it is drawn, so it survives NO_COLOR. */
 export const MODE_MARKERS: Record<ShellMode, string> = { convert: '↔', compress: '↓', pdf: '▣' }
@@ -253,6 +280,18 @@ export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: stri
   if (mode === 'compress') return { fg: p.modeCompress, bg: p.modeCompressBg }
   if (mode === 'pdf') return { fg: p.modePdf, bg: p.modePdfBg }
   return { fg: p.modeConvert, bg: p.modeConvertBg }
+}
+
+/**
+ * The two colours a mode's gradient runs between, on the home screen's band
+ * and dots: convert cyan to violet, compress green to cyan, pdf red to amber.
+ * Read from fields `modePalette` never moves, so the result is the same
+ * whether `p` is the base palette or a mode's.
+ */
+export function modeGradient(p: Palette, mode: ShellMode): [string, string] {
+  if (mode === 'compress') return [p.modeCompress, p.modeConvert]
+  if (mode === 'pdf') return [p.modePdf, p.brand]
+  return [p.modeConvert, p.violet]
 }
 
 /**
