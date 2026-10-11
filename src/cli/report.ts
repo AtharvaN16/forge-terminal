@@ -1,10 +1,36 @@
-import { basename } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { readableFormats, writableFormats } from '../core/capabilities.js'
 import { renderError } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import { formatBytes, percentChange } from '../core/units.js'
+import { displayPath } from '../utils/display-path.js'
+
+/**
+ * Where a report's paths are shown relative to. Defaults to the real process;
+ * tests pass their own.
+ */
+interface Where {
+  cwd?: string
+  home?: string
+}
+
+const placesFor = (where: Where) => ({
+  cwd: where.cwd ?? process.cwd(),
+  ...(where.home === undefined ? {} : { home: where.home }),
+})
+
+/**
+ * ` in <folder>/` for a set of outputs, or nothing when that folder is the
+ * cwd — there, the folder goes without saying, exactly as a bare filename
+ * does for a single output.
+ */
+function inFolder(output: string, where: Where): string {
+  const shown = displayPath(dirname(output), placesFor(where))
+  if (shown === '.') return ''
+  return ` in ${shown.endsWith('/') ? shown : `${shown}/`}`
+}
 
 function changePhrase(from: number, to: number): string {
   const { pct, direction } = percentChange(from, to)
@@ -21,7 +47,7 @@ function changePhrase(from: number, to: number): string {
  * version of phase 3's worst defect: code that quietly only ever looked at
  * the first output).
  */
-export function reportSingle(summary: RunSummary): string[] {
+export function reportSingle(summary: RunSummary, where: Where = {}): string[] {
   const result = summary.results[0]
   if (!result) return []
 
@@ -30,7 +56,7 @@ export function reportSingle(summary: RunSummary): string[] {
 
   if (outputs.length > 1) {
     const lines = [
-      `✓ ${basename(source.path)} → ${outputs.length} files`,
+      `✓ ${basename(source.path)} → ${outputs.length} files${inFolder(outputs[0], where)}`,
       `  ${outputs.map((o) => basename(o)).join(', ')}`,
       `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} total`,
     ]
@@ -38,8 +64,11 @@ export function reportSingle(summary: RunSummary): string[] {
     return lines
   }
 
+  // The output as a path, not a bare name: `-o out/` and `-o deep/dir/`
+  // used to print byte-identical lines (audit #9). Inside cwd it is relative,
+  // so the ordinary alongside-the-source case still reads `photo.png`.
   const lines = [
-    `✓ ${basename(source.path)} → ${basename(outputs[0])}`,
+    `✓ ${basename(source.path)} → ${displayPath(outputs[0], placesFor(where))}`,
     `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(source.bytes, result.outputBytes)}`,
   ]
   for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
@@ -67,12 +96,13 @@ export function reportBatch(summary: RunSummary, output?: string): string[] {
  * change — "4.2 MB → 4.3 MB" says nothing useful for a split into 4 files,
  * unlike a conversion where the before/after size is the whole point.
  */
-export function reportPageOp(summary: RunSummary): string[] {
+export function reportPageOp(summary: RunSummary, where: Where = {}): string[] {
   const outputs = summary.results.flatMap((r) => r.job.outputs)
   const names = outputs.map((o) => basename(o)).join(', ')
   const noun = outputs.length === 1 ? 'file' : 'files'
 
-  const lines = [`✓ ${outputs.length} ${noun} · ${names}`]
+  const folder = outputs[0] === undefined ? '' : inFolder(outputs[0], where)
+  const lines = [`✓ ${outputs.length} ${noun} · ${names}${folder}`]
   const warnings = summary.results.flatMap((r) => r.warnings)
   for (const warning of warnings) lines.push('', `⚠ ${warning.message}`)
   return lines
