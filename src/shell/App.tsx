@@ -693,6 +693,38 @@ export function App({
   }, [push])
 
   /**
+   * Refuses a drop that would stage several files nothing can act on
+   * together, *before* staging it — so no card is drawn for a batch the
+   * shell is about to turn down. Only a merge consumes several staged files,
+   * and merge takes PDFs; staging two images used to probe both, draw a rich
+   * card, and refuse only once the user tried to go on (UX audit #6).
+   *
+   * Says what did happen (nothing was staged), why, and what to do instead:
+   * clear what is already staged, or convert several files from the flag
+   * CLI, which is where spec §10 puts batch conversion until the shell has
+   * it.
+   */
+  const refuseUnstageable = useCallback(
+    (dropped: SourceInfo[], staged: SourceInfo[]) => {
+      const names = (list: SourceInfo[]) => list.map((s) => basename(s.path)).join(', ')
+      const what =
+        dropped.length === 1
+          ? `${names(dropped)} was not staged`
+          : `${dropped.length} files were not staged`
+      const next =
+        staged.length > 0
+          ? `${names(staged)} is still staged — esc clears it.`
+          : 'To convert several files at once, use the command line: forge <files> --to <format>.'
+      push({
+        kind: 'note',
+        id: nextId(),
+        text: `${SYMBOLS.warn} ${what}: only PDFs can be staged together, to merge with /pdf. ${next}`,
+      })
+    },
+    [push],
+  )
+
+  /**
    * Whether `convertAction` actually has somewhere to send this source.
    * `convertAction.appliesTo` only checks `sources.length >= 1` — that was
    * never enough on its own to guarantee a real choice: before a
@@ -1177,13 +1209,13 @@ export function App({
           }
           if (requestId.current !== id) return // superseded by a later submission
           const next = addToStage(stage, infos, failures)
+          if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
+            refuseUnstageable(infos, stage.sources)
+            return
+          }
           setStage(next)
           setValues({})
           if (next.sources.length > 1) {
-            if (!pdfActionsApply(next.sources)) {
-              refuseBatch()
-              return
-            }
             setStep('idle')
             return
           }
@@ -1197,12 +1229,17 @@ export function App({
         if (requestId.current !== id) return // superseded by a later submission
         // Drops accumulate rather than replace — dropping a second file onto
         // a prompt that already has one staged (a PDF kept for `/pdf`, say)
-        // builds a batch instead of losing the first file. `addToStage` also drops an exact repeat of
-        // a path already staged. Computed once, synchronously, rather than
-        // via the `setStage(s => ...)` updater form this used before: the
-        // guard just below needs to know the resulting length *now*, to
-        // decide whether to advance into the wizard at all.
+        // builds a batch instead of losing the first file — but only a
+        // batch something can act on (see `refuseUnstageable`). `addToStage`
+        // also drops an exact repeat of a path already staged. Computed
+        // once, synchronously, rather than via the `setStage(s => ...)`
+        // updater form this used before: the guards just below need to know
+        // the resulting list *now*, to decide whether to stage it at all.
         const next = addToStage(stage, [info], [])
+        if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
+          refuseUnstageable([info], stage.sources)
+          return
+        }
         setStage(next)
         setValues({})
         if (next.sources.length > 1) {
@@ -1211,16 +1248,12 @@ export function App({
           // convert. Merge ordering made staging several files the *point*,
           // and left the message contradicting the `/pdf` signpost two lines
           // below it — "drop a single file, or esc to clear the list" about a
-          // list the user was deliberately building. `pdfActionsApply` is
-          // already this file's single answer to "do the page operations
-          // apply here", so it decides. What replaces the refusal is not
-          // another line of prose: the staged card (rendered at idle from
-          // two files up — see the gate in the JSX below) says what is
-          // staged, and the existing signpost says where to take it.
-          if (!pdfActionsApply(next.sources)) {
-            refuseBatch()
-            return
-          }
+          // list the user was deliberately building. A batch the page
+          // operations cannot use is now refused before it is staged, just
+          // above; what reaches here is a merge list, and the staged card
+          // (rendered at idle from two files up — see the gate in the JSX
+          // below) says what is staged while the existing signpost says
+          // where to take it.
           setStep('idle')
           return
         }
@@ -1295,7 +1328,7 @@ export function App({
       runCommand,
       mode,
       stage,
-      refuseBatch,
+      refuseUnstageable,
       hasConvertTarget,
       pdfActionsApply,
       fenceOff,

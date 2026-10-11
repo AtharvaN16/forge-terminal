@@ -15,12 +15,18 @@ const prefsFor = (dir: string) => ({
   defaultOutput: dir,
 })
 
-describe('a staged batch refuses to convert or compress', () => {
-  it('stages two files, runs /convert, and converts nothing', async () => {
+describe('several files at once', () => {
+  /**
+   * Only a merge consumes several staged files. Staging two images used to
+   * probe both, draw a rich `JPEG ×2` card, and only then refuse — the
+   * interface built the expectation and then took it back (UX audit #6).
+   * The drop is now refused before anything is staged, with the reason and
+   * the place several files *can* be converted: the flag CLI (spec §10).
+   */
+  it('refuses to stage two images at once, and says why before drawing anything', async () => {
     const dir = await makeTempDir()
     const a = await makeJpeg(dir, 'a.jpg')
     const b = await makeJpeg(dir, 'b.jpg')
-
     const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
 
     // Both at once, the way a real drag of two files pastes them.
@@ -29,21 +35,74 @@ describe('a staged batch refuses to convert or compress', () => {
     app.stdin.write(ENTER)
     await settle(300)
 
-    // The staged card itself only renders once past the idle prompt (see
-    // App.tsx's render gate), and the refusal deliberately keeps the user
-    // at idle — so what proves the batch is really there is the absence of
-    // any conversion, checked below, not the card.
-    expect(app.lastFrame() ?? '').toContain("isn't supported yet")
+    const frame = app.lastFrame() ?? ''
+    expect(frame).not.toContain('JPEG ×2')
+    expect(frame).toContain('only PDFs can be staged together')
+    expect(frame).toContain('--to')
+    expect(frame).not.toContain("isn't supported yet")
 
-    // And explicitly asking, in case some other path had staged the pair —
-    // the brief's own wording is "runs /convert".
+    // Nothing was staged: /convert has no file to open a picker for…
+    app.stdin.write('/convert')
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(300)
+    expect(app.lastFrame() ?? '').not.toContain('Convert JPEG to')
+
+    // …and a single drop afterwards goes straight to its own picker.
+    app.stdin.write(b)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(300)
+    const after = app.lastFrame() ?? ''
+    expect(after).toContain('Convert JPEG to')
+    expect(after).not.toContain('JPEG ×2')
+
+    const written = (await readdir(dir)).filter((f) => f !== 'a.jpg' && f !== 'b.jpg')
+    expect(written).toHaveLength(0)
+  }, 20_000)
+
+  it('does not append an image to a staged PDF, and says what is still staged', async () => {
+    const dir = await makeTempDir()
+    const pdf = await makePdf(dir, 'jan.pdf', 2)
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+
+    app.stdin.write(pdf)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(400) // opens the convert picker for jan.pdf
+    app.stdin.write(ESC)
+    await settle(300) // back to idle, jan.pdf kept for /pdf
+    app.stdin.write(jpg)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(400)
+
+    const frame = app.lastFrame() ?? ''
+    expect(frame).not.toContain('MIXED ×2')
+    expect(frame).toContain('photo.jpg was not staged')
+    expect(frame).toMatch(/jan\.pdf is still\s+staged/)
+  }, 20_000)
+
+  it('still refuses /convert on a staged merge list rather than converting one of it', async () => {
+    const dir = await makeTempDir()
+    const a = await makePdf(dir, 'jan.pdf', 2)
+    const b = await makePdf(dir, 'feb.pdf', 2)
+    const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+
+    app.stdin.write(`${a} ${b}`)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(400)
+    expect(app.lastFrame() ?? '').toContain('PDF ×2')
+
     app.stdin.write('/convert')
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
     expect(app.lastFrame() ?? '').toContain("isn't supported yet")
 
-    const written = (await readdir(dir)).filter((f) => f !== 'a.jpg' && f !== 'b.jpg')
+    const written = (await readdir(dir)).filter((f) => f !== 'jan.pdf' && f !== 'feb.pdf')
     expect(written).toHaveLength(0)
   }, 20_000)
 

@@ -413,14 +413,16 @@ Dropping a file into a terminal pastes a shell-escaped path —
 normalises backslash escapes, surrounding quotes, and `~`. This is the entire
 mechanism; no drop-target API exists or is needed.
 
-**One path per drop.** The flow above is single-file from `probe` through to
-the result, so a drop is read as exactly one path — a paste carrying several
-is treated as one path and fails to probe as such. Splitting a paste on
-unescaped whitespace is written and tested (`splitPastedPaths` in
-`unescape-path.ts`) but deliberately not wired in: making the shell
-multi-file is the batch feature on the roadmap, a product decision, not
-something the drag-and-drop mechanism should make on its own. Until then the
-flag CLI is where a folder or a glob gets converted.
+**Several paths per drop, staged only when something can use them.** A real
+drag of several files pastes every escaped path on one line; `submitPath`
+tries the line whole first, then splits it with `splitPastedPaths`. Phase 3
+made several staged files meaningful — a `/pdf` merge list — so a drop that
+yields several PDFs (or adds a PDF to a staged one) is staged and shown as a
+card. Anything else that would leave several files staged is refused *before*
+staging, with the reason and the way out: the conversion flow is still
+single-file from `probe` through to the result, and making it multi-file is
+the batch feature on the roadmap, a product decision. Until then the flag CLI
+is where several files, a folder or a glob get converted.
 
 ### Clickable links
 
