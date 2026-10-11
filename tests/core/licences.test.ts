@@ -37,7 +37,6 @@ function isStrongCopyleft(license: string): boolean {
 
 type LockPackage = {
   license?: string
-  dev?: boolean
   dependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
@@ -121,7 +120,7 @@ describe('dependency licences', () => {
     expect(offenders).toEqual([])
   })
 
-  it('can still see a licence for every production package', async () => {
+  it('can still see a licence for every shipped package', async () => {
     // The test above is only as good as the data. If npm stops writing
     // `license` into the lockfile, the check silently passes on everything —
     // so assert the coverage that makes it meaningful.

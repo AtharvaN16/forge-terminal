@@ -1,14 +1,23 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import * as nodeModule from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import mammoth from 'mammoth'
+import { PDFDocument } from 'pdf-lib'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { extractPdfText } from '../../src/engines/pdfium.js'
 import { VERSION } from '../../src/shell/theme.js'
-import { makeDoc, makeDocx, makeJpeg, makeTempDir, makeTextPdf } from '../helpers/fixtures.js'
+import {
+  makeDoc,
+  makeDocx,
+  makeJpeg,
+  makePdf,
+  makeScannedPdf,
+  makeTempDir,
+  makeTextPdf,
+} from '../helpers/fixtures.js'
 import { modulesLoaded, packagesIn } from '../helpers/load-log.js'
 
 /**
@@ -70,7 +79,7 @@ const packageOf = (specifier: string) => {
   return first.startsWith('@') ? `${first}/${second}` : first
 }
 
-describe('the bundle', () => {
+describe('the bundle', { timeout: 30_000 }, () => {
   it('reaches outside itself only for Node built-ins and its declared dependencies', async () => {
     const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>
@@ -178,6 +187,31 @@ describe('the bundle', () => {
     }
     const result = await forge([doc, '--to', 'pdf'])
     expect(result.exitCode).toBe(0)
+    const pages = await extractPdfText(await readFile(join(dir, 'old.pdf')))
+    expect(pages.join('\n')).toContain('Legacy words.')
+  })
+
+  it('rotates PDF pages through pdf-lib', async () => {
+    const dir = await makeTempDir()
+    const pdf = await makePdf(dir, 'p.pdf', 2)
+    const result = await forge([pdf, '--rotate', '90'])
+    expect(result.exitCode).toBe(0)
+    const out = await PDFDocument.load(await readFile(join(dir, 'p-rotated.pdf')))
+    expect(out.getPageCount()).toBe(2)
+    expect(out.getPages().map((p) => p.getRotation().angle)).toEqual([90, 90])
+  })
+
+  it('compresses a PDF to a size through the pdf-compress chunk', async () => {
+    const dir = await makeTempDir()
+    const pdf = await makeScannedPdf(dir, 's.pdf', { pages: 2 })
+    const before = (await stat(pdf)).size
+    const limit = 150_000
+    expect(before).toBeGreaterThan(limit)
+    const result = await forge([pdf, '--max-size', '150kb'])
+    expect(result.exitCode).toBe(0)
+    const outPath = join(dir, 's-small.pdf')
+    expect((await stat(outPath)).size).toBeLessThanOrEqual(150 * 1024)
+    expect((await PDFDocument.load(await readFile(outPath))).getPageCount()).toBe(2)
   })
 
   it('loads the shell chunk: Ink, React and yoga', async () => {
