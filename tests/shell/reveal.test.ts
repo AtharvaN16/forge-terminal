@@ -33,7 +33,7 @@ describe('open and reveal on Windows', () => {
   it('reveals with explorer.exe /select, and treats its exit code 1 as success', async () => {
     finishWith(Object.assign(new Error('exit 1'), { code: 1 }))
     await expect(revealPath('C:\\a\\b.png', 'win32')).resolves.toBeUndefined()
-    expect(calls()[0]?.slice(0, 2)).toEqual(['explorer.exe', ['/select,C:\\a\\b.png']])
+    expect(calls()[0]?.slice(0, 2)).toEqual(['explorer.exe', ['/select,', 'C:\\a\\b.png']])
   })
 
   it('opens with explorer.exe, again ignoring a numeric exit code', async () => {

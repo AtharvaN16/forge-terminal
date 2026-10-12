@@ -48,26 +48,28 @@ describe('the result says where the file went', () => {
   const desktop = join(homedir(), 'Desktop')
 
   it('names the folder, ~-abbreviated, under the panels', () => {
-    expect(frameOf(resultIn(desktop), 100)).toContain('   in ~/Desktop')
+    expect(frameOf(resultIn(desktop), 100)).toContain(`   in ${join('~', 'Desktop')}`)
   })
 
   it('names it in a narrow terminal too', () => {
-    expect(frameOf(resultIn(desktop), 50)).toContain('   in ~/Desktop')
+    expect(frameOf(resultIn(desktop), 50)).toContain(`   in ${join('~', 'Desktop')}`)
   })
 
   it('names it when the file has a long name', () => {
     const frame = frameOf(resultIn(desktop, 'Screenshot 2026-08-17 at 3.52.36 PM.jpg'), 92)
     expect(frame).toContain('✓ Screenshot 2026-08-17 at 3.52.36 PM.jpg')
-    expect(frame).toContain('   in ~/Desktop')
+    expect(frame).toContain(`   in ${join('~', 'Desktop')}`)
   })
 
   it('shows the whole accidental path, which is the point', () => {
     const typo = join(homedir(), 'd', 'nonexistent-root-xyz', 'out')
-    expect(frameOf(resultIn(typo), 100)).toContain('in ~/d/nonexistent-root-xyz/out')
+    expect(frameOf(resultIn(typo), 100)).toContain(
+      `in ${join('~', 'd', 'nonexistent-root-xyz', 'out')}`,
+    )
   })
 
   it('leaves a folder outside home absolute', () => {
-    expect(frameOf(resultIn('/Volumes/Backup'), 100)).toContain('in /Volumes/Backup')
+    expect(frameOf(resultIn('/Volumes/Backup'), 100)).toContain(`in ${join('/Volumes/Backup')}`)
   })
 
   it('sits on its own line after the sizes', () => {
@@ -95,7 +97,7 @@ describe('the result says where the file went', () => {
       ).lastFrame() ?? ''
     const lines = frame.split('\n')
     expect(lines[0]).toContain('split into 4 files')
-    expect(frame).toContain('saved to ~/Desktop')
+    expect(frame).toContain(`saved to ${join('~', 'Desktop')}`)
   })
 
   it('leaves an ordinary note alone', () => {
@@ -112,7 +114,7 @@ describe('the result says where the file went', () => {
     const deep = join('/Volumes', 'x'.repeat(30), 'y'.repeat(30), 'z'.repeat(30))
     for (const w of [40, 56, 80, 100]) {
       const frame = frameOf(resultIn(deep), w)
-      expect(frame).toContain('in /Volumes')
+      expect(frame).toContain(`in ${join('/Volumes')}`)
       for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
     }
   })

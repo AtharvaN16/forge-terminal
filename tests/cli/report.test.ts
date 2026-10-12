@@ -88,7 +88,7 @@ describe('reportSingle', () => {
   it('abbreviates home rather than climbing out of cwd', async () => {
     const dir = await makeTempDir()
     const [first] = reportSingle(await convertAll(dir, 1), { cwd: '/nowhere', home: dir })
-    expect(first).toBe('✓ f0.jpg → ~/f0.webp')
+    expect(first).toBe(`✓ f0.jpg → ${join('~', 'f0.webp')}`)
   })
 
   it('names the folder of a multi-page rasterisation', async () => {

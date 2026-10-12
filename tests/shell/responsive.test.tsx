@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
@@ -100,14 +100,17 @@ describe('responsiveness', () => {
     }
   })
 
+  // `~/Desktop`, or `~\Desktop` on Windows, where displayPath keeps the native separator.
+  const DESKTOP_ROW = new RegExp(`▌ Desktop\\s+~\\${sep}Desktop`)
+
   it('drops the destination preset hints in the compact band, as the target picker does', async () => {
     const compact = await frameAtDestination(40)
     const normal = await frameAtDestination(80)
     expect(compact).toContain('Same folder')
-    expect(compact).not.toContain('/forge-test-')
+    expect(compact).not.toContain(`${sep}forge-test-`)
     // Only the highlighted place speaks, so the path shown is its own.
-    expect(normal).toMatch(/▌ Desktop\s+~\/Desktop/)
-    expect(compact).not.toMatch(/▌ Desktop\s+~\/Desktop/)
+    expect(normal).toMatch(DESKTOP_ROW)
+    expect(compact).not.toMatch(DESKTOP_ROW)
   })
 })
 

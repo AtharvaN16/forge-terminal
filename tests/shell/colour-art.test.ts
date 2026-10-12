@@ -247,5 +247,5 @@ describe('the scale (S9)', () => {
   it('before there is a colour: the steps as outlines', () =>
     expectRows(emptyRampRows({ palette: P, steps: data.scA.map((s) => s.step) }), 'B2', 6))
 
-  it('all eleven copied', () => expectRows([copiedRow(P, { count: 11 })], '11', 18))
+  it('all eleven copied', () => expectRows([copiedRow(P, { count: 11 }, 'darwin')], '11', 18))
 })

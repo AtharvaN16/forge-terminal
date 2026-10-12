@@ -32,6 +32,8 @@ const lines = (f: string | undefined) => (f ?? '').split('\n')
 let root = ''
 let presets: PathPreset[] = []
 const display = (p: string) => p.replace(root, '~')
+/** `~/Documents/Scans` as `display` shows it here (`~\Documents\Scans` on Windows), for a RegExp. */
+const tilde = (...parts: string[]) => join('~', ...parts).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 beforeAll(async () => {
   root = await makeTempDir()
   for (const d of ['Pictures', 'Desktop', 'Downloads', 'Documents']) await mkdir(join(root, d))
@@ -100,8 +102,8 @@ describe('Save as (V10c): the block', () => {
     expect(rows[1]).toMatch(/^ {11}▔{26} *$/)
     expect(rows[2]).toMatch(/^ {3}─+ *$/)
     // The folder it will save to is highlighted, with its path; the rest are names.
-    expect(plain(f)).toMatch(/▌ Desktop +~\/Desktop +default/)
-    expect(plain(f)).not.toContain('~/Pictures')
+    expect(plain(f)).toMatch(new RegExp(`▌ Desktop +${tilde('Desktop')} +default`))
+    expect(plain(f)).not.toContain(join('~', 'Pictures'))
     expect(plain(f)).toMatch(/ {2}Type the path here {2}or drop a folder/)
   })
 
@@ -158,8 +160,8 @@ describe('Save as (V10c): the folders', () => {
     stdin.write(DOWN)
     await settle()
     expect(onFolder).toHaveBeenLastCalledWith(join(root, 'Downloads'))
-    expect(plain(lastFrame())).toMatch(/▌ Downloads +~\/Downloads/)
-    expect(plain(lastFrame())).not.toContain('~/Desktop ')
+    expect(plain(lastFrame())).toMatch(new RegExp(`▌ Downloads +${tilde('Downloads')}`))
+    expect(plain(lastFrame())).not.toContain(`${join('~', 'Desktop')} `)
     stdin.write('-2')
     await settle()
     stdin.write(ENTER)
@@ -188,7 +190,7 @@ describe('Save as (V10c): the folders', () => {
     stdin.write(TAB)
     await settle()
     expect(onMakeDefault).toHaveBeenCalledWith(join(root, 'Downloads'))
-    expect(plain(lastFrame())).toMatch(/▌ Downloads +~\/Downloads +default/)
+    expect(plain(lastFrame())).toMatch(new RegExp(`▌ Downloads +${tilde('Downloads')} +default`))
   })
 })
 
@@ -304,7 +306,7 @@ describe('Save as (V10c): a drop', () => {
     const { stdin, lastFrame } = render(<Harness onSubmit={onSubmit} />)
     stdin.write(join(root, 'Documents', 'Scans'))
     await settle()
-    expect(plain(lastFrame())).toMatch(/▌ Scans +~\/Documents\/Scans/)
+    expect(plain(lastFrame())).toMatch(new RegExp(`▌ Scans +${tilde('Documents', 'Scans')}`))
     expect(field(lastFrame())[0]).toMatch(/name {5}header/)
     stdin.write(ENTER)
     await settle()
@@ -398,7 +400,7 @@ describe('Save as (V10c), fitting the terminal', () => {
   it('drops the paths when the band is compact', () => {
     const out = plain(render(<Harness width={50} />).lastFrame())
     expect(out).toContain('Desktop')
-    expect(out).not.toContain('~/Desktop')
+    expect(out).not.toContain(join('~', 'Desktop'))
   })
 })
 
@@ -456,7 +458,7 @@ describe('Save as (V10c) without colour', () => {
     expect(out).not.toContain('48;2;')
     expect(plain(out)).toMatch(/name {5}header▏/)
     expect(plain(out)).toContain('▔'.repeat(26))
-    expect(plain(out)).toMatch(/▌ Desktop +~\/Desktop +default/)
+    expect(plain(out)).toMatch(new RegExp(`▌ Desktop +${tilde('Desktop')} +default`))
   })
 })
 

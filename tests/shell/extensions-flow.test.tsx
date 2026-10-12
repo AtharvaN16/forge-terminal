@@ -52,7 +52,15 @@ function fakeManager(opts: { installed?: string[]; inUse?: Record<string, LockHo
 }
 
 const open = (manager: ExtensionsManager) =>
-  render(<ExtensionsFlow width={100} manager={manager} onError={vi.fn()} onClose={vi.fn()} />)
+  render(
+    <ExtensionsFlow
+      width={100}
+      platform="darwin"
+      manager={manager}
+      onError={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  )
 const frame = (f: ReturnType<typeof open>) => f.lastFrame() ?? ''
 
 describe('ExtensionsFlow (M3 · T2)', () => {
@@ -98,7 +106,13 @@ describe('ExtensionsFlow (M3 · T2)', () => {
     }
     const onError = vi.fn()
     const f = render(
-      <ExtensionsFlow width={100} manager={manager} onError={onError} onClose={vi.fn()} />,
+      <ExtensionsFlow
+        width={100}
+        platform="darwin"
+        manager={manager}
+        onError={onError}
+        onClose={vi.fn()}
+      />,
     )
     await until(() => frame(f).includes('↵ install'))
     await tick()

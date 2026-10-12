@@ -49,7 +49,7 @@ describe('expandTilde', () => {
   })
 
   it('expands a leading tilde path', () => {
-    expect(expandTilde('~/Desktop')).toBe(join(homedir(), 'Desktop'))
+    expect(expandTilde('~/Desktop', 'darwin')).toBe(join(homedir(), 'Desktop'))
   })
 
   it('leaves an absolute path alone', () => {
