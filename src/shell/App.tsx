@@ -55,7 +55,7 @@ import { StagedFiles } from './components/StagedFiles.js'
 import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { Working } from './components/Working.js'
-import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
+import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
@@ -760,6 +760,10 @@ export function App({
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
+  /** How the last /pdf run was asked, so a refused save can reopen its Save as. */
+  const [pdfAsked, setPdfAsked] = useState<PdfResume | undefined>(undefined)
+  /** Set to open /pdf on that Save as (Cancel on Name taken); cleared once it is left. */
+  const [pdfReopen, setPdfReopen] = useState<PdfResume | undefined>(undefined)
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -1226,6 +1230,7 @@ export function App({
     setPending(null)
     setSaving(null)
     setPdfBlocked(null)
+    setPdfReopen(undefined)
     setSizeUnreachable(null)
     setSuggestion(undefined)
     setSizeError(undefined)
@@ -2488,7 +2493,11 @@ export function App({
       const cancelTo = pdfBlocked.cancelTo
       setPdfBlocked(null)
       if (cancelTo === 'save-as') reopenSaveAs()
-      else setStep(cancelTo)
+      else {
+        // Back to /pdf's own Save as, as the run was asked, on the folder.
+        setPdfReopen(pdfAsked)
+        setStep(cancelTo)
+      }
       return
     }
     const forced = checkWriteSafety(pdfBlocked.jobs, { force: true })
@@ -3055,7 +3064,10 @@ export function App({
               width={width}
               height={height}
               prefs={livePrefs}
-              onDone={(jobs) => {
+              resume={pdfReopen}
+              onDone={(jobs, resume) => {
+                setPdfAsked(resume)
+                setPdfReopen(undefined)
                 void handlePdfDone(jobs)
               }}
               // Keeps the stage rather than `clearSource`: `mode` is still
@@ -3067,7 +3079,10 @@ export function App({
               // one keystroke further: esc again at idle, on an empty
               // field, clears the stage the same way it already does
               // everywhere else in this file.
-              onCancel={backToPromptKeepingStage}
+              onCancel={() => {
+                setPdfReopen(undefined)
+                backToPromptKeepingStage()
+              }}
               onTrail={setPdfTrailNow}
               onMakeDefault={makeDefault}
             />

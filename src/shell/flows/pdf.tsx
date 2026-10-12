@@ -118,6 +118,12 @@ export interface PdfFlowProps {
   prefs?: Preferences
   /** Save as's tab: make the highlighted folder the default (App writes the config). */
   onMakeDefault?: ((path: string) => void) | undefined
+  /**
+   * Open on Save as, on the folder, as a run was asked — after its save was
+   * refused (the name is taken) and the user chose Cancel, where choosing a
+   * different folder or name is the fix.
+   */
+  resume?: PdfResume | undefined
   /** Where the conversation is, for the header bar above it, whenever that changes. */
   onTrail?: ((trail: Trail) => void) | undefined
 }
@@ -137,13 +143,18 @@ export function PdfFlow({
   prefs = DEFAULT_PREFERENCES,
   onTrail,
   onMakeDefault,
+  resume,
 }: PdfFlowProps) {
   const palette = useTheme()
   const band = bandFor(width)
 
-  const [step, setStep] = useState<FlowStep>('hub')
-  const [action, setAction] = useState<Action | undefined>(undefined)
-  const [values, setValues] = useState<Record<string, unknown>>({})
+  // A resumed run's answers, less Save as's own two, which have state of their own.
+  const { destination: resumedFolder, name: resumedName, ...resumedValues } = resume?.values ?? {}
+  const [step, setStep] = useState<FlowStep>(resume ? 'confirm' : 'hub')
+  const [action, setAction] = useState<Action | undefined>(() =>
+    resume ? HUB_ACTIONS.find((a) => a.id === resume.actionId) : undefined,
+  )
+  const [values, setValues] = useState<Record<string, unknown>>(resumedValues)
   const [specIndex, setSpecIndex] = useState(0)
   const [text, setText] = useState('')
   const [fieldError, setFieldError] = useState<string | undefined>(undefined)
@@ -151,7 +162,7 @@ export function PdfFlow({
   const [pagesView, setPagesView] = useState<'grid' | 'range'>('grid')
   // Merge's order lives outside `values` because `MergeList` is the only step
   // that produces it (see `planJobs`).
-  const [mergeOrder, setMergeOrder] = useState<SourceInfo[] | undefined>(undefined)
+  const [mergeOrder, setMergeOrder] = useState<SourceInfo[] | undefined>(resume?.mergeOrder)
   /**
    * Save as's answers: the folder (the configured default until another is
    * chosen) and the name as typed — `undefined` until something is typed, so
@@ -161,8 +172,12 @@ export function PdfFlow({
     () => (stage.sources[0] ? destinationOption(stage.sources[0], prefs) : undefined),
     [stage.sources, prefs],
   )
-  const [saveFolder, setSaveFolder] = useState(() => expandTilde(prefs.defaultOutput))
-  const [saveName, setSaveName] = useState<string | undefined>(undefined)
+  const [saveFolder, setSaveFolder] = useState(() =>
+    typeof resumedFolder === 'string' ? resumedFolder : expandTilde(prefs.defaultOutput),
+  )
+  const [saveName, setSaveName] = useState<string | undefined>(
+    typeof resumedName === 'string' ? resumedName : undefined,
+  )
   /** Set when `x` in `MergeList` drops the file count below two — shown at the hub. */
   const [hubNote, setHubNote] = useState<string | undefined>(undefined)
 
@@ -710,6 +725,7 @@ export function PdfFlow({
             onSubmit={saveAndRun}
             onBack={backFromConfirm}
             aside={describeJob(job)}
+            initialFocus={resume ? 'folder' : 'name'}
           />
         </Box>
       ) : null}

@@ -10,6 +10,7 @@ const ENTER = String.fromCharCode(13)
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 
 /**
  * Drops `file`, opens `/pdf`, chooses Rotate, accepts 90°, confirms.
@@ -280,7 +281,7 @@ describe('/pdf refuses to overwrite without asking', () => {
     expect((await readdir(dir)).sort()).toEqual(['doc-rotated.pdf', 'doc.pdf'])
   }, 20_000)
 
-  it('choosing Cancel on the refusal returns to the hub without writing', async () => {
+  it('choosing Cancel goes back to Save as on the folder, the name kept, and writes nothing', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -296,8 +297,14 @@ describe('/pdf refuses to overwrite without asking', () => {
     stdin.write(ENTER)
     await settle(300)
 
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    const frame = (lastFrame() ?? '').replace(SGR, '')
+    expect(frame).not.toContain('choose an operation')
+    expect(frame).toMatch(/^ Save as +Rotate 90°$/m)
+    // On the folder, where the fix is: the list open, esc back to the name.
+    expect(frame).toMatch(/› doc-rotated\.pdf {3}in /)
+    expect(frame).toMatch(/esc name · ctrl-c quit/)
     expect(await readFile(outputPath)).toEqual(firstBytes)
+    expect((await readdir(dir)).sort()).toEqual(['doc-rotated.pdf', 'doc.pdf'])
   }, 20_000)
 
   it('choosing Replace proceeds and actually overwrites', async () => {
