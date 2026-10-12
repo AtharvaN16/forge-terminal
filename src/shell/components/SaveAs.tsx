@@ -62,6 +62,7 @@ export function SaveAs({
   onSubmit,
   onBack,
   initialFocus = 'name',
+  aside,
 }: {
   mode: ShellMode
   /** The live terminal width. */
@@ -95,6 +96,8 @@ export function SaveAs({
   /** esc with nothing left to clear. */
   onBack: () => void
   initialFocus?: Focus
+  /** What the save will do, quiet at the title's right: "Rotate 90°". */
+  aside?: string | undefined
 }) {
   const palette = useTheme()
   const [focus, setFocus] = useState<Focus>(fixedName ? 'folder' : initialFocus)
@@ -252,7 +255,7 @@ export function SaveAs({
 
   return (
     <Box flexDirection="column">
-      <StepTitle mode={mode} title="Save as" width={width} />
+      <StepTitle mode={mode} title="Save as" aside={aside} width={width} />
       <Box marginTop={2} flexDirection="column">
         {pad}
         {onFolders ? (

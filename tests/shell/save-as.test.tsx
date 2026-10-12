@@ -140,6 +140,13 @@ describe('Save as against P1', () => {
   })
 })
 
+describe('Save as, the title', () => {
+  it('says what the job will do at the title’s right, quietly', () => {
+    const out = plain(render(<Harness aside="Rotate 90°" />).lastFrame())
+    expect(out.split('\n')[0]).toMatch(/^ Save as +Rotate 90°$/)
+  })
+})
+
 describe('Save as, the name', () => {
   it('offers save and folder, with back and quit as the footnote', () => {
     const keys =
