@@ -225,7 +225,7 @@ export function heicDecoderUnavailable(
     return new ForgeError({
       code: 'heic-decoder-unavailable',
       title: 'Cannot read HEIC here',
-      detail: `${basename(path)} is a HEIC photo, which needs Forge's free HEIC extension on Windows.`,
+      detail: `${displayName(path, platform)} is a HEIC photo, which needs Forge's free HEIC extension on Windows.`,
       short: 'HEIC needs the heic extension.',
       hint: 'Install it with: forge extensions add heic',
       shellHint: 'Open /extensions to install it.',

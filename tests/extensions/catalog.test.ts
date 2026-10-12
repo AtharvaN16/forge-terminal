@@ -92,7 +92,9 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    expect(enhanceRows(photo, 'darwin').map((r) => r.id)).toContain('cutout')
-    expect(enhanceRows(photo, 'win32').map((r) => r.id)).not.toContain('cutout')
+    expect(enhanceRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
+    expect(enhanceRows(photo, undefined, undefined, 'win32').map((r) => r.id)).not.toContain(
+      'cutout',
+    )
   })
 })

@@ -58,7 +58,7 @@ async function run(
   const id = job.op
 
   // Not "install it": on an OS the catalogue offers no build for, there is nothing to install.
-  const { catalogEntry, offeredHere } = await import('../extensions/catalog.js')
+  const { assetFor, catalogEntry, offeredHere } = await import('../extensions/catalog.js')
   if (!offeredHere(id)) throw extensionNotOffered(catalogEntry(id)?.title ?? id)
   // The installed version first: which factors its runner makes decides both
   // whether this job can run and which factor a too-large refusal names.
@@ -67,7 +67,9 @@ async function run(
   if (!ext) throw extensionMissing(id)
   const scales = boostScales(ext.version)
   if (job.op === 'boost') {
-    const refusal = boostScaleRefusal(job.scale, ext.version, catalogEntry(id)?.version)
+    // The newest release for this OS and arch: Windows and Mac version apart.
+    const entry = catalogEntry(id)
+    const refusal = boostScaleRefusal(job.scale, ext.version, entry && assetFor(entry)?.version)
     if (refusal) throw refusal
   }
   if (job.op === 'boost' && !fits(source.width, source.height, job.scale)) {

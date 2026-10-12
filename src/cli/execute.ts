@@ -517,8 +517,10 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
   }
   // A scale the installed runner does not make is also the command's problem.
   if (intent.op === 'boost' && intent.scale !== undefined) {
-    const { catalogEntry } = await import('../extensions/catalog.js')
-    const tooOld = boostScaleRefusal(intent.scale, ext.version, catalogEntry('boost')?.version)
+    const { assetFor, catalogEntry } = await import('../extensions/catalog.js')
+    const entry = catalogEntry('boost')
+    const latest = entry && assetFor(entry)?.version
+    const tooOld = boostScaleRefusal(intent.scale, ext.version, latest)
     if (tooOld) return nothingRan(kind, [{ path: '', error: tooOld }])
   }
 
