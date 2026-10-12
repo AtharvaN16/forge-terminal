@@ -8,6 +8,17 @@ import { makePdf, makeTempDir } from '../helpers/fixtures.js'
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * Polls for `text`, up to 10 s, instead of a fixed pause after ↵. A drop
+ * still being read when ↵ lands is read again from the start (`submitPath`
+ * supersedes `readDrop`), so on a busy runner the frame 400 ms later can be
+ * the empty home between the two reads — not a lost drop, just a slow one.
+ */
+async function until(lastFrame: () => string | undefined, text: string, ms = 10_000) {
+  const start = Date.now()
+  while (!(lastFrame() ?? '').includes(text) && Date.now() - start < ms) await settle(30)
+}
+
 const prefsFor = (dir: string) => ({
   ...DEFAULT_PREFERENCES,
   theme: 'dark' as const,
@@ -33,7 +44,7 @@ describe('dropping several files at once', () => {
     stdin.write(`${a} ${b}`)
     await settle()
     stdin.write(ENTER)
-    await settle(400)
+    await until(lastFrame, '2 PDFs')
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('jan.pdf')
@@ -52,7 +63,7 @@ describe('dropping several files at once', () => {
     stdin.write(`${a} ${missing}`)
     await settle()
     stdin.write(ENTER)
-    await settle(400)
+    await until(lastFrame, '1 skipped')
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('jan.pdf')
@@ -82,7 +93,7 @@ describe('dropping several files at once', () => {
     stdin.write(process.platform === 'win32' ? `"${mine}" ${b}` : `${dir}/my\\ report.pdf ${b}`)
     await settle()
     stdin.write(ENTER)
-    await settle(400)
+    await until(lastFrame, '2 PDFs')
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('my report.pdf')
