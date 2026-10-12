@@ -1,0 +1,19 @@
+# LF everywhere, Windows checkouts included: biome and the tests expect it.
+* text=auto eol=lf
+
+*.heic binary
+*.heif binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.gif binary
+*.tif binary
+*.tiff binary
+*.pdf binary
+*.docx binary
+*.gz binary
+*.tgz binary
+*.onnx binary
+*.wasm binary
