@@ -6,13 +6,18 @@ import { afterAll, beforeAll } from 'vitest'
  * to process.platform; pinning lets them run unchanged on the Windows CI job,
  * and is a no-op on a Mac. Windows behaviour is tested by passing 'win32'
  * explicitly. Child processes the tests spawn are not pinned.
+ *
+ * Called inside a describe it pins that block only, and puts back whatever
+ * was there before — so a block can pin the real platform back inside a
+ * file pinned to darwin.
  */
 export function pinPlatform(platform: NodeJS.Platform): void {
-  const real = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor
+  let before: PropertyDescriptor | undefined
   beforeAll(() => {
+    before = Object.getOwnPropertyDescriptor(process, 'platform')
     Object.defineProperty(process, 'platform', { value: platform })
   })
   afterAll(() => {
-    Object.defineProperty(process, 'platform', real)
+    if (before) Object.defineProperty(process, 'platform', before)
   })
 }

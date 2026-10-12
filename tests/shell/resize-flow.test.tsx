@@ -9,7 +9,6 @@ import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
 import type { EnhanceTools } from '../../src/shell/enhance.js'
 import { makeTempDir } from '../helpers/fixtures.js'
-import { pinPlatform } from '../helpers/platform.js'
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
@@ -21,22 +20,22 @@ const until = async (cond: () => boolean) => {
 }
 
 /**
- * Pinned to darwin, the shell reads a typed path the Mac way, where `\`
- * escapes. Forward slashes name the same file on Windows and survive that.
+ * Not pinned: Trim and Resize are on both OSes, and the result's name is
+ * split the way this OS splits a path. Only the AI rows above them differ:
+ * the blank row follows Remove background on a Mac, Boost on Windows.
  */
-const REAL_PLATFORM = process.platform
-const typed = (path: string) => (REAL_PLATFORM === 'win32' ? path.replaceAll('\\', '/') : path)
+const WINDOWS = process.platform === 'win32'
+const LAST_AI_ROW = WINDOWS ? 'Boost resolution' : 'Remove background'
+const AI_ROWS = WINDOWS ? 2 : 3
 
-// The Mac's rows (Remove background among them); see pinPlatform.
-pinPlatform('darwin')
-
-/** Both extensions installed: Trim and Resize must not depend on either. */
+/** Every extension this OS offers, installed: Trim and Resize must not depend on any. */
 const tools: EnhanceTools = {
   async list() {
-    return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
+    return CATALOG.filter((entry) => offeredOn(entry)).map(
       (entry): ExtensionStatus => ({
         entry,
-        installed: assetFor(entry, 'darwin', 'arm64')?.version,
+        // The Mac's boost is Apple Silicon only.
+        installed: assetFor(entry, process.platform, WINDOWS ? process.arch : 'arm64')?.version,
         updateAvailable: false,
         supported: true,
         downloadBytes: 0,
@@ -79,7 +78,7 @@ describe('Trim edges and Resize in Enhance', () => {
 
     await press('/enhance', 250)
     await press(ENTER, 250)
-    app.stdin.write(typed(png))
+    app.stdin.write(png)
     await until(() => frame().includes('photo.png'))
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))
@@ -88,13 +87,13 @@ describe('Trim edges and Resize in Enhance', () => {
     // E3: one blank row between the AI tools and the plain ones — blank on
     // the list's side of the line (S1's pane runs on beside it).
     const lines = frame().split('\n')
-    const at = lines.findIndex((l) => l.includes('Remove background'))
+    const at = lines.findIndex((l) => l.includes(LAST_AI_ROW))
     expect(lines[at + 1]?.split('│')[0]?.trim()).toBe('')
     expect(lines[at + 2]).toContain('Trim edges')
     expect(lines[at + 3]).toContain('Resize')
 
-    // Sharpen, Boost resolution (one row), Remove background, then Trim.
-    for (let i = 0; i < 3; i++) await press(DOWN)
+    // Sharpen, Boost resolution (one row), Remove background on a Mac, then Trim.
+    for (let i = 0; i < AI_ROWS; i++) await press(DOWN)
     await until(() => frame().includes('empty edges off · 200 × 100'))
     expect(frame()).toContain('empty edges off · 200 × 100')
 
