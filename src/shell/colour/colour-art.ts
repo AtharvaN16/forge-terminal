@@ -57,8 +57,10 @@ export const COLOUR_SAMPLES = {
 
 /**
  * Home's panel in colour mode: two cards, Palette and Scale, each with a
- * preview of what it makes. The chosen one is on `panelBand` with a `▌` in
- * the mode's colour. Eight rows, as tall as the drop surface it replaces.
+ * preview of what it makes. The chosen one is on `panelBand`, and that
+ * lighter fill is all that marks it (round 5, G4). Without fills to tell
+ * them apart, a `▌` in the mode's colour marks it instead. Eight rows, as
+ * tall as the drop surface it replaces.
  */
 export function choiceCards({
   width: columns,
@@ -88,8 +90,8 @@ export function choiceCards({
     const c = cards[i] as (typeof cards)[number]
     const me = i === selected
     const bg = me ? p.panelBand : p.selectionBg
-    const line = (txt: Row): Row =>
-      on(bg, [me ? ink('▌', p.accent) : blank(1), blank(1), ...txt], CARD)
+    const strip: Run = me && !isHex(bg) ? ink('▌', p.accent) : blank(1)
+    const line = (txt: Row): Row => on(bg, [strip, blank(1), ...txt], CARD)
     return [
       line([]),
       line([ink(c.name, me ? p.fg : p.dim, true)]),
@@ -267,21 +269,38 @@ function spaced(items: Row[], rows: number): Row[] {
   return items.flatMap((row) => [row, []])
 }
 
-/** The palette's list: one colour per row, the chosen one on the picker's band. */
+/** `row` faded up `k` of the way out of the background: every ink and fill from the canvas. */
+function arriving(p: Palette, row: Row, k: number): Row {
+  if (k >= 1) return row
+  const from = lc(p.canvas)
+  return row.map((r) => ({
+    ...r,
+    ...(r.fg ? { fg: mix(from, r.fg, k) } : {}),
+    ...(r.bg ? { bg: mix(from, r.bg, k) } : {}),
+  }))
+}
+
+/**
+ * The palette's list: one colour per row, the chosen one on the picker's
+ * band. `arrive` says how far each colour has faded in as a palette comes in
+ * (M7), 0 to 1; without it every colour is there.
+ */
 export function paletteColumn({
   palette: p,
   items,
   selected,
   rows = 12,
+  arrive,
 }: {
   palette: Palette
   items: { hex: string; pct: number }[]
   selected: number
   rows?: number
+  arrive?: number[] | undefined
 }): Row[] {
   const max = Math.max(1, ...items.map((i) => i.pct))
   return spaced(
-    items.map((item, i) => listItem(p, item, max, i === selected)),
+    items.map((item, i) => arriving(p, listItem(p, item, max, i === selected), arrive?.[i] ?? 1)),
     rows,
   )
 }

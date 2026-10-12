@@ -300,9 +300,9 @@ describe('/pdf refuses to overwrite without asking', () => {
     const frame = (lastFrame() ?? '').replace(SGR, '')
     expect(frame).not.toContain('choose an operation')
     expect(frame).toMatch(/^ Save as +Rotate 90°$/m)
-    // On the folder, where the fix is: the list open, esc back to the name.
-    expect(frame).toMatch(/› doc-rotated\.pdf {3}in /)
-    expect(frame).toMatch(/esc name · ctrl-c quit/)
+    // Back on Save as, the name as it was given and the folders there to change.
+    expect(frame).toMatch(/name +doc-rotated +\.pdf/)
+    expect(frame).toMatch(/esc back · ctrl-c quit/)
     expect(await readFile(outputPath)).toEqual(firstBytes)
     expect((await readdir(dir)).sort()).toEqual(['doc-rotated.pdf', 'doc.pdf'])
   }, 20_000)

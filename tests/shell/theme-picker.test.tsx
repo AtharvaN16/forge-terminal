@@ -2,12 +2,13 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PREFERENCES, loadPreferences } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
+import { ThemePicker } from '../../src/shell/components/ThemePicker.js'
 
 const ENTER = String.fromCharCode(13)
-const DOWN = `${String.fromCharCode(27)}[B`
+const UP = `${String.fromCharCode(27)}[A`
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 
 let dir: string
@@ -40,7 +41,8 @@ describe('first run theme picker', () => {
 
   it('writes the choice and moves on to the prompt', async () => {
     const { stdin, lastFrame } = render(<App initialWidth={80} prefs={DEFAULT_PREFERENCES} />)
-    stdin.write(DOWN)
+    // Light is listed first; the cursor opens on Dark.
+    stdin.write(UP)
     await settle()
     stdin.write(ENTER)
     await settle(300)
@@ -62,11 +64,6 @@ describe('first run theme picker', () => {
     expect(frame).not.toContain('[48;2;')
   })
 
-  it('offers /theme as the way back', () => {
-    const frame = render(<App initialWidth={80} prefs={DEFAULT_PREFERENCES} />).lastFrame() ?? ''
-    expect(frame).toContain('/theme')
-  })
-
   it('/theme reopens the picker from the prompt', async () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     const { stdin, lastFrame } = render(<App initialWidth={80} prefs={prefs} />)
@@ -77,5 +74,43 @@ describe('first run theme picker', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Dark')
     expect(frame).toContain('Light')
+  })
+})
+
+const tick = () => new Promise((r) => setTimeout(r, 30))
+
+describe('the theme picker (round 5)', () => {
+  it('says "Select theme", a blank row, then Light and Dark — no hints', () => {
+    const lines = (render(<ThemePicker width={80} onChoose={() => {}} />).lastFrame() ?? '')
+      .split('\n')
+      .map((l) => l.trimEnd())
+    expect(lines[0]).toBe('Select theme')
+    expect(lines[1]).toBe('')
+    expect(lines[2]).toMatch(/^ {2}Light$/)
+    expect(lines[3]).toMatch(/^▌ Dark$/)
+    const all = lines.join('\n')
+    expect(all).not.toContain('background')
+    expect(all).not.toContain('suits')
+    expect(all).not.toContain('/theme')
+  })
+
+  it('closes with a rule across the width and the keys under it', () => {
+    const lines = (render(<ThemePicker width={60} onChoose={() => {}} />).lastFrame() ?? '').split(
+      '\n',
+    )
+    const rule = lines.indexOf('─'.repeat(60))
+    expect(rule).toBeGreaterThan(3)
+    expect(lines[rule + 1]).toMatch(/↑↓.*choose.*↵.*confirm/)
+  })
+
+  it('chooses the highlighted theme with ↵, and moves with the arrows', async () => {
+    const onChoose = vi.fn()
+    const { stdin } = render(<ThemePicker width={80} onChoose={onChoose} />)
+    await tick()
+    stdin.write('\u001b[A')
+    await tick()
+    stdin.write('\r')
+    await tick()
+    expect(onChoose).toHaveBeenCalledWith('light')
   })
 })

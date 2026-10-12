@@ -1,262 +1,216 @@
+import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
+import { mix, type Row } from '../../src/shell/home-art.js'
 import {
-  type FolderRowSpec,
-  fieldBlank,
+  edgeColour,
+  fieldRow,
+  filesRow,
   folderRow,
-  listAt,
-  sentenceRow,
+  NAME_WIDTH,
+  type PathLine,
+  pathRow,
+  ruleRow,
+  underlineRow,
 } from '../../src/shell/save-as-art.js'
 import { DARK, LIGHT, modePalette, NEUTRAL } from '../../src/shell/theme.js'
-import {
-  describeRow,
-  type FixtureFrame,
-  fixtureRow,
-  loadFixture,
-  runsRow,
-  shifted,
-} from './home-cells.js'
-
-/** P1, from scripts/save-as-mockup-fixture.mjs. */
-const P1 = loadFixture('save-as-mockup.json') as FixtureFrame[]
-const frame = (label: string) => P1.find((f) => f.label === label) as FixtureFrame
-/** A mockup row, moved to where the app draws the field: flush left. */
-const at = (label: string, row: number) => shifted(fixtureRow(frame(label), row))
 
 const palette = modePalette(DARK, 'convert')
 const W = 76
+const text = (row: Row) => row.map((r) => r.text).join('')
+const cells = (row: Row) =>
+  row.flatMap((run) =>
+    [...run.text].map((ch) => ({ ch, fg: run.fg, bg: run.bg, bold: run.bold ?? false })),
+  )
 
-/** The mockup's example folders, with Desktop the default. */
-const FOLDERS: Array<Omit<FolderRowSpec, 'palette' | 'width' | 'at'>> = [
-  { label: 'Same folder', path: '~/Pictures' },
-  { label: 'Desktop', path: '~/Desktop' },
-  { label: 'Downloads', path: '~/Downloads' },
-  { label: 'Documents', path: '~/Documents' },
-  { label: 'New folder…', path: '', quiet: true },
+const PATHS: PathLine[] = [
+  { kind: 'rest' },
+  { kind: 'empty' },
+  { kind: 'typing', text: '~/Documents/Sc', ghost: 'ans/', note: 'complete', highlighted: true },
+  { kind: 'typing', text: '~/Documents/Invoices 2026', note: 'new', highlighted: true },
+  { kind: 'typing', text: 'zzz', note: 'nomatch', highlighted: true },
+  { kind: 'place', label: 'Scans', path: '~/Documents/Scans', highlighted: true },
 ]
 
-describe('the Save as field, against P1', () => {
-  it('pads the field with a blank row of its fill above and below the sentence', () => {
-    expect(describeRow(runsRow(fieldBlank({ palette, width: W })), at('name, header', 10))).toBe(
-      'equal',
+describe('the Save as block (V10c)', () => {
+  it('edges every row in the mode’s colour stepped into the field’s fill', () => {
+    const row = fieldRow({ palette, width: W })
+    expect(edgeColour(palette)).toBe(mix(DARK.selectionBg, DARK.modeConvert, 0.7))
+    expect(cells(row)[0]).toMatchObject({ ch: ' ', bg: edgeColour(palette) })
+    expect(
+      cells(row)
+        .slice(1)
+        .every((c) => c.bg === DARK.selectionBg),
+    ).toBe(true)
+  })
+
+  it('underlines the name’s box in the mode’s colour, under it exactly', () => {
+    const row = cells(underlineRow({ palette, width: W }))
+    const line = row.map((c, i) => (c.ch === '▔' ? i : -1)).filter((i) => i >= 0)
+    expect(line).toHaveLength(NAME_WIDTH)
+    expect(line[0]).toBe(11)
+    expect(row[11]).toMatchObject({ fg: DARK.modeConvert })
+  })
+
+  it('parts the name from the folders with a quiet rule', () => {
+    expect(text(ruleRow({ palette, width: W }))).toMatch(/^ {3}─{70} {3}$/)
+    expect(cells(ruleRow({ palette, width: W }))[3]).toMatchObject({ fg: DARK.faint })
+  })
+
+  it('says what will be written in place of a name, for many files', () => {
+    expect(text(filesRow({ palette, width: W, names: 'report-1.jpg … 12 files' }))).toMatch(
+      /^ {3}files {3}report-1\.jpg … 12 files +$/,
     )
-    expect(describeRow(runsRow(fieldBlank({ palette, width: W })), at('name, header', 12))).toBe(
-      'equal',
-    )
-  })
-
-  it('reads as one sentence while the name is focused: the folder on a light grey fill, ▾ after it', () => {
-    const row = sentenceRow({
-      palette,
-      width: W,
-      name: 'header',
-      ext: '.jpg',
-      focus: 'name',
-      folder: 'Desktop',
-    })
-    expect(describeRow(runsRow(row), at('name, header', 11))).toBe('equal')
-  })
-
-  it('dims the name and makes the folder a white pill once the folder is focused', () => {
-    const row = sentenceRow({
-      palette,
-      width: W,
-      name: 'header',
-      ext: '.jpg',
-      focus: 'folder',
-      folder: 'Downloads',
-    })
-    expect(describeRow(runsRow(row), at('folder, Downloads', 11))).toBe('equal')
-  })
-
-  it('lines the folder names up under the pill, the strip one column left of it', () => {
-    expect(listAt('header', '.jpg')).toBe(18)
-  })
-
-  it('lists the folders inside the field: the highlighted one on a grey band with its path, the default tagged at the far end', () => {
-    const f = frame('folder, Desktop')
-    FOLDERS.forEach((spec, i) => {
-      const row = folderRow({
-        palette,
-        width: W,
-        at: listAt('header', '.jpg'),
-        ...spec,
-        selected: i === 1,
-        isDefault: i === 1,
-      })
-      expect(describeRow(runsRow(row), shifted(fixtureRow(f, 13 + i)))).toBe('equal')
-    })
-  })
-
-  it('keeps the tag on the default when another folder is highlighted', () => {
-    const f = frame('folder, Downloads')
-    FOLDERS.forEach((spec, i) => {
-      const row = folderRow({
-        palette,
-        width: W,
-        at: listAt('header', '.jpg'),
-        ...spec,
-        selected: i === 2,
-        isDefault: i === 1,
-      })
-      expect(describeRow(runsRow(row), shifted(fixtureRow(f, 13 + i)))).toBe('equal')
-    })
-  })
-
-  it('moves the tag the moment the default changes', () => {
-    const f = frame('folder, Downloads made default')
-    FOLDERS.forEach((spec, i) => {
-      const row = folderRow({
-        palette,
-        width: W,
-        at: listAt('header', '.jpg'),
-        ...spec,
-        selected: i === 2,
-        isDefault: i === 2,
-      })
-      expect(describeRow(runsRow(row), shifted(fixtureRow(f, 13 + i)))).toBe('equal')
-    })
-  })
-})
-
-const text = (row: ReturnType<typeof sentenceRow>) => row.map((r) => r.text).join('')
-
-describe('the Save as field, off the mockup', () => {
-  it('shows a typed filter in the pill, the caret after it', () => {
-    const row = sentenceRow({
-      palette,
-      width: W,
-      name: 'header',
-      ext: '.jpg',
-      focus: 'folder',
-      folder: 'Dow',
-      query: true,
-    })
-    expect(text(row)).toMatch(/^ › header\.jpg {3}in {2}Dow {2}/)
-    // The caret is the cell after the query, drawn in the pill's ink.
-    const caret = row.find((r) => r.text === ' ' && r.bg === palette.ink)
-    expect(caret).toBeDefined()
-  })
-
-  it('cuts a long name from the middle in folder focus, so the list keeps its room', () => {
-    const name = 'a-really-long-file-name-that-would-push-the-folder-list-off-the-edge'
-    const row = sentenceRow({
-      palette,
-      width: W,
-      name,
-      ext: '.jpg',
-      focus: 'folder',
-      folder: 'Desktop',
-    })
-    expect(text(row).length).toBe(W)
-    expect(text(row)).toContain('…')
-    expect(text(row)).toContain(' Desktop ')
-    expect(listAt(name, '.jpg', W)).toBeLessThanOrEqual(W - 30)
-  })
-
-  it('cuts a long path on the highlighted row before it reaches the tag', () => {
-    const row = folderRow({
-      palette,
-      width: W,
-      at: 18,
-      label: 'Same folder',
-      path: '~/Documents/Projects/2026/Photography/Raw exports/second pass',
-      selected: true,
-      isDefault: true,
-    })
-    expect(text(row).length).toBe(W)
-    // The tag, its own cell, then the field's two cells past the list's edge.
-    expect(text(row)).toContain('…')
-    expect(text(row)).toMatch(/second pass +default {4}$/)
   })
 
   it('draws every row exactly the field wide', () => {
-    for (const width of [40, 60, 76]) {
-      const rows = [
-        fieldBlank({ palette, width }),
-        sentenceRow({
-          palette,
-          width,
-          name: 'header',
-          ext: '.jpg',
-          focus: 'name',
-          folder: 'Desktop',
-        }),
+    for (const width of [W, 56, 40]) {
+      const rows: Row[] = [
+        fieldRow({ palette, width }),
+        underlineRow({ palette, width }),
+        ruleRow({ palette, width }),
+        filesRow({ palette, width, names: 'a very long list of names that goes on and on and on' }),
         folderRow({
           palette,
           width,
-          at: listAt('header', '.jpg', width),
-          label: 'Desktop',
-          path: '~/Desktop',
+          label: 'Same folder',
+          path: '~/Pictures',
           selected: true,
           isDefault: true,
         }),
+        folderRow({ palette, width, label: 'Downloads', path: '~/Downloads' }),
+        ...PATHS.map((line) => pathRow({ palette, width, line })),
       ]
-      for (const row of rows) expect(text(row).length).toBe(width)
+      for (const row of rows) expect(stringWidth(text(row))).toBe(width)
     }
-  })
-
-  it('has every colour it needs in the light theme too', () => {
-    const light = modePalette(LIGHT, 'convert')
-    const row = folderRow({
-      palette: light,
-      width: W,
-      at: 18,
-      label: 'Desktop',
-      path: '~/Desktop',
-      selected: true,
-      isDefault: true,
-    })
-    expect(row.some((r) => r.bg === LIGHT.fieldBand)).toBe(true)
-    expect(row.some((r) => r.bg === LIGHT.defaultTagBg && r.fg === LIGHT.defaultTag)).toBe(true)
   })
 })
 
-describe('the Save as field without colour', () => {
-  const plain = { palette: modePalette(NEUTRAL, 'convert'), width: W, plain: true }
+describe('the Save as folders (V10c)', () => {
+  it('draws the highlighted one on a grey band: the white strip, its name bold, its path', () => {
+    const row = folderRow({
+      palette,
+      width: W,
+      first: true,
+      label: 'Desktop',
+      path: '~/Desktop',
+      selected: true,
+    })
+    expect(text(row)).toMatch(/^ {3}to {6}▌ Desktop {9}~\/Desktop +$/)
+    const c = cells(row)
+    expect(c[11]).toMatchObject({ ch: '▌', fg: DARK.fg, bg: DARK.fieldBand })
+    expect(c[13]).toMatchObject({ ch: 'D', fg: DARK.fg, bold: true, bg: DARK.fieldBand })
+  })
 
-  it('draws no fill anywhere', () => {
+  it('keeps the rest lean: a name each, no path', () => {
+    const row = folderRow({ palette, width: W, label: 'Downloads', path: '~/Downloads' })
+    expect(text(row)).toMatch(/^ {13}Downloads +$/)
+    expect(cells(row)[13]).toMatchObject({ fg: DARK.dim, bg: DARK.selectionBg })
+  })
+
+  it('tags the default at the far end, a cell in, whether or not it is highlighted', () => {
+    for (const selected of [true, false]) {
+      const row = folderRow({
+        palette,
+        width: W,
+        label: 'Desktop',
+        path: '~/Desktop',
+        isDefault: true,
+        selected,
+      })
+      expect(text(row)).toMatch(/ default {3}$/)
+      const c = cells(row)
+      expect(c[W - 4]).toMatchObject({ ch: 't', fg: DARK.defaultTag, bg: DARK.defaultTagBg })
+    }
+  })
+})
+
+describe('the Save as path row (V10c)', () => {
+  it('invites a path at rest', () => {
+    expect(text(pathRow({ palette, width: W, line: { kind: 'rest' } }))).toMatch(
+      /^ {13}Type the path here {2}or drop a folder +$/,
+    )
+  })
+
+  it('puts the caret on the invitation when highlighted with nothing typed', () => {
+    const row = pathRow({ palette, width: W, line: { kind: 'empty' } })
+    expect(text(row)).toMatch(/^ {11}▌ Type the path here/)
+    expect(cells(row)[13]).toMatchObject({ ch: 'T', bg: DARK.dim })
+  })
+
+  it('shows the rest of a matching folder dim, and "tab completes" where the default’s tag sits', () => {
+    const row = pathRow({ palette, width: W, line: PATHS[2] as PathLine })
+    expect(text(row)).toMatch(/▌ ~\/Documents\/Sc ans\/ +tab completes {2}$/)
+    const c = cells(row)
+    const ghost = text(row).indexOf('ans/')
+    expect(c[ghost]).toMatchObject({ fg: DARK.border })
+    // The caret: a cell of the text's colour, after what is typed.
+    expect(c[ghost - 1]).toMatchObject({ ch: ' ', bg: DARK.fg })
+  })
+
+  it('tags a folder that does not exist yet in blue, where the default’s tag sits', () => {
+    const row = pathRow({ palette, width: W, line: PATHS[3] as PathLine })
+    expect(text(row)).toMatch(/ new folder {3}$/)
+    const c = cells(row)
+    expect(c[W - 4]).toMatchObject({ ch: 'r', fg: DARK.newTag, bg: DARK.newTagBg })
+    const tagged = folderRow({ palette, width: W, label: 'Desktop', path: '', isDefault: true })
+    // Both tags end on the same cell.
+    expect(text(row).trimEnd().length).toBe(text(tagged).trimEnd().length)
+  })
+
+  it('says when nothing matches', () => {
+    expect(text(pathRow({ palette, width: W, line: PATHS[4] as PathLine }))).toMatch(
+      /▌ zzz +no match {2}$/,
+    )
+  })
+
+  it('fills with a dropped folder: its name, and where it is', () => {
+    expect(text(pathRow({ palette, width: W, line: PATHS[5] as PathLine }))).toMatch(
+      /▌ Scans +~\/Documents\/Scans +$/,
+    )
+  })
+
+  it('keeps the end of a long path, where the typing is', () => {
+    const long = `~/${'deep/'.repeat(20)}folder`
+    const row = text(
+      pathRow({ palette, width: W, line: { kind: 'typing', text: long, highlighted: true } }),
+    )
+    expect(row).toContain('…')
+    expect(row).toContain('deep/folder')
+  })
+})
+
+describe('the Save as block without colour', () => {
+  it('draws no fill anywhere, the edge a rule and the caret a glyph', () => {
     const rows = [
-      sentenceRow({ ...plain, name: 'header', ext: '.jpg', focus: 'folder', folder: 'Desktop' }),
+      fieldRow({ palette: NEUTRAL, width: W }),
+      underlineRow({ palette: NEUTRAL, width: W }),
       folderRow({
-        ...plain,
-        at: 18,
+        palette: NEUTRAL,
+        width: W,
         label: 'Desktop',
         path: '~/Desktop',
         selected: true,
         isDefault: true,
       }),
+      ...PATHS.map((line) => pathRow({ palette: NEUTRAL, width: W, line })),
     ]
     for (const row of rows) for (const run of row) expect(run.bg ?? '').toBe('')
+    expect(text(rows[0] as Row)[0]).toBe('│')
+    expect(text(pathRow({ palette: NEUTRAL, width: W, line: PATHS[2] as PathLine }))).toContain(
+      'Sc▏ans/',
+    )
   })
 
-  it('brackets the pill, so the focused folder still reads by shape', () => {
-    const focused = sentenceRow({
-      ...plain,
-      name: 'header',
-      ext: '.jpg',
-      focus: 'folder',
-      folder: 'Desktop',
-    })
-    expect(text(focused)).toMatch(/^ › header\.jpg {3}in \[Desktop\]/)
-    const resting = sentenceRow({
-      ...plain,
-      name: 'header',
-      ext: '.jpg',
-      focus: 'name',
-      folder: 'Desktop',
-    })
-    expect(text(resting)).toMatch(/^ › header\.jpg {3}in {2}Desktop ▾/)
-  })
-
-  it('keeps the strip on the highlighted row, and the tag as a word', () => {
-    const row = folderRow({
-      ...plain,
-      at: 18,
-      label: 'Desktop',
-      path: '~/Desktop',
-      selected: true,
-      isDefault: true,
-    })
-    expect(text(row)).toMatch(/^ {18}▌ Desktop {5}~\/Desktop +default {4}$/)
+  it('has every colour it needs in the light theme too', () => {
+    for (const key of [
+      'fieldBand',
+      'defaultTag',
+      'defaultTagBg',
+      'newTag',
+      'newTagBg',
+      'faint',
+    ] as const) {
+      expect(LIGHT[key]).toMatch(/^#[0-9a-f]{6}$/)
+    }
   })
 })

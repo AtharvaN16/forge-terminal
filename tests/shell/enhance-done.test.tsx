@@ -8,6 +8,7 @@ import stripAnsi from 'strip-ansi'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadSharp } from '../../src/engines/libs.js'
 import { EnhanceDone, pictureRows } from '../../src/shell/components/EnhanceDone.js'
+import { HOME_MARGIN } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK } from '../../src/shell/theme.js'
 
@@ -35,7 +36,7 @@ afterEach(() => {
   chalk.level = level
 })
 
-describe('EnhanceDone, half-block fallback', () => {
+describe('EnhanceDone, sextant fallback', () => {
   it('draws the quiet line and the two close-ups side by side within 80 columns', async () => {
     chalk.level = 3 // a true-colour terminal (the suite's stdout is not a TTY)
     const dir = await mkdtemp(join(tmpdir(), 'forge-enhance-done-'))
@@ -45,17 +46,23 @@ describe('EnhanceDone, half-block fallback', () => {
         <EnhanceDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
       </ThemeProvider>,
     )
-    await vi.waitFor(() => expect(lastFrame() ?? '').toContain('▀'), { timeout: 5000 })
+    await vi.waitFor(() => expect(lastFrame() ?? '').toContain('each pixel'), { timeout: 5000 })
     const lines = (lastFrame() ?? '').split('\n')
     const plain = lines.map((l) => stripAnsi(l))
     expect(plain[0]).toMatch(/✓ sign-sharp\.png {3}sharpened · same size · 64 × 48\s+in /)
     expect(plain[2]).toMatch(/^ {2} before +after\s*$/)
-    const grid = plain.filter((l) => l.includes('▀'))
+    // Sixteen rows of picture between the tabs and the caption's gap.
+    const grid = plain.slice(3, -2)
     expect(grid).toHaveLength(16)
-    // Two pictures 36 pixels wide, the ▶ between them on the middle row.
-    expect(grid.every((l) => (l.match(/▀/g) ?? []).length === 72)).toBe(true)
-    expect(grid.filter((l) => l.includes('▶'))).toHaveLength(1)
-    expect(plain.at(-1)).toContain('one square is one pixel')
+    // Two pictures 36 cells wide, the ▶ between them on the middle row.
+    const arrow = grid.filter((l) => l.includes('▶'))
+    expect(arrow).toHaveLength(1)
+    const row = arrow[0] ?? ''
+    expect(stringWidth(row.slice(0, row.indexOf('▶')))).toBe(HOME_MARGIN + 36 + 1)
+    // The dark square's edge is drawn in sextants, the flat grey as coloured spaces.
+    expect(grid.join('')).toMatch(/[\u{1FB00}-\u{1FB3B}▌▐]/u)
+    expect(lines.slice(3, -2).every((l) => l.includes('\u001b[48;2;'))).toBe(true)
+    expect(plain.at(-1)).toContain('close enough to see each pixel')
     expect(Math.max(...plain.map((l) => stringWidth(l)))).toBeLessThanOrEqual(80)
   })
 
@@ -72,7 +79,7 @@ describe('EnhanceDone, half-block fallback', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('✓ sign-sharp.png   sharpened')
     expect(frame).not.toContain('\u001b[')
-    expect(frame).not.toContain('▀')
+    expect(frame).not.toContain('▶')
     expect(frame).not.toContain('before')
   })
 

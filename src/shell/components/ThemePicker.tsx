@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { ThemeProvider } from '../ThemeContext.js'
-import { colourProp, NEUTRAL } from '../theme.js'
+import { NEUTRAL } from '../theme.js'
+import { HintBar } from './HintBar.js'
 import { Select } from './Select.js'
 
 /**
@@ -8,23 +9,40 @@ import { Select } from './Select.js'
  * than inheriting the ambient palette: at this moment we genuinely do not
  * know the terminal's background, and NEUTRAL sets no background fill and no
  * foreground, which makes it legible on either.
+ *
+ * Round 5: "Select theme", a blank row, the two names with no hints, and the
+ * keys under a rule as on every other screen. The cursor opens on Dark, what
+ * most terminals are.
  */
-export function ThemePicker({ onChoose }: { onChoose: (theme: 'dark' | 'light') => void }) {
+export function ThemePicker({
+  width,
+  onChoose,
+}: {
+  width: number
+  onChoose: (theme: 'dark' | 'light') => void
+}) {
   return (
     <ThemeProvider palette={NEUTRAL}>
       <Box flexDirection="column" marginBottom={1}>
-        <Text>Which theme suits your terminal?</Text>
+        <Text bold>Select theme</Text>
+        <Text> </Text>
         <Select
-          width={46}
+          width={width}
           items={[
-            { value: 'dark', label: 'Dark', hint: 'light text on a dark background' },
-            { value: 'light', label: 'Light', hint: 'dark text on a light background' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
           ]}
+          initialValue="dark"
           onSubmit={(value) => onChoose(value === 'light' ? 'light' : 'dark')}
         />
-        <Text color={colourProp(NEUTRAL.dim)}>
-          ↑↓ choose · ↵ confirm · change it later with /theme
-        </Text>
+        <HintBar
+          width={width}
+          pairs={[
+            ['↑↓', 'choose'],
+            ['↵', 'confirm'],
+          ]}
+          foot={[]}
+        />
       </Box>
     </ThemeProvider>
   )

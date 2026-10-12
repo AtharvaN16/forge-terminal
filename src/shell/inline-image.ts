@@ -9,7 +9,7 @@
  *   - the Kitty graphics protocol (APC `G`), which Kitty and Ghostty speak.
  *
  * Everything else (Apple Terminal, VS Code's terminal, tmux, a pipe) gets
- * null, and Done draws its half-block close-up instead. Detection reads the
+ * null, and Done draws its close-up in characters instead. Detection reads the
  * environment only, never asks the terminal: a query would need a reply
  * on stdin, which Ink owns.
  */
@@ -49,8 +49,8 @@ function speaksKitty(env: NodeJS.ProcessEnv): boolean {
 }
 
 /**
- * The protocol to draw real pictures with, or null for the half-block
- * fallback.
+ * The protocol to draw real pictures with, or null for the close-up drawn
+ * in characters.
  *
  * `FORGE_INLINE_IMAGES=0` turns pictures off and `=1` turns them on — in
  * Kitty's protocol where this looks like Kitty or Ghostty, else iTerm2's —

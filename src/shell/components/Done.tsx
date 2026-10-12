@@ -6,21 +6,23 @@ import { displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
 import type { Row } from '../home-art.js'
-import { fileLink, hyperlinksSupported } from '../hyperlink.js'
+import { easeOut, motionEnabled, useTween } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
 import { KeyRow, Runs } from './Home.js'
 
 /**
- * Done (K3·a): what a single-file convert or compress leaves on screen. The
- * header bar's trail ends in "Done"; under it, the file before and after as
- * two panels sized by bytes (see `done-art.ts`), then the folder, any offer
- * or warning low above the keys. No file card: the panels are the file.
+ * Done (B6a): what a single-file convert or compress leaves on screen. The
+ * header bar's trail ends in "Done" — and says the folder, so the body does
+ * not; under it, the formats, one bar sized by bytes (see `done-art.ts`) and
+ * the two sizes, then any offer or warning low above the keys. No file card:
+ * the bar is the file.
  *
  * `DoneScreen` fills the terminal's height, as home does, so the keys sit on
  * the bottom row. `DoneRecord` is the same body without the padding and the
- * keys, for the scrollback once the screen is left.
+ * keys, for the scrollback once the screen is left — and with the folder
+ * under it, since the header that said it is gone (audit #9).
  */
 
 /** What the panels say about a convert result. */
@@ -37,35 +39,36 @@ export function doneFacts(result: Result, mode: ShellMode): DoneFacts {
       name: basename(source.path),
       bytes: source.bytes,
     },
-    after: { name: basename(output), bytes: outputBytes },
-    folder: displayPath(dirname(output)),
+    after: {
+      format: FORMATS[job.target]?.label ?? job.target.toUpperCase(),
+      name: basename(output),
+      bytes: outputBytes,
+    },
   }
 }
+
+/**
+ * The bar draws itself once as the screen opens (M5a): over BAR_MS a smaller
+ * file's band pulls back from the old length to the new one, or a larger
+ * file's growth pushes out; the change's words fade in over its last part.
+ */
+const BAR_MS = 520
+const LABEL_FROM = 480
+const LABEL_MS = 140
+const DRAW_MS = LABEL_FROM + LABEL_MS
+/** How long a pressed key's cap stays inverted (M6b). */
+const PRESS_MS = 130
 
 const Blank = ({ rows = 1 }: { rows?: number }) =>
   rows > 0 ? <Box height={rows} flexShrink={0} /> : null
 
-/**
- * The body's rows. The last is the folder, whose path is a link to it where
- * the terminal has links — drawn by hand, as a link only adds escapes.
- */
-function Body({ rows, folder }: { rows: Row[]; folder: string }) {
-  const palette = useTheme()
-  const last = rows.length - 1
+/** The body's rows; an empty one is a blank row. */
+function Body({ rows }: { rows: Row[] }) {
   return (
     <>
       {rows.map((row, i) => {
         const key = `row-${i}`
-        if (row.length === 0) return <Blank key={key} />
-        if (i !== last || !hyperlinksSupported()) return <Runs key={key} row={row} />
-        const [lead, word, path] = row
-        return (
-          <Text key={key}>
-            {lead?.text}
-            <Text color={colourProp(palette.border)}>{word?.text}</Text>
-            <Text color={colourProp(palette.dim)}>{fileLink(path?.text ?? '', folder)}</Text>
-          </Text>
-        )
+        return row.length === 0 ? <Blank key={key} /> : <Runs key={key} row={row} />
       })}
     </>
   )
@@ -81,6 +84,7 @@ export function DoneScreen({
   reveal,
   width,
   height,
+  pressed,
 }: {
   mode: ShellMode
   /** The run's answers, ending in "Done". */
@@ -96,9 +100,22 @@ export function DoneScreen({
   reveal: string
   width: number
   height: number
+  /**
+   * The key last pressed here (`o`, `s`); `n` counts presses, so pressing the
+   * same key again shows again. Opening a file takes the system a moment, and
+   * the inverted cap says the key was taken meanwhile.
+   */
+  pressed?: { key: string; n: number } | undefined
 }) {
   const palette = useTheme()
-  const body = doneBody({ palette, facts: doneFacts(result, mode), width })
+  const press = useTween(pressed?.n, PRESS_MS, { enabled: motionEnabled(palette.name) })
+  const ms =
+    DRAW_MS * useTween(result, DRAW_MS, { enabled: motionEnabled(palette.name), onMount: true })
+  const draw =
+    ms >= DRAW_MS
+      ? undefined
+      : { bar: easeOut(ms / BAR_MS), label: Math.max(0, Math.min(1, (ms - LABEL_FROM) / LABEL_MS)) }
+  const body = doneBody({ palette, facts: doneFacts(result, mode), width, draw })
   const notes = doneNotes({
     palette,
     offers,
@@ -121,7 +138,7 @@ export function DoneScreen({
       <HeaderBar mode={mode} trail={trail} width={width} />
       <Blank />
       <Blank rows={top} />
-      <Body rows={body} folder={dirname(result.job.outputs[0] ?? '')} />
+      <Body rows={body} />
       {notes.length > 0 ? (
         <>
           <Blank rows={between} />
@@ -132,7 +149,13 @@ export function DoneScreen({
         </>
       ) : null}
       <Blank rows={bottom} />
-      <KeyRow main={keys} foot={[['ctrl-c', 'quit']]} width={width} />
+      <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
+      <KeyRow
+        main={keys}
+        foot={[['ctrl-c', 'quit']]}
+        width={width}
+        pressed={press < 1 ? pressed?.key : undefined}
+      />
     </Box>
   )
 }
@@ -151,7 +174,12 @@ export function DoneRecord({
   width: number
 }) {
   const palette = useTheme()
-  const body = doneBody({ palette, facts: doneFacts(result, mode), width })
+  const body = doneBody({
+    palette,
+    facts: doneFacts(result, mode),
+    width,
+    folder: displayPath(dirname(result.job.outputs[0] ?? '')),
+  })
   const warnings = doneNotes({
     palette,
     offers: [],
@@ -160,7 +188,7 @@ export function DoneRecord({
   })
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Body rows={body} folder={dirname(result.job.outputs[0] ?? '')} />
+      <Body rows={body} />
       {warnings.length > 0 ? (
         <Box flexDirection="column" marginTop={1}>
           {warnings.map((row, i) => (

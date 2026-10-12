@@ -26,7 +26,7 @@ import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
 import { trueColour } from '../glyphs.js'
 import { blank, type Row } from '../home-art.js'
-import { motionEnabled, useTicker } from '../motion.js'
+import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
@@ -220,6 +220,10 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
 
   const screen = state.history[state.history.length - 1] as Screen
   const truecolour = useMemo(() => trueColour(), [])
+  // A palette coming in brings its colours up in turn (M7): only an image's
+  // first palette, not a step into one of its colours or back out.
+  const arriving = screen.kind === 'palette' && screen.level.length === 0 ? image.current : null
+  const arrivedFor = ARRIVE_MS * useTween(arriving, ARRIVE_MS, { enabled: motionEnabled(p.name) })
   const body = bodyRows({
     p,
     screen,
@@ -228,54 +232,79 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
     width,
     height,
     pixels: image.current?.pixels,
+    arrivedFor: arriving && arrivedFor < ARRIVE_MS ? arrivedFor : undefined,
   })
   const detail = detailFor({ p, screen, state, groupsAt })
   const keys = keysFor(screen, state)
 
-  return (
-    // The header bar above leaves a blank row; the field starts right under it.
-    <Box flexDirection="column">
-      {state.field.focus ? (
-        <FieldEditor
-          width={width}
-          value={state.field.text}
-          hint={onScaleScreen(screen) ? 'type a hex code' : 'type an image path'}
-          onChange={(text) => dispatch({ type: 'text', text })}
-          onSubmit={() => dispatch({ type: 'submit' })}
-          onEscape={() => dispatch({ type: 'cancel' })}
-        />
-      ) : (
-        fieldRows({
-          width,
-          palette: p,
-          content: restingField(p, screen),
-          focus: false,
-        }).map((row, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <Line key={i} row={row} />
-        ))
-      )}
-      <Line
-        row={
-          state.error
-            ? errorRow(p, state.error)
-            : finding
-              ? workLine({
-                  palette: p,
-                  mode: 'colour',
-                  spinner: motionEnabled(p.name)
-                    ? SPINNER_FRAMES[tick % SPINNER_FRAMES.length]
-                    : undefined,
-                  label: 'Finding colours',
-                  width,
-                })
-              : []
-        }
-      />
-      {body.map((row, i) => (
+  // Palette with nothing dropped yet (C4): the drop zone first, the field
+  // attached under it on home's recessed shelf, as home draws its own. Every
+  // other screen keeps the field on top, where it names what is shown.
+  const below = screen.kind === 'palette-empty'
+  const fill = below && p.shelf !== '' ? p.shelf : p.selectionBg
+  const field = state.field.focus ? (
+    <FieldEditor
+      width={width}
+      fill={fill}
+      value={state.field.text}
+      hint={onScaleScreen(screen) ? 'type a hex code' : 'type an image path'}
+      onChange={(text) => dispatch({ type: 'text', text })}
+      onSubmit={() => dispatch({ type: 'submit' })}
+      onEscape={() => dispatch({ type: 'cancel' })}
+    />
+  ) : (
+    fieldRows({
+      width,
+      palette: p,
+      content: restingField(p, screen),
+      focus: false,
+    })
+      .map((row) => row.map((run) => (run.bg === p.selectionBg ? { ...run, bg: fill } : run)))
+      .map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
         <Line key={i} row={row} />
-      ))}
+      ))
+  )
+  const status = (
+    <Line
+      row={
+        state.error
+          ? errorRow(p, state.error)
+          : finding
+            ? workLine({
+                palette: p,
+                mode: 'colour',
+                spinner: motionEnabled(p.name)
+                  ? SPINNER_FRAMES[tick % SPINNER_FRAMES.length]
+                  : undefined,
+                label: 'Finding colours',
+                width,
+              })
+            : []
+      }
+    />
+  )
+  const shown = body.map((row, i) => (
+    // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+    <Line key={i} row={row} />
+  ))
+
+  return (
+    // The header bar above leaves a blank row; what comes first starts right under it.
+    <Box flexDirection="column">
+      {below ? (
+        <>
+          {shown}
+          {field}
+          {status}
+        </>
+      ) : (
+        <>
+          {field}
+          {status}
+          {shown}
+        </>
+      )}
       <Text> </Text>
       <Line row={state.flash ? flashRow(p, state.flash.text) : detail} />
       {!truecolour && p.selectionBg !== '' ? <Runs row={approximateRow(p)} /> : null}
@@ -332,6 +361,7 @@ function RunsText({ row }: { row: Row }) {
 /** The field while typing: the app's own editor inside the filled block. */
 function FieldEditor({
   width,
+  fill,
   value,
   hint,
   onChange,
@@ -339,14 +369,15 @@ function FieldEditor({
   onEscape,
 }: {
   width: number
+  /** The field's fill: `selectionBg`, or home's shelf under the drop zone. */
+  fill: string
   value: string
   hint: string
   onChange: (text: string) => void
   onSubmit: () => void
   onEscape: () => void
 }) {
-  const p = useTheme()
-  const fillProps = p.selectionBg === '' ? {} : { backgroundColor: colourProp(p.selectionBg) }
+  const fillProps = fill === '' ? {} : { backgroundColor: colourProp(fill) }
   const swatch: Row = /^#[0-9a-f]{6}$/i.test(value.trim())
     ? [blank(2), { text: '    ', bg: value.trim() }]
     : []
@@ -377,6 +408,14 @@ function FieldEditor({
   )
 }
 
+/**
+ * A palette's colours arriving (M7): each a step after the one above it,
+ * each fading up over ARRIVE_FADE_MS; ARRIVE_MS covers a long palette.
+ */
+const ARRIVE_STEP_MS = 45
+const ARRIVE_FADE_MS = 140
+const ARRIVE_MS = 700
+
 function bodyRows({
   p,
   screen,
@@ -385,6 +424,7 @@ function bodyRows({
   width,
   height,
   pixels,
+  arrivedFor,
 }: {
   p: ReturnType<typeof useTheme>
   screen: Screen
@@ -393,6 +433,8 @@ function bodyRows({
   width: number
   height: number
   pixels: Pixels | undefined
+  /** How long ago the palette came in, while its colours are still arriving (M7). */
+  arrivedFor?: number | undefined
 }): Row[] {
   if (screen.kind === 'palette-empty') {
     return dropZone({ width, palette: p, typing: state.field.text !== '', formats: FORMATS })
@@ -434,6 +476,10 @@ function bodyRows({
           items,
           selected: screen.sel,
           rows: showPhoto ? PHOTO_ROWS : items.length,
+          arrive:
+            arrivedFor === undefined
+              ? undefined
+              : items.map((_, i) => easeOut((arrivedFor - i * ARRIVE_STEP_MS) / ARRIVE_FADE_MS)),
         })
       : insideColumn({
           palette: p,

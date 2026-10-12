@@ -18,7 +18,14 @@ import {
 } from '../../src/shell/colour/colour-art.js'
 import type { Row } from '../../src/shell/home-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
-import { describeRow, type FixtureFrame, fixtureRow, loadFixture, runsRow } from './home-cells.js'
+import {
+  describeHomeRow,
+  describeRow,
+  type FixtureFrame,
+  fixtureRow,
+  loadFixture,
+  runsRow,
+} from './home-cells.js'
 
 /**
  * Colour mode's rows, held cell for cell to the decided flow
@@ -55,12 +62,25 @@ const { data } = FX
 const frame = (id: string) => FX.frames.find((f) => f.id === id) as FixtureFrame
 const P = modePalette(DARK, 'colour')
 
-function expectRows(rows: Row[], id: string, from: number) {
+function expectRows(rows: Row[], id: string, from: number, describe = describeRow) {
   rows.forEach((row, i) => {
-    expect(
-      describeRow(runsRow(row), fixtureRow(frame(id), from + i)),
-      `${id}, row ${from + i}`,
-    ).toBe('equal')
+    expect(describe(runsRow(row), fixtureRow(frame(id), from + i)), `${id}, row ${from + i}`).toBe(
+      'equal',
+    )
+  })
+}
+
+/**
+ * The cards against C1, with round 5's G4: the chosen card has no strip —
+ * its lighter fill alone says it is chosen — so the mockup's `▌` is a blank
+ * cell of that fill.
+ */
+function expectCards(rows: Row[], id: string, from: number) {
+  rows.forEach((row, i) => {
+    const expected = fixtureRow(frame(id), from + i).map((c) =>
+      c.ch === '▌' ? { ch: ' ', fg: null, bg: c.bg, b: false } : c,
+    )
+    expect(describeRow(runsRow(row), expected), `${id}, row ${from + i}`).toBe('equal')
   })
 }
 
@@ -77,9 +97,9 @@ const INSIDE_MAP = (data.subgrid[CORAL] ?? []).map((r) =>
 describe('home in colour mode (C1)', () => {
   const samples = { palette: PAL.map((p) => p.hex), scale: data.scA.map((s) => s.hex) }
   it('Palette chosen', () =>
-    expectRows(choiceCards({ width: 80, palette: P, selected: 0, samples }), '1', 7))
+    expectCards(choiceCards({ width: 80, palette: P, selected: 0, samples }), '1', 7))
   it('Scale chosen', () =>
-    expectRows(choiceCards({ width: 80, palette: P, selected: 1, samples }), 'B1', 7))
+    expectCards(choiceCards({ width: 80, palette: P, selected: 1, samples }), 'B1', 7))
 })
 
 describe('the field, filled and neutral', () => {
@@ -155,6 +175,8 @@ describe('the palette (D1)', () => {
       }),
       '2',
       6,
+      // The dots are round 5's brighter ones; everything else is D1's.
+      describeHomeRow,
     ))
 
   it('the photo in its own colours, the coral lit, beside the list', () => {

@@ -50,18 +50,21 @@ async function toSize(dir: string, file: string) {
   return app
 }
 
-/** The prompt's own line, not the whole frame — the source's stem and the
- * output preview also say "photo", so asserting on the full frame would
- * pass even if the field itself never cleared. */
+/** The name's own row, not the whole frame — the source's stem and the
+ * file card also say "photo", so asserting on the full frame would pass
+ * even if the field itself never cleared. */
 const fieldLine = (frame: string | undefined) =>
-  (frame ?? '').split('\n').find((l) => l.trimStart().startsWith('›'))
+  (frame ?? '')
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
+    .split('\n')
+    .find((l) => /^\s*│?\s*name {2,}/.test(l))
 
 describe('esc on the name in Save as', () => {
   it('clears the pre-filled name on the first press', async () => {
     const dir = await makeTempDir()
     const file = await makeJpeg(dir, 'photo.jpg')
     const app = await toRename(dir, file)
-    expect(fieldLine(app.lastFrame())).toContain('photo.webp')
+    expect(fieldLine(app.lastFrame())).toMatch(/name +photo +\.webp/)
 
     app.stdin.write(ESC)
     await settle()
@@ -71,7 +74,7 @@ describe('esc on the name in Save as', () => {
     // something is typed — and what is typed then starts the name afresh.
     app.stdin.write('x')
     await settle()
-    expect(fieldLine(app.lastFrame())).toContain('› x.webp')
+    expect(fieldLine(app.lastFrame())).toMatch(/name +x +\.webp/)
   })
 
   it('goes back to Quality on the second press, once the field is empty', async () => {

@@ -28,5 +28,9 @@ const { render } = await import('ink-testing-library')
 const { createElement } = await import('react')
 const { App } = await import('../../src/shell/App.js')
 
-const frame = render(createElement(App, { initialWidth: 80 })).lastFrame() ?? ''
+const app = render(createElement(App, { initialWidth: 80 }))
+const frame = app.lastFrame() ?? ''
+// Unmounted, so the drop zone's ripple — which runs for as long as home is
+// idle — stops its clock and the process can exit.
+app.unmount()
 process.stdout.write(JSON.stringify(frame))

@@ -51,13 +51,13 @@ async function shell() {
 }
 
 describe('Convert, with the decided parts', () => {
-  it('Format: "Convert to" in the mode’s colour, the row’s place at its right, F1 keys', async () => {
+  it('Format: "Convert to" in the mode’s colour, nothing at its right, F1 keys', async () => {
     const { app, dir } = await shell()
     app.stdin.write(await makeGradientPng(dir, 'test.png', 32))
     await settle()
     app.stdin.write(ENTER)
     await until(app, 'Convert to')
-    expect(plain(app.lastFrame())).toMatch(/^ Convert to +1\/6$/m)
+    expect(plain(app.lastFrame())).toMatch(/^ Convert to$/m)
     expect(keyRow(app)).toMatch(/1–5 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 

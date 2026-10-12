@@ -1,12 +1,15 @@
 import { Box, Text } from 'ink'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import stringWidth from 'string-width'
 import { COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
 import type { CommandList } from '../commands.js'
 import {
+  brandIntro,
   brandRows,
   commandRows,
+  DROP_RING_MS,
   HOME_MARGIN,
+  INTRO_MS,
   MODE_KINDS,
   type Row,
   stagedCardRows,
@@ -16,9 +19,18 @@ import {
   underRow,
   WORDMARK3,
 } from '../home-art.js'
+import {
+  blendRows,
+  easeOut,
+  motionEnabled,
+  useBlendedRows,
+  useElapsed,
+  useTween,
+} from '../motion.js'
 import type { StagedView, UnderField } from '../stage.js'
-import { useTheme } from '../ThemeContext.js'
-import { colourProp, MODE_KEYS, type ShellMode } from '../theme.js'
+import { ThemeProvider, useTheme } from '../ThemeContext.js'
+import { colourProp, commandsPalette, MODE_KEYS, type ShellMode } from '../theme.js'
+import { useKeys } from '../useKeys.js'
 import { middleEllipsis } from '../width.js'
 
 /**
@@ -32,8 +44,8 @@ import { middleEllipsis } from '../width.js'
  * brand, and then the drop surface itself (`homeLayout`).
  */
 
-/** Rows that are always there: a blank top row, the tabs, a blank, the field and the keys. */
-const BASE = 6
+/** Rows that are always there: a blank top row, the tabs, the field's shelf (three rows) and the keys. */
+const BASE = 7
 /** The brand band and the blank row under it. */
 const BRAND = 4
 /** The list's blank first row, three entries and the rule above the keys. */
@@ -226,10 +238,13 @@ export function KeyRow({
   foot,
   width,
   lead = HOME_MARGIN + 1,
+  pressed,
 }: KeySet & {
   width: number
   /** Where the first key starts: one cell in from the content above it. */
   lead?: number
+  /** A key just pressed, drawn inverted for a moment so the press shows (M6b). */
+  pressed?: string | undefined
 }) {
   const palette = useTheme()
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
@@ -254,13 +269,15 @@ export function KeyRow({
           <Text key={key}>
             {i ? '  ' : ''}
             <Text
-              backgroundColor={capped ? palette.keycapBg : undefined}
-              color={colourProp(palette.fg)}
+              backgroundColor={
+                capped ? (key === pressed ? palette.fg : palette.keycapBg) : undefined
+              }
+              color={colourProp(key === pressed ? palette.canvas : palette.fg)}
               bold
             >
               {cap(key)}
             </Text>
-            <Text color={colourProp(palette.dim)}>{` ${word}`}</Text>
+            <Text color={colourProp(key === pressed ? palette.fg : palette.dim)}>{` ${word}`}</Text>
           </Text>
         ))}
         {' '.repeat(gap)}
@@ -332,6 +349,11 @@ export function Suggestions({
   )
 }
 
+/** How long a mode change takes to fade across home (M1b). */
+const MODE_FADE_MS = 200
+/** How long the tabs take to come up at launch, from half way through the band (M8b); done before it is. */
+const INTRO_TABS_MS = 400
+
 export function Home({
   width,
   height,
@@ -346,6 +368,7 @@ export function Home({
   note,
   keys,
   colourChoice = 0,
+  intro = false,
 }: {
   width: number
   height: number
@@ -376,10 +399,25 @@ export function Home({
   keys: KeySet
   /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
   colourChoice?: 0 | 1
+  /**
+   * The session's first home (M8b): the band draws itself in as it mounts and
+   * the tabs fade up under it, once. Any key cuts it short.
+   */
+  intro?: boolean
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height)
   const art = { width, palette, mode }
+  // The drop surface ripples (M1) only while it is all that is on the panel
+  // and nothing is typed; anything else holds it still, and it starts again
+  // from empty when the panel is bare once more.
+  const bare = !commands && !staged && !typing && mode !== 'colour' && layout.surface > 0
+  const ripple = useElapsed(bare && motionEnabled(palette.name))
+  // A file that has just landed runs one ring through the card's dots (M2a).
+  const landed =
+    staged && staged.files.length === 1 && staged.fresh > 0 ? (staged.files[0]?.name ?? null) : null
+  const ringAt = useTween(landed, DROP_RING_MS, { enabled: motionEnabled(palette.name) })
+  const ring = landed !== null && ringAt < 1 ? ringAt : undefined
   const panel = commands
     ? commandRows({
         ...art,
@@ -392,10 +430,16 @@ export function Home({
       ? mode === 'colour' && !typing
         ? choiceCards({ width, palette, selected: colourChoice, samples: COLOUR_SAMPLES })
         : staged && staged.files.length === 1 && staged.files[0]
-          ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
+          ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
           : staged && staged.files.length > 1
             ? stagedListRows({ ...art, rows: layout.surface, view: staged })
-            : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+            : surfaceRows({
+                ...art,
+                rows: layout.surface,
+                typing,
+                kinds: MODE_KINDS[mode],
+                ripple,
+              })
       : []
 
   // The row under the field. With no room for a panel the staged headline
@@ -415,36 +459,76 @@ export function Home({
       : null
   const below: Row | null = under ? underRow({ width, palette, under }) : headline
 
+  // A mode change fades the band, the tabs and the panel from one mode's
+  // colours to the next's (M1b); nothing else that changes here fades.
+  const [skipped, setSkipped] = useState(false)
+  const introAt =
+    INTRO_MS *
+    useTween('intro', INTRO_MS, {
+      enabled: intro && !skipped && motionEnabled(palette.name),
+      onMount: true,
+    })
+  const introducing = introAt < INTRO_MS
+  useKeys(() => setSkipped(true), { isActive: introducing })
+  const resting = layout.brand ? brandRows({ ...art, commands: commands !== undefined }) : []
+  const brand = introducing
+    ? brandIntro(resting, easeOut(introAt / INTRO_MS) * (width + 8), palette)
+    : resting
+  const tabsAtRest = tabRows({
+    ...art,
+    savesTo,
+    // Colour writes no files: what it makes goes to the clipboard.
+    ...(mode === 'colour' ? { right: { label: 'copies to', value: 'clipboard' } } : {}),
+    commands: commands !== undefined,
+  })
+  // The tabs come up out of the background as the band's edge passes them.
+  const tabsIn = Math.max(0, Math.min(1, (introAt - INTRO_MS * 0.5) / INTRO_TABS_MS))
+  const tabs = introducing
+    ? tabsAtRest.map((row) =>
+        blendRows([], row, tabsIn, { canvas: palette.canvas, fg: palette.fg }),
+      )
+    : tabsAtRest
+  const faded = useBlendedRows(mode, [...brand, ...tabs, ...panel], MODE_FADE_MS, {
+    enabled: motionEnabled(palette.name),
+    canvas: palette.canvas,
+    fg: palette.fg,
+  })
+  const shownBrand = faded.slice(0, brand.length)
+  const shownTabs = faded.slice(brand.length, brand.length + tabs.length)
+  const shownPanel = faded.slice(brand.length + tabs.length)
+
   return (
     <Box flexDirection="column" width={width} height={height}>
       <Gap />
       {layout.brand ? (
         <>
-          {brandRows(art).map((row, i) => (
+          {shownBrand.map((row, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
             <Runs key={`brand${i}`} row={row} />
           ))}
           <Gap />
         </>
       ) : null}
-      {tabRows({
-        ...art,
-        savesTo,
-        // Colour writes no files: what it makes goes to the clipboard.
-        ...(mode === 'colour' ? { right: { label: 'copies to', value: 'clipboard' } } : {}),
-        commands: commands !== undefined,
-      }).map((row, i) => (
+      {shownTabs.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
         <Runs key={`tabs${i}`} row={row} />
       ))}
-      {panel.map((row, i) => (
+      {shownPanel.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
         <Runs key={`surface${i}`} row={row} />
       ))}
-      <Gap />
       {/* Colour's home has nothing to type until something is: its field
           shows once `/`, `#` or a drop has put text in it. */}
-      <Box flexShrink={0}>{mode === 'colour' && !typing ? <Text> </Text> : field}</Box>
+      <Box flexShrink={0}>
+        {mode === 'colour' && !typing ? (
+          <Box height={3} />
+        ) : commands ? (
+          // While a command is typed the field's marker is the commands' gold.
+          <ThemeProvider palette={commandsPalette(palette)}>{field}</ThemeProvider>
+        ) : (
+          field
+        )}
+      </Box>
       {below ? (
         <>
           <Gap />

@@ -4,17 +4,21 @@ import { Box, type DOMElement, Text } from 'ink'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { useClickTarget } from '../ClickTargets.js'
+import { completePath } from '../complete.js'
 import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
-import type { Row } from '../home-art.js'
-import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
+import { easeOut, mix, motionEnabled, useBlendedRows, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import {
+  edgeColour,
   FIELD_WIDTH,
-  fieldBlank,
+  fieldRow,
+  filesRow,
   folderRow,
-  listAt,
-  SENTENCE_TAIL,
-  sentenceRow,
+  NAME_WIDTH,
+  type PathLine,
+  pathRow,
+  ruleRow,
+  underlineRow,
 } from '../save-as-art.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
@@ -25,22 +29,33 @@ import { Runs } from './Home.js'
 import { Prompt } from './Prompt.js'
 import { StepTitle } from './StepTitle.js'
 
-/** How long a dropped path's flash takes to fade. */
-const DROP_FLASH_MS = 450
-
-type Focus = 'name' | 'folder'
+/**
+ * Where the highlight is: a folder, by its path — so it stays put when the
+ * list reorders (making a folder the default moves it to the top) — or the
+ * path row, or nowhere (a folder the list does not have).
+ */
+const PATH_ROW = Symbol('path row')
+type At = string | typeof PATH_ROW | null
 
 /**
- * Save as (P1, mockups/flow-parts-2-2026-10.html tab 7): where the file goes
- * and what it is called, as one answer — `› header.jpg   in  Desktop ▾` in
- * today's filled field.
+ * Motion (M3): the highlight glides between rows, and the default's tag
+ * fades across when tab moves it, both over GLIDE_MS; a dropped folder
+ * lights the path row in the mode's colour, fading back over DROP_MS.
+ */
+const GLIDE_MS = 140
+const DROP_MS = 450
+
+/**
+ * Save as (V10c, mockups/round-5-2026-10.html): where the file goes and what
+ * it is called, in one block. The name sits at the top, filled and
+ * underlined, the caret in it; the folders are listed under a rule.
  *
- * It opens on the name, pre-filled, the caret after it. Tab opens the field
- * downward onto the folders: ↑↓ choose, and the pill in the sentence follows
- * the highlight; typing filters them, or names a place (`~/…`, `/…`, a
- * dropped file to save beside); tab makes the highlighted one the default;
- * esc closes the list and returns to the name. ↵ from either saves with the
- * name and folder as they stand.
+ * Typing edits the name. ↑↓ move through the folders while the caret stays
+ * in the name, so ↵ never skips a choice nobody saw; tab makes the
+ * highlighted folder the default. ↓ past the last folder reaches the path
+ * row: typing there names a place (`~/…`, `/…`) — the rest of a matching
+ * folder shown dim, tab taking it — or narrows the folders by name. A drop
+ * anywhere lands on that row. ↵ saves with the name and folder as they stand.
  *
  * The folders are `destinationRows`, from the action's own destination spec —
  * never a list of its own (invariant 2).
@@ -61,7 +76,6 @@ export function SaveAs({
   onMakeDefault,
   onSubmit,
   onBack,
-  initialFocus = 'name',
   aside,
 }: {
   mode: ShellMode
@@ -76,13 +90,13 @@ export function SaveAs({
   ext: string
   /**
    * In place of a name to edit, when the save writes many files (a document
-   * rasterised a page at a time): what they will be called. Save as then
-   * opens on the folder, and esc goes back rather than to a name.
+   * rasterised a page at a time): what they will be called. The name row
+   * then says so, and esc goes straight back.
    */
   fixedName?: string | undefined
   /** The folder chosen now. */
   folder: string
-  /** A different folder has been highlighted: the sentence and the proposal follow it. */
+  /** A different folder has been highlighted: the proposal follows it. */
   onFolder: (path: string) => void
   presets: PathPreset[]
   /** The folder saved as the default, so its row can carry the tag. */
@@ -95,107 +109,172 @@ export function SaveAs({
   onSubmit: (folder: string, name: string) => void
   /** esc with nothing left to clear. */
   onBack: () => void
-  initialFocus?: Focus
   /** What the save will do, quiet at the title's right: "Rotate 90°". */
   aside?: string | undefined
 }) {
   const palette = useTheme()
-  const [focus, setFocus] = useState<Focus>(fixedName ? 'folder' : initialFocus)
-  const onFolders = focus === 'folder'
   const noColour = (process.env.NO_COLOR ?? '') !== ''
   const plain = noColour || palette.selectionBg === ''
   const fieldWidth = Math.max(24, Math.min(FIELD_WIDTH, width - 4))
   const showPath = bandFor(width) !== 'compact'
 
   /**
-   * What has been typed to find a folder. `useInput` handlers are synchronous
-   * but state is not, so a whole dropped path — and, close behind it, the ↵
-   * that saves — can arrive before React re-renders: `queryRef` is what the
-   * handlers read; `query` triggers the render.
+   * What is on the path row. `useInput` handlers are synchronous but state is
+   * not, so a whole dropped path — and, close behind it, the ↵ that saves —
+   * can arrive before React re-renders: `pathRef` is what the handlers read;
+   * `path` triggers the render. `dropped` is whether it arrived in one piece.
    */
-  const [query, setQuery] = useState('')
-  const queryRef = useRef('')
-  const setBoth = (next: string) => {
-    queryRef.current = next
-    setQuery(next)
+  const [path, setPath] = useState('')
+  const pathRef = useRef('')
+  const [dropped, setDropped] = useState(false)
+  /** Counts drops, so each one lights the path row afresh. */
+  const [drops, setDrops] = useState(0)
+  const setBoth = (next: string, drop = false) => {
+    pathRef.current = next
+    setPath(next)
+    setDropped(drop)
+    if (drop) setDrops((n) => n + 1)
   }
 
-  // Memoised on the text: a path stats the disk, and a redraw (the drop flash
-  // runs ~14 of them) must not stat it again each time.
-  const rows = useMemo(
-    () => destinationRows(query, presets, defaultPath, display),
-    [query, presets, defaultPath, display],
+  const isPath = isPathQuery(path)
+  // Text that is not a path narrows the folders by name.
+  const filter = path !== '' && !isPath ? path : ''
+  // Memoised on the text: a path stats the disk, and a redraw must not stat it again.
+  const folders = useMemo(
+    () =>
+      destinationRows(filter, presets, defaultPath, display).filter((r) => r.value !== NO_MATCH),
+    [filter, presets, defaultPath, display],
+  )
+  const place = useMemo(
+    () => (isPath ? destinationRows(path, presets, defaultPath, display)[0] : undefined),
+    [isPath, path, presets, defaultPath, display],
   )
   /** Folders that are not there yet — a save there makes them — are drawn quieter. */
   const missing = useMemo(
-    () => new Set(rows.filter((r) => !r.disabled && !existsSync(r.value)).map((r) => r.value)),
-    [rows],
+    () => new Set(folders.filter((r) => !existsSync(r.value)).map((r) => r.value)),
+    [folders],
   )
-  /** The text the list on screen was built from. */
-  const drawnQuery = useRef(query)
-  drawnQuery.current = query
-  const isPath = isPathQuery(query)
+  const placeMissing = useMemo(() => (place ? !existsSync(place.value) : false), [place])
+
+  /** Where the highlight is. It starts on the folder already chosen, or on none. */
+  const [at, setAt] = useState<At>(() => (presets.some((p) => p.path === folder) ? folder : null))
+  /** Mirrors `at` for keys read in one tick, before React re-renders. */
+  const atRef = useRef<At>(at)
+  atRef.current = at
+  const go = (next: At) => {
+    atRef.current = next
+    setAt(next)
+  }
+  const onPath = at === PATH_ROW
+  const index = folders.findIndex((r) => r.value === at)
+  const chosen: string | undefined = onPath
+    ? filter
+      ? folders[0]?.value
+      : place && !place.disabled
+        ? place.value
+        : undefined
+    : folders[index]?.value
+
+  // The proposal follows the highlight live.
+  useEffect(() => {
+    if (chosen !== undefined && chosen !== folder) onFolder(chosen)
+  }, [chosen, folder, onFolder])
+
+  /** ↑↓: through the folders, then onto the path row; stopping at the ends. */
+  const move = (delta: number) => {
+    const from = atRef.current
+    if (from === PATH_ROW) {
+      const last = folders[folders.length - 1]
+      if (delta < 0 && last) {
+        // A filter belongs to the path row; leaving it lets the list go.
+        if (pathRef.current !== '' && !isPathQuery(pathRef.current)) setBoth('')
+        go(last.value)
+      }
+      return
+    }
+    const i = folders.findIndex((r) => r.value === from)
+    const next = i === -1 ? (delta > 0 ? 0 : -1) : i + delta
+    if (next < 0) return
+    go(folders[next]?.value ?? PATH_ROW)
+  }
+
+  /** The rest of a folder matching a typed path, for tab; none for a drop. */
+  const [ghost, setGhost] = useState('')
+  useEffect(() => {
+    setGhost('')
+    if (!onPath || !isPath || dropped) return
+    let live = true
+    void completePath(path).then((found) => {
+      if (!live || pathRef.current !== path) return
+      const next = found.find(
+        (c) => c.insert.endsWith('/') && c.insert.startsWith(path) && c.insert !== path,
+      )
+      setGhost(next ? next.insert.slice(path.length) : '')
+    })
+    return () => {
+      live = false
+    }
+  }, [onPath, isPath, dropped, path])
+
+  const save = (to: string) => onSubmit(to, name)
+  /** Where `text` saves to, for a ↵ that arrived before the list was redrawn. */
+  const resolve = (text: string) => {
+    if (isPathQuery(text)) {
+      const row = destinationRows(text, presets, defaultPath, display)[0]
+      if (row && !row.disabled) save(row.value)
+      return
+    }
+    const hit = destinationRows(text, presets, defaultPath, display)[0]
+    if (hit && !hit.disabled) save(hit.value)
+  }
+  /** The text the screen on show was drawn from. */
+  const drawnPath = useRef(path)
+  drawnPath.current = path
+
+  const makeDefault = () => {
+    const row = folders.find((r) => r.value === atRef.current)
+    if (row && row.value !== defaultPath) onMakeDefault(row.value)
+  }
 
   /**
-   * Which row is highlighted, kept against the list it was chosen in. A new
-   * list (typing changed it) starts on its first row; the places, unfiltered,
-   * start on the folder already chosen — and on none if that folder is one
-   * the list does not have (a path typed earlier), so the choice stands until
-   * ↑↓ moves it.
+   * Text that arrived in one piece — what a drop is. Ink does not split a
+   * chunk that holds both text and a line ending: a dropped path with a
+   * trailing newline and the terminal's own Enter land as one event. Before
+   * the break is the path, and it saves through the place it names.
    */
-  const listKey = rows.map((r) => r.value).join('\n')
-  const startAt = (list: Choice[], q: string) =>
-    q === '' ? list.findIndex((r) => r.value === folder) : list.findIndex((r) => !r.disabled)
-  const [highlight, setHighlight] = useState(() => ({ listKey, index: startAt(rows, query) }))
-  const index = highlight.listKey === listKey ? highlight.index : startAt(rows, query)
-  /** Mirrors `index` for two arrows read in one tick, before React re-renders. */
-  const indexRef = useRef(index)
-  indexRef.current = index
-  const highlighted = index >= 0 ? rows[index] : undefined
-  const chosen = highlighted && !highlighted.disabled ? highlighted.value : undefined
-
-  // The sentence, and the name proposed for it, follow the highlight live.
-  useEffect(() => {
-    if (onFolders && chosen !== undefined && chosen !== folder) onFolder(chosen)
-  }, [onFolders, chosen, folder, onFolder])
-
-  /** ↑↓: the next row that can be chosen, stopping at the ends as the pickers do. */
-  const move = (delta: number) => {
-    const from = indexRef.current
-    let i = from === -1 ? (delta > 0 ? 0 : rows.length - 1) : from + delta
-    while (i >= 0 && i < rows.length && rows[i]?.disabled) i += delta
-    if (i < 0 || i >= rows.length) return
-    indexRef.current = i
-    setHighlight({ listKey, index: i })
+  const take = (input: string) => {
+    const breakAt = input.search(/[\r\n]/)
+    const text = breakAt === -1 ? input : input.slice(0, breakAt)
+    const next = pathRef.current + text
+    setBoth(next, text.length > 1)
+    go(PATH_ROW)
+    if (breakAt !== -1) resolve(next)
   }
 
-  // A paste is one multi-character chunk; that is what a drop looks like.
-  const [droppedAt, setDroppedAt] = useState(0)
-  const flash = easeOut(
-    useTween(droppedAt, DROP_FLASH_MS, { enabled: droppedAt > 0 && motionEnabled(palette.name) }),
-  )
-  const pillBg =
-    droppedAt > 0 && flash < 1 && !plain ? mix(palette.accent, palette.pill, flash) : undefined
-
-  const save = (path: string) => onSubmit(path, name)
-  /** The first row `text` resolves to, for a ↵ that arrived before the list was redrawn. */
-  const resolve = (text: string) => {
-    const row = destinationRows(text, presets, defaultPath, display)[0]
-    if (row && !row.disabled) save(row.value)
+  /**
+   * ↵ on the path row. A drop can move the highlight there and its ↵ arrive
+   * before a redraw — to whichever field held the keys — so this reads the
+   * refs, never the render's `chosen`.
+   */
+  const enterPath = () => {
+    if (pathRef.current !== drawnPath.current) resolve(pathRef.current)
+    else if (chosen !== undefined) save(chosen)
   }
 
+  // The path row, and the folders when there is no name to hold the keys.
   useKeys(
     (input, key) => {
+      if (isStrayEscapeSequence(input)) return
+      const here = atRef.current
       if (key.return) {
-        if (queryRef.current !== drawnQuery.current) resolve(queryRef.current)
-        else if (chosen !== undefined) save(chosen)
-        else if (query === '') save(folder)
+        if (here === PATH_ROW) enterPath()
+        else save(chosen ?? folder)
         return
       }
       if (key.escape) {
-        if (queryRef.current !== '') setBoth('')
-        else if (fixedName) onBack()
-        else setFocus('name')
+        if (here === PATH_ROW && pathRef.current !== '') setBoth('')
+        else if (here === PATH_ROW) move(-1)
+        else onBack()
         return
       }
       if (key.upArrow || key.downArrow) {
@@ -203,163 +282,200 @@ export function SaveAs({
         return
       }
       if (key.tab) {
-        if (!isPath && chosen !== undefined && chosen !== defaultPath) onMakeDefault(chosen)
+        if (here === PATH_ROW && ghost) setBoth(pathRef.current + ghost)
+        else makeDefault()
         return
       }
       if (key.backspace || key.delete) {
-        setBoth(queryRef.current.slice(0, -1))
+        if (here === PATH_ROW) setBoth(pathRef.current.slice(0, -1))
         return
       }
-      // An unhandled Ctrl chord (e.g. Ctrl+N) is not text — without this an
-      // unclaimed one would fall through and type its bare letter.
+      // An unhandled Ctrl chord (e.g. Ctrl+N) is not text.
       if (key.ctrl || key.meta || !input) return
-      // A DSR reply or a mouse report Ink could not resolve: see mouse.ts.
-      if (isStrayEscapeSequence(input)) return
-      /**
-       * Ink does not split a chunk that holds both text and a line ending: a
-       * dropped path with a trailing newline and the terminal's own Enter land
-       * as one event whose `input` is `"path\r"`. Everything before the break
-       * is the final text, and it saves through the row that text resolves to.
-       */
-      const breakAt = input.search(/[\r\n]/)
-      if (breakAt !== -1) {
-        const final = queryRef.current + input.slice(0, breakAt)
-        setBoth(final)
-        resolve(final)
-        return
-      }
-      if (input.length > 1) setDroppedAt(Date.now())
-      setBoth(queryRef.current + input)
+      take(input)
     },
-    { isActive: onFolders },
+    { isActive: onPath || fixedName !== undefined },
   )
 
-  const folderName = (path: string) =>
-    presets.find((p) => p.path === path)?.label ?? (basename(path) || path)
+  const nameFocus = !onPath && fixedName === undefined
   const fill = plain ? undefined : palette.selectionBg
-  const pad = plain ? null : <Runs row={fieldBlank({ palette, width: fieldWidth })} />
-  const shownName = fixedName ?? (name === '' ? proposed : name)
-  const shownExt = fixedName ? '' : ext
-  const sentence = sentenceRow({
-    palette,
-    width: fieldWidth,
-    name: shownName,
-    ext: shownExt,
-    focus,
-    folder: onFolders && query !== '' ? query : folderName(chosen ?? folder),
-    query: onFolders && query !== '',
-    pillBg,
-    plain,
+  const edge = edgeColour(palette, plain)
+  const tint = plain ? undefined : colourProp(palette.band)
+  const blank = <Runs row={fieldRow({ palette, width: fieldWidth, plain })} />
+
+  const line: PathLine = (() => {
+    if (path === '') return onPath ? { kind: 'empty' } : { kind: 'rest' }
+    if (place && dropped && !placeMissing) {
+      return {
+        kind: 'place',
+        label:
+          place.label === 'Use this folder' ? basename(place.value) || place.value : place.label,
+        path: display(place.value),
+        highlighted: onPath,
+      }
+    }
+    return {
+      kind: 'typing',
+      text: path,
+      ghost: onPath ? ghost : '',
+      note: filter
+        ? folders.length === 0
+          ? 'nomatch'
+          : undefined
+        : onPath && ghost
+          ? 'complete'
+          : placeMissing
+            ? 'new'
+            : undefined,
+      highlighted: onPath,
+    }
+  })()
+
+  const keys: Array<[string, string]> = !onPath
+    ? [
+        ['↵', 'save'],
+        ['↑↓', 'folder'],
+        ['tab', 'make default'],
+      ]
+    : path === '' || (filter && folders.length === 0)
+      ? [['↑', 'folders']]
+      : placeMissing && !filter
+        ? [
+            ['↵', 'make it and save'],
+            ['↑', 'folders'],
+          ]
+        : [
+            ['↵', 'save here'],
+            ...(ghost ? [['tab', 'complete'] as [string, string]] : []),
+            ['↑', 'folders'],
+          ]
+  const foot: Array<[string, string]> = [
+    ['esc', onPath && path !== '' ? 'clear path' : 'back'],
+    ['ctrl-c', 'quit'],
+  ]
+
+  const moving = motionEnabled(palette.name)
+  // The list as it rests: the folders, then the path row.
+  const list = [
+    ...folders.map((row: Choice, i) =>
+      folderRow({
+        palette,
+        width: fieldWidth,
+        first: i === 0,
+        label: row.label,
+        path: row.hint ?? '',
+        selected: !onPath && i === index,
+        isDefault: row.value === defaultPath,
+        quiet: missing.has(row.value),
+        showPath,
+        plain,
+      }),
+    ),
+    pathRow({ palette, width: fieldWidth, line, first: folders.length === 0, showPath, plain }),
+  ]
+  // A move of the highlight or of the tag fades; typing on the path row does not.
+  const glided = useBlendedRows(`${String(at)}\u0000${defaultPath}`, list, GLIDE_MS, {
+    enabled: moving,
+    canvas: palette.canvas,
+    fg: palette.fg,
   })
-  const at = listAt(shownName, shownExt, fieldWidth)
+  const lit = 1 - easeOut(useTween(drops, DROP_MS, { enabled: moving }))
+  const shown =
+    lit > 0 && dropped
+      ? glided.map((row, i) =>
+          i === glided.length - 1
+            ? row.map((run, j) =>
+                j > 0 && run.bg === palette.fieldBand
+                  ? { ...run, bg: mix(palette.fieldBand, palette.accent, 0.55 * lit) }
+                  : run,
+              )
+            : row,
+        )
+      : glided
 
   return (
     <Box flexDirection="column">
       <StepTitle mode={mode} title="Save as" aside={aside} width={width} />
       <Box marginTop={2} flexDirection="column">
-        {pad}
-        {onFolders ? (
-          <Runs row={sentence} />
+        {blank}
+        {fixedName !== undefined ? (
+          <Runs row={filesRow({ palette, width: fieldWidth, names: fixedName, plain })} />
         ) : (
-          // The name, edited in place: the field's own caret and keys, then
-          // the rest of the sentence after the extension.
-          <Box width={fieldWidth} {...(fill ? { backgroundColor: fill } : {})}>
-            <Text> </Text>
-            <Prompt
-              value={name}
-              onChange={onNameChange}
-              onSubmit={(typed) => onSubmit(folder, typed)}
-              placeholder={proposed}
-              isActive
-              variant="inline"
-              suffix={ext}
-              after={<RunsText row={sentence.slice(SENTENCE_TAIL)} />}
-              width={fieldWidth - 1}
-              intercept={(_input, key, value) => {
-                if (key.tab) {
-                  setFocus('folder')
-                  return true
-                }
-                if (key.escape && value === '') {
-                  onBack()
-                  return true
-                }
-                return false
-              }}
-            />
+          <Box width={fieldWidth}>
+            <Text backgroundColor={edge} color={colourProp(palette.border)}>
+              {edge ? ' ' : '│'}
+            </Text>
+            <Text backgroundColor={fill} color={colourProp(palette.border)}>
+              {'  name    '}
+            </Text>
+            <Box width={NAME_WIDTH} {...(tint ? { backgroundColor: tint } : {})}>
+              <Text> </Text>
+              <Prompt
+                value={name}
+                onChange={onNameChange}
+                onSubmit={(typed) => onSubmit(chosen ?? folder, typed)}
+                placeholder={proposed}
+                isActive={nameFocus}
+                variant="inline"
+                marker={false}
+                width={NAME_WIDTH - 1}
+                intercept={(input, key, value) => {
+                  if (key.upArrow || key.downArrow) {
+                    move(key.downArrow ? 1 : -1)
+                    return true
+                  }
+                  if (key.tab) {
+                    makeDefault()
+                    return true
+                  }
+                  if (key.return) {
+                    if (atRef.current === PATH_ROW) enterPath()
+                    else onSubmit(chosen ?? folder, value)
+                    return true
+                  }
+                  if (key.escape && value === '') {
+                    onBack()
+                    return true
+                  }
+                  // A drop: a path arriving in one piece goes to the path row.
+                  if (input.length > 1 && isPathQuery(input.split(/[\r\n]/)[0] ?? '')) {
+                    take(input)
+                    return true
+                  }
+                  return false
+                }}
+              />
+            </Box>
+            <Box flexGrow={1} {...(fill ? { backgroundColor: fill } : {})}>
+              <Text color={colourProp(palette.border)}>{` ${ext}`}</Text>
+            </Box>
           </Box>
         )}
-        {onFolders ? (
-          <>
-            {pad ?? <Text> </Text>}
-            {rows.map((row, i) => (
-              <FolderTarget
-                key={row.value}
-                id={`save-as-folder-${i}`}
-                isActive={!row.disabled}
-                onClick={() => save(row.value)}
-                onHover={() => setHighlight({ listKey, index: i })}
-              >
-                <Runs
-                  row={folderRow({
-                    palette,
-                    width: fieldWidth,
-                    at,
-                    label: row.label,
-                    path: row.hint ?? '',
-                    selected: i === index && !row.disabled,
-                    isDefault: row.value === defaultPath && !isPath,
-                    quiet: row.value === NO_MATCH || missing.has(row.value),
-                    note: row.value === NO_MATCH ? row.hint : undefined,
-                    showPath,
-                    plain,
-                  })}
-                />
-              </FolderTarget>
-            ))}
-          </>
-        ) : null}
-        {pad}
+        {fixedName !== undefined ? (
+          blank
+        ) : (
+          <Runs row={underlineRow({ palette, width: fieldWidth, plain })} />
+        )}
+        <Runs row={ruleRow({ palette, width: fieldWidth, plain })} />
+        {blank}
+        {folders.map((row: Choice, i) => (
+          <FolderTarget
+            key={row.value}
+            id={`save-as-folder-${i}`}
+            isActive
+            onClick={() => save(row.value)}
+            onHover={() => go(row.value)}
+          >
+            <Runs row={shown[i] ?? []} />
+          </FolderTarget>
+        ))}
+        <FolderTarget id="save-as-path" isActive onClick={() => go(PATH_ROW)} onHover={() => {}}>
+          <Runs row={shown[folders.length] ?? []} />
+        </FolderTarget>
+        {blank}
       </Box>
-      <HintBar
-        width={width}
-        pairs={
-          onFolders
-            ? [
-                ['↑↓', 'choose'],
-                ['↵', 'save'],
-                ['tab', 'make default'],
-              ]
-            : [
-                ['↵', 'save'],
-                ['tab', 'folder'],
-              ]
-        }
-        foot={[
-          ['esc', onFolders && !fixedName ? 'name' : 'back'],
-          ['ctrl-c', 'quit'],
-        ]}
-      />
+      <HintBar width={width} pairs={keys} foot={foot} />
     </Box>
-  )
-}
-
-/** Runs as nested text, for the rest of a line a `Prompt` starts. */
-function RunsText({ row }: { row: Row }) {
-  return (
-    <>
-      {row.map((run, i) => (
-        <Text
-          // biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are positional
-          key={i}
-          color={colourProp(run.fg ?? '')}
-          backgroundColor={colourProp(run.bg ?? '')}
-          bold={run.bold ?? false}
-        >
-          {run.text}
-        </Text>
-      ))}
-    </>
   )
 }
 

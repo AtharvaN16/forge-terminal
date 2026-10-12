@@ -9,7 +9,6 @@ import { makeGradientPng, makeJpeg, makePdf, makeTempDir } from '../helpers/fixt
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
-const TAB = '\t'
 const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
@@ -46,14 +45,17 @@ async function atSaveAs() {
 }
 
 describe('Save as, in the flow', () => {
-  it('follows Quality: its title, the bar saying where you are, the sentence in the field', async () => {
+  it('follows Quality: its title, the bar saying where you are, the name and the folders', async () => {
     const { app } = await atSaveAs()
     const out = lines(app.lastFrame())
     expect(out).toContain(' Save as')
     expect(out.find((l) => l.includes('convert ╱'))).toMatch(/ JPEG ╱ 80 ╱ Save as ╱╱ *$/)
     // The default output is the file's own folder here.
-    expect(plain(app.lastFrame())).toContain('› test.jpg   in  Same folder ▾')
-    expect(keyRow(app.lastFrame())).toMatch(/↵ {2}save {3}tab {2}folder +esc back · ctrl-c quit/)
+    expect(plain(app.lastFrame())).toMatch(/name +test +\.jpg/)
+    expect(plain(app.lastFrame())).toMatch(/▌ Same folder/)
+    expect(keyRow(app.lastFrame())).toMatch(
+      /↵ {2}save {3}↑↓ {2}folder {3}tab {2}make default +esc back · ctrl-c quit/,
+    )
   }, 20_000)
 
   it('saves under the name as typed, the extension added, in one ↵', async () => {
@@ -65,38 +67,28 @@ describe('Save as, in the flow', () => {
     expect(existsSync(join(dir, 'test-2.jpg'))).toBe(true)
   }, 20_000)
 
-  it('saves to a folder typed in the list, keeping the name', async () => {
+  it('saves to a folder dropped on it, keeping the name', async () => {
     const { app, dir } = await atSaveAs()
     const other = join(dir, 'other')
     await mkdir(other)
     app.stdin.write('-x')
     await settle()
-    app.stdin.write(TAB)
-    await settle()
     app.stdin.write(other)
     await settle()
-    expect(plain(app.lastFrame())).toContain('Use this folder')
+    expect(plain(app.lastFrame())).toMatch(/▌ other +/)
     app.stdin.write(ENTER)
     await waitFor(() => existsSync(join(other, 'test-x.jpg')))
     expect(existsSync(join(other, 'test-x.jpg'))).toBe(true)
   }, 20_000)
 
   it('keeps a typed name when another folder is chosen', async () => {
-    const { app, dir } = await atSaveAs()
+    const { app } = await atSaveAs()
     app.stdin.write('-mine')
-    await settle()
-    app.stdin.write(TAB)
-    await settle()
-    app.stdin.write(join(dir, 'elsewhere'))
-    await settle()
-    app.stdin.write(ESC) // clears what was typed to find a folder
     await settle()
     app.stdin.write(DOWN)
     await settle()
-    app.stdin.write(ESC) // back to the name
-    await settle()
-    expect(plain(app.lastFrame())).toContain('› test-mine.jpg   in ')
-    expect(plain(app.lastFrame())).not.toContain('in  Same folder ▾')
+    expect(plain(app.lastFrame())).toMatch(/name +test-mine +\.jpg/)
+    expect(plain(app.lastFrame())).not.toMatch(/▌ Same folder/)
   }, 20_000)
 
   it('goes back to Quality on esc once the name is empty', async () => {
@@ -109,7 +101,7 @@ describe('Save as, in the flow', () => {
     expect(plain(app.lastFrame())).toMatch(/^ Quality +JPEG$/m)
   }, 20_000)
 
-  it('returns to Save as on the folder when the existing file question is cancelled', async () => {
+  it('returns to Save as when the existing file question is cancelled', async () => {
     const { app, dir } = await atSaveAs()
     await makeJpeg(dir, 'test.jpg')
     app.stdin.write(ENTER)
@@ -122,9 +114,10 @@ describe('Save as, in the flow', () => {
     await settle()
     const out = plain(app.lastFrame())
     expect(out).toContain(' Save as')
-    // The folder focused: the list is open, and esc goes to the name.
-    expect(out).toContain('› test.jpg   in  Same folder')
-    expect(keyRow(app.lastFrame())).toMatch(/esc name · ctrl-c quit/)
+    // The name as it was, the folder still chosen, esc back to Quality.
+    expect(out).toMatch(/name +test +\.jpg/)
+    expect(out).toMatch(/▌ Same folder/)
+    expect(keyRow(app.lastFrame())).toMatch(/esc back · ctrl-c quit/)
     expect((await readdir(dir)).sort()).toEqual(['test.jpg', 'test.png'])
   }, 20_000)
 })
@@ -148,7 +141,7 @@ describe('Save as, a document rasterised to many files', () => {
     app.stdin.write(ENTER) // the quality -> Save as
     await settle(300)
     const out = plain(app.lastFrame())
-    expect(out).toContain('› doc-1.jpg … 2 files   in  Same folder')
+    expect(out).toMatch(/files {3}doc-1\.jpg … 2 files/)
     expect(keyRow(app.lastFrame())).toMatch(/esc back · ctrl-c quit/)
     app.stdin.write(ENTER)
     await waitFor(() => existsSync(join(dir, 'doc-2.jpg')))

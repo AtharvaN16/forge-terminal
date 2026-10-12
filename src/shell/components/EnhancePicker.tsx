@@ -165,7 +165,6 @@ export function EnhancePicker({
             palette,
             mode: 'enhance',
             title: `Enhance ${format}`,
-            aside: here ? `${rows.indexOf(here) + 1}/${rows.length}` : undefined,
             width,
           })}
         />

@@ -11,6 +11,35 @@ const [empty, typing, compress, pdfTyping] = MOCKUP as [
   (typeof MOCKUP)[0],
 ]
 
+/** How far apart two colours are, in RGB. */
+const distance = (a: string | null, b: string | null) => {
+  const c = (h: string | null) =>
+    [1, 3, 5].map((i) => Number.parseInt((h ?? '#000000').slice(i, i + 2), 16))
+  const [x, y] = [c(a), c(b)]
+  return Math.hypot(...x.map((v, i) => v - (y[i] ?? 0)))
+}
+
+/**
+ * The drop surface against D2, with round 5's one decided change: the dots
+ * are brighter. Every cell is D2's — the dots in the same places — and every
+ * dot stands at least as far from the fill as D2's did.
+ */
+function expectSurface(rows: Parameters<typeof runsRow>[0][], frame: typeof empty, from: number) {
+  rows.forEach((row, i) => {
+    const actual = runsRow(row)
+    const expected = fixtureRow(frame, from + i)
+    const asD2 = actual.map((c, x) => (c.ch === '·' ? { ...c, fg: expected[x]?.fg ?? null } : c))
+    expect(describeRow(asD2, expected), `${frame.label}, row ${from + i}`).toBe('equal')
+    actual.forEach((c, x) => {
+      if (c.ch !== '·') return
+      const was = expected[x]
+      expect(distance(c.fg, c.bg)).toBeGreaterThanOrEqual(
+        distance(was?.fg ?? null, was?.bg ?? null),
+      )
+    })
+  })
+}
+
 /** Every listed row of `frame`, starting at `from`, equals `rows`. */
 function expectRows(rows: Parameters<typeof runsRow>[0][], frame: typeof empty, from: number) {
   rows.forEach((row, i) => {
@@ -48,7 +77,7 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
 describe('the mode tabs (mockup tab 2, D2)', () => {
   const rowText = (rows: { text: string }[][], i: number) =>
     rows[i]?.map((run) => run.text).join('') ?? ''
-  const TABS = ' 1 convert   2 compress   3 pdf   4 colour   5 enhance   / commands  '
+  const TABS = ' 1 convert   2 compress   3 pdf   4 enhance   5 colour   / commands  '
 
   it('has five modes; the destination alone when label and destination will not both fit', () => {
     const rows = tabRows({
@@ -58,8 +87,11 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
       savesTo: '~/Desktop',
     })
     expect(rowText(rows, 1)).toBe(`  ${TABS}${' '.repeat(9)}~/Desktop `)
-    // The active tab is fused to the panel: a lip above it in the panel's fill.
-    expect(rows[0]?.find((run) => run.text.startsWith('▄'))?.fg).toBe(DARK.selectionBg)
+    // H2: the active tab on a dark grey chip, the rest bare; no lip above it
+    // (a half-cell lip drew as a hairline in Terminal.app).
+    expect(rowText(rows, 0).trim()).toBe('')
+    expect(rows[1]?.find((run) => run.text === 'convert')?.bg).toBe(DARK.tabChip)
+    expect(rows[1]?.find((run) => run.text === 'compress')?.bg).toBeUndefined()
   })
 
   it('says where results go in full when there is room', () => {
@@ -92,7 +124,7 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
       savesTo: '~/Desktop',
     })
     expect(rows[1]?.find((run) => run.text === 'enhance')?.bold).toBe(true)
-    expect(rows[1]?.find((run) => run.text === '5')?.fg).toBe(DARK.modeEnhance)
+    expect(rows[1]?.find((run) => run.text === '4')?.fg).toBe(DARK.modeEnhance)
   })
 
   it('drops the folder before it would collide with the tabs', () => {
@@ -120,15 +152,15 @@ describe('the drop surface (mockup tab 2, D2)', () => {
     })
 
   it('draws the dot grid in the gradient with the words in a clean cut-out', () => {
-    expectRows(surface(empty, 'images · HEIC · PDF · Word'), empty, 7)
+    expectSurface(surface(empty, 'images · HEIC · PDF · Word'), empty, 7)
   })
 
   it('dims, words and dots both, while a path is being typed', () => {
-    expectRows(surface(typing, 'images · HEIC · PDF · Word'), typing, 7)
+    expectSurface(surface(typing, 'images · HEIC · PDF · Word'), typing, 7)
   })
 
   it('is tinted by the pdf gradient in pdf mode', () => {
-    expectRows(surface(pdfTyping, 'split · merge · rotate'), pdfTyping, 7)
+    expectSurface(surface(pdfTyping, 'split · merge · rotate'), pdfTyping, 7)
   })
 
   it('keeps the words when it is shorter than the mockup', () => {

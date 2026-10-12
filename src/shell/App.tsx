@@ -174,11 +174,9 @@ interface SaveAsState {
   fixedName?: string | undefined
   /** Typed into, so a new folder's proposal no longer replaces it. */
   edited: boolean
-  /** Where it opens: the name, or the folder (back from the existing-file question). */
-  focus: 'name' | 'folder'
   /** The name as it was typed when last saved, to come back to. */
   given?: string | undefined
-  /** Bumped to open it afresh, on `focus`. */
+  /** Bumped to open it afresh. */
   opened: number
 }
 
@@ -900,6 +898,9 @@ export function App({
    * (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md).
    */
   const onHome = step === 'idle'
+  /** The launch plays on the session's first home only (M8b): leaving it, it is over. */
+  const firstHome = useRef(true)
+  if (!onHome) firstHome.current = false
   /** Something is staged: home draws it, and the field asks for more. */
   const staged = stage.sources.length > 0
   /** The rows the latest drop added, for their band — none while motion is off. */
@@ -1422,6 +1423,10 @@ export function App({
     revealPath(lastResult.job.outputs[0]).catch(showError)
   }
 
+  /** The Done key last pressed, for its cap to answer (M6b); `n` makes each press new. */
+  const [donePressed, setDonePressed] = useState<{ key: string; n: number } | undefined>()
+  const pressDone = (k: string) => setDonePressed((p) => ({ key: k, n: (p?.n ?? 0) + 1 }))
+
   useKeys(
     (input, key) => {
       if (!lastResult) return
@@ -1436,8 +1441,14 @@ export function App({
         setStep('idle')
         return
       }
-      if (input === 'o') openLastResult()
-      if (input === 's') revealLastResult()
+      if (input === 'o') {
+        pressDone('o')
+        openLastResult()
+      }
+      if (input === 's') {
+        pressDone('s')
+        revealLastResult()
+      }
       // Acts on the measured suggestion: re-enters convert with that target
       // already chosen, so the offer is one keystroke from being taken.
       if (input === 'c' && suggestion && lastResult) {
@@ -2086,13 +2097,11 @@ export function App({
     values: vals = values,
     source: src = source,
     action: act = currentAction,
-    focus = 'name',
     name,
   }: {
     values?: Record<string, unknown>
     source?: SourceInfo | null
     action?: Action
-    focus?: 'name' | 'folder'
     /** The name to open with, when coming back to one already given. */
     name?: string
   } = {}) => {
@@ -2113,7 +2122,6 @@ export function App({
       folder,
       ...proposal,
       edited: name !== undefined && name !== proposal.stem,
-      focus: proposal.fixedName ? 'folder' : focus,
       opened: (s?.opened ?? 0) + 1,
     }))
     setSavedAs(undefined)
@@ -2121,9 +2129,8 @@ export function App({
     setStep('save-as')
   }
 
-  /** Back to Save as from a question after it, on the folder, with the name as it was given. */
-  const reopenSaveAs = (focus: 'name' | 'folder' = 'folder') =>
-    openSaveAs({ focus, ...(saving?.given !== undefined ? { name: saving.given } : {}) })
+  /** Back to Save as from a question after it, with the name as it was given. */
+  const reopenSaveAs = () => openSaveAs(saving?.given !== undefined ? { name: saving.given } : {})
 
   /**
    * A different folder highlighted in Save as. The sentence follows it, and
@@ -3010,15 +3017,6 @@ export function App({
             { value: GOTO_PDF, label: '/pdf for more options' },
           ]
         : targetSpec.choices
-  /**
-   * Format's title says where the highlight is among the formats ("1/6"),
-   * as the decided picker does; the /pdf pointer below them is not one.
-   */
-  const targetPlace = (() => {
-    const formats = targetItems.filter((i) => !i.disabled && i.value !== GOTO_PDF)
-    const at = formats.findIndex((i) => i.value === (targetHighlight ?? firstTarget))
-    return at === -1 ? undefined : `${at + 1}/${formats.length}`
-  })()
   const pagesSpec = specFor('pages')
   const dpiSpec = specFor('dpi')
   const qualitySpec = specFor('quality')
@@ -3108,7 +3106,7 @@ export function App({
               live frame down the screen, and `history.length` changes exactly
               when that happens. */}
           <MouseRouter rootRef={rootRef} revision={history.length} />
-          {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
+          {step === 'theme' ? <ThemePicker width={width} onChoose={chooseTheme} /> : null}
 
           {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
@@ -3217,7 +3215,7 @@ export function App({
           {step === 'target' && source && targetSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <StepTitle mode={mode} title="Convert to" aside={targetPlace} width={width} />
+                <StepTitle mode={mode} title="Convert to" width={width} />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3430,7 +3428,6 @@ export function App({
                 onMakeDefault={makeDefault}
                 onSubmit={confirmDestination}
                 onBack={destinationBack}
-                initialFocus={saving.focus}
               />
             </Box>
           ) : null}
@@ -3591,6 +3588,7 @@ export function App({
               reveal={revealLabel()}
               width={width}
               height={height}
+              pressed={donePressed}
             />
           ) : null}
 
@@ -3684,6 +3682,7 @@ export function App({
             <Home
               width={width}
               height={height}
+              intro={firstHome.current}
               mode={mode}
               typing={text !== ''}
               staged={staged ? stagedView(stage, freshRows) : undefined}

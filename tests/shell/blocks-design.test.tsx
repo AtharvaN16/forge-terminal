@@ -97,9 +97,9 @@ describe('result block', () => {
   it('carries symbol and word, not colour alone', () => {
     const frame = frameOf(<HistoryEntry block={{ kind: 'result', id: 'r1', result }} width={80} />)
     expect(frame).toContain('✓ diagram.webp')
-    expect(frame).toMatch(/^ {3}before$/m)
-    expect(frame).toMatch(/^ {3}after$/m)
-    expect(frame).toContain('diagram.png')
+    // B6a: the formats say what it was; "was" and "now" say which size is which.
+    expect(frame).toMatch(/^ {3}PNG → WebP$/m)
+    expect(frame).toMatch(/now 115 KB +was 348 KB$/m)
   })
 
   it('states the saving in words', () => {
@@ -128,14 +128,11 @@ describe('result block, as Done leaves it in the scrollback', () => {
   }
   const block = { kind: 'result' as const, id: 'r2', result }
 
-  it('puts each size in its own panel, the change under the after one', () => {
+  it('draws one bar with the change in it, the sizes two rows under it', () => {
     const lines = frameOf(<HistoryEntry block={block} width={100} />).split('\n')
-    const before = lines.findIndex((l) => l.includes('diagram.png'))
-    const after = lines.findIndex((l) => l.includes('✓ diagram.gif'))
-    expect(lines[before]).toContain('348 KB')
-    expect(lines[after]).toContain('133 KB')
-    expect(after).toBeGreaterThan(before)
-    expect(lines[after + 2]).toMatch(/\d+(\.\d)?% smaller$/)
+    const bar = lines.findIndex((l) => l.includes('✓ diagram.gif'))
+    expect(lines[bar]).toMatch(/\d+(\.\d)?% smaller$/)
+    expect(lines[bar + 3]).toMatch(/^ {3}now 133 KB +was 348 KB$/)
   })
 
   it('keeps a warning in the record, under the folder', () => {
@@ -180,10 +177,10 @@ describe('result block, long names', () => {
   }
   const block = { kind: 'result' as const, id: 'r3', result }
 
-  it('shows the full names rather than ellipsing both', () => {
+  it('shows the new file’s full name where there is room for it and the change', () => {
     const frame = frameOf(<HistoryEntry block={block} width={92} />)
-    expect(frame).toContain('Screenshot 2026-08-17 at 3.52.36 PM.png')
-    expect(frame).toContain('Screenshot 2026-08-17 at 3.52.36 PM.gif')
+    expect(frame).toContain('✓ Screenshot 2026-08-17 at 3.52.36 PM.gif')
+    expect(frame).toMatch(/% smaller$/m)
     expect(frame).not.toContain('…')
   })
 

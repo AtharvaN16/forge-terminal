@@ -3,10 +3,12 @@ import { render } from 'ink-testing-library'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Shimmer } from '../../src/shell/components/Shimmer.js'
 import {
+  blendRows,
   easeOut,
   mix,
   motionEnabled,
   setMotionForTests,
+  useBlendedRows,
   useTicker,
   useTween,
 } from '../../src/shell/motion.js'
@@ -31,6 +33,42 @@ describe('mix', () => {
     expect(mix('cyan', '#ffffff', 0.4)).toBe('cyan')
     expect(mix('cyan', '#ffffff', 0.6)).toBe('#ffffff')
     expect(mix('#000000', '', 1)).toBe('')
+  })
+})
+
+describe('blendRows', () => {
+  const ends = { canvas: '#000000', fg: '#ffffff' }
+  const cells = (row: ReturnType<typeof blendRows>) =>
+    row.flatMap((r) => Array.from(r.text, (ch) => ({ ch, fg: r.fg, bg: r.bg })))
+
+  it('is the first row at 0 and the second at 1, cell for cell', () => {
+    const a = [{ text: 'ab', fg: '#ff0000', bg: '#000000' }]
+    const b = [{ text: 'cd', fg: '#00ff00', bg: '#202020' }]
+    expect(cells(blendRows(a, b, 0, ends))).toEqual(cells(a))
+    expect(cells(blendRows(a, b, 1, ends))).toEqual(cells(b))
+  })
+
+  it('mixes each cell’s colours in between, the glyph swapping at the midpoint', () => {
+    const a = [{ text: 'a', fg: '#000000', bg: '#000000' }]
+    const b = [{ text: 'b', fg: '#ffffff', bg: '#202020' }]
+    expect(cells(blendRows(a, b, 0.25, ends))).toEqual([{ ch: 'a', fg: '#404040', bg: '#080808' }])
+    expect(cells(blendRows(a, b, 0.75, ends))[0]?.ch).toBe('b')
+  })
+
+  it('fades a glyph up out of the fill of the blank it replaces', () => {
+    const a = [{ text: ' ', bg: '#000000' }]
+    const b = [{ text: 'x', fg: '#ffffff' }]
+    // A blank shows only its fill; a missing fill is the canvas.
+    expect(cells(blendRows(a, b, 0.5, ends))).toEqual([{ ch: 'x', fg: '#808080', bg: '#000000' }])
+  })
+
+  it('pads the shorter row with blanks on the canvas', () => {
+    const out = blendRows([{ text: 'a' }], [{ text: 'abc' }], 1, ends)
+    expect(
+      cells(out)
+        .map((c) => c.ch)
+        .join(''),
+    ).toBe('abc')
   })
 })
 
@@ -62,6 +100,13 @@ describe('motionEnabled', () => {
 function TweenProbe({ k, onMount }: { k: unknown; onMount?: boolean }) {
   const t = useTween(k, 100, { enabled: true, ...(onMount ? { onMount } : {}) })
   return <Text>{`t=${t.toFixed(2)}`}</Text>
+}
+
+/** One row whose colour says which key it was drawn for: red for a, blue for b. */
+function RowsProbe({ k, on = true }: { k: 'a' | 'b'; on?: boolean }) {
+  const row = [{ text: 'x', fg: k === 'a' ? '#ff0000' : '#0000ff' }]
+  const [shown] = useBlendedRows(k, [row], 100, { enabled: on, canvas: '#000000', fg: '#ffffff' })
+  return <Text>{`fg=${shown?.[0]?.fg}`}</Text>
 }
 
 function TickerProbe({ active }: { active: boolean }) {
@@ -109,6 +154,24 @@ describe('useTween and useTicker', () => {
     expect(app.lastFrame()).toBe('t=0.00')
     await advance(150)
     expect(app.lastFrame()).toBe('t=1.00')
+  })
+
+  it('fades rows from what was drawn to what the new key draws', async () => {
+    const app = render(<RowsProbe k="a" />)
+    expect(app.lastFrame()).toBe('fg=#ff0000')
+    app.rerender(<RowsProbe k="b" />)
+    await flush()
+    expect(app.lastFrame()).toBe('fg=#ff0000')
+    await advance(33)
+    expect(app.lastFrame()).not.toMatch(/#ff0000|#0000ff/)
+    await advance(100)
+    expect(app.lastFrame()).toBe('fg=#0000ff')
+  })
+
+  it('cuts straight to the new rows when not enabled', () => {
+    const app = render(<RowsProbe k="a" on={false} />)
+    app.rerender(<RowsProbe k="b" on={false} />)
+    expect(app.lastFrame()).toBe('fg=#0000ff')
   })
 
   it('counts frames only while active', async () => {

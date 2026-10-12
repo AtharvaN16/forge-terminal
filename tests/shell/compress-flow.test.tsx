@@ -210,7 +210,9 @@ describe('the format suggestion', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Save as')
     // Convert's proposal, not compress's: no "-small", and the new extension.
-    expect(frame).toContain('› photo.webp')
+    expect(frame.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')).toMatch(
+      /name +photo +\.webp/,
+    )
   }, 30_000)
 
   it('says nothing after an ordinary conversion', async () => {

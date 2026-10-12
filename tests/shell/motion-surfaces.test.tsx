@@ -4,7 +4,7 @@ import { HeaderBar } from '../../src/shell/components/HeaderBar.js'
 import { Working } from '../../src/shell/components/Working.js'
 import { setMotionForTests } from '../../src/shell/motion.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
-import { DARK, modePalette } from '../../src/shell/theme.js'
+import { DARK } from '../../src/shell/theme.js'
 
 /** Truecolor, read by chalk once at import — so set before Ink loads. */
 vi.hoisted(() => {
@@ -140,7 +140,7 @@ describe('HeaderBar mode wipe', () => {
   })
 })
 
-describe('picker glide and drop flash', () => {
+describe('picker glide', () => {
   const DOWN = `${String.fromCharCode(27)}[B`
   const items = [
     { value: 'a', label: 'JPEG' },
@@ -162,41 +162,5 @@ describe('picker glide and drop flash', () => {
     const rest = (app.lastFrame() ?? '').split('\n')
     expect(rest[1]).toContain(bgOf(DARK.listBand))
     expect(rest[0]).not.toContain('48;2;')
-  })
-
-  it("flashes Save as's pill when a path is dropped, then rests on the pill", async () => {
-    setMotionForTests(true)
-    const { SaveAs } = await import('../../src/shell/components/SaveAs.js')
-    const palette = modePalette(DARK, 'convert')
-    const app = render(
-      <ThemeProvider palette={palette}>
-        <SaveAs
-          mode="convert"
-          width={80}
-          name="photo"
-          onNameChange={() => {}}
-          proposed="photo"
-          ext=".jpg"
-          folder="/Users/me/Desktop"
-          onFolder={() => {}}
-          presets={[{ label: 'Desktop', path: '/Users/me/Desktop' }]}
-          defaultPath=""
-          display={(p) => p}
-          onMakeDefault={() => {}}
-          onSubmit={() => {}}
-          onBack={() => {}}
-          initialFocus="folder"
-        />
-      </ThemeProvider>,
-    )
-    await flush()
-    // The title, two blank rows, the field's padding, then the sentence.
-    const sentence = () => (app.lastFrame() ?? '').split('\n')[4] ?? ''
-    expect(sentence()).toContain(bgOf(palette.pill))
-    app.stdin.write('/tmp/dropped/thing.png')
-    await flush()
-    expect(sentence()).not.toContain(bgOf(palette.pill))
-    await advance(600)
-    expect(sentence()).toContain(bgOf(palette.pill))
   })
 })

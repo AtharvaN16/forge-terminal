@@ -23,6 +23,11 @@ vi.hoisted(() => {
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping SGR is the point
 const ANSI = /\[[0-9;]*m/g
 const plain = (f: string | undefined) => (f ?? '').replace(ANSI, '')
+/** Save as's name row (V10c): "name", then the name in its box, then the extension. */
+const nameLine = (f: string | undefined) =>
+  plain(f)
+    .split('\n')
+    .find((l) => /^\s*│?\s*name {2,}/.test(l))
 
 /**
  * Walks to the name field: drop a file, pick webp, accept quality. Save as
@@ -51,7 +56,7 @@ describe('the name, in Save as', () => {
   it('opens pre-filled with the current name', async () => {
     const { lastFrame } = await toRename()
     expect(plain(lastFrame())).toContain('Save as')
-    expect(plain(lastFrame())).toContain('› photo.webp')
+    expect(nameLine(lastFrame())).toMatch(/name +photo +\.webp/)
   })
 
   it('appends what you type instead of inserting it at the front', async () => {
@@ -60,9 +65,7 @@ describe('the name, in Save as', () => {
     const { stdin, lastFrame } = await toRename()
     stdin.write('XY')
     await settle()
-    const line = plain(lastFrame())
-      .split('\n')
-      .find((l) => l.trimStart().startsWith('›'))
+    const line = nameLine(lastFrame())
     expect(line).toContain('photoXY')
     expect(line).not.toContain('XYphoto')
   })
@@ -73,9 +76,7 @@ describe('the name, in Save as', () => {
     await settle()
     stdin.write(CTRL_U)
     await settle()
-    const line = plain(lastFrame())
-      .split('\n')
-      .find((l) => l.trimStart().startsWith('›'))
+    const line = nameLine(lastFrame())
     expect(line).not.toContain('somename')
   })
 
@@ -102,9 +103,7 @@ describe('the name, in Save as', () => {
     await settle()
     stdin.write('b')
     await settle()
-    const line = plain(lastFrame())
-      .split('\n')
-      .find((l) => l.trimStart().startsWith('›'))
+    const line = nameLine(lastFrame())
     expect(line).toContain('abc')
   })
 
@@ -114,18 +113,19 @@ describe('the name, in Save as', () => {
     await settle()
     stdin.write('renamed')
     await settle()
-    expect(plain(lastFrame())).toContain('renamed.webp')
+    expect(nameLine(lastFrame())).toMatch(/name +renamed +\.webp/)
   })
 })
 
 describe('hint bar', () => {
   // The hints sit under one rule, the hint bar's own — the name field must
-  // not bring a second one of its own.
+  // not bring a second one of its own. (The quiet rule inside Save as's block,
+  // between the name and the folders, is the block's, not a hint bar's.)
   it('draws exactly one rule above the hints', async () => {
     const { lastFrame } = await toRename()
     const rules = plain(lastFrame())
       .split('\n')
-      .filter((l) => /^─+$/.test(l.trim()))
+      .filter((l) => /^─{80}$/.test(l))
     expect(rules.length).toBe(1)
   })
 })
