@@ -87,7 +87,9 @@ export const KITTY_CHUNK = 4096
 
 /**
  * The sequence that draws `png` in a box `cols` × `rows` cells wide, its
- * top-left corner at the cursor, keeping the picture's aspect ratio.
+ * top-left corner at the cursor. iTerm2 keeps the picture's shape; Kitty
+ * fills the box, so the picture is sent already the box's shape
+ * (`padToBox` in core/closeup.ts).
  *
  * Neither form moves the cursor (`doNotMoveCursor=1`, `C=1`), and the caller
  * still wraps it in save and restore cursor, for a terminal that ignores the

@@ -415,6 +415,36 @@ export interface CloseupPictures {
 const PICTURE_MAX = 720
 
 /**
+ * A terminal cell's width over its height (about 1 : 2 in every macOS
+ * terminal's default font). A box `cols` × `rows` cells is
+ * `cols · CELL_ASPECT : rows` in shape.
+ */
+export const CELL_ASPECT = 0.5
+
+/**
+ * `grid` centred on a canvas the shape of a `cols` × `rows` box, the rest
+ * transparent — the terminal's own background shows there, or the
+ * checkerboard once `onChecker` lays it under. Kitty fills the box it is
+ * given (`c=`, `r=`) whatever the picture's shape, so a picture sent at
+ * another shape would be stretched.
+ */
+export function padToBox(grid: PixelGrid, cols: number, rows: number): PixelGrid {
+  const want = (cols * CELL_ASPECT) / rows
+  const wide = grid.width / grid.height > want
+  const w = wide ? grid.width : Math.max(grid.width, Math.round(grid.height * want))
+  const h = wide ? Math.max(grid.height, Math.round(grid.width / want)) : grid.height
+  if (w === grid.width && h === grid.height) return grid
+  const out = new Uint8Array(w * h * 4)
+  const ox = Math.floor((w - grid.width) / 2)
+  const oy = Math.floor((h - grid.height) / 2)
+  for (let y = 0; y < grid.height; y++) {
+    const from = y * grid.width * 4
+    out.set(grid.rgba.subarray(from, from + grid.width * 4), ((y + oy) * w + ox) * 4)
+  }
+  return { width: w, height: h, rgba: out }
+}
+
+/**
  * The real pictures for X5: for a sharpen or a boost, the most-changed patch
  * (about two pixels of the original per cell, cols × 2 by rows × 4, so a
  * line of text reads) from both files at their own resolution; for a
@@ -429,22 +459,26 @@ export async function closeupPictures(
   const c = await choose(before, after, opts.scale)
   const output = { width: c.after.width, height: c.after.height }
   const cap = { width: PICTURE_MAX, height: PICTURE_MAX, fit: 'inside' as const }
-  if (c.sr.cutout) {
-    const b = await (await pipeline(c.before)).resize(cap).png().toBuffer()
-    const grid = onChecker(await rgba((await pipeline(c.after)).resize(cap)), 12)
-    const a = await sharp(Buffer.from(grid.rgba), {
-      raw: { width: grid.width, height: grid.height, channels: 4 },
-    })
+  const boxed = (g: PixelGrid) => padToBox(g, opts.cols, opts.rows)
+  const png = (g: PixelGrid) =>
+    sharp(Buffer.from(g.rgba), { raw: { width: g.width, height: g.height, channels: 4 } })
       .png()
       .toBuffer()
+  if (c.sr.cutout) {
+    const b = await png(boxed(await rgba((await pipeline(c.before)).resize(cap))))
+    const a = await png(onChecker(boxed(await rgba((await pipeline(c.after)).resize(cap))), 12))
     return { before: b, after: a, kind: 'subject', output }
   }
   const box = patchBox(c, opts.cols * 2, opts.rows * 4)
-  const b = await (await pipeline(c.before)).extract(region(box)).png().toBuffer()
-  const a = await (await pipeline(c.after))
-    .extract(region(inAfter(box, c.before, c.after)))
-    .resize({ ...cap, withoutEnlargement: true })
-    .png()
-    .toBuffer()
+  const b = await png(boxed(await rgba((await pipeline(c.before)).extract(region(box)))))
+  const a = await png(
+    boxed(
+      await rgba(
+        (await pipeline(c.after))
+          .extract(region(inAfter(box, c.before, c.after)))
+          .resize({ ...cap, withoutEnlargement: true }),
+      ),
+    ),
+  )
   return { before: b, after: a, kind: 'patch', output }
 }

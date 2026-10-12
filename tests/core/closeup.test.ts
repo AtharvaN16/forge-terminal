@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { CHECKER, findCloseup } from '../../src/core/closeup.js'
+import { CELL_ASPECT, CHECKER, closeupPictures, findCloseup } from '../../src/core/closeup.js'
 import { looksLikeHeic } from '../../src/engines/heic.js'
 import { loadSharp } from '../../src/engines/libs.js'
 
@@ -104,5 +104,20 @@ describe('findCloseup', () => {
     vi.mocked(looksLikeHeic).mockClear()
     for (const cols of [16, 20, 24]) await findCloseup(before, after, { cols, rows: 8, scale: 1 })
     expect(vi.mocked(looksLikeHeic)).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends a 2:3 portrait cutout padded to the box’s shape, so Kitty does not stretch it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+    const before = await png(dir, 'p.png', 40, 60, grey)
+    const after = await png(dir, 'p-cutout.png', 40, 60, (x, y) =>
+      inside(x, y, 10, 15, 20) ? grey(x, y) : [0, 0, 0, 0],
+    )
+    const pics = await closeupPictures(before, after, { cols: 36, rows: 16, scale: 1 })
+    const sharp = await loadSharp()
+    const box = (36 * CELL_ASPECT) / 16
+    for (const p of [pics.before, pics.after]) {
+      const { width = 0, height = 0 } = await sharp(p).metadata()
+      expect(Math.abs(width / height - box)).toBeLessThan(0.02)
+    }
   })
 })
