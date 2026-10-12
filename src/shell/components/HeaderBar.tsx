@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { type Trail, trailBarRow } from '../bar-art.js'
+import { type BarChip, type Trail, trailBarRow } from '../bar-art.js'
 import { slantedChips } from '../glyphs.js'
 import type { Row } from '../home-art.js'
 import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
@@ -43,6 +43,7 @@ export function HeaderBar({
   width,
   slanted,
   drift = false,
+  chip,
 }: {
   mode: ShellMode
   trail: Trail
@@ -54,6 +55,8 @@ export function HeaderBar({
    * without claiming how far. Still when motion is off.
    */
   drift?: boolean
+  /** A screen that is not a mode (`/extensions`) names itself in its own chip. */
+  chip?: BarChip | undefined
 }) {
   const palette = useTheme()
   // A palette with no ink is the first-run one, which sets no fills: no chip to slant.
@@ -64,7 +67,7 @@ export function HeaderBar({
   else since.current ??= Date.now()
   useTicker(moving, DRIFT_MS)
   const t = since.current === undefined ? undefined : (Date.now() - since.current) / 1000
-  const row = trailBarRow({ width, palette, mode, trail, slanted: ends, drift: t })
+  const row = trailBarRow({ width, palette, mode, trail, slanted: ends, drift: t, chip })
 
   // When the mode changes, the new mode's row sweeps in from the left over
   // the old one, so the change itself says the mode changed. The old row is

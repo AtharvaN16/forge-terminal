@@ -12,6 +12,13 @@ export interface Trail {
   current?: string | undefined
 }
 
+/** The chip of a screen that is not a mode, drawn as a mode's would be. */
+export interface BarChip {
+  label: string
+  colour: string
+  stops: [string, string]
+}
+
 /** Powerline's slants: the chip's ends lean the same way as the hatching. */
 const SLANT_IN = ''
 const SLANT_OUT = ''
@@ -45,6 +52,7 @@ export function trailBarRow({
   trail,
   slanted,
   drift,
+  chip,
 }: {
   width: number
   palette: Palette
@@ -53,12 +61,14 @@ export function trailBarRow({
   slanted: boolean
   /** Seconds into the drift while a job runs; the hatching is still without it. */
   drift?: number | undefined
+  /** A screen that is not a mode (`/extensions`): its own chip label, colour and gradient. */
+  chip?: BarChip | undefined
 }): Row {
   const M = HOME_MARGIN
   const end = columns - M
   const span = columns + 8
-  const stops = modeGradient(palette, mode)
-  const colour = modeColours(palette, mode).fg
+  const stops = chip?.stops ?? modeGradient(palette, mode)
+  const colour = chip?.colour ?? modeColours(palette, mode).fg
   // Each hatch cell is one run, so its column is where the run starts plus its index.
   const fill = (from: number, n: number): Run[] =>
     hatch(from, n, 0, span, stops).map((run, i) =>
@@ -66,12 +76,12 @@ export function trailBarRow({
         ? run
         : { ...run, fg: mix(palette.canvas, run.fg ?? '', driftAt(from + i, drift)) },
     )
-  const label: Run = { text: ` ${mode} `, fg: palette.ink, bg: colour, bold: true }
-  const chip: Run[] = slanted
+  const label: Run = { text: ` ${chip?.label ?? mode} `, fg: palette.ink, bg: colour, bold: true }
+  const chipRuns: Run[] = slanted
     ? [{ text: SLANT_IN, fg: colour }, label, { text: SLANT_OUT, fg: colour }]
     : [label]
-  const row: Row = [blank(M), ...chip]
-  const from = M + width(chip)
+  const row: Row = [blank(M), ...chipRuns]
+  const from = M + width(chipRuns)
   if (from >= end) return row
 
   const part = (text: string, current: boolean): Run =>

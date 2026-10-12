@@ -32,6 +32,7 @@ import {
   catalogEntry,
   type ExtensionId,
 } from './catalog.js'
+import { withExtensionLock } from './lock.js'
 import { extensionsRoot, type Installed, installed, SAFE_NAME } from './paths.js'
 import { extractTar } from './tar.js'
 
@@ -43,6 +44,19 @@ export interface ExtensionStatus {
   supported: boolean
   reason?: string
   downloadBytes?: number
+  /** What the installed tool takes on disk now, model cache included: what removing it frees. */
+  installedBytes?: number
+}
+
+/** The bytes under `dir`, measured, so "frees N" is what removing it really frees. */
+async function diskBytes(dir: string): Promise<number> {
+  let total = 0
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const path = join(dir, e.name)
+    if (e.isDirectory()) total += await diskBytes(path)
+    else if (e.isFile()) total += (await stat(path).catch(() => undefined))?.size ?? 0
+  }
+  return total
 }
 
 /** Darwin kernel major -> macOS major. macOS 26 shipped with Darwin 25; before that it was Darwin - 9. */
@@ -80,7 +94,10 @@ export async function listExtensions(): Promise<ExtensionStatus[]> {
         updateAvailable: have !== undefined && have.version !== entry.version,
         supported: support.supported,
       }
-      if (have !== undefined) status.installed = have.version
+      if (have !== undefined) {
+        status.installed = have.version
+        status.installedBytes = await diskBytes(join(extensionsRoot(), entry.id))
+      }
       if (support.reason !== undefined) status.reason = support.reason
       const asset = assetFor(entry)
       if (support.supported && asset !== undefined) status.downloadBytes = asset.bytes
@@ -308,7 +325,11 @@ export async function installExtension(
   }
 }
 
-/** True if something was removed. */
+/**
+ * True if something was removed. Refuses with `extension-in-use` while a job
+ * (in any forge) holds the tool's lock, and holds it itself while deleting,
+ * so no job can start on a half-deleted model.
+ */
 export async function removeExtension(id: string): Promise<boolean> {
   const entry = catalogEntry(id)
   if (entry === undefined) {
@@ -317,12 +338,20 @@ export async function removeExtension(id: string): Promise<boolean> {
       `Try one of: ${CATALOG.map((e) => e.id).join(', ')}.`,
     )
   }
-  await sweepDebris(extensionsRoot())
-  const base = join(extensionsRoot(), entry.id)
-  // Leftover temp files from an interrupted install are not an installed extension.
-  const existed = (await readdir(base).catch(() => [] as string[])).some((n) => !n.startsWith('.'))
-  await rm(base, { recursive: true, force: true })
-  return existed
+  return withExtensionLock(
+    entry.id,
+    async () => {
+      await sweepDebris(extensionsRoot())
+      const base = join(extensionsRoot(), entry.id)
+      // Leftover temp files from an interrupted install are not an installed extension.
+      const existed = (await readdir(base).catch(() => [] as string[])).some(
+        (n) => !n.startsWith('.'),
+      )
+      await rm(base, { recursive: true, force: true })
+      return existed
+    },
+    { waitMs: 0, action: 'remove', what: `${entry.title} is being removed` },
+  )
 }
 
 export type { ExtensionId }

@@ -2809,8 +2809,9 @@ export function App({
 
           {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
-            trail ending in "Done" (see `doneTrail` and `DoneScreen`). */}
-          {working && !onHome && step !== 'result' ? (
+            trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
+            /extensions, which is no mode and draws its own "extensions" chip. */}
+          {working && !onHome && step !== 'result' && step !== 'extensions' ? (
             <Box marginBottom={1}>
               <HeaderBar
                 mode={mode}

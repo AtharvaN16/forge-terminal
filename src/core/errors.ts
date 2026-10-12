@@ -34,6 +34,7 @@ export type ErrorCode =
   | 'extension-corrupt'
   | 'extension-unsupported'
   | 'extension-download-failed'
+  | 'extension-in-use'
   | 'no-subject'
   | 'boost-too-large'
   | 'unexpected'
@@ -642,6 +643,35 @@ export function extensionDiskFull(id: string, detail: string): ForgeError {
     detail: `${id}: ${detail}`,
     hint: `Free some disk space, then run: forge extensions add ${id}`,
     shellHint: 'Free some disk space, then try again from /extensions.',
+  })
+}
+
+/**
+ * Another forge is using the extension: removing it would delete the model
+ * under a running job, and a second job waited as long as it sensibly can.
+ */
+export function extensionBusy(
+  id: string,
+  holder: { pid: number; what?: string } | undefined,
+  action: 'run' | 'remove',
+): ForgeError {
+  const who = holder
+    ? holder.what
+      ? `${holder.what} (forge, pid ${holder.pid})`
+      : `another forge (pid ${holder.pid}) is using it`
+    : 'another forge is using it'
+  return new ForgeError({
+    code: 'extension-in-use',
+    title: 'Extension in use',
+    detail: `${id} is in use: ${who}.`,
+    hint:
+      action === 'remove'
+        ? `Wait for that job to finish, then run: forge extensions remove ${id}`
+        : 'Wait for that job to finish, then try again.',
+    shellHint:
+      action === 'remove'
+        ? 'It can be removed when that job finishes.'
+        : 'Try again when that job finishes.',
   })
 }
 
