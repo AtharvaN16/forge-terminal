@@ -86,7 +86,7 @@ describe('boost runner', () => {
   })
 
   it.skipIf(!haveModel)(
-    'boosts a 64 px PNG to 128 px (2×) and 256 px (4×), keeping its alpha',
+    'sharpens a 64 px PNG at its size (1×) and boosts it to 128 px (2×) and 256 px (4×), keeping its alpha',
     async () => {
       // Opaque disc on a transparent background.
       const size = 64
@@ -102,7 +102,7 @@ describe('boost runner', () => {
         .png()
         .toFile(input)
 
-      for (const scale of [2, 4]) {
+      for (const scale of [1, 2, 4]) {
         const out = join(work, `disc-${scale}x.png`)
         const r = await boost(input, out, scale)
         expect(r.exitCode).toBe(0)
