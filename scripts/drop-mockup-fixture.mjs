@@ -106,5 +106,8 @@ const frames = STATES.map(({ label, mode }, i) => ({
   text: '',
   rows: cells(globalThis.__drop[i].slice(0, 24).join('\r\n'), 80, 24).map(runs),
 }))
-writeFileSync(`${root}tests/shell/fixtures/drop-mockup.json`, `${JSON.stringify(frames, null, 1)}\n`)
+writeFileSync(
+  `${root}tests/shell/fixtures/drop-mockup.json`,
+  `${JSON.stringify(frames, null, 1)}\n`,
+)
 console.log(`wrote ${frames.length} drop frames`)
