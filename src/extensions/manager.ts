@@ -1,21 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  rmdir,
-  stat,
-  statfs,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, rmdir, stat, statfs, writeFile } from 'node:fs/promises'
 import { release } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { gunzip } from 'node:zlib'
+import { renameAtomic } from '../core/atomic.js'
 import {
   extensionCorrupt,
   extensionDiskFull,
@@ -26,11 +17,12 @@ import {
 } from '../core/errors.js'
 import { formatBytes } from '../core/units.js'
 import {
+  assetFor,
   CATALOG,
-  type CatalogAsset,
   type CatalogEntry,
   catalogEntry,
   type ExtensionId,
+  offeredOn,
 } from './catalog.js'
 import { withExtensionLock } from './lock.js'
 import { extensionsRoot, type Installed, installed, SAFE_NAME } from './paths.js'
@@ -65,33 +57,50 @@ function macosMajor(): number {
   return darwin >= 25 ? darwin + 1 : darwin - 9
 }
 
-function assetFor(entry: CatalogEntry): CatalogAsset | undefined {
-  const arch = process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : undefined
-  return entry.assets.universal ?? (arch === undefined ? undefined : entry.assets[arch])
-}
-
-function supportFor(entry: CatalogEntry): { supported: boolean; reason?: string } {
-  if (process.platform !== 'darwin') {
-    return { supported: false, reason: 'extensions need macOS' }
+function supportFor(
+  entry: CatalogEntry,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): { supported: boolean; reason?: string } {
+  if (platform !== 'darwin' && platform !== 'win32') {
+    return { supported: false, reason: 'extensions need macOS or Windows' }
   }
-  if (macosMajor() < entry.minMacos) {
+  // Only reached by naming one: an entry with no asset for this OS is not listed.
+  if (!offeredOn(entry, platform)) {
+    return {
+      supported: false,
+      reason: platform === 'win32' ? 'not available on Windows' : 'not available on macOS',
+    }
+  }
+  if (platform === 'win32') {
+    if (assetFor(entry, platform, arch) === undefined) {
+      return { supported: false, reason: `no build for ${arch} PCs` }
+    }
+    return { supported: true }
+  }
+  if (entry.minMacos !== undefined && macosMajor() < entry.minMacos) {
     return { supported: false, reason: `needs macOS ${entry.minMacos} or later` }
   }
-  if (assetFor(entry) === undefined) {
-    return { supported: false, reason: `no build for ${process.arch} Macs` }
+  if (assetFor(entry, platform, arch) === undefined) {
+    return { supported: false, reason: `no build for ${arch} Macs` }
   }
   return { supported: true }
 }
 
 /** Offline and instant: the catalogue is compiled in, installed state is read from disk. */
-export async function listExtensions(): Promise<ExtensionStatus[]> {
+export async function listExtensions(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): Promise<ExtensionStatus[]> {
   return Promise.all(
-    CATALOG.map(async (entry) => {
+    CATALOG.filter((entry) => offeredOn(entry, platform)).map(async (entry) => {
       const have = await installed(entry.id)
-      const support = supportFor(entry)
+      const support = supportFor(entry, platform, arch)
+      const asset = assetFor(entry, platform, arch)
       const status: ExtensionStatus = {
         entry,
-        updateAvailable: have !== undefined && have.version !== entry.version,
+        updateAvailable:
+          have !== undefined && asset !== undefined && have.version !== asset.version,
         supported: support.supported,
       }
       if (have !== undefined) {
@@ -99,7 +108,6 @@ export async function listExtensions(): Promise<ExtensionStatus[]> {
         status.installedBytes = await diskBytes(join(extensionsRoot(), entry.id))
       }
       if (support.reason !== undefined) status.reason = support.reason
-      const asset = assetFor(entry)
       if (support.supported && asset !== undefined) status.downloadBytes = asset.bytes
       return status
     }),
@@ -118,12 +126,12 @@ async function sha256File(path: string): Promise<string> {
 }
 
 /** Checks the staged payload against its own manifest. Throws a plain Error naming the problem. */
-async function verifyStaged(dir: string, entry: CatalogEntry): Promise<void> {
+async function verifyStaged(dir: string, entry: CatalogEntry, version: string): Promise<void> {
   const m = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as Record<
     string,
     unknown
   >
-  if (m.id !== entry.id || m.version !== entry.version) {
+  if (m.id !== entry.id || m.version !== version) {
     throw new Error('the archive is for a different extension or version')
   }
   const files = m.files
@@ -136,7 +144,15 @@ async function verifyStaged(dir: string, entry: CatalogEntry): Promise<void> {
     throw new Error('manifest has no valid entry')
   }
   for (const [rel, expected] of Object.entries(files)) {
-    if (rel.startsWith('/') || rel.split('/').includes('..')) throw new Error(`unsafe path ${rel}`)
+    // A backslash or drive letter is a separator or a root on Windows, whatever it is here.
+    if (
+      rel.startsWith('/') ||
+      rel.includes('\\') ||
+      /^[A-Za-z]:/.test(rel) ||
+      rel.split('/').includes('..')
+    ) {
+      throw new Error(`unsafe path ${rel}`)
+    }
     if ((await sha256File(join(dir, rel)).catch(() => undefined)) !== expected) {
       throw new Error(`${rel} does not match the manifest`)
     }
@@ -146,7 +162,7 @@ async function verifyStaged(dir: string, entry: CatalogEntry): Promise<void> {
 async function writeCurrent(base: string, version: string): Promise<void> {
   const tmp = join(base, `.current-${randomBytes(4).toString('hex')}`)
   await writeFile(tmp, `${version}\n`)
-  await rename(tmp, join(base, 'current'))
+  await renameAtomic(tmp, join(base, 'current'))
 }
 
 /**
@@ -225,7 +241,7 @@ export async function installExtension(
     throw extensionUnsupported(id, support.reason ?? 'no build for this Mac')
   }
   const current = await installed(entry.id)
-  if (current?.version === entry.version) return current
+  if (current?.version === asset.version) return current
 
   const root = extensionsRoot()
   const base = join(root, entry.id)
@@ -297,7 +313,7 @@ export async function installExtension(
     try {
       await mkdir(staging, { recursive: true })
       await extractTar(await gunzipAsync(await readFile(archive)), staging)
-      await verifyStaged(staging, entry)
+      await verifyStaged(staging, entry, asset.version)
     } catch (cause) {
       if (diskFull(cause)) throw extensionDiskFull(id, 'the disk filled up while unpacking.')
       throw extensionCorrupt(
@@ -307,14 +323,14 @@ export async function installExtension(
     }
 
     opts.signal?.throwIfAborted()
-    const target = join(base, entry.version)
+    const target = join(base, asset.version)
     await rm(target, { recursive: true, force: true })
-    await rename(staging, target)
-    await writeCurrent(base, entry.version)
+    await renameAtomic(staging, target)
+    await writeCurrent(base, asset.version)
 
     // Old versions go only after the new one is in place.
     for (const name of await readdir(base)) {
-      if (name !== entry.version && name !== 'current' && SAFE_NAME.test(name)) {
+      if (name !== asset.version && name !== 'current' && SAFE_NAME.test(name)) {
         await rm(join(base, name), { recursive: true, force: true })
       }
     }

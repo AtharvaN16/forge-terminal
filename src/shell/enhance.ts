@@ -3,7 +3,7 @@ import type { Action } from '../core/actions/index.js'
 import { targetIdsFor } from '../core/capabilities.js'
 import { BOOST_MAX_SIDE, boostOverLimit } from '../core/extension-targets.js'
 import type { FormatId, ImageInfo } from '../core/types.js'
-import type { ExtensionId } from '../extensions/catalog.js'
+import { type ExtensionId, offeredHere } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
 
 /**
@@ -52,8 +52,11 @@ function tooLarge(source: ImageInfo, scale: number): string | undefined {
     : `${over.megapixels} MP, over 100 MP`
 }
 
-/** The four rows, in the decided order, for `source`. No row is a default. */
-export function enhanceRows(source: ImageInfo): EnhanceRow[] {
+/** The rows, in the decided order, for `source` (four on a Mac). No row is a default. */
+export function enhanceRows(
+  source: ImageInfo,
+  platform: NodeJS.Platform = process.platform,
+): EnhanceRow[] {
   const kept = keptFormat(source)
   const asJpeg = source.format === 'heic' ? ' · as JPEG' : ''
   const boost = (scale: 2 | 4): EnhanceRow => {
@@ -83,14 +86,19 @@ export function enhanceRows(source: ImageInfo): EnhanceRow[] {
     },
     boost(2),
     boost(4),
-    {
-      id: 'cutout',
-      label: 'Remove background',
-      extension: 'remove-background',
-      target: 'png',
-      detail: { dim: '', bold: 'transparent PNG' },
-      verb: 'Removing background',
-    },
+    // Apple Vision does the cutting, so there is no such row where it is not offered.
+    ...(offeredHere('remove-background', platform)
+      ? [
+          {
+            id: 'cutout',
+            label: 'Remove background',
+            extension: 'remove-background',
+            target: 'png',
+            detail: { dim: '', bold: 'transparent PNG' },
+            verb: 'Removing background',
+          } satisfies EnhanceRow,
+        ]
+      : []),
   ]
 }
 

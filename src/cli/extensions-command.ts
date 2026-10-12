@@ -1,5 +1,6 @@
 import type { ExtensionJson, ExtensionsJson } from '../core/report-data.js'
 import { formatBytes } from '../core/units.js'
+import { assetFor, type CatalogEntry } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
 import type { ExtensionsIntent } from './args.js'
 
@@ -8,12 +9,21 @@ export interface ExtensionsResult {
   data: Pick<ExtensionsJson, 'extensions' | 'changed'>
 }
 
+/**
+ * The catalogue's version for this machine. With no build for this chip, this
+ * OS's own: an Intel Mac is still told boost is 1.0.0, as before assets had versions.
+ */
+function catalogVersion(entry: CatalogEntry): string {
+  const own = Object.entries(entry.assets).find(([key]) => key.startsWith(`${process.platform}-`))
+  return assetFor(entry)?.version ?? own?.[1]?.version ?? ''
+}
+
 export function toExtensionJson(s: ExtensionStatus): ExtensionJson {
   return {
     id: s.entry.id,
     title: s.entry.title,
     summary: s.entry.summary,
-    version: s.entry.version,
+    version: catalogVersion(s.entry),
     licence: s.entry.licence,
     installed: s.installed ?? null,
     updateAvailable: s.updateAvailable,
@@ -29,7 +39,8 @@ function stateOf(s: ExtensionStatus): string {
     const size = s.downloadBytes ? `, ${formatBytes(s.downloadBytes)} download` : ''
     return `not installed${size}`
   }
-  if (s.updateAvailable) return `installed ${s.installed}, update to ${s.entry.version} available`
+  if (s.updateAvailable)
+    return `installed ${s.installed}, update to ${assetFor(s.entry)?.version} available`
   return `installed ${s.installed}`
 }
 

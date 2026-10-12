@@ -3,7 +3,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
 import { formatBytes } from '../../core/units.js'
-import type { CatalogEntry } from '../../extensions/catalog.js'
+import { assetFor, type CatalogEntry, type PlatformKey } from '../../extensions/catalog.js'
 import type { LockHolder } from '../../extensions/lock.js'
 import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { BarChip } from '../bar-art.js'
@@ -87,8 +87,16 @@ function sheetFor(entry: CatalogEntry) {
 }
 
 /** What a Mac needs for the tool, from its builds: Apple Silicon when arm64 is the only one. */
-function needsOf(entry: CatalogEntry): string {
-  const silicon = entry.assets.universal === undefined && entry.assets.x64 === undefined
+function needsOf(entry: CatalogEntry, platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') {
+    // The chips Windows builds exist for; a universal build would never be unsupported.
+    const chips = (Object.keys(entry.assets) as PlatformKey[])
+      .filter((key) => key.startsWith('win32-'))
+      .map((key) => key.slice('win32-'.length))
+    return `Windows · ${chips.join(' or ')}`
+  }
+  const silicon =
+    entry.assets['darwin-universal'] === undefined && entry.assets['darwin-x64'] === undefined
   return `${silicon ? 'Apple Silicon · ' : ''}macOS ${entry.minMacos}`
 }
 
@@ -424,7 +432,7 @@ export function ExtensionsFlow({
         <Text>
           {pill('↵ update')}
           <Text color={dim}>{`  ${s.installed} → `}</Text>
-          <Text color={fg}>{s.entry.version}</Text>
+          <Text color={fg}>{assetFor(s.entry)?.version}</Text>
         </Text>
       )
     }
@@ -489,7 +497,7 @@ export function ExtensionsFlow({
               <Text key="v">
                 {label('version')}
                 <Text color={dim}>{`${s.installed} → `}</Text>
-                <Text color={fg}>{s.entry.version}</Text>
+                <Text color={fg}>{assetFor(s.entry)?.version}</Text>
               </Text>,
             ]
           : []),

@@ -1,7 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { boostTooLarge, conversionFailed, extensionMissing, isForgeError } from '../core/errors.js'
+import {
+  boostTooLarge,
+  conversionFailed,
+  extensionMissing,
+  extensionUnsupported,
+  isForgeError,
+} from '../core/errors.js'
 import { boostOverLimit } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import type { Job, Progress, Result, Warning } from '../core/types.js'
@@ -48,6 +54,9 @@ async function run(
     throw boostTooLarge(source.path, maxBoost(source.width, source.height), job.scale)
   }
 
+  // Not "install it": on an OS the catalogue offers no build for, there is nothing to install.
+  const { offeredHere } = await import('../extensions/catalog.js')
+  if (!offeredHere(id)) throw extensionUnsupported(id, 'not available on this system')
   const { installed, extensionsRoot } = await import('../extensions/paths.js')
   const ext = await installed(id)
   if (!ext) throw extensionMissing(id)

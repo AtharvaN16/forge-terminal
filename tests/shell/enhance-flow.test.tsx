@@ -5,7 +5,7 @@ import sharp from 'sharp'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { extensionDownloadFailed } from '../../src/core/errors.js'
-import { CATALOG } from '../../src/extensions/catalog.js'
+import { assetFor, CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
 import type { EnhanceTools } from '../../src/shell/enhance.js'
@@ -35,10 +35,12 @@ describe('enhance mode', () => {
     })
     const tools: EnhanceTools = {
       async list() {
-        return CATALOG.map(
+        return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
           (entry): ExtensionStatus => ({
             entry,
-            ...(installed.has(entry.id) ? { installed: entry.version } : {}),
+            ...(installed.has(entry.id)
+              ? { installed: assetFor(entry, 'darwin', 'arm64')?.version }
+              : {}),
             updateAvailable: false,
             supported: true,
             downloadBytes: 32_489,
@@ -117,10 +119,12 @@ describe('enhance mode', () => {
   /** Tools where only boost is installed; `install` is the test's. */
   const someTools = (install: EnhanceTools['install'], installed: Set<string>): EnhanceTools => ({
     async list() {
-      return CATALOG.map(
+      return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
         (entry): ExtensionStatus => ({
           entry,
-          ...(installed.has(entry.id) ? { installed: entry.version } : {}),
+          ...(installed.has(entry.id)
+            ? { installed: assetFor(entry, 'darwin', 'arm64')?.version }
+            : {}),
           updateAvailable: false,
           supported: true,
           downloadBytes: 32_489,

@@ -25,7 +25,9 @@ import type { CatalogEntry } from '../../src/extensions/catalog.js'
 
 const h = vi.hoisted(() => ({ catalog: [] as CatalogEntry[], release: '24.0.0' }))
 
-vi.mock('../../src/extensions/catalog.js', () => ({
+vi.mock('../../src/extensions/catalog.js', async (orig) => ({
+  // The real lookups, over the test's catalogue.
+  ...(await orig<typeof import('../../src/extensions/catalog.js')>()),
   get CATALOG() {
     return h.catalog
   },
@@ -59,14 +61,23 @@ function tarEntry(name: string, body: Buffer, mode = 0o644): Buffer {
 
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 
-/** A payload archive: manifest + one executable. `lie` makes the manifest hash wrong. */
-function payload(version: string, opts: { lie?: boolean; extraName?: string } = {}): Buffer {
+/**
+ * A payload archive: manifest + one executable. `lie` makes the manifest hash
+ * wrong; `listed` adds a file to the manifest that is not in the archive.
+ */
+function payload(
+  version: string,
+  opts: { lie?: boolean; extraName?: string; listed?: string } = {},
+): Buffer {
   const bin = Buffer.from(`#!/bin/sh\necho ${version}\n`)
   const manifest = {
     id: 'remove-background',
     version,
     arch: 'universal',
-    files: { 'forge-cutout': opts.lie ? sha(Buffer.from('other')) : sha(bin) },
+    files: {
+      'forge-cutout': opts.lie ? sha(Buffer.from('other')) : sha(bin),
+      ...(opts.listed ? { [opts.listed]: sha(bin) } : {}),
+    },
     entry: 'forge-cutout',
     kind: 'exec',
   }
@@ -115,9 +126,10 @@ function entryFor(
     id: 'remove-background',
     title: 'Remove background',
     summary: 's',
-    version,
     minMacos: 14,
-    assets: { universal: { url: `${base}${path}`, bytes: archive.length, sha256 } },
+    assets: {
+      'darwin-universal': { version, url: `${base}${path}`, bytes: archive.length, sha256 },
+    },
     licence: 'l',
   }
 }
@@ -235,6 +247,14 @@ describe('installing an extension', () => {
     await expect(
       access(join(config, 'forge', 'extensions', 'remove-background', 'escape')),
     ).rejects.toThrow()
+    expect(await leftovers()).toEqual([])
+  })
+
+  it('a manifest path that is a Windows separator or drive is refused', async () => {
+    // Harmless on a Mac (one odd file name), but `..\\` climbs out on Windows.
+    h.catalog = [entryFor('1.0.0', payload('1.0.0', { listed: '..\\evil.dll' }), '/v1.tgz')]
+    const err = await installExtension('remove-background').catch((e: unknown) => e)
+    expect(isForgeError(err) && err.detail).toBe('remove-background: unsafe path ..\\evil.dll')
     expect(await leftovers()).toEqual([])
   })
 
@@ -374,8 +394,8 @@ describe('listing', () => {
 
   it('reports an architecture with no build', async () => {
     const entry = entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')
-    const { universal, ...rest } = entry.assets
-    h.catalog = [{ ...entry, assets: { ...rest, x64: universal } }]
+    const { 'darwin-universal': universal, ...rest } = entry.assets
+    h.catalog = [{ ...entry, assets: { ...rest, 'darwin-x64': universal } }]
     const arch = Object.getOwnPropertyDescriptor(process, 'arch') as PropertyDescriptor
     Object.defineProperty(process, 'arch', { value: 'arm64' })
     try {
@@ -384,6 +404,31 @@ describe('listing', () => {
     } finally {
       Object.defineProperty(process, 'arch', arch)
     }
+  })
+})
+
+describe('listing on Windows', () => {
+  it('lists only what has a Windows build, and names a chip with none', async () => {
+    const mac = entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')
+    const asset = {
+      version: '1.1.0',
+      url: `${base}/w.tgz`,
+      bytes: 60,
+      sha256: sha(Buffer.from('w')),
+    }
+    h.catalog = [{ ...mac, id: 'boost', minMacos: undefined, assets: { 'win32-x64': asset } }, mac]
+
+    expect(await listExtensions('win32', 'x64')).toEqual([
+      expect.objectContaining({
+        entry: expect.objectContaining({ id: 'boost' }),
+        supported: true,
+        downloadBytes: 60,
+      }),
+    ])
+    expect((await listExtensions('win32', 'arm64'))[0]).toMatchObject({
+      supported: false,
+      reason: 'no build for arm64 PCs',
+    })
   })
 })
 

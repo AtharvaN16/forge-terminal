@@ -21,8 +21,10 @@ import { gzipSync } from 'node:zlib'
 const ENTRIES = {
   boost: { entry: 'runner.mjs', kind: 'node' },
   'remove-background': { entry: 'forge-cutout', kind: 'exec' },
+  heic: { entry: 'runner.mjs', kind: 'node' },
 }
-const ARCHES = ['arm64', 'x64', 'universal']
+// Bare labels are the Mac builds, as published before Windows; win32 ones say so.
+const ARCHES = ['arm64', 'x64', 'universal', 'win32-x64', 'win32-arm64', 'win32-universal']
 const FIXED_MTIME = 946684800 // 2000-01-01
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')

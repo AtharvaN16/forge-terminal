@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import { extensionDownloadFailed } from '../../src/core/errors.js'
-import { CATALOG } from '../../src/extensions/catalog.js'
+import { assetFor, CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { LockHolder } from '../../src/extensions/lock.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { ExtensionsFlow, type ExtensionsManager } from '../../src/shell/flows/extensions.js'
@@ -24,10 +24,12 @@ function fakeManager(opts: { installed?: string[]; inUse?: Record<string, LockHo
   })
   const manager: ExtensionsManager = {
     async list() {
-      return CATALOG.map(
+      return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
         (entry): ExtensionStatus => ({
           entry,
-          ...(have.has(entry.id) ? { installed: entry.version, installedBytes: 15 * MB } : {}),
+          ...(have.has(entry.id)
+            ? { installed: assetFor(entry, 'darwin', 'arm64')?.version, installedBytes: 15 * MB }
+            : {}),
           updateAvailable: false,
           supported: true,
           downloadBytes: 15 * MB,
