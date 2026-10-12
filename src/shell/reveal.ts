@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { access } from 'node:fs/promises'
 import { win32 } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -24,12 +25,29 @@ async function runExplorer(args: string[]): Promise<void> {
  */
 const forExplorer = (path: string) => win32.normalize(path)
 
+/**
+ * macOS `open` fails on a missing file, which the shell shows as an error
+ * block. Explorer exits 1 either way, so `runExplorer` cannot tell, and a file
+ * that was moved or deleted would fail silently (or open Documents). Look
+ * first, and fail the way `open` does.
+ */
+async function assertExists(path: string): Promise<void> {
+  try {
+    await access(path)
+  } catch {
+    throw new Error(`The file ${path} does not exist.`)
+  }
+}
+
 /** Opens a file with its default application. */
 export async function openPath(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
-  if (platform === 'win32') return runExplorer([forExplorer(path)])
+  if (platform === 'win32') {
+    await assertExists(path)
+    return runExplorer([forExplorer(path)])
+  }
   await run('open', [path])
 }
 
@@ -41,7 +59,10 @@ export async function revealPath(
   // `/select,` and the path as two arguments: Node quotes only the path when
   // it has a space (`/select, "C:\My Files\a.png"`), the form Explorer
   // honours. Quoted whole (`"/select,C:\My Files\a.png"`) it is ignored.
-  if (platform === 'win32') return runExplorer(['/select,', forExplorer(path)])
+  if (platform === 'win32') {
+    await assertExists(path)
+    return runExplorer(['/select,', forExplorer(path)])
+  }
   await run('open', ['-R', path])
 }
 

@@ -37,7 +37,7 @@ const dropInkDevtools = {
   name: 'drop-ink-devtools',
   setup(b) {
     b.onResolve({ filter: /^\.\/devtools\.js$/ }, (args) =>
-      args.importer.includes('/node_modules/ink/')
+      /[\\/]node_modules[\\/]ink[\\/]/.test(args.importer)
         ? { path: join(ROOT, 'scripts/stubs/react-devtools-core.mjs') }
         : undefined,
     )

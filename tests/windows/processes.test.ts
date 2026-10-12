@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process'
+import { access } from 'node:fs/promises'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expandTilde } from '../../src/config/preferences.js'
 import { paste } from '../../src/shell/clipboard.js'
@@ -9,10 +10,16 @@ import { resetKnownFoldersForTests } from '../../src/utils/known-folders.js'
 // A factory, not automock: automock keeps execFile's util.promisify.custom as a
 // stub returning undefined, which would bypass the callback reveal drives.
 vi.mock('node:child_process', () => ({ execFile: vi.fn(), execFileSync: vi.fn() }))
+// The Windows paths below do not exist on the machine running the tests.
+vi.mock('node:fs/promises', async (orig) => ({
+  ...(await orig<typeof import('node:fs/promises')>()),
+  access: vi.fn(),
+}))
 
 type Done = (err: Error | null, out?: unknown) => void
 
 beforeEach(() => {
+  vi.mocked(access).mockReset().mockResolvedValue(undefined)
   vi.mocked(execFile).mockReset()
   vi.mocked(execFileSync).mockReset()
 })
@@ -35,6 +42,15 @@ describe('Show in Explorer and Open', () => {
       ['/select,', want],
     ])
     expect(vi.mocked(execFile).mock.calls[1]?.slice(0, 2)).toEqual(['explorer.exe', [want]])
+  })
+
+  it('fail like macOS open when the file is gone, instead of exiting 1 in silence', async () => {
+    const enoent = () => Object.assign(new Error('nope'), { code: 'ENOENT' })
+    vi.mocked(access).mockRejectedValueOnce(enoent()).mockRejectedValueOnce(enoent())
+    const gone = 'C:\\Users\\a\\gone.png'
+    await expect(revealPath(gone, 'win32')).rejects.toThrow('does not exist')
+    await expect(openPath(gone, 'win32')).rejects.toThrow('does not exist')
+    expect(execFile).not.toHaveBeenCalled()
   })
 })
 
