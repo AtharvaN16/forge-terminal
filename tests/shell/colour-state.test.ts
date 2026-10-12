@@ -144,6 +144,13 @@ describe('the palette', () => {
     expect(state.history).toHaveLength(2)
   })
 
+  it('a drop into the empty field opens it at once; typing a path waits for ↵', () => {
+    const dropped = run(initial('palette'), { type: 'text', text: '/x/photo.jpg' })
+    expect(dropped.effects).toContainEqual({ type: 'open', path: '/x/photo.jpg' })
+    const typed = run(initial('palette'), { type: 'text', text: '/' }, { type: 'text', text: '/x' })
+    expect(typed.effects).toEqual([])
+  })
+
   it('a path that is not an image is refused, the text kept, the palette kept', () => {
     let { state, effects } = run(
       onPalette(),
@@ -180,6 +187,7 @@ describe('the scale', () => {
       sel: 5,
     })
     expect(trailOf(state, ctx())).toEqual({ answers: ['#6579FD'], current: 'Scale' })
+    expect(state.flash?.text).toBe('#343F96 is now 500 · esc goes back to #6579FD')
     ;({ state } = run(state, ESC))
     expect(top(state)).toMatchObject({ ref: { r: 101, g: 121, b: 253 }, sel: 8 })
   })

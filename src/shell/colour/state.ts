@@ -232,7 +232,8 @@ function onScaleKey(
   if (input === 'r' && step && screen.sel !== 5) {
     const was = `was ${step.step} of ${toHex(screen.ref)}`
     const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: 5 })
-    return same({ ...next, field: field(step.hex, false) })
+    const said = `${step.hex} is now 500 · esc goes back to ${toHex(screen.ref)}`
+    return same(flash({ ...next, field: field(step.hex, false) }, said, ctx))
   }
   return same(s)
 }
@@ -270,6 +271,23 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
         onScale(top(s)) || action.text.startsWith('#')
           ? typedColour(top(s), action.text)
           : undefined
+      // A drop arrives as many characters at once: a dropped image opens by
+      // itself (colour spec §6.4); a path typed a key at a time waits for ↵.
+      const dropped =
+        onPalette(top(s)) &&
+        action.text.length - s.field.text.length > 1 &&
+        !action.text.trim().startsWith('#')
+      if (dropped) {
+        return {
+          state: {
+            ...s,
+            field: { ...s.field, text: action.text },
+            preview: undefined,
+            error: undefined,
+          },
+          effects: [{ type: 'open', path: action.text.trim() }],
+        }
+      }
       return same({
         ...s,
         field: { ...s.field, text: action.text },

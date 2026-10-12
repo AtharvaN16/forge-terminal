@@ -350,6 +350,31 @@ export function copiedRow(p: Palette, what: { hex: string } | { count: number })
   ]
 }
 
+/**
+ * A confirmation in place of the detail line: a copy, or `r`'s "is now 500".
+ * What follows a ` · ` is said quietly.
+ */
+export function flashRow(p: Palette, text: string): Row {
+  const hex = /^copied (#[0-9A-F]{6})$/i.exec(text)
+  if (hex) return copiedRow(p, { hex: hex[1] as string })
+  const count = /^copied (\d+) swatches$/.exec(text)
+  if (count) return copiedRow(p, { count: Number(count[1]) })
+  const [first = '', ...rest] = text.split(' · ')
+  const row: Row = [blank(4), ink('✓', p.ok, true), blank(1), ink(first, p.fg)]
+  if (rest.length > 0) row.push(ink(` · ${rest.join(' · ')}`, p.dim))
+  return row
+}
+
+/** A refusal, on the line under the field. */
+export function errorRow(p: Palette, text: string): Row {
+  return [blank(4), ink(text, p.fail)]
+}
+
+/** Said once, quietly, where swatches cannot show the colour they name. */
+export function approximateRow(p: Palette): Row {
+  return [blank(4), ink('colours shown approximately · this terminal has 256 colours', p.border)]
+}
+
 /* ------------------------------------------------------------ the scale */
 
 const CELL = 6
