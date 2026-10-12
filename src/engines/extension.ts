@@ -2,20 +2,16 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { boostTooLarge, conversionFailed, extensionMissing, isForgeError } from '../core/errors.js'
+import { boostOverLimit } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import type { Job, Progress, Result, Warning } from '../core/types.js'
 import { decodeToPng, encode, writeAtomic } from './image.js'
 import { loadSharp } from './libs.js'
 import type { Engine } from './types.js'
 
-/** The boost runner's own limits (extensions/boost/runner.ts), checked here first. */
-const MAX_SIDE = 16_384
-const MAX_PIXELS = 100_000_000
-
+/** The boost runner's own limits, checked here first. */
 const fits = (width: number, height: number, scale: number): boolean =>
-  width * scale <= MAX_SIDE &&
-  height * scale <= MAX_SIDE &&
-  width * scale * height * scale <= MAX_PIXELS
+  boostOverLimit(width, height, scale) === undefined
 
 /**
  * The largest boost factor below `below` that keeps the output within the
@@ -49,7 +45,7 @@ async function run(
   const output = job.outputs[0]
   const id = job.op
   if (job.op === 'boost' && !fits(source.width, source.height, job.scale)) {
-    throw boostTooLarge(source.path, maxBoost(source.width, source.height))
+    throw boostTooLarge(source.path, maxBoost(source.width, source.height), job.scale)
   }
 
   const { installed, extensionsRoot } = await import('../extensions/paths.js')

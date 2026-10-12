@@ -97,7 +97,7 @@ export interface PageOpIntent {
 }
 
 /**
- * `--boost [2|4]` and `--remove-bg`: an image operation run by an optional
+ * `--sharpen`, `--boost [2|4]` and `--remove-bg`: an image operation run by an optional
  * extension (spec §5). Its own `kind` because it has an operation where a
  * conversion has only a target, and it fails differently when the extension
  * is absent.
@@ -105,8 +105,8 @@ export interface PageOpIntent {
 export interface ExtensionOpIntent {
   kind: 'extension-op'
   op: 'boost' | 'remove-background'
-  /** Only for boost. */
-  scale?: 2 | 4
+  /** Only for boost; 1 is `--sharpen`. */
+  scale?: 1 | 2 | 4
   inputs: string[]
   /** The output format. PNG unless `--to` says otherwise. */
   target: FormatId
@@ -466,6 +466,7 @@ function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
     .option('--delete <pages>', 'drop these pages')
     .option('--rotate <degrees>', '90, 180 or 270')
     .option('--separate', 'with --extract, write one file per page')
+    .option('--sharpen', 'sharpen at the same size; needs the boost extension')
     .option('--boost [2|4]', 'sharpen and enlarge 2x (default) or 4x; needs the boost extension')
     .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
@@ -536,13 +537,19 @@ function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
     )
   }
 
+  const asked = [
+    ...(opts.sharpen ? ['--sharpen'] : []),
+    ...(boost !== undefined ? ['--boost'] : []),
+    ...(opts.removeBg ? ['--remove-bg'] : []),
+  ]
+  const scale: 1 | 2 | 4 | undefined = opts.sharpen ? 1 : boost
   const extensionOp =
-    boost !== undefined ? ('boost' as const) : opts.removeBg ? ('remove-background' as const) : null
+    scale !== undefined ? ('boost' as const) : opts.removeBg ? ('remove-background' as const) : null
   if (extensionOp !== null) {
-    if (boost !== undefined && opts.removeBg) {
-      throw invalidArguments('Use one operation at a time — got --boost and --remove-bg.')
+    if (asked.length > 1) {
+      throw invalidArguments(`Use one operation at a time — got ${asked.join(' and ')}.`)
     }
-    const flag = extensionOp === 'boost' ? '--boost' : '--remove-bg'
+    const flag = asked[0] as string
     if (chosen.length > 0) {
       throw invalidArguments(`${flag} cannot be combined with --${chosen[0]}.`)
     }
@@ -577,7 +584,7 @@ function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
       recursive: Boolean(opts.recursive),
       debug: Boolean(opts.debug),
     }
-    if (boost !== undefined) intent.scale = boost
+    if (scale !== undefined) intent.scale = scale
     if (opts.output !== undefined) intent.output = String(opts.output)
     if (opts.concurrency !== undefined) {
       intent.concurrency = parseConcurrency(String(opts.concurrency))

@@ -654,7 +654,14 @@ export function noSubject(path: string): ForgeError {
   })
 }
 
-export function boostTooLarge(path: string, maxScale: number): ForgeError {
+export function boostTooLarge(path: string, maxScale: number, scale?: number): ForgeError {
+  if (scale === 1)
+    return new ForgeError({
+      code: 'boost-too-large',
+      title: 'Too large to sharpen',
+      detail: `${basename(path)} is too large to sharpen.`,
+      hint: 'Sharpen works on images up to 16,384 px a side and 100 megapixels.',
+    })
   return new ForgeError({
     code: 'boost-too-large',
     title: 'Too large to boost',

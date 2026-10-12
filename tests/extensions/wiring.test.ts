@@ -36,6 +36,19 @@ describe('--boost with an installed extension', () => {
     expect([meta.width, meta.height, meta.hasAlpha]).toEqual([64, 64, true])
   })
 
+  it('--sharpen writes name-sharp.png at the same size', async () => {
+    await fake.install(home, 'boost')
+    const dir = await makeTempDir()
+    const src = await makeTransparentPng(dir, 'photo.png')
+
+    const out = await forge(src, '--sharpen', '--json')
+    const doc = JSON.parse(out.stdout[0] ?? '') as RunJson
+    expect(out.exitCode).toBe(0)
+    expect(doc.results[0]).toMatchObject({ op: 'boost', outputs: [join(dir, 'photo-sharp.png')] })
+    const meta = await sharp(join(dir, 'photo-sharp.png')).metadata()
+    expect([meta.width, meta.height, meta.hasAlpha]).toEqual([32, 32, true])
+  })
+
   it('flattens alpha only because the chosen target cannot carry it', async () => {
     await fake.install(home, 'boost')
     const dir = await makeTempDir()

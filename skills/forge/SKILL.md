@@ -71,8 +71,9 @@ and need macOS 14 or later:
 
 ```bash
 forge extensions                       # what is installed
-forge extensions add boost             # about 15 MB; 2x / 4x; Apple Silicon only for now
+forge extensions add boost             # about 15 MB; sharpen, 2x / 4x; Apple Silicon only for now
 forge extensions add remove-background # about 32 KB
+forge photo.jpg --sharpen --json       # photo-sharp.png (same size, sharper)
 forge photo.jpg --boost --json         # photo-2x.png   (--boost 4 -> photo-4x.png)
 forge photo.jpg --remove-bg --json     # photo-cutout.png
 ```
@@ -121,7 +122,7 @@ If a `forge` MCP server is connected (tools `forge_probe`, `forge_formats`,
 `forge_scale`), prefer it. It takes absolute
 paths and returns the same JSON as `structuredContent`. It never overwrites
 unless you pass `overwrite: true`, and an encrypted PDF takes a `password`
-argument. `forge_convert` also takes `boost: 2 | 4` and `removeBackground: true`
+argument. `forge_convert` also takes `sharpen: true`, `boost: 2 | 4` and `removeBackground: true`
 (images only; `to` is then the output format); without the extension they fail
 with `extension-missing`. A hint that says `--force` means `overwrite: true` there;
 `--password-stdin` means `password`.

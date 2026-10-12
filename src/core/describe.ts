@@ -63,7 +63,7 @@ function verbFor(job: Job): string {
     case 'rotate':
       return 'rotated'
     case 'boost':
-      return 'boosted'
+      return job.scale === 1 ? 'sharpened' : 'boosted'
     case 'remove-background':
       return 'cut out'
     default: {

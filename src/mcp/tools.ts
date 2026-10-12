@@ -118,17 +118,21 @@ export async function convertTool(
   args: ConvertArgs,
   signal?: AbortSignal,
 ): Promise<CallToolResult> {
-  if (args.boost !== undefined || args.removeBackground === true) {
-    if (args.boost !== undefined && args.removeBackground === true) {
-      return refuse(
-        invalidArguments('Use one operation at a time — got boost and removeBackground.'),
-      )
+  const asked = [
+    ...(args.sharpen === true ? ['sharpen'] : []),
+    ...(args.boost !== undefined ? ['boost'] : []),
+    ...(args.removeBackground === true ? ['removeBackground'] : []),
+  ]
+  if (asked.length > 0) {
+    if (asked.length > 1) {
+      return refuse(invalidArguments(`Use one operation at a time — got ${asked.join(' and ')}.`))
     }
-    // Same intent the CLI builds from --boost / --remove-bg, and the same
+    const scale = args.sharpen === true ? 1 : args.boost
+    // Same intent the CLI builds from --sharpen / --boost / --remove-bg, and the same
     // checks: the extension must be installed, and a cutout needs alpha.
     const op: ExtensionOpIntent = {
       kind: 'extension-op',
-      op: args.boost !== undefined ? 'boost' : 'remove-background',
+      op: scale !== undefined ? 'boost' : 'remove-background',
       inputs: args.paths,
       target: args.to,
       options: {
@@ -139,7 +143,7 @@ export async function convertTool(
       force: args.overwrite ?? false,
       recursive: args.recursive ?? false,
       debug: false,
-      ...(args.boost === undefined ? {} : { scale: args.boost }),
+      ...(scale === undefined ? {} : { scale }),
       ...(args.output === undefined ? {} : { output: args.output }),
     }
     return fromReport(await runWriting(op, signal))

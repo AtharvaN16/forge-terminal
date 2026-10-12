@@ -16,3 +16,24 @@ export function removeBackgroundTargetRefusal(target: FormatId) {
     `Choose a format that can: ${carrying}.`,
   )
 }
+
+/** The boost runner's own limits (extensions/boost/runner.ts): a side, and the whole output. */
+export const BOOST_MAX_SIDE = 16_384
+export const BOOST_MAX_PIXELS = 100_000_000
+
+/**
+ * Why a `scale`× boost of a `width` × `height` image is past the runner's
+ * limits, or undefined when it fits. Scale 1 is Sharpen: the same check on
+ * the image itself.
+ */
+export function boostOverLimit(
+  width: number,
+  height: number,
+  scale: number,
+): { side: number } | { megapixels: number } | undefined {
+  const side = Math.max(width, height) * scale
+  if (side > BOOST_MAX_SIDE) return { side }
+  const pixels = width * scale * height * scale
+  if (pixels > BOOST_MAX_PIXELS) return { megapixels: Math.round(pixels / 1e6) }
+  return undefined
+}
