@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { brandRows, stagedListRows, surfaceRows, tabRows, width } from '../../src/shell/home-art.js'
 import type { StagedFile, StagedView } from '../../src/shell/stage.js'
-import { DARK, modePalette } from '../../src/shell/theme.js'
+import { DARK, modePalette, VERSION } from '../../src/shell/theme.js'
 import { describeRow, fixtureRow, MOCKUP, runsRow } from './home-cells.js'
 
 const [empty, typing, compress, pdfTyping] = MOCKUP as [
@@ -40,7 +40,7 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
   it('leaves the version out when the band is too short to hold it', () => {
     const rows = brandRows({ width: 38, palette: modePalette(DARK, 'convert'), mode: 'convert' })
     const text = rows.map((r) => r.map((run) => run.text).join('')).join('\n')
-    expect(text).not.toContain('v0.1.0')
+    expect(text).not.toContain(`v${VERSION}`)
     for (const r of rows) expect(r.map((run) => run.text).join('').length).toBeLessThanOrEqual(38)
   })
 })

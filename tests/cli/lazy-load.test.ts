@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fakeExtensions } from '../helpers/fake-extension.js'
@@ -37,7 +38,9 @@ describe('a command loads only what it needs', () => {
   it('--version loads no engine library, no part of the shell, and not execute.ts', async () => {
     const { exitCode, stdout, packages, urls } = await loadedBy('--version')
     expect(exitCode).toBe(0)
-    expect(stdout.trim()).toBe('0.1.0')
+    expect(stdout.trim()).toBe(
+      JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version,
+    )
     for (const name of [...ENGINE_LIBRARIES, ...SHELL_LIBRARIES, ...MCP_LIBRARIES]) {
       expect(packages, name).not.toContain(name)
     }

@@ -9,7 +9,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { tabRows } from '../../src/shell/home-art.js'
-import { DARK, MODE_KEYS, modePalette, type ShellMode } from '../../src/shell/theme.js'
+import { DARK, MODE_KEYS, modePalette, type ShellMode, VERSION } from '../../src/shell/theme.js'
 
 export interface Cell {
   ch: string
@@ -26,9 +26,16 @@ export interface FixtureFrame {
   rows: FixtureRun[][]
 }
 
-/** A fixture made by scripts/home-mockup-fixture.mjs, by file name. */
+/**
+ * A fixture made by scripts/home-mockup-fixture.mjs, by file name.
+ *
+ * The mockups were drawn at v0.1.0; the band shows whatever version is
+ * running, so the drawn version is swapped for it rather than re-drawing every
+ * fixture on each release.
+ */
 export function loadFixture(name: string): unknown {
-  return JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'))
+  const raw = readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+  return JSON.parse(raw.replaceAll('v0.1.0', `v${VERSION}`))
 }
 
 export const MOCKUP = loadFixture('home-mockup.json') as FixtureFrame[]
