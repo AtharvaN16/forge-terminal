@@ -4,7 +4,7 @@ import { Box, type DOMElement, Text } from 'ink'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { useClickTarget } from '../ClickTargets.js'
-import { completePath } from '../complete.js'
+import { completePath, isFolderCompletion } from '../complete.js'
 import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
 import { easeOut, mix, motionEnabled, useBlendedRows, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
@@ -207,7 +207,7 @@ export function SaveAs({
     void completePath(path).then((found) => {
       if (!live || pathRef.current !== path) return
       const next = found.find(
-        (c) => c.insert.endsWith('/') && c.insert.startsWith(path) && c.insert !== path,
+        (c) => isFolderCompletion(c.insert) && c.insert.startsWith(path) && c.insert !== path,
       )
       setGhost(next ? next.insert.slice(path.length) : '')
     })

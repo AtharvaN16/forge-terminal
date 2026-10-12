@@ -18,7 +18,8 @@ export function unescapePath(raw: string, platform: NodeJS.Platform = process.pl
     const q = s[0]
     if (s.length > 1 && (q === '"' || q === "'") && s.endsWith(q)) s = s.slice(1, -1)
     if (s === '~') return homedir()
-    if (s.startsWith('~/')) return join(homedir(), s.slice(2))
+    // Either separator after `~`: `~\Pictures` is as natural to type here as `~/Pictures`.
+    if (s.startsWith('~/') || s.startsWith('~\\')) return join(homedir(), s.slice(2))
     return s
   }
 

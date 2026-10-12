@@ -1,6 +1,7 @@
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { expandTilde, type Preferences } from '../../config/preferences.js'
 import { knownFolder } from '../../utils/known-folders.js'
+import { lastSegment } from '../../utils/last-segment.js'
 import type { SourceInfo } from '../types.js'
 import type { OptionSpec, PathPreset } from './index.js'
 
@@ -13,7 +14,7 @@ function labelFor(path: string, sourceDir: string): string {
   if (path === knownFolder('Desktop')) return 'Desktop'
   if (path === knownFolder('Downloads')) return 'Downloads'
   if (path === join(sourceDir, 'converted')) return 'New subfolder'
-  return basename(path) || path
+  return lastSegment(path) || path
 }
 
 /**

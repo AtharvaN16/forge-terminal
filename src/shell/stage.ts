@@ -1,8 +1,8 @@
-import { basename } from 'node:path'
 import { FORMATS } from '../core/formats.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { SourceInfo } from '../core/types.js'
 import { formatBytes } from '../core/units.js'
+import { lastSegment } from '../utils/last-segment.js'
 import type { ShellMode } from './theme.js'
 
 export interface Stage {
@@ -69,6 +69,7 @@ export interface StagedView {
   fresh: number
 }
 
+const basename = (path: string) => lastSegment(path) ?? path
 const allPdf = (sources: SourceInfo[]) => sources.every((s) => s.format === 'pdf')
 
 /** A source's facts, as the file card says them. */

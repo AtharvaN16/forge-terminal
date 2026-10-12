@@ -13,9 +13,30 @@ export const NO_MATCH = '__no-match__'
  */
 const PATHLIKE = /^[~/.]/
 
+/**
+ * The same on Windows, plus what a path looks like there: a drive (`C:\…`,
+ * `C:/…`), a UNC share (`\\server\…`) or a root-relative path (`\…`).`unescapePath` has
+ * already stripped the quotes Windows Terminal puts round a dropped path and
+ * expanded `~`, so `~/out` arrives here as `C:\Users\…\out`.
+ */
+const PATHLIKE_WIN32 = /^(?:[~/.\\]|[A-Za-z]:[\\/])/
+
+const pathLike = (query: string, platform: NodeJS.Platform) =>
+  (platform === 'win32' ? PATHLIKE_WIN32 : PATHLIKE).test(query)
+
+/**
+ * Save as's typed name, made a file name: trimmed, and a `/` becomes `-`
+ * (it would name a folder). On Windows the same goes for `\` (a folder too),
+ * `:` (an alternate data stream) and `* ? " < > |` (refused outright).
+ */
+export function safeStem(typed: string, platform: NodeJS.Platform = process.platform): string {
+  const stem = typed.trim().replace(/\//g, '-')
+  return platform === 'win32' ? stem.replace(/[\\:*?"<>|]/g, '-') : stem
+}
+
 /** True when `text` names a place rather than filtering the list. */
-export function isPathQuery(text: string): boolean {
-  return PATHLIKE.test(unescapePath(text.trim()))
+export function isPathQuery(text: string, platform: NodeJS.Platform = process.platform): boolean {
+  return pathLike(unescapePath(text.trim(), platform), platform)
 }
 
 /**
@@ -33,9 +54,10 @@ export function destinationRows(
   presets: PathPreset[],
   defaultPath: string,
   preview: (path: string) => string,
+  platform: NodeJS.Platform = process.platform,
 ): Choice[] {
-  const query = unescapePath(text.trim())
-  if (PATHLIKE.test(query)) {
+  const query = unescapePath(text.trim(), platform)
+  if (pathLike(query, platform)) {
     let isFile = false
     try {
       isFile = statSync(expandTilde(query)).isFile()

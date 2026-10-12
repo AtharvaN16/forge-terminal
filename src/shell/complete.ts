@@ -77,11 +77,12 @@ async function list(dir: string, stem: string, allowed: Set<string>): Promise<En
  */
 export async function completePath(
   text: string,
-  opts: { home?: string; cwd?: string } = {},
+  opts: { home?: string; cwd?: string; platform?: NodeJS.Platform } = {},
 ): Promise<Completion[]> {
   if (text.trim() === '') return []
   const home = opts.home ?? homedir()
   const cwd = opts.cwd ?? process.cwd()
+  if ((opts.platform ?? process.platform) === 'win32') return completeWin32(text, home, cwd)
 
   const slash = text.lastIndexOf('/')
   const typedDir = slash === -1 ? '' : text.slice(0, slash + 1)
@@ -109,6 +110,52 @@ export async function completePath(
   if (found.length === 1 && only?.dir) {
     for (const child of await list(join(absDir, only.name), '', allowed)) {
       add(`${dirPath}${shown(only)}${shown(child)}`, `${typedDir}${sent(only)}${sent(child)}`)
+    }
+  }
+  return out
+}
+
+/** Whether a completion is a folder (ends in its separator), for Save as's ghost text. */
+export function isFolderCompletion(
+  insert: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return insert.endsWith('/') || (platform === 'win32' && insert.endsWith('\\'))
+}
+
+/**
+ * `completePath` on Windows. Either slash separates, and a backslash is never
+ * an escape, so a name goes in exactly as it is: the field is read whole
+ * (`unescapePath`), and `My\ Photo.png` there would name a folder `My\`. A
+ * folder gets the separator the user is already typing, `\` by default.
+ */
+async function completeWin32(text: string, home: string, cwd: string): Promise<Completion[]> {
+  const cut = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'))
+  const typedDir = cut === -1 ? '' : text.slice(0, cut + 1)
+  const stem = text.slice(cut + 1)
+  const slash = cut === -1 ? '\\' : (text[cut] as string)
+
+  // Windows reads `/` as a separator too, so one form serves every lookup.
+  const dirPath = typedDir.replaceAll('\\', '/')
+  const absDir = dirPath.startsWith('~/')
+    ? join(home, dirPath.slice(2))
+    : resolve(cwd, dirPath === '' ? '.' : dirPath)
+
+  const allowed = readableExtensions()
+  const found = await list(absDir, stem, allowed)
+
+  const out: Completion[] = []
+  const add = (path: string) => {
+    if (out.length < MAX) out.push({ label: path, insert: path })
+  }
+  const named = (e: Entry) => `${e.name}${e.dir ? slash : ''}`
+
+  for (const e of found) add(`${typedDir}${named(e)}`)
+
+  const only = found[0]
+  if (found.length === 1 && only?.dir) {
+    for (const child of await list(join(absDir, only.name), '', allowed)) {
+      add(`${typedDir}${named(only)}${named(child)}`)
     }
   }
   return out

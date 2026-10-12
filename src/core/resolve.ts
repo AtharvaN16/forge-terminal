@@ -93,7 +93,7 @@ export async function resolveDirectory(
 
 export async function resolveInputs(
   patterns: string[],
-  opts: { recursive: boolean },
+  opts: { recursive: boolean; platform?: NodeJS.Platform },
 ): Promise<ResolvedInput> {
   const sources: SourceInfo[] = []
   const failures: InputFailure[] = []
@@ -123,7 +123,13 @@ export async function resolveInputs(
      * like a success. Only a pattern that names nothing literally gets expanded.
      */
     if (isGlob(pattern) && !existsSync(abs)) {
-      const matches = await glob([pattern], { absolute: true, onlyFiles: true })
+      // The glob library reads `\` as an escape, so `C:\Pictures\*.jpg`
+      // matched nothing. In a Windows path a backslash is only ever a
+      // separator, and cmd and PowerShell leave globbing to the program, so
+      // this is the only way a Windows user gets a batch at all.
+      const spec =
+        (opts.platform ?? process.platform) === 'win32' ? pattern.replaceAll('\\', '/') : pattern
+      const matches = await glob([spec], { absolute: true, onlyFiles: true })
       // A glob that matches nothing is reported, not skipped. A run that did
       // nothing must not read as success (spec §3.2: ok only if every input
       // succeeded).

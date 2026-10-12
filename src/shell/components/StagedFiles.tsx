@@ -1,8 +1,8 @@
-import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import stringWidth from 'string-width'
 import { FORMATS } from '../../core/formats.js'
 import type { SourceInfo } from '../../core/types.js'
+import { lastSegment } from '../../utils/last-segment.js'
 import type { Stage } from '../stage.js'
 import { stageSummary } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
@@ -57,7 +57,7 @@ export function StagedFiles({
         </Text>
         {failures.map(({ path, error }) => (
           <Text key={path} color={colourProp(palette.dim)}>
-            {`  ${middleEllipsis(`${basename(path) ?? path} — ${error.title}`, Math.max(8, width - 2))}`}
+            {`  ${middleEllipsis(`${lastSegment(path) ?? path} — ${error.title}`, Math.max(8, width - 2))}`}
           </Text>
         ))}
       </Box>
@@ -138,7 +138,7 @@ export function StagedFiles({
         <Text color={colourProp(palette.border)}>{` ${rule}╮`}</Text>
       </Text>
       {shown.map((source) => {
-        const name = basename(source.path) ?? source.path
+        const name = lastSegment(source.path) ?? source.path
         const left = sameFormat ? name : `${FORMATS[source.format].label} ${name}`
         return (
           <Text key={source.path}>

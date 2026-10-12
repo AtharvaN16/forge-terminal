@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { win32 } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -16,12 +17,19 @@ async function runExplorer(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Explorer wants backslashes: a path with a `/` in it (the shell builds
+ * `<folder>/<name>`, and globbed paths come back as `C:/…`) does not select
+ * the file, and Explorer opens Documents instead.
+ */
+const forExplorer = (path: string) => win32.normalize(path)
+
 /** Opens a file with its default application. */
 export async function openPath(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
-  if (platform === 'win32') return runExplorer([path])
+  if (platform === 'win32') return runExplorer([forExplorer(path)])
   await run('open', [path])
 }
 
@@ -30,7 +38,10 @@ export async function revealPath(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
-  if (platform === 'win32') return runExplorer([`/select,${path}`])
+  // `/select,` and the path as two arguments: Node quotes only the path when
+  // it has a space (`/select, "C:\My Files\a.png"`), the form Explorer
+  // honours. Quoted whole (`"/select,C:\My Files\a.png"`) it is ignored.
+  if (platform === 'win32') return runExplorer(['/select,', forExplorer(path)])
   await run('open', ['-R', path])
 }
 

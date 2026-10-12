@@ -1,9 +1,9 @@
-import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import stringWidth from 'string-width'
 import { FORMATS } from '../../core/formats.js'
 import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
+import { lastSegment } from '../../utils/last-segment.js'
 import { cardFacts } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
@@ -29,7 +29,7 @@ export function FileCard({
 }) {
   const palette = useTheme()
   const band = bandFor(width)
-  const name = basename(source.path) ?? source.path
+  const name = lastSegment(source.path) ?? source.path
   const label = FORMATS[source.format].label
 
   const facts = cardFacts(source)

@@ -62,6 +62,7 @@ import { StagedFiles } from './components/StagedFiles.js'
 import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { Working } from './components/Working.js'
+import { safeStem } from './destinations.js'
 import {
   actionForRow,
   type EnhanceRow,
@@ -2170,8 +2171,9 @@ export function App({
    * Save as's answer: the folder, and the name as typed. The one place a
    * chosen destination goes — every way of saving comes through here.
    *
-   * The name is trimmed, a `/` in it becomes `-` (it would name a folder),
-   * and an empty one means the proposal.
+   * The name is trimmed, a `/` in it becomes `-` (it would name a folder;
+   * on Windows so do `\ : * ? " < > |`, see `safeStem`), and an empty one
+   * means the proposal.
    */
   const confirmDestination = (destination: string, typed = '') => {
     if (!source) return
@@ -2184,7 +2186,7 @@ export function App({
       confirmDocumentConversion(destination)
       return
     }
-    const stem = typed.trim().replace(/\//g, '-') || proposal.stem
+    const stem = safeStem(typed) || proposal.stem
     setSaving((s) => (s ? { ...s, given: typed } : s))
     setText('')
     setSavedAs(`${stem}${proposal.ext}`)
