@@ -8,6 +8,13 @@ const NATIVE_PROGRAMS = new Set(['iTerm.app', 'WezTerm', 'ghostty', 'vscode'])
 const NATIVE_TERMS = new Set(['xterm-kitty', 'xterm-ghostty'])
 
 /**
+ * Windows Terminal sets `WT_SESSION` and says nothing in `TERM_PROGRAM`. It
+ * draws the slants itself and does 24-bit colour.
+ */
+const windowsTerminal = (env: Record<string, string | undefined>): boolean =>
+  env.WT_SESSION !== undefined && env.WT_SESSION !== ''
+
+/**
  * Whether the header bar's mode chip may have slanted ends. Only where they
  * are sure to draw; the plain filled chip everywhere else, and under
  * NO_COLOR, where the chip's fill — the slants' whole point — is gone.
@@ -18,6 +25,7 @@ export function slantedChips(env: Record<string, string | undefined> = process.e
   if (env.FORGE_POWERLINE === '1') return true
   if (env.FORGE_POWERLINE === '0') return false
   if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return false
+  if (windowsTerminal(env)) return true
   return NATIVE_PROGRAMS.has(env.TERM_PROGRAM ?? '') || NATIVE_TERMS.has(env.TERM ?? '')
 }
 
@@ -32,5 +40,6 @@ export function trueColour(env: Record<string, string | undefined> = process.env
   if (env.FORGE_TRUECOLOR === '0') return false
   if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return false
   if (env.COLORTERM === 'truecolor' || env.COLORTERM === '24bit') return true
+  if (windowsTerminal(env)) return true
   return NATIVE_PROGRAMS.has(env.TERM_PROGRAM ?? '') || NATIVE_TERMS.has(env.TERM ?? '')
 }

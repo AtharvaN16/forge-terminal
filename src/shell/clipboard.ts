@@ -26,8 +26,21 @@ const env = () => ({ ...process.env, LANG: process.env.LANG ?? 'en_US.UTF-8' })
  * `.catch` is not optional though — an unhandled rejection would take the
  * process down, which is the one outcome worse than a failed copy.
  */
-export function copy(text: string): void {
+export function copy(text: string, platform: NodeJS.Platform = process.platform): void {
   if (text === '') return
+  if (platform === 'win32') {
+    try {
+      const child = execFile('clip.exe', () => {})
+      child.on('error', () => {})
+      // UTF-16LE with a BOM: `clip.exe` reads stdin in the console's OEM code
+      // page unless it sees a BOM, and a path with an accent would paste as
+      // mojibake. The BOM is what makes it decode the bytes as Unicode.
+      child.stdin?.end(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]))
+    } catch {
+      // No clip.exe (a stripped environment). Same rule as below: never fatal.
+    }
+    return
+  }
   try {
     const child = execFile('pbcopy', { env: env() }, () => {})
     child.on('error', () => {})
@@ -46,7 +59,27 @@ export function copy(text: string): void {
  * that returns in single-digit milliseconds, so this does not stall the UI in
  * any way a person can perceive.
  */
-export function paste(): string {
+export function paste(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') {
+    try {
+      const out = execFileSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          // Output encoding is forced to UTF-8; the default would be the OEM
+          // code page and an accented path would come back mangled.
+          '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw',
+        ],
+        { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, timeout: 2000 },
+      )
+      // PowerShell ends its output with a line break the clipboard never had.
+      return out.toString('utf8').replace(/\r\n$/, '')
+    } catch {
+      return ''
+    }
+  }
   try {
     const out = execFileSync('pbpaste', {
       encoding: 'buffer',

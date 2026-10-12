@@ -3,13 +3,34 @@ import { promisify } from 'node:util'
 
 const run = promisify(execFile)
 
+/**
+ * `explorer.exe` exits 1 even when it did what it was asked, so a numeric exit
+ * code is not a failure. A string code (`ENOENT`) means it never ran at all.
+ */
+async function runExplorer(args: string[]): Promise<void> {
+  try {
+    await run('explorer.exe', args)
+  } catch (err) {
+    if (typeof (err as { code?: unknown }).code === 'number') return
+    throw err
+  }
+}
+
 /** Opens a file with its default application. */
-export async function openPath(path: string): Promise<void> {
+export async function openPath(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  if (platform === 'win32') return runExplorer([path])
   await run('open', [path])
 }
 
-/** Reveals a file in Finder with it selected. */
-export async function revealPath(path: string): Promise<void> {
+/** Reveals a file in Finder (Explorer on Windows) with it selected. */
+export async function revealPath(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  if (platform === 'win32') return runExplorer([`/select,${path}`])
   await run('open', ['-R', path])
 }
 
@@ -20,6 +41,6 @@ export async function revealPath(path: string): Promise<void> {
  */
 export function revealLabel(platform: string = process.platform): string {
   if (platform === 'darwin') return 'Show in Finder'
-  if (platform === 'win32') return 'Show location'
+  if (platform === 'win32') return 'Show in Explorer'
   return 'Show in file manager'
 }
