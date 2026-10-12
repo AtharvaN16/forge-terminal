@@ -1,7 +1,13 @@
 import { basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CallToolResult } from '@modelcontextprotocol/server'
-import type { CompressIntent, ConvertIntent, ExtensionOpIntent, PageOpIntent } from '../cli/args.js'
+import type {
+  CompressIntent,
+  ConvertIntent,
+  EditIntent,
+  ExtensionOpIntent,
+  PageOpIntent,
+} from '../cli/args.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
 import { wholePercents } from '../core/colour/palette.js'
@@ -124,6 +130,44 @@ export async function convertTool(
     ...(args.boost !== undefined ? ['boost'] : []),
     ...(args.removeBackground === true ? ['removeBackground'] : []),
   ]
+  const editing = args.trim === true || args.resize !== undefined
+  if (editing) {
+    // The CLI's own refusal for --trim/--resize beside an extension flag.
+    if (asked.length > 0) {
+      return refuse(
+        invalidArguments(
+          `${args.trim === true ? 'trim' : 'resize'} cannot be combined with ${asked[0]}.`,
+          'Run them one after the other.',
+        ),
+      )
+    }
+    const edit: EditIntent = {
+      kind: 'edit',
+      inputs: args.paths,
+      trim: args.trim === true,
+      options: {
+        background: args.background ?? '#ffffff',
+        keepMetadata: args.keepMetadata ?? false,
+        ...(args.quality === undefined ? {} : { quality: args.quality }),
+      },
+      force: args.overwrite ?? false,
+      recursive: args.recursive ?? false,
+      debug: false,
+      ...(args.resize === undefined ? {} : { resize: args.resize }),
+      ...(args.to === undefined ? {} : { target: args.to }),
+      ...(args.output === undefined ? {} : { output: args.output }),
+    }
+    return fromReport(await runWriting(edit))
+  }
+  if (args.to === undefined) {
+    return refuse(
+      invalidArguments(
+        'forge_convert needs `to`, the target format.',
+        "Only trim and resize may leave it out, to keep each image's own format.",
+      ),
+    )
+  }
+  const to = args.to
   if (asked.length > 0) {
     if (asked.length > 1) {
       return refuse(invalidArguments(`Use one operation at a time — got ${asked.join(' and ')}.`))
@@ -135,7 +179,7 @@ export async function convertTool(
       kind: 'extension-op',
       op: scale !== undefined ? 'boost' : 'remove-background',
       inputs: args.paths,
-      target: args.to,
+      target: to,
       options: {
         background: args.background ?? '#ffffff',
         keepMetadata: args.keepMetadata ?? false,
@@ -152,7 +196,7 @@ export async function convertTool(
   const intent: ConvertIntent = {
     kind: 'convert',
     inputs: args.paths,
-    target: args.to,
+    target: to,
     options: {
       background: args.background ?? '#ffffff',
       keepMetadata: args.keepMetadata ?? false,

@@ -89,7 +89,7 @@ export function createForgeServer(): McpServer {
     {
       title: 'Convert files',
       description:
-        'Convert files to another format, beside each source unless output is given. A PDF becomes one image per page (choose pages and dpi); Word documents become PDF; images convert between formats. Returns every output path and a file:// link to each.',
+        'Convert files to another format, beside each source unless output is given. A PDF becomes one image per page (choose pages and dpi); Word documents become PDF; images convert between formats; with trim or resize they keep their format unless `to` is given. Returns every output path and a file:// link to each.',
       inputSchema: ConvertInput,
       outputSchema: RunOutput,
       annotations: WRITES,
