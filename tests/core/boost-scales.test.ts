@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
 import { boostAction } from '../../src/core/actions/extension.js'
@@ -44,7 +45,11 @@ describe('boost scales', () => {
 
   it('plans a 3× job, named name-3x', () => {
     const [job] = boostAction.plan([photo], { scale: '3', output: '/tmp/out' })
-    expect(job).toMatchObject({ op: 'boost', scale: 3, outputs: ['/tmp/out/photo-3x.png'] })
+    expect(job).toMatchObject({
+      op: 'boost',
+      scale: 3,
+      outputs: [resolve('/tmp/out/photo-3x.png')],
+    })
   })
 
   it('reads --boost 3, and refuses a factor it does not have', () => {

@@ -8,14 +8,18 @@ import { runForge } from '../helpers/run-forge.js'
 const TITLE = '\x1b]0;pwned\x07'
 
 describe('a file whose name carries an escape sequence', () => {
-  it('converts, and the report prints the name without the sequence', async () => {
-    const dir = await makeTempDir()
-    const jpg = await makeJpeg(dir, `a${TITLE}.jpg`)
-    const run = await runForge([jpg, '--to', 'webp'])
-    expect(run.exitCode).toBe(0)
-    expect(run.stdout + run.stderr).toContain('a?]0;pwned?')
-    expect(run.stdout + run.stderr).not.toContain(TITLE)
-  })
+  // NTFS refuses control characters (1–31) in a name, so the file cannot exist on Windows.
+  it.skipIf(process.platform === 'win32')(
+    'converts, and the report prints the name without the sequence',
+    async () => {
+      const dir = await makeTempDir()
+      const jpg = await makeJpeg(dir, `a${TITLE}.jpg`)
+      const run = await runForge([jpg, '--to', 'webp'])
+      expect(run.exitCode).toBe(0)
+      expect(run.stdout + run.stderr).toContain('a?]0;pwned?')
+      expect(run.stdout + run.stderr).not.toContain(TITLE)
+    },
+  )
 
   it('is named in an error without the sequence', async () => {
     const dir = await makeTempDir()

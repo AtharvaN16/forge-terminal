@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { planEdit } from '../../src/core/actions/resize.js'
 import { resizedSize, sizeOverLimit } from '../../src/core/resize.js'
@@ -55,7 +56,7 @@ describe('planEdit', () => {
     expect(job).toMatchObject({
       op: 'convert',
       target: 'jpeg',
-      outputs: ['/p/photo-2016x1512.jpg'],
+      outputs: [resolve('/p/photo-2016x1512.jpg')],
       options: { resize: { percent: 50 } },
     })
     const [trim] = planEdit([img({ format: 'heic', path: '/p/IMG.heic' })], {
@@ -65,7 +66,7 @@ describe('planEdit', () => {
     })
     expect(trim).toMatchObject({
       target: 'jpeg',
-      outputs: ['/p/IMG-trimmed.jpg'],
+      outputs: [resolve('/p/IMG-trimmed.jpg')],
       options: { trim: true },
     })
     const [both] = planEdit([img()], {
@@ -74,6 +75,6 @@ describe('planEdit', () => {
       background: '#fff',
       keepMetadata: false,
     })
-    expect(both?.outputs).toEqual(['/p/photo-trimmed-1200w.jpg'])
+    expect(both?.outputs).toEqual([resolve('/p/photo-trimmed-1200w.jpg')])
   })
 })
