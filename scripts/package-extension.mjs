@@ -15,6 +15,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
 
 const ENTRIES = {
@@ -114,7 +115,7 @@ export async function packageExtension(id, version, arch, payloadDir, outDir) {
   return { asset, bytes: gz.length, sha256: sha256(gz) }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [id, version, arch, payloadDir, outDir] = process.argv.slice(2)
   if (!outDir) {
     console.error(
