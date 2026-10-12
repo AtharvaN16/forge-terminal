@@ -20,6 +20,14 @@ describe('imageProtocol', () => {
     [{ TERM_PROGRAM: 'Apple_Terminal', FORGE_INLINE_IMAGES: '1' }, 'iterm'],
     [{ TERM_PROGRAM: 'tmux', KITTY_WINDOW_ID: '1' }, null],
     [{ TERM_PROGRAM: 'iTerm.app', TMUX: '/tmp/tmux-501/default,1,0' }, null],
+    // VS Code opened from Ghostty inherits Ghostty's variables, and draws no pictures.
+    [{ TERM_PROGRAM: 'vscode', GHOSTTY_RESOURCES_DIR: '/Applications/Ghostty.app' }, null],
+    [{ TERM_PROGRAM: 'ghostty', TERM: 'xterm-ghostty' }, 'kitty'],
+    [{ TERM_PROGRAM: 'iTerm.app', ZELLIJ: '0' }, null],
+    [{ TERM_PROGRAM: 'iTerm.app', STY: '123.pts-0' }, null],
+    // Forced on: the protocol this terminal speaks.
+    [{ TERM: 'xterm-kitty', FORGE_INLINE_IMAGES: '1' }, 'kitty'],
+    [{ TERM_PROGRAM: 'tmux', KITTY_WINDOW_ID: '1', FORGE_INLINE_IMAGES: '1' }, 'kitty'],
   ] as const)('%o → %s', (env, want) => {
     expect(imageProtocol(env)).toBe(want)
   })

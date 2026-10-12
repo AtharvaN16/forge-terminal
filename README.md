@@ -250,6 +250,8 @@ while that extension is installed, and `--json` results report `op: "boost"` or
 `op: "remove-background"`. `forge_convert` accepts `sharpen: true`, `boost: 2 | 4` and
 `removeBackground: true`, with the same `extension-missing` tool error.
 
+The shell's enhance Done shows the real pictures in iTerm2, WezTerm, Kitty and Ghostty (a half-block close-up elsewhere); `FORGE_INLINE_IMAGES=0` turns them off, `=1` forces them on (e.g. tmux with passthrough).
+
 ## PDF
 
 Five page operations, one flag each: merge, split, extract, delete and

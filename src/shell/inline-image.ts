@@ -22,39 +22,64 @@ const ST = `${ESC}\\`
 
 const set = (v: string | undefined): boolean => v !== undefined && v !== ''
 
+/** The terminals that set TERM_PROGRAM and draw pictures, and their protocol. */
+const BY_PROGRAM: Record<string, ImageProtocol> = {
+  'iTerm.app': 'iterm',
+  WezTerm: 'iterm',
+  ghostty: 'kitty',
+}
+
+/**
+ * Kitty's protocol is what this terminal speaks. A terminal that names
+ * itself in TERM_PROGRAM is believed over KITTY_WINDOW_ID and
+ * GHOSTTY_RESOURCES_DIR, which every child process inherits — VS Code opened
+ * from Ghostty has both, and draws neither protocol. Kitty itself sets no
+ * TERM_PROGRAM; tmux's own is no terminal.
+ */
+function speaksKitty(env: NodeJS.ProcessEnv): boolean {
+  const program = env.TERM_PROGRAM ?? ''
+  if (program !== '' && program !== 'tmux') return BY_PROGRAM[program] === 'kitty'
+  const term = env.TERM ?? ''
+  return (
+    term === 'xterm-kitty' ||
+    term === 'xterm-ghostty' ||
+    set(env.KITTY_WINDOW_ID) ||
+    set(env.GHOSTTY_RESOURCES_DIR)
+  )
+}
+
 /**
  * The protocol to draw real pictures with, or null for the half-block
  * fallback.
  *
- * `FORGE_INLINE_IMAGES=0` turns pictures off and `=1` forces iTerm2's
- * protocol (for a terminal that speaks it but is not recognised here); both
+ * `FORGE_INLINE_IMAGES=0` turns pictures off and `=1` turns them on — in
+ * Kitty's protocol where this looks like Kitty or Ghostty, else iTerm2's —
+ * for a terminal not recognised here, or tmux with passthrough set up; both
  * beat everything else, as the most specific thing the user said. Then
  * NO_COLOR means no pictures — a monochrome terminal asked for no colour,
- * and a photo is nothing but colour. Inside tmux or screen neither protocol
- * reaches the terminal unless passthrough is configured, so those are null
- * even when the outer terminal's variables leaked in.
+ * and a photo is nothing but colour. Inside tmux, screen or Zellij neither
+ * protocol reaches the terminal unless passthrough is configured, so those
+ * are null even when the outer terminal's variables leaked in.
  */
 export function imageProtocol(env: NodeJS.ProcessEnv = process.env): ImageProtocol | null {
   const forced = env.FORGE_INLINE_IMAGES
   if (forced === '0') return null
-  if (forced === '1') return 'iterm'
+  if (forced === '1') return speaksKitty(env) ? 'kitty' : 'iterm'
   if (set(env.NO_COLOR)) return null
   const term = env.TERM ?? ''
   const program = env.TERM_PROGRAM ?? ''
-  if (set(env.TMUX) || program === 'tmux' || term.startsWith('screen') || term.startsWith('tmux')) {
+  if (
+    set(env.TMUX) ||
+    set(env.STY) ||
+    set(env.ZELLIJ) ||
+    program === 'tmux' ||
+    term.startsWith('screen') ||
+    term.startsWith('tmux')
+  ) {
     return null
   }
-  if (program === 'iTerm.app' || program === 'WezTerm') return 'iterm'
-  if (
-    term === 'xterm-kitty' ||
-    term === 'xterm-ghostty' ||
-    program === 'ghostty' ||
-    set(env.KITTY_WINDOW_ID) ||
-    set(env.GHOSTTY_RESOURCES_DIR)
-  ) {
-    return 'kitty'
-  }
-  return null
+  if (program !== '') return BY_PROGRAM[program] ?? null
+  return speaksKitty(env) ? 'kitty' : null
 }
 
 /** Base64 bytes per Kitty chunk: the protocol's limit, a multiple of 4. */
