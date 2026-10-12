@@ -207,7 +207,7 @@ export const FormatsOutput = z.strictObject({
 const Hex = z.string().describe('A hex colour: #RRGGBB, #RGB, or without the #')
 
 export const PaletteInput = z.object({
-  path: z.string().describe('An image file: a photo, a screenshot or artwork'),
+  path: absolutePath.describe('An image file (absolute path): a photo, a screenshot or artwork'),
   inside: Hex.optional().describe('Show the shades of the palette colour nearest this one'),
 })
 export const ScaleInput = z.object({ colour: Hex })

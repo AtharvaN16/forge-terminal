@@ -313,6 +313,12 @@ describe('colour tools', () => {
     expect(inner.doc.palette.inside).toBe(first)
   })
 
+  it('refuses a relative path, as every other tool does', async () => {
+    const out = await call('forge_palette', { path: 'photo.jpg' })
+    expect(out.isError).toBe(true)
+    expect(out.text).toContain('absolute')
+  })
+
   it('refusals are errors with a reason, not a malformed document', async () => {
     const dir = await makeTempDir()
     const pdf = await call('forge_palette', { path: await makePdf(dir, 'x.pdf') })
