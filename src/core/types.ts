@@ -183,9 +183,7 @@ export interface Result {
  * The `page` variant may only be emitted where the total is genuinely known
  * in advance. Spec §12 forbids fabricated progress, and a page count is real.
  */
-export type Progress =
-  | { phase: Phase }
-  | { phase: 'page'; done: number; total: number }
+export type Progress = { phase: Phase } | { phase: 'page'; done: number; total: number }
 
 /**
  * Progress's first variant. `waiting`: queued behind another forge using the

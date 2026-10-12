@@ -191,10 +191,13 @@ describe('enhance mode', () => {
   }, 60_000)
 
   it('a failed download from the picker says why, and the row offers the download again', async () => {
-    const tools = someTools(async (id, { onProgress }) => {
-      onProgress(1_000, 32_489)
-      throw extensionDownloadFailed(id, 'could not reach github.com.')
-    }, new Set(['boost']))
+    const tools = someTools(
+      async (id, { onProgress }) => {
+        onProgress(1_000, 32_489)
+        throw extensionDownloadFailed(id, 'could not reach github.com.')
+      },
+      new Set(['boost']),
+    )
     const { app, frame } = await atRemoveBackground(tools)
 
     app.stdin.write(ENTER)
