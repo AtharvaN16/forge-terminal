@@ -18,7 +18,8 @@ import type {
 } from '../../src/core/report-data.js'
 import { probe } from '../../src/engines/registry.js'
 import { createForgeServer } from '../../src/mcp/server.js'
-import { makeJpeg, makePdf, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
+import { fakeExtensions } from '../helpers/fake-extension.js'
+import { makeJpeg, makePdf, makePng, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
 
 const LOCKED = fileURLToPath(new URL('../fixtures/locked-hunter2.pdf', import.meta.url))
 
@@ -83,6 +84,34 @@ describe('the tool list', () => {
 })
 
 describe('forge_convert', () => {
+  describe('sharpen', () => {
+    const fake = fakeExtensions()
+    afterEach(() => fake.restore())
+
+    it('runs the boost extension at scale 1, writing name-sharp at the same size', async () => {
+      await fake.install(await fake.home(), 'boost')
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const before = await sharp(png).metadata()
+      const out = await call('forge_convert', { paths: [png], to: 'png', sharpen: true })
+      const sharp1 = join(dir, 'a-sharp.png')
+      expect(out.isError).toBe(false)
+      expect(out.doc.results[0]?.outputs).toEqual([sharp1])
+      const after = await sharp(sharp1).metadata()
+      expect([after.width, after.height]).toEqual([before.width, before.height])
+    })
+
+    it('refuses two operations at once, writing nothing', async () => {
+      await fake.install(await fake.home(), 'boost')
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const out = await call('forge_convert', { paths: [png], to: 'png', sharpen: true, boost: 2 })
+      expect(out.isError).toBe(true)
+      expect(out.text).toContain('one operation at a time')
+      expect(await readdir(dir)).toEqual(['a.png'])
+    })
+  })
+
   it('converts, returns the §3.2 shape and a file:// link per output', async () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'a.jpg')

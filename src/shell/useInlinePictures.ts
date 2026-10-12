@@ -64,10 +64,24 @@ export function placementOf(node: DOMElement | null, viewportRows: number): Plac
     }
     root = n
   }
-  const height = root.yogaNode?.getComputedHeight() ?? 0
-  if (height <= 0) return undefined
-  const fullscreen = height >= viewportRows
-  const up = fullscreen ? height - 1 - top : height - top
+  return placementFrom(top, left, root.yogaNode?.getComputedHeight() ?? 0, viewportRows)
+}
+
+/**
+ * The cursor math alone: a box at `top`, `left` in a frame `frameHeight`
+ * rows tall. Ink leaves the cursor one line past the frame, or on its last
+ * line when the frame fills the viewport (it drops the trailing newline).
+ * Undefined when the box's top has scrolled off the viewport.
+ */
+export function placementFrom(
+  top: number,
+  left: number,
+  frameHeight: number,
+  viewportRows: number,
+): Placement | undefined {
+  if (frameHeight <= 0) return undefined
+  const fullscreen = frameHeight >= viewportRows
+  const up = fullscreen ? frameHeight - 1 - top : frameHeight - top
   if (up < 0 || up > viewportRows - 1) return undefined
   return { up: Math.round(up), col: Math.round(left) }
 }
