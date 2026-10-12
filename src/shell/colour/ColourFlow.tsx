@@ -179,7 +179,10 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
   const cardFor = (s: ColourState): string => {
     const screen = s.history[s.history.length - 1] as Screen
     const theme = p.name === 'light' ? 'light' : 'dark'
-    if (screen.kind === 'palette') return paletteCard(screen.name, groupsAt(screen.level), theme)
+    if (screen.kind === 'palette') {
+      const inside = screen.level.length > 0 ? parentOf(screen, groupsAt).hex : undefined
+      return paletteCard(screen.name, groupsAt(screen.level), theme, inside)
+    }
     if (screen.kind === 'scale') return scaleCard(screen.ref, scale(screen.ref), theme)
     return ''
   }

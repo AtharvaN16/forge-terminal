@@ -18,7 +18,13 @@ import type {
 } from '../../src/core/report-data.js'
 import { probe } from '../../src/engines/registry.js'
 import { createForgeServer } from '../../src/mcp/server.js'
-import { makeJpeg, makePdf, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
+import {
+  makeGradientPng,
+  makeJpeg,
+  makePdf,
+  makeTempDir,
+  makeTransparentPng,
+} from '../helpers/fixtures.js'
 
 const LOCKED = fileURLToPath(new URL('../fixtures/locked-hunter2.pdf', import.meta.url))
 
@@ -319,11 +325,20 @@ describe('colour tools', () => {
     expect(out.text).toContain('absolute')
   })
 
+  it('palette text gives whole percentages that add up to 100', async () => {
+    const dir = await makeTempDir()
+    const png = await makeGradientPng(dir, 'g.png', 64)
+    const out = await call<PaletteJson>('forge_palette', { path: png })
+    const pcts = [...out.text.matchAll(/ (\d+)%/g)].map((m) => Number(m[1]))
+    expect(pcts.reduce((a, b) => a + b, 0)).toBe(100)
+  })
+
   it('refusals are errors with a reason, not a malformed document', async () => {
     const dir = await makeTempDir()
     const pdf = await call('forge_palette', { path: await makePdf(dir, 'x.pdf') })
     expect(pdf.isError).toBe(true)
     expect(pdf.text).toContain('not an image')
+    expect(pdf.text).toContain('A palette is taken from a photo')
     const bad = await call('forge_scale', { colour: 'blue' })
     expect(bad.isError).toBe(true)
     expect(bad.text).toContain('not a colour')

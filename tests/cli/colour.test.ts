@@ -49,6 +49,12 @@ describe('forge scale', () => {
     expect(out.stdout[0]?.startsWith('<svg')).toBe(true)
   })
 
+  it('--inside belongs to palette, and scale says so', () => {
+    expect(() => parseArgs(['scale', '6579FD', '--inside', '123456'])).toThrow(
+      expect.objectContaining({ code: 'invalid-arguments' }),
+    )
+  })
+
   it('a missing or bad colour is invalid arguments (exit 2), with a hint about quoting', () => {
     // Unquoted `forge scale #6579FD` in bash arrives as `forge scale`.
     expect(() => parseArgs(['scale'])).toThrow(

@@ -302,6 +302,12 @@ function parseColourArgs(argv: string[]): PaletteIntent | ScaleIntent {
     throw invalidArguments(`forge ${cmd} does not take ${flag}.`, `Try: forge ${cmd} --help`)
   }
   if (cmd === 'scale') {
+    if (at !== -1) {
+      throw invalidArguments(
+        '--inside is for forge palette.',
+        'Try: forge palette photo.jpg --inside F26E69',
+      )
+    }
     if (args.length > 1)
       throw invalidArguments('forge scale takes one colour.', 'Try: forge scale 6579FD')
     return { kind: 'scale', colour: colourArg(args[0]), svg }
