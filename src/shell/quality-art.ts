@@ -28,6 +28,7 @@ export function sliderRow({
   max,
   width = SLIDER_WIDTH,
   plain = palette.track === '',
+  unit = '',
 }: {
   palette: Palette
   value: number
@@ -36,8 +37,10 @@ export function sliderRow({
   width?: number
   /** No fills will show (NO_COLOR): draw the band in shapes instead. */
   plain?: boolean
+  /** After the value on the thumb: `%` for Resize's band. */
+  unit?: string
 }): Row {
-  const label = ` ${value} `
+  const label = ` ${value}${unit} `
   const room = Math.max(0, width - stringWidth(label))
   const ratio = max === min ? 0 : (Math.min(max, Math.max(min, value)) - min) / (max - min)
   const k = Math.round(ratio * room)
@@ -58,22 +61,30 @@ export function sliderRow({
   ].filter((r) => r.text !== '')
 }
 
-/** "smaller" under the band's left end and "sharper" under its right, both quiet. */
+/**
+ * "smaller" under the band's left end and "sharper" under its right, both
+ * quiet. A centred band (Resize's, 100 % in the middle) says what its middle
+ * is too, centred under it: `smaller · same size · larger`.
+ */
 export function endsRow({
   palette,
   width = SLIDER_WIDTH,
+  ends = ['smaller', 'sharper'],
+  middle,
 }: {
   palette: Palette
   width?: number
+  ends?: [string, string]
+  middle?: string
 }): Row {
-  const a = 'smaller'
-  const b = 'sharper'
-  return [
-    blank(LEAD),
-    { text: a, fg: palette.border },
-    blank(Math.max(1, width - a.length - b.length)),
-    { text: b, fg: palette.border },
-  ]
+  const [a, b] = ends
+  const quiet = (text: string) => ({ text, fg: palette.border })
+  if (middle === undefined) {
+    return [blank(LEAD), quiet(a), blank(Math.max(1, width - a.length - b.length)), quiet(b)]
+  }
+  const before = Math.max(1, Math.round(width / 2) - Math.floor(middle.length / 2) - a.length)
+  const after = Math.max(1, width - a.length - before - middle.length - b.length)
+  return [blank(LEAD), quiet(a), blank(before), quiet(middle), blank(after), quiet(b)]
 }
 
 /** The question's title in the mode's colour, and what it is about, quiet, at the right. */

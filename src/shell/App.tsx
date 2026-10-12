@@ -12,6 +12,7 @@ import {
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
+import { resizeAction, trimAction } from '../core/actions/resize.js'
 import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
@@ -26,10 +27,10 @@ import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { type InputFailure, resolveDirectory } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
-import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, Progress, ResizeSpec, Result, SourceInfo } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
-import { encodeToBuffer } from '../engines/image.js'
+import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import { displayPath } from '../utils/display-path.js'
@@ -46,6 +47,7 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
+import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
@@ -53,6 +55,7 @@ import { NameTaken } from './components/NameTaken.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
+import { ResizeStep } from './components/ResizeStep.js'
 import { SaveAs } from './components/SaveAs.js'
 import { Select } from './components/Select.js'
 import { SizeAside } from './components/SizeAside.js'
@@ -78,6 +81,7 @@ import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
+import { largestPercent } from './resize-art.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import {
   addToStage,
@@ -120,6 +124,10 @@ export type Step =
   | 'extensions'
   /** Enhance's picker: Sharpen, Boost resolution 2× / 4×, Remove background. */
   | 'enhance'
+  /** Enhance's Resize: the 0–200 % slider (H3). */
+  | 'resize'
+  /** Resize's `#`: the exact Width × Height pair (X). */
+  | 'exact-size'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -268,7 +276,10 @@ let blockSeq = 0
 
 /** Enhance's actions name their output with `output`, not `destination`. */
 const isExtensionAction = (act: Action): boolean =>
-  act === boostAction || act === removeBackgroundAction
+  act === boostAction ||
+  act === removeBackgroundAction ||
+  act === trimAction ||
+  act === resizeAction
 
 /** What enhance says to a file that is not an image. */
 const enhanceRefusal = (source: SourceInfo): string =>
@@ -632,6 +643,15 @@ export function App({
   const [checking, setChecking] = useState(false)
   const installAbort = useRef<AbortController | undefined>(undefined)
   /**
+   * What Trim and Resize know about the image in Enhance: its upright size
+   * and what a trim leaves. Measured once per image when the list opens.
+   */
+  const [imageMeasure, setImageMeasure] = useState<
+    { path: string; measure: ImageMeasure } | undefined
+  >(undefined)
+  /** Resize's slider, in percent of the upright size. */
+  const [resizePercent, setResizePercent] = useState(100)
+  /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
    * one colour story. The base is kept for `modeColours`, which needs the
@@ -940,7 +960,9 @@ export function App({
       const command = COMMANDS.find((c) => c.mode === next)
       if (command) runCommand(command)
     },
-    { isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance'].includes(step) },
+    {
+      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance', 'resize'].includes(step),
+    },
   )
 
   /**
@@ -2192,7 +2214,7 @@ export function App({
   const destinationBack = () => {
     setText('')
     if (mode === 'enhance') {
-      setStep('enhance')
+      setStep(values.tool === 'resize' ? 'resize' : 'enhance')
       return
     }
     if (specFor('quality')) {
@@ -2559,12 +2581,50 @@ export function App({
     }
   }, [step, tools, showError])
 
-  /** A row chosen whose tool is on this Mac: on to Save as, with the row's answers. */
+  /**
+   * Trim's row says what a trim leaves: measured once per image, when the
+   * list opens. The engine is loaded only then. A failure leaves the row
+   * without its fact; the run itself says what went wrong.
+   */
+  const measureFor = source?.kind === 'image' && step === 'enhance' ? source : undefined
+  useEffect(() => {
+    if (!measureFor || imageMeasure?.path === measureFor.path) return
+    let live = true
+    import('../engines/image.js')
+      .then(({ measureImage }) => measureImage(measureFor))
+      .then(
+        (measure) => {
+          if (live) setImageMeasure({ path: measureFor.path, measure })
+        },
+        () => {},
+      )
+    return () => {
+      live = false
+    }
+  }, [measureFor, imageMeasure])
+  const measure = source && imageMeasure?.path === source.path ? imageMeasure.measure : undefined
+
+  /**
+   * A row chosen whose tool is on this Mac: on to Save as, with the row's
+   * answers. Resize asks its size first.
+   */
   const chooseEnhance = (row: EnhanceRow) => {
     if (!source) return
     const vals = rowValues(row)
     setValues(vals)
+    if (row.id === 'resize') {
+      setResizePercent(100)
+      setStep('resize')
+      return
+    }
     openSaveAs({ values: vals, action: actionForRow(row) })
+  }
+
+  /** Resize's size, from the slider or the exact pair: on to Save as. */
+  const chooseResize = (resize: ResizeSpec) => {
+    const vals = { ...values, tool: 'resize', resize }
+    setValues(vals)
+    openSaveAs({ values: vals, action: resizeAction })
   }
 
   /**
@@ -2577,6 +2637,7 @@ export function App({
     const controller = new AbortController()
     installAbort.current = controller
     const id = row.extension
+    if (!id) return
     const set = (state: ToolState) => setToolStates((t) => ({ ...t, [id]: state }))
     const absent = toolStates?.[id]
     set({
@@ -3009,6 +3070,11 @@ export function App({
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
     if (at === 'colour') return colourTrailNow
+    // Resize ╱ Exact size ╱ Size: the pair is the slider's question, asked another way.
+    if (at === 'exact-size') {
+      const slider = trailFor({ mode, step: 'resize', answers: trailAnswers() })
+      return { answers: [...slider.answers, 'Exact size'], current: slider.current }
+    }
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: [...pdfTrailNow.answers, ...pdfSaved],
@@ -3302,18 +3368,45 @@ export function App({
           {step === 'enhance' && source?.kind === 'image' && toolStates ? (
             <EnhancePicker
               format={FORMATS[source.format].label}
-              rows={enhanceRows(source)}
+              rows={enhanceRows(source, measure)}
               tools={toolStates}
               checking={checking}
               width={width}
               pickerWidth={pickerWidth}
               onChoose={(row) => {
-                const state = toolStates[row.extension]
+                const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
                 if (state?.kind === 'ready') chooseEnhance(row)
                 else if (state?.kind === 'absent') void installThen(row)
               }}
               onStop={stopInstall}
               onCancel={clearSource}
+            />
+          ) : null}
+
+          {step === 'resize' && source?.kind === 'image' ? (
+            <ResizeStep
+              mode={mode}
+              aside={`${basename(source.path)} · ${source.width} × ${source.height}`}
+              from={source}
+              percent={resizePercent}
+              max={largestPercent(source)}
+              onChange={setResizePercent}
+              onSubmit={(percent) => chooseResize({ percent })}
+              onExact={() => setStep('exact-size')}
+              onCancel={() => setStep('enhance')}
+              width={width}
+            />
+          ) : null}
+
+          {step === 'exact-size' && source?.kind === 'image' ? (
+            <ExactSizeStep
+              mode={mode}
+              aside={`${basename(source.path)} · ${source.width} × ${source.height}`}
+              from={source}
+              percent={resizePercent}
+              onSubmit={chooseResize}
+              onCancel={() => setStep('resize')}
+              width={width}
             />
           ) : null}
 
@@ -3443,7 +3536,15 @@ export function App({
                 <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
               </Box>
               <EnhanceDone
-                op={lastResult.job.op === 'remove-background' ? 'remove-background' : 'boost'}
+                op={
+                  lastResult.job.op === 'convert'
+                    ? lastResult.job.options.resize
+                      ? 'resize'
+                      : 'trim'
+                    : lastResult.job.op === 'remove-background'
+                      ? 'remove-background'
+                      : 'boost'
+                }
                 {...(lastResult.job.op === 'boost' ? { scale: lastResult.job.scale } : {})}
                 before={lastResult.job.sources[0].path}
                 after={lastResult.job.outputs[0] ?? ''}

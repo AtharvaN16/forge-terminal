@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { Choice } from '../../core/actions/index.js'
 import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
-import type { EnhanceRow, ToolState } from '../enhance.js'
+import { type EnhanceRow, GAP_AFTER, type ToolState } from '../enhance.js'
 import { titleRow } from '../quality-art.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, MODE_KEYS } from '../theme.js'
@@ -11,6 +11,11 @@ import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
 import { Select } from './Select.js'
+
+/** E3's blank row: never a place the cursor rests. */
+const GAP = '__gap__'
+/** A built-in tool (Trim edges, Resize) needs nothing installed. */
+const READY: ToolState = { kind: 'ready' }
 
 /** The install byte band's width, a cell tall (G1's look for a real count). */
 const BYTE_BAND = 12
@@ -30,8 +35,9 @@ export function bytesOf(done: number, total: number): { got: string; of: string 
 
 /**
  * Enhance's picker (mockups/extensions-2026-10.html tab "1 · Picker"): the
- * decided picker, "Enhance <FORMAT>" over four rows that are names. No row is
- * a default. Only the highlighted row says more, after the names: the size
+ * decided picker, "Enhance <FORMAT>" over rows that are names: the four AI
+ * tools, a blank row (E3, mockups/resize-2026-10.html), then Trim edges and
+ * Resize, which are built in and always ready. No row is a default. Only the highlighted row says more, after the names: the size
  * you will get, "transparent PNG", or — for a tool not on this Mac yet — the
  * download and the key, "14.9 MB download · ↵ installs". A row too large for
  * this image is dimmed with the reason on it. While a tool installs, its row
@@ -64,11 +70,23 @@ export function EnhancePicker({
   onCancel: () => void
 }) {
   const palette = useTheme()
-  // Where Select's cursor opens: the first row that can be chosen.
+  const stateOf = (row: EnhanceRow): ToolState | undefined =>
+    row.extension ? tools[row.extension] : READY
+  const items: Choice[] = rows.flatMap((r): Choice[] => {
+    const state = stateOf(r)
+    const reason = r.tooLarge ?? (state?.kind === 'unsupported' ? state.reason : undefined)
+    const item: Choice = {
+      value: r.id,
+      label: r.label,
+      ...(reason ? { disabled: true, hint: reason } : {}),
+    }
+    return r.id === GAP_AFTER ? [item, { value: GAP, label: '', hint: '', disabled: true }] : [item]
+  })
+  // Where Select's cursor opens: the first item that can be chosen.
   const [at, setAt] = useState(() =>
     Math.max(
       0,
-      rows.findIndex((r) => !r.tooLarge && tools[r.extension]?.kind !== 'unsupported'),
+      items.findIndex((i) => !i.disabled),
     ),
   )
   const installing = Object.values(tools).some((t) => t?.kind === 'installing')
@@ -80,22 +98,13 @@ export function EnhancePicker({
     { isActive: installing },
   )
 
-  const items: Choice[] = rows.map((r) => {
-    const state = tools[r.extension]
-    const reason = r.tooLarge ?? (state?.kind === 'unsupported' ? state.reason : undefined)
-    return {
-      value: r.id,
-      label: r.label,
-      ...(reason ? { disabled: true, hint: reason } : {}),
-    }
-  })
-  const here = rows[at]
-  const hereState = here ? tools[here.extension] : undefined
+  const here = rows.find((r) => r.id === items[at]?.value)
+  const hereState = here ? stateOf(here) : undefined
 
   const speak = (item: Choice) => {
     const row = rows.find((r) => r.id === item.value)
     if (!row) return null
-    const state = tools[row.extension]
+    const state = stateOf(row)
     const dim = colourProp(palette.dim)
     const fg = colourProp(palette.fg)
     if (state?.kind === 'installing') {
@@ -126,9 +135,11 @@ export function EnhancePicker({
     return (
       <Text>
         {row.detail.dim ? <Text color={dim}>{row.detail.dim}</Text> : null}
-        <Text bold color={fg}>
-          {row.detail.bold}
-        </Text>
+        {row.detail.bold ? (
+          <Text bold color={fg}>
+            {row.detail.bold}
+          </Text>
+        ) : null}
         {row.detail.after ? <Text color={dim}>{row.detail.after}</Text> : null}
       </Text>
     )
@@ -154,7 +165,7 @@ export function EnhancePicker({
             palette,
             mode: 'enhance',
             title: `Enhance ${format}`,
-            aside: `${at + 1}/${rows.length}`,
+            aside: here ? `${rows.indexOf(here) + 1}/${rows.length}` : undefined,
             width,
           })}
         />

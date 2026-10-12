@@ -23,6 +23,8 @@ import { loadSharp } from '../engines/libs.js'
  *   - A cutout (the after has transparency the before did not): the subject
  *     whole, the photo and the cutout fitted to the same box, the cutout on
  *     a checkerboard.
+ *   - Trim edges and Resize (`whole`): both pictures whole. A patch at pixel
+ *     scale would show nothing — the pixels are the same ones, fewer or more.
  */
 
 /** Pixels, RGBA, row-major. `height` is even: two pixels per half-block row. */
@@ -44,8 +46,8 @@ export interface Closeup {
   before: PixelGrid
   after: PixelGrid
   box: CloseupBox
-  /** `patch`: a close-up at pixel scale. `subject`: a cutout, whole. */
-  kind: 'patch' | 'subject'
+  /** `patch`: a close-up at pixel scale. `subject`: a cutout, whole. `whole`: both pictures, whole. */
+  kind: 'patch' | 'subject' | 'whole'
   /** How many half-blocks a side one pixel of the before image covers (patch only). */
   blocksPerPixel: number
   /** The after image's size, for the line above the pictures. */
@@ -58,6 +60,8 @@ export interface CloseupOptions {
   /** Rows the grid may use: its height is twice this, in pixels. */
   rows: number
   scale: 1 | 2 | 4
+  /** Show both pictures whole (Trim edges, Resize), not where they differ. */
+  whole?: boolean
 }
 
 /** The checkerboard behind transparency, as the mockup draws it (done5.js `CHK2`). */
@@ -361,6 +365,27 @@ export async function findCloseup(
   const gw = Math.max(1, opts.cols)
   const gh = Math.max(2, opts.rows * 2)
 
+  if (opts.whole) {
+    // The before's shape in the grid (a half-block is a square pixel), the
+    // after fitted inside the same box: a trim shows smaller, on the checks.
+    const ratio = c.before.width / c.before.height
+    const w = Math.max(1, Math.min(gw, Math.round(gh * ratio)))
+    const h = Math.max(2, Math.min(gh, Math.round(w / ratio)) & ~1)
+    const transparent = { r: 0, g: 0, b: 0, alpha: 0 }
+    const b = await rgba((await pipeline(c.before)).resize(w, h, { fit: 'fill' }))
+    const a = await rgba(
+      (await pipeline(c.after)).resize(w, h, { fit: 'contain', background: transparent }),
+    )
+    return {
+      before: onChecker(b),
+      after: onChecker(a),
+      box: { x: 0, y: 0, w: c.before.width, h: c.before.height },
+      kind: 'whole',
+      blocksPerPixel: 0,
+      output,
+    }
+  }
+
   if (sr.cutout) {
     const box = frameSubject(subjectBox(sr), sr.s, c.before.width, c.before.height, gw, gh)
     const fit = { width: gw, height: gh, fit: 'fill' as const }
@@ -407,7 +432,7 @@ export async function findCloseup(
 export interface CloseupPictures {
   before: Buffer
   after: Buffer
-  kind: 'patch' | 'subject'
+  kind: 'patch' | 'subject' | 'whole'
   output: { width: number; height: number }
 }
 
@@ -448,7 +473,8 @@ export function padToBox(grid: PixelGrid, cols: number, rows: number): PixelGrid
  * The real pictures for X5: for a sharpen or a boost, the most-changed patch
  * (about two pixels of the original per cell, cols × 2 by rows × 4, so a
  * line of text reads) from both files at their own resolution; for a
- * cutout, both whole, the cutout on a checkerboard.
+ * cutout, both whole, the cutout on a checkerboard; for a trim or a resize
+ * (`whole`), both whole.
  */
 export async function closeupPictures(
   before: string,
@@ -464,10 +490,10 @@ export async function closeupPictures(
     sharp(Buffer.from(g.rgba), { raw: { width: g.width, height: g.height, channels: 4 } })
       .png()
       .toBuffer()
-  if (c.sr.cutout) {
+  if (c.sr.cutout || opts.whole) {
     const b = await png(boxed(await rgba((await pipeline(c.before)).resize(cap))))
     const a = await png(onChecker(boxed(await rgba((await pipeline(c.after)).resize(cap))), 12))
-    return { before: b, after: a, kind: 'subject', output }
+    return { before: b, after: a, kind: opts.whole ? 'whole' : 'subject', output }
   }
   const box = patchBox(c, opts.cols * 2, opts.rows * 4)
   const b = await png(boxed(await rgba((await pipeline(c.before)).extract(region(box)))))
