@@ -8,6 +8,7 @@ import {
   type CloseupPictures,
   closeupPictures,
   findCloseup,
+  forgetCloseup,
   type PixelGrid,
 } from '../../core/closeup.js'
 import { displayPath } from '../../utils/display-path.js'
@@ -154,6 +155,7 @@ export function EnhanceDone({
   const rows = colour ? pictureRows(available) : 0
   const s = op === 'remove-background' ? 1 : scale
   const [shown, setShown] = useState<Shown | undefined>(undefined)
+  useEffect(() => forgetCloseup, [])
   /** The first cut is at once; one after a resize waits for the resize to settle. */
   const cutBefore = useRef(false)
 

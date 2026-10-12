@@ -1,9 +1,16 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { CHECKER, findCloseup } from '../../src/core/closeup.js'
+import { looksLikeHeic } from '../../src/engines/heic.js'
 import { loadSharp } from '../../src/engines/libs.js'
+
+// Passed through, counted: each file opened for a search is asked about once.
+vi.mock('../../src/engines/heic.js', async (orig) => {
+  const real = await orig<typeof import('../../src/engines/heic.js')>()
+  return { ...real, looksLikeHeic: vi.fn(real.looksLikeHeic) }
+})
 
 /** A PNG of `w` × `h`, each pixel from `at` (RGBA). */
 async function png(
@@ -86,5 +93,16 @@ describe('findCloseup', () => {
     expect(alphas.every((a) => a === 255)).toBe(true)
     // The corner is background: a checker square.
     expect(CHECKER).toContain(c.after.rgba[0])
+  })
+
+  it('opens and searches a pair once, however often a resize re-cuts it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+    const before = await png(dir, 'a.png', 64, 48, grey)
+    const after = await png(dir, 'b.png', 64, 48, (x, y) =>
+      inside(x, y, 20, 20, 8) ? [10, 10, 10, 255] : grey(x, y),
+    )
+    vi.mocked(looksLikeHeic).mockClear()
+    for (const cols of [16, 20, 24]) await findCloseup(before, after, { cols, rows: 8, scale: 1 })
+    expect(vi.mocked(looksLikeHeic)).toHaveBeenCalledTimes(2)
   })
 })

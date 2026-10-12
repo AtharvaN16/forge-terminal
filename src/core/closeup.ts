@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import type { Sharp } from 'sharp'
 import { decodeHeic, looksLikeHeic } from '../engines/heic.js'
 import { loadSharp } from '../engines/libs.js'
@@ -293,10 +293,35 @@ interface Chosen {
   k: number
 }
 
+/**
+ * The last pair opened and searched. Decoding both files and the difference
+ * search are the expensive part; a resize only re-cuts the box, so it reuses
+ * them. Keyed on each file's path, size and mtime, so a file written again
+ * under the same name is searched again.
+ */
+let last: { key: string; chosen: Promise<Chosen> } | undefined
+
 async function choose(before: string, after: string, scale: 1 | 2 | 4): Promise<Chosen> {
-  const [b, a] = [await openImage(before), await openImage(after)]
   const k = scale === 1 ? 1 : 2
-  return { before: b, after: a, sr: await search(b, a, k), k }
+  const [sb, sa] = await Promise.all([stat(before), stat(after)])
+  const key = [before, sb.size, sb.mtimeMs, after, sa.size, sa.mtimeMs, k].join('\0')
+  if (last?.key !== key) {
+    const chosen = (async (): Promise<Chosen> => {
+      const [b, a] = [await openImage(before), await openImage(after)]
+      return { before: b, after: a, sr: await search(b, a, k), k }
+    })()
+    last = { key, chosen }
+    // A failure is not kept: the next call tries again.
+    chosen.catch(() => {
+      if (last?.chosen === chosen) last = undefined
+    })
+  }
+  return last.chosen
+}
+
+/** Lets go of the cached pair (its decoded HEIC and search buffers) once Done is left. */
+export function forgetCloseup(): void {
+  last = undefined
 }
 
 /** A patch box (before pixels) of `bw` × `bh` centred on the most change. */
