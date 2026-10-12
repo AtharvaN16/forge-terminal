@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -33,13 +33,14 @@ describe('extension lock', () => {
           await sleep(120)
           log.push(`${name} end`)
         },
-        { what: name },
+        { what: name, onWait: () => log.push(`${name} waits`) },
       )
     const first = job('a')
     await sleep(20)
     expect(await extensionInUse('boost')).toEqual({ pid: process.pid, what: 'a' })
     await Promise.all([first, job('b')])
-    expect(log).toEqual(['a start', 'a end', 'b start', 'b end'])
+    // b says it is waiting (Working's "Waiting for another window") before a ends.
+    expect(log).toEqual(['a start', 'b waits', 'a end', 'b start', 'b end'])
     expect(await extensionInUse('boost')).toBeUndefined()
   })
 
@@ -64,5 +65,34 @@ describe('extension lock', () => {
       )
     })
     expect(code).toBe('extension-in-use')
+  })
+
+  const locks = () => join(extensionsRoot(), '.locks')
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000)
+
+  it('reclaims a lock older than the age cap even when its pid is alive (a reused pid)', async () => {
+    await mkdir(locks(), { recursive: true })
+    const path = join(locks(), 'boost.lock')
+    await writeFile(path, JSON.stringify({ pid: process.pid, token: 'old', at: 0 }))
+    await utimes(path, hoursAgo(13), hoursAgo(13))
+    expect(await withExtensionLock('boost', async () => 'ran', { waitMs: 0 })).toBe('ran')
+  })
+
+  it('on release, leaves a lock that is no longer its own', async () => {
+    const path = join(locks(), 'boost.lock')
+    await withExtensionLock('boost', async () => {
+      // Reclaimed and taken by another forge while this one ran.
+      await writeFile(path, JSON.stringify({ pid: process.pid, token: 'theirs', at: Date.now() }))
+    })
+    expect(JSON.parse(await readFile(path, 'utf8')).token).toBe('theirs')
+  })
+
+  it('sweeps temp and moved-aside lock files a dead forge left, but not fresh ones', async () => {
+    await mkdir(locks(), { recursive: true })
+    const old = ['boost.lock.0123abcd', 'boost.lock.stale-9f9f']
+    for (const name of [...old, 'boost.lock.fedc']) await writeFile(join(locks(), name), '{}')
+    for (const name of old) await utimes(join(locks(), name), hoursAgo(1), hoursAgo(1))
+    await withExtensionLock('boost', async () => {})
+    expect(await readdir(locks())).toEqual(['boost.lock.fedc'])
   })
 })

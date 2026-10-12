@@ -68,8 +68,9 @@ async function run(
     const result = join(work, 'out.png')
     await decodeToPng(source, input)
 
-    // The child's own work has no knowable fraction (invariant 7): one phase.
-    onPhase({ phase: 'encoding' })
+    // The child's own work has no knowable fraction (invariant 7): one phase,
+    // once the tool is this job's. Until then, if another forge has it, the
+    // job is waiting, and says so rather than claiming the model is running.
     // The contract: boost takes flags; the cutout helper takes `<in> <out>`.
     const args =
       job.op === 'boost'
@@ -87,6 +88,8 @@ async function run(
     await runExtension(ext, args, {
       subject: source.path,
       what: `${toolVerb(job)} is running on ${basename(source.path)}`,
+      onWait: () => onPhase({ phase: 'waiting' }),
+      onStart: () => onPhase({ phase: 'encoding' }),
       ...(job.op === 'boost' ? { maxScale: maxBoost(source.width, source.height, job.scale) } : {}),
       ...(signal === undefined ? {} : { signal }),
     })

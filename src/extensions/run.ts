@@ -28,6 +28,10 @@ type RunOpts = {
   maxScale?: number
   /** What this job is, as a sentence, for another forge's manage screen ("Boost resolution 4× is running on photo.jpg"). */
   what?: string
+  /** Another forge holds the tool: this job is waiting for it. */
+  onWait?: () => void
+  /** The tool is this job's and the child is about to start. */
+  onStart?: () => void
 }
 
 /** Jobs run one at a time per process — both extensions are heavy. */
@@ -45,13 +49,17 @@ export function runExtension(
   args: string[],
   opts: RunOpts = {},
 ): Promise<ExtensionJobResult> {
-  const one = () => runOne(ext, args, opts)
+  const one = () => {
+    opts.onStart?.()
+    return runOne(ext, args, opts)
+  }
   const job = tail.then(() =>
     ext.id === undefined
       ? one()
       : withExtensionLock(ext.id, one, {
           ...(opts.what !== undefined ? { what: opts.what } : {}),
           ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+          ...(opts.onWait !== undefined ? { onWait: opts.onWait } : {}),
         }),
   )
   tail = job.catch(() => undefined)

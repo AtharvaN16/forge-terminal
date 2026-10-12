@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import stringWidth from 'string-width'
 import { FORMATS } from '../core/formats.js'
-import type { Job } from '../core/types.js'
+import type { Job, Phase } from '../core/types.js'
 import { blank, clip, type Row, type Run } from './home-art.js'
 import { modeColours, type Palette, type ShellMode } from './theme.js'
 
@@ -121,11 +121,10 @@ export function pagesRow({
  * A phase the engine reported, as the working line says it: the format being
  * encoded and the file being written are named, from the job itself.
  */
-export function phaseLabel(
-  job: Job,
-  phase: 'reading' | 'decoding' | 'encoding' | 'writing',
-): string {
+export function phaseLabel(job: Job, phase: Phase): string {
   switch (phase) {
+    case 'waiting':
+      return 'Waiting for another window'
     case 'reading':
       return 'Reading'
     case 'decoding':

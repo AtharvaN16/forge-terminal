@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { link, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { link, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { extensionBusy } from '../core/errors.js'
 import { extensionsRoot } from './paths.js'
@@ -28,6 +28,8 @@ const MAX_AGE_MS = 12 * 60 * 60 * 1000
 /** How long a job waits for another forge to finish with the tool before it gives up. */
 export const WAIT_MS = 10 * 60 * 1000
 const POLL_MS = 200
+/** A temp or moved-aside lock file this old was left by a forge that died mid-step. */
+const DEBRIS_AGE_MS = 10 * 60 * 1000
 
 function lockDir(): string {
   return join(extensionsRoot(), '.locks')
@@ -88,6 +90,22 @@ async function reclaim(path: string): Promise<void> {
 }
 
 /**
+ * Clears what a forge killed mid-step leaves under .locks/: its private
+ * `<id>.lock.<token>` (between write and link) and `<id>.lock.stale-<hex>`
+ * (between moving a stale lock aside and deleting it). Only files older
+ * than `DEBRIS_AGE_MS`, so a live forge's are never touched.
+ */
+async function sweepLockDebris(): Promise<void> {
+  const names = await readdir(lockDir()).catch(() => [] as string[])
+  for (const name of names) {
+    if (!/\.lock\.(stale-)?[0-9a-f]+$/.test(name)) continue
+    const path = join(lockDir(), name)
+    const age = await stat(path).catch(() => undefined)
+    if (age && Date.now() - age.mtimeMs > DEBRIS_AGE_MS) await rm(path, { force: true })
+  }
+}
+
+/**
  * One attempt. The lock's content is written to a private temp file first,
  * then `link`ed into place: link fails with EEXIST exactly as an O_EXCL
  * create does, but the lock appears with its content already in it, so a
@@ -144,10 +162,20 @@ export async function extensionInUse(id: string): Promise<LockHolder | undefined
 export async function withExtensionLock<T>(
   id: string,
   fn: () => Promise<T>,
-  opts: { what?: string; waitMs?: number; signal?: AbortSignal; action?: 'run' | 'remove' } = {},
+  opts: {
+    what?: string
+    waitMs?: number
+    signal?: AbortSignal
+    action?: 'run' | 'remove'
+    /** Called once if the lock is held elsewhere and this call starts to wait. */
+    onWait?: () => void
+  } = {},
 ): Promise<T> {
   const deadline = Date.now() + (opts.waitMs ?? WAIT_MS)
+  await mkdir(lockDir(), { recursive: true })
+  await sweepLockDebris()
   let mine = await tryAcquire(id, opts.what)
+  if (mine === undefined && (opts.waitMs ?? WAIT_MS) > 0) opts.onWait?.()
   while (mine === undefined) {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('aborted')
     if (Date.now() >= deadline) {

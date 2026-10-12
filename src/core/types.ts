@@ -184,8 +184,11 @@ export interface Result {
  * in advance. Spec §12 forbids fabricated progress, and a page count is real.
  */
 export type Progress =
-  | { phase: 'reading' | 'decoding' | 'encoding' | 'writing' }
+  | { phase: Phase }
   | { phase: 'page'; done: number; total: number }
 
-/** Kept as an alias so existing render code compiles — it is now Progress's first variant. */
-export type Phase = 'reading' | 'decoding' | 'encoding' | 'writing'
+/**
+ * Progress's first variant. `waiting`: queued behind another forge using the
+ * same extension (its lock, extensions/lock.ts), nothing of this job begun.
+ */
+export type Phase = 'reading' | 'decoding' | 'waiting' | 'encoding' | 'writing'
