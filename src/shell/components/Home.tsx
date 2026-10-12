@@ -116,7 +116,7 @@ export function homeKeys({
   return {
     main: [['↵', 'send']],
     foot: [
-      ['1–3', 'mode'],
+      ['1–4', 'mode'],
       ['esc', 'clear'],
       ['ctrl-n', 'new'],
       ['ctrl-c', 'quit'],
@@ -345,7 +345,13 @@ export function Home({
           <Gap />
         </>
       ) : null}
-      {tabRows({ ...art, savesTo, commands: commands !== undefined }).map((row, i) => (
+      {tabRows({
+        ...art,
+        savesTo,
+        // Colour writes no files: what it makes goes to the clipboard.
+        ...(mode === 'colour' ? { right: { label: 'copies to', value: 'clipboard' } } : {}),
+        commands: commands !== undefined,
+      }).map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
         <Runs key={`tabs${i}`} row={row} />
       ))}

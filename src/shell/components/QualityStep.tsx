@@ -64,7 +64,7 @@ export function QualityStep({
           ['↵', 'confirm'],
         ]}
         foot={[
-          ['1–3', 'mode'],
+          ['1–4', 'mode'],
           ['esc', 'back'],
           ['ctrl-c', 'quit'],
         ]}

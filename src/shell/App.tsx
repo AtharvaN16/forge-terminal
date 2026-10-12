@@ -659,7 +659,7 @@ export function App({
   useKeys(
     (input, key) => {
       const next = MODE_ORDER[Number(input) - 1]
-      if (!/^[1-3]$/.test(input) || key.ctrl || key.meta || !next || next === mode) return
+      if (!/^[1-4]$/.test(input) || key.ctrl || key.meta || !next || next === mode) return
       const command = COMMANDS.find((c) => c.mode === next)
       if (command) runCommand(command)
     },
@@ -704,7 +704,7 @@ export function App({
     if (commandKey(input, key)) return true
     if (value === '') {
       const next = MODE_ORDER[Number(input) - 1]
-      if (/^[1-3]$/.test(input) && !key.ctrl && !key.meta && next) {
+      if (/^[1-4]$/.test(input) && !key.ctrl && !key.meta && next) {
         switchMode(next)
         return true
       }
@@ -1228,6 +1228,18 @@ export function App({
           id: nextId(),
           text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
         })
+        return
+      }
+
+      // Colour starts from its own home (Palette or Scale), never from a
+      // staged file: what you drop or type belongs to the screen you open
+      // (colour spec §6.2). A staged file is let go, as ctrl-n would.
+      if (command.mode === 'colour') {
+        fenceOff()
+        setStage(clearStage())
+        setMode('colour')
+        setValues({})
+        setStep('idle')
         return
       }
 
@@ -2503,7 +2515,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   ['esc', 'remove file'],
                 ]}
               />
@@ -2581,7 +2593,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2606,7 +2618,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2655,7 +2667,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
