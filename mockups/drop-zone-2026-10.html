@@ -817,7 +817,7 @@ const H3 = {
 }
 const LEFT = (sc) => sc.bad.length === 1 ? '1 file left out' : `${sc.bad.length} files left out`
 const WARN = {
-  line: (sc) => ['', IN + xf(FAIL, xB('✕')) + ' ' + xf(FAIL, xB(LEFT(sc))) + xf(K.d, `   ${sc.bad[0].name} is ${sc.bad[0].why}`)],
+  line: (sc) => ['', IN + xf(FAIL, xB('✕')) + ' ' + xf(FAIL, xB(LEFT(sc))) + xf(K.d, `   ${sc.bad[0].name} · unsupported file type`)],
   card: (sc) => {
     const w = 52, Ed = (t) => xf(FAIL, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
     return ['', ' '.repeat(M) + Ed('╭' + '─'.repeat(w - 2) + '╮'),
