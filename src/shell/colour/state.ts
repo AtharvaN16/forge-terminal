@@ -78,13 +78,24 @@ export interface Ctx {
   now: number
 }
 
-export type Start = 'palette' | 'scale' | { palette: string } | { scale: Rgb }
+/**
+ * How the flow opens: on an empty palette or scale, on an image (opened at
+ * once), on a colour, or on the scale with something already typed (`#`
+ * pressed on colour's home).
+ */
+export type Start = 'palette' | 'scale' | { palette: string } | { scale: Rgb } | { typed: string }
 
 const FLASH_MS = 1500
 
 export function initial(start: Start): ColourState {
   if (start === 'palette') return { history: [{ kind: 'palette-empty' }], field: field('', true) }
   if (start === 'scale') return { history: [{ kind: 'scale-empty' }], field: field('', true) }
+  if ('typed' in start) {
+    return {
+      history: [{ kind: 'scale-empty' }],
+      field: { text: start.typed, focus: true, before: '' },
+    }
+  }
   if ('palette' in start) {
     return {
       history: [{ kind: 'palette-empty' }],

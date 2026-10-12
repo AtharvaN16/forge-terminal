@@ -47,6 +47,14 @@ const opened: Action = {
 }
 const onPalette = () => run(initial({ palette: '/p/sonoma.jpg' }), opened).state
 
+describe('starting', () => {
+  it('# on colour home opens the scale with # already typed', () => {
+    const s = initial({ typed: '#' })
+    expect(s.history).toEqual([{ kind: 'scale-empty' }])
+    expect(s.field).toMatchObject({ text: '#', focus: true })
+  })
+})
+
 describe('typing', () => {
   it('# on a scale opens the field with # typed', () => {
     const { state } = run(initial({ scale: { r: 101, g: 121, b: 253 } }), key('#'))

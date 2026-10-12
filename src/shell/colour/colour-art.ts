@@ -1,5 +1,6 @@
 import { rate } from '../../core/colour/contrast.js'
 import { OUTSIDE, TRANSPARENT } from '../../core/colour/palette.js'
+import { scale } from '../../core/colour/scale.js'
 import { blank, mix, type Row, type Run, surfaceRows, width } from '../home-art.js'
 import type { Palette } from '../theme.js'
 
@@ -44,6 +45,15 @@ const faint = (p: Palette, h: string): string => mix(lc(h), lc(p.canvas), 0.9)
 /* ------------------------------------------------------------- home: C1 */
 
 const CARD = 36
+
+/**
+ * What the two cards preview: a palette (the six colours of the mockup's
+ * photo) and a scale (from its blue). Decoration, the same on every run.
+ */
+export const COLOUR_SAMPLES = {
+  palette: ['#356723', '#77A726', '#AD95E9', '#ACE02C', '#6579FD', '#F26E69'],
+  scale: scale({ r: 0x65, g: 0x79, b: 0xfd }).map((s) => s.hex),
+}
 
 /**
  * Home's panel in colour mode: two cards, Palette and Scale, each with a

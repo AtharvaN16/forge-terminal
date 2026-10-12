@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import stringWidth from 'string-width'
+import { COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
 import type { CommandList } from '../commands.js'
 import {
   brandRows,
@@ -71,11 +72,14 @@ export function homeKeys({
   typing,
   completions,
   commands,
+  colour = false,
 }: {
   typing: boolean
   completions: number
   /** The command list is open. */
   commands: boolean
+  /** Colour's home: the two cards to choose between, and nothing to send. */
+  colour?: boolean
 }): KeySet {
   if (commands) {
     return {
@@ -108,6 +112,19 @@ export function homeKeys({
       main: [['↵', 'send']],
       foot: [
         ['esc', 'clear'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
+  if (colour) {
+    return {
+      main: [
+        ['←→', 'choose'],
+        ['↵', 'open'],
+      ],
+      foot: [
+        ['1–4', 'mode'],
+        ['ctrl-n', 'new'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -299,6 +316,7 @@ export function Home({
   list,
   commands,
   keys,
+  colourChoice = 0,
 }: {
   width: number
   height: number
@@ -317,6 +335,8 @@ export function Home({
    */
   commands?: (CommandList & { selected: number }) | undefined
   keys: KeySet
+  /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
+  colourChoice?: 0 | 1
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height)
@@ -330,7 +350,9 @@ export function Home({
         max: layout.surface + layout.list,
       })
     : layout.surface > 0
-      ? surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+      ? mode === 'colour' && !typing
+        ? choiceCards({ width, palette, selected: colourChoice, samples: COLOUR_SAMPLES })
+        : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
       : []
 
   return (
@@ -360,7 +382,9 @@ export function Home({
         <Runs key={`surface${i}`} row={row} />
       ))}
       <Gap />
-      <Box flexShrink={0}>{field}</Box>
+      {/* Colour's home has nothing to type until something is: its field
+          shows once `/`, `#` or a drop has put text in it. */}
+      <Box flexShrink={0}>{mode === 'colour' && !typing ? <Text> </Text> : field}</Box>
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
         {list?.(Math.max(1, layout.list - 2))}
       </Box>

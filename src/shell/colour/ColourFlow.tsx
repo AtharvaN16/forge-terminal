@@ -81,7 +81,11 @@ interface Image {
 }
 
 const FORMATS = 'JPEG · PNG · HEIC · WebP · TIFF'
-/** Rows the photo needs, and the rows around the body on a colour screen. */
+/**
+ * Rows the photo needs, and the rows around the body on a colour screen: the
+ * bar and its gap (2), the field (3), the line under it (1), the gap and the
+ * detail (2), the approximate-colours note (1), the hints' gap, rule and keys (3).
+ */
 const PHOTO_ROWS = 12
 const CHROME = 12
 
@@ -199,8 +203,8 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
   const keys = keysFor(screen, state)
 
   return (
+    // The header bar above leaves a blank row; the field starts right under it.
     <Box flexDirection="column">
-      <Text> </Text>
       {state.field.focus ? (
         <FieldEditor
           width={width}
@@ -218,16 +222,16 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
           focus: false,
         }).map((row, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <Runs key={i} row={row} />
+          <Line key={i} row={row} />
         ))
       )}
-      <Runs row={state.error ? errorRow(p, state.error) : []} />
+      <Line row={state.error ? errorRow(p, state.error) : []} />
       {body.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-        <Runs key={i} row={row} />
+        <Line key={i} row={row} />
       ))}
       <Text> </Text>
-      <Runs row={state.flash ? flashRow(p, state.flash.text) : detail} />
+      <Line row={state.flash ? flashRow(p, state.flash.text) : detail} />
       {!truecolour && p.selectionBg !== '' ? <Runs row={approximateRow(p)} /> : null}
       <HintBar pairs={keys.main} foot={keys.foot} width={width} />
     </Box>
@@ -250,6 +254,11 @@ function restingField(p: ReturnType<typeof useTheme>, screen: Screen): Row {
     })
   }
   return fieldHint(p, onScaleScreen(screen) ? 'type a hex code' : 'type an image path')
+}
+
+/** One row of the screen. An empty row is still a row: a blank line, not nothing. */
+function Line({ row }: { row: Row }) {
+  return <Runs row={row.length === 0 ? [blank(1)] : row} />
 }
 
 /**
@@ -340,25 +349,19 @@ function bodyRows({
   pixels: Pixels | undefined
 }): Row[] {
   if (screen.kind === 'palette-empty') {
-    return [
-      [],
-      ...dropZone({ width, palette: p, typing: state.field.text !== '', formats: FORMATS }),
-    ]
+    return dropZone({ width, palette: p, typing: state.field.text !== '', formats: FORMATS })
   }
   if (screen.kind === 'scale-empty' || screen.kind === 'scale') {
     const ref: Rgb | undefined = state.preview ?? (screen.kind === 'scale' ? screen.ref : undefined)
-    if (!ref)
-      return [
-        [],
-        ...emptyRampRows({ palette: p, steps: scale({ r: 0, g: 0, b: 0 }).map((s) => s.step) }),
-      ]
+    if (!ref) {
+      return emptyRampRows({ palette: p, steps: scale({ r: 0, g: 0, b: 0 }).map((s) => s.step) })
+    }
     const steps = scale(ref)
     const sel = screen.kind === 'scale' && !state.preview ? screen.sel : 5
     const step = steps[sel] ?? steps[5]
     if (!step) return []
     const reads = onWhiteAndBlack(step.rgb)
     return [
-      [],
       ...rampRows({ palette: p, steps, selected: sel }),
       [],
       ...previewRows({ palette: p, step: { ...step, oklch: formatOklch(step.rgb), ...reads } }),
@@ -384,8 +387,8 @@ function bodyRows({
           selected: screen.sel,
           rows: showPhoto ? PHOTO_ROWS : items.length + 2,
         })
-  if (!showPhoto || !pixels) return [[], ...column.map((row) => [blank(4), ...row])]
-  return [[], ...paletteBody(photoFor(p, screen, groupsAt, pixels), column)]
+  if (!showPhoto || !pixels) return column.map((row) => [blank(4), ...row])
+  return paletteBody(photoFor(p, screen, groupsAt, pixels), column)
 }
 
 /** The colour a drill level is inside: its hex, its whole percentage, and its share of the image. */

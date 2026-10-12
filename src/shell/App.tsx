@@ -34,6 +34,8 @@ import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
+import { ColourFlow } from './colour/ColourFlow.js'
+import type { Start as ColourStart } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
@@ -108,6 +110,8 @@ export type Step =
   | 'pdf-running'
   /** `checkWriteSafety` refused the job `PdfFlow` handed off — see `pdfBlocked`. */
   | 'pdf-blocked'
+  /** Colour mode's palette or scale: `ColourFlow` owns the conversation. */
+  | 'colour'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -596,6 +600,11 @@ export function App({
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
+  /** Colour's home: the card chosen, Palette (0) or Scale (1). */
+  const [colourChoice, setColourChoice] = useState<0 | 1>(0)
+  /** How the colour flow opens, and the trail it hands up for the bar. */
+  const [colourStart, setColourStart] = useState<ColourStart>('palette')
+  const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Palette' })
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -1019,8 +1028,47 @@ export function App({
     setSizeError(undefined)
     setText('')
     setMode('convert')
+    setColourChoice(0)
     setStep('idle')
   }
+
+  /** Into the colour flow, opening as `start` says. */
+  const openColour = (start: ColourStart) => {
+    setColourStart(start)
+    setColourTrailNow({
+      answers: [],
+      current:
+        start === 'palette' || (typeof start === 'object' && 'palette' in start)
+          ? 'Palette'
+          : 'Scale',
+    })
+    setText('')
+    setStep('colour')
+  }
+
+  /**
+   * Colour's home, with nothing typed (colour spec §6.2): ←→ choose a card and
+   * ↵ opens it; `#` opens the scale with it typed; a drop opens the palette
+   * of what was dropped; `/` puts the slash in the field, which opens the
+   * commands as on every home; 1–4 switch mode. The field is hidden here, so
+   * these are read directly rather than through its `intercept`.
+   */
+  useKeys(
+    (input, key) => {
+      if (key.ctrl || key.meta) return
+      if (key.leftArrow) setColourChoice(0)
+      else if (key.rightArrow) setColourChoice(1)
+      else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
+      else if (input === '#') openColour({ typed: '#' })
+      else if (input === '/') setText('/')
+      else if (input.length > 1) openColour({ palette: input.trim() })
+      else {
+        const next = MODE_ORDER[Number(input) - 1]
+        if (/^[1-4]$/.test(input) && next && next !== mode) switchMode(next)
+      }
+    },
+    { isActive: onHome && mode === 'colour' && text === '' },
+  )
 
   useKeys(
     (input, key) => {
@@ -2423,6 +2471,7 @@ export function App({
     // A job not yet shown as Working: the bar stays as the last question left it.
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
+    if (at === 'colour') return colourTrailNow
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: pdfTrailNow.answers,
@@ -2891,6 +2940,16 @@ export function App({
             </Box>
           ) : null}
 
+          {step === 'colour' ? (
+            <ColourFlow
+              start={colourStart}
+              width={width}
+              height={height}
+              onCancel={() => setStep('idle')}
+              onTrail={setColourTrailNow}
+            />
+          ) : null}
+
           {step === 'pdf' ? (
             <PdfFlow
               stage={stage}
@@ -2999,10 +3058,12 @@ export function App({
                     )
                   : undefined
               }
+              colourChoice={colourChoice}
               keys={homeKeys({
                 typing: text !== '',
                 completions: completions.length,
                 commands: commands !== undefined,
+                colour: mode === 'colour',
               })}
             />
           ) : null}
