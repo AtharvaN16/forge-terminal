@@ -85,7 +85,7 @@ import { useAfter } from './useAfter.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
-import { bandFor, CARD_WIDTH, middleEllipsis } from './width.js'
+import { bandFor, CARD_WIDTH } from './width.js'
 import { phaseLabel } from './working-art.js'
 
 /**
