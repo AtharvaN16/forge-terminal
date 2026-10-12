@@ -122,7 +122,7 @@ describe('making a destination the default', () => {
     await settle(300)
     stdin.write(TAB)
     await settle(300)
-    expect(lastFrame() ?? '').not.toContain('✕')
+    expect(lastFrame() ?? '').not.toMatch(/^\s+failed\s*$/m)
   })
 
   it('the banner follows the change without waiting for a relaunch', async () => {

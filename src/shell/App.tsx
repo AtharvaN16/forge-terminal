@@ -12,6 +12,7 @@ import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
 import {
+  type ForgeError,
   isForgeError,
   unexpectedError,
   unsupportedCompress,
@@ -37,6 +38,7 @@ import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { DoneScreen } from './components/Done.js'
+import { ErrorLine } from './components/ErrorLine.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
@@ -51,6 +53,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
+import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -348,6 +351,12 @@ interface DropResolution {
   sources: SourceInfo[]
   failures: InputFailure[]
   anyExists: boolean
+  /**
+   * The text named one path, and it could not be read: a refusal of that
+   * path, to answer in a row under the field. Not set for a folder, or for
+   * several paths at once.
+   */
+  single?: boolean
 }
 
 /**
@@ -427,7 +436,7 @@ async function resolveDrop(text: string): Promise<DropResolution> {
       return resolution(found.sources, found.failures)
     }
   }
-  return resolution([], [asFailure(whole, wholeError)])
+  return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
 }
 
 export function App({
@@ -744,6 +753,35 @@ export function App({
    */
   const textRef = useRef('')
   textRef.current = text
+
+  /**
+   * The refusal of the last thing typed or dropped (E5·b), shown as a row
+   * under the home field. Typing, choosing a mode, or leaving home clears it.
+   */
+  const [homeError, setHomeError] = useState<ForgeError | undefined>(undefined)
+  /**
+   * What the field held when the row went up. A refused typed path stays in
+   * the field to be corrected, so the row clears on a *change* of the text,
+   * not on any text.
+   */
+  const homeErrorFor = useRef('')
+  /** Shows `error` under the field, with `field` left in it (a typed path stays). */
+  const refuseOnHome = useCallback((error: ForgeError, field = '') => {
+    homeErrorFor.current = field
+    setText(field)
+    setHomeError(error)
+  }, [])
+  useEffect(() => {
+    if (text !== homeErrorFor.current) setHomeError(undefined)
+    // The size step's row goes the same way. Its field is emptied by the
+    // submit that raised it, so the row outlives that and goes with the next
+    // change: typing makes it stale.
+    if (text !== '') setSizeError(undefined)
+  }, [text])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `mode` and `step` are the triggers
+  useEffect(() => {
+    setHomeError(undefined)
+  }, [mode, step])
 
   /**
    * The prompt is the home screen (mockups/flow-parts-2026-10.html, tab 3),
@@ -1137,6 +1175,7 @@ export function App({
   useKeys(
     (_input, key) => {
       if (!key.escape) return
+      setHomeError(undefined)
       if (text !== '') {
         setText('')
         return
@@ -1169,6 +1208,7 @@ export function App({
     setSizeUnreachable(null)
     setSuggestion(undefined)
     setSizeError(undefined)
+    setHomeError(undefined)
     setText('')
     setMode('convert')
     setStep('idle')
@@ -1370,6 +1410,7 @@ export function App({
   const runCommand = useCallback(
     (command: Command) => {
       setText('')
+      setHomeError(undefined)
 
       if (command.name === 'theme') {
         setStep('theme')
@@ -1576,9 +1617,18 @@ export function App({
           drop.failures.every((f) => f.error.code === 'empty-directory')
         ) {
           setText('')
+          setHomeError(undefined)
           for (const failure of drop.failures) showError(failure.error)
           return
         }
+        // One dropped file that could not be read, onto an empty home: said
+        // under the field, as a typed path is, and nothing is staged.
+        const [only] = drop.failures
+        if (drop.single && only && stageRef.current.sources.length === 0) {
+          refuseOnHome(only.error)
+          return
+        }
+        setHomeError(undefined)
         landDrop(drop)
       },
       () => {
@@ -1613,6 +1663,10 @@ export function App({
       }
       const id = ++requestId.current
       setText('')
+      setHomeError(undefined)
+      // The path stays in the field if it is refused, to be corrected — unless
+      // something was typed in the meantime, which then stays instead.
+      const kept = () => (textRef.current === '' ? trimmed : textRef.current)
 
       let drop: DropResolution
       try {
@@ -1621,8 +1675,9 @@ export function App({
         if (requestId.current !== id) return // superseded by a later submission
         // A rethrow here would become an unhandled rejection: submitPath is
         // fired from Prompt's synchronous useInput handler, and nothing awaits
-        // or catches the promise it returns. The shell must render it.
-        showError(e)
+        // or catches the promise it returns. The shell must render it — as
+        // the refusal of the path just typed, under the field.
+        refuseOnHome(isForgeError(e) ? e : unexpectedError(e), kept())
         setStep('idle')
         return
       }
@@ -1632,14 +1687,18 @@ export function App({
       const nothingStaged = stageRef.current.sources.length === 0
       const [first] = drop.sources
       if (nothingStaged && !first) {
-        for (const failure of drop.failures) showError(failure.error)
+        // One path that could not be read is answered under the field; a
+        // folder with nothing readable in it keeps a panel for each failure.
+        const [only] = drop.failures
+        if (drop.single && only) refuseOnHome(only.error, kept())
+        else for (const failure of drop.failures) showError(failure.error)
         return
       }
       landDrop(drop)
       // One file typed onto an empty home goes on at once, as it always has.
       if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
     },
-    [showError, push, runCommand, landDrop, proceedWith],
+    [showError, push, runCommand, landDrop, proceedWith, refuseOnHome],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -2601,7 +2660,14 @@ export function App({
                 </Text>
               ) : null}
               {sizeError ? (
-                <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${sizeError}`}</Text>
+                <Box flexDirection="column">
+                  <Text> </Text>
+                  <ErrorLine
+                    title="Not a size"
+                    reason={sizeError}
+                    width={Math.max(8, width - 2 * HOME_MARGIN)}
+                  />
+                </Box>
               ) : null}
               <HintBar
                 width={width}
@@ -2982,6 +3048,15 @@ export function App({
               typing={text !== ''}
               staged={staged ? stagedView(stage, freshRows) : undefined}
               under={underField(stage, mode)}
+              note={
+                homeError ? (
+                  <ErrorLine
+                    title={homeError.title}
+                    reason={homeError.short ?? homeError.detail}
+                    width={Math.max(8, width - 2 * HOME_MARGIN)}
+                  />
+                ) : undefined
+              }
               savesTo={displayPath(livePrefs.defaultOutput)}
               field={
                 <Prompt

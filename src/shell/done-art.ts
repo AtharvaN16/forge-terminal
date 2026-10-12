@@ -51,6 +51,24 @@ export function receiptBars(
   return { before: scale(before), after: scale(after), grew: after > before }
 }
 
+/**
+ * The longest head of `word` that fits in `width` columns, and the rest.
+ * Walks code points by display width, so a wide character is never split or
+ * left hanging past the edge; always takes at least one, so it makes progress
+ * even when a character is wider than the line.
+ */
+function breakWord(word: string, width: number): [string, string] {
+  let head = ''
+  let used = 0
+  for (const ch of word) {
+    const w = stringWidth(ch)
+    if (head && used + w > width) break
+    head += ch
+    used += w
+  }
+  return [head, word.slice(head.length)]
+}
+
 /** Word-wraps `text` to `width` columns, hard-breaking any longer word. */
 export function wrapWords(text: string, width: number): string[] {
   const out: string[] = []
@@ -62,8 +80,9 @@ export function wrapWords(text: string, width: number): string[] {
         out.push(line)
         line = ''
       }
-      out.push(w.slice(0, width))
-      w = w.slice(width)
+      const [head, rest] = breakWord(w, width)
+      out.push(head)
+      w = rest
     }
     if (!w) continue
     if (!line) line = w

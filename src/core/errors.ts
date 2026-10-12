@@ -39,6 +39,7 @@ interface ForgeErrorInit {
   code: ErrorCode
   title: string
   detail: string
+  short?: string
   hint?: string
   shellHint?: string
   cause?: unknown
@@ -48,6 +49,11 @@ export class ForgeError extends Error {
   readonly code: ErrorCode
   readonly title: string
   readonly detail: string
+  /**
+   * The detail in one line, for the shell's one-line refusal row. Absent
+   * means the shell shows `detail`.
+   */
+  readonly short?: string
   /** The way forward, phrased for the CLI — flags, not slash commands. */
   readonly hint?: string
   /**
@@ -70,6 +76,7 @@ export class ForgeError extends Error {
     this.code = init.code
     this.title = init.title
     this.detail = init.detail
+    this.short = init.short
     this.hint = init.hint
     this.shellHint = init.shellHint
   }
@@ -84,6 +91,7 @@ export function fileNotFound(path: string): ForgeError {
     code: 'file-not-found',
     title: 'File not found',
     detail: `${basename(path)} could not be found.`,
+    short: `${basename(path)} could not be found.`,
     hint: 'Check the filename and try again.',
   })
 }
@@ -93,6 +101,7 @@ export function notAFile(path: string): ForgeError {
     code: 'not-a-file',
     title: 'Not a file',
     detail: `${basename(path)} is not a file.`,
+    short: `${basename(path)} is not a file.`,
     hint: 'Point Forge at an image, or at a directory of images.',
   })
 }
@@ -102,6 +111,7 @@ export function permissionDenied(path: string): ForgeError {
     code: 'permission-denied',
     title: 'Permission denied',
     detail: `${basename(path)} could not be read.`,
+    short: `${basename(path)} could not be read.`,
     hint: 'Check the file permissions and try again.',
   })
 }
@@ -112,6 +122,7 @@ export function notADirectory(path: string): ForgeError {
     code: 'not-a-directory',
     title: 'Invalid path',
     detail: `${basename(path)} could not be found: part of its path is not a directory.`,
+    short: `part of ${basename(path)}'s path is not a folder.`,
     hint: 'Check the path and try again.',
   })
 }
@@ -121,6 +132,7 @@ export function symlinkLoop(path: string): ForgeError {
     code: 'symlink-loop',
     title: 'Too many symbolic links',
     detail: `${basename(path)} could not be resolved: its path contains a symbolic-link loop.`,
+    short: `${basename(path)}'s path loops back on itself.`,
     hint: 'Check for a circular symlink somewhere in the path.',
   })
 }
@@ -130,6 +142,7 @@ export function pathTooLong(path: string): ForgeError {
     code: 'path-too-long',
     title: 'Path too long',
     detail: `${basename(path)}'s path is too long for the filesystem to resolve.`,
+    short: `${basename(path)}'s path is too long.`,
     hint: 'Use a shorter path and try again.',
   })
 }
@@ -146,6 +159,7 @@ export function unreadablePath(path: string, cause: unknown): ForgeError {
     code: 'unreadable-path',
     title: 'Could not read path',
     detail: `${basename(path)} could not be checked.`,
+    short: `${basename(path)} could not be checked.`,
     hint: 'Check the path and try again.',
     cause,
   })
@@ -156,6 +170,7 @@ export function unsupportedSource(path: string, detected: string): ForgeError {
     code: 'unsupported-source',
     title: 'Unsupported file type',
     detail: `${basename(path)} is ${detected}, which Forge cannot read.`,
+    short: `${basename(path)} is ${detected}, which Forge cannot read.`,
     hint: 'Forge 0.1 handles images only.',
   })
 }
@@ -190,6 +205,7 @@ export function heicDecoderUnavailable(path: string): ForgeError {
     code: 'heic-decoder-unavailable',
     title: 'Cannot read HEIC here',
     detail: `${basename(path)} is a HEIC photo, which Forge decodes with the macOS sips tool.`,
+    short: 'HEIC needs sips, which could not be run.',
     hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
   })
 }
@@ -359,6 +375,7 @@ export function corruptSource(path: string, cause: unknown): ForgeError {
     code: 'corrupt-source',
     title: 'Damaged file',
     detail: `${basename(path)} could not be read. It may be damaged, or not a format Forge recognises.`,
+    short: `${basename(path)} could not be read.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
   })
@@ -377,6 +394,7 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
     code: 'corrupt-source',
     title: `Damaged ${FORMATS[format].label}`,
     detail: `${basename(path)} is a ${FORMATS[format].label} file, but its content could not be read.`,
+    short: `${basename(path)} could not be read.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
   })
@@ -396,6 +414,7 @@ export function encryptedSource(path: string, opts: { attempted?: boolean } = {}
     code: 'encrypted-source',
     title: 'This PDF is password-protected',
     detail: `${name} is password-protected.`,
+    short: `${name} is password-protected.`,
     hint: opts.attempted
       ? // A password was given and it did not open the file. The old hint
         // suggested --password-stdin, the flag that had just been used, which
