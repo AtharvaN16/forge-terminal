@@ -1,0 +1,63 @@
+name: publish
+
+# Publishes forge-terminal to npm when a v<version> tag is pushed, with
+# provenance: npm shows that the package was built here, from this commit.
+#
+# It authenticates with npm's trusted publishing (OIDC), so no npm token is
+# stored anywhere. That needs one-time setup on npmjs.com: the package's
+# Settings → Trusted publishing → GitHub Actions, repository
+# AtharvaN16/forge-terminal, workflow publish.yml. Until then the publish
+# step fails and nothing is published.
+#
+# Release: merge to main, bump the version, then
+#   git tag v<version> && git push origin v<version>
+# and do not also run `npm publish` locally.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: macos-26
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: The tag is this version, on main
+        shell: bash
+        run: |
+          want="v$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json ($want)"; exit 1
+          fi
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME is not on main"; exit 1
+          }
+
+      - run: npm ci
+
+      # What prepublishOnly runs, as steps so each shows on its own. A few
+      # shell tests are timing-sensitive under load, hence the retries.
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx vitest run --retry=2
+
+      # --ignore-scripts: prepublishOnly would run the checks above again.
+      - run: npm publish --provenance --access public --ignore-scripts
