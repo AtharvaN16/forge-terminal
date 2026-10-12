@@ -45,6 +45,20 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 14866325,
         sha256: '7af24c92f95b1cd34618adde4a90926c91a8db4347d640be4921f1dc706a9a2e',
       },
+      // Windows runs on DirectML, so any DirectX 12 GPU — integrated included —
+      // keeps it from the CPU fallback that rules out Intel Macs above.
+      'win32-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-win32-x64.tar.gz`,
+        bytes: 31779661,
+        sha256: '352245498a2028f7024a62d8958844bec9b1d7317b287e5fe24cef4e7add4a3d',
+      },
+      'win32-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-win32-arm64.tar.gz`,
+        bytes: 32907823,
+        sha256: '2f97f16859040d38686a14c46befca991aa821506da885c063e64be0652832c9',
+      },
     },
     licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
   },
@@ -64,11 +78,18 @@ export const CATALOG: readonly CatalogEntry[] = [
     licence: 'Uses Apple Vision on-device; helper is MIT',
   },
   {
-    // macOS decodes HEIC itself; Windows needs this. Assets are filled in at release.
+    // macOS decodes HEIC itself (sips); only Windows needs this.
     id: 'heic',
     title: 'HEIC photos',
     summary: 'Open iPhone photos (HEIC) on Windows',
-    assets: {},
+    assets: {
+      'win32-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-heic-v1.0.0/forge-ext-heic-1.0.0-win32-universal.tar.gz`,
+        bytes: 532364,
+        sha256: '6c5f86c1a896d84264fb19371117e6ca6ec9b8726afec03f8c30aa5125a3ad97',
+      },
+    },
     licence: 'libheif and libde265 (LGPL-3.0), via libheif-js',
   },
 ]
