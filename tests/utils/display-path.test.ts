@@ -49,11 +49,15 @@ describe('displayPath', () => {
 
 describe('display of a hostile name', () => {
   it('displayPath shows control characters as ?', () => {
-    expect(displayPath('/Users/me/a\x1b]0;x\x07.png', { home })).toBe('~/a?]0;x?.png')
+    expect(displayPath('/Users/me/a\x1b]0;x\x07.png', { home, platform })).toBe('~/a?]0;x?.png')
   })
 
   it('displayName is the base name, made printable', () => {
-    expect(displayName('/tmp/a\x1b]0;x\x07.png')).toBe('a?]0;x?.png')
-    expect(displayName('/tmp/photo.jpg')).toBe('photo.jpg')
+    expect(displayName('/tmp/a\x1b]0;x\x07.png', platform)).toBe('a?]0;x?.png')
+    expect(displayName('/tmp/photo.jpg', platform)).toBe('photo.jpg')
+  })
+
+  it('displayName splits on a backslash on Windows', () => {
+    expect(displayName('C:\\Users\\me\\a\x1b]0;x\x07.png', 'win32')).toBe('a?]0;x?.png')
   })
 })

@@ -4,11 +4,12 @@ import { render } from 'ink-testing-library'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
-import { CATALOG } from '../../src/extensions/catalog.js'
+import { assetFor, CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
 import type { EnhanceTools } from '../../src/shell/enhance.js'
 import { makeTempDir } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
@@ -19,13 +20,23 @@ const until = async (cond: () => boolean) => {
   for (let i = 0; i < 1200 && !cond(); i++) await new Promise((r) => setTimeout(r, 25))
 }
 
+/**
+ * Pinned to darwin, the shell reads a typed path the Mac way, where `\`
+ * escapes. Forward slashes name the same file on Windows and survive that.
+ */
+const REAL_PLATFORM = process.platform
+const typed = (path: string) => (REAL_PLATFORM === 'win32' ? path.replaceAll('\\', '/') : path)
+
+// The Mac's rows (Remove background among them); see pinPlatform.
+pinPlatform('darwin')
+
 /** Both extensions installed: Trim and Resize must not depend on either. */
 const tools: EnhanceTools = {
   async list() {
-    return CATALOG.map(
+    return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
       (entry): ExtensionStatus => ({
         entry,
-        installed: entry.version,
+        installed: assetFor(entry, 'darwin', 'arm64')?.version,
         updateAvailable: false,
         supported: true,
         downloadBytes: 0,
@@ -68,7 +79,7 @@ describe('Trim edges and Resize in Enhance', () => {
 
     await press('/enhance', 250)
     await press(ENTER, 250)
-    app.stdin.write(png)
+    app.stdin.write(typed(png))
     await until(() => frame().includes('photo.png'))
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))

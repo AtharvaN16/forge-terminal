@@ -267,10 +267,10 @@ describe('enhance mode', () => {
   it('offers 3× on the Boost row when boost 1.1.0 is installed', async () => {
     const tools: EnhanceTools = {
       async list() {
-        return CATALOG.map(
+        return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
           (entry): ExtensionStatus => ({
             entry,
-            installed: entry.id === 'boost' ? '1.1.0' : entry.version,
+            installed: entry.id === 'boost' ? '1.1.0' : assetFor(entry, 'darwin', 'arm64')?.version,
             updateAvailable: false,
             supported: true,
           }),
@@ -296,7 +296,7 @@ describe('enhance mode', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle()
-    app.stdin.write(png)
+    app.stdin.write(typed(png))
     await until(() => frame().includes('tile.png'))
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))
@@ -334,7 +334,7 @@ describe('enhance mode', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle()
-    app.stdin.write(png)
+    app.stdin.write(typed(png))
     await until(() => frame().includes('tile.png'))
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))

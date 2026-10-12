@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { ImageInfo } from '../../src/core/types.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import { detailAt, enhanceRow, enhanceRows, rowValues, toolState } from '../../src/shell/enhance.js'
+import { pinPlatform } from '../helpers/platform.js'
+
+// The Mac's rows (Remove background among them); see pinPlatform.
+pinPlatform('darwin')
 
 const image = (width: number, height: number, format: ImageInfo['format'] = 'png'): ImageInfo =>
   ({
