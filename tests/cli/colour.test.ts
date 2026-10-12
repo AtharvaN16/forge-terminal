@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { makeJpeg, makePdf, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
@@ -61,6 +61,32 @@ describe('forge scale', () => {
       expect(() => parseArgs(['scale', bad]), bad).toThrow(
         expect.objectContaining({ code: 'invalid-arguments', detail: `${bad} is not a colour.` }),
       )
+    }
+  })
+})
+
+describe('--help on the colour commands', () => {
+  it('prints their usage and ends as help does (exit 0), for both and for -h', () => {
+    for (const argv of [
+      ['palette', '--help'],
+      ['scale', '-h'],
+      ['scale', '6579FD', '--help'],
+    ]) {
+      const written: string[] = []
+      const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => {
+        written.push(String(s))
+        return true
+      })
+      try {
+        expect(() => parseArgs(argv), argv.join(' ')).toThrow(
+          expect.objectContaining({ code: 'commander.helpDisplayed' }),
+        )
+      } finally {
+        spy.mockRestore()
+      }
+      const text = written.join('')
+      expect(text).toContain(`forge ${argv[0]}`)
+      expect(text).toContain('--json')
     }
   })
 })

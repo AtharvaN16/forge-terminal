@@ -269,8 +269,29 @@ function colourArg(raw: string | undefined): Rgb {
  * filename. `--json` is read by `wantsJson`; `--svg` and `--inside <hex>` are
  * the only flags these take.
  */
+const COLOUR_USAGE: Record<'palette' | 'scale', string> = {
+  palette: `Usage: forge palette <image> [--json] [--svg] [--inside <hex>]
+
+An image's main colours, most of the image first.
+  --json            one JSON document: palette.colours[] with hex, rgb, oklch, share
+  --svg             a card of swatches; pipe to pbcopy and paste into Figma
+  --inside <hex>    the shades of the palette colour nearest <hex>
+`,
+  scale: `Usage: forge scale <colour> [--json] [--svg]
+
+50–950 built in OKLCH, with <colour> at 500. Pass the hex without #, or quote it.
+  --json            one JSON document: scale.steps[] with hex, oklch, white, black
+  --svg             a card of swatches; pipe to pbcopy and paste into Figma
+`,
+}
+
 function parseColourArgs(argv: string[]): PaletteIntent | ScaleIntent {
   const [cmd, ...rest] = argv
+  if (rest.includes('--help') || rest.includes('-h')) {
+    // As Commander does for `forge --help`: print, then end as help (exit 0).
+    process.stdout.write(COLOUR_USAGE[cmd === 'scale' ? 'scale' : 'palette'])
+    throw new CommanderError(0, 'commander.helpDisplayed', '(outputHelp)')
+  }
   const args = rest.filter((a) => a !== '--json' && a !== '--svg')
   const svg = rest.includes('--svg')
   const at = args.indexOf('--inside')
