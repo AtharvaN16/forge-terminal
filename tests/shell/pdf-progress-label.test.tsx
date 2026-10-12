@@ -42,6 +42,9 @@ async function waitFor(
 }
 
 /**
+ * (The labels below were RENDERING and SPLITTING before Working, W5, gave
+ * the count a line of its own: "Splitting doc.pdf", and a solid bar.)
+ *
  * Task 8 wired `runPdfJobs`'s `onEvent` into every `/pdf` operation and
  * hardcoded `label="RENDERING"` for all of it — accurate for a document
  * rasterisation (that genuinely renders pages to images, and
@@ -58,8 +61,8 @@ async function waitFor(
  * either the pre-run or the already-finished one — the same reason
  * `convert-pdf.test.tsx` picks 300 dpi over 72 for its own progress test.
  */
-describe('a running split names itself correctly, not RENDERING', () => {
-  it('shows SPLITTING with a real, growing page count while the split is in flight', async () => {
+describe('a running split names itself correctly, not as rendering', () => {
+  it('says Splitting, with a real, growing page count while the split is in flight', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 300)
     const { stdin, lastFrame } = render(
@@ -94,19 +97,24 @@ describe('a running split names itself correctly, not RENDERING', () => {
     stdin.write(ENTER) // confirm and run
 
     // Caught mid-run: a real page count from a real `page` event, not the
-    // "Running…" fallback `pdf-running` shows before the first one arrives,
-    // and not the finished frame either (asserted separately below).
+    // phase line Working shows before the first one arrives, and not the
+    // finished frame either (asserted separately below).
     const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 300/.test(f))
     expect(midFrame).toMatch(/page \d+ of 300/)
     const caughtDone = Number(midFrame.match(/page (\d+) of 300/)?.[1])
     expect(caughtDone).toBeGreaterThan(0)
     expect(caughtDone).toBeLessThan(300)
 
-    // The positive assertion the label itself needs: SPLITTING actually
-    // rendered, not just a blank or unrelated frame with no label at all.
-    expect(midFrame).toContain('SPLITTING')
-    // The bug this pins: split must never claim to be rendering.
-    expect(midFrame).not.toContain('RENDERING')
+    // The positive assertion the label itself needs: the split's own verb
+    // and file actually rendered (W5's "Splitting report.pdf"), on the line
+    // and at the end of the bar, not a blank or unrelated frame.
+    expect(midFrame).toMatch(/^ {3}Splitting doc\.pdf/m)
+    expect(midFrame).toMatch(/Splitting ╱╱$/m)
+    // The bug this pins: split must never claim to be converting pages.
+    expect(midFrame).not.toMatch(/Converting|RENDERING/)
+    // A solid bar, a full cell tall: it fills, and has no knob to drag.
+    expect(midFrame).toMatch(/^ {3}█{30} {2}page \d+ of 300$/m)
+    expect(midFrame).not.toContain('●')
 
     const finalFrame = await waitFor(
       lastFrame,

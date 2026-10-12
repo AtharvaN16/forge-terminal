@@ -72,7 +72,7 @@ describe('the target-size field', () => {
     app.stdin.write(ENTER)
     await settle(400)
 
-    // 'Save to' is the destination step: the size was taken, unit and all.
-    expect(app.lastFrame()).toContain('Save to')
+    // Save as is the next question: the size was taken, unit and all.
+    expect(app.lastFrame()).toContain('Save as')
   }, 30_000)
 })

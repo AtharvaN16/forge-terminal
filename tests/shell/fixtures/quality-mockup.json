@@ -1,0 +1,196 @@
+[
+  {
+    "label": "quality 80",
+    "mode": "convert",
+    "q": 80,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["                                   ", null, "#515151", false],
+        [" 80 ", "#0c1d22", "#e7e7e7", true],
+        ["         ", null, "#2e2e2e", false],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "quality 75",
+    "mode": "convert",
+    "q": 75,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["                                 ", null, "#515151", false],
+        [" 75 ", "#0c1d22", "#e7e7e7", true],
+        ["           ", null, "#2e2e2e", false],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "quality 60",
+    "mode": "convert",
+    "q": 60,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["                          ", null, "#515151", false],
+        [" 60 ", "#0c1d22", "#e7e7e7", true],
+        ["                  ", null, "#2e2e2e", false],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "quality 35",
+    "mode": "convert",
+    "q": 35,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["               ", null, "#515151", false],
+        [" 35 ", "#0c1d22", "#e7e7e7", true],
+        ["                             ", null, "#2e2e2e", false],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "quality 5",
+    "mode": "convert",
+    "q": 5,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["  ", null, "#515151", false],
+        [" 5 ", "#0c1d22", "#e7e7e7", true],
+        ["                                           ", null, "#2e2e2e", false],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "quality 1",
+    "mode": "convert",
+    "q": 1,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        [" 1 ", "#0c1d22", "#e7e7e7", true],
+        ["                                             ", null, "#2e2e2e", false],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "quality 100",
+    "mode": "convert",
+    "q": 100,
+    "rows": [
+      [
+        ["   ", null, null, false],
+        ["Quality", "#55c7d9", null, true],
+        ["                                                     ", null, null, false],
+        ["JPEG", "#808080", null, false],
+        ["             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["                                           ", null, "#515151", false],
+        [" 100 ", "#0c1d22", "#e7e7e7", true],
+        ["                             ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["smaller", "#808080", null, false],
+        ["                                  ", null, null, false],
+        ["sharper", "#808080", null, false],
+        ["                             ", null, null, false]
+      ]
+    ]
+  }
+]

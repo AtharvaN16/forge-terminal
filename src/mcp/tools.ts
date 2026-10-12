@@ -4,19 +4,29 @@ import type { CallToolResult } from '@modelcontextprotocol/server'
 import type { CompressIntent, ConvertIntent, ExtensionOpIntent, PageOpIntent } from '../cli/args.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
-import { type ForgeError, invalidArguments } from '../core/errors.js'
+import { parseHex } from '../core/colour/space.js'
+import { type ForgeError, invalidArguments, isForgeError } from '../core/errors.js'
 import { probeFiles } from '../core/probe-report.js'
 import {
   errorJson,
   type FailureJson,
   formatsJson,
+  type PaletteJson,
   probeJson,
   type RunJson,
   runJson,
+  type ScaleJson,
 } from '../core/report-data.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
-import type { CompressArgs, ConvertArgs, PdfArgs, ProbeArgs } from './schemas.js'
+import type {
+  CompressArgs,
+  ConvertArgs,
+  PaletteArgs,
+  PdfArgs,
+  ProbeArgs,
+  ScaleArgs,
+} from './schemas.js'
 
 /**
  * The server's stdin is the protocol. Nothing a tool runs may prompt or read
@@ -215,4 +225,49 @@ export async function pdfTool(args: PdfArgs): Promise<CallToolResult> {
     intent.split = args.split
   }
   return fromReport(await runWriting(intent))
+}
+
+/**
+ * A refusal from a colour tool. Text only, no `structuredContent`: the error
+ * document is RunOutput-shaped, and the tool's declared output schema is the
+ * palette or scale document, which a refusal must not claim to be.
+ */
+function textError(text: string): CallToolResult {
+  return { content: [{ type: 'text', text }], isError: true }
+}
+
+/**
+ * Colour tools call the CLI's own runners with `json: true` and return the
+ * very document `forge palette --json` prints, so the two cannot drift.
+ */
+export async function paletteTool(args: PaletteArgs): Promise<CallToolResult> {
+  const inside = args.inside === undefined ? undefined : parseHex(args.inside)
+  if (args.inside !== undefined && !inside) {
+    return textError(`${args.inside} is not a colour. Try #RRGGBB.`)
+  }
+  try {
+    const { runPalette } = await import('../cli/colour.js')
+    const out = await runPalette(
+      { kind: 'palette', input: args.path, svg: false, ...(inside ? { inside } : {}) },
+      { json: true, colour: false },
+    )
+    const doc = JSON.parse(out.stdout[0] ?? '{}') as PaletteJson
+    const text = doc.palette.colours.map((c) => `${c.hex} ${Math.round(c.share * 100)}%`).join('\n')
+    return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
+  } catch (e) {
+    if (isForgeError(e)) return textError(`${e.title}: ${e.detail}`)
+    throw e
+  }
+}
+
+export async function scaleTool(args: ScaleArgs): Promise<CallToolResult> {
+  const colour = parseHex(args.colour)
+  if (!colour) return textError(`${args.colour} is not a colour. Try #RRGGBB.`)
+  const { runScale } = await import('../cli/colour.js')
+  const out = await runScale({ kind: 'scale', colour, svg: false }, { json: true, colour: false })
+  const doc = JSON.parse(out.stdout[0] ?? '{}') as ScaleJson
+  const text = doc.scale.steps
+    .map((s) => `${s.step} ${s.hex} white ${s.white} black ${s.black}`)
+    .join('\n')
+  return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
 }

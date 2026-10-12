@@ -11,6 +11,7 @@ const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
 export const rotateAction: Action = {
   id: 'rotate',
   label: 'Rotate',
+  verb: 'Rotating',
   hint: 'turn pages',
   appliesTo: (sources) => soleDocument(sources) !== undefined,
   unavailable: () => 'one PDF at a time',

@@ -35,10 +35,8 @@ async function toCompress(name = 'photo.jpg') {
   return { ...app, dir }
 }
 
-/** Walks the remaining steps: destination, then name. */
+/** Walks the remaining step: Save as, with the proposed name in the default folder. */
 async function finish(stdin: { write: (s: string) => void }) {
-  stdin.write(ENTER)
-  await settle()
   stdin.write(ENTER)
   await settle(1200)
 }
@@ -192,6 +190,22 @@ describe('the format suggestion', () => {
     await settle(600)
     const all = frames.join('') + (lastFrame() ?? '')
     expect(all).toContain('convert to WebP')
+  }, 30_000)
+
+  it('takes it with c, to Save as, the name proposed for the new format', async () => {
+    const { stdin, lastFrame } = await toCompress()
+    stdin.write(ENTER)
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    await finish(stdin)
+    await settle(600)
+    stdin.write('c')
+    await settle(400)
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Save as')
+    // Convert's proposal, not compress's: no "-small", and the new extension.
+    expect(frame).toContain('› photo.webp')
   }, 30_000)
 
   it('says nothing after an ordinary conversion', async () => {

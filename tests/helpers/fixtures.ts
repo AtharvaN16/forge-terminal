@@ -284,6 +284,30 @@ export async function makeGradientPng(dir: string, name: string, size = 128): Pr
   return path
 }
 
+/**
+ * Noise, which no encoder can make small or fast: a fixture for work that
+ * must still be running after a moment (an AVIF encode, a size search).
+ */
+export async function makeNoiseImage(
+  dir: string,
+  name: string,
+  size: number,
+  format: 'png' | 'jpeg' = 'png',
+): Promise<string> {
+  const path = join(dir, name)
+  const image = sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 3,
+      background: '#808080',
+      noise: { type: 'gaussian', mean: 128, sigma: 60 },
+    },
+  })
+  await (format === 'png' ? image.png() : image.jpeg({ quality: 95 })).toFile(path)
+  return path
+}
+
 export async function countColours(path: string): Promise<number> {
   const { data, info } = await sharp(path).raw().toBuffer({ resolveWithObject: true })
   const colours = new Set<number>()

@@ -13,6 +13,7 @@ const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
 export const splitAction: Action = {
   id: 'split',
   label: 'Split',
+  verb: 'Splitting',
   hint: 'into several files',
   appliesTo: (sources) => (soleDocument(sources)?.pages ?? 0) > 1,
   unavailable: (sources) =>

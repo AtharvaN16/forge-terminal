@@ -7,7 +7,7 @@ import { writableFormats } from '../core/capabilities.js'
 import type { DocumentInfo, FormatId } from '../core/types.js'
 
 /**
- * Input and output schemas for the five tools, each written once (spec §3.5).
+ * Input and output schemas for the seven tools, each written once (spec §3.5).
  * Wherever an option already exists as an `OptionSpec` in `core/actions/`,
  * the allowed values are read from it. That way the shell, the CLI and MCP
  * cannot offer different choices.
@@ -212,5 +212,47 @@ export const FormatsOutput = z.strictObject({
       lossy: z.boolean(),
     }),
   ),
+  failures: z.array(FailureOut),
+})
+
+/** Colour (colour spec §7.2). Read-only, like `forge_probe`. */
+const Hex = z.string().describe('A hex colour: #RRGGBB, #RGB, or without the #')
+
+export const PaletteInput = z.object({
+  path: absolutePath.describe('An image file (absolute path): a photo, a screenshot or artwork'),
+  inside: Hex.optional().describe('Show the shades of the palette colour nearest this one'),
+})
+export const ScaleInput = z.object({ colour: Hex })
+export type PaletteArgs = z.infer<typeof PaletteInput>
+export type ScaleArgs = z.infer<typeof ScaleInput>
+
+export const PaletteOutput = z.strictObject({
+  forge: z.string(),
+  ok: z.boolean(),
+  palette: z.strictObject({
+    source: z.string(),
+    inside: z.string().optional(),
+    colours: z.array(
+      z.strictObject({ hex: z.string(), rgb: z.string(), oklch: z.string(), share: z.number() }),
+    ),
+  }),
+  failures: z.array(FailureOut),
+})
+
+export const ScaleOutput = z.strictObject({
+  forge: z.string(),
+  ok: z.boolean(),
+  scale: z.strictObject({
+    reference: z.string(),
+    steps: z.array(
+      z.strictObject({
+        step: z.number(),
+        hex: z.string(),
+        oklch: z.string(),
+        white: z.number(),
+        black: z.number(),
+      }),
+    ),
+  }),
   failures: z.array(FailureOut),
 })

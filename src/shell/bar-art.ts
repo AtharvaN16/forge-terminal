@@ -1,5 +1,5 @@
 import stringWidth from 'string-width'
-import { blank, clip, HOME_MARGIN, hatch, type Row, type Run, width } from './home-art.js'
+import { blank, clip, HOME_MARGIN, hatch, mix, type Row, type Run, width } from './home-art.js'
 import { modeColours, modeGradient, type Palette, type ShellMode } from './theme.js'
 
 /**
@@ -19,6 +19,15 @@ const SLANT_OUT = ''
 const TAIL = 2
 
 /**
+ * How bright the hatching is at column `c`, `t` seconds into a drift: a slow
+ * wave moving right, like a barber's pole (W5). Never below 0.55, so the bar
+ * still reads as the mode's at its darkest.
+ */
+export function driftAt(c: number, t: number): number {
+  return 0.55 + 0.45 * (0.5 + 0.5 * Math.sin((c - t * 9) / 2.2))
+}
+
+/**
  * The header bar (mockups/flow-parts-2026-10.html, tab 4, section 04): one
  * row the width of the home band, filled with `╱` hatching in the mode's
  * gradient, coloured by absolute column so it lines up with the band on
@@ -35,18 +44,28 @@ export function trailBarRow({
   mode,
   trail,
   slanted,
+  drift,
 }: {
   width: number
   palette: Palette
   mode: ShellMode
   trail: Trail
   slanted: boolean
+  /** Seconds into the drift while a job runs; the hatching is still without it. */
+  drift?: number | undefined
 }): Row {
   const M = HOME_MARGIN
   const end = columns - M
   const span = columns + 8
   const stops = modeGradient(palette, mode)
   const colour = modeColours(palette, mode).fg
+  // Each hatch cell is one run, so its column is where the run starts plus its index.
+  const fill = (from: number, n: number): Run[] =>
+    hatch(from, n, 0, span, stops).map((run, i) =>
+      drift === undefined
+        ? run
+        : { ...run, fg: mix(palette.canvas, run.fg ?? '', driftAt(from + i, drift)) },
+    )
   const label: Run = { text: ` ${mode} `, fg: palette.ink, bg: colour, bold: true }
   const chip: Run[] = slanted
     ? [{ text: SLANT_IN, fg: colour }, label, { text: SLANT_OUT, fg: colour }]
@@ -73,18 +92,18 @@ export function trailBarRow({
     shown = trail.current && room >= 4 ? [part(clip(trail.current, room - 2), true)] : []
   }
 
-  if (shown.length === 0) return [...row, ...hatch(from, end - from, 0, span, stops)]
+  if (shown.length === 0) return [...row, ...fill(from, end - from)]
   const start = end - TAIL - runWidth(shown)
-  row.push(...hatch(from, start - from, 0, span, stops))
+  row.push(...fill(from, start - from))
   let c = start
   shown.forEach((p, i) => {
     if (i > 0) {
-      row.push(...hatch(c, 1, 0, span, stops))
+      row.push(...fill(c, 1))
       c += 1
     }
     row.push(p)
     c += stringWidth(p.text)
   })
-  row.push(...hatch(c, TAIL, 0, span, stops))
+  row.push(...fill(c, TAIL))
   return row
 }

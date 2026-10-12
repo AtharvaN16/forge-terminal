@@ -1,0 +1,1544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — colour</title>
+<link rel="stylesheet" href="vendor/xterm.css" />
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-canvas.js"></script>
+<style>
+  :root { --page:#0d0e11; --ink:#e2e4ea; --muted:#8f94a1; --rule:#23252c; --card:#14161a; --cyan:#55c7d9;
+    --mono:"SF Mono", ui-monospace, Menlo, monospace; --sans:-apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 var(--sans); }
+  main { max-width:1280px; margin:0 auto; padding:52px 24px 120px; }
+  h1 { font-size:34px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); font-size:17px; max-width:840px; margin:0; }
+  .scope { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:22px; max-width:900px; }
+  .scope div { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:10px 14px; font-size:14px; color:var(--muted); }
+  .scope b { color:var(--ink); display:block; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; }
+  nav a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:4px 10px; border-radius:999px; }
+  nav a:hover { color:var(--ink); }
+  section { margin-top:84px; }
+  h2 { font-size:26px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 .n { font:600 14px var(--mono); color:var(--cyan); margin-right:10px; vertical-align:3px; }
+  .sub { color:var(--muted); margin:0 0 22px; max-width:880px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:30px 22px; }
+  .grid > figure { margin:0; min-width:0; }
+  .grid .wide { grid-column:1 / -1; }
+  @media (max-width:1100px) { .grid { grid-template-columns:1fr; } }
+  .vt { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .vt .id { font:700 12px var(--mono); padding:3px 7px; border-radius:6px; background:#12282e; color:var(--cyan); }
+  .vt .id.today { background:#23252d; color:#aeb3c0; }
+  .vt .name { font-weight:620; font-size:16px; }
+  .vt .pick { margin-left:auto; font:600 11px var(--mono); letter-spacing:.08em; color:#6fcf7f; border:1px solid #2c5a37; padding:2px 7px; border-radius:6px; }
+  .idea { font-size:14.5px; color:#c7cbd4; margin:8px 0 0; }
+  .pc { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; font-size:14px; margin-top:6px; }
+  .pc ul { margin:0; padding-left:16px; color:var(--muted); } .pc li { margin-bottom:3px; }
+  .pc h5 { margin:0 0 2px; font:600 11px var(--mono); letter-spacing:.1em; text-transform:uppercase; }
+  .pc .p h5 { color:#6fcf7f; } .pc .c h5 { color:#e8796d; }
+  .rule { background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--cyan); border-radius:0 10px 10px 0; padding:12px 16px; margin:0 0 26px; max-width:900px; font-size:15px; color:#c7cbd4; }
+  .rule b { color:var(--ink); }
+  .term { background:#1e1e1e; border:1px solid #2c2f37; border-radius:10px; overflow:hidden; box-shadow:0 24px 60px -30px rgba(0,0,0,.8); }
+  .term .bar { height:26px; display:flex; align-items:center; gap:7px; padding:0 12px; background:#161619; border-bottom:1px solid #26282e; }
+  .term .bar i { width:10px; height:10px; border-radius:50%; }
+  .term .bar i:nth-child(1){background:#ff5f57} .term .bar i:nth-child(2){background:#febc2e} .term .bar i:nth-child(3){background:#28c840}
+  .term .bar em { flex:1; text-align:center; font:normal 11px var(--mono); color:#666b78; margin-right:46px; }
+  .term pre { margin:0; padding:12px 14px 14px; font:10.4px/1.17 var(--mono); color:#e4e8f0; white-space:pre; overflow-x:auto; }
+  /* A terminal row is solid; a browser leaves gaps between the backgrounds of
+     consecutive lines. Inline-block spans fill the whole line box, as a cell does. */
+  .term pre span[style*="background"] { display:inline-block; }
+  .bob { display:inline-block; animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform:translateY(-1px) } 50% { transform:translateY(2px) } }
+  .caret { animation:blink 1.05s steps(1) infinite; } @keyframes blink { 50% { opacity:0 } }
+  details.older { margin-top:56px; border-top:1px solid var(--rule); padding-top:18px; }
+  details.older summary { cursor:pointer; color:var(--muted); font:14px var(--mono); }
+  /* Sparks fade their colour into the fill rather than moving, so the cell's
+     own background never shifts: that is all a terminal could do too. */
+  .spark { animation:spark 1.8s ease-out infinite; }
+  .spark:nth-of-type(2n) { animation-delay:.6s } .spark:nth-of-type(3n) { animation-delay:1.1s }
+  @keyframes spark { 0%, 100% { color:#252c3a } }
+  .off { color:transparent !important; }
+  .xt { padding:10px 12px 12px; background:#1e1e1e; }
+  .xt .xterm-viewport { overflow:hidden !important; background:#1e1e1e !important; }
+  .vt .after { margin-left:auto; font:12px var(--mono); color:var(--muted); }
+  .stack .term + .term { margin-top:10px; }
+  .sh { background:linear-gradient(90deg,#8b93a6 0 35%,#55c7d9 45%,#d8f6fb 50%,#55c7d9 55%,#8b93a6 65% 100%); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent !important; animation:sh 2s linear infinite; }
+  @keyframes sh { from { background-position:100% 0 } to { background-position:0 0 } }
+  .sweep { background-image:linear-gradient(90deg, transparent 0 40%, rgba(85,199,217,.28) 50%, transparent 60% 100%) !important; background-size:300% 100% !important; animation:sh 2.4s linear infinite; }
+  .tabs { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:6px; margin:26px -24px 0; padding:12px 24px; background:rgba(13,14,17,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--rule); }
+  .tabs a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:6px 12px; border-radius:8px; }
+  .tabs a.on { color:#0c1d22; background:var(--cyan); border-color:var(--cyan); font-weight:700; }
+  .tabs a.later { opacity:.65; }
+  .tabs .lbl { font:600 11px var(--mono); letter-spacing:.08em; color:var(--muted); align-self:center; margin:0 4px 0 10px; }
+  section.tab { display:none; margin-top:40px; } section.tab.on { display:block; }
+  .state { font:600 11px var(--mono); letter-spacing:.06em; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; }
+  .state:first-child { margin-top:0; }
+  footer { margin-top:90px; color:var(--muted); font-size:13px; border-top:1px solid var(--rule); padding-top:16px; }
+  code { font:.9em var(--mono); background:#1c1e24; padding:1px 5px; border-radius:4px; }
+  .flowmap { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:0 0 28px; font:13px var(--mono); }
+  .flowmap .step { display:inline-flex; gap:7px; align-items:center; padding:6px 10px; border:1px solid var(--rule); border-radius:8px; color:#e4e8f0; text-decoration:none; cursor:pointer; }
+  .flowmap .step b { color:var(--cyan); } .flowmap .ar { color:var(--muted); }
+  .flowmap i { font-style:normal; display:inline-flex; gap:4px; }
+  .flowmap .branch { flex-basis:100%; margin-top:8px; color:var(--muted); }
+  .k-yes, .k-no { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; }
+  .k-yes { background:#12282e; color:var(--cyan); } .k-no { background:#1c1e24; color:#5f6879; text-decoration:line-through; }
+  details.earlier { margin-top:46px; } details.earlier summary { cursor:pointer; font:600 13px var(--mono); color:var(--muted); margin-bottom:16px; }
+
+  .card-row { border:1px solid var(--rule); border-radius:12px; margin-top:14px; overflow:hidden; }
+  .card-row.on-light { background:#E5E5E5; } .card-row.on-dark { background:#1E1E1E; }
+  .card-meta { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; font:12px var(--mono); color:#8f94a1; background:rgba(13,14,17,.85); }
+  .card-meta button { font:600 12px var(--mono); color:#0c1d22; background:var(--cyan); border:0; border-radius:6px; padding:5px 10px; cursor:pointer; }
+  .card-svg { padding:28px; overflow-x:auto; } .card-svg svg { display:block; } .card-svg svg text { font-family:Inter, -apple-system, BlinkMacSystemFont, sans-serif !important; }
+  .photo { display:flex; gap:18px; align-items:center; margin:0 0 26px; }
+  .photo img { width:160px; height:160px; border-radius:10px; border:1px solid var(--rule); object-fit:cover; }
+  .feat { display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:1000px; }
+  .feat div { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:12px 16px; font-size:14.5px; color:#c7cbd4; }
+  .feat b { color:var(--ink); display:block; margin-bottom:2px; } .feat .later { opacity:.6; }
+  .feat .tag { font:600 10px var(--mono); letter-spacing:.08em; color:var(--cyan); margin-right:6px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Colour</h1>
+<p class="lede">Two features for designers: a <b>palette from an image</b>, and a <b>tonal scale from one colour</b>. Both end on your clipboard: a hex with ↵, or the whole set with <code>c</code>, as swatches you paste into Figma. Every terminal frame is a real 80 × 24 terminal drawn with the decided kit, and live. The colours are real: the palette is taken from the Sonoma wallpaper, and the scale is built from its blue.</p>
+<div class="tabs" id="tabs">
+  <a href="#features">0 · Features</a>
+  <span class="lbl">NOW</span>
+  <a href="#flow">★ Flow</a>
+  <a href="#home">1 · Entry ✓</a>
+  <a href="#palette">2 · Palette ✓</a>
+  <a href="#scale">3 · Scale ✓</a>
+  <a href="#type">4 · The field ✓</a>
+  <a href="#figma">5 · Figma card ✓</a>
+  <span class="lbl">LATER</span>
+  <a class="later" href="#fallback">6 · Fallbacks</a>
+</div>
+
+<section class="tab" id="features">
+  <h2><span class="n">00</span>What colour does</h2>
+  <p class="sub">The first version. Everything takes a file or a value and gives back a value or swatches; nothing here needs a canvas to tweak on.</p>
+  <div class="feat">
+    <div><span class="tag">1</span><b>Palette from an image</b>Drop a photo, screenshot or artwork. Forge finds its main colours (5–8), most of the image first, and draws the photo in them. → opens a colour to show the shades it is made of.</div>
+    <div><span class="tag">2</span><b>Tonal scale from a colour</b>Type a colour, or press <code>s</code> on a palette colour. You get 50–950, built in OKLCH so the steps look even, with your colour at 500. <code>r</code> on any step makes it the new centre and rebuilds the scale.</div>
+    <div><span class="tag">3</span><b>Copy a colour</b>↵ copies the chosen colour's hex. The line under the swatches gives the same colour as rgb and OKLCH.</div>
+    <div><span class="tag">4</span><b>Copy all</b><code>c</code> copies the whole set as a card of swatches with labels. ⌘V in Figma makes real shapes and text, the layers named <code>blue-500</code> and so on.</div>
+    <div><span class="tag">5</span><b>How text reads on it</b>Each scale step shows its contrast against white and black, and whether that passes AA or AAA.</div>
+    <div><span class="tag">6</span><b>The same from the command line</b><code>forge palette photo.jpg</code> and <code>forge scale "#6579FD"</code> print the same card into the scrollback; <code>--json</code> for scripts and agents.</div>
+    <div class="later"><span class="tag">LATER</span><b>Files</b>A PNG swatch sheet, <code>.ase</code> for Adobe apps, <code>.clr</code> for the macOS colour picker, CSS variables.</div>
+    <div class="later"><span class="tag">LATER</span><b>A contrast check on its own</b><code>forge contrast "#fff" "#6579FD"</code>, and the nearest colour that passes.</div>
+  </div>
+</section>
+
+<section class="tab" id="flow">
+  <h2><span class="n">★</span>The whole flow</h2>
+  <p class="sub">Colour mode as decided, one moment per frame, in order. <b>C1</b>: pressing 4 offers Palette or Scale on home. The field at the top of each screen is the app's filled field, in a <b>neutral grey</b> with no border (<b>G1</b>, full width for now; tab 4). The palette starts from the <b>drop zone</b>, shows the photo in its own colours (<b>D1</b>), and → goes deeper into a colour. <code>s</code> makes a <b>scale from a palette colour</b>, with it at <b>500</b> (<b>S9</b>); <code>r</code> makes any step the new centre. <code>↵</code> copies one hex, <code>c</code> copies all, and ⌘V in Figma gives the <b>F1 card</b>. esc always goes back one step, and the bar's trail shows the way back. The steps (click to jump):</p>
+  <div class="flowmap" id="flow-map"></div>
+  <div class="grid" id="flow-grid"></div>
+  <h3 style="margin-top:56px">Or start from a colour</h3>
+  <p class="sub">From home, → to Scale. The scale's card is its field, so it opens ready to type.</p>
+  <div class="grid" id="flow-branch-grid"></div>
+</section>
+
+<section class="tab" id="home">
+  <h2><span class="n">01</span>Pressing 4</h2>
+  <p class="sub">Colour is the fourth mode: <code>4</code>, or <code>/colour</code>. It asks one thing, palette or scale, and what you type then belongs to that screen (tab 4). Two ways to ask:</p>
+  <div class="grid" id="entry-grid"></div>
+  <details class="earlier"><summary>Not taken: a drop zone and field on home (H1–H4)</summary>
+  <p class="sub">Colour is the fourth mode: <code>4</code>, or <code>/colour</code>. Half of it starts from a file (a palette from an image) and half from a value (a scale from a colour), so its home takes both. Nothing in colour mode writes a file, so the tab row says where results go: the clipboard. Each frame types <code>#6579FD</code>.</p>
+  <div class="grid" id="home-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="palette">
+  <h2><span class="n">02</span>Palette from an image</h2>
+  <p class="sub">After you drop an image in colour mode. The photo it comes from:</p>
+  <div class="photo"><img src="colour-sonoma.jpg" alt="The Sonoma wallpaper" onerror="this.remove()" /><p class="sub" style="margin:0">Six colours, k-means in OKLab on a 96 × 96 copy: two greens and a lime from the hills, lavender and blue from the sky, coral from the band between. Each frame loops: it moves along the colours, copies one hex with ↵, and copies the whole set with <code>c</code>.</p></div>
+  <h3 style="margin-top:8px">Picked: D1, the photo in its own colours, with going deeper</h3>
+  <p class="sub">→ opens the chosen colour: the same grouping is run again on only its pixels, and you see the shades it is made of. ← goes back; ↵ still copies. The bar's trail says where you are: <code>Palette ╱ #F26E69</code>. Shades under 2% of their colour are dropped. Each frame loops: it opens the coral (12% of the photo), walks its four shades, copies one, goes back, and opens the blue.</p>
+  <div class="grid" id="drill-pick-grid"></div>
+  <details class="earlier"><summary>Not picked: D2, D3, and rounds one and two (P1–P8)</summary>
+  <div class="grid" id="drill-grid"></div>
+  <h3 style="margin-top:8px">Round one: P1–P3</h3>
+  <div class="grid" id="pal-grid"></div>
+  <h3 style="margin-top:56px">Round two: P4–P8, with the shares</h3>
+  <p class="sub">Each shows how much of the photo every colour covers. The percentages are whole numbers that add up to 100.</p>
+  <div class="grid" id="pal2-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="scale">
+  <h2><span class="n">03</span>Tonal scale from one colour</h2>
+  <p class="sub">After you type a colour, or press <code>s</code> on one in a palette. Here the blue from the photo, <code>#6579FD</code>, which lands on 500. The steps share its hue, follow a fixed lightness ladder, and carry less chroma towards the ends; any step outside sRGB loses chroma until it fits.</p>
+  <h3 style="margin-top:8px">Picked: S9, with make centre</h3>
+  <p class="sub">S1's ramp, with a preview of the chosen step under it. <code>r</code> makes the chosen step the new reference: it goes to 500 and the scale is rebuilt around it. Here the reference always sits at 500, the colour you type as well, so "500" always means "my colour".</p>
+  <div class="grid" id="recentre-grid"></div>
+  <details class="earlier"><summary>Not picked: S1–S8, S10, S11</summary>
+  <div class="grid" id="scale-pick-grid"></div>
+  <div class="grid" id="scale3-grid" style="margin-top:30px"></div>
+  <div class="grid" id="scale3-pick-grid" style="margin-top:30px"></div>
+  <div class="grid" id="scale-grid"></div>
+  <div class="grid" id="scale2-grid" style="margin-top:30px"></div>
+  </details>
+</section>
+
+<section class="tab" id="type">
+  <h2><span class="n">04</span>The field inside each screen</h2>
+  <p class="sub">Each screen has its own field: the palette's takes an image (a path, or a file dropped on the terminal), the scale's takes a colour. Typing again switches to another, and the view follows the moment the value is whole. Typing <code>#</code>, <code>/</code> or <code>~</code>, or pasting, goes into the field; other letters stay keys, so <code>c</code> and <code>r</code> still work. A colour typed on the palette makes a scale from it.</p>
+  <h3 style="margin-top:8px">The field as the app draws fields: filled grey, no border</h3>
+  <p class="sub">The size and name fields are a filled block, three rows of a neutral grey (#2c2c2c, no blue in it) with no stroke, <code>›</code> in the mode's colour and the value inside. Here colour mode's field takes that look and replaces the card at the top. Each is shown in five states: the scale empty, set, and taking a new colour; the palette empty (the drop zone under it) and with an image open.</p>
+  <div class="grid" id="filled-grid"></div>
+  <details class="earlier"><summary>Earlier: F1 (card as the field), F2 (field at the bottom), F3 (home's › line)</summary>
+  <div class="grid" id="field-grid"></div>
+  <div class="grid" id="field3-grid" style="margin-top:30px"></div>
+  </details>
+  <details class="earlier"><summary>Earlier: T1–T3</summary>
+  <p class="sub">On the palette and on the scale you can type a colour and get its scale, with it at 500. Three ways to offer that, each drawn on both screens. Each frame loops: it types <code>#E8B44C</code>, presses ↵, and walks the new scale. esc goes back to where you were, and the bar's trail keeps it.</p>
+  <div class="grid" id="type-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="figma">
+  <h2><span class="n">05</span>The card that lands in Figma</h2>
+  <p class="sub">What <code>c</code> (copy all) puts on the clipboard. Press <b>Copy for Figma</b> on any card, then ⌘V on a Figma canvas: these are the exact SVGs Forge would put on the clipboard. Each is shown as a light and a dark card, on a light and a dark canvas.</p>
+  <div class="grid" id="figma-grid"></div>
+  <details class="earlier"><summary>Not picked: F2, F3</summary><div class="grid" id="figma-old-grid"></div></details>
+</section>
+
+<section class="tab" id="fallback">
+  <h2><span class="n">06</span>Fallbacks</h2>
+  <p class="sub">After a pick: the chosen views in a terminal without true colour, and under <code>NO_COLOR</code>, where swatches cannot show at all.</p>
+</section>
+
+<footer>Convert · forge · colour · 2026-10-11 · Mockups only, drawn with the app's DARK palette in xterm.js.</footer>
+</main>
+
+<script>
+const X = (() => {
+  const E = '\x1b['
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+  const f = (h, t) => `${E}38;2;${rgb(h)}m${t}${E}39m`
+  const b = (h, t) => `${E}48;2;${rgb(h)}m${t}${E}49m`
+  const B = (t) => `${E}1m${t}${E}22m`
+  const I = (t) => `${E}3m${t}${E}23m`
+  const vis = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length
+  const padR = (s, w) => s + ' '.repeat(Math.max(0, w - vis(s)))
+  const center = (s, w) => ' '.repeat(Math.max(0, Math.floor((w - vis(s)) / 2))) + s
+  const right = (l, r, w) => l + ' '.repeat(Math.max(1, w - vis(l) - vis(r))) + r
+  const mix = (a, c, k) => {
+    k = Math.max(0, Math.min(1, k))
+    const A = rgb(a).split(';').map(Number), Cc = rgb(c).split(';').map(Number)
+    return '#' + A.map((v, i) => Math.round(v + (Cc[i] - v) * k).toString(16).padStart(2, '0')).join('')
+  }
+  /** Colour each visible character along a list of stops. */
+  const grad = (t, stops) => {
+    const cs = [...t], n = Math.max(1, cs.length - 1)
+    return cs.map((ch, i) => {
+      if (ch === ' ') return ch
+      const p = (i / n) * (stops.length - 1), k = Math.floor(p)
+      return f(mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k), ch)
+    }).join('')
+  }
+  /** A box: lines are already-styled strings padded to inner width. */
+  const box = (w, lines, { col = '#5f6879', round = true, title = '', heavy = false } = {}) => {
+    const [tl, tr, bl, br, h, v] = heavy ? ['┏', '┓', '┗', '┛', '━', '┃'] : round ? ['╭', '╮', '╰', '╯', '─', '│'] : ['┌', '┐', '└', '┘', '─', '│']
+    const top = title ? f(col, tl + h) + title + f(col, h.repeat(Math.max(0, w - 3 - vis(title))) + tr) : f(col, tl + h.repeat(w - 2) + tr)
+    return [top, ...lines.map((l) => f(col, v) + padR(l, w - 2) + f(col, v)), f(col, bl + h.repeat(w - 2) + br)]
+  }
+  return { f, b, B, I, vis, padR, center, right, grad, box, mix }
+})()
+const K = { bg: '#1e1e1e', fg: '#e7e7e7', d: '#b0b0b0', x: '#808080', faint: '#4d4d4d', m: '#55c7d9', mbg: '#122c33', panel: '#2c2c2c', panel2: '#333333', cap: '#333333', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
+const { f: xf, b: xb, B: xB, I: xI, padR: xpad, center: xc, right: xr, grad: xg, box: xbox } = X
+
+/* ================================================================== KIT
+   Only what is decided: the palette, the hatching, the home band, the drop
+   panel, the commands list, the header bar, the file card, the pickers and
+   the key row. Every frame is ANSI written into xterm.js, so cells are exact.
+   The explorations below the kit draw with these and nothing else. */
+const N = 80                              // terminal width
+const W = 76, M = 2                       // block width, and the margin either side
+const IN = ' '.repeat(M + 2)              // where the field and the list start
+const E = '\x1b['
+const vis = X.vis
+const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+const bgOn = (h) => `${E}48;2;${rgbOf(h)}m`
+/** A row on a fill. A nested background hands back to this fill, not to the terminal's. */
+const on = (bg, s, w = N) => bgOn(bg) + xpad(s, w).split(`${E}49m`).join(bgOn(bg)) + `${E}49m`
+const strip = (s) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+const gcol = (i, n, stops) => {
+  const p = (Math.max(0, Math.min(n - 1, i)) / Math.max(1, n - 1)) * (stops.length - 1), k = Math.floor(p)
+  return X.mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k)
+}
+const cursorAt = (rows, re, after = false) => {
+  for (let i = 0; i < rows.length; i++) {
+    const t = strip(rows[i]), m = re.exec(t)
+    if (m) return [i + 1, [...t.slice(0, m.index)].length + (after ? [...m[0]].length : 0) + 1]
+  }
+  return [rows.length, 1]
+}
+const HIDE = '\x1b[?25l'
+const P = K.panel, BAND = '#323232', HL = '#404040', EDGE = '#3d4350', FAINT = '#2e2e2e'
+
+/* ---------------------------------------------------------------- modes */
+const MODES = [
+  { n: 1, name: 'convert', c: K.m, g: [K.m, K.violet], kinds: 'images · HEIC · PDF · Word' },
+  { n: 2, name: 'compress', c: '#79c98b', g: ['#79c98b', K.m], kinds: 'images · PDF · video' },
+  { n: 3, name: 'pdf', c: '#ff6b4a', g: ['#ff6b4a', K.amber], kinds: 'split · merge · rotate' },
+]
+const CV_ = { mode: MODES[0], typing: false }
+const CM_ = { mode: MODES[1], typing: false }
+const PDF_ = { mode: MODES[2], typing: false }
+
+/* ------------------------------------------------------------- hatching */
+/** Hatching whose colour follows the absolute column, so stacked rows line up. */
+const hatchAt = (c0, n, r = 0, stops = MODES[0].g) => {
+  let s = ''
+  for (let i = 0; i < n; i++) s += xf(gcol(c0 + i + r * 2, N + 8, stops), '╱')
+  return s
+}
+/** Hatching in any colour function, cell by cell, at absolute columns. */
+const hatchFn = (c0, n, col, glyph = () => '╱') => { let o = ''; for (let i = 0; i < n; i++) { const g = glyph(c0 + i); o += g === ' ' ? ' ' : xf(col(c0 + i), g) } return o }
+const grad = (s) => (c) => gcol(c, N + 8, s.mode.g)
+
+/* ------------------------------------------------------------- key row */
+/** F1: main keys left, footnote right; the footnote loses items before it would wrap. */
+const keysF1 = ({ main = [], foot = [], w = N, lead = M + 1 } = {}) => {
+  const k = (key) => xb(K.cap, xf(K.fg, xB(` ${key} `)))
+  const left = ' '.repeat(lead) + main.map(([key, word]) => `${k(key)} ${xf(K.d, word)}`).join('  ')
+  let f = [...foot]
+  const ft = () => f.map(([a, b]) => (b ? `${a} ${b}` : a)).join(' · ')
+  while (f.length && vis(left) + 3 + ft().length + 1 > w) f = f.slice(0, -1)
+  return xr(left, xf(K.x, ft()) + ' ', w)
+}
+const stepKeys = (main, foot) => keysF1({ main, foot })
+const fill24 = (rows, last) => {
+  const r = [...rows]
+  while (r.length < (last ? 23 : 24)) r.push('')
+  return last ? [...r, last] : r
+}
+
+/* ------------------------------------------------------- home: the band */
+const WM3 = ['█▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀▀', '█▀▀  █  █ █▀▀▄ █ ▀█ █▀▀ ', '▀    ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀']
+const VER = 'v0.1.0'
+/** One row of the hatched band. The run after the word can carry a label, knocked out of it. */
+const bandRow = (s, i, { lab = null, tail = 2 } = {}) => {
+  const g = s.mode.g, c0 = M + 27, n = W - 27
+  const lead = ' '.repeat(M) + hatchAt(M, 1, i, g) + ' ' + xf(K.fg, xB(WM3[i])) + ' '
+  if (!lab) return lead + hatchAt(c0, n, i, g)
+  const w = vis(lab)
+  return lead + hatchAt(c0, n - tail - w, i, g) + lab + hatchAt(c0 + n - tail, tail, i, g)
+}
+const band = (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 2 ? { lab: ` ${xf(K.d, VER)} ` } : {}))
+
+/* ----------------------------------------------- home: tabs, panel, field */
+const SAVES = `${xf(K.x, 'saves to')} ${xf(K.d, '~/Desktop')}`
+const CMDT = { name: 'commands' }
+/** Home's tab row: the three modes, then "/ commands", always there. */
+const tabs4 = (s, cmdOn = false) => {
+  let top = '', row = ''
+  for (const t of [...MODES, CMDT]) {
+    const active = t === CMDT ? cmdOn : !cmdOn && t === s.mode
+    const lab = t === CMDT
+      ? ` ${xf(active ? s.mode.c : K.x, xB('/'))} ${active ? xf(K.fg, xB('commands')) : xf(K.d, 'commands')} `
+      : ` ${active ? `${xf(t.c, xB(String(t.n)))} ${xf(K.fg, xB(t.name))}` : `${xf(K.x, String(t.n))} ${xf(K.d, t.name)}`} `
+    top += active ? xf(P, '▄'.repeat(vis(lab))) : ' '.repeat(vis(lab))
+    row += active ? on(P, lab, vis(lab)) : lab
+    top += ' '; row += ' '
+  }
+  return [' '.repeat(M) + top, ' '.repeat(M) + xr(row, SAVES + ' ', W)]
+}
+const GRID = (c) => c % 3 === 0 && c >= 3 && c <= W - 4   // 3 cells in from each edge
+/** D2: the dots in the gradient, brighter towards the edges. */
+const d2dot = (s) => (c, r) => {
+  if (!GRID(c)) return null
+  const col = gcol(c + r * 2, W + 14, s.mode.g)
+  const dx = Math.abs(c - W / 2) / (W / 2), dy = Math.abs(r - 3.5) / 3.5
+  const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+  return X.mix(P, col, s.typing ? k * 0.45 : k)
+}
+/** A w×h surface. dot(c, r) gives a dot colour or null. The lines are centred
+ *  inside one clean rectangle knocked out of the dots, so the edges never fray. */
+const surface = ({ w = W, h = 8, bg = P, dot = () => null, lines, pad = 4, glyph = '·', lead = ' '.repeat(M) }) => {
+  const top = Math.floor((h - lines.length) / 2)
+  const isDot = (c) => !!dot(c, top)
+  let a = Math.floor((w - Math.max(...lines.map(vis)) - pad * 2) / 2), b = w - a
+  while (a > 0 && !isDot(a - 1)) a--
+  while (b < w && !isDot(b)) b++
+  const tw = b - a, rows = []
+  for (let r = 0; r < h; r++) {
+    const li = r - top, clear = r >= top && r < top + lines.length
+    let out = '', c = 0
+    while (c < w) {
+      if (clear && c === a) { out += li >= 0 && li < lines.length ? xpad(X.center(lines[li], tw), tw) : ' '.repeat(tw); c += tw; continue }
+      const col = r >= 1 && r <= h - 2 ? dot(c, r) : null
+      out += col ? xf(col, typeof glyph === 'function' ? glyph(c, r) : glyph) : ' '; c++
+    }
+    rows.push(lead + (bg ? on(bg, out, w) : xpad(out, w)))
+  }
+  return rows
+}
+const dropTitle = (s) => `${xf(s.typing ? K.x : s.mode.c, xB('↓'))}  ${xf(s.typing ? K.d : K.fg, xB('Drop a file here'))}`
+const dropSub = (s) => xf(s.typing ? K.faint : K.d, s.mode.kinds)
+const field = (s) => IN + xf(s.mode.c, xB('›')) + ' ' + (s.typing ? xf(K.fg, '~/Desk') : xf(K.x, 'or type a path'))
+const homeKeys = () => keysF1({ main: [['↵', 'send']], foot: [['1–3', 'mode'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] })
+/** The decided home, at rest. */
+const home = (s) => fill24(['', ...band(s), '', ...tabs4(s), ...surface({ lines: [dropTitle(s), dropSub(s)], dot: d2dot(s) }), '', field(s)], homeKeys())
+
+/* ------------------------------------------------------ home: commands */
+const CMD = [
+  { name: 'convert', d: "change a file's format", mode: MODES[0] },
+  { name: 'compress', d: 'make a file smaller', mode: MODES[1] },
+  { name: 'pdf', d: 'page operations on a PDF', mode: MODES[2] },
+  { name: 'theme', d: 'switch between light and dark' },
+]
+const cmdName = (c, q, sel) => xf(K.fg, xB('/' + q)) + (sel ? xf(K.fg, xB(c.name.slice(q.length))) : xf(K.d, c.name.slice(q.length)))
+/** One row, in the picker's band and strip; the strip takes the colour of the mode it would switch to. */
+const cmdRow = (c, q, sel, w) => {
+  const name = xpad(cmdName(c, q, sel), 12)
+  if (!sel) return '  ' + name + xf(K.x, c.d)
+  return on(HL, xf(c.mode ? c.mode.c : K.fg, '▌') + ' ' + name + xf(K.d, c.d), w)
+}
+const cmdList = (q, sel) => {
+  const hits = CMD.filter((c) => c.name.startsWith(q)), out = []
+  for (const [label, items] of [['modes', hits.filter((m) => m.mode)], ['settings', hits.filter((m) => !m.mode)]]) {
+    if (!items.length) continue
+    if (out.length) out.push('')
+    out.push('    ' + xf(K.x, label), ...items.map((c) => '  ' + cmdRow(c, q, c.name === sel, W - 4)))
+  }
+  return out
+}
+const panelRows = (rows, h = 8) => { const b = ['', ...rows, '']; while (b.length < h) b.push(''); return b.map((r) => ' '.repeat(M) + on(P, r, W)) }
+/** Home with the commands open: "/ commands" is the active tab, the list sits where the dots were. */
+const homeCommands = (s, q = '', sel = 'convert') => fill24(['', ...band(s), '', ...tabs4(s, true), ...panelRows(cmdList(q, sel)), '',
+  IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q)],
+keysF1({ main: [['↵', 'run'], ['esc', 'back']], foot: [['↑↓', 'choose'], ['type', 'filter'], ['ctrl-c', 'quit']] }))
+
+/* ------------------------------------------------------- the header bar */
+/** A chip with slanted ends (Powerline U+E0BA / U+E0BC), leaning with the hatching. */
+const slant = (col, label) => xf(col, '') + xb(col, xf(K.ink, xB(` ${label} `))) + xf(col, '')
+const TRAIL = {
+  convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop', 'test.jpg'] },
+  compress: { steps: ['Method', 'Size', 'Save to', 'Name'], answers: ['To a size', '50 KB', 'Desktop', 'photo.jpg'] },
+  pdf: { steps: ['Action', 'Pages', 'Save to'], answers: ['Split', 'every page', 'Desktop'] },
+}
+/**
+ * The decided bar: the mode as a slanted chip opening the row, hatching in the
+ * mode's gradient, and at the far end, two cells in, the trail: every answer
+ * so far (dim), then the current step (bold), separated by single ╱.
+ * `answers` and `now` override the trail; `col` overrides the hatching's colour.
+ */
+const bar = (s, at, { answers, now, col } = {}) => {
+  const t = TRAIL[s.mode.name]
+  const ans = answers ?? t.answers.slice(0, at)
+  const cur = now ?? t.steps[at]
+  const parts = [...ans.map((a) => ` ${xf(K.d, a)} `), ...(cur ? [` ${xf(K.fg, xB(cur))} `] : [])]
+  const hc = col ?? grad(s)
+  const o0 = ' '.repeat(M) + slant(s.mode.c, s.mode.name)
+  const rw = parts.reduce((n, p) => n + vis(p), 0) + Math.max(0, parts.length - 1)
+  const start = M + W - 2 - rw
+  let o = o0 + hatchFn(vis(o0), start - vis(o0), hc), c = start
+  parts.forEach((p, i) => { if (i) { o += hatchFn(c, 1, hc); c += 1 } o += p; c += vis(p) })
+  return o + hatchFn(c, M + W - c, hc)
+}
+
+/* ------------------------------------------------- the file card, pickers */
+/** The file card: a rounded frame, the format in the top edge. */
+const fcard = (s, { w = 52, tag = 'PNG', name = 'test.png', meta = '2756×774 · 122 KB · transparent', dim = false, edge = K.x, tagc } = {}) => {
+  const Ed = (t) => xf(edge, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+  return [
+    ' '.repeat(M) + Ed('╭─ ') + xf(tagc ?? s.mode.c, xB(tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(tag)) + '╮'),
+    side(xf(dim ? K.d : K.fg, xB(name))),
+    side(xf(K.d, meta)),
+    ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const qTitle = (s, t, count = '') => ' '.repeat(M + 1) + xr(xf(s.mode.c, xB(t)), xf(K.x, count), 64)
+/** The picker's band and strip; only the highlighted row says more. */
+const pick = (s, rows, sel, nw = 10) => rows.map(([name, more], i) => (i === sel
+  ? ' '.repeat(M) + on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(name)), nw) + (more ?? ''), 64)
+  : ' '.repeat(M) + '  ' + xf(K.d, name)))
+const FMTS = ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF']
+const sizeNote = `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}`
+/** The convert flow up to ↵, as decided: Format, Quality, Save to, Name. */
+const FLOW = {
+  format: () => fill24([bar(CV_, 0), '', ...fcard(CV_), '', qTitle(CV_, 'Convert to', '1/6'), '',
+    ...pick(CV_, FMTS.map((f, i) => [f, i === 0 ? sizeNote : '']), 0)],
+  stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']]) + HIDE),
+  name: () => fill24([bar(CV_, 3), '', ...fcard(CV_), '', qTitle(CV_, 'Name the file'), '',
+    ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.fg, 'test') + xf(K.x, '.jpg')],
+  stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']])),
+}
+
+/* -------------------------------------------------------------- render */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+function xterm(el, cols = N, lines = 24) {
+  const term = new Terminal({
+    cols, rows: lines, fontSize: 11, lineHeight: 1, letterSpacing: 0,
+    fontFamily: '"SF Mono", Menlo, monospace', customGlyphs: true, cursorBlink: true,
+    cursorStyle: 'bar', disableStdin: true, allowProposedApi: true,
+    theme: { background: K.bg, foreground: K.fg, cursor: K.m, cursorAccent: K.bg },
+  })
+  term.open(el)
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()) } catch (e) { /* DOM renderer fallback */ }
+  return term
+}
+const paint = (term, rows, cursor, lines = 24) => term.write('\x1b[H\x1b[2J' + rows.slice(0, lines).join('\r\n') + (cursor ? `\x1b[${cursor[0]};${cursor[1]}H\x1b[?25h` : HIDE))
+/** Live frames: make(t) is called with the seconds since the page opened, about 12 times a second, only while its tab is showing. */
+const LIVE = []
+let t0 = performance.now()
+setInterval(() => {
+  const t = (performance.now() - t0) / 1000
+  for (const f of LIVE) if (f.el.closest('section.tab.on')) { const r = f.make(t); paint(f.term, r.rows ?? r, r.cursor, f.lines) }
+}, 80)
+/** A figure: an optional heading, then frames (each { label, rows | make, cursor, lines }), then a note. */
+const fig = (gridId, { id, name, pick: mine, idea, frames, wide }) => {
+  const g = document.getElementById(gridId)
+  const fg = document.createElement('figure')
+  if (wide) fg.className = 'wide'
+  fg.innerHTML = (id ? `<div class="vt"><span class="id">${id}</span><span class="name">${name}</span>${mine ? '<span class="pick">MY PICK</span>' : ''}</div>` : '') +
+    frames.map((f) => `<div class="state">${f.label}</div><div class="term">${f.lines && f.lines < 24 ? '' : '<div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div>'}<div class="xt"></div></div>`).join('') +
+    (idea ? `<p class="idea">${idea}</p>` : '')
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  frames.forEach((f, i) => {
+    const el = els[i], lines = f.lines ?? 24, term = xterm(el, N, lines)
+    if (f.make) {
+      const first = f.make(reduced ? 0 : 0.0)
+      paint(term, first.rows ?? first, first.cursor, lines)
+      if (!reduced) LIVE.push({ el, term, make: f.make, lines })
+    } else paint(term, f.rows, f.cursor, lines)
+  })
+  return fg
+}
+/** Rows on their own, a blank row above and below each, in a short terminal. */
+const strip3 = (rows) => { const r = ['', ...rows.flatMap((x) => [...[].concat(x), '']).slice(0, -1), '']; return { rows: r, lines: r.length } }
+
+const CDATA = {"scA": [{"step": 50, "hex": "#F4F6FF", "white": 1.1, "black": 19.5, "rgb": "rgb(244 246 255)", "oklch": "oklch(97% 0.012 276)"}, {"step": 100, "hex": "#DFE6FE", "white": 1.2, "black": 16.9, "rgb": "rgb(223 230 254)", "oklch": "oklch(93% 0.033 273)"}, {"step": 200, "hex": "#C4D0FE", "white": 1.5, "black": 13.8, "rgb": "rgb(196 208 254)", "oklch": "oklch(86% 0.065 274)"}, {"step": 300, "hex": "#A3B6FF", "white": 2, "black": 10.7, "rgb": "rgb(163 182 255)", "oklch": "oklch(79% 0.106 273)"}, {"step": 400, "hex": "#8297FE", "white": 2.7, "black": 7.8, "rgb": "rgb(130 151 254)", "oklch": "oklch(71% 0.152 273)"}, {"step": 500, "hex": "#6579FD", "seed": true, "white": 3.7, "black": 5.7, "rgb": "rgb(101 121 253)", "oklch": "oklch(63% 0.196 273)"}, {"step": 600, "hex": "#5465DA", "white": 4.9, "black": 4.3, "rgb": "rgb(84 101 218)", "oklch": "oklch(56% 0.178 273)"}, {"step": 700, "hex": "#4351B7", "white": 6.8, "black": 3.1, "rgb": "rgb(67 81 183)", "oklch": "oklch(48% 0.161 273)"}, {"step": 800, "hex": "#343F96", "white": 9.1, "black": 2.3, "rgb": "rgb(52 63 150)", "oklch": "oklch(41% 0.142 273)"}, {"step": 900, "hex": "#252D76", "white": 12.2, "black": 1.7, "rgb": "rgb(37 45 118)", "oklch": "oklch(34% 0.124 273)"}, {"step": 950, "hex": "#161B58", "white": 15.8, "black": 1.3, "rgb": "rgb(22 27 88)", "oklch": "oklch(26% 0.108 273)"}], "scB": [{"step": 50, "hex": "#F4F6FF", "white": 1.1, "black": 19.5, "rgb": "rgb(244 246 255)", "oklch": "oklch(97% 0.012 276)"}, {"step": 100, "hex": "#D5DCF4", "white": 1.4, "black": 15.4, "rgb": "rgb(213 220 244)", "oklch": "oklch(90% 0.034 273)"}, {"step": 200, "hex": "#B0BAE1", "white": 1.9, "black": 11, "rgb": "rgb(176 186 225)", "oklch": "oklch(79% 0.056 274)"}, {"step": 300, "hex": "#8492CA", "white": 3, "black": 6.9, "rgb": "rgb(132 146 202)", "oklch": "oklch(67% 0.085 273)"}, {"step": 400, "hex": "#5867AF", "white": 5.3, "black": 4, "rgb": "rgb(88 103 175)", "oklch": "oklch(54% 0.114 273)"}, {"step": 500, "hex": "#343F96", "seed": true, "white": 9.1, "black": 2.3, "rgb": "rgb(52 63 150)", "oklch": "oklch(41% 0.142 273)"}, {"step": 600, "hex": "#2A3380", "white": 11.1, "black": 1.9, "rgb": "rgb(42 51 128)", "oklch": "oklch(36% 0.129 273)"}, {"step": 700, "hex": "#21286B", "white": 13.3, "black": 1.6, "rgb": "rgb(33 40 107)", "oklch": "oklch(32% 0.116 273)"}, {"step": 800, "hex": "#181D57", "white": 15.5, "black": 1.4, "rgb": "rgb(24 29 87)", "oklch": "oklch(27% 0.103 273)"}, {"step": 900, "hex": "#0F1344", "white": 17.5, "black": 1.2, "rgb": "rgb(15 19 68)", "oklch": "oklch(22% 0.091 273)"}, {"step": 950, "hex": "#070931", "white": 19.2, "black": 1.1, "rgb": "rgb(7 9 49)", "oklch": "oklch(17% 0.078 272)"}], "scC": [{"step": 50, "hex": "#FCF6EB", "white": 1.1, "black": 19.5, "rgb": "rgb(252 246 235)", "oklch": "oklch(97% 0.016 83)"}, {"step": 100, "hex": "#FAEDD7", "white": 1.2, "black": 18.2, "rgb": "rgb(250 237 215)", "oklch": "oklch(95% 0.032 81)"}, {"step": 200, "hex": "#F6E1BC", "white": 1.3, "black": 16.4, "rgb": "rgb(246 225 188)", "oklch": "oklch(92% 0.054 82)"}, {"step": 300, "hex": "#F2D39B", "white": 1.4, "black": 14.6, "rgb": "rgb(242 211 155)", "oklch": "oklch(88% 0.080 82)"}, {"step": 400, "hex": "#EDC375", "white": 1.7, "black": 12.7, "rgb": "rgb(237 195 117)", "oklch": "oklch(84% 0.108 82)"}, {"step": 500, "hex": "#E8B44C", "seed": true, "white": 1.9, "black": 11.1, "rgb": "rgb(232 180 76)", "oklch": "oklch(80% 0.134 82)"}, {"step": 600, "hex": "#C6983B", "white": 2.6, "black": 8, "rgb": "rgb(198 152 59)", "oklch": "oklch(71% 0.121 82)"}, {"step": 700, "hex": "#A57D2A", "white": 3.8, "black": 5.6, "rgb": "rgb(165 125 42)", "oklch": "oklch(61% 0.109 82)"}, {"step": 800, "hex": "#856318", "white": 5.5, "black": 3.8, "rgb": "rgb(133 99 24)", "oklch": "oklch(52% 0.098 82)"}, {"step": 900, "hex": "#664A06", "white": 8.2, "black": 2.5, "rgb": "rgb(102 74 6)", "oklch": "oklch(43% 0.085 83)"}, {"step": 950, "hex": "#483302", "white": 12, "black": 1.7, "rgb": "rgb(72 51 2)", "oklch": "oklch(34% 0.068 83)"}], "grid": ["222222222444444444444444", "222222222224444444444444", "222222222222244444444444", "552222222222222444444444", "555552222222222224444444", "555555552222222222244444", "555555555522224422222224", "555555555555222444422222", "000055555555522244444222", "000000055555555224444442", "000000000555555552244444", "000000000000000555222241", "111110000000000000552211", "111111100000000000000000", "131111111100000000000000", "331311111111111100000000", "313333111111111111100000", "113333331331111111111110", "113133333313331133111111", "011133333333333333333111", "001111333333333333333331", "000011133333333333333333", "000000111133333333333333", "000000001111133333333333"], "subgrid": [["........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "0003....................", "0000003.................", "000000000...............", "111100000003333.........", ".....1100000000003......", ".......11111100000011111", "..........11111100000011", "................11111011", "...................11111", ".......................1", "........................", "1.......................", "01......................", "2011....................", "220011..................", "22220011................"], ["........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", ".......................3", "12222.................21", "0111222.................", "0.11111122..............", "..0.100111122222........", ".0....0001011111122.....", "10......0..001000011222.", "21.0......0...00..001111", ".210.................001", "..2100.................0", "....210.................", "......2100..............", "........22100..........."], ["000000000...............", "11100000000.............", "1111100000000...........", "..1111100000000.........", ".....111100000000.......", "........11100000000.....", "..........1122..0000000.", "............122....00000", ".............112.....000", "...............12......0", ".................22.....", "..................1222..", "....................33..", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................"], ["........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", ".0......................", "20.0....................", "0.2000..................", "..002002.00.............", "..0.002002.020..00......", "....00022203200002200...", "......02232323332333220.", ".......00231311113333332", "..........02311111111113", ".............02311111111"], [".........000001111111111", "...........0000001111111", ".............00000011111", "...............000000111", ".................0000001", "...................00000", "..............00.......0", "...............2000.....", "................22000...", ".................222200.", "...................22220", "......................2.", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................"], ["........................", "........................", "........................", "11......................", "00011...................", "00000022................", "0000000002..............", "300000000001............", "....300000002...........", ".......30000002.........", ".........33330022.......", "...............322......", "..................32....", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................", "........................"]], "subs": [[{"hex": "#1C5E23", "share": 0.481}, {"hex": "#427722", "share": 0.404}, {"hex": "#2F3F10", "share": 0.062}, {"hex": "#776234", "share": 0.053}], [{"hex": "#89B928", "share": 0.388}, {"hex": "#76A625", "share": 0.333}, {"hex": "#609223", "share": 0.278}, {"hex": "#878A63", "share": 0.001}], [{"hex": "#9C9DFD", "share": 0.62}, {"hex": "#CD90C9", "share": 0.249}, {"hex": "#B377CC", "share": 0.126}, {"hex": "#9C7C9F", "share": 0.004}], [{"hex": "#99CB2B", "share": 0.28}, {"hex": "#C0F62A", "share": 0.273}, {"hex": "#A6DA2E", "share": 0.227}, {"hex": "#B3E72E", "share": 0.221}], [{"hex": "#7083FF", "share": 0.536}, {"hex": "#3E6AFF", "share": 0.304}, {"hex": "#836EF3", "share": 0.159}, {"hex": "#7B80C0", "share": 0.001}], [{"hex": "#FD6457", "share": 0.682}, {"hex": "#E795A9", "share": 0.126}, {"hex": "#DD7EA0", "share": 0.101}, {"hex": "#C05D3F", "share": 0.092}]], "palette": [{"hex": "#356723", "share": 0.195, "rgb": "rgb(53 103 35)", "oklch": "oklch(46% 0.113 138)"}, {"hex": "#77A726", "share": 0.19, "rgb": "rgb(119 167 38)", "oklch": "oklch(67% 0.161 128)"}, {"hex": "#AD95E9", "share": 0.178, "rgb": "rgb(173 149 233)", "oklch": "oklch(72% 0.122 296)"}, {"hex": "#ACE02C", "share": 0.169, "rgb": "rgb(172 224 44)", "oklch": "oklch(84% 0.200 125)"}, {"hex": "#6579FD", "share": 0.15, "rgb": "rgb(101 121 253)", "oklch": "oklch(63% 0.196 273)"}, {"hex": "#F26E69", "share": 0.117, "rgb": "rgb(242 110 105)", "oklch": "oklch(70% 0.164 24)"}], "seed": "#6579FD", "scale": [{"step": 50, "hex": "#F4F6FE", "L": 0.975, "white": 1.1, "black": 19.5, "rgb": "rgb(244 246 254)", "oklch": "oklch(97% 0.011 275)"}, {"step": 100, "hex": "#E3E9FE", "L": 0.935, "white": 1.2, "black": 17.4, "rgb": "rgb(227 233 254)", "oklch": "oklch(94% 0.029 273)"}, {"step": 200, "hex": "#CAD6FE", "L": 0.88, "white": 1.4, "black": 14.6, "rgb": "rgb(202 214 254)", "oklch": "oklch(88% 0.057 272)"}, {"step": 300, "hex": "#A8BAFE", "L": 0.8, "white": 1.9, "black": 11.1, "rgb": "rgb(168 186 254)", "oklch": "oklch(80% 0.099 273)"}, {"step": 400, "hex": "#8399FE", "L": 0.71, "white": 2.6, "black": 8, "rgb": "rgb(131 153 254)", "oklch": "oklch(71% 0.149 273)"}, {"step": 500, "hex": "#6579FD", "seed": true, "L": 0.6294587713021289, "white": 3.7, "black": 5.7, "rgb": "rgb(101 121 253)", "oklch": "oklch(63% 0.196 273)"}, {"step": 600, "hex": "#4E5DDC", "L": 0.54, "white": 5.4, "black": 3.9, "rgb": "rgb(78 93 220)", "oklch": "oklch(54% 0.193 273)"}, {"step": 700, "hex": "#3E4ABC", "L": 0.47, "white": 7.2, "black": 2.9, "rgb": "rgb(62 74 188)", "oklch": "oklch(47% 0.178 273)"}, {"step": 800, "hex": "#303999", "L": 0.4, "white": 9.7, "black": 2.2, "rgb": "rgb(48 57 153)", "oklch": "oklch(40% 0.155 273)"}, {"step": 900, "hex": "#252C7A", "L": 0.34, "white": 12.2, "black": 1.7, "rgb": "rgb(37 44 122)", "oklch": "oklch(34% 0.131 273)"}, {"step": 950, "hex": "#171D50", "L": 0.26, "white": 15.8, "black": 1.3, "rgb": "rgb(23 29 80)", "oklch": "oklch(26% 0.093 273)"}]}
+
+/* =============================================================== COLOUR
+   Palette from an image, and a tonal scale from one colour. Every frame is
+   drawn with the decided kit. The colours are real: the palette is k-means in
+   OKLab over the Sonoma wallpaper, the scale is built in OKLCH from its blue. */
+const COLOUR = { n: 4, name: 'colour', c: '#f27ba8', g: ['#f26e69', '#e5a23c', '#ace02c', '#55c7d9', '#6579fd', '#ad95e9'], kinds: 'palette · scale' }
+const CO_ = { mode: COLOUR, typing: false }
+const PAL = CDATA.palette, SC = CDATA.scale, SEED = CDATA.seed
+const L4 = ' '.repeat(M + 2)
+const pct = (p) => `${Math.round(p.share * 100)}% of the image`
+
+/** The photo as a file card. */
+/** While true, the cards at the top are drawn as the filled neutral field (filled.js). The Flow tab sets it. */
+let USE_FILLED = false
+const photoCard = () => (USE_FILLED ? filled(xf(K.d, 'sonoma.jpg') + '   ' + xf(K.x, '640×640 · 58 KB'), { focus: false })
+  : fcard(CO_, { tag: 'JPEG', name: 'sonoma.jpg', meta: '640×640 · 58 KB' }))
+/** The seed colour as a card, the way a file is: its value is the name. */
+const seedCard = () => {
+  const s = SC.find((x) => x.seed)
+  return fcard(CO_, { tag: 'COLOUR', name: xb(s.hex, '    ') + '  ' + xf(K.fg, xB(s.hex)), meta: `${s.oklch} · from sonoma.jpg` })
+}
+
+/** A timeline over a loop: [until, sel, flash] — flash is 'hex' or 'figma'. */
+const at = (t, script) => { const loop = script[script.length - 1][0], u = t % loop; return script.find(([e]) => u < e) }
+const PSCRIPT = [[1.5, 0], [3, 1], [4.5, 2], [6, 2, 'hex'], [7.5, 3], [9, 4], [10.5, 4, 'figma'], [12, 5]]
+const SSCRIPT = [[1.5, 5], [3, 6], [4.5, 7], [6, 7, 'hex'], [7.5, 8], [9, 3], [10.5, 3, 'figma'], [12, 4]]
+
+const copied = (what, n) => what === 'hex'
+  ? L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, 'copied ') + xf(K.fg, xB(n))
+  : L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, `copied ${n} swatches`) + xf(K.d, ' · paste into Figma with ⌘V')
+
+const palDetail = (sel, flash) => flash ? copied(flash, flash === 'hex' ? PAL[sel].hex : PAL.length)
+  : L4 + xf(K.fg, xB(PAL[sel].hex)) + '  ' + xf(K.d, PAL[sel].rgb) + '  ' + xf(K.d, PAL[sel].oklch) + '  ' + xf(K.x, pct(PAL[sel]))
+const palKeys = () => keysF1({ main: [['←→', 'choose'], ['↵', 'copy'], ['c', 'copy all']], foot: [['s', 'scale from this'], ['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE
+const palFrame = (body) => (t) => {
+  const [, sel, flash] = at(t, PSCRIPT)
+  return fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...photoCard(), '', ...body(sel), '', palDetail(sel, flash)], palKeys())
+}
+
+/* -------------------------------------------------------- P1: chips */
+const P1 = palFrame((sel) => {
+  const cw = 10, gap = '  '
+  const block = PAL.map((p) => xb(p.hex, ' '.repeat(cw))).join(gap)
+  const mark = PAL.map((p, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const lab = PAL.map((p, i) => xpad(i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex), cw)).join(gap)
+  return [L4 + block, L4 + block, L4 + block, L4 + mark, L4 + lab]
+})
+
+/* ------------------------------------------- P2: proportional strip */
+const widths = (() => {
+  const tot = W - 4, raw = PAL.map((p) => p.share * tot), w = raw.map(Math.floor)
+  let left = tot - w.reduce((a, b) => a + b, 0)
+  raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left-- > 0) w[i]++ })
+  return w
+})()
+const P2 = palFrame((sel) => {
+  const block = PAL.map((p, i) => xb(p.hex, ' '.repeat(widths[i]))).join('')
+  const mark = PAL.map((p, i) => (i === sel ? xf(K.fg, '▔'.repeat(widths[i])) : ' '.repeat(widths[i]))).join('')
+  const lab = PAL.map((p, i) => xpad(i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex), widths[i])).join('')
+  return [L4 + block, L4 + block, L4 + block, L4 + mark, L4 + lab]
+})
+
+/* ------------------------------------------------ P3: the picker list */
+const P3 = (t) => {
+  const [, sel, flash] = at(t, PSCRIPT)
+  const rows = PAL.map((p, i) => (i === sel
+    ? ' '.repeat(M) + on(BAND, xf(COLOUR.c, '▌') + ' ' + xb(p.hex, '      ') + '  ' + xf(K.fg, xB(p.hex)) + '   ' + xf(K.d, p.oklch) + '   ' + xf(K.x, pct(p)), 72)
+    : ' '.repeat(M) + '  ' + xb(p.hex, '      ') + '  ' + xf(K.d, p.hex)))
+  const foot = flash ? ['', copied(flash, flash === 'hex' ? PAL[sel].hex : PAL.length)] : []
+  return fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...photoCard(), '', ...rows, ...foot],
+    keysF1({ main: [['↑↓', 'choose'], ['↵', 'copy'], ['c', 'copy all']], foot: [['s', 'scale from this'], ['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* ------------------------------------------ palette: showing the shares */
+const PCT = (() => {   // whole percentages that add up to 100
+  const raw = PAL.map((p) => p.share * 100), w = raw.map(Math.floor)
+  let left = 100 - w.reduce((a, b) => a + b, 0)
+  raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left-- > 0) w[i]++ })
+  return w
+})()
+const pctOf = (i) => `${PCT[i]}%`
+const dim = (h) => X.mix(h, K.bg, 0.78)
+const inkFor = (h) => { const L = (x) => { const v = parseInt(x, 16) / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }; const y = 0.2126 * L(h.slice(1, 3)) + 0.7152 * L(h.slice(3, 5)) + 0.0722 * L(h.slice(5, 7)); return 1.05 / (y + 0.05) >= (y + 0.05) / 0.06 ? '#FFFFFF' : '#111111' }
+const palDetailNoPct = (sel, flash) => flash ? copied(flash, flash === 'hex' ? PAL[sel].hex : PAL.length)
+  : L4 + xf(K.fg, xB(PAL[sel].hex)) + '  ' + xf(K.d, PAL[sel].rgb) + '  ' + xf(K.d, PAL[sel].oklch)
+const palTop = () => [bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...photoCard(), '']
+
+/* P4: columns as tall as their share */
+const P4 = (t) => { const [, sel, flash] = at(t, PSCRIPT); return P4body(sel, flash) }
+const P4body = (sel, flash, top = null, keys = null) => {
+  const cw = 10, gap = '  ', H = 8, max = Math.max(...PCT), BL = ' ▁▂▃▄▅▆▇█'
+  const rows = Array.from({ length: H }, (_, k) => L4 + PAL.map((p, i) => {
+    const e = Math.round(PCT[i] / max * H * 8), f = Math.max(0, Math.min(8, e - (H - 1 - k) * 8))
+    return f === 8 ? xb(p.hex, ' '.repeat(cw)) : xf(p.hex, BL[f].repeat(cw))
+  }).join(gap))
+  const mark = L4 + PAL.map((p, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const hexes = L4 + PAL.map((p, i) => xpad(i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex), cw)).join(gap)
+  const pcts = L4 + PAL.map((p, i) => xpad(i === sel ? xf(K.fg, pctOf(i)) : xf(K.x, pctOf(i)), cw)).join(gap)
+  const head = palTop(); if (top) head[0] = top
+  return fill24([...head, ...rows, mark, hexes, pcts, '', palDetailNoPct(sel, flash)], keys ?? palKeys())
+}
+
+/* P5: the strip, each share written inside its colour */
+const P5 = (t) => {
+  const [, sel, flash] = at(t, PSCRIPT)
+  const seg = (fn) => L4 + PAL.map((p, i) => xb(p.hex, fn(p, i))).join('')
+  const blank = seg((p, i) => ' '.repeat(widths[i]))
+  const mid = seg((p, i) => xpad(X.center(xf(inkFor(p.hex), i === sel ? xB(pctOf(i)) : pctOf(i)), widths[i]), widths[i]))
+  const mark = L4 + PAL.map((p, i) => (i === sel ? xf(K.fg, '▔'.repeat(widths[i])) : ' '.repeat(widths[i]))).join('')
+  const lab = L4 + PAL.map((p, i) => xpad(i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex), widths[i])).join('')
+  return fill24([...palTop(), blank, mid, blank, mark, lab, '', palDetailNoPct(sel, flash)], palKeys())
+}
+
+/* P6: the picker, each row with a bar as long as its share */
+const P6 = (t) => {
+  const [, sel, flash] = at(t, PSCRIPT)
+  const BW = 36, max = Math.max(...PCT), EB = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+  const barOf = (i, col) => { const e = Math.round(PCT[i] / max * BW * 8); return xf(col, '█'.repeat(Math.floor(e / 8)) + EB[e % 8]) }
+  const rows = PAL.map((p, i) => {
+    const body = xb(p.hex, '    ') + '  ' + xpad(i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex), 9) + xpad(barOf(i, p.hex), BW + 1) + ' ' + (i === sel ? xf(K.fg, xB(pctOf(i))) : xf(K.x, pctOf(i)))
+    return i === sel ? ' '.repeat(M) + on(BAND, xf(COLOUR.c, '▌') + ' ' + body, 72) : ' '.repeat(M) + '  ' + body
+  })
+  const foot = ['', palDetailNoPct(sel, flash)]
+  return fill24([...palTop(), ...rows, ...foot], keysF1({ main: [['↑↓', 'choose'], ['↵', 'copy'], ['c', 'copy all']], foot: [['s', 'scale from this'], ['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* P7: a hundred squares, one per percent; the chosen colour lit, the rest dimmed */
+const P7 = (t) => {
+  const [, sel, flash] = at(t, PSCRIPT)
+  const cells = PCT.flatMap((n, i) => Array(n).fill(i)), COLS = 20
+  const rows = Array.from({ length: 5 }, (_, r) => L4 + cells.slice(r * COLS, r * COLS + COLS).map((i) => xf(i === sel ? PAL[i].hex : dim(PAL[i].hex), '▇▇') + ' ').join(''))
+  const leg = (from) => L4 + PAL.slice(from, from + 3).map((p, j) => { const i = from + j; return xpad(xf(i === sel ? p.hex : dim(p.hex), '▇▇') + ' ' + (i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex)) + ' ' + (i === sel ? xf(K.fg, pctOf(i)) : xf(K.x, pctOf(i))), 22) }).join('')
+  return fill24([...palTop(), ...rows, '', leg(0), leg(3), '', palDetailNoPct(sel, flash)], palKeys())
+}
+
+/* P8: the photo, drawn in its own six colours; the chosen one lit where it is */
+const P8 = (t) => { const [, sel, flash] = at(t, PSCRIPT); return P8body(sel, flash) }
+const P8body = (sel, flash, top = null, keys = null) => {
+  const G = CDATA.grid, col = (i) => (+i === sel ? PAL[+i].hex : dim(PAL[+i].hex))
+  const pic = Array.from({ length: 12 }, (_, r) => [...G[r * 2]].map((top, x) => xb(col(G[r * 2 + 1][x]), xf(col(top), '▀'))).join(''))
+  const BW = 14, max = Math.max(...PCT), EB = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+  const barOf = (i) => { const e = Math.round(PCT[i] / max * BW * 8); return xf(i === sel ? PAL[i].hex : dim(PAL[i].hex), '█'.repeat(Math.floor(e / 8)) + EB[e % 8]) }
+  const item = (i) => {
+    const p = PAL[i], body = xb(p.hex, '    ') + '  ' + xpad(i === sel ? xf(K.fg, xB(p.hex)) : xf(K.d, p.hex), 9) + xpad(barOf(i), BW + 1) + ' ' + (i === sel ? xf(K.fg, xB(pctOf(i))) : xf(K.x, pctOf(i)))
+    return i === sel ? on(BAND, xf(COLOUR.c, '▌') + ' ' + body, 42) : '  ' + body
+  }
+  const rows = pic.map((p, r) => L4 + p + '    ' + (r % 2 === 0 ? item(r / 2) : ''))
+  return fill24([top ?? bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...photoCard(), '', ...rows, '', palDetailNoPct(sel, flash)],
+    keys ?? keysF1({ main: [['↑↓', 'choose'], ['↵', 'copy'], ['c', 'copy all']], foot: [['s', 'scale from this'], ['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* ------------------------------------------------ palette: going deeper
+   → opens the chosen colour: the same grouping again, on only its pixels.
+   ← goes back. Sub-shades under 2% of their colour are dropped. */
+const SUBS = CDATA.subs.map((g) => g.filter((x) => x.share >= 0.02))
+const subPct = (i) => {   // whole percentages of the parent that add up to 100
+  const raw = SUBS[i].map((x) => x.share * 100), w = raw.map(Math.floor), tot = raw.reduce((a, b) => a + b, 0)
+  let left = Math.round(tot) - w.reduce((a, b) => a + b, 0)
+  raw.map((r, k) => [r - Math.floor(r), k]).sort((a, b) => b[0] - a[0]).forEach(([, k]) => { if (left-- > 0) w[k]++ })
+  return w
+}
+const ofImg = (i, k) => (SUBS[i][k].share * PAL[i].share * 100).toFixed(1) + '%'
+/* [until, level, colour, sub, flash] */
+const DSCRIPT = [[1.6, 0, 5], [3.2, 1, 5, 0], [4.8, 1, 5, 1], [6.4, 1, 5, 2], [8, 1, 5, 2, 'hex'], [9.6, 1, 5, 3], [11.2, 0, 5], [12.8, 0, 4], [14.4, 1, 4, 0], [16, 1, 4, 1]]
+const dAt = (t) => { const [, lv, sel, sub, flash] = at(t, DSCRIPT); return { lv, sel, sub, flash } }
+const dBar = (lv, sel) => (lv ? bar(CO_, 0, { answers: ['Palette'], now: PAL[sel].hex }) : bar(CO_, 0, { answers: [], now: 'Palette' }))
+const dKeys = (lv, arrows) => keysF1({ main: lv ? [[arrows, 'choose'], ['←', 'back'], ['↵', 'copy'], ['c', 'copy all']] : [[arrows, 'choose'], ['→', 'open'], ['↵', 'copy'], ['c', 'copy all']], foot: lv ? [['esc', 'back'], ['ctrl-c', 'quit']] : [['s', 'scale'], ['#', 'new colour'], ['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE
+const dDetail = ({ lv, sel, sub, flash }) => {
+  if (!lv) return palDetailNoPct(sel, flash)
+  const x = SUBS[sel][sub]
+  if (flash) return copied('hex', x.hex)
+  return L4 + xf(K.fg, xB(x.hex)) + '  ' + xf(K.d, `${subPct(sel)[sub]}% of ${PAL[sel].hex}`) + xf(K.x, ` · ${ofImg(sel, sub)} of the image`)
+}
+const EB8 = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+const hbar = (frac, w, col) => { const e = Math.round(frac * w * 8); return xf(col, '█'.repeat(Math.floor(e / 8)) + EB8[e % 8]) }
+const faint = (h) => X.mix(h, K.bg, 0.9)
+
+/* D1 · on P8: the photo lights only the chosen sub-shade */
+const D1 = (t) => {
+  const st = dAt(t), { lv, sel, sub } = st
+  if (!lv) return P8body(sel, st.flash, dBar(0, sel), dKeys(0, '↑↓'))
+  const G = CDATA.grid, SG = CDATA.subgrid[sel]
+  const col = (y, x) => { const s2 = SG[y][x]; return s2 === '.' ? faint(PAL[+G[y][x]].hex) : (+s2 === sub ? SUBS[sel][+s2]?.hex ?? PAL[sel].hex : dim(SUBS[sel][+s2]?.hex ?? PAL[sel].hex)) }
+  const pic = Array.from({ length: 12 }, (_, r) => Array.from({ length: 24 }, (_, x) => xb(col(r * 2 + 1, x), xf(col(r * 2, x), '▀'))).join(''))
+  const pc = subPct(sel), mx = Math.max(...pc), BW = 14
+  const head = '  ' + xb(PAL[sel].hex, '    ') + '  ' + xf(K.fg, xB(PAL[sel].hex)) + '  ' + xf(K.x, `${PCT[sel]}% of the image`)
+  const item = (k) => {
+    const x = SUBS[sel][k], me = k === sub
+    const body = xb(x.hex, '    ') + '  ' + xpad(me ? xf(K.fg, xB(x.hex)) : xf(K.d, x.hex), 9) + xpad(hbar(pc[k] / mx, BW, me ? x.hex : dim(x.hex)), BW + 1) + ' ' + (me ? xf(K.fg, xB(pc[k] + '%')) : xf(K.x, pc[k] + '%'))
+    return me ? on(BAND, xf(COLOUR.c, '▌') + ' ' + body, 42) : '  ' + body
+  }
+  const right = [head, '', ...SUBS[sel].flatMap((_, k) => [item(k), ''])]
+  const rows = pic.map((p, r) => L4 + p + '    ' + (right[r] ?? ''))
+  return fill24([dBar(1, sel), '', ...photoCard(), '', ...rows, '', dDetail(st)], dKeys(1, '↑↓'))
+}
+
+/* D2 · on P6: the row opens in place; its sub-shades' bars add up to its own */
+const D2 = (t) => {
+  const st = dAt(t), { lv, sel, sub } = st
+  const BW = 36, max = Math.max(...PCT)
+  const rows = []
+  PAL.forEach((p, i) => {
+    const open = lv && i === sel, me = !lv && i === sel
+    const sw = xb(lv && !open ? dim(p.hex) : p.hex, '    ')
+    const name = me || open ? xf(K.fg, xB(p.hex)) : xf(lv ? K.x : K.d, p.hex)
+    const body = sw + '  ' + xpad(name, 9) + xpad(hbar(PCT[i] / max, BW, lv && !open ? dim(p.hex) : p.hex), BW + 1) + ' ' + (me || open ? xf(K.fg, xB(pctOf(i))) : xf(K.x, pctOf(i)))
+    rows.push(me ? ' '.repeat(M) + on(BAND, xf(COLOUR.c, '▌') + ' ' + body, 72) : ' '.repeat(M) + (open ? xf(K.d, '▾ ') : '  ') + body)
+    if (open) {
+      const pc = subPct(i)
+      SUBS[i].forEach((x, k) => {
+        const mine = k === sub, frac = (x.share * PCT[i]) / max
+        const tree = xf(K.x, k === SUBS[i].length - 1 ? '└ ' : '├ ')
+        const b = tree + xb(x.hex, '  ') + '  ' + xpad(mine ? xf(K.fg, xB(x.hex)) : xf(K.d, x.hex), 9) + xpad(hbar(frac, BW - 4, x.hex), BW - 3) + ' ' + (mine ? xf(K.fg, xB(pc[k] + '%')) : xf(K.x, pc[k] + '%')) + xf(K.x, ' of it')
+        rows.push(mine ? ' '.repeat(M) + on(BAND, xf(COLOUR.c, '▌') + '   ' + b, 72) : ' '.repeat(M) + '    ' + b)
+      })
+    }
+  })
+  return fill24([dBar(lv, sel), '', ...photoCard(), '', ...rows, '', dDetail(st)], dKeys(lv, '↑↓'))
+}
+
+/* D3 · on P4: the sub-shades become the columns; a thin strip above keeps the six */
+const D3 = (t) => {
+  const st = dAt(t), { lv, sel, sub } = st
+  if (!lv) return P4body(sel, st.flash, dBar(0, sel), dKeys(0, '←→'))
+  const strip = L4 + PAL.map((p, i) => xf(i === sel ? p.hex : dim(p.hex), '▀'.repeat(widths[i]))).join('')
+  const lab = L4 + PAL.map((p, i) => xpad(i === sel ? xf(K.fg, xB(p.hex)) + xf(K.x, ' ' + pctOf(i)) : '', widths[i])).join('')
+  const pc = subPct(sel), mx = Math.max(...pc), n = SUBS[sel].length, cw = 14, gap = '  ', H = 7, BL = ' ▁▂▃▄▅▆▇█'
+  const cols = Array.from({ length: H }, (_, k) => L4 + SUBS[sel].map((x, j) => {
+    const e = Math.round(pc[j] / mx * H * 8), f = Math.max(0, Math.min(8, e - (H - 1 - k) * 8))
+    return f === 8 ? xb(x.hex, ' '.repeat(cw)) : xf(x.hex, BL[f].repeat(cw))
+  }).join(gap))
+  const mark = L4 + SUBS[sel].map((x, j) => (j === sub ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const hexes = L4 + SUBS[sel].map((x, j) => xpad(j === sub ? xf(K.fg, xB(x.hex)) : xf(K.d, x.hex), cw)).join(gap)
+  const pcts = L4 + SUBS[sel].map((x, j) => xpad(j === sub ? xf(K.fg, pc[j] + '% of it') : xf(K.x, pc[j] + '% of it'), cw)).join(gap)
+  return fill24([dBar(1, sel), '', ...photoCard(), '', strip, lab, '', ...cols, mark, hexes, pcts, '', dDetail(st)], dKeys(1, '←→'))
+}
+
+/* ------------------------------------------------- the scale, shared */
+const ratioTag = (r) => (r >= 7 ? 'AAA' : r >= 4.5 ? 'AA' : r >= 3 ? 'large' : 'fails')
+const scDetail = (sel, flash) => {
+  if (flash) return copied(flash, flash === 'hex' ? SC[sel].hex : SC.length)
+  const s = SC[sel]
+  return L4 + xf(K.fg, xB(`${s.step}`)) + '  ' + xf(K.fg, xB(s.hex)) + '  ' + xf(K.d, s.oklch) + '   ' +
+    xf(K.x, 'on white ') + xf(K.d, `${s.white} ${ratioTag(s.white)}`) + xf(K.x, ' · on black ') + xf(K.d, `${s.black} ${ratioTag(s.black)}`)
+}
+const scKeys = (arrows) => keysF1({ main: [[arrows, 'choose'], ['↵', 'copy'], ['c', 'copy all']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE
+
+/* ------------------------------------------------- S1: the ramp */
+const S1 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const cw = 6, gap = ' ', lead = ' '.repeat(M)
+  const steps = SC.map((s, i) => xpad(X.center(i === sel ? xf(K.fg, xB(String(s.step))) : xf(s.seed ? COLOUR.c : K.x, String(s.step)), cw), cw)).join(gap)
+  const block = SC.map((s) => xb(s.hex, ' '.repeat(cw))).join(gap)
+  const mark = SC.map((s, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  return fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...seedCard(), '', lead + steps, lead + block, lead + block, lead + block, lead + mark, '', scDetail(sel, flash)], scKeys('←→'))
+}
+
+/* --------------------------------------- S2: the list, with "Aa" on each */
+const S2 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const sample = (h) => xb(h, xf('#FFFFFF', xB('  Aa  ')) + xf('#000000', xB('  Aa  ')))
+  const rows = SC.map((s, i) => {
+    const step = xpad(xf(i === sel ? K.fg : s.seed ? COLOUR.c : K.x, i === sel ? xB(String(s.step)) : String(s.step)), 4)
+    return i === sel
+      ? ' '.repeat(M) + on(BAND, xf(COLOUR.c, '▌') + ' ' + step + sample(s.hex) + '  ' + xf(K.fg, xB(s.hex)) + '   ' + xf(K.x, 'white ') + xf(K.d, `${s.white} ${ratioTag(s.white)}`) + xf(K.x, '  black ') + xf(K.d, `${s.black} ${ratioTag(s.black)}`), 72)
+      : ' '.repeat(M) + '  ' + step + sample(s.hex) + '  ' + xf(K.d, s.hex)
+  })
+  const foot = flash ? ['', copied(flash, flash === 'hex' ? SC[sel].hex : SC.length)] : []
+  return fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...seedCard(), '', ...rows, ...foot], scKeys('↑↓'))
+}
+
+/* ---------------------------------------------- scale: more helpers */
+const linC = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+const lumH = (h) => { const [r, g, b] = [1, 3, 5].map((i) => linC(parseInt(h.slice(i, i + 2), 16) / 255)); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
+const ratioH = (a, b) => { const [x, y] = [lumH(a), lumH(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05) }
+/** White or near-black text, whichever reads better on h. */
+const inkOn = (h) => (ratioH(h, '#FFFFFF') >= ratioH(h, '#111111') ? '#FFFFFF' : '#111111')
+const okl = (s) => { const m = /oklch\((\d+)% ([\d.]+) (\d+)\)/.exec(s.oklch); return { L: +m[1] / 100, C: +m[2], H: +m[3] } }
+const scBar = () => bar(CO_, 0, { answers: [], now: 'Scale' })
+const stepLab = (s, i, sel) => (i === sel ? xf(K.fg, xB(String(s.step))) : xf(s.seed ? COLOUR.c : K.x, String(s.step)))
+
+/* ------------------------------- S3: one strip, the curves under it */
+const S3 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const cw = 6, lead = ' '.repeat(M + 1)
+  const steps = SC.map((s, i) => xpad(X.center(stepLab(s, i, sel), cw), cw)).join('')
+  const block = SC.map((s) => xb(s.hex, ' '.repeat(cw))).join('')
+  const mark = SC.map((s, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join('')
+  const BL = ' ▁▂▃▄▅▆▇█', H = 3
+  const cmax = Math.max(...SC.map((s) => okl(s).C))
+  /** A bar chart H rows tall, one 2-cell bar per step, in eighths. */
+  const chart = (val, col, label) => Array.from({ length: H }, (_, k) => lead + SC.map((s, i) => {
+    const eighths = Math.round(val(s) * H * 8), fill = Math.max(0, Math.min(8, eighths - (H - 1 - k) * 8))
+    return '  ' + xf(i === sel ? K.fg : col(s), BL[fill].repeat(2)) + '  '
+  }).join('') + (k === H - 1 ? ' ' + xf(K.x, label) : ''))
+  const lrows = chart((s) => okl(s).L, () => K.d, 'lightness')
+  const crows = chart((s) => okl(s).C / cmax, () => COLOUR.c, 'chroma')
+  return fill24([scBar(), '', ...seedCard(), '', lead + steps, lead + block, lead + block, lead + block, lead + mark, '', ...lrows, '', ...crows, '', scDetail(sel, flash)], scKeys('←→'))
+}
+
+/* --------------------------- S4: the step written inside each swatch */
+const S4 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const cw = 6, gap = ' ', lead = ' '.repeat(M)
+  const row = (fn) => lead + SC.map((s, i) => xb(s.hex, fn(s, i))).join(gap)
+  const top = row((s) => (s.seed ? X.center(xf(inkOn(s.hex), '•'), cw) + ' '.repeat(cw - 1 - Math.floor((cw - 1) / 2)) : ' '.repeat(cw)))
+  const mid = row((s, i) => xpad(X.center(xf(inkOn(s.hex), i === sel ? xB(String(s.step)) : String(s.step)), cw), cw))
+  const bot = row(() => ' '.repeat(cw))
+  const mark = lead + SC.map((s, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  return fill24([scBar(), '', ...seedCard(), '', top, mid, bot, mark, '', scDetail(sel, flash)], scKeys('←→'))
+}
+
+/* ------------------------------ S5: the chosen step large, the ramp under */
+const S5 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const s = SC[sel], ink = inkOn(s.hex), w = 72, lead = ' '.repeat(M + 2)
+  const line = (l, r = '') => lead + xb(s.hex, xpad('  ' + l, w - vis(r) - 2) + r + '  ')
+  const hero = [
+    line(''),
+    line(xf(ink, xB(String(s.step))) + xf(ink, '   ' + s.hex), xf('#FFFFFF', xB('Aa')) + '   ' + xf('#111111', xB('Aa'))),
+    line(xf(ink, s.oklch), xf('#FFFFFF', `${s.white} ${ratioTag(s.white)}`) + '   ' + xf('#111111', `${s.black} ${ratioTag(s.black)}`)),
+    line(''),
+  ]
+  const cw = 6, gap = ' ', l2 = ' '.repeat(M + 2)
+  const ramp = l2 + SC.map((x) => xb(x.hex, ' '.repeat(cw))).join(gap).replace(/^/, '')
+  const mark = l2 + SC.map((x, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const labs = l2 + SC.map((x, i) => xpad(X.center(stepLab(x, i, sel), cw), cw)).join(gap)
+  const foot = flash ? copied(flash, flash === 'hex' ? s.hex : SC.length) : ''
+  return fill24([scBar(), '', ...seedCard(), '', ...hero, '', ramp, mark, labs, '', foot], scKeys('←→'))
+}
+
+/* ------------------------- S6: one row per step, the label inside the colour */
+const S6 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const tw = 40
+  const rows = SC.map((s, i) => {
+    const ink = inkOn(s.hex), me = i === sel
+    const tile = xb(s.hex, xpad('  ' + xf(ink, me ? xB(String(s.step)) : String(s.step)) + (s.seed ? xf(ink, '  •') : ''), tw - 10) + xf(ink, me ? xB(s.hex) : s.hex) + '  ')
+    return ' '.repeat(M) + (me ? xf(COLOUR.c, '▌') : ' ') + ' ' + tile + (me ? '  ' + xf(K.x, 'white ') + xf(K.d, `${s.white} ${ratioTag(s.white)}`) + xf(K.x, '  black ') + xf(K.d, `${s.black} ${ratioTag(s.black)}`) : '')
+  })
+  const foot = flash ? ['', copied(flash, flash === 'hex' ? SC[sel].hex : SC.length)] : []
+  return fill24([scBar(), '', ...seedCard(), '', ...rows, ...foot], scKeys('↑↓'))
+}
+
+/* ---------------- S7: which steps read on which: text step × background step */
+const PAIRS = [[1.5, 1, 9], [3, 1, 6], [4.5, 5, 0], [6, 5, 10], [7.5, 9, 2], [9, 9, 4], [10.5, 3, 10], [12, 0, 5]]
+const S7 = (t) => {
+  const loop = 12, u = t % loop, [, r, c] = PAIRS.find(([e]) => u < e)
+  const cw = 5, lead = ' '.repeat(M + 2)
+  const head = lead + '     ' + SC.map((s, j) => xpad(X.center(j === c ? xf(K.fg, xB(String(s.step))) : xf(K.x, String(s.step)), cw), cw)).join('')
+  const rows = SC.map((bg, i) => lead + xpad(i === r ? xf(K.fg, xB(String(bg.step))) : xf(K.x, String(bg.step)), 5) + SC.map((fg, j) => {
+    const k = ratioH(bg.hex, fg.hex), hit = i === r && j === c
+    const txt = k >= 4.5 ? (hit ? xB('Aa') : 'Aa') : k >= 3 && hit ? 'Aa' : '  '
+    return xb(bg.hex, hit ? xf(fg.hex, '[') + xf(fg.hex, txt) + xf(fg.hex, ']') + ' ' : ' ' + xf(fg.hex, txt) + '  ')
+  }).join(''))
+  const k = ratioH(SC[r].hex, SC[c].hex)
+  const det = L4 + xf(K.fg, xB(`${SC[c].step}`)) + xf(K.d, ' on ') + xf(K.fg, xB(`${SC[r].step}`)) + '   ' + xf(K.d, `${SC[c].hex} on ${SC[r].hex}`) + '   ' + xf(K.fg, xB(k.toFixed(1))) + ' ' + xf(k >= 4.5 ? K.ok : K.amber, ratioTag(k))
+  return fill24([scBar(), '', ...seedCard(), '', head, ...rows, '', det],
+    keysF1({ main: [['←→↑↓', 'choose'], ['↵', 'copy pair'], ['c', 'copy all']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* ------------------------- scale round three: S1, with S5's idea redrawn */
+const s1Rows = (sel, { cw = 6, gap = ' ', lead = ' '.repeat(M) } = {}) => {
+  const steps = SC.map((s, i) => xpad(X.center(stepLab(s, i, sel), cw), cw)).join(gap)
+  const block = SC.map((s) => xb(s.hex, ' '.repeat(cw))).join(gap)
+  const mark = SC.map((s, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  return [lead + steps, lead + block, lead + block, lead + block, lead + mark]
+}
+
+/* S8: the chosen swatch lifts, a row taller above and below */
+const S8 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const cw = 6, gap = ' ', lead = ' '.repeat(M)
+  const steps = lead + SC.map((s, i) => xpad(X.center(stepLab(s, i, sel), cw), cw)).join(gap)
+  const lift = lead + SC.map((s, i) => (i === sel ? xb(s.hex, ' '.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const block = lead + SC.map((s) => xb(s.hex, ' '.repeat(cw))).join(gap)
+  const hexRow = lead + SC.map((s, i) => (i === sel ? xpad(X.center(xf(K.fg, xB(s.hex)), cw + 2), cw) : ' '.repeat(cw))).join(gap)
+  return fill24([scBar(), '', ...seedCard(), '', steps, lift, block, block, block, lift, '', scDetail(sel, flash)], scKeys('←→'))
+}
+
+/* S9: the ramp, then a preview: a block of the colour, the facts beside it in plain text */
+const S9 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const s = SC[sel], lead = L4, bw = 18
+  const blk = (txt = '') => xb(s.hex, xpad(X.center(txt, bw), bw))
+  const facts = [
+    xf(K.fg, xB(String(s.step))) + '  ' + xf(K.fg, xB(s.hex)),
+    xf(K.d, s.oklch),
+    '',
+    xf(K.x, 'white text  ') + xf(K.d, `${s.white} `) + xf(s.white >= 4.5 ? K.ok : K.x, ratioTag(s.white)),
+    xf(K.x, 'black text  ') + xf(K.d, `${s.black} `) + xf(s.black >= 4.5 ? K.ok : K.x, ratioTag(s.black)),
+  ]
+  const panel = [blk(), blk(xf('#FFFFFF', xB('Aa'))), blk(xf('#111111', xB('Aa'))), blk(), blk()].map((b, i) => lead + b + '    ' + (facts[i] ?? ''))
+  const foot = flash ? copied(flash, flash === 'hex' ? s.hex : SC.length) : ''
+  return fill24([scBar(), '', ...seedCard(), '', ...s1Rows(sel), '', ...panel, '', foot], scKeys('←→'))
+}
+
+/* S10: the chosen swatch widens and carries its step and hex; the rest narrow */
+const S10 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const nw = 5, ww = 16, gap = ' ', lead = ' '.repeat(M)
+  const w = (i) => (i === sel ? ww : nw)
+  const steps = lead + SC.map((s, i) => (i === sel ? ' '.repeat(ww) : xpad(X.center(xf(s.seed ? COLOUR.c : K.x, String(s.step)), nw), nw))).join(gap)
+  const row = (fn) => lead + SC.map((s, i) => xb(s.hex, i === sel ? xpad(fn(s), ww) : ' '.repeat(nw))).join(gap)
+  const ink = (s) => inkOn(s.hex)
+  const r1 = row((s) => ' ' + xf(ink(s), xB(String(s.step))) + (s.seed ? xf(ink(s), '  •') : ''))
+  const r2 = row(() => '')
+  const r3 = row((s) => ' ' + xf(ink(s), s.hex))
+  const foot = flash ? copied(flash, flash === 'hex' ? SC[sel].hex : SC.length)
+    : L4 + xf(K.d, SC[sel].oklch) + '   ' + xf(K.x, 'on white ') + xf(K.d, `${SC[sel].white} ${ratioTag(SC[sel].white)}`) + xf(K.x, ' · on black ') + xf(K.d, `${SC[sel].black} ${ratioTag(SC[sel].black)}`)
+  return fill24([scBar(), '', ...seedCard(), '', steps, r1, r2, r3, '', foot], scKeys('←→'))
+}
+
+/* S11: the ramp, then the chosen step in use: as text on white, as text on black, as a button */
+const S11 = (t) => {
+  const [, sel, flash] = at(t, SSCRIPT)
+  const s = SC[sel], bw = 22, gap = '  '
+  const card = (bg, line) => xb(bg, xpad(line, bw))
+  const ink = inkOn(s.hex)
+  const tiles = [
+    [card('#FFFFFF', ''), card('#FFFFFF', '  ' + xf(s.hex, xB('Text on white'))), card('#FFFFFF', '')],
+    [card('#111111', ''), card('#111111', '  ' + xf(s.hex, xB('Text on black'))), card('#111111', '')],
+    [card(K.bg, ''), card(K.bg, '  ' + xb(s.hex, xf(ink, xB('   Button   ')))), card(K.bg, '')],
+  ]
+  const rows = [0, 1, 2].map((r) => L4 + tiles.map((c) => c[r]).join(gap))
+  const caps = L4 + [`${s.white} ${ratioTag(s.white)}`, `${s.black} ${ratioTag(s.black)}`, `${ink === '#FFFFFF' ? 'white' : 'black'} label`].map((c) => xpad(xf(K.x, c), bw)).join(gap)
+  return fill24([scBar(), '', ...seedCard(), '', ...s1Rows(sel), '', ...rows, caps, '', scDetail(sel, flash)], scKeys('←→'))
+}
+
+/* --------------- S9, picked, with "make centre": the chosen step becomes 500 */
+const SA = CDATA.scA, SB = CDATA.scB
+/* [until, scale, sel, flash] — scale 'A' is from the photo's blue, 'B' is rebuilt around A's 800 */
+const RSCRIPT = [[1.5, 'A', 5], [3, 'A', 6], [4.5, 'A', 7], [6, 'A', 8], [6.6, 'A', 8, 'r'], [8.2, 'B', 5, 'new'], [9.7, 'B', 4], [11.2, 'B', 3], [12.7, 'B', 3, 'hex'], [14.2, 'B', 3, 'all'], [15.7, 'A', 8, 'esc']]
+const S9R = (t) => {
+  const [, which, sel, flash] = at(t, RSCRIPT)
+  const sc = which === 'A' ? SA : SB, s = sc[sel], ref = sc[5]
+  const lead = ' '.repeat(M), cw = 6, gap = ' '
+  const lab = (x, i) => (i === sel ? xf(K.fg, xB(String(x.step))) : xf(x.seed ? COLOUR.c : K.x, String(x.step)))
+  const steps = lead + sc.map((x, i) => xpad(X.center(lab(x, i), cw), cw)).join(gap)
+  const block = lead + sc.map((x) => xb(x.hex, ' '.repeat(cw))).join(gap)
+  const mark = lead + sc.map((x, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const bw = 18, blk = (txt = '') => xb(s.hex, xpad(X.center(txt, bw), bw))
+  const facts = [
+    xf(K.fg, xB(String(s.step))) + '  ' + xf(K.fg, xB(s.hex)),
+    xf(K.d, s.oklch),
+    '',
+    xf(K.x, 'white text  ') + xf(K.d, `${s.white} `) + xf(s.white >= 4.5 ? K.ok : K.x, ratioTag(s.white)),
+    xf(K.x, 'black text  ') + xf(K.d, `${s.black} `) + xf(s.black >= 4.5 ? K.ok : K.x, ratioTag(s.black)),
+  ]
+  const panel = [blk(), blk(xf('#FFFFFF', xB('Aa'))), blk(xf('#111111', xB('Aa'))), blk(), blk()].map((b, i) => L4 + b + '    ' + (facts[i] ?? ''))
+  const card = fcard(CO_, { tag: 'COLOUR', name: xb(ref.hex, '    ') + '  ' + xf(K.fg, xB(ref.hex)),
+    meta: which === 'A' ? `${ref.oklch} · from sonoma.jpg` : `${ref.oklch} · was 800 of ${SA[5].hex}` })
+  const trail = which === 'A' ? bar(CO_, 0, { answers: [], now: 'Scale' }) : bar(CO_, 0, { answers: [SA[5].hex], now: 'Scale' })
+  const foot = flash === 'r' ? L4 + xf(COLOUR.c, xB('r')) + xf(K.d, ` making ${s.hex} the centre…`)
+    : flash === 'new' ? L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, `${ref.hex} is now 500`) + xf(K.d, ' · the scale is rebuilt around it · esc goes back')
+    : flash === 'esc' ? L4 + xf(K.d, `back to the scale from ${SA[5].hex}`)
+    : flash === 'hex' ? copied('hex', s.hex) : flash === 'all' ? copied('figma', sc.length) : ''
+  return fill24([trail, '', ...card, '', steps, block, block, block, mark, '', ...panel, '', foot],
+    keysF1({ main: [['←→', 'choose'], ['↵', 'copy'], ['c', 'copy all'], ['r', 'make centre']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* --------------------------------------------------------------- figures */
+fig('pal-grid', { id: 'P1', name: 'Chips', idea: 'Equal swatches, most of the image first. The hex sits under each; the chosen one is bold, with a line under its swatch. The line below the swatches says the rest about the chosen one.', frames: [{ label: 'live · ←→ moves, ↵ copies the hex, c copies all six', make: P1 }] })
+fig('pal-grid', { id: 'P2', name: 'Proportional strip', idea: 'One strip, each colour as wide as its share of the photo, so it reads as the photo\'s fingerprint. The shares only show for the chosen one, in the line below.', frames: [{ label: 'live · same keys', make: P2 }] })
+fig('pal-grid', { id: 'P3', name: 'The picker', idea: 'The decided picker: band and ▌ strip, and only the highlighted row says more. Six colours fit as six rows; ↑↓ instead of ←→.', frames: [{ label: 'live · ↑↓ moves', make: P3 }] })
+
+fig('scale-pick-grid', { id: 'S1', name: 'Ramp ✓', idea: 'Eleven swatches across, 50 to 950. The step you started from has its number in the mode colour. The line below gives the chosen step\'s hex, OKLCH and how text reads on it.', frames: [{ label: 'live · ←→ moves', make: S1 }] })
+fig('scale-grid', { id: 'S2', name: 'List with "Aa"', idea: 'One step per row, each drawn as a background with "Aa" in white and in black on it, so you see which text works on which step without reading a number. The picker\'s band on the chosen row, which alone gives the ratios.', frames: [{ label: 'live · ↑↓ moves', make: S2 }] })
+
+fig('scale2-grid', { id: 'S3', name: 'Strip and curves', idea: 'The steps touch, as one strip. Under it, two small bar rows: how light each step is, and how much colour it carries. You see the scale is even, and where the colour peaks, without reading numbers.', frames: [{ label: 'live · ←→ moves', make: S3 }] })
+fig('scale2-grid', { id: 'S4', name: 'Step inside the swatch', idea: 'The step number is written inside each swatch, in white or black, whichever reads better. So the label also shows which text colour a step takes. A dot marks the step you started from.', frames: [{ label: 'live · ←→ moves', make: S4 }] })
+fig('scale2-grid', { id: 'S5', name: 'The chosen step, large', idea: 'The chosen step fills a wide block with its values and "Aa" in white and black on it; the ramp underneath is how you move. The most colour on screen at once.', frames: [{ label: 'live · ←→ moves', make: S5 }] })
+fig('scale2-grid', { id: 'S6', name: 'Rows, label inside', idea: 'One wide bar per step with the step and hex written inside it, like a printed swatch book. The ▌ in the mode colour marks the chosen row, which alone adds the ratios.', frames: [{ label: 'live · ↑↓ moves', make: S6 }] })
+fig('scale2-grid', { id: 'S7', name: 'Which steps read on which', idea: 'Rows are backgrounds, columns are text. "Aa" appears only where that text step passes AA on that background; blank means it does not. The answer to "which text can I use on 100?" at a glance. ↵ copies the pair.', frames: [{ label: 'live · ←→↑↓ move a cell', make: S7 }] })
+
+fig('pal2-grid', { id: 'P4', name: 'Columns', idea: 'Each colour a column as tall as its share of the photo, the hex and the percentage under it. The biggest colour is obvious before you read anything.', frames: [{ label: 'live · ←→ moves', make: P4 }] })
+fig('pal2-grid', { id: 'P5', name: 'Strip with the shares inside', idea: 'P2\'s strip, with each colour\'s percentage written inside it in white or black, whichever reads better. The hex under each segment.', frames: [{ label: 'live · ←→ moves', make: P5 }] })
+fig('pal2-grid', { id: 'P6', name: 'Picker with bars', idea: 'The decided picker, each row with a bar in its own colour as long as its share, and the percentage at the end. Reads like a chart and still picks like a list.', frames: [{ label: 'live · ↑↓ moves', make: P6 }] })
+fig('pal2-grid', { id: 'P7', name: 'A hundred squares', idea: 'One square per percent of the photo. The chosen colour stays lit and the others dim, so you count its share at a glance. A two-row key underneath.', frames: [{ label: 'live · ←→ moves', make: P7 }] })
+fig('pal2-grid', { id: 'P8', name: 'The photo in its own colours', wide: false, idea: 'The photo itself, drawn small in only its six colours, next to the list with bars. As you move down the list, the chosen colour stays lit in the picture and the rest dim, so you see where in the photo each colour comes from.', frames: [{ label: 'live · ↑↓ moves', make: P8 }] })
+
+fig('scale3-grid', { id: 'S8', name: 'The chosen step lifts', idea: 'S1, where the chosen swatch grows a row above and below the rest. Nothing else on screen changes; the line below says the rest.', frames: [{ label: 'live · ←→ moves', make: S8 }] })
+fig('scale3-pick-grid', { id: 'S9', name: 'Ramp, then a preview ✓', idea: 'S1, with a block of the chosen colour under it carrying "Aa" in white and in black. The facts sit beside it in plain text, not on the colour.', frames: [{ label: 'live · ←→ moves', make: S9 }] })
+fig('scale3-grid', { id: 'S10', name: 'The chosen step widens', idea: 'The ramp as an accordion: the chosen swatch opens to carry its step and hex inside, the others narrow to make room. Moving along opens each in turn.', frames: [{ label: 'live · ←→ moves', make: S10 }] })
+fig('scale3-grid', { id: 'S11', name: 'The step in use', idea: 'S1, with the chosen step used three ways: as text on white, as text on black, and as a button with whichever label reads on it. The contrast under each.', frames: [{ label: 'live · ←→ moves', make: S11 }] })
+
+fig('drill-pick-grid', { id: 'D1', name: 'On P8: the photo lights the shade ✓', idea: '→ opens the coral. The photo dims everything outside it, and inside it lights only the chosen shade, so you see the orange-red is the band and the pinks are its edge. The list becomes the coral\'s four shades, each a share of the coral.', frames: [{ label: 'live · opens the coral, walks its shades, copies one, goes back, opens the blue', make: D1 }] })
+fig('drill-grid', { id: 'D2', name: 'On P6: the row opens in place', idea: 'The coral\'s row opens like a folder, its four shades underneath. Their bars are on the same scale as the six, so together they add up to the coral\'s own bar. The other colours stay in view, dimmed.', frames: [{ label: 'live · same loop', make: D2 }] })
+fig('drill-grid', { id: 'D3', name: 'On P4: the shades become the columns', idea: 'Opening the coral swaps the six columns for its four shades, each as tall as its share of the coral. A thin strip above keeps all six, the coral lit, so you know where you are.', frames: [{ label: 'live · same loop, ←→', make: D3 }] })
+
+fig('recentre-grid', { id: 'S9', name: 'Make centre', wide: false, idea: 'r makes the chosen step the new reference. It moves to 500, and the scale is rebuilt around it: the lighter steps spread up to near-white, the darker ones down to a floor. The card says where it came from, the bar keeps the colour you started with in the trail, and esc goes back to it.', frames: [{ label: 'live · walks to 800, presses r, walks the new scale, copies one, copies all, esc', make: S9R }] })
+
+/* ========================================================== FIGMA CARDS
+   What `f` puts on the clipboard: SVG markup as text, which Figma turns into
+   real shapes and text on ⌘V (verified on the user's Mac, 2026-10-11).
+   Each card can be copied from the page and pasted into Figma to judge. */
+const SVG = (() => {
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const font = 'font-family="Inter"'
+  const lumOf = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] }
+  const inkOn = (h) => (1.05 / (lumOf(h) + 0.05) >= (lumOf(h) + 0.05) / 0.05 ? '#FFFFFF' : '#111111')
+  const wrap = (w, h, id, body, dark, rx = 20) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n<g id="${id}">\n<rect id="card" width="${w}" height="${h}" rx="${rx}" fill="${dark ? '#18181B' : '#FFFFFF'}"/>\n${body}\n</g>\n</svg>`
+  const title = (t, sub, dark) => `<text id="title" x="24" y="38" ${font} font-size="15" font-weight="600" fill="${dark ? '#FAFAFA' : '#111111'}">${esc(t)}</text>` +
+    `<text id="subtitle" x="24" y="58" ${font} font-size="12" fill="${dark ? '#A1A1AA' : '#71717A'}">${esc(sub)}</text>`
+
+  /** F1: swatches in a row, the name in bold and the value in grey under each. */
+  const F1 = ({ id, t, sub, items, dark }) => {
+    const sw = items.length > 8 ? 64 : 104, gap = 10, w = 48 + items.length * sw + (items.length - 1) * gap, h = 84 + sw + 56
+    const body = items.map((s, i) => `<g id="${esc(s.layer)}" transform="translate(${24 + i * (sw + gap)} 80)">` +
+      `<rect id="swatch" width="${sw}" height="${sw}" rx="${sw > 80 ? 12 : 10}" fill="${s.fill}" stroke="${dark ? '#FFFFFF' : '#000000'}" stroke-opacity="0.08"/>` +
+      `<text id="name" x="1" y="${sw + 22}" ${font} font-size="13" font-weight="600" fill="${dark ? '#FAFAFA' : '#111111'}">${esc(s.name)}</text>` +
+      `<text id="value" x="1" y="${sw + 40}" ${font} font-size="11" fill="${dark ? '#A1A1AA' : '#71717A'}">${esc(s.value)}</text></g>`).join('\n')
+    return wrap(w, h, id, title(t, sub, dark) + '\n' + body, dark, 0)
+  }
+  /** F2: tall tiles that touch, the label inside in whichever of white or black reads better. */
+  const F2 = ({ id, t, sub, items, dark }) => {
+    const tw = items.length > 8 ? 72 : 112, th = 176, w = 48 + items.length * tw, h = 80 + th + 24
+    const body = `<g id="tiles" transform="translate(24 80)">` + items.map((s, i) => {
+      const ink = inkOn(s.fill), first = i === 0, last = i === items.length - 1
+      const shape = first || last
+        ? `<path id="swatch" d="${first ? `M12 0H${tw}V${th}H12A12 12 0 0 1 0 ${th - 12}V12A12 12 0 0 1 12 0Z` : `M0 0H${tw - 12}A12 12 0 0 1 ${tw} 12V${th - 12}A12 12 0 0 1 ${tw - 12} ${th}H0Z`}" fill="${s.fill}"/>`
+        : `<rect id="swatch" width="${tw}" height="${th}" fill="${s.fill}"/>`
+      return `<g id="${esc(s.layer)}" transform="translate(${i * tw} 0)">${shape}` +
+        `<text id="name" x="12" y="${th - 34}" ${font} font-size="13" font-weight="600" fill="${ink}">${esc(s.name)}</text>` +
+        `<text id="value" x="12" y="${th - 16}" ${font} font-size="11" fill="${ink}" fill-opacity="0.8">${esc(s.value)}</text></g>`
+    }).join('\n') + '</g>'
+    return wrap(w, h, id, title(t, sub, dark) + '\n' + body, dark)
+  }
+  /** F3: a style-guide list, one row per colour, hairlines between. */
+  const F3 = ({ id, t, sub, items, dark }) => {
+    const w = 360, rh = 48, h = 80 + items.length * rh + 16
+    const body = items.map((s, i) => `<g id="${esc(s.layer)}" transform="translate(24 ${80 + i * rh})">` +
+      `<rect id="swatch" y="6" width="36" height="36" rx="8" fill="${s.fill}" stroke="${dark ? '#FFFFFF' : '#000000'}" stroke-opacity="0.08"/>` +
+      `<text id="name" x="52" y="29" ${font} font-size="13" font-weight="600" fill="${dark ? '#FAFAFA' : '#111111'}">${esc(s.name)}</text>` +
+      `<text id="value" x="${w - 48}" y="29" text-anchor="end" ${font} font-size="12" fill="${dark ? '#A1A1AA' : '#71717A'}">${esc(s.value)}</text>` +
+      (i < items.length - 1 ? `<rect id="rule" y="${rh - 0.5}" width="${w - 48}" height="1" fill="${dark ? '#FFFFFF' : '#000000'}" fill-opacity="0.06"/>` : '') + '</g>').join('\n')
+    return wrap(w, h, id, title(t, sub, dark) + '\n' + body, dark)
+  }
+  return { F1, F2, F3 }
+})()
+
+{
+  // palette: the name is the hex, the value line is rgb; scale: the name is the step
+  const palette = { id: 'sonoma', t: 'sonoma.jpg', sub: `${CDATA.palette.length} colours, most of the image first`, items: CDATA.palette.map((p, i) => ({ layer: `sonoma-${i + 1}`, name: p.hex, fill: p.hex, value: p.rgb })) }
+  const scale = { id: 'blue', t: 'Blue', sub: `from ${CDATA.seed} · 50–950 in OKLCH`, items: CDATA.scale.map((s) => ({ layer: `blue-${s.step}`, name: String(s.step), fill: s.hex, value: s.hex })) }
+  const VARIANTS = [
+    ['F1', 'Card, labels under ✓', 'Picked, with your change: the card is square-cornered, only the swatches are rounded. Swatches in a row with the name in bold and the value in grey under each.', 'figma-grid'],
+    ['F2', 'Tiles, labels inside', 'The swatches touch, like a strip, and carry their own labels in white or black, whichever reads better on that colour.', 'figma-old-grid'],
+    ['F3', 'Style-guide list', 'One row per colour: a small swatch, the name, the value at the right. Tall for a scale, but it reads like a spec sheet.', 'figma-old-grid'],
+  ]
+  const copy = async (text, btn) => {
+    try { await navigator.clipboard.writeText(text) } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove()
+    }
+    const was = btn.textContent; btn.textContent = 'Copied · ⌘V in Figma'; setTimeout(() => (btn.textContent = was), 1600)
+  }
+  for (const [vid, name, idea, gid] of VARIANTS) {
+    const grid = document.getElementById(gid)
+    const fg = document.createElement('figure')
+    fg.className = 'wide'
+    fg.innerHTML = `<div class="vt"><span class="id">${vid}</span><span class="name">${name}</span></div><p class="idea">${idea}</p>`
+    for (const [what, d] of [['palette', palette], ['scale', scale]]) {
+      for (const dark of [false, true]) {
+        const svg = SVG[vid]({ ...d, dark })
+        const row = document.createElement('div')
+        row.className = 'card-row ' + (dark ? 'on-dark' : 'on-light')
+        row.innerHTML = `<div class="card-meta"><span>${what} · ${dark ? 'dark card' : 'light card'}</span><button>Copy for Figma</button></div><div class="card-svg">${svg}</div>`
+        row.querySelector('button').addEventListener('click', (e) => copy(svg, e.target))
+        fg.appendChild(row)
+      }
+    }
+    grid.appendChild(fg)
+  }
+}
+
+/* ================================================================= HOME
+   Colour as the fourth mode on home. Half of it starts from a file (palette
+   from an image) and half from a value (scale from a colour), so its home
+   takes both: drop an image, or type a colour. */
+MODES.push(COLOUR)
+const HOME_CO = { mode: COLOUR, typing: false }
+const TYPED = '#6579FD'
+/** One loop: placeholder, then the colour typed a key at a time, then held. */
+const typedAt = (t) => { const u = t % 7; return u < 1.2 ? '' : TYPED.slice(0, Math.min(TYPED.length, Math.floor((u - 1.2) / 0.22) + 1)) }
+const isColour = (v) => /^#[0-9a-f]{6}$/i.test(v)
+const RIGHT_CO = `${xf(K.x, 'copies to')} ${xf(K.d, 'clipboard')}`
+/** Home's tab row with four modes; colour mode copies, so the right says so. */
+const tabsC = (s) => {
+  let top = '', row = ''
+  for (const t of [...MODES, CMDT]) {
+    const active = t !== CMDT && t === s.mode
+    const lab = t === CMDT ? ` ${xf(K.x, xB('/'))} ${xf(K.d, 'commands')} `
+      : ` ${active ? `${xf(t.c, xB(String(t.n)))} ${xf(K.fg, xB(t.name))}` : `${xf(K.x, String(t.n))} ${xf(K.d, t.name)}`} `
+    top += (active ? xf(P, '▄'.repeat(vis(lab))) : ' '.repeat(vis(lab))) + ' '
+    row += (active ? on(P, lab, vis(lab)) : lab) + ' '
+  }
+  return [' '.repeat(M) + top, ' '.repeat(M) + xr(row, RIGHT_CO + ' ', W)]
+}
+const keysHome = (typing) => keysF1({ main: [['↵', typing ? 'make a scale' : 'send']], foot: [['1–4', 'mode'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] })
+/** The field: a path or a colour. A colour gets its swatch the moment it is whole. */
+const fieldC = (v, ph = 'or type a path or a colour') => IN + xf(COLOUR.c, xB('›')) + ' ' +
+  (v ? xf(K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') : '') : xf(K.x, ph))
+const homeC = (panel, v, opts = {}) => {
+  const s = { mode: COLOUR, typing: !!v }
+  const rows = fill24(['', ...band(s), '', ...tabsC(s), ...panel, '', fieldC(v, opts.ph)], keysHome(isColour(v)))
+  return { rows, cursor: cursorAt(rows, /› \S*/, !!v) }
+}
+
+/* H1: one panel, both ways in, said in two lines */
+const H1 = (t) => {
+  const v = typedAt(t), s = { mode: COLOUR, typing: !!v }
+  return homeC(surface({ lines: [`${xf(v ? K.x : COLOUR.c, xB('↓'))}  ${xf(v ? K.d : K.fg, xB('Drop an image'))}`, xf(v ? K.faint : K.d, 'or type a colour · #6579FD, rgb(), oklch()')], dot: d2dot(s) }), v)
+}
+
+/* H2: the panel split: the drop zone on the left, a colour well on the right that fills as you type */
+const H2 = (t) => {
+  const v = typedAt(t), s = { mode: COLOUR, typing: !!v }, lw = 37, rw = 38
+  const left = surface({ w: lw, lines: [`${xf(v ? K.x : COLOUR.c, xB('↓'))}  ${xf(v ? K.d : K.fg, xB('Drop an image'))}`, xf(v ? K.faint : K.d, 'for its palette')], dot: d2dot(s), pad: 2 })
+  const well = isColour(v) ? xb(v, ' '.repeat(10)) : xf(K.faint, '╌'.repeat(10))
+  const right = surface({ w: rw, lead: '', lines: [`${xf(isColour(v) ? COLOUR.c : K.x, xB('#'))}  ${xf(v ? K.fg : K.d, xB('Type a colour'))}`, xf(K.d, 'for its scale'), '', well, isColour(v) ? xf(K.fg, xB(v)) : xf(K.faint, v ? v.padEnd(7, '·') : '·······')] })
+  return homeC(left.map((l, i) => l + ' ' + right[i]), v)
+}
+
+/* H3: the dots take your colour: once the value is whole, they turn into its scale */
+const H3 = (t) => {
+  const v = typedAt(t), s = { mode: COLOUR, typing: !!v }, ok = isColour(v)
+  const stops = SA.map((x) => x.hex)
+  const dot = ok ? (c, r) => (GRID(c) ? X.mix(P, gcol(c, W, stops), 0.85) : null) : d2dot(s)
+  const lines = ok
+    ? [`${xf(COLOUR.c, xB('↵'))}  ${xf(K.fg, xB('Make a scale from ' + v))}`, xf(K.d, '50 to 950, with ' + v + ' at 500')]
+    : [`${xf(v ? K.x : COLOUR.c, xB('↓'))}  ${xf(v ? K.d : K.fg, xB('Drop an image'))}`, xf(v ? K.faint : K.d, 'or type a colour · #6579FD, rgb(), oklch()')]
+  return homeC(surface({ lines, dot }), v)
+}
+
+/* H4: a colour already on the clipboard is offered; type or drop to do anything else */
+const CLIP = '#E8B44C'
+const H4 = (t) => {
+  const v = typedAt(t), s = { mode: COLOUR, typing: !!v }
+  const lines = v
+    ? [`${xf(K.x, xB('↓'))}  ${xf(K.d, xB('Drop an image'))}`, xf(K.faint, 'or type a colour · #6579FD, rgb(), oklch()')]
+    : [`${xf(COLOUR.c, xB('↓'))}  ${xf(K.fg, xB('Drop an image'))}`, xf(K.d, 'or type a colour'), '', xb(CLIP, '  ') + ' ' + xf(K.fg, CLIP) + xf(K.d, ' on your clipboard · ') + xf(K.fg, xB('⌘V')) + xf(K.d, ' to use it')]
+  return homeC(surface({ lines, dot: d2dot(s) }), v)
+}
+
+fig('home-grid', { id: 'H1', name: 'One panel, two ways in', idea: 'The decided home, with colour as the fourth tab. The panel says both: drop an image, or type a colour. The field takes either; a whole colour shows its swatch beside it, and ↵ says what it will do.', frames: [{ label: 'live · types #6579FD', make: H1 }] })
+fig('home-grid', { id: 'H2', name: 'Split: drop zone and colour well', idea: 'The panel in two: the dots on the left for an image, a well on the right that fills with the colour as you type it. The two ways in are two places.', frames: [{ label: 'live · types #6579FD', make: H2 }] })
+fig('home-grid', { id: 'H3', name: 'The dots take your colour', idea: 'H1 until the colour is whole; then the dots turn into its scale, light to dark across the panel, and the panel says what ↵ does. The home previews the result before you ask for it.', frames: [{ label: 'live · types #6579FD', make: H3 }] })
+fig('home-grid', { id: 'H4', name: 'The clipboard\'s colour, offered', idea: 'If what you last copied is a colour (a hex from Figma, say), the panel offers it: ⌘V puts it in the field. Nothing is read unless you are in colour mode, and nothing is used until you ask.', frames: [{ label: 'live · then types #6579FD', make: H4 }] })
+
+/* =========================================================== TYPE A COLOUR
+   On the palette and the scale screens, a new colour can be typed without
+   going home. Three ways to offer it, each drawn on both screens. ↵ makes a
+   scale from it with it at 500; esc goes back. */
+const SCC = CDATA.scC, NEWC = '#E8B44C'
+/* one loop: [phase, from] — A rest, B typing, C whole, D..F the new scale */
+const tPhase = (t) => { const u = t % 11; return u < 1.5 ? ['A', u] : u < 3.3 ? ['B', u] : u < 4.8 ? ['C', u] : u < 6.8 ? ['D', u] : u < 8.3 ? ['E', u] : ['F', u] }
+const typedNow = (ph, u) => (ph === 'B' ? NEWC.slice(0, Math.min(7, Math.floor((u - 1.5) / 0.2) + 1)) : ph === 'C' ? NEWC : '')
+const field2 = (v, ph = 'type a colour') => L4 + xf(COLOUR.c, xB('›')) + ' ' + (v ? xf(K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') : '') : xf(K.x, ph))
+
+/** S9's ramp and preview for any scale. */
+const s9Body = (sc, sel, { faded = false } = {}) => {
+  const lead = ' '.repeat(M), cw = 6, gap = ' ', s = sc[sel]
+  const lab = (x, i) => (i === sel ? xf(K.fg, xB(String(x.step))) : xf(x.seed ? COLOUR.c : K.x, String(x.step)))
+  const fill = (h) => (faded ? X.mix(h, K.bg, 0.55) : h)
+  const steps = lead + sc.map((x, i) => xpad(X.center(lab(x, i), cw), cw)).join(gap)
+  const block = lead + sc.map((x) => xb(fill(x.hex), ' '.repeat(cw))).join(gap)
+  const mark = lead + sc.map((x, i) => (i === sel ? xf(K.fg, '▔'.repeat(cw)) : ' '.repeat(cw))).join(gap)
+  const bw = 18, blk = (txt = '') => xb(fill(s.hex), xpad(X.center(txt, bw), bw))
+  const facts = [xf(K.fg, xB(String(s.step))) + '  ' + xf(K.fg, xB(s.hex)), xf(K.d, s.oklch), '',
+    xf(K.x, 'white text  ') + xf(K.d, `${s.white} `) + xf(s.white >= 4.5 ? K.ok : K.x, ratioTag(s.white)),
+    xf(K.x, 'black text  ') + xf(K.d, `${s.black} `) + xf(s.black >= 4.5 ? K.ok : K.x, ratioTag(s.black))]
+  const panel = [blk(), blk(xf('#FFFFFF', xB('Aa'))), blk(xf('#111111', xB('Aa'))), blk(), blk()].map((b, i) => L4 + b + '    ' + (facts[i] ?? ''))
+  return [steps, block, block, block, mark, '', ...panel]
+}
+const refCard = (ref, meta) => (USE_FILLED
+  ? filled(valueWithSwatch(ref.hex, true) + (/from |was /.test(meta) ? '   ' + xf(K.x, meta.replace(/^.*· /, '')) : ''), { focus: false })
+  : fcard(CO_, { tag: 'COLOUR', name: xb(ref.hex, '    ') + '  ' + xf(K.fg, xB(ref.hex)), meta }))
+/** The colour card as an input: the value being typed, its swatch once it is whole. */
+const inputCard = (v) => fcard(CO_, { tag: 'COLOUR', edge: COLOUR.c,
+  name: (isColour(v) ? xb(v, '    ') : xf(K.faint, '╌╌╌╌')) + '  ' + xf(K.fg, xB(v)),
+  meta: isColour(v) ? SCC[5].oklch : 'a hex, rgb() or oklch()' })
+const keysScale = (extra = []) => keysF1({ main: [['←→', 'choose'], ['↵', 'copy'], ['c', 'copy all'], ...extra], foot: [['r', 'make centre'], ['esc', 'back'], ['ctrl-c', 'quit']] }) + HIDE
+const keysTyping = (v) => keysF1({ main: [['↵', isColour(v) ? 'make a scale' : 'make a scale'], ['esc', 'cancel']], foot: [['ctrl-c', 'quit']] })
+const doneLine = (from) => L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, `${NEWC} is now 500`) + xf(K.d, ` · esc goes back to ${from}`)
+
+/* ------------------------------------------------ on the scale */
+const scaleTyping = (variant) => (t) => {
+  const [ph, u] = tPhase(t), v = typedNow(ph, u)
+  const after = 'DEF'.includes(ph), sc = after ? SCC : SA, sel = { A: 5, B: 5, C: 5, D: 5, E: 6, F: 3 }[ph]
+  const trail = after ? bar(CO_, 0, { answers: [SA[5].hex], now: 'Scale' }) : bar(CO_, 0, { answers: [], now: 'Scale' })
+  const typing = ph === 'B' || ph === 'C'
+  let card = after ? refCard(SCC[5], `${SCC[5].oklch} · typed`) : refCard(SA[5], `${SA[5].oklch} · from sonoma.jpg`)
+  let body = s9Body(sc, sel), foot = ph === 'D' ? doneLine(SA[5].hex) : ''
+  let keys = keysScale(variant === 'T2' ? [['#', 'new colour']] : [])
+  if (variant === 'T1') { foot = typing ? field2(v) : field2('') ; if (ph === 'D') body = [...body]; if (typing) keys = keysTyping(v) }
+  if (variant === 'T2' && typing) { foot = field2(v); keys = keysTyping(v) }
+  if (variant === 'T3') {
+    if (typing) { card = inputCard(v); keys = keysTyping(v); body = isColour(v) ? s9Body(SCC, 5) : s9Body(SA, sel); foot = isColour(v) ? L4 + xf(K.d, 'a preview · ↵ keeps it, esc goes back') : '' }
+    else keys = keysScale([['#', 'new colour']])
+  }
+  const rows = fill24([trail, '', ...card, '', ...body, '', ...(variant === 'T1' && ph === 'D' ? [doneLine(SA[5].hex)] : []), ...(variant === 'T1' ? [field2(typing ? v : '')] : [foot])], keys)
+  return { rows, cursor: typing ? (variant === 'T3' ? cursorAt(rows, /#[0-9A-Fa-f]{0,6}(?=\s*│)/, true) : cursorAt(rows, /› \S*/, true)) : (variant === 'T1' ? cursorAt(rows, /› /, true) : null) }
+}
+
+/* ------------------------------------------------ on the palette */
+const paletteTyping = (variant) => (t) => {
+  const [ph, u] = tPhase(t), v = typedNow(ph, u), typing = ph === 'B' || ph === 'C'
+  if ('DEF'.includes(ph)) {   // ↵ made a scale from it: the palette is one step back in the trail
+    const sel = { D: 5, E: 6, F: 3 }[ph]
+    const rows = fill24([bar(CO_, 0, { answers: ['Palette'], now: 'Scale' }), '', ...refCard(SCC[5], `${SCC[5].oklch} · typed`), '', ...s9Body(SCC, sel), '',
+      ph === 'D' ? L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, `a scale from ${NEWC}`) + xf(K.d, ' · esc goes back to the palette') : (variant === 'T1' ? field2('') : '')], keysScale(variant === 'T1' ? [] : [['#', 'new colour']]))
+    return { rows, cursor: variant === 'T1' && ph !== 'D' ? cursorAt(rows, /› /, true) : null }
+  }
+  const keys0 = keysF1({ main: [['↑↓', 'choose'], ['→', 'open'], ['↵', 'copy'], ['c', 'copy all']], foot: variant === 'T1' ? [['s', 'scale'], ['esc', 'back']] : [['#', 'new colour'], ['s', 'scale'], ['esc', 'back']] }) + HIDE
+  const rows = P8body(5, null, bar(CO_, 0, { answers: [], now: 'Palette' }), typing ? keysTyping(v) : keys0)
+  if (variant === 'T1') rows[20] = field2(typing ? v : '')
+  else if (typing && variant === 'T2') rows[20] = field2(v)
+  else if (typing && variant === 'T3') { const c = inputCard(v); for (let i = 0; i < 4; i++) rows[2 + i] = c[i]; rows[20] = isColour(v) ? L4 + xf(K.d, `↵ makes a scale from ${v}`) : '' }
+  return { rows, cursor: typing ? (variant === 'T3' ? cursorAt(rows, /#[0-9A-Fa-f]{0,6}(?=\s*│)/, true) : cursorAt(rows, /› \S*/, true)) : (variant === 'T1' ? cursorAt(rows, /› /, true) : null) }
+}
+
+fig('type-grid', { id: 'T1', name: 'A field always there', idea: 'Both screens keep a field at the bottom, like home\'s. Start typing and it fills; a whole colour shows its swatch, and ↵ makes a scale from it. While the field is empty, ↵ copies as before.', frames: [{ label: 'scale · types #E8B44C, ↵', make: scaleTyping('T1') }, { label: 'palette · types #E8B44C, ↵', make: paletteTyping('T1') }] })
+fig('type-grid', { id: 'T2', name: 'Press # to type one', idea: 'Nothing extra on screen; the keys say # new colour. Pressing # opens a field on the line under the view, already holding the #. ↵ makes the scale, esc closes the field.', frames: [{ label: 'scale · #, types E8B44C, ↵', make: scaleTyping('T2') }, { label: 'palette · #, types E8B44C, ↵', make: paletteTyping('T2') }] })
+fig('type-grid', { id: 'T3', name: 'Type into the colour card', idea: '# turns the colour card at the top into the input, its edge in the mode colour. On the scale, the ramp previews the new scale as soon as the colour is whole; ↵ keeps it. On the palette, the photo\'s card gives way to the colour card while you type.', frames: [{ label: 'scale · #, types E8B44C, ↵', make: scaleTyping('T3') }, { label: 'palette · #, types E8B44C, ↵', make: paletteTyping('T3') }] })
+
+/* ================================================================ ENTRY
+   Pressing 4 (or /colour) asks one thing: palette or scale. Each then has its
+   own field: the palette's takes an image, the scale's a colour. Typing there
+   again switches to another; nothing goes back through home. */
+const CHOICES = [
+  { name: 'Palette', sub: 'the colours of an image', prev: () => PAL.map((p) => xb(p.hex, '    ')).join('') },
+  { name: 'Scale', sub: '50 to 950 from one colour', prev: () => SA.map((x) => xb(x.hex, '  ')).join('') },
+]
+const eSel = (t) => (Math.floor((t % 4.8) / 1.6) === 1 ? 1 : 0)
+
+/* C1: home's panel holds the two choices, each with a small preview of what it makes */
+const C1 = (t) => {
+  const sel = eSel(t), s = { mode: COLOUR, typing: false }, cw = 36
+  const card = (c, i) => {
+    const me = i === sel, bg = me ? HL : P
+    const line = (txt) => on(bg, (me ? xf(COLOUR.c, '▌') : ' ') + ' ' + txt, cw)
+    return [line(''), line(xf(me ? K.fg : K.d, xB(c.name))), line(xf(me ? K.d : K.x, c.sub)), line(''), line(c.prev()), line('')]
+  }
+  const a = card(CHOICES[0], 0), b = card(CHOICES[1], 1)
+  const panel = [' '.repeat(M) + on(P, '', W), ...a.map((r, i) => ' '.repeat(M) + on(P, ' ' + r + '  ' + b[i] + ' ', W)), ' '.repeat(M) + on(P, '', W)]
+  return fill24(['', ...band(s), '', ...tabsC(s), ...panel], keysF1({ main: [['←→', 'choose'], ['↵', 'open']], foot: [['1–4', 'mode'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* C2: a question screen, as convert's are: the bar, then the picker */
+const C2 = (t) => {
+  const sel = eSel(t)
+  const rows = CHOICES.map((c, i) => [c.name, i === sel ? xf(K.d, c.sub) + '   ' + c.prev() : ''])
+  return fill24([bar(CO_, 0, { answers: [], now: 'Make' }), '', qTitle(CO_, 'Make a'), '', ...pick(CO_, rows, sel, 10)],
+    keysF1({ main: [['↑↓', 'choose'], ['↵', 'open']], foot: [['1–4', 'mode'], ['esc', 'home'], ['ctrl-c', 'quit']] }) + HIDE)
+}
+
+/* ------------------------------------------- the field inside each screen
+   Typing #, /, ~ or pasting (a drop is a paste) goes into the field; other
+   letters stay keys (c copy all, r make centre). While a colour is being
+   typed, the scale follows it the moment it is whole. */
+const PATH = '~/Desktop/sonoma.jpg'
+const sClock = (t) => {
+  const u = t % 12.5
+  const steps = [[1.2, 'empty', ''], [2.8, 'typing', (u) => '#6579FD'.slice(0, Math.floor((u - 1.2) / 0.2) + 1)], [4.2, 'live', '#6579FD'], [5.2, 'set', 5], [6.4, 'set', 6], [7.6, 'set', 7],
+    [8.0, 'typing2', () => '#'], [9.2, 'typing2', (u) => '#E8B44C'.slice(0, Math.min(7, Math.floor((u - 8.0) / 0.17) + 2))], [10.8, 'live2', '#E8B44C'], [12.5, 'set2', 4]]
+  const [, ph, val] = steps.find(([e]) => u < e)
+  return { ph, v: typeof val === 'function' ? val(u) : val }
+}
+const emptyRamp = () => {
+  const lead = ' '.repeat(M), cw = 6, gap = ' '
+  const steps = lead + SA.map((x) => xpad(X.center(xf(K.faint, String(x.step)), cw), cw)).join(gap)
+  const box = lead + SA.map(() => xf(K.faint, '╌'.repeat(cw))).join(gap)
+  return [steps, box, '', box, '']
+}
+const hint = (s) => xf(K.x, s)
+const sFieldCard = (v, focus, cur) => {
+  if (USE_FILLED) return filled(focus ? (v ? valueWithSwatch(v) : hint('type a hex code')) : valueWithSwatch(cur.hex, true), { focus })
+  const ok = isColour(v)
+  const name = focus ? xf(COLOUR.c, xB('›')) + ' ' + (v ? xf(K.fg, v) : hint('type a hex code')) + (ok ? '  ' + xb(v, '    ') : '')
+    : xb(cur.hex, '    ') + '  ' + xf(K.fg, xB(cur.hex))
+  const meta = focus ? '' : cur.oklch
+  return fcard(CO_, { tag: 'COLOUR', name, meta, edge: focus ? COLOUR.c : K.x })
+}
+const sKeys = (focus) => (focus ? keysF1({ main: [['↵', 'done'], ['esc', 'cancel']], foot: [['ctrl-c', 'quit']] })
+  : keysF1({ main: [['←→', 'choose'], ['↵', 'copy'], ['c', 'copy all'], ['r', 'make centre']], foot: [['#', 'new colour'], ['esc', 'back']] }) + HIDE)
+
+/* F1 · the field is the colour card at the top */
+const F1scale = (t) => {
+  const { ph, v } = sClock(t), focus = ['empty', 'typing', 'live', 'typing2', 'live2'].includes(ph)
+  const sc = ['live2', 'set2'].includes(ph) ? SCC : SA
+  const have = ph !== 'empty' && (ph !== 'typing' || isColour(v))
+  const sel = typeof v === 'number' ? v : ph === 'typing2' ? 7 : 5
+  const body = have ? s9Body(sc, sel) : [...emptyRamp(), '', '', '', '', '', '', '']
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...sFieldCard(focus ? v : '', focus, sc[5]), '', ...body], sKeys(focus))
+  return { rows, cursor: focus ? cursorAt(rows, /› (#[0-9A-Fa-f]*)?/, true) : null }
+}
+
+/* F2 · the field sits at the bottom, as on home; the card above shows the colour in use */
+const F2scale = (t) => {
+  const { ph, v } = sClock(t), focus = ['empty', 'typing', 'live', 'typing2', 'live2'].includes(ph)
+  const sc = ['live2', 'set2'].includes(ph) ? SCC : SA
+  const have = !['empty', 'typing'].includes(ph) || isColour(v)
+  const sel = typeof v === 'number' ? v : ph === 'typing2' ? 7 : 5
+  const card = have ? refCard(sc[5], sc[5].oklch) : fcard(CO_, { tag: 'COLOUR', name: xf(K.faint, '╌╌╌╌') + '  ' + hint('no colour yet'), meta: '' })
+  const body = have ? s9Body(sc, sel) : [...emptyRamp(), '', '', '', '', '', '', '']
+  const fld = field2(focus ? v : '', 'type a colour')
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...card, '', ...body, '', fld], sKeys(focus))
+  return { rows, cursor: focus ? cursorAt(rows, /› (#[0-9A-Fa-f]*)?/, true) : null }
+}
+
+/* ---------------------------------------------------- the palette's field */
+const pClock = (t) => {
+  const u = t % 12
+  const steps = [[1.2, 'empty', ''], [3.0, 'typing', (u) => PATH.slice(0, Math.floor((u - 1.2) / 0.09) + 1)], [3.4, 'enter', PATH], [4.8, 'set', 0], [6.2, 'set', 5],
+    [6.6, 'hex', () => '#'], [7.8, 'hex', (u) => '#E8B44C'.slice(0, Math.min(7, Math.floor((u - 6.6) / 0.17) + 2))], [9.4, 'hexok', '#E8B44C'], [12, 'scale', 5]]
+  const [, ph, val] = steps.find(([e]) => u < e)
+  return { ph, v: typeof val === 'function' ? val(u) : val }
+}
+const emptyPic = () => Array.from({ length: 12 }, (_, r) => Array.from({ length: 24 }, (_, c) => (c % 3 === 1 && r % 2 === 1 ? xf(K.faint, '·') : ' ')).join(''))
+const pKeys = (ph) => (['empty', 'typing', 'enter', 'hex', 'hexok'].includes(ph)
+  ? keysF1({ main: [['↵', ph.startsWith('hex') ? 'make a scale' : 'open'], ['esc', 'cancel']], foot: [['ctrl-c', 'quit']] })
+  : keysF1({ main: [['↑↓', 'choose'], ['→', 'open'], ['↵', 'copy'], ['c', 'copy all']], foot: [['drop', 'new image'], ['#', 'a colour'], ['esc', 'back']] }) + HIDE)
+const pBody = (have, sel) => {
+  if (!have) return [...emptyPic().map((p, r) => L4 + p + (r === 5 ? '    ' + xf(K.d, xB('↓')) + '  ' + xf(K.d, 'drop an image anywhere') : r === 6 ? '       ' + hint('or type its path') : '')), '']
+  const rows = P8body(sel, null)
+  return rows.slice(7, 20)
+}
+const scaleFromPalette = (top) => fill24([bar(CO_, 0, { answers: ['Palette'], now: 'Scale' }), '', ...(top ?? refCard(SCC[5], `${SCC[5].oklch} · typed`)), '', ...s9Body(SCC, 5)], sKeys(false))
+
+/* F1 · the image card is the field */
+const F1pal = (t) => {
+  const { ph, v } = pClock(t)
+  if (ph === 'scale') return { rows: scaleFromPalette(), cursor: null }
+  const have = !['empty', 'typing'].includes(ph), sel = typeof v === 'number' ? v : 5
+  const focus = ['empty', 'typing', 'enter', 'hex', 'hexok'].includes(ph)
+  const card = ph.startsWith('hex')
+    ? fcard(CO_, { tag: 'COLOUR', edge: COLOUR.c, name: xf(COLOUR.c, xB('›')) + ' ' + xf(K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') : ''), meta: '' })
+    : focus ? fcard(CO_, { tag: 'IMAGE', edge: COLOUR.c, name: xf(COLOUR.c, xB('›')) + ' ' + (v ? xf(K.fg, v) : ''), meta: '' })
+      : photoCard()
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...card, '', ...pBody(have, sel)], pKeys(ph))
+  return { rows, cursor: focus ? cursorAt(rows, /› \S*/, true) : null }
+}
+
+/* F2 · the field at the bottom; the card above is the image in use */
+const F2pal = (t) => {
+  const { ph, v } = pClock(t)
+  if (ph === 'scale') return { rows: scaleFromPalette(), cursor: null }
+  const have = !['empty', 'typing'].includes(ph), sel = typeof v === 'number' ? v : 5
+  const focus = ['empty', 'typing', 'enter', 'hex', 'hexok'].includes(ph)
+  const card = have ? photoCard() : fcard(CO_, { tag: 'IMAGE', name: xf(K.faint, 'no image yet'), meta: '' })
+  const fld = L4 + xf(COLOUR.c, xB('›')) + ' ' + (focus && v ? xf(K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') + xf(K.d, '  ↵ makes a scale') : '') : hint('drop an image, type its path, or a colour'))
+  const body = pBody(have, sel)
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...card, '', ...body.slice(0, 12), '', fld], pKeys(ph))
+  return { rows, cursor: focus ? cursorAt(rows, /› \S*/, true) : null }
+}
+
+fig('entry-grid', { id: 'C1', name: 'The choice on home', idea: 'Press 4 and home\'s panel holds the two choices, each with a small preview of what it makes. ←→ and ↵. No field on home: what you type belongs to the screen you open.', frames: [{ label: 'live · ←→ between the two', make: C1 }] })
+fig('entry-grid', { id: 'C2', name: 'A question screen', idea: 'Press 4 and you are on a question, as convert\'s Format is: the bar, then the decided picker. Only the highlighted row says more, with its preview.', frames: [{ label: 'live · ↑↓ between the two', make: C2 }] })
+
+fig('field-grid', { id: 'F1', name: 'The card is the field', idea: 'The card at the top of each screen is where you type. On the scale it holds the colour; on the palette, the image. An empty screen opens with it ready. Typing # (or a path, or dropping a file) puts you back in it, and the view below follows the moment the value is whole.', frames: [{ label: 'scale · types #6579FD, walks, types #E8B44C', make: F1scale }, { label: 'palette · types a path, ↵, walks, types #E8B44C, ↵', make: F1pal }] })
+/* F3 · home's own field: the drop zone, and under it the same › line as on home.
+   The field sits directly under whatever the screen shows, one blank row below it. */
+const homeField = (v, ph) => IN + xf(COLOUR.c, xB('›')) + ' ' + (v ? xf(K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') : '') : xf(K.x, ph))
+const F3pal = (t) => {
+  const { ph, v } = pClock(t)
+  if (ph === 'scale') {
+    const rows = fill24([bar(CO_, 0, { answers: ['Palette'], now: 'Scale' }), '', ...refCard(SCC[5], `${SCC[5].oklch} · typed`), '', ...s9Body(SCC, 5), '', homeField('', 'type a hex code')], sKeys(false))
+    return { rows, cursor: null }
+  }
+  const have = !['empty', 'typing'].includes(ph), sel = typeof v === 'number' ? v : 5
+  if (!have) {
+    const s = { mode: COLOUR, typing: !!v }
+    const zone = surface({ lines: [`${xf(v ? K.x : COLOUR.c, xB('↓'))}  ${xf(v ? K.d : K.fg, xB('Drop an image here'))}`, xf(v ? K.faint : K.d, 'JPEG · PNG · HEIC · WebP · TIFF')], dot: d2dot(s) })
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...zone, '', homeField(v, 'or type a path')], pKeys(ph))
+    return { rows, cursor: cursorAt(rows, /› \S*/, !!v) }
+  }
+  const body = P8body(sel, null).slice(7, 19)
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...photoCard(), '', ...body, '', homeField(ph.startsWith('hex') ? v : '', 'or type a path')], pKeys(ph))
+  return { rows, cursor: ph.startsWith('hex') ? cursorAt(rows, /› \S*/, true) : null }
+}
+const F3scale = (t) => {
+  const { ph, v } = sClock(t), focus = ['empty', 'typing', 'live', 'typing2', 'live2'].includes(ph)
+  const sc = ['live2', 'set2'].includes(ph) ? SCC : SA
+  const have = ph !== 'empty' && (ph !== 'typing' || isColour(v))
+  const sel = typeof v === 'number' ? v : ph === 'typing2' ? 7 : 5
+  const top = have ? [...refCard(sc[5], sc[5].oklch), ''] : []
+  const body = have ? s9Body(sc, sel) : emptyRamp()
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...top, ...body, '', homeField(focus ? v : '', 'type a hex code')], sKeys(focus))
+  return { rows, cursor: focus ? cursorAt(rows, /› (#[0-9A-Fa-f]*)?/, true) : null }
+}
+fig('field3-grid', { id: 'F3', name: 'Home\'s field', idea: 'The same field as home: the › line under the drop zone, in the same place and the same type. On the palette it stays under the view and takes a new path; on the scale it sits under the preview and takes a hex. The card at the top only shows what is in use; it is not where you type.', frames: [{ label: 'palette · types a path, ↵, walks, types #E8B44C, ↵', make: F3pal }, { label: 'scale · types #6579FD, walks, types #E8B44C', make: F3scale }] })
+
+fig('field-grid', { id: 'F2', name: 'The field at the bottom', idea: 'A field on the last line above the keys, as on home; the card at the top shows what is in use. One field takes either: an image path opens a new palette, a colour makes a scale.', frames: [{ label: 'scale · same loop', make: F2scale }, { label: 'palette · same loop', make: F2pal }] })
+
+/* ========================================================= FILLED FIELD
+   Colour mode's field drawn as the app's other fields are (size, name): a
+   filled block three rows tall in the neutral panel grey, no border, `›` in
+   the mode's colour, the value after it. It replaces the card at the top. */
+/** The app's filled field: blank row, the line, blank row. Focused: › in the mode colour; at rest, dim. */
+/** A neutral grey, no blue in it: the same lightness as the panel's #252c3a. */
+const FIELD = '#2c2c2c'
+const filled = (content, { w = W, focus = true } = {}) => {
+  const lead = ' '.repeat(M)
+  return [lead + on(FIELD, '', w), lead + on(FIELD, ' ' + xf(focus ? COLOUR.c : K.x, xB('›')) + ' ' + content, w), lead + on(FIELD, '', w)]
+}
+const valueWithSwatch = (v, dimmed = false) => (v ? xf(dimmed ? K.d : K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') : '') : '')
+const ph = (s) => xf(K.x, s)
+
+const G = (w) => ({
+  scaleEmpty: () => {
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...filled(ph('type a hex code'), { w }), '', ...emptyRamp()], sKeys(true))
+    return { rows, cursor: cursorAt(rows, /› /, true) }
+  },
+  scaleSet: () => {
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...filled(valueWithSwatch(SA[5].hex, true), { w, focus: false }), '', ...s9Body(SA, 7)], sKeys(false))
+    return { rows, cursor: null }
+  },
+  scaleTyping: () => {
+    const v = '#E8B44C'
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...filled(valueWithSwatch(v), { w }), '', ...s9Body(SCC, 5)], sKeys(true))
+    return { rows, cursor: cursorAt(rows, /› #[0-9A-Fa-f]*/, true) }
+  },
+  palEmpty: () => {
+    const s = { mode: COLOUR, typing: false }
+    const zone = surface({ lines: [`${xf(COLOUR.c, xB('↓'))}  ${xf(K.fg, xB('Drop an image here'))}`, xf(K.d, 'JPEG · PNG · HEIC · WebP · TIFF')], dot: d2dot(s) })
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...filled(ph('type an image path'), { w }), '', ...zone], keysF1({ main: [['↵', 'open']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }))
+    return { rows, cursor: cursorAt(rows, /› /, true) }
+  },
+  palSet: () => {
+    const body = P8body(5, null).slice(7, 19)
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...filled(xf(K.d, 'sonoma.jpg') + '   ' + xf(K.x, '640×640 · 58 KB'), { w, focus: false }), '', ...body, '', palDetailNoPct(5, null)], dKeys(0, '↑↓'))
+    return { rows, cursor: null }
+  },
+})
+
+{
+  const variants = [
+    ['G1', 'Full width', 'The field across the content width, as the size and name fields are. It replaces the card: the value lives in the field, dim at rest with the › dim too; # or a path puts you back in it, with the › in the mode colour.', G(W)],
+    ['G2', 'Card width', 'The same filled field at the width the file card has elsewhere, so the top of the screen keeps the card\'s footprint and the ramp below reads wider than it.', G(52)],
+  ]
+  for (const [id, name, idea, g] of variants) {
+    const fr = (label, f) => { const o = f(); return { label, rows: o.rows, cursor: o.cursor } }
+    fig('filled-grid', { id, name, idea, wide: false, frames: [
+      fr('scale · empty, ready', g.scaleEmpty), fr('scale · a colour set, field at rest', g.scaleSet), fr('scale · # typed a new colour', g.scaleTyping),
+      fr('palette · empty, ready, drop zone under it', g.palEmpty), fr('palette · an image open, field at rest', g.palSet),
+    ] })
+  }
+}
+
+/* ================================================================= FLOW
+   The whole of colour mode as decided: C1 on home, F1 (the card is the
+   field), D1 on the palette with going deeper, S9 with make centre, c to copy
+   all, the F1 card in Figma, and the reference always at 500. Every frame is
+   one moment, in order; the label says the key that led to it. */
+const FS = { mode: COLOUR, typing: false }
+const c1At = (sel) => C1(sel ? 2 : 0)
+/** The palette before an image: the card is the field, and under it the decided drop zone. */
+const palEmpty = (v = '') => {
+  const s = { mode: COLOUR, typing: !!v }
+  const card = filled(v ? xf(K.fg, v) : hint('type an image path'))
+  const zone = surface({ lines: [`${xf(v ? K.x : COLOUR.c, xB('↓'))}  ${xf(v ? K.d : K.fg, xB('Drop an image here'))}`, xf(v ? K.faint : K.d, 'JPEG · PNG · HEIC · WebP · TIFF')], dot: d2dot(s) })
+  const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...card, '', ...zone],
+    keysF1({ main: [['↵', 'open']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }))
+  return { rows, cursor: cursorAt(rows, /› \S*/, !!v) }
+}
+const fromPalette = (sc, sel, { card, answers = ['Palette'], foot = '' } = {}) =>
+  fill24([bar(CO_, 0, { answers, now: 'Scale' }), '', ...card, '', ...s9Body(sc, sel), '', foot], sKeys(false))
+
+const STEPS = [
+  { id: '1', key: '4', title: 'Home, colour', note: 'Press 4 (or /colour): home\'s panel offers the two things colour makes. Palette is first.', r: () => c1At(0) },
+  { id: '2', key: '↵', title: 'Palette, empty', note: 'The field at the top, filled neutral grey, ready for a path, with one quiet hint. Under it, the drop zone, with the formats it takes.', r: () => palEmpty() },
+  { id: '3', key: 'drop', title: 'An image dropped', note: 'Dropping a file on the terminal types its path into the field (a drop is a paste). ↵ opens it, or it opens on its own once the path is a real image.', r: () => palEmpty('~/Desktop/sonoma.jpg') },
+  { id: '4', key: '↵', title: 'The palette', note: 'D1: the photo drawn in its own six colours, the chosen one lit. ↑↓ moves; ↵ copies its hex; c copies all six; s makes a scale from it; # types a colour and makes a scale from that.', r: () => P8body(5, null, dBar(0, 5), dKeys(0, '↑↓')) },
+  { id: '5', key: '→', title: 'Inside the coral', note: 'Going deeper: the coral\'s own pixels, grouped again. The photo lights only the chosen shade. The trail says where you are: Palette ╱ #F26E69.', r: () => D1(2.0) },
+  { id: '6', key: '↓ ↵', title: 'A shade copied', note: '↵ copies the chosen shade\'s hex. ← goes back up to the six.', r: () => D1(7.0) },
+  { id: '7', key: '← ↑', title: 'Back up, on the blue', note: 'Back at the six, on the blue. The keys offer s: a scale from this colour.', r: () => P8body(4, null, dBar(0, 4), dKeys(0, '↑↓')) },
+  { id: '8', key: 's', title: 'A scale from the blue', note: 'S9: the blue goes to 500 and the scale is built around it. The card says where it came from; the trail keeps the palette, and esc goes back to it.', r: () => fromPalette(SA, 5, { card: refCard(SA[5], `${SA[5].oklch} · from sonoma.jpg`) }) },
+  { id: '9', key: '→→→', title: 'On 800', note: 'The preview shows the step large, with "Aa" in white and black and how each reads on it.', r: () => fromPalette(SA, 8, { card: refCard(SA[5], `${SA[5].oklch} · from sonoma.jpg`) }) },
+  { id: '10', key: 'r', title: '800 made the centre', note: 'r: 800 becomes the reference, moves to 500, and the scale is rebuilt around it. The colour it came from joins the trail; esc goes back to it.', r: () => fromPalette(SB, 5, { card: refCard(SB[5], `${SB[5].oklch} · was 800 of ${SA[5].hex}`), answers: ['Palette', SA[5].hex], foot: L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, `${SB[5].hex} is now 500`) + xf(K.d, ` · esc goes back to ${SA[5].hex}`) }) },
+  { id: '11', key: 'c', title: 'All eleven copied', note: 'c copies the scale as the F1 card. ⌘V in Figma gives the card below: real shapes and text, the layers named by step.', r: () => fromPalette(SB, 5, { card: refCard(SB[5], `${SB[5].oklch} · was 800 of ${SA[5].hex}`), answers: ['Palette', SA[5].hex], foot: copied('figma', 11) }), figma: true },
+  { id: '12', key: '#', title: 'A new colour, typed', note: 'Typing # puts you in the field again. The scale follows the moment the colour is whole; ↵ keeps it, esc puts the last one back.', r: () => { const rows = fill24([bar(CO_, 0, { answers: ['Palette', SA[5].hex], now: 'Scale' }), '', ...sFieldCard('#E8B44C', true, SCC[5]), '', ...s9Body(SCC, 5)], sKeys(true)); return { rows, cursor: cursorAt(rows, /› #[0-9A-Fa-f]*/, true) } } },
+]
+const BRANCH = [
+  { id: 'B1', key: '4 →', title: 'Home, on Scale', note: 'The other way in: a scale from a colour you already have.', r: () => c1At(1) },
+  { id: 'B2', key: '↵', title: 'Scale, empty', note: 'The field at the top is ready for a hex; the steps are outlines until there is a colour.', r: () => F1scale(0.5) },
+  { id: 'B3', key: '#6579FD', title: 'Typed, and there', note: 'The moment the hex is whole, the scale is drawn with it at 500. ↵ leaves the field and the keys come back: ←→, ↵, c, r, #.', r: () => F1scale(3.0) },
+]
+
+{
+  USE_FILLED = true   // the flow draws the decided field: filled neutral grey, full width
+  const asFrame = (st) => { const out = st.r(); return { label: `${st.id} · ${st.key} → ${st.title}`, rows: out.rows ?? out, cursor: out.cursor } }
+  for (const st of STEPS) {
+    const fgEl = fig('flow-grid', { id: st.id, name: st.title, idea: st.note, frames: [asFrame(st)] })
+    fgEl.id = 'step-' + st.id
+    if (st.figma) {
+      const svg = SVG.F1({ id: 'blue', t: 'Blue', sub: `from ${SB[5].hex} · 50–950 in OKLCH`, items: SB.map((x) => ({ layer: `blue-${x.step}`, name: String(x.step), fill: x.hex, value: x.hex })), dark: false })
+      const fg2 = document.createElement('figure')
+      fg2.id = 'step-11f'
+      fg2.innerHTML = `<div class="vt"><span class="id">11</span><span class="name">⌘V in Figma</span></div><p class="idea">What step 11 put on the clipboard, as Figma draws it. Press the button and paste to check.</p><div class="card-row on-light"><div class="card-meta"><span>scale · F1 card</span><button>Copy for Figma</button></div><div class="card-svg">${svg}</div></div>`
+      fg2.querySelector('button').addEventListener('click', async (e) => { try { await navigator.clipboard.writeText(svg) } catch (x) { const ta = document.createElement('textarea'); ta.value = svg; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove() } e.target.textContent = 'Copied · ⌘V in Figma' })
+      document.getElementById('flow-grid').appendChild(fg2)
+    }
+  }
+  for (const st of BRANCH) { const fgEl = fig('flow-branch-grid', { id: st.id, name: st.title, idea: st.note, frames: [asFrame(st)] }); fgEl.id = 'step-' + st.id }
+  const map = document.getElementById('flow-map')
+  const chip = (st) => `<a class="step" href="#flow" data-to="step-${st.id}"><b>${st.id}</b> ${st.title} <i><span class="k-yes">${st.key}</span></i></a>`
+  map.innerHTML = STEPS.map(chip).join('<span class="ar">→</span>') + '<span class="branch">or, from home:</span>' + BRANCH.map(chip).join('<span class="ar">→</span>')
+  USE_FILLED = false
+  map.querySelectorAll('a.step').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); document.getElementById(a.dataset.to)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }))
+}
+
+/* ------------------------------------------------------------------ tabs */
+{
+  const show = () => {
+    const id = (location.hash || '#flow').slice(1)
+    document.querySelectorAll('section.tab').forEach((s) => s.classList.toggle('on', s.id === id))
+    document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + id))
+  }
+  addEventListener('hashchange', show); show()
+  const solo = new URLSearchParams(location.search).get('solo')
+  if (solo) document.querySelectorAll('section.tab.on figure').forEach((f) => { if (f.querySelector('.id')?.textContent !== solo) f.style.display = 'none' })
+}
+</script>
+</body>
+</html>

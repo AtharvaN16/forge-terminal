@@ -57,6 +57,7 @@ const targetOption = (): OptionSpec => ({
 export const boostAction: Action = {
   id: 'boost',
   label: 'Boost resolution',
+  verb: 'Boosting',
   hint: 'sharper at 2× or 4×',
   requires: 'boost',
   appliesTo: (sources) => imagesOnly(sources) !== undefined,
@@ -107,6 +108,7 @@ export const boostAction: Action = {
 export const removeBackgroundAction: Action = {
   id: 'remove-background',
   label: 'Remove background',
+  verb: 'Removing',
   hint: 'cut out the subject',
   requires: 'remove-background',
   appliesTo: (sources) => imagesOnly(sources) !== undefined,

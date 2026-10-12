@@ -9,8 +9,8 @@ import {
   savePreferences,
 } from '../config/preferences.js'
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
-import type { OptionSpec } from '../core/actions/index.js'
-import { compressAction, convertAction } from '../core/actions/index.js'
+import type { Action, OptionSpec } from '../core/actions/index.js'
+import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { describeResult } from '../core/describe.js'
 import {
   isForgeError,
@@ -19,11 +19,11 @@ import {
   unsupportedPdf,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
-import { FORMATS, primaryExtension } from '../core/formats.js'
+import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { type InputFailure, resolveDirectory } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
-import type { FormatId, Job, Result, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
@@ -42,17 +42,16 @@ import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
 import { CommandMenu, Home, homeKeys, Suggestions } from './components/Home.js'
 import { PageGrid } from './components/PageGrid.js'
-import { PathInput } from './components/PathInput.js'
-import { Progress } from './components/Progress.js'
 import { Prompt } from './components/Prompt.js'
+import { QualityStep } from './components/QualityStep.js'
 import { ResultLinks } from './components/ResultLinks.js'
+import { SaveAs } from './components/SaveAs.js'
 import { Select } from './components/Select.js'
 import { SizeAside } from './components/SizeAside.js'
-import { Slider } from './components/Slider.js'
 import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
-import { WorkingLine } from './components/WorkingLine.js'
+import { Working } from './components/Working.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { mouseSupported } from './mouse.js'
@@ -70,15 +69,17 @@ import {
   SYMBOLS,
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
+import { useAfter } from './useAfter.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
 import { bandFor, CARD_WIDTH, middleEllipsis } from './width.js'
+import { phaseLabel } from './working-art.js'
 
 /**
  * Everything below `App` is dumb and takes props; this is the only file
  * that knows the flow. It walks: drop a file -> pick a target format ->
- * (quality, for a lossy target only) -> pick a destination -> convert ->
+ * (quality, for a lossy target only) -> save as (name and folder) -> convert ->
  * show the result.
  */
 export type Step =
@@ -100,8 +101,8 @@ export type Step =
   /** A document target only: the rasterisation resolution. */
   | 'dpi'
   | 'quality'
-  | 'destination'
-  | 'rename'
+  /** Where the file goes and what it is called, as one answer (P1). */
+  | 'save-as'
   | 'overwrite'
   | 'converting'
   /** A target size searched down to the lowest quality and still missed it — see `sizeUnreachable`. */
@@ -115,19 +116,37 @@ export type Step =
   | 'pdf-blocked'
 
 /**
+ * Save as while it is open: the folder chosen, and the name the action
+ * proposes for it (`plan()`), split where the user edits it. The typed name
+ * itself is `text`.
+ */
+interface SaveAsState {
+  folder: string
+  /** The proposed name without its extension: what an empty field means. */
+  stem: string
+  /** Fixed: decided by the target format, not by what is typed. */
+  ext: string
+  /**
+   * What a save that writes many files (a document rasterised a page at a
+   * time) will write, in place of a name to edit: "doc-1.jpg … 12 files".
+   */
+  fixedName?: string | undefined
+  /** Typed into, so a new folder's proposal no longer replaces it. */
+  edited: boolean
+  /** Where it opens: the name, or the folder (back from the existing-file question). */
+  focus: 'name' | 'folder'
+  /** The name as it was typed when last saved, to come back to. */
+  given?: string | undefined
+  /** Bumped to open it afresh, on `focus`. */
+  opened: number
+}
+
+/**
  * What the overwrite question needs to remember while it is being asked:
  * where the user chose to save, what that resolved to, and the name "keep
  * both" would use — resolved once, when the question is raised, rather than
  * on every render of it.
  */
-interface PendingRename {
-  destination: string
-  /** The name without its extension, which is what the user edits. */
-  stem: string
-  /** Fixed: decided by the target format, not by what is typed. */
-  ext: string
-}
-
 interface PendingOverwrite {
   destination: string
   output: string
@@ -185,16 +204,23 @@ interface PendingPdfRefusal {
    * `onDone` with nowhere else of their own to go back to but the hub —
    * `'pdf'` reopens `PdfFlow` there, same as it always has. An ordinary
    * document conversion run through the wizard (`confirmDocumentConversion`)
-   * has a real step to return to instead: `'destination'`, where "pick a
+   * has a real step to return to instead: `'save-as'`, where "pick a
    * different folder" is the actual fix, exactly what `answerOverwrite`'s
    * own cancel already offers every other format that hits this same
    * question. Defaulting a caller-less refusal to the hub would silently
    * drop a wizard conversion into `/pdf` instead of back into its own flow.
    */
-  cancelTo: 'pdf' | 'destination'
+  cancelTo: 'pdf' | 'save-as'
 }
 
 let blockSeq = 0
+const extActionFor = (id: 'boost' | 'remove-background'): Action =>
+  id === 'boost' ? boostAction : removeBackgroundAction
+
+/** /boost and /remove-background name their output with `output`, not `destination`. */
+const isExtensionAction = (act: Action): boolean =>
+  act === boostAction || act === removeBackgroundAction
+
 const boostScaleChoices = (() => {
   const spec = boostAction.options([], {}, {} as never).find((o) => o.id === 'scale')
   return spec?.kind === 'select' ? spec.choices : []
@@ -257,25 +283,12 @@ function describePdfResult(result: Result): string {
 }
 
 /**
- * The verb painted beside `pageProgress`'s running count, derived from
- * whichever job actually reported it — never a flag threaded down by hand,
- * so it can never say something is rendering when it is really copying
- * pages. `merge`, `delete` and `rotate` report phases only (see
- * `engines/pdf.ts`), so `pageProgress` never carries their `op` and this
- * never runs for them; `default` exists only as a defensive fallback if a
- * future op starts reporting page progress without a label of its own.
+ * What a running job is doing, as its action says it ("Splitting"), found
+ * from the job itself — never a flag threaded down by hand, so it can never
+ * say one operation while another runs. Every op is an action's id.
  */
-function pageProgressLabel(op: Job['op']): string {
-  switch (op) {
-    case 'convert':
-      return 'RENDERING'
-    case 'split':
-      return 'SPLITTING'
-    case 'extract':
-      return 'EXTRACTING'
-    default:
-      return 'PROCESSING'
-  }
+function verbOf(job: Job | undefined): string | undefined {
+  return ACTIONS.find((a) => a.id === job?.op)?.verb
 }
 
 /**
@@ -327,6 +340,9 @@ function MouseRouter({
  * case) runs long enough to overlap the conversion the user then asks for.
  */
 const MEASURE_MAX_PIXELS = 12_000_000
+
+/** How long a job runs before Working is shown at all (W5). */
+const WORK_AFTER_MS = 300
 
 const GOTO_PDF = '__goto-pdf__'
 
@@ -467,6 +483,8 @@ export function App({
    */
   const palette = modePalette(basePalette, mode)
   const action = mode === 'compress' ? compressAction : convertAction
+  /** What Save as names and runs for: the extension's action during /boost or /remove-background. */
+  const currentAction = extRun ? extActionFor(extRun) : action
   /** Where the target-size search has got to, for an honest counter. */
   /**
    * `dpi` names the rung a document search is on. Without it, a search
@@ -502,7 +520,7 @@ export function App({
    * one actually arrives. `null` is the whole point, not just an initial
    * value: invariant 7 forbids a fabricated percentage, and an operation
    * that only ever reports the phases-only variant (`reading`/`decoding`/
-   * `encoding`/`writing`) must never mount `<Progress>` — gating on "a page
+   * `encoding`/`writing`) must never grow a page bar — gating on "a page
    * event has been seen" rather than "a job is running" is what keeps a
    * single-file, single-phase conversion from growing a bar it has no real
    * position to show on.
@@ -510,9 +528,18 @@ export function App({
   const [pageProgress, setPageProgress] = useState<{
     done: number
     total: number
-    detail?: string
-    /** Which job this count belongs to — what `pageProgressLabel` reads. */
-    op: Job['op']
+    /** The job this count belongs to: what the line names ("Splitting report.pdf"). */
+    job: Job
+  } | null>(null)
+  /**
+   * The job running now, for the Working screen (W5): when it began, what it
+   * is doing as its action says it, and the last phase it reported — never a
+   * guess. `null` when nothing runs.
+   */
+  const [work, setWork] = useState<{
+    startedAt: number
+    verb: string
+    phase?: string | undefined
   } | null>(null)
   /** Why a typed size was rejected, shown against the field rather than later. */
   const [sizeError, setSizeError] = useState<string | undefined>(undefined)
@@ -568,6 +595,16 @@ export function App({
   const stagedBatch = stage.sources.length > 1
   /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
   const working = isWorking(step, stage.sources.length)
+  /** A job is running: a conversion, or a page operation. */
+  const running = step === 'converting' || step === 'pdf-running'
+  /**
+   * Working shows only once a job has run 0.3 s (W5): most finish sooner and
+   * go straight to their result. Until then the bar keeps the trail of the
+   * question just answered (`lastQuestion`) and the card stays.
+   */
+  const workShown = useAfter(running, WORK_AFTER_MS)
+  const lastQuestion = useRef(step)
+  if (!running) lastQuestion.current = step
   /**
    * The command list, while the field holds a command (see
    * `isCommandBuffer`): what matches, and which row ↵ runs. The choice is
@@ -583,8 +620,8 @@ export function App({
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
-  /** Destination and proposed stem while the rename field is open. */
-  const [renaming, setRenaming] = useState<PendingRename | null>(null)
+  /** Save as's folder and proposed name, while it is open — see `SaveAsState`. */
+  const [saving, setSaving] = useState<SaveAsState | null>(null)
   /** The name given at Name, for the header bar's trail while the file is written. */
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
@@ -881,20 +918,9 @@ export function App({
   // `useInput` hook regardless of what else is on screen, so an ungated
   // handler here would steal `f`/`o`/`q` from the target/quality/destination
   // stages the moment they happen to share a letter.
-  // esc on the name step returns to the location step — but only once the
-  // field is already empty. `Prompt` claims escape itself first (see
-  // Prompt.tsx) and clears whatever was typed; this hook is what the
-  // keystroke falls through to once there is nothing left to clear.
-  useKeys(
-    (_input, key) => {
-      if (key.escape && text === '') cancelRename()
-    },
-    { isActive: step === 'rename' },
-  )
-
   // esc on the size field goes back to the mode choice, once `Prompt` has
-  // nothing left in the field to clear — same "clear first, then back"
-  // split as the rename step above.
+  // nothing left in the field to clear — the same "clear first, then back"
+  // split Save as's name makes.
   useKeys(
     (_input, key) => {
       if (!key.escape || text !== '') return
@@ -1024,7 +1050,7 @@ export function App({
     setValues({})
     setLastResult(null)
     setPending(null)
-    setRenaming(null)
+    setSaving(null)
     setPdfBlocked(null)
     setSizeUnreachable(null)
     setSuggestion(undefined)
@@ -1084,9 +1110,10 @@ export function App({
       if (input === 'c' && suggestion && lastResult) {
         setSuggestion(undefined)
         setMode('convert')
-        setValues({ target: suggestion.target })
+        const next = { target: suggestion.target }
+        setValues(next)
         setStage(addToStage(emptyStage(), [lastResult.job.sources[0]], []))
-        setStep('destination')
+        openSaveAs({ values: next, source: lastResult.job.sources[0], action: convertAction })
       }
     },
     { isActive: step === 'result' },
@@ -1148,6 +1175,51 @@ export function App({
     measure: measureTarget,
     // A size belongs to this file, as it is now, at this quality.
     resetKey: source ? `${source.path}|${source.bytes}|${livePrefs.quality}` : undefined,
+  })
+
+  /**
+   * The quality step's measured size (G1): what the file would really come
+   * to at the value the slider rests on. The format list's rule, extended
+   * with the quality — encode only once the value has rested, one encode at a
+   * time, every answer kept per value. A size belongs to this file, in this
+   * mode, at this target, so changing any of those starts the cache again.
+   *
+   * The same limits as the format list's, for the same reasons: one image,
+   * room to say it, and not so large that a measurement is still running
+   * when the real conversion starts.
+   */
+  const qualitySpecNow = specFor('quality')
+  const qualityNow =
+    typeof values.quality === 'number'
+      ? values.quality
+      : qualitySpecNow?.kind === 'slider'
+        ? qualitySpecNow.default
+        : livePrefs.quality
+  const measureQuality = useMemo<MeasureFn | undefined>(() => {
+    if (
+      source?.kind !== 'image' ||
+      stage.sources.length !== 1 ||
+      band === 'compact' ||
+      source.width * source.height > MEASURE_MAX_PIXELS
+    ) {
+      return undefined
+    }
+    return async (quality) => {
+      const [planned] = action.plan([source], {
+        ...values,
+        quality: Number(quality),
+        destination: expandTilde(livePrefs.defaultOutput),
+      })
+      if (planned?.op !== 'convert') throw new Error('nothing to measure')
+      return (await encodeToBuffer(source, planned.target, planned.options)).length
+    }
+  }, [source, stage.sources.length, band, action, values, livePrefs.defaultOutput])
+  const qualitySize = useMeasuredSize({
+    highlighted: step === 'quality' ? String(qualityNow) : undefined,
+    measure: measureQuality,
+    resetKey: source
+      ? `${source.path}|${source.bytes}|${mode}|${String(values.target)}|${String(values.pages)}|${String(values.dpi)}`
+      : undefined,
   })
 
   /**
@@ -1635,7 +1707,8 @@ export function App({
       setStep('pages')
       return
     }
-    setStep(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
+    if (next.some((s) => s.id === 'quality')) setStep('quality')
+    else openSaveAs({ values: { ...values, target } })
   }
 
   /**
@@ -1662,7 +1735,8 @@ export function App({
       { ...values, target: values.target, dpi },
       livePrefs,
     )
-    setStep(next.some((s) => s.id === 'quality') ? 'quality' : 'destination')
+    if (next.some((s) => s.id === 'quality')) setStep('quality')
+    else openSaveAs({ values: { ...values, dpi } })
   }
 
   /**
@@ -1690,45 +1764,113 @@ export function App({
   }
 
   /**
-   * Opens the rename field for the highlighted destination. The extension is
-   * not editable and not shown here — it is decided by the target format, and
-   * letting someone type `.png` onto a WebP would produce a file that lies
-   * about itself.
-   */
-  /**
-   * Opens the name field, pre-filled from the name the action would have
-   * chosen.
+   * What `plan()` would write in `folder`: the name it proposes, split where
+   * the user edits it, or — for a document rasterised a page at a time, which
+   * names one output per page — what the many files will be called.
    *
    * The proposal comes from `plan()` rather than being rebuilt here: the
    * action knows the extension (compress keeps the source's, convert uses the
    * target's) and any suffix it needs to avoid landing on the input. Deriving
-   * it a second time in the shell is how the field ended up offering a name
-   * with no extension at all for compression.
+   * it a second time in the shell is how the field once offered a name with
+   * no extension at all for compression. The extension is never editable: a
+   * `.png` typed onto a WebP would make a file that lies about itself.
    */
-  const startRename = (destination: string) => {
-    if (!source) return
-    const planned = action.plan([source], { ...values, destination })[0]
-    const proposed = (planned?.outputs[0] ?? source.path).split('/').pop() ?? 'file'
-    const dot = proposed.lastIndexOf('.')
-    const stem = dot > 0 ? proposed.slice(0, dot) : proposed
-    const ext = dot > 0 ? proposed.slice(dot) : ''
-    setRenaming({ destination, stem, ext })
-    setSavedAs(undefined)
-    setText(stem)
-    setStep('rename')
+  const proposalFor = (
+    src: SourceInfo,
+    vals: Record<string, unknown>,
+    folder: string,
+    act: Action = currentAction,
+  ): Pick<SaveAsState, 'stem' | 'ext' | 'fixedName'> => {
+    const planned = isExtensionAction(act)
+      ? act.plan([src], { ...vals, output: folder })[0]
+      : act.plan([src], { ...vals, destination: folder })[0]
+    const outputs = planned?.outputs ?? []
+    const first = basename(outputs[0] ?? src.path)
+    if (rasterises(src, planned)) {
+      return {
+        stem: '',
+        ext: '',
+        fixedName: outputs.length > 1 ? `${first} … ${outputs.length} files` : first,
+      }
+    }
+    const dot = first.lastIndexOf('.')
+    return dot > 0 ? { stem: first.slice(0, dot), ext: first.slice(dot) } : { stem: first, ext: '' }
   }
 
-  const cancelRename = () => {
-    setRenaming(null)
-    setText('')
-    setStep('destination')
+  /**
+   * Opens Save as: on the name, pre-filled with the proposal, or on the
+   * folder. `values`, `source` and `action` are passed by a caller that has
+   * just set them, since this runs before React has.
+   *
+   * The folder it opens on is the one last chosen, else the action's own
+   * default (the configured output folder, which its places list first).
+   */
+  const openSaveAs = ({
+    values: vals = values,
+    source: src = source,
+    action: act = currentAction,
+    focus = 'name',
+    name,
+  }: {
+    values?: Record<string, unknown>
+    source?: SourceInfo | null
+    action?: Action
+    focus?: 'name' | 'folder'
+    /** The name to open with, when coming back to one already given. */
+    name?: string
+  } = {}) => {
+    if (!src) return
+    // An extension action has no destination option of its own; its folders
+    // are the ones a conversion of the same image would offer.
+    const spec = (isExtensionAction(act) ? convertAction : act)
+      .options([src], vals, livePrefs)
+      .find((s) => s.id === 'destination')
+    const folder =
+      typeof vals.destination === 'string'
+        ? vals.destination
+        : spec?.kind === 'path'
+          ? spec.default
+          : expandTilde(livePrefs.defaultOutput)
+    const proposal = proposalFor(src, vals, folder, act)
+    setSaving((s) => ({
+      folder,
+      ...proposal,
+      edited: name !== undefined && name !== proposal.stem,
+      focus: proposal.fixedName ? 'folder' : focus,
+      opened: (s?.opened ?? 0) + 1,
+    }))
+    setSavedAs(undefined)
+    setText(name ?? proposal.stem)
+    setStep('save-as')
+  }
+
+  /** Back to Save as from a question after it, on the folder, with the name as it was given. */
+  const reopenSaveAs = (focus: 'name' | 'folder' = 'folder') =>
+    openSaveAs({ focus, ...(saving?.given !== undefined ? { name: saving.given } : {}) })
+
+  /**
+   * A different folder highlighted in Save as. The sentence follows it, and
+   * so does the proposed name — `plan()` may name a file differently in
+   * another folder — unless the user has typed a name of their own.
+   */
+  const chooseFolder = (folder: string) => {
+    if (!source || !saving) return
+    const proposal = proposalFor(source, values, folder)
+    setSaving({ ...saving, folder, ...proposal })
+    setValues((v) => ({ ...v, destination: folder }))
+    if (!saving.edited && !proposal.fixedName) setText(proposal.stem)
+  }
+
+  const editName = (next: string) => {
+    setText(next)
+    setSaving((s) => (s && !s.edited ? { ...s, edited: true } : s))
   }
 
   /**
    * A document rasterisation plans one output per page — there is no single
-   * stem for a rename field to edit, and `resolveOutputPath`'s single-output
+   * stem for a name to edit, and `resolveOutputPath`'s single-output
    * shape is exactly what `rasterOutputPaths` (inside `convertAction.plan()`)
-   * exists to bypass. So this skips `startRename`/`buildPlan` entirely and
+   * exists to bypass. So this skips the name entirely and
    * routes through the same `checkWriteSafety` + `runJobs` pipeline `/pdf`'s
    * five page operations already use — `handlePdfDone` is generic over any
    * `Job[]`, not `/pdf`-specific, and a multi-output convert job fits it
@@ -1738,7 +1880,7 @@ export function App({
   const confirmDocumentConversion = (destination: string) => {
     if (!source) return
     void handlePdfDone(action.plan([source], { ...values, destination }), {
-      cancelTo: 'destination',
+      cancelTo: 'save-as',
     })
   }
 
@@ -1746,10 +1888,10 @@ export function App({
    * Routes on how the outputs get their names, not on source kind.
    *
    * A rasterisation names one output per page (`doc-1.jpg`) — at one page as
-   * much as at twenty — so there is no single stem for a rename field to
-   * edit, and it takes the multi-output path. A compression keeps the
-   * source's own format and plans one ordinarily-named output, so it takes
-   * the ordinary path, where `finishConversion` runs the target-size search.
+   * much as at twenty — so there is no single stem for a name to edit, and
+   * it takes the multi-output path. A compression keeps the source's own
+   * format and plans one ordinarily-named output, so it takes the ordinary
+   * path, where `finishConversion` runs the target-size search.
    *
    * Read from the engine's declared `writes` rather than a hardcoded list of
    * raster formats (invariant 2), the same way the CLI's `rasterises` does.
@@ -1758,28 +1900,42 @@ export function App({
    * route, a compression included — which is how the shell came to offer "to
    * a target size" for a scan, collect the number, and ignore it.
    */
-  const confirmDestination = (destination: string) => {
+  const rasterises = (src: SourceInfo, planned: Job | undefined): boolean =>
+    src.kind === 'document' && planned?.op === 'convert' && pdfiumEngine.writes.has(planned.target)
+
+  /**
+   * Save as's answer: the folder, and the name as typed. The one place a
+   * chosen destination goes — every way of saving comes through here.
+   *
+   * The name is trimmed, a `/` in it becomes `-` (it would name a folder),
+   * and an empty one means the proposal.
+   */
+  const confirmDestination = (destination: string, typed = '') => {
     if (!source) return
     // Not read by the action, which is always handed the destination
     // directly; kept for the header bar's trail.
     setValues((v) => ({ ...v, destination }))
-    if (extRun) {
-      void runExtensionJob(destination)
+
+    const proposal = proposalFor(source, values, destination)
+    if (proposal.fixedName) {
+      confirmDocumentConversion(destination)
       return
     }
-
-    if (source.kind === 'document') {
-      const [planned] = action.plan([source], { ...values, destination })
-      if (planned?.op === 'convert' && pdfiumEngine.writes.has(planned.target)) {
-        confirmDocumentConversion(destination)
-        return
-      }
+    const stem = typed.trim().replace(/\//g, '-') || proposal.stem
+    setSaving((s) => (s ? { ...s, given: typed } : s))
+    setText('')
+    setSavedAs(`${stem}${proposal.ext}`)
+    const output = `${destination}/${stem}${proposal.ext}`
+    if (extRun) {
+      void runExtensionJob(destination, { output })
+      return
     }
-    startRename(destination)
+    void convert(destination, { output })
   }
 
-  /** Back from `destination`: to whichever step actually precedes it for this source. */
+  /** Back from Save as: to whichever step actually precedes it for this source. */
   const destinationBack = () => {
+    setText('')
     if (extRun) {
       if (extRun === 'boost') setStep('ext-scale')
       else {
@@ -1794,17 +1950,6 @@ export function App({
       return
     }
     setStep(specFor('dpi') ? 'dpi' : 'target')
-  }
-
-  const submitRename = (raw: string) => {
-    if (!renaming) return
-    const stem = raw.trim().replace(/\//g, '-') || renaming.stem
-    setText('')
-    setRenaming(null)
-    setSavedAs(`${stem}${renaming.ext}`)
-    void convert(renaming.destination, {
-      output: `${renaming.destination}/${stem}${renaming.ext}`,
-    })
   }
 
   /**
@@ -1835,29 +1980,12 @@ export function App({
     // inert amount field — the caret would be in it, and typing would go to
     // the units instead.
     setUnitFocused(false)
-    setStep('destination')
+    openSaveAs({ values: { ...values, size: raw, targetBytes: bytes } })
   }
 
   const chooseQuality = (quality: number) => {
     setValues((v) => ({ ...v, quality }))
-    setStep('destination')
-  }
-
-  // The destination preview shows the resolved output path as the user
-  // highlights each preset. Truncated with `middleEllipsis`, budgeted off the
-  // live terminal width, so a deep preset path can't push the line past the
-  // edge of a narrow terminal.
-  const previewDestination = (candidate: string): string => {
-    if (extRun && source) {
-      const [planned] = extActionFor(extRun).plan([source], { ...values, output: candidate })
-      if (planned) return middleEllipsis(planned.outputs[0] ?? candidate, Math.max(12, width - 4))
-    }
-    const stem = source ? (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '') : ''
-    const full =
-      source && typeof values.target === 'string'
-        ? `${candidate}/${stem}${primaryExtension(values.target as FormatId)}`
-        : candidate
-    return middleEllipsis(full, Math.max(12, width - 4))
+    openSaveAs({ values: { ...values, quality } })
   }
 
   /**
@@ -1905,6 +2033,20 @@ export function App({
    * conversion the search already ran most of, instead of re-planning or
    * re-searching from scratch.
    */
+  /**
+   * What a running job reported, for the Working screen: a count of pages
+   * done where it has one, otherwise the phase it is in. Only what the engine
+   * said — never a position it did not report (invariant 7).
+   */
+  const showPhase = (job: Job, progress: Progress) => {
+    if (progress.phase === 'page') {
+      setPageProgress({ done: progress.done, total: progress.total, job })
+      return
+    }
+    const phase = phaseLabel(job, progress.phase)
+    setWork((w) => (w ? { ...w, phase } : w))
+  }
+
   const finishConversion = async (
     planned: Extract<Job, { op: 'convert' }>,
     destination: string,
@@ -1936,6 +2078,12 @@ export function App({
         if (event.type === 'search:attempt') {
           setAttempt({ n: event.attempt, of: event.of, dpi: event.rung.dpi })
         }
+        // Settled: what runs now is the encode itself, which esc cannot stop.
+        if (event.type === 'search:settled') {
+          setAttempt(undefined)
+          searchAbort.current = undefined
+        }
+        if (event.type === 'job:phase') showPhase(event.job, event.progress)
       },
     })
     setAttempt(undefined)
@@ -1986,7 +2134,7 @@ export function App({
       // step, where choosing a different folder is the actual fix. Any
       // other refusal ends the action, and ending one clears the stage —
       // see `clearSource`.
-      if (refusal.error.code === 'output-is-input') setStep('destination')
+      if (refusal.error.code === 'output-is-input') reopenSaveAs()
       else clearSource()
       return
     }
@@ -2042,9 +2190,6 @@ export function App({
     }
   }
 
-  const extActionFor = (id: 'boost' | 'remove-background') =>
-    id === 'boost' ? boostAction : removeBackgroundAction
-
   /**
    * /boost and /remove-background: the same plan-and-run path as the CLI
    * (`action.plan` then `runPlan`), with esc wired to the AbortSignal so the
@@ -2056,17 +2201,21 @@ export function App({
   ) => {
     if (!source || !extRun || converting.current) return
     converting.current = true
+    const act = extActionFor(extRun)
+    setWork({ startedAt: Date.now(), verb: act.verb })
     setStep('converting')
     const controller = new AbortController()
     searchAbort.current = controller
     try {
-      const [job] = extActionFor(extRun).plan([source], { ...values, output: destination })
+      const [job] = act.plan([source], { ...values, output: opts.output ?? destination })
       if (!job) return
-      if (opts.output) job.outputs[0] = opts.output
       const outcome = await runPlan([job], {
         force: opts.force ?? false,
         concurrency: 1,
         signal: controller.signal,
+        onEvent: (event) => {
+          if (event.type === 'job:phase') showPhase(event.job, event.progress)
+        },
       })
       if (outcome.cancelled) return
       const refusal = outcome.refusals[0]
@@ -2078,7 +2227,7 @@ export function App({
           return
         }
         push({ kind: 'error', id: nextId(), error: refusal.error })
-        setStep('destination')
+        reopenSaveAs()
         return
       }
       const result = outcome.results[0]
@@ -2106,6 +2255,7 @@ export function App({
     } finally {
       if (searchAbort.current === controller) searchAbort.current = undefined
       converting.current = false
+      setWork(null)
     }
   }
 
@@ -2113,6 +2263,7 @@ export function App({
     if (!source) return
     if (converting.current) return
     converting.current = true
+    setWork({ startedAt: Date.now(), verb: action.verb })
     setStep('converting')
     try {
       const planned = action.plan([source], { ...values, destination })[0]
@@ -2141,7 +2292,7 @@ export function App({
       // convertAction.plan() throws synchronously on a bad target, and
       // nothing guarantees runPlan() can never reject for some
       // cause they don't themselves catch. Either way, this runs inside an
-      // async handler nothing awaits — PathInput fires onSubmit from a
+      // async handler nothing awaits — Save as fires onSubmit from a
       // synchronous useInput handler — so a rethrow here would become an
       // unhandled rejection instead of something the user ever sees. Render
       // it instead, exactly like submitPath does for probe().
@@ -2149,6 +2300,7 @@ export function App({
       clearSource()
     } finally {
       converting.current = false
+      setWork(null)
     }
   }
 
@@ -2164,6 +2316,7 @@ export function App({
       // A document's smallest came off a resolution rung as well as a quality,
       // so taking that size means taking both.
       if (dpi !== undefined) planned.options.dpi = dpi
+      setWork({ startedAt: Date.now(), verb: action.verb })
       setStep('converting')
       // Deliberately without `targetBytes`: the search already ran and this is
       // the answer to it. Passing it again would search a second time and miss
@@ -2176,6 +2329,7 @@ export function App({
         })
         .finally(() => {
           converting.current = false
+          setWork(null)
         })
       return
     }
@@ -2204,18 +2358,17 @@ export function App({
 
   const answerOverwrite = (choice: string) => {
     if (!pending) return
-    const { destination, keepBoth } = pending
+    const { destination, output, keepBoth } = pending
     setPending(null)
     if (extRun) {
-      if (choice === 'replace') void runExtensionJob(destination, { force: true })
+      if (choice === 'replace') void runExtensionJob(destination, { output, force: true })
       else if (choice === 'keep') void runExtensionJob(destination, { output: keepBoth })
-      else setStep('destination')
+      else reopenSaveAs()
       return
     }
     if (choice === 'replace') void convert(destination, { force: true })
     else if (choice === 'keep') void convert(destination, { output: keepBoth })
-    else if (choice === 'rename') startRename(destination)
-    else setStep('destination')
+    else reopenSaveAs()
   }
 
   /**
@@ -2235,12 +2388,10 @@ export function App({
    * A rasterisation job's `total` is `job.options.pages.length` — the
    * *selected* page count, not the document's — because that is exactly
    * what `engines/pdfium.ts` reports (see its own doc comment); this only
-   * relays it, never recomputes one of its own. `detail` is the basename of
-   * whichever output the just-finished page wrote, read back off the job's
-   * own `outputs[done - 1]` rather than threaded through separately, so it
-   * can never name a different file than the one `Progress` is counting.
+   * relays it, never recomputes one of its own.
    */
   const runPdfJobs = async (jobs: Job[], opts: { force?: boolean } = {}) => {
+    setWork({ startedAt: Date.now(), verb: verbOf(jobs[0]) ?? action.verb })
     setStep('pdf-running')
     setPageProgress(null)
     try {
@@ -2257,15 +2408,7 @@ export function App({
       const summary = await runPlan(jobs, {
         force: opts.force ?? false,
         onEvent: (event) => {
-          if (event.type !== 'job:phase' || event.progress.phase !== 'page') return
-          const { done, total } = event.progress
-          const output = event.job.op === 'convert' ? event.job.outputs[done - 1] : undefined
-          setPageProgress({
-            done,
-            total,
-            detail: output ? basename(output) : undefined,
-            op: event.job.op,
-          })
+          if (event.type === 'job:phase') showPhase(event.job, event.progress)
         },
       })
       const [first] = summary.results
@@ -2301,6 +2444,7 @@ export function App({
       showError(e)
     } finally {
       setPageProgress(null)
+      setWork(null)
       setStage(clearStage())
       setValues({})
       setStep('idle')
@@ -2331,7 +2475,7 @@ export function App({
    * the job's own plan asking to write two things to one path, which is not
    * a preference `force` can express (see `checkWriteSafety`'s doc).
    */
-  const handlePdfDone = async (jobs: Job[], opts: { cancelTo?: 'pdf' | 'destination' } = {}) => {
+  const handlePdfDone = async (jobs: Job[], opts: { cancelTo?: 'pdf' | 'save-as' } = {}) => {
     const safe = checkWriteSafety(jobs, { force: false })
     if (safe.failures.length > 0) {
       setPdfBlocked({ jobs, failures: safe.failures, cancelTo: opts.cancelTo ?? 'pdf' })
@@ -2347,7 +2491,8 @@ export function App({
     if (choice !== 'replace') {
       const cancelTo = pdfBlocked.cancelTo
       setPdfBlocked(null)
-      setStep(cancelTo)
+      if (cancelTo === 'save-as') reopenSaveAs()
+      else setStep(cancelTo)
       return
     }
     const forced = checkWriteSafety(pdfBlocked.jobs, { force: true })
@@ -2366,8 +2511,8 @@ export function App({
 
   // `Select` owns arrow/enter for the output-exists choice; a plain refusal
   // (no bypass offered) has nothing mounted to answer escape or enter, so
-  // this step owns both directly — same reasoning as the 'rename' and
-  // 'size' steps above, which own escape for the same reason.
+  // this step owns both directly — same reasoning as the 'size' step
+  // above, which owns escape for the same reason.
   useKeys(
     (_input, key) => {
       if (key.escape || key.return) answerPdfBlocked('cancel')
@@ -2447,11 +2592,13 @@ export function App({
 
   /** The header bar's trail for the screen on now. */
   const barTrail = (): Trail => {
-    if (step === 'pdf') return pdfTrailNow
-    if (mode === 'pdf' && (step === 'pdf-running' || step === 'pdf-blocked')) {
+    // A job not yet shown as Working: the bar stays as the last question left it.
+    const at = running && !workShown ? lastQuestion.current : step
+    if (at === 'pdf') return pdfTrailNow
+    if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: pdfTrailNow.answers,
-        current: step === 'pdf-running' ? 'Running' : 'Overwrite',
+        current: at === 'pdf-running' ? work?.verb : 'Overwrite',
       }
     }
     const waiting =
@@ -2460,7 +2607,7 @@ export function App({
         : source
           ? basename(source.path)
           : undefined
-    return trailFor({ mode, step, answers: trailAnswers(), waiting })
+    return trailFor({ mode, step: at, answers: trailAnswers(), waiting, verb: work?.verb })
   }
 
   /**
@@ -2488,7 +2635,12 @@ export function App({
             card, which it heads (see `doneTrail`). */}
           {working && !onHome && step !== 'result' ? (
             <Box marginBottom={1}>
-              <HeaderBar mode={mode} trail={barTrail()} width={width} />
+              <HeaderBar
+                mode={mode}
+                trail={barTrail()}
+                width={width}
+                drift={running && workShown}
+              />
             </Box>
           ) : null}
 
@@ -2507,7 +2659,7 @@ export function App({
           step !== 'result' &&
           (step !== 'idle' || stage.sources.length > 1) ? (
             <Box marginBottom={1}>
-              <StagedFiles stage={stage} width={width} />
+              <StagedFiles stage={stage} width={width} dim={running && workShown} />
             </Box>
           ) : null}
           <Static key={staticGeneration} items={history}>
@@ -2694,26 +2846,28 @@ export function App({
             </Box>
           ) : null}
 
-          {step === 'quality' && qualitySpec?.kind === 'slider' ? (
+          {step === 'quality' && source && qualitySpec?.kind === 'slider' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Slider
-                label={qualitySpec.label}
+              <QualityStep
+                mode={mode}
+                // What the quality is for: the format in convert, the file in compress.
+                aside={
+                  mode === 'compress'
+                    ? basename(source.path)
+                    : typeof values.target === 'string'
+                      ? FORMATS[values.target as FormatId].label
+                      : undefined
+                }
                 min={qualitySpec.min}
                 max={qualitySpec.max}
                 step={qualitySpec.step}
-                value={typeof values.quality === 'number' ? values.quality : qualitySpec.default}
+                value={qualityNow}
                 onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
                 onSubmit={chooseQuality}
                 onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
-              />
-              <HintBar
+                size={qualitySize}
+                sourceBytes={source.bytes}
                 width={width}
-                pairs={[
-                  ['←→', 'adjust'],
-                  ['↵', 'confirm'],
-                  ['1–3', 'mode'],
-                  ['esc', 'back'],
-                ]}
               />
             </Box>
           ) : null}
@@ -2729,7 +2883,10 @@ export function App({
                 initialValue="2"
                 onSubmit={(chosen) => {
                   setValues((v) => ({ ...v, scale: chosen }))
-                  setStep('destination')
+                  openSaveAs({
+                    values: { ...values, scale: chosen },
+                    action: extActionFor('boost'),
+                  })
                 }}
                 onCancel={() => {
                   setExtRun(undefined)
@@ -2749,63 +2906,26 @@ export function App({
             </Box>
           ) : null}
 
-          {step === 'destination' && destinationSpec?.kind === 'path' ? (
+          {step === 'save-as' && saving && destinationSpec?.kind === 'path' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <PathInput
-                label={destinationSpec.label}
+              <SaveAs
+                key={saving.opened}
+                mode={mode}
+                width={width}
+                name={text}
+                onNameChange={editName}
+                proposed={saving.stem}
+                ext={saving.ext}
+                fixedName={saving.fixedName}
+                folder={saving.folder}
+                onFolder={chooseFolder}
                 presets={destinationSpec.presets}
-                preview={previewDestination}
-                onSubmit={confirmDestination}
-                onCancel={destinationBack}
-                width={width}
-                showHints={band !== 'compact'}
                 defaultPath={expandTilde(livePrefs.defaultOutput)}
+                display={displayPath}
                 onMakeDefault={makeDefault}
-              />
-              {/* Wider than a compact terminal. Spec §13 drops hints there
-                rather than overflowing, and the shorter pair still names the
-                key that is unique to this step. Tab, not d: letters type into
-                the search box now. */}
-              <HintBar
-                width={width}
-                pairs={
-                  band === 'compact'
-                    ? [['tab', 'make default']]
-                    : [
-                        ['type', 'filter'],
-                        ['↑↓', 'choose'],
-                        ['↵', 'save here'],
-                        ['tab', 'make default'],
-                      ]
-                }
-              />
-            </Box>
-          ) : null}
-
-          {step === 'rename' && renaming ? (
-            <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.label)}>Name the file</Text>
-              <Prompt
-                value={text}
-                onChange={setText}
-                onSubmit={submitRename}
-                placeholder="file name"
-                isActive
-                variant={band === 'compact' ? 'plain' : 'field'}
-                width={width}
-              />
-              <Text color={colourProp(palette.dim)}>
-                {`  ${SYMBOLS.arrow} ${middleEllipsis(
-                  `${renaming.destination}/${text || renaming.stem}${renaming.ext}`,
-                  Math.max(12, width - 4),
-                )}`}
-              </Text>
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↵', 'save'],
-                  ['esc', 'clear / back'],
-                ]}
+                onSubmit={confirmDestination}
+                onBack={destinationBack}
+                initialFocus={saving.focus}
               />
             </Box>
           ) : null}
@@ -2823,7 +2943,7 @@ export function App({
                 onSubmit={answerOverwrite}
                 onCancel={() => {
                   setPending(null)
-                  setStep('destination')
+                  reopenSaveAs()
                 }}
                 showHints={band !== 'compact'}
               />
@@ -2874,34 +2994,25 @@ export function App({
             </Box>
           ) : null}
 
-          {step === 'converting' ? (
-            <Box flexDirection="column" marginBottom={1}>
-              {attempt ? (
-                <Text color={colourProp(palette.dim)}>Finding the right quality…</Text>
-              ) : (
-                <WorkingLine label="Converting…" />
-              )}
-              {/* One dot per attempt the search may take — `of` is
-                  `maxAttempts()` for this rung, known before the search
-                  starts, so the row is a real bounded sequence rather than a
-                  bar filling toward an invented total (invariant 7). The
-                  numbers stay printed beside it: a dot row alone would carry
-                  its meaning in shape and colour only, and spec §13 wants the
-                  words too. */}
-              {attempt ? (
-                <Text>
-                  <Text color={colourProp(palette.modeCompress)}>
-                    {SYMBOLS.dotFilled.repeat(attempt.n)}
-                  </Text>
-                  <Text color={colourProp(palette.border)}>
-                    {SYMBOLS.dotEmpty.repeat(Math.max(0, attempt.of - attempt.n))}
-                  </Text>
-                  <Text color={colourProp(palette.dim)}>
-                    {`  attempt ${attempt.n} of ${attempt.of}`}
-                  </Text>
-                </Text>
-              ) : null}
-              <HintBar width={width} pairs={[['esc', 'back — nothing is written yet']]} />
+          {/* Working (W5), once a job has run long enough to need it: the
+              bar above drifts, and this says what is happening. The same
+              screen for a conversion and a page operation. */}
+          {running && workShown && work ? (
+            <Box marginBottom={1}>
+              <Working
+                mode={mode}
+                label={
+                  attempt
+                    ? 'Finding the right quality'
+                    : pageProgress
+                      ? `${verbOf(pageProgress.job) ?? work.verb} ${basename(pageProgress.job.sources[0].path)}`
+                      : (work.phase ?? work.verb)
+                }
+                startedAt={work.startedAt}
+                search={attempt}
+                pages={attempt ? undefined : (pageProgress ?? undefined)}
+                width={width}
+              />
             </Box>
           ) : null}
 
@@ -3002,7 +3113,8 @@ export function App({
                 setMode('convert')
                 setValues({ target: 'png' })
                 setExtRun(id)
-                setStep(id === 'boost' ? 'ext-scale' : 'destination')
+                if (id === 'boost') setStep('ext-scale')
+                else openSaveAs({ values: { target: 'png' }, action: extActionFor(id) })
               }}
               onError={(error) => push({ kind: 'error', id: nextId(), error })}
               onClose={() => {
@@ -3035,32 +3147,6 @@ export function App({
             />
           ) : null}
 
-          {step === 'pdf-running' ? (
-            <Box marginBottom={1}>
-              {/* Determinate only once a real `page` event has arrived — see
-                `pageProgress`'s own doc comment. Split, extract (separate
-                mode) and rasterising a document each report real per-page
-                progress; merge, delete and rotate report phases only and
-                never reach this branch, so they stay the plain "Running…"
-                line below, exactly as invariant 7 requires. The label comes
-                from `pageProgress.op` via `pageProgressLabel`, not a
-                hardcoded word, so it can never claim an operation that
-                isn't the one actually running (a split copying pages is not
-                "RENDERING" anything). */}
-              {pageProgress ? (
-                <Progress
-                  label={pageProgressLabel(pageProgress.op)}
-                  done={pageProgress.done}
-                  total={pageProgress.total}
-                  detail={pageProgress.detail}
-                  width={width}
-                />
-              ) : (
-                <Text color={colourProp(palette.dim)}>Running…</Text>
-              )}
-            </Box>
-          ) : null}
-
           {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
             <Box flexDirection="column" marginBottom={1}>
               <Text color={colourProp(palette.fail)}>
@@ -3085,7 +3171,7 @@ export function App({
                       // document conversion has its own destination step —
                       // see `PendingPdfRefusal.cancelTo`'s doc comment.
                       hint:
-                        pdfBlocked.cancelTo === 'destination'
+                        pdfBlocked.cancelTo === 'save-as'
                           ? 'pick a different folder, nothing written'
                           : 'back to /pdf, nothing written',
                     },

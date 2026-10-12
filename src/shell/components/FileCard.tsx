@@ -15,7 +15,16 @@ import { bandFor, CARD_WIDTH, middleEllipsis } from '../width.js'
  * than spending four of the columns the filename needs — spec §13 says
  * content is truncated rather than wrapped, and a border is not content.
  */
-export function FileCard({ source, width }: { source: SourceInfo; width: number }) {
+export function FileCard({
+  source,
+  width,
+  dim = false,
+}: {
+  source: SourceInfo
+  width: number
+  /** Stepped back: the file is being worked on, and the work is what to read now. */
+  dim?: boolean
+}) {
   const palette = useTheme()
   const band = bandFor(width)
   const name = source.path.split('/').pop() ?? source.path
@@ -75,7 +84,7 @@ export function FileCard({ source, width }: { source: SourceInfo; width: number 
       </Text>
       <Text>
         <Text color={colourProp(palette.border)}>{'│ '}</Text>
-        <Text color={colourProp(palette.fg)}>{row(name)}</Text>
+        <Text color={colourProp(dim ? palette.dim : palette.fg)}>{row(name)}</Text>
         <Text color={colourProp(palette.border)}>{' │'}</Text>
       </Text>
       <Text>

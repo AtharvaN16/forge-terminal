@@ -1,5 +1,5 @@
 // tests/engines/convert.test.ts
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
@@ -65,6 +65,32 @@ describe('convert — format pairs', () => {
       { phase: 'encoding' },
       { phase: 'writing' },
     ])
+  })
+
+  it('says it is writing only once the encode has finished', async () => {
+    // Half a JPEG: its header probes fine, and the encode fails on the rest.
+    // Sharp encodes as it writes, so a "writing" reported before the encode
+    // ran would show here, ahead of the failure.
+    const dir = await makeTempDir()
+    const whole = await sharp({
+      create: {
+        width: 400,
+        height: 400,
+        channels: 3,
+        background: '#808080',
+        noise: { type: 'gaussian', mean: 128, sigma: 40 },
+      },
+    })
+      .jpeg()
+      .toBuffer()
+    const input = join(dir, 'cut.jpg')
+    await writeFile(input, whole.subarray(0, Math.floor(whole.length / 2)))
+    const phases: Progress[] = []
+    await expect(
+      imageEngine.run(await job(input, 'webp', join(dir, 'cut.webp')), (p) => phases.push(p)),
+    ).rejects.toThrow()
+    expect(phases.map((p) => p.phase)).toEqual(['reading', 'decoding', 'encoding'])
+    expect(await readdir(dir)).toEqual(['cut.jpg'])
   })
 
   it('creates missing intermediate directories', async () => {

@@ -1,11 +1,8 @@
-import { statSync } from 'node:fs'
-import { basename, dirname } from 'node:path'
 import { Box, Text } from 'ink'
 import { useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
-import { expandTilde } from '../../config/preferences.js'
-import type { Choice, PathPreset } from '../../core/actions/index.js'
-import { unescapePath } from '../../utils/unescape-path.js'
+import type { PathPreset } from '../../core/actions/index.js'
+import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
 import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import { useTheme } from '../ThemeContext.js'
@@ -18,63 +15,7 @@ import { Select } from './Select.js'
 const FRAME_MAX = 72
 /** How long a dropped path's flash takes to fade. */
 const DROP_FLASH_MS = 450
-const NO_MATCH = '__no-match__'
 const PLACEHOLDER = 'type to filter, or drop a file'
-
-/**
- * Text that names a place rather than filtering the list: what a drag from
- * Finder pastes (`/…`), a home-relative path (`~/…`), or a relative one.
- */
-const PATHLIKE = /^[~/.]/
-
-/**
- * The rows Save to shows for `text` (spec 2026-10-11 picker §3).
- *
- * A path gets exactly one row. A dropped *file* means "save next to it", so
- * its row saves to the file's folder; anything else — a folder, or a path
- * that does not exist yet — is the folder to save into. Any other text
- * filters the places by name. When nothing matches, one disabled row says
- * so: disabled, so Enter does nothing, but still a row, so the list keeps
- * its keys (escape still clears the text).
- */
-export function destinationRows(
-  text: string,
-  presets: PathPreset[],
-  defaultPath: string,
-  preview: (path: string) => string,
-): Choice[] {
-  const query = unescapePath(text.trim())
-  if (PATHLIKE.test(query)) {
-    let isFile = false
-    try {
-      isFile = statSync(expandTilde(query)).isFile()
-    } catch {
-      // Not there yet, or not readable: it can still be the folder to create.
-    }
-    const folder = isFile ? dirname(query) : query
-    return [
-      {
-        value: folder,
-        label: isFile ? `Next to ${basename(query)}` : 'Use this folder',
-        hint: preview(folder),
-      },
-    ]
-  }
-
-  const q = query.toLowerCase()
-  const hits = presets.filter((p) => p.label.toLowerCase().includes(q))
-  if (hits.length === 0) {
-    return [
-      { value: NO_MATCH, label: 'no match', hint: 'type a path, or drop a file', disabled: true },
-    ]
-  }
-  return hits.map((p) => ({
-    value: p.path,
-    label: p.label,
-    hint: preview(p.path),
-    ...(p.path === defaultPath ? { badge: 'default' } : {}),
-  }))
-}
 
 interface PathInputProps {
   label: string
@@ -97,7 +38,9 @@ interface PathInputProps {
 }
 
 /**
- * Save to: a framed search box over the places.
+ * Save to: a framed search box over the places. `/pdf` asks where its page
+ * operations go with this; convert and compress ask with Save as
+ * (`SaveAs.tsx`), which lists the same `destinationRows`.
  *
  * ```
  * ╭─ Save to ──────────────────────────────╮
@@ -149,7 +92,7 @@ export function PathInput({
   drawnText.current = text
   const listKey = rows.map((r) => r.value).join('\n')
   const [highlight, setHighlight] = useState({ listKey, index: 0 })
-  const isPath = PATHLIKE.test(unescapePath(text.trim()))
+  const isPath = isPathQuery(text)
 
   // A paste is one multi-character chunk; that is what a drop looks like.
   const [droppedAt, setDroppedAt] = useState(0)

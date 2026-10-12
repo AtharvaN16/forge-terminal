@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander'
+import { parseHex, type Rgb } from '../core/colour/space.js'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
 import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
@@ -130,6 +131,22 @@ export interface ExtensionsIntent {
   id?: string
 }
 
+/** `forge palette <image>`: an image's main colours (colour spec §7.1). */
+export interface PaletteIntent {
+  kind: 'palette'
+  input: string
+  /** `--inside <hex>`: the shades of the palette colour nearest this one. */
+  inside?: Rgb
+  svg: boolean
+}
+
+/** `forge scale <colour>`: 50–950 with the colour at 500. */
+export interface ScaleIntent {
+  kind: 'scale'
+  colour: Rgb
+  svg: boolean
+}
+
 export type Intent =
   | ConvertIntent
   | CompressIntent
@@ -137,6 +154,8 @@ export type Intent =
   | ExtensionOpIntent
   | ProbeIntent
   | ExtensionsIntent
+  | PaletteIntent
+  | ScaleIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
   | ConfigIntent
@@ -220,6 +239,8 @@ Exit codes:
 export const COMMANDS_HELP = `
 Other commands:
   forge probe <files...>   what each file is and what Forge can do with it
+  forge palette <image>    an image's main colours (--json, --svg, --inside <hex>)
+  forge scale <colour>     50–950 from one colour, with it at 500 (--json, --svg)
   forge config [list | path | set <setting> <value>]
   forge extensions [add | remove <id>]   optional extras, such as boost and remove-background
   forge mcp                run as a local MCP server over stdio, for AI agents`
@@ -286,6 +307,79 @@ function parseExtensionsArgs(argv: string[]): ExtensionsIntent {
   return { kind: 'extensions', action, id }
 }
 
+function colourArg(raw: string | undefined): Rgb {
+  if (raw === undefined) {
+    throw invalidArguments(
+      'No colour given.',
+      "Try: forge scale 6579FD — or quote it, '#6579FD', because an unquoted # starts a comment in the shell.",
+    )
+  }
+  const rgb = parseHex(raw)
+  if (!rgb) {
+    throw invalidArguments(
+      `${raw} is not a colour.`,
+      'Try a hex code, for example 6579FD or #6579FD.',
+    )
+  }
+  return rgb
+}
+
+/**
+ * Claimed before Commander, like `probe`: Commander would read the word as a
+ * filename. `--json` is read by `wantsJson`; `--svg` and `--inside <hex>` are
+ * the only flags these take.
+ */
+const COLOUR_USAGE: Record<'palette' | 'scale', string> = {
+  palette: `Usage: forge palette <image> [--json] [--svg] [--inside <hex>]
+
+An image's main colours, most of the image first.
+  --json            one JSON document: palette.colours[] with hex, rgb, oklch, share
+  --svg             a card of swatches; pipe to pbcopy and paste into Figma
+  --inside <hex>    the shades of the palette colour nearest <hex>
+`,
+  scale: `Usage: forge scale <colour> [--json] [--svg]
+
+50–950 built in OKLCH, with <colour> at 500. Pass the hex without #, or quote it.
+  --json            one JSON document: scale.steps[] with hex, oklch, white, black
+  --svg             a card of swatches; pipe to pbcopy and paste into Figma
+`,
+}
+
+function parseColourArgs(argv: string[]): PaletteIntent | ScaleIntent {
+  const [cmd, ...rest] = argv
+  if (rest.includes('--help') || rest.includes('-h')) {
+    // As Commander does for `forge --help`: print, then end as help (exit 0).
+    process.stdout.write(COLOUR_USAGE[cmd === 'scale' ? 'scale' : 'palette'])
+    throw new CommanderError(0, 'commander.helpDisplayed', '(outputHelp)')
+  }
+  const args = rest.filter((a) => a !== '--json' && a !== '--svg')
+  const svg = rest.includes('--svg')
+  const at = args.indexOf('--inside')
+  const insideRaw = at === -1 ? undefined : args[at + 1]
+  if (at !== -1) args.splice(at, 2)
+  const flag = args.find((a) => a.startsWith('-'))
+  if (flag !== undefined) {
+    throw invalidArguments(`forge ${cmd} does not take ${flag}.`, `Try: forge ${cmd} --help`)
+  }
+  if (cmd === 'scale') {
+    if (args.length > 1)
+      throw invalidArguments('forge scale takes one colour.', 'Try: forge scale 6579FD')
+    return { kind: 'scale', colour: colourArg(args[0]), svg }
+  }
+  if (args.length !== 1) {
+    throw invalidArguments(
+      args.length === 0 ? 'No image given.' : 'forge palette takes one image.',
+      'Try: forge palette photo.jpg',
+    )
+  }
+  return {
+    kind: 'palette',
+    input: args[0] as string,
+    svg,
+    ...(at === -1 ? {} : { inside: colourArg(insideRaw) }),
+  }
+}
+
 /**
  * Whether the caller asked for JSON. It is read from argv rather than from the
  * parsed intent because it has to be known even when parsing fails: an argument
@@ -330,7 +424,13 @@ function takeBoost(argv: string[]): { rest: string[]; scale?: 2 | 4 } {
 
 export function parseArgs(rawArgv: string[]): Intent {
   const argv = rawArgv
-  if (argv[0] === 'config' || argv[0] === 'probe' || argv[0] === 'extensions') {
+  if (
+    argv[0] === 'config' ||
+    argv[0] === 'probe' ||
+    argv[0] === 'extensions' ||
+    argv[0] === 'palette' ||
+    argv[0] === 'scale'
+  ) {
     return parseSubcommand(argv)
   }
   const boosted = takeBoost(argv)
@@ -340,6 +440,7 @@ export function parseArgs(rawArgv: string[]): Intent {
 function parseSubcommand(argv: string[]): Intent {
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
+  if (argv[0] === 'palette' || argv[0] === 'scale') return parseColourArgs(argv)
   return parseExtensionsArgs(argv)
 }
 

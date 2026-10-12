@@ -135,7 +135,7 @@ describe('shell flow', () => {
     await settle()
     const frame = lastFrame() ?? ''
     expect(frame).not.toContain('Quality')
-    expect(frame).toContain('Save to')
+    expect(frame).toContain('Save as')
   })
 
   /**

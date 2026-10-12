@@ -99,6 +99,12 @@ export interface ExecuteOptions {
   onDownload?: (done: number, total: number) => void
   /** Aborts an extension job in flight: the child is killed and nothing is written. */
   signal?: AbortSignal
+  /**
+   * Draw true-colour swatches in `forge palette` and `forge scale` output.
+   * src/index.ts sets it for a TTY stdout without NO_COLOR; off otherwise, so
+   * piped output is plain text.
+   */
+  colour?: boolean
 }
 
 /** The intents that convert, compress or edit files: everything `runIntent` accepts. */
@@ -732,6 +738,12 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         stdout: probes.flatMap((p, i) => [...(i > 0 ? [''] : []), ...reportProbe(p)]),
         stderr: reportFailures(failures, { debug }),
       }
+    }
+    if (intent.kind === 'palette' || intent.kind === 'scale') {
+      // Lazy: colour pulls in sharp only through samplePixels, and only here.
+      const { runPalette, runScale } = await import('./colour.js')
+      const o = { json, colour: opts.colour ?? false }
+      return intent.kind === 'palette' ? await runPalette(intent, o) : await runScale(intent, o)
     }
     if (intent.kind === 'shell') return { exitCode: 0, stdout: [], stderr: [] }
     return renderRun(await runIntent(intent, opts), { json, debug })

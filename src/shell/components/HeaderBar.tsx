@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { type Trail, trailBarRow } from '../bar-art.js'
 import { slantedChips } from '../glyphs.js'
 import type { Row } from '../home-art.js'
-import { easeOut, motionEnabled, useTween } from '../motion.js'
+import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
 import type { ShellMode } from '../theme.js'
 import { Runs } from './Home.js'
@@ -19,6 +19,8 @@ export function isWorking(step: string, staged: number): boolean {
 
 /** How long a new mode takes to cross the bar. */
 const WIPE_MS = 260
+/** How often the drifting hatching is redrawn while a job runs. */
+const DRIFT_MS = 80
 
 /** The first `edge` cells of `next`, then the rest of `from`. */
 function wiped(next: Row, from: Row, edge: number): Row {
@@ -40,17 +42,29 @@ export function HeaderBar({
   trail,
   width,
   slanted,
+  drift = false,
 }: {
   mode: ShellMode
   trail: Trail
   width: number
   /** Slanted chip ends; decided from the terminal when not given. */
   slanted?: boolean | undefined
+  /**
+   * While a job runs, the hatching drifts (W5): a moving pattern says "busy"
+   * without claiming how far. Still when motion is off.
+   */
+  drift?: boolean
 }) {
   const palette = useTheme()
   // A palette with no ink is the first-run one, which sets no fills: no chip to slant.
   const ends = (slanted ?? slantedChips()) && palette.ink !== ''
-  const row = trailBarRow({ width, palette, mode, trail, slanted: ends })
+  const moving = drift && motionEnabled(palette.name)
+  const since = useRef<number | undefined>(undefined)
+  if (!moving) since.current = undefined
+  else since.current ??= Date.now()
+  useTicker(moving, DRIFT_MS)
+  const t = since.current === undefined ? undefined : (Date.now() - since.current) / 1000
+  const row = trailBarRow({ width, palette, mode, trail, slanted: ends, drift: t })
 
   // When the mode changes, the new mode's row sweeps in from the left over
   // the old one, so the change itself says the mode changed. The old row is

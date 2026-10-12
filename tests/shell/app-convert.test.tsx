@@ -11,6 +11,23 @@ const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
+
+/**
+ * Waits until the frame shows `text`, then a beat more. A key sent before its
+ * screen is up lands on the screen before — on a busy machine a fixed pause
+ * once let the ↓ to WebP go missing, and PNG was written instead. And a
+ * screen is drawn before its keys are listened for (Ink attaches `useInput`
+ * in an effect, after the frame is written), so a key sent the moment the
+ * frame appears can still be lost; the beat is for that.
+ */
+async function until(lastFrame: () => string | undefined, text: string, ms = 10_000) {
+  const shown = () => (lastFrame() ?? '').replace(SGR, '').includes(text)
+  const start = Date.now()
+  while (!shown() && Date.now() - start < ms) await settle(30)
+  if (!shown()) throw new Error(`never showed "${text}":\n${(lastFrame() ?? '').replace(SGR, '')}`)
+  await settle(100)
+}
 
 /**
  * Preferences pinned to this test's own temp folder. Without it the shell
@@ -31,17 +48,15 @@ async function driveToResult() {
   app.stdin.write(jpg)
   await settle()
   app.stdin.write(ENTER) // submit path
-  await settle(300)
+  await until(app.lastFrame, 'Convert JPEG to')
   app.stdin.write(DOWN) // targets exclude jpeg (same-format is a no-op), so
-  await settle() // the order is png, webp, avif… one DOWN reaches webp.
+  await until(app.lastFrame, '▌ WebP') // the order is png, webp, avif…
   app.stdin.write(ENTER)
-  await settle()
+  await until(app.lastFrame, 'smaller')
   app.stdin.write(ENTER) // accept quality
-  await settle()
-  app.stdin.write(ENTER) // accept the destination -> the name step
-  await settle()
-  app.stdin.write(ENTER) // accept the proposed name
-  await settle(600) // conversion
+  await until(app.lastFrame, 'Save as')
+  app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
+  await until(app.lastFrame, 'convert another')
   return { ...app, dir }
 }
 
@@ -107,9 +122,7 @@ describe('shell conversion', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle()
-    app.stdin.write(ENTER) // quality
-    await settle()
-    app.stdin.write(ENTER) // destination -> the name step
+    app.stdin.write(ENTER) // quality -> Save as
     await settle(300)
     // Both in one tick, at the step that actually submits the conversion.
     // React unmounts the handler on the next render, but both calls have

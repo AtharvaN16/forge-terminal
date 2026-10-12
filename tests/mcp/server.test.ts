@@ -9,7 +9,13 @@ import { InMemoryTransport } from '@modelcontextprotocol/server'
 import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { formatMatrix, targetIdsFor } from '../../src/core/capabilities.js'
-import type { FormatsJson, ProbeJson, RunJson } from '../../src/core/report-data.js'
+import type {
+  FormatsJson,
+  PaletteJson,
+  ProbeJson,
+  RunJson,
+  ScaleJson,
+} from '../../src/core/report-data.js'
 import { probe } from '../../src/engines/registry.js'
 import { createForgeServer } from '../../src/mcp/server.js'
 import { makeJpeg, makePdf, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
@@ -54,17 +60,21 @@ async function call<T = RunJson>(
 }
 
 describe('the tool list', () => {
-  it('offers exactly the five tools, annotated', async () => {
+  it('offers exactly the seven tools, annotated', async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
       'forge_compress',
       'forge_convert',
       'forge_formats',
+      'forge_palette',
       'forge_pdf',
       'forge_probe',
+      'forge_scale',
     ])
     const byName = new Map(tools.map((t) => [t.name, t]))
     expect(byName.get('forge_probe')?.annotations?.readOnlyHint).toBe(true)
+    expect(byName.get('forge_palette')?.annotations?.readOnlyHint).toBe(true)
+    expect(byName.get('forge_scale')?.annotations?.readOnlyHint).toBe(true)
     expect(byName.get('forge_convert')?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: false,
@@ -282,5 +292,40 @@ describe('writing tools called in parallel', () => {
     expect(bad.isError).toBe(true)
     expect(good.isError).toBe(false)
     expect(existsSync(join(dir, 'photo.png'))).toBe(true)
+  })
+})
+
+describe('colour tools', () => {
+  it('forge_scale returns the scale document', async () => {
+    const out = await call<ScaleJson>('forge_scale', { colour: '#6579FD' })
+    expect(out.isError).toBe(false)
+    expect(out.doc.scale.reference).toBe('#6579FD')
+    expect(out.doc.scale.steps).toHaveLength(11)
+  })
+
+  it('forge_palette returns the palette, and inside a colour its shades', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'a.jpg')
+    const out = await call<PaletteJson>('forge_palette', { path: jpg })
+    expect(out.isError).toBe(false)
+    const first = out.doc.palette.colours[0]?.hex ?? expect.fail('no colours')
+    const inner = await call<PaletteJson>('forge_palette', { path: jpg, inside: first })
+    expect(inner.doc.palette.inside).toBe(first)
+  })
+
+  it('refuses a relative path, as every other tool does', async () => {
+    const out = await call('forge_palette', { path: 'photo.jpg' })
+    expect(out.isError).toBe(true)
+    expect(out.text).toContain('absolute')
+  })
+
+  it('refusals are errors with a reason, not a malformed document', async () => {
+    const dir = await makeTempDir()
+    const pdf = await call('forge_palette', { path: await makePdf(dir, 'x.pdf') })
+    expect(pdf.isError).toBe(true)
+    expect(pdf.text).toContain('not an image')
+    const bad = await call('forge_scale', { colour: 'blue' })
+    expect(bad.isError).toBe(true)
+    expect(bad.text).toContain('not a colour')
   })
 })

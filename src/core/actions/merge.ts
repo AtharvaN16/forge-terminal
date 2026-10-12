@@ -10,6 +10,7 @@ const documents = (sources: SourceInfo[]) =>
 export const mergeAction: Action = {
   id: 'merge',
   label: 'Merge',
+  verb: 'Merging',
   hint: 'several files into one',
   appliesTo: (sources) =>
     documents(sources).length >= 2 && documents(sources).length === sources.length,

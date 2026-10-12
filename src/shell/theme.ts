@@ -153,15 +153,38 @@ export interface Palette {
    * the terminal's own foreground.
    */
   ink: string
+  /**
+   * A control's empty track: the quality slider after its thumb, and the
+   * part of Working's page bar still to fill. Empty means "no fill" — the
+   * slider then draws its track as a rule.
+   */
+  track: string
+  /** The quality slider up to its thumb. Grey, never the mode's colour. */
+  trackFill: string
+  /** The slider's thumb: a pill with the value on it, in `ink`. The brightest thing in the row. */
+  thumb: string
+  /**
+   * Save as: the folder in the sentence while the name is focused, a light
+   * grey on the field's fill, so it reads as something to choose.
+   */
+  folderChip: string
+  /** Save as: the folder you are on, as a pill in `ink`. The brightest thing in the field. */
+  pill: string
+  /** Save as: the band behind the highlighted folder, inside the field. */
+  fieldBand: string
+  /** Save as: the default folder's tag, a tinted pill at the far end of its row. */
+  defaultTagBg: string
+  /** The word on `defaultTagBg`: a soft orange, quieter than the row it sits on. */
+  defaultTag: string
 }
 
 export const DARK: Palette = {
   name: 'dark',
-  fg: '#e4e8f0',
-  // 5.4:1 on a #1e1e1e terminal. The previous #6b7385 measured 3.51:1, which
-  // is below AA for body text — and secondary text here is real content
-  // (sizes, paths), not decoration.
-  dim: '#8b93a6',
+  fg: '#e7e7e7',
+  // 7.7:1 on a #1e1e1e terminal (AAA). Secondary text here is real content
+  // (sizes, paths), so it reads as text, not decoration. Neutral grey: no
+  // grey in this palette carries a blue tint (colour spec §2.5).
+  dim: '#b0b0b0',
   accent: '#e5a23c',
   ok: '#6fcf7f',
   warn: '#e5c07b',
@@ -178,27 +201,39 @@ export const DARK: Palette = {
   modeCompressBg: '#182c1e',
   modePdf: '#ff6b4a',
   modePdfBg: '#361c16',
-  // 2.97:1 — just under the 3:1 wanted for a meaningful boundary, and as far
-  // as a frame can go before it starts competing with the text inside it.
-  // The old #39404f measured 1.60:1 and was effectively invisible.
-  border: '#5f6879',
-  selectionBg: '#252c3a',
-  band: '#252c3a',
+  // 4.2:1 on #1e1e1e: dim labels, hints and frames. Above the 3:1 a boundary
+  // needs, and still a clear step below `dim`.
+  border: '#808080',
+  selectionBg: '#2c2c2c',
+  band: '#2c2c2c',
   // The background every contrast figure in this palette was measured on.
   canvas: '#1e1e1e',
   // Clearly distinct from selectionBg above, which is the drop area's own
   // fill — a selection has to read against that, not blend into it.
   textSelectionBg: '#3f5c86',
   brand: '#e5a23c',
-  // `fg` (#e4e8f0) on this fill measures about 11:1.
-  keycapBg: '#2e3340',
+  // `fg` (#e7e7e7) on this fill measures about 10:1.
+  keycapBg: '#333333',
   violet: '#a68ce0',
-  faint: '#3d4350',
+  faint: '#4d4d4d',
   // One step up from `selectionBg`, so the band reads on the terminal and is
   // not mistaken for the drop surface above it.
-  listBand: '#2a3242',
-  panelBand: '#33405a',
+  listBand: '#323232',
+  panelBand: '#404040',
   ink: '#0c1d22',
+  // The slider (G1) is grey and white so the colour on screen stays in the
+  // bar, the card's tag and the title. Neutral greys, like every grey here.
+  track: '#2e2e2e',
+  trackFill: '#515151',
+  thumb: '#e7e7e7',
+  // Save as (P1): greys stepping up from the field's fill, the pill white,
+  // and the default's tag a dark orange tint with a soft orange word, darker
+  // than the highlighted row so it never pulls the eye first.
+  folderChip: '#414141',
+  pill: '#e7e7e7',
+  fieldBand: '#3d3d3d',
+  defaultTagBg: '#33261a',
+  defaultTag: '#c98a4b',
 }
 
 export const LIGHT: Palette = {
@@ -240,6 +275,20 @@ export const LIGHT: Palette = {
   panelBand: '#dcd4c4',
   // The light theme's mode colours are deep, so the chip's text is light.
   ink: '#ffffff',
+  // Dark's slider turned over: a pale track, a mid-grey fill, and the thumb
+  // the darkest thing in the row, as dark's is the brightest.
+  track: '#e8e4dc',
+  trackFill: '#b4aea3',
+  thumb: '#23262d',
+  // Dark's Save as turned over: greys stepping down from the field's fill,
+  // the pill the darkest thing in the field (light `ink` on it, as on the
+  // thumb), and the tag a pale orange tint with a burnt orange word —
+  // 5.3:1, so it still reads as a word.
+  folderChip: '#d8cfbe',
+  pill: '#23262d',
+  fieldBand: '#ddd6c8',
+  defaultTagBg: '#f5e2cc',
+  defaultTag: '#8f5000',
 }
 
 /**
@@ -283,6 +332,14 @@ export const NEUTRAL: Palette = {
   listBand: '',
   panelBand: '',
   ink: '',
+  track: '',
+  trackFill: '',
+  thumb: '',
+  folderChip: '',
+  pill: '',
+  fieldBand: '',
+  defaultTagBg: '',
+  defaultTag: '',
 }
 
 export type ShellMode = 'convert' | 'compress' | 'pdf'

@@ -163,18 +163,19 @@ describe('the shell — page and resolution steps, live progress', () => {
     await settle()
     stdin.write(ENTER) // -> quality (jpeg is lossy)
     await settle(300)
-    stdin.write(ENTER) // accept default quality -> destination
+    stdin.write(ENTER) // accept default quality -> Save as
     await settle(300)
-    stdin.write(ENTER) // accept the default destination -> runs, no rename step for a document
+    stdin.write(ENTER) // Save as, on the folder -> runs: a document has no one name to give
     await settle(300)
 
     // Caught mid-run: a real page count, not a blank or completed frame.
     // Invariant 7 forbids a fabricated position, so this only passes if the
     // bar is showing a genuine `{ done, total }` pdfium itself reported —
-    // not the "Running…" text `pdf-running` falls back to before the first
-    // `page` event, and not the finished result either (asserted below).
-    const midFrame = await waitFor(lastFrame, (f) => f.includes('RENDERING'))
-    expect(midFrame).toContain('RENDERING')
+    // not the phase line Working shows before the first `page` event, and
+    // not the finished result either (asserted below).
+    const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 10/.test(f))
+    // Working (W5): the operation's verb and the file, then a solid bar of pages.
+    expect(midFrame).toMatch(/^ {3}Converting doc\.pdf/m)
     expect(midFrame).toMatch(/page \d+ of 10/)
     // A page count under the total this document actually has: proof the
     // frame was caught mid-run, not read after everything had already
@@ -210,7 +211,7 @@ describe('the shell — page and resolution steps, live progress', () => {
    * because it has no real position to report. `pageProgress` only ever
    * gets set by `runPdfJobs`'s `onEvent`, and the `converting` step's JSX
    * never reads it — but that separation is exactly the kind of thing a
-   * later edit (e.g. hoisting `<Progress>` into a shared "running" block)
+   * later edit (e.g. hoisting the page bar into a shared "running" block)
    * could quietly erase. This drives a real, ordinary image conversion and
    * samples every frame from the moment the run starts to the moment it
    * finishes, so a fabricated bar has nowhere to hide even if it only
@@ -229,23 +230,20 @@ describe('the shell — page and resolution steps, live progress', () => {
     await settle()
     stdin.write(ENTER) // choose webp -> quality (lossy)
     await settle(200)
-    stdin.write(ENTER) // accept default quality -> destination
+    stdin.write(ENTER) // accept default quality -> Save as
     await settle(200)
-    stdin.write(ENTER) // accept the default destination -> the name step
-    await settle(200)
-    stdin.write(ENTER) // accept the proposed name -> runs
+    stdin.write(ENTER) // Save as: the proposed name, in the default folder -> runs
 
     const frames = await framesUntil(lastFrame, (f) => f.includes('convert another'))
 
     // Sanity first: real, non-blank frames were actually sampled — the
     // negative assertion below would hold trivially against silence.
-    expect(frames.some((f) => f.includes('Converting…') || f.includes('convert another'))).toBe(
-      true,
-    )
+    expect(frames.some((f) => f.includes('convert another'))).toBe(true)
 
     for (const frame of frames) {
       expect(frame).not.toMatch(/page \d+ of \d+/)
-      expect(frame).not.toContain('RENDERING')
+      // Working's page bar: 30 cells, then the count. (Done's card has bars of its own.)
+      expect(frame).not.toMatch(/^ {3}[█░]{30}/m)
     }
 
     expect(lastFrame() ?? '').toContain('convert another')
@@ -262,12 +260,12 @@ describe('the shell — page and resolution steps, live progress', () => {
  * near `/pdf`, got dumped onto "PDF — choose an operation" (Merge/Split/
  * Extract/Delete/Rotate) — none of which is the conversion the user was
  * doing. This drives that exact route and checks Cancel returns to the
- * conversion's own destination step instead, mirroring what
+ * conversion's own Save as instead, mirroring what
  * `answerOverwrite`'s "Cancel" already does for every other format that
  * hits an ordinary (non-document) output-exists question.
  */
 describe('cancelling a write collision on an ordinary document conversion', () => {
-  it('returns to its own destination step, not the /pdf hub, and writes nothing', async () => {
+  it('returns to its own Save as, not the /pdf hub, and writes nothing', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 1)
     // The exact collision `rasterOutputPaths` would produce for a one-page,
@@ -293,9 +291,9 @@ describe('cancelling a write collision on an ordinary document conversion', () =
 
     stdin.write(ENTER) // default dpi -> quality (jpeg is lossy)
     await settle(300)
-    stdin.write(ENTER) // accept default quality -> destination
+    stdin.write(ENTER) // accept default quality -> Save as
     await settle(300)
-    expect(lastFrame() ?? '').toContain('Save to') // sanity: really on destination
+    expect(lastFrame() ?? '').toContain('Save as') // sanity: really on Save as
 
     stdin.write(ENTER) // accept the default destination -> collides
     await settle(300)
@@ -317,7 +315,7 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     // The positive assertion beside it: genuinely back on the destination
     // step this conversion actually came from — not a blank frame that
     // would make the negative assertion above pass for free.
-    expect(frame).toContain('Save to')
+    expect(frame).toContain('Save as')
 
     // Nothing written: the pre-existing collision file is untouched and no
     // second file appeared.

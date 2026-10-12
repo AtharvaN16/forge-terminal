@@ -52,6 +52,11 @@ export type OptionSpec =
 export interface Action {
   id: string
   label: string
+  /**
+   * What the action is doing while it runs, as one word: "Splitting". The
+   * header bar ends in it on the Working screen, where the question was.
+   */
+  verb: string
   hint: string
   /**
    * Set on an action an optional extension provides. `actionsFor` only offers

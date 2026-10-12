@@ -35,7 +35,16 @@ function factFor(source: SourceInfo): string {
  * failed to become a staged source, so the card — which lists what *is*
  * staged — has nothing true to say about it.
  */
-export function StagedFiles({ stage, width }: { stage: Stage; width: number }) {
+export function StagedFiles({
+  stage,
+  width,
+  dim = false,
+}: {
+  stage: Stage
+  width: number
+  /** One file's card, stepped back while it is worked on (see `FileCard`). */
+  dim?: boolean
+}) {
   const palette = useTheme()
   const { sources, failures } = stage
 
@@ -59,7 +68,7 @@ export function StagedFiles({ stage, width }: { stage: Stage; width: number }) {
   if (sources.length === 1 && first) {
     return (
       <Box flexDirection="column">
-        <FileCard source={first} width={width} />
+        <FileCard source={first} width={width} dim={dim} />
         {skipped}
       </Box>
     )

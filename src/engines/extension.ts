@@ -94,13 +94,15 @@ async function run(
       ...(signal === undefined ? {} : { signal }),
     })
 
-    onPhase({ phase: 'writing' })
     const sharp = await loadSharp()
     let pipeline = sharp(result)
     // Alpha is flattened only when the target cannot carry it (invariant 5).
     if (!FORMATS[job.target].hasAlpha)
       pipeline = pipeline.flatten({ background: job.options.background })
-    const outputBytes = await writeAtomic(encode(pipeline, job.target, job.options.quality), output)
+    const encoded = await encode(pipeline, job.target, job.options.quality).toBuffer()
+
+    onPhase({ phase: 'writing' })
+    const outputBytes = await writeAtomic(encoded, output)
     return { job, outputBytes, warnings }
   } catch (cause) {
     throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)

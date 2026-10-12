@@ -10,9 +10,20 @@ import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const ENTER = String.fromCharCode(13)
-/** Tab, not d: letters type into Save to's search box. */
+/** Tab, not d: letters type into Save as's search for a folder. */
 const TAB = '\t'
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
+/**
+ * The rows that carry the default's tag: a folder in the list ends in it.
+ * Not the key row ("tab make default") or the note ("default output is
+ * now…"), which say the word too.
+ */
+const tagged = (frame: string | undefined) =>
+  (frame ?? '')
+    .replace(SGR, '')
+    .split('\n')
+    .filter((l) => / default$/.test(l.trimEnd()) && !l.includes('make default'))
 
 let cfg: string
 const saved = process.env.XDG_CONFIG_HOME
@@ -27,7 +38,7 @@ afterEach(() => {
   else process.env.XDG_CONFIG_HOME = saved
 })
 
-/** Drives the shell as far as the destination step, inside its own temp dir. */
+/** Drives the shell as far as Save as's folders, inside its own temp dir. */
 async function toDestination() {
   const dir = await makeTempDir()
   const jpg = await makeJpeg(dir, 'photo.jpg')
@@ -44,7 +55,9 @@ async function toDestination() {
   await settle()
   app.stdin.write(ENTER) // target = webp
   await settle()
-  app.stdin.write(ENTER) // accept the quality slider
+  app.stdin.write(ENTER) // accept the quality slider -> Save as, on the name
+  await settle(200)
+  app.stdin.write(TAB) // -> the folders
   await settle(200)
   return { ...app, dir }
 }
@@ -52,7 +65,7 @@ async function toDestination() {
 describe('making a destination the default', () => {
   it('marks the current default in the list', async () => {
     const { lastFrame } = await toDestination()
-    expect(lastFrame() ?? '').toContain('★ default')
+    expect(tagged(lastFrame())).toHaveLength(1)
   })
 
   it('offers the key in the hints', async () => {
@@ -77,7 +90,8 @@ describe('making a destination the default', () => {
     await settle()
     stdin.write(TAB)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Save to')
+    expect(lastFrame() ?? '').toContain('Save as')
+    expect(lastFrame() ?? '').toContain('Same folder') // the list still open
   })
 
   it('commits a note saying what changed', async () => {
@@ -95,11 +109,11 @@ describe('making a destination the default', () => {
     await settle()
     stdin.write(TAB)
     await settle(400)
-    // Exactly one *place* carries the tag, wherever it has moved to.
-    // Matching on the starred tag rather than the word: the keyboard hint
-    // ("tab make default") and the confirmation note both say "default" too.
-    const tagged = (lastFrame() ?? '').split('\n').filter((l) => l.includes('★ default'))
-    expect(tagged.length).toBe(1)
+    // Exactly one *place* carries the tag, wherever it has moved to: the
+    // highlighted one, which tab just made the default.
+    const rows = tagged(lastFrame())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toContain('▌')
   })
 
   it('tab on the row that is already default is a no-op, not an error', async () => {

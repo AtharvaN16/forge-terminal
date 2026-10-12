@@ -178,19 +178,28 @@ export function CommandMenu({
  * footnote items from its right end; the caps never shrink and the row never
  * wraps.
  */
-export function KeyRow({ main, foot, width }: KeySet & { width: number }) {
+export function KeyRow({
+  main,
+  foot,
+  width,
+  lead = HOME_MARGIN + 1,
+}: KeySet & {
+  width: number
+  /** Where the first key starts: one cell in from the content above it. */
+  lead?: number
+}) {
   const palette = useTheme()
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
   const capped = palette.keycapBg !== '' && !noColour
   const cap = (key: string) => (capped ? ` ${key} ` : `[${key}]`)
-  const lead = HOME_MARGIN + 1
 
   const left = main.reduce(
     (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(cap(key)) + 1 + stringWidth(word),
     lead,
   )
   let shown = [...foot]
-  const note = () => shown.map(([key, word]) => `${key} ${word}`).join(' · ')
+  // A footnote item with no word is a sentence on its own ("nothing is saved until it is done").
+  const note = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
   while (shown.length > 0 && left + 3 + stringWidth(note()) + 1 > width) shown = shown.slice(0, -1)
   const gap = Math.max(1, width - left - stringWidth(note()) - 1)
 

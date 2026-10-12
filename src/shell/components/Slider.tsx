@@ -17,8 +17,11 @@ interface SliderProps {
   isActive?: boolean
 }
 
-export function Slider({
-  label,
+/**
+ * A slider's keys: ←→ move by `step` within `min`..`max`, ↵ submits, esc
+ * cancels. Shared by `Slider` and the quality step, which draws its own band.
+ */
+export function useSliderKeys({
   min,
   max,
   step,
@@ -26,9 +29,11 @@ export function Slider({
   onChange,
   onSubmit,
   onCancel,
-  width = 20,
   isActive = true,
-}: SliderProps) {
+}: Pick<
+  SliderProps,
+  'min' | 'max' | 'step' | 'value' | 'onChange' | 'onSubmit' | 'onCancel' | 'isActive'
+>) {
   /**
    * The same ref `Prompt`, `Select` and `PathInput` keep, and for the same
    * reason: `useInput` handlers are synchronous while `useState` (and a
@@ -59,6 +64,21 @@ export function Slider({
     },
     { isActive },
   )
+}
+
+export function Slider({
+  label,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+  width = 20,
+  isActive = true,
+}: SliderProps) {
+  useSliderKeys({ min, max, step, value, onChange, onSubmit, onCancel, isActive })
 
   const palette = useTheme()
 

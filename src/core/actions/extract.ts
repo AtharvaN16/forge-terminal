@@ -34,6 +34,7 @@ const pagesOption = (doc: DocumentInfo): OptionSpec => ({
 export const extractAction: Action = {
   id: 'extract',
   label: 'Extract',
+  verb: 'Extracting',
   hint: 'keep only some pages',
   appliesTo: (sources) => soleDocument(sources) !== undefined,
   unavailable: () => 'one PDF at a time',
@@ -74,6 +75,7 @@ export const extractAction: Action = {
 export const deleteAction: Action = {
   id: 'delete',
   label: 'Delete',
+  verb: 'Deleting',
   hint: 'drop some pages',
   appliesTo: (sources) => soleDocument(sources) !== undefined,
   unavailable: () => 'one PDF at a time',

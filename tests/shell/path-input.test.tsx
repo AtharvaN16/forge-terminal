@@ -4,7 +4,7 @@ import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
 import { describe, expect, it, vi } from 'vitest'
 import type { PathPreset } from '../../src/core/actions/index.js'
-import { destinationRows, PathInput } from '../../src/shell/components/PathInput.js'
+import { PathInput } from '../../src/shell/components/PathInput.js'
 import { middleEllipsis } from '../../src/shell/width.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
@@ -253,19 +253,5 @@ describe('Save to, framed (spec 2026-10-11 picker §3)', () => {
     expect(frame).toContain('Same folder')
     expect(frame).not.toContain('/Users/me/Desktop')
     for (const line of frame.split('\n')) expect(stringWidth(line)).toBeLessThanOrEqual(40)
-  })
-})
-
-describe('destinationRows', () => {
-  it('lists every place for empty text, tagging the default', () => {
-    const rows = destinationRows('', presets, '/Users/me/Downloads', preview)
-    expect(rows.map((r) => r.label)).toEqual(['Same folder', 'New subfolder', 'Downloads'])
-    expect(rows[2]?.badge).toBe('default')
-  })
-
-  it('treats ~ and / as a path, not a filter', () => {
-    expect(destinationRows('~/out', presets, '', preview).map((r) => r.label)).toEqual([
-      'Use this folder',
-    ])
   })
 })

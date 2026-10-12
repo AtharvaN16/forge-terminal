@@ -16,7 +16,7 @@ const prefsFor = (dir: string) => ({
   defaultOutput: dir,
 })
 
-/** Walks to the name field, pre-filled with the source's stem. */
+/** Walks to Save as, on the name, pre-filled with the source's stem. */
 async function toRename(dir: string, file: string) {
   const app = render(<App initialWidth={80} prefs={prefsFor(dir)} />)
   app.stdin.write(file)
@@ -29,8 +29,6 @@ async function toRename(dir: string, file: string) {
   await settle()
   app.stdin.write(ENTER) // accept quality
   await settle()
-  app.stdin.write(ENTER) // accept the destination -> rename step
-  await settle(250)
   return app
 }
 
@@ -58,21 +56,25 @@ async function toSize(dir: string, file: string) {
 const fieldLine = (frame: string | undefined) =>
   (frame ?? '').split('\n').find((l) => l.trimStart().startsWith('›'))
 
-describe('esc on the rename field', () => {
+describe('esc on the name in Save as', () => {
   it('clears the pre-filled name on the first press', async () => {
     const dir = await makeTempDir()
     const file = await makeJpeg(dir, 'photo.jpg')
     const app = await toRename(dir, file)
-    expect(fieldLine(app.lastFrame())).toContain('photo')
+    expect(fieldLine(app.lastFrame())).toContain('photo.webp')
 
     app.stdin.write(ESC)
     await settle()
 
-    expect(app.lastFrame() ?? '').toContain('Name the file') // still on the rename step
-    expect(fieldLine(app.lastFrame())).not.toContain('photo')
+    expect(app.lastFrame() ?? '').toContain('Save as') // still on Save as
+    // Empty means the proposed name, which stands in its place until
+    // something is typed — and what is typed then starts the name afresh.
+    app.stdin.write('x')
+    await settle()
+    expect(fieldLine(app.lastFrame())).toContain('› x.webp')
   })
 
-  it('goes back to the destination step on the second press, once the field is empty', async () => {
+  it('goes back to Quality on the second press, once the field is empty', async () => {
     const dir = await makeTempDir()
     const file = await makeJpeg(dir, 'photo.jpg')
     const app = await toRename(dir, file)
@@ -82,8 +84,8 @@ describe('esc on the rename field', () => {
     app.stdin.write(ESC) // now empty -> back
     await settle()
 
-    expect(app.lastFrame() ?? '').not.toContain('Name the file')
-    expect(app.lastFrame() ?? '').toContain('Save to')
+    expect(app.lastFrame() ?? '').not.toContain('Save as')
+    expect(app.lastFrame() ?? '').toContain('Quality')
   })
 })
 

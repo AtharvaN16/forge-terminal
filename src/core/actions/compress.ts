@@ -56,6 +56,7 @@ function destinationPath(source: SourceInfo, prefs: Preferences): OptionSpec {
 export const compressAction: Action = {
   id: 'compress',
   label: 'Compress',
+  verb: 'Compressing',
   hint: 'make it smaller',
 
   /**

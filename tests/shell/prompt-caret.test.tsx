@@ -25,10 +25,9 @@ const ANSI = /\[[0-9;]*m/g
 const plain = (f: string | undefined) => (f ?? '').replace(ANSI, '')
 
 /**
- * Walks to the name field: drop a file, pick webp, accept quality, accept a
- * destination. Naming is a step in the flow, not an alternative to saving —
- * choosing where a file goes and choosing what it is called are not a choice
- * between two things.
+ * Walks to the name field: drop a file, pick webp, accept quality. Save as
+ * opens on the name — where a file goes and what it is called are one
+ * answer, not a choice between two things.
  */
 async function toRename() {
   const dir = await makeTempDir()
@@ -45,16 +44,14 @@ async function toRename() {
   await settle()
   app.stdin.write(ENTER) // accept quality
   await settle()
-  app.stdin.write(ENTER) // accept the destination -> the name step
-  await settle(250)
   return { ...app, dir }
 }
 
-describe('rename field', () => {
+describe('the name, in Save as', () => {
   it('opens pre-filled with the current name', async () => {
     const { lastFrame } = await toRename()
-    expect(plain(lastFrame())).toContain('Name the file')
-    expect(plain(lastFrame())).toContain('photo')
+    expect(plain(lastFrame())).toContain('Save as')
+    expect(plain(lastFrame())).toContain('› photo.webp')
   })
 
   it('appends what you type instead of inserting it at the front', async () => {
@@ -122,7 +119,7 @@ describe('rename field', () => {
 })
 
 describe('hint bar', () => {
-  // The hints sit under one rule, the hint bar's own — the rename field must
+  // The hints sit under one rule, the hint bar's own — the name field must
   // not bring a second one of its own.
   it('draws exactly one rule above the hints', async () => {
     const { lastFrame } = await toRename()

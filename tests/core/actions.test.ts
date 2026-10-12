@@ -21,6 +21,18 @@ function source(over: Partial<ImageInfo> = {}): SourceInfo {
 }
 
 describe('action registry', () => {
+  it('names what each action is doing while it runs, for the Working screen', () => {
+    expect(Object.fromEntries(ACTIONS.map((a) => [a.id, a.verb]))).toEqual({
+      convert: 'Converting',
+      compress: 'Compressing',
+      merge: 'Merging',
+      split: 'Splitting',
+      extract: 'Extracting',
+      delete: 'Deleting',
+      rotate: 'Rotating',
+    })
+  })
+
   it('registers convert, compress and the page actions', () => {
     expect(ACTIONS.map((a) => a.id)).toEqual([
       'convert',
