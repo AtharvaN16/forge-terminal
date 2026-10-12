@@ -116,26 +116,14 @@ describe('ExtensionsFlow (M3 · T2)', () => {
     expect(frame(f)).not.toContain('Remove it from this Mac?')
   })
 
-  it('offers to install one absent extension for its action, then hands control back', async () => {
-    const { manager, release } = fakeManager()
-    const onInstalled = vi.fn()
-    const f = render(
-      <ExtensionsFlow
-        width={100}
-        only="boost"
-        manager={manager}
-        onInstalled={onInstalled}
-        onError={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    )
-    await until(() => frame(f).includes('↵ install'))
-    expect(frame(f)).not.toContain('Remove background')
-
+  it('i shows parts and licences, with no version or needs when nothing is wrong (T2)', async () => {
+    const { manager } = fakeManager({ installed: ['boost'] })
+    const f = open(manager)
+    await until(() => frame(f).includes('installed · 15 MB'))
     await tick()
-    release()
-    f.stdin.write(ENTER)
-    await until(() => onInstalled.mock.calls.length > 0)
-    expect(onInstalled).toHaveBeenCalledWith('boost')
+    f.stdin.write('i')
+    await until(() => frame(f).includes('Real-ESRGAN'))
+    expect(frame(f)).not.toContain('version')
+    expect(frame(f)).not.toContain('needs')
   })
 })

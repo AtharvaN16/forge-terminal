@@ -12,7 +12,7 @@ import { HintBar } from '../components/HintBar.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, type Palette } from '../theme.js'
+import { colourProp, modeColours, modeGradient, type Palette } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 
 /** The slice of `src/extensions/` this screen needs, injectable so tests need no network and no disk. */
@@ -101,9 +101,11 @@ export function byteCount(done: number, total: number): { got: string; of: strin
 
 /** Enhance's violet, which `/extensions` is drawn in: the screen serves that mode's tools. */
 function extensionsChip(p: Palette): BarChip {
-  if (p.name === 'dark')
-    return { label: 'extensions', colour: '#b39ae8', stops: ['#b39ae8', '#7d6ad0'] }
-  return { label: 'extensions', colour: p.violet, stops: [p.violet, p.violet] }
+  return {
+    label: 'extensions',
+    colour: modeColours(p, 'enhance').fg,
+    stops: modeGradient(p, 'enhance'),
+  }
 }
 
 const LIST_WIDTH = 27
@@ -117,10 +119,7 @@ type Busy = { id: string; done: number; total: number }
 
 interface ExtensionsFlowProps {
   width: number
-  /** Offer mode: show only this extension and report `onInstalled` once it is on disk. */
-  only?: string
   manager?: ExtensionsManager
-  onInstalled?: (id: string) => void
   onError: (error: ForgeError) => void
   onClose: () => void
 }
@@ -138,9 +137,7 @@ interface ExtensionsFlowProps {
  */
 export function ExtensionsFlow({
   width,
-  only,
   manager = realManager,
-  onInstalled,
   onError,
   onClose,
 }: ExtensionsFlowProps) {
@@ -172,20 +169,15 @@ export function ExtensionsFlow({
   const refresh = useCallback(async () => {
     try {
       const all = await manager.list()
-      if (alive.current) setStatuses(only ? all.filter((s) => s.entry.id === only) : all)
-      return all
+      if (alive.current) setStatuses(all)
     } catch (e) {
       fail(e)
-      return []
     }
-  }, [manager, only, fail])
+  }, [manager, fail])
 
   useEffect(() => {
-    void refresh().then((all) => {
-      const s = all.find((x) => x.entry.id === only)
-      if (s?.installed !== undefined && !s.updateAvailable) onInstalled?.(s.entry.id)
-    })
-  }, [refresh, only, onInstalled])
+    void refresh()
+  }, [refresh])
 
   // Another forge may start or finish a job on a tool at any time.
   const installedIds = (statuses ?? [])
@@ -231,7 +223,6 @@ export function ExtensionsFlow({
       })
       await refresh()
       if (alive.current) setBusy(undefined)
-      onInstalled?.(id)
     } catch (e) {
       if (!alive.current) return
       setBusy(undefined)
@@ -270,7 +261,7 @@ export function ExtensionsFlow({
   }
 
   const used = current ? inUse[current.entry.id] : undefined
-  const removable = current?.installed !== undefined && used === undefined && only === undefined
+  const removable = current?.installed !== undefined && used === undefined
 
   useKeys(
     (input, key) => {
@@ -477,14 +468,25 @@ export function ExtensionsFlow({
             <Text color={quiet}>{licence}</Text>
           </Text>
         )),
-        <Text key="v">
-          {label('version')}
-          <Text color={dim}>{s.installed ?? s.entry.version}</Text>
-        </Text>,
-        <Text key="n">
-          {label('needs')}
-          <Text color={dim}>{needsOf(s.entry)}</Text>
-        </Text>,
+        // T2: the version only when there is a newer one, and what the
+        // tool needs only when this Mac falls short of it.
+        ...(s.updateAvailable && s.installed !== undefined
+          ? [
+              <Text key="v">
+                {label('version')}
+                <Text color={dim}>{`${s.installed} → `}</Text>
+                <Text color={fg}>{s.entry.version}</Text>
+              </Text>,
+            ]
+          : []),
+        ...(s.supported
+          ? []
+          : [
+              <Text key="n">
+                {label('needs')}
+                <Text color={dim}>{needsOf(s.entry)}</Text>
+              </Text>,
+            ]),
       ]
     }
     const rows: ReactNode[] = [name, gives, '', action(s)]
