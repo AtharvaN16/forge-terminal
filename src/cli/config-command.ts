@@ -2,9 +2,9 @@ import { configPath, loadPreferences, savePreferences } from '../config/preferen
 import { invalidArguments } from '../core/errors.js'
 import type { Warning } from '../core/types.js'
 
-export type ConfigKey = 'output' | 'theme' | 'quality'
+export type ConfigKey = 'output' | 'theme' | 'quality' | 'update-check'
 
-export const CONFIG_KEYS: ConfigKey[] = ['output', 'theme', 'quality']
+export const CONFIG_KEYS: ConfigKey[] = ['output', 'theme', 'quality', 'update-check']
 
 export type ConfigIntent =
   | { kind: 'config'; action: 'list' }
@@ -40,6 +40,7 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
       `output    ${prefs.defaultOutput}`,
       `theme     ${prefs.theme ?? 'not set'}`,
       `quality   ${prefs.quality}`,
+      `update-check ${prefs.updateCheck === false ? 'off' : 'on'}`,
       '',
       configPath(),
     ]
@@ -53,6 +54,7 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
         output: prefs.defaultOutput,
         theme: prefs.theme ?? null,
         quality: prefs.quality,
+        'update-check': prefs.updateCheck === false ? 'off' : 'on',
         path: configPath(),
       },
       warnings: warning === undefined ? [] : [{ code: 'config-unreadable', message: warning }],
@@ -81,6 +83,19 @@ export async function runConfig(intent: ConfigIntent): Promise<ConfigResult> {
     }
     await savePreferences({ quality: n })
     return { stdout: [`quality is now ${n}`], exitCode: 0, config: { quality: n }, warnings: [] }
+  }
+
+  if (key === 'update-check') {
+    if (value !== 'on' && value !== 'off') {
+      throw invalidArguments(`update-check must be on or off, not ${value}.`)
+    }
+    await savePreferences({ updateCheck: value === 'on' })
+    return {
+      stdout: [`update-check is now ${value}`],
+      exitCode: 0,
+      config: { 'update-check': value },
+      warnings: [],
+    }
   }
 
   if (value.trim().length === 0) {

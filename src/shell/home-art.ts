@@ -1,4 +1,15 @@
 import stringWidth from 'string-width'
+import { contrast } from '../core/colour/contrast.js'
+import {
+  fromLch,
+  inGamut,
+  oklabToRgb,
+  parseHex,
+  type Rgb,
+  rgbToOklab,
+  toHex,
+  toLch,
+} from '../core/colour/space.js'
 import type { Command } from './commands.js'
 import type { StagedFile, StagedView, UnderField } from './stage.js'
 import {
@@ -119,16 +130,51 @@ export function hatch(
  * the hatching sits on its wash (L6). Empty when the terminal is too narrow
  * for the word.
  */
+/**
+ * The colour across the wheel from a mode's own (N1, update mockup round 5):
+ * the same OKLCH lightness, hue turned 180°, chroma brought in until it fits
+ * sRGB, then lightness moved away from the canvas until it reads at 4.5:1.
+ * It stands apart from the band's hatching in every mode by construction.
+ */
+const opposites = new Map<string, string>()
+export function oppositeColour(palette: Palette, scheme: ShellMode | 'commands'): string {
+  const base = scheme === 'commands' ? palette.brand : modeColours(palette, scheme).fg
+  const key = `${base}|${palette.canvas}`
+  const known = opposites.get(key)
+  if (known !== undefined) return known
+  const from = parseHex(base)
+  const canvas = parseHex(palette.canvas)
+  // A named ANSI colour (no true colour) has no hue to turn: keep the plain fg.
+  if (from === undefined || canvas === undefined) return palette.fg
+  const lch = toLch(rgbToOklab(from))
+  const out = { L: lch.L, C: lch.C, h: (lch.h + 180) % 360 }
+  const intoGamut = () => {
+    while (!inGamut(fromLch(out)) && out.C > 0) out.C = Math.max(0, out.C - 0.005)
+  }
+  intoGamut()
+  const darkCanvas = toLch(rgbToOklab(canvas)).L < 0.5
+  for (let k = 0; k < 100 && contrast(oklabToRgb(fromLch(out)) as Rgb, canvas) < 4.5; k++) {
+    out.L = Math.min(1, Math.max(0, out.L + (darkCanvas ? 0.01 : -0.01)))
+    intoGamut()
+  }
+  const hex = toHex(oklabToRgb(fromLch(out)))
+  opposites.set(key, hex)
+  return hex
+}
+
 export function brandRows({
   width: columns,
   palette,
   mode,
   commands = false,
+  update,
 }: {
   width: number
   palette: Palette
   mode: ShellMode
   commands?: boolean
+  /** A newer Forge, from the update check: the baseline says "/update is available ·" before the version. */
+  update?: string | undefined
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
@@ -144,7 +190,12 @@ export function brandRows({
 
   const version = `v${VERSION}`
   const tail = 2
-  const room = after - tail - version.length - 2
+  const NOTE = '/update is available'
+  const SEP = ' · '
+  const plain = after - tail - version.length - 2
+  // The note only when the hatching keeps some length beside it.
+  const withNote = update !== undefined && plain - NOTE.length - SEP.length >= 4
+  const room = withNote ? plain - NOTE.length - SEP.length : plain
 
   return WORDMARK3.map((letters, i) => {
     const row: Row = [
@@ -159,6 +210,12 @@ export function brandRows({
       row.push(
         ...hatch(c0, room, i, span, stops, wash),
         blank(1),
+        ...(withNote
+          ? [
+              { text: NOTE, fg: oppositeColour(palette, scheme), bold: true },
+              { text: SEP, fg: palette.dim },
+            ]
+          : []),
         { text: version, fg: palette.dim },
         blank(1),
         ...hatch(c0 + after - tail, tail, i, span, stops, wash),

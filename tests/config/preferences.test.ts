@@ -147,3 +147,18 @@ describe('savePreferences', () => {
     expect(entries).toEqual(['config.json'])
   })
 })
+
+describe('updateCheck', () => {
+  it('is read from the file, and a value that is not true or false is rejected', async () => {
+    const { savePreferences, loadPreferences: load } = await import(
+      '../../src/config/preferences.js'
+    )
+    await savePreferences({ updateCheck: false })
+    expect((await load()).prefs.updateCheck).toBe(false)
+    const { configPath } = await import('../../src/config/preferences.js')
+    await writeFile(configPath(), JSON.stringify({ updateCheck: 'yes' }))
+    const bad = await load()
+    expect(bad.prefs.updateCheck).toBeUndefined()
+    expect(bad.warning).toContain('updateCheck')
+  })
+})

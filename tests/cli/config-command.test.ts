@@ -98,6 +98,7 @@ describe('forge config', () => {
       output: '~/Desktop',
       theme: null,
       quality: 80,
+      'update-check': 'on',
       path: join(dir, 'forge', 'config.json'),
     })
     expect(warnings).toEqual([])
@@ -109,5 +110,38 @@ describe('forge config', () => {
     await writeFile(join(dir, 'forge', 'config.json'), '{ not json')
     const { warnings } = await runConfig({ kind: 'config', action: 'list' })
     expect(warnings[0]?.code).toBe('config-unreadable')
+  })
+})
+
+describe('forge config: update-check', () => {
+  it('list says the automatic update check is on by default', async () => {
+    const { stdout, config } = await runConfig({ kind: 'config', action: 'list' })
+    expect(stdout.join('\n')).toMatch(/update-check\s+on/)
+    expect(config['update-check']).toBe('on')
+  })
+
+  it('set update-check off is saved and listed', async () => {
+    const set = await runConfig({
+      kind: 'config',
+      action: 'set',
+      key: 'update-check',
+      value: 'off',
+    })
+    expect(set.stdout).toEqual(['update-check is now off'])
+    expect((await loadPreferences()).prefs.updateCheck).toBe(false)
+    const { stdout } = await runConfig({ kind: 'config', action: 'list' })
+    expect(stdout.join('\n')).toMatch(/update-check\s+off/)
+  })
+
+  it('set update-check on turns it back on', async () => {
+    await runConfig({ kind: 'config', action: 'set', key: 'update-check', value: 'off' })
+    await runConfig({ kind: 'config', action: 'set', key: 'update-check', value: 'on' })
+    expect((await loadPreferences()).prefs.updateCheck).toBe(true)
+  })
+
+  it('rejects anything but on or off', async () => {
+    await expect(
+      runConfig({ kind: 'config', action: 'set', key: 'update-check', value: 'maybe' }),
+    ).rejects.toMatchObject({ code: 'invalid-arguments' })
   })
 })

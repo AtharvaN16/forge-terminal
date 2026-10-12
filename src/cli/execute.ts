@@ -78,6 +78,8 @@ export interface BatchProgress {
 }
 
 export interface ExecuteOptions {
+  /** `forge update`, as npm starts: npm reports no progress, so the caller can show a spinner. */
+  onInstalling?: (version: string) => void
   /**
    * Whether a password may be asked for (prompt or --password-stdin). Default
    * true. The MCP server passes false: its stdin is the protocol stream, so
@@ -783,6 +785,19 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   const debug = 'debug' in intent ? intent.debug : false
   try {
     if (intent.kind === 'config') return await runConfigCommand(intent, json)
+    if (intent.kind === 'update') {
+      const { runUpdate } = await import('./update-command.js')
+      const result = await runUpdate(VERSION, {
+        ...(opts.onInstalling ? { onInstalling: opts.onInstalling } : {}),
+      })
+      return {
+        exitCode: 0,
+        stdout: json
+          ? [JSON.stringify({ forge: VERSION, ok: true, ...result.data })]
+          : result.stdout,
+        stderr: [],
+      }
+    }
     if (intent.kind === 'extensions') {
       const { runExtensions } = await import('./extensions-command.js')
       const result = await runExtensions(intent, { onDownload: opts.onDownload })

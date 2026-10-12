@@ -69,4 +69,6 @@ export async function launchShell(start: ShellStart): Promise<void> {
     },
   )
   await instance.waitUntilExit()
+  const { restartRequested, relaunch } = await import('./restart.js')
+  if (restartRequested()) relaunch()
 }

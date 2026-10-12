@@ -12,6 +12,8 @@ export interface Preferences {
   defaultOutput: string
   /** The value the quality slider opens on for lossy targets. */
   quality: number
+  /** The once-a-day check for a newer Forge. Absent means on (src/update/check.ts). */
+  updateCheck?: boolean
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -65,6 +67,11 @@ function validate(raw: Record<string, unknown>): { prefs: Preferences; rejected:
     const q = raw.quality
     if (typeof q === 'number' && Number.isInteger(q) && q >= 1 && q <= 100) prefs.quality = q
     else rejected.push('quality')
+  }
+
+  if (raw.updateCheck !== undefined) {
+    if (typeof raw.updateCheck === 'boolean') prefs.updateCheck = raw.updateCheck
+    else rejected.push('updateCheck')
   }
 
   return { prefs, rejected }

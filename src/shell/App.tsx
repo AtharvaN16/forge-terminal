@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
+import { Box, type DOMElement, type Key, Static, Text, useApp, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -79,11 +79,13 @@ import {
 } from './enhance.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
+import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { largestPercent } from './resize-art.js'
+import { requestRestart } from './restart.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import {
   addToStage,
@@ -104,6 +106,7 @@ import {
   paletteFor,
   type ShellMode,
   SYMBOLS,
+  VERSION,
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
 import { useAfter } from './useAfter.js'
@@ -124,6 +127,7 @@ export type Step =
   | 'idle'
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
+  | 'update'
   /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'enhance'
   /** Enhance's Resize: the 0–200 % slider (H3). */
@@ -515,6 +519,8 @@ export function App({
   prefs = APP_DEFAULT_PREFS,
   configWarning,
   tools = realTools,
+  updater = realUpdater,
+  latestRelease,
 }: {
   initialWidth?: number
   initialHeight?: number
@@ -522,6 +528,13 @@ export function App({
   configWarning?: string
   /** Where enhance reads and installs its tools from; tests pass a fake. */
   tools?: EnhanceTools
+  /** What /update checks and installs with; tests pass a fake. */
+  updater?: Updater
+  /**
+   * A newer Forge for home's band, found in the background at start-up.
+   * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
+   */
+  latestRelease?: () => Promise<string | undefined>
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
@@ -624,6 +637,30 @@ export function App({
    * relaunch — so they all read this, never the `prefs` prop.
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
+  const { exit } = useApp()
+
+  /**
+   * A newer Forge, for home's band (N1). Asked once at start-up, in the
+   * background: the cache answers at once, and a cache more than a day old
+   * is refreshed without holding anything up. /update keeps it current.
+   */
+  const [release, setRelease] = useState<string>()
+  const keepRelease = useCallback(async (latest: string | undefined) => {
+    const { isNewer } = await import('../update/check.js')
+    setRelease(latest !== undefined && isNewer(latest, VERSION) ? latest : undefined)
+  }, [])
+  useEffect(() => {
+    let live = true
+    const ask = latestRelease ?? (() => backgroundRelease(prefs))
+    void ask()
+      .then((v) => {
+        if (live) void keepRelease(v)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [latestRelease, prefs, keepRelease])
   const [step, setStep] = useState<Step>(prefs.theme === undefined ? 'theme' : 'idle')
   /**
    * Which action the staged file is being put through. Dropping a file means
@@ -1610,6 +1647,11 @@ export function App({
 
       if (command.name === 'extensions') {
         setStep('extensions')
+        return
+      }
+
+      if (command.name === 'update') {
+        setStep('update')
         return
       }
 
@@ -3622,6 +3664,21 @@ export function App({
             />
           ) : null}
 
+          {step === 'update' ? (
+            <UpdateFlow
+              width={width}
+              current={VERSION}
+              auto={livePrefs.updateCheck !== false}
+              updater={updater}
+              onClose={() => setStep('idle')}
+              onChecked={(latest) => void keepRelease(latest)}
+              onRestart={() => {
+                requestRestart()
+                exit()
+              }}
+            />
+          ) : null}
+
           {step === 'extensions' ? (
             <ExtensionsFlow
               width={width}
@@ -3713,6 +3770,7 @@ export function App({
               width={width}
               height={height}
               intro={firstHome.current}
+              update={release}
               mode={mode}
               typing={text !== ''}
               staged={staged ? stagedView(stage, freshRows) : undefined}
@@ -3769,4 +3827,16 @@ export function App({
       </ClickTargetProvider>
     </ThemeProvider>
   )
+}
+
+/**
+ * The default for `latestRelease`: the once-a-day check, from the cache, or
+ * from npm when the cache is more than a day old. Nothing when it is off.
+ */
+async function backgroundRelease(prefs: Preferences): Promise<string | undefined> {
+  const { checkNow, isStale, readCache, updateChecksEnabled } = await import('../update/check.js')
+  if (!updateChecksEnabled(prefs)) return undefined
+  const cache = await readCache()
+  if (!isStale(cache)) return cache?.latest
+  return (await checkNow()) ?? cache?.latest
 }

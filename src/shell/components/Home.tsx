@@ -369,6 +369,7 @@ export function Home({
   keys,
   colourChoice = 0,
   intro = false,
+  update,
 }: {
   width: number
   height: number
@@ -404,6 +405,8 @@ export function Home({
    * the tabs fade up under it, once. Any key cuts it short.
    */
   intro?: boolean
+  /** A newer Forge (N1): the band's baseline says "/update is available ·" before the version. */
+  update?: string | undefined
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height)
@@ -423,8 +426,10 @@ export function Home({
         ...art,
         ...commands,
         rows: layout.surface,
-        // What the list below the field would have had is free while it is open.
-        max: layout.surface + layout.list,
+        // What the list below the field would have had is free while it is
+        // open — less its last row, which the rule takes (see below). Past
+        // that the list scrolls rather than pushing the rule off the screen.
+        max: layout.surface + layout.list - 1,
       })
     : layout.surface > 0
       ? mode === 'colour' && !typing
@@ -470,7 +475,9 @@ export function Home({
     })
   const introducing = introAt < INTRO_MS
   useKeys(() => setSkipped(true), { isActive: introducing })
-  const resting = layout.brand ? brandRows({ ...art, commands: commands !== undefined }) : []
+  const resting = layout.brand
+    ? brandRows({ ...art, commands: commands !== undefined, update })
+    : []
   const brand = introducing
     ? brandIntro(resting, easeOut(introAt / INTRO_MS) * (width + 8), palette)
     : resting
