@@ -1843,4 +1843,21 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ## After plan 1
 
+Plan 1 is done. A fresh whole-branch review found one critical issue and two important ones, all fixed with tests:
+- contrast was rated on a rounded ratio
+- `--help` was refused
+- `forge_palette` accepted a relative path
+
+The review's minor findings were deferred and are listed here so plan 2 can pick them up:
+
+- **Very dark references.** A reference with L < 0.16 holds steps 600–950 at its own lightness, but the spec says lightness falls strictly. Use `floor = 0.42·L₀` below 0.16, and add `#0A0A2A` and `#00000A` to the scale sweep.
+- **Hue drift on near-black steps.** Hue drifts up to 4.8° on near-black saturated steps (8-bit quantisation). Note the exception, or loosen the hue tolerance with lightness.
+- **Weak engine tests.** Pin the GIF's first frame (`#282828`, 8×8) and the rotation direction (a two-colour oriented fixture).
+- **MCP percentages.** `forge_palette` text uses `Math.round`, so its percentages can add up to 99 or 101. Use `wholePercents`.
+- **MCP hints.** Colour refusals over MCP drop `ForgeError.hint`. Append it.
+- **`--inside` on `forge scale`.** It is silently ignored. Refuse it.
+- **Card subtitle.** It says "1 colours". With `--inside --svg`, it captions the shades as if they were the image's colours.
+- **Grey `oklch()`.** An achromatic colour prints a noise hue, e.g. `oklch(57% 0.000 90)`. Print 0 when C < 0.0005.
+- **CLI swatches.** They ignore `FORGE_TRUECOLOR=0` and 256-colour terminals. Use the shell's `trueColour()` once plan 2 adds it.
+
 Plan 2 covers the shell (spec §6): the fourth mode, `modeGradient` stops, C1, the field, Palette (D2/D1/inside), Scale (S9/`r`/`#`), the trail and history, `trueColour` fallbacks and the mockup-cell fixtures. Write it once the W5/G1 work has landed on `dev` and this branch is rebased onto it, because it edits the same parts of `App.tsx`, `theme.ts` and `trail.ts`.
