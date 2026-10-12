@@ -17,7 +17,8 @@ function hasSwiftc(): boolean {
   }
 }
 
-describe.skipIf(!hasSwiftc())('forge-cutout (real Apple Vision)', () => {
+// Vision finds no subject in the CI runner's VM, so this runs on a real Mac only.
+describe.skipIf(!hasSwiftc() || !!process.env.CI)('forge-cutout (real Apple Vision)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'forge-cutout-'))
   const ext = { entry: join(dir, 'bin', 'forge-cutout'), kind: 'exec' as const }
 

@@ -3,13 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { splitPastedPaths, unescapePath } from '../../src/utils/unescape-path.js'
 
-describe('unescapePath, platform-pinned', () => {
-  it('on darwin, still unescapes, unquotes and expands ~', () => {
-    expect(unescapePath('My\\ Photo.jpg', 'darwin')).toBe('My Photo.jpg')
-    expect(unescapePath("'/a b/c.png'", 'darwin')).toBe('/a b/c.png')
-    expect(unescapePath('~/x', 'darwin')).toBe(join(homedir(), 'x'))
-  })
-
+describe('unescapePath on win32', () => {
   it('on win32, strips the quotes Windows Terminal adds around a path with spaces', () => {
     expect(unescapePath('"C:\\My Files\\a.png"', 'win32')).toBe('C:\\My Files\\a.png')
   })

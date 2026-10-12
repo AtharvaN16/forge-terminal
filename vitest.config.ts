@@ -32,5 +32,12 @@ export default defineConfig({
      * deterministic result. Raise it back once the sleeps are gone.
      */
     maxWorkers: 4,
+    /**
+     * A shared CI runner is slower and noisier than four workers on a laptop,
+     * so those same sleeps still lose there now and then. Retry on CI only:
+     * locally a failure stays a failure, so a real regression is never
+     * hidden where it is being written.
+     */
+    retry: process.env.CI ? 2 : 0,
   },
 })

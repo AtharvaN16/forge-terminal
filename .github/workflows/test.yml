@@ -14,7 +14,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # The lazy-load, bundle and boot tests record imports through
+          # module.registerHooks, which needs Node 22.15 or later.
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck

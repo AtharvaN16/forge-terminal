@@ -22,13 +22,17 @@ Use any files you have lying around. For each one, note whether it worked.
 5. Convert a PDF to images.
 6. Convert a Word file to PDF. Note whether you have LibreOffice installed
    (a free office program from libreoffice.org). It is fine if you don't.
-7. Convert a HEIC photo from an iPhone. If it asks to install an extension,
-   say yes (this runs `forge extensions add heic`).
-8. Use "Boost resolution" at 2x on a small photo. Note roughly how long it took.
-9. After any conversion, press `c` to copy the result's path. Open Notepad and
-   paste it (Ctrl+V). Did the path appear?
-10. Choose the option to open a result. Did the file open?
-11. Choose "Show in Explorer". Did Explorer open with the file selected?
+7. Convert a HEIC photo from an iPhone. The first time, Forge shows an error
+   saying "Open /extensions to install it". Do that: type `/extensions`,
+   install HEIC photos, then convert the photo again.
+8. Convert a HEIC photo taken with the iPhone held upright (portrait), or one
+   you rotated in the Photos app. Is the result upright, and are the card's
+   dimensions right (taller than wide for a portrait photo)?
+9. Use "Boost resolution" at 2x on a small photo. Note roughly how long it took.
+10. After any conversion, press `c` to copy the result's path. Open Notepad and
+    paste it (Ctrl+V). Did the path appear?
+11. Choose the option to open a result. Did the file open?
+12. Choose "Show in Explorer". Did Explorer open with the file selected?
 
 ## Then once in the old console
 
