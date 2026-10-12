@@ -31,9 +31,30 @@ const BARS = [
   ['compress', 1],
   ['pdf', 1],
 ]
-const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-  .map((m) => m[1])
-  .join('\n')
+/**
+ * The app's greys went neutral after the mockup was frozen (colour spec
+ * §2.5). Each old blue-tinted grey is swapped for its neutral replacement in
+ * the mockup's script before it runs, so every derived colour (the drop
+ * zone's dots are mixes of the panel colour) is recomputed from the new
+ * values rather than patched afterwards. The frozen HTML itself is untouched.
+ */
+const NEUTRAL = {
+  '#e4e8f0': '#e7e7e7',
+  '#8b93a6': '#b0b0b0',
+  '#5f6879': '#808080',
+  '#3d4350': '#4d4d4d',
+  '#252c3a': '#2c2c2c',
+  '#2b3343': '#333333',
+  '#2e3340': '#333333',
+  '#2a3242': '#323232',
+  '#33405a': '#404040',
+  '#2a2e37': '#2e2e2e',
+}
+const neutral = (s) => s.replace(/#[0-9a-fA-F]{6}\b/g, (h) => NEUTRAL[h.toLowerCase()] ?? h)
+
+const script = neutral(
+  [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n'),
+)
   // Catch the decided screen at the one call that draws it, rather than by
   // the order frames happen to be written in: the page grows other sections.
   .replace(HOOK, `${HOOK}; globalThis.__home.push({ label: s.label, rows })`)

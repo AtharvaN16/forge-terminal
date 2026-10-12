@@ -157,11 +157,11 @@ export interface Palette {
 
 export const DARK: Palette = {
   name: 'dark',
-  fg: '#e4e8f0',
-  // 5.4:1 on a #1e1e1e terminal. The previous #6b7385 measured 3.51:1, which
-  // is below AA for body text — and secondary text here is real content
-  // (sizes, paths), not decoration.
-  dim: '#8b93a6',
+  fg: '#e7e7e7',
+  // 7.7:1 on a #1e1e1e terminal (AAA). Secondary text here is real content
+  // (sizes, paths), so it reads as text, not decoration. Neutral grey: no
+  // grey in this palette carries a blue tint (colour spec §2.5).
+  dim: '#b0b0b0',
   accent: '#e5a23c',
   ok: '#6fcf7f',
   warn: '#e5c07b',
@@ -178,26 +178,25 @@ export const DARK: Palette = {
   modeCompressBg: '#182c1e',
   modePdf: '#ff6b4a',
   modePdfBg: '#361c16',
-  // 2.97:1 — just under the 3:1 wanted for a meaningful boundary, and as far
-  // as a frame can go before it starts competing with the text inside it.
-  // The old #39404f measured 1.60:1 and was effectively invisible.
-  border: '#5f6879',
-  selectionBg: '#252c3a',
-  band: '#252c3a',
+  // 4.2:1 on #1e1e1e: dim labels, hints and frames. Above the 3:1 a boundary
+  // needs, and still a clear step below `dim`.
+  border: '#808080',
+  selectionBg: '#2c2c2c',
+  band: '#2c2c2c',
   // The background every contrast figure in this palette was measured on.
   canvas: '#1e1e1e',
   // Clearly distinct from selectionBg above, which is the drop area's own
   // fill — a selection has to read against that, not blend into it.
   textSelectionBg: '#3f5c86',
   brand: '#e5a23c',
-  // `fg` (#e4e8f0) on this fill measures about 11:1.
-  keycapBg: '#2e3340',
+  // `fg` (#e7e7e7) on this fill measures about 10:1.
+  keycapBg: '#333333',
   violet: '#a68ce0',
-  faint: '#3d4350',
+  faint: '#4d4d4d',
   // One step up from `selectionBg`, so the band reads on the terminal and is
   // not mistaken for the drop surface above it.
-  listBand: '#2a3242',
-  panelBand: '#33405a',
+  listBand: '#323232',
+  panelBand: '#404040',
   ink: '#0c1d22',
 }
 
