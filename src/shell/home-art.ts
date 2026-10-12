@@ -81,6 +81,7 @@ export const MODE_KINDS: Record<ShellMode, string> = {
   // Not "video": compress has no video engine, and the line is a promise.
   compress: 'images · PDF',
   pdf: 'split · merge · rotate',
+  colour: 'palette · scale',
   enhance: 'images · HEIC',
 }
 
@@ -159,20 +160,25 @@ export function brandRows({
  * half-cell lip on the row above, and its label on the panel's fill — so it
  * reads as part of the surface below it. "/ commands" is always there, dim
  * at rest; while the field holds a command it is the active tab, and no mode
- * is. Where the output goes sits at the right end of the row, and is the
- * first thing to go when the row is too narrow for both.
+ * is. Where the output goes sits at the right end of the row: in full
+ * ("saves to ~/Desktop") when there is room, the destination alone when
+ * there is not (four tabs fill most of 80 columns), and nothing when even
+ * that would collide with the tabs.
  */
 export function tabRows({
   width: columns,
   palette,
   mode,
   savesTo,
+  right = { label: 'saves to', value: savesTo },
   commands = false,
 }: {
   width: number
   palette: Palette
   mode: ShellMode
   savesTo: string
+  /** Where results go, when not a folder: colour mode copies to the clipboard. */
+  right?: { label: string; value: string }
   /** The command list is open: "/ commands" is the active tab. */
   commands?: boolean
 }): Row[] {
@@ -210,15 +216,16 @@ export function tabRows({
   })
   tab('/', modeColours(palette, mode).fg, 'commands', commands)
 
-  const saves: Row = [
-    { text: 'saves to', fg: palette.border },
+  const full: Row = [
+    { text: right.label, fg: palette.border },
     blank(1),
-    { text: savesTo, fg: palette.dim },
+    { text: right.value, fg: palette.dim },
     blank(1),
   ]
-  const gap = W - width(tabs) - width(saves)
+  const short: Row = [{ text: right.value, fg: palette.dim }, blank(1)]
   const row: Row = [blank(M), ...tabs]
-  if (gap >= 1) row.push(blank(gap), ...saves)
+  const saves = [full, short].find((r) => W - width(tabs) - width(r) >= 1)
+  if (saves) row.push(blank(W - width(tabs) - width(saves)), ...saves)
   return [top, row]
 }
 
@@ -424,6 +431,7 @@ export function surfaceRows({
   mode,
   typing,
   kinds,
+  title: heading = 'Drop a file here',
 }: {
   width: number
   rows: number
@@ -431,13 +439,15 @@ export function surfaceRows({
   mode: ShellMode
   typing: boolean
   kinds: string
+  /** What to drop: colour's palette asks for an image. */
+  title?: string
 }): Row[] {
   const W = columns - HOME_MARGIN * 2
   const accent = modeColours(palette, mode).fg
   const title: Row = [
     { text: '↓', fg: typing ? palette.border : accent, bold: true },
     blank(2),
-    { text: 'Drop a file here', fg: typing ? palette.dim : palette.fg, bold: true },
+    { text: heading, fg: typing ? palette.dim : palette.fg, bold: true },
   ]
   const sub: Row = [
     { text: clip(kinds, Math.max(1, W - 2)), fg: typing ? palette.faint : palette.dim },

@@ -1,6 +1,6 @@
 import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
-import { bandFor, middleEllipsis } from '../../src/shell/width.js'
+import { bandFor, endEllipsis, middleEllipsis } from '../../src/shell/width.js'
 
 /**
  * True if any code point of `s` is an unpaired surrogate. Iterating a
@@ -85,6 +85,34 @@ describe('middleEllipsis', () => {
       const out = middleEllipsis(text, max)
       expect(stringWidth(out)).toBeLessThanOrEqual(max)
       expect(hasUnpairedSurrogate(out)).toBe(false)
+    }
+  })
+})
+
+describe('endEllipsis', () => {
+  it('leaves text that fits alone, including text of exactly the maximum', () => {
+    expect(endEllipsis('fifty is not a size.', 40)).toBe('fifty is not a size.')
+    expect(endEllipsis('123456789', 9)).toBe('123456789')
+  })
+
+  it('cuts at the end, so the result and its ellipsis fill the maximum', () => {
+    expect(endEllipsis('fifty is not a size. Try 500kb or 2mb.', 20)).toBe('fifty is not a size…')
+  })
+
+  it('degrades sanely at tiny widths', () => {
+    expect(endEllipsis('abcdefgh', 1)).toBe('…')
+    expect(endEllipsis('abcdefgh', 0)).toBe('')
+    expect(endEllipsis('abcdefgh', -3)).toBe('')
+  })
+
+  it('counts columns, not code units, and never splits a surrogate pair', () => {
+    for (const text of ['写真フォルダ海辺の夕日', '🎉'.repeat(20), 'ab🎉cd写真']) {
+      for (const max of [2, 3, 4, 5, 9]) {
+        const out = endEllipsis(text, max)
+        expect(stringWidth(out)).toBeLessThanOrEqual(max)
+        expect(hasUnpairedSurrogate(out)).toBe(false)
+        expect(out.endsWith('…')).toBe(true)
+      }
     }
   })
 })

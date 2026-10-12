@@ -523,8 +523,36 @@ through the shell is still unbuilt, not a bug.
 
 ## Colour
 
-Two things for designers, from the command line. The interactive screens for
-them are still being built.
+Two things for designers: an image's palette, and a tonal scale from one
+colour. Both are in the shell as its fourth mode, and on the command line.
+
+### In the shell
+
+Press **4** (or type `/colour`). Home shows two cards, **Palette** and
+**Scale**. Choose one with ←→ and open it with ↵. You can also drop an image
+straight onto colour's home, or press `#` to type a colour.
+
+- **Palette.** Drop an image, or type its path into the field at the top. The
+  photo is drawn in its own colours next to the list, with each colour's share
+  of the image.
+  - ↑↓ choose a colour; it stays lit in the photo and the rest dim.
+  - → goes inside a colour: its shades, lit where they are in the photo.
+    ← comes back.
+  - `s` makes a scale from the chosen colour.
+- **Scale.** Type a hex code. You get 50–950 with your colour at 500, and a
+  preview of the chosen step: "Aa" in white and black, with each rated
+  (AAA, AA, large, fails).
+  - ←→ choose a step.
+  - `r` makes that step the new centre and rebuilds the scale around it.
+  - `#` types a new colour.
+
+On both screens, ↵ copies the chosen hex and `c` copies the whole set. Paste
+it into Figma with ⌘V: you get real shapes and text layers, named
+`blue-500` and so on. esc goes back one step, and the bar at the top shows
+the way back. Under `NO_COLOR`, both screens are plain text with every key
+still working.
+
+### On the command line
 
 ```
 $ forge palette photo.jpg

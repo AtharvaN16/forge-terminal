@@ -5,6 +5,8 @@ import type { Result, SourceInfo } from '../../src/core/types.js'
 import { type HistoryBlock, HistoryEntry } from '../../src/shell/blocks.js'
 import { FileCard } from '../../src/shell/components/FileCard.js'
 import { Hints } from '../../src/shell/components/Hints.js'
+import { ThemeProvider } from '../../src/shell/ThemeContext.js'
+import { DARK } from '../../src/shell/theme.js'
 
 const source: SourceInfo = {
   kind: 'image',
@@ -97,7 +99,7 @@ describe('HistoryEntry', () => {
   it('renders an error with its title, detail and hint', () => {
     const block: HistoryBlock = { kind: 'error', id: 'e1', error: fileNotFound('/a/ghost.jpg') }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''
-    expect(frame).toContain('✕')
+    expect(frame).toContain('failed')
     expect(frame).toContain('File not found')
     expect(frame).toContain('ghost.jpg')
     expect(frame).toContain('Check the filename')
@@ -124,25 +126,29 @@ describe('HistoryEntry', () => {
 })
 
 describe('an error is hard to overlook', () => {
-  it('draws the whole message as one framed block, not loose lines', () => {
+  it('draws the whole message as one panel under a "failed" tab, not loose lines', () => {
     // Reported: a refusal was "completely overlooked". It rendered as three
     // unstyled lines flush against the scrollback above it, indistinguishable
-    // from ordinary output, so the eye slid past it. Framing groups the
-    // title, the reason and the way forward into a single object.
+    // from ordinary output, so the eye slid past it. The tab and the tint
+    // group the title, the reason and the way forward into a single object.
     const error = fileNotFound('/tmp/ghost.jpg')
-    const frame = render(
-      <HistoryEntry block={{ kind: 'error', id: 'e1', error }} width={80} />,
-    ).lastFrame()
+    const frame =
+      render(
+        <ThemeProvider palette={DARK}>
+          <HistoryEntry block={{ kind: 'error', id: 'e1', error }} width={80} />
+        </ThemeProvider>,
+      ).lastFrame() ?? ''
+    const lines = frame.split('\n')
 
-    expect(frame).toContain('✕')
+    expect(lines[0]).toMatch(/^\s+failed\s*$/)
     expect(frame).toContain('File not found')
-    // A frame corner, so the block is visually bounded.
-    expect(frame).toMatch(/[╭╰]/)
-    // The hint has to survive inside the frame — it is the actionable half.
+    // The old red card is gone.
+    expect(frame).not.toMatch(/[╭╰]/)
+    // The hint has to survive inside the panel: it is the actionable half.
     expect(frame).toContain('Check the filename')
   })
 
-  it('keeps the frame inside the width it is given', () => {
+  it('keeps the panel inside the width it is given', () => {
     const error = fileNotFound('/tmp/ghost.jpg')
     const frame =
       render(<HistoryEntry block={{ kind: 'error', id: 'e1', error }} width={60} />).lastFrame() ??

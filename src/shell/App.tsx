@@ -11,8 +11,10 @@ import {
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
+import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
+  type ForgeError,
   isForgeError,
   unexpectedError,
   unsupportedCompress,
@@ -35,11 +37,14 @@ import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
+import { ColourFlow } from './colour/ColourFlow.js'
+import type { Start as ColourStart } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
+import { ErrorLine } from './components/ErrorLine.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
@@ -66,6 +71,7 @@ import {
 } from './enhance.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
+import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -136,6 +142,8 @@ export type Step =
   | 'pdf-running'
   /** `checkWriteSafety` refused the job `PdfFlow` handed off — see `pdfBlocked`. */
   | 'pdf-blocked'
+  /** Colour mode's palette or scale: `ColourFlow` owns the conversation. */
+  | 'colour'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -381,6 +389,12 @@ interface DropResolution {
   sources: SourceInfo[]
   failures: InputFailure[]
   anyExists: boolean
+  /**
+   * The text named one path, and it could not be read: a refusal of that
+   * path, to answer in a row under the field. Not set for a folder, or for
+   * several paths at once.
+   */
+  single?: boolean
 }
 
 /**
@@ -460,7 +474,7 @@ async function resolveDrop(text: string): Promise<DropResolution> {
       return resolution(found.sources, found.failures)
     }
   }
-  return resolution([], [asFailure(whole, wholeError)])
+  return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
 }
 
 export function App({
@@ -781,6 +795,11 @@ export function App({
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
+  /** Colour's home: the card chosen, Palette (0) or Scale (1). */
+  const [colourChoice, setColourChoice] = useState<0 | 1>(0)
+  /** How the colour flow opens, and the trail it hands up for the bar. */
+  const [colourStart, setColourStart] = useState<ColourStart>('palette')
+  const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Palette' })
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -795,6 +814,35 @@ export function App({
    */
   const textRef = useRef('')
   textRef.current = text
+
+  /**
+   * The refusal of the last thing typed or dropped (E5·b), shown as a row
+   * under the home field. Typing, choosing a mode, or leaving home clears it.
+   */
+  const [homeError, setHomeError] = useState<ForgeError | undefined>(undefined)
+  /**
+   * What the field held when the row went up. A refused typed path stays in
+   * the field to be corrected, so the row clears on a *change* of the text,
+   * not on any text.
+   */
+  const homeErrorFor = useRef('')
+  /** Shows `error` under the field, with `field` left in it (a typed path stays). */
+  const refuseOnHome = useCallback((error: ForgeError, field = '') => {
+    homeErrorFor.current = field
+    setText(field)
+    setHomeError(error)
+  }, [])
+  useEffect(() => {
+    if (text !== homeErrorFor.current) setHomeError(undefined)
+    // The size step's row goes the same way. Its field is emptied by the
+    // submit that raised it, so the row outlives that and goes with the next
+    // change: typing makes it stale.
+    if (text !== '') setSizeError(undefined)
+  }, [text])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `mode` and `step` are the triggers
+  useEffect(() => {
+    setHomeError(undefined)
+  }, [mode, step])
 
   /**
    * The prompt is the home screen (mockups/flow-parts-2026-10.html, tab 3),
@@ -835,6 +883,14 @@ export function App({
   /** Same as `/convert`, `/compress` or `/pdf` with nothing staged. */
   const switchMode = (next: ShellMode) => {
     if (next === mode) return
+    // Colour starts from its own home, never from a staged file: what is
+    // staged is let go, as `/colour` lets it go (see `runCommand`), and a
+    // drop still being read is dropped with it.
+    if (next === 'colour') {
+      requestId.current++
+      dropReading.current = 0
+      setStage(clearStage())
+    }
     setMode(next)
     setValues({})
   }
@@ -1198,6 +1254,7 @@ export function App({
   useKeys(
     (_input, key) => {
       if (!key.escape) return
+      setHomeError(undefined)
       if (text !== '') {
         setText('')
         return
@@ -1232,10 +1289,55 @@ export function App({
     setSizeUnreachable(null)
     setSuggestion(undefined)
     setSizeError(undefined)
+    setHomeError(undefined)
     setText('')
     setMode('convert')
+    setColourChoice(0)
     setStep('idle')
   }
+
+  /** Into the colour flow, opening as `start` says. */
+  const openColour = useCallback((start: ColourStart) => {
+    setColourStart(start)
+    setColourTrailNow({
+      answers: [],
+      current:
+        start === 'palette' || (typeof start === 'object' && 'palette' in start)
+          ? 'Palette'
+          : 'Scale',
+    })
+    setText('')
+    setStep('colour')
+  }, [])
+
+  /**
+   * Colour's home, with nothing typed (colour spec §6.2): ←→ choose a card and
+   * ↵ opens it; `#` opens the scale with it typed; a drop opens the palette
+   * of what was dropped; `/` puts the slash in the field, which opens the
+   * commands as on every home; the mode digits switch mode. The field is hidden here, so
+   * these are read directly rather than through its `intercept`.
+   */
+  useKeys(
+    (input, key) => {
+      if (key.ctrl || key.meta || isStrayEscapeSequence(input)) return
+      if (key.leftArrow) setColourChoice(0)
+      else if (key.rightArrow) setColourChoice(1)
+      else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
+      else if (input === '#') openColour({ typed: '#' })
+      else if (input === '/') setText('/')
+      else if (input.length > 1) {
+        // A pasted colour (a hex copied from Figma, say) is a scale; anything
+        // else pasted or dropped is an image's path.
+        const pasted = input.trim()
+        const rgb = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.test(pasted) ? parseHex(pasted) : undefined
+        openColour(rgb ? { scale: rgb } : { palette: pasted })
+      } else {
+        const next = modeForKey(input)
+        if (next && next !== mode) switchMode(next)
+      }
+    },
+    { isActive: onHome && mode === 'colour' && text === '' },
+  )
 
   useKeys(
     (input, key) => {
@@ -1433,6 +1535,7 @@ export function App({
   const runCommand = useCallback(
     (command: Command) => {
       setText('')
+      setHomeError(undefined)
 
       if (command.name === 'theme') {
         setStep('theme')
@@ -1469,6 +1572,18 @@ export function App({
           id: nextId(),
           text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
         })
+        return
+      }
+
+      // Colour starts from its own home (Palette or Scale), never from a
+      // staged file: what you drop or type belongs to the screen you open
+      // (colour spec §6.2). A staged file is let go, as ctrl-n would.
+      if (command.mode === 'colour') {
+        fenceOff()
+        setStage(clearStage())
+        setMode('colour')
+        setValues({})
+        setStep('idle')
         return
       }
 
@@ -1675,9 +1790,18 @@ export function App({
           drop.failures.every((f) => f.error.code === 'empty-directory')
         ) {
           setText('')
+          setHomeError(undefined)
           for (const failure of drop.failures) showError(failure.error)
           return
         }
+        // One dropped file that could not be read, onto an empty home: said
+        // under the field, as a typed path is, and nothing is staged.
+        const [only] = drop.failures
+        if (drop.single && only && stageRef.current.sources.length === 0) {
+          refuseOnHome(only.error)
+          return
+        }
+        setHomeError(undefined)
         landDrop(drop)
       },
       () => {
@@ -1710,8 +1834,18 @@ export function App({
         }
         return
       }
+      // Colour's home: a path typed after `/` is an image for its palette.
+      if (mode === 'colour') {
+        setText('')
+        openColour({ palette: trimmed })
+        return
+      }
       const id = ++requestId.current
       setText('')
+      setHomeError(undefined)
+      // The path stays in the field if it is refused, to be corrected — unless
+      // something was typed in the meantime, which then stays instead.
+      const kept = () => (textRef.current === '' ? trimmed : textRef.current)
 
       let drop: DropResolution
       try {
@@ -1720,8 +1854,9 @@ export function App({
         if (requestId.current !== id) return // superseded by a later submission
         // A rethrow here would become an unhandled rejection: submitPath is
         // fired from Prompt's synchronous useInput handler, and nothing awaits
-        // or catches the promise it returns. The shell must render it.
-        showError(e)
+        // or catches the promise it returns. The shell must render it — as
+        // the refusal of the path just typed, under the field.
+        refuseOnHome(isForgeError(e) ? e : unexpectedError(e), kept())
         setStep('idle')
         return
       }
@@ -1731,14 +1866,18 @@ export function App({
       const nothingStaged = stageRef.current.sources.length === 0
       const [first] = drop.sources
       if (nothingStaged && !first) {
-        for (const failure of drop.failures) showError(failure.error)
+        // One path that could not be read is answered under the field; a
+        // folder with nothing readable in it keeps a panel for each failure.
+        const [only] = drop.failures
+        if (drop.single && only) refuseOnHome(only.error, kept())
+        else for (const failure of drop.failures) showError(failure.error)
         return
       }
       landDrop(drop)
       // One file typed onto an empty home goes on at once, as it always has.
       if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
     },
-    [showError, push, runCommand, landDrop, proceedWith],
+    [showError, push, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -2780,6 +2919,7 @@ export function App({
     // A job not yet shown as Working: the bar stays as the last question left it.
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
+    if (at === 'colour') return colourTrailNow
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: pdfTrailNow.answers,
@@ -2897,7 +3037,14 @@ export function App({
                 </Text>
               ) : null}
               {sizeError ? (
-                <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${sizeError}`}</Text>
+                <Box flexDirection="column">
+                  <Text> </Text>
+                  <ErrorLine
+                    title="Not a size"
+                    reason={sizeError}
+                    width={Math.max(8, width - 2 * HOME_MARGIN)}
+                  />
+                </Box>
               ) : null}
               <HintBar
                 width={width}
@@ -3252,6 +3399,16 @@ export function App({
             />
           ) : null}
 
+          {step === 'colour' ? (
+            <ColourFlow
+              start={colourStart}
+              width={width}
+              height={height}
+              onCancel={() => setStep('idle')}
+              onTrail={setColourTrailNow}
+            />
+          ) : null}
+
           {step === 'pdf' ? (
             <PdfFlow
               stage={stage}
@@ -3335,6 +3492,15 @@ export function App({
               typing={text !== ''}
               staged={staged ? stagedView(stage, freshRows) : undefined}
               under={underField(stage, mode)}
+              note={
+                homeError ? (
+                  <ErrorLine
+                    title={homeError.title}
+                    reason={homeError.short ?? homeError.detail}
+                    width={Math.max(8, width - 2 * HOME_MARGIN)}
+                  />
+                ) : undefined
+              }
               savesTo={displayPath(livePrefs.defaultOutput)}
               field={
                 <Prompt
@@ -3362,10 +3528,12 @@ export function App({
                     )
                   : undefined
               }
+              colourChoice={colourChoice}
               keys={homeKeys({
                 typing: text !== '',
                 completions: completions.length,
                 commands: commands !== undefined,
+                colour: mode === 'colour',
                 staged: staged
                   ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
                   : undefined,

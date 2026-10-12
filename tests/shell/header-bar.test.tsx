@@ -24,8 +24,8 @@ type BarFrame = FixtureFrame & { at: number }
 const BARS = loadFixture('bar-mockup.json') as BarFrame[]
 
 /** The mockup's questions and answers, per mode (its TRAIL). */
-/** The modes the mockup draws a bar for; enhance came after it. */
-type MockMode = Exclude<ShellMode, 'enhance'>
+/** The modes the mockup draws a bar for; colour and enhance came after it. */
+type MockMode = Exclude<ShellMode, 'colour' | 'enhance'>
 const TRAIL: Record<MockMode, { steps: string[]; answers: string[] }> = {
   convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop'] },
   compress: { steps: ['Method', 'Quality', 'Save to', 'Name'], answers: ['By quality', '70'] },

@@ -65,11 +65,16 @@ export function paletteCard(
   fileName: string,
   groups: Group[],
   theme: 'light' | 'dark' = 'light',
+  /** These are the shades of this colour, not the image's colours. */
+  inside?: string,
 ): string {
   const base = fileName.replace(/\.[^.]+$/, '')
+  const n = groups.length
   return card(
     fileName,
-    `${groups.length} colours, most of the image first`,
+    inside
+      ? `${n} shade${n === 1 ? '' : 's'} of ${inside}`
+      : `${n} colour${n === 1 ? '' : 's'}, most of the image first`,
     groups.map((g, i) => ({
       id: `${base}-${i + 1}`,
       name: g.hex,

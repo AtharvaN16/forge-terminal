@@ -42,6 +42,8 @@ describe('scale', () => {
   })
 
   const SWEEP = [
+    '#0A0A2A',
+    '#00000A',
     '#FFFFFF',
     '#000000',
     '#808080',
@@ -79,6 +81,13 @@ describe('scale', () => {
           expect(d, `${ref} → ${x.hex}`).toBeLessThanOrEqual(2)
         }
       }
+    }
+  })
+
+  it('a very dark reference still gets darker steps below it', () => {
+    for (const ref of ['#0A0A2A', '#00000A', '#140000']) {
+      const s = scale(hex(ref))
+      expect(L((s[10] as { hex: string }).hex), ref).toBeLessThan(L(ref))
     }
   })
 

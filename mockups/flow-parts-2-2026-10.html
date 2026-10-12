@@ -111,8 +111,8 @@
   <a href="#name">7 · Naming ✓</a>
   <a href="#done">8 · Done ✓</a>
   <a href="#neutral">Neutral grey ✓</a>
-  <span class="lbl">LATER</span>
-  <a class="later" href="#errors">9 · Errors</a>
+  <a href="#exists">Name taken ✓</a>
+  <a href="#errors">9 · Errors ✓</a>
 </div>
 
 <section class="tab" id="decided">
@@ -200,9 +200,25 @@
   <div class="grid" id="neutral-grid" style="margin-top:26px"></div>
 </section>
 
+<section class="tab" id="exists">
+  <h2><span class="n">7b</span>Name taken ✓ L1</h2>
+  <p class="sub"><b>Decided: L1.</b> Today's list, unchanged in shape: the card, the title, the picker's band over Keep both, Replace, Cancel; only the highlighted row says more. What it says is a preview of the answer. On <b>Keep both</b>: "saves yours as test (1).jpg", the (1) bold in the mode's colour. On <b>Replace</b>: the one there now, "test.jpg  68.2 KB", crossed out in the quiet grey, and the rest of the band hatched in faint ╱, as Done hatches what a file shed. On <b>Cancel</b>: "back to Save as". The title, in the mode's colour, has the old file's size and age at its far end, quiet. The trail's last word is "Name taken".</p>
+  <p class="sub">The question after Save as when the folder already has a file by that name. Keep both is first, so ↵ does the safe thing. The frame is live: the cursor rests on each answer in turn. The old file's size and age come from the file itself (one stat). "Name taken" replaces today's "Overwrite", which names one of the answers before you have chosen it.</p>
+  <div class="grid" id="exists-grid"></div>
+  <details class="earlier"><summary>Today, for reference</summary>
+  <div class="grid" id="exists-ref-grid"></div>
+  </details>
+</section>
+
 <section class="tab" id="errors">
-  <h2><span class="n">09</span>Errors</h2>
-  <p class="sub">After Done.</p>
+  <h2><span class="n">09</span>Errors ✓ E5 · E5·b</h2>
+  <p class="sub"><b>Decided: two sizes, one tint.</b> The dark red tint (#2e2020) is what an error is; red text (#e8796d) is only ever on it.</p>
+  <p class="sub"><b>E5, for a run that failed</b> (after Working, with a way forward to tell): a "failed" tab, red bold on the tint, on the top edge of a tinted panel the block's width. Inside: a blank row, the title in white bold, the detail in white, the way forward in grey, a blank row; all wrapped to the block. It goes into the scrollback where today's red card goes, with home back under it.</p>
+  <p class="sub"><b>E5·b, for a refusal of what you just typed or dropped</b> (a path that is not there, a damaged file, a size it cannot read): one tinted row the block's width, a blank row above it, under the field where it happened: the title in red bold, three spaces, a short form of the reason in white. No tab. It goes when you type again. The short form is new: today a ForgeError has a title, a detail and a hint, no one-line form.</p>
+  <div class="grid" id="errors-grid"></div>
+  <details class="earlier"><summary>Today, for reference</summary>
+  <div class="grid" id="errors-ref-grid"></div>
+  </details>
 </section>
 
 <footer>Convert · forge · the flow, part two · 2026-10-11 · Mockups only, drawn with the app's DARK palette in xterm.js.</footer>
@@ -1776,6 +1792,211 @@ try {
   document.getElementById('neutral-swatches').innerHTML = '<table class="sw"><tr><th>where</th><th>today</th><th>neutral</th></tr>'
     + SW.map(([w, h]) => `<tr><td>${w}</td><td>${sw(h)}</td><td>${sw(hexGrey(h))}</td></tr>`).join('') + '</table>'
 } catch (e) { /* no DOM: the node checks */ }
+
+/* ===================================================== THE NAME IS TAKEN
+   The question after Save as when the folder already has a file by that
+   name: keep both, replace, or cancel. Today it is the picker's band under
+   the card, and that stays. Round one (O1–O5, panels, cards, a folder
+   listing) is in exists-r1.js; liked from it were O1's previews: Keep both
+   shows the (1) your file gets, Replace crosses out and hatches the one there.
+   Round two put those into the list (L1–L5, in exists-r2.js). Decided: L1. Every frame is live: the cursor rests
+   on each answer in turn. */
+const EX = {
+  s: CV_, answers: ['JPEG', '80', 'Desktop', 'test.jpg'], folder: 'Desktop',
+  name: 'test.jpg', both: 'test (1).jpg', tag: 'JPEG',
+  old: { size: '68.2 KB', when: 'yesterday, 18:42' },
+  neu: { size: '74.6 KB' },
+}
+const EXLOOP = 7.2
+/** Which answer the cursor is on: 0 keep both, 1 replace, 2 cancel. */
+const exSel = (t) => Math.floor((t % EXLOOP) / (EXLOOP / 3)) % 3
+const exBar = (now = 'Name taken') => bar(EX.s, null, { answers: EX.answers, now })
+const exScreen = (body, keys, top = exBar()) => ({ rows: fill24([top, '', ...body], keys + HIDE), cursor: null })
+const exKeys = () => stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['esc', 'cancel'], ['ctrl-c', 'quit']])
+/** Struck through: what an answer would lose. */
+const exStrike = (s) => `\x1b[9m${s}\x1b[29m`
+const LW = 64, NW = 12                 // the band's width, as the pickers have it; the names' column
+const exHatch = (c0, n) => (n > 0 ? hatchFn(c0, n, () => K.faint) : '')
+/** Your file's name with the (1) Keep both gives it, the (1) in the mode's colour. */
+const bothName = (base = K.fg) => xf(base, 'test') + xf(EX.s.mode.c, xB(' (1)')) + xf(base, '.jpg')
+/** The one there now, crossed out, then hatching to `end` (a column): what Replace loses. */
+const lost = (at, end, txt = `${EX.name}  ${EX.old.size}`) => xf(K.x, exStrike(txt)) + ' ' + exHatch(at + txt.length + 1, end - at - txt.length - 2)
+/** What each answer does: `on` for the highlighted row, with the previews; quiet otherwise. `at` is where the text starts. */
+const say = (i, on_, at, end = M + LW) => (on_
+  ? [xf(K.d, 'saves yours as ') + bothName(), lost(at, end), xf(K.d, 'back to Save as')][i]
+  : xf(K.x, ['saves yours as ' + EX.both, 'the one there now is lost', 'back to Save as'][i]))
+const EXN = ['Keep both', 'Replace', 'Cancel']
+/** The list: the picker's band and strip. `every`: every row says what it does, not just the highlighted one. */
+const exList = (sel, { every = false, hints = true } = {}) => EXN.map((n, i) => {
+  const at = M + 2 + NW
+  if (i === sel) return ' '.repeat(M) + on(BAND, xf(EX.s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(n)), NW) + (hints ? say(i, true, at) : ''), LW)
+  return ' '.repeat(M) + '  ' + xpad(xf(K.d, n), NW) + (every ? say(i, false, at) : '')
+})
+const exTitle = (meta = true) => qTitle(EX.s, `${EX.name} already exists`, meta ? `${EX.old.size} · ${EX.old.when}` : '')
+
+/* ---------------------------------------------------- today, for reference */
+const exToday = (t) => {
+  const today = [['Keep both', xf(K.d, EX.both)], ['Replace', xf(K.d, 'the existing file is lost')], ['Cancel', xf(K.d, 'pick a different folder')]]
+  return exScreen([...fcard(CV_), '', ' '.repeat(M) + xf(K.fg, `${EX.name} already exists`), ...pick(CV_, today, exSel(t), 12)],
+    stepKeys([['↑↓', 'choose'], ['↵', 'confirm'], ['esc', 'cancel']], [['ctrl-c', 'quit']]), exBar('Overwrite'))
+}
+
+/* L1: today's list, the previews in the highlighted row */
+const l1 = (t) => exScreen([...fcard(CV_), '', exTitle(), '', ...exList(exSel(t))], exKeys())
+
+/* L2: every row says what it does */
+const l2 = (t) => exScreen([...fcard(CV_), '', exTitle(), '', ...exList(exSel(t), { every: true })], exKeys())
+
+/* L3: the file there, one line above the list; the previews happen on it */
+const l3 = (t) => {
+  const sel = exSel(t), at = M + 2, lead = xf(K.x, EX.tag) + '  '
+  const there = sel === 1
+    ? ' '.repeat(at) + lead + lost(at + 6, M + LW, `${EX.name}  ${EX.old.size} · ${EX.old.when}`)
+    : ' '.repeat(at) + lead + xf(K.d, EX.name) + '  ' + xf(K.x, `${EX.old.size} · ${EX.old.when}`)
+  const yours = sel === 0 ? ' '.repeat(at) + lead + bothName() + '  ' + xf(K.x, `${EX.neu.size} · yours`) : ''
+  return exScreen([...fcard(CV_), '', exTitle(false), '', there, yours, '', ...exList(sel, { hints: false })], exKeys())
+}
+
+/* L4: the list inside a filled block, as Save as's folders are */
+const l4 = (t) => {
+  const sel = exSel(t), w = W - 2, at = M + 3 + NW
+  const rows = EXN.map((n, i) => (i === sel
+    ? ' ' + on(ROWBG, xf(K.fg, '▌') + ' ' + xpad(xf(K.fg, xB(n)), NW) + say(i, true, at, M + 1 + w), w).split('\x1b[49m').join(`\x1b[48;2;${rgbOf(P)}m`)
+    : '   ' + xpad(xf(K.d, n), NW)))
+  return exScreen([...fcard(CV_), '', exTitle(), '', ...FB(['', ...rows, ''])], exKeys())
+}
+
+/* L5: no card, each answer two rows: its name, and under it what it does */
+const l5 = (t) => {
+  const sel = exSel(t), at = M + 4
+  const rows = EXN.flatMap((n, i) => {
+    const on_ = i === sel, s = xf(EX.s.mode.c, '▌') + '   '
+    const two = on_
+      ? [on(BAND, s + xf(K.fg, xB(n)), LW), on(BAND, s + say(i, true, at), LW)]
+      : ['    ' + xf(K.d, n), '    ' + say(i, false, at)]
+    return [...two.map((r) => ' '.repeat(M) + r), '']
+  })
+  return exScreen(['', '', exTitle(), '', '', ...rows], exKeys())
+}
+
+const EXIST = [
+  { id: 'L1', name: 'Today\'s list, with the previews', make: l1,
+    idea: 'The list as it is, with O1\'s previews in the highlighted row: on Keep both, the name yours will get, its (1) in the mode\'s colour; on Replace, the one there now crossed out and the rest of the band hatched, the way Done hatches what a file shed. The title gets the old file\'s size and age at its far end, quiet.' },
+  { id: 'L2', name: 'Every row says what it does', make: l2,
+    idea: 'L1, but the rows you are not on say what they do too, in the quiet grey, so all three outcomes are readable at once. The highlighted row still carries the colour and the hatching.' },
+  { id: 'L3', name: 'The file there, one line above', make: l3,
+    idea: 'The one there now gets a line of its own above the list: format, name, size, age. The previews happen on that line: Replace crosses it out and hatches the rest; Keep both adds yours under it, with its (1). The list itself goes bare, just the three words.' },
+  { id: 'L4', name: 'In a filled block, like Save as', make: l4,
+    idea: 'The same list on the field\'s fill, the highlighted row a lighter grey with a white strip, as Save as draws its folders. It comes straight after Save as, so it looks like the same part of the app.' },
+  { id: 'L5', name: 'Two rows each, no card', make: l5,
+    idea: 'More air: no file card, and each answer two rows, its name and under it what it does, the band two rows tall on the one you are on. The previews sit on the second row.' },
+]
+fig('exists-ref-grid', { id: 'Today', name: 'Today, as the app draws it', idea: 'The card, "test.jpg already exists" in plain text, and the picker\'s band over three answers; only the highlighted one says more. The bar\'s trail ends in Overwrite.', frames: [{ label: 'convert · test.jpg is taken in Desktop', make: exToday }] })
+for (const d of EXIST.filter((d) => d.id === 'L1')) fig('exists-grid', { id: d.id, name: d.name, pick: true, idea: d.idea, frames: [{ label: 'convert · test.jpg is taken in Desktop', make: d.make }] })
+
+/* ================================================================ ERRORS
+   What a failure looks like. Today every one is the same card: a red rounded
+   frame, 52 wide, "✕ title" in red, the detail in white, the hint dim. It is
+   pushed into the scrollback and home comes back under it. Round one (E1–E5)
+   is in errors-r1.js. Liked: E5, K3·a's tab on a dark red tint, for a run that
+   failed. Round two (E5·a–c, one-line errors) is in errors-r2.js. Decided: E5 for a
+   run that failed, E5·b for a one-line refusal. */
+const FAIL_ = '#e8796d'
+const ERT = '#2e2020'                  // the dark red tint, as the default's pill is a dark orange one
+const ER = {
+  small: {
+    s: CM_, label: 'compress · it cannot get that small', answers: ['To a size', '50 KB', 'Desktop', 'photo.jpg'],
+    title: 'Cannot get that small', detail: 'photo.jpg is 212 KB even at the lowest quality, which is still over 50 KB.',
+    hint: 'Try a larger target, or /convert to a smaller format.',
+  },
+  write: {
+    s: CV_, label: 'convert · the folder cannot be written to', answers: ['JPEG', '80', 'Team', 'test.jpg'],
+    title: 'Cannot write there', detail: '~/Shared/Team/test.jpg could not be written to.',
+    hint: 'Check that the path is valid and that you have permission to write to it.',
+  },
+  damaged: {
+    s: CV_, label: 'drop · a damaged file',
+    title: 'Damaged PNG', detail: 'scan.png is a PNG file, but its content could not be read.',
+    hint: 'The file may be incomplete or corrupted.',
+  },
+}
+/* The one-line ones: what you typed or dropped, refused on the spot, under the field. */
+const ER1 = {
+  missing: { s: CV_, label: 'home · a path that is not there', title: 'File not found', short: 'tset.png could not be found.', typed: '~/Desktop/tset.png' },
+  damaged: { s: CV_, label: 'home · a damaged file dropped', title: 'Damaged PNG', short: 'scan.png could not be read.' },
+  size: { s: CM_, label: 'compress · a size it cannot read', title: 'Not a size', short: 'fifty is not a size. Try 500kb or 2mb.', typed: 'fifty' },
+}
+const erWrap = (t, w) => wrapW(t, w)
+/** Home, back under whatever the scrollback holds: `above` rows, then home's own, cut from the top to fit. */
+const underHome = (above, s, after = [], typed) => {
+  const h = home(s), keys = h[23]
+  let last = 22
+  while (last > 0 && !strip(h[last]).trim()) last--
+  const own = h.slice(0, last + 1).map((r) => (typed && strip(r).includes('or type a path') ? IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, typed) : r))
+  let rows = above.length ? [...above, '', ...own.slice(1), ...after] : [...own, ...after]
+  if (rows.length > 23) rows = rows.slice(rows.length - 23)
+  return { rows: fill24(rows, keys), cursor: null }
+}
+
+/* ---------------------------------------------------- today, for reference */
+const erCard = (e) => {
+  const w = 52, Ed = (t) => xf(FAIL_, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+  return [' '.repeat(M) + Ed('╭' + '─'.repeat(w - 2) + '╮'),
+    side(xf(FAIL_, `✕ ${e.title}`)),
+    ...erWrap(e.detail, w - 4).map((l) => side(xf(K.fg, l))),
+    ...erWrap(e.hint, w - 4).map((l) => side(xf(K.d, l))),
+    ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯')]
+}
+const erToday = (e) => underHome(erCard(e), e.s)
+/** The compress Size step, `under` below its field. */
+const sizeScreen = (typed, under) => ({
+  rows: fill24([bar(CM_, null, { answers: ['To a size'], now: 'Size' }), '', ...fcard(CM_, { tag: 'JPEG', name: 'photo.jpg', meta: '4032×3024 · 2.4 MB' }), '', qTitle(CM_, 'Aim for a size'), '',
+    ...FB(['', ' ' + xf(K.m, '›') + ' ' + xf(K.fg, typed), '']), '', ...under],
+  stepKeys([['↵', 'confirm'], ['esc', 'back']], [['ctrl-c', 'quit']])),
+  cursor: [12, M + 5 + typed.length],
+})
+
+/* E5: K3·a's tab on a tinted panel, for a run that failed */
+const erTab = () => ' '.repeat(M) + on(ERT, ' ' + xf(FAIL_, xB('failed')) + ' ', 8)
+const e5 = (e) => {
+  const rows = ['', ' ' + xf(K.fg, xB(e.title)), ...erWrap(e.detail, W - 2).map((l) => ' ' + xf(K.fg, l)), ...erWrap(e.hint, W - 2).map((l) => ' ' + xf(K.d, l)), '']
+  return underHome([erTab(), ...rows.map((r) => ' '.repeat(M) + on(ERT, r, W))], e.s)
+}
+
+/* The one-line errors, three ways. Each is drawn where it happens: under home's field, or under a question's. */
+const LINE1 = {
+  /* a: the tab alone, then the words on the page */
+  a: (e) => [' '.repeat(M) + xb(ERT, ' ' + xf(FAIL_, xB('failed')) + ' ') + '  ' + xf(K.fg, xB(e.title)) + '  ' + xf(K.d, e.short)],
+  /* b: one tinted row, the block's width */
+  b: (e) => [' '.repeat(M) + on(ERT, ' ' + xf(FAIL_, xB(e.title)) + '   ' + xf(K.fg, e.short), W)],
+  /* c: E5 at its smallest: the tab, then one tinted row */
+  c: (e) => [erTab(), ' '.repeat(M) + on(ERT, ' ' + xf(K.fg, xB(e.title)) + '   ' + xf(K.d, e.short), W)],
+}
+const line1Screen = (e, v) => {
+  const rows = ['', ...LINE1[v](e)]
+  if (e === ER1.size) return sizeScreen(e.typed, rows)
+  return underHome([], e.s, rows, e.typed)
+}
+const todayLine = (e) => {
+  if (e === ER1.size) return sizeScreen(e.typed, [' '.repeat(M) + '  ' + xf(GOLD, `⚠ ${e.short}`)])
+  return underHome(erCard({ title: e.title, detail: e.short, hint: e === ER1.missing ? 'Check the filename and try again.' : 'The file may be incomplete or corrupted.' }), e.s, [], e.typed)
+}
+
+const ER5 = { id: 'E5', name: 'For a run that failed: a tab on a tinted panel', cases: ['small', 'write'],
+  idea: 'Liked from round one. K3·a\'s tab, saying failed, on a dark red tint, as the default\'s pill in Save as is a dark orange one. The title is white and bold, the detail white, the way forward grey. It goes into the scrollback where today\'s red card goes, with home back under it.' }
+const LINES = [
+  { id: 'E5·a', v: 'a', name: 'One line: the tab, then the words',
+    idea: 'The "failed" tab on its own, as a chip at the start of the line; after it, on the page, the title in white bold and the reason in grey. The tint is only the chip. Under the field, where you typed or dropped; it goes when you type again.' },
+  { id: 'E5·b', v: 'b', name: 'One line: a tinted row',
+    idea: 'The panel at one row: the whole line on the dark red tint, the block\'s width, the title in red bold and the reason in white. No tab; the tint alone says what it is.' },
+  { id: 'E5·c', v: 'c', name: 'One line: E5 at its smallest',
+    idea: 'E5 exactly, only short: the tab, and one tinted row under it with the title and the reason. Two rows, so a big error and a small one are the same object, one taller than the other.' },
+]
+const K1 = ['missing', 'damaged', 'size']
+fig('errors-grid', { id: ER5.id, name: ER5.name, pick: true, idea: ER5.idea, frames: ER5.cases.map((k) => ({ label: ER[k].label, rows: e5(ER[k]).rows })) })
+for (const d of LINES.filter((d) => d.id === 'E5·b')) fig('errors-grid', { id: d.id, name: d.name, pick: true, idea: d.idea, frames: K1.map((k) => { const r = line1Screen(ER1[k], d.v); return { label: ER1[k].label, rows: r.rows, cursor: r.cursor } }) })
+fig('errors-ref-grid', { id: 'Today', name: 'Today, as the app draws it', idea: 'The same red card for a run that failed and for a path that is not there; a size it cannot read is a gold ⚠ line under the field.',
+  frames: [...['small', 'write'].map((k) => ({ label: ER[k].label, rows: erToday(ER[k]).rows })), ...K1.map((k) => { const r = todayLine(ER1[k]); return { label: ER1[k].label, rows: r.rows, cursor: r.cursor } })] })
 
 /* ------------------------------------------------------------------ tabs */
 {

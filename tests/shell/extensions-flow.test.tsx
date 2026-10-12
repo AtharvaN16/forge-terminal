@@ -1,5 +1,6 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
+import { extensionDownloadFailed } from '../../src/core/errors.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import type { LockHolder } from '../../src/extensions/lock.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
@@ -86,6 +87,23 @@ describe('ExtensionsFlow (M3 · T2)', () => {
     await until(() => frame(f).includes('Removed · 15 MB freed'))
     expect(frame(f)).toContain('↵ install')
     expect(frame(f)).not.toContain('Remove it from this Mac?')
+  })
+
+  it('a failed download is an E5·b row on its sheet, with a way to try again', async () => {
+    const { manager } = fakeManager()
+    manager.install = async (id) => {
+      throw extensionDownloadFailed(id, 'connection reset')
+    }
+    const onError = vi.fn()
+    const f = render(
+      <ExtensionsFlow width={100} manager={manager} onError={onError} onClose={vi.fn()} />,
+    )
+    await until(() => frame(f).includes('↵ install'))
+    await tick()
+    f.stdin.write(ENTER)
+    await until(() => frame(f).includes('↵ try again'))
+    expect(frame(f)).toMatch(/Download failed {3}\S/)
+    expect(onError).not.toHaveBeenCalled()
   })
 
   it('esc at the question keeps the tool, unchanged', async () => {

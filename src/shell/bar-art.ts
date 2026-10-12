@@ -16,7 +16,7 @@ export interface Trail {
 export interface BarChip {
   label: string
   colour: string
-  stops: [string, string]
+  stops: readonly string[]
 }
 
 /** Powerline's slants: the chip's ends lean the same way as the hatching. */

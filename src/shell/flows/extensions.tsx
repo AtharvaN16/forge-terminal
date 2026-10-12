@@ -9,6 +9,8 @@ import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { BarChip } from '../bar-art.js'
 import { HeaderBar } from '../components/HeaderBar.js'
 import { HintBar } from '../components/HintBar.js'
+import { Runs } from '../components/Home.js'
+import { errorLine } from '../error-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
@@ -149,7 +151,8 @@ export function ExtensionsFlow({
   const [confirm, setConfirm] = useState(false)
   /** "✓ Removed · N freed", until the cursor moves. */
   const [freed, setFreed] = useState<{ id: string; bytes: number }>()
-  const [failed, setFailed] = useState<{ id: string; why: string }>()
+  /** A download that failed, said on its sheet as an E5·b row (error-art.ts). */
+  const [failed, setFailed] = useState<{ id: string; title: string; reason: string }>()
   const [inUse, setInUse] = useState<Record<string, LockHolder>>({})
   const stop = useRef<AbortController | undefined>(undefined)
   const alive = useRef(true)
@@ -229,7 +232,7 @@ export function ExtensionsFlow({
       if (controller.signal.aborted) return
       // A download that failed is said on its own sheet, with a way to try again.
       if (isForgeError(e) && e.code.startsWith('extension-')) {
-        setFailed({ id, why: e.detail.replace(`${id}: `, '').replace(/\.$/, '') })
+        setFailed({ id, title: e.title, reason: e.short ?? e.detail.replace(`${id}: `, '') })
       } else fail(e)
     } finally {
       if (stop.current === controller) stop.current = undefined
@@ -389,12 +392,23 @@ export function ExtensionsFlow({
     if (!s.supported)
       return <Text color={quiet}>{`Can't install: ${s.reason ?? 'not available'}`}</Text>
     if (failed?.id === id) {
+      // The sheet's own width, inside its rule and padding when split.
+      const room = split ? paneWidth - 3 : paneWidth
+      const plain = (process.env.NO_COLOR ?? '') !== ''
       return (
-        <Text>
-          <Text color={colourProp(palette.warn)}>{failed.why}</Text>
-          {'  '}
-          {pill('↵ try again')}
-        </Text>
+        <Box flexDirection="column">
+          <Runs
+            row={errorLine({
+              palette,
+              title: failed.title,
+              reason: failed.reason,
+              width: room,
+              plain,
+            })}
+          />
+          <Text> </Text>
+          <Text>{pill('↵ try again')}</Text>
+        </Box>
       )
     }
     if (s.installed === undefined) {

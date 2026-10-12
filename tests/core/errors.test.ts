@@ -1,19 +1,28 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   conversionFailed,
+  corruptFormatSource,
   corruptSource,
   emptyDirectory,
+  encryptedSource,
   ForgeError,
   fileNotFound,
+  heicDecoderUnavailable,
   isForgeError,
+  notADirectory,
+  notAFile,
   outputCollision,
   outputExists,
   outputIsInput,
+  pathTooLong,
   permissionDenied,
   renderError,
   selfCollision,
+  symlinkLoop,
   targetUnreachable,
+  unreadablePath,
   unsupportedCompress,
+  unsupportedSource,
   unsupportedTarget,
   type WarningCode,
 } from '../../src/core/errors.js'
@@ -277,5 +286,48 @@ describe('unsupportedCompress for a PDF', () => {
     expect(unsupportedCompress(pdf({ compressible: 0, skipped: 3 })).detail).toContain(
       'cannot re-encode',
     )
+  })
+})
+
+describe('short', () => {
+  const cases = [
+    ['file-not-found', fileNotFound('/tmp/a.png'), 'a.png could not be found.'],
+    ['not-a-file', notAFile('/tmp/a.png'), 'a.png is not a file.'],
+    ['permission-denied', permissionDenied('/tmp/a.png'), 'a.png could not be read.'],
+    ['not-a-directory', notADirectory('/tmp/a.png'), "part of a.png's path is not a folder."],
+    ['symlink-loop', symlinkLoop('/tmp/a.png'), "a.png's path loops back on itself."],
+    ['path-too-long', pathTooLong('/tmp/a.png'), "a.png's path is too long."],
+    [
+      'unreadable-path',
+      unreadablePath('/tmp/a.png', new Error('x')),
+      'a.png could not be checked.',
+    ],
+    [
+      'unsupported-source',
+      unsupportedSource('/tmp/a.mp3', 'an audio file'),
+      'a.mp3 is an audio file, which Forge cannot read.',
+    ],
+    ['corrupt-source', corruptSource('/tmp/a.png', new Error('x')), 'a.png could not be read.'],
+    [
+      'corrupt-source (named format)',
+      corruptFormatSource('/tmp/a.png', 'png', new Error('x')),
+      'a.png could not be read.',
+    ],
+    ['encrypted-source', encryptedSource('/tmp/a.pdf'), 'a.pdf is password-protected.'],
+    [
+      'heic-decoder-unavailable',
+      heicDecoderUnavailable('/tmp/a.heic'),
+      'HEIC needs sips, which could not be run.',
+    ],
+  ] as const
+
+  for (const [name, e, short] of cases) {
+    it(`gives the shell a one-line reason — ${name}`, () => {
+      expect(e.short).toBe(short)
+    })
+  }
+
+  it('leaves short absent when the detail already reads as one line', () => {
+    expect(conversionFailed('/tmp/a.png', new Error('x')).short).toBeUndefined()
   })
 })

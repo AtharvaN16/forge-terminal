@@ -62,3 +62,24 @@ export function middleEllipsis(text: string, max: number): string {
 
   return `${head}…${tail}`
 }
+
+/**
+ * Truncates at the end, for text whose start carries the meaning, such as a
+ * sentence cut to fit a row. Counts terminal columns like `middleEllipsis`,
+ * walking whole code points so a surrogate pair is never split.
+ */
+export function endEllipsis(text: string, max: number): string {
+  if (max <= 0) return ''
+  if (stringWidth(text) <= max) return text
+
+  const budget = max - 1 // one column reserved for the ellipsis itself
+  let head = ''
+  let used = 0
+  for (const cp of text) {
+    const w = stringWidth(cp)
+    if (used + w > budget) break
+    head += cp
+    used += w
+  }
+  return `${head}…`
+}

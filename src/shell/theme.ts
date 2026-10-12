@@ -73,6 +73,16 @@ export interface Palette {
   warn: string
   fail: string
   /**
+   * Errors (E5, E5·b): the fill red text is drawn on, and only there. Empty
+   * means "no fill" — the error then says `✕` in front instead.
+   */
+  failTint: string
+  /**
+   * The grey for E5's hint line, used only on `failTint`. `dim` is tuned for
+   * the canvas and falls under AA on the pale red of the light theme.
+   */
+  failTintDim: string
+  /**
    * A conversion result that came out *larger* than its source. Distinct
    * from `warn`: `warn` is a shared, general-purpose "worth a second look"
    * used for several unrelated messages elsewhere, and reusing it here
@@ -101,6 +111,9 @@ export interface Palette {
   /** Mode header colour for PDF page operations. */
   modePdf: string
   modePdfBg: string
+  /** Mode header colour for colour (palette and scale). */
+  modeColour: string
+  modeColourBg: string
   /** Mode header colour for enhance (Sharpen, Boost resolution, Remove background). */
   modeEnhance: string
   modeEnhanceBg: string
@@ -199,6 +212,11 @@ export const DARK: Palette = {
   ok: '#6fcf7f',
   warn: '#e5c07b',
   fail: '#e8796d',
+  // A dark red, as the default's tag in Save as is a dark orange one. `fail`
+  // on it measures 5.5:1, `fg` 12.6:1 and `dim` 7.2:1.
+  failTint: '#2e2020',
+  // `dim` itself: 7.2:1 on the tint already.
+  failTintDim: '#b0b0b0',
   // 7.49:1 on #1e1e1e. A true orange (hue ~28°) rather than `warn`'s gold
   // (~40°) — the two need to read as different colours next to each other,
   // not just different words.
@@ -213,6 +231,8 @@ export const DARK: Palette = {
   modeCompressBg: '#182c1e',
   modePdf: '#ff6b4a',
   modePdfBg: '#361c16',
+  modeColour: '#f27ba8',
+  modeColourBg: '#3a1e2b',
   modeEnhance: '#b39ae8',
   modeEnhanceBg: '#2a2238',
   // 4.2:1 on #1e1e1e: dim labels, hints and frames. Above the 3:1 a boundary
@@ -261,6 +281,11 @@ export const LIGHT: Palette = {
   ok: '#1e7a35',
   warn: '#8a6100',
   fail: '#b3261e',
+  // A pale red, as dark's is a dark one. On it `fail` (#b3261e) measures
+  // 5.32:1 and `fg` (#23262d) 12.32:1, both clearing AA; `dim` 3.88:1.
+  failTint: '#f9e3df',
+  // 4.90:1 on #f9e3df (and 6.03:1 on white); `dim` is 3.88:1 there.
+  failTintDim: '#5f636b',
   // 5.56:1 on white. Same reasoning as DARK's `larger`: a burnt orange
   // (~34°) distinct from `warn`'s brown-gold, clearing AA the way `dim` and
   // `accent` above do.
@@ -275,6 +300,8 @@ export const LIGHT: Palette = {
   modeCompressBg: '#eaf5ec',
   modePdf: '#c83b1d',
   modePdfBg: '#fceee9',
+  modeColour: '#b0306a',
+  modeColourBg: '#f7e3ec',
   modeEnhance: '#6a4cc4',
   modeEnhanceBg: '#f0ebfa',
   // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
@@ -324,6 +351,9 @@ export const NEUTRAL: Palette = {
   ok: 'green',
   warn: 'yellow',
   fail: 'red',
+  // No fill is asserted before the theme is known.
+  failTint: '',
+  failTintDim: 'gray',
   // No distinct "orange" in the basic 16 ANSI names this palette is built
   // from — same collapse `accent` and `warn` already make here.
   larger: 'yellow',
@@ -337,6 +367,8 @@ export const NEUTRAL: Palette = {
   modeCompressBg: '',
   modePdf: 'red',
   modePdfBg: '',
+  modeColour: 'magenta',
+  modeColourBg: '',
   modeEnhance: 'magenta',
   modeEnhanceBg: '',
   border: 'gray',
@@ -364,12 +396,12 @@ export const NEUTRAL: Palette = {
   defaultTag: '',
 }
 
-export type ShellMode = 'convert' | 'compress' | 'pdf' | 'enhance'
+export type ShellMode = 'convert' | 'compress' | 'pdf' | 'colour' | 'enhance'
 
 /** The modes in the order they are numbered on the home screen: 1, 2, 3, … */
-export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'enhance']
+export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'colour', 'enhance']
 
-/** The digits that pick a mode, as the key rows say them: "1–4". */
+/** The digits that pick a mode, as the key rows say them: "1–5". */
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
 
 /** The mode digit `input` names, or undefined: `1` is convert, and so on. */
@@ -382,6 +414,7 @@ export const MODE_MARKERS: Record<ShellMode, string> = {
   convert: '↔',
   compress: '↓',
   pdf: '▣',
+  colour: '◐',
   enhance: '✦',
 }
 
@@ -392,20 +425,25 @@ const ENHANCE_END = '#7d6ad0'
 export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: string } {
   if (mode === 'compress') return { fg: p.modeCompress, bg: p.modeCompressBg }
   if (mode === 'pdf') return { fg: p.modePdf, bg: p.modePdfBg }
+  if (mode === 'colour') return { fg: p.modeColour, bg: p.modeColourBg }
   if (mode === 'enhance') return { fg: p.modeEnhance, bg: p.modeEnhanceBg }
   return { fg: p.modeConvert, bg: p.modeConvertBg }
 }
 
 /**
- * The two colours a mode's gradient runs between, on the home screen's band
- * and dots: convert cyan to violet, compress green to cyan, pdf red to amber,
- * enhance violet to a deeper violet.
+ * The colours a mode's gradient runs through, on the home screen's band, its
+ * dots and the header bar's hatching: convert cyan to violet, compress green
+ * to cyan, pdf red to amber, colour through a spectrum (colour spec §6.1)
+ * where true colour can show one, and enhance violet to a deeper violet.
  * Read from fields `modePalette` never moves, so the result is the same
  * whether `p` is the base palette or a mode's.
  */
-export function modeGradient(p: Palette, mode: ShellMode): [string, string] {
+const SPECTRUM = ['#f26e69', '#e5a23c', '#ace02c', '#55c7d9', '#6579fd', '#ad95e9'] as const
+
+export function modeGradient(p: Palette, mode: ShellMode): readonly string[] {
   if (mode === 'compress') return [p.modeCompress, p.modeConvert]
   if (mode === 'pdf') return [p.modePdf, p.brand]
+  if (mode === 'colour') return p.name === 'dark' ? SPECTRUM : [p.modeColour, p.violet]
   if (mode === 'enhance') return [p.modeEnhance, p.name === 'dark' ? ENHANCE_END : p.violet]
   return [p.modeConvert, p.violet]
 }

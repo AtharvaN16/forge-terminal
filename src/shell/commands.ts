@@ -44,6 +44,13 @@ export const COMMANDS: Command[] = [
     group: 'modes',
   },
   {
+    name: 'colour',
+    description: 'palettes from images, scales from a colour',
+    needsSource: false,
+    mode: 'colour',
+    group: 'modes',
+  },
+  {
     name: 'enhance',
     description: 'sharpen, boost resolution, remove background',
     needsSource: true,
@@ -61,6 +68,13 @@ export const COMMANDS: Command[] = [
     description: 'install and remove the AI tools',
     needsSource: false,
     group: 'settings',
+  },
+  // Not a row: the American spelling, so it works when typed.
+  {
+    name: 'color',
+    description: 'palettes from images, scales from a colour',
+    needsSource: false,
+    mode: 'colour',
   },
   // Not a row: the list is the help. Typed, it opens the list (`listCommands`).
   { name: 'help', description: 'list these commands', needsSource: false },

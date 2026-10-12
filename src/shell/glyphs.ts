@@ -20,3 +20,17 @@ export function slantedChips(env: Record<string, string | undefined> = process.e
   if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return false
   return NATIVE_PROGRAMS.has(env.TERM_PROGRAM ?? '') || NATIVE_TERMS.has(env.TERM ?? '')
 }
+
+/**
+ * Whether the terminal draws 24-bit colour, so a swatch shows the colour it
+ * names (colour spec §6.8). Some terminals say so in `COLORTERM`; the ones
+ * above draw it whether or not they say. `FORGE_TRUECOLOR=1` or `0` settles
+ * it either way. Off under NO_COLOR, where there are no swatches at all.
+ */
+export function trueColour(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.FORGE_TRUECOLOR === '1') return true
+  if (env.FORGE_TRUECOLOR === '0') return false
+  if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return false
+  if (env.COLORTERM === 'truecolor' || env.COLORTERM === '24bit') return true
+  return NATIVE_PROGRAMS.has(env.TERM_PROGRAM ?? '') || NATIVE_TERMS.has(env.TERM ?? '')
+}

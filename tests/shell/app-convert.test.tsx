@@ -154,7 +154,7 @@ describe('shell conversion', () => {
     stdin.write('o')
     await settle(1500)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('✕')
+    expect(frame).toMatch(/^\s+failed\s*$/m)
     expect(frame).toContain('convert another') // still alive, still on the result stage
   })
 
@@ -163,6 +163,6 @@ describe('shell conversion', () => {
     await rm(join(dir, 'photo.webp'))
     stdin.write('s')
     await settle(1500)
-    expect(lastFrame()).toContain('✕')
+    expect(lastFrame()).toMatch(/^\s+failed\s*$/m)
   })
 })

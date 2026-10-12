@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { card, scaleCard } from '../../../src/core/colour/card.js'
+import { card, paletteCard, scaleCard } from '../../../src/core/colour/card.js'
 import { scale } from '../../../src/core/colour/scale.js'
 
 const ref = { r: 101, g: 121, b: 253 }
@@ -27,6 +27,23 @@ describe('card', () => {
     expect(svg).toContain('a &lt;b&gt; &amp; &quot;c&quot;')
     expect(svg).toContain('<g id="my-file-jpg-1"')
     expect(svg).not.toContain('<n>')
+  })
+
+  it("says colour or colours, and shades of a colour when it is one colour's shades", () => {
+    const one = [
+      {
+        hex: '#336699',
+        rgb: { r: 51, g: 102, b: 153 },
+        share: 1,
+        centre: { L: 0, a: 0, b: 0 },
+        members: new Uint32Array(),
+      },
+    ]
+    expect(paletteCard('a.jpg', one)).toContain('1 colour, most of the image first')
+    expect(paletteCard('a.jpg', [...one, ...one])).toContain('2 colours, most of the image first')
+    expect(paletteCard('a.jpg', [...one, ...one], 'light', '#F26E69')).toContain(
+      '2 shades of #F26E69',
+    )
   })
 
   it('is deterministic', () => {

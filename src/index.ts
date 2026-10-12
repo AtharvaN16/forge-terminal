@@ -6,6 +6,7 @@ import { asForgeError, fatalLines, guardUnsettled } from './cli/fatal.js'
 import { type Spinner, startSpinner } from './cli/spinner.js'
 import { invalidArguments, isForgeError, renderError } from './core/errors.js'
 import { errorJson } from './core/report-data.js'
+import { trueColour } from './shell/glyphs.js'
 
 /**
  * Node's on-disk compile cache for every module loaded after this line, which
@@ -133,7 +134,7 @@ async function main(): Promise<void> {
       ...(tty ? { onDownload } : {}),
       // Swatches in `forge palette` / `forge scale`: only for a person at a
       // colour terminal, never into a pipe or under NO_COLOR.
-      colour: Boolean(process.stdout.isTTY) && !json && (process.env.NO_COLOR ?? '') === '',
+      colour: Boolean(process.stdout.isTTY) && !json && trueColour(),
       onProgress: tty
         ? (progress: BatchProgress) => {
             // The spinner redraws its line in place and the counter prints

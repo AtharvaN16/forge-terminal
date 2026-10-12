@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import stringWidth from 'string-width'
+import { COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
 import type { CommandList } from '../commands.js'
 import {
   brandRows,
@@ -75,12 +76,15 @@ export function homeKeys({
   typing,
   completions,
   commands,
+  colour = false,
   staged,
 }: {
   typing: boolean
   completions: number
   /** The command list is open. */
   commands: boolean
+  /** Colour's home: the two cards to choose between, and nothing to send. */
+  colour?: boolean
   /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
   staged?: { count: number; verb: string | null } | undefined
 }): KeySet {
@@ -115,6 +119,19 @@ export function homeKeys({
       main: [['↵', 'send']],
       foot: [
         ['esc', 'clear'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
+  if (colour) {
+    return {
+      main: [
+        ['←→', 'choose'],
+        ['↵', 'open'],
+      ],
+      foot: [
+        [MODE_KEYS, 'mode'],
+        ['ctrl-n', 'new'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -326,7 +343,9 @@ export function Home({
   commands,
   staged,
   under,
+  note,
   keys,
+  colourChoice = 0,
 }: {
   width: number
   height: number
@@ -348,7 +367,15 @@ export function Home({
   staged?: StagedView | undefined
   /** The row under the field while something is staged: the red left-out line, or a note. */
   under?: UnderField | undefined
+  /**
+   * A refusal of what was just typed or dropped (an `ErrorLine`), under the
+   * field with a blank row above it. It takes its two rows from the list's,
+   * and the list is not drawn while it is up.
+   */
+  note?: ReactNode
   keys: KeySet
+  /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
+  colourChoice?: 0 | 1
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height)
@@ -362,11 +389,13 @@ export function Home({
         max: layout.surface + layout.list,
       })
     : layout.surface > 0
-      ? staged && staged.files.length === 1 && staged.files[0]
-        ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
-        : staged && staged.files.length > 1
-          ? stagedListRows({ ...art, rows: layout.surface, view: staged })
-          : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+      ? mode === 'colour' && !typing
+        ? choiceCards({ width, palette, selected: colourChoice, samples: COLOUR_SAMPLES })
+        : staged && staged.files.length === 1 && staged.files[0]
+          ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
+          : staged && staged.files.length > 1
+            ? stagedListRows({ ...art, rows: layout.surface, view: staged })
+            : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
       : []
 
   // The row under the field. With no room for a panel the staged headline
@@ -398,7 +427,13 @@ export function Home({
           <Gap />
         </>
       ) : null}
-      {tabRows({ ...art, savesTo, commands: commands !== undefined }).map((row, i) => (
+      {tabRows({
+        ...art,
+        savesTo,
+        // Colour writes no files: what it makes goes to the clipboard.
+        ...(mode === 'colour' ? { right: { label: 'copies to', value: 'clipboard' } } : {}),
+        commands: commands !== undefined,
+      }).map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
         <Runs key={`tabs${i}`} row={row} />
       ))}
@@ -407,15 +442,23 @@ export function Home({
         <Runs key={`surface${i}`} row={row} />
       ))}
       <Gap />
-      <Box flexShrink={0}>{field}</Box>
+      {/* Colour's home has nothing to type until something is: its field
+          shows once `/`, `#` or a drop has put text in it. */}
+      <Box flexShrink={0}>{mode === 'colour' && !typing ? <Text> </Text> : field}</Box>
       {below ? (
         <>
           <Gap />
           <Runs row={below} />
         </>
       ) : null}
+      {note ? (
+        <>
+          <Gap />
+          {note}
+        </>
+      ) : null}
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-        {list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
+        {note ? null : list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>

@@ -45,7 +45,8 @@ describe('a conversion that fails', () => {
     await settle()
     app.stdin.write(ENTER) // accept the proposed name -> runs, and fails
     await settle(600)
-    expect(app.lastFrame() ?? '').toMatch(/failed|denied/i)
+    // The run's failure is the E5 panel in the scrollback: the tab on its edge.
+    expect(app.lastFrame() ?? '').toMatch(/^\s+failed\s*$/m)
 
     app.stdin.write(photo)
     await settle()

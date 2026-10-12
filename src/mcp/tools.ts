@@ -4,6 +4,7 @@ import type { CallToolResult } from '@modelcontextprotocol/server'
 import type { CompressIntent, ConvertIntent, ExtensionOpIntent, PageOpIntent } from '../cli/args.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
+import { wholePercents } from '../core/colour/palette.js'
 import { parseHex } from '../core/colour/space.js'
 import { type ForgeError, invalidArguments, isForgeError } from '../core/errors.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -256,10 +257,11 @@ export async function paletteTool(args: PaletteArgs): Promise<CallToolResult> {
       { json: true, colour: false },
     )
     const doc = JSON.parse(out.stdout[0] ?? '{}') as PaletteJson
-    const text = doc.palette.colours.map((c) => `${c.hex} ${Math.round(c.share * 100)}%`).join('\n')
+    const pcts = wholePercents(doc.palette.colours.map((c) => c.share))
+    const text = doc.palette.colours.map((c, i) => `${c.hex} ${pcts[i]}%`).join('\n')
     return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
   } catch (e) {
-    if (isForgeError(e)) return textError(`${e.title}: ${e.detail}`)
+    if (isForgeError(e)) return textError(`${e.title}: ${e.detail}${e.hint ? ` ${e.hint}` : ''}`)
     throw e
   }
 }
