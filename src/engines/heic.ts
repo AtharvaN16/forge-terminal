@@ -91,18 +91,13 @@ export async function decodeHeic(source: string): Promise<DecodedHeic> {
 /**
  * Whether the file is HEIC, decided by its own bytes.
  *
- * Needed because Sharp cannot be asked. A real photo is stored as a tiled
- * grid — a 12MP iPhone HEIC is dozens of tiles cross-referenced through the
- * ISO-BMFF `iref` box — and libheif refuses more than 16 references by
- * default:
- *
- *   heif: Security limit exceeded: Number of references in iref box (48)
- *   exceeds the security limits of 16 references
- *
- * So `sharp(photo).metadata()` throws for exactly the files people actually
- * have, while succeeding on the small single-tile fixtures a test suite
- * tends to generate. Detection therefore reads the container directly, which
- * is content-based and never consults the extension (invariant 3).
+ * Detection reads the container directly rather than asking Sharp, which is
+ * content-based and never consults the extension (invariant 3). Sharp could
+ * not be asked before 0.35.5: a 12MP iPhone HEIC is dozens of tiles
+ * cross-referenced through the ISO-BMFF `iref` box, and older libheif
+ * refused more than 16 references ("Security limit exceeded: Number of
+ * references in iref box (48)"). It reads the header now, but it still has
+ * no HEVC decoder, so the pixels go through sips either way.
  *
  * Layout: a 4-byte big-endian box size, the literal 'ftyp', then a 4-byte
  * major brand, then optional compatible brands. Any HEIF-family brand counts;
