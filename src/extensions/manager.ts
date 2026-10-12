@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { gunzip } from 'node:zlib'
-import { renameAtomic } from '../core/atomic.js'
+import { renameAtomic, WINDOWS_RENAME_ATTEMPTS_LONG } from '../core/atomic.js'
 import {
   extensionCorrupt,
   extensionDiskFull,
@@ -27,7 +27,7 @@ import {
 } from './catalog.js'
 import { withExtensionLock } from './lock.js'
 import { extensionsRoot, type Installed, installed, SAFE_NAME } from './paths.js'
-import { extractTar } from './tar.js'
+import { extractTar, unsafeArchivePath, within } from './tar.js'
 
 export interface ExtensionStatus {
   entry: CatalogEntry
@@ -145,18 +145,39 @@ async function verifyStaged(dir: string, entry: CatalogEntry, version: string): 
     throw new Error('manifest has no valid entry')
   }
   for (const [rel, expected] of Object.entries(files)) {
-    // A backslash or drive letter is a separator or a root on Windows, whatever it is here.
-    if (
-      rel.startsWith('/') ||
-      rel.includes('\\') ||
-      /^[A-Za-z]:/.test(rel) ||
-      rel.split('/').includes('..')
-    ) {
+    // The same rules as the archive's own entries (tar.ts), whatever this platform allows.
+    if (unsafeArchivePath(rel) || !within(dir, join(dir, rel))) {
       throw new Error(`unsafe path ${rel}`)
     }
     if ((await sha256File(join(dir, rel)).catch(() => undefined)) !== expected) {
       throw new Error(`${rel} does not match the manifest`)
     }
+  }
+}
+
+/**
+ * The unpacked, verified folder into its versioned place. On Windows Defender
+ * can hold tens of MB of freshly unpacked DLLs for seconds, so the rename gets
+ * a longer budget there, and a rename that still fails says so as an install
+ * failure ("Nothing was installed. Try again") rather than an unexpected error.
+ */
+export async function moveIntoPlace(
+  staging: string,
+  target: string,
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  if (platform !== 'win32') {
+    await renameAtomic(staging, target, platform)
+    return
+  }
+  try {
+    await renameAtomic(staging, target, platform, undefined, WINDOWS_RENAME_ATTEMPTS_LONG)
+  } catch {
+    throw extensionCorrupt(
+      id,
+      'its files stayed in use (often an antivirus scan) and could not be moved into place.',
+    )
   }
 }
 
@@ -334,7 +355,7 @@ export async function installExtension(
     opts.signal?.throwIfAborted()
     const target = join(base, asset.version)
     await rm(target, { recursive: true, force: true })
-    await renameAtomic(staging, target)
+    await moveIntoPlace(staging, target, id, platform)
     await writeCurrent(base, asset.version)
 
     // Old versions go only after the new one is in place.

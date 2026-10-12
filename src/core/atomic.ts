@@ -34,6 +34,12 @@ export async function prepareOutputDir(output: string): Promise<void> {
 /** Windows holds a just-written file open for a moment (antivirus, the search indexer). */
 const WINDOWS_RETRYABLE = new Set(['EPERM', 'EBUSY', 'EACCES'])
 const WINDOWS_RENAME_ATTEMPTS = 5
+/**
+ * For a caller moving something big that was only just written — a freshly
+ * unpacked extension, tens of MB of DLLs Defender is still scanning: about
+ * 4.5 s in all, the waits capped at 1 s.
+ */
+export const WINDOWS_RENAME_ATTEMPTS_LONG = 9
 
 /**
  * `rename`, made safe to call on Windows. There a freshly written temp file is
@@ -48,6 +54,7 @@ export async function renameAtomic(
   to: string,
   platform: NodeJS.Platform = process.platform,
   wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  attempts: number = WINDOWS_RENAME_ATTEMPTS,
 ): Promise<void> {
   if (platform !== 'win32') {
     await rename(from, to)
@@ -59,8 +66,8 @@ export async function renameAtomic(
       return
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code
-      if (attempt >= WINDOWS_RENAME_ATTEMPTS || !code || !WINDOWS_RETRYABLE.has(code)) throw e
-      await wait(50 * 2 ** (attempt - 1))
+      if (attempt >= attempts || !code || !WINDOWS_RETRYABLE.has(code)) throw e
+      await wait(Math.min(50 * 2 ** (attempt - 1), 1000))
     }
   }
 }

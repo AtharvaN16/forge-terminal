@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join, posix } from 'node:path'
+import { dirname, join, posix, resolve, sep } from 'node:path'
 
 /**
  * A minimal tar reader: regular files and directories only. Written here
@@ -18,6 +18,36 @@ function octal(buf: Buffer, start: number, len: number): number {
   const n = Number.parseInt(cstr(buf, start, len).trim() || '0', 8)
   if (Number.isNaN(n)) throw new Error('bad tar header')
   return n
+}
+
+/** A Windows device name, which no file can have there, extension or not (`NUL.txt` is NUL). */
+const DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
+
+/**
+ * True when an archive path (already POSIX-normalised) could land anywhere but
+ * a plain file under the folder it is unpacked into, on any platform: an
+ * absolute path, a `..`, a backslash (a separator on Windows), a `:` (a
+ * drive, or an NTFS alternate data stream), a device name, or a name ending
+ * in `.` or a space (Windows drops those, so two names could become one).
+ * No legitimate archive has any of them, so all are refused everywhere.
+ */
+export function unsafeArchivePath(rel: string): boolean {
+  if (rel.startsWith('/') || rel.includes('\\') || rel.includes(':')) return true
+  return rel
+    .split('/')
+    .some(
+      (seg) =>
+        seg === '..' ||
+        DEVICE.test(seg) ||
+        (seg !== '.' && seg !== '' && (seg.endsWith('.') || seg.endsWith(' '))),
+    )
+}
+
+/** Whether `target` is `root` itself or somewhere beneath it, once both are resolved. */
+export function within(root: string, target: string): boolean {
+  const r = resolve(root)
+  const t = resolve(target)
+  return t === r || t.startsWith(r + sep)
 }
 
 export async function extractTar(tar: Buffer, destDir: string): Promise<void> {
@@ -54,19 +84,15 @@ export async function extractTar(tar: Buffer, destDir: string): Promise<void> {
     // Tar names are POSIX whatever the host, so normalise them as POSIX; a
     // backslash or drive letter would be a separator or a root on Windows.
     const rel = posix.normalize(name)
-    if (
-      rel.startsWith('/') ||
-      rel === '..' ||
-      rel.startsWith('../') ||
-      rel.includes('\\') ||
-      /^[A-Za-z]:/.test(rel)
-    ) {
+    // The last check is the one that cannot be argued with: wherever the
+    // name says, the result has to be inside `destDir`.
+    const target = join(destDir, rel)
+    if (unsafeArchivePath(rel) || !within(destDir, target)) {
       throw new Error(`unsafe path in archive: ${name}`)
     }
     if (type === '5') {
-      await mkdir(join(destDir, rel), { recursive: true })
+      await mkdir(target, { recursive: true })
     } else if (type === '0' || type === '\0') {
-      const target = join(destDir, rel)
       await mkdir(dirname(target), { recursive: true })
       await writeFile(target, body, { mode: mode & 0o100 ? 0o755 : 0o644 })
     } else {

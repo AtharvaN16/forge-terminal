@@ -34,10 +34,17 @@ type RunOpts = {
   onWait?: () => void
   /** The tool is this job's and the child is about to start. */
   onStart?: () => void
+  /** Which queue the job joins (see `tails`). */
+  platform?: NodeJS.Platform
 }
 
-/** Jobs run one at a time per process — both extensions are heavy. */
-let tail: Promise<unknown> = Promise.resolve()
+/**
+ * Jobs run one at a time per process on macOS — both extensions there are
+ * heavy. On Windows one queue per tool instead: the HEIC extension's probe
+ * and decode are quick, and must not wait behind a Boost that takes minutes
+ * on the CPU fallback, which looks like a hang.
+ */
+const tails = new Map<string | undefined, Promise<unknown>>()
 
 /**
  * Runs one job, after any this process already has queued. Across processes
@@ -55,6 +62,8 @@ export function runExtension(
     opts.onStart?.()
     return runOne(ext, args, opts)
   }
+  const queue = (opts.platform ?? process.platform) === 'win32' ? ext.id : undefined
+  const tail = tails.get(queue) ?? Promise.resolve()
   const job = tail.then(() =>
     ext.id === undefined
       ? one()
@@ -64,7 +73,10 @@ export function runExtension(
           ...(opts.onWait !== undefined ? { onWait: opts.onWait } : {}),
         }),
   )
-  tail = job.catch(() => undefined)
+  tails.set(
+    queue,
+    job.catch(() => undefined),
+  )
   return job
 }
 
