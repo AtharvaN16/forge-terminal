@@ -37,7 +37,8 @@
     "node": ">=20"
   },
   "os": [
-    "darwin"
+    "darwin",
+    "win32"
   ],
   "license": "MIT",
   "scripts": {
@@ -70,6 +71,7 @@
     "esbuild": "^0.28.2",
     "ink": "^7.1.1",
     "ink-testing-library": "^4.0.0",
+    "libheif-js": "^1.23.5",
     "mammoth": "^1.13.0",
     "onnxruntime-node": "1.23.2",
     "pdf-lib": "^1.17.1",
