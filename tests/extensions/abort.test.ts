@@ -11,7 +11,10 @@ import { probe } from '../../src/engines/registry.js'
 import { createForgeServer } from '../../src/mcp/server.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
 
+// The catalogue offers these extensions on macOS; see pinPlatform.
+pinPlatform('darwin')
 const fake = fakeExtensions()
 afterEach(() => fake.restore())
 const until = async (cond: () => boolean) => {

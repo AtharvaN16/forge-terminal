@@ -96,20 +96,27 @@ describe('a command loads only what it needs', () => {
     expect(loadedExtensions(urls)).toBe(false)
   })
 
-  it('--boost loads src/extensions, but never ONNX Runtime into the Forge process', async () => {
-    const fake = fakeExtensions()
-    const home = await fake.home()
-    try {
-      await fake.install(home, 'boost')
-      const dir = await makeTempDir()
-      const jpeg = await makeJpeg(dir, 'a.jpg')
-      const run = await modulesLoaded([entry, jpeg, '--boost'], { env: { XDG_CONFIG_HOME: home } })
-      expect(run.exitCode).toBe(0)
-      expect(loadedExtensions(run.urls)).toBe(true)
-      const names = [...packagesIn(run.urls)]
-      expect(names.filter((n) => n.startsWith('onnxruntime'))).toEqual([])
-    } finally {
-      fake.restore()
-    }
-  })
+  // A child process, so not pinnable to darwin: the catalogue has no Windows boost asset until
+  // ext-boost-v1.1.0 is published, and until then Windows refuses --boost.
+  it.skipIf(process.platform === 'win32')(
+    '--boost loads src/extensions, but never ONNX Runtime into the Forge process',
+    async () => {
+      const fake = fakeExtensions()
+      const home = await fake.home()
+      try {
+        await fake.install(home, 'boost')
+        const dir = await makeTempDir()
+        const jpeg = await makeJpeg(dir, 'a.jpg')
+        const run = await modulesLoaded([entry, jpeg, '--boost'], {
+          env: { XDG_CONFIG_HOME: home },
+        })
+        expect(run.exitCode).toBe(0)
+        expect(loadedExtensions(run.urls)).toBe(true)
+        const names = [...packagesIn(run.urls)]
+        expect(names.filter((n) => n.startsWith('onnxruntime'))).toEqual([])
+      } finally {
+        fake.restore()
+      }
+    },
+  )
 })

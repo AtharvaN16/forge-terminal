@@ -11,8 +11,11 @@ import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const run = (argv: string[]) => execute(parseArgs(argv))
 
-/** Root ignores mode bits, so the refusal under test never happens. */
-const asRoot = process.getuid?.() === 0
+/**
+ * Root ignores mode bits, so the refusal under test never happens; Windows
+ * has no POSIX mode bits for chmod to set.
+ */
+const asRoot = process.getuid?.() === 0 || process.platform === 'win32'
 
 const locked: string[] = []
 async function lockedDir(parent: string): Promise<string> {

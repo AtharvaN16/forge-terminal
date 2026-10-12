@@ -31,14 +31,18 @@ describe('destinationRows', () => {
     expect(isPathQuery('dow')).toBe(false)
   })
 
-  it('saves next to a dropped file, unescaping what Finder pastes', async () => {
-    const dir = join(await makeTempDir(), 'x y')
-    await mkdir(dir)
-    await writeFile(join(dir, 'a.png'), 'png')
-    const [row] = destinationRows(join(dir, 'a.png').replace(/ /g, '\\ '), presets, '', preview)
-    expect(row?.label).toBe('Next to a.png')
-    expect(row?.value).toBe(dir)
-  })
+  // A backslash-escaped paste is the Mac form; on Windows a backslash is a separator.
+  it.skipIf(process.platform === 'win32')(
+    'saves next to a dropped file, unescaping what Finder pastes',
+    async () => {
+      const dir = join(await makeTempDir(), 'x y')
+      await mkdir(dir)
+      await writeFile(join(dir, 'a.png'), 'png')
+      const [row] = destinationRows(join(dir, 'a.png').replace(/ /g, '\\ '), presets, '', preview)
+      expect(row?.label).toBe('Next to a.png')
+      expect(row?.value).toBe(dir)
+    },
+  )
 
   it('says when nothing matches, as one row that cannot be chosen', () => {
     const rows = destinationRows('zzz', presets, '', preview)

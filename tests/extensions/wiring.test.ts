@@ -10,8 +10,11 @@ import type { ProbeJson, RunJson } from '../../src/core/report-data.js'
 import { createForgeServer } from '../../src/mcp/server.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeJpeg, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
 import { runForge } from '../helpers/run-forge.js'
 
+// The catalogue offers these extensions on macOS; see pinPlatform.
+pinPlatform('darwin')
 const fake = fakeExtensions()
 let home: string
 beforeEach(async () => {

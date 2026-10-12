@@ -115,14 +115,18 @@ describe('probe', () => {
     expect(message).toContain('heic')
   })
 
-  it('distinguishes unreadable from corrupt, which sharp alone cannot', async () => {
-    const dir = await makeTempDir()
-    const png = await makeTransparentPng(dir, 'locked.png')
-    await chmod(png, 0o000)
-    const code = await codeOf(() => probe(png))
-    await chmod(png, 0o644)
-    expect(code).toBe('permission-denied')
-  })
+  // chmod cannot make a file unreadable on Windows.
+  it.skipIf(process.platform === 'win32')(
+    'distinguishes unreadable from corrupt, which sharp alone cannot',
+    async () => {
+      const dir = await makeTempDir()
+      const png = await makeTransparentPng(dir, 'locked.png')
+      await chmod(png, 0o000)
+      const code = await codeOf(() => probe(png))
+      await chmod(png, 0o644)
+      expect(code).toBe('permission-denied')
+    },
+  )
 
   /**
    * The interactive shell calls `probe` directly on whatever a user types or

@@ -22,6 +22,7 @@ import { execute } from '../../src/cli/execute.js'
 import { isForgeError } from '../../src/core/errors.js'
 import type { ExtensionsJson } from '../../src/core/report-data.js'
 import type { CatalogEntry } from '../../src/extensions/catalog.js'
+import { pinPlatform } from '../helpers/platform.js'
 
 const h = vi.hoisted(() => ({ catalog: [] as CatalogEntry[], release: '24.0.0' }))
 
@@ -43,16 +44,8 @@ const { installExtension, listExtensions, removeExtension } = await import(
 )
 const { installed, extensionsRoot } = await import('../../src/extensions/paths.js')
 
-// Most tests here use Mac assets (`darwin-universal`) and call through the
-// CLI, which reads process.platform; pin it so they run unchanged on the
-// Windows CI job too (a no-op on a Mac). Windows is tested by passing 'win32'.
-const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor
-beforeAll(() => {
-  Object.defineProperty(process, 'platform', { value: 'darwin' })
-})
-afterAll(() => {
-  Object.defineProperty(process, 'platform', realPlatform)
-})
+// Mac assets (`darwin-universal`), read through the CLI too; Windows is tested by passing 'win32'.
+pinPlatform('darwin')
 
 // --- fixtures -------------------------------------------------------------
 

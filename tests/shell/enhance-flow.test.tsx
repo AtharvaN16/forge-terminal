@@ -11,6 +11,7 @@ import { App } from '../../src/shell/App.js'
 import type { EnhanceTools } from '../../src/shell/enhance.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
@@ -21,6 +22,8 @@ const until = async (cond: () => boolean) => {
   for (let i = 0; i < 1200 && !cond(); i++) await new Promise((r) => setTimeout(r, 25))
 }
 
+// The catalogue offers these extensions on macOS; see pinPlatform.
+pinPlatform('darwin')
 const fake = fakeExtensions()
 afterEach(() => fake.restore())
 

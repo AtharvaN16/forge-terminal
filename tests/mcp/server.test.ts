@@ -27,6 +27,7 @@ import {
   makeTempDir,
   makeTransparentPng,
 } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
 
 const LOCKED = fileURLToPath(new URL('../fixtures/locked-hunter2.pdf', import.meta.url))
 
@@ -92,6 +93,8 @@ describe('the tool list', () => {
 
 describe('forge_convert', () => {
   describe('sharpen', () => {
+    // The catalogue offers boost on macOS; see pinPlatform.
+    pinPlatform('darwin')
     const fake = fakeExtensions()
     afterEach(() => fake.restore())
 

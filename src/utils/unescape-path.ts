@@ -42,7 +42,10 @@ export function unescapePath(raw: string, platform: NodeJS.Platform = process.pl
  * §10), and wiring this in would be the batch feature, not a fix. Retained,
  * with its tests, for when that lands.
  */
-export function splitPastedPaths(raw: string): string[] {
+export function splitPastedPaths(
+  raw: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
   const out: string[] = []
   let current = ''
   let quote: string | null = null
@@ -78,5 +81,5 @@ export function splitPastedPaths(raw: string): string[] {
 
   if (current) out.push(current)
   // Arrow, not a bare reference: map would pass the index as `platform`.
-  return out.map((p) => unescapePath(p))
+  return out.map((p) => unescapePath(p, platform))
 }
