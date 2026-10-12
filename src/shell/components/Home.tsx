@@ -8,8 +8,11 @@ import {
   HOME_MARGIN,
   MODE_KINDS,
   type Row,
+  stagedCardRows,
+  stagedListRows,
   surfaceRows,
   tabRows,
+  underRow,
   WORDMARK3,
 } from '../home-art.js'
 import type { StagedView, UnderField } from '../stage.js'
@@ -321,6 +324,8 @@ export function Home({
   field,
   list,
   commands,
+  staged,
+  under,
   keys,
 }: {
   width: number
@@ -357,8 +362,29 @@ export function Home({
         max: layout.surface + layout.list,
       })
     : layout.surface > 0
-      ? surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+      ? staged && staged.files.length === 1 && staged.files[0]
+        ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
+        : staged && staged.files.length > 1
+          ? stagedListRows({ ...art, rows: layout.surface, view: staged })
+          : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
       : []
+
+  // The row under the field. With no room for a panel the staged headline
+  // takes it, so what is staged is still said.
+  const first = staged?.files[0]
+  const headline: Row | null =
+    staged && first && layout.surface === 0
+      ? [
+          { text: ' '.repeat(HOME_MARGIN + 2) },
+          staged.files.length === 1
+            ? { text: first.name, fg: palette.fg, bold: true }
+            : { text: staged.headline, fg: palette.fg, bold: true },
+          staged.files.length === 1
+            ? { text: ` · ${first.size}`, fg: palette.dim }
+            : { text: `   ${staged.total}`, fg: palette.border },
+        ]
+      : null
+  const below: Row | null = under ? underRow({ width, palette, under }) : headline
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -382,8 +408,14 @@ export function Home({
       ))}
       <Gap />
       <Box flexShrink={0}>{field}</Box>
+      {below ? (
+        <>
+          <Gap />
+          <Runs row={below} />
+        </>
+      ) : null}
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-        {list?.(Math.max(1, layout.list - 2))}
+        {list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
