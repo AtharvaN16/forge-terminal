@@ -79,6 +79,7 @@ export const MODE_KINDS: Record<ShellMode, string> = {
   // Not "video": compress has no video engine, and the line is a promise.
   compress: 'images · PDF',
   pdf: 'split · merge · rotate',
+  colour: 'palette · scale',
 }
 
 /**

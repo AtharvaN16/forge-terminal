@@ -446,7 +446,7 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
+  const [mode, setMode] = useState<ShellMode>('convert')
   /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
