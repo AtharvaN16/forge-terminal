@@ -37,7 +37,7 @@ describe('dropping several files at once', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('jan.pdf')
     expect(frame).toContain('feb.pdf')
-    expect(frame).toContain('PDF ×2')
+    expect(frame).toContain('2 PDFs')
   }, 20_000)
 
   it('stages the good path and reports the bad one, without losing either', async () => {
@@ -84,6 +84,6 @@ describe('dropping several files at once', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('my report.pdf')
     expect(frame).toContain('feb.pdf')
-    expect(frame).toContain('PDF ×2')
+    expect(frame).toContain('2 PDFs')
   }, 20_000)
 })

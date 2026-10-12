@@ -229,6 +229,7 @@ describe('shell flow', () => {
     const frame = lastFrame() ?? ''
     expect(frame).not.toContain('first.jpg')
     expect(frame.split('second.jpg').length - 1).toBe(1)
-    expect(frame).toContain('Convert JPEG to')
+    // A pasted path ending in a line break is a drop: staged, on home.
+    expect(frame).toContain('drop more, or type a path')
   })
 })

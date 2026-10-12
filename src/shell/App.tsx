@@ -39,7 +39,7 @@ import { type Completion, completePath } from './complete.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Hints } from './components/Hints.js'
-import { CommandMenu, Home, homeKeys, Suggestions } from './components/Home.js'
+import { Home, homeKeys, Suggestions } from './components/Home.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
@@ -52,10 +52,19 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
-import { mouseSupported } from './mouse.js'
+import { motionEnabled } from './motion.js'
+import { isStrayEscapeSequence, mouseSupported } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
-import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
+import {
+  addToStage,
+  clearStage,
+  emptyStage,
+  type Stage,
+  stagedVerb,
+  stagedView,
+  underField,
+} from './stage.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
 import {
@@ -327,6 +336,101 @@ const GOTO_PDF = '__goto-pdf__'
 /** The `/pdf` command, looked up once rather than re-found on every render. */
 const pdfCommand = COMMANDS.find((c) => c.name === 'pdf')
 
+/** How long the rows a drop just added wear the band before they settle. */
+const FRESH_MS = 1200
+
+/**
+ * What a pasted or typed path turned out to name. `anyExists` is false when
+ * nothing in it is on disk at all — every failure a missing file or a path
+ * that cannot be one — which is how a paste of plain text, or half a path,
+ * is told apart from a drop.
+ */
+interface DropResolution {
+  sources: SourceInfo[]
+  failures: InputFailure[]
+  anyExists: boolean
+}
+
+/**
+ * The failures that mean "there is nothing here", rather than "there is a
+ * file here that could not be read". `path-too-long` is among them: a pasted
+ * paragraph is not a path, and calling it one left out would be wrong.
+ */
+const NOTHING_THERE = new Set(['file-not-found', 'not-a-directory', 'path-too-long'])
+
+const asFailure = (path: string, e: unknown): InputFailure => ({
+  path,
+  error: isForgeError(e) ? e : unexpectedError(e),
+})
+
+const resolution = (sources: SourceInfo[], failures: InputFailure[]): DropResolution => ({
+  sources,
+  failures,
+  anyExists: sources.length > 0 || failures.some((f) => !NOTHING_THERE.has(f.error.code)),
+})
+
+/**
+ * Reads what a path, a drop of several, or a folder names — shared by a typed
+ * path's ↵ and a paste read the moment it lands.
+ *
+ * Tried whole and unescaped, before anything is split on whitespace. A single
+ * dropped file is the overwhelmingly common case, and a terminal's own
+ * escaping of it can be *incomplete* rather than absent: Terminal.app leaves
+ * the space before "AM.png"/"PM.png" unescaped in a macOS screenshot's
+ * filename (confirmed against the literal bytes it pastes), so splitting on
+ * whitespace first read one dropped screenshot as two nonexistent fragments
+ * and never resolved the real file at all. `unescapePath` strips every
+ * backslash wherever one appears, so it reconstructs the true filename either
+ * way; two real paths joined by a space essentially never match anything on
+ * disk as one string, so a genuine multi-file drop still falls through.
+ *
+ * Then split with `splitPastedPaths`, on the raw text: a real OS drag of
+ * several files pastes every escaped path on one line, space-separated, and
+ * unescaping first would leave nothing able to tell an escaped space inside a
+ * filename from the plain one between two paths. That is why the home
+ * `Prompt` is given `rawOnSubmit`.
+ *
+ * Then a folder, read non-recursively through `resolve.ts` as the CLI does
+ * without `--recursive` (phase 3 §4; probed whole as a file it was refused as
+ * "Not a file", UX audit #11).
+ */
+async function resolveDrop(text: string): Promise<DropResolution> {
+  const trimmed = text.trim()
+  const whole = unescapePath(trimmed)
+  let wholeError: unknown
+  try {
+    return resolution([await probe(whole)], [])
+  } catch (e) {
+    wholeError = e
+  }
+
+  const paths = splitPastedPaths(trimmed)
+  if (paths.length > 1) {
+    const sources: SourceInfo[] = []
+    const failures: InputFailure[] = []
+    for (const path of paths) {
+      try {
+        sources.push(await probe(path))
+      } catch (e) {
+        failures.push(asFailure(path, e))
+      }
+    }
+    return resolution(sources, failures)
+  }
+
+  if (isForgeError(wholeError) && wholeError.code === 'not-a-file') {
+    const isDirectory = await stat(whole).then(
+      (s) => s.isDirectory(),
+      () => false,
+    )
+    if (isDirectory) {
+      const found = await resolveDirectory(whole, { recursive: false })
+      return resolution(found.sources, found.failures)
+    }
+  }
+  return resolution([], [asFailure(whole, wholeError)])
+}
+
 export function App({
   initialWidth,
   initialHeight,
@@ -548,6 +652,24 @@ export function App({
    */
   const [stage, setStage] = useState<Stage>(emptyStage())
   /**
+   * Mirrors `stage` for what a drop does once it has been read: the read is
+   * async, and the stage it lands on is the one standing then, not the one
+   * the paste's render closed over.
+   */
+  const stageRef = useRef(stage)
+  stageRef.current = stage
+  /**
+   * How many of the last staged files the latest drop added, for the band
+   * they wear for `FRESH_MS`. `at` makes each drop a new value, so a second
+   * drop inside the window restarts it.
+   */
+  const [fresh, setFresh] = useState({ count: 0, at: 0 })
+  useEffect(() => {
+    if (fresh.count === 0) return
+    const timer = setTimeout(() => setFresh({ count: 0, at: 0 }), FRESH_MS)
+    return () => clearTimeout(timer)
+  }, [fresh])
+  /**
    * The first staged file, standing in for "the" file everywhere the wizard
    * only ever needed one — computing option specs, planning a filename
    * preview, and so on. `?? null` keeps the exact `SourceInfo | null` shape
@@ -612,11 +734,15 @@ export function App({
   textRef.current = text
 
   /**
-   * An empty prompt is the home screen (mockups/flow-parts-2026-10.html,
-   * tab 3). Anything staged makes it a working screen again, header bar and
-   * all — the home screen has nowhere to show a stage.
+   * The prompt is the home screen (mockups/flow-parts-2026-10.html, tab 3),
+   * staged files or not: home holds the stage in its drop panel
+   * (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md).
    */
-  const onHome = step === 'idle' && !working
+  const onHome = step === 'idle'
+  /** Something is staged: home draws it, and the field asks for more. */
+  const staged = stage.sources.length > 0
+  /** The rows the latest drop added, for their band — none while motion is off. */
+  const freshRows = motionEnabled(palette.name) ? fresh.count : 0
 
   /** Path completions for the home field, and which one Tab would take. */
   const [completions, setCompletions] = useState<Completion[]>([])
@@ -699,10 +825,37 @@ export function App({
    * Tab and the arrows act on the completions, or on the command list while
    * it is open. Tab is never typed — a tab character in a path is never what
    * was meant.
+   *
+   * On an empty field it also reads drops (see `readDrop`), and ↵ on a home
+   * holding the stage takes it on: one file to its next step, several PDFs in
+   * pdf mode to the hub, anything else nowhere until batch exists. (esc
+   * clearing the stage is the idle esc handler's, below.)
    */
   const homeKey = (input: string, key: Key, value: string): boolean => {
     if (commandKey(input, key)) return true
     if (value === '') {
+      const [pasted = '', ...rest] = input.split(/[\r\n]/)
+      if (
+        [...input].length > 1 &&
+        !key.ctrl &&
+        !key.meta &&
+        !isStrayEscapeSequence(input) &&
+        pasted.trim() !== '' &&
+        !isCommandBuffer(pasted)
+      ) {
+        // With a line break the field would submit it, so it is taken here;
+        // without one the field shows it while it is read.
+        const broke = rest.length > 0
+        readDrop(pasted, broke)
+        return broke
+      }
+      const staged = stageRef.current
+      if (key.return && staged.sources.length > 0) {
+        const [only] = staged.sources
+        if (only && staged.sources.length === 1) proceedWith(only)
+        else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
+        return true
+      }
       const next = MODE_ORDER[Number(input) - 1]
       if (/^[1-3]$/.test(input) && !key.ctrl && !key.meta && next) {
         switchMode(next)
@@ -802,38 +955,6 @@ export function App({
       text: `${SYMBOLS.warn} Converting several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
     })
   }, [push])
-
-  /**
-   * Refuses a drop that would stage several files nothing can act on
-   * together, *before* staging it — so no card is drawn for a batch the
-   * shell is about to turn down. Only a merge consumes several staged files,
-   * and merge takes PDFs; staging two images used to probe both, draw a rich
-   * card, and refuse only once the user tried to go on (UX audit #6).
-   *
-   * Says what did happen (nothing was staged), why, and what to do instead:
-   * clear what is already staged, or convert several files from the flag
-   * CLI, which is where spec §10 puts batch conversion until the shell has
-   * it.
-   */
-  const refuseUnstageable = useCallback(
-    (dropped: SourceInfo[], staged: SourceInfo[]) => {
-      const names = (list: SourceInfo[]) => list.map((s) => basename(s.path)).join(', ')
-      const what =
-        dropped.length === 1
-          ? `${names(dropped)} was not staged`
-          : `${dropped.length} files were not staged`
-      const next =
-        staged.length > 0
-          ? `${names(staged)} is still staged — esc clears it.`
-          : 'To convert several files at once, use the command line: forge <files> --to <format>.'
-      push({
-        kind: 'note',
-        id: nextId(),
-        text: `${SYMBOLS.warn} ${what}: only PDFs can be staged together, to merge with /pdf. ${next}`,
-      })
-    },
-    [push],
-  )
 
   /**
    * Whether `convertAction` actually has somewhere to send this source.
@@ -977,9 +1098,8 @@ export function App({
 
   // esc at the prompt clears whatever is typed first (mirroring every other
   // text field), and only once that field is empty does it fall through to
-  // clearing a leftover stage — reachable when a PDF backed out of the
-  // convert picker kept its place for `/pdf` or a merge list. Empty stages
-  // are the common case and cost nothing extra to check.
+  // clearing the stage home is holding, and its failures with it. A drop
+  // still being read is superseded too, or it would land on the cleared home.
   //
   // This is also how esc leaves the command list: the list is only open
   // while the field holds a command, so clearing the field closes it — and,
@@ -992,7 +1112,9 @@ export function App({
         return
       }
       if (stage.sources.length === 0 && stage.failures.length === 0) return
+      ++requestId.current
       setStage(clearStage())
+      setFresh({ count: 0, at: 0 })
     },
     { isActive: step === 'idle' },
   )
@@ -1277,8 +1399,8 @@ export function App({
        * `/pdf` has nothing to open yet (the hub has no files to show
        * operations for), but the choice of what happens to the *next*
        * dropped file is real and worth remembering, same as compress's own
-       * pre-armed mode. `submitPath`'s single-file success path is where
-       * that arming actually takes effect once something lands.
+       * pre-armed mode. `proceedWith` is where that arming actually takes
+       * effect once something lands and ↵ takes it on.
        */
       if (command.name === 'pdf') {
         if (!source) {
@@ -1318,29 +1440,100 @@ export function App({
   )
 
   /**
-   * Stages what a multi-path drop or a folder resolved to — or refuses it
-   * before staging, when it would leave several files nothing can act on
-   * together (see `refuseUnstageable`). Failures ride along on the stage and
-   * are listed beside the card. One file goes to its target picker the way a
-   * single drop does; several make a merge list and wait at the prompt.
+   * What ↵ does with one staged file, and what a typed path does with nothing
+   * staged once it is read: the mode decides where the file goes next.
+   *
+   * Deliberately nothing pushed to history. A block committed to <Static> can
+   * never be taken back, and until a conversion actually happens the file is a
+   * choice the user is still making — esc has to be able to undo it. The
+   * result block records the file once there is something worth recording.
    */
-  const stageSeveral = useCallback(
-    (infos: SourceInfo[], failures: InputFailure[]) => {
-      const next = addToStage(stage, infos, failures)
-      if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
-        refuseUnstageable(infos, stage.sources)
-        return
-      }
-      setStage(next)
+  const proceedWith = useCallback(
+    (info: SourceInfo) => {
       setValues({})
-      if (next.sources.length > 1) {
-        setStep('idle')
+      // `/compress` before dropping a file means the file lands in the
+      // compress flow, and compressing something lossless is refused here
+      // rather than after the user has answered three more questions about it.
+      if (mode === 'compress') {
+        if (!compressAction.appliesTo([info])) {
+          push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
+          setMode('convert')
+          // `compressAction.appliesTo` only accepts a lossy image, so nothing
+          // reaches this branch without a real convert target either — but
+          // check anyway rather than trade one dead end for another.
+          setStep(hasConvertTarget(info) ? 'target' : 'idle')
+          return
+        }
+        setStep('mode')
         return
       }
-      setStep(next.sources[0] && hasConvertTarget(next.sources[0]) ? 'target' : 'idle')
+      // `/pdf` armed with nothing staged yet (see `runCommand`): a source the
+      // hub has nothing to do with falls back to convert, one it can act on
+      // opens the hub directly.
+      if (mode === 'pdf') {
+        if (!pdfActionsApply([info])) {
+          push({ kind: 'error', id: nextId(), error: unsupportedPdf(info) })
+          setMode('convert')
+          setStep(hasConvertTarget(info) ? 'target' : 'idle')
+          return
+        }
+        fenceOff()
+        setStep('pdf')
+        return
+      }
+      // A source with a real convert target — every image, and a PDF too —
+      // goes to the target picker; one without stays on home, staged, rather
+      // than opening a picker with nothing in it (see `hasConvertTarget`).
+      setStep(hasConvertTarget(info) ? 'target' : 'idle')
     },
-    [stage, pdfActionsApply, refuseUnstageable, hasConvertTarget],
+    [mode, push, hasConvertTarget, pdfActionsApply, fenceOff],
   )
+
+  /**
+   * Adds what a drop read to the stage and stays on home. Appended, exact
+   * repeats dropped (`addToStage`); files that exist but could not be read
+   * ride along as the stage's failures, for the left-out line. Nothing is
+   * refused here any more: a stage of several images is shown as it is, and
+   * `refuseBatch` speaks up only if `/convert` or `/compress` is run on it.
+   */
+  const landDrop = useCallback((drop: DropResolution) => {
+    const known = new Set(stageRef.current.sources.map((s) => s.path))
+    const added = new Set(drop.sources.map((s) => s.path).filter((p) => !known.has(p))).size
+    setText('')
+    setValues({})
+    setStage((s) => addToStage(s, drop.sources, drop.failures))
+    setFresh({ count: added, at: Date.now() })
+  }, [])
+
+  /**
+   * Reads a paste into the empty home field the moment it lands — a drop
+   * (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md). A terminal
+   * cannot see a drag; the first thing it learns is the paths, as one chunk
+   * of text, so this is the moment the zone can answer.
+   *
+   * If nothing in it is on disk it was never a drop — plain text, or half a
+   * path to finish by hand — and it stays in the field as typed: put back
+   * when `homeKey` had to take it for its line break, left alone otherwise.
+   * A later ↵, paste or esc claims `requestId` and this result is dropped.
+   */
+  const readDrop = (pasted: string, broke: boolean) => {
+    const id = ++requestId.current
+    const leaveAsText = () => {
+      if (broke && textRef.current === '') setText(pasted)
+    }
+    resolveDrop(pasted).then(
+      (drop) => {
+        if (requestId.current !== id) return
+        // Typed into since, without a line break: an edit, not a drop.
+        if (!broke && textRef.current !== pasted) return
+        if (drop.anyExists) landDrop(drop)
+        else leaveAsText()
+      },
+      () => {
+        if (requestId.current === id) leaveAsText()
+      },
+    )
+  }
 
   const submitPath = useCallback(
     async (raw: string) => {
@@ -1369,202 +1562,32 @@ export function App({
       const id = ++requestId.current
       setText('')
 
-      /**
-       * Tried whole and unescaped, before anything is split on whitespace.
-       * A single dropped file is the overwhelmingly common case, and a
-       * terminal's own escaping of it can be *incomplete* rather than
-       * absent: Terminal.app leaves the space before "AM.png"/"PM.png"
-       * unescaped in a macOS screenshot's filename (confirmed against the
-       * literal bytes it pastes), so splitting on whitespace first — the
-       * previous order here — read one dropped screenshot as two
-       * nonexistent fragments ("…52" and "AM.png") and never resolved the
-       * real file at all.
-       *
-       * `unescapePath` strips every backslash wherever one appears,
-       * regardless of which spaces the terminal did or didn't escape, so it
-       * reconstructs the true filename either way. A genuine multi-file drop
-       * still reaches the split branch below: two or more real, distinct
-       * paths joined by the space between them essentially never match
-       * anything on disk as one combined string, so this attempt fails
-       * harmlessly and falls through to `splitPastedPaths` exactly as
-       * before.
-       */
-      let info: SourceInfo | undefined
-      let wholeError: unknown
+      let drop: DropResolution
       try {
-        info = await probe(unescapePath(trimmed))
-      } catch (e) {
-        wholeError = e
-      }
-
-      if (!info) {
-        // A real OS drag of several files pastes every escaped path on one
-        // line, space-separated — the mechanism `splitPastedPaths` was
-        // written and tested for, but left unwired while the shell was
-        // single-file only (see the design spec's "one path per drop"
-        // section). It runs here rather than `Prompt`'s own `unescapePath`
-        // (this is the one `Prompt` passed `rawOnSubmit`, precisely so the
-        // escaping survives this far): unescaping first would turn "a\ b.pdf
-        // c\ d.pdf" into "a b.pdf c d.pdf", and nothing left could tell an
-        // escaped space inside a filename apart from the plain one
-        // separating two paths.
-        const paths = splitPastedPaths(trimmed)
-        if (paths.length > 1) {
-          const infos: SourceInfo[] = []
-          const failures: InputFailure[] = []
-          for (const path of paths) {
-            try {
-              infos.push(await probe(path))
-            } catch (e) {
-              failures.push({ path, error: isForgeError(e) ? e : unexpectedError(e) })
-            }
-          }
-          if (requestId.current !== id) return // superseded by a later submission
-          stageSeveral(infos, failures)
-          return
-        }
-      }
-
-      /**
-       * A folder. Phase 3 §4 has the prompt accept one the way the CLI does,
-       * through `resolve.ts`; probed whole as a file instead, it was refused
-       * as "Not a file" under a CLI hint recommending a directory of images
-       * (UX audit #11). Non-recursive, as the CLI is without `--recursive`.
-       * One file inside is treated as that file dropped on its own, so the
-       * armed mode still decides where it goes; several go through the same
-       * rule as a multi-path drop.
-       */
-      if (!info && isForgeError(wholeError) && wholeError.code === 'not-a-file') {
-        const dir = unescapePath(trimmed)
-        const isDirectory = await stat(dir).then(
-          (s) => s.isDirectory(),
-          () => false,
-        )
-        if (isDirectory) {
-          const found = await resolveDirectory(dir, { recursive: false })
-          if (requestId.current !== id) return // superseded by a later submission
-          if (found.sources.length === 0) {
-            for (const failure of found.failures) showError(failure.error)
-            return
-          }
-          if (found.sources.length > 1 || found.failures.length > 0) {
-            stageSeveral(found.sources, found.failures)
-            return
-          }
-          info = found.sources[0]
-        }
-      }
-
-      try {
-        if (!info) throw wholeError
-        if (requestId.current !== id) return // superseded by a later submission
-        // Drops accumulate rather than replace — dropping a second file onto
-        // a prompt that already has one staged (a PDF kept for `/pdf`, say)
-        // builds a batch instead of losing the first file — but only a
-        // batch something can act on (see `refuseUnstageable`). `addToStage`
-        // also drops an exact repeat of a path already staged. Computed
-        // once, synchronously, rather than via the `setStage(s => ...)`
-        // updater form this used before: the guards just below need to know
-        // the resulting list *now*, to decide whether to stage it at all.
-        const next = addToStage(stage, [info], [])
-        if (next.sources.length > 1 && !pdfActionsApply(next.sources)) {
-          refuseUnstageable([info], stage.sources)
-          return
-        }
-        setStage(next)
-        setValues({})
-        if (next.sources.length > 1) {
-          // `refuseBatch` was written when nothing consumed several files at
-          // once, so a multi-file stage could only mean an unsupported batch
-          // convert. Merge ordering made staging several files the *point*,
-          // and left the message contradicting the `/pdf` signpost two lines
-          // below it — "drop a single file, or esc to clear the list" about a
-          // list the user was deliberately building. A batch the page
-          // operations cannot use is now refused before it is staged, just
-          // above; what reaches here is a merge list, and the staged card
-          // (rendered at idle from two files up — see the gate in the JSX
-          // below) says what is staged while the existing signpost says
-          // where to take it.
-          setStep('idle')
-          return
-        }
-        // Deliberately *not* pushed to history here. A block committed to
-        // <Static> can never be taken back, and until a conversion actually
-        // happens the dropped file is a choice the user is still making —
-        // esc has to be able to undo it. The result block records the file
-        // once there is something worth recording.
-        //
-        // Which step comes next depends on the mode: `/compress` before
-        // dropping a file means the file lands in the compress flow, and
-        // compressing something lossless is refused here rather than after
-        // the user has answered three more questions about it.
-        if (mode === 'compress') {
-          if (!compressAction.appliesTo([info])) {
-            push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
-            setMode('convert')
-            // `compressAction.appliesTo` only accepts a lossy image, so
-            // nothing reaches this branch without a real convert target
-            // either — but check anyway, via `hasConvertTarget`, rather
-            // than assume: falling back to the target step for a source
-            // that turned out to have nothing to convert to would trade
-            // one dead end for another.
-            setStep(hasConvertTarget(info) ? 'target' : 'idle')
-            return
-          }
-          setStep('mode')
-          return
-        }
-        // `/pdf` armed with nothing staged yet (see `runCommand`) — the same
-        // shape as the `compress` branch above: a source the hub has
-        // nothing to do with falls back to convert, one it can act on opens
-        // the hub directly, with no need to type `/pdf` a second time now
-        // that a file actually exists for it to open on.
-        if (mode === 'pdf') {
-          if (!pdfActionsApply([info])) {
-            push({ kind: 'error', id: nextId(), error: unsupportedPdf(info) })
-            setMode('convert')
-            setStep(hasConvertTarget(info) ? 'target' : 'idle')
-            return
-          }
-          fenceOff()
-          setStep('pdf')
-          return
-        }
-        // A source with a real convert target — every image, and now a PDF
-        // too — goes straight to the target picker. One without a target
-        // would stay at idle, staged and ready for `/pdf` or another
-        // command, rather than opening a picker with nothing in it — see
-        // `hasConvertTarget`.
-        setStep(hasConvertTarget(info) ? 'target' : 'idle')
+        drop = await resolveDrop(trimmed)
       } catch (e) {
         if (requestId.current !== id) return // superseded by a later submission
         // A rethrow here would become an unhandled rejection: submitPath is
-        // fired from Prompt's synchronous useInput handler, and nothing
-        // awaits or catches the promise it returns. Whatever this is —
-        // a ForgeError, or anything else probe() didn't anticipate — the
-        // shell must render it, not silently do nothing forever.
+        // fired from Prompt's synchronous useInput handler, and nothing awaits
+        // or catches the promise it returns. The shell must render it.
         showError(e)
         setStep('idle')
+        return
       }
+      if (requestId.current !== id) return // superseded by a later submission
+
+      // With something already staged, a typed path adds to it, as a drop does.
+      const nothingStaged = stageRef.current.sources.length === 0
+      const [first] = drop.sources
+      if (nothingStaged && !first) {
+        for (const failure of drop.failures) showError(failure.error)
+        return
+      }
+      landDrop(drop)
+      // One file typed onto an empty home goes on at once, as it always has.
+      if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
     },
-    // `mode` matters: without it this closure keeps the value it had when the
-    // callback was created, and a file dropped after /compress would be
-    // routed to the convert flow anyway. `stage` matters for the same
-    // reason: reading it straight (rather than through the `setStage`
-    // updater form) is what lets the batch guard above decide off the
-    // current list, not a stale one.
-    [
-      showError,
-      push,
-      runCommand,
-      mode,
-      stage,
-      stageSeveral,
-      refuseUnstageable,
-      hasConvertTarget,
-      pdfActionsApply,
-      fenceOff,
-    ],
+    [showError, push, runCommand, landDrop, proceedWith],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -2462,18 +2485,8 @@ export function App({
 
           {/* The staged list, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back.
-
-            Idle is included once more than one file is staged: that is
-            exactly where a merge list is assembled — each drop lands back at
-            the prompt — so hiding the card there meant building a merge with
-            no confirmation that anything had been staged at all. One file at
-            idle stays hidden: a lone drop either advances into the wizard,
-            which shows the card, or is a PDF waiting on `/pdf`, and a card
-            for it would sit under the prompt through every command. */}
-          {stage.sources.length > 0 &&
-          step !== 'theme' &&
-          step !== 'result' &&
-          (step !== 'idle' || stage.sources.length > 1) ? (
+            Not on home: its drop panel holds the stage there. */}
+          {stage.sources.length > 0 && step !== 'theme' && step !== 'result' && !onHome ? (
             <Box marginBottom={1}>
               <StagedFiles stage={stage} width={width} dim={running && workShown} />
             </Box>
@@ -2960,13 +2973,15 @@ export function App({
               height={height}
               mode={mode}
               typing={text !== ''}
+              staged={staged ? stagedView(stage, freshRows) : undefined}
+              under={underField(stage, mode)}
               savesTo={displayPath(livePrefs.defaultOutput)}
               field={
                 <Prompt
                   value={text}
                   onChange={setText}
                   onSubmit={submitPath}
-                  placeholder="or type a path"
+                  placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
                   isActive
                   variant="home"
                   width={width}
@@ -2991,68 +3006,11 @@ export function App({
                 typing: text !== '',
                 completions: completions.length,
                 commands: commands !== undefined,
+                staged: staged
+                  ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
+                  : undefined,
               })}
             />
-          ) : null}
-
-          {step === 'idle' && !onHome ? (
-            <Box flexDirection="column">
-              {/* A PDF sitting here — via a refused mixed batch, a multi-PDF
-                merge stage, or backing out of the target picker with
-                `backToPromptKeepingStage` — has a command that is not
-                otherwise visible. Commands are only worth having if they
-                can be found (the same reasoning behind the command list);
-                a document on the bench with no visible next step fails that
-                test. Suppressed once a command is being typed — the list
-                is already doing this job then. The target picker has its
-                own copy of this same line for the moment a solo drop goes
-                straight there instead of stopping here. */}
-              {!isCommandBuffer(text) &&
-              stage.sources.some((s) => s.kind === 'document' && s.format === 'pdf') ? (
-                <Box marginBottom={1}>
-                  <Text color={colourProp(palette.dim)}>
-                    {`${SYMBOLS.arrow} /pdf for page operations`}
-                  </Text>
-                </Box>
-              ) : null}
-              <Prompt
-                value={text}
-                onChange={setText}
-                onSubmit={submitPath}
-                placeholder="drop a file or type a path"
-                isActive
-                variant={band === 'compact' ? 'plain' : 'drop'}
-                width={width}
-                rawOnSubmit
-                intercept={commandKey}
-              />
-              {/* No drop surface to swap the list into here, so it sits
-                under the field, drawn as it is on home. */}
-              {commands ? <CommandMenu width={width} commands={commands} /> : null}
-              <HintBar
-                width={width}
-                pairs={
-                  commands
-                    ? [
-                        ['↵', 'run'],
-                        ['esc', 'back'],
-                        ['↑↓', 'choose'],
-                      ]
-                    : band === 'compact'
-                      ? [
-                          ['↵', 'send'],
-                          ['/', 'commands'],
-                        ]
-                      : [
-                          ['↵', 'send'],
-                          ['/', 'commands'],
-                          ['esc', 'clear'],
-                          ['ctrl-n', 'new'],
-                          ['ctrl-c', 'close app'],
-                        ]
-                }
-              />
-            </Box>
           ) : null}
         </Box>
       </ClickTargetProvider>
