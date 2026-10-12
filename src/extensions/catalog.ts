@@ -50,14 +50,14 @@ export const CATALOG: readonly CatalogEntry[] = [
       'win32-x64': {
         version: '1.1.0',
         url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-win32-x64.tar.gz`,
-        bytes: 31779661,
-        sha256: '352245498a2028f7024a62d8958844bec9b1d7317b287e5fe24cef4e7add4a3d',
+        bytes: 31779652,
+        sha256: '2aab557e01d476584589a70ea32c9d1ca05d8347a85588dc4bb04cb40955a17f',
       },
       'win32-arm64': {
         version: '1.1.0',
         url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-win32-arm64.tar.gz`,
-        bytes: 32907823,
-        sha256: '2f97f16859040d38686a14c46befca991aa821506da885c063e64be0652832c9',
+        bytes: 32907834,
+        sha256: '1257c279a71fbf4faf4538527c255fe4ee49ae546808bb2619611b57b653fb70',
       },
     },
     licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
