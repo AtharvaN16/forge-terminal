@@ -375,6 +375,56 @@ export function flashRow(p: Palette, text: string): Row {
   return row
 }
 
+/* -------------------------------------------- without colour (NO_COLOR) */
+
+/** `›` on the chosen row, where there is no band to show it. */
+const pick = (p: Palette, selected: boolean): Row => [
+  blank(2),
+  selected ? ink('›', p.accent, true) : blank(1),
+]
+
+/** The palette as text: hex and share, one colour a row. */
+export function plainPaletteRows({
+  palette: p,
+  items,
+  selected,
+}: {
+  palette: Palette
+  items: { hex: string; pct: number }[]
+  selected: number
+}): Row[] {
+  return items.map((item, i) => [
+    ...pick(p, i === selected),
+    blank(1),
+    ink(item.hex, i === selected ? p.fg : p.dim, i === selected),
+    blank(2),
+    ink(`${String(item.pct).padStart(3)}%`, p.border),
+  ])
+}
+
+/** The scale as text: step, hex, and how white and black text read on it. */
+export function plainScaleRows({
+  palette: p,
+  steps,
+  selected,
+}: {
+  palette: Palette
+  steps: { step: number; hex: string; white: number; black: number }[]
+  selected: number
+}): Row[] {
+  return steps.map((s, i) => [
+    ...pick(p, i === selected),
+    ink(String(s.step).padStart(4), i === selected ? p.fg : p.border, i === selected),
+    blank(2),
+    ink(s.hex, i === selected ? p.fg : p.dim, i === selected),
+    blank(2),
+    ink(
+      `white ${s.white.toFixed(1)} ${rate(s.white)} · black ${s.black.toFixed(1)} ${rate(s.black)}`,
+      p.dim,
+    ),
+  ])
+}
+
 /** A refusal, on the line under the field. */
 export function errorRow(p: Palette, text: string): Row {
   return [blank(4), ink(text, p.fail)]

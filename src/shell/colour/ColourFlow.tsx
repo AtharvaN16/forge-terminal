@@ -46,6 +46,8 @@ import {
   paletteBody,
   paletteColumn,
   photoRows,
+  plainPaletteRows,
+  plainScaleRows,
   previewRows,
   rampRows,
 } from './colour-art.js'
@@ -390,6 +392,11 @@ function bodyRows({
     const sel = screen.kind === 'scale' && !state.preview ? screen.sel : 5
     const step = steps[sel] ?? steps[5]
     if (!step) return []
+    // Without colour there are no swatches to look at: the scale as text.
+    if (p.selectionBg === '') {
+      const rows = steps.map((x) => ({ ...x, ...onWhiteAndBlack(x.rgb) }))
+      return plainScaleRows({ palette: p, steps: rows, selected: sel })
+    }
     const reads = onWhiteAndBlack(step.rgb)
     return [
       ...rampRows({ palette: p, steps, selected: sel }),
@@ -401,6 +408,10 @@ function bodyRows({
   const groups = groupsAt(screen.level)
   const pcts = wholePercents(groups.map((g) => g.share))
   const items = groups.map((g, i) => ({ hex: g.hex, pct: pcts[i] as number }))
+  // Without colour, no photo and no swatches: the palette as text.
+  if (p.selectionBg === '') {
+    return plainPaletteRows({ palette: p, items, selected: screen.sel })
+  }
   const showPhoto = height - CHROME >= PHOTO_ROWS
   const column =
     screen.level.length === 0
