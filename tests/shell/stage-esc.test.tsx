@@ -41,7 +41,7 @@ describe('esc at the prompt', () => {
     const a = await makePdf(dir, 'a.pdf', 2)
     const app = await stageOneThenBackToIdle(dir, a)
     // Sanity check on the setup: the picker is open for a.pdf.
-    expect(app.lastFrame() ?? '').toContain('Convert PDF to')
+    expect(app.lastFrame() ?? '').toContain('Convert to')
 
     // Back out of the picker — for a PDF, esc returns to the idle prompt
     // without discarding what was staged.
@@ -74,14 +74,14 @@ describe('esc at the prompt', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').toContain('Convert PDF to')
+    expect(app.lastFrame() ?? '').toContain('Convert to')
   }, 20_000)
 
   it('clears a leftover stage when the typed fragment matches no command', async () => {
     const dir = await makeTempDir()
     const a = await makePdf(dir, 'a.pdf', 2)
     const app = await stageOneThenBackToIdle(dir, a)
-    expect(app.lastFrame() ?? '').toContain('Convert PDF to')
+    expect(app.lastFrame() ?? '').toContain('Convert to')
 
     // Back out of the picker first — the idle prompt this test actually
     // exercises only mounts once it is closed.
@@ -118,7 +118,7 @@ describe('esc at the prompt', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').not.toContain('Convert PDF to')
+    expect(app.lastFrame() ?? '').not.toContain('Convert to')
     expect(app.lastFrame() ?? '').toContain('Drop a file here')
   }, 20_000)
 })

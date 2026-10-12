@@ -50,7 +50,7 @@ describe('dropping a folder', () => {
     await makeJpeg(dir, 'photo.jpg')
 
     const frame = (await drop(`${dir}/`)).lastFrame() ?? ''
-    expect(frame).toContain('Convert JPEG to')
+    expect(frame).toContain('Convert to')
   }, 20_000)
 
   it('says an empty folder holds nothing, without CLI flags in the hint', async () => {

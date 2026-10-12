@@ -169,7 +169,7 @@ describe('esc at the idle prompt', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').not.toContain('Convert PDF to')
+    expect(app.lastFrame() ?? '').not.toContain('Convert to')
     expect(app.lastFrame() ?? '').toContain('Drop a file here')
   }, 20_000)
 })

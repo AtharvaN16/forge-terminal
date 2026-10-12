@@ -15,7 +15,7 @@ const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
  * Drops `file`, opens `/pdf`, chooses Rotate, accepts 90°, confirms.
  *
  * A staged PDF now has a real convert target (jpeg, png — see
- * `engines/pdfium.ts`), so the drop's own Enter lands on "Convert PDF to",
+ * `engines/pdfium.ts`), so the drop's own Enter lands on "Convert to",
  * not idle — `hasConvertTarget` in App.tsx is genuinely true for it. `esc`
  * backs out of that picker without discarding the stage
  * (`backToPromptKeepingStage`), which is what makes `/pdf` reachable from
@@ -69,7 +69,7 @@ describe('/pdf end to end through App', () => {
     stdin.write(ENTER)
     await settle(400)
     const pickerFrame = lastFrame() ?? ''
-    expect(pickerFrame).toContain('Convert PDF to')
+    expect(pickerFrame).toContain('Convert to')
     // The route to page operations rides along on the same screen, as a
     // selectable row rather than a hint someone has to act on elsewhere.
     expect(pickerFrame).toContain('/pdf')
@@ -81,7 +81,7 @@ describe('/pdf end to end through App', () => {
     stdin.write(ESC)
     await settle(300)
     const homeFrame = lastFrame() ?? ''
-    expect(homeFrame).not.toContain('Convert PDF to')
+    expect(homeFrame).not.toContain('Convert to')
     // Still staged — home draws its card and asks for more.
     expect(homeFrame).toContain('doc.pdf')
     expect(homeFrame).toContain('drop more, or type a path')
@@ -96,7 +96,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert JPEG to')
+    expect(lastFrame() ?? '').toContain('Convert to')
   }, 20_000)
 
   it('typing /convert on a staged, idle PDF opens the real picker, now that conversion works', async () => {
@@ -122,7 +122,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
   }, 20_000)
 
   it('drop, /pdf, rotate: writes a real file, reports it in history, and clears the stage', async () => {
@@ -189,7 +189,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     // Picker order is JPEG, PNG, DOCX, a gap, then the /pdf row — three
     // arrow-downs from JPEG lands on it, the gap itself unreachable like any
@@ -224,14 +224,14 @@ describe('esc on the target picker for an image', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert JPEG to') // sanity: really on the picker
+    expect(lastFrame() ?? '').toContain('Convert to') // sanity: really on the picker
 
     stdin.write(ESC)
     await settle(300)
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Drop a file here')
-    expect(frame).not.toContain('Convert JPEG to')
+    expect(frame).not.toContain('Convert to')
 
     // The stronger proof: with `backToPromptKeepingStage` instead of
     // `clearSource` here, photo.jpg would still be staged, and `/convert`
@@ -242,7 +242,7 @@ describe('esc on the target picker for an image', () => {
     stdin.write(ENTER)
     await settle(300)
     const afterConvert = lastFrame() ?? ''
-    expect(afterConvert).not.toContain('Convert JPEG to')
+    expect(afterConvert).not.toContain('Convert to')
     expect(afterConvert).toContain('Drop a file here')
   }, 20_000)
 })

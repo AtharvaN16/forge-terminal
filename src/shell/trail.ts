@@ -32,7 +32,8 @@ const SCREENS: Record<string, { at: number; name?: string }> = {
   'pdf-blocked': { at: 8, name: 'Overwrite' },
   converting: { at: 9 },
   'pdf-running': { at: 9 },
-  'size-unreachable': { at: 10, name: 'Size' },
+  // Back on the size question: what came after it (the folder, the name) is not behind it.
+  'size-unreachable': { at: 5, name: 'Size' },
   result: { at: 11, name: 'Done' },
 }
 /** Where each question is asked, in the walk above; also the order answers are listed in. */

@@ -59,6 +59,6 @@ describe('a conversion that fails', () => {
     expect(frame).toContain('photo.jpg')
     expect(frame).not.toContain('JPEG ×2')
     expect(frame).not.toContain("isn't supported yet")
-    expect(frame).toContain('Convert JPEG to')
+    expect(frame).toContain('Convert to')
   }, 20_000)
 })

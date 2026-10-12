@@ -46,7 +46,7 @@ describe('dropping onto home', () => {
     app.stdin.write(ENTER)
     await settle(400)
     frame = plain(app.lastFrame())
-    expect(frame).toContain('Convert PNG to')
+    expect(frame).toContain('Convert to')
   }, 20_000)
 
   it('adds a second drop to the first, and ↵ waits for batch', async () => {
@@ -65,7 +65,7 @@ describe('dropping onto home', () => {
     app.stdin.write(ENTER)
     await settle(400)
     const frame = plain(app.lastFrame())
-    expect(frame).not.toContain('Convert PNG to')
+    expect(frame).not.toContain('Convert to')
     expect(fieldLine(frame)).toBe('    › drop more, or type a path')
   }, 20_000)
 
@@ -92,7 +92,7 @@ describe('dropping onto home', () => {
     app.stdin.write(`${png}\r`)
     await settle(400)
     const frame = plain(app.lastFrame())
-    expect(frame).not.toContain('Convert PNG to')
+    expect(frame).not.toContain('Convert to')
     expect(fieldLine(frame)).toBe('    › drop more, or type a path')
   }, 20_000)
 
@@ -113,7 +113,7 @@ describe('dropping onto home', () => {
     app.stdin.write(ENTER)
     await settle(600)
     const frame = plain(app.lastFrame())
-    expect(frame).not.toContain('Convert PNG to')
+    expect(frame).not.toContain('Convert to')
     expect(frame).toContain('3 images')
   }, 20_000)
 

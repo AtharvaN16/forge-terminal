@@ -143,7 +143,7 @@ describe('compress in the shell', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert JPEG to')
+    expect(lastFrame() ?? '').toContain('Convert to')
   }, 20_000)
 })
 

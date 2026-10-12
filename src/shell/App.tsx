@@ -48,7 +48,9 @@ import { QualityStep } from './components/QualityStep.js'
 import { SaveAs } from './components/SaveAs.js'
 import { Select } from './components/Select.js'
 import { SizeAside } from './components/SizeAside.js'
+import { SizeField } from './components/SizeField.js'
 import { StagedFiles } from './components/StagedFiles.js'
+import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
@@ -2496,6 +2498,15 @@ export function App({
             { value: GOTO_PDF, label: '/pdf for more options' },
           ]
         : targetSpec.choices
+  /**
+   * Format's title says where the highlight is among the formats ("1/6"),
+   * as the decided picker does; the /pdf pointer below them is not one.
+   */
+  const targetPlace = (() => {
+    const formats = targetItems.filter((i) => !i.disabled && i.value !== GOTO_PDF)
+    const at = formats.findIndex((i) => i.value === (targetHighlight ?? firstTarget))
+    return at === -1 ? undefined : `${at + 1}/${formats.length}`
+  })()
   const pagesSpec = specFor('pages')
   const dpiSpec = specFor('dpi')
   const qualitySpec = specFor('quality')
@@ -2607,7 +2618,7 @@ export function App({
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
+                <StepTitle mode={mode} title="Method" aside={basename(source.path)} width={width} />
               </Box>
               <Select
                 width={pickerWidth}
@@ -2626,37 +2637,36 @@ export function App({
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
                   ['1–3', 'mode'],
-                  ['esc', 'remove file'],
+                  ['esc', 'back'],
                 ]}
               />
             </Box>
           ) : null}
 
-          {step === 'size' && sizeSpec?.kind === 'text' ? (
+          {step === 'size' && source && sizeSpec?.kind === 'text' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.label)}>{sizeSpec.label}</Text>
-              <Prompt
+              <StepTitle
+                mode={mode}
+                title={sizeSpec.label}
+                aside={`${basename(source.path)} · ${formatBytes(source.bytes)}`}
+                width={width}
+              />
+              {/* Save as's field, the unit inside it at the right: the amount
+                  and its unit are one answer, read as one line. */}
+              <SizeField
                 value={text}
                 onChange={setText}
                 onSubmit={submitSize}
                 placeholder={sizeSpec.placeholder}
-                isActive={!unitFocused}
-                variant={band === 'compact' ? 'plain' : 'field'}
+                unit={sizeUnit}
+                unitFocused={unitFocused}
                 width={width}
               />
-              <UnitRow unit={sizeUnit} focused={unitFocused} />
-              {/* What the two halves add up to, said back in the same words
-                  `formatBytes` uses everywhere else. The placeholder could
-                  only ever say this before anything was typed; this says it
-                  exactly when there is something to be unsure about. */}
-              {text.trim() !== '' ? (
+              {/* Said only when what was typed is not a size at all; what it
+                  is, when it is one, the field already shows. */}
+              {text.trim() !== '' && describeSize(sizeWithUnit(text)) === undefined ? (
                 <Text color={colourProp(palette.dim)}>
-                  {(() => {
-                    const understood = describeSize(sizeWithUnit(text))
-                    return understood === undefined
-                      ? `  ${SYMBOLS.warn} not a size — try 500kb or 2mb`
-                      : `  ${SYMBOLS.arrow} ${understood}`
-                  })()}
+                  {`  ${SYMBOLS.warn} not a size — try 500kb or 2mb`}
                 </Text>
               ) : null}
               {sizeError ? (
@@ -2675,7 +2685,7 @@ export function App({
                   ['↵', 'confirm'],
                   ['tab', unitFocused ? 'amount' : 'unit'],
                   ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
-                  ['esc', 'clear / back'],
+                  ['esc', 'back'],
                 ]}
               />
             </Box>
@@ -2684,7 +2694,7 @@ export function App({
           {step === 'target' && source && targetSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text>{targetSpec.label}</Text>
+                <StepTitle mode={mode} title="Convert to" aside={targetPlace} width={width} />
               </Box>
               <Select
                 width={pickerWidth}
@@ -2720,7 +2730,16 @@ export function App({
           {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
+                <StepTitle
+                  mode={mode}
+                  title={pagesSpec.label}
+                  aside={
+                    source.kind === 'document'
+                      ? `${basename(source.path)} · ${source.pages} pages`
+                      : basename(source.path)
+                  }
+                  width={width}
+                />
               </Box>
               <Select
                 width={pickerWidth}
@@ -2769,7 +2788,12 @@ export function App({
           {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
+                <StepTitle
+                  mode={mode}
+                  title={dpiSpec.label}
+                  aside={basename(source.path)}
+                  width={width}
+                />
               </Box>
               <Select
                 width={pickerWidth}
@@ -2871,17 +2895,24 @@ export function App({
 
           {step === 'size-unreachable' && sizeUnreachable ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text>
-                {`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
-                  sizeUnreachable.smallest,
-                )} — you asked for ${formatBytes(sizeUnreachable.targetBytes)}.`}
-              </Text>
+              <Box marginBottom={1}>
+                <StepTitle
+                  mode={mode}
+                  title={`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
+                    sizeUnreachable.smallest,
+                  )}`}
+                  aside={`asked for ${formatBytes(sizeUnreachable.targetBytes)}`}
+                  width={width}
+                />
+              </Box>
               <Select
                 width={pickerWidth}
                 items={[
                   {
                     value: 'lowest',
                     label: `Use ${formatBytes(sizeUnreachable.smallest)} anyway`,
+                    // What the answer does, the way Name taken's answers say it.
+                    hint: `saves it at ${formatBytes(sizeUnreachable.smallest)}`,
                   },
                   { value: 'size', label: 'Try a different target size' },
                   { value: 'quality', label: 'Compress by quality instead' },

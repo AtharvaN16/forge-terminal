@@ -147,7 +147,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     await settle()
     stdin.write(ENTER) // stage the file -> target picker (jpeg is first)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     stdin.write(ENTER) // choose jpeg -> pages step
     await settle(300)
@@ -279,7 +279,7 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     await settle()
     stdin.write(ENTER) // stage -> convert picker
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     stdin.write(ENTER) // choose jpeg -> pages step
     await settle(300)

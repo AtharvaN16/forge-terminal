@@ -48,13 +48,13 @@ describe('shell flow', () => {
     stdin.write(ENTER)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('Convert JPEG to')
+    expect(frame).toContain('Convert to')
     expect(frame).toContain('WebP')
     expect(frame).toContain('PNG')
     expect(frame).not.toContain('HEIC')
-    // 'JPEG' should appear exactly twice: once in the file card, once in the
-    // "Convert JPEG to" label — never as its own row in the picker below.
-    expect(frame.split('JPEG').length - 1).toBe(2)
+    // 'JPEG' appears once, in the file card — never as its own row in the
+    // picker below (the title says "Convert to"; the card names the source).
+    expect(frame.split('JPEG').length - 1).toBe(1)
   })
 
   it('reports a bad path as a readable error and stays usable', async () => {

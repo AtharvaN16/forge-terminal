@@ -73,7 +73,7 @@ describe('a running split names itself correctly, not as rendering', () => {
     await settle()
     stdin.write(ENTER) // stage -> convert picker (a PDF has real targets now)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     stdin.write(ESC) // back to idle, doc.pdf still staged
     await settle(200)

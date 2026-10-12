@@ -35,7 +35,7 @@ async function atDone() {
   app.stdin.write(file)
   await settle()
   app.stdin.write(ENTER) // the dropped path
-  await until(app, 'Convert PNG to')
+  await until(app, 'Convert to')
   app.stdin.write(ENTER) // JPEG, the first target for a PNG
   await until(app, 'Quality')
   app.stdin.write(ENTER) // the quality as it opens

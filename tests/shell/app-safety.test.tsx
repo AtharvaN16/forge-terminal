@@ -97,9 +97,9 @@ describe('the shell never writes over the input', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    // 'JPEG' appears twice — the file card and the "Convert JPEG to" label —
-    // and never a third time as its own row in the picker below.
-    expect((lastFrame() ?? '').split('JPEG').length - 1).toBe(2)
+    // 'JPEG' appears once, in the file card (the title says "Convert to"),
+    // and never a second time as its own row in the picker below.
+    expect((lastFrame() ?? '').split('JPEG').length - 1).toBe(1)
   })
 })
 

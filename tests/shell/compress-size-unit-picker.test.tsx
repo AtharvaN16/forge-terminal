@@ -49,9 +49,11 @@ describe('the target-size field', () => {
     app.stdin.write(RIGHT)
     await settle(300)
 
-    // KB is the resting unit; one step right lands on MB, and the field says
-    // what it understood rather than making the user guess.
-    expect(app.lastFrame()).toContain('500 MB')
+    // KB is the resting unit; one step right lands on MB. The answer is the
+    // amount and the unit together, as the next screen's trail records it.
+    app.stdin.write(ENTER)
+    await settle(400)
+    expect(app.lastFrame()).toContain('500mb')
   }, 30_000)
 
   /**
