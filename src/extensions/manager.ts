@@ -11,6 +11,7 @@ import {
   extensionCorrupt,
   extensionDiskFull,
   extensionDownloadFailed,
+  extensionNotOffered,
   extensionUnsupported,
   invalidArguments,
   isForgeError,
@@ -225,8 +226,11 @@ export async function installExtension(
     onProgress?: (done: number, total: number) => void
     signal?: AbortSignal
     fetchImpl?: typeof fetch
+    platform?: NodeJS.Platform
+    arch?: string
   } = {},
 ): Promise<Installed> {
+  const { platform = process.platform, arch = process.arch } = opts
   const entry = catalogEntry(id)
   if (entry === undefined) {
     throw invalidArguments(
@@ -235,10 +239,15 @@ export async function installExtension(
     )
   }
   await sweepDebris(extensionsRoot())
-  const support = supportFor(entry)
-  const asset = assetFor(entry)
+  // Named, though not listed: say the OS has none, not that this machine falls short.
+  if ((platform === 'darwin' || platform === 'win32') && !offeredOn(entry, platform)) {
+    throw extensionNotOffered(entry.title, platform)
+  }
+  const support = supportFor(entry, platform, arch)
+  const asset = assetFor(entry, platform, arch)
   if (!support.supported || asset === undefined) {
-    throw extensionUnsupported(id, support.reason ?? 'no build for this Mac')
+    const fallback = platform === 'win32' ? 'no build for this PC' : 'no build for this Mac'
+    throw extensionUnsupported(id, support.reason ?? fallback, platform)
   }
   const current = await installed(entry.id)
   if (current?.version === asset.version) return current

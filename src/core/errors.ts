@@ -651,11 +651,35 @@ export function extensionCorrupt(id: string, detail: string): ForgeError {
   })
 }
 
-export function extensionUnsupported(id: string, reason: string): ForgeError {
+export function extensionUnsupported(
+  id: string,
+  reason: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const machine = platform === 'win32' ? 'PC' : 'Mac'
   return new ForgeError({
     code: 'extension-unsupported',
     title: 'Extension not available here',
-    detail: `${id} cannot be installed on this Mac: ${reason}`,
+    detail: `${id} cannot be installed on this ${machine}: ${reason}`,
+    hint: 'See what is available with: forge extensions',
+    shellHint: 'See what is available in /extensions.',
+  })
+}
+
+/**
+ * An extension the catalogue has no build of for this OS at all — remove
+ * background on Windows. Not "this machine cannot": no machine running this
+ * OS can, so the sentence names the OS. `title` is the catalogue's.
+ */
+export function extensionNotOffered(
+  title: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const os = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'this system'
+  return new ForgeError({
+    code: 'extension-unsupported',
+    title: 'Extension not available here',
+    detail: `${title} is not available on ${os}.`,
     hint: 'See what is available with: forge extensions',
     shellHint: 'See what is available in /extensions.',
   })

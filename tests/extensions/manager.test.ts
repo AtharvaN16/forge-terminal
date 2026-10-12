@@ -43,6 +43,17 @@ const { installExtension, listExtensions, removeExtension } = await import(
 )
 const { installed, extensionsRoot } = await import('../../src/extensions/paths.js')
 
+// Most tests here use Mac assets (`darwin-universal`) and call through the
+// CLI, which reads process.platform; pin it so they run unchanged on the
+// Windows CI job too (a no-op on a Mac). Windows is tested by passing 'win32'.
+const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor
+beforeAll(() => {
+  Object.defineProperty(process, 'platform', { value: 'darwin' })
+})
+afterAll(() => {
+  Object.defineProperty(process, 'platform', realPlatform)
+})
+
 // --- fixtures -------------------------------------------------------------
 
 function tarEntry(name: string, body: Buffer, mode = 0o644): Buffer {
@@ -388,7 +399,10 @@ describe('listing', () => {
     h.release = '22.6.0' // macOS 13
     const [s] = await listExtensions()
     expect(s).toMatchObject({ supported: false, reason: 'needs macOS 14 or later' })
-    expect(await codeOf(installExtension('remove-background'))).toBe('extension-unsupported')
+    expect(await installExtension('remove-background').catch((e: unknown) => e)).toMatchObject({
+      code: 'extension-unsupported',
+      detail: 'remove-background cannot be installed on this Mac: needs macOS 14 or later',
+    })
     expect(await leftovers()).toEqual([])
   })
 
@@ -429,6 +443,24 @@ describe('listing on Windows', () => {
       supported: false,
       reason: 'no build for arm64 PCs',
     })
+  })
+
+  it('refuses an extension with no Windows build by name, and a chip with none as a PC', async () => {
+    const mac = entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')
+    const asset = { version: '1.1.0', url: `${base}/w.tgz`, bytes: 60, sha256: 'x' }
+    h.catalog = [{ ...mac, id: 'boost', minMacos: undefined, assets: { 'win32-x64': asset } }, mac]
+    const refusal = (id: string, arch: string) =>
+      installExtension(id, { platform: 'win32', arch }).catch((e: unknown) => e)
+
+    expect(await refusal('remove-background', 'x64')).toMatchObject({
+      code: 'extension-unsupported',
+      detail: 'Remove background is not available on Windows.',
+    })
+    expect(await refusal('boost', 'arm64')).toMatchObject({
+      code: 'extension-unsupported',
+      detail: 'boost cannot be installed on this PC: no build for arm64 PCs',
+    })
+    expect(await leftovers()).toEqual([])
   })
 })
 
