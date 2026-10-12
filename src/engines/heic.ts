@@ -5,8 +5,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { heicDecoderUnavailable } from '../core/errors.js'
-import { installed } from '../extensions/paths.js'
-import { runExtension } from '../extensions/run.js'
 import { loadSharp } from './libs.js'
 
 const run = promisify(execFile)
@@ -39,6 +37,15 @@ const run = promisify(execFile)
  * the same temporary PNG. Everything downstream is unchanged.
  */
 
+/**
+ * src/extensions is imported only on Windows, when HEIC is asked about: a
+ * plain conversion must not load it (tests/cli/lazy-load.test.ts).
+ */
+const extensions = async () => ({
+  ...(await import('../extensions/paths.js')),
+  ...(await import('../extensions/run.js')),
+})
+
 let cached: boolean | undefined
 
 /**
@@ -50,7 +57,7 @@ let cached: boolean | undefined
 export async function heicDecodable(
   platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
-  if (platform === 'win32') return (await installed('heic')) !== undefined
+  if (platform === 'win32') return (await (await extensions()).installed('heic')) !== undefined
   if (cached !== undefined) return cached
   try {
     await run('/usr/bin/sips', ['--help'], { timeout: 5000 })
@@ -104,9 +111,10 @@ export async function decodeHeic(
 
 /** The installed heic extension, or the same refusal a missing sips gets on a Mac. */
 async function heicExtension(source: string) {
+  const { installed, runExtension } = await extensions()
   const ext = await installed('heic')
   if (ext === undefined) throw heicDecoderUnavailable(source, 'win32')
-  return ext
+  return { ext, runExtension }
 }
 
 /**
@@ -121,7 +129,7 @@ async function decodeWithExtension(source: string): Promise<DecodedHeic> {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
   try {
-    const ext = await heicExtension(source)
+    const { ext, runExtension } = await heicExtension(source)
     const rgba = join(dir, 'decoded.rgba')
     const png = join(dir, 'decoded.png')
     const { width, height } = await runExtension(ext, ['--in', source, '--out', rgba], {
@@ -231,7 +239,7 @@ export async function heicInfo(
   platform: NodeJS.Platform = process.platform,
 ): Promise<HeicInfo> {
   if (platform === 'win32') {
-    const ext = await heicExtension(path)
+    const { ext, runExtension } = await heicExtension(path)
     const r = await runExtension(ext, ['--info', '--in', path], { subject: path })
     // An absent flag reads as alpha: flattening an opaque image costs nothing.
     return { width: r.width, height: r.height, hasAlpha: r.hasAlpha ?? true }
