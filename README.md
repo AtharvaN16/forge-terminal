@@ -485,6 +485,48 @@ and not specific to PDFs: the shell refuses to convert or compress several
 staged files at once today — that's a deliberate limit while batch handling
 through the shell is still unbuilt, not a bug.
 
+## Colour
+
+Two things for designers, from the command line. The interactive screens for
+them are still being built.
+
+```
+$ forge palette photo.jpg
+#B897E4   16%
+#86B627   16%
+#256129   14%
+…
+$ forge palette photo.jpg --inside F96363     # the shades one colour is made of
+#FF665A   63%
+#F35949   15%
+#E58A9F   14%
+#BE5C38    8%
+$ forge scale 6579FD
+  50  #F4F6FF  white 1.0 fails · black 19.4 AAA
+ …
+ 500  #6579FD  white 3.6 large · black 5.7 AA
+ …
+ 950  #161B58  white 15.7 AAA · black 1.3 fails
+```
+
+- **`forge palette <image>`** gives an image's main colours, most of the image
+  first. Each one is a real pixel from the image, not an average, and the
+  percentages add up to 100. The image is probed by content, so a PDF named
+  `.png` is refused as not an image.
+- **`forge scale <colour>`** gives 50–950 built in OKLCH, with your colour
+  exactly at 500. Each step is rated for white and black text (WCAG: AAA, AA,
+  large, fails). Ratios are rounded down, so 4.48:1 shows as `4.4 large` and
+  is never passed off as AA. Pass the colour without the `#`, or quote it (`'#6579FD'`):
+  an unquoted `#` starts a comment in the shell.
+- **`--svg`** prints a card of swatches. Pipe it to `pbcopy` and press ⌘V in
+  Figma to get real shapes and text layers: `forge scale 6579FD --svg | pbcopy`.
+- **`--json`** returns `palette` (`source`, `colours[]` with `hex`, `rgb`,
+  `oklch`, `share`) or `scale` (`reference`, `steps[]` with `step`, `hex`,
+  `oklch`, `white`, `black`).
+
+On a colour terminal each row starts with a swatch. Piped, or under
+`NO_COLOR`, the rows are plain text.
+
 ## Usage
 
 ```
@@ -679,7 +721,7 @@ Claude Desktop and Cursor:
 { "mcpServers": { "forge": { "command": "forge", "args": ["mcp"] } } }
 ```
 
-Five tools, deliberately few:
+Seven tools, deliberately few:
 
 | Tool | Does |
 | --- | --- |
@@ -688,6 +730,8 @@ Five tools, deliberately few:
 | `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`) |
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
+| `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades (read-only) |
+| `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text (read-only) |
 
 Paths must be absolute. Results come back as structured content in the
 `--json` shape below, with a `file://` link to every output, and never as
@@ -777,7 +821,9 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 ```
 
 `--formats --json` returns `formats` (`id`, `label`, `extensions`, `read`,
-`write`, `lossy`). `forge probe --json` returns `probes`. `forge config
+`write`, `lossy`). `forge probe --json` returns `probes`. `forge palette
+--json` returns `palette`, and `forge scale --json` returns `scale` (see
+[Colour](#colour)). `forge config
 --json` returns `config` and `warnings`. An argument error is a document with
 one `invalid-arguments` failure and exit code 2. Fields are not renamed or
 removed within a minor version; the `forge` field says which version you are
@@ -1067,7 +1113,8 @@ src/
 │   ├── run.ts           bounded-concurrency batch runner, emits events
 │   ├── output-path.ts   output path resolution (the table above)
 │   ├── units.ts         byte / percentage formatting
-│   └── errors.ts        ForgeError taxonomy and rendering
+│   ├── errors.ts        ForgeError taxonomy and rendering
+│   └── colour/          OKLab/OKLCH, contrast, palette (k-means), scale, the Figma card
 │
 ├── engines/
 │   ├── types.ts         Engine interface (reads, writes, probe, convert)
@@ -1080,7 +1127,7 @@ src/
 │   └── report.ts        stdout formatting (success, batch, errors, --formats)
 │
 ├── mcp/                the MCP server — a third front end, loaded only by `forge mcp`
-│   ├── server.ts        createForgeServer(): five tools; runMcpServer(): stdio
+│   ├── server.ts        createForgeServer(): seven tools; runMcpServer(): stdio
 │   ├── tools.ts         tool handlers → the same intents and runIntent() the CLI uses
 │   ├── schemas.ts       zod input/output schemas, vocabularies read from core/actions
 │   └── stdout-guard.ts  stdout belongs to the protocol; stray writes go to stderr

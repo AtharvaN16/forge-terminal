@@ -114,6 +114,9 @@ async function main(): Promise<void> {
     const tty = Boolean(process.stderr.isTTY) && !json
     const result = await execute(intent, {
       json,
+      // Swatches in `forge palette` / `forge scale`: only for a person at a
+      // colour terminal, never into a pipe or under NO_COLOR.
+      colour: Boolean(process.stdout.isTTY) && !json && (process.env.NO_COLOR ?? '') === '',
       onProgress: tty
         ? (progress: BatchProgress) => {
             // The spinner redraws its line in place and the counter prints

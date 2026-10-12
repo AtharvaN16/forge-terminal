@@ -160,6 +160,25 @@ export function unsupportedSource(path: string, detected: string): ForgeError {
   })
 }
 
+/** A palette needs pixels. `detected` is what probing found, such as "a PDF". */
+export function notAnImage(path: string, detected: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-source',
+    title: 'Not an image',
+    detail: `${basename(path)} is ${detected}, not an image.`,
+    hint: 'A palette is taken from a photo, a screenshot or artwork.',
+  })
+}
+
+/** Every pixel is transparent, so there is no colour to take. */
+export function nothingVisible(path: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-source',
+    title: 'Nothing to take colours from',
+    detail: `${basename(path)} has no visible pixels.`,
+  })
+}
+
 /**
  * HEIC is decoded by macOS's own `sips`, because Sharp's prebuilt binary
  * ships libheif without an HEVC decoder for licensing reasons. This is the

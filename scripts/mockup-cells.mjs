@@ -12,9 +12,34 @@ import { fileURLToPath } from 'node:url'
 export const root = fileURLToPath(new URL('..', import.meta.url))
 
 /** The page's inline scripts, joined, read from `mockups/<name>`. */
+/**
+ * The app's greys went neutral after these mockups were drawn (colour spec
+ * §2.5, theme.ts DARK). Each old blue-tinted grey in a mockup's script is
+ * swapped for its neutral value before the script runs, so every colour
+ * derived from one (the drop zone's dots are mixes of the panel colour) is
+ * recomputed rather than patched afterwards. The mockup files are untouched.
+ * Text greys were raised for contrast; fills keep their OKLab lightness.
+ */
+const NEUTRAL = {
+  '#e4e8f0': '#e7e7e7', // fg, pill, thumb
+  '#8b93a6': '#b0b0b0', // dim
+  '#5f6879': '#808080', // border, quiet text
+  '#3d4350': '#4d4d4d', // faint
+  '#252c3a': '#2c2c2c', // selectionBg, band: drop zone, field, home panel
+  '#2b3343': '#333333', // panel2
+  '#2e3340': '#333333', // keycapBg
+  '#2a3242': '#323232', // listBand
+  '#33405a': '#404040', // panelBand
+  '#2a2e37': '#2e2e2e', // track
+  '#4b515d': '#515151', // trackFill
+  '#3b414d': '#414141', // folderChip
+  '#383d48': '#3d3d3d', // fieldBand
+}
+const neutral = (s) => s.replace(/#[0-9a-fA-F]{6}\b/g, (h) => NEUTRAL[h.toLowerCase()] ?? h)
+
 export function mockupScript(name) {
   const html = readFileSync(`${root}mockups/${name}`, 'utf8')
-  return [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n')
+  return neutral([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n'))
 }
 
 /** `script` with `code` run just before the first `marker`, which must be there. */

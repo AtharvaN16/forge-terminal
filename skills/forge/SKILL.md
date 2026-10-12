@@ -1,6 +1,6 @@
 ---
 name: forge
-description: Convert, compress and edit local files on macOS with the Forge CLI (`forge`) — images (HEIC, JPEG, PNG, WebP, AVIF, GIF, TIFF), PDFs and Word documents. Use when the user wants a file in another format, smaller or under a size, or a PDF merged, split, trimmed or rotated, and `forge` is installed (`npm i -g forge-terminal`).
+description: Convert, compress and edit local files on macOS with the Forge CLI (`forge`) — images (HEIC, JPEG, PNG, WebP, AVIF, GIF, TIFF), PDFs and Word documents. Use when the user wants a file in another format, smaller or under a size, or a PDF merged, split, trimmed or rotated, or an image's colour palette or a tonal scale from a colour, and `forge` is installed (`npm i -g forge-terminal`).
 ---
 
 # Forge
@@ -52,7 +52,13 @@ forge doc.pdf --extract 3-7,12 --json                      # --separate: one fil
 forge doc.pdf --delete 2 --json
 forge doc.pdf --rotate 90 --json
 forge --formats --json
+forge palette photo.jpg --json                             # an image's main colours
+forge palette photo.jpg --inside F96363 --json             # one colour's shades
+forge scale 6579FD --json                                  # 50–950, the colour at 500
 ```
+
+For a colour, pass the hex without `#`, or quote it: an unquoted `#` starts
+a shell comment, and `forge scale` then exits 2 with "No colour given".
 
 Outputs go beside the source unless `-o` names a folder (or, for one file, a
 filename). Page operations always write beside the source, take no `-o`, and
@@ -86,7 +92,8 @@ exit 1 and a hint; a wrong password has its own hint.
 ## MCP
 
 If a `forge` MCP server is connected (tools `forge_probe`, `forge_formats`,
-`forge_convert`, `forge_compress`, `forge_pdf`), prefer it. It takes absolute
+`forge_convert`, `forge_compress`, `forge_pdf`, `forge_palette`,
+`forge_scale`), prefer it. It takes absolute
 paths and returns the same JSON as `structuredContent`. It never overwrites
 unless you pass `overwrite: true`, and an encrypted PDF takes a `password`
 argument. A hint that says `--force` means `overwrite: true` there;

@@ -65,6 +65,35 @@ export type ConfigJson = {
   failures: FailureJson[]
 }
 
+/** One palette colour: hex, rgb() and oklch() text, and its share (0–1). Colour spec §7.1. */
+export type ColourJson = { hex: string; rgb: string; oklch: string; share: number }
+
+export type PaletteJson = {
+  forge: string
+  ok: boolean
+  /** `inside` is set when the colours are one palette colour's shades. */
+  palette: { source: string; inside?: string; colours: ColourJson[] }
+  failures: FailureJson[]
+}
+
+/** One scale step, with WCAG ratios for white and black text on it. */
+export type StepJson = { step: number; hex: string; oklch: string; white: number; black: number }
+
+export type ScaleJson = {
+  forge: string
+  ok: boolean
+  scale: { reference: string; steps: StepJson[] }
+  failures: FailureJson[]
+}
+
+export function paletteJson(forge: string, palette: PaletteJson['palette']): PaletteJson {
+  return { forge, ok: true, palette, failures: [] }
+}
+
+export function scaleJson(forge: string, scale: ScaleJson['scale']): ScaleJson {
+  return { forge, ok: true, scale, failures: [] }
+}
+
 /** A failure as `execute` and `runPlan` carry one. Empty or absent `path`: the command's own. */
 export interface FailureLike {
   path?: string

@@ -119,6 +119,36 @@ describe('palette contrast', () => {
     expect(contrast(LIGHT.border, LIGHT_BG)).toBeGreaterThanOrEqual(2.9)
   })
 
+  it('dark greys are neutral: no blue tint anywhere', () => {
+    const greys = [
+      'fg',
+      'dim',
+      'border',
+      'faint',
+      'selectionBg',
+      'band',
+      'keycapBg',
+      'listBand',
+      'panelBand',
+      'track',
+      'trackFill',
+      'thumb',
+      'folderChip',
+      'pill',
+      'fieldBand',
+    ] as const
+    for (const k of greys) {
+      const h = DARK[k]
+      expect(h.slice(1, 3), `DARK.${k}`).toBe(h.slice(3, 5))
+      expect(h.slice(3, 5), `DARK.${k}`).toBe(h.slice(5, 7))
+    }
+  })
+
+  it('secondary text reads at AAA on the canvas, dim labels at 4:1', () => {
+    expect(contrast(DARK.dim, DARK_BG)).toBeGreaterThanOrEqual(7)
+    expect(contrast(DARK.border, DARK_BG)).toBeGreaterThanOrEqual(4)
+  })
+
   it('each palette is unreadable on the other background, which is why there are two', () => {
     // Not a curiosity: this is the failure the theme setting exists to avoid,
     // and it is worth pinning that it really is a failure.

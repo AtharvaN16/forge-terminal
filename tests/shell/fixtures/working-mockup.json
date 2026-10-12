@@ -26,23 +26,23 @@
         ["╱", "#4f7b92", null, false],
         ["╱", "#4b7288", null, false],
         [" ", null, null, false],
-        ["AVIF", "#8b93a6", null, false],
+        ["AVIF", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#75aeda", null, false],
         [" ", null, null, false],
-        ["60", "#8b93a6", null, false],
+        ["60", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#5d7f9f", null, false],
         [" ", null, null, false],
-        ["Desktop", "#8b93a6", null, false],
+        ["Desktop", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#83a4dc", null, false],
         [" ", null, null, false],
-        ["photo.avif", "#8b93a6", null, false],
+        ["photo.avif", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#909cde", null, false],
         [" ", null, null, false],
-        ["Converting", "#e4e8f0", null, true],
+        ["Converting", "#e7e7e7", null, true],
         [" ", null, null, false],
         ["╱", "#9990da", null, false],
         ["╱", "#9d93df", null, false],
@@ -58,30 +58,30 @@
       ],
       [
         ["  ", null, null, false],
-        ["╭─ ", "#5f6879", null, false],
+        ["╭─ ", "#808080", null, false],
         ["HEIC", "#55c7d9", null, true],
-        [" ───────────────────────────────────────────╮", "#5f6879", null, false],
+        [" ───────────────────────────────────────────╮", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["photo.heic", "#8b93a6", null, true],
+        ["│ ", "#808080", null, false],
+        ["photo.heic", "#b0b0b0", null, true],
         ["                                      ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["4032×3024 · 2.4 MB", "#8b93a6", null, false],
+        ["│ ", "#808080", null, false],
+        ["4032×3024 · 2.4 MB", "#b0b0b0", null, false],
         ["                              ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["╰──────────────────────────────────────────────────╯", "#5f6879", null, false],
+        ["╰──────────────────────────────────────────────────╯", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
@@ -96,7 +96,7 @@
         ["   ", null, null, false],
         ["⠦", "#55c7d9", null, true],
         [" ", null, null, false],
-        ["Decoding", "#e4e8f0", null, true],
+        ["Decoding", "#e7e7e7", null, true],
         ["                                                                   ", null, null, false]
       ],
       [
@@ -221,7 +221,7 @@
       ],
       [
         ["                                ", null, null, false],
-        ["nothing is saved until it is done · ctrl-c quit", "#5f6879", null, false],
+        ["nothing is saved until it is done · ctrl-c quit", "#808080", null, false],
         [" ", null, null, false]
       ]
     ]
@@ -253,23 +253,23 @@
         ["╱", "#6bafd3", null, false],
         ["╱", "#65a2c5", null, false],
         [" ", null, null, false],
-        ["AVIF", "#8b93a6", null, false],
+        ["AVIF", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#5a809e", null, false],
         [" ", null, null, false],
-        ["60", "#8b93a6", null, false],
+        ["60", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#79abdb", null, false],
         [" ", null, null, false],
-        ["Desktop", "#8b93a6", null, false],
+        ["Desktop", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#6f89b5", null, false],
         [" ", null, null, false],
-        ["photo.avif", "#8b93a6", null, false],
+        ["photo.avif", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#6f77a6", null, false],
         [" ", null, null, false],
-        ["Converting", "#e4e8f0", null, true],
+        ["Converting", "#e7e7e7", null, true],
         [" ", null, null, false],
         ["╱", "#6e6899", null, false],
         ["╱", "#7a73aa", null, false],
@@ -285,30 +285,30 @@
       ],
       [
         ["  ", null, null, false],
-        ["╭─ ", "#5f6879", null, false],
+        ["╭─ ", "#808080", null, false],
         ["HEIC", "#55c7d9", null, true],
-        [" ───────────────────────────────────────────╮", "#5f6879", null, false],
+        [" ───────────────────────────────────────────╮", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["photo.heic", "#8b93a6", null, true],
+        ["│ ", "#808080", null, false],
+        ["photo.heic", "#b0b0b0", null, true],
         ["                                      ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["4032×3024 · 2.4 MB", "#8b93a6", null, false],
+        ["│ ", "#808080", null, false],
+        ["4032×3024 · 2.4 MB", "#b0b0b0", null, false],
         ["                              ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["╰──────────────────────────────────────────────────╯", "#5f6879", null, false],
+        ["╰──────────────────────────────────────────────────╯", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
@@ -323,9 +323,9 @@
         ["   ", null, null, false],
         ["⠋", "#55c7d9", null, true],
         [" ", null, null, false],
-        ["Encoding AVIF", "#e4e8f0", null, true],
+        ["Encoding AVIF", "#e7e7e7", null, true],
         ["                                             ", null, null, false],
-        ["4.0s", "#5f6879", null, false],
+        ["4.0s", "#808080", null, false],
         ["             ", null, null, false]
       ],
       [
@@ -450,7 +450,7 @@
       ],
       [
         ["                                ", null, null, false],
-        ["nothing is saved until it is done · ctrl-c quit", "#5f6879", null, false],
+        ["nothing is saved until it is done · ctrl-c quit", "#808080", null, false],
         [" ", null, null, false]
       ]
     ]
@@ -473,23 +473,23 @@
         ["╱", "#5b9c7b", null, false],
         ["╱", "#538c70", null, false],
         [" ", null, null, false],
-        ["To a size", "#8b93a6", null, false],
+        ["To a size", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#5ea98f", null, false],
         [" ", null, null, false],
-        ["50 KB", "#8b93a6", null, false],
+        ["50 KB", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#5cad98", null, false],
         [" ", null, null, false],
-        ["Desktop", "#8b93a6", null, false],
+        ["Desktop", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#457c73", null, false],
         [" ", null, null, false],
-        ["photo.jpg", "#8b93a6", null, false],
+        ["photo.jpg", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#458481", null, false],
         [" ", null, null, false],
-        ["Compressing", "#e4e8f0", null, true],
+        ["Compressing", "#e7e7e7", null, true],
         [" ", null, null, false],
         ["╱", "#418287", null, false],
         ["╱", "#3f7b80", null, false],
@@ -505,30 +505,30 @@
       ],
       [
         ["  ", null, null, false],
-        ["╭─ ", "#5f6879", null, false],
+        ["╭─ ", "#808080", null, false],
         ["JPEG", "#79c98b", null, true],
-        [" ───────────────────────────────────────────╮", "#5f6879", null, false],
+        [" ───────────────────────────────────────────╮", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["photo.jpg", "#8b93a6", null, true],
+        ["│ ", "#808080", null, false],
+        ["photo.jpg", "#b0b0b0", null, true],
         ["                                       ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["4032×3024 · 2.1 MB", "#8b93a6", null, false],
+        ["│ ", "#808080", null, false],
+        ["4032×3024 · 2.1 MB", "#b0b0b0", null, false],
         ["                              ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["╰──────────────────────────────────────────────────╯", "#5f6879", null, false],
+        ["╰──────────────────────────────────────────────────╯", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
@@ -543,7 +543,7 @@
         ["   ", null, null, false],
         ["⠦", "#79c98b", null, true],
         [" ", null, null, false],
-        ["Finding the right quality", "#e4e8f0", null, true],
+        ["Finding the right quality", "#e7e7e7", null, true],
         ["                                                  ", null, null, false]
       ],
       [
@@ -557,7 +557,7 @@
       [
         ["     ", null, null, false],
         ["● ● ● ", "#79c98b", null, false],
-        ["○ ○ ○ ○ ○ ", "#3d4350", null, false],
+        ["○ ○ ○ ○ ○ ", "#4d4d4d", null, false],
         ["                                                           ", null, null, false]
       ],
       [
@@ -666,11 +666,11 @@
       ],
       [
         ["   ", null, null, false],
-        [" esc ", "#e4e8f0", "#2e3340", true],
+        [" esc ", "#e7e7e7", "#333333", true],
         [" ", null, null, false],
-        ["stop", "#8b93a6", null, false],
+        ["stop", "#b0b0b0", null, false],
         ["                                                       ", null, null, false],
-        ["ctrl-c quit", "#5f6879", null, false],
+        ["ctrl-c quit", "#808080", null, false],
         [" ", null, null, false]
       ]
     ]
@@ -711,19 +711,19 @@
         ["╱", "#9b5635", null, false],
         ["╱", "#945433", null, false],
         [" ", null, null, false],
-        ["Split", "#8b93a6", null, false],
+        ["Split", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#ef8342", null, false],
         [" ", null, null, false],
-        ["every page", "#8b93a6", null, false],
+        ["every page", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#ef8d41", null, false],
         [" ", null, null, false],
-        ["Desktop", "#8b93a6", null, false],
+        ["Desktop", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#b87537", null, false],
         [" ", null, null, false],
-        ["Splitting", "#e4e8f0", null, true],
+        ["Splitting", "#e7e7e7", null, true],
         [" ", null, null, false],
         ["╱", "#956831", null, false],
         ["╱", "#a47233", null, false],
@@ -739,30 +739,30 @@
       ],
       [
         ["  ", null, null, false],
-        ["╭─ ", "#5f6879", null, false],
+        ["╭─ ", "#808080", null, false],
         ["PDF", "#ff6b4a", null, true],
-        [" ────────────────────────────────────────────╮", "#5f6879", null, false],
+        [" ────────────────────────────────────────────╮", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["report.pdf", "#8b93a6", null, true],
+        ["│ ", "#808080", null, false],
+        ["report.pdf", "#b0b0b0", null, true],
         ["                                      ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["12 pages · 3.4 MB", "#8b93a6", null, false],
+        ["│ ", "#808080", null, false],
+        ["12 pages · 3.4 MB", "#b0b0b0", null, false],
         ["                               ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["╰──────────────────────────────────────────────────╯", "#5f6879", null, false],
+        ["╰──────────────────────────────────────────────────╯", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
@@ -777,7 +777,7 @@
         ["   ", null, null, false],
         ["⠹", "#ff6b4a", null, true],
         [" ", null, null, false],
-        ["Splitting report.pdf", "#e4e8f0", null, true],
+        ["Splitting report.pdf", "#e7e7e7", null, true],
         ["                                                       ", null, null, false]
       ],
       [
@@ -791,8 +791,8 @@
       [
         ["     ", null, null, false],
         ["████████", "#ff6b4a", null, false],
-        ["██████████████████████", "#2a2e37", null, false],
-        ["  page 3 of 12", "#8b93a6", null, false],
+        ["██████████████████████", "#2e2e2e", null, false],
+        ["  page 3 of 12", "#b0b0b0", null, false],
         ["                               ", null, null, false]
       ],
       [
@@ -901,7 +901,7 @@
       ],
       [
         ["                                ", null, null, false],
-        ["nothing is saved until it is done · ctrl-c quit", "#5f6879", null, false],
+        ["nothing is saved until it is done · ctrl-c quit", "#808080", null, false],
         [" ", null, null, false]
       ]
     ]
@@ -942,19 +942,19 @@
         ["╱", "#955434", null, false],
         ["╱", "#9d5835", null, false],
         [" ", null, null, false],
-        ["Split", "#8b93a6", null, false],
+        ["Split", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#d8783e", null, false],
         [" ", null, null, false],
-        ["every page", "#8b93a6", null, false],
+        ["every page", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#e3873f", null, false],
         [" ", null, null, false],
-        ["Desktop", "#8b93a6", null, false],
+        ["Desktop", "#b0b0b0", null, false],
         [" ", null, null, false],
         ["╱", "#d7873c", null, false],
         [" ", null, null, false],
-        ["Splitting", "#e4e8f0", null, true],
+        ["Splitting", "#e7e7e7", null, true],
         [" ", null, null, false],
         ["╱", "#af7835", null, false],
         ["╱", "#c38538", null, false],
@@ -970,30 +970,30 @@
       ],
       [
         ["  ", null, null, false],
-        ["╭─ ", "#5f6879", null, false],
+        ["╭─ ", "#808080", null, false],
         ["PDF", "#ff6b4a", null, true],
-        [" ────────────────────────────────────────────╮", "#5f6879", null, false],
+        [" ────────────────────────────────────────────╮", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["report.pdf", "#8b93a6", null, true],
+        ["│ ", "#808080", null, false],
+        ["report.pdf", "#b0b0b0", null, true],
         ["                                      ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["│ ", "#5f6879", null, false],
-        ["12 pages · 3.4 MB", "#8b93a6", null, false],
+        ["│ ", "#808080", null, false],
+        ["12 pages · 3.4 MB", "#b0b0b0", null, false],
         ["                               ", null, null, false],
-        [" │", "#5f6879", null, false],
+        [" │", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
         ["  ", null, null, false],
-        ["╰──────────────────────────────────────────────────╯", "#5f6879", null, false],
+        ["╰──────────────────────────────────────────────────╯", "#808080", null, false],
         ["                          ", null, null, false]
       ],
       [
@@ -1008,9 +1008,9 @@
         ["   ", null, null, false],
         ["⠇", "#ff6b4a", null, true],
         [" ", null, null, false],
-        ["Splitting report.pdf", "#e4e8f0", null, true],
+        ["Splitting report.pdf", "#e7e7e7", null, true],
         ["                                      ", null, null, false],
-        ["3.8s", "#5f6879", null, false],
+        ["3.8s", "#808080", null, false],
         ["             ", null, null, false]
       ],
       [
@@ -1024,7 +1024,7 @@
       [
         ["     ", null, null, false],
         ["██████████████████████████████", "#ff6b4a", null, false],
-        ["  page 12 of 12", "#8b93a6", null, false],
+        ["  page 12 of 12", "#b0b0b0", null, false],
         ["                              ", null, null, false]
       ],
       [
@@ -1133,7 +1133,7 @@
       ],
       [
         ["                                ", null, null, false],
-        ["nothing is saved until it is done · ctrl-c quit", "#5f6879", null, false],
+        ["nothing is saved until it is done · ctrl-c quit", "#808080", null, false],
         [" ", null, null, false]
       ]
     ]
