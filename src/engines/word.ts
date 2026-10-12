@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, extname, join } from 'node:path'
+import { basename, extname, join, win32 } from 'node:path'
 import { promisify } from 'node:util'
 import { writeAtomic } from '../core/atomic.js'
 import { conversionFailed, encryptedSource } from '../core/errors.js'
@@ -114,11 +114,26 @@ export async function probe(path: string): Promise<DocumentInfo> {
 }
 
 /**
- * A Homebrew cask install (`brew install --cask libreoffice`) puts
- * `LibreOffice.app` in `/Applications` but does not add `soffice` to `PATH`
- * — this is the fallback location when the PATH lookup below fails.
+ * Where `soffice` lives when it is not on `PATH`. A Homebrew cask install
+ * (`brew install --cask libreoffice`) puts `LibreOffice.app` in `/Applications`
+ * without adding `soffice` to `PATH`; the Windows installer likewise puts it
+ * under Program Files (64-bit, then 32-bit) without touching `PATH`. Tried in
+ * order after the PATH lookup below fails.
  */
-const CASK_SOFFICE_PATH = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
+export function sofficeCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[] {
+  if (platform === 'win32') {
+    return [
+      win32.join(env.ProgramFiles ?? 'C:\\Program Files', 'LibreOffice', 'program', 'soffice.exe'),
+      win32.join(
+        env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+        'LibreOffice',
+        'program',
+        'soffice.exe',
+      ),
+    ]
+  }
+  return ['/Applications/LibreOffice.app/Contents/MacOS/soffice']
+}
 
 let resolveCallCountForTests = 0
 
@@ -128,14 +143,17 @@ async function resolveSofficePath(): Promise<string | undefined> {
     await execFileAsync('soffice', ['--version'], { timeout: 5000 })
     return 'soffice'
   } catch {
-    // Not on PATH — fall through to the fixed cask location.
+    // Not on PATH — fall through to the fixed install locations.
   }
-  try {
-    await execFileAsync(CASK_SOFFICE_PATH, ['--version'], { timeout: 5000 })
-    return CASK_SOFFICE_PATH
-  } catch {
-    return undefined
+  for (const candidate of sofficeCandidates(process.platform, process.env)) {
+    try {
+      await execFileAsync(candidate, ['--version'], { timeout: 5000 })
+      return candidate
+    } catch {
+      // Not here — try the next one.
+    }
   }
+  return undefined
 }
 
 let sofficePath: Promise<string | undefined> | undefined

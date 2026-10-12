@@ -4,6 +4,7 @@ import {
   getResolveCallCountForTests,
   libreOfficeAvailable,
   resetLibreOfficeCache,
+  sofficeCandidates,
   stopForcingLibreOfficeForTests,
 } from '../../src/engines/word.js'
 
@@ -41,5 +42,25 @@ describe('forcing an answer for tests', () => {
     resetLibreOfficeCache()
     const real = await libreOfficeAvailable()
     expect(real).not.toBe('/fake/soffice')
+  })
+})
+
+describe('sofficeCandidates', () => {
+  it('on darwin is the Homebrew cask location', () => {
+    expect(sofficeCandidates('darwin', {})).toEqual([
+      '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+    ])
+  })
+
+  it('on win32 is 64-bit then 32-bit Program Files, taken from the environment', () => {
+    expect(
+      sofficeCandidates('win32', { ProgramFiles: 'D:\\Apps', 'ProgramFiles(x86)': 'D:\\Apps86' }),
+    ).toEqual([
+      'D:\\Apps\\LibreOffice\\program\\soffice.exe',
+      'D:\\Apps86\\LibreOffice\\program\\soffice.exe',
+    ])
+    expect(sofficeCandidates('win32', {})[0]).toBe(
+      'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+    )
   })
 })
