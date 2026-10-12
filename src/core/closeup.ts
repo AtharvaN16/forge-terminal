@@ -11,21 +11,29 @@ import { loadSharp } from '../engines/libs.js'
  * place and hands back the pixels; drawing them is the shell's job. Data only
  * (invariant 1).
  *
- * Scale, as decided in the mockup (mockups/extensions-2026-10.html, "2 ·
- * Done", sources /tmp/forge-ext-mock2/images3.cjs):
+ * The shell draws the grids in sextants (shell/sextants.ts): each cell
+ * 2 × 3 dots. A cell is about twice as tall as it is wide, so a dot is not
+ * square; a pixel here is one dot tall and 4/3 of a dot wide, which is.
  *
- *   - Sharpen (scale 1): one half-block is one pixel, before and after.
+ * Scale, as decided in the mockup (mockups/extensions-2026-10.html, "2 ·
+ * Done", sources /tmp/forge-ext-mock2/images3.cjs), kept zoomed in when the
+ * dots went from half-blocks to sextants (2026-10-12):
+ *
+ *   - Sharpen (scale 1): one pixel of each file is one pixel here.
  *   - Boost 2×: the original's pixels drawn as 2 × 2 blocks, next to the new
- *     pixels one half-block each.
+ *     pixels one each.
  *   - Boost 4×: drawn at half, so a whole word fits: the original's pixels as
  *     2 × 2 blocks, the boost shrunk by half. At 1:1 the 4 × 4 blocks held
  *     only part of a letter.
  *   - A cutout (the after has transparency the before did not): the subject
- *     whole, the photo and the cutout fitted to the same box, the cutout on
- *     a checkerboard.
+ *     whole with room around it, the photo and the cutout fitted to the same
+ *     box, the cutout on a checkerboard.
  */
 
-/** Pixels, RGBA, row-major. `height` is even: two pixels per half-block row. */
+/**
+ * Pixels, RGBA, row-major. A close-up's are dots: `width` a multiple of
+ * `DOTS_ACROSS`, `height` of `DOTS_DOWN`, one sextant cell each.
+ */
 export interface PixelGrid {
   width: number
   height: number
@@ -46,19 +54,23 @@ export interface Closeup {
   box: CloseupBox
   /** `patch`: a close-up at pixel scale. `subject`: a cutout, whole. */
   kind: 'patch' | 'subject'
-  /** How many half-blocks a side one pixel of the before image covers (patch only). */
+  /** How many pixels here a side one pixel of the before image covers (patch only). */
   blocksPerPixel: number
   /** The after image's size, for the line above the pictures. */
   output: { width: number; height: number }
 }
 
 export interface CloseupOptions {
-  /** Columns the grid may use: its width in pixels. */
+  /** Columns the grid may use: its width is `DOTS_ACROSS` dots a column. */
   cols: number
-  /** Rows the grid may use: its height is twice this, in pixels. */
+  /** Rows the grid may use: its height is `DOTS_DOWN` dots a row. */
   rows: number
   scale: 1 | 2 | 4
 }
+
+/** Dots in a cell: a sextant's 2 across, 3 down. */
+export const DOTS_ACROSS = 2
+export const DOTS_DOWN = 3
 
 /** The checkerboard behind transparency, as the mockup draws it (done5.js `CHK2`). */
 export const CHECKER: readonly [number, number] = [0x4a, 0x33]
@@ -118,15 +130,15 @@ async function rgba(p: Sharp): Promise<PixelGrid> {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-/** Lays each translucent pixel over a checkerboard of `square`-pixel squares. */
-export function onChecker(grid: PixelGrid, square = 2): PixelGrid {
+/** Lays each translucent pixel over a checkerboard of `square` × `squareDown`-pixel squares. */
+export function onChecker(grid: PixelGrid, square = 2, squareDown = square): PixelGrid {
   const out = new Uint8Array(grid.rgba)
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       const i = (y * grid.width + x) * 4
       const a = (out[i + 3] ?? 255) / 255
       if (a === 1) continue
-      const back = CHECKER[(Math.floor(x / square) + Math.floor(y / square)) & 1] ?? 0
+      const back = CHECKER[(Math.floor(x / square) + Math.floor(y / squareDown)) & 1] ?? 0
       for (let c = 0; c < 3; c++) out[i + c] = Math.round(back + ((out[i + c] ?? 0) - back) * a)
       out[i + 3] = 255
     }
@@ -243,7 +255,16 @@ function subjectBox(sr: Search): CloseupBox {
   return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
 }
 
-/** A box of aspect `aw:ah` around the subject, its full height, inside the image. */
+/**
+ * How wide the box is at least, as a multiple of the subject's width. The
+ * mockup framed a person standing in a wide photo — full height, the box's
+ * shape gave background either side. A wide subject (a card, a car) framed at
+ * its own height fills the box edge to edge, and before and after are the
+ * same picture: what was removed is all outside it.
+ */
+const SUBJECT_ROOM = 1.3
+
+/** A box of aspect `aw:ah` around the subject, its full height, room either side, inside the image. */
 function frameSubject(
   sub: CloseupBox,
   s: number,
@@ -253,14 +274,15 @@ function frameSubject(
   ah: number,
 ): CloseupBox {
   const sx = { x: sub.x / s, y: sub.y / s, w: sub.w / s, h: sub.h / s }
-  let h = Math.min(H, sx.h * 1.04)
+  let h = Math.min(H, Math.max(sx.h * 1.04, (sx.w * SUBJECT_ROOM * ah) / aw))
   let w = (h * aw) / ah
   if (w > W) {
     w = W
     h = Math.min(H, (w * ah) / aw)
   }
   const x = clamp(sx.x + sx.w / 2 - w / 2, 0, W - w)
-  const y = clamp(sx.y - sx.h * 0.02, 0, H - h)
+  // Centred: for a tall subject (h = 1.04 · its height) that is 2 % above it.
+  const y = clamp(sx.y + sx.h / 2 - h / 2, 0, H - h)
   return {
     x: Math.round(x),
     y: Math.round(y),
@@ -344,11 +366,17 @@ function patchBox(c: Chosen, bw: number, bh: number): CloseupBox {
   }
 }
 
+/** A checker square on the dots: two cells across, one down, so each cell is one colour. */
+const CELL_CHECKER = [2 * DOTS_ACROSS, DOTS_DOWN] as const
+
+/** `n` rounded down to a whole number of `per`, at least one. */
+const whole = (n: number, per: number) => Math.max(per, Math.floor(n / per) * per)
+
 /**
- * The close-up for the half-block fallback: the most-changed patch at true
- * pixel scale (or the whole subject of a cutout), as two grids of the same
- * size, at most `cols` × `2 · rows` pixels. Translucent pixels are laid on
- * the checkerboard.
+ * The close-up for the fallback drawn in characters: the most-changed patch
+ * at true pixel scale (or the whole subject of a cutout), as two grids of
+ * the same size, at most `cols` × `rows` cells of dots. Translucent pixels
+ * are laid on the checkerboard.
  */
 export async function findCloseup(
   before: string,
@@ -358,19 +386,27 @@ export async function findCloseup(
   const c = await choose(before, after, opts.scale)
   const { k, sr } = c
   const output = { width: c.after.width, height: c.after.height }
-  const gw = Math.max(1, opts.cols)
-  const gh = Math.max(2, opts.rows * 2)
+  const gw = Math.max(1, opts.cols) * DOTS_ACROSS
+  const gh = Math.max(1, opts.rows) * DOTS_DOWN
 
   if (sr.cutout) {
-    const box = frameSubject(subjectBox(sr), sr.s, c.before.width, c.before.height, gw, gh)
+    // The box's shape on screen: a cell is about twice as tall as it is wide.
+    const box = frameSubject(
+      subjectBox(sr),
+      sr.s,
+      c.before.width,
+      c.before.height,
+      opts.cols,
+      opts.rows * 2,
+    )
     const fit = { width: gw, height: gh, fit: 'fill' as const }
     const b = await rgba((await pipeline(c.before)).extract(region(box)).resize(fit))
     const a = await rgba(
       (await pipeline(c.after)).extract(region(inAfter(box, c.before, c.after))).resize(fit),
     )
     return {
-      before: onChecker(b),
-      after: onChecker(a),
+      before: onChecker(b, ...CELL_CHECKER),
+      after: onChecker(a, ...CELL_CHECKER),
       box,
       kind: 'subject',
       blocksPerPixel: 0,
@@ -378,11 +414,12 @@ export async function findCloseup(
     }
   }
 
-  // The patch, in before pixels: the grid divided by the display factor,
-  // even-height in display pixels so it fills whole half-block rows.
-  const box = patchBox(c, Math.floor(gw / k), Math.floor(gh / k))
-  const dw = box.w * k
-  const dh = box.h * k - ((box.h * k) % 2)
+  // A pixel here is one dot tall and 4/3 wide: square on screen. The patch,
+  // in before pixels, is the grid in those pixels over the display factor;
+  // drawn on whole cells of dots.
+  const box = patchBox(c, Math.floor((gw * 3) / 4 / k), Math.floor(gh / k))
+  const dw = whole(Math.round((box.w * k * 4) / 3), DOTS_ACROSS)
+  const dh = whole(box.h * k, DOTS_DOWN)
   const b = await rgba(
     (await pipeline(c.before))
       .extract(region(box))
@@ -394,8 +431,8 @@ export async function findCloseup(
       .resize(dw, dh, { fit: 'fill', kernel: 'lanczos3' }),
   )
   return {
-    before: onChecker(b),
-    after: onChecker(a),
+    before: onChecker(b, ...CELL_CHECKER),
+    after: onChecker(a, ...CELL_CHECKER),
     box,
     kind: 'patch',
     blocksPerPixel: k,

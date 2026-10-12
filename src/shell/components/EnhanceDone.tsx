@@ -7,13 +7,14 @@ import {
   type Closeup,
   type CloseupPictures,
   closeupPictures,
+  DOTS_ACROSS,
   findCloseup,
   forgetCloseup,
-  type PixelGrid,
 } from '../../core/closeup.js'
 import { displayPath } from '../../utils/display-path.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
+import { sextants } from '../sextants.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeColours, SYMBOLS } from '../theme.js'
 import { useInlinePictures } from '../useInlinePictures.js'
@@ -29,8 +30,9 @@ import { middleEllipsis } from '../width.js'
  * Where the terminal draws images (iTerm2, WezTerm, Kitty, Ghostty) the
  * pictures are the real files, written over blank boxes Ink reserves (see
  * useInlinePictures for why and how). Elsewhere — Apple Terminal, NO_COLOR, a
- * pipe — a half-block close-up of where the result changed most, at true
- * pixel scale (core/closeup.ts). Cutouts sit on a checkerboard either way.
+ * pipe — a close-up drawn in sextants (shell/sextants.ts) of where the result
+ * changed most, at true pixel scale (core/closeup.ts). Cutouts sit on a
+ * checkerboard either way.
  *
  * Pure presentation: the keys (↵ enhance another · o open · s show in
  * Finder) and the header bar belong to the App.
@@ -90,36 +92,6 @@ export function whatWasDone(
   return { what: `${scale}× resolution`, more: dims }
 }
 
-/**
- * A grid as rows of ▀: the upper pixel the foreground, the lower the
- * background, a run of equal cells styled once. Styled through chalk, the
- * same chalk Ink draws with, so its colour level holds: FORCE_COLOR, and
- * NO_COLOR (mapped to it at start-up, `applyColourPreference`), and 256 or
- * 16 colours where the terminal has no true colour. One string per row — a
- * few hundred <Text> elements per picture would cost more than they say.
- */
-export function halfBlocks(g: PixelGrid): string[] {
-  const at = (x: number, y: number): [number, number, number] => {
-    const i = (y * g.width + x) * 4
-    return [g.rgba[i] ?? 0, g.rgba[i + 1] ?? 0, g.rgba[i + 2] ?? 0]
-  }
-  const same = (p: number[], q: number[]) => p[0] === q[0] && p[1] === q[1] && p[2] === q[2]
-  const out: string[] = []
-  for (let y = 0; y + 1 < g.height; y += 2) {
-    let row = ''
-    for (let x = 0; x < g.width; ) {
-      const top = at(x, y)
-      const low = at(x, y + 1)
-      let n = 1
-      while (x + n < g.width && same(at(x + n, y), top) && same(at(x + n, y + 1), low)) n++
-      row += chalk.rgb(...top).bgRgb(...low)('▀'.repeat(n))
-      x += n
-    }
-    out.push(row)
-  }
-  return out
-}
-
 function folderOf(savedTo: string, after: string): string {
   const folder = savedTo === after ? dirname(after) : savedTo
   return isAbsolute(folder) ? displayPath(folder) : folder
@@ -128,8 +100,8 @@ function folderOf(savedTo: string, after: string): string {
 function caption(kind: 'patch' | 'subject', k: number, real: boolean): string {
   if (real) return kind === 'subject' ? 'the real pictures' : 'the real pictures, at full quality'
   if (kind === 'subject') return 'the photo, and the subject on its own'
-  if (k > 1) return 'same patch · each 2 × 2 block on the left is one pixel you had'
-  return 'where it changed most, same size · one square is one pixel'
+  if (k > 1) return 'same patch · each block on the left is one pixel you had'
+  return 'where it changed most, same size · close enough to see each pixel'
 }
 
 type Shown =
@@ -202,12 +174,10 @@ export function EnhanceDone({
   const folder = room >= 8 ? middleEllipsis(folderOf(savedTo, after), room) : ''
   const grids = useMemo(
     () =>
-      closeup
-        ? { before: halfBlocks(closeup.before), after: halfBlocks(closeup.after) }
-        : undefined,
+      closeup ? { before: sextants(closeup.before), after: sextants(closeup.after) } : undefined,
     [closeup],
   )
-  const pictureWidth = closeup ? closeup.before.width : cols
+  const pictureWidth = closeup ? closeup.before.width / DOTS_ACROSS : cols
   const height = grids ? grids.before.length : rows
   const mid = Math.floor(height / 2)
   const failed = rows === 0 || (shown !== undefined && 'failed' in shown)

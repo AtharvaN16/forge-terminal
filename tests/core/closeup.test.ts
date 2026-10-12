@@ -38,7 +38,7 @@ const inside = (x: number, y: number, x0: number, y0: number, s: number) =>
   x >= x0 && x < x0 + s && y >= y0 && y < y0 + s
 
 describe('findCloseup', () => {
-  it('cuts a sharpen where it changed, one pixel a half-block', async () => {
+  it('cuts a sharpen where it changed, each pixel square: a dot tall, 4/3 of one wide', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
     const before = await png(dir, 'a.png', 64, 48, grey)
     const after = await png(dir, 'b.png', 64, 48, (x, y) =>
@@ -46,18 +46,19 @@ describe('findCloseup', () => {
     )
     const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1 })
     expect(c.kind).toBe('patch')
-    expect(c.box).toMatchObject({ w: 16, h: 16 })
+    // 16 × 8 cells are 32 × 24 dots: 24 pixels across (32 · 3/4), 24 down.
+    expect(c.box).toMatchObject({ w: 24, h: 24 })
     expect(c.box.x).toBeLessThanOrEqual(44)
     expect(c.box.x + c.box.w).toBeGreaterThanOrEqual(54)
     expect(c.box.y).toBeLessThanOrEqual(6)
     expect(c.box.y + c.box.h).toBeGreaterThanOrEqual(16)
     expect([c.before.width, c.before.height, c.after.width, c.after.height]).toEqual([
-      16, 16, 16, 16,
+      32, 24, 32, 24,
     ])
     expect(c.output).toEqual({ width: 64, height: 48 })
   })
 
-  it('draws a 2× boost as the original in 2 × 2 blocks beside the new pixels', async () => {
+  it('draws a 2× boost as the original in blocks beside the new pixels', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
     const before = await png(dir, 'a.png', 32, 24, () => [128, 128, 128, 255])
     // The boost changed one patch: before pixels (4..10, 14..20).
@@ -66,13 +67,13 @@ describe('findCloseup', () => {
     )
     const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 2 })
     expect(c.blocksPerPixel).toBe(2)
-    expect(c.box).toMatchObject({ w: 8, h: 8 })
+    expect(c.box).toMatchObject({ w: 12, h: 12 })
     expect(c.box.x).toBeLessThanOrEqual(4)
     expect(c.box.x + c.box.w).toBeGreaterThanOrEqual(10)
     expect(c.box.y).toBeLessThanOrEqual(14)
     expect(c.box.y + c.box.h).toBeGreaterThanOrEqual(20)
     expect([c.before.width, c.before.height, c.after.width, c.after.height]).toEqual([
-      16, 16, 16, 16,
+      32, 24, 32, 24,
     ])
     expect(c.output).toEqual({ width: 64, height: 48 })
   })
@@ -88,10 +89,38 @@ describe('findCloseup', () => {
     )
     const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1 })
     expect(c.kind).toBe('subject')
-    expect([c.after.width, c.after.height]).toEqual([16, 16])
+    expect([c.after.width, c.after.height]).toEqual([32, 24])
     const alphas = c.after.rgba.filter((_, i) => i % 4 === 3)
     expect(alphas.every((a) => a === 255)).toBe(true)
     // The corner is background: a checker square.
+    expect(CHECKER).toContain(c.after.rgba[0])
+    // Squares are whole cells, two across: 4 × 3 dots, so a cell is one colour.
+    const red = (x: number, y: number) => c.after.rgba[(y * c.after.width + x) * 4]
+    expect([red(3, 0), red(0, 2), red(3, 2)]).toEqual([red(0, 0), red(0, 0), red(0, 0)])
+    expect(red(4, 0)).not.toBe(red(0, 0))
+    expect(red(0, 3)).not.toBe(red(0, 0))
+  })
+
+  it('frames a cutout wider than its subject, so what was removed shows', async () => {
+    // A card: a rectangle the grid's shape, filling its own box. Framed to
+    // that box alone, before and after would be the same opaque card.
+    const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+    const card = (x: number, y: number) => inside(x, y, 20, 20, 40)
+    const before = await png(dir, 'a.png', 80, 80, (x, y) =>
+      card(x, y) ? [220, 30, 30, 255] : [30, 120, 30, 255],
+    )
+    const after = await png(dir, 'b.png', 80, 80, (x, y) =>
+      card(x, y) ? [220, 30, 30, 255] : [0, 0, 0, 0],
+    )
+    const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1 })
+    expect(c.kind).toBe('subject')
+    // The box holds the whole card and background on every side of it.
+    expect(c.box.x).toBeLessThanOrEqual(16)
+    expect(c.box.y).toBeLessThanOrEqual(16)
+    expect(c.box.x + c.box.w).toBeGreaterThanOrEqual(64)
+    expect(c.box.y + c.box.h).toBeGreaterThanOrEqual(64)
+    // Before: the green the card stood on. After: the checkerboard.
+    expect(Array.from(c.before.rgba.subarray(0, 3))).toEqual([30, 120, 30])
     expect(CHECKER).toContain(c.after.rgba[0])
   })
 
