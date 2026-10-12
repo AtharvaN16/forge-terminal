@@ -4,7 +4,10 @@ import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { Runs } from './Home.js'
 import { Prompt } from './Prompt.js'
-import { SIZE_UNIT_IDS, type SizeUnit } from './UnitRow.js'
+/** The units `parseSize` accepts, in the order a person scans them. */
+export const SIZE_UNIT_IDS = ['b', 'kb', 'mb', 'gb'] as const
+
+export type SizeUnit = (typeof SIZE_UNIT_IDS)[number]
 
 const LABELS: Record<SizeUnit, string> = { b: 'B', kb: 'KB', mb: 'MB', gb: 'GB' }
 
