@@ -4,6 +4,7 @@ import { render } from 'ink-testing-library'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
+import { extensionDownloadFailed } from '../../src/core/errors.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
@@ -112,4 +113,93 @@ describe('enhance mode', () => {
     const meta = await sharp(out).metadata()
     expect([meta.width, meta.height, meta.hasAlpha]).toEqual([4100, 50, true])
   }, 120_000)
+
+  /** Tools where only boost is installed; `install` is the test's. */
+  const someTools = (install: EnhanceTools['install'], installed: Set<string>): EnhanceTools => ({
+    async list() {
+      return CATALOG.map(
+        (entry): ExtensionStatus => ({
+          entry,
+          ...(installed.has(entry.id) ? { installed: entry.version } : {}),
+          updateAvailable: false,
+          supported: true,
+          downloadBytes: 32_489,
+        }),
+      )
+    },
+    install,
+  })
+
+  /** /enhance, a small PNG, and the cursor on Remove background (not installed). */
+  async function atRemoveBackground(tools: EnhanceTools) {
+    const dir = await makeTempDir()
+    const png = join(dir, 'tile.png')
+    await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
+      .png()
+      .toFile(png)
+    const app = render(
+      <App
+        initialWidth={80}
+        initialHeight={24}
+        prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
+        tools={tools}
+      />,
+    )
+    const frame = () => app.lastFrame() ?? ''
+    app.stdin.write('/enhance')
+    await settle()
+    app.stdin.write(ENTER)
+    await settle()
+    app.stdin.write(png)
+    await until(() => frame().includes('tile.png'))
+    app.stdin.write(ENTER)
+    await until(() => frame().includes('Enhance PNG'))
+    await settle(300)
+    for (let i = 0; i < 3; i++) {
+      app.stdin.write(DOWN)
+      await settle(60)
+    }
+    await until(() => frame().includes('32.5 KB download · ↵ installs'))
+    return { app, frame }
+  }
+
+  it('esc while checking leaves the picker usable, the row saying what is really on disk', async () => {
+    const installed = new Set<string>(['boost'])
+    let finish: () => void = () => {}
+    const tools = someTools(async (id, { onProgress }) => {
+      onProgress(32_489, 32_489)
+      // The stop lands after the swap: the tool ends up installed anyway.
+      await new Promise<void>((r) => {
+        finish = r
+      })
+      installed.add(id)
+    }, installed)
+    const { app, frame } = await atRemoveBackground(tools)
+
+    app.stdin.write(ENTER)
+    await until(() => frame().includes('checking'))
+    app.stdin.write(ESC)
+    await settle(100)
+    finish()
+    // Not stuck on "checking": the row is ready, and the picker moves again.
+    await until(() => frame().includes('transparent PNG'))
+    expect(frame()).not.toContain('checking')
+    expect(frame()).not.toContain('Save as')
+    app.stdin.write(`${ESC}[A`)
+    await until(() => frame().includes('4800 × 3600') || frame().includes('160 × 120'))
+    expect(frame()).toContain('160 × 120')
+  }, 60_000)
+
+  it('a failed download from the picker says why, and the row offers the download again', async () => {
+    const tools = someTools(async (id, { onProgress }) => {
+      onProgress(1_000, 32_489)
+      throw extensionDownloadFailed(id, 'could not reach github.com.')
+    }, new Set(['boost']))
+    const { app, frame } = await atRemoveBackground(tools)
+
+    app.stdin.write(ENTER)
+    await until(() => frame().includes('Download failed'))
+    await until(() => frame().includes('32.5 KB download · ↵ installs'))
+    expect(frame()).toContain('could not reach github.com')
+  }, 60_000)
 })

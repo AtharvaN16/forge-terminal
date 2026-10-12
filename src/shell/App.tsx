@@ -2363,21 +2363,24 @@ export function App({
     tools.list().then(
       (all) => {
         if (!live) return
-        setToolStates((prev) => {
-          const next: Partial<Record<'boost' | 'remove-background', ToolState>> = {}
-          for (const s of all) {
-            const was = prev?.[s.entry.id]
-            next[s.entry.id] = was?.kind === 'installing' ? was : toolState(s)
-          }
-          return next
-        })
+        // Always what is on disk: an install is never carried across a
+        // reopen (leaving the picker stops it, below).
+        const next: Partial<Record<'boost' | 'remove-background', ToolState>> = {}
+        for (const s of all) next[s.entry.id] = toolState(s)
+        setToolStates(next)
       },
       (e) => {
-        if (live) showError(e)
+        if (!live) return
+        // An ordinary error block, and home: the picker has nothing to draw.
+        showError(e)
+        setStage(clearStage())
+        setValues({})
+        setStep('idle')
       },
     )
     return () => {
       live = false
+      installAbort.current?.abort()
     }
   }, [step, tools, showError])
 
@@ -2407,6 +2410,7 @@ export function App({
       total: absent?.kind === 'absent' ? absent.downloadBytes : 0,
     })
     setChecking(false)
+    let installed = false
     try {
       await tools.install(id, {
         signal: controller.signal,
@@ -2416,18 +2420,21 @@ export function App({
           if (total > 0 && done >= total) setChecking(true)
         },
       })
-      if (controller.signal.aborted) return
-      set({ kind: 'ready' })
-      if (stepRef.current === 'enhance') chooseEnhance(row)
+      installed = true
     } catch (e) {
       if (!controller.signal.aborted) showError(e)
-      const all = await tools.list().catch(() => [])
-      const status = all.find((s) => s.entry.id === id)
-      set(status ? toolState(status) : { kind: 'unsupported', reason: 'not available' })
-    } finally {
-      if (installAbort.current === controller) installAbort.current = undefined
-      setChecking(false)
     }
+    if (installAbort.current === controller) installAbort.current = undefined
+    setChecking(false)
+    if (installed && !controller.signal.aborted) {
+      set({ kind: 'ready' })
+      if (stepRef.current === 'enhance') chooseEnhance(row)
+      return
+    }
+    // Stopped or failed: the row says what is really on disk now. A stop that
+    // landed after the swap leaves the tool installed, and the row says so.
+    const all = await tools.list().catch(() => [])
+    set(toolState(all.find((s) => s.entry.id === id)))
   }
 
   const stopInstall = () => {

@@ -290,6 +290,9 @@ export async function installExtension(
     if (hash.digest('hex') !== asset.sha256) {
       throw extensionCorrupt(id, 'the download does not match its published checksum.')
     }
+    // A stop asked for while "checking" is honoured up to the swap: nothing
+    // is in place yet, and the finally below clears what was unpacked.
+    opts.signal?.throwIfAborted()
 
     try {
       await mkdir(staging, { recursive: true })
@@ -303,6 +306,7 @@ export async function installExtension(
       )
     }
 
+    opts.signal?.throwIfAborted()
     const target = join(base, entry.version)
     await rm(target, { recursive: true, force: true })
     await rename(staging, target)
