@@ -58,7 +58,7 @@ describe('core writeAtomic', () => {
 
 describe('renameAtomic', () => {
   const busy = () => Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' })
-  const noWait = () => vi.fn(async () => {})
+  const noWait = () => vi.fn(async (_ms: number) => {})
 
   it('on win32 retries a transient EBUSY with backoff until it succeeds', async () => {
     rename.mockReset()
