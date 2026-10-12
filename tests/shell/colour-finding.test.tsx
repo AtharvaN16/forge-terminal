@@ -30,6 +30,26 @@ async function waitFor(ok: () => boolean, ms = 10_000) {
   while (!ok() && Date.now() - start < ms) await settle(30)
 }
 
+describe('cancelling an open', () => {
+  it('esc while a dropped image is read: it never lands', async () => {
+    delay.ms = 1200
+    const dir = await makeTempDir()
+    const png = await makeGradientPng(dir, 'g.png', 48)
+    const app = render(
+      <ThemeProvider palette={modePalette(DARK, 'colour')}>
+        <ColourFlow start="palette" width={80} height={24} onCancel={() => {}} />
+      </ThemeProvider>,
+    )
+    await settle(200)
+    app.stdin.write(png)
+    await settle(200)
+    app.stdin.write(String.fromCharCode(27))
+    await settle(2000)
+    expect(plain(app.lastFrame())).not.toMatch(/\d+%/)
+    expect(plain(app.lastFrame())).toContain('type an image path')
+  }, 20_000)
+})
+
 describe('finding colours', () => {
   it('is not said at once; is said while a slow image is read; is gone when the palette is there', async () => {
     delay.ms = 2000

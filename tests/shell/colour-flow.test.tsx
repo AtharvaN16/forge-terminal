@@ -101,6 +101,18 @@ describe('the palette', () => {
     expect(plain(app.lastFrame())).toContain('report.pdf')
   })
 
+  it('a mouse click or scroll on the palette changes nothing', async () => {
+    const dir = await makeTempDir()
+    const { app } = flow({ palette: await makeGradientPng(dir, 'g.png', 64) })
+    await waitFor(() => /\d+%/.test(plain(app.lastFrame())))
+    app.stdin.write(`${ESC}[<0;10;5M`)
+    await settle(300)
+    app.stdin.write(`${ESC}[<65;10;5M`)
+    await settle(300)
+    expect(plain(app.lastFrame())).toContain('› g.png')
+    expect(plain(app.lastFrame())).not.toContain('could not be found')
+  })
+
   it('drops the photo, not the list, on a short terminal', async () => {
     const dir = await makeTempDir()
     const { app } = flow({ palette: await makeGradientPng(dir, 'g.png', 64) }, 18)

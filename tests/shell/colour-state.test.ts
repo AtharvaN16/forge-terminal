@@ -206,6 +206,26 @@ describe('the scale', () => {
   })
 })
 
+describe('cancelling', () => {
+  it('esc in the field while an image opens cancels the open and puts the last value back', () => {
+    const { state, effects } = run(
+      onPalette(),
+      key('/'),
+      { type: 'text', text: '/x/big.png' },
+      { type: 'submit' },
+      { type: 'cancel' },
+    )
+    expect(effects).toContainEqual({ type: 'cancel-open' })
+    expect(state.field).toMatchObject({ text: '/p/sonoma.jpg', focus: false })
+    expect(top(state)?.kind).toBe('palette')
+  })
+
+  it("the field's esc does nothing once the field has lost focus — it never leaves colour", () => {
+    const { effects } = run(onPalette(), { type: 'cancel' })
+    expect(effects).toEqual([])
+  })
+})
+
 describe('leaving, and the flash', () => {
   it('esc on the first screen leaves colour', () => {
     expect(run(initial('scale'), ESC).effects).toContainEqual({ type: 'back' })

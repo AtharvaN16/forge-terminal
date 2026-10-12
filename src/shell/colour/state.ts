@@ -59,6 +59,8 @@ export type Action =
   | { type: 'submit' }
   | { type: 'opened'; path: string; name: string; meta: string }
   | { type: 'refused'; message: string }
+  /** esc in the field's editor: cancel the edit, and any open it started. */
+  | { type: 'cancel' }
   | { type: 'tick' }
 
 export type Effect =
@@ -69,6 +71,8 @@ export type Effect =
   | { type: 'open'; path: string }
   /** Leave colour, back to its home. */
   | { type: 'back' }
+  /** Forget an open still running: what it finds must not land. */
+  | { type: 'cancel-open' }
 
 export interface Ctx {
   /** The hexes listed at a drill level of the open image. */
@@ -335,6 +339,13 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
     }
     case 'refused':
       return same({ ...s, error: action.message, field: { ...s.field, focus: true } })
+    case 'cancel': {
+      // Only the field's own esc sends this, and only while it has focus;
+      // one that arrives after focus has gone is not a reason to leave.
+      if (!s.field.focus) return same(s)
+      const out = onKeyWhileTyping(s, { escape: true })
+      return { state: out.state, effects: [{ type: 'cancel-open' }, ...out.effects] }
+    }
     case 'tick':
       return s.flash && ctx.now >= s.flash.until ? same({ ...s, flash: undefined }) : same(s)
   }

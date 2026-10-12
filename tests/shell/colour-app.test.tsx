@@ -87,6 +87,37 @@ describe("colour's home and screens", () => {
     expect(plain(app.lastFrame())).toContain('report.pdf is a PDF, not an image.')
   }, 20_000)
 
+  it('a mouse scroll or click on colour home is not a dropped path', async () => {
+    const { app } = await colourHome()
+    app.stdin.write(`${ESC}[<64;10;5M`)
+    await settle(400)
+    app.stdin.write(`${ESC}[<0;10;5M`)
+    await settle(400)
+    expect(plain(app.lastFrame())).toContain('the colours of an image')
+    expect(plain(app.lastFrame())).not.toContain('could not be found')
+  }, 20_000)
+
+  it('a path typed after / opens its palette, not convert', async () => {
+    const { app, dir } = await colourHome()
+    const png = await makeGradientPng(dir, 'g.png', 48)
+    app.stdin.write('/')
+    await settle()
+    app.stdin.write(png.slice(1))
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => /\d+%\s*$/m.test(plain(app.lastFrame())))
+    expect(plain(app.lastFrame())).not.toContain('Convert PNG to')
+    expect(plain(app.lastFrame())).toContain('› g.png')
+  }, 20_000)
+
+  it('a hex pasted on colour home opens its scale', async () => {
+    const { app } = await colourHome()
+    app.stdin.write('#6579FD')
+    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    expect(plain(app.lastFrame())).toContain('#6579FD')
+    expect(plain(app.lastFrame())).not.toContain('could not be found')
+  }, 20_000)
+
   it('/ opens the commands in place, as on every home', async () => {
     const { app } = await colourHome()
     app.stdin.write('/')

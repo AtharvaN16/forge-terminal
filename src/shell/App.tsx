@@ -10,6 +10,7 @@ import {
 } from '../config/preferences.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
+import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
   isForgeError,
@@ -54,7 +55,7 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
-import { mouseSupported } from './mouse.js'
+import { isStrayEscapeSequence, mouseSupported } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
@@ -1033,7 +1034,7 @@ export function App({
   }
 
   /** Into the colour flow, opening as `start` says. */
-  const openColour = (start: ColourStart) => {
+  const openColour = useCallback((start: ColourStart) => {
     setColourStart(start)
     setColourTrailNow({
       answers: [],
@@ -1044,7 +1045,7 @@ export function App({
     })
     setText('')
     setStep('colour')
-  }
+  }, [])
 
   /**
    * Colour's home, with nothing typed (colour spec §6.2): ←→ choose a card and
@@ -1055,14 +1056,19 @@ export function App({
    */
   useKeys(
     (input, key) => {
-      if (key.ctrl || key.meta) return
+      if (key.ctrl || key.meta || isStrayEscapeSequence(input)) return
       if (key.leftArrow) setColourChoice(0)
       else if (key.rightArrow) setColourChoice(1)
       else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
       else if (input === '#') openColour({ typed: '#' })
       else if (input === '/') setText('/')
-      else if (input.length > 1) openColour({ palette: input.trim() })
-      else {
+      else if (input.length > 1) {
+        // A pasted colour (a hex copied from Figma, say) is a scale; anything
+        // else pasted or dropped is an image's path.
+        const pasted = input.trim()
+        const rgb = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.test(pasted) ? parseHex(pasted) : undefined
+        openColour(rgb ? { scale: rgb } : { palette: pasted })
+      } else {
         const next = MODE_ORDER[Number(input) - 1]
         if (/^[1-4]$/.test(input) && next && next !== mode) switchMode(next)
       }
@@ -1426,6 +1432,12 @@ export function App({
         }
         return
       }
+      // Colour's home: a path typed after `/` is an image for its palette.
+      if (mode === 'colour') {
+        setText('')
+        openColour({ palette: trimmed })
+        return
+      }
       const id = ++requestId.current
       setText('')
 
@@ -1624,6 +1636,7 @@ export function App({
       hasConvertTarget,
       pdfActionsApply,
       fenceOff,
+      openColour,
     ],
   )
 

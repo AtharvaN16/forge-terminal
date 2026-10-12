@@ -27,6 +27,7 @@ import { Prompt } from '../components/Prompt.js'
 import { trueColour } from '../glyphs.js'
 import { blank, type Row } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
+import { isStrayEscapeSequence } from '../mouse.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useAfter } from '../useAfter.js'
@@ -141,7 +142,10 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
       if (effect.type === 'copy') copy(effect.text)
       else if (effect.type === 'copy-all') copy(cardFor(stateRef.current))
       else if (effect.type === 'back') onCancel()
-      else void open(effect.path)
+      else if (effect.type === 'cancel-open') {
+        openId.current++
+        setOpening(false)
+      } else void open(effect.path)
     }
   }
   const dispatch = (action: Action) => {
@@ -205,7 +209,14 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
     onTrail?.(trail)
   }, [trailKey, onTrail])
 
-  useKeys((input, key) => dispatch({ type: 'key', input, key }), { isActive: !state.field.focus })
+  useKeys(
+    (input, key) => {
+      // A mouse report or a terminal's reply is not something typed.
+      if (isStrayEscapeSequence(input)) return
+      dispatch({ type: 'key', input, key })
+    },
+    { isActive: !state.field.focus },
+  )
 
   const screen = state.history[state.history.length - 1] as Screen
   const truecolour = useMemo(() => trueColour(), [])
@@ -231,7 +242,7 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
           hint={onScaleScreen(screen) ? 'type a hex code' : 'type an image path'}
           onChange={(text) => dispatch({ type: 'text', text })}
           onSubmit={() => dispatch({ type: 'submit' })}
-          onEscape={() => dispatch({ type: 'key', input: '', key: { escape: true } })}
+          onEscape={() => dispatch({ type: 'cancel' })}
         />
       ) : (
         fieldRows({
