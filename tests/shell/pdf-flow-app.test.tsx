@@ -80,12 +80,11 @@ describe('/pdf end to end through App', () => {
     // because a document has somewhere else to go.
     stdin.write(ESC)
     await settle(300)
-    const idleFrame = lastFrame() ?? ''
-    expect(idleFrame).toContain('drop a file or type a path')
-    expect(idleFrame).not.toContain('Convert PDF to')
-    // Still staged — proven by the signpost still rendering, which only
-    // draws when `stage.sources` actually contains a document.
-    expect(idleFrame).toContain('/pdf for page operations')
+    const homeFrame = lastFrame() ?? ''
+    expect(homeFrame).not.toContain('Convert PDF to')
+    // Still staged — home draws its card and asks for more.
+    expect(homeFrame).toContain('doc.pdf')
+    expect(homeFrame).toContain('drop more, or type a path')
   }, 20_000)
 
   it('an image still opens the target picker as before — the PDF fix does not touch it', async () => {
@@ -351,25 +350,6 @@ describe('the /pdf signpost', () => {
     await settle(400)
     expect(lastFrame() ?? '').not.toContain('for more options')
   }, 20_000)
-
-  it('says nothing once the command palette is open — the palette is already doing that job', async () => {
-    // The command palette only exists at idle (typed against `Prompt`),
-    // and a solo PDF drop no longer stops there — reach it the same way
-    // the other tests above do, by backing out of the picker first.
-    const dir = await makeTempDir()
-    const file = await makePdf(dir, 'doc.pdf', 3)
-    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
-    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
-    stdin.write(file)
-    await settle()
-    stdin.write(ENTER)
-    await settle(400)
-    stdin.write(ESC) // back to idle, doc.pdf still staged
-    await settle(300)
-    stdin.write('/')
-    await settle(200)
-    expect(lastFrame() ?? '').not.toContain('/pdf for page operations')
-  }, 20_000)
 })
 
 /**
@@ -383,17 +363,10 @@ describe('the /pdf signpost', () => {
  * so — unlike the dead end this task originally fixed — Escape still works;
  * but it is still a confusing, silent screen.
  *
- * A lone image can never reach this state through a single drop (every real
- * image format has a valid convert target, so it always advances past
- * idle — see `hasConvertTarget`). A PDF now advances past idle too — its
- * picker opens the same way — but backing out of it with `esc` returns to
- * idle *with the file still staged* (`backToPromptKeepingStage`), which is
- * what makes it possible to reach a mixed stage through the real UI at
- * all: drop the PDF, back out of its picker, then drop an image on top.
- * That second drop used to be staged and then refused, leaving a mixed idle
- * stage. Since UX audit #6 it is refused *before* staging
- * (`refuseUnstageable`), so the mixed stage can no longer be built through
- * the UI; the guard stays as defence, and this test pins the new path.
+ * Home holds any stage now (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md),
+ * so a mixed one is one drop away: a PDF and an image dropped together, or
+ * one after the other, are both staged and listed. `/pdf` on that stage is
+ * what this guard exists for.
  */
 describe('/pdf refuses a stage nothing applies to', () => {
   it('does not open the hub for a mixed stage, and says why', async () => {
@@ -404,27 +377,18 @@ describe('/pdf refuses a stage nothing applies to', () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
 
     stdin.write(pdf)
-    await settle()
-    stdin.write(ENTER)
-    await settle(400) // opens the convert picker — a PDF has a real target now
-    stdin.write(ESC)
-    await settle(200) // back to idle, doc.pdf still staged
-
+    await settle(400)
     stdin.write(jpeg)
-    await settle()
-    stdin.write(ENTER)
-    await settle(400) // refused before staging — still just [doc.pdf]
-    expect(lastFrame() ?? '').toContain('photo.jpg was not staged')
+    await settle(400) // both staged on home: a mixed stage
+    expect(lastFrame() ?? '').toContain('2 files')
 
     stdin.write('/pdf')
     await settle()
     stdin.write(ENTER)
     await settle(300)
 
-    // No mixed stage was ever built, so the hub opens for the PDF that is
-    // actually staged rather than refusing a stage that does not exist.
     const frame = lastFrame() ?? ''
-    expect(frame).not.toContain('/pdf needs the staged files to be PDFs')
-    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('/pdf needs the staged files to be PDFs')
+    expect(frame).not.toContain('PDF — choose an operation')
   }, 20_000)
 })

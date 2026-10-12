@@ -38,7 +38,7 @@ describe('dropping a folder', () => {
     await makePdf(dir, 'feb.pdf', 3)
 
     const frame = (await drop(dir)).lastFrame() ?? ''
-    expect(frame).toContain('PDF ×2')
+    expect(frame).toContain('2 PDFs')
     expect(frame).toContain('jan.pdf')
     expect(frame).toContain('feb.pdf')
     expect(frame).not.toContain('Not a file')
@@ -53,26 +53,13 @@ describe('dropping a folder', () => {
     expect(frame).toContain('Convert JPEG to')
   }, 20_000)
 
-  it('refuses a folder of images before staging it, and points at the CLI', async () => {
-    const dir = join(await makeTempDir(), 'tree')
-    await mkdir(dir)
-    await makeJpeg(dir, 'a.jpg')
-    await makeJpeg(dir, 'b.jpg')
-
-    const frame = (await drop(dir)).lastFrame() ?? ''
-    expect(frame).not.toContain('Not a file')
-    expect(frame).not.toContain('directory of images')
-    expect(frame).not.toContain('JPEG ×2')
-    expect(frame).toContain('only PDFs can be staged together')
-    expect(frame).toContain('--to')
-  }, 20_000)
-
   it('says an empty folder holds nothing, without CLI flags in the hint', async () => {
     const dir = join(await makeTempDir(), 'empty')
     await mkdir(dir)
 
     const frame = (await drop(dir)).lastFrame() ?? ''
     expect(frame).toContain('empty contains no')
+    expect(frame).not.toContain('left out')
     expect(frame).not.toContain('--recursive')
     expect(frame).not.toContain('Not a file')
   }, 20_000)

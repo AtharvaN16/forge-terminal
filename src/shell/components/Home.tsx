@@ -8,10 +8,14 @@ import {
   HOME_MARGIN,
   MODE_KINDS,
   type Row,
+  stagedCardRows,
+  stagedListRows,
   surfaceRows,
   tabRows,
+  underRow,
   WORDMARK3,
 } from '../home-art.js'
+import type { StagedView, UnderField } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
 import { middleEllipsis } from '../width.js'
@@ -71,11 +75,14 @@ export function homeKeys({
   typing,
   completions,
   commands,
+  staged,
 }: {
   typing: boolean
   completions: number
   /** The command list is open. */
   commands: boolean
+  /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
+  staged?: { count: number; verb: string | null } | undefined
 }): KeySet {
   if (commands) {
     return {
@@ -108,6 +115,25 @@ export function homeKeys({
       main: [['↵', 'send']],
       foot: [
         ['esc', 'clear'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
+  if (staged && staged.count > 0) {
+    if (staged.verb === null) {
+      return {
+        main: [['esc', 'clear']],
+        foot: [
+          ['1–3', 'mode'],
+          ['ctrl-c', 'quit'],
+        ],
+      }
+    }
+    return {
+      main: [['↵', staged.verb]],
+      foot: [
+        ['esc', 'clear'],
+        ['1–3', 'mode'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -298,6 +324,8 @@ export function Home({
   field,
   list,
   commands,
+  staged,
+  under,
   keys,
 }: {
   width: number
@@ -316,6 +344,10 @@ export function Home({
    * takes the drop surface's place, in place — nothing else moves.
    */
   commands?: (CommandList & { selected: number }) | undefined
+  /** What is staged: one file draws the card on the surface, several the list. */
+  staged?: StagedView | undefined
+  /** The row under the field while something is staged: the red left-out line, or a note. */
+  under?: UnderField | undefined
   keys: KeySet
 }) {
   const palette = useTheme()
@@ -330,8 +362,29 @@ export function Home({
         max: layout.surface + layout.list,
       })
     : layout.surface > 0
-      ? surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+      ? staged && staged.files.length === 1 && staged.files[0]
+        ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
+        : staged && staged.files.length > 1
+          ? stagedListRows({ ...art, rows: layout.surface, view: staged })
+          : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
       : []
+
+  // The row under the field. With no room for a panel the staged headline
+  // takes it, so what is staged is still said.
+  const first = staged?.files[0]
+  const headline: Row | null =
+    staged && first && layout.surface === 0
+      ? [
+          { text: ' '.repeat(HOME_MARGIN + 2) },
+          staged.files.length === 1
+            ? { text: first.name, fg: palette.fg, bold: true }
+            : { text: staged.headline, fg: palette.fg, bold: true },
+          staged.files.length === 1
+            ? { text: ` · ${first.size}`, fg: palette.dim }
+            : { text: `   ${staged.total}`, fg: palette.border },
+        ]
+      : null
+  const below: Row | null = under ? underRow({ width, palette, under }) : headline
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -355,8 +408,14 @@ export function Home({
       ))}
       <Gap />
       <Box flexShrink={0}>{field}</Box>
+      {below ? (
+        <>
+          <Gap />
+          <Runs row={below} />
+        </>
+      ) : null}
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-        {list?.(Math.max(1, layout.list - 2))}
+        {list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
