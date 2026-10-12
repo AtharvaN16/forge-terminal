@@ -6,11 +6,16 @@ const ESC = String.fromCharCode(27)
 const BEL = String.fromCharCode(7)
 /** `file:///Users/me/…` on a Mac; Windows puts its drive in, `file:///D:/Users/me/…`. */
 const url = (path: string) => pathToFileURL(path).href
+/** The literal on a Mac, which the 0.2.1 tests pinned; Windows computes its drive-letter form. */
+const expectedUrl = (literal: string, path: string) =>
+  process.platform === 'win32' ? url(path) : literal
 
 describe('fileLink', () => {
   it('emits an OSC 8 hyperlink where supported', () => {
     const out = fileLink('Open file', '/Users/me/a.webp', { supported: true })
-    expect(out).toBe(`${ESC}]8;;${url('/Users/me/a.webp')}${BEL}Open file${ESC}]8;;${BEL}`)
+    expect(out).toBe(
+      `${ESC}]8;;${expectedUrl('file:///Users/me/a.webp', '/Users/me/a.webp')}${BEL}Open file${ESC}]8;;${BEL}`,
+    )
   })
 
   it('falls back to the bare url where unsupported, since Terminal.app cmd+clicks those', () => {
@@ -27,6 +32,8 @@ describe('fileLink', () => {
   })
 
   it('links a directory for the reveal case', () => {
-    expect(fileLink('Reveal', '/Users/me/pics', { supported: false })).toBe(url('/Users/me/pics'))
+    expect(fileLink('Reveal', '/Users/me/pics', { supported: false })).toBe(
+      expectedUrl('file:///Users/me/pics', '/Users/me/pics'),
+    )
   })
 })

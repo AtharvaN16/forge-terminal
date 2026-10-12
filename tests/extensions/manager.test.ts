@@ -21,7 +21,7 @@ import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { isForgeError } from '../../src/core/errors.js'
 import type { ExtensionsJson } from '../../src/core/report-data.js'
-import type { CatalogEntry } from '../../src/extensions/catalog.js'
+import type { CatalogEntry, ExtensionId } from '../../src/extensions/catalog.js'
 import { pinPlatform } from '../helpers/platform.js'
 
 const h = vi.hoisted(() => ({ catalog: [] as CatalogEntry[], release: '24.0.0' }))
@@ -445,22 +445,52 @@ describe('listing on Windows', () => {
     })
   })
 
-  it('refuses an extension with no Windows build by name, and a chip with none as a PC', async () => {
+  it('refuses a chip with no Windows build as a PC', async () => {
     const mac = entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')
     const asset = { version: '1.1.0', url: `${base}/w.tgz`, bytes: 60, sha256: 'x' }
     h.catalog = [{ ...mac, id: 'boost', minMacos: undefined, assets: { 'win32-x64': asset } }, mac]
     const refusal = (id: string, arch: string) =>
       installExtension(id, { platform: 'win32', arch }).catch((e: unknown) => e)
 
-    expect(await refusal('remove-background', 'x64')).toMatchObject({
-      code: 'extension-unsupported',
-      detail: 'Remove background is not available on Windows.',
-    })
     expect(await refusal('boost', 'arm64')).toMatchObject({
       code: 'extension-unsupported',
       detail: 'boost cannot be installed on this PC: no build for arm64 PCs',
     })
     expect(await leftovers()).toEqual([])
+  })
+})
+
+describe('an id with no build for this OS', () => {
+  const asset = { version: '1.0.0', url: 'http://x/e.tgz', bytes: 1, sha256: 'x' }
+  const only = (id: ExtensionId, os: 'darwin' | 'win32'): CatalogEntry => ({
+    ...entryFor('1.0.0', payload('1.0.0'), '/v1.tgz'),
+    id,
+    assets: { [`${os}-universal`]: asset },
+  })
+
+  it('on a Mac is unknown, as on 0.2.1: same error, the hint lists only what the Mac offers', async () => {
+    h.catalog = [only('remove-background', 'darwin'), only('heic', 'win32')]
+    const refusal = { code: 'invalid-arguments', detail: 'heic is not a known extension.' }
+
+    const add = await installExtension('heic').catch((e: unknown) => e)
+    expect(add).toMatchObject(refusal)
+    expect(isForgeError(add) && add.hint).toBe('Try one of: remove-background.')
+    expect(await removeExtension('heic').catch((e: unknown) => e)).toMatchObject(refusal)
+    expect(
+      (await execute({ kind: 'extensions', action: 'add', id: 'heic' }, { json: true })).exitCode,
+    ).toBe(2)
+  })
+
+  it('on Windows is unknown too: remove-background has no build there', async () => {
+    h.catalog = [only('remove-background', 'darwin'), only('heic', 'win32')]
+    const add = await installExtension('remove-background', { platform: 'win32' }).catch(
+      (e: unknown) => e,
+    )
+    expect(add).toMatchObject({ detail: 'remove-background is not a known extension.' })
+    expect(isForgeError(add) && add.hint).toBe('Try one of: heic.')
+    expect(
+      await removeExtension('remove-background', 'win32').catch((e: unknown) => e),
+    ).toMatchObject({ code: 'invalid-arguments' })
   })
 })
 

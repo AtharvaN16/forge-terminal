@@ -11,7 +11,6 @@ import {
   extensionCorrupt,
   extensionDiskFull,
   extensionDownloadFailed,
-  extensionNotOffered,
   extensionUnsupported,
   invalidArguments,
   isForgeError,
@@ -86,6 +85,27 @@ function supportFor(
     return { supported: false, reason: `no build for ${arch} Macs` }
   }
   return { supported: true }
+}
+
+/**
+ * An id the catalogue has no asset for on this OS is unknown there, exactly as
+ * on 0.2.1 (when it was not in the catalogue at all): same error, same exit
+ * code, and the hint lists only what this OS offers.
+ */
+function knownEntry(id: string, platform: NodeJS.Platform): CatalogEntry | undefined {
+  const entry = catalogEntry(id)
+  if (entry === undefined) return undefined
+  return (platform === 'darwin' || platform === 'win32') && !offeredOn(entry, platform)
+    ? undefined
+    : entry
+}
+
+function unknownExtension(id: string, platform: NodeJS.Platform) {
+  const offered = CATALOG.filter((e) => knownEntry(e.id, platform) !== undefined)
+  return invalidArguments(
+    `${id} is not a known extension.`,
+    `Try one of: ${offered.map((e) => e.id).join(', ')}.`,
+  )
 }
 
 /** Offline and instant: the catalogue is compiled in, installed state is read from disk. */
@@ -252,18 +272,11 @@ export async function installExtension(
   } = {},
 ): Promise<Installed> {
   const { platform = process.platform, arch = process.arch } = opts
-  const entry = catalogEntry(id)
+  const entry = knownEntry(id, platform)
   if (entry === undefined) {
-    throw invalidArguments(
-      `${id} is not a known extension.`,
-      `Try one of: ${CATALOG.map((e) => e.id).join(', ')}.`,
-    )
+    throw unknownExtension(id, platform)
   }
   await sweepDebris(extensionsRoot())
-  // Named, though not listed: say the OS has none, not that this machine falls short.
-  if ((platform === 'darwin' || platform === 'win32') && !offeredOn(entry, platform)) {
-    throw extensionNotOffered(entry.title, platform)
-  }
   const support = supportFor(entry, platform, arch)
   const asset = assetFor(entry, platform, arch)
   if (!support.supported || asset === undefined) {
@@ -380,13 +393,13 @@ export async function installExtension(
  * (in any forge) holds the tool's lock, and holds it itself while deleting,
  * so no job can start on a half-deleted model.
  */
-export async function removeExtension(id: string): Promise<boolean> {
-  const entry = catalogEntry(id)
+export async function removeExtension(
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<boolean> {
+  const entry = knownEntry(id, platform)
   if (entry === undefined) {
-    throw invalidArguments(
-      `${id} is not a known extension.`,
-      `Try one of: ${CATALOG.map((e) => e.id).join(', ')}.`,
-    )
+    throw unknownExtension(id, platform)
   }
   return withExtensionLock(
     entry.id,
