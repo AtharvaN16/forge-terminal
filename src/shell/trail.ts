@@ -98,7 +98,7 @@ const PDF_SCREENS: Record<string, string> = {
   merge: 'Order',
   'split-n': 'Pages each',
   'split-grid': 'Cuts',
-  confirm: 'Confirm',
+  confirm: 'Save as',
 }
 
 /**

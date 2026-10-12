@@ -3069,6 +3069,7 @@ export function App({
               // everywhere else in this file.
               onCancel={backToPromptKeepingStage}
               onTrail={setPdfTrailNow}
+              onMakeDefault={makeDefault}
             />
           ) : null}
 

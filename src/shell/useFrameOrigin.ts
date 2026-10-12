@@ -99,7 +99,7 @@ export function useFrameOrigin(
    * Mirrors `origin` synchronously. `useCursorReport`'s handler fires from a
    * raw input event, not a render, so it cannot wait for `origin` state to
    * catch up before the next reply needs to read it — the same reason
-   * `PathInput.tsx` and `Prompt.tsx` shadow their own state with a ref.
+   * `SaveAs.tsx` and `Prompt.tsx` shadow their own state with a ref.
    */
   const originRef = useRef<number | null>(null)
 

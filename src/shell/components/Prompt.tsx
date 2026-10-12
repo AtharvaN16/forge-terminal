@@ -190,7 +190,7 @@ interface PromptProps {
  * closure before React re-renders still accumulates onto the real current
  * value rather than a stale one, and a caller-driven reset (e.g. clearing the
  * field after submit) is picked up the moment it renders. See Select.tsx and
- * PathInput.tsx for the same pattern and its rationale.
+ * SaveAs.tsx for the same pattern and its rationale.
  *
  * On submission the buffer is also reset right here, synchronously, rather
  * than only via the caller clearing `value` and that flowing back through a

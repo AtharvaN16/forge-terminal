@@ -1,11 +1,14 @@
+import { homedir } from 'node:os'
+import { basename, join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_PREFERENCES, expandTilde } from '../../src/config/preferences.js'
 import { deleteAction, extractAction } from '../../src/core/actions/extract.js'
 import { mergeAction } from '../../src/core/actions/merge.js'
 import { rotateAction } from '../../src/core/actions/rotate.js'
 import { everyNCuts, everyPageCuts, splitAction } from '../../src/core/actions/split.js'
-import type { DocumentInfo } from '../../src/core/types.js'
+import type { DocumentInfo, Job } from '../../src/core/types.js'
 import { COMMANDS, parseCommand } from '../../src/shell/commands.js'
 import { PdfFlow } from '../../src/shell/flows/pdf.js'
 import { addToStage, emptyStage } from '../../src/shell/stage.js'
@@ -72,6 +75,14 @@ const ENTER = String.fromCharCode(13)
 const ESCAPE = ESC
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms))
 
+/** Where Save as opens: the configured default folder, which the flow's prefs leave at ~/Desktop. */
+const DESKTOP = expandTilde(DEFAULT_PREFERENCES.defaultOutput)
+/** `onDone`'s arguments for `jobs` saved where Save as opens, names as planned. */
+const saved = (jobs: Job[]) => [
+  jobs.map((j) => ({ ...j, outputs: j.outputs.map((o) => join(DESKTOP, basename(o))) })),
+  expect.anything(),
+]
+
 /** Mounts the flow and drives it into the hub, staged with `sources`. */
 function mount(sources: DocumentInfo[], opts: { width?: number; height?: number } = {}) {
   const stage = addToStage(emptyStage(), sources, [])
@@ -104,7 +115,7 @@ describe('merge — the reorder screen comes before confirm', () => {
     expect(lastFrame() ?? '').toContain('Merge 2 files')
     stdin.write(ENTER) // confirm
     await settle()
-    expect(onDone).toHaveBeenCalledWith(mergeAction.plan(sources, {}))
+    expect(onDone).toHaveBeenCalledWith(...saved(mergeAction.plan(sources, {})))
   })
 
   it('reordering before confirming changes which order the job actually plans in', async () => {
@@ -123,7 +134,7 @@ describe('merge — the reorder screen comes before confirm', () => {
     stdin.write(ENTER) // confirm
     await settle()
     const reordered = [sources[1], sources[0], sources[2]] as typeof sources
-    expect(onDone).toHaveBeenCalledWith(mergeAction.plan(reordered, {}))
+    expect(onDone).toHaveBeenCalledWith(...saved(mergeAction.plan(reordered, {})))
   })
 
   it('escaping back from confirm to the reorder screen keeps the edit — it does not reset to the staged order', async () => {
@@ -137,7 +148,9 @@ describe('merge — the reorder screen comes before confirm', () => {
     await settle()
     stdin.write(' ') // drop it
     await settle()
-    stdin.write(ENTER) // submit — reaches confirm
+    stdin.write(ENTER) // submit — reaches Save as, on the name
+    await settle()
+    stdin.write(ESCAPE) // clears the name
     await settle()
     stdin.write(ESCAPE) // back to the reorder screen
     await settle()
@@ -149,7 +162,7 @@ describe('merge — the reorder screen comes before confirm', () => {
     stdin.write(ENTER) // confirm
     await settle()
     const reordered = [sources[1], sources[0], sources[2]] as typeof sources
-    expect(onDone).toHaveBeenCalledWith(mergeAction.plan(reordered, {}))
+    expect(onDone).toHaveBeenCalledWith(...saved(mergeAction.plan(reordered, {})))
   })
 
   it('removing files down to one exits back to the hub with a note, and never calls onDone', async () => {
@@ -183,7 +196,7 @@ describe('rotate — one select, then confirm', () => {
     expect(lastFrame() ?? '').toContain('Rotate 180')
     stdin.write(ENTER) // confirm
     await settle()
-    expect(onDone).toHaveBeenCalledWith(rotateAction.plan(sources, { degrees: '180' }))
+    expect(onDone).toHaveBeenCalledWith(...saved(rotateAction.plan(sources, { degrees: '180' })))
   })
 })
 
@@ -202,7 +215,7 @@ describe('split — the mode picker comes before any grid', () => {
     stdin.write(ENTER)
     await settle()
     expect(onDone).toHaveBeenCalledWith(
-      splitAction.plan(sources, { mode: 'every-page', cuts: everyPageCuts(7) }),
+      ...saved(splitAction.plan(sources, { mode: 'every-page', cuts: everyPageCuts(7) })),
     )
   })
 
@@ -223,7 +236,7 @@ describe('split — the mode picker comes before any grid', () => {
     stdin.write(ENTER)
     await settle()
     expect(onDone).toHaveBeenCalledWith(
-      splitAction.plan(sources, { mode: 'every-n', n: 3, cuts: everyNCuts(7, 3) }),
+      ...saved(splitAction.plan(sources, { mode: 'every-n', n: 3, cuts: everyNCuts(7, 3) })),
     )
   })
 
@@ -245,7 +258,9 @@ describe('split — the mode picker comes before any grid', () => {
     expect(lastFrame() ?? '').toContain('Split into 2 files')
     stdin.write(ENTER) // confirm
     await settle()
-    expect(onDone).toHaveBeenCalledWith(splitAction.plan(sources, { mode: 'points', cuts: [0] }))
+    expect(onDone).toHaveBeenCalledWith(
+      ...saved(splitAction.plan(sources, { mode: 'points', cuts: [0] })),
+    )
   })
 })
 
@@ -274,7 +289,7 @@ describe('extract — the grid leads when the document fits', () => {
     stdin.write(ENTER) // confirm
     await settle()
     expect(onDone).toHaveBeenCalledWith(
-      extractAction.plan(sources, { pages: [0], separate: 'one' }),
+      ...saved(extractAction.plan(sources, { pages: [0], separate: 'one' })),
     )
   })
 
@@ -298,7 +313,7 @@ describe('extract — the grid leads when the document fits', () => {
     stdin.write(ENTER)
     await settle()
     expect(onDone).toHaveBeenCalledWith(
-      extractAction.plan(sources, { pages: [1, 2, 3], separate: 'many' }),
+      ...saved(extractAction.plan(sources, { pages: [1, 2, 3], separate: 'many' })),
     )
   })
 
@@ -349,7 +364,7 @@ describe('delete — one question fewer than extract', () => {
     expect(lastFrame() ?? '').toContain('Delete 1 page')
     stdin.write(ENTER)
     await settle()
-    expect(onDone).toHaveBeenCalledWith(deleteAction.plan(sources, { pages: [0] }))
+    expect(onDone).toHaveBeenCalledWith(...saved(deleteAction.plan(sources, { pages: [0] })))
   })
 
   it('refuses to plan deleting every page — the engine would reject it', async () => {
@@ -374,5 +389,93 @@ describe('cancelling out of the hub', () => {
     stdin.write(ESCAPE)
     await settle()
     expect(onCancel).toHaveBeenCalled()
+  })
+})
+
+const CTRL_U = String.fromCharCode(21)
+const TAB = '\t'
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
+const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
+
+describe('/pdf ends on Save as', () => {
+  /** Rotate 90° right, up to Save as. */
+  async function rotateToSaveAs() {
+    const sources = [doc('/docs/report.pdf', 3)]
+    const app = mount(sources)
+    app.stdin.write(DOWN + DOWN + DOWN + DOWN) // Rotate
+    await settle()
+    app.stdin.write(ENTER)
+    await settle()
+    app.stdin.write(ENTER) // 90° right
+    await settle()
+    return { ...app, sources }
+  }
+
+  it('asks Save as for rotate: the job at the title’s right, the name editable, ↵ runs it', async () => {
+    const { stdin, lastFrame, onDone } = await rotateToSaveAs()
+    const out = plain(lastFrame())
+    expect(out).toMatch(/^ Save as +Rotate 90°$/m)
+    expect(out).toContain('› report-rotated.pdf   in  Desktop ▾')
+    stdin.write('X')
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onDone.mock.calls[0]?.[0]?.[0]?.outputs).toEqual([join(DESKTOP, 'report-rotatedX.pdf')])
+  })
+
+  it('opens split on the folder, the names fixed, and esc goes back to how to split', async () => {
+    const sources = [doc('/docs/s.pdf', 3)]
+    const { stdin, lastFrame } = mount(sources)
+    stdin.write(ENTER) // Split
+    await settle()
+    stdin.write(ENTER) // Every page
+    await settle()
+    const out = plain(lastFrame())
+    // The folder focused: a white pill, or bracketed where there is no colour.
+    expect(out).toMatch(/› s-1\.pdf … 3 files {3}in .?Desktop/)
+    expect(out).toMatch(/esc back · ctrl-c quit/)
+    stdin.write(ESCAPE)
+    await settle()
+    expect(plain(lastFrame())).toContain('Every N pages')
+  })
+
+  it('expands ~ in a typed folder before planning', async () => {
+    const { stdin, onDone } = await rotateToSaveAs()
+    stdin.write(TAB)
+    await settle()
+    stdin.write('~/forge-pdf-out')
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onDone.mock.calls[0]?.[0]?.[0]?.outputs?.[0]).toBe(
+      join(homedir(), 'forge-pdf-out', 'report-rotated.pdf'),
+    )
+  })
+
+  it('trims a typed name and turns / into -', async () => {
+    const { stdin, onDone } = await rotateToSaveAs()
+    stdin.write(CTRL_U)
+    await settle()
+    stdin.write('  a/b  ')
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(basename(onDone.mock.calls[0]?.[0]?.[0]?.outputs?.[0] ?? '')).toBe('a-b.pdf')
+  })
+
+  it('names a merge on Save as, after the order, and esc goes back to the order', async () => {
+    const sources = [doc('/docs/a.pdf'), doc('/docs/b.pdf')]
+    const { stdin, lastFrame } = mount(sources)
+    stdin.write(ENTER) // Merge
+    await settle()
+    expect(plain(lastFrame())).not.toContain('rename')
+    stdin.write(ENTER) // the order as it is
+    await settle()
+    expect(plain(lastFrame())).toContain('› docs-merged.pdf   in  Desktop ▾')
+    stdin.write(ESCAPE) // clears the name
+    await settle()
+    stdin.write(ESCAPE) // back to the order
+    await settle()
+    expect(plain(lastFrame())).toMatch(/order the files/i)
   })
 })

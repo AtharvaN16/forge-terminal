@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { rotateAction } from '../../src/core/actions/rotate.js'
 import { answerFor, pdfTrail, trailFor } from '../../src/shell/trail.js'
 
 const convert = { target: 'JPEG', quality: '80', destination: 'Desktop', name: 'test.jpg' }
@@ -153,7 +154,7 @@ describe('pdfTrail', () => {
     expect(at(1)).toEqual({ answers: ['Extract', '1-3, 7'], current: 'Output' })
   })
 
-  it('confirms after every answer', () => {
+  it('ends on Save as after every answer', () => {
     expect(
       pdfTrail({
         step: 'confirm',
@@ -162,7 +163,7 @@ describe('pdfTrail', () => {
         specIndex: 1,
         values: { pages: [0], separate: 'one' },
       }),
-    ).toEqual({ answers: ['Extract', '1', 'One file'], current: 'Confirm' })
+    ).toEqual({ answers: ['Extract', '1', 'One file'], current: 'Save as' })
   })
 
   it('names the screens of its own that split and merge have', () => {
@@ -181,5 +182,14 @@ describe('pdfTrail', () => {
         values: {},
       }),
     ).toEqual({ answers: ['Merge'], current: 'Order' })
+  })
+})
+
+describe('pdfTrail, at the end of /pdf', () => {
+  it('calls the last step Save as, as every save ends', () => {
+    expect(
+      pdfTrail({ step: 'confirm', action: rotateAction, specs: [], specIndex: 0, values: {} })
+        .current,
+    ).toBe('Save as')
   })
 })

@@ -35,7 +35,7 @@ export function useSliderKeys({
   'min' | 'max' | 'step' | 'value' | 'onChange' | 'onSubmit' | 'onCancel' | 'isActive'
 >) {
   /**
-   * The same ref `Prompt`, `Select` and `PathInput` keep, and for the same
+   * The same ref `Prompt`, `Select` and `SaveAs` keep, and for the same
    * reason: `useInput` handlers are synchronous while `useState` (and a
    * parent's controlled `value`) is not, so a burst of keys delivered in one
    * stdin chunk runs through this one closure several times before React

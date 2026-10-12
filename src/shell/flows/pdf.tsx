@@ -2,27 +2,28 @@ import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { DEFAULT_PREFERENCES, type Preferences } from '../../config/preferences.js'
+import { DEFAULT_PREFERENCES, expandTilde, type Preferences } from '../../config/preferences.js'
+import { destinationOption } from '../../core/actions/destination.js'
 import type { Action, Choice, OptionSpec } from '../../core/actions/index.js'
 import { ACTIONS, unavailableReason } from '../../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../../core/actions/split.js'
 import { isForgeError } from '../../core/errors.js'
 import { formatRanges, parseRanges } from '../../core/pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
+import { displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { HintBar } from '../components/HintBar.js'
 import { MergeList } from '../components/MergeList.js'
 import { gridLayout, PageGrid } from '../components/PageGrid.js'
-import { PathInput } from '../components/PathInput.js'
 import { Prompt } from '../components/Prompt.js'
+import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
-import { Slider } from '../components/Slider.js'
 import type { Stage } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { pdfTrail } from '../trail.js'
 import { useKeys } from '../useKeys.js'
-import { bandFor, middleEllipsis } from '../width.js'
+import { bandFor } from '../width.js'
 
 /**
  * The five page operations this phase built, in the order the hub lists
@@ -78,44 +79,52 @@ function describeJob(job: Job): string {
 
 /**
  * `action.plan(stage.sources, values)`, except for merge: `MergeList` is the
- * only place the page order and the output name can be edited, and neither
- * lives in `values` the way every other action's answers do — `mergeOrder`
- * and `mergeOutputOverride` carry them instead. Reading `stage.sources`
- * straight through here for merge would silently discard the reorder and
- * plan the file in whatever order it happened to be staged — the exact bug
- * this component exists to prevent.
+ * only place the page order can be edited, and the order does not live in
+ * `values` the way every other action's answers do — `mergeOrder` carries
+ * it. Reading `stage.sources` straight through here for merge would silently
+ * discard the reorder and plan the file in whatever order it happened to be
+ * staged.
  */
 function planJobs(
   action: Action | undefined,
   sources: SourceInfo[],
   values: Record<string, unknown>,
   mergeOrder: SourceInfo[] | undefined,
-  mergeOutputOverride: string | undefined,
 ): Job[] {
   if (!action) return []
-  const effectiveSources = action.id === 'merge' && mergeOrder ? mergeOrder : sources
-  const planned = action.plan(effectiveSources, values)
-  if (action.id === 'merge' && mergeOutputOverride !== undefined) {
-    return planned.map((job) =>
-      job.op === 'merge' ? { ...job, outputs: [mergeOutputOverride] as [string] } : job,
-    )
-  }
-  return planned
+  return action.plan(action.id === 'merge' && mergeOrder ? mergeOrder : sources, values)
 }
+
+/**
+ * What a /pdf run was asked with, handed out beside its jobs: enough to open
+ * this flow again on Save as, as it was, when the save is refused.
+ */
+export interface PdfResume {
+  actionId: string
+  /** Every answer, `destination` and `name` included. */
+  values: Record<string, unknown>
+  mergeOrder?: SourceInfo[] | undefined
+}
+
+/** A typed name as it will be saved: trimmed, a `/` (which would name a folder) made `-`. */
+const cleanName = (typed: string) => typed.trim().replace(/\//g, '-')
 
 export interface PdfFlowProps {
   stage: Stage
   width: number
   height: number
-  onDone: (jobs: Job[]) => void
+  onDone: (jobs: Job[], resume: PdfResume) => void
   onCancel: () => void
   prefs?: Preferences
+  /** Save as's tab: make the highlighted folder the default (App writes the config). */
+  onMakeDefault?: ((path: string) => void) | undefined
   /** Where the conversation is, for the header bar above it, whenever that changes. */
   onTrail?: ((trail: Trail) => void) | undefined
 }
 
 /**
- * The `/pdf` conversation: which operation, its options, its confirmation.
+ * The `/pdf` conversation: which operation, its options, and where the result
+ * goes and what it is called — Save as, as every save ends.
  * `App.tsx` mounts this with the staged list and does the actual run —
  * everything in here is choosing *what* to run, never running it.
  */
@@ -127,6 +136,7 @@ export function PdfFlow({
   onCancel,
   prefs = DEFAULT_PREFERENCES,
   onTrail,
+  onMakeDefault,
 }: PdfFlowProps) {
   const palette = useTheme()
   const band = bandFor(width)
@@ -139,12 +149,20 @@ export function PdfFlow({
   const [fieldError, setFieldError] = useState<string | undefined>(undefined)
   const [pagesError, setPagesError] = useState<string | undefined>(undefined)
   const [pagesView, setPagesView] = useState<'grid' | 'range'>('grid')
-  // Merge's two answers — the edited order and, if `n` was used, the
-  // renamed output — live outside `values` because `MergeList` is the only
-  // step that produces them and `mergeAction.plan` never reads `values` at
-  // all (see `planJobs`).
+  // Merge's order lives outside `values` because `MergeList` is the only step
+  // that produces it (see `planJobs`).
   const [mergeOrder, setMergeOrder] = useState<SourceInfo[] | undefined>(undefined)
-  const [mergeOutputOverride, setMergeOutputOverride] = useState<string | undefined>(undefined)
+  /**
+   * Save as's answers: the folder (the configured default until another is
+   * chosen) and the name as typed — `undefined` until something is typed, so
+   * the name keeps following what `plan()` proposes for the folder.
+   */
+  const destinationSpec = useMemo(
+    () => (stage.sources[0] ? destinationOption(stage.sources[0], prefs) : undefined),
+    [stage.sources, prefs],
+  )
+  const [saveFolder, setSaveFolder] = useState(() => expandTilde(prefs.defaultOutput))
+  const [saveName, setSaveName] = useState<string | undefined>(undefined)
   /** Set when `x` in `MergeList` drops the file count below two — shown at the hub. */
   const [hubNote, setHubNote] = useState<string | undefined>(undefined)
 
@@ -164,9 +182,14 @@ export function PdfFlow({
     onTrail?.(trail)
   }, [trailKey, onTrail])
 
+  /** The jobs as Save as stands now: in its folder, under the name typed if any. */
+  const saveValues = (folder: string, typed: string | undefined) => {
+    const name = typed === undefined ? '' : cleanName(typed)
+    return { ...values, destination: folder, ...(name ? { name } : {}) }
+  }
   const jobs = useMemo(
-    () => planJobs(action, stage.sources, values, mergeOrder, mergeOutputOverride),
-    [action, values, stage.sources, mergeOrder, mergeOutputOverride],
+    () => planJobs(action, stage.sources, { ...values, destination: saveFolder }, mergeOrder),
+    [action, values, stage.sources, mergeOrder, saveFolder],
   )
 
   const hubItems: Choice[] = HUB_ACTIONS.map((a) => {
@@ -186,7 +209,7 @@ export function PdfFlow({
     setFieldError(undefined)
     setPagesError(undefined)
     setMergeOrder(undefined)
-    setMergeOutputOverride(undefined)
+    setSaveName(undefined)
     setHubNote(undefined)
   }
 
@@ -249,17 +272,23 @@ export function PdfFlow({
     setStep('options')
   }
 
-  const confirmAndRun = () => {
+  /**
+   * Save as's ↵: the jobs planned into the chosen folder, under the name as
+   * typed (an empty one means the proposal). A typed `~/…` is expanded first,
+   * or the file would land in a folder literally called `~`.
+   */
+  const saveAndRun = (folder: string, typed: string) => {
     if (!action) return
-    const planned = planJobs(action, stage.sources, values, mergeOrder, mergeOutputOverride)
+    const destination = expandTilde(folder)
+    const answers = saveValues(destination, typed)
+    const planned = planJobs(action, stage.sources, answers, mergeOrder)
     setStep('run')
-    onDone(planned)
+    onDone(planned, { actionId: action.id, values: answers, mergeOrder })
   }
 
-  /** `MergeList`'s `onSubmit` — the edited order and output path land in state, then the shared confirm screen (same as every other action) takes over. */
-  const submitMerge = (ordered: SourceInfo[], outputPath: string) => {
+  /** `MergeList`'s `onSubmit`: the edited order lands in state, then Save as (as every action) takes over. */
+  const submitMerge = (ordered: SourceInfo[]) => {
     setMergeOrder(ordered)
-    setMergeOutputOverride(outputPath)
     setStep('confirm')
   }
 
@@ -273,14 +302,6 @@ export function PdfFlow({
     )
     setStep('hub')
   }
-
-  useKeys(
-    (_input, key) => {
-      if (key.return) confirmAndRun()
-      if (key.escape) backFromConfirm()
-    },
-    { isActive: step === 'confirm' },
-  )
 
   // `Prompt` claims escape itself first and clears whatever was typed (see
   // Prompt.tsx); this is what the keystroke falls through to once the field
@@ -527,47 +548,9 @@ export function PdfFlow({
       )
     }
 
-    if (spec.kind === 'slider') {
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          <Slider
-            label={spec.label}
-            min={spec.min}
-            max={spec.max}
-            step={spec.step}
-            value={typeof values[spec.id] === 'number' ? (values[spec.id] as number) : spec.default}
-            onChange={(v) => setValues((cur) => ({ ...cur, [spec.id]: v }))}
-            onSubmit={answerSpec}
-            onCancel={backFromOptions}
-          />
-          <HintBar
-            width={width}
-            pairs={[
-              ['←→', 'adjust'],
-              ['↵', 'confirm'],
-              ['esc', 'back'],
-            ]}
-          />
-        </Box>
-      )
-    }
-
-    if (spec.kind === 'path') {
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          <PathInput
-            label={spec.label}
-            presets={spec.presets}
-            preview={(p) => p}
-            onSubmit={answerSpec}
-            onCancel={backFromOptions}
-            width={width}
-            showHints={band !== 'compact'}
-            defaultPath={spec.default}
-          />
-        </Box>
-      )
-    }
+    // No page operation asks a slider or a folder among its options: where
+    // the result goes is Save as, after them.
+    if (spec.kind !== 'text') return null
 
     // kind === 'text', generic. None of this phase's five actions reach
     // this — `pages` is intercepted above — but a future action's plain
@@ -599,16 +582,20 @@ export function PdfFlow({
   }
 
   const job = jobs[0]
-  const MAX_SHOWN_OUTPUTS = 8
-  const allOutputs = job ? job.outputs : []
-  // Keyed by the full path, not the array index or the truncated basename:
-  // a stray-page extract can legitimately repeat a stem+suffix, and the
-  // path is the one thing guaranteed unique across a job's outputs.
-  const shownOutputs = allOutputs.slice(0, MAX_SHOWN_OUTPUTS).map((path) => ({
-    path,
-    label: middleEllipsis(basename(path), Math.max(8, width - 6)),
-  }))
-  const hiddenOutputs = Math.max(0, allOutputs.length - MAX_SHOWN_OUTPUTS)
+  /**
+   * What Save as proposes: the one file `plan()` names, split where it is
+   * edited — or, for a run that writes many (a split, a separate-files
+   * extract), what they will be called, which is shown and not edited.
+   */
+  const outputs = job?.outputs ?? []
+  const first = basename(outputs[0] ?? '')
+  const dot = first.lastIndexOf('.')
+  const proposal =
+    outputs.length > 1
+      ? { stem: '', ext: '', fixedName: `${first} … ${outputs.length} files` }
+      : dot > 0
+        ? { stem: first.slice(0, dot), ext: first.slice(dot), fixedName: undefined }
+        : { stem: first, ext: '', fixedName: undefined }
 
   return (
     <Box flexDirection="column">
@@ -704,26 +691,25 @@ export function PdfFlow({
         </Box>
       ) : null}
 
-      {step === 'confirm' && job ? (
+      {step === 'confirm' && job && destinationSpec ? (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>{describeJob(job)}</Text>
-          <Box flexDirection="column" marginTop={1}>
-            {shownOutputs.map(({ path, label }) => (
-              <Text
-                key={path}
-                color={colourProp(palette.dim)}
-              >{`  ${SYMBOLS.arrow} ${label}`}</Text>
-            ))}
-            {hiddenOutputs > 0 ? (
-              <Text color={colourProp(palette.dim)}>{`  … and ${hiddenOutputs} more`}</Text>
-            ) : null}
-          </Box>
-          <HintBar
+          <SaveAs
+            mode="pdf"
             width={width}
-            pairs={[
-              ['↵', 'run'],
-              ['esc', 'back'],
-            ]}
+            name={saveName ?? proposal.stem}
+            onNameChange={setSaveName}
+            proposed={proposal.stem}
+            ext={proposal.ext}
+            fixedName={proposal.fixedName}
+            folder={saveFolder}
+            onFolder={setSaveFolder}
+            presets={destinationSpec.presets}
+            defaultPath={expandTilde(prefs.defaultOutput)}
+            display={displayPath}
+            onMakeDefault={(path) => onMakeDefault?.(path)}
+            onSubmit={saveAndRun}
+            onBack={backFromConfirm}
+            aside={describeJob(job)}
           />
         </Box>
       ) : null}
