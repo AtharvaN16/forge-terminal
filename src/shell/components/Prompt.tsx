@@ -109,7 +109,8 @@ interface PromptProps {
    * `drop` is the three-line target you drag a file onto; `field` is a filled
    * single line for a short answer such as a filename. `plain` is the
    * unfilled fallback used in the compact band. `home` is the home screen's
-   * field: one unfilled line, four columns in, under the drop zone.
+   * field: a recessed shelf attached under the drop zone, the marker four
+   * columns in (one unfilled line where there is no colour).
    * `inline` is the marker and the text alone, no fill and no padding, for a
    * caller that draws the field around it — Save as's sentence, where the
    * name is followed by `suffix` and `after` on the same line.
@@ -124,6 +125,8 @@ interface PromptProps {
   suffix?: string
   /** `inline` only: whatever the line goes on to say after the suffix. */
   after?: ReactNode
+  /** `inline` only: false draws no `› ` before the value (Save as's name box). */
+  marker?: boolean
   /**
    * Offered every key before the field acts on it, with the text as it is
    * right now; returning true consumes the key. How the home screen takes
@@ -215,6 +218,7 @@ export function Prompt({
   intercept,
   suffix = '',
   after: trailing,
+  marker = true,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -665,6 +669,8 @@ export function Prompt({
    * is then plain arithmetic from there. See `useFrameOrigin.ts`.
    */
   const lineRef = useRef<DOMElement | null>(null)
+  /** Home's shelf (P2), where there is colour to fill it with. */
+  const shelf = palette.shelf === '' ? undefined : palette.shelf
 
   /**
    * The prompt marker (`› `, or `  › ` in the plain variant) sits between the
@@ -675,7 +681,16 @@ export function Prompt({
    * 0. Both the click inset below and the continuation-row math in `onClick`
    * need this number, so it is computed once.
    */
-  const markerWidth = variant === 'home' ? 6 : variant === 'plain' ? 4 : 2
+  const markerWidth =
+    variant === 'home'
+      ? shelf
+        ? 4
+        : 6
+      : variant === 'plain'
+        ? 4
+        : variant === 'inline' && !marker
+          ? 0
+          : 2
 
   useClickTarget({
     id: 'prompt-line',
@@ -826,23 +841,39 @@ export function Prompt({
     // so the words start right after the marker whether or not the field is
     // focused — where the terminal's own cursor would be.
     const [first = ' ', ...rest] = Array.from(placeholder)
-    return (
-      <Box ref={lineRef} width={width}>
-        <Text wrap="wrap">
-          <Text>{'    '}</Text>
-          <Text color={colourProp(palette.accent)} bold>
-            {'›'}
-          </Text>
-          <Text> </Text>
-          {value || span ? (
-            line
-          ) : (
-            <Text color={colourProp(palette.border)}>
-              {isActive ? caretGlyph(first) : first}
-              {rest.join('')}
-            </Text>
-          )}
+    const words = (indent: string) => (
+      <Text wrap="wrap">
+        <Text>{indent}</Text>
+        <Text color={colourProp(palette.accent)} bold>
+          {'›'}
         </Text>
+        <Text> </Text>
+        {value || span ? (
+          line
+        ) : (
+          <Text color={colourProp(palette.border)}>
+            {isActive ? caretGlyph(first) : first}
+            {rest.join('')}
+          </Text>
+        )}
+      </Text>
+    )
+    if (!shelf) {
+      return (
+        <Box ref={lineRef} width={width}>
+          {words('    ')}
+        </Box>
+      )
+    }
+    // P2: a shelf three rows tall, the block's width, attached under the
+    // drop zone. The marker stays four columns in, where the list below it
+    // starts.
+    const inner = Math.max(8, width - 4)
+    return (
+      <Box marginLeft={2} width={inner} flexDirection="column" backgroundColor={shelf} paddingY={1}>
+        <Box ref={lineRef} width={inner}>
+          {words('  ')}
+        </Box>
       </Box>
     )
   }
@@ -866,7 +897,7 @@ export function Prompt({
     return (
       <Box ref={lineRef}>
         <Text wrap="truncate">
-          <Text color={colourProp(palette.accent)}>{'› '}</Text>
+          {marker ? <Text color={colourProp(palette.accent)}>{'› '}</Text> : null}
           {text}
           <Text color={colourProp(palette.border)}>
             {onTail ? caretGlyph(tail[0] ?? ' ') : (tail[0] ?? '')}

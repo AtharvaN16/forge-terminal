@@ -14,7 +14,7 @@ import { errorLine } from '../error-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, modeColours, modeGradient, type Palette } from '../theme.js'
+import { colourProp, modeGradient, type Palette } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 
 /** The slice of `src/extensions/` this screen needs, injectable so tests need no network and no disk. */
@@ -101,12 +101,12 @@ export function byteCount(done: number, total: number): { got: string; of: strin
   return { got: unit === 'B' || v >= 100 ? String(Math.round(v)) : v.toFixed(1), of: `of ${of}` }
 }
 
-/** Enhance's violet, which `/extensions` is drawn in: the screen serves that mode's tools. */
-function extensionsChip(p: Palette): BarChip {
+/** The commands' gold (K1, round 5), which `/extensions` is drawn in: it is a setting, reached from them. */
+export function extensionsChip(p: Palette): BarChip {
   return {
     label: 'extensions',
-    colour: modeColours(p, 'enhance').fg,
-    stops: modeGradient(p, 'enhance'),
+    colour: p.brand,
+    stops: modeGradient(p, 'commands'),
   }
 }
 
@@ -304,7 +304,7 @@ export function ExtensionsFlow({
   const fg = colourProp(palette.fg)
   const dim = colourProp(palette.dim)
   const quiet = colourProp(palette.border)
-  const violet = extensionsChip(palette).colour
+  const gold = extensionsChip(palette).colour
   const spinner = spinning ? (SPINNER_FRAMES[n % SPINNER_FRAMES.length] ?? '') : '·'
 
   const installing = statuses?.find((s) => s.entry.id === busy?.id)
@@ -345,7 +345,7 @@ export function ExtensionsFlow({
     const me = i === cursor
     const name = sheetFor(s.entry).name
     const m = mark(s)
-    const markColour = busy?.id === s.entry.id ? colourProp(violet) : dim
+    const markColour = busy?.id === s.entry.id ? colourProp(gold) : dim
     return (
       <Box
         key={s.entry.id}
@@ -354,7 +354,7 @@ export function ExtensionsFlow({
         {...(me && palette.listBand !== '' ? { backgroundColor: palette.listBand } : {})}
       >
         <Text wrap="truncate">
-          {me ? <Text color={colourProp(violet)}>▌ </Text> : '  '}
+          {me ? <Text color={colourProp(gold)}>▌ </Text> : '  '}
           <Text bold={me} color={me ? fg : s.supported ? dim : quiet}>
             {name}
           </Text>
@@ -372,7 +372,7 @@ export function ExtensionsFlow({
         return (
           <Text>
             {band(1)}
-            <Text color={colourProp(violet)}>{`  ${spinner} `}</Text>
+            <Text color={colourProp(gold)}>{`  ${spinner} `}</Text>
             <Text color={dim}>checking</Text>
           </Text>
         )

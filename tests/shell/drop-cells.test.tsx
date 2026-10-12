@@ -9,7 +9,7 @@ import { Prompt } from '../../src/shell/components/Prompt.js'
 import type { StagedFile, StagedView, UnderField } from '../../src/shell/stage.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
-import { ansiRow, describeRow, type FixtureFrame, homeRow, loadFixture } from './home-cells.js'
+import { ansiRow, describeHomeRow, type FixtureFrame, homeRow, loadFixture } from './home-cells.js'
 
 vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
@@ -82,7 +82,7 @@ function expectRows(frame: FixtureFrame, lines: string[], rows: number[]) {
   expect(lines).toHaveLength(24)
   for (const row of rows) {
     const actual = ansiRow(lines[row] ?? '')
-    expect(describeRow(actual, homeRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
+    expect(describeHomeRow(actual, homeRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
   }
 }
 

@@ -68,9 +68,8 @@ describe('HistoryEntry', () => {
     }
     const block: HistoryBlock = { kind: 'result', id: 'r1', result }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''
-    expect(frame).toContain('✓')
-    expect(frame).toContain('photo.jpg')
-    expect(frame).toContain('photo.webp')
+    expect(frame).toContain('✓ photo.webp')
+    expect(frame).toContain('JPEG → WebP')
     expect(frame).toContain('4.2 MB')
     expect(frame).toContain('820 KB')
     expect(frame).toContain('80.5% smaller')

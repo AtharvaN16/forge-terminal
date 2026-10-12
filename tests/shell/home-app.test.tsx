@@ -105,8 +105,13 @@ describe('the home screen in the app', () => {
     app.stdin.write(TAB)
     await settle(300)
     frame = plain(app.lastFrame())
-    // The field wraps a path this long; joined, it is the chosen file.
-    expect(frame.replace(/\n/g, '')).toContain(`${dir}/beta.png`)
+    // The field wraps a path this long, inside its shelf; joined, it is the chosen file.
+    expect(
+      frame
+        .split('\n')
+        .map((l) => l.trim())
+        .join(''),
+    ).toContain(`${dir}/beta.png`)
   })
 
   it('answers a typed path that is not there with a row under the field, not a block above it', async () => {
@@ -119,22 +124,25 @@ describe('the home screen in the app', () => {
 
     let lines = plain(app.lastFrame()).split('\n')
     const at = lines.findIndex((l) => l.startsWith('    › '))
-    // A blank row, then the tinted row: title, three cells, the short reason.
+    // The shelf's padding, a blank row, then the tinted row: title, three cells, the short reason.
     expect(lines[at + 1]?.trim()).toBe('')
-    expect(lines[at + 2]).toMatch(/^ +File not found {3}here\.jpg could not be found\. *$/)
+    expect(lines[at + 2]?.trim()).toBe('')
+    expect(lines[at + 3]).toMatch(/^ +File not found {3}here\.jpg could not be found\. *$/)
     // Nothing went to the scrollback: no "failed" tab, no detail or hint.
     expect(lines.join('\n')).not.toMatch(/^\s+failed\s*$/m)
     expect(lines.join('\n')).not.toContain('Check the filename')
 
     // The path stays in the field, to be corrected.
-    expect(lines[at]).toBe('    › /definitely/not/here.jpg')
+    expect(lines[at]?.trimEnd()).toBe('    › /definitely/not/here.jpg')
 
     // The next keystroke clears the row, and the completions come back to the list.
     app.stdin.write('x')
     await settle()
     lines = plain(app.lastFrame()).split('\n')
     expect(lines.join('\n')).not.toContain('File not found')
-    expect(lines.find((l) => l.startsWith('    › '))).toBe('    › /definitely/not/here.jpgx')
+    expect(lines.find((l) => l.startsWith('    › '))?.trimEnd()).toBe(
+      '    › /definitely/not/here.jpgx',
+    )
   }, 20_000)
 
   describe('a refusal row on home, with the field empty (a dropped file)', () => {

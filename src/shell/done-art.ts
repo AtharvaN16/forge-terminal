@@ -1,38 +1,37 @@
 import stringWidth from 'string-width'
 import { formatBytes, percentChange } from '../core/units.js'
-import { blank, HOME_MARGIN, type Row, type Run, width } from './home-art.js'
-import { modeColours, type Palette, type ShellMode, SYMBOLS } from './theme.js'
+import { blank, HOME_MARGIN, mix, type Row, type Run, width } from './home-art.js'
+import { colourProp, modeColours, type Palette, type ShellMode, SYMBOLS } from './theme.js'
 import { middleEllipsis } from './width.js'
 
 /**
- * Done (K3·a, mockups/flow-parts-2-2026-10.html tab "8 · Done ✓"): the file
- * as it was and as it is, two panels stacked, each as long as its file is
- * heavy. The larger of the two fills the block; what a smaller file shed is
- * grey hatching after its panel, what a larger one grew by is orange
- * hatching. "before" and "after" are tabs on the panels' top edges, in their
- * fills, and a short arrow in the mode's colour points from one to the other.
+ * Done (B6a, mockups/round-5-2026-10.html): the file as it was and as it is,
+ * as one bar as long as the larger of the two. The part both share is on the
+ * band, the new file's name on it; what a smaller file shed is hatching, and
+ * what a larger one grew by is a fill, with the change written inside it.
+ * Under the bar, after a blank row, the two sizes: the smaller on the left.
+ * A chip above it says the formats, "PNG → JPEG".
  *
- * Every number is measured — the file has been written — so the panels are
- * a picture of two real sizes, never progress (invariant 7). A panel too
- * short for its words keeps its true length: the words run on past the fill
- * on the middle row, and the rows above and below still show the proportion.
+ * Every number is measured — the file has been written — so the bar is a
+ * picture of two real sizes, never progress (invariant 7). A file too small
+ * for its name keeps its true length: the name runs on past the band.
  *
  * Every row starts at column 0 and is at most the width less one margin.
  */
 
 const M = HOME_MARGIN
-/** Where the notes and the folder start: one cell in from the panels. */
+/** Where the notes start: one cell in from the bar. */
 const LEAD = M + 1
+/** The least of a long name the bar keeps before it gives up the change. */
+const NAME_MIN = 20
 
 /** What the Done screen says about one written file. */
 export interface DoneFacts {
   mode: ShellMode
   /** The source: its format's label ("PNG"), its file name and its size. */
   before: { format: string; name: string; bytes: number }
-  /** The written file: its name and its measured size. */
-  after: { name: string; bytes: number }
-  /** The folder it was written to, as shown (`~/Desktop`). */
-  folder: string
+  /** The written file: its format's label, its name and its measured size. */
+  after: { format: string; name: string; bytes: number }
 }
 
 /**
@@ -105,149 +104,165 @@ export function changePhrase(from: number, to: number): string {
 /** A colour as a run's fill: none where the palette has none. */
 const fillOf = (colour: string) => (colour === '' ? undefined : colour)
 
-/** `runs` with the first `n` cells on `bg`, splitting the run that crosses it. */
-function onFill(runs: Run[], n: number, bg: string | undefined): Run[] {
+interface Cell {
+  ch: string
+  fg?: string | undefined
+  bg?: string | undefined
+  bold?: boolean | undefined
+}
+
+/** `row`'s runs written over `cells` from column `at`, each cell keeping its fill. */
+function writeOver(cells: Cell[], at: number, row: Run[]): void {
+  let i = at
+  for (const run of row) {
+    for (const ch of run.text) {
+      const under = cells[i]
+      if (under) cells[i] = { ch, fg: run.fg, bg: under.bg, bold: run.bold }
+      i++
+    }
+  }
+}
+
+/** Cells back into runs, one per stretch of the same style. */
+function runsOf(cells: Cell[]): Run[] {
   const out: Run[] = []
-  let left = n
-  for (const run of runs) {
-    const chars = [...run.text]
-    const k = Math.max(0, Math.min(left, chars.length))
-    if (k > 0) out.push({ ...run, text: chars.slice(0, k).join(''), bg })
-    if (k < chars.length) out.push({ ...run, text: chars.slice(k).join('') })
-    left -= k
+  for (const c of cells) {
+    const last = out[out.length - 1]
+    if (last && last.fg === c.fg && last.bg === c.bg && !!last.bold === !!c.bold) last.text += c.ch
+    else out.push({ text: c.ch, fg: c.fg, bg: c.bg, bold: c.bold })
   }
   return out
 }
 
-/** `n` cells of `╱` in one colour. */
-const hatching = (n: number, fg: string): Run[] => (n > 0 ? [{ text: '╱'.repeat(n), fg }] : [])
-
 /**
- * A panel's three rows: blank fill above and below, and on the middle row
- * `words` then `size` right-aligned with a cell to spare. Where the two do
- * not fit, the size follows the words a cell on, and the fill still stops
- * at `length`. `tail` is drawn after each row — the hatching — and is told
- * where the row has got to.
+ * What the change can be called, longest first: "47.4 KB saved · 38.9%
+ * smaller" (or "+500 KB · 45.5% larger"), then the percentage alone. The same
+ * size is only ever "same size".
  */
-function panel(
-  length: number,
-  bg: string | undefined,
-  words: Run[],
-  size: Run | undefined,
-  tail: (from: number) => Run[] = () => [],
-): Row[] {
-  const plain = [blank(length)]
-  const sized = size ? [size, { text: ' ' }] : []
-  const gap = Math.max(1, length - width(words) - width(sized))
-  const middle = [...words, blank(size ? gap : Math.max(0, length - width(words))), ...sized]
-  const row = (runs: Run[]) => {
-    const filled = onFill(runs, length, bg)
-    return [blank(M), ...filled, ...tail(width(filled))]
-  }
-  return [row(plain), row(middle), row(plain)]
+function changeLabels(from: number, to: number): string[] {
+  const phrase = changePhrase(from, to)
+  if (from === to) return [phrase]
+  const diff = formatBytes(Math.abs(to - from))
+  return [to > from ? `+${diff} · ${phrase}` : `${diff} saved · ${phrase}`, phrase]
 }
 
-/** A tab on a panel's top edge, in the panel's fill. */
-const tab = (label: string, run: Omit<Run, 'text'>): Row => [
-  blank(M),
-  { ...run, text: ` ${label} ` },
-]
-
 /**
- * The body, top to bottom: the before tab and panel, the arrow, the after
- * tab and panel, the change under the longer panel, a blank, the folder.
+ * The body, top to bottom: the formats' chip, the bar (three rows), a blank
+ * row, and the two sizes.
  */
 export function doneBody({
   palette,
   facts,
   width: columns,
+  folder,
+  draw,
 }: {
   palette: Palette
   facts: DoneFacts
   width: number
+  /**
+   * The bar drawing itself once (M5a), each part 0 to 1; at rest without it.
+   * `bar` takes a smaller file's band from the old length back to the new
+   * one, or pushes a larger file's growth out from the old length; `label`
+   * fades the change's words in. Both sizes are measured before this draws,
+   * so it only ever moves towards the true picture (invariant 7).
+   */
+  draw?: { bar: number; label: number } | undefined
+  /**
+   * Where the file went, as shown (`~/Desktop`): a row under the sizes. The
+   * scrollback keeps it (audit #9: a mistyped destination must be visible
+   * once the screen is gone); the live screen's header already says it.
+   */
+  folder?: string | undefined
 }): Row[] {
   const block = Math.max(1, columns - 2 * M)
-  const bars = receiptBars(facts.before.bytes, facts.after.bytes, block)
-  const wb = bars.before
-  const wa = bars.after
-  const mode = modeColours(palette, facts.mode).fg
-  const beforeFill = fillOf(palette.selectionBg)
-  const afterFill = fillOf(palette.panelBand)
+  const { before, after } = facts
+  const bars = receiptBars(before.bytes, after.bytes, block)
+  const shared = Math.min(bars.before, bars.after)
+  const mode = modeColours(palette, facts.mode)
+  const band = fillOf(palette.panelBand)
+  const same = before.bytes === after.bytes
+  const outcome = bars.grew ? palette.larger : palette.ok
 
-  // Before: " PNG   test.png" and its size, dim, on the quiet fill.
-  const beforeSize = formatBytes(facts.before.bytes)
-  const tag = ` ${facts.before.format}   `
-  const beforeName = middleEllipsis(
-    facts.before.name,
-    Math.max(1, block - stringWidth(tag) - stringWidth(beforeSize) - 2),
-  )
-  const before = panel(
-    wb,
-    beforeFill,
-    [
-      { text: ' ' },
-      { text: facts.before.format, fg: palette.border },
-      { text: '   ' },
-      { text: beforeName, fg: palette.dim },
-    ],
-    { text: beforeSize, fg: palette.dim },
-  )
+  // The chip: the formats, said once when they are the same.
+  const formats =
+    before.format === after.format ? before.format : `${before.format} → ${after.format}`
+  const chip: Row = [
+    blank(M),
+    { text: ` ${formats} `, fg: mode.fg, bg: fillOf(mode.bg), bold: true },
+  ]
 
-  // After: "✓ test.jpg", bold. A smaller file's size sits just past its
-  // panel, where the hatching begins; it moves inside, right-aligned, when
-  // the file grew or when there is too little shed left to hold it.
-  const afterSize = formatBytes(facts.after.bytes)
-  const sizeRun: Run = { text: afterSize, fg: palette.fg, bold: true }
-  const outside = stringWidth(afterSize) + 2
-  const inside = bars.grew || wb - wa < outside
-  const afterName = middleEllipsis(
-    facts.after.name,
-    Math.max(1, block - 3 - (inside ? stringWidth(afterSize) + 2 : outside)),
+  // The bar's cells: the shared part on the band, then the change. What a
+  // file shed is hatching on the background; growth is a fill, or shade
+  // where there is none.
+  const growth: Cell = palette.grownFill
+    ? { ch: ' ', bg: palette.grownFill }
+    : { ch: '▒', fg: palette.larger }
+  const k = draw?.bar ?? 1
+  const bandNow = bars.grew ? shared : Math.round(block - (block - shared) * k)
+  const grownNow = bars.grew ? Math.round((block - shared) * k) : 0
+  const cellsOf = (): Cell[] =>
+    Array.from({ length: block }, (_, i): Cell => {
+      if (i < bandNow) return { ch: ' ', bg: band }
+      if (!bars.grew) return { ch: '╱', fg: palette.shedHatch }
+      return i < shared + grownNow ? { ...growth } : { ch: ' ' }
+    })
+
+  // The middle row: the new file's name from the left, the change flush to
+  // the bar's end, each knocked out of the hatching with a cell to spare. A
+  // narrow bar keeps the name readable first — whole, or at least NAME_MIN
+  // columns of it — so the change shortens, then goes.
+  const keep = Math.min(stringWidth(after.name), NAME_MIN)
+  const label = changeLabels(before.bytes, after.bytes).find(
+    (l) => block - stringWidth(l) - 1 - 5 >= keep,
   )
-  const words: Run[] = [
+  const labelAt = label === undefined ? block : block - stringWidth(label) - 1
+  const name = middleEllipsis(after.name, Math.max(1, labelAt - 5))
+  const mid = cellsOf()
+  writeOver(mid, 0, [
     { text: ' ' },
     { text: `${SYMBOLS.ok} `, fg: palette.ok, bold: true },
-    { text: afterName, fg: palette.fg, bold: true },
-  ]
-  const end = Math.max(wa, wb)
-  const shade = bars.grew ? palette.grownHatch : palette.faint
-  const toEnd = (from: number) => hatching(end - from, shade)
-  const after = inside
-    ? panel(bars.grew ? wb : wa, afterFill, words, sizeRun, toEnd)
-    : (() => {
-        const rows = panel(wa, afterFill, words, undefined, toEnd)
-        // The middle row: the words on the fill, then the size, then hatching.
-        const filled = onFill([...words, blank(Math.max(0, wa - width(words)))], wa, afterFill)
-        const sized: Run[] = [{ text: ' ' }, sizeRun, { text: ' ' }]
-        rows[1] = [blank(M), ...filled, ...sized, ...toEnd(width(filled) + width(sized))]
-        return rows
-      })()
+    { text: `${name} `, fg: palette.fg, bold: true },
+  ])
+  const fade = draw?.label ?? 1
+  if (label !== undefined && fade > 0) {
+    // Fading in, the words come up out of what they sit on.
+    const under = bars.grew ? palette.grownFill || palette.canvas : palette.canvas
+    const ink = same ? palette.dim : outcome
+    writeOver(mid, labelAt, [
+      { text: ' ' },
+      { text: label, fg: fade < 1 ? mix(under, ink, fade) : ink, bold: !same },
+    ])
+    // The same size has no change to sit in: the label keeps a cell from the end.
+    if (same) mid.push(...mid.splice(labelAt, 1))
+  }
+  const row = (cells: Cell[]): Row => [blank(M), ...runsOf(cells)]
 
-  // The change, ending where the longer panel ends.
-  const phrase = changePhrase(facts.before.bytes, facts.after.bytes)
-  const outcome = percentChange(facts.before.bytes, facts.after.bytes).direction
-  const change: Row = [
-    blank(M + Math.max(0, end - stringWidth(phrase))),
-    { text: phrase, fg: outcome === 'larger' ? palette.larger : palette.ok, bold: true },
+  // Under the bar: the smaller size on the left, the larger on the right. The
+  // new size sits on a chip of the bar's grey, a cell either side, so it
+  // reads as the answer; the old one is bare.
+  const shelf = colourProp(palette.panelBand)
+  const now: Run[] = [
+    { text: ' now ', fg: palette.border, bg: shelf },
+    { text: formatBytes(after.bytes), fg: palette.fg, bold: true, bg: shelf },
+    { text: ' ', bg: shelf },
   ]
+  const was: Run[] = [
+    { text: 'was ', fg: palette.border },
+    { text: formatBytes(before.bytes), fg: palette.dim },
+  ]
+  const [left, right] = bars.grew ? [was, now] : [now, was]
+  const gap = Math.max(1, block - width(left) - width(right))
+  const sizes: Row = [blank(M), ...left, blank(gap), ...right]
 
-  const folder: Row = [
+  const body = [chip, row(cellsOf()), row(mid), row(cellsOf()), [], sizes]
+  if (folder === undefined) return body
+  const where: Row = [
     blank(LEAD),
     { text: 'in ', fg: palette.border },
-    { text: middleEllipsis(facts.folder, Math.max(1, columns - M - LEAD - 3)), fg: palette.dim },
+    { text: middleEllipsis(folder, Math.max(1, columns - M - LEAD - 3)), fg: palette.dim },
   ]
-
-  return [
-    tab('before', { fg: palette.dim, bg: beforeFill }),
-    ...before,
-    [blank(M + 2), { text: '│', fg: mode }],
-    [blank(M + 2), { text: '▼', fg: mode, bold: true }],
-    tab('after', { fg: palette.fg, bg: afterFill, bold: true }),
-    ...after,
-    change,
-    [],
-    folder,
-  ]
+  return [...body, [], where]
 }
 
 /**
@@ -279,7 +294,7 @@ export function doneNotes({
 
 /**
  * The blank rows around the body, for a screen `height` rows tall: the bar
- * and a blank row above, the keys on the last row. The body sits a row
+ * and a blank row above, the keys on the last row under their rule. The body sits a row
  * above the middle of the space between them; the notes end four rows above
  * the keys, with at least a row between them and the body. Blank rows above
  * the body go first when the screen is short; it never cuts the body.
@@ -293,9 +308,9 @@ export function doneLayout({
   body: number
   notes: number
 }): { top: number; between: number; bottom: number } {
-  const space = height - 5
+  const space = height - 6
   const centred = Math.max(0, Math.floor((space - body) / 2) - 1)
-  const fixed = 3 + body
+  const fixed = 4 + body
   if (notes === 0) {
     const top = Math.min(centred, Math.max(0, height - fixed))
     return { top, between: 0, bottom: Math.max(0, height - fixed - top) }

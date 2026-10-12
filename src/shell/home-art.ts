@@ -2,9 +2,11 @@ import stringWidth from 'string-width'
 import type { Command } from './commands.js'
 import type { StagedFile, StagedView, UnderField } from './stage.js'
 import {
+  dotGradient,
   MODE_ORDER,
   modeColours,
   modeGradient,
+  modeWash,
   type Palette,
   type ShellMode,
   VERSION,
@@ -87,7 +89,8 @@ export const MODE_KINDS: Record<ShellMode, string> = {
 
 /**
  * Diagonal hatching whose colour follows the absolute column, `from` onwards,
- * so the three stacked rows line up into one band.
+ * so the three stacked rows line up into one band. With `wash`, each cell
+ * sits on the fill at the same step of that gradient.
  */
 export function hatch(
   from: number,
@@ -95,31 +98,43 @@ export function hatch(
   row: number,
   span: number,
   stops: readonly string[],
+  wash?: readonly string[],
 ): Run[] {
   const runs: Run[] = []
   for (let i = 0; i < n; i++) {
-    runs.push({ text: '╱', fg: gradientAt(from + i + row * 2, span, stops) })
+    const at = from + i + row * 2
+    runs.push({
+      text: '╱',
+      fg: gradientAt(at, span, stops),
+      ...(wash ? { bg: gradientAt(at, span, wash) } : {}),
+    })
   }
   return runs
 }
 
 /**
- * FORGE knocked out of a band of hatching in the mode's gradient, with the
- * version knocked out of the bottom row at the right end, on the letters'
- * baseline. Empty when the terminal is too narrow for the word.
+ * FORGE knocked out of a band of hatching in the mode's gradient — the
+ * commands' gold while the command list is open — with the version knocked
+ * out of the bottom row at the right end, on the letters' baseline. In light
+ * the hatching sits on its wash (L6). Empty when the terminal is too narrow
+ * for the word.
  */
 export function brandRows({
   width: columns,
   palette,
   mode,
+  commands = false,
 }: {
   width: number
   palette: Palette
   mode: ShellMode
+  commands?: boolean
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
-  const stops = modeGradient(palette, mode)
+  const scheme = commands ? 'commands' : mode
+  const stops = modeGradient(palette, scheme)
+  const wash = modeWash(palette, scheme)
   const span = columns + 8
   const word = WORDMARK3[0]?.length ?? 0
   // The hatching after the word: the block, less the lead-in hatch, the word
@@ -134,7 +149,7 @@ export function brandRows({
   return WORDMARK3.map((letters, i) => {
     const row: Row = [
       blank(M),
-      ...hatch(M, 1, i, span, stops),
+      ...hatch(M, 1, i, span, stops, wash),
       blank(1),
       { text: letters, fg: palette.fg, bold: true },
       blank(1),
@@ -142,23 +157,59 @@ export function brandRows({
     const c0 = M + word + 3
     if (i === WORDMARK3.length - 1 && room >= 1) {
       row.push(
-        ...hatch(c0, room, i, span, stops),
+        ...hatch(c0, room, i, span, stops, wash),
         blank(1),
         { text: version, fg: palette.dim },
         blank(1),
-        ...hatch(c0 + after - tail, tail, i, span, stops),
+        ...hatch(c0 + after - tail, tail, i, span, stops, wash),
       )
     } else {
-      row.push(...hatch(c0, after, i, span, stops))
+      row.push(...hatch(c0, after, i, span, stops, wash))
     }
     return row
   })
 }
 
+/** How long the band takes to draw itself in at launch (M8b), and how far its bright edge reaches. */
+export const INTRO_MS = 950
+const INTRO_EDGE = 3
+
 /**
- * The numbered modes, then "/ commands". The active one is a folder tab — a
- * half-cell lip on the row above, and its label on the panel's fill — so it
- * reads as part of the surface below it. "/ commands" is always there, dim
+ * The brand's rows drawn in up to column `front` (M8b): everything past it is
+ * blank, and the hatching just behind it is lit towards the foreground, a
+ * bright edge sweeping across. The front leans with the hatching, two columns
+ * on for each row down, so it reads as one slanted edge.
+ */
+export function brandIntro(rows: Row[], front: number, palette: Palette): Row[] {
+  return rows.map((row, r) => {
+    const out: Run[] = []
+    let x = 0
+    for (const run of row) {
+      for (const ch of run.text) {
+        const behind = front - (x + r * 2)
+        const cell: Run =
+          behind < 0
+            ? { text: ' ' }
+            : ch === '╱' && behind < INTRO_EDGE && run.fg
+              ? { ...run, text: ch, fg: mix(run.fg, palette.fg, 0.7 * (1 - behind / INTRO_EDGE)) }
+              : { ...run, text: ch }
+        const last = out[out.length - 1]
+        if (last && last.fg === cell.fg && last.bg === cell.bg && last.bold === cell.bold)
+          last.text += cell.text
+        else out.push(cell)
+        x++
+      }
+    }
+    return out
+  })
+}
+
+/**
+ * The numbered modes, then "/ commands" (round 5, H2): the active one on a
+ * chip of dark grey, a step off the background, its number in its mode's
+ * colour; the rest bare words.
+ * The row above is left blank: a half-cell lip there drew as a hairline seam
+ * in terminals that leave a gap between rows. "/ commands" is always there, dim
  * at rest; while the field holds a command it is the active tab, and no mode
  * is. Where the output goes sits at the right end of the row: in full
  * ("saves to ~/Desktop") when there is room, the destination alone when
@@ -184,22 +235,21 @@ export function tabRows({
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
-  const fill = palette.selectionBg
+  const chip = palette.tabChip === '' ? undefined : palette.tabChip
   const top: Row = [blank(M)]
   const tabs: Row = []
   const tab = (key: string, keyColour: string, name: string, active: boolean) => {
     const w = key.length + name.length + 3
+    top.push(blank(w))
     if (active) {
-      top.push({ text: '▄'.repeat(w), fg: fill })
       tabs.push(
-        { text: ' ', bg: fill },
-        { text: key, fg: keyColour, bg: fill, bold: true },
-        { text: ' ', bg: fill },
-        { text: name, fg: palette.fg, bg: fill, bold: true },
-        { text: ' ', bg: fill },
+        { text: ' ', bg: chip },
+        { text: key, fg: keyColour, bg: chip, bold: true },
+        { text: ' ', bg: chip },
+        { text: name, fg: palette.fg, bg: chip, bold: true },
+        { text: ' ', bg: chip },
       )
     } else {
-      top.push(blank(w))
       tabs.push(
         blank(1),
         { text: key, fg: palette.border, bold: key === '/' },
@@ -214,7 +264,7 @@ export function tabRows({
   MODE_ORDER.forEach((m, i) => {
     tab(String(i + 1), modeColours(palette, m).fg, m, !commands && m === mode)
   })
-  tab('/', modeColours(palette, mode).fg, 'commands', commands)
+  tab('/', palette.brand, 'commands', commands)
 
   const full: Row = [
     { text: right.label, fg: palette.border },
@@ -238,7 +288,7 @@ const NAME_COLUMN = 12
  * in it matches. A row is the slash, what has been typed (bright), the rest
  * of the name and its description. The chosen row is the picker's — a band
  * with a `▌` strip — and the strip takes the colour of the mode the command
- * would switch to.
+ * would switch to, or the commands' gold for a setting.
  *
  * At least `rows` tall, so it takes the surface's place exactly; taller when
  * the list needs it, up to `max`, past which the rows scroll to keep the
@@ -298,7 +348,7 @@ export function commandRows({
         continue
       }
       chosenLine = lines.length
-      const strip = c.mode ? modeColours(palette, c.mode).fg : palette.fg
+      const strip = c.mode ? modeColours(palette, c.mode).fg : palette.brand
       const inner: Run[] = [
         { text: '▌', fg: strip },
         { text: ' ' },
@@ -339,14 +389,62 @@ export function clip(text: string, max: number): string {
 }
 
 /**
+ * The drop surface's ripple, in milliseconds (M1, decided 2026-10-12 on
+ * mockups/dots-motion-2026-10.html). From an empty surface a soft ring
+ * spreads out from the words over `ring` and the dots appear as it reaches
+ * them; the full field rests for `hold`, fades out together over `fade`,
+ * stays empty for `gap`, and the ring comes again.
+ */
+export const RIPPLE = (() => {
+  const ring = 3200
+  const hold = 1300
+  const fade = 700
+  const gap = 500
+  return { ring, hold, fade, gap, length: ring + hold + fade + gap }
+})()
+/** How deep the ring's band is, in columns, and how much it lifts a dot at most. */
+const RING_WIDTH = 22
+const RING_LIFT = 0.3
+/** How long a drop's ring takes to run out (M2a), and how deep its band is in columns. */
+export const DROP_RING_MS = 520
+const DROP_RING_WIDTH = 4
+/** A row is about twice as tall as a column is wide. */
+const ROW_ASPECT = 2.2
+
+const smooth = (k: number) => {
+  const t = Math.max(0, Math.min(1, k))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * How strong a dot `d` columns from the words is, `t` ms into the ripple, as
+ * a fraction of the way from the fill to its tint; `rest` is its strength when
+ * still, and `reach` how far the ring goes before it is done. 0 is no dot. The
+ * ring lifts a dot by at most `RING_LIFT` and never past its own tint.
+ */
+export function rippleLevel(t: number, d: number, rest: number, reach: number): number {
+  const at = ((t % RIPPLE.length) + RIPPLE.length) % RIPPLE.length
+  const front = (Math.min(at, RIPPLE.ring) / RIPPLE.ring) * (reach + RING_WIDTH)
+  const behind = front - d
+  if (behind <= 0) return 0
+  // A soft leading edge where the dot appears, a long tail as it eases back.
+  const glow = behind >= RING_WIDTH ? 0 : (1 - behind / RING_WIDTH) ** 1.3
+  const out = 1 - smooth((at - RIPPLE.ring - RIPPLE.hold) / RIPPLE.fade)
+  return out * smooth(behind / 6) * Math.min(1, rest + RING_LIFT * glow)
+}
+
+/**
  * A filled panel with a grid of dots, one every third column, tinted by the
- * mode's gradient — fainter towards the middle — and `lines` centred in one
+ * mode's dot gradient (`dotGradient`: light's are deeper) — fainter towards the middle — and `lines` centred in one
  * clean rectangle cut out of the dots. The cut-out is `pad` columns wider
  * than the words either side, then widened until each side meets a dot, so
  * the gap is even either side.
  *
  * `scale` steps the dots back towards the fill (1 leaves them as they rest),
- * for a surface that has something laid on it.
+ * for a surface that has something laid on it. `ripple` draws the surface
+ * that many ms into its ripple (`RIPPLE`); without it the dots are still.
+ * `ring` draws a drop's ring that far through its one pass (M2a, 0 to 1):
+ * the dots it is crossing lean to the mode's colour, fading as it goes out.
  */
 function dotted({
   width: columns,
@@ -357,6 +455,8 @@ function dotted({
   pad,
   dim = 1,
   scale = 1,
+  ripple,
+  ring,
 }: {
   width: number
   rows: number
@@ -367,21 +467,36 @@ function dotted({
   /** The resting dots' own factor: less than 1 while a path is typed. */
   dim?: number
   scale?: number
+  ripple?: number | undefined
+  ring?: number | undefined
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
   const fill = palette.selectionBg
-  const stops = modeGradient(palette, mode)
+  const stops = dotGradient(palette, mode)
 
   const isDot = (c: number) => c % 3 === 0 && c >= 3 && c <= W - 4
   const mid = (h - 1) / 2
-  const dot = (c: number, r: number) => {
-    const tint = gradientAt(c + r * 2, W + 14, stops)
+  // The ring's centre is the middle of the dot columns, so it is even either side.
+  const centre = (3 + Math.floor((W - 4) / 3) * 3) / 2
+  const reach = Math.hypot(centre, mid * ROW_ASPECT) + 14
+  /** A dot's strength, 0 to 1 of the way from the fill to its tint. */
+  const level = (c: number, r: number) => {
     const dx = Math.abs(c - W / 2) / (W / 2)
     const dy = mid === 0 ? 0 : Math.abs(r - mid) / mid
-    const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+    const rest = 0.5 + 0.4 * Math.min(1, Math.hypot(dx, dy * 0.6))
+    if (ripple === undefined) return rest
+    return rippleLevel(ripple, Math.hypot(c - centre, (r - mid) * ROW_ASPECT), rest, reach)
+  }
+  const accent = modeColours(palette, mode).fg
+  const dot = (c: number, r: number, k: number) => {
+    const tint = gradientAt(c + r * 2, W + 14, stops)
     const rest = mix(fill, tint, k * dim)
-    return scale === 1 ? rest : mix(fill, rest, scale)
+    const still = scale === 1 ? rest : mix(fill, rest, scale)
+    if (ring === undefined || ring <= 0 || ring >= 1) return still
+    const d = Math.hypot(c - centre, (r - mid) * ROW_ASPECT)
+    const lit = Math.exp(-(((d - ring * reach) / DROP_RING_WIDTH) ** 2)) * (1 - ring)
+    return mix(still, accent, 0.9 * lit)
   }
 
   const top = Math.floor((h - lines.length) / 2)
@@ -409,8 +524,8 @@ function dotted({
         c += cut
         continue
       }
-      const lit = r >= 1 && r <= h - 2 && isDot(c)
-      row.push(lit ? { text: '·', fg: dot(c, r), bg: fill } : { text: ' ', bg: fill })
+      const k = r >= 1 && r <= h - 2 && isDot(c) ? level(c, r) : 0
+      row.push(k > 0 ? { text: '·', fg: dot(c, r, k), bg: fill } : { text: ' ', bg: fill })
       c++
     }
     out.push(row)
@@ -422,7 +537,7 @@ function dotted({
  * The drop surface: the dotted panel with the words in the cut-out.
  *
  * While a path is being typed the whole surface steps back, so the field
- * below it leads.
+ * below it leads. `ripple` draws it that many ms into its ripple (`RIPPLE`).
  */
 export function surfaceRows({
   width: columns,
@@ -432,6 +547,7 @@ export function surfaceRows({
   typing,
   kinds,
   title: heading = 'Drop a file here',
+  ripple,
 }: {
   width: number
   rows: number
@@ -441,6 +557,7 @@ export function surfaceRows({
   kinds: string
   /** What to drop: colour's palette asks for an image. */
   title?: string
+  ripple?: number | undefined
 }): Row[] {
   const W = columns - HOME_MARGIN * 2
   const accent = modeColours(palette, mode).fg
@@ -460,6 +577,7 @@ export function surfaceRows({
     lines: [title, sub],
     pad: 4,
     dim: typing ? 0.45 : 1,
+    ripple,
   })
 }
 
@@ -483,12 +601,15 @@ export function stagedCardRows({
   palette,
   mode,
   file,
+  ring,
 }: {
   width: number
   rows: number
   palette: Palette
   mode: ShellMode
   file: StagedFile
+  /** How far a drop's ring has run through the dots, 0 to 1 (M2a); none at rest. */
+  ring?: number | undefined
 }): Row[] {
   const W = columns - HOME_MARGIN * 2
   const cw = Math.max(8, Math.min(CARD_W, W - 6))
@@ -509,7 +630,7 @@ export function stagedCardRows({
     side(file.facts, palette.dim),
     [{ text: `╰${'─'.repeat(cw - 2)}╯`, fg: edge }],
   ]
-  return dotted({ width: columns, rows, palette, mode, lines: card, pad: 1, scale: 0.42 })
+  return dotted({ width: columns, rows, palette, mode, lines: card, pad: 1, scale: 0.42, ring })
 }
 
 /** Where a list's rows start, how far a name goes before it is cut, and the two columns' widths. */

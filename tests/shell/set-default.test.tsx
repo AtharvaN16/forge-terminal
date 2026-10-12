@@ -55,9 +55,7 @@ async function toDestination() {
   await settle()
   app.stdin.write(ENTER) // target = webp
   await settle()
-  app.stdin.write(ENTER) // accept the quality slider -> Save as, on the name
-  await settle(200)
-  app.stdin.write(TAB) // -> the folders
+  app.stdin.write(ENTER) // accept the quality slider -> Save as: the name, the folders under it
   await settle(200)
   return { ...app, dir }
 }

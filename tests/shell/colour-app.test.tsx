@@ -35,7 +35,7 @@ async function home(width = 80) {
 
 async function colourHome() {
   const h = await home()
-  h.app.stdin.write('4')
+  h.app.stdin.write('5')
   await waitFor(() => plain(h.app.lastFrame()).includes('the colours of an image'))
   await settle()
   return h
@@ -119,12 +119,12 @@ describe("colour's home and screens", () => {
     expect(plain(app.lastFrame())).not.toContain('could not be found')
   }, 20_000)
 
-  it('4 lets go of a staged file, as /colour does: colour neither shows it nor brings it back', async () => {
+  it('5 lets go of a staged file, as /colour does: colour neither shows it nor brings it back', async () => {
     const { app, dir } = await home()
     const png = await makeGradientPng(dir, 'g.png', 48)
     app.stdin.write(png)
     await waitFor(() => plain(app.lastFrame()).includes('drop more'))
-    app.stdin.write('4')
+    app.stdin.write('5')
     await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
     await settle()
     expect(plain(app.lastFrame())).not.toContain('g.png')
@@ -142,17 +142,17 @@ describe("colour's home and screens", () => {
   }, 20_000)
 })
 
-describe('colour, the fourth mode', () => {
-  it('4 on home makes colour the mode; results go to the clipboard', async () => {
+describe('colour, the fifth mode', () => {
+  it('5 on home makes colour the mode; results go to the clipboard', async () => {
     const { app } = await home(96)
-    expect(tabRow(app.lastFrame())).toContain('4 colour')
+    expect(tabRow(app.lastFrame())).toContain('5 colour')
     expect(keyRow(app.lastFrame())).toMatch(/1–5 +mode/)
-    app.stdin.write('4')
+    app.stdin.write('5')
     await waitFor(() => tabRow(app.lastFrame()).includes('clipboard'))
     expect(tabRow(app.lastFrame())).toContain('clipboard')
   }, 20_000)
 
-  it('4 on a picker switches to colour, and ctrl-n goes back to convert', async () => {
+  it('5 on a picker switches to colour, and ctrl-n goes back to convert', async () => {
     const { app, dir } = await home(96)
     app.stdin.write(await makeGradientPng(dir, 'a.png', 32))
     await settle()
@@ -160,7 +160,7 @@ describe('colour, the fourth mode', () => {
     await waitFor(() => plain(app.lastFrame()).includes('Convert PNG to'))
     await settle(300) // the picker's keys attach after its first frame
     expect(keyRow(app.lastFrame())).toMatch(/1–5 +mode/)
-    app.stdin.write('4')
+    app.stdin.write('5')
     await waitFor(() => tabRow(app.lastFrame()).includes('clipboard'))
     expect(tabRow(app.lastFrame())).toContain('clipboard')
     app.stdin.write(CTRL_N)

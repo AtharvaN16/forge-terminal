@@ -48,16 +48,21 @@ function Field({
 }
 
 describe('the home field', () => {
-  it('sits four columns in, with the placeholder straight after the marker', () => {
+  it('sits four columns in on its shelf, with the placeholder straight after the marker', () => {
     const { lastFrame } = render(<Field />)
-    expect(plain(lastFrame())).toBe('    › or type a path')
+    // The shelf (round 5, P2): a row of padding either side of the field's.
+    const rows = plain(lastFrame()).split('\n')
+    expect(rows).toHaveLength(3)
+    expect(rows[0]?.trim()).toBe('')
+    expect(rows[1]?.trimEnd()).toBe('    › or type a path')
+    expect(rows[2]?.trim()).toBe('')
   })
 
   it('shows what is typed after the same marker', async () => {
     const { lastFrame, stdin } = render(<Field />)
     stdin.write('~/Desk')
     await settle()
-    expect(plain(lastFrame()).trimEnd()).toBe('    › ~/Desk')
+    expect(plain(lastFrame()).split('\n')[1]?.trimEnd()).toBe('    › ~/Desk')
   })
 
   it('draws the caret on the placeholder’s first letter rather than before it', () => {

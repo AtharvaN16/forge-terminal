@@ -417,7 +417,8 @@ describe('/pdf ends on Save as', () => {
     const { stdin, lastFrame, onDone } = await rotateToSaveAs()
     const out = plain(lastFrame())
     expect(out).toMatch(/^ Save as +Rotate 90°$/m)
-    expect(out).toContain('› report-rotated.pdf   in  Desktop ▾')
+    expect(out).toMatch(/name +report-rotated +\.pdf/)
+    expect(out).toMatch(/▌ Desktop/)
     stdin.write('X')
     await settle()
     stdin.write(ENTER)
@@ -433,8 +434,9 @@ describe('/pdf ends on Save as', () => {
     stdin.write(ENTER) // Every page
     await settle()
     const out = plain(lastFrame())
-    // The folder focused: a white pill, or bracketed where there is no colour.
-    expect(out).toMatch(/› s-1\.pdf … 3 files {3}in .?Desktop/)
+    // No name to edit: the row says what will be written; the folders are live.
+    expect(out).toMatch(/files {3}s-1\.pdf … 3 files/)
+    expect(out).toMatch(/▌ Desktop/)
     expect(out).toMatch(/esc back · ctrl-c quit/)
     stdin.write(ESCAPE)
     await settle()
@@ -473,7 +475,7 @@ describe('/pdf ends on Save as', () => {
     expect(plain(lastFrame())).not.toContain('rename')
     stdin.write(ENTER) // the order as it is
     await settle()
-    expect(plain(lastFrame())).toContain('› docs-merged.pdf   in  Desktop ▾')
+    expect(plain(lastFrame())).toMatch(/name +docs-merged +\.pdf/)
     stdin.write(ESCAPE) // clears the name
     await settle()
     stdin.write(ESCAPE) // back to the order

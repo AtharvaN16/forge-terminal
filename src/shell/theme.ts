@@ -92,12 +92,17 @@ export interface Palette {
    */
   larger: string
   /**
-   * Done (K3·a): the hatching over the part a file grew by, the mirror of
-   * the grey hatching over what a smaller file shed. `larger` mixed 80% of
-   * the way into the background, so the hatching reads as orange without
-   * outshining the bold phrase beside it.
+   * Done (B6a): the hatching over what a smaller file shed — `ok` mixed half
+   * way into the background, a tint rather than a bright green, so the
+   * change written inside it leads.
    */
-  grownHatch: string
+  shedHatch: string
+  /**
+   * Done (B6a): the fill over what a larger file grew by — `larger` mixed 16%
+   * of the way out of the background. Empty means "no fill": the growth is
+   * drawn in `▒` instead.
+   */
+  grownFill: string
   /** Format tag inlined into the file card's border. */
   tag: string
   /** Section labels such as CONVERT TO. */
@@ -167,6 +172,15 @@ export interface Palette {
   /** The band behind the chosen path completion on the home screen. */
   listBand: string
   /**
+   * The home field's fill (P2): a recessed shelf attached under the drop
+   * zone, `selectionBg` stepped back towards the background, so the drop
+   * zone reads as the thing and the field as its edge. Empty: no shelf, the
+   * field is its line alone.
+   */
+  shelf: string
+  /** Home's active mode tab (H2): a dark grey chip a step off the background. */
+  tabChip: string
+  /**
    * The band behind the chosen command when the list sits inside the drop
    * surface, one step up from `selectionBg`, which is that surface's fill.
    */
@@ -199,6 +213,13 @@ export interface Palette {
   defaultTagBg: string
   /** The word on `defaultTagBg`: a soft orange, quieter than the row it sits on. */
   defaultTag: string
+  /**
+   * Save as (V10c): the tag on a path that does not exist yet — the default's
+   * tag in blue rather than orange, where the default's sits.
+   */
+  newTagBg: string
+  /** The word on `newTagBg`. */
+  newTag: string
 }
 
 export const DARK: Palette = {
@@ -221,8 +242,9 @@ export const DARK: Palette = {
   // (~40°) — the two need to read as different colours next to each other,
   // not just different words.
   larger: '#f2994a',
-  // `larger` mixed 80% into `canvas` (#1e1e1e), as the mockup draws it.
-  grownHatch: '#c88041',
+  // `ok` mixed half way into `canvas`, and `larger` 16% out of it.
+  shedHatch: '#47774f',
+  grownFill: '#403225',
   tag: '#63c1d8',
   label: '#a68ce0',
   modeConvert: '#55c7d9',
@@ -253,6 +275,10 @@ export const DARK: Palette = {
   // One step up from `selectionBg`, so the band reads on the terminal and is
   // not mistaken for the drop surface above it.
   listBand: '#323232',
+  // `selectionBg` mixed 55% into `canvas`.
+  shelf: '#242424',
+  // `canvas` stepped 55% towards `selectionBg`.
+  tabChip: '#262626',
   panelBand: '#404040',
   ink: '#0c1d22',
   // The slider (G1) is grey and white so the colour on screen stays in the
@@ -268,13 +294,17 @@ export const DARK: Palette = {
   fieldBand: '#3d3d3d',
   defaultTagBg: '#33261a',
   defaultTag: '#c98a4b',
+  // #5b8def stepped 20% into `canvas`, and the tag's fill 20% out of it.
+  newTagBg: '#2a3448',
+  newTag: '#4f77c5',
 }
 
 export const LIGHT: Palette = {
   name: 'light',
-  fg: '#23262d',
-  // 4.77:1 on white; the previous #8b9099 was 3.21:1.
-  dim: '#6e737c',
+  fg: '#262626',
+  // Round 5 (L6): every grey is a pure grey of the warm one's OKLab
+  // lightness, as dark's are. 4.74:1 on white; the previous #8b9099 was 3.21:1.
+  dim: '#737373',
   // 5.19:1; #a86a06 measured 4.44:1, just under AA. The accent marks the
   // selected row, so it has to clear the bar for text, not for decoration.
   accent: '#9a6005',
@@ -282,16 +312,17 @@ export const LIGHT: Palette = {
   warn: '#8a6100',
   fail: '#b3261e',
   // A pale red, as dark's is a dark one. On it `fail` (#b3261e) measures
-  // 5.32:1 and `fg` (#23262d) 12.32:1, both clearing AA; `dim` 3.88:1.
+  // 5.32:1 and `fg` (#262626) 12.31:1, both clearing AA; `dim` 3.86:1.
   failTint: '#f9e3df',
-  // 4.90:1 on #f9e3df (and 6.03:1 on white); `dim` is 3.88:1 there.
-  failTintDim: '#5f636b',
+  // 4.89:1 on #f9e3df; `dim` is 3.86:1 there.
+  failTintDim: '#636363',
   // 5.56:1 on white. Same reasoning as DARK's `larger`: a burnt orange
   // (~34°) distinct from `warn`'s brown-gold, clearing AA the way `dim` and
   // `accent` above do.
   larger: '#9c5700',
-  // `larger` mixed 80% into `canvas` (#ffffff), as dark's is into its own.
-  grownHatch: '#b07933',
+  // As dark's, against white.
+  shedHatch: '#8fbd9a',
+  grownFill: '#efe4d6',
   tag: '#0a6b86',
   label: '#6141ad',
   modeConvert: '#087f91',
@@ -305,35 +336,41 @@ export const LIGHT: Palette = {
   modeEnhance: '#6a4cc4',
   modeEnhanceBg: '#f0ebfa',
   // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
-  border: '#9a9184',
-  selectionBg: '#eae4d8',
-  band: '#eae4d8',
+  border: '#929292',
+  selectionBg: '#e4e4e4',
+  band: '#e4e4e4',
   canvas: '#ffffff',
   textSelectionBg: '#b9cfe8',
   brand: '#9a6005',
-  // `fg` (#23262d) on this fill measures about 12:1.
-  keycapBg: '#e4e1da',
+  // `fg` (#262626) on this fill measures about 11.6:1.
+  keycapBg: '#e1e1e1',
   violet: '#6141ad',
-  faint: '#c4bfb6',
-  listBand: '#e2dccf',
+  faint: '#bfbfbf',
+  listBand: '#dcdcdc',
+  // `selectionBg` mixed 55% into `canvas`, as dark's is.
+  shelf: '#f3f3f3',
+  tabChip: '#f0f0f0',
   // One step down from `selectionBg`, as dark's is one step up from it.
-  panelBand: '#dcd4c4',
+  panelBand: '#d5d5d5',
   // The light theme's mode colours are deep, so the chip's text is light.
   ink: '#ffffff',
   // Dark's slider turned over: a pale track, a mid-grey fill, and the thumb
   // the darkest thing in the row, as dark's is the brightest.
-  track: '#e8e4dc',
-  trackFill: '#b4aea3',
-  thumb: '#23262d',
+  track: '#e4e4e4',
+  trackFill: '#afafaf',
+  thumb: '#262626',
   // Dark's Save as turned over: greys stepping down from the field's fill,
   // the pill the darkest thing in the field (light `ink` on it, as on the
   // thumb), and the tag a pale orange tint with a burnt orange word —
   // 5.3:1, so it still reads as a word.
-  folderChip: '#d8cfbe',
-  pill: '#23262d',
-  fieldBand: '#ddd6c8',
+  folderChip: '#d0d0d0',
+  pill: '#262626',
+  fieldBand: '#d7d7d7',
   defaultTagBg: '#f5e2cc',
   defaultTag: '#8f5000',
+  // A deep blue on a pale one, as the default's tag is a burnt orange on a pale orange.
+  newTagBg: '#e1e7f4',
+  newTag: '#2a55b0',
 }
 
 /**
@@ -357,8 +394,9 @@ export const NEUTRAL: Palette = {
   // No distinct "orange" in the basic 16 ANSI names this palette is built
   // from — same collapse `accent` and `warn` already make here.
   larger: 'yellow',
-  // An ANSI name cannot be mixed; the hatching is `larger` itself.
-  grownHatch: 'yellow',
+  // An ANSI name cannot be mixed: the hatching is `ok` itself, and no fill is asserted.
+  shedHatch: 'green',
+  grownFill: '',
   tag: 'cyan',
   label: 'magenta',
   modeConvert: 'cyan',
@@ -384,6 +422,8 @@ export const NEUTRAL: Palette = {
   violet: 'magenta',
   faint: 'gray',
   listBand: '',
+  shelf: '',
+  tabChip: '',
   panelBand: '',
   ink: '',
   track: '',
@@ -394,12 +434,14 @@ export const NEUTRAL: Palette = {
   fieldBand: '',
   defaultTagBg: '',
   defaultTag: '',
+  newTagBg: '',
+  newTag: '',
 }
 
 export type ShellMode = 'convert' | 'compress' | 'pdf' | 'colour' | 'enhance'
 
 /** The modes in the order they are numbered on the home screen: 1, 2, 3, … */
-export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'colour', 'enhance']
+export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'enhance', 'colour']
 
 /** The digits that pick a mode, as the key rows say them: "1–5". */
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
@@ -437,15 +479,223 @@ export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: stri
  * where true colour can show one, and enhance violet to a deeper violet.
  * Read from fields `modePalette` never moves, so the result is the same
  * whether `p` is the base palette or a mode's.
+ *
+ * `commands` is the command list's own (K1, round 5): the brand's gold.
  */
 const SPECTRUM = ['#f26e69', '#e5a23c', '#ace02c', '#55c7d9', '#6579fd', '#ad95e9'] as const
 
-export function modeGradient(p: Palette, mode: ShellMode): readonly string[] {
-  if (mode === 'compress') return [p.modeCompress, p.modeConvert]
-  if (mode === 'pdf') return [p.modePdf, p.brand]
-  if (mode === 'colour') return p.name === 'dark' ? SPECTRUM : [p.modeColour, p.violet]
-  if (mode === 'enhance') return [p.modeEnhance, p.name === 'dark' ? ENHANCE_END : p.violet]
+/** What a gradient is drawn for: a mode, or the command list. */
+export type Scheme = ShellMode | 'commands'
+
+/** The commands' gold, in dark: the brand stepping up to a pale gold. */
+const COMMANDS_DARK = ['#e5a23c', '#f2cf6b'] as const
+
+/**
+ * Light's bands (L6, mockups/round-5-2026-10.html): dark's hues walked in
+ * OKLCH — the hue turning the short way round, a stop every few columns so
+ * the straight blend between neighbours never strays — each at one
+ * lightness (0.62) and as much chroma as sRGB holds there, yellows lifted
+ * so ambers stay clear. Light's mode colours are deep, for text; a band of
+ * them was dark and muddy. Made by `scripts/round5-mockup.ts` (`stopsAt`).
+ */
+const LIGHT_BAND: Record<ShellMode, readonly string[]> = {
+  convert: [
+    '#1e96a7',
+    '#1e94b3',
+    '#1e92c0',
+    '#1d8ed2',
+    '#1b86ef',
+    '#4a7df8',
+    '#6974f8',
+    '#816af8',
+    '#995cf8',
+  ],
+  compress: [
+    '#24b459',
+    '#22ab6d',
+    '#21a479',
+    '#209f81',
+    '#1f9c89',
+    '#1f9a91',
+    '#1e9998',
+    '#1e97a0',
+    '#1e96a7',
+  ],
+  pdf: [
+    '#eb4319',
+    '#e3541a',
+    '#de601b',
+    '#db6a1c',
+    '#d9731d',
+    '#d87c1e',
+    '#d8841f',
+    '#d98c20',
+    '#d99522',
+  ],
+  enhance: [
+    '#9b5af8',
+    '#985cf8',
+    '#965ef8',
+    '#945ff8',
+    '#9161f8',
+    '#8f62f8',
+    '#8d64f8',
+    '#8a65f8',
+    '#8867f8',
+  ],
+  colour: [
+    '#f42335',
+    '#e05b1a',
+    '#d87d1e',
+    '#da9b23',
+    '#d2b427',
+    '#b4c027',
+    '#5bbf23',
+    '#20a27c',
+    '#1e989b',
+    '#1e94b6',
+    '#1c8cd9',
+    '#577af8',
+    '#7371f8',
+    '#8568f8',
+    '#965df8',
+  ],
+}
+const LIGHT_COMMANDS = [
+  '#d99522',
+  '#da9822',
+  '#da9b23',
+  '#da9f24',
+  '#d9a224',
+  '#d9a525',
+  '#d8a825',
+  '#d7ab26',
+  '#d6ad26',
+] as const
+
+/**
+ * The near-white tint each light band stop sits on (`washOf`, OKLCH 0.955):
+ * the hatching drawn on its own colour, so FORGE is knocked out of a soft
+ * band rather than out of thin lines. Step for step with `LIGHT_BAND`.
+ */
+const LIGHT_WASH: Record<ShellMode, readonly string[]> = {
+  convert: [
+    '#d6f7fd',
+    '#ddf5fe',
+    '#e1f4fe',
+    '#e4f2fe',
+    '#e7f1fe',
+    '#eaf0fe',
+    '#eceffe',
+    '#efeefe',
+    '#f1edfe',
+  ],
+  compress: [
+    '#e0f7e4',
+    '#def8e7',
+    '#dcf8ea',
+    '#daf8ed',
+    '#d8f8f1',
+    '#d7f8f4',
+    '#d6f8f7',
+    '#d6f8fa',
+    '#d6f7fd',
+  ],
+  pdf: [
+    '#feece7',
+    '#feece6',
+    '#feece5',
+    '#feece3',
+    '#feece2',
+    '#feede0',
+    '#feedde',
+    '#feeddc',
+    '#feeed9',
+  ],
+  enhance: [
+    '#f2edfe',
+    '#f1edfe',
+    '#f1edfe',
+    '#f1eefe',
+    '#f0eefe',
+    '#f0eefe',
+    '#f0eefe',
+    '#f0eefe',
+    '#efeefe',
+  ],
+  colour: [
+    '#feebe9',
+    '#feece5',
+    '#feede0',
+    '#feeed7',
+    '#f7f1d6',
+    '#eff3d9',
+    '#e5f6df',
+    '#dbf8eb',
+    '#d6f8f8',
+    '#def5fe',
+    '#e5f2fe',
+    '#ebf0fe',
+    '#edeffe',
+    '#efeefe',
+    '#f1edfe',
+  ],
+}
+const LIGHT_COMMANDS_WASH = [
+  '#feeed9',
+  '#feeed8',
+  '#feeed7',
+  '#fdeed6',
+  '#fcefd6',
+  '#fbefd6',
+  '#fbefd6',
+  '#faefd6',
+  '#f9f0d6',
+] as const
+
+/**
+ * Light's drop-zone dots (L1): dark's hues, each darkened until it reads
+ * 4.5:1 on white, which keeps it above 3:1 on the grey the dots sit on.
+ * Deeper than the band: a dot is a single small glyph.
+ */
+const LIGHT_DOTS: Record<ShellMode, readonly string[]> = {
+  convert: ['#138291', '#8467bd'],
+  compress: ['#2b8748', '#138291'],
+  pdf: ['#d54322', '#a06c10'],
+  enhance: ['#8567bc', '#7b67cd'],
+  colour: ['#cb4b49', '#a06c10', '#618110', '#138291', '#5869ec', '#8268bd'],
+}
+
+export function modeGradient(p: Palette, scheme: Scheme): readonly string[] {
+  if (p.name === 'light') return scheme === 'commands' ? LIGHT_COMMANDS : LIGHT_BAND[scheme]
+  if (scheme === 'commands') return p.name === 'dark' ? COMMANDS_DARK : [p.brand]
+  if (scheme === 'compress') return [p.modeCompress, p.modeConvert]
+  if (scheme === 'pdf') return [p.modePdf, p.brand]
+  if (scheme === 'colour') return p.name === 'dark' ? SPECTRUM : [p.modeColour, p.violet]
+  if (scheme === 'enhance') return [p.modeEnhance, p.name === 'dark' ? ENHANCE_END : p.violet]
   return [p.modeConvert, p.violet]
+}
+
+/**
+ * The fill under each of `modeGradient`'s stops on the logo's band, where
+ * the hatching is washed (light, L6); undefined where it sits on the canvas.
+ */
+export function modeWash(p: Palette, scheme: Scheme): readonly string[] | undefined {
+  if (p.name !== 'light') return undefined
+  return scheme === 'commands' ? LIGHT_COMMANDS_WASH : LIGHT_WASH[scheme]
+}
+
+/** The drop zone's dots: light's own (L1), the band's everywhere else. */
+export function dotGradient(p: Palette, mode: ShellMode): readonly string[] {
+  return p.name === 'light' ? LIGHT_DOTS[mode] : modeGradient(p, mode)
+}
+
+/**
+ * The palette while the command list is open: the role colours become the
+ * commands' gold, as `modePalette` hands them to a mode.
+ */
+export function commandsPalette(p: Palette): Palette {
+  return { ...p, accent: p.brand, tag: p.brand, label: p.brand }
 }
 
 /**

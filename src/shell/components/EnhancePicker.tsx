@@ -154,7 +154,6 @@ export function EnhancePicker({
             palette,
             mode: 'enhance',
             title: `Enhance ${format}`,
-            aside: `${at + 1}/${rows.length}`,
             width,
           })}
         />

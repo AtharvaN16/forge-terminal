@@ -62,13 +62,17 @@ export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[]
 }
 
 /**
- * A row of a home frame (80 × 24), as the app draws it now. Three things
+ * A row of a home frame (80 × 24), as the app draws it now. Things that
  * moved on from the frozen mockup:
  * - the row above the keys is a rule in the border colour;
  * - the tab rows (5–6) have more modes than the mockup's three (colour, colour
  *   spec §6.1; enhance, mockups/extensions-2026-10.html), so they are held to
  *   `tabRows` itself;
- * - the key row names every mode digit (`MODE_KEYS`, "1–5").
+ * - the key row names every mode digit (`MODE_KEYS`, "1–5");
+ * - round 5 (P2): the field sits on a recessed shelf three rows tall, attached
+ *   under the drop zone (rows 15–17), its words where the mockup's were; the
+ *   list under it starts a row lower;
+ * - round 5: the dots are brighter — see `describeHomeRow`.
  */
 export function homeRow(frame: FixtureFrame, row: number): Cell[] {
   if (row === 22) return runsRow([{ text: '─'.repeat(80), fg: DARK.border }])
@@ -82,6 +86,16 @@ export function homeRow(frame: FixtureFrame, row: number): Cell[] {
     })
     return runsRow(tabs[row - 5] ?? [])
   }
+  if (row === 15 || row === 17)
+    return runsRow([{ text: '  ' }, { text: ' '.repeat(76), bg: DARK.shelf }])
+  if (row === 16) {
+    return fixtureRow(frame, 16).map((c, x) =>
+      x >= 2 && x < 78 && c.bg === null
+        ? { ...c, bg: DARK.shelf, fg: c.ch === ' ' ? null : c.fg }
+        : c,
+    )
+  }
+  if (row >= 18 && row <= 21) return fixtureRow(frame, row - 1)
   const cells = fixtureRow(frame, row)
   if (row === 23) {
     const at = cells
@@ -92,6 +106,28 @@ export function homeRow(frame: FixtureFrame, row: number): Cell[] {
     if (at >= 0 && last) cells[at + 2] = { ...last, ch: MODE_KEYS.slice(-1) }
   }
   return cells
+}
+
+/** How far apart two colours are, in RGB. */
+function distance(a: string | null, b: string | null): number {
+  const c = (h: string | null) =>
+    [1, 3, 5].map((i) => Number.parseInt((h ?? '#000000').slice(i, i + 2), 16))
+  const [x, y] = [c(a), c(b)]
+  return Math.hypot(...x.map((v, i) => v - (y[i] ?? 0)))
+}
+
+/**
+ * `describeRow` for a home row, with round 5's brighter dots: a dot passes
+ * where it is in the mockup's place and stands at least as far from its fill
+ * as the mockup's did. Everything else must be equal.
+ */
+export function describeHomeRow(actual: Cell[], expected: Cell[]): string {
+  const held = expected.map((e, x) => {
+    const a = actual[x]
+    if (!a || e.ch !== '·' || a.ch !== '·' || a.bg !== e.bg) return e
+    return distance(a.fg, a.bg) >= distance(e.fg, e.bg) ? { ...e, fg: a.fg } : e
+  })
+  return describeRow(actual, held)
 }
 
 export interface Run {

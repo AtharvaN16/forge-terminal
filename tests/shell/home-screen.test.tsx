@@ -4,7 +4,7 @@ import { Home, homeKeys, homeLayout, Suggestions } from '../../src/shell/compone
 import { Prompt } from '../../src/shell/components/Prompt.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette, type ShellMode } from '../../src/shell/theme.js'
-import { ansiRow, describeRow, type FixtureFrame, homeRow, MOCKUP } from './home-cells.js'
+import { ansiRow, describeHomeRow, type FixtureFrame, homeRow, MOCKUP } from './home-cells.js'
 
 vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
@@ -62,7 +62,7 @@ function expectFrame(frame: FixtureFrame, skip: number[] = []) {
   for (let row = 0; row < 24; row++) {
     if (skip.includes(row)) continue
     const actual = ansiRow(lines[row] ?? '')
-    expect(describeRow(actual, homeRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
+    expect(describeHomeRow(actual, homeRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
   }
 }
 
@@ -112,7 +112,8 @@ describe('the home screen at other sizes', () => {
   })
 
   it('gives up the brand before the drop zone, and the drop zone last', () => {
-    expect(homeLayout(80, 24)).toEqual({ brand: true, surface: 8, list: 6 })
+    // The field's shelf (round 5, P2) is three rows, a row more than the field and its gap were.
+    expect(homeLayout(80, 24)).toEqual({ brand: true, surface: 8, list: 5 })
     expect(homeLayout(80, 20).brand).toBe(true)
     expect(homeLayout(80, 20).surface).toBeGreaterThanOrEqual(4)
     expect(homeLayout(80, 16).brand).toBe(false)

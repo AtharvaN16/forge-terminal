@@ -55,11 +55,12 @@ describe('Done, in the flow', () => {
       /^ {4}↵ {2}convert another {3}o {2}open {3}s {2}show in \S+ +ctrl-c quit$/,
     )
     const all = plain(app.lastFrame())
-    expect(all).toMatch(/^ {3}before$/m)
-    expect(all).toMatch(/^ {3}after$/m)
+    // B6a: the formats' chip, one bar with the new file's name, was and now.
+    expect(all).toMatch(/^ {3}PNG → JPEG$/m)
     expect(all).toContain('✓ test.jpg')
     expect(all).toMatch(/\d+(\.\d)?% (smaller|larger)|same size/)
-    expect(all).toMatch(/^ {3}in \S/m)
+    expect(all).toMatch(/^ {2,3}(now|was) \S+ \S+ +(now|was) \S+ \S+ ?$/m)
+    expect(out[22]).toBe('─'.repeat(80))
     // Not today's receipt.
     expect(all).not.toContain('✓ DONE')
     expect(all).not.toContain('saved to')

@@ -785,7 +785,6 @@ export function PdfFlow({
             onSubmit={saveAndRun}
             onBack={backFromConfirm}
             aside={describeJob(job)}
-            initialFocus={resume ? 'folder' : 'name'}
           />
         </Box>
       ) : null}

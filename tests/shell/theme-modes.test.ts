@@ -19,9 +19,9 @@ const contrast = (a: string, b: string) => {
   return (x + 0.05) / (y + 0.05)
 }
 
-describe('colour is the fourth mode', () => {
-  it('comes fourth, after pdf, with enhance fifth', () => {
-    expect(MODE_ORDER).toEqual(['convert', 'compress', 'pdf', 'colour', 'enhance'])
+describe('colour is the fifth mode', () => {
+  it('comes last, after enhance', () => {
+    expect(MODE_ORDER).toEqual(['convert', 'compress', 'pdf', 'enhance', 'colour'])
   })
 
   it('has its own colour and fill', () => {

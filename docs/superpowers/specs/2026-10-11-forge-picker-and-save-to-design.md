@@ -126,7 +126,11 @@ is not NEUTRAL. When it is false, every animation below shows its final
 frame. Tests render without a TTY, so the existing snapshots are unaffected.
 
 Every animation changes characters or colours in cells, ticks at 33 ms or
-slower, and stops when it has finished.
+slower, and stops when it has finished — with one exception, the drop
+surface's ripple (added 2026-10-12), which loops for as long as the home
+screen is idle. It is the only loop allowed, and only there: anything put on
+the panel (typing, a staged file, the commands) stops it, and it redraws at
+66 ms, as the header bar's drift does.
 
 | What | Where | Behaviour |
 | --- | --- | --- |
@@ -135,6 +139,7 @@ slower, and stops when it has finished.
 | Drop flash | `PathInput` | When a path arrives as one pasted chunk, the input line flashes in `band` and fades back over 450 ms. |
 | Spinner and elapsed time | `converting` step, single file | The `cli/spinner.ts` frames, followed by the existing label and the real elapsed seconds. There is no percentage. Batch and target-size progress are unchanged. |
 | Mode wipe | `HeaderBar` | When the mode changes, the new mode's fill wipes in from the left over 260 ms. |
+| Drop surface ripple (M1, 2026-10-12) | `Home` drop surface | While the bare drop surface is all that is on the panel and nothing is typed, it loops every 5.7 s: from an empty surface a soft ring spreads out from the words over 3.2 s and the dots appear as it reaches them, each lifting at most 0.3 above its rest and never past its own tint; the full field rests 1.3 s, fades out together over 0.7 s and stays empty 0.5 s. Anything on the panel holds it still at today's frame; when the panel is bare again it starts from empty. Decided on `mockups/dots-motion-2026-10.html`. |
 
 **Deferred: bars draw once.** The receipt card is printed through Ink's
 `<Static>`, which writes it to scrollback once and never redraws it. An
@@ -143,8 +148,8 @@ animate would mean changing how results reach the screen, which is outside
 this change.
 
 Helpers live in `src/shell/motion.ts`: `motionEnabled`, `mix`, `useTween`
-(0→1 over a duration, restarted by a key) and `useTicker` (frame counter
-while active). Neither `core/` nor `engines/` gains any of it (invariant 1).
+(0→1 over a duration, restarted by a key), `useTicker` (frame counter
+while active) and `useElapsed` (ms since it turned on, for the ripple). Neither `core/` nor `engines/` gains any of it (invariant 1).
 
 ## 5. Testing
 

@@ -128,11 +128,12 @@ describe('dropping onto home', () => {
     await settle(500)
     const lines = plain(app.lastFrame()).split('\n')
     const at = lines.findIndex((l) => l.startsWith('    › '))
-    expect(lines[at + 2]).toMatch(/^ +\S.*\S {3}broken\.png /)
+    // The shelf's padding, a blank row, then the refusal.
+    expect(lines[at + 3]).toMatch(/^ +\S.*\S {3}broken\.png /)
     expect(lines.join('\n')).not.toMatch(/^\s+failed\s*$/m)
     // Nothing is staged: it is a refusal of this drop, not a file left out.
     expect(lines.join('\n')).not.toContain('left out')
-    expect(lines[at]).toBe('    › or type a path')
+    expect(lines[at]?.trimEnd()).toBe('    › or type a path')
   }, 20_000)
 
   it('says what it left out, and esc clears the stage and the line', async () => {
