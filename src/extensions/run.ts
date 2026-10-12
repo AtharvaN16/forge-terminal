@@ -14,6 +14,8 @@ export interface ExtensionJobResult {
   width: number
   height: number
   ms: number
+  /** Only from jobs that report it (the heic runner's `--info`). */
+  hasAlpha?: boolean
 }
 
 type RunOpts = {
@@ -134,12 +136,18 @@ function runOne(
               width?: number
               height?: number
               ms?: number
+              hasAlpha?: boolean
               code?: string
               message?: string
             }
           | undefined
         if (r && r.ok === true && status === 0) {
-          return resolve({ width: Number(r.width), height: Number(r.height), ms: Number(r.ms) })
+          return resolve({
+            width: Number(r.width),
+            height: Number(r.height),
+            ms: Number(r.ms),
+            ...(typeof r.hasAlpha === 'boolean' ? { hasAlpha: r.hasAlpha } : {}),
+          })
         }
         if (r && r.ok === false) {
           return reject(mapFailure(String(r.code ?? ''), String(r.message ?? ''), path, opts))

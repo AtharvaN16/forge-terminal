@@ -1,11 +1,13 @@
 import { execFile } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import sharp from 'sharp'
-import { describe, expect, it } from 'vitest'
-import { heicDecodable } from '../../src/engines/heic.js'
+import { afterEach, describe, expect, it } from 'vitest'
+import { heicDecoderUnavailable } from '../../src/core/errors.js'
+import { decodeHeic, heicDecodable, heicInfo } from '../../src/engines/heic.js'
 import { imageEngine } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
 import { makeJpeg, makeOrientedJpeg, makeTempDir } from '../helpers/fixtures.js'
@@ -205,5 +207,80 @@ describe('HEIC conversion', () => {
     // The source is a portrait 40x80 rotated to display as 80x40 landscape.
     expect(meta.width).toBe(80)
     expect(meta.height).toBe(40)
+  })
+})
+
+/** 64×48, made once on a Mac with sips (tests/fixtures/README.md). */
+const smallHeic = join(process.cwd(), 'tests', 'fixtures', 'heic', 'small.heic')
+
+const savedXdg = process.env.XDG_CONFIG_HOME
+afterEach(() => {
+  if (savedXdg === undefined) delete process.env.XDG_CONFIG_HOME
+  else process.env.XDG_CONFIG_HOME = savedXdg
+})
+
+/** Points the config dir at an empty temp dir; returns where heic 1.0.0 would install. */
+async function emptyConfig(): Promise<string> {
+  const config = await makeTempDir()
+  process.env.XDG_CONFIG_HOME = config
+  return join(config, 'forge', 'extensions', 'heic', '1.0.0')
+}
+
+/** The layout `installed()` reads: the built runner, its manifest, and `current`. */
+async function installHeicExtension(dir: string): Promise<void> {
+  await run(process.execPath, [
+    join(process.cwd(), 'extensions', 'heic', 'build.mjs'),
+    '--out',
+    dir,
+  ])
+  const manifest = {
+    id: 'heic',
+    version: '1.0.0',
+    entry: 'runner.mjs',
+    kind: 'node',
+    files: { 'runner.mjs': '' },
+  }
+  await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest))
+  await writeFile(join(dirname(dir), 'current'), '1.0.0')
+}
+
+describe('HEIC on Windows (the heic extension)', () => {
+  it('is decodable once the extension is installed, mid-session, and decodes through it', async () => {
+    const dir = await emptyConfig()
+    expect(await heicDecodable('win32')).toBe(false)
+    await installHeicExtension(dir)
+    expect(await heicDecodable('win32')).toBe(true)
+
+    expect(await heicInfo(smallHeic, 'win32')).toEqual({ width: 64, height: 48, hasAlpha: false })
+
+    const decoded = await decodeHeic(smallHeic, 'win32')
+    const meta = await sharp(decoded.path).metadata()
+    expect(meta).toMatchObject({ format: 'png', width: 64, height: 48 })
+    await decoded.cleanup()
+    expect(existsSync(dirname(decoded.path))).toBe(false)
+  }, 60_000)
+
+  it('without the extension, refuses with the install hint', async () => {
+    await emptyConfig()
+    await expect(decodeHeic(smallHeic, 'win32')).rejects.toMatchObject({
+      code: 'heic-decoder-unavailable',
+      hint: 'Install it with: forge extensions add heic',
+      shellHint: 'Open /extensions to install it.',
+    })
+  })
+
+  it('macOS keeps its sips wording', () => {
+    expect(heicDecoderUnavailable('a.heic', 'darwin').hint).toBe(
+      'sips could not be run. It ships with macOS at /usr/bin/sips.',
+    )
+  })
+
+  it('macOS still reads HEIC with sips, extension or not', async (ctx) => {
+    if (!existsSync('/usr/bin/sips')) {
+      ctx.skip('sips unavailable')
+      return
+    }
+    await emptyConfig()
+    expect(await heicInfo(smallHeic, 'darwin')).toEqual({ width: 64, height: 48, hasAlpha: false })
   })
 })

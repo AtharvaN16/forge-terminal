@@ -206,8 +206,25 @@ export function nothingVisible(path: string): ForgeError {
  * ships libheif without an HEVC decoder for licensing reasons. This is the
  * one condition that can take HEIC away, and it deserves to say so rather
  * than surfacing as a generic conversion failure.
+ *
+ * Windows has no sips, and its own HEVC codec is a paid add-on on many PCs,
+ * so there HEIC is decoded by Forge's optional `heic` extension — and the way
+ * forward is installing it.
  */
-export function heicDecoderUnavailable(path: string): ForgeError {
+export function heicDecoderUnavailable(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  if (platform === 'win32') {
+    return new ForgeError({
+      code: 'heic-decoder-unavailable',
+      title: 'Cannot read HEIC here',
+      detail: `${basename(path)} is a HEIC photo, which needs Forge's free HEIC extension on Windows.`,
+      short: 'HEIC needs the heic extension.',
+      hint: 'Install it with: forge extensions add heic',
+      shellHint: 'Open /extensions to install it.',
+    })
+  }
   return new ForgeError({
     code: 'heic-decoder-unavailable',
     title: 'Cannot read HEIC here',

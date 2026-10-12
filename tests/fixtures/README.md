@@ -36,3 +36,16 @@ They embed subsets of macOS system fonts, as any PDF saved on a Mac does.
 They are test data only and never ship (`files` in package.json is `dist`).
 The Type3 and scanned cases are built at test time instead
 (`makeType3Pdf`, `makeScannedPdf` in `tests/helpers/fixtures.ts`).
+
+## `heic/small.heic`
+
+A 64×48 HEVC-in-HEIF image, so the Windows job can exercise the `heic`
+extension (Windows spec §5.3) — Windows has no `sips` to make one at test
+time. The pixels are a gradient: red ramps 0→255 left to right, green 0→255
+top to bottom, blue fixed at 128. Made once on macOS:
+
+    # in.png: a 64×48 RGB PNG of that gradient, written by Sharp from a raw buffer
+    sips -s format heic in.png --out tests/fixtures/heic/small.heic
+
+`sips` encodes with Apple's own HEVC codec, as an iPhone does. Opaque, no
+rotation, a single tile.
