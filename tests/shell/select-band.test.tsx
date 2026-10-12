@@ -118,8 +118,11 @@ describe('the picker (spec 2026-10-11 picker §1)', () => {
     ]
     const frame = frameOf(<Select width={40} items={tagged} onSubmit={() => {}} />)
     const row = frame.split('\n').find((l) => l.includes('Downloads')) ?? ''
-    expect(row.trimEnd().endsWith('★ default')).toBe(true)
-    expect(row.trimEnd().length).toBe(40)
+    // P1's tag: the word padded a cell each side, then one cell inside the edge.
+    expect(row.trimEnd().endsWith(' default')).toBe(true)
+    expect(row).not.toContain('★')
+    // Without colour the tag's own last cell and the inset are blanks, which Ink trims.
+    expect(row.length).toBe(38)
   })
 
   it('shows every hint when the list is found by its hints', () => {

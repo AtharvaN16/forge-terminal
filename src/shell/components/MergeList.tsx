@@ -1,10 +1,9 @@
 import { statSync } from 'node:fs'
-import { basename, dirname, extname, join } from 'node:path'
+import { basename } from 'node:path'
 import { Box, Text } from 'ink'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { moveItem, nextSortMode, type SortMode, sortSources } from '../../core/order.js'
-import { mergeOutputPath } from '../../core/output-path.js'
 import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
 import { useTheme } from '../ThemeContext.js'
@@ -12,7 +11,6 @@ import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { middleEllipsis } from '../width.js'
 import { HintBar } from './HintBar.js'
-import { Prompt } from './Prompt.js'
 
 /**
  * Real modification times for `sortSources`'s `newest`/`oldest` modes. A
@@ -39,11 +37,10 @@ export interface MergeListProps {
   sources: SourceInfo[]
   width: number
   /**
-   * The edited order and the output path to plan against — default from
-   * `mergeOutputPath`, or the renamed one if `n` was used. Merge order *is*
-   * page order, so this is the one place that order gets decided.
+   * The edited order. Merge order *is* page order, so this is the one place
+   * that order gets decided; the file is named on Save as, after this.
    */
-  onSubmit: (ordered: SourceInfo[], outputPath: string) => void
+  onSubmit: (ordered: SourceInfo[]) => void
   onCancel: () => void
   /**
    * `x` dropped the list below two sources — merge no longer applies. Takes
@@ -51,6 +48,8 @@ export interface MergeListProps {
    * gets said about it back at the hub is a real number.
    */
   onTooFew: (remaining: number) => void
+  /** The list as it stands after every move, sort or removal, for whatever counts it (the title). */
+  onOrderChange?: ((ordered: SourceInfo[]) => void) | undefined
   /**
    * Seeds the held row. Only ever set by a test — real use always starts
    * with nothing picked up and gets there through `space`, the same way
@@ -78,18 +77,19 @@ export function MergeList({
   onSubmit,
   onCancel,
   onTooFew,
+  onOrderChange,
   heldIndex,
 }: MergeListProps) {
   const palette = useTheme()
   const mtimes = useMemo(() => mtimesFor(sources), [sources])
 
   const [order, setOrder] = useState<SourceInfo[]>(sources)
+  useEffect(() => {
+    onOrderChange?.(order)
+  }, [order, onOrderChange])
   const [cursor, setCursor] = useState(heldIndex ?? 0)
   const [held, setHeld] = useState<number | null>(heldIndex ?? null)
   const [mode, setMode] = useState<SortMode>('dropped')
-  const [renaming, setRenaming] = useState(false)
-  const [stemText, setStemText] = useState('')
-  const [customStem, setCustomStem] = useState<string | undefined>(undefined)
 
   /**
    * `useInput` handlers are synchronous, but `useState` updates are not —
@@ -103,8 +103,6 @@ export function MergeList({
   const cursorRef = useRef(cursor)
   const heldRef = useRef(held)
   const modeRef = useRef(mode)
-  const customStemRef = useRef(customStem)
-  customStemRef.current = customStem
 
   /**
    * What `s` sorts from, and what cycling back around to `dropped` restores
@@ -126,18 +124,6 @@ export function MergeList({
   const heldSnapshotRef = useRef<SourceInfo[] | null>(null)
 
   const clampIndex = (i: number, len: number) => Math.min(Math.max(i, 0), Math.max(0, len - 1))
-
-  const defaultOutputPath = mergeOutputPath(order.map((s) => s.path))
-  const outputExt = extname(defaultOutputPath) || '.pdf'
-  const outputPath = customStem
-    ? join(dirname(defaultOutputPath), `${customStem}${outputExt}`)
-    : defaultOutputPath
-
-  const currentOutputPath = (): string => {
-    const def = mergeOutputPath(orderRef.current.map((s) => s.path))
-    const stem = customStemRef.current
-    return stem ? join(dirname(def), `${stem}${extname(def) || '.pdf'}`) : def
-  }
 
   const moveCursor = (delta: number) => {
     if (heldRef.current !== null) {
@@ -225,40 +211,15 @@ export function MergeList({
     setCursor(clamped)
   }
 
-  const openRename = () => {
-    if (heldRef.current !== null) return
-    setStemText(customStemRef.current ?? basename(defaultOutputPath, outputExt))
-    setRenaming(true)
-  }
-
-  const submitRename = (raw: string) => {
-    const cleaned = raw.trim().replace(/\//g, '-')
-    setCustomStem(cleaned === '' ? undefined : cleaned)
-    setRenaming(false)
-  }
-
-  useKeys(
-    (_input, key) => {
-      if (key.escape) setRenaming(false)
-    },
-    { isActive: renaming },
-  )
-
-  useKeys(
-    (input, key) => {
-      if (key.upArrow) moveCursor(-1)
-      if (key.downArrow) moveCursor(1)
-      if (input === ' ') toggleHold()
-      if (key.escape) putBackOrCancel()
-      if (input === 'x') removeCurrent()
-      if (input === 's') cycleSort()
-      if (input === 'n') openRename()
-      if (key.return && heldRef.current === null) onSubmit(orderRef.current, currentOutputPath())
-    },
-    { isActive: !renaming },
-  )
-
-  const totalPages = order.reduce((n, s) => n + pagesOf(s), 0)
+  useKeys((input, key) => {
+    if (key.upArrow) moveCursor(-1)
+    if (key.downArrow) moveCursor(1)
+    if (input === ' ') toggleHold()
+    if (key.escape) putBackOrCancel()
+    if (input === 'x') removeCurrent()
+    if (input === 's') cycleSort()
+    if (key.return && heldRef.current === null) onSubmit(orderRef.current)
+  })
 
   /**
    * Everything on a row that is not the name: two leading spaces, the
@@ -281,7 +242,8 @@ export function MergeList({
   const rows = order.map((s, i) => {
     const isCursor = i === cursor
     const isHeld = i === held
-    const mark = isHeld ? '⇅' : isCursor ? SYMBOLS.cursor : ' '
+    // The picker's strip marks the row you are on; a row picked up says so with ⇅.
+    const mark = isHeld ? '⇅' : isCursor ? SYMBOLS.strip : ' '
     const name = middleEllipsis(basename(s.path), nameWidth)
     const numStr = String(i + 1).padStart(2)
     // Padded by column count, not by `padEnd`'s code units, for the same
@@ -290,7 +252,8 @@ export function MergeList({
     const pages = pagesOf(s)
     const pagesStr = `${pages} ${pages === 1 ? 'page' : 'pages'}`.padStart(9)
     const sizeStr = formatBytes(s.bytes).padStart(10)
-    const bg = isCursor && palette.selectionBg !== '' ? palette.selectionBg : undefined
+    // The picker's band: grey, as every list's is.
+    const bg = isCursor && palette.listBand !== '' ? palette.listBand : undefined
 
     return (
       <Text key={s.path} {...(bg ? { backgroundColor: bg } : {})}>
@@ -311,50 +274,31 @@ export function MergeList({
       ? [
           ['↑↓', 'move'],
           ['space', 'drop'],
-          ['esc', 'put back'],
         ]
       : [
-          ['↑↓', 'select'],
+          ['↑↓', 'choose'],
           ['space', 'pick up'],
+          ['↵', 'confirm'],
+        ]
+  const hintFoot: Array<[string, string]> =
+    held !== null
+      ? [['esc', 'put back']]
+      : [
           ['s', 'sort'],
           ['x', 'remove'],
-          ['n', 'rename'],
-          ['↵', 'confirm'],
-          ['esc', 'cancel'],
+          ['esc', 'back'],
         ]
 
   return (
     <Box flexDirection="column">
-      <Text color={colourProp(palette.dim)}>
-        {`${order.length} ${order.length === 1 ? 'file' : 'files'} to merge`}
-      </Text>
-      <Box flexDirection="column" marginTop={1}>
-        {rows}
-      </Box>
-      {renaming ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={colourProp(palette.label)}>Name the output</Text>
-          <Prompt
-            value={stemText}
-            onChange={setStemText}
-            onSubmit={submitRename}
-            placeholder={basename(defaultOutputPath, outputExt)}
-            isActive
-            variant="field"
-            width={width}
-          />
+      {/* How many, and how many pages, is the title's to say (pdf.tsx). */}
+      <Box flexDirection="column">{rows}</Box>
+      {mode !== 'dropped' ? (
+        <Box marginTop={1}>
+          <Text color={colourProp(palette.dim)}>{`sorted: ${mode} ▾`}</Text>
         </Box>
-      ) : (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={colourProp(palette.dim)}>
-            {`${SYMBOLS.longArrow} ${middleEllipsis(outputPath, Math.max(12, width - 4))}  ·  ${totalPages} ${totalPages === 1 ? 'page' : 'pages'}`}
-          </Text>
-          {mode !== 'dropped' ? (
-            <Text color={colourProp(palette.dim)}>{`sorted: ${mode} ▾`}</Text>
-          ) : null}
-        </Box>
-      )}
-      <HintBar width={width} pairs={hintPairs} />
+      ) : null}
+      <HintBar width={width} pairs={hintPairs} foot={hintFoot} />
     </Box>
   )
 }

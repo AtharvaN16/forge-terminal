@@ -1,7 +1,8 @@
 import { invalidArguments } from '../errors.js'
-import { splitOutputPaths } from '../output-path.js'
+import { placeOutputs, splitOutputPaths } from '../output-path.js'
 import { cutsToRanges } from '../pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../types.js'
+import { answer } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
 
 // Page operations are pdf-only — see merge.ts's identical comment.
@@ -40,7 +41,12 @@ export const splitAction: Action = {
     if (!doc) return []
     const cuts = Array.isArray(values.cuts) ? (values.cuts as number[]) : []
     const parts = cutsToRanges(cuts, doc.pages).length
-    return [{ op: 'split', sources: [doc], outputs: splitOutputPaths(doc.path, parts), cuts }]
+    const outputs = placeOutputs(
+      splitOutputPaths(doc.path, parts),
+      answer(values.destination),
+      answer(values.name),
+    )
+    return [{ op: 'split', sources: [doc], outputs, cuts }]
   },
 }
 

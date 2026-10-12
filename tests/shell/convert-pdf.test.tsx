@@ -147,7 +147,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     await settle()
     stdin.write(ENTER) // stage the file -> target picker (jpeg is first)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     stdin.write(ENTER) // choose jpeg -> pages step
     await settle(300)
@@ -279,7 +279,7 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     await settle()
     stdin.write(ENTER) // stage -> convert picker
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     stdin.write(ENTER) // choose jpeg -> pages step
     await settle(300)
@@ -299,19 +299,20 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     await settle(300)
 
     const blockedFrame = lastFrame() ?? ''
-    // The real refusal, not a paraphrase — same wording `outputExists` gives
-    // the CLI and `/pdf`'s own collision screen.
-    expect(blockedFrame).toContain('File already exists')
+    // Asked as Name taken (L1), the same question every save asks.
+    expect(blockedFrame).toContain('doc-1.jpg already exists')
     // Not yet the bug: still on the blocked screen, not sent anywhere.
-    expect(blockedFrame).not.toContain('PDF — choose an operation')
+    expect(blockedFrame).not.toContain('Choose an operation')
 
-    stdin.write(ENTER) // "Cancel" is the default, first row, no arrow needed
+    stdin.write(DOWN + DOWN) // Keep both, Replace, Cancel
+    await settle()
+    stdin.write(ENTER)
     await settle(300)
 
     const frame = lastFrame() ?? ''
     // The bug this pins: this conversion was never started from /pdf, so
     // cancelling must never land on its hub.
-    expect(frame).not.toContain('PDF — choose an operation')
+    expect(frame).not.toContain('Choose an operation')
     // The positive assertion beside it: genuinely back on the destination
     // step this conversion actually came from — not a blank frame that
     // would make the negative assertion above pass for free.

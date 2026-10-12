@@ -1,6 +1,12 @@
-import { extractOutputPaths, suffixedOutputPath } from '../output-path.js'
+import {
+  extractOutputPaths,
+  placeOutput,
+  placeOutputs,
+  suffixedOutputPath,
+} from '../output-path.js'
 import { normalisePages, parseRanges } from '../pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../types.js'
+import { answer } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
 
 // Page operations are pdf-only — see merge.ts's identical comment.
@@ -64,7 +70,11 @@ export const extractAction: Action = {
       {
         op: 'extract',
         sources: [doc],
-        outputs: extractOutputPaths(doc.path, pages, separate),
+        outputs: placeOutputs(
+          extractOutputPaths(doc.path, pages, separate),
+          answer(values.destination),
+          answer(values.name),
+        ),
         pages,
         separate,
       },
@@ -90,7 +100,13 @@ export const deleteAction: Action = {
       {
         op: 'delete',
         sources: [doc],
-        outputs: [suffixedOutputPath(doc.path, 'trimmed')],
+        outputs: [
+          placeOutput(
+            suffixedOutputPath(doc.path, 'trimmed'),
+            answer(values.destination),
+            answer(values.name),
+          ),
+        ],
         pages: selectedPages(doc, values),
       },
     ]

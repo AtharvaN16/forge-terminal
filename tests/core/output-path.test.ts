@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  placeOutputs,
   rasterOutputPaths,
   resolveOutputPath,
   uniqueOutputPath,
@@ -145,5 +146,26 @@ describe('rasterOutputPaths pads so files sort in page order', () => {
 
   it('still names by 1-based page number, not position in the selection', () => {
     expect(names([4])).toEqual(['doc-5.jpg'])
+  })
+})
+
+describe('placeOutputs', () => {
+  it('leaves outputs where plan() put them when no folder or name is given', () => {
+    expect(placeOutputs(['/a/doc-rotated.pdf'])).toEqual(['/a/doc-rotated.pdf'])
+  })
+  it('moves every output into the chosen folder, names kept', () => {
+    expect(placeOutputs(['/a/doc-1.pdf', '/a/doc-2.pdf'], '/out')).toEqual([
+      '/out/doc-1.pdf',
+      '/out/doc-2.pdf',
+    ])
+  })
+  it('renames a single output, keeping its extension', () => {
+    expect(placeOutputs(['/a/doc-rotated.pdf'], '/out', 'final')).toEqual(['/out/final.pdf'])
+  })
+  it('ignores a name when there are many outputs, which no one name can cover', () => {
+    expect(placeOutputs(['/a/doc-1.pdf', '/a/doc-2.pdf'], undefined, 'x')).toEqual([
+      '/a/doc-1.pdf',
+      '/a/doc-2.pdf',
+    ])
   })
 })

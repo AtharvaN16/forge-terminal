@@ -393,6 +393,15 @@ describe('convert action stays document-target-aware, not just document-kind-awa
     expect(specs.some((s) => s.id === 'dpi')).toBe(true)
   })
 
+  it('marks the default resolution as a default, not with a hint saying so', () => {
+    const specs = convertAction.options([pdfSource], { target: 'jpeg' }, DEFAULT_PREFERENCES)
+    const dpi = specs.find((s) => s.id === 'dpi')
+    if (dpi?.kind !== 'select') throw new Error('no dpi select')
+    const def = dpi.choices.find((c) => c.value === dpi.default)
+    expect(def?.badge).toBe('default')
+    expect(dpi.choices.some((c) => c.hint === 'default')).toBe(false)
+  })
+
   it('does not offer pages/dpi when a pdf targets docx — not a rasterisation', () => {
     const specs = convertAction.options([pdfSource], { target: 'docx' }, DEFAULT_PREFERENCES)
     expect(specs.some((s) => s.id === 'pages')).toBe(false)

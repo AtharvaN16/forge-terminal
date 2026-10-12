@@ -48,7 +48,7 @@ async function driveToResult() {
   app.stdin.write(jpg)
   await settle()
   app.stdin.write(ENTER) // submit path
-  await until(app.lastFrame, 'Convert JPEG to')
+  await until(app.lastFrame, 'Convert to')
   app.stdin.write(DOWN) // targets exclude jpeg (same-format is a no-op), so
   await until(app.lastFrame, '▌ WebP') // the order is png, webp, avif…
   app.stdin.write(ENTER)

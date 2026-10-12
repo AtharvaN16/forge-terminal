@@ -60,10 +60,10 @@ describe('MergeList', () => {
     expect(out).toMatch(/3\s+mar\.pdf/)
   })
 
-  it('shows the page total and the output name', () => {
+  it('only orders: the file is named on Save as, after this', () => {
     const out = frame()
-    expect(out).toContain('17 pages')
-    expect(out).toContain('inv-merged.pdf')
+    expect(out).not.toContain('inv-merged.pdf')
+    expect(out).not.toContain('rename')
   })
 
   it('aligns every row to one width', () => {

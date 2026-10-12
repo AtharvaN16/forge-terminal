@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — consistency</title>
+<link rel="stylesheet" href="vendor/xterm.css" />
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-canvas.js"></script>
+<style>
+  :root { --page:#0d0e11; --ink:#e2e4ea; --muted:#8f94a1; --rule:#23252c; --card:#14161a; --cyan:#55c7d9;
+    --mono:"SF Mono", ui-monospace, Menlo, monospace; --sans:-apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 var(--sans); }
+  main { max-width:1280px; margin:0 auto; padding:52px 24px 120px; }
+  h1 { font-size:34px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); font-size:17px; max-width:840px; margin:0; }
+  .scope { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:22px; max-width:900px; }
+  .scope div { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:10px 14px; font-size:14px; color:var(--muted); }
+  .scope b { color:var(--ink); display:block; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; }
+  nav a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:4px 10px; border-radius:999px; }
+  nav a:hover { color:var(--ink); }
+  section { margin-top:84px; }
+  h2 { font-size:26px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 .n { font:600 14px var(--mono); color:var(--cyan); margin-right:10px; vertical-align:3px; }
+  .sub { color:var(--muted); margin:0 0 22px; max-width:880px; }
+  table.sw { border-collapse:collapse; font:12px var(--mono); margin-top:6px; }
+  table.sw th, table.sw td { text-align:left; padding:5px 22px 5px 0; border-bottom:1px solid #26282e; color:#c9ccd3; }
+  table.sw th { color:#7c818c; font-weight:600; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:30px 22px; }
+  .grid > figure { margin:0; min-width:0; }
+  .grid .wide { grid-column:1 / -1; }
+  @media (max-width:1100px) { .grid { grid-template-columns:1fr; } }
+  .vt { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .vt .id { font:700 12px var(--mono); padding:3px 7px; border-radius:6px; background:#12282e; color:var(--cyan); }
+  .vt .id.today { background:#23252d; color:#aeb3c0; }
+  .vt .name { font-weight:620; font-size:16px; }
+  .vt .pick { margin-left:auto; font:600 11px var(--mono); letter-spacing:.08em; color:#6fcf7f; border:1px solid #2c5a37; padding:2px 7px; border-radius:6px; }
+  .idea { font-size:14.5px; color:#c7cbd4; margin:8px 0 0; }
+  .pc { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; font-size:14px; margin-top:6px; }
+  .pc ul { margin:0; padding-left:16px; color:var(--muted); } .pc li { margin-bottom:3px; }
+  .pc h5 { margin:0 0 2px; font:600 11px var(--mono); letter-spacing:.1em; text-transform:uppercase; }
+  .pc .p h5 { color:#6fcf7f; } .pc .c h5 { color:#e8796d; }
+  .rule { background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--cyan); border-radius:0 10px 10px 0; padding:12px 16px; margin:0 0 26px; max-width:900px; font-size:15px; color:#c7cbd4; }
+  .rule b { color:var(--ink); }
+  .term { background:#1e1e1e; border:1px solid #2c2f37; border-radius:10px; overflow:hidden; box-shadow:0 24px 60px -30px rgba(0,0,0,.8); }
+  .term .bar { height:26px; display:flex; align-items:center; gap:7px; padding:0 12px; background:#161619; border-bottom:1px solid #26282e; }
+  .term .bar i { width:10px; height:10px; border-radius:50%; }
+  .term .bar i:nth-child(1){background:#ff5f57} .term .bar i:nth-child(2){background:#febc2e} .term .bar i:nth-child(3){background:#28c840}
+  .term .bar em { flex:1; text-align:center; font:normal 11px var(--mono); color:#666b78; margin-right:46px; }
+  .term pre { margin:0; padding:12px 14px 14px; font:10.4px/1.17 var(--mono); color:#e4e8f0; white-space:pre; overflow-x:auto; }
+  /* A terminal row is solid; a browser leaves gaps between the backgrounds of
+     consecutive lines. Inline-block spans fill the whole line box, as a cell does. */
+  .term pre span[style*="background"] { display:inline-block; }
+  .bob { display:inline-block; animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform:translateY(-1px) } 50% { transform:translateY(2px) } }
+  .caret { animation:blink 1.05s steps(1) infinite; } @keyframes blink { 50% { opacity:0 } }
+  details.older { margin-top:56px; border-top:1px solid var(--rule); padding-top:18px; }
+  details.older summary { cursor:pointer; color:var(--muted); font:14px var(--mono); }
+  /* Sparks fade their colour into the fill rather than moving, so the cell's
+     own background never shifts: that is all a terminal could do too. */
+  .spark { animation:spark 1.8s ease-out infinite; }
+  .spark:nth-of-type(2n) { animation-delay:.6s } .spark:nth-of-type(3n) { animation-delay:1.1s }
+  @keyframes spark { 0%, 100% { color:#252c3a } }
+  .off { color:transparent !important; }
+  .xt { padding:10px 12px 12px; background:#1e1e1e; }
+  .xt .xterm-viewport { overflow:hidden !important; background:#1e1e1e !important; }
+  .vt .after { margin-left:auto; font:12px var(--mono); color:var(--muted); }
+  .stack .term + .term { margin-top:10px; }
+  .sh { background:linear-gradient(90deg,#8b93a6 0 35%,#55c7d9 45%,#d8f6fb 50%,#55c7d9 55%,#8b93a6 65% 100%); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent !important; animation:sh 2s linear infinite; }
+  @keyframes sh { from { background-position:100% 0 } to { background-position:0 0 } }
+  .sweep { background-image:linear-gradient(90deg, transparent 0 40%, rgba(85,199,217,.28) 50%, transparent 60% 100%) !important; background-size:300% 100% !important; animation:sh 2.4s linear infinite; }
+  .clock { position:fixed; right:18px; bottom:18px; z-index:9; display:flex; align-items:center; gap:6px; padding:8px 10px; background:rgba(22,24,29,.96); border:1px solid var(--rule); border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,.45); font:12px var(--mono); color:var(--muted); }
+  .clock button { font:12px var(--mono); color:#e4e8f0; background:#2a2e37; border:1px solid #3d4350; border-radius:7px; padding:5px 9px; cursor:pointer; }
+  .clock button:hover { background:#343944; }
+  .clock button.on { background:var(--cyan); color:#0c1d22; border-color:var(--cyan); font-weight:700; }
+  .clock .sp { display:flex; gap:3px; }
+  .clock input { width:140px; accent-color:#8b93a6; }
+  .clock .tm { min-width:44px; text-align:right; }
+  .tabs { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:6px; margin:26px -24px 0; padding:12px 24px; background:rgba(13,14,17,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--rule); }
+  .tabs a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:6px 12px; border-radius:8px; }
+  .tabs a.on { color:#0c1d22; background:var(--cyan); border-color:var(--cyan); font-weight:700; }
+  .tabs a.later { opacity:.65; }
+  .tabs .lbl { font:600 11px var(--mono); letter-spacing:.08em; color:var(--muted); align-self:center; margin:0 4px 0 10px; }
+  section.tab { display:none; margin-top:40px; } section.tab.on { display:block; }
+  .state { font:600 11px var(--mono); letter-spacing:.06em; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; }
+  .state:first-child { margin-top:0; }
+  footer { margin-top:90px; color:var(--muted); font-size:13px; border-top:1px solid var(--rule); padding-top:16px; }
+  code { font:.9em var(--mono); background:#1c1e24; padding:1px 5px; border-radius:4px; }
+  .flowmap { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:0 0 28px; font:13px var(--mono); }
+  .flowmap .step { display:inline-flex; gap:7px; align-items:center; padding:6px 10px; border:1px solid var(--rule); border-radius:8px; color:#e4e8f0; text-decoration:none; cursor:pointer; }
+  .flowmap .step b { color:var(--cyan); } .flowmap .ar { color:var(--muted); }
+  .flowmap i { font-style:normal; display:inline-flex; gap:4px; }
+  .flowmap .branch { flex-basis:100%; margin-top:8px; color:var(--muted); }
+  .k-yes, .k-no { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; }
+  .k-yes { background:#12282e; color:var(--cyan); } .k-no { background:#1c1e24; color:#5f6879; text-decoration:line-through; }
+  details.earlier { margin-top:46px; } details.earlier summary { cursor:pointer; font:600 13px var(--mono); color:var(--muted); margin-bottom:16px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Consistency: today, and with the decided parts</h1>
+<p class="lede">Every screen the app still draws the old way. On the left, the screen as the app draws it today, captured from the real app at 80 × 24 (on <code>dev</code>, 2026-10-11, the neutral greys already in). On the right, the same screen built only from parts already decided. Where a screen needs a design that has not been chosen, its note says so.</p>
+
+<div class="rule"><b>The decided parts, and what each older screen is missing.</b>
+<ul style="margin:8px 0 0; padding-left:18px">
+<li><b>Title.</b> The question in bold, in the mode's colour, with what it is about quiet at its right (Quality, Save as). Older screens use a label that is not bold and has nothing at its right; some are white (Format, Method), some in the mode's colour (Pages, Resolution).</li>
+<li><b>Keys (F1).</b> Main keys as caps on the left, a quiet footnote on the right ending <code>esc back · ctrl-c quit</code>. Older screens use the old row of caps, with <code>esc</code> worded five different ways and <code>ctrl-c</code> left out or called "close app".</li>
+<li><b>Lists.</b> The picker's band and strip, the band no wider than the file card and in grey (the decided Format picker). The app draws the band in the mode's tint; /pdf's run the whole terminal; merge's uses <code>❯</code> on a fill.</li>
+<li><b>Fields.</b> Save as's filled field, the block's width, filled at every width. Older fields run the whole terminal and drop the fill when it is narrow.</li>
+<li><b>Default.</b> P1's tinted pill at the far end of the row. Resolution says "default" as a hint.</li>
+<li><b>Name taken.</b> L1, one version everywhere. /pdf has its own, with a red ✕ heading and no Keep both.</li>
+</ul></div>
+
+<p class="sub">The key row keeps the rule across the terminal above it, as the app draws it today. The app draws the two straight under the screen; the mockups pin them to the terminal's bottom rows. That difference is the mockup kit's, not one to fix.</p>
+
+<section>
+  <h2><span class="n">01</span>Convert</h2>
+  <div class="grid" id="cv-grid"></div>
+</section>
+<section>
+  <h2><span class="n">02</span>Compress</h2>
+  <div class="grid" id="cm-grid"></div>
+</section>
+<section>
+  <h2><span class="n">03</span>/pdf</h2>
+  <p class="sub">The flow with the most left to do: none of it is drawn with the decided parts yet. P6–P8 follow the /pdf Save as plan (<code>docs/superpowers/plans/2026-10-11-forge-pdf-save-as.md</code>).</p>
+  <div class="grid" id="pdf-grid"></div>
+</section>
+<section>
+  <h2><span class="n">04</span>Elsewhere</h2>
+  <div class="grid" id="else-grid"></div>
+</section>
+
+<div hidden><div id="name-grid"></div><div id="name-ref-grid"></div><div id="exists-grid"></div><div id="exists-ref-grid"></div></div>
+
+<footer>Convert · forge · consistency · 2026-10-11 · Left: captured from the app. Right: drawn with the mockup kit (the decided parts only), DARK palette, neutral greys, in xterm.js.</footer>
+</main>
+
+<script>
+const X = (() => {
+  const E = '\x1b['
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+  const f = (h, t) => `${E}38;2;${rgb(h)}m${t}${E}39m`
+  const b = (h, t) => `${E}48;2;${rgb(h)}m${t}${E}49m`
+  const B = (t) => `${E}1m${t}${E}22m`
+  const I = (t) => `${E}3m${t}${E}23m`
+  const vis = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length
+  const padR = (s, w) => s + ' '.repeat(Math.max(0, w - vis(s)))
+  const center = (s, w) => ' '.repeat(Math.max(0, Math.floor((w - vis(s)) / 2))) + s
+  const right = (l, r, w) => l + ' '.repeat(Math.max(1, w - vis(l) - vis(r))) + r
+  const mix = (a, c, k) => {
+    k = Math.max(0, Math.min(1, k))
+    const A = rgb(a).split(';').map(Number), Cc = rgb(c).split(';').map(Number)
+    return '#' + A.map((v, i) => Math.round(v + (Cc[i] - v) * k).toString(16).padStart(2, '0')).join('')
+  }
+  /** Colour each visible character along a list of stops. */
+  const grad = (t, stops) => {
+    const cs = [...t], n = Math.max(1, cs.length - 1)
+    return cs.map((ch, i) => {
+      if (ch === ' ') return ch
+      const p = (i / n) * (stops.length - 1), k = Math.floor(p)
+      return f(mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k), ch)
+    }).join('')
+  }
+  /** A box: lines are already-styled strings padded to inner width. */
+  const box = (w, lines, { col = '#5f6879', round = true, title = '', heavy = false } = {}) => {
+    const [tl, tr, bl, br, h, v] = heavy ? ['┏', '┓', '┗', '┛', '━', '┃'] : round ? ['╭', '╮', '╰', '╯', '─', '│'] : ['┌', '┐', '└', '┘', '─', '│']
+    const top = title ? f(col, tl + h) + title + f(col, h.repeat(Math.max(0, w - 3 - vis(title))) + tr) : f(col, tl + h.repeat(w - 2) + tr)
+    return [top, ...lines.map((l) => f(col, v) + padR(l, w - 2) + f(col, v)), f(col, bl + h.repeat(w - 2) + br)]
+  }
+  return { f, b, B, I, vis, padR, center, right, grad, box, mix }
+})()
+const K = { bg: '#1e1e1e', fg: '#e4e8f0', d: '#8b93a6', x: '#5f6879', faint: '#3d4350', m: '#55c7d9', mbg: '#122c33', panel: '#252c3a', panel2: '#2b3343', cap: '#2e3340', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
+const { f: xf, b: xb, B: xB, I: xI, padR: xpad, center: xc, right: xr, grad: xg, box: xbox } = X
+
+/* ================================================================== KIT
+   Only what is decided: the palette, the hatching, the home band, the drop
+   panel, the commands list, the header bar, the file card, the pickers and
+   the key row. Every frame is ANSI written into xterm.js, so cells are exact.
+   The explorations below the kit draw with these and nothing else. */
+const N = 80                              // terminal width
+const W = 76, M = 2                       // block width, and the margin either side
+const IN = ' '.repeat(M + 2)              // where the field and the list start
+const E = '\x1b['
+const vis = X.vis
+const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+const bgOn = (h) => `${E}48;2;${rgbOf(h)}m`
+/** A row on a fill. A nested background hands back to this fill, not to the terminal's. */
+const on = (bg, s, w = N) => bgOn(bg) + xpad(s, w).split(`${E}49m`).join(bgOn(bg)) + `${E}49m`
+const strip = (s) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+const gcol = (i, n, stops) => {
+  const p = (Math.max(0, Math.min(n - 1, i)) / Math.max(1, n - 1)) * (stops.length - 1), k = Math.floor(p)
+  return X.mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k)
+}
+const cursorAt = (rows, re, after = false) => {
+  for (let i = 0; i < rows.length; i++) {
+    const t = strip(rows[i]), m = re.exec(t)
+    if (m) return [i + 1, [...t.slice(0, m.index)].length + (after ? [...m[0]].length : 0) + 1]
+  }
+  return [rows.length, 1]
+}
+const HIDE = '\x1b[?25l'
+const P = K.panel, BAND = '#2a3242', HL = '#33405a', EDGE = '#3d4350', FAINT = '#2a2e37'
+
+/* ---------------------------------------------------------------- modes */
+const MODES = [
+  { n: 1, name: 'convert', c: K.m, g: [K.m, K.violet], kinds: 'images · HEIC · PDF · Word' },
+  { n: 2, name: 'compress', c: '#79c98b', g: ['#79c98b', K.m], kinds: 'images · PDF · video' },
+  { n: 3, name: 'pdf', c: '#ff6b4a', g: ['#ff6b4a', K.amber], kinds: 'split · merge · rotate' },
+]
+const CV_ = { mode: MODES[0], typing: false }
+const CM_ = { mode: MODES[1], typing: false }
+const PDF_ = { mode: MODES[2], typing: false }
+
+/* ------------------------------------------------------------- hatching */
+/** Hatching whose colour follows the absolute column, so stacked rows line up. */
+const hatchAt = (c0, n, r = 0, stops = MODES[0].g) => {
+  let s = ''
+  for (let i = 0; i < n; i++) s += xf(gcol(c0 + i + r * 2, N + 8, stops), '╱')
+  return s
+}
+/** Hatching in any colour function, cell by cell, at absolute columns. */
+const hatchFn = (c0, n, col, glyph = () => '╱') => { let o = ''; for (let i = 0; i < n; i++) { const g = glyph(c0 + i); o += g === ' ' ? ' ' : xf(col(c0 + i), g) } return o }
+const grad = (s) => (c) => gcol(c, N + 8, s.mode.g)
+
+/* ------------------------------------------------------------- key row */
+/** F1: main keys left, footnote right; the footnote loses items before it would wrap. */
+const keysF1 = ({ main = [], foot = [], w = N, lead = M + 1 } = {}) => {
+  const k = (key) => xb(K.cap, xf(K.fg, xB(` ${key} `)))
+  const left = ' '.repeat(lead) + main.map(([key, word]) => `${k(key)} ${xf(K.d, word)}`).join('  ')
+  let f = [...foot]
+  const ft = () => f.map(([a, b]) => (b ? `${a} ${b}` : a)).join(' · ')
+  while (f.length && vis(left) + 3 + ft().length + 1 > w) f = f.slice(0, -1)
+  return xr(left, xf(K.x, ft()) + ' ', w)
+}
+const stepKeys = (main, foot) => keysF1({ main, foot })
+/* ------------------------------------------------- the neutral greys
+   Decided 2026-10-11: every grey is pure, no blue. The pieces below are drawn
+   with the old blue-greys (#252c3a, #8b93a6, …); each screen's colours are
+   swapped here for the pure grey of the same lightness (OKLab L). Colours
+   that mean something (mode, ✓, the saving, the default's orange) are not
+   greys and are left alone. PAL.neutral = false draws the old greys. */
+const PAL = { neutral: true }
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
+const okL = (r, g, b) => {
+  const R = lin(r), G = lin(g), B = lin(b)
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B)
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B)
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B)
+  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s
+}
+/** The pure grey with the same lightness. */
+const greyOf = (r, g, b) => { const v = okL(r, g, b) ** 3; return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)) }
+/** A grey that leans blue: little spread, blue the strongest, and not teal. */
+const cool = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) <= 45 && b >= g && b >= r && b - g >= (g - r) / 2
+/**
+ * `fill`: only colours used as a background somewhere in the frame (and the
+ * same colour where it draws a fill's edge, like the tab's ▄). `all`: every
+ * cool grey, text included (the decided one).
+ */
+/**
+ * The app's decided values (theme.ts DARK, 2026-10-11) where they differ from
+ * a plain lightness match: the text greys were raised for contrast.
+ */
+const NEUTRAL_EXACT = {
+  '139;147;166': 176, // dim #8b93a6 → #b0b0b0
+  '95;104;121': 128, // border, quiet text #5f6879 → #808080
+  '61;67;80': 77, // faint #3d4350 → #4d4d4d
+  '228;232;240': 231, // fg #e4e8f0 → #e7e7e7
+  '51;64;90': 64, // panelBand #33405a → #404040
+  '46;51;64': 51, // keycapBg #2e3340 → #333333
+  '43;51;67': 51, // panel2 #2b3343 → #333333
+}
+const NEU = (rows, mode = 'all') => {
+  if (mode === 'today') return rows
+  const re = /\x1b\[(38|48);2;(\d+);(\d+);(\d+)m/g, bgs = new Set()
+  if (mode === 'fill') for (const r of rows) for (const m of r.matchAll(re)) if (m[1] === '48') bgs.add(`${m[2]};${m[3]};${m[4]}`)
+  return rows.map((r) => r.replace(re, (all, k, R, G, B) => {
+    if (mode === 'fill' && !bgs.has(`${R};${G};${B}`)) return all
+    if (!cool(+R, +G, +B)) return all
+    const v = NEUTRAL_EXACT[`${R};${G};${B}`] ?? greyOf(+R, +G, +B)
+    return `\x1b[${k};2;${v};${v};${v}m`
+  }))
+}
+const fill24 = (rows, last) => {
+  const r = [...rows]
+  while (r.length < (last ? 23 : 24)) r.push('')
+  const out = last ? [...r, last] : r
+  return PAL.neutral ? NEU(out) : out
+}
+
+/* ------------------------------------------------------- home: the band */
+const WM3 = ['█▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀▀', '█▀▀  █  █ █▀▀▄ █ ▀█ █▀▀ ', '▀    ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀']
+const VER = 'v0.1.0'
+/** One row of the hatched band. The run after the word can carry a label, knocked out of it. */
+const bandRow = (s, i, { lab = null, tail = 2 } = {}) => {
+  const g = s.mode.g, c0 = M + 27, n = W - 27
+  const lead = ' '.repeat(M) + hatchAt(M, 1, i, g) + ' ' + xf(K.fg, xB(WM3[i])) + ' '
+  if (!lab) return lead + hatchAt(c0, n, i, g)
+  const w = vis(lab)
+  return lead + hatchAt(c0, n - tail - w, i, g) + lab + hatchAt(c0 + n - tail, tail, i, g)
+}
+const band = (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 2 ? { lab: ` ${xf(K.d, VER)} ` } : {}))
+
+/* ----------------------------------------------- home: tabs, panel, field */
+const SAVES = `${xf(K.x, 'saves to')} ${xf(K.d, '~/Desktop')}`
+const CMDT = { name: 'commands' }
+/** Home's tab row: the three modes, then "/ commands", always there. */
+const tabs4 = (s, cmdOn = false) => {
+  let top = '', row = ''
+  for (const t of [...MODES, CMDT]) {
+    const active = t === CMDT ? cmdOn : !cmdOn && t === s.mode
+    const lab = t === CMDT
+      ? ` ${xf(active ? s.mode.c : K.x, xB('/'))} ${active ? xf(K.fg, xB('commands')) : xf(K.d, 'commands')} `
+      : ` ${active ? `${xf(t.c, xB(String(t.n)))} ${xf(K.fg, xB(t.name))}` : `${xf(K.x, String(t.n))} ${xf(K.d, t.name)}`} `
+    top += active ? xf(P, '▄'.repeat(vis(lab))) : ' '.repeat(vis(lab))
+    row += active ? on(P, lab, vis(lab)) : lab
+    top += ' '; row += ' '
+  }
+  return [' '.repeat(M) + top, ' '.repeat(M) + xr(row, SAVES + ' ', W)]
+}
+const GRID = (c) => c % 3 === 0 && c >= 3 && c <= W - 4   // 3 cells in from each edge
+/** D2: the dots in the gradient, brighter towards the edges. */
+const d2dot = (s) => (c, r) => {
+  if (!GRID(c)) return null
+  const col = gcol(c + r * 2, W + 14, s.mode.g)
+  const dx = Math.abs(c - W / 2) / (W / 2), dy = Math.abs(r - 3.5) / 3.5
+  const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+  return X.mix(P, col, s.typing ? k * 0.45 : k)
+}
+/** A w×h surface. dot(c, r) gives a dot colour or null. The lines are centred
+ *  inside one clean rectangle knocked out of the dots, so the edges never fray. */
+const surface = ({ w = W, h = 8, bg = P, dot = () => null, lines, pad = 4, glyph = '·', lead = ' '.repeat(M) }) => {
+  const top = Math.floor((h - lines.length) / 2)
+  const isDot = (c) => !!dot(c, top)
+  let a = Math.floor((w - Math.max(...lines.map(vis)) - pad * 2) / 2), b = w - a
+  while (a > 0 && !isDot(a - 1)) a--
+  while (b < w && !isDot(b)) b++
+  const tw = b - a, rows = []
+  for (let r = 0; r < h; r++) {
+    const li = r - top, clear = r >= top && r < top + lines.length
+    let out = '', c = 0
+    while (c < w) {
+      if (clear && c === a) { out += li >= 0 && li < lines.length ? xpad(X.center(lines[li], tw), tw) : ' '.repeat(tw); c += tw; continue }
+      const col = r >= 1 && r <= h - 2 ? dot(c, r) : null
+      out += col ? xf(col, typeof glyph === 'function' ? glyph(c, r) : glyph) : ' '; c++
+    }
+    rows.push(lead + (bg ? on(bg, out, w) : xpad(out, w)))
+  }
+  return rows
+}
+const dropTitle = (s) => `${xf(s.typing ? K.x : s.mode.c, xB('↓'))}  ${xf(s.typing ? K.d : K.fg, xB('Drop a file here'))}`
+const dropSub = (s) => xf(s.typing ? K.faint : K.d, s.mode.kinds)
+const field = (s) => IN + xf(s.mode.c, xB('›')) + ' ' + (s.typing ? xf(K.fg, '~/Desk') : xf(K.x, 'or type a path'))
+const homeKeys = () => keysF1({ main: [['↵', 'send']], foot: [['1–3', 'mode'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] })
+/** The decided home, at rest. */
+const home = (s) => fill24(['', ...band(s), '', ...tabs4(s), ...surface({ lines: [dropTitle(s), dropSub(s)], dot: d2dot(s) }), '', field(s)], homeKeys())
+
+/* ------------------------------------------------------ home: commands */
+const CMD = [
+  { name: 'convert', d: "change a file's format", mode: MODES[0] },
+  { name: 'compress', d: 'make a file smaller', mode: MODES[1] },
+  { name: 'pdf', d: 'page operations on a PDF', mode: MODES[2] },
+  { name: 'theme', d: 'switch between light and dark' },
+]
+const cmdName = (c, q, sel) => xf(K.fg, xB('/' + q)) + (sel ? xf(K.fg, xB(c.name.slice(q.length))) : xf(K.d, c.name.slice(q.length)))
+/** One row, in the picker's band and strip; the strip takes the colour of the mode it would switch to. */
+const cmdRow = (c, q, sel, w) => {
+  const name = xpad(cmdName(c, q, sel), 12)
+  if (!sel) return '  ' + name + xf(K.x, c.d)
+  return on(HL, xf(c.mode ? c.mode.c : K.fg, '▌') + ' ' + name + xf(K.d, c.d), w)
+}
+const cmdList = (q, sel) => {
+  const hits = CMD.filter((c) => c.name.startsWith(q)), out = []
+  for (const [label, items] of [['modes', hits.filter((m) => m.mode)], ['settings', hits.filter((m) => !m.mode)]]) {
+    if (!items.length) continue
+    if (out.length) out.push('')
+    out.push('    ' + xf(K.x, label), ...items.map((c) => '  ' + cmdRow(c, q, c.name === sel, W - 4)))
+  }
+  return out
+}
+const panelRows = (rows, h = 8) => { const b = ['', ...rows, '']; while (b.length < h) b.push(''); return b.map((r) => ' '.repeat(M) + on(P, r, W)) }
+/** Home with the commands open: "/ commands" is the active tab, the list sits where the dots were. */
+const homeCommands = (s, q = '', sel = 'convert') => fill24(['', ...band(s), '', ...tabs4(s, true), ...panelRows(cmdList(q, sel)), '',
+  IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q)],
+keysF1({ main: [['↵', 'run'], ['esc', 'back']], foot: [['↑↓', 'choose'], ['type', 'filter'], ['ctrl-c', 'quit']] }))
+
+/* ------------------------------------------------------- the header bar */
+/** A chip with slanted ends (Powerline U+E0BA / U+E0BC), leaning with the hatching. */
+const slant = (col, label) => xf(col, '') + xb(col, xf(K.ink, xB(` ${label} `))) + xf(col, '')
+const TRAIL = {
+  convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop', 'test.jpg'] },
+  compress: { steps: ['Method', 'Size', 'Save to', 'Name'], answers: ['To a size', '50 KB', 'Desktop', 'photo.jpg'] },
+  pdf: { steps: ['Action', 'Pages', 'Save to'], answers: ['Split', 'every page', 'Desktop'] },
+}
+/**
+ * The decided bar: the mode as a slanted chip opening the row, hatching in the
+ * mode's gradient, and at the far end, two cells in, the trail: every answer
+ * so far (dim), then the current step (bold), separated by single ╱.
+ * `answers` and `now` override the trail; `col` overrides the hatching's colour.
+ */
+const bar = (s, at, { answers, now, col } = {}) => {
+  const t = TRAIL[s.mode.name]
+  const ans = answers ?? t.answers.slice(0, at)
+  const cur = now ?? t.steps[at]
+  const parts = [...ans.map((a) => ` ${xf(K.d, a)} `), ...(cur ? [` ${xf(K.fg, xB(cur))} `] : [])]
+  const hc = col ?? grad(s)
+  const o0 = ' '.repeat(M) + slant(s.mode.c, s.mode.name)
+  const rw = parts.reduce((n, p) => n + vis(p), 0) + Math.max(0, parts.length - 1)
+  const start = M + W - 2 - rw
+  let o = o0 + hatchFn(vis(o0), start - vis(o0), hc), c = start
+  parts.forEach((p, i) => { if (i) { o += hatchFn(c, 1, hc); c += 1 } o += p; c += vis(p) })
+  return o + hatchFn(c, M + W - c, hc)
+}
+
+/* ------------------------------------------------- the file card, pickers */
+/** The file card: a rounded frame, the format in the top edge. */
+const fcard = (s, { w = 52, tag = 'PNG', name = 'test.png', meta = '2756×774 · 122 KB · transparent', dim = false, edge = K.x, tagc } = {}) => {
+  const Ed = (t) => xf(edge, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+  return [
+    ' '.repeat(M) + Ed('╭─ ') + xf(tagc ?? s.mode.c, xB(tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(tag)) + '╮'),
+    side(xf(dim ? K.d : K.fg, xB(name))),
+    side(xf(K.d, meta)),
+    ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const qTitle = (s, t, count = '') => ' '.repeat(M + 1) + xr(xf(s.mode.c, xB(t)), xf(K.x, count), 64)
+/** The picker's band and strip; only the highlighted row says more. */
+const pick = (s, rows, sel, nw = 10) => rows.map(([name, more], i) => (i === sel
+  ? ' '.repeat(M) + on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(name)), nw) + (more ?? ''), 64)
+  : ' '.repeat(M) + '  ' + xf(K.d, name)))
+const FMTS = ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF']
+const sizeNote = `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}`
+/** The convert flow up to ↵, as decided: Format, Quality, Save to, Name. */
+const FLOW = {
+  format: () => fill24([bar(CV_, 0), '', ...fcard(CV_), '', qTitle(CV_, 'Convert to', '1/6'), '',
+    ...pick(CV_, FMTS.map((f, i) => [f, i === 0 ? sizeNote : '']), 0)],
+  stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']]) + HIDE),
+  name: () => fill24([bar(CV_, 3), '', ...fcard(CV_), '', qTitle(CV_, 'Name the file'), '',
+    ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.fg, 'test') + xf(K.x, '.jpg')],
+  stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']])),
+}
+
+/* -------------------------------------------------------------- render */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+function xterm(el, cols = N, lines = 24) {
+  const term = new Terminal({
+    cols, rows: lines, fontSize: 11, lineHeight: 1, letterSpacing: 0,
+    fontFamily: '"SF Mono", Menlo, monospace', customGlyphs: true, cursorBlink: true,
+    cursorStyle: 'bar', disableStdin: true, allowProposedApi: true,
+    theme: { background: K.bg, foreground: K.fg, cursor: K.m, cursorAccent: K.bg },
+  })
+  term.open(el)
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()) } catch (e) { /* DOM renderer fallback */ }
+  return term
+}
+const paint = (term, rows, cursor, lines = 24, raw = false) => term.write('\x1b[H\x1b[2J' + (raw || !PAL.neutral ? rows : NEU(rows)).slice(0, lines).join('\r\n') + (cursor ? `\x1b[${cursor[0]};${cursor[1]}H\x1b[?25h` : HIDE))
+/** Live frames: make(t) is called with the seconds since the page opened, about 12 times a second, only while its tab is showing. */
+const LIVE = []
+/* The page clock: pausable, slower, steppable. Space pauses; ← → step a tenth of a second while paused. */
+const CLK = { t: 0, last: performance.now(), speed: 1, paused: false }
+const tick = () => {
+  const now = performance.now()
+  if (!CLK.paused) CLK.t += ((now - CLK.last) / 1000) * CLK.speed
+  CLK.last = now
+  for (const f of LIVE) if (f.el.closest('section.tab.on')) { const r = f.make(CLK.t); paint(f.term, r.rows ?? r, r.cursor, f.lines, f.raw) }
+  if (CLK.ui) CLK.ui()
+}
+setInterval(tick, 80)
+try {
+  const bar_ = document.createElement('div')
+  bar_.className = 'clock'
+  bar_.innerHTML = '<button data-a="play" title="space">❚❚ pause</button>'
+    + '<span class="sp">' + [0.25, 0.5, 1].map((v) => `<button data-s="${v}">${v}×</button>`).join('') + '</span>'
+    + '<button data-a="back" title="←">◀</button><button data-a="fwd" title="→">▶</button>'
+    + '<input type="range" min="0" max="15" step="0.05" value="0" title="scrub"><span class="tm">0.0 s</span>'
+  document.body.appendChild(bar_)
+  const play = bar_.querySelector('[data-a=play]'), range = bar_.querySelector('input'), tm = bar_.querySelector('.tm')
+  const step = (d) => { CLK.paused = true; CLK.t = Math.max(0, CLK.t + d); tick() }
+  const toggle = () => { CLK.paused = !CLK.paused; tick() }
+  CLK.ui = () => {
+    play.textContent = CLK.paused ? '▶ play' : '❚❚ pause'
+    bar_.querySelectorAll('[data-s]').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === CLK.speed))
+    range.value = String(CLK.t % 15); tm.textContent = (CLK.t % 15).toFixed(1) + ' s'
+  }
+  bar_.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button'); if (!b) return
+    if (b.dataset.s) CLK.speed = Number(b.dataset.s)
+    else if (b.dataset.a === 'play') toggle()
+    else step(b.dataset.a === 'back' ? -0.1 : 0.1)
+    tick()
+  })
+  range.addEventListener('input', () => { CLK.paused = true; CLK.t = Number(range.value); tick() })
+  addEventListener('keydown', (ev) => {
+    if (ev.target.closest && ev.target.closest('input:not([type=range]),textarea')) return
+    if (ev.key === ' ') { ev.preventDefault(); toggle() }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); step(-0.1) }
+    else if (ev.key === 'ArrowRight') { ev.preventDefault(); step(0.1) }
+  })
+} catch (e) { /* no page to put controls on */ }
+/** A figure: an optional heading, then frames (each { label, rows | make, cursor, lines }), then a note. */
+const fig = (gridId, { id, name, pick: mine, idea, frames, wide }) => {
+  const g = document.getElementById(gridId)
+  const fg = document.createElement('figure')
+  if (wide) fg.className = 'wide'
+  fg.innerHTML = (id ? `<div class="vt"><span class="id">${id}</span><span class="name">${name}</span>${mine ? '<span class="pick">MY PICK</span>' : ''}</div>` : '') +
+    frames.map((f) => `<div class="state">${f.label}</div><div class="term">${f.lines && f.lines < 24 ? '' : '<div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div>'}<div class="xt"></div></div>`).join('') +
+    (idea ? `<p class="idea">${idea}</p>` : '')
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  frames.forEach((f, i) => {
+    const el = els[i], lines = f.lines ?? 24, term = xterm(el, N, lines)
+    if (f.make) {
+      const first = f.make(reduced ? 0 : 0.0)
+      paint(term, first.rows ?? first, first.cursor, lines, f.raw)
+      if (!reduced) LIVE.push({ el, term, make: f.make, lines, raw: f.raw })
+    } else paint(term, f.rows, f.cursor, lines, f.raw)
+  })
+  return fg
+}
+/** Rows on their own, a blank row above and below each, in a short terminal. */
+const strip3 = (rows) => { const r = ['', ...rows.flatMap((x) => [...[].concat(x), '']).slice(0, -1), '']; return { rows: r, lines: r.length } }
+
+/* =============================================================== NAMING
+   Chosen: B1, Save to and Name as one sentence in today's filled block,
+   "header.jpg in Desktop", the folder on a light grey fill. Picked: D2, the
+   field opens downward, the folders inside it under the folder word. This
+   round: the look of the default's mark. tab makes a default. */
+const NLOOP = 7.5
+const EXT = '.jpg', DIR = '~/Desktop'
+/** "test", held, backspaced, then "header" typed. */
+const typed = (t, hold = 1.6) => {
+  const e = t % NLOOP
+  if (e < hold) return 'test'
+  if (e < hold + 0.8) return 'test'.slice(0, 4 - Math.floor((e - hold) / 0.2) - 1)
+  if (e < hold + 1) return ''
+  return 'header'.slice(0, Math.min(6, Math.floor((e - hold - 1) / 0.18) + 1))
+}
+const ROW0 = 9   // the first body row, counted from 0
+/** The Name screen around a body; `cur` is [row within the body, column], both from 0. */
+const nScreen = (body, cur, keys, { title = 'Name the file', count = '', top = bar(CV_, 3) } = {}) => {
+  const rows = fill24([top, '', ...fcard(CV_), '', qTitle(CV_, title, count), '', ...body],
+    keys ?? stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']]))
+  return { rows, cursor: cur ? [ROW0 + cur[0] + 1, cur[1] + 1] : null }
+}
+/** Today's field: rows on the panel fill, the full block width. */
+const FB = (rows) => rows.map((r) => ' '.repeat(M) + on(P, r, W))
+const fieldRow = (v, after = '') => ' ' + xf(K.m, '›') + ' ' + xf(K.fg, v) + after
+const caret = (v) => M + 3 + vis(v)
+
+/* ------------------------------------------------------------ the script */
+const DIRS = [['Same folder', '~/Pictures'], ['Desktop', '~/Desktop'], ['Downloads', '~/Downloads'], ['Documents', '~/Documents'], ['New folder…', '']]
+const ORANGE = K.heat
+const BADGE = xf(ORANGE, xB('★')) + ' ' + xf(ORANGE, 'default')
+/** The folder in the sentence before you are on it: a light grey fill, so it reads as something to choose. */
+const CHIP = '#3b414d'
+/** One look for the folder you are on, in every concept, so only the structure differs: a white pill; a grey row. */
+const PILL = (n) => xb(K.fg, xf(K.ink, xB(` ${n} `)))
+const ROWBG = '#383d48'
+const SA = { title: 'Save as', top: bar(CV_, null, { answers: ['JPEG', '80'], now: 'Save as' }) }
+const nameKeys = stepKeys([['↵', 'save'], ['tab', 'folder']], [['esc', 'back'], ['ctrl-c', 'quit']])
+const folderKeys = (extra = []) => stepKeys([['↑↓', 'choose'], ...extra, ['↵', 'save'], ['tab', 'make default']], [['esc', 'name'], ['ctrl-c', 'quit']])
+/** The common start: the name typed, then tab to the folder at 3.8 s. */
+const phase = (t) => { const e = t % NLOOP; return { e, v: typed(Math.min(e, 3.4), 1.0), folder: e >= 3.8 } }
+/** The sentence; `word` is how the folder is drawn once you are on it. */
+const sentence = (v, folder, label, word = PILL) =>
+  ' ' + xf(K.m, '›') + ' ' + xf(folder ? K.d : K.fg, v) + xf(K.x, EXT) + xf(K.x, '   in ')
+  + (folder ? word(label) : xb(CHIP, xf(K.fg, xB(` ${label} `)) + xf(K.d, '▾ ')))
+/** The column where the folder's fill starts. */
+const wordAt = (v) => M + 3 + vis(v) + vis(EXT) + 6
+/**
+ * A row of the folder list inside the field, `w` wide: the highlighted one on
+ * a grey band with a white strip. `tag` is how the default is marked.
+ */
+const fRow = (name, path, { sel = false, def = false, w = 64, nw = 12, tag }) => {
+  const nameCol = def && tag.ink ? tag.ink : null
+  const lead = def && tag.lead ? tag.lead : sel ? xf(K.fg, '▌') : ' '
+  const nm = xpad(xf(nameCol ?? (sel ? K.fg : name.endsWith('…') ? K.x : K.d), sel ? xB(name) : name), nw)
+  const left = lead + ' ' + nm + (sel ? xf(K.x, path) : '') + (def && tag.badge && !tag.right ? '  ' + tag.badge() : '')
+  const row = def && tag.badge && tag.right ? xr(left, tag.badge() + ' ', w) : left
+  return sel ? on(ROWBG, row, w) : xpad(row, w)
+}
+const SLANT = (c, txt, ink = K.ink) => xf(c, '') + xb(c, xf(ink, xB(` ${txt} `))) + xf(c, '')
+const TINT = '#33261a', MUTED = '#c98a4b'
+const TAGS = [
+  { id: 'P1', name: 'A tinted pill', pick: true, idea: 'A dark orange fill with the word in a softer orange, at the far end of the row. Still reads as a label, but it is darker than the grey row of the folder you are on, so it never pulls the eye first.',
+    right: true, badge: () => xb(TINT, xf(MUTED, ' default ')) },
+  { id: 'P2', name: 'A rounded tint', idea: 'P1 with rounded ends, so it reads as a small tag rather than a block of colour. Same dark orange, same soft word.',
+    right: true, badge: () => xf(TINT, '') + xb(TINT, xf(MUTED, 'default')) + xf(TINT, '') },
+  { id: 'P3', name: 'A dot and a word', idea: 'One orange dot and the word in grey, at the far end. The colour is a single point; the word says what it means.',
+    right: true, badge: () => xf(ORANGE, '●') + ' ' + xf(K.x, 'default') },
+  { id: 'P4', name: 'A star and a word', idea: 'The ★ from today\'s Save to, in orange, and the word in grey. The star is the familiar mark for "the one you set"; only it carries colour.',
+    right: true, badge: () => xf(ORANGE, '★') + ' ' + xf(K.x, 'default') },
+  { id: 'P5', name: 'Just the word, in soft orange', idea: 'No fill and no symbol: the word "default" in a muted orange, at the far end. The least there can be while it still says orange.',
+    right: true, badge: () => xf(MUTED, 'default') },
+  { id: 'P6', name: 'A grey pill, an orange dot', idea: 'The pill is the same light grey as the folder in the sentence, and the only orange is a dot inside it. It belongs to the field\'s own greys; the dot marks it.',
+    right: true, badge: () => xb(CHIP, ' ' + xf(ORANGE, '●') + ' ' + xf(K.d, 'default ')) },
+]
+/** D2: the field opens downward, the folders inside it under the folder word. */
+const opensDown = (tag) => (t) => {
+  const { e, v, folder } = phase(t), sel = e < 5 ? 1 : 2, def = e < 6.2 ? 1 : 2
+  const at = wordAt(v) - M - 1, w = W - at - 2
+  const inner = folder ? DIRS.map(([n, p], i) => ' '.repeat(at) + fRow(n, p, { sel: i === sel, def: i === def, w, tag }).split('\x1b[49m').join(`\x1b[48;2;${rgbOf(P)}m`)) : []
+  return nScreen(['', ...FB(['', sentence(v, folder, DIRS[sel][0]), ...(folder ? ['', ...inner] : []), ''])], folder ? null : [2, caret(v)], folder ? folderKeys() : nameKeys, SA)
+}
+for (const g of TAGS) fig('name-grid', { id: g.id, name: g.name, pick: g.pick, idea: g.idea, frames: [{ label: 'convert · test.png to JPEG', make: opensDown(g) }] })
+
+/* For reference: today's screen, as the app draws it. */
+fig('name-ref-grid', {
+  id: 'Today', name: 'Today, as the app draws it',
+  idea: 'The block the app has now: filled, three rows tall, the name after the caret, the path under it. Save to is a step of its own before this one.',
+  frames: [{ label: 'convert · test.png to JPEG', make: (t) => { const v = typed(t); return nScreen(['', ...FB(['', fieldRow(v), '']), '', '', ' '.repeat(M + 1) + xf(K.d, `→ ${DIR}/${v || 'test'}${EXT}`)], [2, caret(v)], stepKeys([['↵', 'save'], ['esc', 'clear / back']], [['ctrl-c', 'quit']])) } }],
+})
+
+/* ===================================================== THE NAME IS TAKEN
+   The question after Save as when the folder already has a file by that
+   name: keep both, replace, or cancel. Today it is the picker's band under
+   the card, and that stays. Round one (O1–O5, panels, cards, a folder
+   listing) is in exists-r1.js; liked from it were O1's previews: Keep both
+   shows the (1) your file gets, Replace crosses out and hatches the one there.
+   Round two put those into the list (L1–L5, in exists-r2.js). Decided: L1. Every frame is live: the cursor rests
+   on each answer in turn. */
+const EX = {
+  s: CV_, answers: ['JPEG', '80', 'Desktop', 'test.jpg'], folder: 'Desktop',
+  name: 'test.jpg', both: 'test (1).jpg', tag: 'JPEG',
+  old: { size: '68.2 KB', when: 'yesterday, 18:42' },
+  neu: { size: '74.6 KB' },
+}
+const EXLOOP = 7.2
+/** Which answer the cursor is on: 0 keep both, 1 replace, 2 cancel. */
+const exSel = (t) => Math.floor((t % EXLOOP) / (EXLOOP / 3)) % 3
+const exBar = (now = 'Name taken') => bar(EX.s, null, { answers: EX.answers, now })
+const exScreen = (body, keys, top = exBar()) => ({ rows: fill24([top, '', ...body], keys + HIDE), cursor: null })
+const exKeys = () => stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['esc', 'cancel'], ['ctrl-c', 'quit']])
+/** Struck through: what an answer would lose. */
+const exStrike = (s) => `\x1b[9m${s}\x1b[29m`
+const LW = 64, NW = 12                 // the band's width, as the pickers have it; the names' column
+const exHatch = (c0, n) => (n > 0 ? hatchFn(c0, n, () => K.faint) : '')
+/** Your file's name with the (1) Keep both gives it, the (1) in the mode's colour. */
+const bothName = (base = K.fg) => xf(base, 'test') + xf(EX.s.mode.c, xB(' (1)')) + xf(base, '.jpg')
+/** The one there now, crossed out, then hatching to `end` (a column): what Replace loses. */
+const lost = (at, end, txt = `${EX.name}  ${EX.old.size}`) => xf(K.x, exStrike(txt)) + ' ' + exHatch(at + txt.length + 1, end - at - txt.length - 2)
+/** What each answer does: `on` for the highlighted row, with the previews; quiet otherwise. `at` is where the text starts. */
+const say = (i, on_, at, end = M + LW) => (on_
+  ? [xf(K.d, 'saves yours as ') + bothName(), lost(at, end), xf(K.d, 'back to Save as')][i]
+  : xf(K.x, ['saves yours as ' + EX.both, 'the one there now is lost', 'back to Save as'][i]))
+const EXN = ['Keep both', 'Replace', 'Cancel']
+/** The list: the picker's band and strip. `every`: every row says what it does, not just the highlighted one. */
+const exList = (sel, { every = false, hints = true } = {}) => EXN.map((n, i) => {
+  const at = M + 2 + NW
+  if (i === sel) return ' '.repeat(M) + on(BAND, xf(EX.s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(n)), NW) + (hints ? say(i, true, at) : ''), LW)
+  return ' '.repeat(M) + '  ' + xpad(xf(K.d, n), NW) + (every ? say(i, false, at) : '')
+})
+const exTitle = (meta = true) => qTitle(EX.s, `${EX.name} already exists`, meta ? `${EX.old.size} · ${EX.old.when}` : '')
+
+/* ---------------------------------------------------- today, for reference */
+const exToday = (t) => {
+  const today = [['Keep both', xf(K.d, EX.both)], ['Replace', xf(K.d, 'the existing file is lost')], ['Cancel', xf(K.d, 'pick a different folder')]]
+  return exScreen([...fcard(CV_), '', ' '.repeat(M) + xf(K.fg, `${EX.name} already exists`), ...pick(CV_, today, exSel(t), 12)],
+    stepKeys([['↑↓', 'choose'], ['↵', 'confirm'], ['esc', 'cancel']], [['ctrl-c', 'quit']]), exBar('Overwrite'))
+}
+
+/* L1: today's list, the previews in the highlighted row */
+const l1 = (t) => exScreen([...fcard(CV_), '', exTitle(), '', ...exList(exSel(t))], exKeys())
+
+/* L2: every row says what it does */
+const l2 = (t) => exScreen([...fcard(CV_), '', exTitle(), '', ...exList(exSel(t), { every: true })], exKeys())
+
+/* L3: the file there, one line above the list; the previews happen on it */
+const l3 = (t) => {
+  const sel = exSel(t), at = M + 2, lead = xf(K.x, EX.tag) + '  '
+  const there = sel === 1
+    ? ' '.repeat(at) + lead + lost(at + 6, M + LW, `${EX.name}  ${EX.old.size} · ${EX.old.when}`)
+    : ' '.repeat(at) + lead + xf(K.d, EX.name) + '  ' + xf(K.x, `${EX.old.size} · ${EX.old.when}`)
+  const yours = sel === 0 ? ' '.repeat(at) + lead + bothName() + '  ' + xf(K.x, `${EX.neu.size} · yours`) : ''
+  return exScreen([...fcard(CV_), '', exTitle(false), '', there, yours, '', ...exList(sel, { hints: false })], exKeys())
+}
+
+/* L4: the list inside a filled block, as Save as's folders are */
+const l4 = (t) => {
+  const sel = exSel(t), w = W - 2, at = M + 3 + NW
+  const rows = EXN.map((n, i) => (i === sel
+    ? ' ' + on(ROWBG, xf(K.fg, '▌') + ' ' + xpad(xf(K.fg, xB(n)), NW) + say(i, true, at, M + 1 + w), w).split('\x1b[49m').join(`\x1b[48;2;${rgbOf(P)}m`)
+    : '   ' + xpad(xf(K.d, n), NW)))
+  return exScreen([...fcard(CV_), '', exTitle(), '', ...FB(['', ...rows, ''])], exKeys())
+}
+
+/* L5: no card, each answer two rows: its name, and under it what it does */
+const l5 = (t) => {
+  const sel = exSel(t), at = M + 4
+  const rows = EXN.flatMap((n, i) => {
+    const on_ = i === sel, s = xf(EX.s.mode.c, '▌') + '   '
+    const two = on_
+      ? [on(BAND, s + xf(K.fg, xB(n)), LW), on(BAND, s + say(i, true, at), LW)]
+      : ['    ' + xf(K.d, n), '    ' + say(i, false, at)]
+    return [...two.map((r) => ' '.repeat(M) + r), '']
+  })
+  return exScreen(['', '', exTitle(), '', '', ...rows], exKeys())
+}
+
+const EXIST = [
+  { id: 'L1', name: 'Today\'s list, with the previews', make: l1,
+    idea: 'The list as it is, with O1\'s previews in the highlighted row: on Keep both, the name yours will get, its (1) in the mode\'s colour; on Replace, the one there now crossed out and the rest of the band hatched, the way Done hatches what a file shed. The title gets the old file\'s size and age at its far end, quiet.' },
+  { id: 'L2', name: 'Every row says what it does', make: l2,
+    idea: 'L1, but the rows you are not on say what they do too, in the quiet grey, so all three outcomes are readable at once. The highlighted row still carries the colour and the hatching.' },
+  { id: 'L3', name: 'The file there, one line above', make: l3,
+    idea: 'The one there now gets a line of its own above the list: format, name, size, age. The previews happen on that line: Replace crosses it out and hatches the rest; Keep both adds yours under it, with its (1). The list itself goes bare, just the three words.' },
+  { id: 'L4', name: 'In a filled block, like Save as', make: l4,
+    idea: 'The same list on the field\'s fill, the highlighted row a lighter grey with a white strip, as Save as draws its folders. It comes straight after Save as, so it looks like the same part of the app.' },
+  { id: 'L5', name: 'Two rows each, no card', make: l5,
+    idea: 'More air: no file card, and each answer two rows, its name and under it what it does, the band two rows tall on the one you are on. The previews sit on the second row.' },
+]
+fig('exists-ref-grid', { id: 'Today', name: 'Today, as the app draws it', idea: 'The card, "test.jpg already exists" in plain text, and the picker\'s band over three answers; only the highlighted one says more. The bar\'s trail ends in Overwrite.', frames: [{ label: 'convert · test.jpg is taken in Desktop', make: exToday }] })
+for (const d of EXIST.filter((d) => d.id === 'L1')) fig('exists-grid', { id: d.id, name: d.name, pick: true, idea: d.idea, frames: [{ label: 'convert · test.jpg is taken in Desktop', make: d.make }] })
+
+const TODAY = {"format": ["  \u001b[1m\u001b[48;2;85;199;217m\u001b[38;2;12;29;34m convert \u001b[49m\u001b[22m\u001b[38;2;95;192;218m\u2571\u001b[38;2;96;191;218m\u2571\u001b[38;2;97;190;218m\u2571\u001b[38;2;98;190;218m\u2571\u001b[38;2;99;189;218m\u2571\u001b[38;2;100;188;218m\u2571\u001b[38;2;101;187;218m\u2571\u001b[38;2;102;187;218m\u2571\u001b[38;2;103;186;219m\u2571\u001b[38;2;104;185;219m\u2571\u001b[38;2;105;185;219m\u2571\u001b[38;2;105;184;219m\u2571\u001b[38;2;106;183;219m\u2571\u001b[38;2;107;183;219m\u2571\u001b[38;2;108;182;219m\u2571\u001b[38;2;109;181;219m\u2571\u001b[38;2;110;181;219m\u2571\u001b[38;2;111;180;219m\u2571\u001b[38;2;112;179;219m\u2571\u001b[38;2;113;179;219m\u2571\u001b[38;2;114;178;219m\u2571\u001b[38;2;115;177;220m\u2571\u001b[38;2;116;177;220m\u2571\u001b[38;2;117;176;220m\u2571\u001b[38;2;118;175;220m\u2571\u001b[38;2;119;175;220m\u2571\u001b[38;2;119;174;220m\u2571\u001b[38;2;120;173;220m\u2571\u001b[38;2;121;173;220m\u2571\u001b[38;2;122;172;220m\u2571\u001b[38;2;123;171;220m\u2571\u001b[38;2;124;171;220m\u2571\u001b[38;2;125;170;220m\u2571\u001b[38;2;126;169;221m\u2571\u001b[38;2;127;168;221m\u2571\u001b[38;2;128;168;221m\u2571\u001b[38;2;129;167;221m\u2571\u001b[38;2;130;166;221m\u2571\u001b[38;2;131;166;221m\u2571\u001b[38;2;132;165;221m\u2571\u001b[38;2;132;164;221m\u2571\u001b[38;2;133;164;221m\u2571\u001b[38;2;134;163;221m\u2571\u001b[38;2;135;162;221m\u2571\u001b[38;2;136;162;221m\u2571\u001b[38;2;137;161;222m\u2571\u001b[38;2;138;160;222m\u2571\u001b[38;2;139;160;222m\u2571\u001b[38;2;140;159;222m\u2571\u001b[38;2;141;158;222m\u2571\u001b[38;2;142;158;222m\u2571\u001b[38;2;143;157;222m\u2571\u001b[38;2;144;156;222m\u2571\u001b[38;2;145;156;222m\u2571\u001b[38;2;146;155;222m\u2571\u001b[38;2;146;154;222m\u2571\u001b[38;2;147;154;222m\u2571\u001b[1m\u001b[38;2;231;231;231m Format \u001b[22m\u001b[38;2;156;147;223m\u2571\u001b[38;2;157;147;223m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;85;199;217mPNG\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mtest.png                                        \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m64\u00d764 \u00b7 10.8 KB                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "Convert PNG to", "", "\u001b[48;2;18;44;51m\u001b[38;2;85;199;217m\u258c \u001b[1m\u001b[38;2;231;231;231mJPEG\u001b[39m\u001b[22m                          \u001b[1m\u001b[38;2;231;231;231m702 B\u001b[22m\u001b[38;2;111;207;127m  94% smaller\u001b[39m  \u001b[49m", "\u001b[38;2;85;199;217m  \u001b[39mWebP", "\u001b[38;2;85;199;217m  \u001b[39mAVIF", "\u001b[38;2;85;199;217m  \u001b[39mGIF", "\u001b[38;2;85;199;217m  \u001b[39mTIFF", "\u001b[38;2;85;199;217m  \u001b[39mPDF", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m 1\u20133 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m mode\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m back\u001b[39m", ""], "exists": ["  \u001b[1m\u001b[48;2;85;199;217m\u001b[38;2;12;29;34m convert \u001b[49m\u001b[22m\u001b[38;2;95;192;218m\u2571\u001b[38;2;96;191;218m\u2571\u001b[38;2;97;190;218m\u2571\u001b[38;2;98;190;218m\u2571\u001b[38;2;99;189;218m\u2571\u001b[38;2;100;188;218m\u2571\u001b[38;2;101;187;218m\u2571\u001b[38;2;102;187;218m\u2571\u001b[38;2;103;186;219m\u2571\u001b[38;2;104;185;219m\u2571\u001b[38;2;105;185;219m\u2571\u001b[38;2;105;184;219m\u2571\u001b[38;2;106;183;219m\u2571\u001b[38;2;107;183;219m\u2571\u001b[38;2;108;182;219m\u2571\u001b[38;2;109;181;219m\u2571\u001b[38;2;110;181;219m\u2571\u001b[38;2;111;180;219m\u2571\u001b[38;2;112;179;219m\u2571\u001b[38;2;113;179;219m\u2571\u001b[38;2;114;178;219m\u2571\u001b[38;2;176;176;176m JPEG \u001b[38;2;120;173;220m\u2571\u001b[38;2;176;176;176m 80 \u001b[38;2;125;170;220m\u2571\u001b[38;2;176;176;176m Desktop \u001b[38;2;134;163;221m\u2571\u001b[38;2;176;176;176m test.jpg \u001b[38;2;145;156;222m\u2571\u001b[1m\u001b[38;2;231;231;231m Overwrite \u001b[22m\u001b[38;2;156;147;223m\u2571\u001b[38;2;157;147;223m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;85;199;217mPNG\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mtest.png                                        \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m64\u00d764 \u00b7 10.8 KB                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "test.jpg already exists", "\u001b[48;2;18;44;51m\u001b[38;2;85;199;217m\u258c \u001b[1m\u001b[38;2;231;231;231mKeep both\u001b[22m\u001b[38;2;176;176;176m  test (1).jpg\u001b[39m                           \u001b[49m", "\u001b[38;2;85;199;217m  \u001b[39mReplace", "\u001b[38;2;85;199;217m  \u001b[39mCancel", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m cancel\u001b[39m", ""], "pages": ["  \u001b[1m\u001b[48;2;85;199;217m\u001b[38;2;12;29;34m convert \u001b[49m\u001b[22m\u001b[38;2;95;192;218m\u2571\u001b[38;2;96;191;218m\u2571\u001b[38;2;97;190;218m\u2571\u001b[38;2;98;190;218m\u2571\u001b[38;2;99;189;218m\u2571\u001b[38;2;100;188;218m\u2571\u001b[38;2;101;187;218m\u2571\u001b[38;2;102;187;218m\u2571\u001b[38;2;103;186;219m\u2571\u001b[38;2;104;185;219m\u2571\u001b[38;2;105;185;219m\u2571\u001b[38;2;105;184;219m\u2571\u001b[38;2;106;183;219m\u2571\u001b[38;2;107;183;219m\u2571\u001b[38;2;108;182;219m\u2571\u001b[38;2;109;181;219m\u2571\u001b[38;2;110;181;219m\u2571\u001b[38;2;111;180;219m\u2571\u001b[38;2;112;179;219m\u2571\u001b[38;2;113;179;219m\u2571\u001b[38;2;114;178;219m\u2571\u001b[38;2;115;177;220m\u2571\u001b[38;2;116;177;220m\u2571\u001b[38;2;117;176;220m\u2571\u001b[38;2;118;175;220m\u2571\u001b[38;2;119;175;220m\u2571\u001b[38;2;119;174;220m\u2571\u001b[38;2;120;173;220m\u2571\u001b[38;2;121;173;220m\u2571\u001b[38;2;122;172;220m\u2571\u001b[38;2;123;171;220m\u2571\u001b[38;2;124;171;220m\u2571\u001b[38;2;125;170;220m\u2571\u001b[38;2;126;169;221m\u2571\u001b[38;2;127;168;221m\u2571\u001b[38;2;128;168;221m\u2571\u001b[38;2;129;167;221m\u2571\u001b[38;2;130;166;221m\u2571\u001b[38;2;131;166;221m\u2571\u001b[38;2;132;165;221m\u2571\u001b[38;2;132;164;221m\u2571\u001b[38;2;133;164;221m\u2571\u001b[38;2;134;163;221m\u2571\u001b[38;2;135;162;221m\u2571\u001b[38;2;136;162;221m\u2571\u001b[38;2;137;161;222m\u2571\u001b[38;2;138;160;222m\u2571\u001b[38;2;139;160;222m\u2571\u001b[38;2;140;159;222m\u2571\u001b[38;2;141;158;222m\u2571\u001b[38;2;142;158;222m\u2571\u001b[38;2;176;176;176m JPEG \u001b[38;2;148;153;222m\u2571\u001b[1m\u001b[38;2;231;231;231m Pages \u001b[22m\u001b[38;2;156;147;223m\u2571\u001b[38;2;157;147;223m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;85;199;217mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;85;199;217mPages\u001b[39m", "", "\u001b[48;2;18;44;51m\u001b[38;2;85;199;217m\u258c \u001b[1m\u001b[38;2;231;231;231mAll pages      \u001b[22m\u001b[38;2;176;176;176m  3 pages\u001b[39m                          \u001b[49m", "\u001b[38;2;85;199;217m  \u001b[39mFirst page only", "\u001b[38;2;85;199;217m  \u001b[39mChoose pages", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m 1\u20133 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m mode\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m back\u001b[39m", ""], "resolution": ["  \u001b[1m\u001b[48;2;85;199;217m\u001b[38;2;12;29;34m convert \u001b[49m\u001b[22m\u001b[38;2;95;192;218m\u2571\u001b[38;2;96;191;218m\u2571\u001b[38;2;97;190;218m\u2571\u001b[38;2;98;190;218m\u2571\u001b[38;2;99;189;218m\u2571\u001b[38;2;100;188;218m\u2571\u001b[38;2;101;187;218m\u2571\u001b[38;2;102;187;218m\u2571\u001b[38;2;103;186;219m\u2571\u001b[38;2;104;185;219m\u2571\u001b[38;2;105;185;219m\u2571\u001b[38;2;105;184;219m\u2571\u001b[38;2;106;183;219m\u2571\u001b[38;2;107;183;219m\u2571\u001b[38;2;108;182;219m\u2571\u001b[38;2;109;181;219m\u2571\u001b[38;2;110;181;219m\u2571\u001b[38;2;111;180;219m\u2571\u001b[38;2;112;179;219m\u2571\u001b[38;2;113;179;219m\u2571\u001b[38;2;114;178;219m\u2571\u001b[38;2;115;177;220m\u2571\u001b[38;2;116;177;220m\u2571\u001b[38;2;117;176;220m\u2571\u001b[38;2;118;175;220m\u2571\u001b[38;2;119;175;220m\u2571\u001b[38;2;119;174;220m\u2571\u001b[38;2;120;173;220m\u2571\u001b[38;2;121;173;220m\u2571\u001b[38;2;122;172;220m\u2571\u001b[38;2;123;171;220m\u2571\u001b[38;2;124;171;220m\u2571\u001b[38;2;125;170;220m\u2571\u001b[38;2;126;169;221m\u2571\u001b[38;2;176;176;176m JPEG \u001b[38;2;132;164;221m\u2571\u001b[38;2;176;176;176m All pages \u001b[38;2;144;156;222m\u2571\u001b[1m\u001b[38;2;231;231;231m Resolution \u001b[22m\u001b[38;2;156;147;223m\u2571\u001b[38;2;157;147;223m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;85;199;217mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;85;199;217mResolution\u001b[39m", "", "\u001b[38;2;85;199;217m  \u001b[39m72 dpi", "\u001b[48;2;18;44;51m\u001b[38;2;85;199;217m\u258c \u001b[1m\u001b[38;2;231;231;231m150 dpi\u001b[22m\u001b[38;2;176;176;176m  default\u001b[39m                                  \u001b[49m", "\u001b[38;2;85;199;217m  \u001b[39m300 dpi", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m 1\u20133 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m mode\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m back\u001b[39m", ""], "staged": ["  \u001b[1m\u001b[48;2;85;199;217m\u001b[38;2;12;29;34m convert \u001b[49m\u001b[22m\u001b[38;2;95;192;218m\u2571\u001b[38;2;96;191;218m\u2571\u001b[38;2;97;190;218m\u2571\u001b[38;2;98;190;218m\u2571\u001b[38;2;99;189;218m\u2571\u001b[38;2;100;188;218m\u2571\u001b[38;2;101;187;218m\u2571\u001b[38;2;102;187;218m\u2571\u001b[38;2;103;186;219m\u2571\u001b[38;2;104;185;219m\u2571\u001b[38;2;105;185;219m\u2571\u001b[38;2;105;184;219m\u2571\u001b[38;2;106;183;219m\u2571\u001b[38;2;107;183;219m\u2571\u001b[38;2;108;182;219m\u2571\u001b[38;2;109;181;219m\u2571\u001b[38;2;110;181;219m\u2571\u001b[38;2;111;180;219m\u2571\u001b[38;2;112;179;219m\u2571\u001b[38;2;113;179;219m\u2571\u001b[38;2;114;178;219m\u2571\u001b[38;2;115;177;220m\u2571\u001b[38;2;116;177;220m\u2571\u001b[38;2;117;176;220m\u2571\u001b[38;2;118;175;220m\u2571\u001b[38;2;119;175;220m\u2571\u001b[38;2;119;174;220m\u2571\u001b[38;2;120;173;220m\u2571\u001b[38;2;121;173;220m\u2571\u001b[38;2;122;172;220m\u2571\u001b[38;2;123;171;220m\u2571\u001b[38;2;124;171;220m\u2571\u001b[38;2;125;170;220m\u2571\u001b[38;2;126;169;221m\u2571\u001b[38;2;127;168;221m\u2571\u001b[38;2;128;168;221m\u2571\u001b[38;2;129;167;221m\u2571\u001b[38;2;130;166;221m\u2571\u001b[38;2;131;166;221m\u2571\u001b[38;2;132;165;221m\u2571\u001b[38;2;132;164;221m\u2571\u001b[38;2;133;164;221m\u2571\u001b[38;2;134;163;221m\u2571\u001b[38;2;135;162;221m\u2571\u001b[38;2;136;162;221m\u2571\u001b[38;2;137;161;222m\u2571\u001b[38;2;138;160;222m\u2571\u001b[38;2;139;160;222m\u2571\u001b[38;2;140;159;222m\u2571\u001b[38;2;141;158;222m\u2571\u001b[38;2;142;158;222m\u2571\u001b[38;2;143;157;222m\u2571\u001b[38;2;144;156;222m\u2571\u001b[38;2;176;176;176m report.pdf \u001b[38;2;156;147;223m\u2571\u001b[38;2;157;147;223m\u2571\u001b[39m", "", "\u001b[38;2;176;176;176m\u2192 /pdf for page operations\u001b[39m", "", "", "\u001b[48;2;44;44;44m                                                                                \u001b[49m", "\u001b[48;2;44;44;44m \u001b[38;2;85;199;217m\u203a \u001b[39m\u001b[7m \u001b[27m\u001b[38;2;176;176;176mdrop a file or type a path\u001b[39m                                                  \u001b[49m", "\u001b[48;2;44;44;44m                                                                                \u001b[49m", "", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m send\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m / \u001b[49m\u001b[22m\u001b[38;2;176;176;176m commands\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m clear\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m ctrl-n \u001b[49m\u001b[22m\u001b[38;2;176;176;176m new\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m ctrl-c \u001b[49m\u001b[22m\u001b[38;2;176;176;176m close app\u001b[39m"], "hub": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u2571\u001b[38;2;242;135;67m\u2571\u2571\u001b[38;2;241;136;67m\u2571\u001b[38;2;241;137;66m\u2571\u2571\u001b[38;2;240;138;66m\u2571\u001b[38;2;240;139;66m\u2571\u2571\u001b[38;2;239;140;66m\u2571\u001b[38;2;239;141;65m\u2571\u2571\u001b[38;2;239;142;65m\u2571\u001b[38;2;238;142;65m\u2571\u001b[38;2;238;143;65m\u2571\u001b[38;2;238;144;65m\u2571\u001b[38;2;237;144;65m\u2571\u001b[38;2;237;145;64m\u2571\u001b[38;2;237;146;64m\u2571\u001b[38;2;236;146;64m\u2571\u001b[38;2;236;147;64m\u2571\u2571\u001b[38;2;236;148;64m\u2571\u001b[38;2;235;149;63m\u2571\u2571\u001b[1m\u001b[38;2;231;231;231m Action \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;255;107;74mPDF \u2014 choose an operation\u001b[39m", "\u001b[38;2;255;107;74m  \u001b[38;2;176;176;176mMerge    needs 2+ files\u001b[39m", "\u001b[48;2;54;28;22m\u001b[38;2;255;107;74m\u258c \u001b[1m\u001b[38;2;231;231;231mSplit  \u001b[22m\u001b[38;2;176;176;176m  into several files\u001b[39m                                                   \u001b[49m", "\u001b[38;2;255;107;74m  \u001b[39mExtract", "\u001b[38;2;255;107;74m  \u001b[39mDelete", "\u001b[38;2;255;107;74m  \u001b[39mRotate", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m cancel\u001b[39m", ""], "split-how": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u2571\u001b[38;2;242;135;67m\u2571\u2571\u001b[38;2;241;136;67m\u2571\u001b[38;2;241;137;66m\u2571\u2571\u001b[38;2;240;138;66m\u2571\u001b[38;2;240;139;66m\u2571\u2571\u001b[38;2;239;140;66m\u2571\u001b[38;2;239;141;65m\u2571\u2571\u001b[38;2;239;142;65m\u2571\u001b[38;2;238;142;65m\u2571\u001b[38;2;238;143;65m\u2571\u001b[38;2;238;144;65m\u2571\u001b[38;2;237;144;65m\u2571\u001b[38;2;237;145;64m\u2571\u001b[38;2;237;146;64m\u2571\u001b[38;2;236;146;64m\u2571\u001b[38;2;176;176;176m Split \u001b[38;2;234;151;63m\u2571\u001b[1m\u001b[38;2;231;231;231m How \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;255;107;74mHow\u001b[39m", "\u001b[48;2;54;28;22m\u001b[38;2;255;107;74m\u258c \u001b[1m\u001b[38;2;231;231;231mEvery page        \u001b[22m\u001b[38;2;176;176;176m  3 files\u001b[39m                                                   \u001b[49m", "\u001b[38;2;255;107;74m  \u001b[39mEvery N pages", "\u001b[38;2;255;107;74m  \u001b[39mAt points I choose", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m back\u001b[39m", ""], "split-n": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u001b[38;2;176;176;176m Split \u001b[38;2;241;137;66m\u2571\u001b[38;2;176;176;176m Every N pages \u001b[38;2;236;147;64m\u2571\u001b[1m\u001b[38;2;231;231;231m Pages each \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;255;107;74mHow many pages per file?\u001b[39m", "", "", "\u001b[48;2;44;44;44m                                                                                \u001b[49m", "\u001b[48;2;44;44;44m \u001b[38;2;255;107;74m\u203a \u001b[38;2;231;231;231m2\u001b[39m\u001b[7m \u001b[27m                                                                           \u001b[49m", "\u001b[48;2;44;44;44m                                                                                \u001b[49m", "", "", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m clear / back\u001b[39m", ""], "confirm": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u001b[38;2;176;176;176m Split \u001b[38;2;240;139;66m\u2571\u001b[38;2;176;176;176m Every N pages \u001b[38;2;235;149;63m\u2571\u001b[1m\u001b[38;2;231;231;231m Confirm \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;255;107;74mSplit into 2 files\u001b[39m", "", "\u001b[38;2;176;176;176m  \u2192 report-1.pdf\u001b[39m", "\u001b[38;2;176;176;176m  \u2192 report-2.pdf\u001b[39m", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m run\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m back\u001b[39m", ""], "rotate-turn": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u2571\u001b[38;2;242;135;67m\u2571\u2571\u001b[38;2;241;136;67m\u2571\u001b[38;2;241;137;66m\u2571\u2571\u001b[38;2;240;138;66m\u2571\u001b[38;2;240;139;66m\u2571\u2571\u001b[38;2;239;140;66m\u2571\u001b[38;2;239;141;65m\u2571\u2571\u001b[38;2;239;142;65m\u2571\u001b[38;2;238;142;65m\u2571\u001b[38;2;238;143;65m\u2571\u001b[38;2;238;144;65m\u2571\u001b[38;2;237;144;65m\u2571\u001b[38;2;237;145;64m\u2571\u001b[38;2;176;176;176m Rotate \u001b[38;2;234;151;63m\u2571\u001b[1m\u001b[38;2;231;231;231m Turn \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;255;107;74mTurn\u001b[39m", "\u001b[48;2;54;28;22m\u001b[38;2;255;107;74m\u258c \u001b[1m\u001b[38;2;231;231;231m90\u00b0 right\u001b[22m\u001b[38;2;176;176;176m  a quarter turn\u001b[39m                                                     \u001b[49m", "\u001b[38;2;255;107;74m  \u001b[39m180\u00b0", "\u001b[38;2;255;107;74m  \u001b[39m90\u00b0 left", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m back\u001b[39m", ""], "pdf-exists": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u2571\u001b[38;2;176;176;176m Rotate \u001b[38;2;239;140;66m\u2571\u001b[38;2;176;176;176m 90\u00b0 right \u001b[38;2;236;147;64m\u2571\u001b[1m\u001b[38;2;231;231;231m Overwrite \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m3 pages \u00b7 593 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;232;121;109m\u2715 File already exists\u001b[39m", "\u001b[38;2;231;231;231m  report-rotated.pdf is already there.\u001b[39m", "\u001b[48;2;54;28;22m\u001b[38;2;255;107;74m\u258c \u001b[1m\u001b[38;2;231;231;231mCancel \u001b[22m\u001b[38;2;176;176;176m  back to /pdf, nothing written\u001b[39m            \u001b[49m", "\u001b[38;2;255;107;74m  \u001b[39mReplace", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m cancel\u001b[39m", ""], "merge": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u2571\u001b[38;2;242;135;67m\u2571\u2571\u001b[38;2;241;136;67m\u2571\u001b[38;2;241;137;66m\u2571\u2571\u001b[38;2;240;138;66m\u2571\u001b[38;2;240;139;66m\u2571\u2571\u001b[38;2;239;140;66m\u2571\u001b[38;2;239;141;65m\u2571\u2571\u001b[38;2;239;142;65m\u2571\u001b[38;2;238;142;65m\u2571\u001b[38;2;238;143;65m\u2571\u001b[38;2;238;144;65m\u2571\u001b[38;2;237;144;65m\u2571\u001b[38;2;237;145;64m\u2571\u001b[38;2;176;176;176m Merge \u001b[38;2;235;150;63m\u2571\u001b[1m\u001b[38;2;231;231;231m Order \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF \u00d72\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mjanuary.pdf                              2 pages\u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mfebruary.pdf                             3 pages\u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[39m                                                \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m2 files \u00b7 5 pages \u00b7 1.2 KB                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;255;107;74mMerge \u2014 order the files\u001b[39m", "\u001b[38;2;176;176;176m2 files to merge\u001b[39m", "", "\u001b[48;2;44;44;44m  \u001b[38;2;255;107;74m\u276f\u001b[39m \u001b[1m\u001b[38;2;231;231;231m 1  january.pdf     \u001b[22m\u001b[38;2;176;176;176m  2 pages     588 B\u001b[39m\u001b[49m", "    \u001b[38;2;176;176;176m 2  february.pdf      3 pages     593 B\u001b[39m", "", "\u001b[38;2;176;176;176m\u2500\u2500\u2192 /var/folders/kr/dt7n795d0p997ywzmvtxz_\u2026est-cQBwxk/Desktop/Desktop-merged.pdf  \u00b7  5 pages\u001b[39m", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m select\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m space \u001b[49m\u001b[22m\u001b[38;2;176;176;176m pick up\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m s \u001b[49m\u001b[22m\u001b[38;2;176;176;176m sort\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m x \u001b[49m\u001b[22m\u001b[38;2;176;176;176m remove\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m n \u001b[49m\u001b[22m\u001b[38;2;176;176;176m rename\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m cancel\u001b[39m", ""], "method": ["  \u001b[1m\u001b[48;2;121;201;139m\u001b[38;2;12;29;34m compress \u001b[49m\u001b[22m\u001b[38;2;116;201;150m\u2571\u001b[38;2;116;201;151m\u2571\u001b[38;2;115;201;152m\u2571\u2571\u001b[38;2;114;201;153m\u2571\u001b[38;2;114;201;154m\u2571\u001b[38;2;114;201;155m\u2571\u001b[38;2;113;201;156m\u2571\u001b[38;2;113;201;157m\u2571\u001b[38;2;112;201;158m\u2571\u001b[38;2;112;200;159m\u2571\u001b[38;2;111;200;160m\u2571\u001b[38;2;111;200;161m\u2571\u2571\u001b[38;2;110;200;162m\u2571\u001b[38;2;110;200;163m\u2571\u001b[38;2;109;200;164m\u2571\u001b[38;2;109;200;165m\u2571\u001b[38;2;109;200;166m\u2571\u001b[38;2;108;200;167m\u2571\u001b[38;2;108;200;168m\u2571\u001b[38;2;107;200;169m\u2571\u2571\u001b[38;2;107;200;170m\u2571\u001b[38;2;106;200;171m\u2571\u001b[38;2;106;200;172m\u2571\u001b[38;2;105;200;173m\u2571\u001b[38;2;105;200;174m\u2571\u001b[38;2;104;200;175m\u2571\u001b[38;2;104;200;176m\u2571\u001b[38;2;104;200;177m\u2571\u001b[38;2;103;200;178m\u2571\u2571\u001b[38;2;102;200;179m\u2571\u001b[38;2;102;200;180m\u2571\u001b[38;2;102;200;181m\u2571\u001b[38;2;101;200;182m\u2571\u001b[38;2;101;200;183m\u2571\u001b[38;2;100;200;184m\u2571\u001b[38;2;100;200;185m\u2571\u001b[38;2;99;200;186m\u2571\u001b[38;2;99;200;187m\u2571\u2571\u001b[38;2;98;200;188m\u2571\u001b[38;2;98;200;189m\u2571\u001b[38;2;97;200;190m\u2571\u001b[38;2;97;200;191m\u2571\u001b[38;2;97;200;192m\u2571\u001b[38;2;96;200;193m\u2571\u001b[38;2;96;200;194m\u2571\u001b[38;2;95;200;195m\u2571\u2571\u001b[38;2;95;200;196m\u2571\u001b[38;2;94;200;197m\u2571\u001b[38;2;94;199;198m\u2571\u001b[38;2;93;199;199m\u2571\u001b[1m\u001b[38;2;231;231;231m Method \u001b[22m\u001b[38;2;90;199;207m\u2571\u001b[38;2;89;199;208m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;121;201;139mJPEG\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mphoto.jpg                                       \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m40\u00d720 \u00b7 277 B                                   \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;121;201;139mCompress photo.jpg\u001b[39m", "", "\u001b[48;2;24;44;30m\u001b[38;2;121;201;139m\u258c \u001b[1m\u001b[38;2;231;231;231mBy quality      \u001b[22m\u001b[38;2;176;176;176m  pick a level, see the result\u001b[39m    \u001b[49m", "\u001b[38;2;121;201;139m  \u001b[39mTo a target size", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m 1\u20133 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m mode\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m remove file\u001b[39m", ""], "size": ["  \u001b[1m\u001b[48;2;121;201;139m\u001b[38;2;12;29;34m compress \u001b[49m\u001b[22m\u001b[38;2;116;201;150m\u2571\u001b[38;2;116;201;151m\u2571\u001b[38;2;115;201;152m\u2571\u2571\u001b[38;2;114;201;153m\u2571\u001b[38;2;114;201;154m\u2571\u001b[38;2;114;201;155m\u2571\u001b[38;2;113;201;156m\u2571\u001b[38;2;113;201;157m\u2571\u001b[38;2;112;201;158m\u2571\u001b[38;2;112;200;159m\u2571\u001b[38;2;111;200;160m\u2571\u001b[38;2;111;200;161m\u2571\u2571\u001b[38;2;110;200;162m\u2571\u001b[38;2;110;200;163m\u2571\u001b[38;2;109;200;164m\u2571\u001b[38;2;109;200;165m\u2571\u001b[38;2;109;200;166m\u2571\u001b[38;2;108;200;167m\u2571\u001b[38;2;108;200;168m\u2571\u001b[38;2;107;200;169m\u2571\u2571\u001b[38;2;107;200;170m\u2571\u001b[38;2;106;200;171m\u2571\u001b[38;2;106;200;172m\u2571\u001b[38;2;105;200;173m\u2571\u001b[38;2;105;200;174m\u2571\u001b[38;2;104;200;175m\u2571\u001b[38;2;104;200;176m\u2571\u001b[38;2;104;200;177m\u2571\u001b[38;2;103;200;178m\u2571\u2571\u001b[38;2;102;200;179m\u2571\u001b[38;2;102;200;180m\u2571\u001b[38;2;102;200;181m\u2571\u001b[38;2;101;200;182m\u2571\u001b[38;2;101;200;183m\u2571\u001b[38;2;100;200;184m\u2571\u001b[38;2;176;176;176m To a target size \u001b[38;2;92;199;201m\u2571\u001b[1m\u001b[38;2;231;231;231m Size \u001b[22m\u001b[38;2;90;199;207m\u2571\u001b[38;2;89;199;208m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;121;201;139mJPEG\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mphoto.jpg                                       \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m40\u00d720 \u00b7 277 B                                   \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;121;201;139mTarget size\u001b[39m", "", "", "\u001b[48;2;44;44;44m                                                                                \u001b[49m", "\u001b[48;2;44;44;44m \u001b[38;2;121;201;139m\u203a \u001b[38;2;231;231;231m1b\u001b[39m\u001b[7m \u001b[27m                                                                          \u001b[49m", "\u001b[48;2;44;44;44m                                                                                \u001b[49m", "", "", "\u001b[38;2;176;176;176m B \u001b[39m \u001b[1m\u001b[38;2;231;231;231m KB \u001b[39m\u001b[22m \u001b[38;2;176;176;176m MB \u001b[39m \u001b[38;2;176;176;176m GB \u001b[39m", "\u001b[38;2;176;176;176m  \u2192 1 B\u001b[39m", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m tab \u001b[49m\u001b[22m\u001b[38;2;176;176;176m unit\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m clear / back\u001b[39m", ""], "unreachable": ["  \u001b[1m\u001b[48;2;121;201;139m\u001b[38;2;12;29;34m compress \u001b[49m\u001b[22m\u001b[38;2;116;201;150m\u2571\u001b[38;2;116;201;151m\u2571\u001b[38;2;115;201;152m\u2571\u2571\u001b[38;2;114;201;153m\u2571\u001b[38;2;114;201;154m\u2571\u001b[38;2;176;176;176m To a target size \u001b[38;2;106;200;171m\u2571\u001b[38;2;176;176;176m 1b \u001b[38;2;104;200;176m\u2571\u001b[38;2;176;176;176m Desktop \u001b[38;2;100;200;185m\u2571\u001b[38;2;176;176;176m photo-small.jpg \u001b[38;2;92;199;201m\u2571\u001b[1m\u001b[38;2;231;231;231m Size \u001b[22m\u001b[38;2;90;199;207m\u2571\u001b[38;2;89;199;208m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;121;201;139mJPEG\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mphoto.jpg                                       \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m40\u00d720 \u00b7 277 B                                   \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "photo.jpg can't get below 326 B \u2014 you asked for 1 B.", "\u001b[48;2;24;44;30m\u001b[38;2;121;201;139m\u258c \u001b[1m\u001b[38;2;231;231;231mUse 326 B anyway             \u001b[39m\u001b[22m                     \u001b[49m", "\u001b[38;2;121;201;139m  \u001b[39mTry a different target size", "\u001b[38;2;121;201;139m  \u001b[39mCompress by quality instead", "\u001b[38;2;121;201;139m  \u001b[39mConvert to a different format", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u2191\u2193 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m choose\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m esc \u001b[49m\u001b[22m\u001b[38;2;176;176;176m cancel\u001b[39m", ""], "extract-pages": ["  \u001b[1m\u001b[48;2;255;107;74m\u001b[38;2;12;29;34m pdf \u001b[49m\u001b[22m\u001b[38;2;253;111;73m\u2571\u001b[38;2;253;112;73m\u2571\u001b[38;2;252;113;73m\u2571\u001b[38;2;252;113;72m\u2571\u001b[38;2;252;114;72m\u2571\u001b[38;2;251;115;72m\u2571\u2571\u001b[38;2;251;116;72m\u2571\u2571\u001b[38;2;250;117;71m\u2571\u001b[38;2;250;118;71m\u2571\u2571\u001b[38;2;249;119;71m\u2571\u001b[38;2;249;120;71m\u2571\u2571\u001b[38;2;248;121;70m\u2571\u001b[38;2;248;122;70m\u2571\u2571\u001b[38;2;248;123;70m\u2571\u001b[38;2;247;123;70m\u2571\u001b[38;2;247;124;70m\u2571\u001b[38;2;247;125;69m\u2571\u001b[38;2;246;125;69m\u2571\u001b[38;2;246;126;69m\u2571\u001b[38;2;246;127;69m\u2571\u001b[38;2;245;127;69m\u2571\u001b[38;2;245;128;69m\u2571\u2571\u001b[38;2;245;129;68m\u2571\u001b[38;2;244;130;68m\u2571\u2571\u001b[38;2;244;131;68m\u2571\u001b[38;2;243;132;68m\u2571\u2571\u001b[38;2;243;133;67m\u2571\u001b[38;2;242;134;67m\u2571\u2571\u001b[38;2;242;135;67m\u2571\u2571\u001b[38;2;241;136;67m\u2571\u001b[38;2;241;137;66m\u2571\u2571\u001b[38;2;240;138;66m\u2571\u001b[38;2;240;139;66m\u2571\u2571\u001b[38;2;239;140;66m\u2571\u001b[38;2;239;141;65m\u2571\u2571\u001b[38;2;239;142;65m\u2571\u001b[38;2;238;142;65m\u2571\u001b[38;2;238;143;65m\u2571\u001b[38;2;238;144;65m\u2571\u001b[38;2;176;176;176m Extract \u001b[38;2;235;150;63m\u2571\u001b[1m\u001b[38;2;231;231;231m Pages \u001b[22m\u001b[38;2;232;155;62m\u2571\u001b[38;2;232;156;62m\u2571\u001b[39m", "", "\u001b[38;2;128;128;128m\u256d\u2500 \u001b[38;2;255;107;74mPDF\u001b[38;2;128;128;128m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;231;231;231mreport.pdf                                      \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2502 \u001b[38;2;176;176;176m6 pages \u00b7 624 B                                 \u001b[38;2;128;128;128m \u2502\u001b[39m", "\u001b[38;2;128;128;128m\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;176;176;176m0 of 6 selected\u001b[39m", "", "\u001b[48;2;44;44;44m\u001b[38;2;128;128;128m\u250f\u2501\u2501\u2501\u2513\u001b[49m   \u256d\u2500\u2500\u2500\u256e   \u256d\u2500\u2500\u2500\u256e   \u256d\u2500\u2500\u2500\u256e   \u256d\u2500\u2500\u2500\u256e   \u256d\u2500\u2500\u2500\u256e\u001b[39m", "\u001b[48;2;44;44;44m\u001b[38;2;128;128;128m\u2503\u001b[1m\u001b[38;2;231;231;231m 1 \u001b[22m\u001b[38;2;128;128;128m\u2503\u001b[49m   \u2502\u001b[38;2;231;231;231m 2 \u001b[38;2;128;128;128m\u2502   \u2502\u001b[38;2;231;231;231m 3 \u001b[38;2;128;128;128m\u2502   \u2502\u001b[38;2;231;231;231m 4 \u001b[38;2;128;128;128m\u2502   \u2502\u001b[38;2;231;231;231m 5 \u001b[38;2;128;128;128m\u2502   \u2502\u001b[38;2;231;231;231m 6 \u001b[38;2;128;128;128m\u2502\u001b[39m", "\u001b[48;2;44;44;44m\u001b[38;2;128;128;128m\u2517\u2501\u2501\u2501\u251b\u001b[49m   \u2570\u2500\u2500\u2500\u256f   \u2570\u2500\u2500\u2500\u256f   \u2570\u2500\u2500\u2500\u256f   \u2570\u2500\u2500\u2500\u256f   \u2570\u2500\u2500\u2500\u256f\u001b[39m", "", "\u001b[38;2;128;128;128m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[39m", "\u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m space \u001b[49m\u001b[22m\u001b[38;2;176;176;176m toggle\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m a \u001b[49m\u001b[22m\u001b[38;2;176;176;176m all\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m \u21b5 \u001b[49m\u001b[22m\u001b[38;2;176;176;176m confirm\u001b[39m     \u001b[1m\u001b[48;2;51;51;51m\u001b[38;2;231;231;231m r \u001b[49m\u001b[22m\u001b[38;2;176;176;176m type ranges\u001b[39m", ""]}
+/* ========================================================== CONSISTENCY
+   Every screen still drawn the old way, as the app draws it today (captured
+   from the real app at 80 × 24, so the left column is exactly what ships),
+   beside the same screen built only from parts already decided: the header
+   bar, the file card, the title in the mode's colour (qTitle), the picker's
+   band and strip, Save as's filled field, the P1 default tag, Name taken (L1)
+   and the F1 key row. Nothing here is a new design: where a screen needs one
+   that has not been decided, the frame says so. */
+
+/** A captured frame: moved two cells right, where the kit draws, and filled to 24 rows. */
+/** `s` cut to `n` visible cells, its escape sequences kept: a row wider than the terminal would wrap and scroll the frame up. */
+const cut = (s, n = N) => {
+  let out = '', w = 0
+  for (const m of s.matchAll(/\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|[\s\S]/gu)) {
+    if (m[0].startsWith('\x1b')) { out += m[0]; continue }
+    if (w >= n) continue
+    out += m[0]; w++
+  }
+  return out
+}
+const cToday = (id) => {
+  const rows = (TODAY[id] ?? []).map((r) => cut('  ' + r))
+  while (rows.length < 24) rows.push('')
+  return { rows: rows.slice(0, 24), cursor: null }
+}
+
+/** A step screen from the decided parts: bar, card, title, body, F1 keys pinned at the bottom. */
+const cStep = (s, { answers, now, card = {}, title, aside = '', body, keys, cursor = null }) => {
+  const rows = fill24([bar(s, null, { answers, now }), '', ...fcard(s, card), '', qTitle(s, title, aside), '', ...body], keys + (cursor ? '' : HIDE))
+  return { rows, cursor }
+}
+const cF1 = (main, foot) => stepKeys(main, foot)
+const cFOOT = (esc = 'back', more = []) => [...more, ['esc', esc], ['ctrl-c', 'quit']]
+
+/** The picker's band, the strip, the highlighted row's own words, and a quiet row for one that cannot be chosen. */
+const cBand = (s, rows, sel, nw = 12) => rows.map(([name, more, off], i) => (i === sel
+  ? ' '.repeat(M) + on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(name)), nw) + (more ? xf(K.d, more) : ''), 64)
+  : ' '.repeat(M) + '  ' + xpad(xf(off ? K.x : K.d, name), nw) + (off ? xf(K.faint, off) : '')))
+/** P1's default tag, at the far end of a band row. */
+const cTAG = xb(TINT, xf(MUTED, ' default '))
+
+/* ---------------------------------------------------------------- cards */
+const cCARD = {
+  png: { tag: 'PNG', name: 'test.png', meta: '64×64 · 10.8 KB' },
+  pdf: { tag: 'PDF', name: 'report.pdf', meta: '3 pages · 593 B' },
+  pdf6: { tag: 'PDF', name: 'report.pdf', meta: '6 pages · 623 B' },
+  jpg: { tag: 'JPEG', name: 'photo.jpg', meta: '40×20 · 277 B', tagc: CM_.mode.c },
+}
+
+/* ---------------------------------------------------------------- the pairs */
+const PAIRS = []
+const pair = (grid, id, name, todayId, ideal, idea, { live = false } = {}) => PAIRS.push({ grid, id, name, todayId, ideal, idea, live })
+
+/* Convert */
+pair('cv-grid', 'C1', 'Format', 'format', () => FLOW.format(),
+  'Already decided (the first page): the title in the mode\'s colour, "Convert to", with the count at its right; the F1 keys, mode, back and quit as the quiet footnote. Today the title is plain white text and the keys are the old row of caps.')
+
+pair('cv-grid', 'C2', 'Pages (a PDF to images)', 'pages', () => cStep(CV_, {
+  answers: ['JPEG'], now: 'Pages', card: cCARD.pdf, title: 'Pages', aside: 'report.pdf · 3 pages',
+  body: cBand(CV_, [['All pages', '3 pages'], ['First page only'], ['Choose pages']], 0, 18),
+  keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], cFOOT('back', [['1–3', 'mode']])),
+}), 'The title takes the mode\'s colour, as Quality\'s does, and says what it is about at its right. Keys as F1.')
+
+pair('cv-grid', 'C3', 'Resolution', 'resolution', () => {
+  const rows = cBand(CV_, [['72 dpi', 'screen'], ['150 dpi', 'print'], ['300 dpi', 'sharp print']], 1, 12)
+  rows[1] = ' '.repeat(M) + on(BAND, xr(xf(CV_.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB('150 dpi')), 12) + xf(K.d, 'print'), cTAG + ' ', 64), 64)
+  return cStep(CV_, {
+    answers: ['JPEG', 'All pages'], now: 'Resolution', card: cCARD.pdf, title: 'Resolution', aside: 'report.pdf',
+    body: rows, keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], cFOOT('back', [['1–3', 'mode']])),
+  })
+}, 'The default is marked the way Save as marks it (P1), a tinted pill at the far end of the row, rather than the word "default" as a hint. The hints for 72 and 300 dpi are placeholders; today they have none.')
+
+pair('cv-grid', 'C4', 'Name taken', 'exists', (t) => l1(t),
+  'Already decided: L1 on the Name taken tab. The title in the mode\'s colour with the old file\'s size and age at its right; each answer previews what it does; Cancel goes back to Save as. The trail says "Name taken", not "Overwrite".', { live: true })
+
+/* Compress */
+pair('cm-grid', 'M1', 'Method', 'method', () => cStep(CM_, {
+  answers: [], now: 'Method', card: cCARD.jpg, title: 'Method', aside: 'photo.jpg',
+  body: cBand(CM_, [['By quality', 'pick a level, see the result'], ['To a target size']], 0, 18),
+  keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], cFOOT('back', [['1–3', 'mode']])),
+}), 'Today the title is "Compress photo.jpg" in plain text and esc says "remove file"; Format\'s esc does the same thing and says "back". Here the title is the step\'s own name, as the bar calls it, the file at its right, and esc says back.')
+
+pair('cm-grid', 'M2', 'Target size', 'size', () => {
+  const units = ['B', 'KB', 'MB', 'GB']
+  const chips = units.map((u) => (u === 'KB' ? xb(K.fg, xf(K.ink, xB(` ${u} `))) : xf(K.d, ` ${u} `))).join(' ')
+  const line = ' ' + xf(CM_.mode.c, '›') + ' ' + xf(K.fg, '500')
+  const field = [' '.repeat(M) + on(P, '', W), ' '.repeat(M) + on(P, xr(line, chips + '  ', W), W), ' '.repeat(M) + on(P, '', W)]
+  return cStep(CM_, {
+    answers: ['To a target size'], now: 'Size', card: cCARD.jpg, title: 'Target size', aside: 'photo.jpg · 277 B',
+    body: ['', ...field], keys: cF1([['↵', 'confirm'], ['tab', 'unit']], cFOOT()),
+    cursor: [12, M + 7],
+  })
+}, 'Not decided, a proposal from decided parts: the field is Save as\'s filled field, the block\'s width, not the terminal\'s; the unit sits inside it as Save as\'s pill does, so the separate unit row and the "→ 1 B" echo below go.')
+
+pair('cm-grid', 'M3', 'Can\'t get that small', 'unreachable', () => cStep(CM_, {
+  answers: ['To a target size', '1 B'], now: 'Size', card: cCARD.jpg, title: 'photo.jpg can\'t get below 326 B', aside: 'asked for 1 B',
+  body: cBand(CM_, [['Use 326 B anyway', 'saves photo-small.jpg at 326 B'], ['Try a different target size'], ['Compress by quality instead'], ['Convert to a different format']], 0, 30),
+  keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], cFOOT('cancel')),
+}), 'The sentence becomes the title, in the mode\'s colour, with what was asked for quiet at its right; the highlighted answer says what it will do, the way Name taken\'s do. Today the bar\'s trail also shows the folder and name answered before the search ran; it should end at the size.')
+
+/* /pdf */
+pair('pdf-grid', 'P1', 'The hub', 'hub', () => cStep(PDF_, {
+  answers: [], now: 'Action', card: cCARD.pdf, title: 'Choose an operation', aside: 'report.pdf · 3 pages',
+  body: cBand(PDF_, [['Merge', '', 'needs 2+ files'], ['Split', 'into several files'], ['Extract'], ['Delete'], ['Rotate']], 1, 10),
+  keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], cFOOT()),
+}), 'The band stops at the card\'s width, as every other picker\'s does (today /pdf\'s run the whole terminal). A row that cannot be chosen says why, quietly, without being highlighted. Title and keys as everywhere else; esc says back.')
+
+pair('pdf-grid', 'P2', 'Split · How', 'split-how', () => cStep(PDF_, {
+  answers: ['Split'], now: 'How', card: cCARD.pdf, title: 'How to split', aside: '3 pages',
+  body: cBand(PDF_, [['Every page', '3 files'], ['Every N pages'], ['At points I choose']], 0, 20),
+  keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], cFOOT()),
+}), 'The same picker as P1: card-width band, a title in the mode\'s colour, F1 keys. Rotate\'s "Turn" and Extract\'s "Output" are the same screen.')
+
+pair('pdf-grid', 'P3', 'Split · Every N pages', 'split-n', () => {
+  const field = FB(['', ' ' + xf(PDF_.mode.c, '›') + ' ' + xf(K.fg, '2') + xf(K.x, '   pages each  →  2 files'), ''])
+  return cStep(PDF_, {
+    answers: ['Split', 'Every N pages'], now: 'Pages each', card: cCARD.pdf, title: 'Pages per file', aside: '3 pages',
+    body: ['', ...field], keys: cF1([['↵', 'confirm']], cFOOT()), cursor: [12, M + 5],
+  })
+}, 'Save as\'s field: the block\'s width, not the terminal\'s, and it stays filled in a narrow terminal (today a narrow one drops the fill). The field says what the number makes, quietly, where Save as shows the extension.')
+
+pair('pdf-grid', 'P4', 'Extract · Pages', 'extract-pages', () => {
+  const grid = (TODAY['extract-pages'] ?? []).slice(9, 12).map((r) => '  ' + r)
+  return cStep(PDF_, {
+    answers: ['Extract'], now: 'Pages', card: cCARD.pdf6, title: 'Pages', aside: '0 of 6 selected',
+    body: grid, keys: cF1([['space', 'toggle'], ['a', 'all'], ['↵', 'confirm']], [['r', 'type ranges'], ['esc', 'back'], ['ctrl-c', 'quit']]),
+  })
+}, 'The grid is today\'s, unchanged. What changes is around it: a title (today there is none, only "0 of 6 selected", which moves to the title\'s right), and F1 keys, which today leave out esc altogether.')
+
+pair('pdf-grid', 'P5', 'Merge · Order', 'merge', () => {
+  const files = [['1  january.pdf', '2 pages · 587 B'], ['2  february.pdf', '3 pages · 593 B']]
+  return cStep(PDF_, {
+    answers: ['Merge'], now: 'Order', card: { tag: 'PDF ×2', name: 'january.pdf, february.pdf', meta: '2 files · 5 pages · 1.2 KB' },
+    title: 'Order the files', aside: '2 files · 5 pages',
+    body: cBand(PDF_, files, 0, 20),
+    keys: cF1([['↑↓', 'choose'], ['space', 'pick up'], ['↵', 'confirm']], [['s', 'sort'], ['x', 'remove'], ['esc', 'back'], ['ctrl-c', 'quit']]),
+  })
+}, 'The picker\'s band and strip instead of ❯ on a fill; "choose", not "select". The output path line and n rename go: the file is named on Save as, after this (the plan for /pdf). Today\'s card lists the files twice, in the card and in the list; the card here keeps to one line.')
+
+/** Save as for /pdf, from the plan: the sentence with `name`, open on the folder when `folder`. */
+const pdfSave = ({ answers, title, name, ext = '', fixed = false, folder = false }) => {
+  const head = ' ' + xf(PDF_.mode.c, '›') + ' ' + xf(folder || fixed ? K.d : K.fg, name) + xf(K.x, ext) + xf(K.x, '   in ')
+  const label = 'Desktop'
+  const word = folder ? PILL(label) : xb(CHIP, xf(K.fg, xB(` ${label} `)) + xf(K.d, '▾ '))
+  const at = M + vis(head) - 1
+  const inner = folder ? DIRS.slice(0, 4).map(([n, p], i) => ' '.repeat(at - M) + fRow(n, i === 1 ? '~/Desktop' : p, { sel: i === 1, def: i === 1, w: W - (at - M) - 2, tag: TAGS[0] }).split('\x1b[49m').join(`\x1b[48;2;${rgbOf(P)}m`)) : []
+  const body = ['', ...FB(['', head + word, ...(folder ? ['', ...inner] : []), ''])]
+  const keys = folder
+    ? cF1([['↑↓', 'choose'], ['↵', 'save'], ['tab', 'make default']], [['esc', fixed ? 'back' : 'name'], ['ctrl-c', 'quit']])
+    : cF1([['↵', 'save'], ['tab', 'folder']], cFOOT())
+  return cStep(PDF_, { answers, now: 'Save as', card: cCARD.pdf, title: 'Save as', aside: title, body, keys, cursor: folder ? null : [12, M + 3 + vis(name)] })
+}
+pair('pdf-grid', 'P6', 'The last screen: confirm → Save as', 'confirm', () => pdfSave({
+  answers: ['Split', 'Every N pages', '2'], title: 'Split into 2 files', name: 'report-1.pdf … 2 files', fixed: true, folder: true,
+}), 'From the /pdf plan: Save as replaces the confirm screen. What confirm said moves to the title\'s right; the outputs are the sentence; ↵ runs. A split writes many files, so it opens on the folder with the names fixed; esc goes back to the question before.')
+
+pair('pdf-grid', 'P7', 'Rotate: one file, a name to edit', 'rotate-turn', () => pdfSave({
+  answers: ['Rotate', '90° right'], title: 'Rotate 90°', name: 'report-rotated', ext: '.pdf',
+}), 'Left: today\'s last question before it runs (Turn), then a confirm. Right: after Turn comes Save as, on the name, as in convert; the extension is fixed.')
+
+pair('pdf-grid', 'P8', 'Name taken, in /pdf', 'pdf-exists', () => {
+  const both = xf(K.fg, 'report-rotated') + xf(PDF_.mode.c, xB(' (1)')) + xf(K.fg, '.pdf')
+  const rows = [
+    ' '.repeat(M) + on(BAND, xf(PDF_.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB('Keep both')), 12) + xf(K.d, 'saves yours as ') + both, 64),
+    ' '.repeat(M) + '  ' + xf(K.d, 'Replace'),
+    ' '.repeat(M) + '  ' + xf(K.d, 'Cancel'),
+  ]
+  return cStep(PDF_, {
+    answers: ['Rotate', '90° right', 'Desktop', 'report-rotated.pdf'], now: 'Name taken', card: cCARD.pdf,
+    title: 'report-rotated.pdf already exists', aside: '1.1 KB · today, 22:40', body: rows,
+    keys: cF1([['↑↓', 'choose'], ['↵', 'confirm']], [['esc', 'cancel'], ['ctrl-c', 'quit']]),
+  })
+}, 'Today /pdf has its own version of this question: a red ✕ heading, the file named twice, Cancel first and no Keep both. Here it is L1, the same question convert asks, and Cancel goes back to Save as on the folder.')
+
+/* Elsewhere */
+pair('else-grid', 'E1', 'Files staged at the prompt', 'staged', () => {
+  const rows = fill24([bar(CV_, null, { answers: [], now: 'report.pdf' }), '',
+    ' '.repeat(M + 1) + xf(K.d, '→ ') + xf(K.fg, '/pdf') + xf(K.d, ' for page operations'), '', field(CV_)],
+  keysF1({ main: [['↵', 'send']], foot: [['/', 'commands'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] }))
+  return { rows, cursor: cursorAt(rows, /or type a path/) }
+}, 'After esc from a picker with a PDF staged. Today: a filled field the terminal\'s width, and two rows of keys ending "ctrl-c close app". Here: home\'s field and home\'s F1 key row, "quit" as everywhere else; nothing else changes. What the drop zone itself shows with a file in it is the drop zone session\'s, not decided here.')
+
+/* ---------------------------------------------------------------- render */
+/**
+ * The rule above the keys: the app draws one across the terminal over every
+ * key row (HintBar), and it stays. The kit leaves the row above the keys
+ * blank, so the ideal frames get it here, where the app draws it.
+ */
+const withRule = (r) => {
+  const rows = [...(r.rows ?? r)]
+  rows[22] = ' '.repeat(M) + xf(K.x, '─'.repeat(N - M))
+  return { rows, cursor: r.cursor ?? null }
+}
+for (const p of PAIRS) {
+  const t = cToday(p.todayId)
+  fig(p.grid, { id: 'Today', name: p.name, frames: [{ label: 'as the app draws it today', rows: t.rows, cursor: t.cursor, raw: true }] })
+  const ideal = p.live ? { make: (tm) => withRule(p.ideal(tm)) } : withRule(p.ideal(0))
+  fig(p.grid, { id: p.id, name: p.name, idea: p.idea, frames: [{ label: 'with the decided parts', ...ideal }] })
+}
+
+</script>
+
+</body>
+</html>

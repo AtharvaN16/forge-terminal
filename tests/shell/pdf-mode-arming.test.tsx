@@ -51,7 +51,7 @@ describe('/pdf mode arming', () => {
     const frame = app.lastFrame() ?? ''
     expect(frame.toLowerCase()).toContain('not a pdf')
     expect(frame).toMatch(/^ {3}convert ╱/m)
-    expect(frame).toContain('Convert JPEG to')
+    expect(frame).toContain('Convert to')
   })
 
   it('escaping the hub keeps the file staged, so a second PDF can join it for merge', async () => {
@@ -79,7 +79,7 @@ describe('/pdf mode arming', () => {
     await settle(400)
     const frame = app.lastFrame() ?? ''
     // Two PDFs staged in pdf mode: ↵ opens the hub on both, as /pdf would.
-    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('Choose an operation')
     expect(frame).toContain('a.pdf')
     expect(frame).toContain('b.pdf')
   })

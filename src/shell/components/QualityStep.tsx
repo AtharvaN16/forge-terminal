@@ -1,5 +1,5 @@
 import { Box } from 'ink'
-import { endsRow, SLIDER_WIDTH, sliderRow, titleRow } from '../quality-art.js'
+import { endsRow, SLIDER_WIDTH, sliderRow } from '../quality-art.js'
 import { useTheme } from '../ThemeContext.js'
 import { MODE_KEYS, type ShellMode } from '../theme.js'
 import type { MeasuredSize } from '../useMeasuredSize.js'
@@ -7,6 +7,7 @@ import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
 import { SizeAside } from './SizeAside.js'
 import { useSliderKeys } from './Slider.js'
+import { StepTitle } from './StepTitle.js'
 
 /**
  * Quality (G1): the title, a grey band with the value on its thumb, which
@@ -49,7 +50,7 @@ export function QualityStep({
   const plain = (process.env.NO_COLOR ?? '') !== '' || palette.track === ''
   return (
     <Box flexDirection="column">
-      <Runs row={titleRow({ palette, mode, title: 'Quality', aside, width })} />
+      <StepTitle mode={mode} title="Quality" aside={aside} width={width} />
       <Box marginTop={1} flexDirection="column">
         <Runs row={sliderRow({ palette, value, min, max, width: band, plain })} />
         <Runs row={endsRow({ palette, width: band })} />

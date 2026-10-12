@@ -46,22 +46,25 @@ describe('keycap hints', () => {
     }
   })
 
-  it('wraps between pairs, never inside one', () => {
-    // The result screen's row is wider than 72 columns as keycaps; a narrow
-    // terminal has to break it between keys, not leave "close app" behind.
+  it('never wraps: the quiet footnote gives up items from its right end first', () => {
+    // F1: the main keys never shrink and the row is always one line, so a
+    // narrow terminal loses footnote items rather than breaking the row.
     const many: Array<[string, string]> = [
-      ['↵', 'convert another'],
-      ['o', 'open'],
-      ['s', 'show in finder'],
-      ['ctrl-c', 'close app'],
+      ['↑↓', 'choose'],
+      ['↵', 'confirm'],
+      ['1–3', 'mode'],
+      ['esc', 'back'],
     ]
     for (const width of [40, 48, 72]) {
       const rows = frame(<HintBar width={width} pairs={many} />).split('\n')
-      for (const [key, what] of many) {
-        expect(rows.some((r) => r.includes(` ${key}  ${what}`))).toBe(true)
-      }
+      const keys = rows.at(-1) ?? ''
+      expect(keys).toContain('↑↓  choose')
+      expect(keys).toContain('↵  confirm')
       for (const r of rows) expect(r.length).toBeLessThanOrEqual(width)
     }
+    expect(frame(<HintBar width={72} pairs={many} />)).toContain(
+      '1–3 mode · esc back · ctrl-c quit',
+    )
   })
 
   it('draws a rule the full width above the hint bar', () => {

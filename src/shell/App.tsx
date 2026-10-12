@@ -1,3 +1,4 @@
+import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
@@ -48,15 +49,17 @@ import { ErrorLine } from './components/ErrorLine.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
+import { NameTaken } from './components/NameTaken.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
 import { SaveAs } from './components/SaveAs.js'
 import { Select } from './components/Select.js'
 import { SizeAside } from './components/SizeAside.js'
+import { SIZE_UNIT_IDS, SizeField, type SizeUnit } from './components/SizeField.js'
 import { StagedFiles } from './components/StagedFiles.js'
+import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
-import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
 import {
   actionForRow,
@@ -70,7 +73,7 @@ import {
   toolState,
 } from './enhance.js'
 import { ExtensionsFlow } from './flows/extensions.js'
-import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
+import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
@@ -101,7 +104,7 @@ import { useAfter } from './useAfter.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
-import { bandFor, CARD_WIDTH, middleEllipsis } from './width.js'
+import { bandFor, CARD_WIDTH } from './width.js'
 import { phaseLabel } from './working-art.js'
 
 /**
@@ -181,6 +184,24 @@ interface PendingOverwrite {
   destination: string
   output: string
   keepBoth: string
+  /** The one there now, for the title's right: its size and when it changed. */
+  existing?: TakenFile | undefined
+}
+
+/** A file already at the path a save wants, as Name taken describes it. */
+interface TakenFile {
+  bytes: number
+  modified: Date
+}
+
+/** One `stat` of the file in the way, or nothing if it has gone since. */
+function takenFile(path: string): TakenFile | undefined {
+  try {
+    const st = statSync(path)
+    return { bytes: st.size, modified: st.mtime }
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -795,6 +816,15 @@ export function App({
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
+  /** How the last /pdf run was asked, so a refused save can reopen its Save as. */
+  const [pdfAsked, setPdfAsked] = useState<PdfResume | undefined>(undefined)
+  /**
+   * What /pdf's Save as was told, as the trail says it after: the folder by
+   * its name, then the file — or how many, for a run that writes several.
+   */
+  const [pdfSaved, setPdfSaved] = useState<string[]>([])
+  /** Set to open /pdf on that Save as (Cancel on Name taken); cleared once it is left. */
+  const [pdfReopen, setPdfReopen] = useState<PdfResume | undefined>(undefined)
   /** Colour's home: the card chosen, Palette (0) or Scale (1). */
   const [colourChoice, setColourChoice] = useState<0 | 1>(0)
   /** How the colour flow opens, and the trail it hands up for the bar. */
@@ -1286,6 +1316,7 @@ export function App({
     setPending(null)
     setSaving(null)
     setPdfBlocked(null)
+    setPdfReopen(undefined)
     setSizeUnreachable(null)
     setSuggestion(undefined)
     setSizeError(undefined)
@@ -2343,7 +2374,12 @@ export function App({
       // An output that already exists is a question, not a refusal: spec §8
       // says the shell asks — keep both, replace, or cancel.
       if (refusal.error.code === 'output-exists') {
-        setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
+        setPending({
+          destination,
+          output,
+          keepBoth: uniqueOutputPath(output),
+          existing: takenFile(output),
+        })
         setStep('overwrite')
         return
       }
@@ -2806,14 +2842,39 @@ export function App({
     await runPdfJobs(safe.jobs)
   }
 
-  /** `replace` retries `pdfBlocked.jobs` with `force: true`; anything else cancels. */
+  /**
+   * `keep` runs the jobs with every output that is taken given the name Keep
+   * both gives it (`uniqueOutputPath`: ` (1)`, counting up) — every one, not
+   * just the first, since a split can collide on several. `replace` retries
+   * them with `force: true`; anything else cancels.
+   */
   const answerPdfBlocked = (choice: string) => {
     if (!pdfBlocked) return
+    if (choice === 'keep') {
+      const renamed = pdfBlocked.jobs.map(
+        (job) => ({ ...job, outputs: job.outputs.map((o) => uniqueOutputPath(o)) }) as Job,
+      )
+      const safe = checkWriteSafety(renamed, { force: false })
+      setPdfBlocked(null)
+      if (safe.failures.length > 0) {
+        for (const failure of safe.failures) {
+          push({ kind: 'error', id: nextId(), error: failure.error })
+        }
+        setStep('pdf')
+        return
+      }
+      void runPdfJobs(safe.jobs)
+      return
+    }
     if (choice !== 'replace') {
       const cancelTo = pdfBlocked.cancelTo
       setPdfBlocked(null)
       if (cancelTo === 'save-as') reopenSaveAs()
-      else setStep(cancelTo)
+      else {
+        // Back to /pdf's own Save as, as the run was asked, on the folder.
+        setPdfReopen(pdfAsked)
+        setStep(cancelTo)
+      }
       return
     }
     const forced = checkWriteSafety(pdfBlocked.jobs, { force: true })
@@ -2830,7 +2891,26 @@ export function App({
     void runPdfJobs(forced.jobs, { force: true })
   }
 
-  // `Select` owns arrow/enter for the output-exists choice; a plain refusal
+  /**
+   * What Name taken says for a refused /pdf run: the one name that is taken,
+   * with its size and age — or how many, when a split or an extract collides
+   * on several.
+   */
+  const pdfTaken = (jobs: Job[]) => {
+    const taken = jobs.flatMap((j) => j.outputs).filter((o) => existsSync(o))
+    const [first] = taken
+    if (!first) return { name: 'The file', keepBoth: '' }
+    if (taken.length === 1) {
+      return {
+        name: basename(first),
+        keepBoth: basename(uniqueOutputPath(first)),
+        existing: takenFile(first),
+      }
+    }
+    return { name: `${taken.length} files`, keepBoth: `${basename(uniqueOutputPath(first))} …` }
+  }
+
+  // `NameTaken` owns its keys for the output-exists question; a plain refusal
   // (no bypass offered) has nothing mounted to answer escape or enter, so
   // this step owns both directly — same reasoning as the 'size' step
   // above, which owns escape for the same reason.
@@ -2868,6 +2948,15 @@ export function App({
             { value: GOTO_PDF, label: '/pdf for more options' },
           ]
         : targetSpec.choices
+  /**
+   * Format's title says where the highlight is among the formats ("1/6"),
+   * as the decided picker does; the /pdf pointer below them is not one.
+   */
+  const targetPlace = (() => {
+    const formats = targetItems.filter((i) => !i.disabled && i.value !== GOTO_PDF)
+    const at = formats.findIndex((i) => i.value === (targetHighlight ?? firstTarget))
+    return at === -1 ? undefined : `${at + 1}/${formats.length}`
+  })()
   const pagesSpec = specFor('pages')
   const dpiSpec = specFor('dpi')
   const qualitySpec = specFor('quality')
@@ -2922,8 +3011,8 @@ export function App({
     if (at === 'colour') return colourTrailNow
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
-        answers: pdfTrailNow.answers,
-        current: at === 'pdf-running' ? work?.verb : 'Overwrite',
+        answers: [...pdfTrailNow.answers, ...pdfSaved],
+        current: at === 'pdf-running' ? work?.verb : 'Name taken',
       }
     }
     const waiting =
@@ -2984,7 +3073,7 @@ export function App({
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>{modeSpec.label}</Text>
+                <StepTitle mode={mode} title="Method" aside={basename(source.path)} width={width} />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3003,37 +3092,37 @@ export function App({
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
                   [MODE_KEYS, 'mode'],
+                  // Method is the first question: esc takes the file off the bench.
                   ['esc', 'remove file'],
                 ]}
               />
             </Box>
           ) : null}
 
-          {step === 'size' && sizeSpec?.kind === 'text' ? (
+          {step === 'size' && source && sizeSpec?.kind === 'text' ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.label)}>{sizeSpec.label}</Text>
-              <Prompt
+              <StepTitle
+                mode={mode}
+                title={sizeSpec.label}
+                aside={`${basename(source.path)} · ${formatBytes(source.bytes)}`}
+                width={width}
+              />
+              {/* Save as's field, the unit inside it at the right: the amount
+                  and its unit are one answer, read as one line. */}
+              <SizeField
                 value={text}
                 onChange={setText}
                 onSubmit={submitSize}
                 placeholder={sizeSpec.placeholder}
-                isActive={!unitFocused}
-                variant={band === 'compact' ? 'plain' : 'field'}
+                unit={sizeUnit}
+                unitFocused={unitFocused}
                 width={width}
               />
-              <UnitRow unit={sizeUnit} focused={unitFocused} />
-              {/* What the two halves add up to, said back in the same words
-                  `formatBytes` uses everywhere else. The placeholder could
-                  only ever say this before anything was typed; this says it
-                  exactly when there is something to be unsure about. */}
-              {text.trim() !== '' ? (
+              {/* Said only when what was typed is not a size at all; what it
+                  is, when it is one, the field already shows. */}
+              {text.trim() !== '' && describeSize(sizeWithUnit(text)) === undefined ? (
                 <Text color={colourProp(palette.dim)}>
-                  {(() => {
-                    const understood = describeSize(sizeWithUnit(text))
-                    return understood === undefined
-                      ? `  ${SYMBOLS.warn} not a size — try 500kb or 2mb`
-                      : `  ${SYMBOLS.arrow} ${understood}`
-                  })()}
+                  {`  ${SYMBOLS.warn} not a size — try 500kb or 2mb`}
                 </Text>
               ) : null}
               {sizeError ? (
@@ -3052,7 +3141,7 @@ export function App({
                   ['↵', 'confirm'],
                   ['tab', unitFocused ? 'amount' : 'unit'],
                   ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
-                  ['esc', 'clear / back'],
+                  ['esc', 'back'],
                 ]}
               />
             </Box>
@@ -3061,7 +3150,7 @@ export function App({
           {step === 'target' && source && targetSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text>{targetSpec.label}</Text>
+                <StepTitle mode={mode} title="Convert to" aside={targetPlace} width={width} />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3088,7 +3177,9 @@ export function App({
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
                   [MODE_KEYS, 'mode'],
-                  ['esc', 'back'],
+                  // A document stays staged on esc (/pdf may still want it); an image
+                  // is taken off the bench. The key says which.
+                  ['esc', source.kind === 'document' ? 'back' : 'remove file'],
                 ]}
               />
             </Box>
@@ -3097,7 +3188,16 @@ export function App({
           {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>{pagesSpec.label}</Text>
+                <StepTitle
+                  mode={mode}
+                  title={pagesSpec.label}
+                  aside={
+                    source.kind === 'document'
+                      ? `${basename(source.path)} · ${source.pages} pages`
+                      : basename(source.path)
+                  }
+                  width={width}
+                />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3146,7 +3246,12 @@ export function App({
           {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>{dpiSpec.label}</Text>
+                <StepTitle
+                  mode={mode}
+                  title={dpiSpec.label}
+                  aside={basename(source.path)}
+                  width={width}
+                />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3238,45 +3343,41 @@ export function App({
 
           {step === 'overwrite' && pending ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
-              <Select
-                width={pickerWidth}
-                items={[
-                  { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
-                  { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
-                  { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
-                ]}
+              <NameTaken
+                mode={mode}
+                width={width}
+                name={basename(pending.output)}
+                keepBoth={basename(pending.keepBoth)}
+                existing={pending.existing}
                 onSubmit={answerOverwrite}
                 onCancel={() => {
                   setPending(null)
                   reopenSaveAs()
                 }}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  ['esc', 'cancel'],
-                ]}
               />
             </Box>
           ) : null}
 
           {step === 'size-unreachable' && sizeUnreachable ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text>
-                {`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
-                  sizeUnreachable.smallest,
-                )} — you asked for ${formatBytes(sizeUnreachable.targetBytes)}.`}
-              </Text>
+              <Box marginBottom={1}>
+                <StepTitle
+                  mode={mode}
+                  title={`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
+                    sizeUnreachable.smallest,
+                  )}`}
+                  aside={`asked for ${formatBytes(sizeUnreachable.targetBytes)}`}
+                  width={width}
+                />
+              </Box>
               <Select
                 width={pickerWidth}
                 items={[
                   {
                     value: 'lowest',
                     label: `Use ${formatBytes(sizeUnreachable.smallest)} anyway`,
+                    // What the answer does, the way Name taken's answers say it.
+                    hint: `saves it at ${formatBytes(sizeUnreachable.smallest)}`,
                   },
                   { value: 'size', label: 'Try a different target size' },
                   { value: 'quality', label: 'Compress by quality instead' },
@@ -3415,7 +3516,20 @@ export function App({
               width={width}
               height={height}
               prefs={livePrefs}
-              onDone={(jobs) => {
+              resume={pdfReopen}
+              onDone={(jobs, resume) => {
+                const outputs = jobs.flatMap((j) => j.outputs)
+                const [first] = outputs
+                setPdfSaved(
+                  first
+                    ? [
+                        basename(displayPath(dirname(first))),
+                        outputs.length > 1 ? `${outputs.length} files` : basename(first),
+                      ]
+                    : [],
+                )
+                setPdfAsked(resume)
+                setPdfReopen(undefined)
                 void handlePdfDone(jobs)
               }}
               // Keeps the stage rather than `clearSource`: `mode` is still
@@ -3427,61 +3541,41 @@ export function App({
               // one keystroke further: esc again at idle, on an empty
               // field, clears the stage the same way it already does
               // everywhere else in this file.
-              onCancel={backToPromptKeepingStage}
+              onCancel={() => {
+                setPdfReopen(undefined)
+                backToPromptKeepingStage()
+              }}
               onTrail={setPdfTrailNow}
+              onMakeDefault={makeDefault}
             />
           ) : null}
 
           {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
-            <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.fail)}>
-                {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
-              </Text>
-              {/* `.detail`, never `.hint` — the hint text is CLI wording
-                ("Pass --force to replace it"), and the shell has no
-                --force flag. The choice below is the shell's own answer
-                to the same situation. */}
-              <Text
-                color={colourProp(palette.fg)}
-              >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
-              {pdfBlocked.failures[0].error.code === 'output-exists' ? (
-                <Select
-                  width={pickerWidth}
-                  items={[
-                    {
-                      value: 'cancel',
-                      label: 'Cancel',
-                      // Says where it actually goes: a page operation run from
-                      // `/pdf` has only the hub to return to, but an ordinary
-                      // document conversion has its own destination step —
-                      // see `PendingPdfRefusal.cancelTo`'s doc comment.
-                      hint:
-                        pdfBlocked.cancelTo === 'save-as'
-                          ? 'pick a different folder, nothing written'
-                          : 'back to /pdf, nothing written',
-                    },
-                    { value: 'replace', label: 'Replace', hint: 'overwrite the existing file' },
-                  ]}
+            pdfBlocked.failures[0].error.code === 'output-exists' ? (
+              <Box flexDirection="column" marginBottom={1}>
+                <NameTaken
+                  mode={mode}
+                  width={width}
+                  {...pdfTaken(pdfBlocked.jobs)}
                   onSubmit={answerPdfBlocked}
                   onCancel={() => answerPdfBlocked('cancel')}
-                  showHints={band !== 'compact'}
                 />
-              ) : (
+              </Box>
+            ) : (
+              <Box flexDirection="column" marginBottom={1}>
+                <Text color={colourProp(palette.fail)}>
+                  {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
+                </Text>
+                {/* `.detail`, never `.hint` — the hint text is CLI wording
+                  ("Pass --force to replace it"), and the shell has no
+                  --force flag. */}
+                <Text
+                  color={colourProp(palette.fg)}
+                >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
                 <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
-              )}
-              <HintBar
-                width={width}
-                pairs={
-                  pdfBlocked.failures[0].error.code === 'output-exists'
-                    ? [
-                        ['↑↓', 'choose'],
-                        ['↵', 'confirm'],
-                        ['esc', 'cancel'],
-                      ]
-                    : [['esc', 'back']]
-                }
-              />
-            </Box>
+                <HintBar width={width} pairs={[['esc', 'back']]} />
+              </Box>
+            )
           ) : null}
 
           {onHome ? (

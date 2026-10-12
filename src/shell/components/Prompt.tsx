@@ -6,6 +6,7 @@ import { useClickTarget } from '../ClickTargets.js'
 import { copy, paste } from '../clipboard.js'
 import { positionInFrame } from '../frame-geometry.js'
 import { isStrayEscapeSequence, offsetForColumn } from '../mouse.js'
+import { FIELD_WIDTH } from '../save-as-art.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -189,7 +190,7 @@ interface PromptProps {
  * closure before React re-renders still accumulates onto the real current
  * value rather than a stale one, and a caller-driven reset (e.g. clearing the
  * field after submit) is picked up the moment it renders. See Select.tsx and
- * PathInput.tsx for the same pattern and its rationale.
+ * SaveAs.tsx for the same pattern and its rationale.
  *
  * On submission the buffer is also reset right here, synchronously, rather
  * than only via the caller clearing `value` and that flowing back through a
@@ -891,10 +892,16 @@ export function Prompt({
     )
   }
 
+  /**
+   * The filled field is the block's width, as Save as's is — 76 at 80
+   * columns, four short of a narrower terminal — never the terminal's, which
+   * at 120 columns left a field wider than everything around it.
+   */
+  const boxWidth = variant === 'field' ? Math.max(20, Math.min(FIELD_WIDTH, width - 4)) : width
   return (
     <Box
       flexDirection="column"
-      width={width}
+      width={boxWidth}
       backgroundColor={colourProp(bg)}
       paddingX={1}
       paddingY={1}

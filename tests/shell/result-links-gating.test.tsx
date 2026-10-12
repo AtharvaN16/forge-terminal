@@ -40,7 +40,7 @@ async function renderResult(mouseSupported: boolean) {
   app.stdin.write(file)
   await settle()
   app.stdin.write(ENTER) // submits the dropped path -> target picker
-  await until(app.lastFrame, 'Convert PNG to')
+  await until(app.lastFrame, 'Convert to')
   app.stdin.write(ENTER) // target
   await until(app.lastFrame, 'sharper')
   app.stdin.write(ENTER) // quality (JPEG default)

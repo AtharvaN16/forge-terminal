@@ -73,7 +73,7 @@ describe('a running split names itself correctly, not as rendering', () => {
     await settle()
     stdin.write(ENTER) // stage -> convert picker (a PDF has real targets now)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     stdin.write(ESC) // back to idle, doc.pdf still staged
     await settle(200)
@@ -82,7 +82,7 @@ describe('a running split names itself correctly, not as rendering', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
 
     // Hub order is Merge, Split, Extract, Delete, Rotate. Merge is disabled
     // with one file staged, so the cursor already starts on Split.

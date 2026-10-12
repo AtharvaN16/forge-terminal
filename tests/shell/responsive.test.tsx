@@ -63,7 +63,7 @@ describe('responsiveness', () => {
     stdin.write(ENTER)
     await settle(300)
     const lines = (lastFrame() ?? '').split('\n')
-    const question = lines.findIndex((l) => /Convert JPEG to/.test(l))
+    const question = lines.findIndex((l) => /Convert to/.test(l))
     expect(question).toBeGreaterThan(-1)
     expect(lines[question + 1]?.replace(ANSI_ALL, '').trim()).toBe('')
     expect(lines[question + 2]).toMatch(/▌/)

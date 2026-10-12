@@ -157,36 +157,11 @@ describe('picker glide and drop flash', () => {
     await advance(33)
     const mid = (app.lastFrame() ?? '').split('\n')[1] ?? ''
     expect(mid).toContain('48;2;')
-    expect(mid).not.toContain(bgOf(DARK.band))
+    expect(mid).not.toContain(bgOf(DARK.listBand))
     await advance(200)
     const rest = (app.lastFrame() ?? '').split('\n')
-    expect(rest[1]).toContain(bgOf(DARK.band))
+    expect(rest[1]).toContain(bgOf(DARK.listBand))
     expect(rest[0]).not.toContain('48;2;')
-  })
-
-  it('flashes the Save to input when a path is dropped, then fades', async () => {
-    setMotionForTests(true)
-    const { PathInput } = await import('../../src/shell/components/PathInput.js')
-    const app = render(
-      inTheme(
-        <PathInput
-          label="Save to"
-          presets={[{ label: 'Desktop', path: '/Users/me/Desktop' }]}
-          preview={(p) => p}
-          onSubmit={() => {}}
-          width={60}
-          showHints
-          defaultPath=""
-        />,
-      ),
-    )
-    await flush()
-    app.stdin.write('/tmp/dropped/thing.png')
-    await flush()
-    const inputLine = () => (app.lastFrame() ?? '').split('\n')[1] ?? ''
-    expect(inputLine()).toContain(bgOf(DARK.band))
-    await advance(600)
-    expect(inputLine()).not.toContain('48;2;')
   })
 
   it("flashes Save as's pill when a path is dropped, then rests on the pill", async () => {

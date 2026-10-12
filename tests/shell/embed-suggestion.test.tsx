@@ -21,6 +21,23 @@ describe('the encrypted-file refusal', () => {
 const ENTER = String.fromCharCode(13)
 const DOWN = `${String.fromCharCode(27)}[B`
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
+type Shell = { stdin: { write: (s: string) => void }; lastFrame: () => string | undefined }
+
+/**
+ * Waits until the frame shows `text`, then a beat more for the screen's keys
+ * to be listened for — the same walk as app-convert.test.tsx's, for the same
+ * reason: on a busy machine a fixed pause can send a key to the wrong screen.
+ */
+async function until(lastFrame: Shell['lastFrame'], text: string | RegExp, ms = 15_000) {
+  const plain = () => (lastFrame() ?? '').replace(SGR, '')
+  const shown = () => (typeof text === 'string' ? plain().includes(text) : text.test(plain()))
+  const start = Date.now()
+  while (!shown() && Date.now() - start < ms) await settle(30)
+  if (!shown()) throw new Error(`never showed ${String(text)}:\n${plain()}`)
+  await settle(100)
+}
 
 const prefsFor = (dir: string) => ({
   ...DEFAULT_PREFERENCES,
@@ -37,39 +54,39 @@ const prefsFor = (dir: string) => ({
  * so five downs, not one, is what actually lands the cursor on it. Mirrors
  * `compress-flow.test.tsx`'s `toCompress`/`finish` pair, one flow later.
  */
-async function toPdf(stdin: { write: (s: string) => void }, file: string) {
+async function toPdf({ stdin, lastFrame }: Shell, file: string) {
   stdin.write(file)
   await settle()
   stdin.write(ENTER) // stage the file -> target picker
-  await settle(300)
+  await until(lastFrame, 'Convert to')
   stdin.write(DOWN + DOWN + DOWN + DOWN + DOWN) // png, webp, avif, gif, tiff, pdf
-  await settle()
+  await until(lastFrame, /▌ PDF/)
   stdin.write(ENTER) // choose PDF -> Save as (PDF isn't lossy: no quality step)
-  await settle()
+  await until(lastFrame, 'Save as')
   stdin.write(ENTER) // Save as: the proposed name, in the default folder -> runs the conversion
-  await settle(1200)
+  await until(lastFrame, 'convert another')
 }
 
 /** Back at idle, from the result screen, without discarding anything else. */
-async function convertAnother(stdin: { write: (s: string) => void }) {
+async function convertAnother({ stdin, lastFrame }: Shell) {
   stdin.write(ENTER)
-  await settle(300)
+  await until(lastFrame, /drop a file/i)
 }
 
 describe('the merge offer', () => {
   it('says nothing after converting just one image to PDF', async () => {
     const dir = await makeTempDir()
     const a = await makeJpeg(dir, 'a.jpg')
-    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+    const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
 
-    await toPdf(stdin, a)
+    await toPdf(app, a)
 
     // The conversion itself really did succeed — otherwise the negative
     // assertion below would pass for the wrong reason (nothing to offer a
     // merge for because nothing was written at all).
     expect((await readdir(dir)).filter((f) => f.endsWith('.pdf'))).toHaveLength(1)
 
-    const frame = lastFrame() ?? ''
+    const frame = app.lastFrame() ?? ''
     expect(frame).not.toContain('could become one')
   }, 20_000)
 
@@ -77,13 +94,13 @@ describe('the merge offer', () => {
     const dir = await makeTempDir()
     const a = await makeJpeg(dir, 'a.jpg')
     const b = await makeJpeg(dir, 'b.jpg')
-    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+    const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
 
-    await toPdf(stdin, a)
-    await convertAnother(stdin)
-    await toPdf(stdin, b)
+    await toPdf(app, a)
+    await convertAnother(app)
+    await toPdf(app, b)
 
-    const frame = lastFrame() ?? ''
+    const frame = app.lastFrame() ?? ''
     // Counts what actually happened this session, not a fixed word like
     // "some" — two conversions, so the offer names two.
     expect(frame).toContain('2 PDFs from this session could become one')
@@ -94,11 +111,11 @@ describe('the merge offer', () => {
     const dir = await makeTempDir()
     const a = await makeJpeg(dir, 'a.jpg')
     const b = await makeJpeg(dir, 'b.jpg')
-    const { stdin } = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+    const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
 
-    await toPdf(stdin, a)
-    await convertAnother(stdin)
-    await toPdf(stdin, b)
+    await toPdf(app, a)
+    await convertAnother(app)
+    await toPdf(app, b)
 
     // Exactly the two one-page PDFs the two conversions wrote — offering a
     // merge is not the same as running one. A third, already-combined file

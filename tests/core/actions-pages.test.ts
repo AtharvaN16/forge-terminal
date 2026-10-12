@@ -133,3 +133,42 @@ describe('everyNCuts', () => {
     expect(everyPageCuts(3)).toEqual([0, 1])
   })
 })
+
+describe('page operations honour Save as', () => {
+  const DOC = doc('/in/report.pdf', 3)
+  it('rotate writes the named file in the chosen folder', () => {
+    const [job] = rotateAction.plan([DOC], { degrees: '90', destination: '/out', name: 'turned' })
+    expect(job?.outputs).toEqual(['/out/turned.pdf'])
+  })
+  it('split keeps its numbered names in the chosen folder', () => {
+    const [job] = splitAction.plan([DOC], { cuts: [0], destination: '/out' })
+    expect(job?.outputs).toEqual(['/out/report-1.pdf', '/out/report-2.pdf'])
+  })
+  it('merge across two folders lands in the chosen one, under the typed name', () => {
+    const [job] = mergeAction.plan([doc('/a/x.pdf'), doc('/b/y.pdf')], {
+      destination: '/out',
+      name: 'all',
+    })
+    expect(job?.outputs).toEqual(['/out/all.pdf'])
+  })
+  it('delete and single-file extract take a name; separate extract does not', () => {
+    expect(
+      deleteAction.plan([DOC], { pages: '1', destination: '/o', name: 'n' })[0]?.outputs,
+    ).toEqual(['/o/n.pdf'])
+    expect(
+      extractAction.plan([DOC], { pages: '1', destination: '/o', name: 'n' })[0]?.outputs,
+    ).toEqual(['/o/n.pdf'])
+    const many = extractAction.plan([DOC], {
+      pages: '1-2',
+      separate: 'many',
+      destination: '/o',
+      name: 'n',
+    })[0]
+    expect(many?.outputs).toEqual(['/o/report-p1.pdf', '/o/report-p2.pdf'])
+  })
+  it('stays beside the source when no folder is given, as the CLI and MCP plan it', () => {
+    expect(rotateAction.plan([DOC], { degrees: '90' })[0]?.outputs).toEqual([
+      '/in/report-rotated.pdf',
+    ])
+  })
+})

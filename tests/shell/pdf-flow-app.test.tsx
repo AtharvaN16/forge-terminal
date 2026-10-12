@@ -10,12 +10,13 @@ const ENTER = String.fromCharCode(13)
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 
 /**
  * Drops `file`, opens `/pdf`, chooses Rotate, accepts 90°, confirms.
  *
  * A staged PDF now has a real convert target (jpeg, png — see
- * `engines/pdfium.ts`), so the drop's own Enter lands on "Convert PDF to",
+ * `engines/pdfium.ts`), so the drop's own Enter lands on "Convert to",
  * not idle — `hasConvertTarget` in App.tsx is genuinely true for it. `esc`
  * backs out of that picker without discarding the stage
  * (`backToPromptKeepingStage`), which is what makes `/pdf` reachable from
@@ -69,7 +70,7 @@ describe('/pdf end to end through App', () => {
     stdin.write(ENTER)
     await settle(400)
     const pickerFrame = lastFrame() ?? ''
-    expect(pickerFrame).toContain('Convert PDF to')
+    expect(pickerFrame).toContain('Convert to')
     // The route to page operations rides along on the same screen, as a
     // selectable row rather than a hint someone has to act on elsewhere.
     expect(pickerFrame).toContain('/pdf')
@@ -81,7 +82,7 @@ describe('/pdf end to end through App', () => {
     stdin.write(ESC)
     await settle(300)
     const homeFrame = lastFrame() ?? ''
-    expect(homeFrame).not.toContain('Convert PDF to')
+    expect(homeFrame).not.toContain('Convert to')
     // Still staged — home draws its card and asks for more.
     expect(homeFrame).toContain('doc.pdf')
     expect(homeFrame).toContain('drop more, or type a path')
@@ -96,7 +97,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert JPEG to')
+    expect(lastFrame() ?? '').toContain('Convert to')
   }, 20_000)
 
   it('typing /convert on a staged, idle PDF opens the real picker, now that conversion works', async () => {
@@ -122,7 +123,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
   }, 20_000)
 
   it('drop, /pdf, rotate: writes a real file, reports it in history, and clears the stage', async () => {
@@ -145,7 +146,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
 
     // Hub order is Merge, Split, Extract, Delete, Rotate. Merge is disabled
     // with one file staged, so the cursor already starts on Split.
@@ -189,7 +190,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert PDF to')
+    expect(lastFrame() ?? '').toContain('Convert to')
 
     // Picker order is JPEG, PNG, DOCX, a gap, then the /pdf row — three
     // arrow-downs from JPEG lands on it, the gap itself unreachable like any
@@ -199,7 +200,7 @@ describe('/pdf end to end through App', () => {
     stdin.write(ENTER)
     await settle(400)
 
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
   }, 20_000)
 })
 
@@ -224,14 +225,14 @@ describe('esc on the target picker for an image', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert JPEG to') // sanity: really on the picker
+    expect(lastFrame() ?? '').toContain('Convert to') // sanity: really on the picker
 
     stdin.write(ESC)
     await settle(300)
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Drop a file here')
-    expect(frame).not.toContain('Convert JPEG to')
+    expect(frame).not.toContain('Convert to')
 
     // The stronger proof: with `backToPromptKeepingStage` instead of
     // `clearSource` here, photo.jpg would still be staged, and `/convert`
@@ -242,7 +243,7 @@ describe('esc on the target picker for an image', () => {
     stdin.write(ENTER)
     await settle(300)
     const afterConvert = lastFrame() ?? ''
-    expect(afterConvert).not.toContain('Convert JPEG to')
+    expect(afterConvert).not.toContain('Convert to')
     expect(afterConvert).toContain('Drop a file here')
   }, 20_000)
 })
@@ -272,17 +273,15 @@ describe('/pdf refuses to overwrite without asking', () => {
     await rotateOnce(stdin, file)
 
     const frame = lastFrame() ?? ''
-    // `outputExists`'s own wording ("<name> is already there"), not a
-    // fabricated message — the shell is showing the real refusal, not
-    // paraphrasing it.
-    expect(frame).toContain('already there')
+    // Asked as Name taken (L1), the question convert asks too.
+    expect(frame).toContain('doc-rotated.pdf already exists')
 
     const secondBytes = await readFile(outputPath)
     expect(secondBytes).toEqual(firstBytes) // nothing written — refused before runJobs
     expect((await readdir(dir)).sort()).toEqual(['doc-rotated.pdf', 'doc.pdf'])
   }, 20_000)
 
-  it('choosing Cancel on the refusal returns to the hub without writing', async () => {
+  it('choosing Cancel goes back to Save as on the folder, the name kept, and writes nothing', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -292,12 +291,20 @@ describe('/pdf refuses to overwrite without asking', () => {
     const outputPath = join(dir, 'doc-rotated.pdf')
     const firstBytes = await readFile(outputPath)
 
-    await rotateOnce(stdin, file) // refused, lands on the blocked step
-    stdin.write(ENTER) // "Cancel" is the safe default — first row, no arrow needed
+    await rotateOnce(stdin, file) // refused, lands on Name taken
+    stdin.write(DOWN + DOWN) // Keep both, Replace, Cancel
+    await settle()
+    stdin.write(ENTER)
     await settle(300)
 
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    const frame = (lastFrame() ?? '').replace(SGR, '')
+    expect(frame).not.toContain('choose an operation')
+    expect(frame).toMatch(/^ Save as +Rotate 90°$/m)
+    // On the folder, where the fix is: the list open, esc back to the name.
+    expect(frame).toMatch(/› doc-rotated\.pdf {3}in /)
+    expect(frame).toMatch(/esc name · ctrl-c quit/)
     expect(await readFile(outputPath)).toEqual(firstBytes)
+    expect((await readdir(dir)).sort()).toEqual(['doc-rotated.pdf', 'doc.pdf'])
   }, 20_000)
 
   it('choosing Replace proceeds and actually overwrites', async () => {
@@ -308,9 +315,9 @@ describe('/pdf refuses to overwrite without asking', () => {
 
     await rotateOnce(stdin, file)
     await rotateOnce(stdin, file) // refused
-    expect(lastFrame() ?? '').toContain('already there')
+    expect(lastFrame() ?? '').toContain('already exists')
 
-    stdin.write(DOWN) // off "Cancel" onto "Replace"
+    stdin.write(DOWN) // off "Keep both" onto "Replace"
     await settle()
     stdin.write(ENTER)
     await settle(600)
@@ -389,6 +396,6 @@ describe('/pdf refuses a stage nothing applies to', () => {
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('/pdf needs the staged files to be PDFs')
-    expect(frame).not.toContain('PDF — choose an operation')
+    expect(frame).not.toContain('Choose an operation')
   }, 20_000)
 })

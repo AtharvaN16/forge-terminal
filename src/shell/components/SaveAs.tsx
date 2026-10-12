@@ -8,7 +8,6 @@ import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
 import type { Row } from '../home-art.js'
 import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
-import { titleRow } from '../quality-art.js'
 import {
   FIELD_WIDTH,
   fieldBlank,
@@ -24,6 +23,7 @@ import { bandFor } from '../width.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
 import { Prompt } from './Prompt.js'
+import { StepTitle } from './StepTitle.js'
 
 /** How long a dropped path's flash takes to fade. */
 const DROP_FLASH_MS = 450
@@ -62,6 +62,7 @@ export function SaveAs({
   onSubmit,
   onBack,
   initialFocus = 'name',
+  aside,
 }: {
   mode: ShellMode
   /** The live terminal width. */
@@ -95,6 +96,8 @@ export function SaveAs({
   /** esc with nothing left to clear. */
   onBack: () => void
   initialFocus?: Focus
+  /** What the save will do, quiet at the title's right: "Rotate 90°". */
+  aside?: string | undefined
 }) {
   const palette = useTheme()
   const [focus, setFocus] = useState<Focus>(fixedName ? 'folder' : initialFocus)
@@ -252,7 +255,7 @@ export function SaveAs({
 
   return (
     <Box flexDirection="column">
-      <Runs row={titleRow({ palette, mode, title: 'Save as', width })} />
+      <StepTitle mode={mode} title="Save as" aside={aside} width={width} />
       <Box marginTop={2} flexDirection="column">
         {pad}
         {onFolders ? (

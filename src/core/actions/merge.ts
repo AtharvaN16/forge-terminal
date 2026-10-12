@@ -1,5 +1,6 @@
-import { mergeOutputPath } from '../output-path.js'
+import { mergeOutputPath, placeOutput } from '../output-path.js'
 import type { Job, SourceInfo } from '../types.js'
+import { answer } from './destination.js'
 import type { Action } from './index.js'
 
 // Page operations are pdf-only — a docx/doc has no fixed page tree to
@@ -17,7 +18,12 @@ export const mergeAction: Action = {
   unavailable: (sources) =>
     documents(sources).length !== sources.length ? 'PDFs only' : 'needs 2+ files',
   options: () => [],
-  plan(sources): Job[] {
-    return [{ op: 'merge', sources, outputs: [mergeOutputPath(sources.map((s) => s.path))] }]
+  plan(sources, values): Job[] {
+    const output = placeOutput(
+      mergeOutputPath(sources.map((s) => s.path)),
+      answer(values.destination),
+      answer(values.name),
+    )
+    return [{ op: 'merge', sources, outputs: [output] }]
   },
 }
