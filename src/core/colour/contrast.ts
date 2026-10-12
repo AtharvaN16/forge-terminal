@@ -20,9 +20,14 @@ export function rate(ratio: number): Rating {
 
 const WHITE: Rgb = { r: 255, g: 255, b: 255 }
 const BLACK: Rgb = { r: 0, g: 0, b: 0 }
-const one = (n: number): number => Math.round(n * 10) / 10
+/**
+ * Down to one decimal, never to nearest: 4.48:1 fails AA, and rounding it to
+ * 4.5 would rate it a pass. The WCAG thresholds (3, 4.5, 7) all have one
+ * decimal, so rating the value rounded down gives exactly the real grade.
+ */
+const one = (n: number): number => Math.floor(n * 10) / 10
 
-/** How white text and black text read on this colour, to one decimal. */
+/** How white text and black text read on this colour, to one decimal, rounded down. */
 export function onWhiteAndBlack(c: Rgb): { white: number; black: number } {
   return { white: one(contrast(c, WHITE)), black: one(contrast(c, BLACK)) }
 }

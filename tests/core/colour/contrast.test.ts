@@ -23,8 +23,15 @@ describe('contrast', () => {
     ])
   })
 
-  it('gives white and black to one decimal', () => {
-    expect(onWhiteAndBlack(hex('#6579FD'))).toEqual({ white: 3.7, black: 5.7 })
+  it('gives white and black to one decimal, rounded down', () => {
+    // 3.68 and 5.71: rounded down, so a shown ratio never exceeds the real one.
+    expect(onWhiteAndBlack(hex('#6579FD'))).toEqual({ white: 3.6, black: 5.7 })
+  })
+
+  it('never rates a colour above its real grade: #777 on white is 4.48, not AA', () => {
+    const { white } = onWhiteAndBlack(hex('#777777'))
+    expect(white).toBe(4.4)
+    expect(rate(white)).toBe('large')
   })
 })
 

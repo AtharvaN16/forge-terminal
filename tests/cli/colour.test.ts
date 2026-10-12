@@ -11,9 +11,8 @@ describe('forge scale', () => {
     const out = await run(['scale', '6579FD'])
     expect(out.exitCode).toBe(0)
     expect(out.stdout).toHaveLength(11)
-    expect(out.stdout[5]).toBe(' 500  #6579FD  white 3.7 large · black 5.7 AA')
-    // A whole ratio keeps its decimal, so the column stays even.
-    expect(out.stdout[3]).toBe(' 300  #A3B6FF  white 2.0 fails · black 10.7 AAA')
+    expect(out.stdout[5]).toBe(' 500  #6579FD  white 3.6 large · black 5.7 AA')
+    expect(out.stdout[3]).toBe(' 300  #A3B6FF  white 1.9 fails · black 10.6 AAA')
     expect(out.stdout.join('\n')).not.toContain('\x1b[')
   })
 
@@ -30,9 +29,19 @@ describe('forge scale', () => {
       step: 500,
       hex: '#6579FD',
       oklch: 'oklch(63% 0.196 273)',
-      white: 3.7,
+      white: 3.6,
       black: 5.7,
     })
+  })
+
+  it('a ratio just under a threshold is rated below it: #777777 is not AA on white', async () => {
+    const out = await run(['scale', '777777'])
+    expect(out.stdout[5]).toBe(' 500  #777777  white 4.4 large · black 4.6 AA')
+  })
+
+  it('a whole ratio keeps its decimal, so the column stays even', async () => {
+    const out = await run(['scale', 'FFFFFF'])
+    expect(out.stdout[5]).toBe(' 500  #FFFFFF  white 1.0 fails · black 21.0 AAA')
   })
 
   it('--svg prints the card', async () => {

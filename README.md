@@ -502,11 +502,11 @@ $ forge palette photo.jpg --inside F96363     # the shades one colour is made of
 #E58A9F   14%
 #BE5C38    8%
 $ forge scale 6579FD
-  50  #F4F6FF  white 1.1 fails · black 19.5 AAA
+  50  #F4F6FF  white 1.0 fails · black 19.4 AAA
  …
- 500  #6579FD  white 3.7 large · black 5.7 AA
+ 500  #6579FD  white 3.6 large · black 5.7 AA
  …
- 950  #161B58  white 15.8 AAA · black 1.3 fails
+ 950  #161B58  white 15.7 AAA · black 1.3 fails
 ```
 
 - **`forge palette <image>`** gives an image's main colours, most of the image
@@ -515,7 +515,8 @@ $ forge scale 6579FD
   `.png` is refused as not an image.
 - **`forge scale <colour>`** gives 50–950 built in OKLCH, with your colour
   exactly at 500. Each step is rated for white and black text (WCAG: AAA, AA,
-  large, fails). Pass the colour without the `#`, or quote it (`'#6579FD'`):
+  large, fails). Ratios are rounded down, so 4.48:1 shows as `4.4 large` and
+  is never passed off as AA. Pass the colour without the `#`, or quote it (`'#6579FD'`):
   an unquoted `#` starts a comment in the shell.
 - **`--svg`** prints a card of swatches. Pipe it to `pbcopy` and press ⌘V in
   Figma to get real shapes and text layers: `forge scale 6579FD --svg | pbcopy`.
