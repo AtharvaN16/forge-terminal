@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import sharp from 'sharp'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { ForgeError } from '../../src/core/errors.js'
@@ -82,6 +84,28 @@ describe('resize and trim', () => {
     expect([meta.width, meta.height]).toEqual([50, 100])
   })
 
+  it('does the same for a sideways HEIC, whose size sips reports as stored', async (ctx) => {
+    const heic = join(dir, 'sideways.heic')
+    try {
+      await promisify(execFile)('/usr/bin/sips', [
+        '-s',
+        'format',
+        'heic',
+        sideways.path,
+        '--out',
+        heic,
+      ])
+    } catch {
+      ctx.skip('sips unavailable — HEIC fixture cannot be generated')
+      return
+    }
+    const source = (await probe(heic)) as ImageInfo
+    const { output } = await convert(source, 'heic-half.jpg', 'jpeg', { resize: { percent: 50 } })
+    const meta = await sharp(output).metadata()
+    expect([meta.width, meta.height]).toEqual([50, 100])
+    expect((await measureImage(source)).trimmed).toBe('nothing')
+  })
+
   it('trims transparent edges and keeps the alpha of a PNG', async () => {
     const { output } = await convert(padded, 'padded-trim.png', 'png', { trim: true })
     const meta = await sharp(output).metadata()
@@ -122,7 +146,12 @@ describe('resize and trim', () => {
     const { output } = await convert(padded, 'padded-small.jpg', 'jpeg', {
       resize: { percent: 50 },
     })
-    expect((await sharp(output).metadata()).hasAlpha).toBe(false)
+    // The transparent corner lands on the white background, not black.
+    const corner = await sharp(output)
+      .extract({ left: 0, top: 0, width: 1, height: 1 })
+      .raw()
+      .toBuffer()
+    expect([...corner].every((v) => v > 245)).toBe(true)
   })
 
   it('refuses a size over the limit before writing anything', async () => {

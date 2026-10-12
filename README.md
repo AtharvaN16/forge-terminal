@@ -233,8 +233,10 @@ Use one of `--resize`, `--width` and `--height`. A percent is of the upright
 (and trimmed) size. They combine with `--to`, `-q`, `-o`, `--background`,
 `--keep-metadata`, `--recursive`, `--force`, `--concurrency` and `--json`, and
 are refused with `--max-size`, `--sharpen`, `--boost`, `--remove-bg` and the PDF
-page operations. No side may pass 16,384 px, nor the result 100 MP. Trimming an
-animated image, or one with nothing to trim, is refused. `forge_convert` takes
+page operations, and with a `--to` that is not an image format. No side may pass
+16,384 px, nor the result 100 MP. Trimming an animated image is refused; so is
+trimming one with nothing to trim, unless it is also resized, which then only
+warns. `forge_convert` takes
 `trim: true` and `resize: { percent } | { width } | { height }`, and then `to`
 is optional.
 

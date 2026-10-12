@@ -1,4 +1,7 @@
+import { ENGINES } from '../engines/registry.js'
 import { targetIdsFor } from './capabilities.js'
+import { type ForgeError, invalidArguments } from './errors.js'
+import { FORMATS } from './formats.js'
 import type { Size } from './size.js'
 import type { FormatId, ImageInfo, ResizeSpec } from './types.js'
 
@@ -20,6 +23,24 @@ export const RESIZE_STEP = 5
 export function keptFormat(source: ImageInfo): FormatId {
   if (source.format === 'heic') return 'jpeg'
   return targetIdsFor(source).includes(source.format) ? source.format : 'png'
+}
+
+/**
+ * Why `--to` cannot take a trim or resize, or undefined when it can. Both are
+ * the image engine's work; a target only another engine writes (a PDF) would
+ * drop them silently and still name the file as if they ran. Read from the
+ * image engine's own `writes`, so no format list lives here (invariant 2).
+ */
+export function editTargetRefusal(
+  target: FormatId,
+  what: 'trim' | 'resize',
+): ForgeError | undefined {
+  const writes = ENGINES.find((e) => e.id === 'image')?.writes
+  if (writes?.has(target)) return undefined
+  return invalidArguments(
+    `Cannot ${what} into ${FORMATS[target].label}; only an image format can take the edit.`,
+    `Choose one of: ${[...(writes ?? [])].join(', ')}.`,
+  )
 }
 
 /** `2016x1512`, for a file name. */

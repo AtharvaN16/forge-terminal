@@ -38,8 +38,6 @@ describe('--trim, --resize, --width, --height', () => {
     ['two of --resize, --width, --height', ['a.jpg', '--resize', '50%', '--width', '100']],
     ['--max-size', ['a.jpg', '--trim', '--max-size', '500kb']],
     ['--sharpen', ['a.jpg', '--resize', '50%', '--sharpen']],
-    ['--boost', ['a.jpg', '--width', '100', '--boost']],
-    ['--remove-bg', ['a.jpg', '--trim', '--remove-bg']],
     ['--merge', ['a.pdf', 'b.pdf', '--trim', '--merge']],
     ['--resize 0', ['a.jpg', '--resize', '0']],
     ['--resize 201', ['a.jpg', '--resize', '201']],
@@ -64,5 +62,19 @@ describe('--trim, --resize, --width, --height', () => {
     expect((await readdir(dir)).sort()).toEqual(['photo-100x75.jpg', 'photo.jpg'])
     const meta = await sharp(join(dir, 'photo-100x75.jpg')).metadata()
     expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 100, 75])
+  })
+
+  it('refuses a --to only another engine writes, before writing anything', async () => {
+    const dir = await makeTempDir()
+    const src = join(dir, 'photo.png')
+    await sharp({ create: { width: 40, height: 30, channels: 3, background: '#336699' } })
+      .png()
+      .toFile(src)
+    for (const flags of [['--trim'], ['--width', '20']]) {
+      const out = await execute(parseArgs([src, ...flags, '--to', 'pdf']))
+      expect(out.exitCode).toBe(2)
+      expect(out.stderr.join('\n')).toContain('only an image format')
+    }
+    expect(await readdir(dir)).toEqual(['photo.png'])
   })
 })

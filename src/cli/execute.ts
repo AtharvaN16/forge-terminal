@@ -32,6 +32,7 @@ import {
   probeJson,
   runJson,
 } from '../core/report-data.js'
+import { editTargetRefusal } from '../core/resize.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import type {
@@ -573,8 +574,11 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
  * over-limit size, an empty trim and an animated trim per file at run time.
  */
 async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunReport> {
-  const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
   const what = intent.resize !== undefined ? 'resize' : 'trim'
+  // Before anything is read: the CLI and MCP both come through here.
+  const refusal = intent.target === undefined ? undefined : editTargetRefusal(intent.target, what)
+  if (refusal) return nothingRan(intent.kind, [{ path: '', error: refusal }])
+  const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
   const images: ImageInfo[] = []
   const refused: InputFailure[] = []
   for (const source of resolved.sources) {

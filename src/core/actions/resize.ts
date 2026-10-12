@@ -79,8 +79,10 @@ function actionFor(id: 'trim' | 'resize', label: string, verb: string, hint: str
     label,
     verb,
     hint,
-    appliesTo: (sources) => imagesOnly(sources) !== undefined,
-    unavailable: () => 'images only',
+    // An animation cannot be trimmed (the engine refuses one), only resized.
+    appliesTo: (sources) =>
+      imagesOnly(sources)?.every((s) => id === 'resize' || s.frames <= 1) === true,
+    unavailable: (sources) => (imagesOnly(sources) ? 'animated' : 'images only'),
     // The shell asks its own questions (the slider, the exact-size pair).
     options: (): OptionSpec[] => [],
     plan(sources, values): Job[] {

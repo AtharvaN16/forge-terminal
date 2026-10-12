@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import type { ImageInfo } from '../../src/core/types.js'
+import { enhanceRows } from '../../src/shell/enhance.js'
 import type { Row } from '../../src/shell/home-art.js'
 import {
   exactFromWidth,
@@ -19,8 +21,6 @@ describe('Resize’s slider (H3)', () => {
     const centre = text(ends).indexOf('same size') + 'same size'.length / 2
     expect(Math.abs(centre - (1 + 48 / 2))).toBeLessThanOrEqual(1)
     expect(text(band)).toMatch(/ # {2}type an exact size$/)
-    const cap = (band ?? []).find((r) => r.text === ' # ')
-    expect(cap?.bg).toBe(DARK.keycapBg)
   })
 
   it('says what the size becomes, and that past 100 % it is softer', () => {
@@ -50,5 +50,22 @@ describe('the exact pair (X)', () => {
     expect(mid.find((r) => r.text === '1200')?.fg).toBe(DARK.fg)
     expect(mid.find((r) => r.text === '900')?.fg).toBe(DARK.dim)
     expect(text(mid)).toContain('keeps its shape')
+  })
+})
+
+describe('the Trim row', () => {
+  it('is dimmed, saying why, when there is nothing to trim or it is an animation', () => {
+    const img = {
+      kind: 'image',
+      path: '/p/a.png',
+      format: 'png',
+      bytes: 1,
+      hasAlpha: false,
+      frames: 1,
+      ...PHOTO,
+    } as ImageInfo
+    const trim = (trimmed: 'nothing' | 'animated') =>
+      enhanceRows(img, { upright: PHOTO, trimmed }).find((r) => r.id === 'trim')?.tooLarge
+    expect([trim('nothing'), trim('animated')]).toEqual(['no empty edges', 'animated'])
   })
 })

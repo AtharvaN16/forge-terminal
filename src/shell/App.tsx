@@ -2613,7 +2613,8 @@ export function App({
     const vals = rowValues(row)
     setValues(vals)
     if (row.id === 'resize') {
-      setResizePercent(100)
+      // An oversized source opens at its own limit, never past it (spec §2.3).
+      setResizePercent(source.kind === 'image' ? Math.min(100, largestPercent(source)) : 100)
       setStep('resize')
       return
     }

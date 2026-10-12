@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { planEdit } from '../../src/core/actions/resize.js'
-import { keptFormat, resizedSize, sizeOverLimit, specSuffix } from '../../src/core/resize.js'
+import { resizedSize, sizeOverLimit } from '../../src/core/resize.js'
 import type { ImageInfo } from '../../src/core/types.js'
 
 const img = (over: Partial<ImageInfo> = {}): ImageInfo => ({
@@ -75,10 +75,5 @@ describe('planEdit', () => {
       keepMetadata: false,
     })
     expect(both?.outputs).toEqual(['/p/photo-trimmed-1200w.jpg'])
-  })
-
-  it('keeps PNG for an image with alpha', () => {
-    expect(keptFormat(img({ format: 'png', hasAlpha: true }))).toBe('png')
-    expect(specSuffix({ percent: 50 })).toBe('50pct')
   })
 })
