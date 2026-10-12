@@ -1,10 +1,10 @@
 import { render } from 'ink-testing-library'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HeaderBar } from '../../src/shell/components/HeaderBar.js'
-import { WorkingLine } from '../../src/shell/components/WorkingLine.js'
+import { Working } from '../../src/shell/components/Working.js'
 import { setMotionForTests } from '../../src/shell/motion.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
-import { DARK } from '../../src/shell/theme.js'
+import { DARK, modePalette } from '../../src/shell/theme.js'
 
 /** Truecolor, read by chalk once at import — so set before Ink loads. */
 vi.hoisted(() => {
@@ -34,21 +34,74 @@ afterEach(() => {
 
 const inTheme = (node: React.ReactElement) => <ThemeProvider palette={DARK}>{node}</ThemeProvider>
 
-describe('WorkingLine', () => {
-  it('spins and counts real seconds while motion is on', async () => {
+describe('Working', () => {
+  const working = (props: Partial<React.ComponentProps<typeof Working>> = {}) =>
+    inTheme(
+      <Working mode="convert" label="Encoding AVIF" startedAt={Date.now()} width={80} {...props} />,
+    )
+  const line = (f: string | undefined) => plain(f).split('\n')[0] ?? ''
+
+  it('spins in the mode’s colour, and shows the clock only once 3 s have passed', async () => {
     setMotionForTests(true)
-    const app = render(inTheme(<WorkingLine label="Converting…" />))
+    const app = render(working())
     await flush()
-    expect(plain(app.lastFrame())).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Converting… {2}0\.0s$/)
-    await advance(1200)
-    expect(plain(app.lastFrame())).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Converting… {2}1\.2s$/)
+    const first = line(app.lastFrame())
+    expect(first).toMatch(/^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Encoding AVIF$/)
+    await advance(160)
+    expect(line(app.lastFrame())).not.toBe(first)
+    await advance(2700)
+    expect(line(app.lastFrame())).toMatch(/AVIF$/)
+    await advance(400)
+    expect(line(app.lastFrame())).toMatch(/^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Encoding AVIF {2,}3\.3s$/)
+    expect(line(app.lastFrame())).toHaveLength(65)
   })
 
-  it('is the plain label when motion is off', () => {
+  it('with motion off, has no spinner, but the clock still tells the truth', async () => {
     setMotionForTests(false)
-    expect(plain(render(inTheme(<WorkingLine label="Converting…" />)).lastFrame())).toBe(
-      'Converting…',
+    const app = render(working())
+    await flush()
+    expect(line(app.lastFrame())).toBe('   Encoding AVIF')
+    await advance(4000)
+    expect(line(app.lastFrame())).toMatch(/^ {3}Encoding AVIF {2,}4\.0s$/)
+  })
+
+  it('offers esc only for the size search', async () => {
+    setMotionForTests(false)
+    const keys = (f: string | undefined) => plain(f).trimEnd().split('\n').at(-1) ?? ''
+    const single = render(working())
+    await flush()
+    expect(keys(single.lastFrame())).toMatch(
+      /^ {30,}nothing is saved until it is done · ctrl-c quit$/,
     )
+    const search = render(working({ label: 'Finding the right quality', search: { n: 2, of: 8 } }))
+    await flush()
+    expect(keys(search.lastFrame())).toMatch(/^ {2}esc {2}stop {10,}ctrl-c quit$/)
+    expect(plain(search.lastFrame())).toContain('   ● ● ○ ○ ○ ○ ○ ○')
+  })
+})
+
+describe('HeaderBar drift', () => {
+  const trail = { answers: ['JPEG'], current: 'Converting' }
+  const bar = (drift: boolean) =>
+    inTheme(<HeaderBar mode="convert" trail={trail} width={80} slanted drift={drift} />)
+
+  it('moves the hatching while a job runs, and nothing else', async () => {
+    setMotionForTests(true)
+    const app = render(bar(true))
+    await flush()
+    const before = app.lastFrame() ?? ''
+    await advance(400)
+    const after = app.lastFrame() ?? ''
+    expect(after).not.toBe(before)
+    expect(plain(after)).toBe(plain(before))
+  })
+
+  it('stays still with motion off', async () => {
+    setMotionForTests(false)
+    const still = render(bar(false)).lastFrame()
+    const app = render(bar(true))
+    await advance(400)
+    expect(app.lastFrame()).toBe(still)
   })
 })
 
@@ -134,5 +187,41 @@ describe('picker glide and drop flash', () => {
     expect(inputLine()).toContain(bgOf(DARK.band))
     await advance(600)
     expect(inputLine()).not.toContain('48;2;')
+  })
+
+  it("flashes Save as's pill when a path is dropped, then rests on the pill", async () => {
+    setMotionForTests(true)
+    const { SaveAs } = await import('../../src/shell/components/SaveAs.js')
+    const palette = modePalette(DARK, 'convert')
+    const app = render(
+      <ThemeProvider palette={palette}>
+        <SaveAs
+          mode="convert"
+          width={80}
+          name="photo"
+          onNameChange={() => {}}
+          proposed="photo"
+          ext=".jpg"
+          folder="/Users/me/Desktop"
+          onFolder={() => {}}
+          presets={[{ label: 'Desktop', path: '/Users/me/Desktop' }]}
+          defaultPath=""
+          display={(p) => p}
+          onMakeDefault={() => {}}
+          onSubmit={() => {}}
+          onBack={() => {}}
+          initialFocus="folder"
+        />
+      </ThemeProvider>,
+    )
+    await flush()
+    // The title, two blank rows, the field's padding, then the sentence.
+    const sentence = () => (app.lastFrame() ?? '').split('\n')[4] ?? ''
+    expect(sentence()).toContain(bgOf(palette.pill))
+    app.stdin.write('/tmp/dropped/thing.png')
+    await flush()
+    expect(sentence()).not.toContain(bgOf(palette.pill))
+    await advance(600)
+    expect(sentence()).toContain(bgOf(palette.pill))
   })
 })

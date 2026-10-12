@@ -158,13 +158,9 @@ describe('several files at once', () => {
     await settle()
     app.stdin.write(ENTER) // submit the path -> target picker
     await settle(300)
-    app.stdin.write(ENTER) // accept the first offered target
+    app.stdin.write(ENTER) // the first offered target: PNG, lossless, so no quality
     await settle()
-    app.stdin.write(ENTER) // quality (if shown) / destination
-    await settle()
-    app.stdin.write(ENTER) // destination -> the name step
-    await settle()
-    app.stdin.write(ENTER) // accept the proposed name
+    app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
     await settle(600)
 
     expect(app.lastFrame() ?? '').not.toContain("isn't supported yet")

@@ -34,10 +34,16 @@ async function toUnreachable() {
   await settle(400)
   app.stdin.write(ENTER) // size
   await settle(600)
-  app.stdin.write(ENTER) // destination
-  await settle(800)
-  app.stdin.write(ENTER) // name -> search runs and misses
-  await settle(4000)
+  app.stdin.write(ENTER) // Save as -> search runs and misses
+  // Waited on rather than slept through: under a full suite's load the
+  // search can take longer than any fixed pause.
+  const start = Date.now()
+  while (
+    !(app.lastFrame() ?? '').includes('Try a different target size') &&
+    Date.now() - start < 30_000
+  ) {
+    await settle(100)
+  }
   return app
 }
 

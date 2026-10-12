@@ -9,8 +9,13 @@ describe('trailFor', () => {
       trailFor({ mode: 'convert', step, answers: convert })
     expect(at('target')).toEqual({ answers: [], current: 'Format' })
     expect(at('quality')).toEqual({ answers: ['JPEG'], current: 'Quality' })
-    expect(at('destination')).toEqual({ answers: ['JPEG', '80'], current: 'Save to' })
-    expect(at('rename')).toEqual({ answers: ['JPEG', '80', 'Desktop'], current: 'Name' })
+    // Folder and name are one question (P1), so neither is behind it.
+    expect(at('save-as')).toEqual({ answers: ['JPEG', '80'], current: 'Save as' })
+    // After it, both are given: the folder, then the name.
+    expect(at('overwrite')).toEqual({
+      answers: ['JPEG', '80', 'Desktop', 'test.jpg'],
+      current: 'Overwrite',
+    })
   })
 
   it('walks compress: Method first', () => {
@@ -42,18 +47,30 @@ describe('trailFor', () => {
     )
   })
 
-  it('ends with the verb while working, and with Done after every answer', () => {
-    expect(trailFor({ mode: 'convert', step: 'converting', answers: convert })).toEqual({
+  it('ends with the operation’s verb while working, and with Done after every answer', () => {
+    expect(
+      trailFor({ mode: 'convert', step: 'converting', answers: convert, verb: 'Converting' }),
+    ).toEqual({
       answers: ['JPEG', '80', 'Desktop', 'test.jpg'],
       current: 'Converting',
     })
-    expect(trailFor({ mode: 'compress', step: 'converting', answers: {} }).current).toBe(
-      'Compressing',
-    )
+    expect(
+      trailFor({ mode: 'compress', step: 'converting', answers: {}, verb: 'Compressing' }).current,
+    ).toBe('Compressing')
+    expect(
+      trailFor({ mode: 'convert', step: 'pdf-running', answers: convert, verb: 'Converting' })
+        .current,
+    ).toBe('Converting')
     expect(trailFor({ mode: 'convert', step: 'result', answers: convert })).toEqual({
       answers: ['JPEG', '80', 'Desktop', 'test.jpg'],
       current: 'Done',
     })
+  })
+
+  it('takes the verb from the operation, not from the mode', () => {
+    expect(
+      trailFor({ mode: 'pdf', step: 'pdf-running', answers: {}, verb: 'Splitting' }).current,
+    ).toBe('Splitting')
   })
 
   it('never shows an answer from a step still ahead, even one already given', () => {
@@ -99,6 +116,7 @@ describe('pdfTrail', () => {
   const split = {
     id: 'split',
     label: 'Split',
+    verb: 'Splitting',
     hint: '',
     appliesTo: () => true,
     options: () => [],

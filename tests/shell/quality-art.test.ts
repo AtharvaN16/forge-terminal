@@ -1,0 +1,75 @@
+import { describe, expect, it } from 'vitest'
+import { endsRow, sliderRow, titleRow } from '../../src/shell/quality-art.js'
+import { DARK, LIGHT, modeColours } from '../../src/shell/theme.js'
+import {
+  type Cell,
+  describeRow,
+  type FixtureFrame,
+  fixtureRow,
+  loadFixture,
+  runsRow,
+  shifted,
+} from './home-cells.js'
+
+type QualityFrame = FixtureFrame & { q: number }
+const G1 = loadFixture('quality-mockup.json') as QualityFrame[]
+const text = (cells: Cell[]) => cells.map((c) => c.ch).join('')
+
+describe('the quality slider, against the decided G1', () => {
+  for (const frame of G1) {
+    it(`at ${frame.q}`, () => {
+      const row = sliderRow({ palette: DARK, value: frame.q, min: 1, max: 100 })
+      expect(describeRow(runsRow(row), shifted(fixtureRow(frame, 1)))).toBe('equal')
+    })
+  }
+
+  it('says which end is which under the band', () => {
+    const frame = G1[0] as QualityFrame
+    expect(describeRow(runsRow(endsRow({ palette: DARK })), shifted(fixtureRow(frame, 2)))).toBe(
+      'equal',
+    )
+  })
+
+  it('titles the question in the mode’s colour, with what it is for at the right', () => {
+    const frame = G1[0] as QualityFrame
+    const row = titleRow({ palette: DARK, mode: 'convert', title: 'Quality', aside: 'JPEG' })
+    expect(describeRow(runsRow(row), shifted(fixtureRow(frame, 0)))).toBe('equal')
+  })
+
+  it('carries no mode colour in the slider', () => {
+    const modes = (['convert', 'compress', 'pdf'] as const).map((m) => modeColours(DARK, m).fg)
+    for (const value of [1, 40, 80, 100]) {
+      const cells = runsRow(sliderRow({ palette: DARK, value, min: 1, max: 100 }))
+      for (const cell of cells) {
+        expect(modes).not.toContain(cell.fg)
+        expect(modes).not.toContain(cell.bg)
+      }
+    }
+  })
+
+  it('draws in the theme’s slider colours, in light too', () => {
+    const cells = runsRow(sliderRow({ palette: LIGHT, value: 50, min: 1, max: 100 }))
+    expect(cells[1]?.bg).toBe(LIGHT.trackFill)
+    expect(cells.find((c) => c.ch === '5')).toMatchObject({
+      fg: LIGHT.ink,
+      bg: LIGHT.thumb,
+      b: true,
+    })
+    expect(cells[48]?.bg).toBe(LIGHT.track)
+  })
+
+  it('is 48 cells wide from column 2 at every value', () => {
+    for (let q = 1; q <= 100; q++) {
+      const cells = runsRow(sliderRow({ palette: DARK, value: q, min: 1, max: 100 }))
+      expect(cells.slice(1, 49).every((c) => c.bg !== null)).toBe(true)
+      expect(cells[49]?.bg).toBeNull()
+    }
+  })
+
+  it('without fills (NO_COLOR, first run), still shows where the value is by shape', () => {
+    const plain = { ...DARK, trackFill: '', track: '', thumb: '' }
+    const row = text(runsRow(sliderRow({ palette: plain, value: 80, min: 1, max: 100 })))
+    expect(row).toMatch(/^ ━+ 80 ─+ *$/)
+    expect(row.trimEnd()).toHaveLength(49)
+  })
+})

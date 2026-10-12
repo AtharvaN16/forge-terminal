@@ -5,6 +5,20 @@ import { makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
+/**
+ * Waits until the frame shows `text`, then a beat more for the screen's keys
+ * to be listened for — the same walk as app-convert.test.tsx's, for the same
+ * reason: on a busy machine a fixed pause can send a key to the wrong screen.
+ */
+async function until(lastFrame: () => string | undefined, text: string, ms = 10_000) {
+  const shown = () => (lastFrame() ?? '').replace(SGR, '').includes(text)
+  const start = Date.now()
+  while (!shown() && Date.now() - start < ms) await settle(30)
+  if (!shown()) throw new Error(`never showed "${text}":\n${(lastFrame() ?? '').replace(SGR, '')}`)
+  await settle(100)
+}
 
 /**
  * Whether the click-only "Open file · Show in Finder" line is worth
@@ -30,15 +44,13 @@ async function renderResult(mouseSupported: boolean) {
   app.stdin.write(file)
   await settle()
   app.stdin.write(ENTER) // submits the dropped path -> target picker
-  await settle(300)
+  await until(app.lastFrame, 'Convert PNG to')
   app.stdin.write(ENTER) // target
-  await settle(300)
+  await until(app.lastFrame, 'sharper')
   app.stdin.write(ENTER) // quality (JPEG default)
-  await settle(300)
-  app.stdin.write(ENTER) // destination
-  await settle(300)
-  app.stdin.write(ENTER) // name -> runs
-  await settle(1500)
+  await until(app.lastFrame, 'Save as')
+  app.stdin.write(ENTER) // Save as -> runs
+  await until(app.lastFrame, 'convert another')
   return app
 }
 

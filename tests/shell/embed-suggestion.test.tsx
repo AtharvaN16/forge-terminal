@@ -30,7 +30,7 @@ const prefsFor = (dir: string) => ({
 
 /**
  * Drops `file`, converts it to PDF, and accepts every default the wizard
- * offers (destination, then name), landing on the result screen.
+ * offers (Save as's name and folder), landing on the result screen.
  *
  * `targetIdsFor` puts PDF last in a JPEG's target list — png, webp, avif,
  * gif, tiff, pdf (heic is absent: `image.ts`'s `WRITES` cannot encode it) —
@@ -44,11 +44,9 @@ async function toPdf(stdin: { write: (s: string) => void }, file: string) {
   await settle(300)
   stdin.write(DOWN + DOWN + DOWN + DOWN + DOWN) // png, webp, avif, gif, tiff, pdf
   await settle()
-  stdin.write(ENTER) // choose PDF -> destination (PDF isn't lossy: no quality step)
+  stdin.write(ENTER) // choose PDF -> Save as (PDF isn't lossy: no quality step)
   await settle()
-  stdin.write(ENTER) // accept the default destination -> name step
-  await settle()
-  stdin.write(ENTER) // accept the proposed name -> runs the conversion
+  stdin.write(ENTER) // Save as: the proposed name, in the default folder -> runs the conversion
   await settle(1200)
 }
 

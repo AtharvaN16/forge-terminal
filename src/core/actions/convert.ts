@@ -196,6 +196,7 @@ function destinationPath(source: SourceInfo, prefs: Preferences): OptionSpec {
 export const convertAction: Action = {
   id: 'convert',
   label: 'Convert',
+  verb: 'Converting',
   hint: 'to another format',
 
   appliesTo: (sources) => sources.length >= 1,

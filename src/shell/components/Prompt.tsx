@@ -1,5 +1,5 @@
 import { Box, type DOMElement, type Key, Text } from 'ink'
-import { useRef, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { unescapePath } from '../../utils/unescape-path.js'
 import { useClickTarget } from '../ClickTargets.js'
@@ -109,8 +109,20 @@ interface PromptProps {
    * single line for a short answer such as a filename. `plain` is the
    * unfilled fallback used in the compact band. `home` is the home screen's
    * field: one unfilled line, four columns in, under the drop zone.
+   * `inline` is the marker and the text alone, no fill and no padding, for a
+   * caller that draws the field around it — Save as's sentence, where the
+   * name is followed by `suffix` and `after` on the same line.
    */
-  variant: 'drop' | 'field' | 'plain' | 'home'
+  variant: 'drop' | 'field' | 'plain' | 'home' | 'inline'
+  /**
+   * `inline` only: fixed text drawn straight after the value, in the border
+   * colour — the extension a name is saved with, which is not typed. With
+   * the caret at the end it sits on the suffix's first cell, where a real
+   * cursor would be, rather than adding a cell between the two.
+   */
+  suffix?: string
+  /** `inline` only: whatever the line goes on to say after the suffix. */
+  after?: ReactNode
   /**
    * Offered every key before the field acts on it, with the text as it is
    * right now; returning true consumes the key. How the home screen takes
@@ -200,6 +212,8 @@ export function Prompt({
   rawOnSubmit = false,
   disableSubmit = false,
   intercept,
+  suffix = '',
+  after: trailing,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -827,6 +841,37 @@ export function Prompt({
               {rest.join('')}
             </Text>
           )}
+        </Text>
+      </Box>
+    )
+  }
+
+  if (variant === 'inline') {
+    const tail = Array.from(suffix)
+    const onTail = isActive && !span && value !== '' && at === cells.length && tail.length > 0
+    const [first = ' ', ...rest] = Array.from(placeholder)
+    const text = span ? (
+      line
+    ) : value === '' ? (
+      <Text color={colourProp(palette.dim)}>
+        {isActive ? caretGlyph(first) : first}
+        {rest.join('')}
+      </Text>
+    ) : onTail ? (
+      <Text color={colourProp(palette.fg)}>{value}</Text>
+    ) : (
+      line
+    )
+    return (
+      <Box ref={lineRef}>
+        <Text wrap="truncate">
+          <Text color={colourProp(palette.accent)}>{'› '}</Text>
+          {text}
+          <Text color={colourProp(palette.border)}>
+            {onTail ? caretGlyph(tail[0] ?? ' ') : (tail[0] ?? '')}
+            {tail.slice(1).join('')}
+          </Text>
+          {trailing}
         </Text>
       </Box>
     )

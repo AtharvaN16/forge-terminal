@@ -3,6 +3,7 @@ import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { bandFor } from '../width.js'
 import { Hints } from './Hints.js'
+import { KeyRow } from './Home.js'
 
 /**
  * A step's keyboard hints, under a rule the width of the terminal, one blank
@@ -12,12 +13,29 @@ import { Hints } from './Hints.js'
  * the hints needed something that spans the whole frame to say they belong
  * to the screen rather than to the list above.
  */
-export function HintBar({ pairs, width }: { pairs: Array<[string, string]>; width: number }) {
+export function HintBar({
+  pairs,
+  foot,
+  width,
+}: {
+  pairs: Array<[string, string]>
+  /**
+   * The decided key row (F1): `pairs` as caps at the left, these as a quiet
+   * footnote at the right edge. Screens drawn to the decided design pass
+   * one; the rest keep the row of caps.
+   */
+  foot?: Array<[string, string]> | undefined
+  width: number
+}) {
   const palette = useTheme()
   return (
     <Box width={width} marginTop={1} flexDirection="column">
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
-      <Hints pairs={pairs} compact={bandFor(width) === 'compact'} />
+      {foot ? (
+        <KeyRow main={pairs} foot={foot} width={width} lead={1} />
+      ) : (
+        <Hints pairs={pairs} compact={bandFor(width) === 'compact'} />
+      )}
     </Box>
   )
 }

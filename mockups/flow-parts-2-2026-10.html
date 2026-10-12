@@ -1,0 +1,1794 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — the flow, part two</title>
+<link rel="stylesheet" href="vendor/xterm.css" />
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-canvas.js"></script>
+<style>
+  :root { --page:#0d0e11; --ink:#e2e4ea; --muted:#8f94a1; --rule:#23252c; --card:#14161a; --cyan:#55c7d9;
+    --mono:"SF Mono", ui-monospace, Menlo, monospace; --sans:-apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 var(--sans); }
+  main { max-width:1280px; margin:0 auto; padding:52px 24px 120px; }
+  h1 { font-size:34px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); font-size:17px; max-width:840px; margin:0; }
+  .scope { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:22px; max-width:900px; }
+  .scope div { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:10px 14px; font-size:14px; color:var(--muted); }
+  .scope b { color:var(--ink); display:block; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; }
+  nav a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:4px 10px; border-radius:999px; }
+  nav a:hover { color:var(--ink); }
+  section { margin-top:84px; }
+  h2 { font-size:26px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 .n { font:600 14px var(--mono); color:var(--cyan); margin-right:10px; vertical-align:3px; }
+  .sub { color:var(--muted); margin:0 0 22px; max-width:880px; }
+  table.sw { border-collapse:collapse; font:12px var(--mono); margin-top:6px; }
+  table.sw th, table.sw td { text-align:left; padding:5px 22px 5px 0; border-bottom:1px solid #26282e; color:#c9ccd3; }
+  table.sw th { color:#7c818c; font-weight:600; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:30px 22px; }
+  .grid > figure { margin:0; min-width:0; }
+  .grid .wide { grid-column:1 / -1; }
+  @media (max-width:1100px) { .grid { grid-template-columns:1fr; } }
+  .vt { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .vt .id { font:700 12px var(--mono); padding:3px 7px; border-radius:6px; background:#12282e; color:var(--cyan); }
+  .vt .id.today { background:#23252d; color:#aeb3c0; }
+  .vt .name { font-weight:620; font-size:16px; }
+  .vt .pick { margin-left:auto; font:600 11px var(--mono); letter-spacing:.08em; color:#6fcf7f; border:1px solid #2c5a37; padding:2px 7px; border-radius:6px; }
+  .idea { font-size:14.5px; color:#c7cbd4; margin:8px 0 0; }
+  .pc { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; font-size:14px; margin-top:6px; }
+  .pc ul { margin:0; padding-left:16px; color:var(--muted); } .pc li { margin-bottom:3px; }
+  .pc h5 { margin:0 0 2px; font:600 11px var(--mono); letter-spacing:.1em; text-transform:uppercase; }
+  .pc .p h5 { color:#6fcf7f; } .pc .c h5 { color:#e8796d; }
+  .rule { background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--cyan); border-radius:0 10px 10px 0; padding:12px 16px; margin:0 0 26px; max-width:900px; font-size:15px; color:#c7cbd4; }
+  .rule b { color:var(--ink); }
+  .term { background:#1e1e1e; border:1px solid #2c2f37; border-radius:10px; overflow:hidden; box-shadow:0 24px 60px -30px rgba(0,0,0,.8); }
+  .term .bar { height:26px; display:flex; align-items:center; gap:7px; padding:0 12px; background:#161619; border-bottom:1px solid #26282e; }
+  .term .bar i { width:10px; height:10px; border-radius:50%; }
+  .term .bar i:nth-child(1){background:#ff5f57} .term .bar i:nth-child(2){background:#febc2e} .term .bar i:nth-child(3){background:#28c840}
+  .term .bar em { flex:1; text-align:center; font:normal 11px var(--mono); color:#666b78; margin-right:46px; }
+  .term pre { margin:0; padding:12px 14px 14px; font:10.4px/1.17 var(--mono); color:#e4e8f0; white-space:pre; overflow-x:auto; }
+  /* A terminal row is solid; a browser leaves gaps between the backgrounds of
+     consecutive lines. Inline-block spans fill the whole line box, as a cell does. */
+  .term pre span[style*="background"] { display:inline-block; }
+  .bob { display:inline-block; animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform:translateY(-1px) } 50% { transform:translateY(2px) } }
+  .caret { animation:blink 1.05s steps(1) infinite; } @keyframes blink { 50% { opacity:0 } }
+  details.older { margin-top:56px; border-top:1px solid var(--rule); padding-top:18px; }
+  details.older summary { cursor:pointer; color:var(--muted); font:14px var(--mono); }
+  /* Sparks fade their colour into the fill rather than moving, so the cell's
+     own background never shifts: that is all a terminal could do too. */
+  .spark { animation:spark 1.8s ease-out infinite; }
+  .spark:nth-of-type(2n) { animation-delay:.6s } .spark:nth-of-type(3n) { animation-delay:1.1s }
+  @keyframes spark { 0%, 100% { color:#252c3a } }
+  .off { color:transparent !important; }
+  .xt { padding:10px 12px 12px; background:#1e1e1e; }
+  .xt .xterm-viewport { overflow:hidden !important; background:#1e1e1e !important; }
+  .vt .after { margin-left:auto; font:12px var(--mono); color:var(--muted); }
+  .stack .term + .term { margin-top:10px; }
+  .sh { background:linear-gradient(90deg,#8b93a6 0 35%,#55c7d9 45%,#d8f6fb 50%,#55c7d9 55%,#8b93a6 65% 100%); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent !important; animation:sh 2s linear infinite; }
+  @keyframes sh { from { background-position:100% 0 } to { background-position:0 0 } }
+  .sweep { background-image:linear-gradient(90deg, transparent 0 40%, rgba(85,199,217,.28) 50%, transparent 60% 100%) !important; background-size:300% 100% !important; animation:sh 2.4s linear infinite; }
+  .clock { position:fixed; right:18px; bottom:18px; z-index:9; display:flex; align-items:center; gap:6px; padding:8px 10px; background:rgba(22,24,29,.96); border:1px solid var(--rule); border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,.45); font:12px var(--mono); color:var(--muted); }
+  .clock button { font:12px var(--mono); color:#e4e8f0; background:#2a2e37; border:1px solid #3d4350; border-radius:7px; padding:5px 9px; cursor:pointer; }
+  .clock button:hover { background:#343944; }
+  .clock button.on { background:var(--cyan); color:#0c1d22; border-color:var(--cyan); font-weight:700; }
+  .clock .sp { display:flex; gap:3px; }
+  .clock input { width:140px; accent-color:#8b93a6; }
+  .clock .tm { min-width:44px; text-align:right; }
+  .tabs { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:6px; margin:26px -24px 0; padding:12px 24px; background:rgba(13,14,17,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--rule); }
+  .tabs a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:6px 12px; border-radius:8px; }
+  .tabs a.on { color:#0c1d22; background:var(--cyan); border-color:var(--cyan); font-weight:700; }
+  .tabs a.later { opacity:.65; }
+  .tabs .lbl { font:600 11px var(--mono); letter-spacing:.08em; color:var(--muted); align-self:center; margin:0 4px 0 10px; }
+  section.tab { display:none; margin-top:40px; } section.tab.on { display:block; }
+  .state { font:600 11px var(--mono); letter-spacing:.06em; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; }
+  .state:first-child { margin-top:0; }
+  footer { margin-top:90px; color:var(--muted); font-size:13px; border-top:1px solid var(--rule); padding-top:16px; }
+  code { font:.9em var(--mono); background:#1c1e24; padding:1px 5px; border-radius:4px; }
+  .flowmap { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:0 0 28px; font:13px var(--mono); }
+  .flowmap .step { display:inline-flex; gap:7px; align-items:center; padding:6px 10px; border:1px solid var(--rule); border-radius:8px; color:#e4e8f0; text-decoration:none; cursor:pointer; }
+  .flowmap .step b { color:var(--cyan); } .flowmap .ar { color:var(--muted); }
+  .flowmap i { font-style:normal; display:inline-flex; gap:4px; }
+  .flowmap .branch { flex-basis:100%; margin-top:8px; color:var(--muted); }
+  .k-yes, .k-no { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; }
+  .k-yes { background:#12282e; color:var(--cyan); } .k-no { background:#1c1e24; color:#5f6879; text-decoration:line-through; }
+  details.earlier { margin-top:46px; } details.earlier summary { cursor:pointer; font:600 13px var(--mono); color:var(--muted); margin-bottom:16px; }
+</style>
+</head>
+<body>
+<main>
+<h1>The flow, part two</h1>
+<p class="lede">The screens after the questions: working, naming, errors. The parts decided on the first page (<code>flow-parts-2026-10.html</code>) are drawn here by the same code, so new screens are built from them and nothing else. Every frame is a real 80 × 24 terminal; the moving ones are live.</p>
+<div class="tabs" id="tabs">
+  <a href="#decided">Decided so far</a>
+  <a href="#working">5 · Working ✓</a>
+  <a href="#quality">6 · Quality ✓</a>
+  <span class="lbl">NOW</span>
+  <a href="#drop">Drop zone · on drop</a>
+  <a href="#name">7 · Naming ✓</a>
+  <a href="#done">8 · Done ✓</a>
+  <a href="#neutral">Neutral grey ✓</a>
+  <span class="lbl">LATER</span>
+  <a class="later" href="#errors">9 · Errors</a>
+</div>
+
+<section class="tab" id="decided">
+  <h2><span class="n">00</span>Decided so far</h2>
+  <p class="sub">One frame of each decided piece, for reference: home (T4 band, V2 version, D2 drop zone, F1 keys), commands as home's fourth tab (N6), and the header bar (the slanted mode chip, the trail at the far end). How each was chosen is on the first page.</p>
+  <div class="grid" id="decided-grid"></div>
+</section>
+
+<section class="tab" id="working">
+  <h2><span class="n">05</span>Working ✓ W5</h2>
+  <p class="sub">Decided: <b>W5</b>. The bar's hatching drifts and its trail ends in the verb; under the card, one line: the spinner in the mode's colour and what it is doing, in bold. The clock appears only after 3 s. The size search adds one dot per try (at most 8, empty ones faint); a PDF split adds a solid bar, a full cell tall with no knob, and "page n of N". Nothing appears for the first 0.3 s, and there is no minimum time on screen.</p>
+  <div class="rule"><b>You will rarely see this screen.</b> Most conversions finish in a blink: a normal photo to JPEG takes a fifth of a second or less. So the app waits a moment (0.3 s) before showing anything. If the job is done by then, you go straight from naming the file to the result, and this screen never appears. It only shows up for slow jobs: AVIF files, very large photos, compressing to an exact size, and long PDFs. Those can take several seconds, and this is what you see while you wait.</div>
+  <div class="grid" id="work-grid"></div>
+  <details class="earlier"><summary>Round one: W1, W2, W3</summary>
+  <div class="rule"><b>Only what is true.</b> A single image has no percentage (invariant 7): it reports its <b>phase</b> and the clock is real. The size search reports <b>which try</b> it is on and the most it can take, 8, but it often settles sooner, so that is a limit and never a bar. Split, extract and render report <b>page n of a known total</b>, the one real count. Esc can stop the search between tries; a single encode cannot be stopped, but nothing is written until it finishes.</div>
+  <div class="grid" id="working-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="quality">
+  <h2><span class="n">06</span>Quality ✓ G1</h2>
+  <p class="sub"><b>Decided: G1.</b> A band a full cell tall: the fill in mid grey, the track dark grey, and the thumb a white pill with the number in it, in ink. "smaller" and "sharper" under the ends. Under that, the measured size in bold and the saving in green (amber if the file would grow). ←→ in steps of 5; the size is measured once you stop, with "measuring…" in between. The slider carries no mode colour; the bar above does.</p>
+  <p class="sub">The question after Format for a lossy target (JPEG, WebP, AVIF), and after "By quality" in compress. Today it is a bare slider, 1 to 100 in steps of 5, starting at 80, and it never says what a value would cost. Each variant is live: you press ← four times, then → six, then ← twice. The size is measured once you stop, the way the format list measures, so "measuring…" shows for a moment. The sizes in the mockup are made up.</p>
+  <h3 style="margin-top:8px">Round four: T3 in grey, G1–G5</h3>
+  <p class="sub">T3, the number in the thumb, with the colour taken out. The bar above keeps the mode's colours, as decided; the slider itself goes grey, by degrees.</p>
+  <div class="grid" id="quality4-grid"></div>
+  <details class="earlier"><summary>Rounds one to three</summary>
+  <h3 style="margin-top:8px">Round one: Q1, Q3–Q5</h3>
+  <div class="grid" id="quality-grid"></div>
+  <h3 style="margin-top:56px">Round two: Q6, Q7, Q12</h3>
+  <p class="sub">The ones with a slider. The picker, by-size and no-screen ideas are gone.</p>
+  <div class="grid" id="quality2-grid"></div>
+  <h3 style="margin-top:56px">Round three: thicker sliders, T1–T6</h3>
+  <p class="sub">The same slider, drawn with more weight: every one is at least a full cell tall. Behaviour is unchanged: ←→ in steps of 5, the size measured once you stop.</p>
+  <div class="grid" id="quality3-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="drop">
+  <h2><span class="n">D</span>The drop zone, once a file lands</h2>
+  <p class="sub">Today, dropping a file pastes its path into the field and the zone only dims, as it does for any typing. Nothing says the file was recognised until ↵, and by then home is gone. Here the zone answers the drop: the file goes into it and the field is free again.</p>
+  <div class="rule"><b>What changes in the app.</b> A terminal cannot see a drag or turn one away; the first thing the app learns is the pasted paths. So the app reads the files <b>when the paste arrives</b>, not on ↵. ↵ goes on with them, another drop before ↵ adds to them, esc empties the zone. <b>Several images now convert together</b>: batch conversion moves into the app (the engine and the command line already do it), so a drop of photos is never refused. Format, Quality, Name, Working and Done each get a several-file version later.</div>
+  <h3 style="margin-top:8px">Round three: the card for one, the list for several</h3>
+  <p class="sub">B·2's card when one file is in the zone, D·2's list from two up. Drawn live, then the two states on their own.</p>
+  <div class="grid" id="drop3-grid"></div>
+  <h3 style="margin-top:46px">A file left out, in red</h3>
+  <p class="sub">The app has two colours for trouble: gold <code>warn</code> with ⚠ for "worth a second look" (today's "⚠ 1 skipped"), and red <code>fail</code> with ✕ for errors, drawn as a card with a red frame. A file that could not be read is a failure for that file, so both of these use <code>fail</code>. Both sit under the field, outside the drop zone.</p>
+  <div class="grid" id="drop3w-grid"></div>
+  <details class="earlier"><summary>Round two: B·2 and D·2</summary>
+  <p class="sub">The two you liked, with less in them. One thing draws the eye in each state; the panel holds only the files, as a name and a size; a file that could not be read is a line under the field, outside the panel; no format tag on every row. Each is live first (photo.png dropped, then two photos dragged in together, then esc), then three stills.</p>
+  <div class="grid" id="drop-grid"></div>
+  </details>
+  <details class="earlier"><summary>Round one: today, A, B, C, D</summary>
+  <div class="grid" id="drop-r1-today"></div>
+  <div class="grid" id="drop-r1-grid" style="margin-top:30px"></div>
+  </details>
+</section>
+<section class="tab" id="name">
+  <h2><span class="n">07</span>Naming the file ✓ B1 · D2 · P1</h2>
+  <p class="sub"><b>Chosen: B1, opening as D2.</b> Save to and Name are one question, "Save as", read as a sentence in today's filled block: header.jpg in Desktop, the folder on a light grey fill. Tab opens the field downward: the folders appear inside it, lined up under the folder word, the one you are on as a white pill in the sentence and a grey row in the list. tab there makes the highlighted folder the default; esc goes back to the name.</p>
+  <p class="sub"><b>Default mark decided: P1</b>, a tinted pill (dark orange fill, soft orange word) at the far end of the row. The others are kept here for the record. Six looks in the same live script: tab to the folder, ↓ to Downloads, tab to make it the default, and watch the mark move.</p>
+  <div class="grid" id="name-grid"></div>
+  <details class="earlier"><summary>For reference: today's screen</summary>
+  <div class="grid" id="name-ref-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="done">
+  <h2><span class="n">08</span>Done ✓ K3·a</h2>
+  <p class="sub">The screen once the file is written. You get here straight from Save as when the job is quick (under 0.3 s, most photos), or from Working when it is not. Today it is a receipt in a green frame: both names, before and after as two bars on one scale, "saved to", then the keys: ↵ another, o open, s show in Finder, and c when compress found a better format.</p>
+  <div class="rule"><b>Three real results, in every concept.</b> A PNG to JPEG that came out smaller; a compress where the app measured that WebP would be smaller still (today's ✧ offer, the c key); and a GIF to PNG that came out <b>larger</b> and lost its animation, with the warning the engine writes. Every number on this screen is measured: the file has been written. Sizes and names here are made up.</div>
+  <p class="sub"><b>Decided: K3·a.</b> Before on top, after under it, each panel as wide as its file is heavy (on one scale, the larger file filling the block). What a smaller file shed is grey hatching after the new panel, its size just past the panel's end; what a larger file added is orange hatching, the new panel as long as the old one. "before" and "after" are tabs on the panels' top edges in each panel's own fill: before dim, after bold white. Between the panels a short arrow in the mode's colour, │ then ▼, points from the old file to the new one. Under it: the change (green smaller, orange larger) at the end of the larger panel, then the folder; the offer and any warning sit low, above the keys. No file card on this screen.</p>
+  <div class="grid" id="done3-grid"></div>
+  
+  <details class="earlier"><summary>For reference: today's screen</summary>
+  <div class="grid" id="done-ref-grid"></div>
+  </details>
+</section>
+
+<section class="tab" id="neutral">
+  <h2><span class="n">G</span>Neutral grey ✓</h2>
+  <p class="sub"><b>Decided: neutral boxes and text greys.</b> Every grey in the app is a pure grey; nothing leans blue. Every frame on this page is now drawn that way. The table gives each swap.</p>
+  <p class="sub">Every grey the app uses leans blue: the panel behind the fields and the drop zone is #252c3a, the dim text #8b93a6. Here each decided screen is drawn three times: as it is; with its <b>boxes</b> in pure grey (the panel, the picker's band, the chips, the slider); and with the <b>text greys</b> neutral too. Each fill keeps its lightness (OKLab L), so only the tint changes; the text greys were then raised for contrast (dim #b0b0b0, quiet #808080), the values the app's theme uses. The colours that mean something (the mode, ✓, the saving, the default's orange) are untouched.</p>
+  <div id="neutral-swatches"></div>
+  <div class="grid" id="neutral-grid" style="margin-top:26px"></div>
+</section>
+
+<section class="tab" id="errors">
+  <h2><span class="n">09</span>Errors</h2>
+  <p class="sub">After Done.</p>
+</section>
+
+<footer>Convert · forge · the flow, part two · 2026-10-11 · Mockups only, drawn with the app's DARK palette in xterm.js.</footer>
+</main>
+
+<script>
+const X = (() => {
+  const E = '\x1b['
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+  const f = (h, t) => `${E}38;2;${rgb(h)}m${t}${E}39m`
+  const b = (h, t) => `${E}48;2;${rgb(h)}m${t}${E}49m`
+  const B = (t) => `${E}1m${t}${E}22m`
+  const I = (t) => `${E}3m${t}${E}23m`
+  const vis = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length
+  const padR = (s, w) => s + ' '.repeat(Math.max(0, w - vis(s)))
+  const center = (s, w) => ' '.repeat(Math.max(0, Math.floor((w - vis(s)) / 2))) + s
+  const right = (l, r, w) => l + ' '.repeat(Math.max(1, w - vis(l) - vis(r))) + r
+  const mix = (a, c, k) => {
+    k = Math.max(0, Math.min(1, k))
+    const A = rgb(a).split(';').map(Number), Cc = rgb(c).split(';').map(Number)
+    return '#' + A.map((v, i) => Math.round(v + (Cc[i] - v) * k).toString(16).padStart(2, '0')).join('')
+  }
+  /** Colour each visible character along a list of stops. */
+  const grad = (t, stops) => {
+    const cs = [...t], n = Math.max(1, cs.length - 1)
+    return cs.map((ch, i) => {
+      if (ch === ' ') return ch
+      const p = (i / n) * (stops.length - 1), k = Math.floor(p)
+      return f(mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k), ch)
+    }).join('')
+  }
+  /** A box: lines are already-styled strings padded to inner width. */
+  const box = (w, lines, { col = '#5f6879', round = true, title = '', heavy = false } = {}) => {
+    const [tl, tr, bl, br, h, v] = heavy ? ['┏', '┓', '┗', '┛', '━', '┃'] : round ? ['╭', '╮', '╰', '╯', '─', '│'] : ['┌', '┐', '└', '┘', '─', '│']
+    const top = title ? f(col, tl + h) + title + f(col, h.repeat(Math.max(0, w - 3 - vis(title))) + tr) : f(col, tl + h.repeat(w - 2) + tr)
+    return [top, ...lines.map((l) => f(col, v) + padR(l, w - 2) + f(col, v)), f(col, bl + h.repeat(w - 2) + br)]
+  }
+  return { f, b, B, I, vis, padR, center, right, grad, box, mix }
+})()
+const K = { bg: '#1e1e1e', fg: '#e4e8f0', d: '#8b93a6', x: '#5f6879', faint: '#3d4350', m: '#55c7d9', mbg: '#122c33', panel: '#252c3a', panel2: '#2b3343', cap: '#2e3340', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
+const { f: xf, b: xb, B: xB, I: xI, padR: xpad, center: xc, right: xr, grad: xg, box: xbox } = X
+
+/* ================================================================== KIT
+   Only what is decided: the palette, the hatching, the home band, the drop
+   panel, the commands list, the header bar, the file card, the pickers and
+   the key row. Every frame is ANSI written into xterm.js, so cells are exact.
+   The explorations below the kit draw with these and nothing else. */
+const N = 80                              // terminal width
+const W = 76, M = 2                       // block width, and the margin either side
+const IN = ' '.repeat(M + 2)              // where the field and the list start
+const E = '\x1b['
+const vis = X.vis
+const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+const bgOn = (h) => `${E}48;2;${rgbOf(h)}m`
+/** A row on a fill. A nested background hands back to this fill, not to the terminal's. */
+const on = (bg, s, w = N) => bgOn(bg) + xpad(s, w).split(`${E}49m`).join(bgOn(bg)) + `${E}49m`
+const strip = (s) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+const gcol = (i, n, stops) => {
+  const p = (Math.max(0, Math.min(n - 1, i)) / Math.max(1, n - 1)) * (stops.length - 1), k = Math.floor(p)
+  return X.mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k)
+}
+const cursorAt = (rows, re, after = false) => {
+  for (let i = 0; i < rows.length; i++) {
+    const t = strip(rows[i]), m = re.exec(t)
+    if (m) return [i + 1, [...t.slice(0, m.index)].length + (after ? [...m[0]].length : 0) + 1]
+  }
+  return [rows.length, 1]
+}
+const HIDE = '\x1b[?25l'
+const P = K.panel, BAND = '#2a3242', HL = '#33405a', EDGE = '#3d4350', FAINT = '#2a2e37'
+
+/* ---------------------------------------------------------------- modes */
+const MODES = [
+  { n: 1, name: 'convert', c: K.m, g: [K.m, K.violet], kinds: 'images · HEIC · PDF · Word' },
+  { n: 2, name: 'compress', c: '#79c98b', g: ['#79c98b', K.m], kinds: 'images · PDF · video' },
+  { n: 3, name: 'pdf', c: '#ff6b4a', g: ['#ff6b4a', K.amber], kinds: 'split · merge · rotate' },
+]
+const CV_ = { mode: MODES[0], typing: false }
+const CM_ = { mode: MODES[1], typing: false }
+const PDF_ = { mode: MODES[2], typing: false }
+
+/* ------------------------------------------------------------- hatching */
+/** Hatching whose colour follows the absolute column, so stacked rows line up. */
+const hatchAt = (c0, n, r = 0, stops = MODES[0].g) => {
+  let s = ''
+  for (let i = 0; i < n; i++) s += xf(gcol(c0 + i + r * 2, N + 8, stops), '╱')
+  return s
+}
+/** Hatching in any colour function, cell by cell, at absolute columns. */
+const hatchFn = (c0, n, col, glyph = () => '╱') => { let o = ''; for (let i = 0; i < n; i++) { const g = glyph(c0 + i); o += g === ' ' ? ' ' : xf(col(c0 + i), g) } return o }
+const grad = (s) => (c) => gcol(c, N + 8, s.mode.g)
+
+/* ------------------------------------------------------------- key row */
+/** F1: main keys left, footnote right; the footnote loses items before it would wrap. */
+const keysF1 = ({ main = [], foot = [], w = N, lead = M + 1 } = {}) => {
+  const k = (key) => xb(K.cap, xf(K.fg, xB(` ${key} `)))
+  const left = ' '.repeat(lead) + main.map(([key, word]) => `${k(key)} ${xf(K.d, word)}`).join('  ')
+  let f = [...foot]
+  const ft = () => f.map(([a, b]) => (b ? `${a} ${b}` : a)).join(' · ')
+  while (f.length && vis(left) + 3 + ft().length + 1 > w) f = f.slice(0, -1)
+  return xr(left, xf(K.x, ft()) + ' ', w)
+}
+const stepKeys = (main, foot) => keysF1({ main, foot })
+/* ------------------------------------------------- the neutral greys
+   Decided 2026-10-11: every grey is pure, no blue. The pieces below are drawn
+   with the old blue-greys (#252c3a, #8b93a6, …); each screen's colours are
+   swapped here for the pure grey of the same lightness (OKLab L). Colours
+   that mean something (mode, ✓, the saving, the default's orange) are not
+   greys and are left alone. PAL.neutral = false draws the old greys. */
+const PAL = { neutral: true }
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
+const okL = (r, g, b) => {
+  const R = lin(r), G = lin(g), B = lin(b)
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B)
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B)
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B)
+  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s
+}
+/** The pure grey with the same lightness. */
+const greyOf = (r, g, b) => { const v = okL(r, g, b) ** 3; return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)) }
+/** A grey that leans blue: little spread, blue the strongest, and not teal. */
+const cool = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) <= 45 && b >= g && b >= r && b - g >= (g - r) / 2
+/**
+ * `fill`: only colours used as a background somewhere in the frame (and the
+ * same colour where it draws a fill's edge, like the tab's ▄). `all`: every
+ * cool grey, text included (the decided one).
+ */
+/**
+ * The app's decided values (theme.ts DARK, 2026-10-11) where they differ from
+ * a plain lightness match: the text greys were raised for contrast.
+ */
+const NEUTRAL_EXACT = {
+  '139;147;166': 176, // dim #8b93a6 → #b0b0b0
+  '95;104;121': 128, // border, quiet text #5f6879 → #808080
+  '61;67;80': 77, // faint #3d4350 → #4d4d4d
+  '228;232;240': 231, // fg #e4e8f0 → #e7e7e7
+  '51;64;90': 64, // panelBand #33405a → #404040
+  '46;51;64': 51, // keycapBg #2e3340 → #333333
+  '43;51;67': 51, // panel2 #2b3343 → #333333
+}
+const NEU = (rows, mode = 'all') => {
+  if (mode === 'today') return rows
+  const re = /\x1b\[(38|48);2;(\d+);(\d+);(\d+)m/g, bgs = new Set()
+  if (mode === 'fill') for (const r of rows) for (const m of r.matchAll(re)) if (m[1] === '48') bgs.add(`${m[2]};${m[3]};${m[4]}`)
+  return rows.map((r) => r.replace(re, (all, k, R, G, B) => {
+    if (mode === 'fill' && !bgs.has(`${R};${G};${B}`)) return all
+    if (!cool(+R, +G, +B)) return all
+    const v = NEUTRAL_EXACT[`${R};${G};${B}`] ?? greyOf(+R, +G, +B)
+    return `\x1b[${k};2;${v};${v};${v}m`
+  }))
+}
+const fill24 = (rows, last) => {
+  const r = [...rows]
+  while (r.length < (last ? 23 : 24)) r.push('')
+  const out = last ? [...r, last] : r
+  return PAL.neutral ? NEU(out) : out
+}
+
+/* ------------------------------------------------------- home: the band */
+const WM3 = ['█▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀▀', '█▀▀  █  █ █▀▀▄ █ ▀█ █▀▀ ', '▀    ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀']
+const VER = 'v0.1.0'
+/** One row of the hatched band. The run after the word can carry a label, knocked out of it. */
+const bandRow = (s, i, { lab = null, tail = 2 } = {}) => {
+  const g = s.mode.g, c0 = M + 27, n = W - 27
+  const lead = ' '.repeat(M) + hatchAt(M, 1, i, g) + ' ' + xf(K.fg, xB(WM3[i])) + ' '
+  if (!lab) return lead + hatchAt(c0, n, i, g)
+  const w = vis(lab)
+  return lead + hatchAt(c0, n - tail - w, i, g) + lab + hatchAt(c0 + n - tail, tail, i, g)
+}
+const band = (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 2 ? { lab: ` ${xf(K.d, VER)} ` } : {}))
+
+/* ----------------------------------------------- home: tabs, panel, field */
+const SAVES = `${xf(K.x, 'saves to')} ${xf(K.d, '~/Desktop')}`
+const CMDT = { name: 'commands' }
+/** Home's tab row: the three modes, then "/ commands", always there. */
+const tabs4 = (s, cmdOn = false) => {
+  let top = '', row = ''
+  for (const t of [...MODES, CMDT]) {
+    const active = t === CMDT ? cmdOn : !cmdOn && t === s.mode
+    const lab = t === CMDT
+      ? ` ${xf(active ? s.mode.c : K.x, xB('/'))} ${active ? xf(K.fg, xB('commands')) : xf(K.d, 'commands')} `
+      : ` ${active ? `${xf(t.c, xB(String(t.n)))} ${xf(K.fg, xB(t.name))}` : `${xf(K.x, String(t.n))} ${xf(K.d, t.name)}`} `
+    top += active ? xf(P, '▄'.repeat(vis(lab))) : ' '.repeat(vis(lab))
+    row += active ? on(P, lab, vis(lab)) : lab
+    top += ' '; row += ' '
+  }
+  return [' '.repeat(M) + top, ' '.repeat(M) + xr(row, SAVES + ' ', W)]
+}
+const GRID = (c) => c % 3 === 0 && c >= 3 && c <= W - 4   // 3 cells in from each edge
+/** D2: the dots in the gradient, brighter towards the edges. */
+const d2dot = (s) => (c, r) => {
+  if (!GRID(c)) return null
+  const col = gcol(c + r * 2, W + 14, s.mode.g)
+  const dx = Math.abs(c - W / 2) / (W / 2), dy = Math.abs(r - 3.5) / 3.5
+  const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+  return X.mix(P, col, s.typing ? k * 0.45 : k)
+}
+/** A w×h surface. dot(c, r) gives a dot colour or null. The lines are centred
+ *  inside one clean rectangle knocked out of the dots, so the edges never fray. */
+const surface = ({ w = W, h = 8, bg = P, dot = () => null, lines, pad = 4, glyph = '·', lead = ' '.repeat(M) }) => {
+  const top = Math.floor((h - lines.length) / 2)
+  const isDot = (c) => !!dot(c, top)
+  let a = Math.floor((w - Math.max(...lines.map(vis)) - pad * 2) / 2), b = w - a
+  while (a > 0 && !isDot(a - 1)) a--
+  while (b < w && !isDot(b)) b++
+  const tw = b - a, rows = []
+  for (let r = 0; r < h; r++) {
+    const li = r - top, clear = r >= top && r < top + lines.length
+    let out = '', c = 0
+    while (c < w) {
+      if (clear && c === a) { out += li >= 0 && li < lines.length ? xpad(X.center(lines[li], tw), tw) : ' '.repeat(tw); c += tw; continue }
+      const col = r >= 1 && r <= h - 2 ? dot(c, r) : null
+      out += col ? xf(col, typeof glyph === 'function' ? glyph(c, r) : glyph) : ' '; c++
+    }
+    rows.push(lead + (bg ? on(bg, out, w) : xpad(out, w)))
+  }
+  return rows
+}
+const dropTitle = (s) => `${xf(s.typing ? K.x : s.mode.c, xB('↓'))}  ${xf(s.typing ? K.d : K.fg, xB('Drop a file here'))}`
+const dropSub = (s) => xf(s.typing ? K.faint : K.d, s.mode.kinds)
+const field = (s) => IN + xf(s.mode.c, xB('›')) + ' ' + (s.typing ? xf(K.fg, '~/Desk') : xf(K.x, 'or type a path'))
+const homeKeys = () => keysF1({ main: [['↵', 'send']], foot: [['1–3', 'mode'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] })
+/** The decided home, at rest. */
+const home = (s) => fill24(['', ...band(s), '', ...tabs4(s), ...surface({ lines: [dropTitle(s), dropSub(s)], dot: d2dot(s) }), '', field(s)], homeKeys())
+
+/* ------------------------------------------------------ home: commands */
+const CMD = [
+  { name: 'convert', d: "change a file's format", mode: MODES[0] },
+  { name: 'compress', d: 'make a file smaller', mode: MODES[1] },
+  { name: 'pdf', d: 'page operations on a PDF', mode: MODES[2] },
+  { name: 'theme', d: 'switch between light and dark' },
+]
+const cmdName = (c, q, sel) => xf(K.fg, xB('/' + q)) + (sel ? xf(K.fg, xB(c.name.slice(q.length))) : xf(K.d, c.name.slice(q.length)))
+/** One row, in the picker's band and strip; the strip takes the colour of the mode it would switch to. */
+const cmdRow = (c, q, sel, w) => {
+  const name = xpad(cmdName(c, q, sel), 12)
+  if (!sel) return '  ' + name + xf(K.x, c.d)
+  return on(HL, xf(c.mode ? c.mode.c : K.fg, '▌') + ' ' + name + xf(K.d, c.d), w)
+}
+const cmdList = (q, sel) => {
+  const hits = CMD.filter((c) => c.name.startsWith(q)), out = []
+  for (const [label, items] of [['modes', hits.filter((m) => m.mode)], ['settings', hits.filter((m) => !m.mode)]]) {
+    if (!items.length) continue
+    if (out.length) out.push('')
+    out.push('    ' + xf(K.x, label), ...items.map((c) => '  ' + cmdRow(c, q, c.name === sel, W - 4)))
+  }
+  return out
+}
+const panelRows = (rows, h = 8) => { const b = ['', ...rows, '']; while (b.length < h) b.push(''); return b.map((r) => ' '.repeat(M) + on(P, r, W)) }
+/** Home with the commands open: "/ commands" is the active tab, the list sits where the dots were. */
+const homeCommands = (s, q = '', sel = 'convert') => fill24(['', ...band(s), '', ...tabs4(s, true), ...panelRows(cmdList(q, sel)), '',
+  IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q)],
+keysF1({ main: [['↵', 'run'], ['esc', 'back']], foot: [['↑↓', 'choose'], ['type', 'filter'], ['ctrl-c', 'quit']] }))
+
+/* ------------------------------------------------------- the header bar */
+/** A chip with slanted ends (Powerline U+E0BA / U+E0BC), leaning with the hatching. */
+const slant = (col, label) => xf(col, '') + xb(col, xf(K.ink, xB(` ${label} `))) + xf(col, '')
+const TRAIL = {
+  convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop', 'test.jpg'] },
+  compress: { steps: ['Method', 'Size', 'Save to', 'Name'], answers: ['To a size', '50 KB', 'Desktop', 'photo.jpg'] },
+  pdf: { steps: ['Action', 'Pages', 'Save to'], answers: ['Split', 'every page', 'Desktop'] },
+}
+/**
+ * The decided bar: the mode as a slanted chip opening the row, hatching in the
+ * mode's gradient, and at the far end, two cells in, the trail: every answer
+ * so far (dim), then the current step (bold), separated by single ╱.
+ * `answers` and `now` override the trail; `col` overrides the hatching's colour.
+ */
+const bar = (s, at, { answers, now, col } = {}) => {
+  const t = TRAIL[s.mode.name]
+  const ans = answers ?? t.answers.slice(0, at)
+  const cur = now ?? t.steps[at]
+  const parts = [...ans.map((a) => ` ${xf(K.d, a)} `), ...(cur ? [` ${xf(K.fg, xB(cur))} `] : [])]
+  const hc = col ?? grad(s)
+  const o0 = ' '.repeat(M) + slant(s.mode.c, s.mode.name)
+  const rw = parts.reduce((n, p) => n + vis(p), 0) + Math.max(0, parts.length - 1)
+  const start = M + W - 2 - rw
+  let o = o0 + hatchFn(vis(o0), start - vis(o0), hc), c = start
+  parts.forEach((p, i) => { if (i) { o += hatchFn(c, 1, hc); c += 1 } o += p; c += vis(p) })
+  return o + hatchFn(c, M + W - c, hc)
+}
+
+/* ------------------------------------------------- the file card, pickers */
+/** The file card: a rounded frame, the format in the top edge. */
+const fcard = (s, { w = 52, tag = 'PNG', name = 'test.png', meta = '2756×774 · 122 KB · transparent', dim = false, edge = K.x, tagc } = {}) => {
+  const Ed = (t) => xf(edge, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+  return [
+    ' '.repeat(M) + Ed('╭─ ') + xf(tagc ?? s.mode.c, xB(tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(tag)) + '╮'),
+    side(xf(dim ? K.d : K.fg, xB(name))),
+    side(xf(K.d, meta)),
+    ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const qTitle = (s, t, count = '') => ' '.repeat(M + 1) + xr(xf(s.mode.c, xB(t)), xf(K.x, count), 64)
+/** The picker's band and strip; only the highlighted row says more. */
+const pick = (s, rows, sel, nw = 10) => rows.map(([name, more], i) => (i === sel
+  ? ' '.repeat(M) + on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(name)), nw) + (more ?? ''), 64)
+  : ' '.repeat(M) + '  ' + xf(K.d, name)))
+const FMTS = ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF']
+const sizeNote = `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}`
+/** The convert flow up to ↵, as decided: Format, Quality, Save to, Name. */
+const FLOW = {
+  format: () => fill24([bar(CV_, 0), '', ...fcard(CV_), '', qTitle(CV_, 'Convert to', '1/6'), '',
+    ...pick(CV_, FMTS.map((f, i) => [f, i === 0 ? sizeNote : '']), 0)],
+  stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']]) + HIDE),
+  name: () => fill24([bar(CV_, 3), '', ...fcard(CV_), '', qTitle(CV_, 'Name the file'), '',
+    ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.fg, 'test') + xf(K.x, '.jpg')],
+  stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']])),
+}
+
+/* -------------------------------------------------------------- render */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+function xterm(el, cols = N, lines = 24) {
+  const term = new Terminal({
+    cols, rows: lines, fontSize: 11, lineHeight: 1, letterSpacing: 0,
+    fontFamily: '"SF Mono", Menlo, monospace', customGlyphs: true, cursorBlink: true,
+    cursorStyle: 'bar', disableStdin: true, allowProposedApi: true,
+    theme: { background: K.bg, foreground: K.fg, cursor: K.m, cursorAccent: K.bg },
+  })
+  term.open(el)
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()) } catch (e) { /* DOM renderer fallback */ }
+  return term
+}
+const paint = (term, rows, cursor, lines = 24, raw = false) => term.write('\x1b[H\x1b[2J' + (raw || !PAL.neutral ? rows : NEU(rows)).slice(0, lines).join('\r\n') + (cursor ? `\x1b[${cursor[0]};${cursor[1]}H\x1b[?25h` : HIDE))
+/** Live frames: make(t) is called with the seconds since the page opened, about 12 times a second, only while its tab is showing. */
+const LIVE = []
+/* The page clock: pausable, slower, steppable. Space pauses; ← → step a tenth of a second while paused. */
+const CLK = { t: 0, last: performance.now(), speed: 1, paused: false }
+const tick = () => {
+  const now = performance.now()
+  if (!CLK.paused) CLK.t += ((now - CLK.last) / 1000) * CLK.speed
+  CLK.last = now
+  for (const f of LIVE) if (f.el.closest('section.tab.on')) { const r = f.make(CLK.t); paint(f.term, r.rows ?? r, r.cursor, f.lines, f.raw) }
+  if (CLK.ui) CLK.ui()
+}
+setInterval(tick, 80)
+try {
+  const bar_ = document.createElement('div')
+  bar_.className = 'clock'
+  bar_.innerHTML = '<button data-a="play" title="space">❚❚ pause</button>'
+    + '<span class="sp">' + [0.25, 0.5, 1].map((v) => `<button data-s="${v}">${v}×</button>`).join('') + '</span>'
+    + '<button data-a="back" title="←">◀</button><button data-a="fwd" title="→">▶</button>'
+    + '<input type="range" min="0" max="15" step="0.05" value="0" title="scrub"><span class="tm">0.0 s</span>'
+  document.body.appendChild(bar_)
+  const play = bar_.querySelector('[data-a=play]'), range = bar_.querySelector('input'), tm = bar_.querySelector('.tm')
+  const step = (d) => { CLK.paused = true; CLK.t = Math.max(0, CLK.t + d); tick() }
+  const toggle = () => { CLK.paused = !CLK.paused; tick() }
+  CLK.ui = () => {
+    play.textContent = CLK.paused ? '▶ play' : '❚❚ pause'
+    bar_.querySelectorAll('[data-s]').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === CLK.speed))
+    range.value = String(CLK.t % 15); tm.textContent = (CLK.t % 15).toFixed(1) + ' s'
+  }
+  bar_.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button'); if (!b) return
+    if (b.dataset.s) CLK.speed = Number(b.dataset.s)
+    else if (b.dataset.a === 'play') toggle()
+    else step(b.dataset.a === 'back' ? -0.1 : 0.1)
+    tick()
+  })
+  range.addEventListener('input', () => { CLK.paused = true; CLK.t = Number(range.value); tick() })
+  addEventListener('keydown', (ev) => {
+    if (ev.target.closest && ev.target.closest('input:not([type=range]),textarea')) return
+    if (ev.key === ' ') { ev.preventDefault(); toggle() }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); step(-0.1) }
+    else if (ev.key === 'ArrowRight') { ev.preventDefault(); step(0.1) }
+  })
+} catch (e) { /* no page to put controls on */ }
+/** A figure: an optional heading, then frames (each { label, rows | make, cursor, lines }), then a note. */
+const fig = (gridId, { id, name, pick: mine, idea, frames, wide }) => {
+  const g = document.getElementById(gridId)
+  const fg = document.createElement('figure')
+  if (wide) fg.className = 'wide'
+  fg.innerHTML = (id ? `<div class="vt"><span class="id">${id}</span><span class="name">${name}</span>${mine ? '<span class="pick">MY PICK</span>' : ''}</div>` : '') +
+    frames.map((f) => `<div class="state">${f.label}</div><div class="term">${f.lines && f.lines < 24 ? '' : '<div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div>'}<div class="xt"></div></div>`).join('') +
+    (idea ? `<p class="idea">${idea}</p>` : '')
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  frames.forEach((f, i) => {
+    const el = els[i], lines = f.lines ?? 24, term = xterm(el, N, lines)
+    if (f.make) {
+      const first = f.make(reduced ? 0 : 0.0)
+      paint(term, first.rows ?? first, first.cursor, lines, f.raw)
+      if (!reduced) LIVE.push({ el, term, make: f.make, lines, raw: f.raw })
+    } else paint(term, f.rows, f.cursor, lines, f.raw)
+  })
+  return fg
+}
+/** Rows on their own, a blank row above and below each, in a short terminal. */
+const strip3 = (rows) => { const r = ['', ...rows.flatMap((x) => [...[].concat(x), '']).slice(0, -1), '']; return { rows: r, lines: r.length } }
+
+/* ===================================================== DECIDED SO FAR
+   One frame of each decided piece, drawn by the kit, as the reference the
+   new screens are matched against. The record of how each was chosen is
+   mockups/flow-parts-2026-10.html. */
+fig('decided-grid', { frames: [{ label: 'home · tab 3 of the first page', rows: home(CV_), cursor: cursorAt(home(CV_), /or type a path/) }] })
+{
+  const rows = homeCommands(CV_, 'co', 'compress')
+  fig('decided-grid', { frames: [{ label: 'home, typed /co then ↓ · commands, tab 4', rows, cursor: cursorAt(rows, /› \/\S*/, true) }] })
+}
+fig('decided-grid', { wide: true, frames: [{ label: 'the header bar · convert at each question, then compress and pdf', ...strip3([0, 1, 2, 3].map((i) => bar(CV_, i)).concat([bar(CM_, 1), bar(PDF_, 1)])) }] })
+fig('decided-grid', { frames: [{ label: 'format, with the bar', rows: FLOW.format() }] })
+{
+  const rows = FLOW.name()
+  fig('decided-grid', { frames: [{ label: 'name, with the bar · the last screen before working', rows, cursor: cursorAt(rows, /› test/, true) }] })
+}
+
+/* ============================================================== WORKING
+   The screen between pressing ↵ and the result. Three real cases, each with
+   only what the app can honestly know:
+     convert   the phase (reading → decoding → encoding → writing) and the time
+     compress  "to a size": which try of the search this is, at most 8
+     pdf       split, extract, render: page n of a known total
+   Each variant is drawn live in all three. */
+
+/* ------------------------------------------------------------ timelines */
+const PHASES = [['reading', 'Reading', 0, 0.35], ['decoding', 'Decoding', 0.35, 1.0], ['encoding', 'Encoding JPEG', 1.0, 3.6], ['writing', 'Writing test.jpg', 3.6, 4.0]]
+const JOBS = {
+  convert: {
+    s: CV_, loop: 4.4, verb: 'Converting', answers: TRAIL.convert.answers,
+    card: { tag: 'PNG', name: 'test.png', meta: '2756×774 · 122 KB · transparent' },
+    out: { tag: 'JPEG', name: 'test.jpg', meta: '2756×774 · 74.6 KB · 39% smaller' },
+    at: (t) => {
+      const e = Math.min(t, 4.0), i = Math.max(0, PHASES.findIndex(([, , a, b]) => e >= a && e < b))
+      return { e, phase: PHASES[e >= 4.0 ? 3 : i], i: e >= 4.0 ? 3 : i }
+    },
+  },
+  compress: {
+    s: CM_, loop: 4.0, verb: 'Compressing', answers: TRAIL.compress.answers,
+    card: { tag: 'JPEG', name: 'photo.jpg', meta: '4032×3024 · 2.1 MB' },
+    out: { tag: 'JPEG', name: 'photo-50kb.jpg', meta: '4032×3024 · 48.2 KB · quality 41' },
+    // The search settles after 6 tries here: "at most 8" is a bound, not a total.
+    at: (t) => { const e = Math.min(t, 3.6); return { e, n: Math.min(6, 1 + Math.floor(e / 0.6)), of: 8 } },
+  },
+  pdf: {
+    s: PDF_, loop: 4.2, verb: 'Splitting', answers: TRAIL.pdf.answers,
+    card: { tag: 'PDF', name: 'report.pdf', meta: '12 pages · 3.4 MB' },
+    out: { tag: 'PDF', name: 'report/', meta: '12 files · report-01.pdf … report-12.pdf' },
+    at: (t) => { const e = Math.min(t, 3.84); return { e, n: Math.min(12, Math.floor(e / 0.32)), of: 12 } },
+  },
+}
+const secs = (e) => `${e.toFixed(1)}s`
+const spin = (t, col) => xf(col, xB(SPIN[Math.floor(t * 12.5) % SPIN.length]))
+/** What each case says, in one line, and its count if it has a real one. */
+const says = (k, st) => k === 'convert' ? { what: st.phase[1], count: null }
+  : k === 'compress' ? { what: 'Finding the right quality', count: `try ${st.n}, at most ${st.of}` }
+    : { what: 'Splitting report.pdf', count: `page ${st.n} of ${st.of}` }
+/** The bar during the work: every answer, then the verb in bold where the question was. */
+const workBar = (j, opts = {}) => bar(j.s, null, { answers: j.answers, now: j.verb, ...opts })
+const workKeys = (k) => k === 'compress'
+  ? stepKeys([['esc', 'stop']], [['ctrl-c', 'quit']])
+  : stepKeys([], [['nothing is saved until it is done', ''], ['ctrl-c', 'quit']])
+/** The decided slider's look, reused for a real count: filled in the mode's colour up to a knob. */
+const track = (s, n, of, w = 40) => {
+  const k = of ? Math.round((n / of) * (w - 1)) : 0
+  return xf(s.mode.c, '━'.repeat(k)) + xf(K.fg, xB('●')) + xf(K.faint, '━'.repeat(w - 1 - k))
+}
+/** One row of dots, one per try, filled as they happen; the unused ones stay faint. */
+const tries = (s, n, of) => xf(s.mode.c, '● '.repeat(n)) + xf(K.faint, '○ '.repeat(of - n))
+const right64 = (l, r) => ' '.repeat(M + 1) + xr(l, r, 64)
+
+/* -------------------------------------------------------------- variants */
+const WORK = [
+  {
+    id: 'W1', name: 'A line under the card',
+    idea: 'Today\'s working line, finished. A spinner in the mode\'s colour, what is happening right now in words, and the real time at the right. Under it, quietly: the phases, with the one it is on lit; or the tries, as dots; or the pages, on the slider\'s track. The card above stays exactly where Name left it.',
+    make: (k) => (t) => {
+      const j = JOBS[k], st = j.at(t % j.loop), s = j.s, { what, count } = says(k, st)
+      const head = right64(spin(t, s.mode.c) + ' ' + xf(K.fg, xB(what)) + (count ? xf(K.d, `  ${count}`) : ''), xf(K.x, secs(st.e)))
+      const under = k === 'convert'
+        ? PHASES.map(([w], i) => (i < st.i ? xf(K.d, w) : i === st.i ? xf(s.mode.c, xB(w)) : xf(K.faint, w))).join(xf(K.faint, ' · '))
+        : k === 'compress' ? tries(s, st.n, st.of) : track(s, st.n, st.of)
+      return fill24([workBar(j), '', ...fcard(s, { ...j.card, dim: true }), '', head, '', ' '.repeat(M + 3) + under], workKeys(k) + HIDE)
+    },
+  },
+  {
+    id: 'W2', name: 'The bar does the work',
+    idea: 'Nothing new on the page. The hatching in the bar moves, a slow drift to the right like a barber\'s pole, and the trail ends in the verb and the time. A moving pattern says "busy" without saying how far. Where there is a real count (pdf pages), the hatching behind it fills to the count; tries are a bound, not a total, so they never fill.',
+    make: (k) => (t) => {
+      const j = JOBS[k], st = j.at(t % j.loop), s = j.s, { what, count } = says(k, st)
+      const g = grad(s)
+      const lit = k === 'pdf' ? M + Math.round((W * st.n) / st.of) : M + W
+      const col = (c) => (c >= lit ? FAINT : X.mix(K.bg, g(c), 0.55 + 0.45 * (0.5 + 0.5 * Math.sin((c - t * 9) / 2.2))))
+      const now = `${k === 'compress' ? `try ${st.n}` : count ?? j.verb} ${xf(K.x, secs(st.e))}`   // the long form does not fit beside photo.jpg
+      return fill24([bar(s, null, { answers: j.answers, now, col }), '', ...fcard(s, { ...j.card, dim: true }), '',
+        ' '.repeat(M + 1) + xf(K.d, what)], workKeys(k) + HIDE)
+    },
+  },
+  {
+    id: 'W3', name: 'What it is making, under what it came from',
+    idea: 'The card stays where it was. Under it, an arrow and a second card for the file being made, its frame drawn in moving hatching because the file does not exist yet. Inside it: what is happening, and the count if there is one. When it is done the frame goes solid and the card fills with the real result, so Working becomes Done in place, without the screen jumping.',
+    make: (k, done = false) => (t) => {
+      const j = JOBS[k], st = j.at(done ? 99 : t % j.loop), s = j.s, { what, count } = says(k, st)
+      const w = 52, g = grad(s)
+      const hc = (c) => (done ? s.mode.c : X.mix(K.bg, g(c), 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((c - t * 9) / 2.2))))
+      const edge = (l, r, inner) => ' '.repeat(M) + hatchFn(M, 1, hc, () => l) + inner + hatchFn(M + w - 1, 1, hc, () => r)
+      const side = (r) => ' '.repeat(M) + hatchFn(M, 1, hc, () => '│') + ' ' + xpad(r, w - 4) + ' ' + hatchFn(M + w - 1, 1, hc, () => '│')
+      const tag = ' ' + xf(s.mode.c, xB(j.out.tag)) + ' '
+      const top = edge('╭', '╮', hatchFn(M + 1, 1, hc, () => '─') + tag + hatchFn(M + 2 + vis(tag), w - 4 - vis(tag), hc, () => (done ? '─' : '╱')) + hatchFn(M + w - 2, 1, hc, () => '─'))
+      const bot = edge('╰', '╯', hatchFn(M + 1, w - 2, hc, () => (done ? '─' : '╱')))
+      const body = done
+        ? [side(xf(K.fg, xB(j.out.name))), side(xf(K.d, j.out.meta).replace(/(\d+% smaller)/, (x) => xf(K.ok, x)))]
+        : [side(xr(spin(t, s.mode.c) + ' ' + xf(K.fg, what), xf(K.x, secs(st.e)), w - 4)),
+          side(count ? xf(K.d, count) + '  ' + (k === 'pdf' ? track(s, st.n, st.of, 24) : tries(s, st.n, st.of)) : xf(K.faint, j.out.name))]
+      const keys = done
+        ? stepKeys([['↵', 'another'], ['o', 'open']], [['s', 'show in Finder'], ['ctrl-c', 'quit']])
+        : workKeys(k)
+      return fill24([done ? bar(s, null, { answers: j.answers, now: 'Done' }) : workBar(j), '', ...fcard(s, { ...j.card, dim: true }),
+        ' '.repeat(M + 3) + xf(done ? K.ok : K.x, '↓'), top, ...body, bot], keys + HIDE)
+    },
+  },
+]
+
+/* ------------------------------------------- W5: W2's bar, and one line
+   Only a long job shows any of this. The clock appears at 3 s, when a job is
+   long enough that "is it stuck?" is a fair question. */
+const PH_AVIF = [['reading', 'Reading', 0, 0.3], ['decoding', 'Decoding', 0.3, 0.9], ['encoding', 'Encoding AVIF', 0.9, 5.6], ['writing', 'Writing photo.avif', 5.6, 6.0]]
+const BIG = {
+  s: CV_, loop: 6.8, verb: 'Converting', answers: ['AVIF', '60', 'Desktop', 'photo.avif'],
+  card: { tag: 'HEIC', name: 'photo.heic', meta: '4032×3024 · 2.4 MB' },
+  at: (t) => { const e = Math.min(t, 6.0); return { e, phase: PH_AVIF.find(([, , a, b]) => e >= a && e < b) ?? PH_AVIF[3] } },
+}
+const CLOCK = 3
+/** A solid bar, a full cell tall, with no knob: it fills, it cannot be dragged. */
+const solid = (s, n, of, w) => { const k = Math.round((n / of) * w); return xf(s.mode.c, '█'.repeat(k)) + xf(FAINT, '█'.repeat(w - k)) }
+const drift = (s, t) => { const g = grad(s); return (c) => X.mix(K.bg, g(c), 0.55 + 0.45 * (0.5 + 0.5 * Math.sin((c - t * 9) / 2.2))) }
+const W5 = (k) => (t) => {
+  const j = k === 'convert' ? BIG : JOBS[k], st = j.at(t % j.loop), s = j.s
+  const what = k === 'convert' ? st.phase[1] : k === 'compress' ? 'Finding the right quality' : 'Splitting report.pdf'
+  const clock = st.e >= CLOCK ? xf(K.x, secs(st.e)) : ''
+  const under = k === 'compress' ? tries(s, st.n, st.of) : k === 'pdf' ? solid(s, st.n, st.of, 30) + xf(K.d, `  page ${st.n} of ${st.of}`) : null
+  return fill24([bar(s, null, { answers: j.answers, now: j.verb, col: drift(s, t) }), '', ...fcard(s, { ...j.card, dim: true }), '',
+    right64(spin(t, s.mode.c) + ' ' + xf(K.fg, xB(what)), clock), ...(under ? ['', ' '.repeat(M + 3) + under] : [])], workKeys(k) + HIDE)
+}
+fig('work-grid', {
+  id: 'W5', name: 'The bar works, one line under the card', pick: true,
+  idea: 'W2\'s drifting bar, with the line you liked under the card: the spinner and what it is doing, nothing else. The clock only appears once a job has run 3 seconds. The size search keeps its dots, one per try. A split keeps its page count, because a long PDF is the one job where "how far" is both true and worth knowing.',
+  frames: [
+    { label: 'convert · a 12 MP HEIC to AVIF, about 6 s', make: W5('convert') },
+    { label: 'compress · to 50 KB', make: W5('compress') },
+    { label: 'pdf · split into pages', make: W5('pdf') },
+  ],
+})
+
+/* ---------------------------------------------------------------- render */
+for (const v of WORK) {
+  fig('working-grid', {
+    id: v.id, name: v.name, pick: v.pick, idea: v.idea,
+    frames: [
+      { label: 'convert · test.png to JPEG', make: v.make('convert') },
+      { label: 'compress · to 50 KB', make: v.make('compress') },
+      { label: 'pdf · split into pages', make: v.make('pdf') },
+      ...(v.id === 'W3' ? [{ label: 'convert · done', rows: v.make('convert', true)(0) }] : []),
+    ],
+  })
+}
+
+/* ============================================================== QUALITY
+   The question after Format for a lossy target (JPEG, WebP, AVIF), and the
+   one after "By quality" in compress. Today: a slider, 1 to 100 in steps of
+   5, starting at 80, with no size. Every size here is measured the way the
+   format picker measures (encode once the value has rested for 150 ms), so
+   each variant shows "measuring…" for a moment after you stop. */
+
+/* ------------------------------------------------------------- the data */
+/** Stand-in sizes for test.png (122 KB) as JPEG. The app measures these; the mockup makes them up. */
+const kbAt = (q) => 20.2 + 0.0085 * q * q
+const QJOBS = {
+  convert: { s: CV_, src: 122, scale: 1, bar: () => bar(CV_, 1), card: {}, of: 'JPEG' },
+  compress: { s: CM_, src: 2150, scale: 2150 / 122 * 0.82, bar: () => bar(CM_, null, { answers: ['By quality'], now: 'Quality' }), card: { tag: 'JPEG', name: 'photo.jpg', meta: '4032×3024 · 2.1 MB' }, of: 'photo.jpg' },
+}
+const fmtKB = (kb) => (kb >= 1000 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(1)} KB`)
+const sizeLine = (j, q, measuring, t) => {
+  if (measuring) return xf(K.x, 'measuring' + '.'.repeat(1 + (Math.floor(t * 8) % 3)))
+  const kb = kbAt(q) * j.scale, pct = Math.round((1 - kb / j.src) * 100)
+  return xf(K.fg, xB(fmtKB(kb))) + '  ' + (pct > 0 ? xf(K.ok, `${pct}% smaller`) : xf(K.amber, `${-pct}% larger`))
+}
+/** You press ← four times, wait, → six times, wait, ← twice. The size is measured once each run of presses has rested. */
+const PRESSES = [[1.0, -5], [1.12, -5], [1.24, -5], [1.36, -5], [3.0, 5], [3.12, 5], [3.24, 5], [3.36, 5], [3.48, 5], [3.6, 5], [5.2, -5], [5.32, -5]]
+const QLOOP = 7
+const qAt = (t) => {
+  const e = t % QLOOP
+  let q = 80, last = -9
+  for (const [at, d] of PRESSES) if (e >= at) { q += d; last = at }
+  return { q, measuring: e - last < 0.15 + 0.2, pressed: e - last < 0.1 }
+}
+const qKeys = (pressed) => stepKeys([['←→', 'adjust'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']])
+const qScreen = (j, body, keys = qKeys()) => fill24([j.bar(), '', ...fcard(j.s, { ...j.card }), '', qTitle(j.s, 'Quality', j.of), '', ...body], keys + HIDE)
+const L3 = ' '.repeat(M + 1)
+const ends = (w, a = 'smaller', b = 'sharper') => L3 + xf(K.x, a) + ' '.repeat(w - a.length - b.length) + xf(K.x, b)
+
+/* -------------------------------------------------------------- variants */
+const LEVELS = [['Best', 95], ['High', 90], ['Balanced', 80], ['Small', 65], ['Smallest', 45]]
+const QUAL = [
+  {
+    id: 'Q1', name: 'The slider, finished',
+    idea: 'Today\'s slider with the two things it is missing: the size it would make, measured as soon as you stop, and words at the ends so you know which way is which. The number sits at the end of the track. Nothing else changes.',
+    body: (j, q, m, t) => {
+      const w = 40, k = Math.round(((q - 1) / 99) * (w - 1))
+      return [L3 + xf(j.s.mode.c, '━'.repeat(k)) + xf(K.fg, xB('●')) + xf(K.faint, '━'.repeat(w - 1 - k)) + '  ' + xf(K.fg, xB(String(q))),
+        ends(w), '', L3 + sizeLine(j, q, m, t)]
+    },
+  },
+  {
+    id: 'Q3', name: 'The slider, and what it saves',
+    idea: 'The slider, with the receipt\'s two bars underneath on one scale: the file as it is, and the file you would get. The second bar grows and shrinks as you move, once each new size is measured. The saving is what you are really choosing, so it is the biggest thing here.',
+    body: (j, q, m, t) => {
+      const w = 40, k = Math.round(((q - 1) / 99) * (w - 1))
+      const kb = kbAt(q) * j.scale, bw = 30, after = Math.max(1, Math.round((kb / Math.max(kb, j.src)) * bw)), before = Math.round((j.src / Math.max(kb, j.src)) * bw)
+      return [L3 + xf(j.s.mode.c, '━'.repeat(k)) + xf(K.fg, xB('●')) + xf(K.faint, '━'.repeat(w - 1 - k)) + '  ' + xf(K.fg, xB(String(q))), '',
+        L3 + xpad(xf(K.x, 'now'), 6) + xf(K.d, '█'.repeat(before)) + ' '.repeat(bw - before + 2) + xf(K.d, j.src >= 1000 ? fmtKB(j.src) : `${j.src} KB`),
+        L3 + xpad(xf(K.x, 'after'), 6) + (m ? xf(FAINT, '█'.repeat(after)) : xf(j.s.mode.c, '█'.repeat(after))) + ' '.repeat(bw - after + 2) + sizeLine(j, q, m, t)]
+    },
+  },
+  {
+    id: 'Q4', name: 'A hatched track, the number as a chip',
+    idea: 'The track is the hatching from the bar: bright up to your value, faint after it, and the value rides along it as a slanted chip, the same shape as the mode in the bar. It ties the screen to the bar above it; it is also the loudest of the set.',
+    body: (j, q, m, t) => {
+      const w = 48, chip = slant(j.s.mode.c, String(q)), cw = vis(chip), k = Math.round(((q - 1) / 99) * (w - cw))
+      return [L3 + hatchFn(M + 1, k, grad(j.s)) + chip + hatchFn(M + 1 + k + cw, w - k - cw, () => FAINT), ends(w), '', L3 + sizeLine(j, q, m, t)]
+    },
+  },
+  {
+    id: 'Q5', name: 'One cell per step',
+    idea: 'The slider moves in steps of 5, so draw it that way: twenty cells, lit up to your value. You can count where you are, and nothing suggests a precision it does not have. The number and size sit to the right on the same row.',
+    body: (j, q, m, t) => {
+      const n = Math.round(q / 5)
+      return [L3 + xf(j.s.mode.c, '▮'.repeat(n)) + xf(K.faint, '▮'.repeat(20 - n)) + '   ' + xf(K.fg, xB(xpad(String(q), 4))) + sizeLine(j, q, m, t), ends(20)]
+    },
+  },
+]
+
+
+/* ---------------------------------------------------- more concepts, Q6–Q12 */
+/** Strings placed at columns, centred on each column, on one row. */
+const place = (items) => {
+  let o = '', c = 0
+  for (const { at, s } of [...items].sort((a, b) => a.at - b.at)) {
+    const start = Math.max(c, at - Math.floor(vis(s) / 2))
+    o += ' '.repeat(start - c) + s; c = start + vis(s)
+  }
+  return o
+}
+const kb = (j, q) => kbAt(q) * j.scale
+const nearest = (q) => LEVELS.reduce((a, b) => (Math.abs(b[1] - q) < Math.abs(a[1] - q) ? b : a))
+const sliderRow = (j, q, w) => { const k = Math.round(((q - 1) / 99) * (w - 1)); return xf(j.s.mode.c, '━'.repeat(k)) + xf(K.fg, xB('●')) + xf(K.faint, '━'.repeat(w - 1 - k)) }
+const levelSel = (t) => { const e = t % QLOOP; return e < 1.5 ? 2 : e < 3.2 ? 3 : e < 5 ? 1 : 2 }
+const levelMoved = (t) => { const e = t % QLOOP; return [1.5, 3.2, 5].some((a) => e >= a && e - a < 0.35) }
+const listKeys = () => stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']])
+
+/* A stand-in photo for Q7: sky, a ridge, and a lit edge, so blocking shows. */
+const PIX_W = 26, PIX_H = 12
+const photo = (x, y) => {
+  const ridge = 6.5 + 2.6 * Math.sin(x / 3.1) + 1.2 * Math.sin(x / 1.3)
+  if (y > ridge + 0.6) return X.mix('#22343a', '#3f5a4b', ((x * 7 + y * 13) % 5) / 5)
+  if (y > ridge - 0.6) return '#f2c27a'
+  return X.mix('#1f4f86', '#e7a96b', y / 9)
+}
+const degraded = (q) => (x, y) => {
+  const b = q >= 70 ? 1 : q >= 45 ? 2 : 3
+  const cx = Math.floor(x / b) * b + Math.floor(b / 2), cy = Math.floor(y / b) * b + Math.floor(b / 2)
+  const c = photo(Math.min(PIX_W - 1, cx), Math.min(PIX_H - 1, cy)), steps = q >= 85 ? 255 : Math.max(4, Math.round(q / 5))
+  return '#' + [1, 3, 5].map((i) => Math.min(255, Math.round(Math.round((parseInt(c.slice(i, i + 2), 16) / 255) * steps) / steps * 255)).toString(16).padStart(2, '0')).join('')
+}
+/** Two pixels per cell, top and bottom, the way a terminal can draw a picture without image support. */
+const crop = (px) => Array.from({ length: PIX_H / 2 }, (_, r) => { let o = ''; for (let x = 0; x < PIX_W; x++) o += xb(px(x, r * 2 + 1), xf(px(x, r * 2), '▀')); return o })
+
+const QUAL2 = [
+  {
+    id: 'Q6', name: 'A ruler of sizes',
+    idea: 'The slider, with the size at four points along it written above the track, so you can see the whole trade-off before you move: 37 KB here, 74 KB there. The four are measured in the background while you look, one at a time; the size of where you are now is measured as soon as you stop, as everywhere else.',
+    body: (j, q, m, t) => {
+      const w = 48, col = (v) => Math.round(((v - 1) / 99) * (w - 1))
+      const marks = [45, 65, 80, 95]
+      return [L3 + place(marks.map((v) => ({ at: col(v), s: xf(K.d, fmtKB(kb(j, v)).replace('.0 ', ' ').replace(/\.\d KB/, ' KB')) }))),
+        L3 + sliderRow(j, q, w) + '  ' + xf(K.fg, xB(String(q))),
+        L3 + place(marks.map((v) => ({ at: col(v), s: xf(v === q ? K.fg : K.x, String(v)) }))), '', L3 + sizeLine(j, q, m, t)]
+    },
+  },
+  {
+    id: 'Q7', name: 'See the difference',
+    idea: 'A small piece of your picture at full size, as it is and as it would be at this quality, side by side. Drawn here with half-cell blocks, two pixels to a cell, which any terminal can show; in Ghostty, Kitty or iTerm it could be real pixels. (The damage here is drawn by hand, and exaggerated so it shows at this size.) Numbers say what a quality costs; this is the only one that says what it looks like.',
+    body: (j, q, m, t) => {
+      const a = crop(photo), b = crop(degraded(m ? q + 5 : q))
+      return [L3 + xpad(xf(K.x, 'as it is'), PIX_W + 4) + xf(K.x, m ? 'measuring…' : `at ${q}`),
+        ...a.map((r, i) => L3 + r + '    ' + b[i]), '',
+        L3 + sliderRow(j, q, PIX_W * 2 + 4) + '  ' + xf(K.fg, xB(String(q))), '', L3 + sizeLine(j, q, m, t)]
+    },
+  },
+  {
+    id: 'Q12', name: 'The slider, with names under it',
+    idea: 'Q1 and Q2 together: the slider keeps every step of 5, and three names sit under it where those levels fall. The name you are nearest lights up, so you get the words and the fine control.',
+    body: (j, q, m, t) => {
+      const w = 60, col = (v) => Math.round(((v - 1) / 99) * (w - 1)), [n] = nearest(q)
+      const names = [['Small', 50], ['Balanced', 80], ['Best', 95]]
+      const lit = names.reduce((a, b) => (Math.abs(b[1] - q) < Math.abs(a[1] - q) ? b : a))[0]
+      return [L3 + sliderRow(j, q, w) + '  ' + xf(K.fg, xB(String(q))),
+        L3 + place(names.map(([nm, v]) => ({ at: col(v), s: nm === lit ? xf(j.s.mode.c, xB(nm)) : xf(K.x, nm) }))), '', L3 + sizeLine(j, q, m, t)]
+    },
+  },
+]
+
+/* ----------------------------------------------- round three: thicker sliders
+   Same behaviour as every slider above (←→ in steps of 5, size measured once
+   you stop); only the drawing changes. Each is a full cell tall or more. */
+const SW = 48
+const at = (q, w = SW) => Math.round(((q - 1) / 99) * (w - 1))
+const num = (q) => xf(K.fg, xB(String(q)))
+const under = (j, q, m, t, w = SW) => [ends(w), '', L3 + sizeLine(j, q, m, t)]
+const WHITE = K.fg
+const QUAL3 = [
+  {
+    id: 'T1', name: 'A solid bar',
+    idea: 'A full cell tall: the filled part in the mode\'s colour, the rest a dark track, and the thumb a white block. Heavy enough to read from across the room; the same weight as the split bar on Working, plus a thumb.',
+    body: (j, q, m, t) => {
+      const k = at(q)
+      return [L3 + xf(j.s.mode.c, '█'.repeat(k)) + xf(WHITE, '█') + xf(FAINT, '█'.repeat(SW - 1 - k)) + '  ' + num(q), ...under(j, q, m, t)]
+    },
+  },
+  {
+    id: 'T2', name: 'A rail and a taller thumb',
+    idea: 'A half-height rail along the bottom of the row, and a full-height thumb standing up out of it, like the thumb of a real slider. The rail is thick enough to see; the thumb is the one tall thing, so your eye finds it.',
+    body: (j, q, m, t) => {
+      const k = at(q)
+      return [L3 + xf(j.s.mode.c, '▄'.repeat(k)) + xf(WHITE, '█') + xf(FAINT, '▄'.repeat(SW - 1 - k)) + '  ' + num(q), ...under(j, q, m, t)]
+    },
+  },
+  {
+    id: 'T3', name: 'The number in the thumb',
+    idea: 'A filled band a full cell tall, and the thumb is a white pill with the number in it. Nothing sits to the right of the track; the value is where your eye already is.',
+    body: (j, q, m, t) => {
+      const lab = ` ${q} `, w = SW, k = Math.round(((q - 1) / 99) * (w - lab.length))
+      return [L3 + xb(j.s.mode.c, ' '.repeat(k)) + xb(WHITE, xf(K.ink, xB(lab))) + xb(FAINT, ' '.repeat(w - k - lab.length)), ...under(j, q, m, t)]
+    },
+  },
+  {
+    id: 'T4', name: 'A tall thumb on a centred track',
+    idea: 'The track is a full cell, set between two rows so it sits on the centre line; the thumb is two cells tall and stands out above and below it. The most like a slider on a Mac.',
+    body: (j, q, m, t) => {
+      const k = at(q)
+      return [L3 + ' '.repeat(k) + xf(WHITE, '▄'),
+        L3 + xf(j.s.mode.c, '█'.repeat(k)) + xf(WHITE, '█') + xf(FAINT, '█'.repeat(SW - 1 - k)) + '  ' + num(q),
+        L3 + ' '.repeat(k) + xf(WHITE, '▀'), ...under(j, q, m, t).slice(1)]
+    },
+  },
+  {
+    id: 'T5', name: 'Wide steps',
+    idea: 'Twenty blocks, one per step of 5, each two cells wide with a gap between: lit up to your value, the step you are on in white. Q5\'s honesty about steps, at a weight that holds up.',
+    body: (j, q, m, t) => {
+      const n = Math.round(q / 5)
+      let o = ''
+      for (let i = 1; i <= 20; i++) o += xf(i < n ? j.s.mode.c : i === n ? WHITE : FAINT, '██') + (i < 20 ? ' ' : '')
+      return [L3 + o + '  ' + num(q), ...under(j, q, m, t, 59)]
+    },
+  },
+  {
+    id: 'T6', name: 'A hatched band',
+    idea: 'Two rows of the home band\'s hatching, bright up to your value and faint after it, with a white thumb two rows tall. It is the brand\'s material made into a control: thick, and unmistakably this app.',
+    body: (j, q, m, t) => {
+      const k = at(q), g = grad(j.s)
+      const row = (r) => L3 + hatchFn(M + 1, k, (c) => g(c + r * 2)) + xf(WHITE, '█') + hatchFn(M + 2 + k, SW - 1 - k, () => FAINT)
+      return [row(0), row(1) + '  ' + num(q), ...under(j, q, m, t)]
+    },
+  },
+]
+
+/* ------------------------------------------------- round four: T3, in grey */
+const pill = (j, q, { fill, track = FAINT, thumb = WHITE, ink = K.ink }) => {
+  const lab = ` ${q} `, k = Math.round(((q - 1) / 99) * (SW - lab.length))
+  return L3 + (fill ? xb(fill, ' '.repeat(k)) : xb(track, ' '.repeat(k))) + xb(thumb, xf(ink, xB(lab))) + xb(track, ' '.repeat(SW - k - lab.length))
+}
+/** The size with no green: the saving in plain grey. */
+const sizeGrey = (j, q, m, t) => sizeLine(j, q, m, t).replace(xf(K.ok, ''), '').replace(new RegExp(`\\x1b\\[38;2;${rgbOf(K.ok)}m`, 'g'), `\x1b[38;2;${rgbOf(K.d)}m`)
+const QUAL4 = [
+  {
+    id: 'G1', name: 'Grey fill, white thumb', pick: true,
+    idea: 'T3 with the fill in a mid grey. The thumb is the brightest thing in the row, so the value still leads; the only colour left on the screen is the bar, the card\'s tag and the title, as on every other screen.',
+    body: (j, q, m, t) => [pill(j, q, { fill: '#4b515d' }), ...under(j, q, m, t)],
+  },
+  {
+    id: 'G2', name: 'No fill, just the thumb',
+    idea: 'The track is one dark grey from end to end and only the white thumb moves along it. The quietest: where you are is the only thing the slider says, and the size underneath says what it costs.',
+    body: (j, q, m, t) => [pill(j, q, {}), ...under(j, q, m, t)],
+  },
+  {
+    id: 'G3', name: 'Grey fill, the thumb in the mode\'s colour',
+    idea: 'The fill goes grey and the colour moves into the thumb: one small spot of cyan (or green, in compress) where your value is. Colour marks the one thing you are moving, and nothing else.',
+    body: (j, q, m, t) => [pill(j, q, { fill: '#4b515d', thumb: j.s.mode.c }), ...under(j, q, m, t)],
+  },
+  {
+    id: 'G4', name: 'G1, and the saving in grey too',
+    idea: 'G1, with the green taken off "58% smaller" as well, so the whole question is grey and white under the bar. The saving is still bold where it matters (the size); whether it is good news is left to the number.',
+    body: (j, q, m, t) => [pill(j, q, { fill: '#4b515d' }), ends(SW), '', L3 + sizeGrey(j, q, m, t)],
+  },
+  {
+    id: 'G5', name: 'A tint of the mode\'s colour',
+    idea: 'G1, but the fill is a dark tint of the mode\'s colour instead of grey: deep teal in convert, deep green in compress. It still reads as quiet next to the white thumb, and it says which mode you are in the way the bar does, without adding a bright colour.',
+    body: (j, q, m, t) => [pill(j, q, { fill: X.mix(K.bg, j.s.mode.c, 0.32) }), ...under(j, q, m, t)],
+  },
+]
+
+/* ---------------------------------------------------------------- render */
+for (const v of [...QUAL4, ...QUAL, ...QUAL2, ...QUAL3]) {
+  const make = (k) => (t) => {
+    const j = QJOBS[k], st = qAt(t)
+    if (v.screen) return v.screen(j, t, st)
+    if (v.live) {
+      const sel = v.live(t), e = t % QLOOP, moved = [1.5, 3.2, 5].find((a) => e >= a && e - a < 0.35)
+      return qScreen(j, v.body(j, sel, moved !== undefined, t), v.keys())
+    }
+    return qScreen(j, v.body(j, st.q, st.measuring, t))
+  }
+  fig(QUAL4.includes(v) ? 'quality4-grid' : QUAL3.includes(v) ? 'quality3-grid' : QUAL2.includes(v) ? 'quality2-grid' : 'quality-grid', {
+    id: v.id, name: v.name, pick: v.pick, idea: v.idea,
+    frames: [
+      { label: 'convert · test.png to JPEG', make: make('convert') },
+      { label: 'compress · by quality', rows: make('compress')(0.5) },
+    ],
+  })
+}
+
+/* =============================================================== NAMING
+   Chosen: B1, Save to and Name as one sentence in today's filled block,
+   "header.jpg in Desktop", the folder on a light grey fill. Picked: D2, the
+   field opens downward, the folders inside it under the folder word. This
+   round: the look of the default's mark. tab makes a default. */
+const NLOOP = 7.5
+const EXT = '.jpg', DIR = '~/Desktop'
+/** "test", held, backspaced, then "header" typed. */
+const typed = (t, hold = 1.6) => {
+  const e = t % NLOOP
+  if (e < hold) return 'test'
+  if (e < hold + 0.8) return 'test'.slice(0, 4 - Math.floor((e - hold) / 0.2) - 1)
+  if (e < hold + 1) return ''
+  return 'header'.slice(0, Math.min(6, Math.floor((e - hold - 1) / 0.18) + 1))
+}
+const ROW0 = 9   // the first body row, counted from 0
+/** The Name screen around a body; `cur` is [row within the body, column], both from 0. */
+const nScreen = (body, cur, keys, { title = 'Name the file', count = '', top = bar(CV_, 3) } = {}) => {
+  const rows = fill24([top, '', ...fcard(CV_), '', qTitle(CV_, title, count), '', ...body],
+    keys ?? stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']]))
+  return { rows, cursor: cur ? [ROW0 + cur[0] + 1, cur[1] + 1] : null }
+}
+/** Today's field: rows on the panel fill, the full block width. */
+const FB = (rows) => rows.map((r) => ' '.repeat(M) + on(P, r, W))
+const fieldRow = (v, after = '') => ' ' + xf(K.m, '›') + ' ' + xf(K.fg, v) + after
+const caret = (v) => M + 3 + vis(v)
+
+/* ------------------------------------------------------------ the script */
+const DIRS = [['Same folder', '~/Pictures'], ['Desktop', '~/Desktop'], ['Downloads', '~/Downloads'], ['Documents', '~/Documents'], ['New folder…', '']]
+const ORANGE = K.heat
+const BADGE = xf(ORANGE, xB('★')) + ' ' + xf(ORANGE, 'default')
+/** The folder in the sentence before you are on it: a light grey fill, so it reads as something to choose. */
+const CHIP = '#3b414d'
+/** One look for the folder you are on, in every concept, so only the structure differs: a white pill; a grey row. */
+const PILL = (n) => xb(K.fg, xf(K.ink, xB(` ${n} `)))
+const ROWBG = '#383d48'
+const SA = { title: 'Save as', top: bar(CV_, null, { answers: ['JPEG', '80'], now: 'Save as' }) }
+const nameKeys = stepKeys([['↵', 'save'], ['tab', 'folder']], [['esc', 'back'], ['ctrl-c', 'quit']])
+const folderKeys = (extra = []) => stepKeys([['↑↓', 'choose'], ...extra, ['↵', 'save'], ['tab', 'make default']], [['esc', 'name'], ['ctrl-c', 'quit']])
+/** The common start: the name typed, then tab to the folder at 3.8 s. */
+const phase = (t) => { const e = t % NLOOP; return { e, v: typed(Math.min(e, 3.4), 1.0), folder: e >= 3.8 } }
+/** The sentence; `word` is how the folder is drawn once you are on it. */
+const sentence = (v, folder, label, word = PILL) =>
+  ' ' + xf(K.m, '›') + ' ' + xf(folder ? K.d : K.fg, v) + xf(K.x, EXT) + xf(K.x, '   in ')
+  + (folder ? word(label) : xb(CHIP, xf(K.fg, xB(` ${label} `)) + xf(K.d, '▾ ')))
+/** The column where the folder's fill starts. */
+const wordAt = (v) => M + 3 + vis(v) + vis(EXT) + 6
+/**
+ * A row of the folder list inside the field, `w` wide: the highlighted one on
+ * a grey band with a white strip. `tag` is how the default is marked.
+ */
+const fRow = (name, path, { sel = false, def = false, w = 64, nw = 12, tag }) => {
+  const nameCol = def && tag.ink ? tag.ink : null
+  const lead = def && tag.lead ? tag.lead : sel ? xf(K.fg, '▌') : ' '
+  const nm = xpad(xf(nameCol ?? (sel ? K.fg : name.endsWith('…') ? K.x : K.d), sel ? xB(name) : name), nw)
+  const left = lead + ' ' + nm + (sel ? xf(K.x, path) : '') + (def && tag.badge && !tag.right ? '  ' + tag.badge() : '')
+  const row = def && tag.badge && tag.right ? xr(left, tag.badge() + ' ', w) : left
+  return sel ? on(ROWBG, row, w) : xpad(row, w)
+}
+const SLANT = (c, txt, ink = K.ink) => xf(c, '') + xb(c, xf(ink, xB(` ${txt} `))) + xf(c, '')
+const TINT = '#33261a', MUTED = '#c98a4b'
+const TAGS = [
+  { id: 'P1', name: 'A tinted pill', pick: true, idea: 'A dark orange fill with the word in a softer orange, at the far end of the row. Still reads as a label, but it is darker than the grey row of the folder you are on, so it never pulls the eye first.',
+    right: true, badge: () => xb(TINT, xf(MUTED, ' default ')) },
+  { id: 'P2', name: 'A rounded tint', idea: 'P1 with rounded ends, so it reads as a small tag rather than a block of colour. Same dark orange, same soft word.',
+    right: true, badge: () => xf(TINT, '') + xb(TINT, xf(MUTED, 'default')) + xf(TINT, '') },
+  { id: 'P3', name: 'A dot and a word', idea: 'One orange dot and the word in grey, at the far end. The colour is a single point; the word says what it means.',
+    right: true, badge: () => xf(ORANGE, '●') + ' ' + xf(K.x, 'default') },
+  { id: 'P4', name: 'A star and a word', idea: 'The ★ from today\'s Save to, in orange, and the word in grey. The star is the familiar mark for "the one you set"; only it carries colour.',
+    right: true, badge: () => xf(ORANGE, '★') + ' ' + xf(K.x, 'default') },
+  { id: 'P5', name: 'Just the word, in soft orange', idea: 'No fill and no symbol: the word "default" in a muted orange, at the far end. The least there can be while it still says orange.',
+    right: true, badge: () => xf(MUTED, 'default') },
+  { id: 'P6', name: 'A grey pill, an orange dot', idea: 'The pill is the same light grey as the folder in the sentence, and the only orange is a dot inside it. It belongs to the field\'s own greys; the dot marks it.',
+    right: true, badge: () => xb(CHIP, ' ' + xf(ORANGE, '●') + ' ' + xf(K.d, 'default ')) },
+]
+/** D2: the field opens downward, the folders inside it under the folder word. */
+const opensDown = (tag) => (t) => {
+  const { e, v, folder } = phase(t), sel = e < 5 ? 1 : 2, def = e < 6.2 ? 1 : 2
+  const at = wordAt(v) - M - 1, w = W - at - 2
+  const inner = folder ? DIRS.map(([n, p], i) => ' '.repeat(at) + fRow(n, p, { sel: i === sel, def: i === def, w, tag }).split('\x1b[49m').join(`\x1b[48;2;${rgbOf(P)}m`)) : []
+  return nScreen(['', ...FB(['', sentence(v, folder, DIRS[sel][0]), ...(folder ? ['', ...inner] : []), ''])], folder ? null : [2, caret(v)], folder ? folderKeys() : nameKeys, SA)
+}
+for (const g of TAGS) fig('name-grid', { id: g.id, name: g.name, pick: g.pick, idea: g.idea, frames: [{ label: 'convert · test.png to JPEG', make: opensDown(g) }] })
+
+/* For reference: today's screen, as the app draws it. */
+fig('name-ref-grid', {
+  id: 'Today', name: 'Today, as the app draws it',
+  idea: 'The block the app has now: filled, three rows tall, the name after the caret, the path under it. Save to is a step of its own before this one.',
+  frames: [{ label: 'convert · test.png to JPEG', make: (t) => { const v = typed(t); return nScreen(['', ...FB(['', fieldRow(v), '']), '', '', ' '.repeat(M + 1) + xf(K.d, `→ ${DIR}/${v || 'test'}${EXT}`)], [2, caret(v)], stepKeys([['↵', 'save'], ['esc', 'clear / back']], [['ctrl-c', 'quit']])) } }],
+})
+
+/* ============================================================ ON DROP
+   What the drop zone does once a file lands on it. A terminal never says a
+   drag is hovering — the first and only thing the app sees is the paths,
+   pasted as text in one chunk — so every concept starts at that moment.
+   Each concept takes the paste out of the field and puts the file into the
+   zone; ↵ then goes on with it, and another drop before ↵ adds to it.
+   The anatomy stays fixed: band, tabs and panel, the field, the keys. */
+const FL = {
+  photo: { tag: 'PNG', name: 'photo.png', fact: '2756×774', size: '122 KB', more: 'transparent' },
+  report: { tag: 'PDF', name: 'report.pdf', fact: '12 pages', size: '1.4 MB' },
+  scan: { tag: 'PDF', name: 'scan.pdf', fact: '3 pages', size: '820 KB' },
+  notes: { tag: 'PDF', name: 'notes.pdf', fact: '1 page', size: '64 KB' },
+  inv1: { tag: 'PDF', name: 'invoice-0412.pdf', fact: '2 pages', size: '210 KB' },
+  inv2: { tag: 'PDF', name: 'invoice-0413.pdf', fact: '2 pages', size: '208 KB' },
+  contract: { tag: 'PDF', name: 'contract-signed-final-v3.pdf', fact: '11 pages', size: '1.9 MB' },
+  h1: { tag: 'HEIC', name: 'IMG_4101.HEIC', fact: '4032×3024', size: '2.1 MB' },
+  h2: { tag: 'HEIC', name: 'IMG_4102.HEIC', fact: '4032×3024', size: '1.9 MB' },
+  h3: { tag: 'HEIC', name: 'IMG_4103.HEIC', fact: '3024×4032', size: '2.4 MB' },
+}
+const BADF = { name: 'archive.zip', why: 'not a file Convert can read' }
+/** The four situations every concept is drawn in. */
+const SC = {
+  one: { files: [FL.photo], sum: '1 file · 122 KB', verb: 'convert' },
+  first: { files: [FL.report], sum: '1 file · 12 pages · 1.4 MB', verb: 'convert' },
+  three: { files: [FL.report, FL.scan, FL.notes], sum: '3 PDFs · 16 pages · 2.3 MB', verb: 'merge' },
+  many: { files: [FL.report, FL.scan, FL.notes, FL.inv1, FL.inv2, FL.contract], bad: [BADF], sum: '6 PDFs · 31 pages · 4.6 MB', verb: 'merge' },
+  no: { files: [FL.h1, FL.h2, FL.h3], sum: '3 images · 6.4 MB', refused: true },
+}
+const mid = (s, n) => ([...s].length <= n ? s : s.slice(0, Math.ceil((n - 1) / 2)) + '…' + s.slice(s.length - Math.floor((n - 1) / 2)))
+const REFUSE = 'Several images at once is not in the app yet'
+const REFUSE2 = 'forge *.heic --to jpeg does it  ·  esc to clear'
+const moreOf = (sc, shown) => sc.files.length - shown
+
+/** The screen around a panel: the field gives the paste back, and the keys say what ↵ does now. */
+const dropScreen = (s, panel, sc) => {
+  const fieldRow = IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.x, sc ? 'drop more, or type a path' : 'or type a path')
+  const keys = !sc ? homeKeys()
+    : sc.refused ? keysF1({ main: [['esc', 'clear']], foot: [['1–3', 'mode'], ['ctrl-c', 'quit']] })
+      : keysF1({ main: [['↵', sc.verb]], foot: [['esc', 'clear'], ['1–3', 'mode'], ['ctrl-c', 'quit']] })
+  const rows = fill24(['', ...band(s), '', ...tabs4(s), ...panel, '', fieldRow], keys)
+  return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5] }
+}
+const restPanel = (s) => surface({ lines: [dropTitle(s), dropSub(s)], dot: d2dot(s) })
+/** D2's dots, scaled: k < 1 recedes behind what sits on them, k > 1 lights up. */
+const dotsK = (s, k, extra) => (c, r) => {
+  const col = d2dot(s)(c, r)
+  if (!col) return null
+  const base = k >= 1 ? X.mix(col, gcol(c + r * 2, W + 14, s.mode.g), Math.min(1, k - 1)) : X.mix(P, col, k)
+  return extra ? extra(c, r, base) : base
+}
+/** One ring of light leaving the middle of the panel, `a` seconds after the drop. */
+const ripple = (a) => (c, r, base) => {
+  if (a > 0.9) return base
+  const d = Math.hypot(c - W / 2, (r - 3.5) * 2.4), R = a * 58
+  const g = Math.exp(-(((d - R) / 3.2) ** 2)) * (1 - a / 0.9)
+  return X.mix(base, '#ffffff', g * 0.85)
+}
+
+/* ------------------------------------------------ A · the words become the file */
+const A_ = {
+  id: 'A', name: 'The words become the file',
+  idea: 'The smallest change. The dots stay; a ring of light leaves the middle as the file lands, and the dots stay a little brighter while the zone holds something. "Drop a file here" becomes the file: its name, then what it is. Several files are named in a row and summed up under it.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    const tick = xf(s.mode.c, xB('✓'))
+    let lines
+    if (sc.refused) {
+      lines = [`${xf(K.amber, xB('●'))}  ${xf(K.fg, xB(sc.sum))}`, xf(K.d, REFUSE), xf(K.x, REFUSE2)]
+    } else if (sc.files.length === 1) {
+      const f = sc.files[0]
+      lines = [`${tick}  ${xf(K.fg, xB(f.name))}`, xf(K.d, [f.tag, f.fact, f.size, f.more].filter(Boolean).join(' · '))]
+    } else {
+      const shown = sc.files.slice(0, 3), rest = moreOf(sc, 3)
+      lines = [`${tick}  ${xf(K.fg, xB(sc.sum))}`,
+        xf(K.d, shown.map((f) => f.name).join(' · ')) + (rest > 0 ? xf(K.x, `  +${rest} more`) : '')]
+      if (sc.bad) lines.push(xf(K.amber, '●') + ' ' + xf(K.x, `${sc.bad[0].name} skipped — ${sc.bad[0].why}`))
+    }
+    const k = sc.refused ? 0.55 : 1 + Math.min(1, a / 0.5) * 0.35
+    return surface({ lines, dot: dotsK(s, k, sc.refused ? null : ripple(a)) })
+  },
+}
+
+/* ------------------------------------------------- B · a card on the surface */
+const cardOf = (s, { tag, rows, w, edge = K.x, tagc = s.mode.c, shadow = false }) => {
+  const Ed = (t) => xf(edge, t)
+  const out = [
+    Ed('╭─ ') + xf(tagc, xB(tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(tag)) + '╮'),
+    ...rows.map((r) => Ed('│ ') + xpad(r, w - 4) + Ed(' │')),
+    Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+  if (shadow) out.push(' ' + xf(EDGE, '╰' + '─'.repeat(w - 4) + '╯') + ' ')
+  return out
+}
+const fileLine = (f, w, fresh) => {
+  const nm = xpad(xf(fresh ? K.fg : K.d, fresh ? xB(mid(f.name, 22)) : mid(f.name, 22)), 24)
+  return X.right(nm + xf(K.x, f.fact), xf(K.x, f.size), w)
+}
+const B_ = {
+  id: 'B', name: 'A card on the surface',
+  idea: 'The file lands as the same card the questions after this show it on, laid on the dots, which step back so the card reads first. Several files make one card with a stack under it, "PDF ×3" in its edge, a row for each; the files that just arrived are bright for a moment. The card you see here is the card you see on the next screen.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    const w = 46, fresh = (i) => a < 1.4 && i >= sc.files.length - (sc.fresh ?? 1)
+    // the card's edge brightens out of the panel as it lands
+    const edge = sc.keep || a >= 0.35 ? K.x : X.mix(P, K.x, a / 0.35)
+    let card
+    if (sc.files.length === 1 && !sc.refused) {
+      const f = sc.files[0]
+      card = cardOf(s, { tag: f.tag, w, edge, rows: [xf(K.fg, xB(f.name)), xf(K.d, [f.fact, f.size, f.more].filter(Boolean).join(' · '))] })
+    } else {
+      const shown = sc.files.slice(0, 3), rest = moreOf(sc, 3)
+      const same = sc.files.every((f) => f.tag === sc.files[0].tag)
+      const rows = shown.map((f, i) => fileLine(f, w - 4, fresh(i)))
+      if (rest > 0 || sc.bad) rows.push(xf(K.x, rest > 0 ? `+${rest} more` : '') + (sc.bad ? '   ' + xf(K.amber, '●') + ' ' + xf(K.x, `${sc.bad[0].name} skipped`) : ''))
+      card = cardOf(s, { tag: `${same ? sc.files[0].tag : 'MIXED'} ×${sc.files.length}`, w, rows, shadow: rows.length <= 3, tagc: sc.refused ? K.d : s.mode.c, edge: sc.refused ? EDGE : edge })
+      if (sc.refused) card = [...card.slice(0, -1), xf(K.amber, '●') + ' ' + xf(K.d, REFUSE)]
+    }
+    card = card.map((l) => xpad(l, w))
+    return surface({ lines: card, pad: 3, dot: dotsK(s, sc.refused ? 0.35 : 0.55) })
+  },
+}
+
+/* --------------------------------------------------------- C · tiles */
+const tileOf = (s, f, w, { edge = K.x, tagc = s.mode.c, dim = false } = {}) => {
+  const Ed = (t) => xf(edge, t)
+  return [
+    Ed('╭─ ') + xf(tagc, xB(f.tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(f.tag)) + '╮'),
+    Ed('│ ') + xpad(xf(dim ? K.d : K.fg, dim ? mid(f.name, w - 4) : xB(mid(f.name, w - 4))), w - 4) + Ed(' │'),
+    Ed('│ ') + xpad(xf(K.x, f.fact), w - 4) + Ed(' │'),
+    Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const moreTile = (n, w) => [
+  xf(EDGE, '╭' + '─'.repeat(w - 2) + '╮'), xf(EDGE, '│') + xpad(X.center(xf(K.d, xB(`+${n}`)), w - 2), w - 2) + xf(EDGE, '│'),
+  xf(EDGE, '│') + xpad(X.center(xf(K.x, 'more'), w - 2), w - 2) + xf(EDGE, '│'), xf(EDGE, '╰' + '─'.repeat(w - 2) + '╯')]
+const C_ = {
+  id: 'C', name: 'Each file a tile',
+  idea: 'Every file is a small tile on the surface, laid down left to right as they land, so a drop of three looks like three things arriving. Up to four fit; past that the fourth is "+3 more". The newest tile has the mode\'s edge for a moment. One file is one wider tile with all its facts.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    let lines
+    if (sc.files.length === 1 && !sc.refused) {
+      const f = sc.files[0]
+      lines = tileOf(s, { ...f, fact: [f.fact, f.size, f.more].filter(Boolean).join(' · ') }, 40, { edge: a < 1.4 ? s.mode.c : K.x })
+    } else {
+      const max = sc.files.length > 4 ? 3 : 4, shown = sc.files.slice(0, max), n = sc.fresh ?? 1
+      const tiles = shown.map((f, i) => {
+        const at = i - (sc.files.length - n)          // place in the latest drop
+        if (at >= 0 && a < at * 0.09) return null      // not landed yet
+        const fresh = at >= 0 && a < 1.4
+        return tileOf(s, f, 17, { edge: sc.refused ? EDGE : fresh ? s.mode.c : K.x, tagc: sc.refused ? K.d : s.mode.c, dim: sc.refused })
+      })
+      if (sc.files.length > 4) tiles.push(moreTile(sc.files.length - 3, 17))
+      lines = [0, 1, 2, 3].map((r) => tiles.map((t) => (t ? t[r] : ' '.repeat(17))).join(' '))
+      const note = sc.refused ? xf(K.amber, '●') + ' ' + xf(K.d, REFUSE)
+        : sc.bad ? xf(K.amber, '●') + ' ' + xf(K.x, `${sc.bad[0].name} skipped — ${sc.bad[0].why}`) : xf(K.x, sc.sum)
+      lines.push('', xpad(X.center(note, vis(lines[0])), vis(lines[0])))
+    }
+    return surface({ lines, pad: 2, dot: dotsK(s, sc.refused ? 0.35 : 0.5) })
+  },
+}
+
+/* ----------------------------------------------- D · the panel becomes the list */
+const listRow = (s, f, fresh, dim) => {
+  const body = xpad(xf(dim ? K.d : s.mode.c, xB(f.tag)), 6) + xpad(xf(dim ? K.d : K.fg, mid(f.name, 30)), 32) + xpad(xf(K.d, f.fact), 14) + xf(K.d, f.size)
+  return '  ' + (fresh ? on(HL, xf(s.mode.c, '▌') + ' ' + body, W - 4) : '  ' + body)
+}
+const D_ = {
+  id: 'D', name: 'The panel becomes the list',
+  idea: 'The way "/ commands" already works on this panel: the dots clear and the panel lists what was dropped, one row each, under a dim line that sums them up. The rows that just arrived wear the picker\'s band and strip for a moment, then settle. It holds three rows and a "+3 more"; files that could not be read get their own line.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    if (a < 0.28 && !sc.keep) return surface({ lines: [''], dot: dotsK(s, 1 - a / 0.28) })
+    const n = sc.fresh ?? 1, fresh = (i) => !sc.refused && a < 1.4 && i >= sc.files.length - n
+    const shown = sc.files.slice(0, 3), rest = moreOf(sc, 3)
+    const rows = ['    ' + xf(K.x, sc.sum), ...shown.map((f, i) => listRow(s, f, fresh(i), sc.refused))]
+    if (rest > 0) rows.push('    ' + xf(K.x, `+${rest} more`))
+    if (sc.bad) rows.push('    ' + xf(K.amber, '●') + ' ' + xf(K.d, sc.bad[0].name) + xf(K.x, ` skipped — ${sc.bad[0].why}`))
+    if (sc.refused) rows.push('', '    ' + xf(K.amber, '●') + ' ' + xf(K.d, REFUSE) + xf(K.x, '  ·  esc to clear'))
+    // centred in the panel's height, as the words at rest are
+    return panelRows([...Array(Math.max(0, Math.floor((6 - rows.length) / 2))).fill(''), ...rows])
+  },
+}
+
+/* ---------------------------------------------------------- the live loop */
+const DLOOP = 10
+/** report.pdf dropped at 1.4 s; scan.pdf and notes.pdf, dragged together, at 4.6 s; esc at 8.6 s. */
+const dropAt = (t) => {
+  const e = t % DLOOP
+  if (e < 1.4 || e >= 8.6) return { sc: null, a: 9 }
+  if (e < 4.6) return { sc: SC.first, a: e - 1.4 }
+  return { sc: { ...SC.three, fresh: 2, keep: true }, a: e - 4.6 }
+}
+const live = (C) => (t) => { const { sc, a } = dropAt(t); return dropScreen(CV_, C.panel(CV_, sc, a), sc) }
+
+/* ------------------------------------------------- today, for reference */
+const TODAY_PATH = '/Users/atharva/Desktop/report.pdf'
+const today = (t) => {
+  const e = t % DLOOP
+  const typing = { ...CV_, typing: true }
+  if (e < 1.4 || e >= 8.6) return dropScreen(CV_, restPanel(CV_), null)
+  if (e < 6.4) {
+    const v = e < 4.6 ? TODAY_PATH : `${TODAY_PATH} ${TODAY_PATH.replace('report', 'scan')} ${TODAY_PATH.replace('report', 'notes')}`
+    const shown = vis(v) > W - 8 ? '…' + v.slice(v.length - (W - 9)) : v
+    const fieldRow = IN + xf(CV_.mode.c, xB('›')) + ' ' + xf(K.fg, shown)
+    const rows = fill24(['', ...band(CV_), '', ...tabs4(CV_), ...surface({ lines: [dropTitle(typing), dropSub(typing)], dot: d2dot(typing) }), '', fieldRow],
+      keysF1({ main: [['↵', 'send']], foot: [['esc', 'clear'], ['ctrl-c', 'quit']] }))
+    return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5 + vis(shown)] }
+  }
+  // ↵: home is gone; the staged card and a bare prompt
+  const w = 52, card = cardOf(CV_, { tag: 'PDF ×3', w, rows: SC.three.files.map((f) => fileLine(f, w - 4, false)) })
+  const p = ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.x, 'drop a file or type a path')
+  const rows = fill24([bar(CV_, 0, { answers: [], now: '3 files' }), '', ...card.map((l) => ' '.repeat(M) + l), '',
+    ' '.repeat(M + 1) + xf(K.d, '→ /pdf for page operations'), '', p], keysF1({ main: [['↵', 'send']], foot: [['esc', 'clear'], ['ctrl-c', 'quit']] }))
+  return { rows, cursor: [rows.indexOf(p) + 1, M + 4] }
+}
+
+fig('drop-r1-today', {
+  id: 'Today', name: 'What happens now',
+  idea: 'The path is pasted into the field and the zone only dims, as it does for any typing. Nothing is read until ↵. A second drag appends more paths to the line. After ↵ a single file leaves home for Format; several PDFs leave home for a staged card and a bare prompt.',
+  frames: [{ label: 'live · drop report.pdf, then scan.pdf + notes.pdf, then ↵', make: today }],
+})
+for (const C of [A_, B_, C_, D_]) {
+  const still = (sc, label) => ({ label, ...dropScreen(CV_, C.panel(CV_, sc), sc) })
+  fig('drop-r1-grid', {
+    id: C.id, name: C.name, idea: C.idea,
+    frames: [
+      { label: 'live · one drop, then a second drop of two', make: live(C) },
+      still(SC.one, 'one image'),
+      still(SC.many, 'seven dropped · six PDFs, one unreadable'),
+      still(SC.no, 'three images · refused for now'),
+    ],
+  })
+}
+
+/* ======================================================= ON DROP, ROUND 2
+   B and D again, calmer. Batch conversion is now part of the app, so several
+   images are something ↵ converts, not something to refuse. Rules from the
+   round-one feedback: one thing per state draws the eye; the panel holds
+   only the files; anything that went wrong sits under the field, outside it;
+   no repeated per-row format tags, and fewer columns. */
+const IMG = (name, fact, size, tag = 'HEIC') => ({ tag, name, fact, size, kind: 'image' })
+const F2 = {
+  photo: { ...IMG('photo.png', '2756×774', '122 KB', 'PNG'), more: 'transparent' },
+  h1: IMG('IMG_4101.HEIC', '4032×3024', '2.1 MB'),
+  h2: IMG('IMG_4102.HEIC', '4032×3024', '1.9 MB'),
+  h3: IMG('IMG_4103.HEIC', '3024×4032', '2.4 MB'),
+  h4: IMG('IMG_4104.HEIC', '4032×3024', '2.2 MB'),
+  h5: IMG('IMG_4105.HEIC', '4032×3024', '2.0 MB'),
+  shot: IMG('Screenshot 2026-10-09 at 14.02.11.png', '3024×1964', '840 KB', 'PNG'),
+  report: { tag: 'PDF', name: 'report.pdf', fact: '12 pages', size: '1.4 MB', kind: 'pdf' },
+}
+const S2 = {
+  one: { files: [F2.photo] },
+  three: { files: [F2.h1, F2.h2, F2.h3], total: '6.4 MB' },
+  liveThree: { files: [F2.photo, F2.h1, F2.h2], total: '4.1 MB', fresh: 2, keep: true },
+  many: { files: [F2.h1, F2.h2, F2.h3, F2.h4, F2.h5, F2.shot, F2.photo, F2.report], bad: [BADF], total: '13.2 MB' },
+}
+const noun = (sc) => {
+  const n = sc.files.length
+  if (sc.files.every((f) => f.kind === 'image')) return `${n} images`
+  if (sc.files.every((f) => f.kind === 'pdf')) return `${n} PDFs`
+  return `${n} files`
+}
+/** The decided home around a panel; a note, if any, goes under the field. */
+const dropScreen2 = (s, panel, sc) => {
+  const fieldRow = IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.x, sc ? 'drop more, or type a path' : 'or type a path')
+  const note = sc?.bad ? ['', IN + xf(K.amber, '●') + ' ' + xf(K.d, `${sc.bad[0].name} was left out`) + xf(K.x, ` · ${sc.bad[0].why}`)] : []
+  const keys = sc ? keysF1({ main: [['↵', 'convert']], foot: [['esc', 'clear'], ['1–3', 'mode'], ['ctrl-c', 'quit']] }) : homeKeys()
+  const rows = fill24(['', ...band(s), '', ...tabs4(s), ...panel, '', fieldRow, ...note], keys)
+  return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5] }
+}
+const isFresh = (sc, a, i) => a < 1.4 && i >= sc.files.length - (sc.fresh ?? 1)
+
+/* ------------------------------------------------------------ B · the card */
+const CW = 52                       // the file card's width on the screens after this
+const STACK = '#4b5263'
+const B2 = {
+  id: 'B·2', name: 'A card on the surface, calmer',
+  idea: 'The card is exactly the one on the next screen, same width, so ↵ does not make it jump. The dots step further back and run right up to its frame. For several files the count is the card\'s title, the only colour, and each row is just a name and a size; past three rows it says "+6 more". The edge under the card is the stack. A file that could not be read is a line under the field, not in the card.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    const edge = sc.keep || a >= 0.35 ? K.x : X.mix(P, K.x, a / 0.35)
+    let card
+    if (sc.files.length === 1) {
+      const f = sc.files[0]
+      card = cardOf(s, { tag: f.tag, w: CW, edge, rows: [xf(K.fg, xB(f.name)), xf(K.d, [f.fact, f.size, f.more].filter(Boolean).join(' · '))] })
+    } else {
+      const over = sc.files.length > 3, shown = sc.files.slice(0, over ? 2 : 3)
+      const rows = shown.map((f, i) => X.right(xf(K.fg, isFresh(sc, a, i) ? xB(mid(f.name, 34)) : mid(f.name, 34)), xf(K.x, f.size), CW - 4))
+      if (over) rows.push(xf(K.x, `+${sc.files.length - 2} more`))
+      card = cardOf(s, { tag: noun(sc), w: CW, edge, rows })
+      card.push('  ' + xf(STACK, '╰' + '─'.repeat(CW - 6) + '╯') + '  ')
+    }
+    return surface({ lines: card.map((l) => xpad(l, CW)), pad: 1, dot: dotsK(s, 0.42) })
+  },
+}
+
+/* ------------------------------------------------------------ D · the list */
+const D2L = {
+  id: 'D·2', name: 'The panel becomes the list, calmer',
+  idea: 'One headline, then the files. The count is the headline, in bold white, with the total size dim beside it; the rows under it are a name and a size, aligned with the text in the field below. No format tags: the names say it. One file makes its name the headline. The rows that just arrived wear the picker\'s band for a moment. Anything left out is a line under the field.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    if (a < 0.28 && !sc.keep) return surface({ lines: [''], dot: dotsK(s, 1 - a / 0.28) })
+    const L = '    '
+    let block
+    if (sc.files.length === 1) {
+      const f = sc.files[0]
+      block = [L + xf(K.fg, xB(f.name)), L + xf(K.d, [f.tag, f.fact, f.size, f.more].filter(Boolean).join(' · '))]
+    } else {
+      const over = sc.files.length > 3, shown = sc.files.slice(0, 3)
+      const row = (f, i) => {
+        const body = xpad(xf(K.d, mid(f.name, 36)), 40) + xf(K.x, f.size)
+        return isFresh(sc, a, i) ? '  ' + on(HL, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, mid(f.name, 36)), 40) + xf(K.d, f.size), 54) : L + body
+      }
+      block = [L + xf(K.fg, xB(noun(sc))) + xf(K.x, '   ' + sc.total), '', ...shown.map(row)]
+      if (over) block.push(L + xf(K.x, `+${sc.files.length - 3} more`))
+    }
+    return panelRows([...Array(Math.max(0, Math.floor((6 - block.length) / 2))).fill(''), ...block])
+  },
+}
+
+/* ---------------------------------------------------------- the live loop */
+/** photo.png dropped at 1.4 s; two HEICs dragged in together at 4.6 s; esc at 8.6 s. */
+const dropAt2 = (t) => {
+  const e = t % DLOOP
+  if (e < 1.4 || e >= 8.6) return { sc: null, a: 9 }
+  if (e < 4.6) return { sc: S2.one, a: e - 1.4 }
+  return { sc: S2.liveThree, a: e - 4.6 }
+}
+for (const C of [B2, D2L]) {
+  const still = (sc, label) => ({ label, ...dropScreen2(CV_, C.panel(CV_, sc), sc) })
+  fig('drop-grid', {
+    id: C.id, name: C.name, idea: C.idea,
+    frames: [
+      { label: 'live · photo.png, then two photos dragged in together, then esc', make: (t) => { const { sc, a } = dropAt2(t); return dropScreen2(CV_, C.panel(CV_, sc, a), sc) } },
+      still(S2.one, 'one image'),
+      still(S2.three, 'three photos · converted together'),
+      still(S2.many, 'nine dropped · eight files, one left out'),
+    ],
+  })
+}
+
+/* ======================================================= ON DROP, ROUND 3
+   One file lands as B·2's card; a second drop turns the panel into D·2's
+   list. A file that could not be read is drawn in the app's own `fail` red
+   with ✕ — the colour and glyph of its error card — two ways. */
+const FAIL = '#e8796d'
+const H3 = {
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    if (sc.files.length === 1) return B2.panel(s, sc, a)
+    // from the card to the list: the card clears, then the rows come in
+    if (sc.keep && a < 0.2) return panelRows([])
+    return D2L.panel(s, { ...sc, keep: true }, a)
+  },
+}
+const LEFT = (sc) => sc.bad.length === 1 ? '1 file left out' : `${sc.bad.length} files left out`
+const WARN = {
+  line: (sc) => ['', IN + xf(FAIL, xB('✕')) + ' ' + xf(FAIL, xB(LEFT(sc))) + xf(K.d, `   ${sc.bad[0].name} · unsupported file type`)],
+  card: (sc) => {
+    const w = 52, Ed = (t) => xf(FAIL, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+    return ['', ' '.repeat(M) + Ed('╭' + '─'.repeat(w - 2) + '╮'),
+      side(xf(FAIL, xB(`✕ ${LEFT(sc)}`))),
+      side(xf(K.fg, `${sc.bad[0].name} is ${sc.bad[0].why}`)),
+      ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯')]
+  },
+}
+const dropScreen3 = (s, sc, a, warn = 'line') => {
+  const fieldRow = IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.x, sc ? 'drop more, or type a path' : 'or type a path')
+  const note = sc?.bad ? WARN[warn](sc) : []
+  const keys = sc ? keysF1({ main: [['↵', 'convert']], foot: [['esc', 'clear'], ['1–3', 'mode'], ['ctrl-c', 'quit']] }) : homeKeys()
+  const rows = fill24(['', ...band(s), '', ...tabs4(s), ...H3.panel(s, sc, a), '', fieldRow, ...note], keys)
+  return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5] }
+}
+const still3 = (sc, label, warn) => ({ label, ...dropScreen3(CV_, sc, 9, warn) })
+fig('drop3-grid', {
+  id: 'B+D', name: 'One file is a card, several are a list', pick: true,
+  idea: 'The first file lands as the card it will be on the next screen. The moment a second drop arrives, the card clears and the panel becomes the list: the count as the headline, the files as names and sizes, the new rows banded for a moment. esc empties it back to the dots.',
+  frames: [
+    { label: 'live · photo.png, then two photos dragged in together, then esc', make: (t) => { const { sc, a } = dropAt2(t); return dropScreen3(CV_, sc, a) } },
+    still3(S2.one, 'one image · the card'),
+    still3(S2.three, 'three photos · the list'),
+  ],
+})
+fig('drop3w-grid', {
+  id: 'R1', name: 'Left out, one red line',
+  idea: 'Under the field, in the error colour: ✕ and the count in bold red, then which file and why, in grey. One row; it reads before the panel does, and leaves the panel alone.',
+  frames: [still3(S2.many, 'nine dropped · eight files, one left out', 'line')],
+})
+fig('drop3w-grid', {
+  id: 'R2', name: 'Left out, the error card',
+  idea: 'The app\'s own error card, small: a red frame the width of the file card, ✕ and the count in red, the reason in white. The same thing you see when a whole conversion fails, so it is unmistakable, and heavier.',
+  frames: [still3(S2.many, 'nine dropped · eight files, one left out', 'card')],
+})
+
+/* ================================================================= DONE
+   The screen after the file is written. Today: a green-framed receipt (both
+   names, before and after as two bars, "saved to"), then the keys. Rounds one
+   (E1–E6) and two (H1–H6) were too crowded and are in done-r2.js; round three
+   is done3.js. This file holds the shared data and today's screen. */
+const GOLD = '#e5c07b', LARGER = '#f2994a', TIP = '✧'
+const DJ = {
+  cv: {
+    s: CV_, label: 'convert · test.png to JPEG', answers: ['JPEG', '80', 'Desktop', 'test.jpg'],
+    card: { tag: 'PNG', name: 'test.png', meta: '2756×774 · 122 KB · transparent' },
+    from: 'test.png', to: 'test.jpg', tag: 'JPEG', dims: '2756×774', b: 122, a: 74.6, bs: '122 KB', as: '74.6 KB', phrase: '39% smaller', again: 'convert another',
+  },
+  cm: {
+    s: CM_, label: 'compress · with a suggestion', answers: ['By quality', '70', 'Desktop', 'photo.jpg'],
+    card: { tag: 'JPEG', name: 'photo.jpg', meta: '4032×3024 · 2.4 MB' },
+    from: 'photo.jpg', to: 'photo.jpg', tag: 'JPEG', dims: '4032×3024', b: 2.4, a: 0.81, bs: '2.4 MB', as: '812 KB', phrase: '67% smaller', again: 'compress again',
+    offer: { fmt: 'WebP', size: '590 KB', pct: 27 },
+  },
+  gif: {
+    s: CV_, label: 'convert · larger, with a warning', answers: ['PNG', 'Desktop', 'party.png'],
+    card: { tag: 'GIF', name: 'party.gif', meta: '480×270 · 1.1 MB · 12 frames' },
+    from: 'party.gif', to: 'party.png', tag: 'PNG', dims: '480×270', b: 1.1, a: 1.6, bs: '1.1 MB', as: '1.6 MB', phrase: '45% larger', grew: true, again: 'convert another',
+    warn: 'party.gif has 12 frames, and PNG cannot animate. Only the first frame was converted.',
+  },
+}
+const DIR_ = '~/Desktop'
+const L1 = ' '.repeat(M + 1)
+const wrapW = (text, w) => {
+  const out = []; let line = ''
+  for (const word of text.split(' ')) { if (line && (line + ' ' + word).length > w) { out.push(line); line = word } else line = line ? line + ' ' + word : word }
+  return line ? [...out, line] : out
+}
+const chg = (j, bold = false) => xf(j.grew ? LARGER : K.ok, bold ? xB(j.phrase) : j.phrase)
+const doneBar = (j) => bar(j.s, null, { answers: j.answers, now: 'Done' })
+const doneKeys = (j, main) => stepKeys(main ?? [['↵', j.again], ...(j.offer ? [['c', `${j.offer.fmt}`]] : []), ['o', 'open'], ['s', 'show in Finder']], [['ctrl-c', 'quit']])
+/** What a result says besides the sizes: the offer (accent, as today) and any warning (gold, ⚠). */
+const notes = (j, lead = L1, w = 72) => [
+  ...(j.offer ? [lead + xf(K.m, `${TIP} ${j.offer.fmt} would be ${j.offer.size}, ${j.offer.pct}% smaller again.`)] : []),
+  ...(j.warn ? wrapW(`⚠ ${j.warn}`, w).map((l) => lead + xf(GOLD, l)) : []),
+]
+const gap = (rows) => (rows.length ? ['', ...rows] : [])
+const doneScreen = (j, body, keys) => ({ rows: fill24([doneBar(j), '', ...body], (keys ?? doneKeys(j)) + HIDE), cursor: null })
+
+/* ---------------------------------------------------- today, for reference */
+const receipt = (j) => {
+  const w = 68, inner = w - 2, T = inner - 4, ed = (t) => xf(K.ok, t)
+  const row = (s) => ' '.repeat(M) + ed('│  ') + xpad(s, T) + ed('  │'), blank = ' '.repeat(M) + ed('│' + ' '.repeat(inner) + '│')
+  const big = Math.max(j.b, j.a), n = (v) => Math.max(1, Math.round((24 * v) / big))
+  const barr = (v, c) => xf(c, '█'.repeat(n(v))) + xf(K.faint, '░'.repeat(24 - n(v)))
+  const sw = Math.max(j.bs.length, j.as.length)
+  return [
+    ' '.repeat(M) + ed('╭─ ') + xf(K.ok, xB('✓ DONE')) + ed(' ' + '─'.repeat(inner - 9) + '╮'), blank,
+    row(xf(K.fg, xB(`${j.from}  ──→  ${j.to}`))), blank,
+    row(xf(K.d, 'before  ') + barr(j.b, K.d) + xf(K.d, '  ' + j.bs.padEnd(sw))),
+    row(xf(K.d, 'after   ') + barr(j.a, j.grew ? LARGER : K.ok) + xf(K.fg, xB('  ' + j.as.padEnd(sw))) + '  ' + chg(j, true)), blank,
+    row(xf(K.d, 'saved to ') + xf(K.fg, `${DIR_}/${j.to}`)),
+    ...(j.warn ? wrapW(`⚠ ${j.warn}`, T).map((l) => row(xf(GOLD, l))) : []),
+    ' '.repeat(M) + ed('╰' + '─'.repeat(inner) + '╯'),
+  ]
+}
+const todayDone = (j) => doneScreen(j, [...receipt(j), ...gap(notes(j, ' '.repeat(M)))],
+  stepKeys([['↵', j.again], ...(j.offer ? [['c', `convert to ${j.offer.fmt}`]] : []), ['o', 'open'], ['s', 'show in finder']], [['ctrl-c', 'close app']]))
+
+const JOB3 = ['cv', 'cm', 'gif']
+fig('done-ref-grid', { id: 'Today', name: 'Today, as the app draws it', idea: 'The receipt: a green frame, both names, before and after as two bars on one scale, the folder. The flow above it scrolls away; the keys sit under it.', frames: JOB3.map((k) => ({ label: DJ[k].label, rows: todayDone(DJ[k]).rows })) })
+
+/* ======================================================= DONE, ROUND FIVE
+   K3 was the one liked from round four (J4, K1, K2, K4, K5 are in
+   done3-r4.js; round three in done3-r3.js): before and after, each as wide as
+   its file is heavy. This file keeps K3 and the shared helpers; done4.js has
+   more ways to draw it. */
+const BODY = 19                       // rows between the bar and the keys
+/** Rows centred in `h`, `bias` rows above the middle. */
+const vmid = (rows, h = BODY, bias = 1) => { const top = Math.max(0, Math.floor((h - rows.length) / 2) - bias); return [...Array(top).fill(''), ...rows] }
+/** The notes, at the foot of the body. */
+const foot = (j, body, lead = L1, w = 72) => {
+  const n = notes(j, lead, w), room = BODY - n.length - 1
+  const b = body.slice(0, room)
+  while (b.length < room) b.push('')
+  return n.length ? [...b, ...n] : b
+}
+const newName = (j) => xf(K.fg, xB(j.to))
+const where = () => L1 + xf(K.x, 'in ') + xf(K.d, DIR_)
+const LIT = '#383d48', SHELL = '#4b515d'
+const PW = 33, GAP = 76 - 2 * PW     // two panels and the space between them
+/** Two columns of rows side by side, `mid(i)` between them (GAP wide). */
+const pair = (L, R, mid = () => ' '.repeat(GAP)) => L.map((l, i) => ' '.repeat(M) + l + mid(i) + R[i])
+const arrowAt = (k) => (i) => (i === k ? xf(K.d, xpad(xc('──→', GAP), GAP)) : ' '.repeat(GAP))
+const col = (bg, lines, w = PW) => lines.map((l) => on(bg, '  ' + l, w))
+/** The two panels' words. */
+const beforeLines = (j) => ['', xf(K.x, j.card.tag), '', xf(K.d, j.from), '', xf(K.d, j.bs), xf(K.x, j.dims), '']
+const afterLines = (j) => ['', xf(K.ok, xB('✓ ')) + xf(K.fg, xB(j.tag)), '', newName(j), '', xf(K.fg, xB(j.as)) + '  ' + chg(j, true), xf(K.x, j.dims), '']
+/** Bar cells for a size, both on one scale. */
+const cellsOf = (j, v, w) => Math.max(1, Math.round((w * v) / Math.max(j.b, j.a)))
+
+/* A picture of a file in half blocks, two pixels to a cell: what the app can
+   draw from the file itself (shrunk with Sharp), in any terminal. */
+const PICS = { 'test.png': { w: 29, h: 4 }, 'photo.jpg': { w: 20, h: 8 }, 'party.gif': { w: 26, h: 7 } }
+const pic = (j, after) => {
+  const { w, h } = PICS[j.from], soft = after && j.s === CM_
+  const px = j.from === 'party.gif'
+    ? (x, y) => X.mix('#5b3f8c', '#f2b04a', (Math.sin(x / 4) + Math.cos(y / 3) + 2) / 4)
+    : (x, y) => (soft ? degraded(72) : photo)((x / w) * PIX_W, (y / (h * 2)) * PIX_H)
+  return Array.from({ length: h }, (_, r) => { let o = ''; for (let x = 0; x < w; x++) o += xb(px(x, r * 2 + 1), xf(px(x, r * 2), '▀')); return o })
+}
+
+/** Orange hatching: the part a file grew by, the way grey hatching is the part it shed. */
+const GROW = X.mix(K.bg, LARGER, 0.8)
+/** What was done, in words, for the arrow that says so. */
+const didWhat = (j) => {
+  const q = j.answers.find((a) => /^\d+$/.test(a))
+  return j.s === CM_ ? xf(K.d, 'compressed') + (q ? xf(K.x, ' at ') + xf(K.d, q) : '')
+    : xf(K.d, 'converted to ') + xf(K.fg, j.tag) + (q ? xf(K.x, ' at ') + xf(K.d, q) : '')
+}
+/**
+ * K3, with its tweaks as options. `label`: how "before" and "after" are
+ * marked (plain, tab, chip, bold). `arrow`: how the conversion is drawn
+ * between them (none, gap, gutter, words).
+ */
+const k3 = (j, { label = 'plain', arrow = 'none' } = {}) => {
+  const g = arrow === 'gutter' ? 3 : 0, Wp = W - g, x0 = M + g
+  const wb = cellsOf(j, j.b, Wp), wa = cellsOf(j, j.a, Wp)
+  const at = (s) => ' '.repeat(x0) + s
+  const panel = (bg, w, txt, right) => [on(bg, '', w), on(bg, xr(' ' + txt, right + ' ', w), w), on(bg, '', w)]
+  const B_ = panel(P, wb, xf(K.x, j.card.tag) + '   ' + xf(K.d, j.from), xf(K.d, j.bs))
+  let A_
+  if (j.grew) {
+    // the new file fills the old one's length; what it grew by is orange hatching
+    A_ = panel(LIT, wb, xf(K.ok, xB('✓ ')) + newName(j), xf(K.fg, xB(j.as))).map((r) => r + hatchFn(x0 + wb, wa - wb, () => GROW))
+  } else {
+    const sz = ' ' + xf(K.fg, xB(j.as)) + ' ', szw = vis(sz)
+    A_ = panel(LIT, wa, xf(K.ok, xB('✓ ')) + newName(j), '').map((r, i) => r + (i === 1 ? sz + hatchFn(x0 + wa + szw, wb - wa - szw, () => K.faint) : hatchFn(x0 + wa, wb - wa, () => K.faint)))
+  }
+  const LAB = {
+    plain: (t, on_) => [' '.repeat(x0 + 1) + xf(K.x, t)],
+    tab: (t, on_) => [' '.repeat(x0) + on(on_ ? LIT : P, ' ' + (on_ ? xf(K.fg, xB(t)) : xf(K.d, t)) + ' ', t.length + 2)],
+    chip: (t, on_) => [' '.repeat(x0) + (on_ ? xb(K.fg, xf(K.ink, xB(` ${t} `))) : xb(CHIP, xf(K.d, ` ${t} `)))],
+    bold: (t, on_) => [' '.repeat(x0 + 1) + (on_ ? xf(K.fg, xB(t.toUpperCase())) : xf(K.d, xB(t.toUpperCase())))],
+  }[label]
+  const mode = j.s.mode.c
+  const between = {
+    none: [''],
+    gap: [' '.repeat(x0 + 2) + xf(mode, '│'), ' '.repeat(x0 + 2) + xf(mode, xB('▼'))],
+    gutter: [''],
+    words: ['', ' '.repeat(x0 + 1) + xf(mode, xB('↓')) + '  ' + didWhat(j), ''],
+  }[arrow]
+  let rows = [...LAB('before', false), ...B_.map(at), ...between, ...LAB('after', true), ...A_.map(at)]
+  if (arrow === 'gutter') {
+    // a line from the middle of before down to the middle of after, pointing in
+    const top = LAB('before').length + 1, bot = rows.length - 2
+    rows = rows.map((r, i) => {
+      const gl = i === top ? xf(K.d, '●') : i > top && i < bot ? xf(mode, '│') : i === bot ? xf(mode, xB('▶')) : ' '
+      return ' '.repeat(M) + gl + r.slice(M + 1)
+    })
+  }
+  return [...rows, at(xr('', chg(j, true), j.grew ? wa : wb)), '', where()]
+}
+const DONE4 = [
+  {
+    id: 'K3', name: 'Stacked, each as wide as its size · the one you liked',
+    idea: 'As you liked it, with one change: a file that grew now shows the extra as hatching too, in orange, the way the grey hatching is what a smaller file shed. The new file\'s panel stays as long as the old one; the orange is what was added.',
+    make: (j) => doneScreen(j, foot(j, vmid(k3(j)))),
+  },
+  {
+    id: 'K3·a', name: 'Tabs, and an arrow down', pick: true,
+    idea: 'The labels become tabs on the panels\' top edges, in the panel\'s own fill, so "before" and "after" belong to their panels: before quiet, after bold and lit. Between the panels, a short arrow in the mode\'s colour points from the old file to the new one.',
+    make: (j) => doneScreen(j, foot(j, vmid(k3(j, { label: 'tab', arrow: 'gap' })))),
+  },
+  {
+    id: 'K3·b', name: 'Pills, and a line down the side',
+    idea: 'The labels in the pills Save as uses: before on the grey chip, after on the white pill. Down the left side, a line in the mode\'s colour runs from the old file into the new one and ends in a point: one conversion, drawn.',
+    make: (j) => doneScreen(j, foot(j, vmid(k3(j, { label: 'chip', arrow: 'gutter' })))),
+  },
+  {
+    id: 'K3·c', name: 'Bold labels, and the arrow says what was done',
+    idea: 'BEFORE and AFTER in bold capitals, after the brighter. Between the panels, an arrow in the mode\'s colour with what happened written beside it: converted to JPEG at 80. The arrow is the step you took.',
+    make: (j) => doneScreen(j, foot(j, vmid(k3(j, { label: 'bold', arrow: 'words' })))),
+  },
+  {
+    id: 'K3·d', name: 'Tabs, and the arrow says what was done',
+    idea: 'K3·a\'s tabs with K3·c\'s arrow: the labels belong to the panels, and the line between them says what you did.',
+    make: (j) => doneScreen(j, foot(j, vmid(k3(j, { label: 'tab', arrow: 'words' })))),
+  },
+]
+for (const d of DONE4.filter((d) => d.id === 'K3·a')) fig('done3-grid', { id: d.id, name: d.name, pick: d.pick, idea: d.idea, frames: JOB3.map((k) => ({ label: DJ[k].label, rows: d.make(DJ[k]).rows })) })
+
+/* ===================================================== DONE, K3 STANDING UP
+   S5 was liked from round five (S1–S4 and S6 are in done4-r5.js): K3 turned
+   on its end, two columns on one baseline. Here as it was, with a file that
+   grew shown in orange hatching, and with K3's tweaks: labels that belong
+   to their columns, and an arrow for the conversion. */
+/**
+ * `tabs`: "before" and "after" as tabs on top of their columns. `arrow`: a
+ * line in the mode's colour from the old column to the new one, with what
+ * was done under it.
+ */
+const s5 = (j, { tabs = false, arrow = false } = {}) => {
+  const H = 9, cw = 16, gap = 12, top = Math.max(j.b, j.a)
+  const hb = Math.max(1, Math.round((H * j.b) / top)), ha = Math.max(1, Math.round((H * j.a) / top))
+  const c0 = M + 4, c1 = c0 + cw + gap
+  const tab = (t, lit) => xpad(on(lit ? LIT : P, ' ' + (lit ? xf(K.fg, xB(t)) : xf(K.d, t)) + ' ', t.length + 2), cw)
+  // each column: its fill up to `lit`, hatching up to `shape`, its tab on top of the shape
+  const lit = j.grew ? hb : ha, shape = Math.max(ha, hb), hatchCol = j.grew ? GROW : K.faint
+  const rows = []
+  for (let h = H + 1; h >= 1; h--) {   // h: the cell's height above the baseline
+    const lb = h <= hb ? xb(P, ' '.repeat(cw)) : tabs && h === hb + 1 ? tab('before', false) : ' '.repeat(cw)
+    const ra = h <= lit ? xb(LIT, ' '.repeat(cw)) : h <= shape ? hatchFn(c1, cw, () => hatchCol) : tabs && h === shape + 1 ? tab('after', true) : ' '.repeat(cw)
+    const mid = arrow && h === 3 ? xf(j.s.mode.c, xpad(xc('────▶', gap), gap)) : ' '.repeat(gap)
+    const side = h === 4 ? chg(j, true) : h === 3 ? xf(K.x, 'in ') + xf(K.d, DIR_) : ''
+    rows.push(' '.repeat(c0) + lb + mid + ra + '      ' + side)
+  }
+  const base = ' '.repeat(c0 - 1) + xf(K.faint, '─'.repeat(cw * 2 + gap + 2))
+  const under = (a, b) => ' '.repeat(c0) + xpad(a, cw + gap) + b
+  return [...rows, base,
+    under(xf(K.d, j.from), xf(K.ok, xB('✓ ')) + newName(j)),
+    under(xf(K.x, j.bs), xf(K.fg, xB(j.as))),
+    ...(arrow ? ['', ' '.repeat(c0) + didWhat(j)] : [])]
+}
+const KB3 = [
+  {
+    id: 'S5', name: 'Standing up: two columns',
+    idea: 'K3 turned on its end, as you liked it, with a file that grew drawn the K3 way: the new column as tall as the old one, and the height it added in orange hatching above it.',
+    make: (j) => doneScreen(j, foot(j, vmid(s5(j), BODY, 0))),
+  },
+  {
+    id: 'S5·a', name: 'Standing up, with tabs and an arrow',
+    idea: 'S5 with K3\'s tweaks: "before" and "after" as tabs on top of their columns, in the columns\' own fills, after bold and lit; an arrow in the mode\'s colour from the old column to the new one; and what was done, in words, under the names.',
+    make: (j) => doneScreen(j, foot(j, vmid(s5(j, { tabs: true, arrow: true }), BODY, 2))),
+  },
+]
+if (false) for (const d of KB3) fig('done4-grid', { id: d.id, name: d.name, idea: d.idea, frames: JOB3.map((k) => ({ label: DJ[k].label, rows: d.make(DJ[k]).rows })) })
+
+/* ============================================================== NEUTRAL
+   Every grey in the kit leans blue (#252c3a, #8b93a6, …). Here each screen is
+   drawn as it is, then with its cool greys swapped for pure greys of the same
+   lightness (OKLab L), the boxes only, then the text greys too. The frames are
+   the decided screens, unchanged; only the colours are remapped. */
+const hexGrey = (h) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const v = (NEUTRAL_EXACT[`${r};${g};${b}`] ?? greyOf(r, g, b)).toString(16).padStart(2, '0'); return '#' + v + v + v }
+const scr = (r) => (Array.isArray(r) ? { rows: r, cursor: null } : r)
+const NMODES = [['today', 'before · the blue-grey'], ['fill', 'neutral boxes only'], ['all', 'decided · neutral boxes and text greys']]
+const ELEMENTS = [
+  { id: 'Home', name: 'Home, the drop zone', make: () => { const r = home(CV_); return { rows: r, cursor: cursorAt(r, /or type a path/) } } },
+  { id: 'Drop', name: 'A file dropped, the card', make: () => dropScreen3(CV_, S2.one, 9) },
+  { id: 'Cmds', name: 'Commands, home\'s fourth tab', make: () => homeCommands(CV_, 'c', 'convert') },
+  { id: 'Format', name: 'The format picker, its band', make: () => FLOW.format() },
+  { id: 'Quality', name: 'Quality, G1', make: () => qScreen(QJOBS.convert, QUAL4[0].body(QJOBS.convert, 80, false, 0)) },
+  { id: 'Name', name: 'Save as, the name', make: (t) => opensDown(TAGS[0])(Math.min(t % NLOOP, 3.7)) },
+  { id: 'Folder', name: 'Save as, the folder list', make: () => opensDown(TAGS[0])(5.6) },
+  { id: 'Done', name: 'Done, today\'s receipt', make: () => todayDone(DJ.cv) },
+]
+for (const el of ELEMENTS) {
+  fig('neutral-grid', {
+    id: el.id, name: el.name,
+    frames: NMODES.map(([m, label]) => ({ label, raw: true, make: (t) => { PAL.neutral = false; try { const s = scr(el.make(t)); return { rows: NEU(s.rows, m), cursor: s.cursor } } finally { PAL.neutral = true } } })),
+  })
+}
+/* The swaps, as a table, for whoever builds it. */
+try {
+  const SW = [['panel: fields, the drop zone, commands, Done', K.panel], ['the picker\'s band', BAND], ['the folder chip in Save as', CHIP], ['the highlighted folder row', ROWBG],
+    ['the slider\'s fill', '#4b515d'], ['the slider\'s track', FAINT], ['card edges, faint text', K.faint], ['quiet text', K.x], ['dim text', K.d], ['white text, the pills', K.fg]]
+  const sw = (h) => `<span style="display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:8px;background:${h};border:1px solid #444"></span><code>${h}</code>`
+  document.getElementById('neutral-swatches').innerHTML = '<table class="sw"><tr><th>where</th><th>today</th><th>neutral</th></tr>'
+    + SW.map(([w, h]) => `<tr><td>${w}</td><td>${sw(h)}</td><td>${sw(hexGrey(h))}</td></tr>`).join('') + '</table>'
+} catch (e) { /* no DOM: the node checks */ }
+
+/* ------------------------------------------------------------------ tabs */
+{
+  const show = () => {
+    const id = (location.hash || '#drop').slice(1)
+    document.querySelectorAll('section.tab').forEach((s) => s.classList.toggle('on', s.id === id))
+    document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + id))
+  }
+  addEventListener('hashchange', show); show()
+  // ?solo=W3 shows one figure on its own, for close-up screenshots
+  const solo = new URLSearchParams(location.search).get('solo')
+  if (solo) document.querySelectorAll('section.tab.on figure').forEach((f) => { if (f.querySelector('.id')?.textContent !== solo) f.style.display = 'none' })
+}
+</script>
+</body>
+</html>

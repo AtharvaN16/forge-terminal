@@ -48,9 +48,7 @@ async function ontoAnExistingOutput() {
   await settle()
   app.stdin.write(ENTER) // quality
   await settle()
-  app.stdin.write(ENTER) // destination -> the name step
-  await settle()
-  app.stdin.write(ENTER) // accept the proposed name
+  app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
   await settle(400)
   return { ...app, dir, existing }
 }
@@ -69,9 +67,7 @@ describe('the shell never writes over the input', () => {
     await settle() // since converting to your own format isn't offered
     app.stdin.write(ENTER) // accept the default quality
     await settle()
-    app.stdin.write(ENTER) // destination -> the name step
-    await settle()
-    app.stdin.write(ENTER) // accept the proposed name
+    app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
     await settle(600)
     const after = await readFile(jpg)
     expect(after.equals(before)).toBe(true)
@@ -136,7 +132,7 @@ describe('an existing output is a question, not a silent overwrite', () => {
     expect((await readFile(existing)).equals(before)).toBe(false)
   })
 
-  it('cancels: writes nothing and comes back to the destination step', async () => {
+  it('cancels: writes nothing and comes back to Save as', async () => {
     const { stdin, lastFrame, dir, existing } = await ontoAnExistingOutput()
     const before = await readFile(existing)
     stdin.write(DOWN + DOWN)
@@ -145,6 +141,6 @@ describe('an existing output is a question, not a silent overwrite', () => {
     await settle(400)
     expect((await readFile(existing)).equals(before)).toBe(true)
     expect(existsSync(join(dir, 'photo (1).webp'))).toBe(false)
-    expect(lastFrame()).toContain('Save to')
+    expect(lastFrame()).toContain('Save as')
   })
 })

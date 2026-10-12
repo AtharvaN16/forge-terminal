@@ -50,7 +50,7 @@ describe('the header bar in the flow', () => {
     app.stdin.write(ENTER)
     await settle(400)
     expect(barLine(app.lastFrame() ?? '')).toMatch(
-      new RegExp(`convert ╱+ ${format} ╱ (Quality|Save to) ╱╱$`),
+      new RegExp(`convert ╱+ ${format} ╱ (Quality|Save as) ╱╱$`),
     )
   })
 })
@@ -86,19 +86,19 @@ describe('1–3 switch mode on a screen with no text field', () => {
 
   it('types the digit on a screen that takes text', async () => {
     const { app } = await atFormat()
-    // The first target, then any quality, lands on Save to.
+    // The first target, then any quality, lands on Save as.
     app.stdin.write(ENTER)
     await settle(400)
     if (barLine(app.lastFrame() ?? '').includes('Quality')) {
       app.stdin.write(ENTER)
       await settle(400)
     }
-    expect(barLine(app.lastFrame() ?? '')).toMatch(/Save to ╱╱$/)
+    expect(barLine(app.lastFrame() ?? '')).toMatch(/Save as ╱╱$/)
     app.stdin.write('2')
     await settle()
     const frame = app.lastFrame() ?? ''
     expect(barLine(frame)).toMatch(/^ {2}\S* ?convert/)
-    expect(barLine(frame)).toMatch(/Save to ╱╱$/)
+    expect(barLine(frame)).toMatch(/Save as ╱╱$/)
     expect(keyRow(frame)).not.toMatch(/1–3 +mode/)
   })
 })

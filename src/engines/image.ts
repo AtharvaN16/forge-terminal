@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, readFile, rename, rm, stat } from 'node:fs/promises'
+import { access, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import { prepareOutputDir } from '../core/atomic.js'
@@ -210,22 +210,22 @@ export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sha
 }
 
 /**
- * Writes via a sibling temp file and renames. A crash mid-encode can then never
+ * Writes via a sibling temp file and renames. A crash mid-write can then never
  * leave a truncated file where a good one used to be, and overwriting in place
  * is safe because the original is only replaced once the new file is complete.
  */
-async function writeAtomic(pipeline: Sharp, output: string): Promise<number> {
+async function writeAtomic(bytes: Buffer, output: string): Promise<number> {
   const dir = dirname(output)
   await prepareOutputDir(output)
 
   const temp = join(dir, `.forge-tmp-${randomBytes(6).toString('hex')}-${basename(output)}`)
   try {
-    const info = await pipeline.toFile(temp)
+    await writeFile(temp, bytes)
     await rename(temp, output)
-    return info.size
+    return bytes.length
   } catch (cause) {
     // `force` only swallows ENOENT. A cleanup failure (EACCES, EBUSY, ...)
-    // must never replace the real encode error that is about to be thrown.
+    // must never replace the real write error that is about to be thrown.
     await rm(temp, { force: true }).catch(() => {})
     throw classifyWriteError(output, cause)
   }
@@ -357,8 +357,14 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
   const { pipeline, cleanup } = await pipelineFor(source, job.target, job.options, keepFrames)
 
   try {
+    // A folder that cannot be written is found before a long encode, not after.
+    await prepareOutputDir(output)
+    // Encoded in memory, then written: Sharp encodes as it streams into a
+    // file, so writing straight from the pipeline would report "writing"
+    // for the whole of an encode that has not happened yet. The phases the
+    // shell shows (W5) are the true ones only if each is its own step.
     onPhase({ phase: 'encoding' })
-    const encoded = encode(pipeline, job.target, job.options.quality)
+    const encoded = await encode(pipeline, job.target, job.options.quality).toBuffer()
 
     onPhase({ phase: 'writing' })
     const outputBytes = await writeAtomic(encoded, output)

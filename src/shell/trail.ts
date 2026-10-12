@@ -14,8 +14,11 @@ export type Question =
   | 'destination'
   | 'name'
 
-/** Where each screen sits in the walk, and what the bar calls it. */
-const SCREENS: Record<string, { at: number; name: string | ((mode: ShellMode) => string) }> = {
+/**
+ * Where each screen sits in the walk, and what the bar calls it. A running
+ * job is named by its operation's verb (`Action.verb`), so these have none.
+ */
+const SCREENS: Record<string, { at: number; name?: string }> = {
   mode: { at: 0, name: 'Method' },
   target: { at: 1, name: 'Format' },
   pages: { at: 2, name: 'Pages' },
@@ -23,12 +26,12 @@ const SCREENS: Record<string, { at: number; name: string | ((mode: ShellMode) =>
   dpi: { at: 3, name: 'Resolution' },
   size: { at: 4, name: 'Size' },
   quality: { at: 5, name: 'Quality' },
-  destination: { at: 6, name: 'Save to' },
-  rename: { at: 7, name: 'Name' },
+  // The folder and the name, asked as one question (P1).
+  'save-as': { at: 6, name: 'Save as' },
   overwrite: { at: 8, name: 'Overwrite' },
   'pdf-blocked': { at: 8, name: 'Overwrite' },
-  converting: { at: 9, name: (mode) => (mode === 'compress' ? 'Compressing' : 'Converting') },
-  'pdf-running': { at: 9, name: 'Converting' },
+  converting: { at: 9 },
+  'pdf-running': { at: 9 },
   'size-unreachable': { at: 10, name: 'Size' },
   result: { at: 11, name: 'Done' },
 }
@@ -54,16 +57,18 @@ const ASKED_AT: Record<Question, number> = {
  * At the field with a file waiting there is no question, only the file.
  */
 export function trailFor({
-  mode,
   step,
   answers,
   waiting,
+  verb,
 }: {
   mode: ShellMode
   step: string
   answers: Partial<Record<Question, string>>
   /** At the field: what is waiting there, as its name or a count. */
   waiting?: string | undefined
+  /** While a job runs: what it is doing ("Converting"), from its action. */
+  verb?: string | undefined
 }): Trail {
   const screen = SCREENS[step]
   if (!screen) return { answers: waiting ? [waiting] : [], current: undefined }
@@ -71,10 +76,7 @@ export function trailFor({
     .filter((q) => ASKED_AT[q] < screen.at)
     .map((q) => answers[q])
     .filter((a): a is string => a !== undefined && a !== '')
-  return {
-    answers: given,
-    current: typeof screen.name === 'string' ? screen.name : screen.name(mode),
-  }
+  return { answers: given, current: screen.name ?? verb }
 }
 
 /**

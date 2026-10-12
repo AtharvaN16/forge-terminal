@@ -30,11 +30,11 @@ function widestLine(frame: string): number {
 
 /**
  * The idle stage is one bordered box and a hint line; every interesting
- * overflow lives further in. The destination step in particular renders a
- * preset's full absolute path as a hint, and a temp dir is long enough to
- * push past 80 columns on its own.
+ * overflow lives further in. Save as's folder list in particular shows the
+ * highlighted place's path, and a temp dir is long enough to push past 80
+ * columns on its own. `folders` opens the list (tab) before the frame is read.
  */
-async function frameAtDestination(width: number): Promise<string> {
+async function frameAtDestination(width: number, folders = true): Promise<string> {
   const dir = await makeTempDir()
   const jpg = await makeJpeg(dir, 'photo.jpg')
   const { stdin, lastFrame } = render(<App initialWidth={width} />)
@@ -46,6 +46,10 @@ async function frameAtDestination(width: number): Promise<string> {
   // same-format no-op), and it's lossless, so the quality step is skipped.
   stdin.write(ENTER)
   await settle(200)
+  if (folders) {
+    stdin.write('\t')
+    await settle(200)
+  }
   return lastFrame() ?? ''
 }
 
@@ -85,11 +89,13 @@ describe('responsiveness', () => {
     }
   })
 
-  it('never emits a line wider than the terminal at the destination stage', async () => {
+  it('never emits a line wider than the terminal at Save as', async () => {
     for (const w of [40, 55, 80, 120]) {
-      const frame = await frameAtDestination(w)
-      expect(frame).toContain('Save to')
-      expect(widestLine(frame)).toBeLessThanOrEqual(w)
+      for (const folders of [false, true]) {
+        const frame = await frameAtDestination(w, folders)
+        expect(frame).toContain('Save as')
+        expect(widestLine(frame)).toBeLessThanOrEqual(w)
+      }
     }
   })
 
@@ -99,8 +105,8 @@ describe('responsiveness', () => {
     expect(compact).toContain('Same folder')
     expect(compact).not.toContain('/forge-test-')
     // Only the highlighted place speaks, so the path shown is its own.
-    expect(normal).toMatch(/▌ Desktop\s+\/\S*Desktop/)
-    expect(compact).not.toMatch(/▌ Desktop\s+\/\S*Desktop/)
+    expect(normal).toMatch(/▌ Desktop\s+~\/Desktop/)
+    expect(compact).not.toMatch(/▌ Desktop\s+~\/Desktop/)
   })
 })
 
