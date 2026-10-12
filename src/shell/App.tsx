@@ -38,6 +38,8 @@ import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { DoneScreen } from './components/Done.js'
+import { EnhanceDone } from './components/EnhanceDone.js'
+import { EnhancePicker } from './components/EnhancePicker.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
@@ -51,6 +53,17 @@ import { StagedFiles } from './components/StagedFiles.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
+import {
+  actionForRow,
+  type EnhanceRow,
+  type EnhanceTools,
+  enhanceRow,
+  enhanceRows,
+  realTools,
+  rowValues,
+  type ToolState,
+  toolState,
+} from './enhance.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
 import { motionEnabled } from './motion.js'
@@ -70,7 +83,8 @@ import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
 import {
   colourProp,
-  MODE_ORDER,
+  MODE_KEYS,
+  modeForKey,
   modePalette,
   paletteFor,
   type ShellMode,
@@ -93,10 +107,10 @@ import { phaseLabel } from './working-art.js'
 export type Step =
   | 'theme'
   | 'idle'
-  /** `/extensions`, and the install offer for Boost / Remove background. */
+  /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
-  /** `/boost`: 2× or 4×, between the install check and the destination step. */
-  | 'ext-scale'
+  /** Enhance's picker: Sharpen, Boost resolution 2× / 4×, Remove background. */
+  | 'enhance'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -222,17 +236,14 @@ interface PendingPdfRefusal {
 }
 
 let blockSeq = 0
-const extActionFor = (id: 'boost' | 'remove-background'): Action =>
-  id === 'boost' ? boostAction : removeBackgroundAction
 
-/** /boost and /remove-background name their output with `output`, not `destination`. */
+/** Enhance's actions name their output with `output`, not `destination`. */
 const isExtensionAction = (act: Action): boolean =>
   act === boostAction || act === removeBackgroundAction
 
-const boostScaleChoices = (() => {
-  const spec = boostAction.options([], {}, {} as never).find((o) => o.id === 'scale')
-  return spec?.kind === 'select' ? spec.choices : []
-})()
+/** What enhance says to a file that is not an image. */
+const enhanceRefusal = (source: SourceInfo): string =>
+  `${SYMBOLS.warn} Enhance works on images; ${basename(source.path)} is ${FORMATS[source.format].label}.`
 
 const nextId = () => `b${++blockSeq}`
 
@@ -276,7 +287,7 @@ function describePdfResult(result: Result): string {
     case 'rotate':
       return `rotated ${job.turns * 90}° — ${first}`
     case 'boost':
-      return `boosted ${job.scale}× — ${first}`
+      return job.scale === 1 ? `sharpened — ${first}` : `boosted ${job.scale}× — ${first}`
     case 'remove-background':
       return `removed the background — ${first}`
     default: {
@@ -457,11 +468,14 @@ export function App({
   initialHeight,
   prefs = APP_DEFAULT_PREFS,
   configWarning,
+  tools = realTools,
 }: {
   initialWidth?: number
   initialHeight?: number
   prefs?: Preferences
   configWarning?: string
+  /** Where enhance reads and installs its tools from; tests pass a fake. */
+  tools?: EnhanceTools
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
@@ -571,13 +585,17 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  /** Set when /boost or /remove-background opened the extensions screen as an offer. */
-  const [extOffer, setExtOffer] = useState<string | undefined>()
-  /** Set while /boost or /remove-background runs on the staged image (scale step -> destination -> run). */
-  /** /boost or /remove-background typed before any file: the next dropped image goes to it. */
-  const [extArm, setExtArm] = useState<'boost' | 'remove-background' | undefined>()
-  const [extRun, setExtRun] = useState<'boost' | 'remove-background' | undefined>()
-  const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
+  const [mode, setMode] = useState<ShellMode>('convert')
+  /**
+   * Enhance's tools as this Mac has them — installed, not, or installing with
+   * the real bytes so far — read when its picker opens. `checking` once every
+   * byte is in and the archive is being verified.
+   */
+  const [toolStates, setToolStates] = useState<
+    Partial<Record<'boost' | 'remove-background', ToolState>> | undefined
+  >(undefined)
+  const [checking, setChecking] = useState(false)
+  const installAbort = useRef<AbortController | undefined>(undefined)
   /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
@@ -586,8 +604,6 @@ export function App({
    */
   const palette = modePalette(basePalette, mode)
   const action = mode === 'compress' ? compressAction : convertAction
-  /** What Save as names and runs for: the extension's action during /boost or /remove-background. */
-  const currentAction = extRun ? extActionFor(extRun) : action
   /** Where the target-size search has got to, for an honest counter. */
   /**
    * `dpi` names the rung a document search is on. Without it, a search
@@ -744,6 +760,11 @@ export function App({
     selected: commandChoice.text === text ? commandChoice.at : 0,
   }
   const [values, setValues] = useState<Record<string, unknown>>({})
+  /** Enhance's chosen row, once one is: what Save as names and the run does. */
+  const enhancing: EnhanceRow | undefined =
+    mode === 'enhance' && source?.kind === 'image' ? enhanceRow(source, values.tool) : undefined
+  /** What Save as names and runs for: the row's extension action in enhance. */
+  const currentAction = enhancing ? actionForRow(enhancing) : action
   const [lastResult, setLastResult] = useState<Result | null>(null)
   /**
    * Done's header bar while Done is on screen (K3·a). Done fills the screen
@@ -826,12 +847,14 @@ export function App({
    */
   useKeys(
     (input, key) => {
-      const next = MODE_ORDER[Number(input) - 1]
-      if (!/^[1-3]$/.test(input) || key.ctrl || key.meta || !next || next === mode) return
+      const next = modeForKey(input)
+      if (key.ctrl || key.meta || !next || next === mode) return
+      // Not while a tool installs: that row is busy until it finishes or stops.
+      if (installAbort.current) return
       const command = COMMANDS.find((c) => c.mode === next)
       if (command) runCommand(command)
     },
-    { isActive: ['mode', 'target', 'pages', 'dpi', 'quality'].includes(step) },
+    { isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance'].includes(step) },
   )
 
   /**
@@ -904,8 +927,8 @@ export function App({
         else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
         return true
       }
-      const next = MODE_ORDER[Number(input) - 1]
-      if (/^[1-3]$/.test(input) && !key.ctrl && !key.meta && next) {
+      const next = modeForKey(input)
+      if (!key.ctrl && !key.meta && next) {
         switchMode(next)
         return true
       }
@@ -1133,12 +1156,12 @@ export function App({
     (_input, key) => {
       if (!key.escape || !searchAbort.current) return
       searchAbort.current.abort()
-      if (extRun) {
-        // An extension job: the child is killed and nothing is written.
+      if (mode === 'enhance') {
+        // An extension job: the child is killed and nothing is written. Back
+        // to the picker, the file still there.
         searchAbort.current = undefined
-        setExtRun(undefined)
         setValues({})
-        setStep('idle')
+        setStep('enhance')
         return
       }
       /**
@@ -1198,6 +1221,8 @@ export function App({
    * closed over has been reset out from under it.
    */
   const startNewSession = () => {
+    installAbort.current?.abort()
+    installAbort.current = undefined
     setStage(clearStage())
     setValues({})
     setLastResult(null)
@@ -1415,35 +1440,26 @@ export function App({
       }
 
       if (command.name === 'extensions') {
-        setExtOffer(undefined)
         setStep('extensions')
         return
       }
 
-      if (command.name === 'boost' || command.name === 'remove-background') {
-        if (!source) {
-          // Nothing staged yet (a dropped image goes straight to the target
-          // picker, so this is the usual case): remember the choice for the
-          // next image, the way /compress and /pdf arm their mode.
-          setExtArm(command.name)
-          setStep('idle')
-          push({
-            kind: 'note',
-            id: nextId(),
-            text: `${SYMBOLS.tip} Drop an image to ${command.name === 'boost' ? 'boost' : 'remove its background'}.`,
-          })
+      /**
+       * Enhance acts on one image, as convert does. With nothing staged it
+       * arms the mode for the next drop, as `/compress` and `/pdf` do.
+       */
+      if (command.name === 'enhance') {
+        if (stagedBatch) {
+          refuseBatch()
           return
         }
-        if (source.kind !== 'image') {
-          push({
-            kind: 'note',
-            id: nextId(),
-            text: `${SYMBOLS.warn} /${command.name} needs an image.`,
-          })
+        if (source && source.kind !== 'image') {
+          push({ kind: 'note', id: nextId(), text: enhanceRefusal(source) })
           return
         }
-        setExtOffer(command.name)
-        setStep('extensions')
+        setMode('enhance')
+        setValues({})
+        setStep(source ? 'enhance' : 'idle')
         return
       }
 
@@ -1584,21 +1600,16 @@ export function App({
         setStep('pdf')
         return
       }
-      // /boost or /remove-background armed before this file landed.
-      if (extArm) {
-        const armed = extArm
-        setExtArm(undefined)
+      // Enhance takes images; anything else falls back to convert, as a
+      // file compress cannot take does.
+      if (mode === 'enhance') {
         if (info.kind !== 'image') {
-          push({
-            kind: 'note',
-            id: nextId(),
-            text: `${SYMBOLS.warn} /${armed} needs an image.`,
-          })
-          setStep('idle')
+          push({ kind: 'note', id: nextId(), text: enhanceRefusal(info) })
+          setMode('convert')
+          setStep(hasConvertTarget(info) ? 'target' : 'idle')
           return
         }
-        setExtOffer(armed)
-        setStep('extensions')
+        setStep('enhance')
         return
       }
       // A source with a real convert target — every image, and a PDF too —
@@ -1606,7 +1617,7 @@ export function App({
       // than opening a picker with nothing in it (see `hasConvertTarget`).
       setStep(hasConvertTarget(info) ? 'target' : 'idle')
     },
-    [mode, push, hasConvertTarget, pdfActionsApply, fenceOff, extArm],
+    [mode, push, hasConvertTarget, pdfActionsApply, fenceOff],
   )
 
   /**
@@ -2000,7 +2011,7 @@ export function App({
     setText('')
     setSavedAs(`${stem}${proposal.ext}`)
     const output = `${destination}/${stem}${proposal.ext}`
-    if (extRun) {
+    if (enhancing) {
       void runExtensionJob(destination, { output })
       return
     }
@@ -2010,13 +2021,8 @@ export function App({
   /** Back from Save as: to whichever step actually precedes it for this source. */
   const destinationBack = () => {
     setText('')
-    if (extRun) {
-      if (extRun === 'boost') setStep('ext-scale')
-      else {
-        setExtRun(undefined)
-        setValues({})
-        setStep('idle')
-      }
+    if (mode === 'enhance') {
+      setStep('enhance')
       return
     }
     if (specFor('quality')) {
@@ -2264,18 +2270,19 @@ export function App({
   }
 
   /**
-   * /boost and /remove-background: the same plan-and-run path as the CLI
-   * (`action.plan` then `runPlan`), with esc wired to the AbortSignal so the
-   * extension's child is killed and nothing is written.
+   * Enhance's run: the same plan-and-run path as the CLI (`action.plan` then
+   * `runPlan`), with esc wired to the AbortSignal so the extension's child is
+   * killed and nothing is written. Done is X5 (`EnhanceDone`).
    */
   const runExtensionJob = async (
     destination: string,
     opts: { force?: boolean; output?: string } = {},
   ) => {
-    if (!source || !extRun || converting.current) return
+    if (!source || !enhancing || converting.current) return
     converting.current = true
-    const act = extActionFor(extRun)
-    setWork({ startedAt: Date.now(), verb: act.verb })
+    const row = enhancing
+    const act = actionForRow(row)
+    setWork({ startedAt: Date.now(), verb: row.verb })
     setStep('converting')
     const controller = new AbortController()
     searchAbort.current = controller
@@ -2305,31 +2312,126 @@ export function App({
       }
       const result = outcome.results[0]
       if (result) {
-        push({
-          kind: 'note',
-          id: nextId(),
-          text: `${SYMBOLS.ok} ${describePdfResult(result)} · ${formatBytes(
-            result.job.sources[0].bytes,
-          )} ${SYMBOLS.arrow} ${formatBytes(result.outputBytes)}`,
-          savedTo: result.job.outputs[0],
+        const name = basename(result.job.outputs[0] ?? '')
+        const trail = doneTrail({
+          destination: dirname(result.job.outputs[0] ?? destination),
+          name,
         })
-        for (const warning of result.warnings) {
-          push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
-        }
-      } else if (outcome.failures[0]) {
-        push({ kind: 'error', id: nextId(), error: outcome.failures[0].error })
+        setLastResult(result)
+        setDoneBar({ mode, trail })
+        doneRecord.current = [
+          { kind: 'bar', id: nextId(), mode, trail },
+          {
+            kind: 'note',
+            id: nextId(),
+            text: `${SYMBOLS.ok} ${describePdfResult(result)}`,
+            savedTo: result.job.outputs[0],
+          },
+          ...result.warnings.map(
+            (warning): HistoryBlock => ({
+              kind: 'note',
+              id: nextId(),
+              text: `${SYMBOLS.warn} ${warning.message}`,
+            }),
+          ),
+        ]
+        setSuggestion(undefined)
+        setMergeOffer(undefined)
+        setStep('result')
+        return
       }
-      setExtRun(undefined)
+      if (outcome.failures[0])
+        push({ kind: 'error', id: nextId(), error: outcome.failures[0].error })
       clearSource()
     } catch (e) {
       showError(e)
-      setExtRun(undefined)
       clearSource()
     } finally {
       if (searchAbort.current === controller) searchAbort.current = undefined
       converting.current = false
       setWork(null)
     }
+  }
+
+  /**
+   * The tools' states, read each time the picker opens: offline and instant
+   * (the catalogue is compiled in, installed state is on disk).
+   */
+  useEffect(() => {
+    if (step !== 'enhance') return
+    let live = true
+    tools.list().then(
+      (all) => {
+        if (!live) return
+        setToolStates((prev) => {
+          const next: Partial<Record<'boost' | 'remove-background', ToolState>> = {}
+          for (const s of all) {
+            const was = prev?.[s.entry.id]
+            next[s.entry.id] = was?.kind === 'installing' ? was : toolState(s)
+          }
+          return next
+        })
+      },
+      (e) => {
+        if (live) showError(e)
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [step, tools, showError])
+
+  /** A row chosen whose tool is on this Mac: on to Save as, with the row's answers. */
+  const chooseEnhance = (row: EnhanceRow) => {
+    if (!source) return
+    const vals = rowValues(row)
+    setValues(vals)
+    openSaveAs({ values: vals, action: actionForRow(row) })
+  }
+
+  /**
+   * ↵ on a row whose tool is not here yet: installs it in place, the row
+   * showing the real bytes (`installExtension`'s `onProgress`), then goes on
+   * to Save as by itself. esc stops it and keeps nothing.
+   */
+  const installThen = async (row: EnhanceRow) => {
+    if (installAbort.current) return
+    const controller = new AbortController()
+    installAbort.current = controller
+    const id = row.extension
+    const set = (state: ToolState) => setToolStates((t) => ({ ...t, [id]: state }))
+    const absent = toolStates?.[id]
+    set({
+      kind: 'installing',
+      done: 0,
+      total: absent?.kind === 'absent' ? absent.downloadBytes : 0,
+    })
+    setChecking(false)
+    try {
+      await tools.install(id, {
+        signal: controller.signal,
+        onProgress: (done, total) => {
+          if (controller.signal.aborted) return
+          set({ kind: 'installing', done, total })
+          if (total > 0 && done >= total) setChecking(true)
+        },
+      })
+      if (controller.signal.aborted) return
+      set({ kind: 'ready' })
+      if (stepRef.current === 'enhance') chooseEnhance(row)
+    } catch (e) {
+      if (!controller.signal.aborted) showError(e)
+      const all = await tools.list().catch(() => [])
+      const status = all.find((s) => s.entry.id === id)
+      set(status ? toolState(status) : { kind: 'unsupported', reason: 'not available' })
+    } finally {
+      if (installAbort.current === controller) installAbort.current = undefined
+      setChecking(false)
+    }
+  }
+
+  const stopInstall = () => {
+    installAbort.current?.abort()
   }
 
   const convert = async (destination: string, opts: { force?: boolean; output?: string } = {}) => {
@@ -2433,7 +2535,7 @@ export function App({
     if (!pending) return
     const { destination, output, keepBoth } = pending
     setPending(null)
-    if (extRun) {
+    if (enhancing) {
       if (choice === 'replace') void runExtensionJob(destination, { output, force: true })
       else if (choice === 'keep') void runExtensionJob(destination, { output: keepBoth })
       else reopenSaveAs()
@@ -2638,8 +2740,10 @@ export function App({
     const bySize = mode === 'compress' && values.mode === 'size'
     return {
       mode: modeSpec ? answerFor(modeSpec, values.mode) : undefined,
-      target:
-        typeof values.target === 'string' && values.target in FORMATS
+      // Enhance's answer is the row's name ("Sharpen"), not the format it keeps.
+      target: enhancing
+        ? enhancing.label
+        : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
       pages: pagesSpec ? answerFor(pagesSpec, values.pages) : undefined,
@@ -2649,7 +2753,8 @@ export function App({
         !bySize && qualitySpec && typeof values.quality === 'number'
           ? String(values.quality)
           : undefined,
-      destination: folder ? basename(displayPath(folder)) : undefined,
+      // Enhance's trail is the row and the name (the mockup's), no folder.
+      destination: folder && mode !== 'enhance' ? basename(displayPath(folder)) : undefined,
       name: extra.name ?? savedAs,
     }
   }
@@ -2749,7 +2854,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  [MODE_KEYS, 'mode'],
                   ['esc', 'remove file'],
                 ]}
               />
@@ -2827,7 +2932,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  [MODE_KEYS, 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2852,7 +2957,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  [MODE_KEYS, 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2901,7 +3006,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  [MODE_KEYS, 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2934,38 +3039,22 @@ export function App({
             </Box>
           ) : null}
 
-          {step === 'ext-scale' && source ? (
-            <Box flexDirection="column" marginBottom={1}>
-              <Box marginBottom={1}>
-                <Text color={colourProp(palette.label)}>Scale</Text>
-              </Box>
-              <Select
-                width={pickerWidth}
-                items={boostScaleChoices}
-                initialValue="2"
-                onSubmit={(chosen) => {
-                  setValues((v) => ({ ...v, scale: chosen }))
-                  openSaveAs({
-                    values: { ...values, scale: chosen },
-                    action: extActionFor('boost'),
-                  })
-                }}
-                onCancel={() => {
-                  setExtRun(undefined)
-                  setValues({})
-                  setStep('idle')
-                }}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  ['esc', 'back'],
-                ]}
-              />
-            </Box>
+          {step === 'enhance' && source?.kind === 'image' && toolStates ? (
+            <EnhancePicker
+              format={FORMATS[source.format].label}
+              rows={enhanceRows(source)}
+              tools={toolStates}
+              checking={checking}
+              width={width}
+              pickerWidth={pickerWidth}
+              onChoose={(row) => {
+                const state = toolStates[row.extension]
+                if (state?.kind === 'ready') chooseEnhance(row)
+                else if (state?.kind === 'absent') void installThen(row)
+              }}
+              onStop={stopInstall}
+              onCancel={clearSource}
+            />
           ) : null}
 
           {step === 'save-as' && saving && destinationSpec?.kind === 'path' ? (
@@ -3073,6 +3162,7 @@ export function App({
                 startedAt={work.startedAt}
                 search={attempt}
                 pages={attempt ? undefined : (pageProgress ?? undefined)}
+                stoppable={mode === 'enhance'}
                 width={width}
               />
             </Box>
@@ -3089,7 +3179,34 @@ export function App({
               PDFs re-probed first), toward `/pdf`, which already merges.
               No clickable "Open file · Show in Finder" labels: `o` and `s`
               on the key row do the same, and the design has no row for them. */}
-          {step === 'result' && lastResult && doneBar ? (
+          {/* Enhance's Done (X5): the header bar, the quiet line and the
+              picture before and after (`EnhanceDone`), then the keys. */}
+          {step === 'result' && lastResult && doneBar && doneBar.mode === 'enhance' ? (
+            <Box flexDirection="column">
+              <Box marginBottom={1}>
+                <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
+              </Box>
+              <EnhanceDone
+                op={lastResult.job.op === 'remove-background' ? 'remove-background' : 'boost'}
+                {...(lastResult.job.op === 'boost' ? { scale: lastResult.job.scale } : {})}
+                before={lastResult.job.sources[0].path}
+                after={lastResult.job.outputs[0] ?? ''}
+                savedTo={dirname(lastResult.job.outputs[0] ?? '')}
+                width={width}
+              />
+              <HintBar
+                width={width}
+                pairs={[
+                  ['↵', 'enhance another'],
+                  ['o', 'open'],
+                  ['s', revealLabel()],
+                ]}
+                foot={[['ctrl-c', 'quit']]}
+              />
+            </Box>
+          ) : null}
+
+          {step === 'result' && lastResult && doneBar && doneBar.mode !== 'enhance' ? (
             <DoneScreen
               mode={doneBar.mode}
               trail={doneBar.trail}
@@ -3119,27 +3236,8 @@ export function App({
           {step === 'extensions' ? (
             <ExtensionsFlow
               width={width}
-              {...(extOffer ? { only: extOffer } : {})}
-              onInstalled={(id) => {
-                if (extOffer === undefined) return
-                setExtOffer(undefined)
-                if (id !== 'boost' && id !== 'remove-background') {
-                  setStep('idle')
-                  return
-                }
-                // PNG is the only target offered: it carries the alpha a cutout
-                // needs, and a boost keeps what the source had.
-                setMode('convert')
-                setValues({ target: 'png' })
-                setExtRun(id)
-                if (id === 'boost') setStep('ext-scale')
-                else openSaveAs({ values: { target: 'png' }, action: extActionFor(id) })
-              }}
               onError={(error) => push({ kind: 'error', id: nextId(), error })}
-              onClose={() => {
-                setExtOffer(undefined)
-                setStep('idle')
-              }}
+              onClose={() => setStep('idle')}
             />
           ) : null}
 

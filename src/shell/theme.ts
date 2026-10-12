@@ -101,6 +101,9 @@ export interface Palette {
   /** Mode header colour for PDF page operations. */
   modePdf: string
   modePdfBg: string
+  /** Mode header colour for enhance (Sharpen, Boost resolution, Remove background). */
+  modeEnhance: string
+  modeEnhanceBg: string
   /** Resting frame colour. */
   border: string
   /** Fill behind the selected row. Empty means "draw no band". */
@@ -210,6 +213,8 @@ export const DARK: Palette = {
   modeCompressBg: '#182c1e',
   modePdf: '#ff6b4a',
   modePdfBg: '#361c16',
+  modeEnhance: '#b39ae8',
+  modeEnhanceBg: '#2a2238',
   // 4.2:1 on #1e1e1e: dim labels, hints and frames. Above the 3:1 a boundary
   // needs, and still a clear step below `dim`.
   border: '#808080',
@@ -270,6 +275,8 @@ export const LIGHT: Palette = {
   modeCompressBg: '#eaf5ec',
   modePdf: '#c83b1d',
   modePdfBg: '#fceee9',
+  modeEnhance: '#6a4cc4',
+  modeEnhanceBg: '#f0ebfa',
   // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
   border: '#9a9184',
   selectionBg: '#eae4d8',
@@ -330,6 +337,8 @@ export const NEUTRAL: Palette = {
   modeCompressBg: '',
   modePdf: 'red',
   modePdfBg: '',
+  modeEnhance: 'magenta',
+  modeEnhanceBg: '',
   border: 'gray',
   selectionBg: '',
   band: '',
@@ -355,30 +364,49 @@ export const NEUTRAL: Palette = {
   defaultTag: '',
 }
 
-export type ShellMode = 'convert' | 'compress' | 'pdf'
+export type ShellMode = 'convert' | 'compress' | 'pdf' | 'enhance'
 
-/** The modes in the order they are numbered on the home screen: 1, 2, 3. */
-export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf']
+/** The modes in the order they are numbered on the home screen: 1, 2, 3, … */
+export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'enhance']
+
+/** The digits that pick a mode, as the key rows say them: "1–4". */
+export const MODE_KEYS = `1–${MODE_ORDER.length}`
+
+/** The mode digit `input` names, or undefined: `1` is convert, and so on. */
+export function modeForKey(input: string): ShellMode | undefined {
+  return /^[1-9]$/.test(input) ? MODE_ORDER[Number(input) - 1] : undefined
+}
 
 /** Paired with the mode's name wherever it is drawn, so it survives NO_COLOR. */
-export const MODE_MARKERS: Record<ShellMode, string> = { convert: '↔', compress: '↓', pdf: '▣' }
+export const MODE_MARKERS: Record<ShellMode, string> = {
+  convert: '↔',
+  compress: '↓',
+  pdf: '▣',
+  enhance: '✦',
+}
+
+/** Enhance's hatching runs violet to a deeper violet (mockups/extensions-2026-10.html). */
+const ENHANCE_END = '#7d6ad0'
 
 /** A mode's own colour and the fill drawn behind it. */
 export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: string } {
   if (mode === 'compress') return { fg: p.modeCompress, bg: p.modeCompressBg }
   if (mode === 'pdf') return { fg: p.modePdf, bg: p.modePdfBg }
+  if (mode === 'enhance') return { fg: p.modeEnhance, bg: p.modeEnhanceBg }
   return { fg: p.modeConvert, bg: p.modeConvertBg }
 }
 
 /**
  * The two colours a mode's gradient runs between, on the home screen's band
- * and dots: convert cyan to violet, compress green to cyan, pdf red to amber.
+ * and dots: convert cyan to violet, compress green to cyan, pdf red to amber,
+ * enhance violet to a deeper violet.
  * Read from fields `modePalette` never moves, so the result is the same
  * whether `p` is the base palette or a mode's.
  */
 export function modeGradient(p: Palette, mode: ShellMode): [string, string] {
   if (mode === 'compress') return [p.modeCompress, p.modeConvert]
   if (mode === 'pdf') return [p.modePdf, p.brand]
+  if (mode === 'enhance') return [p.modeEnhance, p.name === 'dark' ? ENHANCE_END : p.violet]
   return [p.modeConvert, p.violet]
 }
 

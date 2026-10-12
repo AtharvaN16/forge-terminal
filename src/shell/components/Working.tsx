@@ -29,6 +29,7 @@ export function Working({
   startedAt,
   search,
   pages,
+  stoppable = false,
   width,
 }: {
   mode: ShellMode
@@ -40,6 +41,8 @@ export function Working({
   search?: { n: number; of: number } | undefined
   /** Pages done of a known total, for an operation that reports them. */
   pages?: { done: number; total: number } | undefined
+  /** esc stops this job (an extension's child is killed; nothing is written). */
+  stoppable?: boolean | undefined
   width: number
 }) {
   const palette = useTheme()
@@ -74,7 +77,7 @@ export function Working({
       ) : (
         <HintBar
           width={width}
-          pairs={[]}
+          pairs={stoppable ? [['esc', 'stop']] : []}
           foot={[
             ['nothing is saved until it is done', ''],
             ['ctrl-c', 'quit'],

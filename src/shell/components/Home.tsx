@@ -17,7 +17,7 @@ import {
 } from '../home-art.js'
 import type { StagedView, UnderField } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, type ShellMode } from '../theme.js'
+import { colourProp, MODE_KEYS, type ShellMode } from '../theme.js'
 import { middleEllipsis } from '../width.js'
 
 /**
@@ -124,7 +124,7 @@ export function homeKeys({
       return {
         main: [['esc', 'clear']],
         foot: [
-          ['1–3', 'mode'],
+          [MODE_KEYS, 'mode'],
           ['ctrl-c', 'quit'],
         ],
       }
@@ -133,7 +133,7 @@ export function homeKeys({
       main: [['↵', staged.verb]],
       foot: [
         ['esc', 'clear'],
-        ['1–3', 'mode'],
+        [MODE_KEYS, 'mode'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -142,7 +142,7 @@ export function homeKeys({
   return {
     main: [['↵', 'send']],
     foot: [
-      ['1–3', 'mode'],
+      [MODE_KEYS, 'mode'],
       ['esc', 'clear'],
       ['ctrl-n', 'new'],
       ['ctrl-c', 'quit'],

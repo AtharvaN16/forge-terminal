@@ -48,7 +48,8 @@ describe('modePalette', () => {
   it('pairs each mode with its fill and marker', () => {
     expect(modeColours(DARK, 'convert')).toEqual({ fg: DARK.modeConvert, bg: DARK.modeConvertBg })
     expect(modeColours(DARK, 'pdf')).toEqual({ fg: DARK.modePdf, bg: DARK.modePdfBg })
-    expect(MODE_MARKERS).toEqual({ convert: '↔', compress: '↓', pdf: '▣' })
+    expect(modeColours(DARK, 'enhance')).toEqual({ fg: DARK.modeEnhance, bg: DARK.modeEnhanceBg })
+    expect(MODE_MARKERS).toEqual({ convert: '↔', compress: '↓', pdf: '▣', enhance: '✦' })
   })
 
   it('defines brand and keycapBg on every real palette', () => {

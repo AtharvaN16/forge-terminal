@@ -77,7 +77,13 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
   const [rest, slash, filtered, after] = STEPS as [Step, Step, Step, Step]
 
   it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest))
-  it('2 · typed /: the tab lights and the panel holds the list', () => expectStep(slash))
+  // The mockup's list has three modes; enhance is a fourth, and /extensions a
+  // second setting (mockups/extensions-2026-10.html), so the rows from
+  // enhance's onward differ from it by design. They are held below by what
+  // they say, in order.
+  const fromRow = (r: number) => Array.from({ length: 21 - r }, (_, i) => r + i)
+  it('2 · typed /: the tab lights and the panel holds the list', () =>
+    expectStep(slash, fromRow(12)))
   it('3 · typed /co, then ↓: the list narrows and the strip moves', () => expectStep(filtered))
   // Row 11 is compress's kinds line, which leaves out the mockup's "video":
   // compress has no video engine (see home-screen.test.tsx).
@@ -98,6 +104,14 @@ describe('the list in the panel', () => {
     expect(rows.join('\n')).not.toContain('/help')
     for (const name of ['/convert', '/compress', '/pdf', '/theme'])
       expect(lines.some((l) => l.includes(name))).toBe(true)
+  })
+
+  it('lists enhance after pdf among the modes, and extensions after theme', () => {
+    const all = text(screen({ mode: 'convert', text: '/' }).lastFrame()).join('\n')
+    expect(all.indexOf('/enhance')).toBeGreaterThan(all.indexOf('/pdf'))
+    expect(all.indexOf('/enhance')).toBeLessThan(all.indexOf('/theme'))
+    expect(all.indexOf('/extensions')).toBeGreaterThan(all.indexOf('/theme'))
+    expect(all).not.toContain('/boost')
   })
 
   it('says so in the panel when nothing matches', () => {

@@ -21,6 +21,8 @@ export type Question =
 const SCREENS: Record<string, { at: number; name?: string }> = {
   mode: { at: 0, name: 'Method' },
   target: { at: 1, name: 'Format' },
+  // Enhance's one question: what to do to the image. Its answer is the row's name.
+  enhance: { at: 1, name: 'Enhance' },
   pages: { at: 2, name: 'Pages' },
   'page-picker': { at: 2, name: 'Pages' },
   dpi: { at: 3, name: 'Resolution' },

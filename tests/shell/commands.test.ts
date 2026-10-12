@@ -33,11 +33,13 @@ describe('listCommands', () => {
   const names = (fragment: string) => listCommands(fragment).items.map((c) => c.name)
 
   it('lists the modes, then the settings, for a bare slash, with no /help row', () => {
-    expect(names('')).toEqual(['convert', 'compress', 'pdf', 'theme'])
+    expect(names('')).toEqual(['convert', 'compress', 'pdf', 'enhance', 'theme', 'extensions'])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
       'modes',
       'modes',
       'modes',
+      'modes',
+      'settings',
       'settings',
     ])
   })
@@ -50,7 +52,7 @@ describe('listCommands', () => {
 
   it('opens the whole list for /help, and for the start of it', () => {
     for (const typed of ['help', 'he', 'h']) {
-      expect(names(typed)).toEqual(['convert', 'compress', 'pdf', 'theme'])
+      expect(names(typed)).toEqual(['convert', 'compress', 'pdf', 'enhance', 'theme', 'extensions'])
       expect(listCommands(typed).query).toBe('')
     }
   })
@@ -64,6 +66,8 @@ describe('listCommands', () => {
       'convert',
       'compress',
       'pdf',
+      'enhance',
+      undefined,
       undefined,
     ])
   })
@@ -94,13 +98,12 @@ describe('parseCommand', () => {
 describe('the registry', () => {
   it('carries every command the shell can run', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
-      'boost',
       'compress',
       'convert',
+      'enhance',
       'extensions',
       'help',
       'pdf',
-      'remove-background',
       'theme',
     ])
   })

@@ -41,6 +41,12 @@ interface SelectProps {
    * `every` one.
    */
   hints?: 'highlighted' | 'every'
+  /**
+   * Where `speak` puts what it says: at the far end of the band (`end`, the
+   * format list's measured size), or where a hint goes, after the names
+   * (`hint`, enhance's details).
+   */
+  speakAt?: 'end' | 'hint'
 }
 
 /** How long the band takes to move between rows. */
@@ -104,6 +110,7 @@ export function Select({
   initialValue,
   speak,
   hints = 'highlighted',
+  speakAt = 'end',
 }: SelectProps) {
   const palette = useTheme()
   const [index, setIndex] = useState(() => initialIndex(items, initialValue))
@@ -250,7 +257,12 @@ export function Select({
               >
                 {label}
               </Text>
-              {spoken !== null && spoken !== undefined && spoken !== false ? (
+              {spoken !== null && spoken !== undefined && spoken !== false && speakAt === 'hint' ? (
+                <>
+                  <Text>{'  '}</Text>
+                  {spoken}
+                </>
+              ) : spoken !== null && spoken !== undefined && spoken !== false ? (
                 // At the far end of the band, the way a badge is: the label
                 // stays a quiet column and the measurement lines up under
                 // the edge. The two columns of padding match `room`'s margin.
