@@ -1,17 +1,23 @@
 name: publish
 
-# Publishes forge-terminal to npm when a v<version> tag is pushed, with
+# Stages forge-terminal on npm when a v<version> tag is pushed, with
 # provenance: npm shows that the package was built here, from this commit.
 #
+# Staged, not published: the version sits on npm, invisible to users, until
+# a maintainer approves it with 2FA. A compromised GitHub account or workflow
+# can stage a release but can never ship one.
+#
 # It authenticates with npm's trusted publishing (OIDC), so no npm token is
-# stored anywhere. That needs one-time setup on npmjs.com: the package's
-# Settings → Trusted publishing → GitHub Actions, repository
-# AtharvaN16/forge-terminal, workflow publish.yml. Until then the publish
-# step fails and nothing is published.
+# stored anywhere. The trusted publisher on npmjs.com is GitHub Actions,
+# AtharvaN16/forge-terminal, publish.yml, with "Allow npm publish" off: this
+# workflow can only stage.
 #
 # Release: merge to main, bump the version, then
 #   git tag v<version> && git push origin v<version>
-# and do not also run `npm publish` locally.
+# and once the run is green, approve it from your own machine:
+#   npm stage list forge-terminal
+#   npm stage approve <stage-id>        (asks for your 2FA code)
+# Do not also run `npm publish` locally.
 
 on:
   push:
@@ -59,5 +65,9 @@ jobs:
       - run: npm run lint
       - run: npx vitest run --retry=2
 
+      # npm 11.19.0 is the version `npm stage` was checked on. Node 24's
+      # bundled npm may be older than the command.
+      - run: npm install -g npm@11.19.0
+
       # --ignore-scripts: prepublishOnly would run the checks above again.
-      - run: npm publish --provenance --access public --ignore-scripts
+      - run: npm stage publish --provenance --access public --ignore-scripts
