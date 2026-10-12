@@ -5,11 +5,13 @@ import type { Result, SourceInfo } from '../core/types.js'
 import { displayPath } from '../utils/display-path.js'
 import type { Trail } from './bar-art.js'
 import { DoneRecord } from './components/Done.js'
+import { ErrorPanel } from './components/ErrorPanel.js'
 import { FileCard } from './components/FileCard.js'
 import { HeaderBar } from './components/HeaderBar.js'
+import { HOME_MARGIN } from './home-art.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { useTheme } from './ThemeContext.js'
-import { colourProp, type ShellMode, SYMBOLS } from './theme.js'
+import { colourProp, type ShellMode } from './theme.js'
 import { middleEllipsis } from './width.js'
 
 /**
@@ -110,44 +112,10 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
   }
 
   if (block.kind === 'error') {
-    const e = block.error
-    /**
-     * Framed, not three loose lines.
-     *
-     * This used to render flush against the scrollback above it in the same
-     * plain text as everything else, and a user reported reading straight
-     * past a refusal — then typing the command it had just declined. The
-     * frame makes the title, the reason and the way forward one object with
-     * an edge, which is the difference between output you skim and output
-     * you stop at.
-     *
-     * Capped at the same 52 columns as `FileCard` so a wide terminal gets a
-     * card rather than a rule to the far edge, and `-2` leaves room for the
-     * border glyphs Ink draws outside the content box.
-     */
-    const inner = Math.max(8, Math.min(width, 52) - 2)
+    // A framed object you stop at: one panel under a tab, at Done's block width.
     return (
-      <Box
-        flexDirection="column"
-        marginBottom={1}
-        borderStyle="round"
-        borderColor={colourProp(palette.fail)}
-        width={inner + 2}
-        paddingX={1}
-      >
-        <Text color={colourProp(palette.fail)} wrap="wrap">
-          {SYMBOLS.fail} {e.title}
-        </Text>
-        <Text color={colourProp(palette.fg)} wrap="wrap">
-          {e.detail}
-        </Text>
-        {/* The shell's own phrasing where it has one: `hint` is written for
-            the CLI, and a slash command or a flag only exists on one side. */}
-        {(e.shellHint ?? e.hint) ? (
-          <Text color={colourProp(palette.dim)} wrap="wrap">
-            {e.shellHint ?? e.hint}
-          </Text>
-        ) : null}
+      <Box flexDirection="column" marginBottom={1}>
+        <ErrorPanel error={block.error} width={Math.max(8, width - 2 * HOME_MARGIN)} />
       </Box>
     )
   }

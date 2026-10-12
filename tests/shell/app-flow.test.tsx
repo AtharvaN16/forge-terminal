@@ -64,7 +64,6 @@ describe('shell flow', () => {
     stdin.write(ENTER)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('✕')
     expect(frame).toContain('File not found')
     expect(frame.toLowerCase()).toContain('drop a file')
   })
@@ -88,7 +87,6 @@ describe('shell flow', () => {
     stdin.write(ENTER)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('✕')
     expect(frame).toContain('Invalid path')
     expect(frame.toLowerCase()).toContain('drop a file')
   })

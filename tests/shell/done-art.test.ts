@@ -1,3 +1,4 @@
+import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
 import {
   changePhrase,
@@ -67,6 +68,13 @@ describe('wrapWords', () => {
   })
   it('hard-breaks a word longer than the width', () => {
     expect(wrapWords('abcdefghijkl', 5)).toEqual(['abcde', 'fghij', 'kl'])
+  })
+  it('breaks a word by columns, not characters: a wide (CJK) word is never wider than the line', () => {
+    const lines = wrapWords('海辺の夕日二〇二六年.jpg', 10)
+    expect(lines).toEqual(['海辺の夕日', '二〇二六年', '.jpg'])
+    for (const line of lines) expect(stringWidth(line)).toBeLessThanOrEqual(10)
+    // A line one column short of a wide character cannot take it.
+    expect(wrapWords('海海海', 5)).toEqual(['海海', '海'])
   })
 })
 
