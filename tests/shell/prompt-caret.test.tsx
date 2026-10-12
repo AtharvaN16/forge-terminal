@@ -39,16 +39,24 @@ async function toRename() {
   const jpg = await makeJpeg(dir, 'photo.jpg')
   const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
   const app = render(<App initialWidth={80} prefs={prefs} />)
+  /** Polls until the header bar ends in `step`, up to 10 s: a busy CI runner can take seconds. */
+  const atStep = async (step: string) => {
+    const at = new RegExp(`${step} ╱╱\\s*$`, 'm')
+    const start = Date.now()
+    while (!at.test(plain(app.lastFrame())) && Date.now() - start < 10_000) await settle(30)
+    // A step's key handler attaches just after its first frame.
+    await settle()
+  }
   app.stdin.write(jpg)
   await settle()
   app.stdin.write(ENTER)
-  await settle(400)
+  await atStep('Format')
   app.stdin.write(DOWN) // png, webp, avif — one down reaches webp, which is lossy
   await settle()
   app.stdin.write(ENTER)
-  await settle()
+  await atStep('Quality')
   app.stdin.write(ENTER) // accept quality
-  await settle()
+  await atStep('Save as')
   return { ...app, dir }
 }
 

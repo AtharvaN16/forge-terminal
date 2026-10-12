@@ -38,6 +38,15 @@ afterEach(() => {
   else process.env.XDG_CONFIG_HOME = saved
 })
 
+/** Polls until the header bar ends in `step`, up to 10 s: a busy CI runner can take seconds. */
+async function waitForStep(frame: () => string | undefined, step: string) {
+  const at = new RegExp(`${step} ╱╱\\s*$`, 'm')
+  const start = Date.now()
+  while (!at.test((frame() ?? '').replace(SGR, '')) && Date.now() - start < 10_000) await settle(30)
+  // A step's key handler attaches just after its first frame.
+  await settle()
+}
+
 /** Drives the shell as far as Save as's folders, inside its own temp dir. */
 async function toDestination() {
   const dir = await makeTempDir()
@@ -47,16 +56,16 @@ async function toDestination() {
   app.stdin.write(jpg)
   await settle()
   app.stdin.write(ENTER) // submit path
-  await settle(400)
+  await waitForStep(app.lastFrame, 'Format')
   // jpeg is excluded (same-format is a no-op), so targets run png, webp,
   // avif. One DOWN reaches webp, which is lossy and therefore does raise the
   // quality step — landing on the destination step rather than past it.
   app.stdin.write(DOWN)
   await settle()
   app.stdin.write(ENTER) // target = webp
-  await settle()
+  await waitForStep(app.lastFrame, 'Quality')
   app.stdin.write(ENTER) // accept the quality slider -> Save as: the name, the folders under it
-  await settle(200)
+  await waitForStep(app.lastFrame, 'Save as')
   return { ...app, dir }
 }
 
@@ -130,6 +139,6 @@ describe('making a destination the default', () => {
     stdin.write(TAB)
     await settle(400)
     const stored = (await loadPreferences()).prefs.defaultOutput
-    expect(lastFrame() ?? '').toContain(stored.split('/').pop() ?? stored)
+    expect(lastFrame() ?? '').toContain(stored.split(/[\\/]/).pop() ?? stored)
   })
 })

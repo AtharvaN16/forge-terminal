@@ -20,6 +20,13 @@ const keyRow = (frame: string) =>
     .split('\n')
     .findLast((l) => l.trim() !== '') ?? ''
 
+/** Polls for `ok`, up to 10 s: a busy CI runner can take seconds to probe or render. */
+async function waitFor(ok: () => boolean, ms = 10_000) {
+  const start = Date.now()
+  while (!ok() && Date.now() - start < ms) await settle(30)
+}
+
+/** Format on screen, a target highlighted, and its keys attached. */
 async function atFormat() {
   const dir = await makeTempDir()
   // A JPEG: it can be compressed as well as converted, so 1–5 have somewhere to go.
@@ -30,7 +37,10 @@ async function atFormat() {
   app.stdin.write(jpg)
   await settle()
   app.stdin.write(ENTER)
-  await settle(400)
+  const frame = () => app.lastFrame() ?? ''
+  await waitFor(() => /Format ╱╱$/.test(barLine(frame())) && /▌ \w/.test(plain(frame())))
+  // A step's key handler attaches just after its first frame.
+  await settle()
   return { app, dir }
 }
 
@@ -48,11 +58,11 @@ describe('the header bar in the flow', () => {
     const format = (app.lastFrame() ?? '').match(/▌ (\w+)/)?.[1] ?? ''
     expect(format).not.toBe('')
     app.stdin.write(ENTER)
-    await settle(400)
+    await waitFor(() => /(Quality|Save as) ╱╱$/.test(barLine(app.lastFrame() ?? '')))
     expect(barLine(app.lastFrame() ?? '')).toMatch(
       new RegExp(`convert ╱+ ${format} ╱ (Quality|Save as) ╱╱$`),
     )
-  })
+  }, 60_000)
 })
 
 describe('1–5 switch mode on a screen with no text field', () => {
@@ -93,20 +103,23 @@ describe('1–5 switch mode on a screen with no text field', () => {
   it('types the digit on a screen that takes text', async () => {
     const { app } = await atFormat()
     // The first target, then any quality, lands on Save as.
+    const bar = () => barLine(app.lastFrame() ?? '')
     app.stdin.write(ENTER)
-    await settle(400)
-    if (barLine(app.lastFrame() ?? '').includes('Quality')) {
+    await waitFor(() => /(Quality|Save as) ╱╱$/.test(bar()))
+    if (bar().includes('Quality')) {
+      await settle()
       app.stdin.write(ENTER)
-      await settle(400)
+      await waitFor(() => /Save as ╱╱$/.test(bar()))
     }
-    expect(barLine(app.lastFrame() ?? '')).toMatch(/Save as ╱╱$/)
+    expect(bar()).toMatch(/Save as ╱╱$/)
+    await settle()
     app.stdin.write('2')
     await settle()
     const frame = app.lastFrame() ?? ''
     expect(barLine(frame)).toMatch(/^ {2}\S* ?convert/)
     expect(barLine(frame)).toMatch(/Save as ╱╱$/)
     expect(keyRow(frame)).not.toMatch(/1–5 +mode/)
-  })
+  }, 60_000)
 })
 
 describe('Done', () => {
