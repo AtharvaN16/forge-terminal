@@ -195,6 +195,8 @@ describe('Name taken (L1), everywhere', () => {
     await until(app, 'already exists')
     const out = plain(app.lastFrame())
     expect(out).toMatch(/^ report-rotated\.pdf already exists +[\d.]+ (B|KB) · today/m)
+    // The trail says what Save as was told, as convert's does: the folder, then the name.
+    expect(out.split('\n')[0]).toMatch(/90° right ╱ Desktop ╱ report-rotated\.pdf ╱ Name taken ╱╱ *$/)
     expect(out).not.toContain('✕')
     expect(out).toMatch(/▌ Keep both +saves yours as report-rotated \(1\)\.pdf/)
     app.stdin.write(ENTER)

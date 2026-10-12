@@ -762,6 +762,11 @@ export function App({
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
   /** How the last /pdf run was asked, so a refused save can reopen its Save as. */
   const [pdfAsked, setPdfAsked] = useState<PdfResume | undefined>(undefined)
+  /**
+   * What /pdf's Save as was told, as the trail says it after: the folder by
+   * its name, then the file — or how many, for a run that writes several.
+   */
+  const [pdfSaved, setPdfSaved] = useState<string[]>([])
   /** Set to open /pdf on that Save as (Cancel on Name taken); cleared once it is left. */
   const [pdfReopen, setPdfReopen] = useState<PdfResume | undefined>(undefined)
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
@@ -2630,7 +2635,7 @@ export function App({
     if (at === 'pdf') return pdfTrailNow
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
-        answers: pdfTrailNow.answers,
+        answers: [...pdfTrailNow.answers, ...pdfSaved],
         current: at === 'pdf-running' ? work?.verb : 'Name taken',
       }
     }
@@ -3066,6 +3071,16 @@ export function App({
               prefs={livePrefs}
               resume={pdfReopen}
               onDone={(jobs, resume) => {
+                const outputs = jobs.flatMap((j) => j.outputs)
+                const [first] = outputs
+                setPdfSaved(
+                  first
+                    ? [
+                        basename(displayPath(dirname(first))),
+                        outputs.length > 1 ? `${outputs.length} files` : basename(first),
+                      ]
+                    : [],
+                )
                 setPdfAsked(resume)
                 setPdfReopen(undefined)
                 void handlePdfDone(jobs)
