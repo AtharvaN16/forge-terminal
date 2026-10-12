@@ -13,7 +13,8 @@ name: extensions
 #      built but not offered) and the release does not have is uploaded.
 #
 # Windows archives are assembled on the macOS runner (they are only files) and
-# then run for real on windows-latest by the verify-windows job.
+# then run for real on windows-latest by the verify-windows job. Nothing is
+# uploaded until that has passed: package -> verify-windows -> publish.
 
 on:
   push:
@@ -40,8 +41,7 @@ jobs:
     runs-on: macos-14
     outputs:
       id: ${{ steps.ref.outputs.id }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      tag: ${{ steps.ref.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -129,28 +129,6 @@ jobs:
           done
           exit $status
 
-      - name: Upload what the release lacks, verify what it has
-        shell: bash
-        env:
-          TAG: ${{ steps.ref.outputs.tag }}
-        run: |
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Forge extension payload $TAG"
-          have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
-          mkdir -p dist-ext/published
-          for f in dist-ext/out/*.tar.gz; do
-            name="$(basename "$f")"
-            if printf '%s\n' "$have" | grep -Fxq "$name"; then
-              # Already published: never replaced. A catalogued one must match its sha256.
-              gh release download "$TAG" --pattern "$name" --dir dist-ext/published
-              if grep -Fxq "$name" dist-ext/catalogued.txt; then
-                cmp "$f" "dist-ext/published/$name" || { echo "::error::$name on the release differs from the catalogue"; exit 1; }
-              fi
-              echo "$name: already on the release, left as is"
-            else
-              gh release upload "$TAG" "$f"
-            fi
-          done
-
       - name: Summary for the catalogue entry
         shell: bash
         env:
@@ -171,6 +149,15 @@ jobs:
         with:
           name: payloads
           path: dist-ext/payload-*
+          if-no-files-found: error
+
+      # What publish uploads: the archives and which of them the catalogue lists.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archives
+          path: |
+            dist-ext/out/*.tar.gz
+            dist-ext/catalogued.txt
           if-no-files-found: error
 
   # Runs what the Windows archives contain, on Windows. Nothing here publishes anything.
@@ -244,3 +231,48 @@ jobs:
           out="$(node dist-ext/payload-win32-universal/runner.mjs --info --in tests/fixtures/heic/small.heic)"
           echo "$out"
           printf '%s' "$out" | grep -Eq '"width"[[:space:]]*:[[:space:]]*64([^0-9]|$)'
+          # And a real decode: raw RGBA, exactly 64 x 48 x 4 bytes.
+          node dist-ext/payload-win32-universal/runner.mjs --in tests/fixtures/heic/small.heic --out x.rgba
+          node -e '
+            const n = require("fs").statSync("x.rgba").size
+            if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
+          '
+
+  # Uploads only after the Windows archives have run on Windows. remove-background
+  # has none, so for it verify-windows is skipped and that counts as passed.
+  publish:
+    needs: [package, verify-windows]
+    if: >-
+      always() && needs.package.result == 'success' &&
+      (needs.verify-windows.result == 'success' || needs.verify-windows.result == 'skipped')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: archives
+          path: dist-ext
+
+      - name: Upload what the release lacks, verify what it has
+        shell: bash
+        env:
+          TAG: ${{ needs.package.outputs.tag }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Forge extension payload $TAG"
+          have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          mkdir -p dist-ext/published
+          for f in dist-ext/out/*.tar.gz; do
+            name="$(basename "$f")"
+            if printf '%s\n' "$have" | grep -Fxq "$name"; then
+              # Already published: never replaced. A catalogued one must match its sha256.
+              gh release download "$TAG" --pattern "$name" --dir dist-ext/published
+              if grep -Fxq "$name" dist-ext/catalogued.txt; then
+                cmp "$f" "dist-ext/published/$name" || { echo "::error::$name on the release differs from the catalogue"; exit 1; }
+              fi
+              echo "$name: already on the release, left as is"
+            else
+              gh release upload "$TAG" "$f"
+            fi
+          done
