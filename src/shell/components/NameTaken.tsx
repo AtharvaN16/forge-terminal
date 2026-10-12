@@ -20,6 +20,8 @@ const CHOICES: Array<[NameTakenChoice, string]> = [
 ]
 /** The names' column, as the decided list pads it. */
 const NAME_COLUMN = 12
+/** The title row's width from its lead, as `titleRow` draws it. */
+const TITLE_WIDTH = 64
 
 /**
  * Name taken (L1, mockups/flow-parts-2-2026-10.html "Name taken ✓"): the
@@ -67,7 +69,11 @@ export function NameTaken({
   })
 
   const several = existing === undefined && /^\d+ files$/.test(name)
-  const title = several ? `${name} already exist` : `${name} already exists`
+  const verb = several ? ' already exist' : ' already exists'
+  // The name gives way, from its middle, before the words that say what is
+  // wrong do: the title is one row and is cut at its end otherwise.
+  const titleRoom = Math.min(width, 1 + TITLE_WIDTH) - 1 - verb.length
+  const title = `${middleEllipsis(name, Math.max(4, titleRoom))}${verb}`
   const aside = existing
     ? `${formatBytes(existing.bytes)} · ${describeAge(existing.modified, now)}`
     : undefined
@@ -81,25 +87,34 @@ export function NameTaken({
     if (choice === 'keep') {
       // The (1) is the part that is new: bold, in the mode's colour.
       const at = keepBoth.lastIndexOf(' (')
+      const close = keepBoth.indexOf(')', at)
       const lead = 'saves yours as '
-      const shown = middleEllipsis(keepBoth, Math.max(4, room - lead.length))
-      const split = shown === keepBoth && at > 0
+      if (at <= 0 || close === -1) {
+        return (
+          <Text color={colourProp(palette.dim)}>
+            {lead}
+            <Text color={colourProp(palette.fg)}>
+              {middleEllipsis(keepBoth, Math.max(4, room - lead.length))}
+            </Text>
+          </Text>
+        )
+      }
+      // Only the name before the (1) gives way: the (1) and the extension
+      // say what Keep both does, so they always show.
+      const mark = keepBoth.slice(at, close + 1)
+      const tail = keepBoth.slice(close + 1)
+      const stem = middleEllipsis(
+        keepBoth.slice(0, at),
+        Math.max(1, room - lead.length - stringWidth(mark) - stringWidth(tail)),
+      )
       return (
         <Text color={colourProp(palette.dim)}>
           {lead}
-          {split ? (
-            <>
-              <Text color={colourProp(palette.fg)}>{keepBoth.slice(0, at)}</Text>
-              <Text bold color={colourProp(accent)}>
-                {keepBoth.slice(at, keepBoth.indexOf(')', at) + 1)}
-              </Text>
-              <Text color={colourProp(palette.fg)}>
-                {keepBoth.slice(keepBoth.indexOf(')', at) + 1)}
-              </Text>
-            </>
-          ) : (
-            <Text color={colourProp(palette.fg)}>{shown}</Text>
-          )}
+          <Text color={colourProp(palette.fg)}>{stem}</Text>
+          <Text bold color={colourProp(accent)}>
+            {mark}
+          </Text>
+          <Text color={colourProp(palette.fg)}>{tail}</Text>
         </Text>
       )
     }

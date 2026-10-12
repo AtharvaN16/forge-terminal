@@ -182,6 +182,8 @@ export function PdfFlow({
   // Merge's order lives outside `values` because `MergeList` is the only step
   // that produces it (see `planJobs`).
   const [mergeOrder, setMergeOrder] = useState<SourceInfo[] | undefined>(resume?.mergeOrder)
+  /** The order list as it stands right now, for the title's count — `mergeOrder` is only its submitted answer. */
+  const [mergeShown, setMergeShown] = useState<SourceInfo[] | undefined>(undefined)
   /**
    * Save as's answers: the folder (the configured default until another is
    * chosen) and the name as typed — `undefined` until something is typed, so
@@ -628,7 +630,7 @@ export function PdfFlow({
     ? `${basename(doc.path)} · ${doc.pages} pages`
     : `${stage.sources.length} files`
   const pagesAside = doc ? `${doc.pages} pages` : undefined
-  const mergeSources = mergeOrder ?? stage.sources
+  const mergeSources = mergeShown ?? mergeOrder ?? stage.sources
   const mergeAside = `${mergeSources.length} files · ${mergeSources.reduce(
     (n, s) => n + (s.kind === 'document' ? s.pages : 0),
     0,
@@ -703,6 +705,7 @@ export function PdfFlow({
             onSubmit={submitMerge}
             onCancel={cancelMerge}
             onTooFew={tooFewToMerge}
+            onOrderChange={setMergeShown}
           />
         </Box>
       ) : null}

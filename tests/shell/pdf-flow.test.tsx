@@ -575,3 +575,19 @@ describe('/pdf, a refusal of what was typed (E5·b)', () => {
     expect(out).not.toContain('⚠')
   })
 })
+
+describe('merge’s title counts what is in the list', () => {
+  it('says one file fewer the moment x removes one', async () => {
+    const { stdin, lastFrame } = mount([
+      doc('/docs/a.pdf', 2),
+      doc('/docs/b.pdf', 3),
+      doc('/docs/c.pdf', 4),
+    ])
+    stdin.write(ENTER) // Merge
+    await settle()
+    expect(plain(lastFrame())).toMatch(/^ Order the files +3 files · 9 pages$/m)
+    stdin.write('x') // remove a.pdf
+    await settle()
+    expect(plain(lastFrame())).toMatch(/^ Order the files +2 files · 7 pages$/m)
+  })
+})

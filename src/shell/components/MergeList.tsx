@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { Box, Text } from 'ink'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { moveItem, nextSortMode, type SortMode, sortSources } from '../../core/order.js'
 import type { SourceInfo } from '../../core/types.js'
@@ -48,6 +48,8 @@ export interface MergeListProps {
    * gets said about it back at the hub is a real number.
    */
   onTooFew: (remaining: number) => void
+  /** The list as it stands after every move, sort or removal, for whatever counts it (the title). */
+  onOrderChange?: ((ordered: SourceInfo[]) => void) | undefined
   /**
    * Seeds the held row. Only ever set by a test — real use always starts
    * with nothing picked up and gets there through `space`, the same way
@@ -75,12 +77,16 @@ export function MergeList({
   onSubmit,
   onCancel,
   onTooFew,
+  onOrderChange,
   heldIndex,
 }: MergeListProps) {
   const palette = useTheme()
   const mtimes = useMemo(() => mtimesFor(sources), [sources])
 
   const [order, setOrder] = useState<SourceInfo[]>(sources)
+  useEffect(() => {
+    onOrderChange?.(order)
+  }, [order, onOrderChange])
   const [cursor, setCursor] = useState(heldIndex ?? 0)
   const [held, setHeld] = useState<number | null>(heldIndex ?? null)
   const [mode, setMode] = useState<SortMode>('dropped')

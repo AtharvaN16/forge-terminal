@@ -95,4 +95,27 @@ describe('Name taken (L1)', () => {
     const { app } = mount({ name: '3 files', existing: undefined, keepBoth: 'report-1 (1).pdf …' })
     expect(plain(app.lastFrame()).split('\n')[0]).toMatch(/^ 3 files already exist$/)
   })
+
+  it('keeps “already exists” when the name is long and the terminal narrow, cutting the name instead', () => {
+    const name = 'PXL_20261011_123456789.MP.portrait.jpg'
+    for (const width of [40, 50, 80]) {
+      const { app } = mount({ name, keepBoth: 'PXL_20261011_123456789.MP.portrait (1).jpg', width })
+      const title = plain(app.lastFrame()).split('\n')[0] ?? ''
+      expect(title).toMatch(/already exists/)
+      expect(title.length).toBeLessThanOrEqual(width)
+    }
+  })
+
+  it('keeps the (1) Keep both adds when the preview has to be cut', () => {
+    const { app } = mount({
+      name: 'PXL_20261011_123456789.MP.portrait.jpg',
+      keepBoth: 'PXL_20261011_123456789.MP.portrait (1).jpg',
+      width: 40,
+    })
+    const row =
+      plain(app.lastFrame())
+        .split('\n')
+        .find((l) => l.includes('Keep both')) ?? ''
+    expect(row).toMatch(/ \(1\)\.jpg/)
+  })
 })

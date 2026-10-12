@@ -2715,7 +2715,8 @@ export function App({
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
                   ['1–3', 'mode'],
-                  ['esc', 'back'],
+                  // Method is the first question: esc takes the file off the bench.
+                  ['esc', 'remove file'],
                 ]}
               />
             </Box>
@@ -2799,7 +2800,9 @@ export function App({
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
                   ['1–3', 'mode'],
-                  ['esc', 'back'],
+                  // A document stays staged on esc (/pdf may still want it); an image
+                  // is taken off the bench. The key says which.
+                  ['esc', source.kind === 'document' ? 'back' : 'remove file'],
                 ]}
               />
             </Box>

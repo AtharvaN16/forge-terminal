@@ -58,7 +58,7 @@ describe('Convert, with the decided parts', () => {
     app.stdin.write(ENTER)
     await until(app, 'Convert to')
     expect(plain(app.lastFrame())).toMatch(/^ Convert to +1\/6$/m)
-    expect(keyRow(app)).toMatch(/1–3 mode · esc back · ctrl-c quit$/)
+    expect(keyRow(app)).toMatch(/1–3 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 
   it('Pages and Resolution: titled, the file at their right; 150 dpi tagged as the default', async () => {
@@ -95,11 +95,10 @@ describe('Compress, with the decided parts', () => {
     return app
   }
 
-  it('Method: the step’s own name, the file at its right, esc says back', async () => {
+  it('Method: the step’s own name, the file at its right, esc says it removes the file', async () => {
     const app = await compress()
     expect(plain(app.lastFrame())).toMatch(/^ Method +photo\.jpg$/m)
-    expect(keyRow(app)).toMatch(/1–3 mode · esc back · ctrl-c quit$/)
-    expect(keyRow(app)).not.toContain('remove file')
+    expect(keyRow(app)).toMatch(/1–3 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 
   it('Target size: the unit inside the filled field, no row of its own and no echo below', async () => {
@@ -196,7 +195,9 @@ describe('Name taken (L1), everywhere', () => {
     const out = plain(app.lastFrame())
     expect(out).toMatch(/^ report-rotated\.pdf already exists +[\d.]+ (B|KB) · today/m)
     // The trail says what Save as was told, as convert's does: the folder, then the name.
-    expect(out.split('\n')[0]).toMatch(/90° right ╱ Desktop ╱ report-rotated\.pdf ╱ Name taken ╱╱ *$/)
+    expect(out.split('\n')[0]).toMatch(
+      /90° right ╱ Desktop ╱ report-rotated\.pdf ╱ Name taken ╱╱ *$/,
+    )
     expect(out).not.toContain('✕')
     expect(out).toMatch(/▌ Keep both +saves yours as report-rotated \(1\)\.pdf/)
     app.stdin.write(ENTER)
@@ -205,4 +206,34 @@ describe('Name taken (L1), everywhere', () => {
       await settle(50)
     expect(existsSync(join(dir, 'report-rotated (1).pdf'))).toBe(true)
   }, 60_000)
+})
+
+describe('esc says what it does', () => {
+  it('says “remove file” where esc removes it: Method, and an image’s Format', async () => {
+    const { app, dir } = await shell()
+    app.stdin.write('/compress')
+    await settle(200)
+    app.stdin.write(ENTER)
+    await settle(300)
+    app.stdin.write(await makeJpeg(dir, 'photo.jpg'))
+    await settle()
+    app.stdin.write(ENTER)
+    await until(app, 'By quality')
+    expect(keyRow(app)).toMatch(/esc remove file/)
+    const image = await shell()
+    image.app.stdin.write(await makeGradientPng(image.dir, 'test.png', 32))
+    await settle()
+    image.app.stdin.write(ENTER)
+    await until(image.app, 'Convert to')
+    expect(keyRow(image.app)).toMatch(/esc remove file/)
+  }, 30_000)
+
+  it('says “back” on a PDF’s Format, where esc keeps the file staged', async () => {
+    const { app, dir } = await shell()
+    app.stdin.write(await makePdf(dir, 'report.pdf', 3))
+    await settle()
+    app.stdin.write(ENTER)
+    await until(app, 'Convert to')
+    expect(keyRow(app)).toMatch(/esc back/)
+  }, 30_000)
 })
