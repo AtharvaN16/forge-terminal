@@ -90,6 +90,7 @@ async function run(
         : [input, result]
     await runExtension(ext, args, {
       subject: source.path,
+      what: `${toolVerb(job)} is running on ${basename(source.path)}`,
       ...(job.op === 'boost' ? { maxScale: maxBoost(source.width, source.height, job.scale) } : {}),
       ...(signal === undefined ? {} : { signal }),
     })
@@ -109,6 +110,12 @@ async function run(
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => {})
   }
+}
+
+/** The job as the shell names it, for another forge's manage screen. Scale 1 is Sharpen. */
+function toolVerb(job: Job): string {
+  if (job.op !== 'boost') return 'Remove background'
+  return job.scale === 2 || job.scale === 4 ? `Boost resolution ${job.scale}×` : 'Sharpen'
 }
 
 export const extensionEngine: Engine = {

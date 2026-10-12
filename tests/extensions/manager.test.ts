@@ -136,8 +136,11 @@ afterEach(async () => {
   await rm(config, { recursive: true, force: true })
 })
 
+/** Everything under the root but the lock directory, which stays (empty) once used. */
 async function leftovers(): Promise<string[]> {
-  return (await readdir(extensionsRoot(), { recursive: true }).catch(() => [])).sort()
+  return (await readdir(extensionsRoot(), { recursive: true }).catch(() => []))
+    .filter((p) => !p.startsWith('.locks'))
+    .sort()
 }
 
 async function codeOf(p: Promise<unknown>): Promise<string> {

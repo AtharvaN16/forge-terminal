@@ -1,8 +1,11 @@
 import { spawn } from 'node:child_process'
 import { boostTooLarge, conversionFailed, type ForgeError, noSubject } from '../core/errors.js'
+import { withExtensionLock } from './lock.js'
 
 /** Structural subset of `Installed` (paths.ts) — all the runner needs. */
 export interface RunnableExtension {
+  /** The catalogue id. With it, the job holds the tool's lock (lock.ts) while it runs. */
+  id?: string
   entry: string
   kind: 'node' | 'exec'
 }
@@ -23,17 +26,34 @@ type RunOpts = {
    * the requested one would be wrong.
    */
   maxScale?: number
+  /** What this job is, as a sentence, for another forge's manage screen ("Boost resolution 4× is running on photo.jpg"). */
+  what?: string
 }
 
 /** Jobs run one at a time per process — both extensions are heavy. */
 let tail: Promise<unknown> = Promise.resolve()
 
+/**
+ * Runs one job, after any this process already has queued. Across processes
+ * the tool's lock does the same: a second forge's job waits for the first
+ * (up to `WAIT_MS`, then `extension-in-use`) rather than failing at once —
+ * two of these at the same time would only fight for the same memory — and
+ * `removeExtension` refuses while the lock is held.
+ */
 export function runExtension(
   ext: RunnableExtension,
   args: string[],
   opts: RunOpts = {},
 ): Promise<ExtensionJobResult> {
-  const job = tail.then(() => runOne(ext, args, opts))
+  const one = () => runOne(ext, args, opts)
+  const job = tail.then(() =>
+    ext.id === undefined
+      ? one()
+      : withExtensionLock(ext.id, one, {
+          ...(opts.what !== undefined ? { what: opts.what } : {}),
+          ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+        }),
+  )
   tail = job.catch(() => undefined)
   return job
 }
