@@ -1,4 +1,5 @@
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
+import { displayName } from '../utils/display-path.js'
 import { FORMATS } from './formats.js'
 import type { Size } from './size.js'
 import type { FormatId, Job, SourceInfo } from './types.js'
@@ -102,8 +103,8 @@ export function fileNotFound(path: string): ForgeError {
   return new ForgeError({
     code: 'file-not-found',
     title: 'File not found',
-    detail: `${basename(path)} could not be found.`,
-    short: `${basename(path)} could not be found.`,
+    detail: `${displayName(path)} could not be found.`,
+    short: `${displayName(path)} could not be found.`,
     hint: 'Check the filename and try again.',
   })
 }
@@ -112,8 +113,8 @@ export function notAFile(path: string): ForgeError {
   return new ForgeError({
     code: 'not-a-file',
     title: 'Not a file',
-    detail: `${basename(path)} is not a file.`,
-    short: `${basename(path)} is not a file.`,
+    detail: `${displayName(path)} is not a file.`,
+    short: `${displayName(path)} is not a file.`,
     hint: 'Point Forge at an image, or at a directory of images.',
   })
 }
@@ -122,8 +123,8 @@ export function permissionDenied(path: string): ForgeError {
   return new ForgeError({
     code: 'permission-denied',
     title: 'Permission denied',
-    detail: `${basename(path)} could not be read.`,
-    short: `${basename(path)} could not be read.`,
+    detail: `${displayName(path)} could not be read.`,
+    short: `${displayName(path)} could not be read.`,
     hint: 'Check the file permissions and try again.',
   })
 }
@@ -133,8 +134,8 @@ export function notADirectory(path: string): ForgeError {
   return new ForgeError({
     code: 'not-a-directory',
     title: 'Invalid path',
-    detail: `${basename(path)} could not be found: part of its path is not a directory.`,
-    short: `part of ${basename(path)}'s path is not a folder.`,
+    detail: `${displayName(path)} could not be found: part of its path is not a directory.`,
+    short: `part of ${displayName(path)}'s path is not a folder.`,
     hint: 'Check the path and try again.',
   })
 }
@@ -143,8 +144,8 @@ export function symlinkLoop(path: string): ForgeError {
   return new ForgeError({
     code: 'symlink-loop',
     title: 'Too many symbolic links',
-    detail: `${basename(path)} could not be resolved: its path contains a symbolic-link loop.`,
-    short: `${basename(path)}'s path loops back on itself.`,
+    detail: `${displayName(path)} could not be resolved: its path contains a symbolic-link loop.`,
+    short: `${displayName(path)}'s path loops back on itself.`,
     hint: 'Check for a circular symlink somewhere in the path.',
   })
 }
@@ -153,8 +154,8 @@ export function pathTooLong(path: string): ForgeError {
   return new ForgeError({
     code: 'path-too-long',
     title: 'Path too long',
-    detail: `${basename(path)}'s path is too long for the filesystem to resolve.`,
-    short: `${basename(path)}'s path is too long.`,
+    detail: `${displayName(path)}'s path is too long for the filesystem to resolve.`,
+    short: `${displayName(path)}'s path is too long.`,
     hint: 'Use a shorter path and try again.',
   })
 }
@@ -170,8 +171,8 @@ export function unreadablePath(path: string, cause: unknown): ForgeError {
   return new ForgeError({
     code: 'unreadable-path',
     title: 'Could not read path',
-    detail: `${basename(path)} could not be checked.`,
-    short: `${basename(path)} could not be checked.`,
+    detail: `${displayName(path)} could not be checked.`,
+    short: `${displayName(path)} could not be checked.`,
     hint: 'Check the path and try again.',
     cause,
   })
@@ -181,8 +182,8 @@ export function unsupportedSource(path: string, detected: string): ForgeError {
   return new ForgeError({
     code: 'unsupported-source',
     title: 'Unsupported file type',
-    detail: `${basename(path)} is ${detected}, which Forge cannot read.`,
-    short: `${basename(path)} is ${detected}, which Forge cannot read.`,
+    detail: `${displayName(path)} is ${detected}, which Forge cannot read.`,
+    short: `${displayName(path)} is ${detected}, which Forge cannot read.`,
     hint: 'Forge 0.1 handles images only.',
   })
 }
@@ -192,7 +193,7 @@ export function notAnImage(path: string, detected: string): ForgeError {
   return new ForgeError({
     code: 'unsupported-source',
     title: 'Not an image',
-    detail: `${basename(path)} is ${detected}, not an image.`,
+    detail: `${displayName(path)} is ${detected}, not an image.`,
     hint: 'A palette is taken from a photo, a screenshot or artwork.',
   })
 }
@@ -202,7 +203,7 @@ export function nothingVisible(path: string): ForgeError {
   return new ForgeError({
     code: 'unsupported-source',
     title: 'Nothing to take colours from',
-    detail: `${basename(path)} has no visible pixels.`,
+    detail: `${displayName(path)} has no visible pixels.`,
   })
 }
 
@@ -216,7 +217,7 @@ export function heicDecoderUnavailable(path: string): ForgeError {
   return new ForgeError({
     code: 'heic-decoder-unavailable',
     title: 'Cannot read HEIC here',
-    detail: `${basename(path)} is a HEIC photo, which Forge decodes with the macOS sips tool.`,
+    detail: `${displayName(path)} is a HEIC photo, which Forge decodes with the macOS sips tool.`,
     short: 'HEIC needs sips, which could not be run.',
     hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
   })
@@ -228,7 +229,7 @@ export function heicDecoderUnavailable(path: string): ForgeError {
  * silent no-op, and the hint points at the thing that *would* work.
  */
 export function unsupportedCompress(source: SourceInfo, target?: FormatId): ForgeError {
-  const name = basename(source.path)
+  const name = displayName(source.path)
 
   /**
    * A conversion asked to fit a size. The size applies to the target, so the
@@ -307,7 +308,7 @@ export function unsupportedCompress(source: SourceInfo, target?: FormatId): Forg
  * follows for its own mismatches.
  */
 export function unsupportedPdf(source: SourceInfo): ForgeError {
-  const name = basename(source.path)
+  const name = displayName(source.path)
   return new ForgeError({
     code: 'unsupported-pdf',
     title: '/pdf needs a PDF',
@@ -349,7 +350,7 @@ export function targetUnreachable(
   return new ForgeError({
     code: 'target-unreachable',
     title: 'Cannot get that small',
-    detail: `${basename(source.path)} is ${formatBytes(smallest)} even at the lowest quality, which is still over ${formatBytes(targetBytes)}.`,
+    detail: `${displayName(source.path)} is ${formatBytes(smallest)} even at the lowest quality, which is still over ${formatBytes(targetBytes)}.`,
     hint: 'Try a larger --max-size, or --to a smaller format.',
     shellHint: 'Try a larger target, or /convert to a smaller format.',
   })
@@ -362,8 +363,8 @@ export function unsupportedTarget(
 ): ForgeError {
   return new ForgeError({
     code: 'unsupported-target',
-    title: `Can't convert ${basename(source.path)} to ${requested}`,
-    detail: `${basename(source.path)} is a ${FORMATS[source.format].label} ${source.kind === 'image' ? 'image' : 'document'}.`,
+    title: `Can't convert ${displayName(source.path)} to ${requested}`,
+    detail: `${displayName(source.path)} is a ${FORMATS[source.format].label} ${source.kind === 'image' ? 'image' : 'document'}.`,
     hint: `Available: ${available.join(', ')}`,
   })
 }
@@ -386,8 +387,8 @@ export function corruptSource(path: string, cause: unknown): ForgeError {
   return new ForgeError({
     code: 'corrupt-source',
     title: 'Damaged file',
-    detail: `${basename(path)} could not be read. It may be damaged, or not a format Forge recognises.`,
-    short: `${basename(path)} could not be read.`,
+    detail: `${displayName(path)} could not be read. It may be damaged, or not a format Forge recognises.`,
+    short: `${displayName(path)} could not be read.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
   })
@@ -405,8 +406,8 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
   return new ForgeError({
     code: 'corrupt-source',
     title: `Damaged ${FORMATS[format].label}`,
-    detail: `${basename(path)} is a ${FORMATS[format].label} file, but its content could not be read.`,
-    short: `${basename(path)} could not be read.`,
+    detail: `${displayName(path)} is a ${FORMATS[format].label} file, but its content could not be read.`,
+    short: `${displayName(path)} could not be read.`,
     hint: 'The file may be incomplete or corrupted.',
     cause,
   })
@@ -421,7 +422,7 @@ export function corruptFormatSource(path: string, format: FormatId, cause: unkno
  * last step would not tell the user what is actually wrong.
  */
 export function encryptedSource(path: string, opts: { attempted?: boolean } = {}): ForgeError {
-  const name = basename(path)
+  const name = displayName(path)
   return new ForgeError({
     code: 'encrypted-source',
     title: 'This PDF is password-protected',
@@ -458,7 +459,7 @@ export function outputExists(path: string, op: Job['op'] = 'convert'): ForgeErro
   return new ForgeError({
     code: 'output-exists',
     title: 'File already exists',
-    detail: `${basename(path)} is already there.`,
+    detail: `${displayName(path)} is already there.`,
     hint: takesOutputFlag(op)
       ? 'Pass --force to replace it, or choose a different --output.'
       : 'Pass --force to replace it, or move the existing file out of the way.',
@@ -478,7 +479,7 @@ export function outputCollision(paths: [string, string], output: string): ForgeE
   return new ForgeError({
     code: 'output-collision',
     title: 'Two files want the same output',
-    detail: `${basename(paths[0])} and ${basename(paths[1])} would both become ${basename(output)}.`,
+    detail: `${displayName(paths[0])} and ${displayName(paths[1])} would both become ${displayName(output)}.`,
     hint: 'Convert them separately, or use --output to send them to different folders.',
     shellHint: 'Convert them one at a time.',
   })
@@ -500,7 +501,7 @@ export function selfCollision(source: string, output: string): ForgeError {
   return new ForgeError({
     code: 'output-collision',
     title: 'One output, written twice',
-    detail: `${basename(source)} would write ${basename(output)} twice, and only the second would survive.`,
+    detail: `${displayName(source)} would write ${displayName(output)} twice, and only the second would survive.`,
     hint: 'Every output has to be its own file. Check the selection for a repeated page.',
   })
 }
@@ -509,7 +510,7 @@ export function outputIsInput(path: string, op: Job['op'] = 'convert'): ForgeErr
   return new ForgeError({
     code: 'output-is-input',
     title: 'Output would replace the original',
-    detail: `${basename(path)} is both the input and the output.`,
+    detail: `${displayName(path)} is both the input and the output.`,
     hint: takesOutputFlag(op)
       ? 'Choose a different --output, or pass --force to overwrite in place.'
       : 'Move or rename that file first, or pass --force to overwrite it in place.',
@@ -533,7 +534,7 @@ export function outputPermissionDenied(path: string, cause?: unknown): ForgeErro
   return new ForgeError({
     code: 'permission-denied',
     title: 'Permission denied',
-    detail: `${basename(dirname(path))} is not a folder you can write to.`,
+    detail: `${displayName(dirname(path))} is not a folder you can write to.`,
     hint: 'Choose a different --output, or check the folder permissions.',
     shellHint: 'Choose a different folder, or check its permissions.',
     cause,
@@ -569,7 +570,7 @@ export function emptyDirectory(path: string): ForgeError {
   return new ForgeError({
     code: 'empty-directory',
     title: 'No images found',
-    detail: `${basename(path)} contains no images Forge can convert.`,
+    detail: `${displayName(path)} contains no images Forge can convert.`,
     hint: 'Try --recursive to look inside subfolders.',
     // The shell reads a dropped folder non-recursively and has no --recursive.
     shellHint:
@@ -719,7 +720,7 @@ export function noSubject(path: string): ForgeError {
   return new ForgeError({
     code: 'no-subject',
     title: 'No subject found',
-    detail: `${basename(path)} has no clear subject to cut out.`,
+    detail: `${displayName(path)} has no clear subject to cut out.`,
     hint: 'Try a photo where the subject stands apart from the background.',
   })
 }
@@ -729,7 +730,7 @@ export function boostTooLarge(path: string, maxScale: number, scale?: number): F
     return new ForgeError({
       code: 'boost-too-large',
       title: 'Too large to sharpen',
-      detail: `${basename(path)} is too large to sharpen.`,
+      detail: `${displayName(path)} is too large to sharpen.`,
       hint: 'Sharpen works on images up to 16,384 px a side and 100 megapixels.',
     })
   return new ForgeError({
@@ -737,8 +738,8 @@ export function boostTooLarge(path: string, maxScale: number, scale?: number): F
     title: 'Too large to boost',
     detail:
       maxScale >= 2
-        ? `${basename(path)} is too large to boost that far; ${maxScale}x is the most it can take.`
-        : `${basename(path)} is already too large to boost.`,
+        ? `${displayName(path)} is too large to boost that far; ${maxScale}x is the most it can take.`
+        : `${displayName(path)} is already too large to boost.`,
     hint:
       maxScale >= 2 ? `Try --boost ${maxScale}.` : 'Boost works on images up to 100 megapixels.',
     shellHint: maxScale >= 2 ? `Choose ${maxScale}x instead.` : undefined,
@@ -749,7 +750,7 @@ export function resizeTooLarge(path: string, size: Size): ForgeError {
   return new ForgeError({
     code: 'resize-too-large',
     title: 'Too large to resize to',
-    detail: `${basename(path)} would be ${size.width} × ${size.height}.`,
+    detail: `${displayName(path)} would be ${size.width} × ${size.height}.`,
     hint: 'Resize works up to 16,384 px a side and 100 megapixels.',
   })
 }
@@ -758,7 +759,7 @@ export function nothingToTrim(path: string): ForgeError {
   return new ForgeError({
     code: 'nothing-to-trim',
     title: 'Nothing to trim',
-    detail: `${basename(path)} has no empty edges.`,
+    detail: `${displayName(path)} has no empty edges.`,
     short: 'no empty edges',
   })
 }
@@ -767,7 +768,7 @@ export function animatedTrim(path: string): ForgeError {
   return new ForgeError({
     code: 'animated-trim',
     title: "Can't trim an animation",
-    detail: `${basename(path)} is animated; trimming works on still images.`,
+    detail: `${displayName(path)} is animated; trimming works on still images.`,
   })
 }
 
@@ -775,7 +776,7 @@ export function conversionFailed(path: string, cause: unknown): ForgeError {
   return new ForgeError({
     code: 'conversion-failed',
     title: 'Conversion failed',
-    detail: `${basename(path)} could not be converted.`,
+    detail: `${displayName(path)} could not be converted.`,
     hint: 'Run again with --debug for the underlying error.',
     // The shell has no --debug of its own; the command line does.
     shellHint: 'Run the same conversion with forge --debug from the command line to see why.',

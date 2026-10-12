@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import {
   boostAction,
   extensionTargetError,
@@ -45,6 +45,7 @@ import type {
 } from '../core/types.js'
 import { openPdf } from '../engines/pdfium.js'
 import { VERSION } from '../shell/theme.js'
+import { displayName } from '../utils/display-path.js'
 import type {
   CompressIntent,
   ConvertIntent,
@@ -180,7 +181,7 @@ function pageOpValues(intent: PageOpIntent, sources: SourceInfo[]): Record<strin
     if (!Number.isInteger(n) || n < 1 || n > last) {
       throw invalidPageRange(
         String(n),
-        `"${n}" is outside 1 and ${last} — ${doc ? basename(doc.path) : 'the document'} has ${pageCount} pages.`,
+        `"${n}" is outside 1 and ${last} — ${doc ? displayName(doc.path) : 'the document'} has ${pageCount} pages.`,
         pageCount,
       )
     }

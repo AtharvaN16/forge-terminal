@@ -1,8 +1,8 @@
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { Box, Text } from 'ink'
 import { FORMATS } from '../../core/formats.js'
 import type { Result } from '../../core/types.js'
-import { displayPath } from '../../utils/display-path.js'
+import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
 import type { Row } from '../home-art.js'
@@ -36,12 +36,12 @@ export function doneFacts(result: Result, mode: ShellMode): DoneFacts {
     mode,
     before: {
       format: FORMATS[source.format]?.label ?? source.format.toUpperCase(),
-      name: basename(source.path),
+      name: displayName(source.path),
       bytes: source.bytes,
     },
     after: {
       format: FORMATS[job.target]?.label ?? job.target.toUpperCase(),
-      name: basename(output),
+      name: displayName(output),
       bytes: outputBytes,
     },
   }

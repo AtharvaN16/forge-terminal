@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
-import { isAbsolute, relative, sep } from 'node:path'
+import { basename, isAbsolute, relative, sep } from 'node:path'
+import { printable } from './printable.js'
 
 /** `path` relative to `base` when it is `base` or inside it, else undefined. */
 function inside(path: string, base: string): string | undefined {
@@ -18,6 +19,10 @@ function inside(path: string, base: string): string | undefined {
  * read than the `~/Pictures/a.png` it stands for.
  */
 export function displayPath(path: string, opts: { home?: string; cwd?: string } = {}): string {
+  return printable(shortPath(path, opts))
+}
+
+function shortPath(path: string, opts: { home?: string; cwd?: string }): string {
   if (opts.cwd !== undefined) {
     const rel = inside(path, opts.cwd)
     if (rel !== undefined) return rel === '' ? '.' : rel
@@ -25,4 +30,9 @@ export function displayPath(path: string, opts: { home?: string; cwd?: string } 
   const rel = inside(path, opts.home ?? homedir())
   if (rel !== undefined) return rel === '' ? '~' : `~/${rel}`
   return path
+}
+
+/** A file's own name, for showing: `basename`, made printable. */
+export function displayName(path: string): string {
+  return printable(basename(path))
 }

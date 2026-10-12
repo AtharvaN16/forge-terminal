@@ -35,6 +35,7 @@ import type {
   SourceInfo,
   Warning,
 } from '../core/types.js'
+import { displayName } from '../utils/display-path.js'
 import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import { loadSharp } from './libs.js'
 import type { Engine, Measurer } from './types.js'
@@ -116,12 +117,13 @@ async function probe(path: string): Promise<SourceInfo> {
    * HEIC is identified from its own container bytes and measured with `sips`,
    * never through Sharp.
    *
-   * Sharp cannot read a real photo's metadata at all: an iPhone HEIC is a
-   * tiled grid whose tiles are cross-referenced through the ISO-BMFF `iref`
-   * box, and libheif rejects more than 16 references as a security limit —
-   * a 12MP photo has 48. Routing HEIC through Sharp therefore reported
-   * "Damaged image" for precisely the files people convert, while small
-   * single-tile fixtures passed. See engines/heic.ts.
+   * Sharp's prebuilt libvips has no HEVC decoder, so it cannot decode a HEIC's
+   * pixels at all. Before 0.35.5 it could not even read a real photo's
+   * metadata: an iPhone HEIC is a tiled grid cross-referenced through the
+   * ISO-BMFF `iref` box, and older libheif rejected more than 16 references
+   * as a security limit — a 12MP photo has 48 — so routing HEIC through
+   * Sharp reported "Damaged image" for precisely the files people convert.
+   * See engines/heic.ts.
    */
   if (await looksLikeHeic(path)) {
     if (!(await heicDecodable())) throw heicDecoderUnavailable(path)
@@ -428,7 +430,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     warnings.push({
       code: 'animation-flattened',
       message:
-        `${basename(source.path)} has ${source.frames} frames, ` +
+        `${displayName(source.path)} has ${source.frames} frames, ` +
         `and ${spec.label} cannot animate. Only the first frame was converted.`,
     })
   }
@@ -445,7 +447,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
         if (!job.options.resize) throw nothingToTrim(source.path)
         warnings.push({
           code: 'nothing-trimmed',
-          message: `${basename(source.path)} has no empty edges; resized only.`,
+          message: `${displayName(source.path)} has no empty edges; resized only.`,
         })
       } else if (trimmed !== 'animated') {
         base = trimmed

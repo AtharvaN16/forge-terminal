@@ -1,5 +1,4 @@
 import { readFile, rm, stat } from 'node:fs/promises'
-import { basename } from 'node:path'
 import type { PDFDocument } from 'pdf-lib'
 import { writeAtomic } from '../core/atomic.js'
 import { emptySelection, encryptedSource } from '../core/errors.js'
@@ -14,6 +13,7 @@ import type {
   Result,
   Warning,
 } from '../core/types.js'
+import { displayName } from '../utils/display-path.js'
 import { lazy, loadPdfLib, loadSharp } from './libs.js'
 import type { Engine, Measurer } from './types.js'
 
@@ -180,7 +180,7 @@ async function imageToPdf(
     warnings.push({
       code: 'animation-flattened',
       message:
-        `${basename(source.path)} has ${source.frames} frames, and ` +
+        `${displayName(source.path)} has ${source.frames} frames, and ` +
         `${FORMATS.pdf.label} cannot animate. Only the first frame was converted.`,
     })
   }

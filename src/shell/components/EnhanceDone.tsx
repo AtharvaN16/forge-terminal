@@ -1,4 +1,4 @@
-import { basename, dirname, isAbsolute } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
 import chalk from 'chalk'
 import { Box, type DOMElement, Text, useStdout } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -11,7 +11,7 @@ import {
   findCloseup,
   forgetCloseup,
 } from '../../core/closeup.js'
-import { displayPath } from '../../utils/display-path.js'
+import { displayName, displayPath } from '../../utils/display-path.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { sextants } from '../sextants.js'
@@ -171,7 +171,7 @@ export function EnhanceDone({
   useInlinePictures({ boxes, pictures, protocol, cols, rows })
 
   const { what, more } = whatWasDone(op, s, (real ?? closeup)?.output)
-  const name = basename(after)
+  const name = displayName(after)
   // The line keeps the name and what was done whole; the folder gives way
   // (middle-shortened), and goes when there is no room for it at all.
   const said = `${SYMBOLS.ok} ${name}   ${what}${more ? ` · ${more}` : ''}`

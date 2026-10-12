@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -34,7 +34,8 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
-import { displayPath } from '../utils/display-path.js'
+import { displayName, displayPath } from '../utils/display-path.js'
+import { printable } from '../utils/printable.js'
 import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
@@ -282,7 +283,7 @@ const isExtensionAction = (act: Action): boolean =>
 
 /** What enhance says to a file that is not an image. */
 const enhanceRefusal = (source: SourceInfo): string =>
-  `${SYMBOLS.warn} Enhance works on images; ${basename(source.path)} is ${FORMATS[source.format].label}.`
+  `${SYMBOLS.warn} Enhance works on images; ${displayName(source.path)} is ${FORMATS[source.format].label}.`
 
 const nextId = () => `b${++blockSeq}`
 
@@ -296,7 +297,7 @@ const nextId = () => `b${++blockSeq}`
  */
 function describePdfResult(result: Result): string {
   const { job } = result
-  const outputs = job.outputs.map((o) => basename(o))
+  const outputs = job.outputs.map((o) => displayName(o))
   const first = outputs[0] ?? ''
   switch (job.op) {
     /**
@@ -2048,7 +2049,11 @@ export function App({
    */
   const makeDefault = (path: string) => {
     setLivePrefs((p) => ({ ...p, defaultOutput: path }))
-    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} default output is now ${path}` })
+    push({
+      kind: 'note',
+      id: nextId(),
+      text: `${SYMBOLS.ok} default output is now ${printable(path)}`,
+    })
     savePreferences({ defaultOutput: path }).catch(showError)
   }
 
@@ -2074,7 +2079,7 @@ export function App({
       ? act.plan([src], { ...vals, output: folder })[0]
       : act.plan([src], { ...vals, destination: folder })[0]
     const outputs = planned?.outputs ?? []
-    const first = basename(outputs[0] ?? src.path)
+    const first = displayName(outputs[0] ?? src.path)
     if (rasterises(src, planned)) {
       return {
         stem: '',
@@ -2428,7 +2433,7 @@ export function App({
     const result = summary.results[0]
     if (result) {
       setLastResult(result)
-      const trail = doneTrail({ destination, name: basename(result.job.outputs[0] ?? output) })
+      const trail = doneTrail({ destination, name: displayName(result.job.outputs[0] ?? output) })
       setDoneBar({ mode, trail })
       doneRecord.current = [
         { kind: 'bar', id: nextId(), mode, trail },
@@ -2517,7 +2522,7 @@ export function App({
       }
       const result = outcome.results[0]
       if (result) {
-        const name = basename(result.job.outputs[0] ?? '')
+        const name = displayName(result.job.outputs[0] ?? '')
         const trail = doneTrail({
           destination: dirname(result.job.outputs[0] ?? destination),
           name,
@@ -2982,12 +2987,12 @@ export function App({
     if (!first) return { name: 'The file', keepBoth: '' }
     if (taken.length === 1) {
       return {
-        name: basename(first),
-        keepBoth: basename(uniqueOutputPath(first)),
+        name: displayName(first),
+        keepBoth: displayName(uniqueOutputPath(first)),
         existing: takenFile(first),
       }
     }
-    return { name: `${taken.length} files`, keepBoth: `${basename(uniqueOutputPath(first))} …` }
+    return { name: `${taken.length} files`, keepBoth: `${displayName(uniqueOutputPath(first))} …` }
   }
 
   // `NameTaken` owns its keys for the output-exists question; a plain refusal
@@ -3063,7 +3068,7 @@ export function App({
           ? String(values.quality)
           : undefined,
       // Enhance's trail is the row and the name (the mockup's), no folder.
-      destination: folder && mode !== 'enhance' ? basename(displayPath(folder)) : undefined,
+      destination: folder && mode !== 'enhance' ? displayName(displayPath(folder)) : undefined,
       name: extra.name ?? savedAs,
     }
   }
@@ -3098,7 +3103,7 @@ export function App({
       stage.sources.length > 1
         ? `${stage.sources.length} files`
         : source
-          ? basename(source.path)
+          ? displayName(source.path)
           : undefined
     return trailFor({ mode, step: at, answers: trailAnswers(), waiting, verb: work?.verb })
   }
@@ -3152,7 +3157,12 @@ export function App({
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <StepTitle mode={mode} title="Method" aside={basename(source.path)} width={width} />
+                <StepTitle
+                  mode={mode}
+                  title="Method"
+                  aside={displayName(source.path)}
+                  width={width}
+                />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3183,7 +3193,7 @@ export function App({
               <StepTitle
                 mode={mode}
                 title={sizeSpec.label}
-                aside={`${basename(source.path)} · ${formatBytes(source.bytes)}`}
+                aside={`${displayName(source.path)} · ${formatBytes(source.bytes)}`}
                 width={width}
               />
               {/* Save as's field, the unit inside it at the right: the amount
@@ -3272,8 +3282,8 @@ export function App({
                   title={pagesSpec.label}
                   aside={
                     source.kind === 'document'
-                      ? `${basename(source.path)} · ${source.pages} pages`
-                      : basename(source.path)
+                      ? `${displayName(source.path)} · ${source.pages} pages`
+                      : displayName(source.path)
                   }
                   width={width}
                 />
@@ -3328,7 +3338,7 @@ export function App({
                 <StepTitle
                   mode={mode}
                   title={dpiSpec.label}
-                  aside={basename(source.path)}
+                  aside={displayName(source.path)}
                   width={width}
                 />
               </Box>
@@ -3359,7 +3369,7 @@ export function App({
                 // What the quality is for: the format in convert, the file in compress.
                 aside={
                   mode === 'compress'
-                    ? basename(source.path)
+                    ? displayName(source.path)
                     : typeof values.target === 'string'
                       ? FORMATS[values.target as FormatId].label
                       : undefined
@@ -3405,7 +3415,7 @@ export function App({
           {step === 'resize' && source?.kind === 'image' ? (
             <ResizeStep
               mode={mode}
-              aside={`${basename(source.path)} · ${source.width} × ${source.height}`}
+              aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
               from={source}
               percent={resizePercent}
               max={largestPercent(source)}
@@ -3420,7 +3430,7 @@ export function App({
           {step === 'exact-size' && source?.kind === 'image' ? (
             <ExactSizeStep
               mode={mode}
-              aside={`${basename(source.path)} · ${source.width} × ${source.height}`}
+              aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
               from={source}
               percent={resizePercent}
               onSubmit={chooseResize}
@@ -3457,8 +3467,8 @@ export function App({
               <NameTaken
                 mode={mode}
                 width={width}
-                name={basename(pending.output)}
-                keepBoth={basename(pending.keepBoth)}
+                name={displayName(pending.output)}
+                keepBoth={displayName(pending.keepBoth)}
                 existing={pending.existing}
                 onSubmit={answerOverwrite}
                 onCancel={() => {
@@ -3474,7 +3484,7 @@ export function App({
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
-                  title={`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
+                  title={`${source ? displayName(source.path) : 'This file'} can't get below ${formatBytes(
                     sizeUnreachable.smallest,
                   )}`}
                   aside={`asked for ${formatBytes(sizeUnreachable.targetBytes)}`}
@@ -3523,7 +3533,7 @@ export function App({
                   attempt
                     ? 'Finding the right quality'
                     : pageProgress
-                      ? `${verbOf(pageProgress.job) ?? work.verb} ${basename(pageProgress.job.sources[0].path)}`
+                      ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
                       : (work.phase ?? work.verb)
                 }
                 startedAt={work.startedAt}
@@ -3643,8 +3653,8 @@ export function App({
                 setPdfSaved(
                   first
                     ? [
-                        basename(displayPath(dirname(first))),
-                        outputs.length > 1 ? `${outputs.length} files` : basename(first),
+                        displayName(displayPath(dirname(first))),
+                        outputs.length > 1 ? `${outputs.length} files` : displayName(first),
                       ]
                     : [],
                 )

@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs'
-import { basename } from 'node:path'
+
 import { Box, type DOMElement, Text } from 'ink'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
+import { displayName } from '../../utils/display-path.js'
 import { useClickTarget } from '../ClickTargets.js'
 import { completePath } from '../complete.js'
 import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
@@ -309,7 +310,7 @@ export function SaveAs({
       return {
         kind: 'place',
         label:
-          place.label === 'Use this folder' ? basename(place.value) || place.value : place.label,
+          place.label === 'Use this folder' ? displayName(place.value) || place.value : place.label,
         path: display(place.value),
         highlighted: onPath,
       }
