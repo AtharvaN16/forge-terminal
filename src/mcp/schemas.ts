@@ -114,10 +114,10 @@ export const ConvertInput = z.object({
       'Images only: sharpen at the same size with the optional boost extension, writing name-sharp. `to` is then the output format. Fails with extension-missing when it is not installed; the fix is `forge extensions add boost`.',
     ),
   boost: z
-    .union([z.literal(2), z.literal(4)])
+    .union([z.literal(2), z.literal(3), z.literal(4)])
     .optional()
     .describe(
-      'Images only: enlarge 2 or 4 times with the optional boost extension, writing name-2x / name-4x. `to` is then the output format (png keeps transparency). Fails with extension-missing when it is not installed; the fix is `forge extensions add boost`.',
+      'Images only: enlarge 2, 3 or 4 times with the optional boost extension, writing name-2x / name-3x / name-4x. `to` is then the output format (png keeps transparency). Fails with extension-missing when it is not installed; the fix is `forge extensions add boost`. 3 needs boost 1.1.0 or later: an older install fails with extension-outdated, fixed by the same command; while no released boost makes 3 it fails with invalid-arguments naming the factors that work.',
     ),
   removeBackground: z
     .boolean()

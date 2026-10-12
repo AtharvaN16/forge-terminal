@@ -1,12 +1,12 @@
 /**
  * Boost resolution — the extension's child-process entry.
  *
- *   node runner.mjs --in <png> --out <png> --scale 1|2|4 [--cache <dir>]
+ *   node runner.mjs --in <png> --out <png> --scale 1|2|3|4 [--cache <dir>]
  *
  * Runs realesr-general-x4v3 (4×) over the image in 256 px tiles with 16 px of
  * overlap, through ONNX Runtime with the CoreML execution provider (CPU if
- * CoreML will not load). 2× is the 4× tile brought down by Lanczos, tile by
- * tile; 1× (Sharpen) is the 4× tile brought down by a quarter the same way,
+ * CoreML will not load). 2× and 3× are the 4× tile brought down by Lanczos,
+ * tile by tile; 1× (Sharpen) is the 4× tile brought down by a quarter the same way,
  * so the image keeps its size and memory stays bound by the tile. Alpha never
  * goes through the model: it is resized with Lanczos (kept as is at 1×) and
  * re-joined. The output is written one band of tiles at a time, so memory
@@ -57,28 +57,25 @@ function reply(line: Record<string, unknown>, exitCode: number): void {
 interface Args {
   input: string
   output: string
-  scale: 1 | 2 | 4
+  scale: Scale
   cache?: string
 }
+
+/** The factors this runner makes: 1× (Sharpen) and 2×–4×, each from the model's 4× tile. */
+type Scale = 1 | 2 | 3 | 4
+const SCALES: readonly Scale[] = [1, 2, 3, 4]
+const USAGE = 'usage: runner.mjs --in <png> --out <png> --scale 1|2|3|4 [--cache <dir>]'
 
 function parseArgs(argv: string[]): Args {
   const v: Record<string, string> = {}
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i]
     const val = argv[i + 1]
-    if (!k?.startsWith('--') || val === undefined)
-      throw new RunnerError(
-        'runtime-error',
-        'usage: runner.mjs --in <png> --out <png> --scale 1|2|4 [--cache <dir>]',
-      )
+    if (!k?.startsWith('--') || val === undefined) throw new RunnerError('runtime-error', USAGE)
     v[k.slice(2)] = val
   }
-  const scale = Number(v.scale)
-  if (!v.in || !v.out || (scale !== 1 && scale !== 2 && scale !== 4))
-    throw new RunnerError(
-      'runtime-error',
-      'usage: runner.mjs --in <png> --out <png> --scale 1|2|4 [--cache <dir>]',
-    )
+  const scale = SCALES.find((s) => s === Number(v.scale))
+  if (!v.in || !v.out || scale === undefined) throw new RunnerError('runtime-error', USAGE)
   return { input: v.in, output: v.out, scale, cache: v.cache }
 }
 
@@ -95,7 +92,7 @@ function checkSize(w: number, h: number, scale: number): void {
       'boost-too-large',
       `${w}×${h} px (${mp} MP) is past the limit of ${MAX_SIDE} px a side and 100 MP.`,
     )
-  const smaller = [2].filter((s) => s < scale && fits(w, h, s))
+  const smaller = [3, 2].filter((s) => s < scale && fits(w, h, s))
   const tail = smaller.length
     ? `The largest factor that fits is ${smaller[0]}×.`
     : 'No boost factor fits this image.'

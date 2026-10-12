@@ -19,7 +19,7 @@ import {
   unsupportedOperation,
 } from '../core/errors.js'
 import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
-import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
+import { boostScaleRefusal, removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -495,8 +495,15 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
 
   // Lazy: nothing in src/extensions loads unless one of these flags was given.
   const { installed } = await import('../extensions/paths.js')
-  if (!(await installed(intent.op))) {
+  const ext = await installed(intent.op)
+  if (!ext) {
     return nothingRan(kind, [{ path: '', error: extensionMissing(intent.op) }])
+  }
+  // A scale the installed runner does not make is also the command's problem.
+  if (intent.op === 'boost' && intent.scale !== undefined) {
+    const { catalogEntry } = await import('../extensions/catalog.js')
+    const tooOld = boostScaleRefusal(intent.scale, ext.version, catalogEntry('boost')?.version)
+    if (tooOld) return nothingRan(kind, [{ path: '', error: tooOld }])
   }
 
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })

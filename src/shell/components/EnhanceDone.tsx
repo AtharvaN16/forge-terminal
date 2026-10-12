@@ -40,7 +40,7 @@ import { middleEllipsis } from '../width.js'
 
 export interface EnhanceDoneProps {
   op: 'boost' | 'remove-background'
-  scale?: 1 | 2 | 4
+  scale?: 1 | 2 | 3 | 4
   before: string
   after: string
   /** Where it went: the folder, or the written file itself. */
@@ -83,7 +83,7 @@ export function pictureCols(width: number): number {
 /** What was done, and the line's quieter second half. */
 export function whatWasDone(
   op: EnhanceDoneProps['op'],
-  scale: 1 | 2 | 4,
+  scale: 1 | 2 | 3 | 4,
   size?: { width: number; height: number },
 ): { what: string; more: string } {
   const dims = size ? `${size.width} × ${size.height}` : ''

@@ -1,6 +1,7 @@
 import { Command, CommanderError } from 'commander'
 import { parseHex, type Rgb } from '../core/colour/space.js'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
+import type { BoostScale } from '../core/extension-targets.js'
 import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
 import type { ConvertOptions, FormatId } from '../core/types.js'
@@ -97,7 +98,7 @@ export interface PageOpIntent {
 }
 
 /**
- * `--sharpen`, `--boost [2|4]` and `--remove-bg`: an image operation run by an optional
+ * `--sharpen`, `--boost [2|3|4]` and `--remove-bg`: an image operation run by an optional
  * extension (spec §5). Its own `kind` because it has an operation where a
  * conversion has only a target, and it fails differently when the extension
  * is absent.
@@ -106,7 +107,7 @@ export interface ExtensionOpIntent {
   kind: 'extension-op'
   op: 'boost' | 'remove-background'
   /** Only for boost; 1 is `--sharpen`. */
-  scale?: 1 | 2 | 4
+  scale?: 1 | BoostScale
   inputs: string[]
   /** The output format. PNG unless `--to` says otherwise. */
   target: FormatId
@@ -398,16 +399,16 @@ export function wantsJson(argv: string[]): boolean {
 }
 
 /**
- * `--boost` takes an optional 2 or 4. Commander's optional value would also
+ * `--boost` takes an optional 2, 3 or 4. Commander's optional value would also
  * swallow a filename that follows (`forge --boost photo.jpg`), so it is read
  * here and removed before Commander sees the argv. Reading stops at `--`.
  */
-function takeBoost(argv: string[]): { rest: string[]; scale?: 2 | 4 } {
+function takeBoost(argv: string[]): { rest: string[]; scale?: BoostScale } {
   const end = argv.indexOf('--')
   const head = end === -1 ? argv : argv.slice(0, end)
   const tail = end === -1 ? [] : argv.slice(end)
   const rest: string[] = []
-  let scale: 2 | 4 | undefined
+  let scale: BoostScale | undefined
   for (let i = 0; i < head.length; i++) {
     const a = head[i] as string
     const inline = a.startsWith('--boost=') ? a.slice('--boost='.length) : undefined
@@ -417,13 +418,13 @@ function takeBoost(argv: string[]): { rest: string[]; scale?: 2 | 4 } {
     }
     let raw = inline
     if (raw === undefined && /^\d+$/.test(head[i + 1] ?? '')) raw = head[++i]
-    if (raw !== undefined && raw !== '2' && raw !== '4') {
+    if (raw !== undefined && raw !== '2' && raw !== '3' && raw !== '4') {
       throw invalidArguments(
-        `--boost takes 2 or 4, not ${raw}.`,
-        'Try --boost, --boost 2 or --boost 4.',
+        `--boost takes 2, 3 or 4, not ${raw}.`,
+        'Try --boost, --boost 2, --boost 3 or --boost 4.',
       )
     }
-    scale = raw === '4' ? 4 : 2
+    scale = raw === '4' ? 4 : raw === '3' ? 3 : 2
   }
   return { rest: [...rest, ...tail], ...(scale === undefined ? {} : { scale }) }
 }
@@ -450,7 +451,7 @@ function parseSubcommand(argv: string[]): Intent {
   return parseExtensionsArgs(argv)
 }
 
-function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
+function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Intent {
   const program = new Command()
     .name('forge')
     .description('Convert — transform your files from the terminal')
@@ -473,7 +474,10 @@ function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
     .option('--rotate <degrees>', '90, 180 or 270')
     .option('--separate', 'with --extract, write one file per page')
     .option('--sharpen', 'sharpen at the same size; needs the boost extension')
-    .option('--boost [2|4]', 'sharpen and enlarge 2x (default) or 4x; needs the boost extension')
+    .option(
+      '--boost [2|3|4]',
+      'sharpen and enlarge 2x (default), 3x or 4x; needs the boost extension',
+    )
     .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
@@ -548,7 +552,7 @@ function parseConversionArgs(argv: string[], boost: 2 | 4 | undefined): Intent {
     ...(boost !== undefined ? ['--boost'] : []),
     ...(opts.removeBg ? ['--remove-bg'] : []),
   ]
-  const scale: 1 | 2 | 4 | undefined = opts.sharpen ? 1 : boost
+  const scale: 1 | BoostScale | undefined = opts.sharpen ? 1 : boost
   const extensionOp =
     scale !== undefined ? ('boost' as const) : opts.removeBg ? ('remove-background' as const) : null
   if (extensionOp !== null) {

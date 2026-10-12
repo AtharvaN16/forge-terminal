@@ -75,6 +75,56 @@ describe('--boost with an installed extension', () => {
     expect(said).toContain('--boost 2')
     expect(existsSync(join(dir, 'banner-4x.png'))).toBe(false)
   })
+
+  it('--boost 3 writes name-3x.png at three times the size with boost 1.1.0', async () => {
+    await fake.install(home, 'boost', '1.1.0')
+    const dir = await makeTempDir()
+    const src = await makeTransparentPng(dir, 'photo.png')
+
+    const out = await forge(src, '--boost', '3', '--json')
+    const doc = JSON.parse(out.stdout[0] ?? '') as RunJson
+    expect(out.exitCode).toBe(0)
+    expect(doc.results[0]).toMatchObject({ op: 'boost', outputs: [join(dir, 'photo-3x.png')] })
+    const meta = await sharp(join(dir, 'photo-3x.png')).metadata()
+    expect([meta.width, meta.height]).toEqual([96, 96])
+  })
+
+  it('--boost 3 on boost 1.0.0, with no release that makes 3x, says so once and points at 2 or 4', async () => {
+    // The real catalogue: until boost 1.1.0 is released, "update it" would
+    // change nothing (the add command finds 1.0.0 already installed).
+    await fake.install(home, 'boost', '1.0.0')
+    const dir = await makeTempDir()
+    const a = await makeTransparentPng(dir, 'one.png')
+    const b = await makeTransparentPng(dir, 'two.png')
+
+    const out = await forge(a, b, '--boost', '3', '--json')
+    expect(out.exitCode).toBe(2) // invalid-arguments: the command's own fault, as --boost 5 is
+    const doc = JSON.parse(out.stdout[0] ?? '') as RunJson
+    const said = JSON.stringify(doc)
+    expect(doc.failures).toHaveLength(1)
+    expect(said).toContain('No released boost makes 3× yet.')
+    expect(said).toContain('Try --boost 2 or --boost 4.')
+    expect(said).not.toContain('forge extensions add boost')
+    expect(existsSync(join(dir, 'one-3x.png'))).toBe(false)
+  })
+
+  it('names 3x as the factor that fits only when the installed boost makes 3x', async () => {
+    const dir = await makeTempDir()
+    // 5000 px wide: 4x would be 20,000 px; 3x is 15,000, 2x is 10,000.
+    const src = join(dir, 'wide.png')
+    await sharp({ create: { width: 5000, height: 50, channels: 3, background: '#fff' } })
+      .png()
+      .toFile(src)
+
+    await fake.install(home, 'boost', '1.1.0')
+    expect((await forge(src, '--boost', '4')).stderr.join('\n')).toContain(
+      '3x is the most it can take',
+    )
+    await fake.install(home, 'boost', '1.0.0')
+    expect((await forge(src, '--boost', '4')).stderr.join('\n')).toContain(
+      '2x is the most it can take',
+    )
+  })
 })
 
 describe('--remove-bg', () => {

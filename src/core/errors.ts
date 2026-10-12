@@ -33,6 +33,7 @@ export type ErrorCode =
   | 'extension-missing'
   | 'extension-corrupt'
   | 'extension-unsupported'
+  | 'extension-outdated'
   | 'extension-download-failed'
   | 'extension-in-use'
   | 'no-subject'
@@ -621,6 +622,22 @@ export function extensionMissing(id: string): ForgeError {
     detail: `${id} is an optional extension and is not installed.`,
     hint: `Install it with: forge extensions add ${id}`,
     shellHint: 'Open /extensions to install it.',
+  })
+}
+
+/** The installed version cannot do what was asked; a newer one can (`since`). */
+export function extensionOutdated(
+  id: string,
+  what: string,
+  have: string,
+  since: string,
+): ForgeError {
+  return new ForgeError({
+    code: 'extension-outdated',
+    title: 'Extension out of date',
+    detail: `${id} ${have} cannot ${what}; that needs ${since} or later.`,
+    hint: `Update it with: forge extensions add ${id}`,
+    shellHint: 'Open /extensions to update it.',
   })
 }
 

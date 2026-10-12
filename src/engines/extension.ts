@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { boostTooLarge, conversionFailed, extensionMissing, isForgeError } from '../core/errors.js'
-import { boostOverLimit } from '../core/extension-targets.js'
+import { boostOverLimit, boostScaleRefusal, boostScales } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import type { Job, Progress, Result, Warning } from '../core/types.js'
 import { decodeToPng, encode, writeAtomic } from './image.js'
@@ -14,13 +14,18 @@ const fits = (width: number, height: number, scale: number): boolean =>
   boostOverLimit(width, height, scale) === undefined
 
 /**
- * The largest boost factor below `below` that keeps the output within the
+ * The largest of `scales` below `below` that keeps the output within the
  * limits, or 0 when none does. Worked out from the probed size, so a source
  * that is too large is refused before it is decoded, naming a factor that
- * will actually work.
+ * will actually work — one the installed runner makes (`boostScales`).
  */
-export function maxBoost(width: number, height: number, below = Number.POSITIVE_INFINITY): number {
-  return [4, 2].find((s) => s < below && fits(width, height, s)) ?? 0
+export function maxBoost(
+  width: number,
+  height: number,
+  below = Number.POSITIVE_INFINITY,
+  scales: readonly number[] = [2, 4],
+): number {
+  return [...scales].reverse().find((s) => s < below && fits(width, height, s)) ?? 0
 }
 
 /**
@@ -44,13 +49,25 @@ async function run(
   const source = job.sources[0]
   const output = job.outputs[0]
   const id = job.op
-  if (job.op === 'boost' && !fits(source.width, source.height, job.scale)) {
-    throw boostTooLarge(source.path, maxBoost(source.width, source.height), job.scale)
-  }
 
+  // The installed version first: which factors its runner makes decides both
+  // whether this job can run and which factor a too-large refusal names.
   const { installed, extensionsRoot } = await import('../extensions/paths.js')
   const ext = await installed(id)
   if (!ext) throw extensionMissing(id)
+  const scales = boostScales(ext.version)
+  if (job.op === 'boost') {
+    const { catalogEntry } = await import('../extensions/catalog.js')
+    const refusal = boostScaleRefusal(job.scale, ext.version, catalogEntry(id)?.version)
+    if (refusal) throw refusal
+  }
+  if (job.op === 'boost' && !fits(source.width, source.height, job.scale)) {
+    throw boostTooLarge(
+      source.path,
+      maxBoost(source.width, source.height, Number.POSITIVE_INFINITY, scales),
+      job.scale,
+    )
+  }
   const { runExtension } = await import('../extensions/run.js')
 
   const warnings: Warning[] = []
@@ -90,7 +107,9 @@ async function run(
       what: `${toolVerb(job)} is running on ${basename(source.path)}`,
       onWait: () => onPhase({ phase: 'waiting' }),
       onStart: () => onPhase({ phase: 'encoding' }),
-      ...(job.op === 'boost' ? { maxScale: maxBoost(source.width, source.height, job.scale) } : {}),
+      ...(job.op === 'boost'
+        ? { maxScale: maxBoost(source.width, source.height, job.scale, scales) }
+        : {}),
       ...(signal === undefined ? {} : { signal }),
     })
 
@@ -114,7 +133,7 @@ async function run(
 /** The job as the shell names it, for another forge's manage screen. Scale 1 is Sharpen. */
 function toolVerb(job: Job): string {
   if (job.op !== 'boost') return 'Remove background'
-  return job.scale === 2 || job.scale === 4 ? `Boost resolution ${job.scale}×` : 'Sharpen'
+  return job.scale === 1 ? 'Sharpen' : `Boost resolution ${job.scale}×`
 }
 
 export const extensionEngine: Engine = {

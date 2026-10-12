@@ -71,10 +71,10 @@ and need macOS 14 or later:
 
 ```bash
 forge extensions                       # what is installed
-forge extensions add boost             # about 15 MB; sharpen, 2x / 4x; Apple Silicon only for now
+forge extensions add boost             # about 15 MB; sharpen, 2x / 3x / 4x; Apple Silicon only for now
 forge extensions add remove-background # about 32 KB
 forge photo.jpg --sharpen --json       # photo-sharp.png (same size, sharper)
-forge photo.jpg --boost --json         # photo-2x.png   (--boost 4 -> photo-4x.png)
+forge photo.jpg --boost --json         # photo-2x.png   (--boost 3 -> photo-3x.png, --boost 4 -> photo-4x.png)
 forge photo.jpg --remove-bg --json     # photo-cutout.png
 ```
 
@@ -85,9 +85,12 @@ a cutout needs one that carries transparency (png, webp, avif, tiff) and
 anything else is refused with `invalid-arguments`. If the extension is missing
 the failure code is `extension-missing`, its hint is the install command, and
 the exit code is 1: ask the user before installing, since it downloads.
-Other codes: `no-subject` (no foreground found) and `boost-too-large`
+Other codes: `no-subject` (no foreground found), `boost-too-large`
 (the result would pass 16,384 px a side or 100 MP; the hint names the largest
-factor that fits).
+factor that fits) and `extension-outdated` (`--boost 3` needs boost 1.1.0 or
+later; the hint is the same `forge extensions add boost`, which updates it).
+While no released boost makes 3x, `--boost 3` is refused with
+`invalid-arguments` and a hint naming the factors that work; don't update then.
 
 ## Encrypted PDFs
 
@@ -113,6 +116,7 @@ exit 1 and a hint; a wrong password has its own hint.
 - `unsupported-operation`: that page operation does not fit those files (PDFs only; merge needs two or more).
 - `encrypted-source`: a password is needed, or the one given was wrong.
 - `extension-missing`: run the hint's `forge extensions add <id>` (with the user's agreement), then retry.
+- `extension-outdated`: the same command updates it (with the user's agreement, it downloads), then retry.
 - `file-not-found`: check the path; probe reports it per file without failing the rest.
 
 ## MCP
@@ -122,7 +126,7 @@ If a `forge` MCP server is connected (tools `forge_probe`, `forge_formats`,
 `forge_scale`), prefer it. It takes absolute
 paths and returns the same JSON as `structuredContent`. It never overwrites
 unless you pass `overwrite: true`, and an encrypted PDF takes a `password`
-argument. `forge_convert` also takes `sharpen: true`, `boost: 2 | 4` and `removeBackground: true`
+argument. `forge_convert` also takes `sharpen: true`, `boost: 2 | 3 | 4` and `removeBackground: true`
 (images only; `to` is then the output format); without the extension they fail
 with `extension-missing`. A hint that says `--force` means `overwrite: true` there;
 `--password-stdin` means `password`.

@@ -136,7 +136,7 @@ export type Job =
       sources: [ImageInfo]
       outputs: [string]
       /** 1 is Sharpen: the model at the source's own size. */
-      scale: 1 | 2 | 4
+      scale: 1 | 2 | 3 | 4
       target: FormatId
       options: ConvertOptions
     }

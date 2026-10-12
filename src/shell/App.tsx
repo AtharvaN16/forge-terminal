@@ -22,6 +22,7 @@ import {
   unsupportedPdf,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
+import { boostScales } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { type InputFailure, resolveDirectory } from '../core/resolve.js'
@@ -118,7 +119,7 @@ export type Step =
   | 'idle'
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
-  /** Enhance's picker: Sharpen, Boost resolution 2× / 4×, Remove background. */
+  /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'enhance'
   /** Compress: by quality, or to a target size. */
   | 'mode'
@@ -2567,9 +2568,9 @@ export function App({
   }, [step, tools, showError])
 
   /** A row chosen whose tool is on this Mac: on to Save as, with the row's answers. */
-  const chooseEnhance = (row: EnhanceRow) => {
+  const chooseEnhance = (row: EnhanceRow, scale?: number) => {
     if (!source) return
-    const vals = rowValues(row)
+    const vals = rowValues(row, scale)
     setValues(vals)
     openSaveAs({ values: vals, action: actionForRow(row) })
   }
@@ -2593,8 +2594,11 @@ export function App({
     })
     setChecking(false)
     let installed = false
+    // The version now on disk, from what `install` returns (`Installed`), so
+    // Boost's row offers the scales it makes without reading the catalogue.
+    let version: string | undefined
     try {
-      await tools.install(id, {
+      const got = await tools.install(id, {
         signal: controller.signal,
         onProgress: (done, total) => {
           if (controller.signal.aborted) return
@@ -2602,6 +2606,9 @@ export function App({
           if (total > 0 && done >= total) setChecking(true)
         },
       })
+      if (typeof got === 'object' && got !== null && 'version' in got) {
+        version = typeof got.version === 'string' ? got.version : undefined
+      }
       installed = true
     } catch (e) {
       if (!controller.signal.aborted) showError(e)
@@ -2609,8 +2616,12 @@ export function App({
     if (installAbort.current === controller) installAbort.current = undefined
     setChecking(false)
     if (installed && !controller.signal.aborted) {
-      set({ kind: 'ready' })
-      if (stepRef.current === 'enhance') chooseEnhance(row)
+      set({ kind: 'ready', ...(version === undefined ? {} : { version }) })
+      // A row with a scale to choose stays put: its pill shows now, and ↵
+      // goes on. Any other row goes straight on to Save as.
+      const now = source?.kind === 'image' ? enhanceRow(source, row.id, boostScales(version)) : row
+      const toChoose = (now?.scales?.length ?? 0) > 1
+      if (stepRef.current === 'enhance' && !toChoose) chooseEnhance(row)
       return
     }
     // Stopped or failed: the row says what is really on disk now. A stop that
@@ -2973,9 +2984,12 @@ export function App({
     const bySize = mode === 'compress' && values.mode === 'size'
     return {
       mode: modeSpec ? answerFor(modeSpec, values.mode) : undefined,
-      // Enhance's answer is the row's name ("Sharpen"), not the format it keeps.
+      // Enhance's answer is the row's name ("Sharpen"), not the format it
+      // keeps, and Boost's scale with it ("Boost resolution 4×").
       target: enhancing
-        ? enhancing.label
+        ? enhancing.scales && typeof values.scale === 'string'
+          ? `${enhancing.label} ${values.scale}×`
+          : enhancing.label
         : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
@@ -3300,14 +3314,19 @@ export function App({
           {step === 'enhance' && source?.kind === 'image' && toolStates ? (
             <EnhancePicker
               format={FORMATS[source.format].label}
-              rows={enhanceRows(source)}
+              rows={enhanceRows(
+                source,
+                boostScales(
+                  toolStates.boost?.kind === 'ready' ? toolStates.boost.version : undefined,
+                ),
+              )}
               tools={toolStates}
               checking={checking}
+              chosen={{ tool: values.tool, scale: values.scale }}
               width={width}
-              pickerWidth={pickerWidth}
-              onChoose={(row) => {
+              onChoose={(row, scale) => {
                 const state = toolStates[row.extension]
-                if (state?.kind === 'ready') chooseEnhance(row)
+                if (state?.kind === 'ready') chooseEnhance(row, scale)
                 else if (state?.kind === 'absent') void installThen(row)
               }}
               onStop={stopInstall}

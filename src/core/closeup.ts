@@ -65,7 +65,7 @@ export interface CloseupOptions {
   cols: number
   /** Rows the grid may use: its height is `DOTS_DOWN` dots a row. */
   rows: number
-  scale: 1 | 2 | 4
+  scale: 1 | 2 | 3 | 4
 }
 
 /** Dots in a cell: a sextant's 2 across, 3 down. */
@@ -323,7 +323,7 @@ interface Chosen {
  */
 let last: { key: string; chosen: Promise<Chosen> } | undefined
 
-async function choose(before: string, after: string, scale: 1 | 2 | 4): Promise<Chosen> {
+async function choose(before: string, after: string, scale: 1 | 2 | 3 | 4): Promise<Chosen> {
   const k = scale === 1 ? 1 : 2
   const [sb, sa] = await Promise.all([stat(before), stat(after)])
   const key = [before, sb.size, sb.mtimeMs, after, sa.size, sa.mtimeMs, k].join('\0')
