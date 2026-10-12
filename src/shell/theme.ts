@@ -73,6 +73,11 @@ export interface Palette {
   warn: string
   fail: string
   /**
+   * Errors (E5, E5·b): the fill red text is drawn on, and only there. Empty
+   * means "no fill" — the error then says `✕` in front instead.
+   */
+  failTint: string
+  /**
    * A conversion result that came out *larger* than its source. Distinct
    * from `warn`: `warn` is a shared, general-purpose "worth a second look"
    * used for several unrelated messages elsewhere, and reusing it here
@@ -196,6 +201,9 @@ export const DARK: Palette = {
   ok: '#6fcf7f',
   warn: '#e5c07b',
   fail: '#e8796d',
+  // A dark red, as the default's tag in Save as is a dark orange one. `fail`
+  // on it measures 5.5:1, `fg` 12.6:1 and `dim` 7.2:1.
+  failTint: '#2e2020',
   // 7.49:1 on #1e1e1e. A true orange (hue ~28°) rather than `warn`'s gold
   // (~40°) — the two need to read as different colours next to each other,
   // not just different words.
@@ -256,6 +264,9 @@ export const LIGHT: Palette = {
   ok: '#1e7a35',
   warn: '#8a6100',
   fail: '#b3261e',
+  // A pale red, as dark's is a dark one. On it `fail` (#b3261e) measures
+  // 5.32:1 and `fg` (#23262d) 12.32:1, both clearing AA; `dim` 3.88:1.
+  failTint: '#f9e3df',
   // 5.56:1 on white. Same reasoning as DARK's `larger`: a burnt orange
   // (~34°) distinct from `warn`'s brown-gold, clearing AA the way `dim` and
   // `accent` above do.
@@ -317,6 +328,8 @@ export const NEUTRAL: Palette = {
   ok: 'green',
   warn: 'yellow',
   fail: 'red',
+  // No fill is asserted before the theme is known.
+  failTint: '',
   // No distinct "orange" in the basic 16 ANSI names this palette is built
   // from — same collapse `accent` and `warn` already make here.
   larger: 'yellow',
