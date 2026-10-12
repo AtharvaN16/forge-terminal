@@ -1,9 +1,7 @@
-import { Box, Text } from 'ink'
-import { FIELD_WIDTH, fieldBlank } from '../save-as-art.js'
+import { Text } from 'ink'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
-import { Runs } from './Home.js'
-import { Prompt } from './Prompt.js'
+import { FilledField } from './FilledField.js'
 
 /** The units `parseSize` accepts, in the order a person scans them. */
 export const SIZE_UNIT_IDS = ['b', 'kb', 'mb', 'gb'] as const
@@ -39,51 +37,42 @@ export function SizeField({
   const palette = useTheme()
   const noColour = (process.env.NO_COLOR ?? '') !== ''
   const plain = noColour || palette.selectionBg === ''
-  const fieldWidth = Math.max(24, Math.min(FIELD_WIDTH, width - 4))
-  const fill = plain ? undefined : palette.selectionBg
-  const pad = plain ? null : <Runs row={fieldBlank({ palette, width: fieldWidth })} />
+  const units = (
+    <Text>
+      {SIZE_UNIT_IDS.map((id) => {
+        const chosen = id === unit
+        const label = LABELS[id]
+        if (!chosen) {
+          return (
+            <Text key={id} color={colourProp(palette.dim)}>
+              {`  ${label}  `}
+            </Text>
+          )
+        }
+        if (plain) return <Text key={id}>{` [${label}] `}</Text>
+        return (
+          <Text
+            key={id}
+            bold
+            color={colourProp(unitFocused ? palette.ink : palette.fg)}
+            backgroundColor={unitFocused ? palette.pill : palette.folderChip}
+          >
+            {`  ${label}  `}
+          </Text>
+        )
+      })}
+      {'  '}
+    </Text>
+  )
   return (
-    <Box marginTop={2} flexDirection="column">
-      {pad}
-      <Box width={fieldWidth} {...(fill ? { backgroundColor: fill } : {})}>
-        <Text> </Text>
-        <Prompt
-          value={value}
-          onChange={onChange}
-          onSubmit={onSubmit}
-          placeholder={placeholder}
-          isActive={!unitFocused}
-          variant="inline"
-          width={fieldWidth - 24}
-        />
-        <Box flexGrow={1} />
-        <Text>
-          {SIZE_UNIT_IDS.map((id) => {
-            const chosen = id === unit
-            const label = LABELS[id]
-            if (!chosen) {
-              return (
-                <Text key={id} color={colourProp(palette.dim)}>
-                  {`  ${label}  `}
-                </Text>
-              )
-            }
-            if (plain) return <Text key={id}>{` [${label}] `}</Text>
-            return (
-              <Text
-                key={id}
-                bold
-                color={colourProp(unitFocused ? palette.ink : palette.fg)}
-                backgroundColor={unitFocused ? palette.pill : palette.folderChip}
-              >
-                {`  ${label}  `}
-              </Text>
-            )
-          })}
-          {'  '}
-        </Text>
-      </Box>
-      {pad}
-    </Box>
+    <FilledField
+      value={value}
+      onChange={onChange}
+      onSubmit={onSubmit}
+      placeholder={placeholder}
+      isActive={!unitFocused}
+      width={width}
+      right={units}
+    />
   )
 }

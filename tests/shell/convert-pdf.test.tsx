@@ -302,7 +302,7 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     // Asked as Name taken (L1), the same question every save asks.
     expect(blockedFrame).toContain('doc-1.jpg already exists')
     // Not yet the bug: still on the blocked screen, not sent anywhere.
-    expect(blockedFrame).not.toContain('PDF — choose an operation')
+    expect(blockedFrame).not.toContain('Choose an operation')
 
     stdin.write(DOWN + DOWN) // Keep both, Replace, Cancel
     await settle()
@@ -312,7 +312,7 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     const frame = lastFrame() ?? ''
     // The bug this pins: this conversion was never started from /pdf, so
     // cancelling must never land on its hub.
-    expect(frame).not.toContain('PDF — choose an operation')
+    expect(frame).not.toContain('Choose an operation')
     // The positive assertion beside it: genuinely back on the destination
     // step this conversion actually came from — not a blank frame that
     // would make the negative assertion above pass for free.

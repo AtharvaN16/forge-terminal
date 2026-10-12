@@ -108,7 +108,7 @@ describe('merge — the reorder screen comes before confirm', () => {
     stdin.write(ENTER)
     await settle()
     // The reorder screen, not confirm yet.
-    expect(lastFrame() ?? '').toContain('order the files')
+    expect(lastFrame() ?? '').toMatch(/order the files/i)
     expect(lastFrame() ?? '').toContain('a.pdf')
     stdin.write(ENTER) // submit the (untouched) order
     await settle()
@@ -173,7 +173,7 @@ describe('merge — the reorder screen comes before confirm', () => {
     stdin.write('x') // remove a.pdf, leaving one file
     await settle()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('Choose an operation')
     expect(frame).toContain('at least two')
     expect(onDone).not.toHaveBeenCalled()
   })
@@ -277,7 +277,9 @@ describe('extract — the grid leads when the document fits', () => {
     // The grid, not a bare text field: page cells are on screen.
     const gridFrame = lastFrame() ?? ''
     expect(gridFrame).toContain('1')
-    expect(gridFrame).not.toContain('Pages')
+    // Both views are titled Pages; the grid counts, the field has a marker.
+    expect(gridFrame).toContain('selected')
+    expect(gridFrame).not.toContain('› ')
     stdin.write(' ') // select page 1
     await settle()
     stdin.write(ENTER) // submit selection
@@ -330,12 +332,12 @@ describe('extract — the grid leads when the document fits', () => {
     await settle()
     stdin.write('r') // toggle to the typed field
     await settle()
-    expect(lastFrame() ?? '').toContain('Pages')
+    expect(lastFrame() ?? '').toContain('› ')
     expect(lastFrame() ?? '').toContain('1')
     stdin.write('g') // toggle back to the grid
     await settle()
     const back = lastFrame() ?? ''
-    expect(back).not.toContain('Pages')
+    expect(back).not.toContain('› ')
     // The toggle preserved the selection made before it (both views write
     // `values.pages`): submitting now should reach extract's *second*
     // question, "Output" — proof this was genuinely the extract path and
@@ -477,5 +479,66 @@ describe('/pdf ends on Save as', () => {
     stdin.write(ESCAPE) // back to the order
     await settle()
     expect(plain(lastFrame())).toMatch(/order the files/i)
+  })
+})
+
+describe('/pdf, drawn with the decided parts', () => {
+  const keyRow = (f: string | undefined) => plain(f).trimEnd().split('\n').at(-1) ?? ''
+
+  it('titles the hub, the file at its right; the list no wider than the card; esc back', () => {
+    const { lastFrame } = mount([doc('/docs/r.pdf', 7)])
+    const out = plain(lastFrame())
+    expect(out).toMatch(/^ Choose an operation +r\.pdf · 7 pages$/m)
+    const row = out.split('\n').find((l) => l.includes('▌')) ?? ''
+    expect(row.length).toBeLessThanOrEqual(52)
+    expect(keyRow(lastFrame())).toMatch(/esc back · ctrl-c quit$/)
+  })
+
+  it('titles split’s question “How to split”, rotate’s by its label, the pages at their right', async () => {
+    const split = mount([doc('/docs/r.pdf', 7)])
+    split.stdin.write(ENTER)
+    await settle()
+    expect(plain(split.lastFrame())).toMatch(/^ How to split +7 pages$/m)
+    const rotate = mount([doc('/docs/r.pdf', 7)])
+    rotate.stdin.write(DOWN + DOWN + DOWN + DOWN + ENTER)
+    await settle()
+    expect(plain(rotate.lastFrame())).toMatch(/^ Turn +7 pages$/m)
+  })
+
+  it('asks “Pages per file” in the filled field, which says what the number makes', async () => {
+    const { stdin, lastFrame } = mount([doc('/docs/r.pdf', 7)])
+    stdin.write(ENTER) // Split
+    await settle()
+    stdin.write(DOWN + ENTER) // Every N pages
+    await settle()
+    stdin.write('2')
+    await settle()
+    const out = plain(lastFrame())
+    expect(out).toMatch(/^ Pages per file +7 pages$/m)
+    expect(out).toMatch(/› 2 +pages each → 4 files/)
+    expect(keyRow(lastFrame())).toMatch(/esc back · ctrl-c quit$/)
+  })
+
+  it('titles the page grid, and its keys say esc', async () => {
+    const { stdin, lastFrame } = mount([doc('/docs/r.pdf', 7)])
+    stdin.write(DOWN + ENTER) // Extract
+    await settle()
+    expect(plain(lastFrame())).toMatch(/^ Pages +r\.pdf · 7 pages$/m)
+    expect(keyRow(lastFrame())).toMatch(/esc back · ctrl-c quit$/)
+  })
+
+  it('orders a merge on the picker’s band, “choose” not “select”, sort and remove quiet', async () => {
+    const { stdin, lastFrame } = mount([doc('/docs/a.pdf', 7), doc('/docs/b.pdf', 7)])
+    stdin.write(ENTER) // Merge
+    await settle()
+    const out = plain(lastFrame())
+    expect(out).toMatch(/^ Order the files +2 files · 14 pages$/m)
+    expect(out).toMatch(/▌ +1 +a\.pdf/)
+    expect(out).not.toContain('❯')
+    expect(keyRow(lastFrame())).toMatch(
+      // Caps where there is colour, brackets where there is none; brackets
+      // are wider, so the footnote gives up its last item first (F1).
+      /↑↓\]? +choose .*s sort · x remove · esc back/,
+    )
   })
 })

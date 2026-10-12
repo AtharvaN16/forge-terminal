@@ -82,7 +82,7 @@ describe('a running split names itself correctly, not as rendering', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
 
     // Hub order is Merge, Split, Extract, Delete, Rotate. Merge is disabled
     // with one file staged, so the cursor already starts on Split.

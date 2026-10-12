@@ -236,7 +236,8 @@ export function MergeList({
   const rows = order.map((s, i) => {
     const isCursor = i === cursor
     const isHeld = i === held
-    const mark = isHeld ? '⇅' : isCursor ? SYMBOLS.cursor : ' '
+    // The picker's strip marks the row you are on; a row picked up says so with ⇅.
+    const mark = isHeld ? '⇅' : isCursor ? SYMBOLS.strip : ' '
     const name = middleEllipsis(basename(s.path), nameWidth)
     const numStr = String(i + 1).padStart(2)
     // Padded by column count, not by `padEnd`'s code units, for the same
@@ -245,7 +246,8 @@ export function MergeList({
     const pages = pagesOf(s)
     const pagesStr = `${pages} ${pages === 1 ? 'page' : 'pages'}`.padStart(9)
     const sizeStr = formatBytes(s.bytes).padStart(10)
-    const bg = isCursor && palette.selectionBg !== '' ? palette.selectionBg : undefined
+    // The picker's band: grey, as every list's is.
+    const bg = isCursor && palette.listBand !== '' ? palette.listBand : undefined
 
     return (
       <Text key={s.path} {...(bg ? { backgroundColor: bg } : {})}>
@@ -266,31 +268,31 @@ export function MergeList({
       ? [
           ['↑↓', 'move'],
           ['space', 'drop'],
-          ['esc', 'put back'],
         ]
       : [
-          ['↑↓', 'select'],
+          ['↑↓', 'choose'],
           ['space', 'pick up'],
+          ['↵', 'confirm'],
+        ]
+  const hintFoot: Array<[string, string]> =
+    held !== null
+      ? [['esc', 'put back']]
+      : [
           ['s', 'sort'],
           ['x', 'remove'],
-          ['↵', 'confirm'],
-          ['esc', 'cancel'],
+          ['esc', 'back'],
         ]
 
   return (
     <Box flexDirection="column">
-      <Text color={colourProp(palette.dim)}>
-        {`${order.length} ${order.length === 1 ? 'file' : 'files'} to merge`}
-      </Text>
-      <Box flexDirection="column" marginTop={1}>
-        {rows}
-      </Box>
+      {/* How many, and how many pages, is the title's to say (pdf.tsx). */}
+      <Box flexDirection="column">{rows}</Box>
       {mode !== 'dropped' ? (
         <Box marginTop={1}>
           <Text color={colourProp(palette.dim)}>{`sorted: ${mode} ▾`}</Text>
         </Box>
       ) : null}
-      <HintBar width={width} pairs={hintPairs} />
+      <HintBar width={width} pairs={hintPairs} foot={hintFoot} />
     </Box>
   )
 }

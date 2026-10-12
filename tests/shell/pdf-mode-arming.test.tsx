@@ -79,7 +79,7 @@ describe('/pdf mode arming', () => {
     await settle(400)
     const frame = app.lastFrame() ?? ''
     // Two PDFs staged in pdf mode: ↵ opens the hub on both, as /pdf would.
-    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('Choose an operation')
     expect(frame).toContain('a.pdf')
     expect(frame).toContain('b.pdf')
   })

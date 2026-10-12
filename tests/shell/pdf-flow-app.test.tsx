@@ -146,7 +146,7 @@ describe('/pdf end to end through App', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
 
     // Hub order is Merge, Split, Extract, Delete, Rotate. Merge is disabled
     // with one file staged, so the cursor already starts on Split.
@@ -200,7 +200,7 @@ describe('/pdf end to end through App', () => {
     stdin.write(ENTER)
     await settle(400)
 
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
   }, 20_000)
 })
 
@@ -396,6 +396,6 @@ describe('/pdf refuses a stage nothing applies to', () => {
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('/pdf needs the staged files to be PDFs')
-    expect(frame).not.toContain('PDF — choose an operation')
+    expect(frame).not.toContain('Choose an operation')
   }, 20_000)
 })

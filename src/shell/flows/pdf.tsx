@@ -12,18 +12,19 @@ import { formatRanges, parseRanges } from '../../core/pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
 import { displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
+import { FilledField } from '../components/FilledField.js'
 import { HintBar } from '../components/HintBar.js'
 import { MergeList } from '../components/MergeList.js'
 import { gridLayout, PageGrid } from '../components/PageGrid.js'
-import { Prompt } from '../components/Prompt.js'
 import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
+import { StepTitle } from '../components/StepTitle.js'
 import type { Stage } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { pdfTrail } from '../trail.js'
 import { useKeys } from '../useKeys.js'
-import { bandFor } from '../width.js'
+import { bandFor, CARD_WIDTH } from '../width.js'
 
 /**
  * The five page operations this phase built, in the order the hub lists
@@ -453,9 +454,11 @@ export function PdfFlow({
     if (action.id === 'split' && spec.id === 'mode' && spec.kind === 'select') {
       return (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>{spec.label}</Text>
+          <Box marginBottom={1}>
+            <StepTitle mode="pdf" title="How to split" aside={pagesAside} width={width} />
+          </Box>
           <Select
-            width={width}
+            width={listWidth}
             items={spec.choices}
             initialValue={spec.default}
             onSubmit={chooseSplitMode}
@@ -482,6 +485,9 @@ export function PdfFlow({
       if (pagesView === 'grid') {
         return (
           <Box flexDirection="column" marginBottom={1}>
+            <Box marginBottom={1}>
+              <StepTitle mode="pdf" title={spec.label} aside={docAside} width={width} />
+            </Box>
             <PageGrid
               mode="cell"
               pageCount={doc.pages}
@@ -502,7 +508,10 @@ export function PdfFlow({
                 ['space', 'toggle'],
                 ['a', 'all'],
                 ['↵', 'confirm'],
+              ]}
+              foot={[
                 ['r', 'type ranges'],
+                ['esc', 'back'],
               ]}
             />
           </Box>
@@ -511,14 +520,13 @@ export function PdfFlow({
       const placeholder = spec.kind === 'text' ? spec.placeholder : ''
       return (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>{spec.label}</Text>
-          <Prompt
+          <StepTitle mode="pdf" title={spec.label} aside={docAside} width={width} />
+          <FilledField
             value={text}
             onChange={setText}
             onSubmit={submitPagesText}
             placeholder={placeholder}
             isActive
-            variant={band === 'compact' ? 'plain' : 'field'}
             width={width}
           />
           {pagesError ? (
@@ -539,12 +547,14 @@ export function PdfFlow({
     if (spec.kind === 'select') {
       return (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>{spec.label}</Text>
+          <Box marginBottom={1}>
+            <StepTitle mode="pdf" title={spec.label} aside={pagesAside} width={width} />
+          </Box>
           <Select
             // Keyed by spec so two select specs in a row each mount fresh and
             // open on their own default, not on the previous one's cursor.
             key={spec.id}
-            width={width}
+            width={listWidth}
             items={spec.choices}
             initialValue={spec.default}
             onSubmit={answerSpec}
@@ -572,14 +582,13 @@ export function PdfFlow({
     // text spec has somewhere to render.
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Text color={colourProp(palette.label)}>{spec.label}</Text>
-        <Prompt
+        <StepTitle mode="pdf" title={spec.label} aside={pagesAside} width={width} />
+        <FilledField
           value={text}
           onChange={setText}
           onSubmit={answerSpec}
           placeholder={spec.placeholder}
           isActive
-          variant={band === 'compact' ? 'plain' : 'field'}
           width={width}
         />
         {fieldError ? (
@@ -595,6 +604,25 @@ export function PdfFlow({
       </Box>
     )
   }
+
+  /** What a question is about, at its title's right: the file, and its pages. */
+  const docAside = doc
+    ? `${basename(doc.path)} · ${doc.pages} pages`
+    : `${stage.sources.length} files`
+  const pagesAside = doc ? `${doc.pages} pages` : undefined
+  const mergeSources = mergeOrder ?? stage.sources
+  const mergeAside = `${mergeSources.length} files · ${mergeSources.reduce(
+    (n, s) => n + (s.kind === 'document' ? s.pages : 0),
+    0,
+  )} pages`
+  /** Lists stop where the file card does, as every other picker's band. */
+  const listWidth = Math.min(width, CARD_WIDTH)
+  /** What "every N pages" makes, once N is a whole number: the field says it. */
+  const splitParts = (() => {
+    const n = Number(text.trim())
+    if (!doc || text.trim() === '' || !Number.isInteger(n) || n < 1) return undefined
+    return Math.ceil(doc.pages / n)
+  })()
 
   const job = jobs[0]
   /**
@@ -616,12 +644,14 @@ export function PdfFlow({
     <Box flexDirection="column">
       {step === 'hub' ? (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>PDF — choose an operation</Text>
+          <Box marginBottom={hubNote ? 0 : 1}>
+            <StepTitle mode="pdf" title="Choose an operation" aside={docAside} width={width} />
+          </Box>
           {hubNote ? (
             <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${hubNote}`}</Text>
           ) : null}
           <Select
-            width={width}
+            width={listWidth}
             items={hubItems}
             onSubmit={chooseAction}
             onCancel={onCancel}
@@ -632,7 +662,7 @@ export function PdfFlow({
             pairs={[
               ['↑↓', 'choose'],
               ['↵', 'confirm'],
-              ['esc', 'cancel'],
+              ['esc', 'back'],
             ]}
           />
         </Box>
@@ -642,7 +672,9 @@ export function PdfFlow({
 
       {step === 'merge' ? (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>Merge — order the files</Text>
+          <Box marginBottom={1}>
+            <StepTitle mode="pdf" title="Order the files" aside={mergeAside} width={width} />
+          </Box>
           <MergeList
             // `mergeOrder` first: escaping back from confirm re-mounts this
             // component (it is uncontrolled — see its own doc comment), and
@@ -659,15 +691,21 @@ export function PdfFlow({
 
       {step === 'split-n' ? (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color={colourProp(palette.label)}>How many pages per file?</Text>
-          <Prompt
+          <StepTitle mode="pdf" title="Pages per file" aside={pagesAside} width={width} />
+          <FilledField
             value={text}
             onChange={setText}
             onSubmit={submitSplitN}
             placeholder={doc ? String(Math.min(10, doc.pages)) : '10'}
             isActive
-            variant={band === 'compact' ? 'plain' : 'field'}
             width={width}
+            after={
+              splitParts !== undefined ? (
+                <Text color={colourProp(palette.border)}>
+                  {`   pages each ${SYMBOLS.arrow} ${splitParts} ${splitParts === 1 ? 'file' : 'files'}`}
+                </Text>
+              ) : null
+            }
           />
           {fieldError ? (
             <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${fieldError}`}</Text>
@@ -676,7 +714,7 @@ export function PdfFlow({
             width={width}
             pairs={[
               ['↵', 'confirm'],
-              ['esc', 'clear / back'],
+              ['esc', 'back'],
             ]}
           />
         </Box>
@@ -684,6 +722,9 @@ export function PdfFlow({
 
       {step === 'split-grid' && doc ? (
         <Box flexDirection="column" marginBottom={1}>
+          <Box marginBottom={1}>
+            <StepTitle mode="pdf" title="Where to split" aside={pagesAside} width={width} />
+          </Box>
           <PageGrid
             mode="gap"
             pageCount={doc.pages}

@@ -50,7 +50,7 @@ describe('the staged file is never invisible', () => {
     stdin.write(ENTER)
     await settle(400)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('Choose an operation')
     // The staged file stays named here too.
     expect(frame).toContain('resonance_brochure.pdf')
     // `mode` is genuinely 'pdf' here now — `/pdf` arms it the same way
@@ -74,7 +74,7 @@ describe('the command list with a file waiting', () => {
     stdin.write(ENTER)
     await settle(400)
     // runCommand's rule for /pdf with a PDF waiting: open the hub on it.
-    expect(lastFrame() ?? '').toContain('PDF — choose an operation')
+    expect(lastFrame() ?? '').toContain('Choose an operation')
   })
 })
 
@@ -100,7 +100,7 @@ describe('a change of flow is fenced off from what came before', () => {
     await settle(400)
     const frame = lastFrame() ?? ''
     // Positive first: we really are on the PDF screen.
-    expect(frame).toContain('PDF — choose an operation')
+    expect(frame).toContain('Choose an operation')
     // And the refusal is now behind a rule rather than floating above it.
     expect(frame).toContain('╍')
   })
