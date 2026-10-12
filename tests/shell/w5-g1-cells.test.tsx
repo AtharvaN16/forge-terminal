@@ -18,7 +18,10 @@ vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
   process.env.NO_COLOR = ''
 })
-afterEach(() => setMotionForTests(undefined))
+afterEach(() => {
+  setMotionForTests(undefined)
+  vi.useRealTimers()
+})
 
 const W5 = loadFixture('working-mockup.json') as Array<FixtureFrame & { t: number }>
 const G1 = loadFixture('quality-mockup.json') as Array<FixtureFrame & { q: number }>
@@ -27,6 +30,9 @@ const lines = (f: string | undefined) => (f ?? '').split('\n')
 describe('Working through Ink, against W5', () => {
   it('draws the line as the mockup does, four seconds in', () => {
     setMotionForTests(true)
+    // The clock and the spinner both read the time: frozen, the line is the
+    // one 4.0 s in on its first spinner frame, however slow the runner is.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
     const frame = W5.find((f) => f.label === 'convert at 4s') as FixtureFrame
     const { lastFrame } = render(
       <ThemeProvider palette={modePalette(DARK, 'convert')}>
