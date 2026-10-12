@@ -326,6 +326,7 @@ export function Home({
   commands,
   staged,
   under,
+  note,
   keys,
 }: {
   width: number
@@ -348,6 +349,12 @@ export function Home({
   staged?: StagedView | undefined
   /** The row under the field while something is staged: the red left-out line, or a note. */
   under?: UnderField | undefined
+  /**
+   * A refusal of what was just typed or dropped (an `ErrorLine`), under the
+   * field with a blank row above it. It takes its two rows from the list's,
+   * and the list is not drawn while it is up.
+   */
+  note?: ReactNode
   keys: KeySet
 }) {
   const palette = useTheme()
@@ -414,8 +421,14 @@ export function Home({
           <Runs row={below} />
         </>
       ) : null}
+      {note ? (
+        <>
+          <Gap />
+          {note}
+        </>
+      ) : null}
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-        {list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
+        {note ? null : list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>

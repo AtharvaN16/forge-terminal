@@ -117,6 +117,24 @@ describe('dropping onto home', () => {
     expect(frame).toContain('3 images')
   }, 20_000)
 
+  it('answers a single dropped file it cannot read with a row under the field', async () => {
+    const dir = await makeTempDir()
+    const broken = join(dir, 'broken.png')
+    await writeFile(broken, 'this is not a png')
+    const app = home(dir)
+    await settle()
+
+    app.stdin.write(broken)
+    await settle(500)
+    const lines = plain(app.lastFrame()).split('\n')
+    const at = lines.findIndex((l) => l.startsWith('    › '))
+    expect(lines[at + 2]).toMatch(/^ +\S.*\S {3}broken\.png /)
+    expect(lines.join('\n')).not.toMatch(/^\s+failed\s*$/m)
+    // Nothing is staged: it is a refusal of this drop, not a file left out.
+    expect(lines.join('\n')).not.toContain('left out')
+    expect(lines[at]).toBe('    › or type a path')
+  }, 20_000)
+
   it('says what it left out, and esc clears the stage and the line', async () => {
     const dir = await makeTempDir()
     const png = await makePng(dir, 'photo.png')
