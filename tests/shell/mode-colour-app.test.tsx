@@ -26,7 +26,10 @@ describe('the screen is drawn in the mode colour', () => {
     app.stdin.write(jpg)
     await settle(150)
     app.stdin.write(ENTER)
-    await settle()
+    // Polls until the picker's cursor is drawn, up to 10 s: a busy CI runner
+    // can take seconds to probe the file and render the next screen.
+    const start = Date.now()
+    while (!(app.lastFrame() ?? '').includes('▌') && Date.now() - start < 10_000) await settle(30)
     const frame = app.lastFrame() ?? ''
     expect(frame).toContain('▌')
     expect(frame).toContain(rgb(DARK.modeConvert))
