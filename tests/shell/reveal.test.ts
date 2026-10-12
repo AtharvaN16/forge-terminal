@@ -1,10 +1,16 @@
 import { execFile } from 'node:child_process'
+import { access } from 'node:fs/promises'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { openPath, revealLabel, revealPath } from '../../src/shell/reveal.js'
 
 // A factory, not automock: automock keeps execFile's util.promisify.custom as a
 // stub returning undefined, which would bypass the callback this test drives.
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
+// On Windows the file is looked for first; these paths exist on no machine.
+vi.mock('node:fs/promises', async (orig) => ({
+  ...(await orig<typeof import('node:fs/promises')>()),
+  access: vi.fn(),
+}))
 
 type Done = (err: Error | null, out?: unknown) => void
 /** Makes the mocked execFile finish with `err` (or succeed when omitted). */
@@ -16,6 +22,7 @@ function finishWith(err?: Error & { code?: unknown }): void {
 const calls = () => vi.mocked(execFile).mock.calls
 
 beforeEach(() => {
+  vi.mocked(access).mockReset().mockResolvedValue(undefined)
   vi.mocked(execFile).mockReset()
   finishWith()
 })
