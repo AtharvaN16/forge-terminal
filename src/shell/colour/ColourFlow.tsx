@@ -1,6 +1,7 @@
 import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { paletteCard, scaleCard } from '../../core/colour/card.js'
 import { onWhiteAndBlack } from '../../core/colour/contrast.js'
 import {
@@ -25,9 +26,12 @@ import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
 import { trueColour } from '../glyphs.js'
 import { blank, type Row } from '../home-art.js'
+import { motionEnabled, useTicker } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
+import { useAfter } from '../useAfter.js'
 import { useKeys } from '../useKeys.js'
+import { workLine } from '../working-art.js'
 import {
   approximateRow,
   detailRow,
@@ -96,6 +100,13 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
   stateRef.current = state
   const image = useRef<Image | null>(null)
   const openId = useRef(0)
+  /**
+   * An image is being read. Said only after 0.3 s, as Working is (W5): most
+   * images take a tenth of that, and a line that flashes up and away is noise.
+   */
+  const [opening, setOpening] = useState(false)
+  const finding = useAfter(opening, 300)
+  const tick = useTicker(finding, 80)
 
   const groupsAt = (level: number[]): Group[] => {
     const img = image.current
@@ -141,6 +152,7 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
   const open = async (raw: string) => {
     const id = ++openId.current
     const path = unescapePath(raw)
+    setOpening(true)
     try {
       const { source, pixels } = await samplePixels(path)
       const groups = paletteOf(pixels)
@@ -157,6 +169,8 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
     } catch (e) {
       if (id !== openId.current) return
       dispatch({ type: 'refused', message: isForgeError(e) ? e.detail : String(e) })
+    } finally {
+      if (id === openId.current) setOpening(false)
     }
   }
 
@@ -225,7 +239,23 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
           <Line key={i} row={row} />
         ))
       )}
-      <Line row={state.error ? errorRow(p, state.error) : []} />
+      <Line
+        row={
+          state.error
+            ? errorRow(p, state.error)
+            : finding
+              ? workLine({
+                  palette: p,
+                  mode: 'colour',
+                  spinner: motionEnabled(p.name)
+                    ? SPINNER_FRAMES[tick % SPINNER_FRAMES.length]
+                    : undefined,
+                  label: 'Finding colours',
+                  width,
+                })
+              : []
+        }
+      />
       {body.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
         <Line key={i} row={row} />
