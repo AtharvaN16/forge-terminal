@@ -73,6 +73,16 @@ const SHEETS: Record<
       ['a small helper', 'MIT'],
     ],
   },
+  // Windows only: no Enhance row of its own, it is what lets a HEIC open at all.
+  heic: {
+    name: 'HEIC photos',
+    gives: 'Opens iPhone photos (HEIC)',
+    again: 'A HEIC photo will ask for it again.',
+    parts: [
+      ['libheif and libde265', 'LGPL-3.0'],
+      ['libheif-js', 'LGPL-3.0'],
+    ],
+  },
 }
 
 function sheetFor(entry: CatalogEntry) {

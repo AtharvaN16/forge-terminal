@@ -32,6 +32,7 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
+import type { ExtensionId } from '../extensions/catalog.js'
 import { displayPath } from '../utils/display-path.js'
 import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
@@ -624,9 +625,9 @@ export function App({
    * the real bytes so far — read when its picker opens. `checking` once every
    * byte is in and the archive is being verified.
    */
-  const [toolStates, setToolStates] = useState<
-    Partial<Record<'boost' | 'remove-background', ToolState>> | undefined
-  >(undefined)
+  const [toolStates, setToolStates] = useState<Partial<Record<ExtensionId, ToolState>> | undefined>(
+    undefined,
+  )
   const [checking, setChecking] = useState(false)
   const installAbort = useRef<AbortController | undefined>(undefined)
   /**
@@ -2547,7 +2548,7 @@ export function App({
         if (!live) return
         // Always what is on disk: an install is never carried across a
         // reopen (leaving the picker stops it, below).
-        const next: Partial<Record<'boost' | 'remove-background', ToolState>> = {}
+        const next: Partial<Record<ExtensionId, ToolState>> = {}
         for (const s of all) next[s.entry.id] = toolState(s)
         setToolStates(next)
       },
