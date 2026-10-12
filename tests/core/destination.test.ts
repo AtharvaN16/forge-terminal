@@ -31,6 +31,9 @@ describe('destinationOption', () => {
 
   it('offers New subfolder only when asked (convert)', () => {
     const spec = destinationOption(source, DEFAULT_PREFERENCES, { subfolder: true })
-    expect(spec.presets.at(-1)).toEqual({ label: 'New subfolder', path: '/work/scans/converted' })
+    expect(spec.presets.at(-1)).toEqual({
+      label: 'New subfolder',
+      path: join('/work/scans/converted'),
+    })
   })
 })

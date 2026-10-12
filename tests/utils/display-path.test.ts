@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { displayPath } from '../../src/utils/display-path.js'
 
@@ -22,7 +23,9 @@ describe('displayPath', () => {
 
   it('is relative to cwd when the path is inside it', () => {
     const cwd = '/Users/me/work'
-    expect(displayPath('/Users/me/work/out/photo.png', { home, cwd })).toBe('out/photo.png')
+    expect(displayPath('/Users/me/work/out/photo.png', { home, cwd })).toBe(
+      join('out', 'photo.png'),
+    )
   })
 
   it('is . for cwd itself', () => {
@@ -31,7 +34,7 @@ describe('displayPath', () => {
 
   it('treats a folder whose name starts with .. as inside, not above', () => {
     expect(displayPath('/Users/me/work/..cache/a.png', { home, cwd: '/Users/me/work' })).toBe(
-      '..cache/a.png',
+      join('..cache', 'a.png'),
     )
   })
 

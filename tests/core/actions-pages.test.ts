@@ -1,3 +1,4 @@
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   actionsFor,
@@ -78,13 +79,17 @@ describe('plan', () => {
     const [job] = mergeAction.plan(sources, {})
     expect(job?.op).toBe('merge')
     expect(job?.sources.map((s) => s.path)).toEqual(['/inv/jan.pdf', '/inv/feb.pdf'])
-    expect(job?.outputs).toEqual(['/inv/inv-merged.pdf'])
+    expect(job?.outputs).toEqual([resolve('/inv/inv-merged.pdf')])
   })
 
   it('builds a split job with one output per part', () => {
     const [job] = splitAction.plan([doc('/docs/report.pdf')], { cuts: [0, 3] })
     expect(job?.op).toBe('split')
-    expect(job?.outputs).toEqual(['/docs/report-1.pdf', '/docs/report-2.pdf', '/docs/report-3.pdf'])
+    expect(job?.outputs).toEqual([
+      resolve('/docs/report-1.pdf'),
+      resolve('/docs/report-2.pdf'),
+      resolve('/docs/report-3.pdf'),
+    ])
   })
 
   it('builds an extract job from a typed range', () => {
@@ -95,7 +100,7 @@ describe('plan', () => {
     expect(job?.op).toBe('extract')
     if (job?.op !== 'extract') throw new Error('expected extract')
     expect(job.pages).toEqual([0, 1, 2])
-    expect(job.outputs).toEqual(['/docs/report-extract.pdf'])
+    expect(job.outputs).toEqual([resolve('/docs/report-extract.pdf')])
   })
 
   it('builds a rotate job from a degree value', () => {
@@ -103,7 +108,7 @@ describe('plan', () => {
     expect(job?.op).toBe('rotate')
     if (job?.op !== 'rotate') throw new Error('expected rotate')
     expect(job.turns).toBe(2)
-    expect(job.outputs).toEqual(['/docs/report-rotated.pdf'])
+    expect(job.outputs).toEqual([resolve('/docs/report-rotated.pdf')])
   })
 })
 
@@ -138,37 +143,37 @@ describe('page operations honour Save as', () => {
   const DOC = doc('/in/report.pdf', 3)
   it('rotate writes the named file in the chosen folder', () => {
     const [job] = rotateAction.plan([DOC], { degrees: '90', destination: '/out', name: 'turned' })
-    expect(job?.outputs).toEqual(['/out/turned.pdf'])
+    expect(job?.outputs).toEqual([join('/out/turned.pdf')])
   })
   it('split keeps its numbered names in the chosen folder', () => {
     const [job] = splitAction.plan([DOC], { cuts: [0], destination: '/out' })
-    expect(job?.outputs).toEqual(['/out/report-1.pdf', '/out/report-2.pdf'])
+    expect(job?.outputs).toEqual([join('/out/report-1.pdf'), join('/out/report-2.pdf')])
   })
   it('merge across two folders lands in the chosen one, under the typed name', () => {
     const [job] = mergeAction.plan([doc('/a/x.pdf'), doc('/b/y.pdf')], {
       destination: '/out',
       name: 'all',
     })
-    expect(job?.outputs).toEqual(['/out/all.pdf'])
+    expect(job?.outputs).toEqual([join('/out/all.pdf')])
   })
   it('delete and single-file extract take a name; separate extract does not', () => {
     expect(
       deleteAction.plan([DOC], { pages: '1', destination: '/o', name: 'n' })[0]?.outputs,
-    ).toEqual(['/o/n.pdf'])
+    ).toEqual([join('/o/n.pdf')])
     expect(
       extractAction.plan([DOC], { pages: '1', destination: '/o', name: 'n' })[0]?.outputs,
-    ).toEqual(['/o/n.pdf'])
+    ).toEqual([join('/o/n.pdf')])
     const many = extractAction.plan([DOC], {
       pages: '1-2',
       separate: 'many',
       destination: '/o',
       name: 'n',
     })[0]
-    expect(many?.outputs).toEqual(['/o/report-p1.pdf', '/o/report-p2.pdf'])
+    expect(many?.outputs).toEqual([join('/o/report-p1.pdf'), join('/o/report-p2.pdf')])
   })
   it('stays beside the source when no folder is given, as the CLI and MCP plan it', () => {
     expect(rotateAction.plan([DOC], { degrees: '90' })[0]?.outputs).toEqual([
-      '/in/report-rotated.pdf',
+      resolve('/in/report-rotated.pdf'),
     ])
   })
 })

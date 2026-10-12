@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   placeOutputs,
@@ -8,6 +8,12 @@ import {
   uniqueOutputPath,
 } from '../../src/core/output-path.js'
 import { makeTempDir } from '../helpers/fixtures.js'
+
+/**
+ * `/out/` written as an absolute folder on this platform. On Windows the bare
+ * POSIX form is drive-relative, and a folder typed that way is kept as typed.
+ */
+const OUT_DIR = `${resolve('/out')}${sep}`
 
 describe('resolveOutputPath', () => {
   it('defaults to the source folder with a swapped extension', () => {
@@ -23,7 +29,7 @@ describe('resolveOutputPath', () => {
   })
 
   it('treats a trailing slash as a directory', () => {
-    expect(resolveOutputPath({ sourcePath: '/a/photo.jpg', target: 'webp', output: '/out/' })).toBe(
+    expect(resolveOutputPath({ sourcePath: '/a/photo.jpg', target: 'webp', output: OUT_DIR })).toBe(
       resolve('/out/photo.webp'),
     )
   })
@@ -52,7 +58,7 @@ describe('resolveOutputPath', () => {
       resolveOutputPath({
         sourcePath: '/src/deep/nested/photo.jpg',
         target: 'webp',
-        output: '/out/',
+        output: OUT_DIR,
         sourceRoot: '/src',
       }),
     ).toBe(resolve('/out/deep/nested/photo.webp'))
@@ -63,7 +69,7 @@ describe('resolveOutputPath', () => {
       resolveOutputPath({
         sourcePath: '/src/deep/nested/photo.jpg',
         target: 'webp',
-        output: '/out/',
+        output: OUT_DIR,
       }),
     ).toBe(resolve('/out/photo.webp'))
   })
@@ -114,7 +120,7 @@ describe('uniqueOutputPath', () => {
 
 describe('rasterOutputPaths pads so files sort in page order', () => {
   const names = (pages: number[]) =>
-    rasterOutputPaths('/tmp/doc.pdf', pages, 'jpeg').map((p) => p.split('/').pop() as string)
+    rasterOutputPaths('/tmp/doc.pdf', pages, 'jpeg').map((p) => basename(p))
 
   it('pads to the widest page NUMBER, not the number of pages selected', () => {
     // Selecting 2 pages that happen to be pages 2 and 10: padding to the
@@ -155,12 +161,12 @@ describe('placeOutputs', () => {
   })
   it('moves every output into the chosen folder, names kept', () => {
     expect(placeOutputs(['/a/doc-1.pdf', '/a/doc-2.pdf'], '/out')).toEqual([
-      '/out/doc-1.pdf',
-      '/out/doc-2.pdf',
+      join('/out/doc-1.pdf'),
+      join('/out/doc-2.pdf'),
     ])
   })
   it('renames a single output, keeping its extension', () => {
-    expect(placeOutputs(['/a/doc-rotated.pdf'], '/out', 'final')).toEqual(['/out/final.pdf'])
+    expect(placeOutputs(['/a/doc-rotated.pdf'], '/out', 'final')).toEqual([join('/out/final.pdf')])
   })
   it('ignores a name when there are many outputs, which no one name can cover', () => {
     expect(placeOutputs(['/a/doc-1.pdf', '/a/doc-2.pdf'], undefined, 'x')).toEqual([

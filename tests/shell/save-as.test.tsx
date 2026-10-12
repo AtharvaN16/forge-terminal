@@ -317,7 +317,9 @@ describe('Save as (V10c): a drop', () => {
     await writeFile(join(dir, 'a.png'), 'png')
     const onSubmit = vi.fn()
     const { stdin, lastFrame } = render(<Harness onSubmit={onSubmit} />)
-    stdin.write(join(dir, 'a.png').replace(/ /g, '\\ '))
+    // A Mac terminal escapes the space; Windows Terminal quotes the path.
+    const file = join(dir, 'a.png')
+    stdin.write(process.platform === 'win32' ? `"${file}"` : file.replace(/ /g, '\\ '))
     await settle()
     expect(plain(lastFrame())).toContain('Next to a.png')
     stdin.write(ENTER)
@@ -338,6 +340,13 @@ describe('Save as (V10c): a drop', () => {
   it('saves the unescaped path when a drop and its CR arrive in one write', async () => {
     const onSubmit = vi.fn()
     const { stdin } = render(<Harness onSubmit={onSubmit} />)
+    // A Mac terminal escapes the space; Windows Terminal quotes the path.
+    if (process.platform === 'win32') {
+      stdin.write(`"C:\\Users\\me\\My Folder"${ENTER}`)
+      await settle()
+      expect(onSubmit).toHaveBeenCalledWith('C:\\Users\\me\\My Folder', 'header')
+      return
+    }
     stdin.write(`/Users/me/My\\ Folder${ENTER}`)
     await settle()
     expect(onSubmit).toHaveBeenCalledWith('/Users/me/My Folder', 'header')

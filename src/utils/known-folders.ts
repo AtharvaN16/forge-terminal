@@ -4,32 +4,39 @@ import { join } from 'node:path'
 
 export type KnownFolder = 'Desktop' | 'Downloads'
 
-const SHELL_FOLDERS =
-  'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders'
-
-// Downloads has no friendly value name; Windows stores it under its folder GUID.
-const VALUE_NAME: Record<KnownFolder, string> = {
-  Desktop: 'Desktop',
-  Downloads: '{374DE290-123F-4565-9164-39C4925E467B}',
+/**
+ * PowerShell, not `reg.exe`: reg.exe writes to a pipe in the console's OEM
+ * code page, so a OneDrive root named after the organisation (`OneDrive -
+ * Société Générale`) or a localised folder came back as mojibake — and then
+ * became a new, wrongly named folder. Forcing PowerShell's output to UTF-8
+ * avoids the code page altogether.
+ *
+ * Desktop has a .NET special folder. Downloads does not, so it is read from
+ * the registry under its folder GUID; `Get-ItemProperty` expands the
+ * `%USERPROFILE%` a REG_EXPAND_SZ value holds.
+ */
+const SCRIPT: Record<KnownFolder, string> = {
+  Desktop: "[Environment]::GetFolderPath('Desktop')",
+  Downloads:
+    "(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders')." +
+    "'{374DE290-123F-4565-9164-39C4925E467B}'",
 }
 
-/** The value from `reg query ... /v <name>` output, or undefined if there is none. */
-export function parseRegQuery(output: string, valueName: string): string | undefined {
-  for (const line of output.split(/\r?\n/)) {
-    const m = /^\s+(.+?)\s+REG_(?:EXPAND_)?SZ\s+(.*?)\s*$/.exec(line)
-    if (m?.[1] === valueName && m[2] !== undefined && m[2].length > 0) return m[2]
-  }
-  return undefined
-}
-
-function regQuery(valueName: string): string | undefined {
+function powershellQuery(name: KnownFolder): string | undefined {
   try {
-    const out = execFileSync('reg.exe', ['query', SHELL_FOLDERS, '/v', valueName], {
-      encoding: 'utf8',
-      timeout: 2000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return parseRegQuery(out, valueName)
+    const out = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ${SCRIPT[name]}`,
+      ],
+      // A cold PowerShell start can take a second or more.
+      { encoding: 'buffer', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
+    )
+    const value = out.toString('utf8').trim()
+    return value.length > 0 ? value : undefined
   } catch {
     return undefined
   }
@@ -45,19 +52,19 @@ export function resetKnownFoldersForTests(): void {
 /**
  * Where the user's Desktop or Downloads really is. `<home>/Desktop` on macOS
  * and Linux. On Windows those folders can be redirected (OneDrive's folder
- * backup is common) and the registry is the only place that says so; spawning
- * reg.exe is slow enough to be worth doing once per name.
+ * backup is common) and only Windows itself can say so; starting PowerShell
+ * is slow enough to be worth doing once per name.
  */
 export function knownFolder(
   name: KnownFolder,
   platform: NodeJS.Platform = process.platform,
-  query: (valueName: string) => string | undefined = regQuery,
+  query: (name: KnownFolder) => string | undefined = powershellQuery,
 ): string {
   if (platform !== 'win32') return join(homedir(), name)
   const hit = cache.get(name)
   if (hit !== undefined) return hit
 
-  const raw = query(VALUE_NAME[name])
+  const raw = query(name)
   const expanded = raw?.replace(/%([^%]+)%/g, (whole, v: string) => process.env[v] ?? whole)
   // An unexpandable %VAR% would make a path no one can write to; fall back.
   const resolved = expanded !== undefined && !expanded.includes('%') ? expanded : undefined

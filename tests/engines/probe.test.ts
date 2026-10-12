@@ -142,6 +142,8 @@ describe('probe', () => {
   it('reports a path that runs through a file as not-a-directory, not a raw error', async () => {
     const dir = await makeTempDir()
     const real = await makeJpeg(dir, 'real.jpg')
-    expect(await codeOf(() => probe(join(real, 'nope.jpg')))).toBe('not-a-directory')
+    // Windows reports such a path as ENOENT, so there it is simply not found.
+    const expected = process.platform === 'win32' ? 'file-not-found' : 'not-a-directory'
+    expect(await codeOf(() => probe(join(real, 'nope.jpg')))).toBe(expected)
   })
 })

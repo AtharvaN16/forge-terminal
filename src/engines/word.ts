@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, extname, join, win32 } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { writeAtomic } from '../core/atomic.js'
 import { conversionFailed, encryptedSource } from '../core/errors.js'
@@ -317,6 +318,49 @@ const BASIC_FIDELITY_WARNING: Warning = {
     'Install LibreOffice for full-fidelity conversion: brew install --cask libreoffice',
 }
 
+/** The fallback's warning; Homebrew is a Mac answer, so Windows is pointed at the download. */
+export function basicFidelityWarning(platform: NodeJS.Platform = process.platform): Warning {
+  if (platform !== 'win32') return BASIC_FIDELITY_WARNING
+  return {
+    code: 'word-basic-fidelity',
+    message:
+      "Converted with basic formatting only — tables, images, and complex layouts weren't preserved. " +
+      'Install LibreOffice from libreoffice.org for full-fidelity conversion.',
+  }
+}
+
+/**
+ * soffice's arguments. Without a per-invocation profile, two concurrent
+ * `soffice` processes (a batch run through `runJobs`' worker pool) fight over
+ * LibreOffice's shared default user profile — the second typically exits 0
+ * having written nothing, which then surfaces as an ENOENT reading the output
+ * rather than anything naming the real cause. `outDir` is already unique and
+ * already cleaned up per call.
+ *
+ * The profile is a file URL. On Windows `file://C:\…` names a host `C:`, so
+ * there it is built properly (`file:///C:/…`).
+ */
+export function sofficeArgs(
+  outDir: string,
+  sourcePath: string,
+  target: FormatId,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const profile =
+    platform === 'win32'
+      ? pathToFileURL(win32.join(outDir, 'profile'), { windows: true }).href
+      : `file://${outDir}/profile`
+  return [
+    `-env:UserInstallation=${profile}`,
+    '--headless',
+    '--convert-to',
+    target,
+    '--outdir',
+    outDir,
+    sourcePath,
+  ]
+}
+
 /**
  * Shells out to LibreOffice's headless converter. `--convert-to` takes the
  * extension name directly — 'pdf' and 'docx' both are exactly that, so no
@@ -327,25 +371,7 @@ const BASIC_FIDELITY_WARNING: Warning = {
 async function runSoffice(soffice: string, sourcePath: string, target: FormatId): Promise<Buffer> {
   const outDir = await mkdtemp(join(tmpdir(), 'forge-word-'))
   try {
-    await execFileAsync(
-      soffice,
-      [
-        // Without a per-invocation profile, two concurrent `soffice`
-        // processes (a batch run through `runJobs`' worker pool) fight over
-        // LibreOffice's shared default user profile — the second typically
-        // exits 0 having written nothing, which then surfaces as an ENOENT
-        // reading the output below rather than anything naming the real
-        // cause. `outDir` is already unique and already cleaned up per call.
-        `-env:UserInstallation=file://${outDir}/profile`,
-        '--headless',
-        '--convert-to',
-        target,
-        '--outdir',
-        outDir,
-        sourcePath,
-      ],
-      { timeout: 120_000 },
-    )
+    await execFileAsync(soffice, sofficeArgs(outDir, sourcePath, target), { timeout: 120_000 })
     const stem = basename(sourcePath, extname(sourcePath))
     return await readFile(join(outDir, `${stem}.${target}`))
   } finally {
@@ -379,7 +405,7 @@ async function run(job: Job, onPhase: (p: Progress) => void): Promise<Result> {
     } else {
       const paragraphs = await extractPlainText(source)
       bytes = job.target === 'pdf' ? await layoutAsPdf(paragraphs) : await buildDocx(paragraphs)
-      warnings.push(BASIC_FIDELITY_WARNING)
+      warnings.push(basicFidelityWarning())
     }
   } catch (e) {
     // A failed soffice invocation and a failed npm-fallback parse are both

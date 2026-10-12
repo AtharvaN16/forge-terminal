@@ -3,12 +3,11 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { asForgeError, fatalLines } from '../../src/cli/fatal.js'
 import { fileNotFound } from '../../src/core/errors.js'
-
-const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx')
+import { TSX_CLI } from '../helpers/run-forge.js'
 
 function runChild(script: string): Promise<{ code: number; stderr: string }> {
   return new Promise((resolve) => {
-    execFile(tsx, [script], (err, _stdout, stderr) => {
+    execFile(process.execPath, [TSX_CLI, script], (err, _stdout, stderr) => {
       const code = err ? ((err as { code?: number }).code ?? -1) : 0
       resolve({ code, stderr })
     })

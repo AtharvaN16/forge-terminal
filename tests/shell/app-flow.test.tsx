@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { App } from '../../src/shell/App.js'
@@ -87,7 +88,8 @@ describe('shell flow', () => {
     stdin.write(ENTER)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('Invalid path')
+    // Windows reports a path through a file as ENOENT: there it is not found.
+    expect(frame).toContain(process.platform === 'win32' ? 'File not found' : 'Invalid path')
     expect(frame.toLowerCase()).toContain('drop a file')
   })
 
@@ -95,7 +97,9 @@ describe('shell flow', () => {
     const dir = await makeTempDir()
     await makeJpeg(dir, 'my photo.jpg')
     const { stdin, lastFrame } = render(<App initialWidth={80} />)
-    stdin.write(`${dir}/my\\ photo.jpg`)
+    // A Mac terminal escapes the space; Windows Terminal quotes the path.
+    const dropped = join(dir, 'my photo.jpg')
+    stdin.write(process.platform === 'win32' ? `"${dropped}"` : `${dir}/my\\ photo.jpg`)
     await settle()
     stdin.write(ENTER)
     await settle(300)

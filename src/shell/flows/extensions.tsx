@@ -142,6 +142,8 @@ interface ExtensionsFlowProps {
   manager?: ExtensionsManager
   onError: (error: ForgeError) => void
   onClose: () => void
+  /** Names the machine in the remove question: "this Mac", "this PC". */
+  platform?: NodeJS.Platform
 }
 
 /**
@@ -160,6 +162,7 @@ export function ExtensionsFlow({
   manager = realManager,
   onError,
   onClose,
+  platform = process.platform,
 }: ExtensionsFlowProps) {
   const palette = useTheme()
   const [statuses, setStatuses] = useState<ExtensionStatus[] | undefined>()
@@ -468,7 +471,7 @@ export function ExtensionsFlow({
         name,
         '',
         <Text key="q" bold color={fg}>
-          Remove it from this Mac?
+          {`Remove it from this ${platform === 'win32' ? 'PC' : 'Mac'}?`}
         </Text>,
         <Text key="f" color={dim}>{`Frees ${formatBytes(s.installedBytes ?? 0)}.`}</Text>,
         <Text key="a" color={quiet}>

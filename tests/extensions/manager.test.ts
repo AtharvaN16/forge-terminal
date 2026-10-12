@@ -44,6 +44,8 @@ const { installExtension, listExtensions, removeExtension } = await import(
 )
 const { installed, extensionsRoot } = await import('../../src/extensions/paths.js')
 
+// The machine's own platform, read before the pin below takes effect.
+const REAL_PLATFORM = process.platform
 // Mac assets (`darwin-universal`), read through the CLI too; Windows is tested by passing 'win32'.
 pinPlatform('darwin')
 
@@ -181,7 +183,8 @@ describe('installing an extension', () => {
 
     expect(ext.version).toBe('1.0.0')
     expect(ext.kind).toBe('exec')
-    expect((await stat(ext.entry)).mode & 0o111).not.toBe(0)
+    // Windows has no execute bit; a file there runs by its extension.
+    if (REAL_PLATFORM !== 'win32') expect((await stat(ext.entry)).mode & 0o111).not.toBe(0)
     expect(await installed('remove-background')).toEqual(ext)
     expect(seen.at(-1)).toEqual([archive.length, archive.length])
     // No download or staging debris: only the version and the pointer remain.

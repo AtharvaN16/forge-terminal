@@ -119,11 +119,13 @@ describe('a running split names itself correctly, not as rendering', () => {
     const finalFrame = await waitFor(
       lastFrame,
       (f) => f.includes('Drop a file here'),
-      25_000, // the split itself has to finish here; the suite runs 16 files at once
+      // The split itself has to finish here; the suite runs 16 files at once,
+      // and a Windows runner scans each of the 300 new files as it lands.
+      60_000,
     )
     expect(finalFrame).toContain('Drop a file here')
 
     const written = (await readdir(dir)).filter((f) => f !== 'doc.pdf')
     expect(written).toHaveLength(300)
-  }, 30_000)
+  }, 75_000)
 })

@@ -369,13 +369,17 @@ export function detailRow(
 }
 
 /** What a copy put on the clipboard, in place of the detail line for a moment. */
-export function copiedRow(p: Palette, what: { hex: string } | { count: number }): Row {
+export function copiedRow(
+  p: Palette,
+  what: { hex: string } | { count: number },
+  platform: NodeJS.Platform = process.platform,
+): Row {
   const tick: Row = [blank(4), ink('✓', p.ok, true), blank(1)]
   if ('hex' in what) return [...tick, ink('copied ', p.fg), ink(what.hex, p.fg, true)]
   return [
     ...tick,
     ink(`copied ${what.count} swatches`, p.fg),
-    ink(' · paste into Figma with ⌘V', p.dim),
+    ink(` · paste into Figma with ${platform === 'win32' ? 'Ctrl+V' : '⌘V'}`, p.dim),
   ]
 }
 

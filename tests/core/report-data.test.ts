@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fileNotFound, invalidArguments } from '../../src/core/errors.js'
 import { buildPlan } from '../../src/core/plan.js'
@@ -72,7 +72,7 @@ describe('resultJson', () => {
 describe('failureJson', () => {
   it('carries the stable code, title, detail and hint, with an absolute path', () => {
     expect(failureJson({ path: '/a/ghost.jpg', error: fileNotFound('/a/ghost.jpg') })).toEqual({
-      path: '/a/ghost.jpg',
+      path: resolve('/a/ghost.jpg'),
       code: 'file-not-found',
       title: 'File not found',
       detail: 'ghost.jpg could not be found.',

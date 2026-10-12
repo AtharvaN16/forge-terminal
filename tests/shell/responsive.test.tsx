@@ -6,6 +6,7 @@ import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { TSX_CLI } from '../helpers/run-forge.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
@@ -121,11 +122,10 @@ describe('responsiveness', () => {
  */
 describe('colour', () => {
   const run = promisify(execFile)
-  const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx')
   const child = join(process.cwd(), 'tests', 'helpers', 'colour-frame-child.ts')
 
   async function frameWith(env: Record<string, string>): Promise<string> {
-    const { stdout } = await run(tsx, [child], {
+    const { stdout } = await run(process.execPath, [TSX_CLI, child], {
       env: { ...process.env, NO_COLOR: '', FORCE_COLOR: '3', ...env },
     })
     return JSON.parse(stdout) as string

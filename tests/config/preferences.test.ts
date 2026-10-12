@@ -33,10 +33,14 @@ describe('configPath', () => {
     expect(configPath()).toBe(join(dir, 'forge', 'config.json'))
   })
 
-  it('falls back to ~/.config when XDG_CONFIG_HOME is unset', () => {
-    delete process.env.XDG_CONFIG_HOME
-    expect(configPath()).toBe(join(homedir(), '.config', 'forge', 'config.json'))
-  })
+  // Windows falls back to %APPDATA% instead; config-base.test.ts pins both.
+  it.skipIf(process.platform === 'win32')(
+    'falls back to ~/.config when XDG_CONFIG_HOME is unset',
+    () => {
+      delete process.env.XDG_CONFIG_HOME
+      expect(configPath()).toBe(join(homedir(), '.config', 'forge', 'config.json'))
+    },
+  )
 })
 
 describe('expandTilde', () => {
@@ -102,7 +106,8 @@ describe('loadPreferences', () => {
     expect(warning).toBeTruthy()
   })
 
-  it('never throws when the file cannot be read', async () => {
+  // chmod 0o000 cannot make a file unreadable on Windows.
+  it.skipIf(process.platform === 'win32')('never throws when the file cannot be read', async () => {
     await write(JSON.stringify({ theme: 'dark' }))
     await chmod(join(dir, 'forge', 'config.json'), 0o000)
     const { prefs } = await loadPreferences()

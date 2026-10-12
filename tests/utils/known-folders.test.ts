@@ -1,11 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  knownFolder,
-  parseRegQuery,
-  resetKnownFoldersForTests,
-} from '../../src/utils/known-folders.js'
+import { knownFolder, resetKnownFoldersForTests } from '../../src/utils/known-folders.js'
 
 describe('knownFolder', () => {
   beforeEach(resetKnownFoldersForTests)
@@ -26,14 +22,5 @@ describe('knownFolder', () => {
 
   it('on win32, falls back to <home>/Downloads when the registry has nothing', () => {
     expect(knownFolder('Downloads', 'win32', () => undefined)).toBe(join(homedir(), 'Downloads'))
-  })
-})
-
-describe('parseRegQuery', () => {
-  it('reads the value out of real `reg query` output', () => {
-    const out =
-      '\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders\r\n' +
-      '    Desktop    REG_EXPAND_SZ    %USERPROFILE%\\OneDrive\\Desktop\r\n\r\n'
-    expect(parseRegQuery(out, 'Desktop')).toBe('%USERPROFILE%\\OneDrive\\Desktop')
   })
 })

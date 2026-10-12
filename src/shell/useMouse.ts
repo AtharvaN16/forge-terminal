@@ -20,6 +20,37 @@ export function reportingSequence(hover: boolean): string {
   return hover ? MOUSE_ON_WITH_HOVER : MOUSE_ON
 }
 
+/** The exit status a shell reports for a death by `signal`: 128 + its number. */
+const SIGNAL_EXIT: Partial<Record<NodeJS.Signals, number>> = {
+  SIGHUP: 129,
+  SIGINT: 130,
+  SIGTERM: 143,
+}
+
+/**
+ * Sends `signal` to this process again, now that its listener is gone, so it
+ * dies the way it would have. Windows cannot always do that: libuv emulates
+ * SIGINT and SIGHUP there, and re-raising SIGHUP throws ENOSYS — as the
+ * console closes, an uncaught exception. So on Windows a failed re-raise
+ * exits with the status the signal would have given.
+ */
+export function reraise(
+  signal: NodeJS.Signals,
+  platform: NodeJS.Platform = process.platform,
+  kill: (pid: number, signal: NodeJS.Signals) => void = (pid, s) => process.kill(pid, s),
+  exit: (code: number) => void = (code) => process.exit(code),
+): void {
+  if (platform !== 'win32') {
+    kill(process.pid, signal)
+    return
+  }
+  try {
+    kill(process.pid, signal)
+  } catch {
+    exit(SIGNAL_EXIT[signal] ?? 1)
+  }
+}
+
 /**
  * Turns terminal mouse reporting on for as long as the calling component is
  * mounted, and hands decoded events to `onEvent`.
@@ -124,7 +155,7 @@ export function useMouse(
     const onSignal = (signal: NodeJS.Signals) => {
       clear()
       process.removeListener(signal, onSignal)
-      process.kill(process.pid, signal)
+      reraise(signal)
     }
     process.on('SIGINT', onSignal)
     process.on('SIGTERM', onSignal)

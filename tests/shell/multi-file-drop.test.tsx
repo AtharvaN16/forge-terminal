@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
@@ -76,7 +77,9 @@ describe('dropping several files at once', () => {
       <App initialWidth={80} initialHeight={24} prefs={prefsFor(dir)} />,
     )
 
-    stdin.write(`${dir}/my\\ report.pdf ${b}`)
+    // Windows Terminal quotes a path with a space instead of escaping it.
+    const mine = join(dir, 'my report.pdf')
+    stdin.write(process.platform === 'win32' ? `"${mine}" ${b}` : `${dir}/my\\ report.pdf ${b}`)
     await settle()
     stdin.write(ENTER)
     await settle(400)

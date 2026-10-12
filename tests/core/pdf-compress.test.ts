@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { PDFDocument, PDFName, PDFNumber, PDFRawStream } from 'pdf-lib'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { compressPdf, surveyPdfImages } from '../../src/core/pdf-compress.js'
 import { probe } from '../../src/engines/registry.js'
 import { makePdf, makeScannedPdf, makeTempDir } from '../helpers/fixtures.js'
@@ -93,10 +93,18 @@ describe('compressing a PDF', () => {
     // before it, and the bisection would converge on a lie.
     const dir = await makeTempDir()
     const original = await readFile(await makeScannedPdf(dir, 'scan.pdf'))
-    const first = await compressPdf(original, { quality: 50 })
-    await compressPdf(original, { quality: 5 })
-    const again = await compressPdf(original, { quality: 50 })
-    expect(again.bytes.byteLength).toBe(first.bytes.byteLength)
+    // pdf-lib stamps ModDate on every save, inside a compressed object
+    // stream, so two saves a second apart differ by a byte or two. The clock
+    // is held still so only the images can make a difference.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-01-01T00:00:00Z') })
+    try {
+      const first = await compressPdf(original, { quality: 50 })
+      await compressPdf(original, { quality: 5 })
+      const again = await compressPdf(original, { quality: 50 })
+      expect(again.bytes.byteLength).toBe(first.bytes.byteLength)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('leaves a Flate image alone and says so rather than corrupting it', async () => {

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/prom
 import * as nodeModule from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import mammoth from 'mammoth'
 import { PDFDocument } from 'pdf-lib'
@@ -291,7 +292,8 @@ describe('the bundle', { timeout: 30_000 }, () => {
   })
 
   it('loads the shell chunk: Ink, React and yoga', async () => {
-    const launch = join(root, chunkFor('src/shell/launch.tsx'))
+    // A URL, since import() on Windows takes `D:` for a URL scheme.
+    const launch = pathToFileURL(join(root, chunkFor('src/shell/launch.tsx'))).href
     const { stdout } = await run(
       process.execPath,
       [

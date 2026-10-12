@@ -10,9 +10,9 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { makeDocx, makeJpeg, makeTempDir, makeTextPdf } from './helpers/fixtures.js'
+import { TSX_CLI } from './helpers/run-forge.js'
 
 const run = promisify(execFile)
-const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx')
 const entry = join(process.cwd(), 'src', 'index.ts')
 
 interface Spawned {
@@ -23,7 +23,7 @@ interface Spawned {
 
 async function spawn(args: string[], cwd?: string): Promise<Spawned> {
   try {
-    const { stdout, stderr } = await run(tsx, [entry, ...args], { cwd })
+    const { stdout, stderr } = await run(process.execPath, [TSX_CLI, entry, ...args], { cwd })
     return { exitCode: 0, stdout, stderr }
   } catch (e) {
     const err = e as { code?: number; stdout?: string; stderr?: string }
@@ -34,7 +34,7 @@ async function spawn(args: string[], cwd?: string): Promise<Spawned> {
 /** Runs some other script under tsx — used for the TTY-shaping child below. */
 async function spawnScript(script: string): Promise<Spawned> {
   try {
-    const { stdout, stderr } = await run(tsx, [script])
+    const { stdout, stderr } = await run(process.execPath, [TSX_CLI, script])
     return { exitCode: 0, stdout, stderr }
   } catch (e) {
     const err = e as { code?: number; stdout?: string; stderr?: string }

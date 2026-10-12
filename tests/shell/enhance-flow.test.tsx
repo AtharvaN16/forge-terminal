@@ -22,6 +22,13 @@ const until = async (cond: () => boolean) => {
   for (let i = 0; i < 1200 && !cond(); i++) await new Promise((r) => setTimeout(r, 25))
 }
 
+/**
+ * Pinned to darwin, the shell reads a typed path the Mac way, where `\`
+ * escapes. Forward slashes name the same file on Windows and survive that.
+ */
+const REAL_PLATFORM = process.platform
+const typed = (path: string) => (REAL_PLATFORM === 'win32' ? path.replaceAll('\\', '/') : path)
+
 // The catalogue offers these extensions on macOS; see pinPlatform.
 pinPlatform('darwin')
 const fake = fakeExtensions()
@@ -79,7 +86,7 @@ describe('enhance mode', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle()
-    app.stdin.write(png)
+    app.stdin.write(typed(png))
     await until(() => frame().includes('banner.png'))
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))
@@ -157,7 +164,7 @@ describe('enhance mode', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle()
-    app.stdin.write(png)
+    app.stdin.write(typed(png))
     await until(() => frame().includes('tile.png'))
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))

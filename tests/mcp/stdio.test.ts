@@ -3,9 +3,8 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { RunJson } from '../../src/core/report-data.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
-import { runForge } from '../helpers/run-forge.js'
+import { runForge, TSX_CLI } from '../helpers/run-forge.js'
 
-const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx')
 const entry = join(process.cwd(), 'src', 'index.ts')
 
 interface RpcMessage {
@@ -25,7 +24,7 @@ async function waitFor<T>(find: () => T | undefined, timeoutMs = 15_000): Promis
 }
 
 function startMcp() {
-  const child = spawn(tsx, [entry, 'mcp'], {
+  const child = spawn(process.execPath, [TSX_CLI, entry, 'mcp'], {
     stdio: ['pipe', 'pipe', 'pipe'],
   })
   const lines: string[] = []

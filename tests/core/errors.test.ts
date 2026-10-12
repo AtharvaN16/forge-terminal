@@ -316,7 +316,7 @@ describe('short', () => {
     ['encrypted-source', encryptedSource('/tmp/a.pdf'), 'a.pdf is password-protected.'],
     [
       'heic-decoder-unavailable',
-      heicDecoderUnavailable('/tmp/a.heic'),
+      heicDecoderUnavailable('/tmp/a.heic', 'darwin'),
       'HEIC needs sips, which could not be run.',
     ],
   ] as const

@@ -28,13 +28,18 @@ import {
 } from './tools.js'
 
 /** What a client tells its model about Forge as a whole. */
-export const INSTRUCTIONS = [
-  'Forge converts, compresses and edits files on this Mac, locally.',
-  'Every path must be absolute.',
-  'Call forge_probe first: it says what a file is, every format it can become, and every action that applies.',
-  'Nothing is overwritten unless you pass overwrite: true — only do that when the user asked to replace a file.',
-  'A failure hint that mentions --force means overwrite: true here; --output means the output argument; --password-stdin means the password argument.',
-].join(' ')
+export function instructionsFor(platform: NodeJS.Platform = process.platform): string {
+  return [
+    `Forge converts, compresses and edits files on this ${platform === 'win32' ? 'PC' : 'Mac'}, locally.`,
+    'Every path must be absolute.',
+    'Call forge_probe first: it says what a file is, every format it can become, and every action that applies.',
+    'Nothing is overwritten unless you pass overwrite: true — only do that when the user asked to replace a file.',
+    'A failure hint that mentions --force means overwrite: true here; --output means the output argument; --password-stdin means the password argument.',
+  ].join(' ')
+}
+
+/** What a client tells its model about Forge as a whole, on this machine. */
+export const INSTRUCTIONS = instructionsFor()
 
 const READS = { readOnlyHint: true, openWorldHint: false } as const
 

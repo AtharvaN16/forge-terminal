@@ -1,5 +1,5 @@
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES, type Preferences } from '../../src/config/preferences.js'
 import { ACTIONS, actionsFor, convertAction } from '../../src/core/actions/index.js'
@@ -158,7 +158,7 @@ describe('convert action plan', () => {
     const job = jobs[0]
     if (job?.op !== 'convert') throw new Error('expected convert')
     expect(job.target).toBe('webp')
-    expect(job.outputs[0]).toBe('/Users/me/out/photo.webp')
+    expect(job.outputs[0]).toBe(join('/Users/me/out/photo.webp'))
     expect(job.options.quality).toBe(70)
   })
 
@@ -349,7 +349,7 @@ describe('page selection keeps naming and ordering in step', () => {
   it('names each output after the page it actually holds', () => {
     // The correspondence itself: outputs[i] must be named for pages[i].
     const job = planFor([4, 0, 2])
-    const names = job.outputs.map((p) => p.split('/').pop())
+    const names = job.outputs.map((p) => basename(p))
     expect(names).toEqual(['report-1.jpg', 'report-3.jpg', 'report-5.jpg'])
     expect(job.options.pages).toEqual([0, 2, 4])
   })
@@ -417,7 +417,7 @@ describe('convert action stays document-target-aware, not just document-kind-awa
   it('plans a single-output job for pdf -> docx, not a per-page raster job', () => {
     const [job] = convertAction.plan([pdfSource], { target: 'docx', destination: '/out' })
     if (job?.op !== 'convert') throw new Error('expected convert')
-    expect(job.outputs).toEqual(['/out/report.docx'])
+    expect(job.outputs).toEqual([join('/out/report.docx')])
     expect(job.options.pages).toBeUndefined()
   })
 })

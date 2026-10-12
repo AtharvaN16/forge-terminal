@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   reportBatch,
@@ -75,7 +75,7 @@ describe('reportSingle', () => {
     const parent = join(dir, '..')
     const [first] = reportSingle(summary, { cwd: parent })
     const rel = output.slice(parent.length + 1)
-    expect(rel).toContain('/') // really in a subfolder of cwd
+    expect(rel).toContain(sep) // really in a subfolder of cwd
     expect(first).toBe(`✓ f0.jpg → ${rel}`)
   })
 
@@ -144,8 +144,8 @@ describe('reportBatch', () => {
     const parent = join(dir, '..')
     const lines = reportBatch(await convertAll(dir, 2), { cwd: parent })
     const folder = dir.slice(parent.length + 1)
-    expect(lines).toContain(`  ${folder}/f0.webp`)
-    expect(lines).toContain(`  ${folder}/f1.webp`)
+    expect(lines).toContain(`  ${join(folder, 'f0.webp')}`)
+    expect(lines).toContain(`  ${join(folder, 'f1.webp')}`)
   })
 })
 

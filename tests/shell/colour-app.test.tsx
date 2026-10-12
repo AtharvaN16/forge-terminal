@@ -98,18 +98,23 @@ describe("colour's home and screens", () => {
     expect(plain(app.lastFrame())).not.toContain('could not be found')
   }, 20_000)
 
-  it('a path typed after / opens its palette, not convert', async () => {
-    const { app, dir } = await colourHome()
-    const png = await makeGradientPng(dir, 'g.png', 48)
-    app.stdin.write('/')
-    await settle()
-    app.stdin.write(png.slice(1))
-    await settle()
-    app.stdin.write(ENTER)
-    await waitFor(() => /\d+%\s*$/m.test(plain(app.lastFrame())))
-    expect(plain(app.lastFrame())).not.toContain('Convert PNG to')
-    expect(plain(app.lastFrame())).toContain('› g.png')
-  }, 20_000)
+  // Only a POSIX path starts with the / that opens commands; `C:\…` never does.
+  it.skipIf(process.platform === 'win32')(
+    'a path typed after / opens its palette, not convert',
+    async () => {
+      const { app, dir } = await colourHome()
+      const png = await makeGradientPng(dir, 'g.png', 48)
+      app.stdin.write('/')
+      await settle()
+      app.stdin.write(png.slice(1))
+      await settle()
+      app.stdin.write(ENTER)
+      await waitFor(() => /\d+%\s*$/m.test(plain(app.lastFrame())))
+      expect(plain(app.lastFrame())).not.toContain('Convert PNG to')
+      expect(plain(app.lastFrame())).toContain('› g.png')
+    },
+    20_000,
+  )
 
   it('a hex pasted on colour home opens its scale', async () => {
     const { app } = await colourHome()

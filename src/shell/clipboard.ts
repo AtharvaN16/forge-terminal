@@ -72,7 +72,9 @@ export function paste(platform: NodeJS.Platform = process.platform): string {
           // code page and an accented path would come back mangled.
           '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw',
         ],
-        { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, timeout: 2000 },
+        // 5 s, not pbpaste's 2: a cold PowerShell start alone can take most
+        // of 2 s, and running out pastes nothing, silently.
+        { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, timeout: 5000 },
       )
       // PowerShell ends its output with a line break the clipboard never had.
       return out.toString('utf8').replace(/\r\n$/, '')

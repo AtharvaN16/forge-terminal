@@ -21,7 +21,13 @@ export interface ForgeRun {
   timedOut: boolean
 }
 
-const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx')
+/**
+ * tsx's own JS entry, to be run as `process.execPath TSX_CLI …`. The
+ * `node_modules/.bin/tsx` shim is a shell script on a Mac and a `.cmd` on
+ * Windows, and Windows cannot spawn either without a shell.
+ */
+export const TSX_CLI = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs')
+
 const entry = join(process.cwd(), 'src', 'index.ts')
 
 /** Runs the real CLI entry from source, as an agent would, with a hard timeout. */
@@ -31,7 +37,7 @@ export function runForge(
 ): Promise<ForgeRun> {
   const stdin = opts.stdin ?? { kind: 'closed' }
   return new Promise((resolve) => {
-    const child = spawn(tsx, [entry, ...args], {
+    const child = spawn(process.execPath, [TSX_CLI, entry, ...args], {
       cwd: opts.cwd,
       stdio: [stdin.kind === 'closed' ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     })
@@ -53,6 +59,12 @@ export function runForge(
       child.kill('SIGKILL')
     }, opts.timeoutMs ?? 15_000)
 
+    // A child that never started has no 'close' to wait for; say why at once
+    // rather than leave the test to hit its own timeout.
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      resolve({ exitCode: null, stdout, stderr: `${stderr}${String(e)}`, timedOut })
+    })
     child.on('close', (code) => {
       clearTimeout(timer)
       child.stdin?.destroy()

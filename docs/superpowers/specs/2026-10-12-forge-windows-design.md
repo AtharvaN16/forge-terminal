@@ -113,9 +113,12 @@ Notes:
   `writeAtomic`, and the extension installer's directory rename.
 - Signals. `src/shell/useMouse.ts` listens for SIGINT/SIGTERM/SIGHUP and
   re-raises with `process.kill(process.pid, signal)`. On Windows SIGINT and
-  SIGHUP (console close) are emulated and re-raising terminates the
-  process — acceptable, as the cleanup has already run. Verified on the
-  Windows runner (§7.3). There is no SIGTSTP handling to change.
+  SIGHUP (console close) are emulated by libuv, and re-raising SIGHUP throws
+  ENOSYS. So on win32 the re-raise (`reraise` in `useMouse.ts`) is wrapped:
+  if `process.kill` throws, the process exits with the status the signal
+  would have given (SIGHUP 129, SIGINT 130, SIGTERM 143) — the cleanup has
+  already run. Unit-tested with an injected `kill`; not exercised on the
+  Windows runner. There is no SIGTSTP handling to change.
 
 ## 5. Extensions
 
