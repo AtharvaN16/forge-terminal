@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -36,6 +36,16 @@ async function heic(args: string[]): Promise<{ exitCode: number; json: Record<st
 }
 
 describe('heic runner', () => {
+  it('ships libheif as its own files beside the runner, not bundled into it (LGPL)', () => {
+    expect(existsSync(join(payload, 'libheif.cjs'))).toBe(true)
+    expect(existsSync(join(payload, 'libheif.wasm'))).toBe(true)
+    // The WASM alone is over 1 MB; a runner that small cannot contain it.
+    expect(statSync(join(payload, 'runner.mjs')).size).toBeLessThan(100_000)
+    expect(readFileSync(join(payload, 'NOTICES.txt'), 'utf8')).toMatch(
+      /libheif\.cjs and libheif\.wasm are libheif-js/,
+    )
+  })
+
   it('--info reads the size and alpha flag', async () => {
     const r = await heic(['--info', '--in', fixture])
     expect(r.exitCode).toBe(0)

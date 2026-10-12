@@ -5,15 +5,20 @@
  *   node extensions/heic/build.mjs --out <dir>
  *
  * <dir> receives:
- *   runner.mjs    runner.ts bundled, with libheif-js's WASM build inlined
- *                 (its `wasm-bundle` entry) — one file, the same on every chip
+ *   runner.mjs    runner.ts bundled — Forge's own code only
+ *   libheif.cjs   libheif-js's Emscripten glue (libheif-wasm/libheif.js), unmodified
+ *   libheif.wasm  libheif + libde265 compiled to WASM, unmodified
  *   NOTICES.txt   licence texts for libheif-js, libheif and libde265 (LGPL-3.0)
+ *
+ * The LGPL library stays in its own two files, loaded by runner.mjs at run
+ * time, so a user can replace it with their own build — not inlined in the
+ * bundle. WASM is chip-independent, so the payload is the same everywhere.
  *
  * No network: everything comes from node_modules. manifest.json is not written
  * here — scripts/package-extension.mjs does that.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -46,16 +51,14 @@ async function main() {
     format: 'esm',
     target: 'node20',
     legalComments: 'none',
-    // runner.ts and the Emscripten glue call require(), and the glue reads
-    // __dirname; an ESM bundle has neither unless they are made. (The glue
-    // only uses __dirname to find a .wasm file, which here is inlined.)
-    banner: {
-      js: "import { createRequire as __forgeRequire } from 'node:module'; import { dirname as __forgeDirname } from 'node:path'; import { fileURLToPath as __forgePath } from 'node:url'; const require = __forgeRequire(import.meta.url); const __filename = __forgePath(import.meta.url); const __dirname = __forgeDirname(__filename);",
-    },
     logLevel: 'warning',
   })
 
+  // The library ships as files beside the runner, never bundled (LGPL). The
+  // glue is CommonJS, hence .cjs: there is no package.json in the payload.
   const pkgDir = dirname(require.resolve('libheif-js/package.json'))
+  copyFileSync(join(pkgDir, 'libheif-wasm', 'libheif.js'), join(out, 'libheif.cjs'))
+  copyFileSync(join(pkgDir, 'libheif-wasm', 'libheif.wasm'), join(out, 'libheif.wasm'))
   const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
   writeFileSync(
     join(out, 'NOTICES.txt'),
@@ -77,9 +80,11 @@ async function main() {
 function notices(version, jsLicence, libheifLicence) {
   return `Forge "HEIC" extension — third-party notices
 
-runner.mjs contains libheif-js ${version}, an Emscripten (WASM) build of
-libheif and libde265. All three are licensed under the GNU Lesser General
-Public License, version 3.
+libheif.cjs and libheif.wasm are libheif-js ${version}, an Emscripten (WASM)
+build of libheif and libde265, unmodified. All three are licensed under the
+GNU Lesser General Public License, version 3. They are the LGPL library:
+runner.mjs (Forge's own code) loads them from this directory at run time, so
+they can be replaced with another build of the same libheif-js version.
 
 Source: https://github.com/catdad-experiments/libheif-js
 libheif: https://github.com/strukturag/libheif

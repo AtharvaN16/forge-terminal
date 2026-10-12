@@ -4,8 +4,9 @@
  *   node runner.mjs --info --in <file.heic>
  *   node runner.mjs --in <file.heic> --out <file.rgba>
  *
- * Decodes with libheif-js's WASM build (libheif + libde265, LGPL-3.0), with
- * the WASM inlined in this bundle. It runs as a child rather than in Forge's
+ * Decodes with libheif-js's WASM build (libheif + libde265, LGPL-3.0), which
+ * ships beside this file as libheif.cjs + libheif.wasm (LGPL: replaceable,
+ * never bundled). It runs as a child rather than in Forge's
  * process so the WASM heap, which only grows, is released when it exits.
  *
  * Contract (shared with Forge's src/extensions/run.ts, as boost's runner):
@@ -16,6 +17,8 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 /** The slice of libheif-js's JavaScript API used here; the package ships no types for it. */
 interface HeifImage {
@@ -32,9 +35,12 @@ interface LibHeif {
   HeifDecoder: new () => { decode(data: Uint8Array): HeifImage[] }
 }
 
-// `require`, not `import`, so the untyped package can be given the type above.
-// esbuild inlines it either way, WASM included.
-const libheif: LibHeif = require('libheif-js/wasm-bundle')
+// Loaded from beside runner.mjs at run time; createRequire keeps esbuild from
+// bundling it. The glue would find the .wasm itself through __dirname, but
+// passing the bytes makes instantiation synchronous, as libheif-js's wasm.js does.
+const libheif: LibHeif = createRequire(import.meta.url)('./libheif.cjs')({
+  wasmBinary: readFileSync(fileURLToPath(new URL('./libheif.wasm', import.meta.url))),
+})
 
 // libheif-js reports its failures with console.log, which would land on
 // stdout beside the result line. They are diagnostics, so they go to stderr;
