@@ -6,6 +6,7 @@ import { useClickTarget } from '../ClickTargets.js'
 import { copy, paste } from '../clipboard.js'
 import { positionInFrame } from '../frame-geometry.js'
 import { isStrayEscapeSequence, offsetForColumn } from '../mouse.js'
+import { FIELD_WIDTH } from '../save-as-art.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -891,10 +892,16 @@ export function Prompt({
     )
   }
 
+  /**
+   * The filled field is the block's width, as Save as's is — 76 at 80
+   * columns, four short of a narrower terminal — never the terminal's, which
+   * at 120 columns left a field wider than everything around it.
+   */
+  const boxWidth = variant === 'field' ? Math.max(20, Math.min(FIELD_WIDTH, width - 4)) : width
   return (
     <Box
       flexDirection="column"
-      width={width}
+      width={boxWidth}
       backgroundColor={colourProp(bg)}
       paddingX={1}
       paddingY={1}

@@ -67,7 +67,7 @@ describe('Save to, framed (spec 2026-10-11 picker §3)', () => {
         <PathInput {...props({ width: 70, defaultPath: '/Users/me/Downloads' })} />,
       ).lastFrame() ?? ''
     const row = frame.split('\n').find((l) => l.includes('Downloads')) ?? ''
-    expect(row).toMatch(/★ default │$/)
+    expect(row).toMatch(/ default +│$/)
   })
 
   it('submits the chosen place', async () => {

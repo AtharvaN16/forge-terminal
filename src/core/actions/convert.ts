@@ -47,7 +47,7 @@ function dpiSelect(): OptionSpec {
     default: '150',
     choices: [
       { value: '72', label: '72 dpi', hint: 'screen' },
-      { value: '150', label: '150 dpi', hint: 'default' },
+      { value: '150', label: '150 dpi', badge: 'default' },
       { value: '300', label: '300 dpi', hint: 'print' },
     ],
   }

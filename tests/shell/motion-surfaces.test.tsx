@@ -157,10 +157,10 @@ describe('picker glide and drop flash', () => {
     await advance(33)
     const mid = (app.lastFrame() ?? '').split('\n')[1] ?? ''
     expect(mid).toContain('48;2;')
-    expect(mid).not.toContain(bgOf(DARK.band))
+    expect(mid).not.toContain(bgOf(DARK.listBand))
     await advance(200)
     const rest = (app.lastFrame() ?? '').split('\n')
-    expect(rest[1]).toContain(bgOf(DARK.band))
+    expect(rest[1]).toContain(bgOf(DARK.listBand))
     expect(rest[0]).not.toContain('48;2;')
   })
 

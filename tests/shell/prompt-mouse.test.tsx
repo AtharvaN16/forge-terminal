@@ -147,13 +147,14 @@ describe('Prompt click-to-position', () => {
     })
 
     it('lands in the same place from the filled variant, whose marker is 2 cells not 4', () => {
-      // width 32 with the filled variant's paddingX: 1 gives the same
-      // 30-cell wrap width as the plain-variant case above, so this and the
+      // width 36 gives the filled field a box of 32 (it is the block's
+      // width, four short of the terminal's), and its paddingX: 1 gives the
+      // same 30-cell wrap width as the plain-variant case above, so this and the
       // continuation-row test converge on the same target character (index
       // 49, right before "/file.png") despite wrapping into only two rows
       // here (marker width 2 leaves room to pack 28 characters after it on
       // row 0, so nothing is pushed to a marker-only row).
-      const h = mount(wrappedPath, { variant: 'field', width: 32 })
+      const h = mount(wrappedPath, { variant: 'field', width: 36 })
       // `hitTest` and `onClick` take points in different spaces: `hitTest`
       // wants the frame-absolute row, and the filled variant's Box sits 3
       // rows into the frame (marginTop 2 + paddingY 1) — `onClick`'s `point`
@@ -183,7 +184,7 @@ describe('Prompt click-to-position', () => {
       )
       plain.app.unmount()
 
-      const filled = mount(value, { variant: 'field', width: 32 })
+      const filled = mount(value, { variant: 'field', width: 36 })
       // See the comment in the previous test: `hitTest` needs the
       // frame-absolute row (the filled variant's Box starts 3 rows in).
       filled.registry.hitTest({ row: 4, col: 10 })?.onClick({ row: 1, col: 10 })

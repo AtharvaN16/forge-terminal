@@ -183,13 +183,21 @@ export function Select({
 
   const labelWidth = Math.max(0, ...items.map((i) => stringWidth(i.label)))
 
-  /** The band behind row `i` right now, or nothing. */
+  /**
+   * The band behind row `i` right now, or nothing. Grey (`listBand`), as the
+   * decided picker draws it: the strip carries the mode's colour, the band
+   * does not.
+   */
   const bandFor = (i: number, selected: boolean): string | undefined => {
-    if (palette.band === '') return undefined
-    if (selected) return mix(palette.canvas, palette.band, k)
-    if (i === glide.current.from && k < 1) return mix(palette.band, palette.canvas, k)
+    const band = palette.listBand
+    if (band === '') return undefined
+    if (selected) return mix(palette.canvas, band, k)
+    if (i === glide.current.from && k < 1) return mix(band, palette.canvas, k)
     return undefined
   }
+  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
+  /** P1's tag: a tinted pill, or the bare word where there is no colour. */
+  const tagged = !noColour && palette.defaultTagBg !== ''
 
   return (
     <Box flexDirection="column">
@@ -200,12 +208,13 @@ export function Select({
         // unavailable action must never draw the marker or go bold.
         const selected = i === index && !item.disabled
         const marker = selected ? `${SYMBOLS.strip} ` : '  '
-        const badge = item.badge ? `${SYMBOLS.star} ${item.badge}` : ''
+        // The tag, padded one cell each side, then one cell inside the band's edge.
+        const badge = item.badge ? ` ${item.badge} ` : ''
         // A label wider than its row is cut, never wrapped: Save to feeds this
         // list labels built from whatever file was dropped on it.
         const labelRoom = Math.max(
           1,
-          width - stringWidth(marker) - (badge ? stringWidth(badge) + 2 : 0),
+          width - stringWidth(marker) - (badge ? stringWidth(badge) + 3 : 0),
         )
         const label = middleEllipsis(item.label, labelRoom).padEnd(Math.min(labelWidth, labelRoom))
 
@@ -215,7 +224,7 @@ export function Select({
          * with one sentence in it. A disabled row keeps its hint, because
          * there the hint is the reason the row cannot be chosen.
          */
-        const used = stringWidth(marker) + stringWidth(label) + (badge ? stringWidth(badge) + 2 : 0)
+        const used = stringWidth(marker) + stringWidth(label) + (badge ? stringWidth(badge) + 3 : 0)
         const room = Math.max(0, width - used - 2)
         const spoken = selected && showHints && speak ? speak(item, room) : null
         const speaks = hints === 'every' ? showHints && !spoken : selected && showHints && !speak
@@ -278,7 +287,18 @@ export function Select({
               {badge ? (
                 <>
                   <Box flexGrow={1} />
-                  <Text color={colourProp(palette.accent)}>{badge}</Text>
+                  <Box paddingRight={1}>
+                    <Text
+                      {...(tagged
+                        ? {
+                            color: colourProp(palette.defaultTag),
+                            backgroundColor: palette.defaultTagBg,
+                          }
+                        : { color: colourProp(palette.dim) })}
+                    >
+                      {badge}
+                    </Text>
+                  </Box>
                 </>
               ) : null}
             </Box>
