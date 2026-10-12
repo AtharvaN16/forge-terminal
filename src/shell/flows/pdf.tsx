@@ -12,6 +12,7 @@ import { formatRanges, parseRanges } from '../../core/pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
 import { displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
+import { ErrorLine } from '../components/ErrorLine.js'
 import { FilledField } from '../components/FilledField.js'
 import { HintBar } from '../components/HintBar.js'
 import { MergeList } from '../components/MergeList.js'
@@ -19,6 +20,7 @@ import { gridLayout, PageGrid } from '../components/PageGrid.js'
 import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
 import { StepTitle } from '../components/StepTitle.js'
+import { HOME_MARGIN } from '../home-art.js'
 import type { Stage } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
@@ -158,8 +160,24 @@ export function PdfFlow({
   const [values, setValues] = useState<Record<string, unknown>>(resumedValues)
   const [specIndex, setSpecIndex] = useState(0)
   const [text, setText] = useState('')
-  const [fieldError, setFieldError] = useState<string | undefined>(undefined)
-  const [pagesError, setPagesError] = useState<string | undefined>(undefined)
+  /**
+   * A refusal of what was just typed or chosen (E5·b): a short title and the
+   * reason, shown as one row under the field or grid it concerns. Cleared as
+   * soon as anything is typed again.
+   */
+  const [fieldError, setFieldError] = useState<Refusal | undefined>(undefined)
+  const [pagesError, setPagesError] = useState<Refusal | undefined>(undefined)
+  /**
+   * The field's text changes. The submit that raised a refusal empties the
+   * field, so the row outlives that and goes with the next change: typing
+   * makes it stale (as the size field's row does).
+   */
+  const typeText = (next: string) => {
+    setText(next)
+    if (next === '') return
+    setFieldError(undefined)
+    setPagesError(undefined)
+  }
   const [pagesView, setPagesView] = useState<'grid' | 'range'>('grid')
   // Merge's order lives outside `values` because `MergeList` is the only step
   // that produces it (see `planJobs`).
@@ -368,7 +386,10 @@ export function PdfFlow({
     if (!doc) return
     const n = Number(raw.trim())
     if (!Number.isInteger(n) || n < 1) {
-      setFieldError(`${raw.trim() || 'that'} is not a whole number of pages.`)
+      setFieldError({
+        title: 'Not a number',
+        reason: `${raw.trim() || 'that'} is not a whole number of pages.`,
+      })
       return
     }
     setFieldError(undefined)
@@ -385,11 +406,11 @@ export function PdfFlow({
   const submitPages = (pages: number[]) => {
     if (!doc || !action) return
     if (pages.length === 0) {
-      setPagesError('Select at least one page.')
+      setPagesError({ title: 'No pages', reason: 'Select at least one page.' })
       return
     }
     if (action.id === 'delete' && pages.length === doc.pages) {
-      setPagesError('That would delete every page.')
+      setPagesError({ title: 'Too many pages', reason: 'That would delete every page.' })
       return
     }
     setPagesError(undefined)
@@ -401,7 +422,10 @@ export function PdfFlow({
     try {
       submitPages(parseRanges(raw, doc.pages))
     } catch (e) {
-      setPagesError(isForgeError(e) ? e.detail : 'That is not a page range.')
+      setPagesError({
+        title: 'Not a page range',
+        reason: isForgeError(e) ? e.detail : 'That is not a page range.',
+      })
     }
   }
 
@@ -499,9 +523,7 @@ export function PdfFlow({
               width={width}
               height={height}
             />
-            {pagesError ? (
-              <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${pagesError}`}</Text>
-            ) : null}
+            {pagesError ? <Refused refusal={pagesError} width={width} /> : null}
             <HintBar
               width={width}
               pairs={[
@@ -523,15 +545,13 @@ export function PdfFlow({
           <StepTitle mode="pdf" title={spec.label} aside={docAside} width={width} />
           <FilledField
             value={text}
-            onChange={setText}
+            onChange={typeText}
             onSubmit={submitPagesText}
             placeholder={placeholder}
             isActive
             width={width}
           />
-          {pagesError ? (
-            <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${pagesError}`}</Text>
-          ) : null}
+          {pagesError ? <Refused refusal={pagesError} width={width} /> : null}
           <HintBar
             width={width}
             pairs={[
@@ -585,15 +605,13 @@ export function PdfFlow({
         <StepTitle mode="pdf" title={spec.label} aside={pagesAside} width={width} />
         <FilledField
           value={text}
-          onChange={setText}
+          onChange={typeText}
           onSubmit={answerSpec}
           placeholder={spec.placeholder}
           isActive
           width={width}
         />
-        {fieldError ? (
-          <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${fieldError}`}</Text>
-        ) : null}
+        {fieldError ? <Refused refusal={fieldError} width={width} /> : null}
         <HintBar
           width={width}
           pairs={[
@@ -694,7 +712,7 @@ export function PdfFlow({
           <StepTitle mode="pdf" title="Pages per file" aside={pagesAside} width={width} />
           <FilledField
             value={text}
-            onChange={setText}
+            onChange={typeText}
             onSubmit={submitSplitN}
             placeholder={doc ? String(Math.min(10, doc.pages)) : '10'}
             isActive
@@ -707,9 +725,7 @@ export function PdfFlow({
               ) : null
             }
           />
-          {fieldError ? (
-            <Text color={colourProp(palette.warn)}>{`  ${SYMBOLS.warn} ${fieldError}`}</Text>
-          ) : null}
+          {fieldError ? <Refused refusal={fieldError} width={width} /> : null}
           <HintBar
             width={width}
             pairs={[
@@ -776,6 +792,26 @@ export function PdfFlow({
           <Text color={colourProp(palette.dim)}>Running…</Text>
         </Box>
       ) : null}
+    </Box>
+  )
+}
+
+/** What a refusal says: a short title, and why. */
+interface Refusal {
+  title: string
+  reason: string
+}
+
+/** E5·b, as the size field shows it: a blank row, then the tinted row. */
+function Refused({ refusal, width }: { refusal: Refusal; width: number }) {
+  return (
+    <Box flexDirection="column">
+      <Text> </Text>
+      <ErrorLine
+        title={refusal.title}
+        reason={refusal.reason}
+        width={Math.max(8, width - 2 * HOME_MARGIN)}
+      />
     </Box>
   )
 }

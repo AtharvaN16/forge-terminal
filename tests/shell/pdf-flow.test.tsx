@@ -542,3 +542,36 @@ describe('/pdf, drawn with the decided parts', () => {
     )
   })
 })
+
+describe('/pdf, a refusal of what was typed (E5·b)', () => {
+  it('says “Not a number” under every N pages, and clears once typing starts again', async () => {
+    const { stdin, lastFrame } = mount([doc('/docs/r.pdf', 7)])
+    stdin.write(ENTER) // Split
+    await settle()
+    stdin.write(DOWN + ENTER) // Every N pages
+    await settle()
+    stdin.write('x')
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    const out = plain(lastFrame())
+    expect(out).toMatch(/Not a number {3}x is not a whole number of pages\./)
+    expect(out).not.toContain('⚠')
+    stdin.write('2')
+    await settle()
+    expect(plain(lastFrame())).not.toContain('Not a number')
+  })
+
+  it('says “Not a page range” under a typed range it cannot read', async () => {
+    const { stdin, lastFrame } = mount([doc('/docs/r.pdf', 300)])
+    stdin.write(DOWN + ENTER) // Extract: too many pages for the grid, so the field
+    await settle()
+    stdin.write('zz')
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    const out = plain(lastFrame())
+    expect(out).toMatch(/Not a page range {3}/)
+    expect(out).not.toContain('⚠')
+  })
+})
