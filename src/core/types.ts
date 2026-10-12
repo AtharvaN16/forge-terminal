@@ -87,7 +87,14 @@ export interface ConvertOptions {
    * arrives from a prompt or `--password-stdin`.
    */
   password?: string
+  /** Trim transparent or solid-colour edges, after EXIF rotation. */
+  trim?: boolean
+  /** The output size, of the upright (and trimmed) image. */
+  resize?: ResizeSpec
 }
+
+/** How big Resize makes the image: a percentage of its size, or one exact side (the other follows). */
+export type ResizeSpec = { percent: number } | { width: number } | { height: number }
 
 /**
  * One unit of work.
@@ -136,7 +143,7 @@ export type Job =
       sources: [ImageInfo]
       outputs: [string]
       /** 1 is Sharpen: the model at the source's own size. */
-      scale: 1 | 2 | 4
+      scale: 1 | 2 | 3 | 4
       target: FormatId
       options: ConvertOptions
     }
@@ -165,6 +172,8 @@ export type WarningCode =
   | 'word-basic-fidelity'
   /** `forge config` could not read its settings file and fell back to defaults. */
   | 'config-unreadable'
+  /** Trim found no empty edges, so only the resize was applied. */
+  | 'nothing-trimmed'
 
 export interface Warning {
   code: WarningCode

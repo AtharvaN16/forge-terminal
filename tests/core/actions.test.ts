@@ -30,6 +30,8 @@ describe('action registry', () => {
       extract: 'Extracting',
       delete: 'Deleting',
       rotate: 'Rotating',
+      trim: 'Trimming edges',
+      resize: 'Resizing',
     })
   })
 
@@ -42,6 +44,8 @@ describe('action registry', () => {
       'extract',
       'delete',
       'rotate',
+      'trim',
+      'resize',
     ])
   })
 

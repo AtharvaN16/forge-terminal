@@ -6,6 +6,7 @@ import { convertAction } from './convert.js'
 import { boostAction, removeBackgroundAction } from './extension.js'
 import { deleteAction, extractAction } from './extract.js'
 import { mergeAction } from './merge.js'
+import { resizeAction, trimAction } from './resize.js'
 import { rotateAction } from './rotate.js'
 import { splitAction } from './split.js'
 
@@ -90,8 +91,10 @@ export {
   extractAction,
   mergeAction,
   removeBackgroundAction,
+  resizeAction,
   rotateAction,
   splitAction,
+  trimAction,
 }
 
 export const ACTIONS: Action[] = [
@@ -102,7 +105,14 @@ export const ACTIONS: Action[] = [
   extractAction,
   deleteAction,
   rotateAction,
+  trimAction,
+  resizeAction,
 ]
+
+/** The page operations: what the PDF hub lists and the MCP's page tool takes. */
+export const PAGE_ACTIONS: Action[] = ACTIONS.filter(
+  (a) => !['convert', 'compress', 'trim', 'resize'].includes(a.id),
+)
 
 /** Contributed by optional extensions; never part of `ACTIONS`. */
 export const EXTENSION_ACTIONS: Action[] = [boostAction, removeBackgroundAction]

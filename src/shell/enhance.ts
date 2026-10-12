@@ -1,48 +1,65 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
-import { targetIdsFor } from '../core/capabilities.js'
-import { BOOST_MAX_SIDE, boostOverLimit } from '../core/extension-targets.js'
+import { resizeAction, trimAction } from '../core/actions/resize.js'
+import {
+  BOOST_MAX_SIDE,
+  type BoostScale,
+  boostOverLimit,
+  boostScales,
+} from '../core/extension-targets.js'
+import { keptFormat } from '../core/resize.js'
 import type { FormatId, ImageInfo } from '../core/types.js'
+import type { ImageMeasure } from '../engines/image.js'
 import { type ExtensionId, offeredHere } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
 
 /**
- * Enhance (mode 5, mockups/extensions-2026-10.html tabs Flow and 1 Picker):
- * one picker of four rows, each one of the two optional extensions run a
- * particular way. Pure: what the rows are and say for an image, nothing drawn.
+ * Enhance (mode 5, mockups/extensions-2026-10.html tabs Flow and 1 Picker;
+ * mockups/boost-row-2026-10.html B3 and S1): one picker of rows, the first
+ * three each one of the two optional extensions run a particular way —
+ * Boost resolution one row whose scale changes on the row — then, after one
+ * blank row (E3, mockups/resize-2026-10.html), Trim edges and Resize, which
+ * are built in. Pure: what the rows are and say for an image, nothing drawn.
  */
 
-export type EnhanceToolId = 'sharpen' | 'boost-2' | 'boost-4' | 'cutout'
+export type EnhanceToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize'
+
+/** The row the picker leaves a blank row after (E3): the AI tools above it, the plain ones below. */
+export const GAP_AFTER: EnhanceToolId = 'cutout'
+
+/** What a row makes: dim words, then the fact in bold. */
+export interface Detail {
+  dim: string
+  bold: string
+  after?: string
+}
 
 export interface EnhanceRow {
   id: EnhanceToolId
   /** The row's name, and the trail's answer: never just "Boost". */
   label: string
-  /** The extension that does it. */
-  extension: ExtensionId
-  /** For a boost row: 1 is Sharpen. */
-  scale?: 1 | 2 | 4
+  /** The extension that does it; absent for a built-in tool, which is always ready. */
+  extension?: ExtensionId
+  /** Sharpen: the boost extension at 1×. */
+  scale?: 1
+  /** Boost resolution: the scales this image can take, smallest first; ←→ steps through them. */
+  scales?: Array<{ scale: BoostScale; detail: Detail }>
   /** What the file is written as: the source's own format, or PNG for a cutout. */
   target: FormatId
-  /** What the highlighted row says: dim words, then the fact in bold. */
-  detail: { dim: string; bold: string; after?: string }
+  /** What the row makes; Boost's at its smallest scale. */
+  detail: Detail
+  /** What the pane beside the list says the tool does (S1): the short answer, then why. */
+  pane: { short: string; long: string }
   /** Why this row cannot be chosen for this image, said on the row, dimmed. */
   tooLarge?: string
   /** Working's verb (W5). */
   verb: string
 }
 
+export { keptFormat }
+
 const dims = (w: number, h: number) => `${w} × ${h}`
 const grouped = (n: number) => n.toLocaleString('en-US')
-
-/**
- * What Sharpen and Boost resolution write: the source's own format where the
- * image engine writes it, else JPEG for a HEIC (it cannot be written), else PNG.
- */
-export function keptFormat(source: ImageInfo): FormatId {
-  if (source.format === 'heic') return 'jpeg'
-  return targetIdsFor(source).includes(source.format) ? source.format : 'png'
-}
 
 function tooLarge(source: ImageInfo, scale: number): string | undefined {
   const over = boostOverLimit(source.width, source.height, scale)
@@ -52,26 +69,56 @@ function tooLarge(source: ImageInfo, scale: number): string | undefined {
     : `${over.megapixels} MP, over 100 MP`
 }
 
-/** The rows, in the decided order, for `source` (four on a Mac). No row is a default. */
+/**
+ * Trim's row: the size a trim leaves, once `measure` has it; dimmed with why
+ * when there is nothing to cut or the image is animated.
+ */
+function trimRow(source: ImageInfo, measure: ImageMeasure | undefined): EnhanceRow {
+  const trimmed = measure?.trimmed
+  return {
+    id: 'trim',
+    label: 'Trim edges',
+    target: keptFormat(source),
+    detail:
+      trimmed && typeof trimmed === 'object'
+        ? { dim: 'empty edges off · ', bold: dims(trimmed.width, trimmed.height) }
+        : { dim: '', bold: '' },
+    pane: {
+      short: 'Cuts off plain borders.',
+      long: 'Plain borders come off. Nothing else in the picture changes.',
+    },
+    ...(trimmed === 'nothing' ? { tooLarge: 'no empty edges' } : {}),
+    ...(trimmed === 'animated' ? { tooLarge: 'animated' } : {}),
+    verb: trimAction.verb,
+  }
+}
+
+/**
+ * The rows, in the decided order, for `source`. No row is a default.
+ * `measure` (read once the list opens) gives Trim its facts. `offered` is
+ * what the installed boost makes (`boostScales`); the Boost row keeps those
+ * that fit this image. Remove background is a Mac-only row (`platform`).
+ */
 export function enhanceRows(
   source: ImageInfo,
+  measure?: ImageMeasure,
+  offered: readonly BoostScale[] = boostScales(undefined),
   platform: NodeJS.Platform = process.platform,
 ): EnhanceRow[] {
   const kept = keptFormat(source)
   const asJpeg = source.format === 'heic' ? ' · as JPEG' : ''
-  const boost = (scale: 2 | 4): EnhanceRow => {
-    const reason = tooLarge(source, scale)
-    return {
-      id: scale === 2 ? 'boost-2' : 'boost-4',
-      label: `Boost resolution ${scale}×`,
-      extension: 'boost',
+  const scales = offered
+    .filter((k) => !tooLarge(source, k))
+    .map((scale) => ({
       scale,
-      target: kept,
-      detail: { dim: '', bold: dims(source.width * scale, source.height * scale), after: asJpeg },
-      ...(reason ? { tooLarge: reason } : {}),
-      verb: 'Boosting resolution',
-    }
-  }
+      detail: {
+        dim: 'becomes ',
+        bold: dims(source.width * scale, source.height * scale),
+        after: asJpeg,
+      },
+    }))
+  // Dimmed only when no scale fits, with why the smallest does not.
+  const boostReason = scales.length === 0 ? tooLarge(source, offered[0] ?? 2) : undefined
   const sharpenReason = tooLarge(source, 1)
   return [
     {
@@ -81,11 +128,27 @@ export function enhanceRows(
       scale: 1,
       target: kept,
       detail: { dim: 'same size · ', bold: dims(source.width, source.height), after: asJpeg },
+      pane: {
+        short: 'Keeps the size.',
+        long: 'An on-device model redraws soft or noisy detail, so it looks crisper.',
+      },
       ...(sharpenReason ? { tooLarge: sharpenReason } : {}),
       verb: 'Sharpening',
     },
-    boost(2),
-    boost(4),
+    {
+      id: 'boost',
+      label: 'Boost resolution',
+      extension: 'boost',
+      scales,
+      target: kept,
+      detail: scales[0]?.detail ?? { dim: '', bold: '' },
+      pane: {
+        short: 'Makes it bigger.',
+        long: 'An on-device model draws in new detail, so it stays sharp when you zoom in or print it.',
+      },
+      ...(boostReason ? { tooLarge: boostReason } : {}),
+      verb: 'Boosting resolution',
+    },
     // Apple Vision does the cutting, so there is no such row where it is not offered.
     ...(offeredHere('remove-background', platform)
       ? [
@@ -95,40 +158,78 @@ export function enhanceRows(
             extension: 'remove-background',
             target: 'png',
             detail: { dim: '', bold: 'transparent PNG' },
+            pane: {
+              short: 'Keeps the subject.',
+              long: 'Everything behind the subject becomes transparent.',
+            },
             verb: 'Removing background',
           } satisfies EnhanceRow,
         ]
       : []),
+    trimRow(source, measure),
+    {
+      id: 'resize',
+      label: 'Resize',
+      target: kept,
+      detail: { dim: 'you choose the size next', bold: '' },
+      pane: {
+        short: 'Any size, no new detail.',
+        long: 'Smaller stays sharp; larger looks softer. Boost resolution adds detail.',
+      },
+      verb: resizeAction.verb,
+    },
   ]
 }
 
-export function enhanceRow(source: ImageInfo, id: unknown): EnhanceRow | undefined {
-  return enhanceRows(source).find((r) => r.id === id)
+/** One row by id; `offered` and `platform` as for `enhanceRows` (Boost's scales depend on it). */
+export function enhanceRow(
+  source: ImageInfo,
+  id: unknown,
+  offered?: readonly BoostScale[],
+  platform: NodeJS.Platform = process.platform,
+): EnhanceRow | undefined {
+  return enhanceRows(source, undefined, offered, platform).find((r) => r.id === id)
+}
+
+/** What a row makes at `scale` (one of Boost's), else at its own. */
+export function detailAt(row: EnhanceRow, scale?: number): Detail {
+  return row.scales?.find((s) => s.scale === scale)?.detail ?? row.detail
 }
 
 /** The action a row runs through: the same plan-and-run path as the CLI. */
-export const actionForRow = (row: Pick<EnhanceRow, 'extension'>): Action =>
-  row.extension === 'boost' ? boostAction : removeBackgroundAction
+export const actionForRow = (row: Pick<EnhanceRow, 'id' | 'extension'>): Action =>
+  row.id === 'trim'
+    ? trimAction
+    : row.id === 'resize'
+      ? resizeAction
+      : row.extension === 'boost'
+        ? boostAction
+        : removeBackgroundAction
 
-/** The answers Save as and the run plan with, for a row. */
-export function rowValues(row: EnhanceRow): Record<string, unknown> {
+/** The answers Save as and the run plan with, for a row at `scale` (one of Boost's). */
+export function rowValues(row: EnhanceRow, scale?: number): Record<string, unknown> {
+  const k = row.scales
+    ? (row.scales.find((s) => s.scale === scale) ?? row.scales[0])?.scale
+    : row.scale
   return {
     tool: row.id,
     target: row.target,
-    ...(row.scale === undefined ? {} : { scale: String(row.scale) }),
+    ...(k === undefined ? {} : { scale: String(k) }),
+    ...(row.id === 'trim' ? { trim: true } : {}),
   }
 }
 
 /** Where a tool stands on this Mac, as the picker's row shows it. */
 export type ToolState =
-  | { kind: 'ready' }
+  /** `version`: the installed one, which decides the factors boost makes (`boostScales`). */
+  | { kind: 'ready'; version?: string }
   | { kind: 'absent'; downloadBytes: number }
   | { kind: 'unsupported'; reason: string }
   | { kind: 'installing'; done: number; total: number }
 
 export function toolState(status: ExtensionStatus | undefined): ToolState {
   if (!status) return { kind: 'unsupported', reason: 'not available' }
-  if (status.installed !== undefined) return { kind: 'ready' }
+  if (status.installed !== undefined) return { kind: 'ready', version: status.installed }
   if (!status.supported) return { kind: 'unsupported', reason: status.reason ?? 'not available' }
   return { kind: 'absent', downloadBytes: status.downloadBytes ?? 0 }
 }

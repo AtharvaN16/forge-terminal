@@ -5,6 +5,7 @@ import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import { prepareOutputDir, renameAtomic } from '../core/atomic.js'
 import {
+  animatedTrim,
   classifyWriteError,
   conversionFailed,
   corruptFormatSource,
@@ -14,13 +15,16 @@ import {
   isForgeError,
   notADirectory,
   notAFile,
+  nothingToTrim,
   pathTooLong,
   permissionDenied,
+  resizeTooLarge,
   symlinkLoop,
   unreadablePath,
   unsupportedSource,
 } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
+import { resizedSize, type Size, sizeOverLimit } from '../core/size.js'
 import type {
   ConvertOptions,
   FormatId,
@@ -31,6 +35,7 @@ import type {
   SourceInfo,
   Warning,
 } from '../core/types.js'
+import { displayName } from '../utils/display-path.js'
 import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import { loadSharp } from './libs.js'
 import type { Engine, Measurer } from './types.js'
@@ -112,12 +117,13 @@ async function probe(path: string): Promise<SourceInfo> {
    * HEIC is identified from its own container bytes and measured with `sips`,
    * never through Sharp.
    *
-   * Sharp cannot read a real photo's metadata at all: an iPhone HEIC is a
-   * tiled grid whose tiles are cross-referenced through the ISO-BMFF `iref`
-   * box, and libheif rejects more than 16 references as a security limit —
-   * a 12MP photo has 48. Routing HEIC through Sharp therefore reported
-   * "Damaged image" for precisely the files people convert, while small
-   * single-tile fixtures passed. See engines/heic.ts.
+   * Sharp's prebuilt libvips has no HEVC decoder, so it cannot decode a HEIC's
+   * pixels at all. Before 0.35.5 it could not even read a real photo's
+   * metadata: an iPhone HEIC is a tiled grid cross-referenced through the
+   * ISO-BMFF `iref` box, and older libheif rejected more than 16 references
+   * as a security limit — a 12MP photo has 48 — so routing HEIC through
+   * Sharp reported "Damaged image" for precisely the files people convert.
+   * See engines/heic.ts.
    */
   if (await looksLikeHeic(path)) {
     if (!(await heicDecodable())) throw heicDecoderUnavailable(path)
@@ -159,8 +165,11 @@ async function probe(path: string): Promise<SourceInfo> {
     kind: 'image',
     path,
     format: identify(path, meta),
-    width: meta.width ?? 0,
-    height: meta.height ?? 0,
+    // The upright size, which is what every pipeline produces (`.rotate()`
+    // first) and so the only size the card, Resize and the file names can
+    // honestly say. `meta.width` is the stored size, sideways for a phone photo.
+    width: meta.autoOrient?.width ?? meta.width ?? 0,
+    height: meta.autoOrient?.height ?? meta.height ?? 0,
     bytes: stats.size,
     hasAlpha: meta.hasAlpha ?? false,
     frames: meta.pages ?? 1,
@@ -254,6 +263,12 @@ async function pipelineFor(
    * decoded to PNG (see `readOnce`), so it skips the sips step.
    */
   input?: Buffer,
+  /**
+   * The size Resize writes, resolved once by the caller (`run`) from the
+   * upright — and, with a trim, the trimmed — size. Passed in so this never
+   * measures; a resize without one is only derivable when nothing is trimmed.
+   */
+  outputSize?: Size,
 ): Promise<{ pipeline: Sharp; cleanup: () => Promise<void> }> {
   // The image engine only ever builds a pipeline for an image — the registry
   // routes jobs to an engine by `reads`/`writes`, so a document source
@@ -290,6 +305,18 @@ async function pipelineFor(
   // intermediate needs rotating exactly like any other source, and
   // skipping it here shipped every HEIC photo on its side.
   pipeline = pipeline.rotate()
+
+  // Trim and resize (spec 2026-10-12), on the upright image. Both sides are
+  // given to Sharp with `fill`, so its own rounding never disagrees with the
+  // size the file name and the card state.
+  if (options.trim) pipeline = pipeline.trim()
+  if (options.resize) {
+    if (!outputSize && options.trim) {
+      throw new Error('pipelineFor needs the resolved size to resize a trimmed image')
+    }
+    const size = outputSize ?? resizedSize(source, options.resize)
+    pipeline = pipeline.resize(size.width, size.height, { fit: 'fill' })
+  }
 
   // Rule 2: composite onto a background when the target has no alpha channel.
   if (source.hasAlpha && !FORMATS[target].hasAlpha) {
@@ -338,6 +365,46 @@ export async function encodeToBuffer(
   }
 }
 
+export interface ImageMeasure {
+  /** The size after EXIF rotation. */
+  upright: Size
+  /** What a trim would leave; `'nothing'` when there are no empty edges. */
+  trimmed: Size | 'nothing' | 'animated'
+}
+
+/**
+ * What Trim and Resize need to know about an image: its upright size, and
+ * what a trim would leave of it. The trim is really run, on the upright
+ * pixels, because "empty" is a question about pixels the probe never reads.
+ * An animation is not measured; Trim does not apply to one.
+ */
+export async function measureImage(source: ImageInfo): Promise<ImageMeasure> {
+  const upright = { width: source.width, height: source.height }
+  if (source.frames > 1) return { upright, trimmed: 'animated' }
+
+  if (source.format === 'heic' && !(await heicDecodable())) {
+    throw heicDecoderUnavailable(source.path)
+  }
+  const heic = source.format === 'heic' ? await decodeHeic(source.path) : undefined
+  try {
+    const sharp = await loadSharp()
+    // Encoded at quality 1 only because Sharp reports the trimmed size with the
+    // encoded buffer; the bytes are thrown away.
+    const { info } = await sharp(heic?.path ?? source.path)
+      .rotate()
+      .trim()
+      .jpeg({ quality: 1 })
+      .toBuffer({ resolveWithObject: true })
+    return info.width === upright.width && info.height === upright.height
+      ? { upright, trimmed: 'nothing' }
+      : { upright, trimmed: { width: info.width, height: info.height } }
+  } catch (cause) {
+    throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
+  } finally {
+    await heic?.cleanup()
+  }
+}
+
 async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Result> {
   if (job.op !== 'convert') {
     throw new Error(`image engine cannot ${job.op}`)
@@ -363,13 +430,44 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     warnings.push({
       code: 'animation-flattened',
       message:
-        `${basename(source.path)} has ${source.frames} frames, ` +
+        `${displayName(source.path)} has ${source.frames} frames, ` +
         `and ${spec.label} cannot animate. Only the first frame was converted.`,
     })
   }
 
+  // Trim and resize are decided here, once, before anything is written: the
+  // refusals, the "nothing trimmed" warning, and the size the pipeline gets.
+  let outputSize: Size | undefined
+  if (job.options.trim || job.options.resize) {
+    let base: Size = { width: source.width, height: source.height }
+    if (job.options.trim) {
+      if (isAnimated) throw animatedTrim(source.path)
+      const { trimmed } = await measureImage(source)
+      if (trimmed === 'nothing') {
+        if (!job.options.resize) throw nothingToTrim(source.path)
+        warnings.push({
+          code: 'nothing-trimmed',
+          message: `${displayName(source.path)} has no empty edges; resized only.`,
+        })
+      } else if (trimmed !== 'animated') {
+        base = trimmed
+      }
+    }
+    if (job.options.resize) {
+      outputSize = resizedSize(base, job.options.resize)
+      if (sizeOverLimit(outputSize)) throw resizeTooLarge(source.path, outputSize)
+    }
+  }
+
   onPhase({ phase: 'decoding' })
-  const { pipeline, cleanup } = await pipelineFor(source, job.target, job.options, keepFrames)
+  const { pipeline, cleanup } = await pipelineFor(
+    source,
+    job.target,
+    job.options,
+    keepFrames,
+    undefined,
+    outputSize,
+  )
 
   try {
     // A folder that cannot be written is found before a long encode, not after.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayPath } from '../../src/utils/display-path.js'
+import { displayName, displayPath } from '../../src/utils/display-path.js'
 
 // The Mac behaviour, pinned to darwin so it holds on the Windows CI job too.
 const home = '/Users/me'
@@ -44,5 +44,16 @@ describe('displayPath', () => {
     expect(displayPath('/Users/me/Pictures/a.png', { home, cwd, platform })).toBe(
       '~/Pictures/a.png',
     )
+  })
+})
+
+describe('display of a hostile name', () => {
+  it('displayPath shows control characters as ?', () => {
+    expect(displayPath('/Users/me/a\x1b]0;x\x07.png', { home })).toBe('~/a?]0;x?.png')
+  })
+
+  it('displayName is the base name, made printable', () => {
+    expect(displayName('/tmp/a\x1b]0;x\x07.png')).toBe('a?]0;x?.png')
+    expect(displayName('/tmp/photo.jpg')).toBe('photo.jpg')
   })
 })

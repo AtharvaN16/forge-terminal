@@ -2,7 +2,7 @@ import { FORMATS } from '../core/formats.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { SourceInfo } from '../core/types.js'
 import { formatBytes } from '../core/units.js'
-import { lastSegment } from '../utils/last-segment.js'
+import { displayName } from '../utils/display-path.js'
 import type { ShellMode } from './theme.js'
 
 export interface Stage {
@@ -69,7 +69,6 @@ export interface StagedView {
   fresh: number
 }
 
-const basename = (path: string) => lastSegment(path) ?? path
 const allPdf = (sources: SourceInfo[]) => sources.every((s) => s.format === 'pdf')
 
 /** A source's facts, as the file card says them. */
@@ -101,7 +100,7 @@ export function stagedView(stage: Stage, fresh: number): StagedView {
       : 'files'
   return {
     files: sources.map((s) => ({
-      name: basename(s.path),
+      name: displayName(s.path),
       tag: FORMATS[s.format].label,
       size: formatBytes(s.bytes),
       facts: cardFacts(s),
@@ -127,7 +126,7 @@ export function underField(stage: Stage, mode: ShellMode): UnderField | undefine
     return {
       kind: 'left-out',
       count: stage.failures.length,
-      name: basename(first.path),
+      name: displayName(first.path),
       reason: first.error.title.toLowerCase(),
       more: stage.failures.length - 1,
     }

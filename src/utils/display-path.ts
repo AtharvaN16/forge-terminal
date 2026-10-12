@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { posix, win32 } from 'node:path'
+import { printable } from './printable.js'
 
 /** `path` relative to `base` when it is `base` or inside it, else undefined. */
 function inside(path: string, base: string, p: typeof posix): string | undefined {
@@ -25,6 +26,13 @@ export function displayPath(
   path: string,
   opts: { home?: string; cwd?: string; platform?: NodeJS.Platform } = {},
 ): string {
+  return printable(shortPath(path, opts))
+}
+
+function shortPath(
+  path: string,
+  opts: { home?: string; cwd?: string; platform?: NodeJS.Platform },
+): string {
   const p = (opts.platform ?? process.platform) === 'win32' ? win32 : posix
   if (opts.cwd !== undefined) {
     const rel = inside(path, opts.cwd, p)
@@ -33,4 +41,13 @@ export function displayPath(
   const rel = inside(path, opts.home ?? homedir(), p)
   if (rel !== undefined) return rel === '' ? '~' : `~${p.sep}${rel}`
   return path
+}
+
+/**
+ * A file's own name, for showing: `basename`, made printable. Windows splits
+ * on either slash (`win32.basename`), so a path built with a `/` still names
+ * its file.
+ */
+export function displayName(path: string, platform: NodeJS.Platform = process.platform): string {
+  return printable((platform === 'win32' ? win32 : posix).basename(path))
 }

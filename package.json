@@ -1,6 +1,6 @@
 {
   "name": "forge-terminal",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A terminal-native file converter for macOS",
   "keywords": [
     "convert",
@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "@hyzyla/pdfium": "^2.1.13",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.9",

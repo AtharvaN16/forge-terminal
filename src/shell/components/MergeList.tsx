@@ -1,11 +1,12 @@
 import { statSync } from 'node:fs'
-import { basename } from 'node:path'
+
 import { Box, Text } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { moveItem, nextSortMode, type SortMode, sortSources } from '../../core/order.js'
 import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
+import { displayName } from '../../utils/display-path.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -235,7 +236,7 @@ export function MergeList({
    * `middleEllipsis` budgets in columns and a name can contain a wide glyph.
    */
   const nameWidth = Math.min(
-    Math.max(0, ...order.map((s) => stringWidth(basename(s.path)))) + 4,
+    Math.max(0, ...order.map((s) => stringWidth(displayName(s.path)))) + 4,
     Math.max(4, width - ROW_CHROME),
   )
 
@@ -244,7 +245,7 @@ export function MergeList({
     const isHeld = i === held
     // The picker's strip marks the row you are on; a row picked up says so with ⇅.
     const mark = isHeld ? '⇅' : isCursor ? SYMBOLS.strip : ' '
-    const name = middleEllipsis(basename(s.path), nameWidth)
+    const name = middleEllipsis(displayName(s.path), nameWidth)
     const numStr = String(i + 1).padStart(2)
     // Padded by column count, not by `padEnd`'s code units, for the same
     // reason the width above is measured in columns.

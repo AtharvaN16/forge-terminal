@@ -1,4 +1,4 @@
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { readableFormats, writableFormats } from '../core/capabilities.js'
 import { renderError } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
@@ -6,7 +6,7 @@ import type { ProbeReport } from '../core/probe-report.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
 import { formatBytes, percentChange } from '../core/units.js'
-import { displayPath } from '../utils/display-path.js'
+import { displayName, displayPath } from '../utils/display-path.js'
 
 /**
  * Where a report's paths are shown relative to. Defaults to the real process;
@@ -57,8 +57,8 @@ export function reportSingle(summary: RunSummary, where: Where = {}): string[] {
 
   if (outputs.length > 1) {
     const lines = [
-      `✓ ${basename(source.path)} → ${outputs.length} files${inFolder(outputs[0], where)}`,
-      `  ${outputs.map((o) => basename(o)).join(', ')}`,
+      `✓ ${displayName(source.path)} → ${outputs.length} files${inFolder(outputs[0], where)}`,
+      `  ${outputs.map((o) => displayName(o)).join(', ')}`,
       `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} total`,
     ]
     for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
@@ -69,7 +69,7 @@ export function reportSingle(summary: RunSummary, where: Where = {}): string[] {
   // used to print byte-identical lines (audit #9). Inside cwd it is relative,
   // so the ordinary alongside-the-source case still reads `photo.png`.
   const lines = [
-    `✓ ${basename(source.path)} → ${displayPath(outputs[0], placesFor(where))}`,
+    `✓ ${displayName(source.path)} → ${displayPath(outputs[0], placesFor(where))}`,
     `  ${formatBytes(source.bytes)} → ${formatBytes(result.outputBytes)} · ${changePhrase(source.bytes, result.outputBytes)}`,
   ]
   for (const warning of result.warnings) lines.push('', `⚠ ${warning.message}`)
@@ -108,7 +108,7 @@ export function reportBatch(summary: RunSummary, where: Where = {}): string[] {
  */
 export function reportPageOp(summary: RunSummary, where: Where = {}): string[] {
   const outputs = summary.results.flatMap((r) => r.job.outputs)
-  const names = outputs.map((o) => basename(o)).join(', ')
+  const names = outputs.map((o) => displayName(o)).join(', ')
   const noun = outputs.length === 1 ? 'file' : 'files'
 
   const folder = outputs[0] === undefined ? '' : inFolder(outputs[0], where)

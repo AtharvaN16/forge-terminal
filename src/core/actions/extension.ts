@@ -1,6 +1,6 @@
 import { targetIdsFor } from '../capabilities.js'
 import { unsupportedTarget } from '../errors.js'
-import { removeBackgroundTargetRefusal } from '../extension-targets.js'
+import { type BoostScale, removeBackgroundTargetRefusal } from '../extension-targets.js'
 import { FORMATS } from '../formats.js'
 import { suffixedImagePath } from '../output-path.js'
 import type { FormatId, ImageInfo, Job, SourceInfo } from '../types.js'
@@ -27,7 +27,7 @@ export function extensionTargetError(source: SourceInfo, target: FormatId) {
 
 interface Planned {
   target: FormatId
-  scale?: 1 | 2 | 4
+  scale?: 1 | BoostScale
   output?: string
   roots?: Map<string, string>
   background: string
@@ -54,14 +54,18 @@ const targetOption = (): OptionSpec => ({
   choices: [{ value: 'png', label: 'PNG', hint: FORMATS.png.hint }],
 })
 
-/** What a boost job adds to the name: `-sharp` at 1×, else `-2x` / `-4x`. */
-export const boostSuffix = (scale: 1 | 2 | 4): string => (scale === 1 ? 'sharp' : `${scale}x`)
+/** What a boost job adds to the name: `-sharp` at 1×, else `-2x` / `-3x` / `-4x`. */
+export const boostSuffix = (scale: 1 | BoostScale): string => (scale === 1 ? 'sharp' : `${scale}x`)
+
+/** A planned scale: 1, 3 or 4 as asked, else 2. Whether the installed runner makes it is the engine's to check. */
+const plannedScale = (asked: number): 1 | BoostScale =>
+  asked === 1 || asked === 3 || asked === 4 ? asked : 2
 
 export const boostAction: Action = {
   id: 'boost',
   label: 'Boost resolution',
   verb: 'Boosting',
-  hint: 'sharper, at its size or at 2× or 4×',
+  hint: 'sharper, at its size or at 2×, 3× or 4×',
   requires: 'boost',
   appliesTo: (sources) => imagesOnly(sources) !== undefined,
   unavailable: () => 'images only',
@@ -74,6 +78,7 @@ export const boostAction: Action = {
       choices: [
         { value: '1', label: 'Sharpen', hint: 'the same size, sharper' },
         { value: '2', label: '2×', hint: 'twice the width and height' },
+        { value: '3', label: '3×', hint: 'three times the width and height' },
         { value: '4', label: '4×', hint: 'four times the width and height' },
       ],
     },
@@ -83,8 +88,7 @@ export const boostAction: Action = {
     const images = imagesOnly(sources)
     if (!images) return []
     const p = common(values)
-    const asked = Number(values.scale ?? 2)
-    const scale = asked === 4 ? 4 : asked === 1 ? 1 : 2
+    const scale = plannedScale(Number(values.scale ?? 2))
     return images.map((source) => ({
       op: 'boost' as const,
       sources: [source],

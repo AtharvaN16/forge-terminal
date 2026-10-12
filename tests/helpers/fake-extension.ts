@@ -46,23 +46,27 @@ export function fakeExtensions() {
       process.env.XDG_CONFIG_HOME = home
       return home
     },
-    async install(home: string, id: 'boost' | 'remove-background'): Promise<void> {
+    async install(
+      home: string,
+      id: 'boost' | 'remove-background',
+      version = '1.0.0',
+    ): Promise<void> {
       const dir = join(home, 'forge', 'extensions', id)
-      const version = join(dir, '1.0.0')
-      await mkdir(version, { recursive: true })
-      await writeFile(join(version, 'runner.mjs'), id === 'boost' ? BOOST : CUTOUT)
+      const payload = join(dir, version)
+      await mkdir(payload, { recursive: true })
+      await writeFile(join(payload, 'runner.mjs'), id === 'boost' ? BOOST : CUTOUT)
       await writeFile(
-        join(version, 'manifest.json'),
+        join(payload, 'manifest.json'),
         JSON.stringify({
           id,
-          version: '1.0.0',
+          version,
           arch: 'universal',
           files: { 'runner.mjs': 'unchecked' },
           entry: 'runner.mjs',
           kind: 'node',
         }),
       )
-      await writeFile(join(dir, 'current'), '1.0.0\n')
+      await writeFile(join(dir, 'current'), `${version}\n`)
     },
     restore(): void {
       if (saved === undefined) delete process.env.XDG_CONFIG_HOME

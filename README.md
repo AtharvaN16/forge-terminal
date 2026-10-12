@@ -41,7 +41,7 @@ That puts `forge` on your `PATH`, so it works from any directory. Verify:
 
 ```bash
 forge --version
-# 0.2.0
+# 0.2.1
 
 forge photo.jpg --to webp
 ```
@@ -216,6 +216,30 @@ so — and it encodes a candidate to find out rather than guessing:
   ↵ convert another · c convert to WebP · o open · s show in finder · ctrl-c close app
 ```
 
+## Resize and trim edges
+
+Both need nothing extra, keep the file's own format unless `--to` says otherwise,
+and work on images only:
+
+```bash
+forge photo.jpg --resize 50%       # photo-2016x1512.jpg (percent, 1-200)
+forge photo.jpg --width 1200       # photo-1200x900.jpg  (the height follows)
+forge photo.jpg --height 900       # the width follows
+forge photo.jpg --trim             # photo-trimmed.jpg   (transparent or solid-colour edges)
+forge photo.jpg --trim --width 1200 --to webp -q 80   # photo-trimmed-1200w.webp
+```
+
+Use one of `--resize`, `--width` and `--height`. A percent is of the upright
+(and trimmed) size. They combine with `--to`, `-q`, `-o`, `--background`,
+`--keep-metadata`, `--recursive`, `--force`, `--concurrency` and `--json`, and
+are refused with `--max-size`, `--sharpen`, `--boost`, `--remove-bg` and the PDF
+page operations, and with a `--to` that is not an image format. No side may pass
+16,384 px, nor the result 100 MP. Trimming an animated image is refused; so is
+trimming one with nothing to trim, unless it is also resized, which then only
+warns. `forge_convert` takes
+`trim: true` and `resize: { percent } | { width } | { height }`, and then `to`
+is optional.
+
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather
@@ -232,6 +256,7 @@ forge extensions remove boost
 ```bash
 forge photo.jpg --sharpen          # photo-sharp.png (the same size, sharper)
 forge photo.jpg --boost            # photo-2x.png   (2x, the default)
+forge photo.jpg --boost 3          # photo-3x.png   (needs boost 1.1.0 or later)
 forge photo.jpg --boost 4          # photo-4x.png
 forge photo.jpg --remove-bg        # photo-cutout.png
 forge photo.jpg --remove-bg --to webp
@@ -242,12 +267,15 @@ transparency, and flattens it onto `--background` only when `--to` names a
 format that cannot carry it. A cutout must be saved in a format that holds
 transparency (PNG, WebP, AVIF, TIFF); JPEG is refused, because flattening would
 undo the cutout. Without the extension installed, either flag stops with
-`extension-missing` and the install command (exit 1). Output more than 16,384
-px on a side, or over 100 MP, is refused before anything runs.
+`extension-missing` and the install command (exit 1). `--boost 3` on an older
+boost stops with `extension-outdated`; `forge extensions add boost` updates it
+(and while no released boost makes 3x, it is refused naming the factors that work).
+Output more than 16,384 px on a side, or over 100 MP, is refused before
+anything runs.
 
 `forge probe` lists `boost` / `remove-background` among a file's `actions` only
 while that extension is installed, and `--json` results report `op: "boost"` or
-`op: "remove-background"`. `forge_convert` accepts `sharpen: true`, `boost: 2 | 4` and
+`op: "remove-background"`. `forge_convert` accepts `sharpen: true`, `boost: 2 | 3 | 4` and
 `removeBackground: true`, with the same `extension-missing` tool error.
 
 The shell's enhance Done shows the real pictures in iTerm2, WezTerm, Kitty and Ghostty (a half-block close-up elsewhere); `FORGE_INLINE_IMAGES=0` turns them off, `=1` forces them on (e.g. tmux with passthrough).
@@ -791,7 +819,7 @@ Seven tools, deliberately few:
 | --- | --- |
 | `forge_probe` | what files are and what Forge can do with them |
 | `forge_formats` | the capability matrix |
-| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `sharpen`, `boost: 2 \| 4` and `removeBackground`, which need the optional extensions) |
+| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `sharpen`, `boost: 2 \| 3 \| 4` and `removeBackground`, which need the optional extensions) |
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
 | `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades (read-only) |
@@ -835,7 +863,7 @@ photo.png · PNG · 122 KB · 2756×774
 With `--json`:
 
 ```json
-{"forge":"0.2.0","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+{"forge":"0.2.1","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
 ```
 
 `targets` and `actions` come from the engines' own capabilities, so they are
@@ -861,7 +889,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 ```jsonc
 {
-  "forge": "0.2.0",
+  "forge": "0.2.1",
   "ok": false,
   "results": [
     {

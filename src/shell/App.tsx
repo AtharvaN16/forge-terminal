@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -12,6 +12,7 @@ import {
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
+import { resizeAction, trimAction } from '../core/actions/resize.js'
 import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
@@ -22,18 +23,20 @@ import {
   unsupportedPdf,
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
+import { boostScales } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { type InputFailure, resolveDirectory } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
-import type { FormatId, Job, Progress, Result, SourceInfo } from '../core/types.js'
+import type { FormatId, Job, Progress, ResizeSpec, Result, SourceInfo } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
-import { encodeToBuffer } from '../engines/image.js'
+import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import type { ExtensionId } from '../extensions/catalog.js'
-import { displayPath } from '../utils/display-path.js'
+import { displayName, displayPath } from '../utils/display-path.js'
+import { printable } from '../utils/printable.js'
 import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
@@ -47,6 +50,7 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
+import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
@@ -54,6 +58,7 @@ import { NameTaken } from './components/NameTaken.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
+import { ResizeStep } from './components/ResizeStep.js'
 import { SaveAs } from './components/SaveAs.js'
 import { Select } from './components/Select.js'
 import { SizeAside } from './components/SizeAside.js'
@@ -80,6 +85,7 @@ import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
+import { largestPercent } from './resize-art.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import {
   addToStage,
@@ -120,8 +126,12 @@ export type Step =
   | 'idle'
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
-  /** Enhance's picker: Sharpen, Boost resolution 2× / 4×, Remove background. */
+  /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'enhance'
+  /** Enhance's Resize: the 0–200 % slider (H3). */
+  | 'resize'
+  /** Resize's `#`: the exact Width × Height pair (X). */
+  | 'exact-size'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -268,11 +278,14 @@ let blockSeq = 0
 
 /** Enhance's actions name their output with `output`, not `destination`. */
 const isExtensionAction = (act: Action): boolean =>
-  act === boostAction || act === removeBackgroundAction
+  act === boostAction ||
+  act === removeBackgroundAction ||
+  act === trimAction ||
+  act === resizeAction
 
 /** What enhance says to a file that is not an image. */
 const enhanceRefusal = (source: SourceInfo): string =>
-  `${SYMBOLS.warn} Enhance works on images; ${basename(source.path)} is ${FORMATS[source.format].label}.`
+  `${SYMBOLS.warn} Enhance works on images; ${displayName(source.path)} is ${FORMATS[source.format].label}.`
 
 const nextId = () => `b${++blockSeq}`
 
@@ -286,7 +299,7 @@ const nextId = () => `b${++blockSeq}`
  */
 function describePdfResult(result: Result): string {
   const { job } = result
-  const outputs = job.outputs.map((o) => basename(o))
+  const outputs = job.outputs.map((o) => displayName(o))
   const first = outputs[0] ?? ''
   switch (job.op) {
     /**
@@ -632,6 +645,15 @@ export function App({
   const [checking, setChecking] = useState(false)
   const installAbort = useRef<AbortController | undefined>(undefined)
   /**
+   * What Trim and Resize know about the image in Enhance: its upright size
+   * and what a trim leaves. Measured once per image when the list opens.
+   */
+  const [imageMeasure, setImageMeasure] = useState<
+    { path: string; measure: ImageMeasure } | undefined
+  >(undefined)
+  /** Resize's slider, in percent of the upright size. */
+  const [resizePercent, setResizePercent] = useState(100)
+  /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
    * one colour story. The base is kept for `modeColours`, which needs the
@@ -943,7 +965,9 @@ export function App({
       const command = COMMANDS.find((c) => c.mode === next)
       if (command) runCommand(command)
     },
-    { isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance'].includes(step) },
+    {
+      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance', 'resize'].includes(step),
+    },
   )
 
   /**
@@ -2027,7 +2051,11 @@ export function App({
    */
   const makeDefault = (path: string) => {
     setLivePrefs((p) => ({ ...p, defaultOutput: path }))
-    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.ok} default output is now ${path}` })
+    push({
+      kind: 'note',
+      id: nextId(),
+      text: `${SYMBOLS.ok} default output is now ${printable(path)}`,
+    })
     savePreferences({ defaultOutput: path }).catch(showError)
   }
 
@@ -2053,7 +2081,7 @@ export function App({
       ? act.plan([src], { ...vals, output: folder })[0]
       : act.plan([src], { ...vals, destination: folder })[0]
     const outputs = planned?.outputs ?? []
-    const first = basename(outputs[0] ?? src.path)
+    const first = displayName(outputs[0] ?? src.path)
     if (rasterises(src, planned)) {
       return {
         stem: '',
@@ -2202,7 +2230,7 @@ export function App({
   const destinationBack = () => {
     setText('')
     if (mode === 'enhance') {
-      setStep('enhance')
+      setStep(values.tool === 'resize' ? 'resize' : 'enhance')
       return
     }
     if (specFor('quality')) {
@@ -2408,7 +2436,7 @@ export function App({
     const result = summary.results[0]
     if (result) {
       setLastResult(result)
-      const trail = doneTrail({ destination, name: basename(result.job.outputs[0] ?? output) })
+      const trail = doneTrail({ destination, name: displayName(result.job.outputs[0] ?? output) })
       setDoneBar({ mode, trail })
       doneRecord.current = [
         { kind: 'bar', id: nextId(), mode, trail },
@@ -2497,7 +2525,7 @@ export function App({
       }
       const result = outcome.results[0]
       if (result) {
-        const name = basename(result.job.outputs[0] ?? '')
+        const name = displayName(result.job.outputs[0] ?? '')
         const trail = doneTrail({
           destination: dirname(result.job.outputs[0] ?? destination),
           name,
@@ -2569,12 +2597,51 @@ export function App({
     }
   }, [step, tools, showError])
 
-  /** A row chosen whose tool is on this Mac: on to Save as, with the row's answers. */
-  const chooseEnhance = (row: EnhanceRow) => {
+  /**
+   * Trim's row says what a trim leaves: measured once per image, when the
+   * list opens. The engine is loaded only then. A failure leaves the row
+   * without its fact; the run itself says what went wrong.
+   */
+  const measureFor = source?.kind === 'image' && step === 'enhance' ? source : undefined
+  useEffect(() => {
+    if (!measureFor || imageMeasure?.path === measureFor.path) return
+    let live = true
+    import('../engines/image.js')
+      .then(({ measureImage }) => measureImage(measureFor))
+      .then(
+        (measure) => {
+          if (live) setImageMeasure({ path: measureFor.path, measure })
+        },
+        () => {},
+      )
+    return () => {
+      live = false
+    }
+  }, [measureFor, imageMeasure])
+  const measure = source && imageMeasure?.path === source.path ? imageMeasure.measure : undefined
+
+  /**
+   * A row chosen whose tool is on this Mac: on to Save as, with the row's
+   * answers (Boost's at `scale`). Resize asks its size first.
+   */
+  const chooseEnhance = (row: EnhanceRow, scale?: number) => {
     if (!source) return
-    const vals = rowValues(row)
+    const vals = rowValues(row, scale)
     setValues(vals)
+    if (row.id === 'resize') {
+      // An oversized source opens at its own limit, never past it (spec §2.3).
+      setResizePercent(source.kind === 'image' ? Math.min(100, largestPercent(source)) : 100)
+      setStep('resize')
+      return
+    }
     openSaveAs({ values: vals, action: actionForRow(row) })
+  }
+
+  /** Resize's size, from the slider or the exact pair: on to Save as. */
+  const chooseResize = (resize: ResizeSpec) => {
+    const vals = { ...values, tool: 'resize', resize }
+    setValues(vals)
+    openSaveAs({ values: vals, action: resizeAction })
   }
 
   /**
@@ -2587,6 +2654,7 @@ export function App({
     const controller = new AbortController()
     installAbort.current = controller
     const id = row.extension
+    if (!id) return
     const set = (state: ToolState) => setToolStates((t) => ({ ...t, [id]: state }))
     const absent = toolStates?.[id]
     set({
@@ -2596,8 +2664,11 @@ export function App({
     })
     setChecking(false)
     let installed = false
+    // The version now on disk, from what `install` returns (`Installed`), so
+    // Boost's row offers the scales it makes without reading the catalogue.
+    let version: string | undefined
     try {
-      await tools.install(id, {
+      const got = await tools.install(id, {
         signal: controller.signal,
         onProgress: (done, total) => {
           if (controller.signal.aborted) return
@@ -2605,6 +2676,9 @@ export function App({
           if (total > 0 && done >= total) setChecking(true)
         },
       })
+      if (typeof got === 'object' && got !== null && 'version' in got) {
+        version = typeof got.version === 'string' ? got.version : undefined
+      }
       installed = true
     } catch (e) {
       if (!controller.signal.aborted) showError(e)
@@ -2612,8 +2686,12 @@ export function App({
     if (installAbort.current === controller) installAbort.current = undefined
     setChecking(false)
     if (installed && !controller.signal.aborted) {
-      set({ kind: 'ready' })
-      if (stepRef.current === 'enhance') chooseEnhance(row)
+      set({ kind: 'ready', ...(version === undefined ? {} : { version }) })
+      // A row with a scale to choose stays put: its pill shows now, and ↵
+      // goes on. Any other row goes straight on to Save as.
+      const now = source?.kind === 'image' ? enhanceRow(source, row.id, boostScales(version)) : row
+      const toChoose = (now?.scales?.length ?? 0) > 1
+      if (stepRef.current === 'enhance' && !toChoose) chooseEnhance(row)
       return
     }
     // Stopped or failed: the row says what is really on disk now. A stop that
@@ -2912,12 +2990,12 @@ export function App({
     if (!first) return { name: 'The file', keepBoth: '' }
     if (taken.length === 1) {
       return {
-        name: basename(first),
-        keepBoth: basename(uniqueOutputPath(first)),
+        name: displayName(first),
+        keepBoth: displayName(uniqueOutputPath(first)),
         existing: takenFile(first),
       }
     }
-    return { name: `${taken.length} files`, keepBoth: `${basename(uniqueOutputPath(first))} …` }
+    return { name: `${taken.length} files`, keepBoth: `${displayName(uniqueOutputPath(first))} …` }
   }
 
   // `NameTaken` owns its keys for the output-exists question; a plain refusal
@@ -2976,9 +3054,12 @@ export function App({
     const bySize = mode === 'compress' && values.mode === 'size'
     return {
       mode: modeSpec ? answerFor(modeSpec, values.mode) : undefined,
-      // Enhance's answer is the row's name ("Sharpen"), not the format it keeps.
+      // Enhance's answer is the row's name ("Sharpen"), not the format it
+      // keeps, and Boost's scale with it ("Boost resolution 4×").
       target: enhancing
-        ? enhancing.label
+        ? enhancing.scales && typeof values.scale === 'string'
+          ? `${enhancing.label} ${values.scale}×`
+          : enhancing.label
         : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
@@ -2990,7 +3071,7 @@ export function App({
           ? String(values.quality)
           : undefined,
       // Enhance's trail is the row and the name (the mockup's), no folder.
-      destination: folder && mode !== 'enhance' ? basename(displayPath(folder)) : undefined,
+      destination: folder && mode !== 'enhance' ? displayName(displayPath(folder)) : undefined,
       name: extra.name ?? savedAs,
     }
   }
@@ -3010,6 +3091,11 @@ export function App({
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
     if (at === 'colour') return colourTrailNow
+    // Resize ╱ Exact size ╱ Size: the pair is the slider's question, asked another way.
+    if (at === 'exact-size') {
+      const slider = trailFor({ mode, step: 'resize', answers: trailAnswers() })
+      return { answers: [...slider.answers, 'Exact size'], current: slider.current }
+    }
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: [...pdfTrailNow.answers, ...pdfSaved],
@@ -3020,7 +3106,7 @@ export function App({
       stage.sources.length > 1
         ? `${stage.sources.length} files`
         : source
-          ? basename(source.path)
+          ? displayName(source.path)
           : undefined
     return trailFor({ mode, step: at, answers: trailAnswers(), waiting, verb: work?.verb })
   }
@@ -3074,7 +3160,12 @@ export function App({
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
             <Box flexDirection="column" marginBottom={1}>
               <Box marginBottom={1}>
-                <StepTitle mode={mode} title="Method" aside={basename(source.path)} width={width} />
+                <StepTitle
+                  mode={mode}
+                  title="Method"
+                  aside={displayName(source.path)}
+                  width={width}
+                />
               </Box>
               <Select
                 width={pickerWidth}
@@ -3105,7 +3196,7 @@ export function App({
               <StepTitle
                 mode={mode}
                 title={sizeSpec.label}
-                aside={`${basename(source.path)} · ${formatBytes(source.bytes)}`}
+                aside={`${displayName(source.path)} · ${formatBytes(source.bytes)}`}
                 width={width}
               />
               {/* Save as's field, the unit inside it at the right: the amount
@@ -3194,8 +3285,8 @@ export function App({
                   title={pagesSpec.label}
                   aside={
                     source.kind === 'document'
-                      ? `${basename(source.path)} · ${source.pages} pages`
-                      : basename(source.path)
+                      ? `${displayName(source.path)} · ${source.pages} pages`
+                      : displayName(source.path)
                   }
                   width={width}
                 />
@@ -3250,7 +3341,7 @@ export function App({
                 <StepTitle
                   mode={mode}
                   title={dpiSpec.label}
-                  aside={basename(source.path)}
+                  aside={displayName(source.path)}
                   width={width}
                 />
               </Box>
@@ -3281,7 +3372,7 @@ export function App({
                 // What the quality is for: the format in convert, the file in compress.
                 aside={
                   mode === 'compress'
-                    ? basename(source.path)
+                    ? displayName(source.path)
                     : typeof values.target === 'string'
                       ? FORMATS[values.target as FormatId].label
                       : undefined
@@ -3303,18 +3394,51 @@ export function App({
           {step === 'enhance' && source?.kind === 'image' && toolStates ? (
             <EnhancePicker
               format={FORMATS[source.format].label}
-              rows={enhanceRows(source)}
+              rows={enhanceRows(
+                source,
+                measure,
+                boostScales(
+                  toolStates.boost?.kind === 'ready' ? toolStates.boost.version : undefined,
+                ),
+              )}
               tools={toolStates}
               checking={checking}
+              chosen={{ tool: values.tool, scale: values.scale }}
               width={width}
-              pickerWidth={pickerWidth}
-              onChoose={(row) => {
-                const state = toolStates[row.extension]
-                if (state?.kind === 'ready') chooseEnhance(row)
+              onChoose={(row, scale) => {
+                const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
+                if (state?.kind === 'ready') chooseEnhance(row, scale)
                 else if (state?.kind === 'absent') void installThen(row)
               }}
               onStop={stopInstall}
               onCancel={clearSource}
+            />
+          ) : null}
+
+          {step === 'resize' && source?.kind === 'image' ? (
+            <ResizeStep
+              mode={mode}
+              aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
+              from={source}
+              percent={resizePercent}
+              max={largestPercent(source)}
+              onChange={setResizePercent}
+              onSubmit={(percent) => chooseResize({ percent })}
+              onExact={() => setStep('exact-size')}
+              onCancel={() => setStep('enhance')}
+              width={width}
+            />
+          ) : null}
+
+          {step === 'exact-size' && source?.kind === 'image' ? (
+            <ExactSizeStep
+              mode={mode}
+              aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
+              from={source}
+              percent={resizePercent}
+              onSubmit={chooseResize}
+              onCancel={() => setStep('resize')}
+              width={width}
             />
           ) : null}
 
@@ -3346,8 +3470,8 @@ export function App({
               <NameTaken
                 mode={mode}
                 width={width}
-                name={basename(pending.output)}
-                keepBoth={basename(pending.keepBoth)}
+                name={displayName(pending.output)}
+                keepBoth={displayName(pending.keepBoth)}
                 existing={pending.existing}
                 onSubmit={answerOverwrite}
                 onCancel={() => {
@@ -3363,7 +3487,7 @@ export function App({
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
-                  title={`${source ? basename(source.path) : 'This file'} can't get below ${formatBytes(
+                  title={`${source ? displayName(source.path) : 'This file'} can't get below ${formatBytes(
                     sizeUnreachable.smallest,
                   )}`}
                   aside={`asked for ${formatBytes(sizeUnreachable.targetBytes)}`}
@@ -3412,7 +3536,7 @@ export function App({
                   attempt
                     ? 'Finding the right quality'
                     : pageProgress
-                      ? `${verbOf(pageProgress.job) ?? work.verb} ${basename(pageProgress.job.sources[0].path)}`
+                      ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
                       : (work.phase ?? work.verb)
                 }
                 startedAt={work.startedAt}
@@ -3443,7 +3567,15 @@ export function App({
                 <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
               </Box>
               <EnhanceDone
-                op={lastResult.job.op === 'remove-background' ? 'remove-background' : 'boost'}
+                op={
+                  lastResult.job.op === 'convert'
+                    ? lastResult.job.options.resize
+                      ? 'resize'
+                      : 'trim'
+                    : lastResult.job.op === 'remove-background'
+                      ? 'remove-background'
+                      : 'boost'
+                }
                 {...(lastResult.job.op === 'boost' ? { scale: lastResult.job.scale } : {})}
                 before={lastResult.job.sources[0].path}
                 after={lastResult.job.outputs[0] ?? ''}
@@ -3524,8 +3656,8 @@ export function App({
                 setPdfSaved(
                   first
                     ? [
-                        basename(displayPath(dirname(first))),
-                        outputs.length > 1 ? `${outputs.length} files` : basename(first),
+                        displayName(displayPath(dirname(first))),
+                        outputs.length > 1 ? `${outputs.length} files` : displayName(first),
                       ]
                     : [],
                 )

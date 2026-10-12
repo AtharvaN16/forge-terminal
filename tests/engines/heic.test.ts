@@ -41,14 +41,17 @@ async function makeLargeHeic(dir: string): Promise<string | undefined> {
 }
 
 describe('HEIC at photo size', () => {
-  it('sharp cannot even read the metadata — the reason probe does not use it', async (ctx) => {
+  // Sharp 0.35.5's libheif reads a 12MP photo's header (older ones refused its
+  // iref box), but its prebuilt libvips has no HEVC decoder: the pixels are
+  // still out of reach, which is why HEIC goes through sips.
+  it('sharp cannot decode the pixels — the reason HEIC goes through sips', async (ctx) => {
     const dir = await makeTempDir()
     const heic = await makeLargeHeic(dir)
     if (heic === undefined) {
       ctx.skip('sips unavailable — HEIC fixture cannot be generated')
       return
     }
-    await expect(sharp(heic).metadata()).rejects.toThrow(/iref|security limit/i)
+    await expect(sharp(heic).png().toBuffer()).rejects.toThrow(/HEVC/)
   }, 60_000)
 
   it('probes a 12MP photo and reports its real dimensions', async (ctx) => {
@@ -105,7 +108,7 @@ describe('HEIC decoding', () => {
     const meta = await sharp(heic).metadata()
     expect(meta.compression).toBe('hevc')
 
-    await expect(sharp(heic).png().toBuffer()).rejects.toThrow()
+    await expect(sharp(heic).png().toBuffer()).rejects.toThrow(/HEVC/)
   })
 
   it('reports whether this machine can decode HEIC at all', async () => {

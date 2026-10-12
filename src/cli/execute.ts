@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import {
   boostAction,
   extensionTargetError,
   removeBackgroundAction,
 } from '../core/actions/extension.js'
 import { ACTIONS, compressAction, convertAction, unavailableReason } from '../core/actions/index.js'
+import { planEdit } from '../core/actions/resize.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
 import { formatMatrix, rasterises } from '../core/capabilities.js'
 import {
@@ -19,7 +20,7 @@ import {
   unsupportedOperation,
 } from '../core/errors.js'
 import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
-import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
+import { boostScaleRefusal, removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -31,14 +32,24 @@ import {
   probeJson,
   runJson,
 } from '../core/report-data.js'
+import { editTargetRefusal } from '../core/resize.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
-import type { ConvertOptions, DocumentInfo, FormatId, Job, SourceInfo } from '../core/types.js'
+import type {
+  ConvertOptions,
+  DocumentInfo,
+  FormatId,
+  ImageInfo,
+  Job,
+  SourceInfo,
+} from '../core/types.js'
 import { openPdf } from '../engines/pdfium.js'
 import { VERSION } from '../shell/theme.js'
+import { displayName } from '../utils/display-path.js'
 import type {
   CompressIntent,
   ConvertIntent,
+  EditIntent,
   ExtensionOpIntent,
   Intent,
   PageOpIntent,
@@ -108,7 +119,12 @@ export interface ExecuteOptions {
 }
 
 /** The intents that convert, compress or edit files: everything `runIntent` accepts. */
-export type RunnableIntent = ConvertIntent | CompressIntent | PageOpIntent | ExtensionOpIntent
+export type RunnableIntent =
+  | ConvertIntent
+  | CompressIntent
+  | PageOpIntent
+  | ExtensionOpIntent
+  | EditIntent
 
 /**
  * What a run did, as data. `renderRun` turns it into text or JSON, and
@@ -165,7 +181,7 @@ function pageOpValues(intent: PageOpIntent, sources: SourceInfo[]): Record<strin
     if (!Number.isInteger(n) || n < 1 || n > last) {
       throw invalidPageRange(
         String(n),
-        `"${n}" is outside 1 and ${last} — ${doc ? basename(doc.path) : 'the document'} has ${pageCount} pages.`,
+        `"${n}" is outside 1 and ${last} — ${doc ? displayName(doc.path) : 'the document'} has ${pageCount} pages.`,
         pageCount,
       )
     }
@@ -495,8 +511,15 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
 
   // Lazy: nothing in src/extensions loads unless one of these flags was given.
   const { installed } = await import('../extensions/paths.js')
-  if (!(await installed(intent.op))) {
+  const ext = await installed(intent.op)
+  if (!ext) {
     return nothingRan(kind, [{ path: '', error: extensionMissing(intent.op) }])
+  }
+  // A scale the installed runner does not make is also the command's problem.
+  if (intent.op === 'boost' && intent.scale !== undefined) {
+    const { catalogEntry } = await import('../extensions/catalog.js')
+    const tooOld = boostScaleRefusal(intent.scale, ext.version, catalogEntry('boost')?.version)
+    if (tooOld) return nothingRan(kind, [{ path: '', error: tooOld }])
   }
 
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
@@ -545,6 +568,60 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
   })
   return {
     kind,
+    results: outcome.results,
+    failures: [...resolved.failures, ...refused, ...outcome.refusals, ...outcome.failures],
+    inputBytes: outcome.inputBytes,
+    outputBytes: outcome.outputBytes,
+  }
+}
+
+/**
+ * `--trim` / `--resize` / `--width` / `--height`: images only, planned by the
+ * same `planEdit` the shell uses and run through the shared `runPlan`, so
+ * write safety and atomic writes are not reimplemented. The engine refuses an
+ * over-limit size, an empty trim and an animated trim per file at run time.
+ */
+async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunReport> {
+  const what = intent.resize !== undefined ? 'resize' : 'trim'
+  // Before anything is read: the CLI and MCP both come through here.
+  const refusal = intent.target === undefined ? undefined : editTargetRefusal(intent.target, what)
+  if (refusal) return nothingRan(intent.kind, [{ path: '', error: refusal }])
+  const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
+  const images: ImageInfo[] = []
+  const refused: InputFailure[] = []
+  for (const source of resolved.sources) {
+    if (source.kind === 'image') images.push(source)
+    else {
+      refused.push({
+        path: source.path,
+        error: unsupportedOperation(
+          what,
+          'it works on images, not documents',
+          'Try an image such as a JPEG, PNG, WebP or HEIC file.',
+        ),
+      })
+    }
+  }
+  const jobs = planEdit(images, {
+    trim: intent.trim,
+    ...(intent.resize === undefined ? {} : { resize: intent.resize }),
+    ...(intent.target === undefined ? {} : { target: intent.target }),
+    ...(intent.output === undefined ? {} : { output: intent.output }),
+    roots: resolved.roots,
+    background: intent.options.background,
+    keepMetadata: intent.options.keepMetadata,
+    ...(intent.options.quality === undefined ? {} : { quality: intent.options.quality }),
+  })
+
+  const batch = jobs.length > 1
+  if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })
+  const outcome = await runPlan(jobs, {
+    force: intent.force,
+    ...(intent.concurrency === undefined ? {} : { concurrency: intent.concurrency }),
+    onEvent: reportEvents(opts, batch),
+  })
+  return {
+    kind: intent.kind,
     results: outcome.results,
     failures: [...resolved.failures, ...refused, ...outcome.refusals, ...outcome.failures],
     inputBytes: outcome.inputBytes,
@@ -640,6 +717,7 @@ export async function runIntent(
   try {
     if (intent.kind === 'pageop') return await runPageOp(intent)
     if (intent.kind === 'extension-op') return await runExtensionOp(intent, opts)
+    if (intent.kind === 'edit') return await runEdit(intent, opts)
     if (intent.kind === 'compress') return await runCompress(intent, opts)
     return await runConvert(intent, opts)
   } catch (e) {

@@ -81,12 +81,34 @@ describe('boost runner', () => {
     const r = await boost(input, out, 4)
     expect(r.exitCode).not.toBe(0)
     expect(r.json).toMatchObject({ ok: false, code: 'boost-too-large' })
-    expect(r.json.message).toContain('2×')
+    expect(r.json.message).toContain('The largest factor that fits is 3×.')
     expect(existsSync(out)).toBe(false)
   })
 
+  it('refuses 4× where 3× fits, naming 3× as the largest that does', async () => {
+    // 5000 px wide: 4× is 20,000 px, 3× is 15,000.
+    const input = join(work, 'five-k.png')
+    await sharp({ create: { width: 5000, height: 50, channels: 3, background: '#808080' } })
+      .png()
+      .toFile(input)
+    const r = await boost(input, join(work, 'five-k-out.png'), 4)
+    expect(r.json).toMatchObject({ ok: false, code: 'boost-too-large' })
+    expect(r.json.message).toContain('The largest factor that fits is 3×.')
+  })
+
+  it('refuses a scale it does not have, with one usage line', async () => {
+    const input = join(work, 'tiny.png')
+    await sharp({ create: { width: 8, height: 8, channels: 3, background: '#808080' } })
+      .png()
+      .toFile(input)
+    const r = await boost(input, join(work, 'tiny-out.png'), 5)
+    expect(r.exitCode).not.toBe(0)
+    expect(r.json).toMatchObject({ ok: false, code: 'runtime-error' })
+    expect(r.json.message).toContain('--scale 1|2|3|4')
+  })
+
   it.skipIf(!haveModel)(
-    'sharpens a 64 px PNG at its size (1×) and boosts it to 128 px (2×) and 256 px (4×), keeping its alpha',
+    'sharpens a 64 px PNG at its size (1×) and boosts it to 128 px (2×), 192 px (3×) and 256 px (4×), keeping its alpha',
     async () => {
       // Opaque disc on a transparent background.
       const size = 64
@@ -102,7 +124,7 @@ describe('boost runner', () => {
         .png()
         .toFile(input)
 
-      for (const scale of [1, 2, 4]) {
+      for (const scale of [1, 2, 3, 4]) {
         const out = join(work, `disc-${scale}x.png`)
         const r = await boost(input, out, scale)
         expect(r.exitCode).toBe(0)
