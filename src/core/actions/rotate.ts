@@ -1,5 +1,6 @@
-import { suffixedOutputPath } from '../output-path.js'
+import { placeOutput, suffixedOutputPath } from '../output-path.js'
 import type { DocumentInfo, Job, SourceInfo } from '../types.js'
+import { answer } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
 
 // Page operations are pdf-only — see merge.ts's identical comment.
@@ -34,7 +35,18 @@ export const rotateAction: Action = {
     const deg = Number(values.degrees ?? 90)
     const turns = ((deg / 90) % 4 || 1) as 1 | 2 | 3
     return [
-      { op: 'rotate', sources: [doc], outputs: [suffixedOutputPath(doc.path, 'rotated')], turns },
+      {
+        op: 'rotate',
+        sources: [doc],
+        outputs: [
+          placeOutput(
+            suffixedOutputPath(doc.path, 'rotated'),
+            answer(values.destination),
+            answer(values.name),
+          ),
+        ],
+        turns,
+      },
     ]
   },
 }

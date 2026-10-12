@@ -1,10 +1,9 @@
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { expandTilde, type Preferences } from '../../config/preferences.js'
+import { dirname } from 'node:path'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
 import type { DocumentInfo, ImageInfo, SourceInfo } from '../types.js'
-import type { Action, OptionSpec, PathPreset } from './index.js'
+import { destinationOption } from './destination.js'
+import type { Action, OptionSpec } from './index.js'
 
 const soleImage = (sources: SourceInfo[]): ImageInfo | undefined =>
   sources.length === 1 && sources[0]?.kind === 'image' ? sources[0] : undefined
@@ -21,37 +20,6 @@ const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
  * after, so this is a default the user can overwrite rather than a rule.
  */
 const SUFFIX = '-small'
-
-function labelFor(path: string, sourceDir: string): string {
-  if (path === sourceDir) return 'Same folder'
-  if (path === join(homedir(), 'Desktop')) return 'Desktop'
-  if (path === join(homedir(), 'Downloads')) return 'Downloads'
-  return path.split('/').pop() || path
-}
-
-function destinationPath(source: SourceInfo, prefs: Preferences): OptionSpec {
-  const here = dirname(source.path)
-  const preferred = expandTilde(prefs.defaultOutput)
-
-  const candidates: PathPreset[] = [
-    { label: labelFor(preferred, here), path: preferred },
-    { label: 'Desktop', path: join(homedir(), 'Desktop') },
-    { label: 'Same folder', path: here },
-    { label: 'Downloads', path: join(homedir(), 'Downloads') },
-  ]
-
-  // Two presets can resolve to one folder — the configured default is often
-  // Desktop. Select keys rows by path, so an undeduped collision is two
-  // components sharing one identity, which React refuses to render reliably.
-  const seen = new Set<string>()
-  const presets = candidates.filter((preset) => {
-    if (seen.has(preset.path)) return false
-    seen.add(preset.path)
-    return true
-  })
-
-  return { kind: 'path', id: 'destination', label: 'Save to', default: preferred, presets }
-}
 
 export const compressAction: Action = {
   id: 'compress',
@@ -131,7 +99,7 @@ export const compressAction: Action = {
       return specs
     }
 
-    specs.push(destinationPath(source, prefs))
+    specs.push(destinationOption(source, prefs))
     return specs
   },
 

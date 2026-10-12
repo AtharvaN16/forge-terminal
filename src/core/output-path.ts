@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { primaryExtension } from './formats.js'
 import type { FormatId } from './types.js'
 
@@ -202,4 +202,23 @@ export function mergeOutputPath(sourcePaths: string[]): string {
     return join(dir, `${basename(dir)}-merged.pdf`)
   }
   return suffixedOutputPath(first, 'merged')
+}
+
+/**
+ * Where Save as puts a page operation's outputs: into `destination` when one
+ * was chosen, names kept, and — when there is exactly one output — under
+ * `name` with its own extension. Many outputs keep their numbered names,
+ * which no one name can stand for. Nothing given: the outputs stay where
+ * `plan()` put them, which is what the CLI and MCP get.
+ */
+export function placeOutputs(outputs: string[], destination?: string, name?: string): string[] {
+  const placed = destination ? outputs.map((o) => join(destination, basename(o))) : outputs
+  const [only] = placed
+  if (!name || placed.length !== 1 || only === undefined) return placed
+  return [join(dirname(only), `${name}${extname(only)}`)]
+}
+
+/** `placeOutputs` for an operation that writes exactly one file: merge, delete, rotate. */
+export function placeOutput(output: string, destination?: string, name?: string): string {
+  return placeOutputs([output], destination, name)[0] ?? output
 }
