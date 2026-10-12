@@ -196,6 +196,9 @@ describe('enhance mode', () => {
     await until(() => frame().includes('transparent PNG'))
     expect(frame()).not.toContain('checking')
     expect(frame()).not.toContain('Save as')
+    // The list's keys attach in an effect after the frame that shows it ready:
+    // a key sent in between is dropped, as with Save as's handler elsewhere.
+    await settle(300)
     app.stdin.write(`${ESC}[A`)
     await until(() => frame().includes('80 × 60'))
     expect(frame()).toContain('becomes 80 × 60')
@@ -239,7 +242,7 @@ describe('enhance mode', () => {
     expect(frame()).toContain('becomes 80 × 60')
     expect(frame()).not.toContain('Save as')
 
-    await settle(100)
+    await settle(300) // ←→ attach once Boost shows its pill
     app.stdin.write(RIGHT)
     await until(() => frame().includes('becomes 160 × 120'))
     app.stdin.write(ENTER)
@@ -286,6 +289,7 @@ describe('enhance mode', () => {
     await settle(300)
     app.stdin.write(DOWN)
     await until(() => frame().includes('becomes 80 × 60'))
+    await settle(300) // ←→ attach once Boost shows its pill
     app.stdin.write(RIGHT)
     await until(() => frame().includes('becomes 120 × 90'))
     expect(frame()).toContain('‹ 3× ›')
@@ -328,6 +332,7 @@ describe('enhance mode', () => {
     await until(() => frame().includes('becomes 80 × 60'))
     expect(frame()).toMatch(/←→ +scale/)
 
+    await settle(300) // ←→ attach once Boost shows its pill
     app.stdin.write(RIGHT)
     await until(() => frame().includes('becomes 160 × 120'))
     expect(frame()).toContain('‹ 4× ›')
