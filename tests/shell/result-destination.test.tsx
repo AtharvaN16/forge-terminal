@@ -47,33 +47,33 @@ const frameOf = (result: Result, width: number) =>
 describe('the result says where the file went', () => {
   const desktop = join(homedir(), 'Desktop')
 
-  it('names the folder, ~-abbreviated, in the side-by-side layout', () => {
-    expect(frameOf(resultIn(desktop), 100)).toContain('saved to ~/Desktop')
+  it('names the folder, ~-abbreviated, under the panels', () => {
+    expect(frameOf(resultIn(desktop), 100)).toContain('   in ~/Desktop')
   })
 
-  it('names it in the compact single-line layout too', () => {
-    expect(frameOf(resultIn(desktop), 50)).toContain('saved to ~/Desktop')
+  it('names it in a narrow terminal too', () => {
+    expect(frameOf(resultIn(desktop), 50)).toContain('   in ~/Desktop')
   })
 
-  it('names it when a long name puts the names on two lines', () => {
+  it('names it when the file has a long name', () => {
     const frame = frameOf(resultIn(desktop, 'Screenshot 2026-08-17 at 3.52.36 PM.jpg'), 92)
-    expect(frame).toContain('──→ ') // really on two lines
-    expect(frame).toContain('saved to ~/Desktop')
+    expect(frame).toContain('✓ Screenshot 2026-08-17 at 3.52.36 PM.jpg')
+    expect(frame).toContain('   in ~/Desktop')
   })
 
   it('shows the whole accidental path, which is the point', () => {
     const typo = join(homedir(), 'd', 'nonexistent-root-xyz', 'out')
-    expect(frameOf(resultIn(typo), 100)).toContain('saved to ~/d/nonexistent-root-xyz/out')
+    expect(frameOf(resultIn(typo), 100)).toContain('in ~/d/nonexistent-root-xyz/out')
   })
 
   it('leaves a folder outside home absolute', () => {
-    expect(frameOf(resultIn('/Volumes/Backup'), 100)).toContain('saved to /Volumes/Backup')
+    expect(frameOf(resultIn('/Volumes/Backup'), 100)).toContain('in /Volumes/Backup')
   })
 
   it('sits on its own line after the sizes', () => {
     const lines = frameOf(resultIn(desktop), 100).split('\n')
     const sizes = lines.findIndex((l) => l.includes('% smaller'))
-    const saved = lines.findIndex((l) => l.includes('saved to'))
+    const saved = lines.findIndex((l) => l.startsWith('   in '))
     expect(sizes).toBeGreaterThan(-1)
     expect(saved).toBeGreaterThan(sizes)
   })
@@ -112,7 +112,7 @@ describe('the result says where the file went', () => {
     const deep = join('/Volumes', 'x'.repeat(30), 'y'.repeat(30), 'z'.repeat(30))
     for (const w of [40, 56, 80, 100]) {
       const frame = frameOf(resultIn(deep), w)
-      expect(frame).toContain('saved to /Volumes')
+      expect(frame).toContain('in /Volumes')
       for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
     }
   })

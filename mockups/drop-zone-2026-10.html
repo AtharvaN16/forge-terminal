@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — the drop zone, once a file lands</title>
+<link rel="stylesheet" href="vendor/xterm.css" />
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-canvas.js"></script>
+<style>
+  :root { --page:#0d0e11; --ink:#e2e4ea; --muted:#8f94a1; --rule:#23252c; --card:#14161a; --cyan:#55c7d9;
+    --mono:"SF Mono", ui-monospace, Menlo, monospace; --sans:-apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 var(--sans); }
+  main { max-width:1280px; margin:0 auto; padding:52px 24px 120px; }
+  h1 { font-size:34px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); font-size:17px; max-width:840px; margin:0; }
+  .scope { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:22px; max-width:900px; }
+  .scope div { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:10px 14px; font-size:14px; color:var(--muted); }
+  .scope b { color:var(--ink); display:block; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; }
+  nav a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:4px 10px; border-radius:999px; }
+  nav a:hover { color:var(--ink); }
+  section { margin-top:84px; }
+  h2 { font-size:26px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 .n { font:600 14px var(--mono); color:var(--cyan); margin-right:10px; vertical-align:3px; }
+  .sub { color:var(--muted); margin:0 0 22px; max-width:880px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:30px 22px; }
+  .grid > figure { margin:0; min-width:0; }
+  .grid .wide { grid-column:1 / -1; }
+  @media (max-width:1100px) { .grid { grid-template-columns:1fr; } }
+  .vt { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .vt .id { font:700 12px var(--mono); padding:3px 7px; border-radius:6px; background:#12282e; color:var(--cyan); }
+  .vt .id.today { background:#23252d; color:#aeb3c0; }
+  .vt .name { font-weight:620; font-size:16px; }
+  .vt .pick { margin-left:auto; font:600 11px var(--mono); letter-spacing:.08em; color:#6fcf7f; border:1px solid #2c5a37; padding:2px 7px; border-radius:6px; }
+  .idea { font-size:14.5px; color:#c7cbd4; margin:8px 0 0; }
+  .pc { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; font-size:14px; margin-top:6px; }
+  .pc ul { margin:0; padding-left:16px; color:var(--muted); } .pc li { margin-bottom:3px; }
+  .pc h5 { margin:0 0 2px; font:600 11px var(--mono); letter-spacing:.1em; text-transform:uppercase; }
+  .pc .p h5 { color:#6fcf7f; } .pc .c h5 { color:#e8796d; }
+  .rule { background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--cyan); border-radius:0 10px 10px 0; padding:12px 16px; margin:0 0 26px; max-width:900px; font-size:15px; color:#c7cbd4; }
+  .rule b { color:var(--ink); }
+  .term { background:#1e1e1e; border:1px solid #2c2f37; border-radius:10px; overflow:hidden; box-shadow:0 24px 60px -30px rgba(0,0,0,.8); }
+  .term .bar { height:26px; display:flex; align-items:center; gap:7px; padding:0 12px; background:#161619; border-bottom:1px solid #26282e; }
+  .term .bar i { width:10px; height:10px; border-radius:50%; }
+  .term .bar i:nth-child(1){background:#ff5f57} .term .bar i:nth-child(2){background:#febc2e} .term .bar i:nth-child(3){background:#28c840}
+  .term .bar em { flex:1; text-align:center; font:normal 11px var(--mono); color:#666b78; margin-right:46px; }
+  .term pre { margin:0; padding:12px 14px 14px; font:10.4px/1.17 var(--mono); color:#e4e8f0; white-space:pre; overflow-x:auto; }
+  /* A terminal row is solid; a browser leaves gaps between the backgrounds of
+     consecutive lines. Inline-block spans fill the whole line box, as a cell does. */
+  .term pre span[style*="background"] { display:inline-block; }
+  .bob { display:inline-block; animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform:translateY(-1px) } 50% { transform:translateY(2px) } }
+  .caret { animation:blink 1.05s steps(1) infinite; } @keyframes blink { 50% { opacity:0 } }
+  details.older { margin-top:56px; border-top:1px solid var(--rule); padding-top:18px; }
+  details.older summary { cursor:pointer; color:var(--muted); font:14px var(--mono); }
+  /* Sparks fade their colour into the fill rather than moving, so the cell's
+     own background never shifts: that is all a terminal could do too. */
+  .spark { animation:spark 1.8s ease-out infinite; }
+  .spark:nth-of-type(2n) { animation-delay:.6s } .spark:nth-of-type(3n) { animation-delay:1.1s }
+  @keyframes spark { 0%, 100% { color:#252c3a } }
+  .off { color:transparent !important; }
+  .xt { padding:10px 12px 12px; background:#1e1e1e; }
+  .xt .xterm-viewport { overflow:hidden !important; background:#1e1e1e !important; }
+  .vt .after { margin-left:auto; font:12px var(--mono); color:var(--muted); }
+  .stack .term + .term { margin-top:10px; }
+  .sh { background:linear-gradient(90deg,#8b93a6 0 35%,#55c7d9 45%,#d8f6fb 50%,#55c7d9 55%,#8b93a6 65% 100%); background-size:300% 100%; -webkit-background-clip:text; background-clip:text; color:transparent !important; animation:sh 2s linear infinite; }
+  @keyframes sh { from { background-position:100% 0 } to { background-position:0 0 } }
+  .sweep { background-image:linear-gradient(90deg, transparent 0 40%, rgba(85,199,217,.28) 50%, transparent 60% 100%) !important; background-size:300% 100% !important; animation:sh 2.4s linear infinite; }
+  .clock { position:fixed; right:18px; bottom:18px; z-index:9; display:flex; align-items:center; gap:6px; padding:8px 10px; background:rgba(22,24,29,.96); border:1px solid var(--rule); border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,.45); font:12px var(--mono); color:var(--muted); }
+  .clock button { font:12px var(--mono); color:#e4e8f0; background:#2a2e37; border:1px solid #3d4350; border-radius:7px; padding:5px 9px; cursor:pointer; }
+  .clock button:hover { background:#343944; }
+  .clock button.on { background:var(--cyan); color:#0c1d22; border-color:var(--cyan); font-weight:700; }
+  .clock .sp { display:flex; gap:3px; }
+  .clock input { width:140px; accent-color:#8b93a6; }
+  .clock .tm { min-width:44px; text-align:right; }
+  .tabs { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:6px; margin:26px -24px 0; padding:12px 24px; background:rgba(13,14,17,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--rule); }
+  .tabs a { font:13px var(--mono); color:var(--muted); text-decoration:none; border:1px solid var(--rule); padding:6px 12px; border-radius:8px; }
+  .tabs a.on { color:#0c1d22; background:var(--cyan); border-color:var(--cyan); font-weight:700; }
+  .tabs a.later { opacity:.65; }
+  .tabs .lbl { font:600 11px var(--mono); letter-spacing:.08em; color:var(--muted); align-self:center; margin:0 4px 0 10px; }
+  section.tab { display:none; margin-top:40px; } section.tab.on { display:block; }
+  .state { font:600 11px var(--mono); letter-spacing:.06em; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; }
+  .state:first-child { margin-top:0; }
+  footer { margin-top:90px; color:var(--muted); font-size:13px; border-top:1px solid var(--rule); padding-top:16px; }
+  code { font:.9em var(--mono); background:#1c1e24; padding:1px 5px; border-radius:4px; }
+  .flowmap { display:flex; flex-wrap:wrap; align-items:center; gap:6px 4px; margin:0 0 28px; font:13px var(--mono); }
+  .flowmap .step { display:inline-flex; gap:7px; align-items:center; padding:6px 10px; border:1px solid var(--rule); border-radius:8px; color:#e4e8f0; text-decoration:none; cursor:pointer; }
+  .flowmap .step b { color:var(--cyan); } .flowmap .ar { color:var(--muted); }
+  .flowmap i { font-style:normal; display:inline-flex; gap:4px; }
+  .flowmap .branch { flex-basis:100%; margin-top:8px; color:var(--muted); }
+  .k-yes, .k-no { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; }
+  .k-yes { background:#12282e; color:var(--cyan); } .k-no { background:#1c1e24; color:#5f6879; text-decoration:line-through; }
+  details.earlier { margin-top:46px; } details.earlier summary { cursor:pointer; font:600 13px var(--mono); color:var(--muted); margin-bottom:16px; }
+</style>
+</head>
+<body>
+<main>
+<h1>The drop zone, once a file lands</h1>
+<p class="lede">Frozen record of the decision, 2026-10-11: one file lands as a card, several as a list, and a file that could not be read is one red line under the field (R1). Drawn by the same kit as <code>flow-parts-2-2026-10.html</code>; every frame is a real 80 × 24 terminal, and the moving ones are live. <code>scripts/drop-mockup-fixture.mjs</code> reads this page, so do not rename or trim it.</p>
+<section id="drop">
+  <h2><span class="n">D</span>The drop zone, once a file lands</h2>
+  <p class="sub">Today, dropping a file pastes its path into the field and the zone only dims, as it does for any typing. Nothing says the file was recognised until ↵, and by then home is gone. Here the zone answers the drop: the file goes into it and the field is free again.</p>
+  <div class="rule"><b>What changes in the app.</b> A terminal cannot see a drag or turn one away; the first thing the app learns is the pasted paths. So the app reads the files <b>when the paste arrives</b>, not on ↵. ↵ goes on with them, another drop before ↵ adds to them, esc empties the zone. <b>Several images now convert together</b>: batch conversion moves into the app (the engine and the command line already do it), so a drop of photos is never refused. Format, Quality, Name, Working and Done each get a several-file version later.</div>
+  <h3 style="margin-top:8px">Round three: the card for one, the list for several</h3>
+  <p class="sub">B·2's card when one file is in the zone, D·2's list from two up. Drawn live, then the two states on their own.</p>
+  <div class="grid" id="drop3-grid"></div>
+  <h3 style="margin-top:46px">A file left out, in red</h3>
+  <p class="sub">The app has two colours for trouble: gold <code>warn</code> with ⚠ for "worth a second look" (today's "⚠ 1 skipped"), and red <code>fail</code> with ✕ for errors, drawn as a card with a red frame. A file that could not be read is a failure for that file, so both of these use <code>fail</code>. Both sit under the field, outside the drop zone.</p>
+  <div class="grid" id="drop3w-grid"></div>
+  <details class="earlier"><summary>Round two: B·2 and D·2</summary>
+  <p class="sub">The two you liked, with less in them. One thing draws the eye in each state; the panel holds only the files, as a name and a size; a file that could not be read is a line under the field, outside the panel; no format tag on every row. Each is live first (photo.png dropped, then two photos dragged in together, then esc), then three stills.</p>
+  <div class="grid" id="drop-grid"></div>
+  </details>
+  <details class="earlier"><summary>Round one: today, A, B, C, D</summary>
+  <div class="grid" id="drop-r1-today"></div>
+  <div class="grid" id="drop-r1-grid" style="margin-top:30px"></div>
+  </details>
+</section>
+<footer>Convert · forge · the drop zone · 2026-10-11 · Mockups only, drawn with the app's DARK palette in xterm.js.</footer>
+</main>
+<script>
+const X = (() => {
+  const E = '\x1b['
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+  const f = (h, t) => `${E}38;2;${rgb(h)}m${t}${E}39m`
+  const b = (h, t) => `${E}48;2;${rgb(h)}m${t}${E}49m`
+  const B = (t) => `${E}1m${t}${E}22m`
+  const I = (t) => `${E}3m${t}${E}23m`
+  const vis = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, '')].length
+  const padR = (s, w) => s + ' '.repeat(Math.max(0, w - vis(s)))
+  const center = (s, w) => ' '.repeat(Math.max(0, Math.floor((w - vis(s)) / 2))) + s
+  const right = (l, r, w) => l + ' '.repeat(Math.max(1, w - vis(l) - vis(r))) + r
+  const mix = (a, c, k) => {
+    k = Math.max(0, Math.min(1, k))
+    const A = rgb(a).split(';').map(Number), Cc = rgb(c).split(';').map(Number)
+    return '#' + A.map((v, i) => Math.round(v + (Cc[i] - v) * k).toString(16).padStart(2, '0')).join('')
+  }
+  /** Colour each visible character along a list of stops. */
+  const grad = (t, stops) => {
+    const cs = [...t], n = Math.max(1, cs.length - 1)
+    return cs.map((ch, i) => {
+      if (ch === ' ') return ch
+      const p = (i / n) * (stops.length - 1), k = Math.floor(p)
+      return f(mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k), ch)
+    }).join('')
+  }
+  /** A box: lines are already-styled strings padded to inner width. */
+  const box = (w, lines, { col = '#5f6879', round = true, title = '', heavy = false } = {}) => {
+    const [tl, tr, bl, br, h, v] = heavy ? ['┏', '┓', '┗', '┛', '━', '┃'] : round ? ['╭', '╮', '╰', '╯', '─', '│'] : ['┌', '┐', '└', '┘', '─', '│']
+    const top = title ? f(col, tl + h) + title + f(col, h.repeat(Math.max(0, w - 3 - vis(title))) + tr) : f(col, tl + h.repeat(w - 2) + tr)
+    return [top, ...lines.map((l) => f(col, v) + padR(l, w - 2) + f(col, v)), f(col, bl + h.repeat(w - 2) + br)]
+  }
+  return { f, b, B, I, vis, padR, center, right, grad, box, mix }
+})()
+const K = { bg: '#1e1e1e', fg: '#e4e8f0', d: '#8b93a6', x: '#5f6879', faint: '#3d4350', m: '#55c7d9', mbg: '#122c33', panel: '#252c3a', panel2: '#2b3343', cap: '#2e3340', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
+const { f: xf, b: xb, B: xB, I: xI, padR: xpad, center: xc, right: xr, grad: xg, box: xbox } = X
+
+/* ================================================================== KIT
+   Only what is decided: the palette, the hatching, the home band, the drop
+   panel, the commands list, the header bar, the file card, the pickers and
+   the key row. Every frame is ANSI written into xterm.js, so cells are exact.
+   The explorations below the kit draw with these and nothing else. */
+const N = 80                              // terminal width
+const W = 76, M = 2                       // block width, and the margin either side
+const IN = ' '.repeat(M + 2)              // where the field and the list start
+const E = '\x1b['
+const vis = X.vis
+const rgbOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(';')
+const bgOn = (h) => `${E}48;2;${rgbOf(h)}m`
+/** A row on a fill. A nested background hands back to this fill, not to the terminal's. */
+const on = (bg, s, w = N) => bgOn(bg) + xpad(s, w).split(`${E}49m`).join(bgOn(bg)) + `${E}49m`
+const strip = (s) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+const gcol = (i, n, stops) => {
+  const p = (Math.max(0, Math.min(n - 1, i)) / Math.max(1, n - 1)) * (stops.length - 1), k = Math.floor(p)
+  return X.mix(stops[k], stops[Math.min(stops.length - 1, k + 1)], p - k)
+}
+const cursorAt = (rows, re, after = false) => {
+  for (let i = 0; i < rows.length; i++) {
+    const t = strip(rows[i]), m = re.exec(t)
+    if (m) return [i + 1, [...t.slice(0, m.index)].length + (after ? [...m[0]].length : 0) + 1]
+  }
+  return [rows.length, 1]
+}
+const HIDE = '\x1b[?25l'
+const P = K.panel, BAND = '#2a3242', HL = '#33405a', EDGE = '#3d4350', FAINT = '#2a2e37'
+
+/* ---------------------------------------------------------------- modes */
+const MODES = [
+  { n: 1, name: 'convert', c: K.m, g: [K.m, K.violet], kinds: 'images · HEIC · PDF · Word' },
+  { n: 2, name: 'compress', c: '#79c98b', g: ['#79c98b', K.m], kinds: 'images · PDF · video' },
+  { n: 3, name: 'pdf', c: '#ff6b4a', g: ['#ff6b4a', K.amber], kinds: 'split · merge · rotate' },
+]
+const CV_ = { mode: MODES[0], typing: false }
+const CM_ = { mode: MODES[1], typing: false }
+const PDF_ = { mode: MODES[2], typing: false }
+
+/* ------------------------------------------------------------- hatching */
+/** Hatching whose colour follows the absolute column, so stacked rows line up. */
+const hatchAt = (c0, n, r = 0, stops = MODES[0].g) => {
+  let s = ''
+  for (let i = 0; i < n; i++) s += xf(gcol(c0 + i + r * 2, N + 8, stops), '╱')
+  return s
+}
+/** Hatching in any colour function, cell by cell, at absolute columns. */
+const hatchFn = (c0, n, col, glyph = () => '╱') => { let o = ''; for (let i = 0; i < n; i++) { const g = glyph(c0 + i); o += g === ' ' ? ' ' : xf(col(c0 + i), g) } return o }
+const grad = (s) => (c) => gcol(c, N + 8, s.mode.g)
+
+/* ------------------------------------------------------------- key row */
+/** F1: main keys left, footnote right; the footnote loses items before it would wrap. */
+const keysF1 = ({ main = [], foot = [], w = N, lead = M + 1 } = {}) => {
+  const k = (key) => xb(K.cap, xf(K.fg, xB(` ${key} `)))
+  const left = ' '.repeat(lead) + main.map(([key, word]) => `${k(key)} ${xf(K.d, word)}`).join('  ')
+  let f = [...foot]
+  const ft = () => f.map(([a, b]) => (b ? `${a} ${b}` : a)).join(' · ')
+  while (f.length && vis(left) + 3 + ft().length + 1 > w) f = f.slice(0, -1)
+  return xr(left, xf(K.x, ft()) + ' ', w)
+}
+const stepKeys = (main, foot) => keysF1({ main, foot })
+const fill24 = (rows, last) => {
+  const r = [...rows]
+  while (r.length < (last ? 23 : 24)) r.push('')
+  return last ? [...r, last] : r
+}
+
+/* ------------------------------------------------------- home: the band */
+const WM3 = ['█▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀▀', '█▀▀  █  █ █▀▀▄ █ ▀█ █▀▀ ', '▀    ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀']
+const VER = 'v0.1.0'
+/** One row of the hatched band. The run after the word can carry a label, knocked out of it. */
+const bandRow = (s, i, { lab = null, tail = 2 } = {}) => {
+  const g = s.mode.g, c0 = M + 27, n = W - 27
+  const lead = ' '.repeat(M) + hatchAt(M, 1, i, g) + ' ' + xf(K.fg, xB(WM3[i])) + ' '
+  if (!lab) return lead + hatchAt(c0, n, i, g)
+  const w = vis(lab)
+  return lead + hatchAt(c0, n - tail - w, i, g) + lab + hatchAt(c0 + n - tail, tail, i, g)
+}
+const band = (s) => [0, 1, 2].map((i) => bandRow(s, i, i === 2 ? { lab: ` ${xf(K.d, VER)} ` } : {}))
+
+/* ----------------------------------------------- home: tabs, panel, field */
+const SAVES = `${xf(K.x, 'saves to')} ${xf(K.d, '~/Desktop')}`
+const CMDT = { name: 'commands' }
+/** Home's tab row: the three modes, then "/ commands", always there. */
+const tabs4 = (s, cmdOn = false) => {
+  let top = '', row = ''
+  for (const t of [...MODES, CMDT]) {
+    const active = t === CMDT ? cmdOn : !cmdOn && t === s.mode
+    const lab = t === CMDT
+      ? ` ${xf(active ? s.mode.c : K.x, xB('/'))} ${active ? xf(K.fg, xB('commands')) : xf(K.d, 'commands')} `
+      : ` ${active ? `${xf(t.c, xB(String(t.n)))} ${xf(K.fg, xB(t.name))}` : `${xf(K.x, String(t.n))} ${xf(K.d, t.name)}`} `
+    top += active ? xf(P, '▄'.repeat(vis(lab))) : ' '.repeat(vis(lab))
+    row += active ? on(P, lab, vis(lab)) : lab
+    top += ' '; row += ' '
+  }
+  return [' '.repeat(M) + top, ' '.repeat(M) + xr(row, SAVES + ' ', W)]
+}
+const GRID = (c) => c % 3 === 0 && c >= 3 && c <= W - 4   // 3 cells in from each edge
+/** D2: the dots in the gradient, brighter towards the edges. */
+const d2dot = (s) => (c, r) => {
+  if (!GRID(c)) return null
+  const col = gcol(c + r * 2, W + 14, s.mode.g)
+  const dx = Math.abs(c - W / 2) / (W / 2), dy = Math.abs(r - 3.5) / 3.5
+  const k = 0.3 + 0.45 * Math.min(1, Math.hypot(dx, dy * 0.6))
+  return X.mix(P, col, s.typing ? k * 0.45 : k)
+}
+/** A w×h surface. dot(c, r) gives a dot colour or null. The lines are centred
+ *  inside one clean rectangle knocked out of the dots, so the edges never fray. */
+const surface = ({ w = W, h = 8, bg = P, dot = () => null, lines, pad = 4, glyph = '·', lead = ' '.repeat(M) }) => {
+  const top = Math.floor((h - lines.length) / 2)
+  const isDot = (c) => !!dot(c, top)
+  let a = Math.floor((w - Math.max(...lines.map(vis)) - pad * 2) / 2), b = w - a
+  while (a > 0 && !isDot(a - 1)) a--
+  while (b < w && !isDot(b)) b++
+  const tw = b - a, rows = []
+  for (let r = 0; r < h; r++) {
+    const li = r - top, clear = r >= top && r < top + lines.length
+    let out = '', c = 0
+    while (c < w) {
+      if (clear && c === a) { out += li >= 0 && li < lines.length ? xpad(X.center(lines[li], tw), tw) : ' '.repeat(tw); c += tw; continue }
+      const col = r >= 1 && r <= h - 2 ? dot(c, r) : null
+      out += col ? xf(col, typeof glyph === 'function' ? glyph(c, r) : glyph) : ' '; c++
+    }
+    rows.push(lead + (bg ? on(bg, out, w) : xpad(out, w)))
+  }
+  return rows
+}
+const dropTitle = (s) => `${xf(s.typing ? K.x : s.mode.c, xB('↓'))}  ${xf(s.typing ? K.d : K.fg, xB('Drop a file here'))}`
+const dropSub = (s) => xf(s.typing ? K.faint : K.d, s.mode.kinds)
+const field = (s) => IN + xf(s.mode.c, xB('›')) + ' ' + (s.typing ? xf(K.fg, '~/Desk') : xf(K.x, 'or type a path'))
+const homeKeys = () => keysF1({ main: [['↵', 'send']], foot: [['1–3', 'mode'], ['esc', 'clear'], ['ctrl-n', 'new'], ['ctrl-c', 'quit']] })
+/** The decided home, at rest. */
+const home = (s) => fill24(['', ...band(s), '', ...tabs4(s), ...surface({ lines: [dropTitle(s), dropSub(s)], dot: d2dot(s) }), '', field(s)], homeKeys())
+
+/* ------------------------------------------------------ home: commands */
+const CMD = [
+  { name: 'convert', d: "change a file's format", mode: MODES[0] },
+  { name: 'compress', d: 'make a file smaller', mode: MODES[1] },
+  { name: 'pdf', d: 'page operations on a PDF', mode: MODES[2] },
+  { name: 'theme', d: 'switch between light and dark' },
+]
+const cmdName = (c, q, sel) => xf(K.fg, xB('/' + q)) + (sel ? xf(K.fg, xB(c.name.slice(q.length))) : xf(K.d, c.name.slice(q.length)))
+/** One row, in the picker's band and strip; the strip takes the colour of the mode it would switch to. */
+const cmdRow = (c, q, sel, w) => {
+  const name = xpad(cmdName(c, q, sel), 12)
+  if (!sel) return '  ' + name + xf(K.x, c.d)
+  return on(HL, xf(c.mode ? c.mode.c : K.fg, '▌') + ' ' + name + xf(K.d, c.d), w)
+}
+const cmdList = (q, sel) => {
+  const hits = CMD.filter((c) => c.name.startsWith(q)), out = []
+  for (const [label, items] of [['modes', hits.filter((m) => m.mode)], ['settings', hits.filter((m) => !m.mode)]]) {
+    if (!items.length) continue
+    if (out.length) out.push('')
+    out.push('    ' + xf(K.x, label), ...items.map((c) => '  ' + cmdRow(c, q, c.name === sel, W - 4)))
+  }
+  return out
+}
+const panelRows = (rows, h = 8) => { const b = ['', ...rows, '']; while (b.length < h) b.push(''); return b.map((r) => ' '.repeat(M) + on(P, r, W)) }
+/** Home with the commands open: "/ commands" is the active tab, the list sits where the dots were. */
+const homeCommands = (s, q = '', sel = 'convert') => fill24(['', ...band(s), '', ...tabs4(s, true), ...panelRows(cmdList(q, sel)), '',
+  IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.fg, '/' + q)],
+keysF1({ main: [['↵', 'run'], ['esc', 'back']], foot: [['↑↓', 'choose'], ['type', 'filter'], ['ctrl-c', 'quit']] }))
+
+/* ------------------------------------------------------- the header bar */
+/** A chip with slanted ends (Powerline U+E0BA / U+E0BC), leaning with the hatching. */
+const slant = (col, label) => xf(col, '') + xb(col, xf(K.ink, xB(` ${label} `))) + xf(col, '')
+const TRAIL = {
+  convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop', 'test.jpg'] },
+  compress: { steps: ['Method', 'Size', 'Save to', 'Name'], answers: ['To a size', '50 KB', 'Desktop', 'photo.jpg'] },
+  pdf: { steps: ['Action', 'Pages', 'Save to'], answers: ['Split', 'every page', 'Desktop'] },
+}
+/**
+ * The decided bar: the mode as a slanted chip opening the row, hatching in the
+ * mode's gradient, and at the far end, two cells in, the trail: every answer
+ * so far (dim), then the current step (bold), separated by single ╱.
+ * `answers` and `now` override the trail; `col` overrides the hatching's colour.
+ */
+const bar = (s, at, { answers, now, col } = {}) => {
+  const t = TRAIL[s.mode.name]
+  const ans = answers ?? t.answers.slice(0, at)
+  const cur = now ?? t.steps[at]
+  const parts = [...ans.map((a) => ` ${xf(K.d, a)} `), ...(cur ? [` ${xf(K.fg, xB(cur))} `] : [])]
+  const hc = col ?? grad(s)
+  const o0 = ' '.repeat(M) + slant(s.mode.c, s.mode.name)
+  const rw = parts.reduce((n, p) => n + vis(p), 0) + Math.max(0, parts.length - 1)
+  const start = M + W - 2 - rw
+  let o = o0 + hatchFn(vis(o0), start - vis(o0), hc), c = start
+  parts.forEach((p, i) => { if (i) { o += hatchFn(c, 1, hc); c += 1 } o += p; c += vis(p) })
+  return o + hatchFn(c, M + W - c, hc)
+}
+
+/* ------------------------------------------------- the file card, pickers */
+/** The file card: a rounded frame, the format in the top edge. */
+const fcard = (s, { w = 52, tag = 'PNG', name = 'test.png', meta = '2756×774 · 122 KB · transparent', dim = false, edge = K.x, tagc } = {}) => {
+  const Ed = (t) => xf(edge, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+  return [
+    ' '.repeat(M) + Ed('╭─ ') + xf(tagc ?? s.mode.c, xB(tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(tag)) + '╮'),
+    side(xf(dim ? K.d : K.fg, xB(name))),
+    side(xf(K.d, meta)),
+    ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const qTitle = (s, t, count = '') => ' '.repeat(M + 1) + xr(xf(s.mode.c, xB(t)), xf(K.x, count), 64)
+/** The picker's band and strip; only the highlighted row says more. */
+const pick = (s, rows, sel, nw = 10) => rows.map(([name, more], i) => (i === sel
+  ? ' '.repeat(M) + on(BAND, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, xB(name)), nw) + (more ?? ''), 64)
+  : ' '.repeat(M) + '  ' + xf(K.d, name)))
+const FMTS = ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF']
+const sizeNote = `${xf(K.fg, xB('74.6 KB'))}  ${xf(K.ok, '39% smaller')}`
+/** The convert flow up to ↵, as decided: Format, Quality, Save to, Name. */
+const FLOW = {
+  format: () => fill24([bar(CV_, 0), '', ...fcard(CV_), '', qTitle(CV_, 'Convert to', '1/6'), '',
+    ...pick(CV_, FMTS.map((f, i) => [f, i === 0 ? sizeNote : '']), 0)],
+  stepKeys([['↑↓', 'choose'], ['↵', 'confirm']], [['1–3', 'mode'], ['esc', 'back'], ['ctrl-c', 'quit']]) + HIDE),
+  name: () => fill24([bar(CV_, 3), '', ...fcard(CV_), '', qTitle(CV_, 'Name the file'), '',
+    ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.fg, 'test') + xf(K.x, '.jpg')],
+  stepKeys([['↵', 'save'], ['esc', 'back']], [['ctrl-c', 'quit']])),
+}
+
+/* -------------------------------------------------------------- render */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+function xterm(el, cols = N, lines = 24) {
+  const term = new Terminal({
+    cols, rows: lines, fontSize: 11, lineHeight: 1, letterSpacing: 0,
+    fontFamily: '"SF Mono", Menlo, monospace', customGlyphs: true, cursorBlink: true,
+    cursorStyle: 'bar', disableStdin: true, allowProposedApi: true,
+    theme: { background: K.bg, foreground: K.fg, cursor: K.m, cursorAccent: K.bg },
+  })
+  term.open(el)
+  try { term.loadAddon(new CanvasAddon.CanvasAddon()) } catch (e) { /* DOM renderer fallback */ }
+  return term
+}
+const paint = (term, rows, cursor, lines = 24) => term.write('\x1b[H\x1b[2J' + rows.slice(0, lines).join('\r\n') + (cursor ? `\x1b[${cursor[0]};${cursor[1]}H\x1b[?25h` : HIDE))
+/** Live frames: make(t) is called with the seconds since the page opened, about 12 times a second, only while its tab is showing. */
+const LIVE = []
+/* The page clock: pausable, slower, steppable. Space pauses; ← → step a tenth of a second while paused. */
+const CLK = { t: 0, last: performance.now(), speed: 1, paused: false }
+const tick = () => {
+  const now = performance.now()
+  if (!CLK.paused) CLK.t += ((now - CLK.last) / 1000) * CLK.speed
+  CLK.last = now
+  for (const f of LIVE) if (f.el.closest('section.tab.on')) { const r = f.make(CLK.t); paint(f.term, r.rows ?? r, r.cursor, f.lines) }
+  if (CLK.ui) CLK.ui()
+}
+setInterval(tick, 80)
+try {
+  const bar_ = document.createElement('div')
+  bar_.className = 'clock'
+  bar_.innerHTML = '<button data-a="play" title="space">❚❚ pause</button>'
+    + '<span class="sp">' + [0.25, 0.5, 1].map((v) => `<button data-s="${v}">${v}×</button>`).join('') + '</span>'
+    + '<button data-a="back" title="←">◀</button><button data-a="fwd" title="→">▶</button>'
+    + '<input type="range" min="0" max="15" step="0.05" value="0" title="scrub"><span class="tm">0.0 s</span>'
+  document.body.appendChild(bar_)
+  const play = bar_.querySelector('[data-a=play]'), range = bar_.querySelector('input'), tm = bar_.querySelector('.tm')
+  const step = (d) => { CLK.paused = true; CLK.t = Math.max(0, CLK.t + d); tick() }
+  const toggle = () => { CLK.paused = !CLK.paused; tick() }
+  CLK.ui = () => {
+    play.textContent = CLK.paused ? '▶ play' : '❚❚ pause'
+    bar_.querySelectorAll('[data-s]').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === CLK.speed))
+    range.value = String(CLK.t % 15); tm.textContent = (CLK.t % 15).toFixed(1) + ' s'
+  }
+  bar_.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button'); if (!b) return
+    if (b.dataset.s) CLK.speed = Number(b.dataset.s)
+    else if (b.dataset.a === 'play') toggle()
+    else step(b.dataset.a === 'back' ? -0.1 : 0.1)
+    tick()
+  })
+  range.addEventListener('input', () => { CLK.paused = true; CLK.t = Number(range.value); tick() })
+  addEventListener('keydown', (ev) => {
+    if (ev.target.closest && ev.target.closest('input:not([type=range]),textarea')) return
+    if (ev.key === ' ') { ev.preventDefault(); toggle() }
+    else if (ev.key === 'ArrowLeft') { ev.preventDefault(); step(-0.1) }
+    else if (ev.key === 'ArrowRight') { ev.preventDefault(); step(0.1) }
+  })
+} catch (e) { /* no page to put controls on */ }
+/** A figure: an optional heading, then frames (each { label, rows | make, cursor, lines }), then a note. */
+const fig = (gridId, { id, name, pick: mine, idea, frames, wide }) => {
+  const g = document.getElementById(gridId)
+  const fg = document.createElement('figure')
+  if (wide) fg.className = 'wide'
+  fg.innerHTML = (id ? `<div class="vt"><span class="id">${id}</span><span class="name">${name}</span>${mine ? '<span class="pick">MY PICK</span>' : ''}</div>` : '') +
+    frames.map((f) => `<div class="state">${f.label}</div><div class="term">${f.lines && f.lines < 24 ? '' : '<div class="bar"><i></i><i></i><i></i><em>80 × 24</em></div>'}<div class="xt"></div></div>`).join('') +
+    (idea ? `<p class="idea">${idea}</p>` : '')
+  g.appendChild(fg)
+  const els = fg.querySelectorAll('.xt')
+  frames.forEach((f, i) => {
+    const el = els[i], lines = f.lines ?? 24, term = xterm(el, N, lines)
+    if (f.make) {
+      const first = f.make(reduced ? 0 : 0.0)
+      paint(term, first.rows ?? first, first.cursor, lines)
+      if (!reduced) LIVE.push({ el, term, make: f.make, lines })
+    } else paint(term, f.rows, f.cursor, lines)
+  })
+  return fg
+}
+/** Rows on their own, a blank row above and below each, in a short terminal. */
+const strip3 = (rows) => { const r = ['', ...rows.flatMap((x) => [...[].concat(x), '']).slice(0, -1), '']; return { rows: r, lines: r.length } }
+
+/* ============================================================ ON DROP
+   What the drop zone does once a file lands on it. A terminal never says a
+   drag is hovering — the first and only thing the app sees is the paths,
+   pasted as text in one chunk — so every concept starts at that moment.
+   Each concept takes the paste out of the field and puts the file into the
+   zone; ↵ then goes on with it, and another drop before ↵ adds to it.
+   The anatomy stays fixed: band, tabs and panel, the field, the keys. */
+const FL = {
+  photo: { tag: 'PNG', name: 'photo.png', fact: '2756×774', size: '122 KB', more: 'transparent' },
+  report: { tag: 'PDF', name: 'report.pdf', fact: '12 pages', size: '1.4 MB' },
+  scan: { tag: 'PDF', name: 'scan.pdf', fact: '3 pages', size: '820 KB' },
+  notes: { tag: 'PDF', name: 'notes.pdf', fact: '1 page', size: '64 KB' },
+  inv1: { tag: 'PDF', name: 'invoice-0412.pdf', fact: '2 pages', size: '210 KB' },
+  inv2: { tag: 'PDF', name: 'invoice-0413.pdf', fact: '2 pages', size: '208 KB' },
+  contract: { tag: 'PDF', name: 'contract-signed-final-v3.pdf', fact: '11 pages', size: '1.9 MB' },
+  h1: { tag: 'HEIC', name: 'IMG_4101.HEIC', fact: '4032×3024', size: '2.1 MB' },
+  h2: { tag: 'HEIC', name: 'IMG_4102.HEIC', fact: '4032×3024', size: '1.9 MB' },
+  h3: { tag: 'HEIC', name: 'IMG_4103.HEIC', fact: '3024×4032', size: '2.4 MB' },
+}
+const BADF = { name: 'archive.zip', why: 'not a file Convert can read' }
+/** The four situations every concept is drawn in. */
+const SC = {
+  one: { files: [FL.photo], sum: '1 file · 122 KB', verb: 'convert' },
+  first: { files: [FL.report], sum: '1 file · 12 pages · 1.4 MB', verb: 'convert' },
+  three: { files: [FL.report, FL.scan, FL.notes], sum: '3 PDFs · 16 pages · 2.3 MB', verb: 'merge' },
+  many: { files: [FL.report, FL.scan, FL.notes, FL.inv1, FL.inv2, FL.contract], bad: [BADF], sum: '6 PDFs · 31 pages · 4.6 MB', verb: 'merge' },
+  no: { files: [FL.h1, FL.h2, FL.h3], sum: '3 images · 6.4 MB', refused: true },
+}
+const mid = (s, n) => ([...s].length <= n ? s : s.slice(0, Math.ceil((n - 1) / 2)) + '…' + s.slice(s.length - Math.floor((n - 1) / 2)))
+const REFUSE = 'Several images at once is not in the app yet'
+const REFUSE2 = 'forge *.heic --to jpeg does it  ·  esc to clear'
+const moreOf = (sc, shown) => sc.files.length - shown
+
+/** The screen around a panel: the field gives the paste back, and the keys say what ↵ does now. */
+const dropScreen = (s, panel, sc) => {
+  const fieldRow = IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.x, sc ? 'drop more, or type a path' : 'or type a path')
+  const keys = !sc ? homeKeys()
+    : sc.refused ? keysF1({ main: [['esc', 'clear']], foot: [['1–3', 'mode'], ['ctrl-c', 'quit']] })
+      : keysF1({ main: [['↵', sc.verb]], foot: [['esc', 'clear'], ['1–3', 'mode'], ['ctrl-c', 'quit']] })
+  const rows = fill24(['', ...band(s), '', ...tabs4(s), ...panel, '', fieldRow], keys)
+  return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5] }
+}
+const restPanel = (s) => surface({ lines: [dropTitle(s), dropSub(s)], dot: d2dot(s) })
+/** D2's dots, scaled: k < 1 recedes behind what sits on them, k > 1 lights up. */
+const dotsK = (s, k, extra) => (c, r) => {
+  const col = d2dot(s)(c, r)
+  if (!col) return null
+  const base = k >= 1 ? X.mix(col, gcol(c + r * 2, W + 14, s.mode.g), Math.min(1, k - 1)) : X.mix(P, col, k)
+  return extra ? extra(c, r, base) : base
+}
+/** One ring of light leaving the middle of the panel, `a` seconds after the drop. */
+const ripple = (a) => (c, r, base) => {
+  if (a > 0.9) return base
+  const d = Math.hypot(c - W / 2, (r - 3.5) * 2.4), R = a * 58
+  const g = Math.exp(-(((d - R) / 3.2) ** 2)) * (1 - a / 0.9)
+  return X.mix(base, '#ffffff', g * 0.85)
+}
+
+/* ------------------------------------------------ A · the words become the file */
+const A_ = {
+  id: 'A', name: 'The words become the file',
+  idea: 'The smallest change. The dots stay; a ring of light leaves the middle as the file lands, and the dots stay a little brighter while the zone holds something. "Drop a file here" becomes the file: its name, then what it is. Several files are named in a row and summed up under it.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    const tick = xf(s.mode.c, xB('✓'))
+    let lines
+    if (sc.refused) {
+      lines = [`${xf(K.amber, xB('●'))}  ${xf(K.fg, xB(sc.sum))}`, xf(K.d, REFUSE), xf(K.x, REFUSE2)]
+    } else if (sc.files.length === 1) {
+      const f = sc.files[0]
+      lines = [`${tick}  ${xf(K.fg, xB(f.name))}`, xf(K.d, [f.tag, f.fact, f.size, f.more].filter(Boolean).join(' · '))]
+    } else {
+      const shown = sc.files.slice(0, 3), rest = moreOf(sc, 3)
+      lines = [`${tick}  ${xf(K.fg, xB(sc.sum))}`,
+        xf(K.d, shown.map((f) => f.name).join(' · ')) + (rest > 0 ? xf(K.x, `  +${rest} more`) : '')]
+      if (sc.bad) lines.push(xf(K.amber, '●') + ' ' + xf(K.x, `${sc.bad[0].name} skipped — ${sc.bad[0].why}`))
+    }
+    const k = sc.refused ? 0.55 : 1 + Math.min(1, a / 0.5) * 0.35
+    return surface({ lines, dot: dotsK(s, k, sc.refused ? null : ripple(a)) })
+  },
+}
+
+/* ------------------------------------------------- B · a card on the surface */
+const cardOf = (s, { tag, rows, w, edge = K.x, tagc = s.mode.c, shadow = false }) => {
+  const Ed = (t) => xf(edge, t)
+  const out = [
+    Ed('╭─ ') + xf(tagc, xB(tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(tag)) + '╮'),
+    ...rows.map((r) => Ed('│ ') + xpad(r, w - 4) + Ed(' │')),
+    Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+  if (shadow) out.push(' ' + xf(EDGE, '╰' + '─'.repeat(w - 4) + '╯') + ' ')
+  return out
+}
+const fileLine = (f, w, fresh) => {
+  const nm = xpad(xf(fresh ? K.fg : K.d, fresh ? xB(mid(f.name, 22)) : mid(f.name, 22)), 24)
+  return X.right(nm + xf(K.x, f.fact), xf(K.x, f.size), w)
+}
+const B_ = {
+  id: 'B', name: 'A card on the surface',
+  idea: 'The file lands as the same card the questions after this show it on, laid on the dots, which step back so the card reads first. Several files make one card with a stack under it, "PDF ×3" in its edge, a row for each; the files that just arrived are bright for a moment. The card you see here is the card you see on the next screen.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    const w = 46, fresh = (i) => a < 1.4 && i >= sc.files.length - (sc.fresh ?? 1)
+    // the card's edge brightens out of the panel as it lands
+    const edge = sc.keep || a >= 0.35 ? K.x : X.mix(P, K.x, a / 0.35)
+    let card
+    if (sc.files.length === 1 && !sc.refused) {
+      const f = sc.files[0]
+      card = cardOf(s, { tag: f.tag, w, edge, rows: [xf(K.fg, xB(f.name)), xf(K.d, [f.fact, f.size, f.more].filter(Boolean).join(' · '))] })
+    } else {
+      const shown = sc.files.slice(0, 3), rest = moreOf(sc, 3)
+      const same = sc.files.every((f) => f.tag === sc.files[0].tag)
+      const rows = shown.map((f, i) => fileLine(f, w - 4, fresh(i)))
+      if (rest > 0 || sc.bad) rows.push(xf(K.x, rest > 0 ? `+${rest} more` : '') + (sc.bad ? '   ' + xf(K.amber, '●') + ' ' + xf(K.x, `${sc.bad[0].name} skipped`) : ''))
+      card = cardOf(s, { tag: `${same ? sc.files[0].tag : 'MIXED'} ×${sc.files.length}`, w, rows, shadow: rows.length <= 3, tagc: sc.refused ? K.d : s.mode.c, edge: sc.refused ? EDGE : edge })
+      if (sc.refused) card = [...card.slice(0, -1), xf(K.amber, '●') + ' ' + xf(K.d, REFUSE)]
+    }
+    card = card.map((l) => xpad(l, w))
+    return surface({ lines: card, pad: 3, dot: dotsK(s, sc.refused ? 0.35 : 0.55) })
+  },
+}
+
+/* --------------------------------------------------------- C · tiles */
+const tileOf = (s, f, w, { edge = K.x, tagc = s.mode.c, dim = false } = {}) => {
+  const Ed = (t) => xf(edge, t)
+  return [
+    Ed('╭─ ') + xf(tagc, xB(f.tag)) + Ed(' ' + '─'.repeat(w - 5 - vis(f.tag)) + '╮'),
+    Ed('│ ') + xpad(xf(dim ? K.d : K.fg, dim ? mid(f.name, w - 4) : xB(mid(f.name, w - 4))), w - 4) + Ed(' │'),
+    Ed('│ ') + xpad(xf(K.x, f.fact), w - 4) + Ed(' │'),
+    Ed('╰' + '─'.repeat(w - 2) + '╯'),
+  ]
+}
+const moreTile = (n, w) => [
+  xf(EDGE, '╭' + '─'.repeat(w - 2) + '╮'), xf(EDGE, '│') + xpad(X.center(xf(K.d, xB(`+${n}`)), w - 2), w - 2) + xf(EDGE, '│'),
+  xf(EDGE, '│') + xpad(X.center(xf(K.x, 'more'), w - 2), w - 2) + xf(EDGE, '│'), xf(EDGE, '╰' + '─'.repeat(w - 2) + '╯')]
+const C_ = {
+  id: 'C', name: 'Each file a tile',
+  idea: 'Every file is a small tile on the surface, laid down left to right as they land, so a drop of three looks like three things arriving. Up to four fit; past that the fourth is "+3 more". The newest tile has the mode\'s edge for a moment. One file is one wider tile with all its facts.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    let lines
+    if (sc.files.length === 1 && !sc.refused) {
+      const f = sc.files[0]
+      lines = tileOf(s, { ...f, fact: [f.fact, f.size, f.more].filter(Boolean).join(' · ') }, 40, { edge: a < 1.4 ? s.mode.c : K.x })
+    } else {
+      const max = sc.files.length > 4 ? 3 : 4, shown = sc.files.slice(0, max), n = sc.fresh ?? 1
+      const tiles = shown.map((f, i) => {
+        const at = i - (sc.files.length - n)          // place in the latest drop
+        if (at >= 0 && a < at * 0.09) return null      // not landed yet
+        const fresh = at >= 0 && a < 1.4
+        return tileOf(s, f, 17, { edge: sc.refused ? EDGE : fresh ? s.mode.c : K.x, tagc: sc.refused ? K.d : s.mode.c, dim: sc.refused })
+      })
+      if (sc.files.length > 4) tiles.push(moreTile(sc.files.length - 3, 17))
+      lines = [0, 1, 2, 3].map((r) => tiles.map((t) => (t ? t[r] : ' '.repeat(17))).join(' '))
+      const note = sc.refused ? xf(K.amber, '●') + ' ' + xf(K.d, REFUSE)
+        : sc.bad ? xf(K.amber, '●') + ' ' + xf(K.x, `${sc.bad[0].name} skipped — ${sc.bad[0].why}`) : xf(K.x, sc.sum)
+      lines.push('', xpad(X.center(note, vis(lines[0])), vis(lines[0])))
+    }
+    return surface({ lines, pad: 2, dot: dotsK(s, sc.refused ? 0.35 : 0.5) })
+  },
+}
+
+/* ----------------------------------------------- D · the panel becomes the list */
+const listRow = (s, f, fresh, dim) => {
+  const body = xpad(xf(dim ? K.d : s.mode.c, xB(f.tag)), 6) + xpad(xf(dim ? K.d : K.fg, mid(f.name, 30)), 32) + xpad(xf(K.d, f.fact), 14) + xf(K.d, f.size)
+  return '  ' + (fresh ? on(HL, xf(s.mode.c, '▌') + ' ' + body, W - 4) : '  ' + body)
+}
+const D_ = {
+  id: 'D', name: 'The panel becomes the list',
+  idea: 'The way "/ commands" already works on this panel: the dots clear and the panel lists what was dropped, one row each, under a dim line that sums them up. The rows that just arrived wear the picker\'s band and strip for a moment, then settle. It holds three rows and a "+3 more"; files that could not be read get their own line.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    if (a < 0.28 && !sc.keep) return surface({ lines: [''], dot: dotsK(s, 1 - a / 0.28) })
+    const n = sc.fresh ?? 1, fresh = (i) => !sc.refused && a < 1.4 && i >= sc.files.length - n
+    const shown = sc.files.slice(0, 3), rest = moreOf(sc, 3)
+    const rows = ['    ' + xf(K.x, sc.sum), ...shown.map((f, i) => listRow(s, f, fresh(i), sc.refused))]
+    if (rest > 0) rows.push('    ' + xf(K.x, `+${rest} more`))
+    if (sc.bad) rows.push('    ' + xf(K.amber, '●') + ' ' + xf(K.d, sc.bad[0].name) + xf(K.x, ` skipped — ${sc.bad[0].why}`))
+    if (sc.refused) rows.push('', '    ' + xf(K.amber, '●') + ' ' + xf(K.d, REFUSE) + xf(K.x, '  ·  esc to clear'))
+    // centred in the panel's height, as the words at rest are
+    return panelRows([...Array(Math.max(0, Math.floor((6 - rows.length) / 2))).fill(''), ...rows])
+  },
+}
+
+/* ---------------------------------------------------------- the live loop */
+const DLOOP = 10
+/** report.pdf dropped at 1.4 s; scan.pdf and notes.pdf, dragged together, at 4.6 s; esc at 8.6 s. */
+const dropAt = (t) => {
+  const e = t % DLOOP
+  if (e < 1.4 || e >= 8.6) return { sc: null, a: 9 }
+  if (e < 4.6) return { sc: SC.first, a: e - 1.4 }
+  return { sc: { ...SC.three, fresh: 2, keep: true }, a: e - 4.6 }
+}
+const live = (C) => (t) => { const { sc, a } = dropAt(t); return dropScreen(CV_, C.panel(CV_, sc, a), sc) }
+
+/* ------------------------------------------------- today, for reference */
+const TODAY_PATH = '/Users/atharva/Desktop/report.pdf'
+const today = (t) => {
+  const e = t % DLOOP
+  const typing = { ...CV_, typing: true }
+  if (e < 1.4 || e >= 8.6) return dropScreen(CV_, restPanel(CV_), null)
+  if (e < 6.4) {
+    const v = e < 4.6 ? TODAY_PATH : `${TODAY_PATH} ${TODAY_PATH.replace('report', 'scan')} ${TODAY_PATH.replace('report', 'notes')}`
+    const shown = vis(v) > W - 8 ? '…' + v.slice(v.length - (W - 9)) : v
+    const fieldRow = IN + xf(CV_.mode.c, xB('›')) + ' ' + xf(K.fg, shown)
+    const rows = fill24(['', ...band(CV_), '', ...tabs4(CV_), ...surface({ lines: [dropTitle(typing), dropSub(typing)], dot: d2dot(typing) }), '', fieldRow],
+      keysF1({ main: [['↵', 'send']], foot: [['esc', 'clear'], ['ctrl-c', 'quit']] }))
+    return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5 + vis(shown)] }
+  }
+  // ↵: home is gone; the staged card and a bare prompt
+  const w = 52, card = cardOf(CV_, { tag: 'PDF ×3', w, rows: SC.three.files.map((f) => fileLine(f, w - 4, false)) })
+  const p = ' '.repeat(M + 1) + xf(K.m, xB('›')) + ' ' + xf(K.x, 'drop a file or type a path')
+  const rows = fill24([bar(CV_, 0, { answers: [], now: '3 files' }), '', ...card.map((l) => ' '.repeat(M) + l), '',
+    ' '.repeat(M + 1) + xf(K.d, '→ /pdf for page operations'), '', p], keysF1({ main: [['↵', 'send']], foot: [['esc', 'clear'], ['ctrl-c', 'quit']] }))
+  return { rows, cursor: [rows.indexOf(p) + 1, M + 4] }
+}
+
+fig('drop-r1-today', {
+  id: 'Today', name: 'What happens now',
+  idea: 'The path is pasted into the field and the zone only dims, as it does for any typing. Nothing is read until ↵. A second drag appends more paths to the line. After ↵ a single file leaves home for Format; several PDFs leave home for a staged card and a bare prompt.',
+  frames: [{ label: 'live · drop report.pdf, then scan.pdf + notes.pdf, then ↵', make: today }],
+})
+for (const C of [A_, B_, C_, D_]) {
+  const still = (sc, label) => ({ label, ...dropScreen(CV_, C.panel(CV_, sc), sc) })
+  fig('drop-r1-grid', {
+    id: C.id, name: C.name, idea: C.idea,
+    frames: [
+      { label: 'live · one drop, then a second drop of two', make: live(C) },
+      still(SC.one, 'one image'),
+      still(SC.many, 'seven dropped · six PDFs, one unreadable'),
+      still(SC.no, 'three images · refused for now'),
+    ],
+  })
+}
+
+/* ======================================================= ON DROP, ROUND 2
+   B and D again, calmer. Batch conversion is now part of the app, so several
+   images are something ↵ converts, not something to refuse. Rules from the
+   round-one feedback: one thing per state draws the eye; the panel holds
+   only the files; anything that went wrong sits under the field, outside it;
+   no repeated per-row format tags, and fewer columns. */
+const IMG = (name, fact, size, tag = 'HEIC') => ({ tag, name, fact, size, kind: 'image' })
+const F2 = {
+  photo: { ...IMG('photo.png', '2756×774', '122 KB', 'PNG'), more: 'transparent' },
+  h1: IMG('IMG_4101.HEIC', '4032×3024', '2.1 MB'),
+  h2: IMG('IMG_4102.HEIC', '4032×3024', '1.9 MB'),
+  h3: IMG('IMG_4103.HEIC', '3024×4032', '2.4 MB'),
+  h4: IMG('IMG_4104.HEIC', '4032×3024', '2.2 MB'),
+  h5: IMG('IMG_4105.HEIC', '4032×3024', '2.0 MB'),
+  shot: IMG('Screenshot 2026-10-09 at 14.02.11.png', '3024×1964', '840 KB', 'PNG'),
+  report: { tag: 'PDF', name: 'report.pdf', fact: '12 pages', size: '1.4 MB', kind: 'pdf' },
+}
+const S2 = {
+  one: { files: [F2.photo] },
+  three: { files: [F2.h1, F2.h2, F2.h3], total: '6.4 MB' },
+  liveThree: { files: [F2.photo, F2.h1, F2.h2], total: '4.1 MB', fresh: 2, keep: true },
+  many: { files: [F2.h1, F2.h2, F2.h3, F2.h4, F2.h5, F2.shot, F2.photo, F2.report], bad: [BADF], total: '13.2 MB' },
+}
+const noun = (sc) => {
+  const n = sc.files.length
+  if (sc.files.every((f) => f.kind === 'image')) return `${n} images`
+  if (sc.files.every((f) => f.kind === 'pdf')) return `${n} PDFs`
+  return `${n} files`
+}
+/** The decided home around a panel; a note, if any, goes under the field. */
+const dropScreen2 = (s, panel, sc) => {
+  const fieldRow = IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.x, sc ? 'drop more, or type a path' : 'or type a path')
+  const note = sc?.bad ? ['', IN + xf(K.amber, '●') + ' ' + xf(K.d, `${sc.bad[0].name} was left out`) + xf(K.x, ` · ${sc.bad[0].why}`)] : []
+  const keys = sc ? keysF1({ main: [['↵', 'convert']], foot: [['esc', 'clear'], ['1–3', 'mode'], ['ctrl-c', 'quit']] }) : homeKeys()
+  const rows = fill24(['', ...band(s), '', ...tabs4(s), ...panel, '', fieldRow, ...note], keys)
+  return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5] }
+}
+const isFresh = (sc, a, i) => a < 1.4 && i >= sc.files.length - (sc.fresh ?? 1)
+
+/* ------------------------------------------------------------ B · the card */
+const CW = 52                       // the file card's width on the screens after this
+const STACK = '#4b5263'
+const B2 = {
+  id: 'B·2', name: 'A card on the surface, calmer',
+  idea: 'The card is exactly the one on the next screen, same width, so ↵ does not make it jump. The dots step further back and run right up to its frame. For several files the count is the card\'s title, the only colour, and each row is just a name and a size; past three rows it says "+6 more". The edge under the card is the stack. A file that could not be read is a line under the field, not in the card.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    const edge = sc.keep || a >= 0.35 ? K.x : X.mix(P, K.x, a / 0.35)
+    let card
+    if (sc.files.length === 1) {
+      const f = sc.files[0]
+      card = cardOf(s, { tag: f.tag, w: CW, edge, rows: [xf(K.fg, xB(f.name)), xf(K.d, [f.fact, f.size, f.more].filter(Boolean).join(' · '))] })
+    } else {
+      const over = sc.files.length > 3, shown = sc.files.slice(0, over ? 2 : 3)
+      const rows = shown.map((f, i) => X.right(xf(K.fg, isFresh(sc, a, i) ? xB(mid(f.name, 34)) : mid(f.name, 34)), xf(K.x, f.size), CW - 4))
+      if (over) rows.push(xf(K.x, `+${sc.files.length - 2} more`))
+      card = cardOf(s, { tag: noun(sc), w: CW, edge, rows })
+      card.push('  ' + xf(STACK, '╰' + '─'.repeat(CW - 6) + '╯') + '  ')
+    }
+    return surface({ lines: card.map((l) => xpad(l, CW)), pad: 1, dot: dotsK(s, 0.42) })
+  },
+}
+
+/* ------------------------------------------------------------ D · the list */
+const D2L = {
+  id: 'D·2', name: 'The panel becomes the list, calmer',
+  idea: 'One headline, then the files. The count is the headline, in bold white, with the total size dim beside it; the rows under it are a name and a size, aligned with the text in the field below. No format tags: the names say it. One file makes its name the headline. The rows that just arrived wear the picker\'s band for a moment. Anything left out is a line under the field.',
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    if (a < 0.28 && !sc.keep) return surface({ lines: [''], dot: dotsK(s, 1 - a / 0.28) })
+    const L = '    '
+    let block
+    if (sc.files.length === 1) {
+      const f = sc.files[0]
+      block = [L + xf(K.fg, xB(f.name)), L + xf(K.d, [f.tag, f.fact, f.size, f.more].filter(Boolean).join(' · '))]
+    } else {
+      const over = sc.files.length > 3, shown = sc.files.slice(0, 3)
+      const row = (f, i) => {
+        const body = xpad(xf(K.d, mid(f.name, 36)), 40) + xf(K.x, f.size)
+        return isFresh(sc, a, i) ? '  ' + on(HL, xf(s.mode.c, '▌') + ' ' + xpad(xf(K.fg, mid(f.name, 36)), 40) + xf(K.d, f.size), 54) : L + body
+      }
+      block = [L + xf(K.fg, xB(noun(sc))) + xf(K.x, '   ' + sc.total), '', ...shown.map(row)]
+      if (over) block.push(L + xf(K.x, `+${sc.files.length - 3} more`))
+    }
+    return panelRows([...Array(Math.max(0, Math.floor((6 - block.length) / 2))).fill(''), ...block])
+  },
+}
+
+/* ---------------------------------------------------------- the live loop */
+/** photo.png dropped at 1.4 s; two HEICs dragged in together at 4.6 s; esc at 8.6 s. */
+const dropAt2 = (t) => {
+  const e = t % DLOOP
+  if (e < 1.4 || e >= 8.6) return { sc: null, a: 9 }
+  if (e < 4.6) return { sc: S2.one, a: e - 1.4 }
+  return { sc: S2.liveThree, a: e - 4.6 }
+}
+for (const C of [B2, D2L]) {
+  const still = (sc, label) => ({ label, ...dropScreen2(CV_, C.panel(CV_, sc), sc) })
+  fig('drop-grid', {
+    id: C.id, name: C.name, idea: C.idea,
+    frames: [
+      { label: 'live · photo.png, then two photos dragged in together, then esc', make: (t) => { const { sc, a } = dropAt2(t); return dropScreen2(CV_, C.panel(CV_, sc, a), sc) } },
+      still(S2.one, 'one image'),
+      still(S2.three, 'three photos · converted together'),
+      still(S2.many, 'nine dropped · eight files, one left out'),
+    ],
+  })
+}
+
+/* ======================================================= ON DROP, ROUND 3
+   One file lands as B·2's card; a second drop turns the panel into D·2's
+   list. A file that could not be read is drawn in the app's own `fail` red
+   with ✕ — the colour and glyph of its error card — two ways. */
+const FAIL = '#e8796d'
+const H3 = {
+  panel: (s, sc, a = 9) => {
+    if (!sc) return restPanel(s)
+    if (sc.files.length === 1) return B2.panel(s, sc, a)
+    // from the card to the list: the card clears, then the rows come in
+    if (sc.keep && a < 0.2) return panelRows([])
+    return D2L.panel(s, { ...sc, keep: true }, a)
+  },
+}
+const LEFT = (sc) => sc.bad.length === 1 ? '1 file left out' : `${sc.bad.length} files left out`
+const WARN = {
+  line: (sc) => ['', IN + xf(FAIL, xB('✕')) + ' ' + xf(FAIL, xB(LEFT(sc))) + xf(K.d, `   ${sc.bad[0].name} · unsupported file type`)],
+  card: (sc) => {
+    const w = 52, Ed = (t) => xf(FAIL, t), side = (r) => ' '.repeat(M) + Ed('│ ') + xpad(r, w - 4) + Ed(' │')
+    return ['', ' '.repeat(M) + Ed('╭' + '─'.repeat(w - 2) + '╮'),
+      side(xf(FAIL, xB(`✕ ${LEFT(sc)}`))),
+      side(xf(K.fg, `${sc.bad[0].name} is ${sc.bad[0].why}`)),
+      ' '.repeat(M) + Ed('╰' + '─'.repeat(w - 2) + '╯')]
+  },
+}
+const dropScreen3 = (s, sc, a, warn = 'line') => {
+  const fieldRow = IN + xf(s.mode.c, xB('›')) + ' ' + xf(K.x, sc ? 'drop more, or type a path' : 'or type a path')
+  const note = sc?.bad ? WARN[warn](sc) : []
+  const keys = sc ? keysF1({ main: [['↵', 'convert']], foot: [['esc', 'clear'], ['1–3', 'mode'], ['ctrl-c', 'quit']] }) : homeKeys()
+  const rows = fill24(['', ...band(s), '', ...tabs4(s), ...H3.panel(s, sc, a), '', fieldRow, ...note], keys)
+  return { rows, cursor: [rows.indexOf(fieldRow) + 1, M + 5] }
+}
+const still3 = (sc, label, warn) => ({ label, ...dropScreen3(CV_, sc, 9, warn) })
+fig('drop3-grid', {
+  id: 'B+D', name: 'One file is a card, several are a list', pick: true,
+  idea: 'The first file lands as the card it will be on the next screen. The moment a second drop arrives, the card clears and the panel becomes the list: the count as the headline, the files as names and sizes, the new rows banded for a moment. esc empties it back to the dots.',
+  frames: [
+    { label: 'live · photo.png, then two photos dragged in together, then esc', make: (t) => { const { sc, a } = dropAt2(t); return dropScreen3(CV_, sc, a) } },
+    still3(S2.one, 'one image · the card'),
+    still3(S2.three, 'three photos · the list'),
+  ],
+})
+fig('drop3w-grid', {
+  id: 'R1', name: 'Left out, one red line',
+  idea: 'Under the field, in the error colour: ✕ and the count in bold red, then which file and why, in grey. One row; it reads before the panel does, and leaves the panel alone.',
+  frames: [still3(S2.many, 'nine dropped · eight files, one left out', 'line')],
+})
+fig('drop3w-grid', {
+  id: 'R2', name: 'Left out, the error card',
+  idea: 'The app\'s own error card, small: a red frame the width of the file card, ✕ and the count in red, the reason in white. The same thing you see when a whole conversion fails, so it is unmistakable, and heavier.',
+  frames: [still3(S2.many, 'nine dropped · eight files, one left out', 'card')],
+})
+
+</script>
+</body>
+</html>

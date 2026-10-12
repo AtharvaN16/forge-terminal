@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { brandRows, surfaceRows, tabRows } from '../../src/shell/home-art.js'
+import { brandRows, stagedListRows, surfaceRows, tabRows, width } from '../../src/shell/home-art.js'
+import type { StagedFile, StagedView } from '../../src/shell/stage.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import { describeRow, fixtureRow, MOCKUP, runsRow } from './home-cells.js'
 
@@ -114,5 +115,49 @@ describe('the drop surface (mockup tab 2, D2)', () => {
     const text = rows.map((r) => r.map((run) => run.text).join(''))
     expect(text[1]).toContain('Drop a file here')
     expect(text[2]).toContain('images')
+  })
+})
+
+describe('the staged list', () => {
+  const palette = modePalette(DARK, 'convert')
+  const file = (name: string): StagedFile => ({ name, tag: 'PNG', size: '1.0 MB', facts: '' })
+  const view = (names: string[], fresh = 0): StagedView => ({
+    files: names.map(file),
+    headline: `${names.length} images`,
+    total: '9.0 MB',
+    fresh,
+  })
+  const list = (v: StagedView, rows = 8, columns = 80) =>
+    stagedListRows({ width: columns, rows, palette, mode: 'convert', view: v })
+  const text = (rows: ReturnType<typeof list>) => rows.map((r) => r.map((run) => run.text).join(''))
+  const eight = Array.from({ length: 8 }, (_, i) => `img${i}.png`)
+
+  it('keeps the headline and "+5 more" on a 4-row panel, every row the same width', () => {
+    const rows = list(view(eight), 4)
+    expect(rows).toHaveLength(4)
+    expect(text(rows).join('\n')).toContain('8 images')
+    expect(text(rows).join('\n')).toContain('+5 more')
+    for (const row of rows) expect(width(row)).toBe(80 - 2)
+  })
+
+  it('bands only the rows that just arrived', () => {
+    const banded = list(view(['a.png', 'b.png', 'c.png'], 2)).map((row) =>
+      row.some((run) => run.bg === palette.panelBand),
+    )
+    // blank, headline, blank, then a, b, c
+    expect(banded).toEqual([false, false, false, false, true, true, false, false])
+  })
+
+  it('never lets a long name push a row past the terminal, or its size off the end', () => {
+    for (const columns of [80, 40]) {
+      const rows = list(view([`${'x'.repeat(60)}.png`, `${'y'.repeat(60)}.png`], 1), 8, columns)
+      const named = text(rows).filter((t) => t.includes('…'))
+      expect(named).toHaveLength(2)
+      for (const t of named) {
+        expect(t.split('…')).toHaveLength(2)
+        expect(t).toContain('1.0 MB')
+      }
+      for (const row of rows) expect(width(row)).toBeLessThanOrEqual(columns)
+    }
   })
 })

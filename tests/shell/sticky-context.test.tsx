@@ -12,7 +12,7 @@ const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
  * A staged file has to be visible from every screen it affects.
  *
  * The reported bug: a PDF was staged, the user pressed escape back to the
- * prompt, and nothing on screen said so — the file card is deliberately
+ * prompt, and nothing on screen said so — the file card was deliberately
  * hidden for a lone file at idle, and (at the time this was written) the
  * mode line was unconditionally hidden during `/pdf`, before `/pdf` had a
  * real mode of its own to show. Between those two rules there was a state
@@ -34,12 +34,12 @@ async function stagePdfAtIdle() {
 }
 
 describe('the staged file is never invisible', () => {
-  it('names the staged PDF at the idle prompt', async () => {
+  it('names the staged PDF on home', async () => {
     const { lastFrame } = await stagePdfAtIdle()
     const frame = lastFrame() ?? ''
-    // Positive first: prove we are actually at the prompt and not on a
-    // blank frame, so the name assertion below cannot pass vacuously.
-    expect(frame).toContain('drop a file or type a path')
+    // Positive first: prove we are actually on home and not on a blank
+    // frame, so the name assertion below cannot pass vacuously.
+    expect(frame).toContain('drop more, or type a path')
     expect(frame).toContain('resonance_brochure.pdf')
   })
 
@@ -62,18 +62,6 @@ describe('the staged file is never invisible', () => {
 
 describe('the command list with a file waiting', () => {
   const DOWN = `${ESC}[B`
-
-  it('opens under the field, grouped as on home', async () => {
-    const { stdin, lastFrame } = await stagePdfAtIdle()
-    stdin.write('/')
-    await settle()
-    const lines = (lastFrame() ?? '').split('\n')
-    const field = lines.findIndex((l) => l.includes('› /'))
-    expect(field).toBeGreaterThan(-1)
-    const below = lines.slice(field + 1).join('\n')
-    expect(below).toMatch(/modes[\s\S]*▌ \/convert[\s\S]*settings[\s\S]*\/theme/)
-    expect(below).not.toContain('or press')
-  })
 
   it('applies the chosen mode to the waiting file', async () => {
     const { stdin, lastFrame } = await stagePdfAtIdle()

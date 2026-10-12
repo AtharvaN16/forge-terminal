@@ -1,17 +1,16 @@
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { Box, Text } from 'ink'
 import type { ForgeError } from '../core/errors.js'
 import type { Result, SourceInfo } from '../core/types.js'
-import { formatBytes, percentChange } from '../core/units.js'
 import { displayPath } from '../utils/display-path.js'
 import type { Trail } from './bar-art.js'
+import { DoneRecord } from './components/Done.js'
 import { FileCard } from './components/FileCard.js'
 import { HeaderBar } from './components/HeaderBar.js'
-import { ReceiptCard } from './components/ReceiptCard.js'
 import { fileLink, hyperlinksSupported } from './hyperlink.js'
 import { useTheme } from './ThemeContext.js'
 import { colourProp, type ShellMode, SYMBOLS } from './theme.js'
-import { bandFor, middleEllipsis } from './width.js'
+import { middleEllipsis } from './width.js'
 
 /**
  * What scrolls past above the live prompt: a dropped file, a finished
@@ -22,7 +21,11 @@ import { bandFor, middleEllipsis } from './width.js'
 export type HistoryBlock =
   | { kind: 'separator'; id: string; width: number }
   | { kind: 'file'; id: string; source: SourceInfo }
-  | { kind: 'result'; id: string; result: Result }
+  /**
+   * A finished convert or compress, filed once Done is left. `mode` colours
+   * its arrow; convert where it is not given.
+   */
+  | { kind: 'result'; id: string; result: Result; mode?: ShellMode | undefined }
   | { kind: 'error'; id: string; error: ForgeError }
   /**
    * `savedTo` is an output path, for a note that reports written files (a
@@ -37,33 +40,16 @@ export type HistoryBlock =
    */
   | { kind: 'bar'; id: string; mode: ShellMode; trail: Trail }
 
-function changePhrase(from: number, to: number): string {
-  const { pct, direction } = percentChange(from, to)
-  return direction === 'same' ? 'same size' : `${pct}% ${direction}`
-}
-
-/**
- * `ok` (green) reads as "this is what you wanted." A convert or compress
- * that comes out *larger* is the opposite of that — most often a lossless
- * target re-encoding a lossy source (PNG from a JPEG, say), not a defect,
- * but still a result worth a second look, which is what `larger` (a
- * dedicated orange — see its doc comment on `Palette`) signals. `same`
- * stays `ok`: nothing surprising happened.
- */
-function changeColour(from: number, to: number): 'ok' | 'larger' {
-  return percentChange(from, to).direction === 'larger' ? 'larger' : 'ok'
-}
-
 /**
  * The folder a result was written to. Two filenames and a size used to be
  * the whole result, so a destination typed with a stray leading `d` created
  * `d/…/out/` three levels deep and nothing on screen said so (audit #9).
  *
- * The folder rather than the full path — the filename is already in the card
- * above. `~`-abbreviated and middle-ellipsed to the width, and an OSC 8 link
- * to the folder where the terminal has them, through the same `fileLink`
- * `ResultLinks` uses. This lives in history, not the live result screen, so
- * the answer is still in the scrollback after the next conversion starts.
+ * The folder rather than the full path — the note above says what was
+ * written. `~`-abbreviated and middle-ellipsed to the width, and an OSC 8 link
+ * to the folder where the terminal has them, through the same `fileLink` as
+ * Done's folder line. This lives in history, so the answer is still in the
+ * scrollback after the next conversion starts.
  */
 function SavedTo({ output, width }: { output: string; width: number }) {
   const palette = useTheme()
@@ -166,45 +152,12 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
     )
   }
 
-  const { job, outputBytes, warnings } = block.result
-  // Every Result rendered here today comes from a conversion or a
-  // compression — both plan a `convert` job — and this card is built around
-  // that shape: one source format becoming one target format. A page
-  // operation's result gets its own rendering once one exists.
-  if (job.op !== 'convert') {
-    throw new Error(`HistoryEntry cannot render a "${job.op}" result yet`)
+  // Every Result rendered here comes from a conversion or a compression —
+  // both plan a `convert` job — and Done is built around that shape: one
+  // source becoming one written file. A page operation's results are notes.
+  if (block.result.job.op !== 'convert') {
+    throw new Error(`HistoryEntry cannot render a "${block.result.job.op}" result yet`)
   }
-  /**
-   * The normal and wide bands get the receipt card (`ReceiptCard`). The
-   * compact band has no room for a card and keeps this single-line form.
-   */
-  const band = bandFor(width)
-  if (band === 'compact') {
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text>
-          <Text color={colourProp(palette.ok)}>{`${SYMBOLS.ok} done`}</Text>
-          <Text
-            color={colourProp(palette.dim)}
-          >{`  ${middleEllipsis(basename(job.outputs[0]), Math.max(8, width - 8))}`}</Text>
-        </Text>
-        <Text>
-          <Text color={colourProp(palette.dim)}>
-            {`  ${formatBytes(job.sources[0].bytes)} ${SYMBOLS.arrow} ${formatBytes(outputBytes)} · `}
-          </Text>
-          <Text color={colourProp(palette[changeColour(job.sources[0].bytes, outputBytes)])}>
-            {changePhrase(job.sources[0].bytes, outputBytes)}
-          </Text>
-        </Text>
-        <SavedTo output={job.outputs[0]} width={width} />
-        {warnings.map((w) => (
-          <Text key={w.message} color={colourProp(palette.warn)}>
-            {SYMBOLS.warn} {w.message}
-          </Text>
-        ))}
-      </Box>
-    )
-  }
-
-  return <ReceiptCard result={block.result} width={width} />
+  /** Done as the scrollback keeps it, under the run's bar (K3·a). */
+  return <DoneRecord result={block.result} mode={block.mode ?? 'convert'} width={width} />
 }

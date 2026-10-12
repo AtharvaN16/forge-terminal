@@ -21,14 +21,10 @@ async function until(lastFrame: () => string | undefined, text: string, ms = 10_
 }
 
 /**
- * Whether the click-only "Open file · Show in Finder" line is worth
- * drawing at all depends on the terminal, not just on app-level hit
- * testing — see `mouseSupported`'s doc comment in `mouse.ts` for why
- * Terminal.app calibrates and reports mouse *reporting* enabled while
- * still never delivering a click. `supports-hyperlinks`'s own detection
- * runs once at import time off `process.env`, which is awkward to flip
- * between tests in the same process, so this mocks `mouse.js` directly —
- * the one thing `App.tsx` actually calls.
+ * Done (K3·a) draws no click-only "Open file · Show in Finder" labels, on any
+ * terminal: `o` and `s` on its key row do the same, and the design has no row
+ * for them. `mouse.js` is mocked to say clicks arrive, which is the case
+ * the labels used to be drawn in.
  */
 async function renderResult(mouseSupported: boolean) {
   vi.resetModules()
@@ -54,23 +50,14 @@ async function renderResult(mouseSupported: boolean) {
   return app
 }
 
-describe('result screen links, gated on terminal support', () => {
-  it('draws Open file / Show in Finder when the terminal supports mouse clicks', async () => {
-    const app = await renderResult(true)
-    const frame = app.lastFrame() ?? ''
-    expect(frame).toContain('Open file')
-    expect(frame).toContain('Show in Finder')
-    vi.doUnmock('../../src/shell/mouse.js')
-  })
-
-  it('hides them on a terminal that cannot deliver a click, keeping the keyboard hints', async () => {
-    const app = await renderResult(false)
-    const frame = app.lastFrame() ?? ''
-    expect(frame).not.toContain('Open file')
-    expect(frame).not.toContain('Show in Finder')
-    // The same actions, still reachable without a mouse.
-    expect(frame).toContain(' o  open')
-    expect(frame).toContain('show in finder')
-    vi.doUnmock('../../src/shell/mouse.js')
-  })
+describe('Done, opening and showing the file', () => {
+  for (const mouse of [true, false]) {
+    it(`uses the key row, not clickable labels (mouse ${mouse ? 'on' : 'off'})`, async () => {
+      const app = await renderResult(mouse)
+      const frame = (app.lastFrame() ?? '').replace(SGR, '')
+      expect(frame).not.toContain('Open file')
+      expect(frame).toMatch(/o {2}open {3}s {2}show in \S+/)
+      vi.doUnmock('../../src/shell/mouse.js')
+    })
+  }
 })
