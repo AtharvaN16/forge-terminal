@@ -67,17 +67,19 @@ describe('/pdf mode arming', () => {
 
     app.stdin.write(ESC)
     await settle()
-    // Back at idle, still armed, and a.pdf was not dropped from the stage.
-    expect(app.lastFrame() ?? '').toMatch(/^ {3}pdf ╱/m)
+    // Back on home, still armed — ↵'s word is the mode's — and a.pdf was
+    // not dropped from the stage.
+    const home = app.lastFrame() ?? ''
+    expect(home).toContain('a.pdf')
+    expect(home).toMatch(/↵ +pdf/)
 
     app.stdin.write(b)
     await settle()
     app.stdin.write(ENTER)
     await settle(400)
     const frame = app.lastFrame() ?? ''
-    // Two PDFs staged now reaches the ordinary multi-file signpost rather
-    // than re-opening the hub on its own — /pdf, typed once more, is what
-    // actually merges them; this just confirms the first file survived.
+    // Two PDFs staged in pdf mode: ↵ opens the hub on both, as /pdf would.
+    expect(frame).toContain('PDF — choose an operation')
     expect(frame).toContain('a.pdf')
     expect(frame).toContain('b.pdf')
   })

@@ -118,6 +118,21 @@ describe("colour's home and screens", () => {
     expect(plain(app.lastFrame())).not.toContain('could not be found')
   }, 20_000)
 
+  it('4 lets go of a staged file, as /colour does: colour neither shows it nor brings it back', async () => {
+    const { app, dir } = await home()
+    const png = await makeGradientPng(dir, 'g.png', 48)
+    app.stdin.write(png)
+    await waitFor(() => plain(app.lastFrame()).includes('drop more'))
+    app.stdin.write('4')
+    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
+    await settle()
+    expect(plain(app.lastFrame())).not.toContain('g.png')
+    app.stdin.write('1')
+    await waitFor(() => plain(app.lastFrame()).includes('or type a path'))
+    expect(plain(app.lastFrame())).not.toContain('g.png')
+    expect(plain(app.lastFrame())).not.toContain('drop more')
+  }, 20_000)
+
   it('/ opens the commands in place, as on every home', async () => {
     const { app } = await colourHome()
     app.stdin.write('/')

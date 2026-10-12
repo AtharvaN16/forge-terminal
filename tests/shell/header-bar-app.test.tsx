@@ -104,16 +104,14 @@ describe('1–4 switch mode on a screen with no text field', () => {
 })
 
 describe('Done', () => {
-  it('records the bar, ending in Done, above the result card', async () => {
+  it('heads its screen with the bar, the trail ending in Done', async () => {
     const { app } = await atFormat()
-    for (let i = 0; i < 4 && !plain(app.lastFrame()).includes('saved to'); i++) {
+    for (let i = 0; i < 4 && !plain(app.lastFrame()).includes('convert another'); i++) {
       app.stdin.write(ENTER)
       await settle(600)
     }
-    const all = plain(app.frames.join('\n'))
-    const done = all.lastIndexOf('Done ╱╱')
-    expect(done).toBeGreaterThan(-1)
-    expect(all.indexOf('saved to', done)).toBeGreaterThan(done)
-    expect(all.slice(0, done).split('\n').at(-1)).toMatch(/test\.\w+ ╱ $/)
+    const frame = app.lastFrame() ?? ''
+    expect(plain(frame).split('\n')[0]).toBe(barLine(frame))
+    expect(barLine(frame)).toMatch(/ ╱ test\.\w+ ╱ Done ╱╱$/)
   })
 })

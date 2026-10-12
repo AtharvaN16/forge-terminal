@@ -96,9 +96,10 @@ describe('result block', () => {
 
   it('carries symbol and word, not colour alone', () => {
     const frame = frameOf(<HistoryEntry block={{ kind: 'result', id: 'r1', result }} width={80} />)
-    expect(frame).toContain('✓ DONE')
+    expect(frame).toContain('✓ diagram.webp')
+    expect(frame).toMatch(/^ {3}before$/m)
+    expect(frame).toMatch(/^ {3}after$/m)
     expect(frame).toContain('diagram.png')
-    expect(frame).toContain('diagram.webp')
   })
 
   it('states the saving in words', () => {
@@ -113,7 +114,7 @@ describe('result block', () => {
   })
 })
 
-describe('result block, receipt card', () => {
+describe('result block, as Done leaves it in the scrollback', () => {
   const result: Result = {
     job: {
       op: 'convert',
@@ -127,33 +128,33 @@ describe('result block, receipt card', () => {
   }
   const block = { kind: 'result' as const, id: 'r2', result }
 
-  it('shows the source becoming the output on one line', () => {
-    expect(frameOf(<HistoryEntry block={block} width={100} />)).toContain(
-      'diagram.png  ──→  diagram.gif',
-    )
-  })
-
-  it('puts each size on its own bar, with the saving beside the after one', () => {
+  it('puts each size in its own panel, the change under the after one', () => {
     const lines = frameOf(<HistoryEntry block={block} width={100} />).split('\n')
-    const before = lines.find((l) => l.includes('before')) ?? ''
-    const after = lines.find((l) => l.includes('after')) ?? ''
-    expect(before).toContain('348 KB')
-    expect(before).toContain('█')
-    expect(after).toContain('133 KB')
-    expect(after).toMatch(/\d+% smaller/)
+    const before = lines.findIndex((l) => l.includes('diagram.png'))
+    const after = lines.findIndex((l) => l.includes('✓ diagram.gif'))
+    expect(lines[before]).toContain('348 KB')
+    expect(lines[after]).toContain('133 KB')
+    expect(after).toBeGreaterThan(before)
+    expect(lines[after + 2]).toMatch(/\d+(\.\d)?% smaller$/)
   })
 
-  it('is one card with one top and one bottom edge', () => {
+  it('keeps a warning in the record, under the folder', () => {
+    const warned = {
+      ...block,
+      result: {
+        ...result,
+        warnings: [{ code: 'animation-flattened' as const, message: 'Only the first frame.' }],
+      },
+    }
+    const lines = frameOf(<HistoryEntry block={warned} width={100} />).split('\n')
+    const folder = lines.findIndex((l) => l.startsWith('   in '))
+    expect(lines[folder + 2]).toBe('   ⚠ Only the first frame.')
+  })
+
+  it('has no keys and no frame: the screen it came from had those', () => {
     const frame = frameOf(<HistoryEntry block={block} width={100} />)
-    expect(frame.split('\n').filter((l) => l.includes('╭'))).toHaveLength(1)
-    expect(frame.split('\n').filter((l) => l.includes('╰'))).toHaveLength(1)
-  })
-
-  it('falls back to the single-line form when a card will not fit', () => {
-    const frame = frameOf(<HistoryEntry block={block} width={50} />)
     expect(frame).not.toContain('╭')
-    expect(frame).toContain('✓ done')
-    expect(frame).toMatch(/\d+% smaller/)
+    expect(frame).not.toContain('convert another')
   })
 
   it('never overflows the terminal at any width', () => {
@@ -179,33 +180,11 @@ describe('result block, long names', () => {
   }
   const block = { kind: 'result' as const, id: 'r3', result }
 
-  it('gives each name its own line when they will not share one', () => {
-    const frame = frameOf(<HistoryEntry block={block} width={92} />)
-    expect(frame).toContain('──→ Screenshot 2026-08-17 at 3.52.36 PM.gif')
-  })
-
   it('shows the full names rather than ellipsing both', () => {
     const frame = frameOf(<HistoryEntry block={block} width={92} />)
     expect(frame).toContain('Screenshot 2026-08-17 at 3.52.36 PM.png')
     expect(frame).toContain('Screenshot 2026-08-17 at 3.52.36 PM.gif')
     expect(frame).not.toContain('…')
-  })
-
-  it('still shares one line when both names are short', () => {
-    const short: Result = {
-      ...result,
-      job: {
-        op: 'convert',
-        sources: [{ ...long, path: '/tmp/a.png' }],
-        outputs: ['/tmp/a.gif'],
-        target: 'gif',
-        options: { background: '#ffffff', keepMetadata: false },
-      },
-    }
-    const frame = frameOf(
-      <HistoryEntry block={{ kind: 'result', id: 'r4', result: short }} width={92} />,
-    )
-    expect(frame).toContain('a.png  ──→  a.gif')
   })
 
   it('never overflows, whatever the names', () => {

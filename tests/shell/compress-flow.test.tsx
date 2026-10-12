@@ -181,15 +181,15 @@ describe('the format suggestion', () => {
   }, 30_000)
 
   it('offers a key to act on it', async () => {
-    const { stdin, lastFrame, frames } = await toCompress()
+    const { stdin, lastFrame } = await toCompress()
     stdin.write(ENTER)
     await settle()
     stdin.write(ENTER)
     await settle()
     await finish(stdin)
     await settle(600)
-    const all = frames.join('') + (lastFrame() ?? '')
-    expect(all).toContain('convert to WebP')
+    // On Done's key row, beside ↵: `c` and the format it converts to.
+    expect(lastFrame() ?? '').toMatch(/compress again {3}c {2}WebP {3}o {2}open/)
   }, 30_000)
 
   it('takes it with c, to Save as, the name proposed for the new format', async () => {

@@ -3,6 +3,7 @@ import stringWidth from 'string-width'
 import { FORMATS } from '../../core/formats.js'
 import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
+import { cardFacts } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { bandFor, CARD_WIDTH, middleEllipsis } from '../width.js'
@@ -30,22 +31,7 @@ export function FileCard({
   const name = source.path.split('/').pop() ?? source.path
   const label = FORMATS[source.format].label
 
-  const facts = (
-    source.kind === 'image'
-      ? [
-          `${source.width}×${source.height}`,
-          formatBytes(source.bytes),
-          // Only claimed when the source genuinely carries alpha — saying
-          // "transparent" about an opaque JPEG would be a plain lie about the file.
-          ...(source.hasAlpha ? ['transparent'] : []),
-        ]
-      : [
-          // 0 means "unknown" (a `.doc` file, or a `.docx` that never cached a
-          // page count) — showing "0 pages" would read as a real, wrong fact.
-          ...(source.pages > 0 ? [`${source.pages} pages`] : []),
-          formatBytes(source.bytes),
-        ]
-  ).join(' · ')
+  const facts = cardFacts(source)
 
   // Spec §13: the compact band drops the frame *and* the format and
   // dimensions, keeping only what identifies the file and how big it is.

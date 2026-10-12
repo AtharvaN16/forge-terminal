@@ -16,7 +16,7 @@ const prefsFor = (dir: string) => ({
 
 /**
  * Stages a PDF and backs out of the convert picker with esc, which returns
- * to the idle prompt *without* clearing the stage — a PDF has `/pdf` and a
+ * to home *without* clearing the stage — a PDF has `/pdf` and a
  * merge list still ahead of it (`backToPromptKeepingStage` in App.tsx).
  * Duplicated from `batch-refusal.test.tsx` rather than shared, matching this
  * suite's existing convention of each file keeping its own scenario helper.
@@ -64,7 +64,7 @@ describe('esc at the prompt', () => {
     // The buffer really did clear — the palette is gone and the prompt
     // shows its placeholder again, not the leftover "/conv" text.
     expect(afterEsc).not.toContain("change a file's format")
-    expect(afterEsc).toContain('drop a file or type a path')
+    expect(afterEsc).toContain('drop more, or type a path')
 
     // The stage really did survive: asking to /convert still has a.pdf to
     // act on, which only happens if the stage was never cleared. Landing
@@ -104,7 +104,7 @@ describe('esc at the prompt', () => {
     // first press only takes back "/U"; the stage is untouched by it.
     app.stdin.write(ESC)
     await settle()
-    expect(app.lastFrame() ?? '').toContain('drop a file or type a path')
+    expect(app.lastFrame() ?? '').toContain('drop more, or type a path')
 
     // A second press, now that the field is already empty, is what reaches
     // the stage.

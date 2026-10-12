@@ -81,6 +81,13 @@ export interface Palette {
    * tuning it never drags every other `warn` message's tone along with it.
    */
   larger: string
+  /**
+   * Done (K3·a): the hatching over the part a file grew by, the mirror of
+   * the grey hatching over what a smaller file shed. `larger` mixed 80% of
+   * the way into the background, so the hatching reads as orange without
+   * outshining the bold phrase beside it.
+   */
+  grownHatch: string
   /** Format tag inlined into the file card's border. */
   tag: string
   /** Section labels such as CONVERT TO. */
@@ -196,6 +203,8 @@ export const DARK: Palette = {
   // (~40°) — the two need to read as different colours next to each other,
   // not just different words.
   larger: '#f2994a',
+  // `larger` mixed 80% into `canvas` (#1e1e1e), as the mockup draws it.
+  grownHatch: '#c88041',
   tag: '#63c1d8',
   label: '#a68ce0',
   modeConvert: '#55c7d9',
@@ -256,6 +265,8 @@ export const LIGHT: Palette = {
   // (~34°) distinct from `warn`'s brown-gold, clearing AA the way `dim` and
   // `accent` above do.
   larger: '#9c5700',
+  // `larger` mixed 80% into `canvas` (#ffffff), as dark's is into its own.
+  grownHatch: '#b07933',
   tag: '#0a6b86',
   label: '#6141ad',
   modeConvert: '#087f91',
@@ -316,6 +327,8 @@ export const NEUTRAL: Palette = {
   // No distinct "orange" in the basic 16 ANSI names this palette is built
   // from — same collapse `accent` and `warn` already make here.
   larger: 'yellow',
+  // An ANSI name cannot be mixed; the hatching is `larger` itself.
+  grownHatch: 'yellow',
   tag: 'cyan',
   label: 'magenta',
   modeConvert: 'cyan',
