@@ -101,7 +101,21 @@ drop zone, picker bands, keycaps and the slider track. In the dark theme:
 | `keycapBg` | `#2e3340` | `#333333` |
 | `track`: slider | `#2a2e37` | `#2e2e2e` |
 
-The light theme's greys are warm, not blue, so they are unchanged.
+The text greys go neutral too. The secondary text also gets **more
+contrast**. The ratios below are measured on the `#1e1e1e` canvas and on the
+`#2c2c2c` panel:
+
+| Token | Was | Now | On canvas | On panel |
+| --- | --- | --- | --- | --- |
+| `fg`: main text | `#e4e8f0` | `#e7e7e7` | 13.5 | 11.3 |
+| `dim`: secondary text | `#8b93a6` (5.4) | `#b0b0b0` | 7.7 AAA | 6.4 AA |
+| `border`: dim labels, hints, frames | `#5f6879` (3.0) | `#808080` | 4.2 | 3.5 |
+| `faint`: dots, decoration | `#3d4350` | `#4d4d4d` | 2.0 | 1.7 |
+
+The comments in `theme.ts` that quote the old ratios are updated with the
+values. `textSelectionBg` (`#3f5c86`) stays blue, because it is a selection
+colour, not a grey. The light theme's greys are warm, not blue, so they are
+unchanged.
 
 This touches every screen, and it lands as its own commit on `dev`, ahead of
 colour mode, which only uses the tokens. Fixtures that encode the old greys
