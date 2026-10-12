@@ -29,6 +29,12 @@ function widestLine(frame: string): number {
   return Math.max(0, ...frame.split('\n').map(visibleWidth))
 }
 
+/** Polls for `ok`, up to 10 s: a busy CI runner can take seconds to probe or render. */
+async function waitFor(ok: () => boolean, ms = 10_000) {
+  const start = Date.now()
+  while (!ok() && Date.now() - start < ms) await settle(30)
+}
+
 /**
  * The idle stage is one bordered box and a hint line; every interesting
  * overflow lives further in. Save as's folder list in particular shows the
@@ -42,12 +48,15 @@ async function frameAtDestination(width: number, folders = true): Promise<string
   stdin.write(jpg)
   await settle()
   stdin.write(ENTER)
-  await settle(300)
+  await waitFor(() => (lastFrame() ?? '').includes('Convert to'))
+  // A step's key handler attaches just after its first frame.
+  await settle()
   // png is now the default highlighted target (jpeg is excluded as a
   // same-format no-op), and it's lossless, so the quality step is skipped.
   stdin.write(ENTER)
-  await settle(200)
+  await waitFor(() => (lastFrame() ?? '').includes('Save as'))
   if (folders) {
+    await settle()
     stdin.write('\t')
     await settle(200)
   }
@@ -98,7 +107,7 @@ describe('responsiveness', () => {
         expect(widestLine(frame)).toBeLessThanOrEqual(w)
       }
     }
-  })
+  }, 60_000)
 
   // `~/Desktop`, or `~\Desktop` on Windows, where displayPath keeps the native separator.
   const DESKTOP_ROW = new RegExp(`▌ Desktop\\s+~\\${sep}Desktop`)

@@ -199,6 +199,10 @@ describe('enhance mode', () => {
     await until(() => frame().includes('transparent PNG'))
     expect(frame()).not.toContain('checking')
     expect(frame()).not.toContain('Save as')
+    // The ready row is drawn a moment before Ink re-attaches the picker's key
+    // handler (an effect, after the frame); a key sent in that gap is dropped,
+    // not queued. Nothing on screen marks the handler, so give it its turn.
+    await settle(300)
     app.stdin.write(`${ESC}[A`)
     await until(() => frame().includes('4800 × 3600') || frame().includes('160 × 120'))
     expect(frame()).toContain('160 × 120')

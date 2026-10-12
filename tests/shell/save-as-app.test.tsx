@@ -35,12 +35,18 @@ async function atSaveAs() {
   await settle()
   app.stdin.write(file)
   await settle()
+  // Each step waits for its title, then a beat: its key handler attaches just after.
+  const reach = async (title: string) => {
+    await waitFor(() => lines(app.lastFrame()).includes(title))
+    await settle()
+  }
   app.stdin.write(ENTER)
-  await settle(400)
+  await reach(' Convert to')
   app.stdin.write(ENTER) // JPEG, the first target for a PNG
-  await settle(300)
+  await waitFor(() => /^ Quality/m.test(plain(app.lastFrame())))
+  await settle()
   app.stdin.write(ENTER) // the quality as it opens
-  await settle(300)
+  await reach(' Save as')
   return { app, dir }
 }
 
