@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
@@ -94,6 +94,27 @@ describe('dropping onto home', () => {
     const frame = plain(app.lastFrame())
     expect(frame).not.toContain('Convert PNG to')
     expect(fieldLine(frame)).toBe('    › drop more, or type a path')
+  }, 20_000)
+
+  it('makes ↵ wait for a drop still being read, rather than going on without it', async () => {
+    const dir = await makeTempDir()
+    const a = await makePng(dir, 'a.png')
+    const folder = join(dir, 'shots')
+    await mkdir(folder)
+    await makePng(folder, 'b.png')
+    await makePng(folder, 'c.png')
+    const app = home(dir)
+    await settle()
+
+    app.stdin.write(a)
+    await settle(400)
+    // The folder's read cannot finish between these two writes.
+    app.stdin.write(`${folder}\r`)
+    app.stdin.write(ENTER)
+    await settle(600)
+    const frame = plain(app.lastFrame())
+    expect(frame).not.toContain('Convert PNG to')
+    expect(frame).toContain('3 images')
   }, 20_000)
 
   it('says what it left out, and esc clears the stage and the line', async () => {

@@ -172,53 +172,19 @@ describe('shell flow', () => {
   })
 
   /**
-   * `probe()` is real disk I/O (stat, access, then sharp reading the file's
-   * header) and nothing moves `stage` off `'idle'` until it resolves, so the
-   * Prompt stays mounted for the whole `await` and a second, different
-   * submission can start a second, overlapping probe before the first
-   * settles. This deliberately does NOT `settle()` between the two writes —
-   * a real yield of even 1ms lets the first probe finish and `stage`
-   * advance past `'idle'` before the second write even happens (a local
-   * temp-file probe resolves in well under a millisecond), which unmounts
-   * the Prompt and makes the second write land on nothing — that is
-   * *first*-wins, correctly, because there was never a genuine second
-   * submission. A genuine overlap — two Enter-terminated paths that both
-   * actually reach `submitPath` — only exists with zero yield between the
-   * writes, exactly as two paths pasted back to back, or two chunks
-   * delivered in the same tick, would arrive.
+   * Two newline-terminated paths in the same tick, with no yield between
+   * them, are two drops (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md).
+   * Each read claims `requestId`, so the later one supersedes the earlier and
+   * only it lands. This pins a parked ruling, not the spec's "a second paste
+   * adds": a real drag cannot arrive inside one probe's latency, and a
+   * terminal splitting one long paste is safe — its second chunk lands in a
+   * field that already has text, and submits the whole of it.
    *
-   * Ordinary, unmodified writes: no backspacing, no clearing trick needed.
-   * `Prompt` resets its own buffer the instant it submits (see Prompt.tsx),
-   * so the second write's text does not concatenate onto the first's.
-   *
-   * Before that fix, this exact test reached neither file: the second
-   * write's characters landed on top of the still-unflushed first (React
-   * hadn't re-rendered `Prompt` yet, so its ref still held the first path),
-   * concatenating into a path nobody typed and that exists nowhere on disk.
-   * `probe()` rejected that bogus path with a raw `ENOTDIR` — not a
-   * `ForgeError`, since `engines/image.ts` only special-cases
-   * ENOENT/EACCES/EPERM — which `submitPath` rethrew as an unhandled
-   * promise rejection the UI never sees. Meanwhile the *first* probe, for a
-   * perfectly real file, resolved successfully but was (correctly, by its
-   * own logic) dropped as superseded, because the bogus second request had
-   * already claimed the latest id. Net effect: no card, no error, the shell
-   * silently and permanently stuck on the idle prompt. Confirmed with
-   * `process.stderr` instrumentation on both `submitPath` and `Prompt`'s
-   * handler — see the fix report for the literal trace.
-   *
-   * With the fix, both submissions are clean, so both probes resolve
-   * successfully. The id ordering is deterministic here (not a coin flip):
-   * the two writes are processed strictly in order by a single-threaded
-   * event loop, so the second submission's `submitPath` call always claims
-   * a strictly higher id than the first's, synchronously, before either one
-   * awaits. Whichever probe resolves in whatever real order, the first
-   * one's id is permanently stale by the time it settles, and the second's
-   * is permanently current — so the second (later-issued) submission always
-   * wins, cleanly. That is a different, and correct, contract from variants
-   * where a real yield elapses: there, the "second" write never becomes a
-   * submission at all, so of course the first stands.
+   * What it still guards from before the drop zone: the second write must not
+   * concatenate onto the first (a path nobody typed, which once left the
+   * shell silently stuck), and the result is exactly one file, never both.
    */
-  it('resolves a race between two submissions delivered in the same tick', async () => {
+  it('keeps only the later of two drops delivered in the same tick', async () => {
     const dir = await makeTempDir()
     const first = await makeJpeg(dir, 'first.jpg')
     const second = await makeJpeg(dir, 'second.jpg')

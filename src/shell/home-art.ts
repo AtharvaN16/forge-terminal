@@ -558,10 +558,17 @@ export function stagedListRows({
   if (length() > inner) spaced = false
   while (length() > inner && shown > 0) shown--
 
+  // A narrow panel shortens the name column rather than cutting the size off
+  // the end of every row (and a second ellipsis into the name).
+  const widest = Math.max(0, ...files.map((f) => stringWidth(f.size)))
+  const gap = NAME_COL - NAME_CLIP
+  const clipAt = Math.max(1, Math.min(NAME_CLIP, W - LIST_INDENT.length - gap - widest))
+  const bandW = Math.min(BAND_W, W - 2)
+
   const fileRow = (i: number): Row => {
     const f = files[i]
     if (!f) return []
-    const name = padTo(f.name, NAME_CLIP).padEnd(NAME_COL)
+    const name = padTo(f.name, clipAt).padEnd(clipAt + gap)
     if (i >= files.length - view.fresh) {
       const body: Run[] = [
         { text: '▌', fg: modeColours(palette, mode).fg },
@@ -569,7 +576,7 @@ export function stagedListRows({
         { text: name, fg: palette.fg },
         { text: f.size, fg: palette.dim },
       ].map((run) => ({ ...run, bg: palette.panelBand }))
-      const rest = BAND_W - width(body)
+      const rest = bandW - width(body)
       return [
         { text: '  ' },
         ...body,

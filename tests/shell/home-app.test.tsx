@@ -68,9 +68,7 @@ describe('the home screen in the app', () => {
   it('types digits once there is text in the field', async () => {
     const app = home(await makeTempDir())
     await settle()
-    // Typed a key at a time: a chunk of several would be a paste, read as a drop.
-    app.stdin.write('~')
-    app.stdin.write('/')
+    app.stdin.write('~/')
     await settle()
     app.stdin.write('2')
     await settle()
@@ -85,10 +83,7 @@ describe('the home screen in the app', () => {
     const app = home(dir)
     await settle()
 
-    // Typed rather than pasted: the first key makes the rest an edit, not a
-    // drop that would read the folder.
-    app.stdin.write(dir.slice(0, 1))
-    app.stdin.write(`${dir.slice(1)}/`)
+    app.stdin.write(`${dir}/`)
     await settle(300)
     let frame = plain(app.lastFrame())
     // The folder is a long temp path, shortened in the middle; the names are

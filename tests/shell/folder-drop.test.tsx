@@ -58,8 +58,8 @@ describe('dropping a folder', () => {
     await mkdir(dir)
 
     const frame = (await drop(dir)).lastFrame() ?? ''
-    expect(frame).toContain('1 file left out')
-    expect(frame).toContain('empty · no images found')
+    expect(frame).toContain('empty contains no')
+    expect(frame).not.toContain('left out')
     expect(frame).not.toContain('--recursive')
     expect(frame).not.toContain('Not a file')
   }, 20_000)

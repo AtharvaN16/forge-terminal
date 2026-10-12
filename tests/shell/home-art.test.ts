@@ -127,8 +127,8 @@ describe('the staged list', () => {
     total: '9.0 MB',
     fresh,
   })
-  const list = (v: StagedView, rows = 8) =>
-    stagedListRows({ width: 80, rows, palette, mode: 'convert', view: v })
+  const list = (v: StagedView, rows = 8, columns = 80) =>
+    stagedListRows({ width: columns, rows, palette, mode: 'convert', view: v })
   const text = (rows: ReturnType<typeof list>) => rows.map((r) => r.map((run) => run.text).join(''))
   const eight = Array.from({ length: 8 }, (_, i) => `img${i}.png`)
 
@@ -148,9 +148,16 @@ describe('the staged list', () => {
     expect(banded).toEqual([false, false, false, false, true, true, false, false])
   })
 
-  it('never lets a long name push a row past the terminal', () => {
-    const rows = list(view([`${'x'.repeat(60)}.png`, `${'y'.repeat(60)}.png`]), 8)
-    expect(text(rows).join('\n')).toContain('…')
-    for (const row of rows) expect(width(row)).toBeLessThanOrEqual(80)
+  it('never lets a long name push a row past the terminal, or its size off the end', () => {
+    for (const columns of [80, 40]) {
+      const rows = list(view([`${'x'.repeat(60)}.png`, `${'y'.repeat(60)}.png`], 1), 8, columns)
+      const named = text(rows).filter((t) => t.includes('…'))
+      expect(named).toHaveLength(2)
+      for (const t of named) {
+        expect(t.split('…')).toHaveLength(2)
+        expect(t).toContain('1.0 MB')
+      }
+      for (const row of rows) expect(width(row)).toBeLessThanOrEqual(columns)
+    }
   })
 })

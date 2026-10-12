@@ -658,6 +658,11 @@ export function App({
    */
   const stageRef = useRef(stage)
   stageRef.current = stage
+  /** Mirrors `step`, for a drop's read to know whether home is still showing. */
+  const stepRef = useRef(step)
+  stepRef.current = step
+  /** The `requestId` of a drop being read right now, or 0 — ↵ waits on it. */
+  const dropReading = useRef(0)
   /**
    * How many of the last staged files the latest drop added, for the band
    * they wear for `FRESH_MS`. `at` makes each drop a new value, so a second
@@ -841,7 +846,10 @@ export function App({
         !key.meta &&
         !isStrayEscapeSequence(input) &&
         pasted.trim() !== '' &&
-        !isCommandBuffer(pasted)
+        !isCommandBuffer(pasted) &&
+        // A drag never ends a path in a slash; "~/Desktop/" pasted to be
+        // finished by hand is typing, and stays in the field.
+        !/\/\s*$/.test(pasted)
       ) {
         // With a line break the field would submit it, so it is taken here;
         // without one the field shows it while it is read.
@@ -849,6 +857,9 @@ export function App({
         readDrop(pasted, broke)
         return broke
       }
+      // ↵ waits for a drop still being read: acting on the stage as it stood
+      // would let the read land mid-wizard and add files the run never sees.
+      if (key.return && dropReading.current !== 0) return true
       const staged = stageRef.current
       if (key.return && staged.sources.length > 0) {
         const [only] = staged.sources
@@ -1518,19 +1529,39 @@ export function App({
    */
   const readDrop = (pasted: string, broke: boolean) => {
     const id = ++requestId.current
+    dropReading.current = id
+    const settled = () => {
+      if (dropReading.current === id) dropReading.current = 0
+      // Superseded, or home was left meanwhile (a command run from the list):
+      // a stage changing under a wizard would wipe its answers.
+      return requestId.current === id && stepRef.current === 'idle'
+    }
     const leaveAsText = () => {
       if (broke && textRef.current === '') setText(pasted)
     }
     resolveDrop(pasted).then(
       (drop) => {
-        if (requestId.current !== id) return
+        if (!settled()) return
         // Typed into since, without a line break: an edit, not a drop.
         if (!broke && textRef.current !== pasted) return
-        if (drop.anyExists) landDrop(drop)
-        else leaveAsText()
+        if (!drop.anyExists) {
+          leaveAsText()
+          return
+        }
+        // Only empty folders: nothing was left out, there was nothing to
+        // read. Said the way a typed folder says it, hint and all.
+        if (
+          drop.sources.length === 0 &&
+          drop.failures.every((f) => f.error.code === 'empty-directory')
+        ) {
+          setText('')
+          for (const failure of drop.failures) showError(failure.error)
+          return
+        }
+        landDrop(drop)
       },
       () => {
-        if (requestId.current === id) leaveAsText()
+        if (settled()) leaveAsText()
       },
     )
   }
