@@ -1,7 +1,8 @@
 import { statSync } from 'node:fs'
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { expandTilde } from '../config/preferences.js'
 import type { Choice, PathPreset } from '../core/actions/index.js'
+import { displayName } from '../utils/display-path.js'
 import { unescapePath } from '../utils/unescape-path.js'
 
 /** The value of the one row that says nothing matched. Never a folder. */
@@ -46,7 +47,7 @@ export function destinationRows(
     return [
       {
         value: folder,
-        label: isFile ? `Next to ${basename(query)}` : 'Use this folder',
+        label: isFile ? `Next to ${displayName(query)}` : 'Use this folder',
         hint: preview(folder),
       },
     ]

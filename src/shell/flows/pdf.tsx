@@ -1,4 +1,3 @@
-import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
@@ -10,7 +9,7 @@ import { everyNCuts, everyPageCuts } from '../../core/actions/split.js'
 import { isForgeError } from '../../core/errors.js'
 import { formatRanges, parseRanges } from '../../core/pages.js'
 import type { DocumentInfo, Job, SourceInfo } from '../../core/types.js'
-import { displayPath } from '../../utils/display-path.js'
+import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { ErrorLine } from '../components/ErrorLine.js'
 import { FilledField } from '../components/FilledField.js'
@@ -627,7 +626,7 @@ export function PdfFlow({
 
   /** What a question is about, at its title's right: the file, and its pages. */
   const docAside = doc
-    ? `${basename(doc.path)} · ${doc.pages} pages`
+    ? `${displayName(doc.path)} · ${doc.pages} pages`
     : `${stage.sources.length} files`
   const pagesAside = doc ? `${doc.pages} pages` : undefined
   const mergeSources = mergeShown ?? mergeOrder ?? stage.sources
@@ -651,7 +650,7 @@ export function PdfFlow({
    * extract), what they will be called, which is shown and not edited.
    */
   const outputs = job?.outputs ?? []
-  const first = basename(outputs[0] ?? '')
+  const first = displayName(outputs[0] ?? '')
   const dot = first.lastIndexOf('.')
   const proposal =
     outputs.length > 1

@@ -1,4 +1,4 @@
-import { basename, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { paletteCard, scaleCard } from '../core/colour/card.js'
 import { onWhiteAndBlack, rate } from '../core/colour/contrast.js'
 import { type Group, inside, palette, wholePercents } from '../core/colour/palette.js'
@@ -8,6 +8,7 @@ import { nothingVisible } from '../core/errors.js'
 import { paletteJson, scaleJson } from '../core/report-data.js'
 import { samplePixels } from '../engines/pixels.js'
 import { VERSION } from '../shell/theme.js'
+import { displayName } from '../utils/display-path.js'
 import type { PaletteIntent, ScaleIntent } from './args.js'
 import type { ExecuteResult } from './execute.js'
 
@@ -47,7 +48,7 @@ export async function runPalette(intent: PaletteIntent, opts: Opts): Promise<Exe
   const parent = intent.inside ? nearest(top, intent.inside) : undefined
   const groups = parent ? inside(pixels, parent) : top
   if (intent.svg) {
-    const svg = paletteCard(basename(intent.input), groups, 'light', parent?.hex)
+    const svg = paletteCard(displayName(intent.input), groups, 'light', parent?.hex)
     return { exitCode: 0, stdout: [svg], stderr: [] }
   }
   if (opts.json) {

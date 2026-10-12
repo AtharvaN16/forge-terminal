@@ -1,10 +1,11 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import { boostTooLarge, conversionFailed, extensionMissing, isForgeError } from '../core/errors.js'
 import { boostOverLimit } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import type { Job, Progress, Result, Warning } from '../core/types.js'
+import { displayName } from '../utils/display-path.js'
 import { decodeToPng, encode, writeAtomic } from './image.js'
 import { loadSharp } from './libs.js'
 import type { Engine } from './types.js'
@@ -57,7 +58,7 @@ async function run(
   if (source.frames > 1) {
     warnings.push({
       code: 'animation-flattened',
-      message: `${basename(source.path)} has ${source.frames} frames. Only the first frame was used.`,
+      message: `${displayName(source.path)} has ${source.frames} frames. Only the first frame was used.`,
     })
   }
 
@@ -87,7 +88,7 @@ async function run(
         : [input, result]
     await runExtension(ext, args, {
       subject: source.path,
-      what: `${toolVerb(job)} is running on ${basename(source.path)}`,
+      what: `${toolVerb(job)} is running on ${displayName(source.path)}`,
       onWait: () => onPhase({ phase: 'waiting' }),
       onStart: () => onPhase({ phase: 'encoding' }),
       ...(job.op === 'boost' ? { maxScale: maxBoost(source.width, source.height, job.scale) } : {}),

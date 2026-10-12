@@ -1,4 +1,3 @@
-import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
@@ -18,6 +17,7 @@ import { formatOklch, formatRgb, type Rgb } from '../../core/colour/space.js'
 import { isForgeError, nothingVisible } from '../../core/errors.js'
 import { formatBytes } from '../../core/units.js'
 import { samplePixels } from '../../engines/pixels.js'
+import { displayName } from '../../utils/display-path.js'
 import { unescapePath } from '../../utils/unescape-path.js'
 import type { Trail } from '../bar-art.js'
 import { copy } from '../clipboard.js'
@@ -169,7 +169,7 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
       dispatch({
         type: 'opened',
         path: raw,
-        name: basename(path),
+        name: displayName(path),
         meta: `${source.width}×${source.height} · ${formatBytes(source.bytes)}`,
       })
     } catch (e) {

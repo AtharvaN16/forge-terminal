@@ -1,7 +1,7 @@
-import { basename } from 'node:path'
 import stringWidth from 'string-width'
 import { FORMATS } from '../core/formats.js'
 import type { Job, Phase } from '../core/types.js'
+import { displayName } from '../utils/display-path.js'
 import { blank, clip, type Row, type Run } from './home-art.js'
 import { modeColours, type Palette, type ShellMode } from './theme.js'
 
@@ -137,7 +137,7 @@ export function phaseLabel(job: Job, phase: Phase): string {
     case 'writing': {
       const [only] = job.outputs
       return job.outputs.length === 1 && only
-        ? `Writing ${basename(only)}`
+        ? `Writing ${displayName(only)}`
         : `Writing ${job.outputs.length} files`
     }
   }
