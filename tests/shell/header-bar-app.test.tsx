@@ -78,6 +78,12 @@ describe('1–5 switch mode on a screen with no text field', () => {
 
   it('does nothing for the mode already on', async () => {
     const { app } = await atFormat()
+    // The highlighted row measures its size in the background; let that land
+    // first, or the frame changes under the test for a reason of its own.
+    const start = Date.now()
+    while (plain(app.lastFrame()).includes('measuring…') && Date.now() - start < 10_000) {
+      await settle(30)
+    }
     const before = plain(app.lastFrame())
     app.stdin.write('1')
     await settle()

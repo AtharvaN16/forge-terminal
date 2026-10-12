@@ -117,26 +117,30 @@ describe('shell conversion', () => {
     app.stdin.write(jpg)
     await settle()
     app.stdin.write(ENTER) // submit path
-    await settle(300)
+    await until(app.lastFrame, 'Convert to')
     app.stdin.write(DOWN) // webp (jpeg excluded, so png, webp, avif…)
-    await settle()
+    await until(app.lastFrame, '▌ WebP')
     app.stdin.write(ENTER)
-    await settle()
+    await until(app.lastFrame, 'smaller')
     app.stdin.write(ENTER) // quality -> Save as
-    await settle(300)
+    await until(app.lastFrame, 'Save as')
     // Both in one tick, at the step that actually submits the conversion.
     // React unmounts the handler on the next render, but both calls have
     // already run by then — which is exactly what `converting` guards.
     app.stdin.write(ENTER)
     app.stdin.write(ENTER)
-    await settle(900)
     // Asserted on disk, not on the frame. "Exactly one conversion" is a claim
     // about what was written, and the result block lives in <Static>, which a
     // later dynamic render pushes out of what `lastFrame()` returns — so
     // counting ✓ in the frame measured render timing, not conversions.
     const { readdir } = await import('node:fs/promises')
-    const written = (await readdir(dir)).filter((f) => f.endsWith('.webp'))
-    expect(written).toHaveLength(1)
+    const webps = async () => (await readdir(dir)).filter((f) => f.endsWith('.webp'))
+    // The first lands when it lands (seconds on a busy runner); a second
+    // conversion, were there one, gets the same 900 ms after it.
+    const start = Date.now()
+    while ((await webps()).length === 0 && Date.now() - start < 10_000) await settle(30)
+    await settle(900)
+    expect(await webps()).toHaveLength(1)
   })
 
   /**

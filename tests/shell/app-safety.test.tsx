@@ -128,8 +128,12 @@ describe('an existing output is a question, not a silent overwrite', () => {
     stdin.write(DOWN)
     await settle()
     stdin.write(ENTER)
-    await settle(700)
-    expect((await readFile(existing)).equals(before)).toBe(false)
+    // Up to 10 s: on Windows the rename over a file just written can wait out
+    // a scanner holding it (renameAtomic's retries), past any fixed pause.
+    const replaced = async () => !(await readFile(existing)).equals(before)
+    const start = Date.now()
+    while (!(await replaced()) && Date.now() - start < 10_000) await settle(30)
+    expect(await replaced()).toBe(true)
   })
 
   it('cancels: writes nothing and comes back to Save as', async () => {

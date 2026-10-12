@@ -143,30 +143,34 @@ describe('the shell — page and resolution steps, live progress', () => {
       <App initialWidth={100} initialHeight={24} prefs={prefsFor(dir)} />,
     )
 
+    // Each step waits for its screen (a cold PDF probe can take seconds on a
+    // busy runner), then a beat: its key handler attaches just after.
+    const reach = async (text: string) => {
+      const frame = await waitFor(lastFrame, (f) => plain(f).includes(text), 10_000, 30)
+      await settle(100)
+      return frame
+    }
+
     stdin.write(file)
     await settle()
     stdin.write(ENTER) // stage the file -> target picker (jpeg is first)
-    await settle(400)
-    expect(lastFrame() ?? '').toContain('Convert to')
+    expect(await reach('Convert to')).toContain('Convert to')
 
     stdin.write(ENTER) // choose jpeg -> pages step
-    await settle(300)
-    expect(lastFrame() ?? '').toContain('Pages')
+    expect(await reach('Pages')).toContain('Pages')
 
     stdin.write(ENTER) // "All pages" (default, first choice) -> dpi step
-    await settle(300)
-    expect(lastFrame() ?? '').toContain('Resolution')
+    expect(await reach('Resolution')).toContain('Resolution')
     // Audit #8: the step opens on the spec's default (150), not its first row.
     expect(plain(lastFrame())).toContain('▌ 150 dpi')
 
     stdin.write(DOWN) // 150 -> 300 dpi
-    await settle()
+    await reach('▌ 300 dpi')
     stdin.write(ENTER) // -> quality (jpeg is lossy)
-    await settle(300)
+    await reach('Quality')
     stdin.write(ENTER) // accept default quality -> Save as
-    await settle(300)
+    await reach('Save as')
     stdin.write(ENTER) // Save as, on the folder -> runs: a document has no one name to give
-    await settle(300)
 
     // Caught mid-run: a real page count, not a blank or completed frame.
     // Invariant 7 forbids a fabricated position, so this only passes if the

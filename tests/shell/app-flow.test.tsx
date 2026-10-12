@@ -21,6 +21,12 @@ const ENTER = String.fromCharCode(13)
  */
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 
+/** Polls for `ok`, up to 10 s: a cold probe on a busy CI runner can take seconds. */
+async function waitFor(ok: () => boolean, ms = 10_000) {
+  const start = Date.now()
+  while (!ok() && Date.now() - start < ms) await settle(30)
+}
+
 describe('shell flow', () => {
   it('starts by asking for a file', () => {
     const frame = render(<App initialWidth={80} />).lastFrame() ?? ''
@@ -34,7 +40,7 @@ describe('shell flow', () => {
     stdin.write(jpg)
     await settle()
     stdin.write(ENTER)
-    await settle(300)
+    await waitFor(() => (lastFrame() ?? '').includes('photo.jpg'))
     const frame = lastFrame() ?? ''
     expect(frame).toContain('photo.jpg')
     expect(frame).toContain('JPEG')

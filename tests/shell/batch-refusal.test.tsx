@@ -8,6 +8,7 @@ import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 
 const prefsFor = (dir: string) => ({
   ...DEFAULT_PREFERENCES,
@@ -71,14 +72,21 @@ describe('several files at once', () => {
     const dir = await makeTempDir()
     const solo = await makeJpeg(dir, 'solo.jpg')
     const app = render(<App initialWidth={100} prefs={prefsFor(dir)} />)
+    // Each step waits for its screen, then a beat: its key handler attaches just after.
+    const reach = async (text: string) => {
+      const start = Date.now()
+      const shown = () => (app.lastFrame() ?? '').replace(SGR, '').includes(text)
+      while (!shown() && Date.now() - start < 10_000) await settle(30)
+      await settle(100)
+    }
     app.stdin.write(solo)
     await settle()
     app.stdin.write(ENTER) // submit the path -> target picker
-    await settle(300)
+    await reach('Convert to')
     app.stdin.write(ENTER) // the first offered target: PNG, lossless, so no quality
-    await settle()
+    await reach('Save as')
     app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
-    await settle(600)
+    await reach('convert another')
 
     expect(app.lastFrame() ?? '').not.toContain("isn't supported yet")
     const written = (await readdir(dir)).filter((f) => f !== 'solo.jpg')
