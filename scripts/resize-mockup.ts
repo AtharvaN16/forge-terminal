@@ -171,7 +171,11 @@ function field(
 ): Row[] {
   const w = opts.w ?? 76
   const fill = [run(' '.repeat(w), undefined, L.field)]
-  const left: Row = [run(' ', undefined, L.field), run('›', L.mode, L.field), run(' ', undefined, L.field)]
+  const left: Row = [
+    run(' ', undefined, L.field),
+    run('›', L.mode, L.field),
+    run(' ', undefined, L.field),
+  ]
   if (value) left.push(run(value, L.fg, L.field), run(' ', L.fg, L.fg))
   else left.push(run(' ', L.fg, L.fg), run(opts.placeholder ?? '', L.quiet, L.field))
   if (opts.suffix) left.push(run(` ${opts.suffix}`, L.dim, L.field))
@@ -233,24 +237,42 @@ const UNITS = ['%', 'width', 'height']
 
 // R1 — Target size's own field: a number, its unit on the right, tab switches.
 const r1 = (L: Look): Row[][] => [
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '', { placeholder: 'type a number', units: UNITS, unit: 0 }),
-  ], FIELD_KEYS(L, [['tab', 'unit']])),
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '50', { units: UNITS, unit: 0 }),
-    [],
-    result(L, '2016 × 1512'),
-  ], FIELD_KEYS(L, [['tab', 'unit']])),
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '1200', { units: UNITS, unit: 1 }),
-    [],
-    result(L, '1200 × 900'),
-  ], FIELD_KEYS(L, [['tab', 'unit']])),
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '5000', { units: UNITS, unit: 1 }),
-    [],
-    result(L, undefined, 'wider than the photo · Boost resolution makes it bigger'),
-  ], FIELD_KEYS(L, [['tab', 'unit']])),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...field(L, '', { placeholder: 'type a number', units: UNITS, unit: 0 })],
+    FIELD_KEYS(L, [['tab', 'unit']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...field(L, '50', { units: UNITS, unit: 0 }), [], result(L, '2016 × 1512')],
+    FIELD_KEYS(L, [['tab', 'unit']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...field(L, '1200', { units: UNITS, unit: 1 }), [], result(L, '1200 × 900')],
+    FIELD_KEYS(L, [['tab', 'unit']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [
+      ...field(L, '5000', { units: UNITS, unit: 1 }),
+      [],
+      result(L, undefined, 'wider than the photo · Boost resolution makes it bigger'),
+    ],
+    FIELD_KEYS(L, [['tab', 'unit']]),
+  ),
 ]
 
 // R2 — presets, with "Custom size" opening R1's field.
@@ -292,16 +314,38 @@ function percentSlider(L: Look, v: number): Row[] {
   ]
 }
 const r3 = (L: Look): Row[][] => [
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...percentSlider(L, 50),
-    [],
-    result(L, '2016 × 1512'),
-  ], keys(L, [['←→', 'adjust'], ['↵', 'confirm'], ['#', 'exact size']], 'esc back · ctrl-c quit')),
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...percentSlider(L, 25),
-    [],
-    result(L, '1008 × 756'),
-  ], keys(L, [['←→', 'adjust'], ['↵', 'confirm'], ['#', 'exact size']], 'esc back · ctrl-c quit')),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...percentSlider(L, 50), [], result(L, '2016 × 1512')],
+    keys(
+      L,
+      [
+        ['←→', 'adjust'],
+        ['↵', 'confirm'],
+        ['#', 'exact size'],
+      ],
+      'esc back · ctrl-c quit',
+    ),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...percentSlider(L, 25), [], result(L, '1008 × 756')],
+    keys(
+      L,
+      [
+        ['←→', 'adjust'],
+        ['↵', 'confirm'],
+        ['#', 'exact size'],
+      ],
+      'esc back · ctrl-c quit',
+    ),
+  ),
   screen(
     L,
     { answers: ['Resize', 'Exact size'], current: 'Size' },
@@ -333,18 +377,30 @@ function pair(L: Look, w: string, h: string, focus: 0 | 1, typed: boolean): Row[
   ]
 }
 const r4 = (L: Look): Row[][] => [
-  screen(L, SIZE_TRAIL, 'Resize to', 'IMG_2041.jpg', pair(L, '4032', '3024', 0, false),
-    FIELD_KEYS(L, [['tab', 'width / height']])),
-  screen(L, SIZE_TRAIL, 'Resize to', 'IMG_2041.jpg', [
-    ...pair(L, '1200', '900', 0, true),
-    [],
-    [blank(1), run('was 4032 × 3024', L.dim)],
-  ], FIELD_KEYS(L, [['tab', 'width / height']])),
-  screen(L, SIZE_TRAIL, 'Resize to', 'IMG_2041.jpg', [
-    ...pair(L, '1440', '1080', 1, true),
-    [],
-    [blank(1), run('was 4032 × 3024', L.dim)],
-  ], FIELD_KEYS(L, [['tab', 'width / height']])),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    'IMG_2041.jpg',
+    pair(L, '4032', '3024', 0, false),
+    FIELD_KEYS(L, [['tab', 'width / height']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    'IMG_2041.jpg',
+    [...pair(L, '1200', '900', 0, true), [], [blank(1), run('was 4032 × 3024', L.dim)]],
+    FIELD_KEYS(L, [['tab', 'width / height']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    'IMG_2041.jpg',
+    [...pair(L, '1440', '1080', 1, true), [], [blank(1), run('was 4032 × 3024', L.dim)]],
+    FIELD_KEYS(L, [['tab', 'width / height']]),
+  ),
 ]
 
 // R5 — choose the kind first, then one number with its unit written in.
@@ -377,25 +433,30 @@ function chips(L: Look, on?: number): Row {
   return row
 }
 const r6 = (L: Look): Row[][] => [
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '', { placeholder: 'a percentage or a size' }),
-    [],
-    chips(L),
-  ], FIELD_KEYS(L, [['tab', 'fill an example']])),
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '1920 wide'),
-    [],
-    chips(L, 1),
-    [],
-    result(L, '1920 × 1440'),
-  ], FIELD_KEYS(L, [['tab', 'fill an example']])),
-  screen(L, SIZE_TRAIL, 'Resize to', ASIDE, [
-    ...field(L, '1200x800'),
-    [],
-    chips(L),
-    [],
-    result(L, '1067 × 800 · fits inside 1200 × 800'),
-  ], FIELD_KEYS(L, [['tab', 'fill an example']])),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...field(L, '', { placeholder: 'a percentage or a size' }), [], chips(L)],
+    FIELD_KEYS(L, [['tab', 'fill an example']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...field(L, '1920 wide'), [], chips(L, 1), [], result(L, '1920 × 1440')],
+    FIELD_KEYS(L, [['tab', 'fill an example']]),
+  ),
+  screen(
+    L,
+    SIZE_TRAIL,
+    'Resize to',
+    ASIDE,
+    [...field(L, '1200x800'), [], chips(L), [], result(L, '1067 × 800 · fits inside 1200 × 800')],
+    FIELD_KEYS(L, [['tab', 'fill an example']]),
+  ),
 ]
 
 /* ------------------------------------- round two: R3 revised (picked) */
@@ -434,10 +495,14 @@ const keycap = (L: Look, k: string): Run => run(` ${k} `, L.fg, L.keycap, true)
 
 /** What the slider gives, and — past 100 % — that Boost does bigger better. */
 function sliderResult(L: Look, v: number, right: Row = []): Row[] {
-  const dims = v === 100 ? [run('same size · ', L.dim), run(at(v), L.fg, undefined, true)] : [run('becomes ', L.dim), run(at(v), L.fg, undefined, true)]
+  const dims =
+    v === 100
+      ? [run('same size · ', L.dim), run(at(v), L.fg, undefined, true)]
+      : [run('becomes ', L.dim), run(at(v), L.fg, undefined, true)]
   const row: Row = [blank(1), ...dims]
   const rows: Row[] = [right.length ? [...pad(row, 1 + SLIDER - width(right)), ...right] : row]
-  if (v > 100) rows.push([blank(1), run('stretched, so softer · Boost resolution adds detail', L.quiet)])
+  if (v > 100)
+    rows.push([blank(1), run('stretched, so softer · Boost resolution adds detail', L.quiet)])
   return rows
 }
 
@@ -457,7 +522,14 @@ function sliderScreen(L: Look, v: number, hint: HintAt): Row[] {
     'Resize to',
     ASIDE,
     body,
-    keys(L, [['←→', 'adjust'], ['↵', 'confirm']], 'esc back · ctrl-c quit'),
+    keys(
+      L,
+      [
+        ['←→', 'adjust'],
+        ['↵', 'confirm'],
+      ],
+      'esc back · ctrl-c quit',
+    ),
   )
 }
 const slidersAt = (hint: HintAt) => (L: Look) => [100, 50, 150].map((v) => sliderScreen(L, v, hint))
@@ -465,19 +537,25 @@ const slidersAt = (hint: HintAt) => (L: Look) => [100, 50, 150].map((v) => slide
 /** # from the slider: R4's pair, already holding the slider's size. */
 const EXACT_TRAIL = { answers: ['Resize', 'Exact size'], current: 'Size' }
 const exactKeys = (L: Look) =>
-  keys(L, [['↵', 'confirm'], ['tab', 'width / height']], 'esc slider · ctrl-c quit')
+  keys(
+    L,
+    [
+      ['↵', 'confirm'],
+      ['tab', 'width / height'],
+    ],
+    'esc slider · ctrl-c quit',
+  )
 const exact = (L: Look): Row[][] => [
-  screen(L, EXACT_TRAIL, 'Exact size', ASIDE, [
-    ...pair(L, '2016', '1512', 0, false),
-  ], exactKeys(L)),
-  screen(L, EXACT_TRAIL, 'Exact size', ASIDE, [
-    ...pair(L, '1200', '900', 0, true),
-  ], exactKeys(L)),
-  screen(L, EXACT_TRAIL, 'Exact size', ASIDE, [
-    ...pair(L, '20000', '15000', 0, true),
-    [],
-    [blank(1), run('over 16,384 px a side', L.warn)],
-  ], exactKeys(L)),
+  screen(L, EXACT_TRAIL, 'Exact size', ASIDE, [...pair(L, '2016', '1512', 0, false)], exactKeys(L)),
+  screen(L, EXACT_TRAIL, 'Exact size', ASIDE, [...pair(L, '1200', '900', 0, true)], exactKeys(L)),
+  screen(
+    L,
+    EXACT_TRAIL,
+    'Exact size',
+    ASIDE,
+    [...pair(L, '20000', '15000', 0, true), [], [blank(1), run('over 16,384 px a side', L.warn)]],
+    exactKeys(L),
+  ),
 ]
 
 /* ------------------------------------------------------------- render */
@@ -489,8 +567,6 @@ const GLYPH: Record<string, string> = {
   '▄': 'l',
   '█': 'f',
   '▌': 'h',
-  '': 'si',
-  '': 'so',
 }
 
 function html(rows: Row[], p: Palette): string {
@@ -502,7 +578,11 @@ function html(rows: Row[], p: Palette): string {
       let out = ''
       let used = 0
       for (const x of r) {
-        const style = [x.fg ? `color:${x.fg}` : '', x.bg ? `background:${x.bg}` : '', x.bold ? 'font-weight:700' : '']
+        const style = [
+          x.fg ? `color:${x.fg}` : '',
+          x.bg ? `background:${x.bg}` : '',
+          x.bold ? 'font-weight:700' : '',
+        ]
           .filter(Boolean)
           .join(';')
         let inner = ''
@@ -528,7 +608,10 @@ function figure(f: Fig): string {
   const themes = [DARK, LIGHT]
     .map((p) => {
       const L = lookOf(p)
-      return `<div class="theme ${p.name}">${f.draw(L).map((fr) => html(fr, L.p)).join('')}</div>`
+      return `<div class="theme ${p.name}">${f
+        .draw(L)
+        .map((fr) => html(fr, L.p))
+        .join('')}</div>`
     })
     .join('')
   return `<figure><div class="vt"><span class="id">${f.id}</span><span class="name">${f.name}</span>${f.pick ? '<span class="pick">MY PICK</span>' : ''}</div>${themes}<p class="idea">${f.note}</p></figure>`

@@ -2,8 +2,9 @@ import { isAbsolute } from 'node:path'
 import * as z from 'zod'
 import type { PageOpIntent } from '../cli/args.js'
 import { DEFAULT_PREFERENCES } from '../config/preferences.js'
-import { ACTIONS, type OptionSpec, rotateAction, splitAction } from '../core/actions/index.js'
+import { type OptionSpec, PAGE_ACTIONS, rotateAction, splitAction } from '../core/actions/index.js'
 import { writableFormats } from '../core/capabilities.js'
+import { RESIZE_MAX } from '../core/resize.js'
 import type { DocumentInfo, FormatId } from '../core/types.js'
 
 /**
@@ -35,10 +36,11 @@ const ANY_PDF: DocumentInfo = {
 /** Every format some engine writes (invariant 2). */
 export const TARGETS = writableFormats() as [FormatId, ...FormatId[]]
 
-/** The page operations: every action except the two that are not about pages. */
-export const PAGE_OPS = ACTIONS.map((a) => a.id).filter(
-  (id) => id !== 'convert' && id !== 'compress',
-) as [PageOpIntent['action'], ...PageOpIntent['action'][]]
+/** The page operations: every action that is about pages. */
+export const PAGE_OPS = PAGE_ACTIONS.map((a) => a.id) as [
+  PageOpIntent['action'],
+  ...PageOpIntent['action'][],
+]
 
 export const ROTATE_DEGREES = selectValues(
   rotateAction.options([ANY_PDF], {}, DEFAULT_PREFERENCES),
@@ -83,7 +85,12 @@ export const FormatsInput = z.object({})
 
 export const ConvertInput = z.object({
   paths: paths.describe('Absolute paths of files, folders or globs to convert.'),
-  to: z.enum(TARGETS).describe('Target format id. Use "jpeg" for JPG.'),
+  to: z
+    .enum(TARGETS)
+    .optional()
+    .describe(
+      'Target format id. Use "jpeg" for JPG. Required, except with trim or resize, which keep each image\'s own format when it is omitted.',
+    ),
   output: absolutePath
     .optional()
     .describe('A folder (or, for one input, a file) to write to. Default: beside each source.'),
@@ -107,6 +114,22 @@ export const ConvertInput = z.object({
     .optional()
     .describe('Replace existing outputs. Default false — only when the user asked.'),
   recursive: z.boolean().optional().describe('Descend into subfolders of a folder input.'),
+  trim: z
+    .boolean()
+    .optional()
+    .describe(
+      'Images only: cut transparent or solid-colour edges, writing name-trimmed. Keeps the format unless `to` is given. Refused for animated images and when nothing would be trimmed (unless also resizing).',
+    ),
+  resize: z
+    .union([
+      z.strictObject({ percent: z.number().min(1).max(RESIZE_MAX) }),
+      z.strictObject({ width: z.number().int().min(1) }),
+      z.strictObject({ height: z.number().int().min(1) }),
+    ])
+    .optional()
+    .describe(
+      'Images only: resize to { percent } of the size (1-200), or an exact { width } or { height } with the other side following. Writes name-<W>x<H>; with trim, name-trimmed-<50pct|1200w|900h>. Keeps the format unless `to` is given. No side over 16384 px, no more than 100 MP.',
+    ),
   sharpen: z
     .boolean()
     .optional()

@@ -51,6 +51,9 @@ export interface ResultView {
 function verbFor(job: Job): string {
   switch (job.op) {
     case 'convert':
+      if (job.options.trim && job.options.resize) return 'trimmed and resized'
+      if (job.options.resize) return 'resized'
+      if (job.options.trim) return 'trimmed'
       return job.target === job.sources[0].format ? 'compressed' : 'converted'
     case 'merge':
       return 'merged'

@@ -64,6 +64,23 @@ Outputs go beside the source unless `-o` names a folder (or, for one file, a
 filename). Page operations always write beside the source, take no `-o`, and
 never edit the original.
 
+## Resize and trim edges
+
+Built in, images only, format kept unless `--to` is given:
+
+```bash
+forge photo.jpg --resize 50% --json    # photo-<W>x<H>.jpg (percent 1-200)
+forge photo.jpg --width 1200 --json    # height follows; --height 900 likewise
+forge photo.jpg --trim --json          # photo-trimmed.jpg
+forge photo.jpg --trim --width 1200 --to webp --json   # photo-trimmed-1200w.webp
+```
+
+One of `--resize` / `--width` / `--height` at a time; not with `--max-size`,
+`--sharpen`, `--boost`, `--remove-bg` or page operations (`invalid-arguments`).
+Runtime refusals: `resize-too-large` (over 16,384 px a side or 100 MP),
+`nothing-to-trim`, `animated-trim`. MCP: `forge_convert` with `trim: true`
+and/or `resize: { percent | width | height }`; `to` is then optional.
+
 ## Optional extensions: boost and remove background
 
 Two image operations are not built in. They are small downloads, installed once,

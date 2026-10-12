@@ -27,7 +27,7 @@ const fake = fakeExtensions()
 afterEach(() => fake.restore())
 
 describe('enhance mode', () => {
-  it('lists three rows with the highlighted one’s details in a pane, installs a missing tool in place, then goes on to Save as and runs', async () => {
+  it('lists the rows with the highlighted one’s details in a pane, installs a missing tool in place, then goes on to Save as and runs', async () => {
     const home = await fake.home()
     await fake.install(home, 'boost')
     const installed = new Set<string>(['boost'])
@@ -165,7 +165,8 @@ describe('enhance mode', () => {
     app.stdin.write(ENTER)
     await until(() => frame().includes('Enhance PNG'))
     await settle(300)
-    for (let i = 0; i < 3; i++) {
+    // Sharpen, Boost resolution, then Remove background (Trim and Resize follow).
+    for (let i = 0; i < 2; i++) {
       app.stdin.write(DOWN)
       await settle(60)
     }

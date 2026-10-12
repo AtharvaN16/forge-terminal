@@ -1,25 +1,31 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
-import { targetIdsFor } from '../core/capabilities.js'
+import { resizeAction, trimAction } from '../core/actions/resize.js'
 import {
   BOOST_MAX_SIDE,
   type BoostScale,
   boostOverLimit,
   boostScales,
 } from '../core/extension-targets.js'
+import { keptFormat } from '../core/resize.js'
 import type { FormatId, ImageInfo } from '../core/types.js'
+import type { ImageMeasure } from '../engines/image.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
 
 /**
  * Enhance (mode 5, mockups/extensions-2026-10.html tabs Flow and 1 Picker;
- * mockups/boost-row-2026-10.html B3 and S1): one picker of three rows, each
- * one of the two optional extensions run a particular way. Boost resolution
- * is one row whose scale changes on the row. Pure: what the rows are and say
- * for an image, nothing drawn.
+ * mockups/boost-row-2026-10.html B3 and S1): one picker of rows, the first
+ * three each one of the two optional extensions run a particular way —
+ * Boost resolution one row whose scale changes on the row — then, after one
+ * blank row (E3, mockups/resize-2026-10.html), Trim edges and Resize, which
+ * are built in. Pure: what the rows are and say for an image, nothing drawn.
  */
 
-export type EnhanceToolId = 'sharpen' | 'boost' | 'cutout'
+export type EnhanceToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize'
+
+/** The row the picker leaves a blank row after (E3): the AI tools above it, the plain ones below. */
+export const GAP_AFTER: EnhanceToolId = 'cutout'
 
 /** What a row makes: dim words, then the fact in bold. */
 export interface Detail {
@@ -32,8 +38,8 @@ export interface EnhanceRow {
   id: EnhanceToolId
   /** The row's name, and the trail's answer: never just "Boost". */
   label: string
-  /** The extension that does it. */
-  extension: ExtensionId
+  /** The extension that does it; absent for a built-in tool, which is always ready. */
+  extension?: ExtensionId
   /** Sharpen: the boost extension at 1×. */
   scale?: 1
   /** Boost resolution: the scales this image can take, smallest first; ←→ steps through them. */
@@ -50,17 +56,10 @@ export interface EnhanceRow {
   verb: string
 }
 
+export { keptFormat }
+
 const dims = (w: number, h: number) => `${w} × ${h}`
 const grouped = (n: number) => n.toLocaleString('en-US')
-
-/**
- * What Sharpen and Boost resolution write: the source's own format where the
- * image engine writes it, else JPEG for a HEIC (it cannot be written), else PNG.
- */
-export function keptFormat(source: ImageInfo): FormatId {
-  if (source.format === 'heic') return 'jpeg'
-  return targetIdsFor(source).includes(source.format) ? source.format : 'png'
-}
 
 function tooLarge(source: ImageInfo, scale: number): string | undefined {
   const over = boostOverLimit(source.width, source.height, scale)
@@ -71,12 +70,38 @@ function tooLarge(source: ImageInfo, scale: number): string | undefined {
 }
 
 /**
- * The three rows, in the decided order, for `source`. No row is a default.
- * `offered` is what the installed boost makes (`boostScales`); the Boost row
- * keeps those that fit this image.
+ * Trim's row: the size a trim leaves, once `measure` has it; dimmed with why
+ * when there is nothing to cut or the image is animated.
+ */
+function trimRow(source: ImageInfo, measure: ImageMeasure | undefined): EnhanceRow {
+  const trimmed = measure?.trimmed
+  return {
+    id: 'trim',
+    label: 'Trim edges',
+    target: keptFormat(source),
+    detail:
+      trimmed && typeof trimmed === 'object'
+        ? { dim: 'empty edges off · ', bold: dims(trimmed.width, trimmed.height) }
+        : { dim: '', bold: '' },
+    pane: {
+      short: 'Cuts off plain borders.',
+      long: 'Plain borders come off. Nothing else in the picture changes.',
+    },
+    ...(trimmed === 'nothing' ? { tooLarge: 'no empty edges' } : {}),
+    ...(trimmed === 'animated' ? { tooLarge: 'animated' } : {}),
+    verb: trimAction.verb,
+  }
+}
+
+/**
+ * The rows, in the decided order, for `source`. No row is a default.
+ * `measure` (read once the list opens) gives Trim its facts. `offered` is
+ * what the installed boost makes (`boostScales`); the Boost row keeps those
+ * that fit this image.
  */
 export function enhanceRows(
   source: ImageInfo,
+  measure?: ImageMeasure,
   offered: readonly BoostScale[] = boostScales(undefined),
 ): EnhanceRow[] {
   const kept = keptFormat(source)
@@ -135,6 +160,18 @@ export function enhanceRows(
       },
       verb: 'Removing background',
     },
+    trimRow(source, measure),
+    {
+      id: 'resize',
+      label: 'Resize',
+      target: kept,
+      detail: { dim: 'you choose the size next', bold: '' },
+      pane: {
+        short: 'Any size, no new detail.',
+        long: 'Smaller stays sharp; larger looks softer. Boost resolution adds detail.',
+      },
+      verb: resizeAction.verb,
+    },
   ]
 }
 
@@ -144,7 +181,7 @@ export function enhanceRow(
   id: unknown,
   offered?: readonly BoostScale[],
 ): EnhanceRow | undefined {
-  return enhanceRows(source, offered).find((r) => r.id === id)
+  return enhanceRows(source, undefined, offered).find((r) => r.id === id)
 }
 
 /** What a row makes at `scale` (one of Boost's), else at its own. */
@@ -153,8 +190,14 @@ export function detailAt(row: EnhanceRow, scale?: number): Detail {
 }
 
 /** The action a row runs through: the same plan-and-run path as the CLI. */
-export const actionForRow = (row: Pick<EnhanceRow, 'extension'>): Action =>
-  row.extension === 'boost' ? boostAction : removeBackgroundAction
+export const actionForRow = (row: Pick<EnhanceRow, 'id' | 'extension'>): Action =>
+  row.id === 'trim'
+    ? trimAction
+    : row.id === 'resize'
+      ? resizeAction
+      : row.extension === 'boost'
+        ? boostAction
+        : removeBackgroundAction
 
 /** The answers Save as and the run plan with, for a row at `scale` (one of Boost's). */
 export function rowValues(row: EnhanceRow, scale?: number): Record<string, unknown> {
@@ -165,15 +208,14 @@ export function rowValues(row: EnhanceRow, scale?: number): Record<string, unkno
     tool: row.id,
     target: row.target,
     ...(k === undefined ? {} : { scale: String(k) }),
+    ...(row.id === 'trim' ? { trim: true } : {}),
   }
 }
 
 /** Where a tool stands on this Mac, as the picker's row shows it. */
 export type ToolState =
-  | {
-      kind: 'ready' /** The installed version: which factors boost makes (`boostScales`). */
-      version?: string
-    }
+  /** `version`: the installed one, which decides the factors boost makes (`boostScales`). */
+  | { kind: 'ready'; version?: string }
   | { kind: 'absent'; downloadBytes: number }
   | { kind: 'unsupported'; reason: string }
   | { kind: 'installing'; done: number; total: number }

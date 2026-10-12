@@ -15,11 +15,13 @@ const image = (width: number, height: number, format: ImageInfo['format'] = 'png
   }) as ImageInfo
 
 describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
-  it('is three rows: Sharpen, one Boost resolution row, Remove background', () => {
+  it('has one Boost resolution row among the AI tools, then Trim edges and Resize', () => {
     expect(enhanceRows(image(1200, 900)).map((r) => [r.id, r.label])).toEqual([
       ['sharpen', 'Sharpen'],
       ['boost', 'Boost resolution'],
       ['cutout', 'Remove background'],
+      ['trim', 'Trim edges'],
+      ['resize', 'Resize'],
     ])
   })
 
@@ -32,7 +34,7 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
   })
 
   it('offers 3× when the installed boost makes it', () => {
-    const [, boost] = enhanceRows(image(1200, 900), [2, 3, 4])
+    const [, boost] = enhanceRows(image(1200, 900), undefined, [2, 3, 4])
     expect(boost?.scales?.map((s) => [s.scale, s.detail.bold])).toEqual([
       [2, '2400 × 1800'],
       [3, '3600 × 2700'],
@@ -66,6 +68,8 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
       'Keeps the size.',
       'Makes it bigger.',
       'Keeps the subject.',
+      'Cuts off plain borders.',
+      'Any size, no new detail.',
     ])
     expect(rows[0]?.pane.long).toContain('on-device model')
     expect(rows[1]?.pane.long).toContain('on-device model')

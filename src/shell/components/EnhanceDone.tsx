@@ -39,7 +39,8 @@ import { middleEllipsis } from '../width.js'
  */
 
 export interface EnhanceDoneProps {
-  op: 'boost' | 'remove-background'
+  /** `trim` and `resize` are convert jobs (Trim edges, Resize): both pictures whole. */
+  op: 'boost' | 'remove-background' | 'trim' | 'resize'
   scale?: 1 | 2 | 3 | 4
   before: string
   after: string
@@ -88,6 +89,8 @@ export function whatWasDone(
 ): { what: string; more: string } {
   const dims = size ? `${size.width} × ${size.height}` : ''
   if (op === 'remove-background') return { what: 'background removed', more: 'transparent PNG' }
+  if (op === 'trim') return { what: 'edges trimmed', more: dims }
+  if (op === 'resize') return { what: 'resized', more: dims }
   if (scale === 1) return { what: 'sharpened', more: dims ? `same size · ${dims}` : 'same size' }
   return { what: `${scale}× resolution`, more: dims }
 }
@@ -97,9 +100,10 @@ function folderOf(savedTo: string, after: string): string {
   return isAbsolute(folder) ? displayPath(folder) : folder
 }
 
-function caption(kind: 'patch' | 'subject', k: number, real: boolean): string {
-  if (real) return kind === 'subject' ? 'the real pictures' : 'the real pictures, at full quality'
+function caption(kind: Closeup['kind'], k: number, real: boolean): string {
+  if (real) return kind === 'patch' ? 'the real pictures, at full quality' : 'the real pictures'
   if (kind === 'subject') return 'the photo, and the subject on its own'
+  if (kind === 'whole') return 'the whole picture, before and after'
   if (k > 1) return 'same patch · each block on the left is one pixel you had'
   return 'where it changed most, same size · close enough to see each pixel'
 }
@@ -125,7 +129,8 @@ export function EnhanceDone({
   const protocol = stdout.isTTY && colour ? imageProtocol() : null
   const cols = pictureCols(width)
   const rows = colour ? pictureRows(available) : 0
-  const s = op === 'remove-background' ? 1 : scale
+  const whole = op === 'trim' || op === 'resize'
+  const s = op === 'boost' ? scale : 1
   const [shown, setShown] = useState<Shown | undefined>(undefined)
   useEffect(() => forgetCloseup, [])
   /** The first cut is at once; one after a resize waits for the resize to settle. */
@@ -135,7 +140,7 @@ export function EnhanceDone({
     if (rows === 0) return
     let live = true
     setShown(undefined)
-    const opts = { cols, rows, scale: s }
+    const opts = { cols, rows, scale: s, whole }
     const timer = setTimeout(
       () => {
         const load = protocol
@@ -155,7 +160,7 @@ export function EnhanceDone({
       live = false
       clearTimeout(timer)
     }
-  }, [before, after, cols, rows, s, protocol])
+  }, [before, after, cols, rows, s, whole, protocol])
 
   const beforeBox = useRef<DOMElement>(null)
   const afterBox = useRef<DOMElement>(null)

@@ -4,7 +4,7 @@ import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
-import { detailAt, type EnhanceRow, type ToolState } from '../enhance.js'
+import { detailAt, type EnhanceRow, GAP_AFTER, type ToolState } from '../enhance.js'
 import { titleRow } from '../quality-art.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, MODE_KEYS } from '../theme.js'
@@ -12,6 +12,11 @@ import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
 import { Select } from './Select.js'
+
+/** E3's blank row: never a place the cursor rests. */
+const GAP = '__gap__'
+/** A built-in tool (Trim edges, Resize) needs nothing installed. */
+const READY: ToolState = { kind: 'ready' }
 
 /** The install byte band's width, a cell tall (G1's look for a real count). */
 const BYTE_BAND = 12
@@ -37,15 +42,17 @@ export function bytesOf(done: number, total: number): { got: string; of: string 
 
 /**
  * Enhance's picker (mockups/boost-row-2026-10.html, S1 and B3): "Enhance
- * <FORMAT>" over rows that are names, a quiet line to their right, and a pane
- * beyond it about the highlighted row — what the tool does, the short answer
- * first, then what you get: the size, "transparent PNG", or — for a tool not
- * on this Mac yet — the download and the key, "14.9 MB download · ↵ installs".
- * Boost resolution is one row; while it is highlighted a pill at the end of
- * its band holds the scale, and ←→ steps it. No row is a default. A row too
- * large for this image is dimmed with the reason on it. While a tool
- * installs, the pane's last line becomes the grey byte band ("6.2 of
- * 14.9 MB"), then "checking".
+ * <FORMAT>" over rows that are names — the AI tools, a blank row (E3,
+ * mockups/resize-2026-10.html), then Trim edges and Resize, which are built
+ * in and always ready — a quiet line to their right, and a pane beyond it
+ * about the highlighted row: what the tool does, the short answer first, then
+ * what you get: the size, "transparent PNG", or — for a tool not on this Mac
+ * yet — the download and the key, "14.9 MB download · ↵ installs". Boost
+ * resolution is one row; while it is highlighted a pill at the end of its
+ * band holds the scale, and ←→ steps it. No row is a default. A row too large
+ * for this image is dimmed with the reason on it. While a tool installs, the
+ * pane's last line becomes the grey byte band ("6.2 of 14.9 MB"), then
+ * "checking".
  */
 export function EnhancePicker({
   format,
@@ -75,26 +82,44 @@ export function EnhancePicker({
   onCancel: () => void
 }) {
   const palette = useTheme()
-  const usable = (r: EnhanceRow) => !r.tooLarge && tools[r.extension]?.kind !== 'unsupported'
+  const stateOf = (row: EnhanceRow): ToolState | undefined =>
+    row.extension ? tools[row.extension] : READY
+  const items: Choice[] = rows.flatMap((r): Choice[] => {
+    const state = stateOf(r)
+    const reason = r.tooLarge ?? (state?.kind === 'unsupported' ? state.reason : undefined)
+    const item: Choice = {
+      value: r.id,
+      label: r.label,
+      ...(reason ? { disabled: true, hint: reason } : {}),
+    }
+    return r.id === GAP_AFTER ? [item, { value: GAP, label: '', hint: '', disabled: true }] : [item]
+  })
   // Where Select's cursor opens: the row chosen before, else the first that can be.
   const [at, setAt] = useState(() => {
-    const before = rows.findIndex((r) => r.id === chosen?.tool && usable(r))
-    return before !== -1 ? before : Math.max(0, rows.findIndex(usable))
+    const before = items.findIndex((i) => i.value === chosen?.tool && !i.disabled)
+    return before !== -1
+      ? before
+      : Math.max(
+          0,
+          items.findIndex((i) => !i.disabled),
+        )
   })
+  const here = rows.find((r) => r.id === items[at]?.value)
+  const hereState = here ? stateOf(here) : undefined
+  const scales = here?.scales ?? []
+
   // Boost's scale, as an index into its row's scales. A ref too, so ↵ in the
   // same burst of keys as → reads the step already taken (Select's reasoning).
-  const opening = Math.max(
-    0,
-    rows[at]?.scales?.findIndex((s) => String(s.scale) === String(chosen?.scale)) ?? 0,
+  const [opening] = useState(() =>
+    Math.max(
+      0,
+      scales.findIndex((s) => String(s.scale) === String(chosen?.scale)),
+    ),
   )
   const [step, setStep] = useState(opening)
   const stepRef = useRef(opening)
-  const installing = Object.values(tools).some((t) => t?.kind === 'installing')
-
-  const here = rows[at]
-  const hereState = here ? tools[here.extension] : undefined
-  const scales = here?.scales ?? []
   const scale = scales[Math.min(step, scales.length - 1)]?.scale
+  const installing = Object.values(tools).some((t) => t?.kind === 'installing')
 
   useKeys(
     (_input, key) => {
@@ -113,16 +138,6 @@ export function EnhancePicker({
     { isActive: !installing && scales.length > 1 && hereState?.kind === 'ready' },
   )
 
-  const items: Choice[] = rows.map((r) => {
-    const state = tools[r.extension]
-    const reason = r.tooLarge ?? (state?.kind === 'unsupported' ? state.reason : undefined)
-    return {
-      value: r.id,
-      label: r.label,
-      ...(reason ? { disabled: true, hint: reason } : {}),
-    }
-  })
-
   // The list's column: the names and Boost's pill always fit, so a row never
   // wraps; a dimmed row's reason widens it while the pane keeps PANE_MIN.
   const labels = Math.max(...rows.map((r) => stringWidth(r.label)))
@@ -137,7 +152,7 @@ export function EnhancePicker({
   /** Boost's scale pill, on its band while it is highlighted. */
   const pill = (item: Choice) => {
     const row = rows.find((r) => r.id === item.value)
-    if (!row?.scales || scale === undefined || tools[row.extension]?.kind !== 'ready') return null
+    if (!row?.scales || scale === undefined || stateOf(row)?.kind !== 'ready') return null
     const i = Math.min(step, row.scales.length - 1)
     const chip = palette.folderChip === '' ? {} : { backgroundColor: palette.folderChip }
     const arrow = (live: boolean, text: string) => (
@@ -188,9 +203,11 @@ export function EnhancePicker({
     return (
       <Text>
         {detail.dim ? <Text color={dim}>{detail.dim}</Text> : null}
-        <Text bold color={fg}>
-          {detail.bold}
-        </Text>
+        {detail.bold ? (
+          <Text bold color={fg}>
+            {detail.bold}
+          </Text>
+        ) : null}
         {detail.after ? <Text color={dim}>{detail.after}</Text> : null}
       </Text>
     )
@@ -228,7 +245,7 @@ export function EnhancePicker({
           <Select
             width={left}
             items={items}
-            {...(rows[at] ? { initialValue: rows[at].id } : {})}
+            {...(items[at] ? { initialValue: items[at].value } : {})}
             onHighlight={setAt}
             onSubmit={(id) => {
               const row = rows.find((r) => r.id === id)

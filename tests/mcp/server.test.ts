@@ -119,6 +119,31 @@ describe('forge_convert', () => {
     })
   })
 
+  describe('trim and resize', () => {
+    it('resizes by percent, keeping the format and naming the result by its size', async () => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const out = await call('forge_convert', { paths: [png], resize: { percent: 50 } })
+      const half = join(dir, 'a-20x10.png')
+      expect(out.isError).toBe(false)
+      expect(out.doc.results[0]?.outputs).toEqual([half])
+      const meta = await sharp(half).metadata()
+      expect([meta.format, meta.width, meta.height]).toEqual(['png', 20, 10])
+    })
+
+    it('still needs `to` for anything but trim and resize, and refuses a pdf one', async () => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const out = await call('forge_convert', { paths: [png] })
+      expect(out.isError).toBe(true)
+      expect(out.text).toContain('needs `to`')
+      expect(await readdir(dir)).toEqual(['a.png'])
+      const pdf = await call('forge_convert', { paths: [png], trim: true, to: 'pdf' })
+      expect(pdf.isError).toBe(true)
+      expect(await readdir(dir)).toEqual(['a.png'])
+    })
+  })
+
   it('converts, returns the §3.2 shape and a file:// link per output', async () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'a.jpg')

@@ -216,6 +216,30 @@ so — and it encodes a candidate to find out rather than guessing:
   ↵ convert another · c convert to WebP · o open · s show in finder · ctrl-c close app
 ```
 
+## Resize and trim edges
+
+Both need nothing extra, keep the file's own format unless `--to` says otherwise,
+and work on images only:
+
+```bash
+forge photo.jpg --resize 50%       # photo-2016x1512.jpg (percent, 1-200)
+forge photo.jpg --width 1200       # photo-1200x900.jpg  (the height follows)
+forge photo.jpg --height 900       # the width follows
+forge photo.jpg --trim             # photo-trimmed.jpg   (transparent or solid-colour edges)
+forge photo.jpg --trim --width 1200 --to webp -q 80   # photo-trimmed-1200w.webp
+```
+
+Use one of `--resize`, `--width` and `--height`. A percent is of the upright
+(and trimmed) size. They combine with `--to`, `-q`, `-o`, `--background`,
+`--keep-metadata`, `--recursive`, `--force`, `--concurrency` and `--json`, and
+are refused with `--max-size`, `--sharpen`, `--boost`, `--remove-bg` and the PDF
+page operations, and with a `--to` that is not an image format. No side may pass
+16,384 px, nor the result 100 MP. Trimming an animated image is refused; so is
+trimming one with nothing to trim, unless it is also resized, which then only
+warns. `forge_convert` takes
+`trim: true` and `resize: { percent } | { width } | { height }`, and then `to`
+is optional.
+
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather

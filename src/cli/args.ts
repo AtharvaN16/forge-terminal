@@ -4,7 +4,8 @@ import { invalidArguments, invalidDpi } from '../core/errors.js'
 import type { BoostScale } from '../core/extension-targets.js'
 import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
-import type { ConvertOptions, FormatId } from '../core/types.js'
+import { RESIZE_MAX } from '../core/resize.js'
+import type { ConvertOptions, FormatId, ResizeSpec } from '../core/types.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
@@ -119,6 +120,27 @@ export interface ExtensionOpIntent {
   debug: boolean
 }
 
+/**
+ * `--trim`, `--resize`, `--width`, `--height`: cut empty edges and/or change
+ * the size, keeping the source's own format unless `--to` says otherwise
+ * (resize-and-trim spec §3.4). The work is options on an ordinary convert job
+ * (`planEdit`); the intent is its own `kind` because there may be no target.
+ */
+export interface EditIntent {
+  kind: 'edit'
+  inputs: string[]
+  trim: boolean
+  resize?: ResizeSpec
+  /** Absent means each source's own format. */
+  target?: FormatId
+  output?: string
+  options: ConvertOptions
+  force: boolean
+  recursive: boolean
+  concurrency?: number
+  debug: boolean
+}
+
 /** `forge probe <files...>`: what each file is and what Forge can do with it (spec §3.3). */
 export interface ProbeIntent {
   kind: 'probe'
@@ -153,6 +175,7 @@ export type Intent =
   | CompressIntent
   | PageOpIntent
   | ExtensionOpIntent
+  | EditIntent
   | ProbeIntent
   | ExtensionsIntent
   | PaletteIntent
@@ -213,6 +236,27 @@ function parseQuality(raw: string): number {
   const n = Number(raw)
   if (!Number.isInteger(n) || n < 1 || n > 100) {
     throw invalidArguments(`Quality must be a whole number between 1 and 100, not ${raw}.`)
+  }
+  return n
+}
+
+function wholePixels(flag: string, raw: unknown): number {
+  const n = /^\d+$/.test(String(raw)) ? Number(raw) : Number.NaN
+  if (!Number.isInteger(n) || n < 1) {
+    throw invalidArguments(`${flag} takes a whole number of pixels, at least 1, not ${raw}.`)
+  }
+  return n
+}
+
+/** `--resize 50%` or `--resize 50`: a percent of the upright size, 1-200. */
+function parsePercent(raw: unknown): number {
+  const text = String(raw)
+  const n = /^\d+(\.\d+)?%?$/.test(text) ? Number.parseFloat(text) : Number.NaN
+  if (!(n >= 1 && n <= RESIZE_MAX)) {
+    throw invalidArguments(
+      `--resize takes a percent from 1 to ${RESIZE_MAX}, not ${raw}.`,
+      'Try --resize 50% to halve, or --width 1200 for an exact width.',
+    )
   }
   return n
 }
@@ -478,6 +522,10 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
       '--boost [2|3|4]',
       'sharpen and enlarge 2x (default), 3x or 4x; needs the boost extension',
     )
+    .option('--trim', 'cut transparent or solid-colour edges; keeps the format')
+    .option('--resize <percent>', 'resize to a percent of the size, 1-200, e.g. 50%')
+    .option('--width <px>', 'resize to this width; the height follows')
+    .option('--height <px>', 'resize to this height; the width follows')
     .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
@@ -552,6 +600,68 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     ...(boost !== undefined ? ['--boost'] : []),
     ...(opts.removeBg ? ['--remove-bg'] : []),
   ]
+  const resizeFlags = [
+    ...(opts.resize !== undefined ? ['--resize'] : []),
+    ...(opts.width !== undefined ? ['--width'] : []),
+    ...(opts.height !== undefined ? ['--height'] : []),
+  ]
+  if (opts.trim || resizeFlags.length > 0) {
+    if (resizeFlags.length > 1) {
+      throw invalidArguments(
+        `Use one of --resize, --width and --height — got ${resizeFlags.join(' and ')}.`,
+      )
+    }
+    const clash = [
+      ...asked,
+      ...(opts.maxSize !== undefined ? ['--max-size'] : []),
+      ...(opts.pages !== undefined ? ['--pages'] : []),
+      ...chosen.map((c) => `--${c}`),
+    ][0]
+    if (clash !== undefined) {
+      throw invalidArguments(
+        `${resizeFlags[0] ?? '--trim'} cannot be combined with ${clash}.`,
+        clash === '--max-size'
+          ? 'Resize first, then compress the result: forge photo-1200x900.jpg --max-size 500kb'
+          : 'Run them one after the other.',
+      )
+    }
+    const resize: ResizeSpec | undefined =
+      opts.resize !== undefined
+        ? { percent: parsePercent(opts.resize) }
+        : opts.width !== undefined
+          ? { width: wholePixels('--width', opts.width) }
+          : opts.height !== undefined
+            ? { height: wholePixels('--height', opts.height) }
+            : undefined
+    if (inputs.length === 0) {
+      throw invalidArguments(
+        'No files given.',
+        'Name an image, for example: forge photo.jpg --resize 50%',
+      )
+    }
+    const options: ConvertOptions = {
+      background: String(opts.background),
+      keepMetadata: Boolean(opts.keepMetadata),
+    }
+    if (opts.quality !== undefined) options.quality = parseQuality(String(opts.quality))
+    const intent: EditIntent = {
+      kind: 'edit',
+      inputs,
+      trim: Boolean(opts.trim),
+      options,
+      force: Boolean(opts.force),
+      recursive: Boolean(opts.recursive),
+      debug: Boolean(opts.debug),
+    }
+    if (resize !== undefined) intent.resize = resize
+    if (opts.to) intent.target = parseTarget(String(opts.to))
+    if (opts.output !== undefined) intent.output = String(opts.output)
+    if (opts.concurrency !== undefined) {
+      intent.concurrency = parseConcurrency(String(opts.concurrency))
+    }
+    return intent
+  }
+
   const scale: 1 | BoostScale | undefined = opts.sharpen ? 1 : boost
   const extensionOp =
     scale !== undefined ? ('boost' as const) : opts.removeBg ? ('remove-background' as const) : null

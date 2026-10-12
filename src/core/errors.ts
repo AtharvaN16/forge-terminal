@@ -1,5 +1,6 @@
 import { basename, dirname } from 'node:path'
 import { FORMATS } from './formats.js'
+import type { Size } from './size.js'
 import type { FormatId, Job, SourceInfo } from './types.js'
 import { formatBytes } from './units.js'
 
@@ -38,6 +39,9 @@ export type ErrorCode =
   | 'extension-in-use'
   | 'no-subject'
   | 'boost-too-large'
+  | 'resize-too-large'
+  | 'nothing-to-trim'
+  | 'animated-trim'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -738,6 +742,32 @@ export function boostTooLarge(path: string, maxScale: number, scale?: number): F
     hint:
       maxScale >= 2 ? `Try --boost ${maxScale}.` : 'Boost works on images up to 100 megapixels.',
     shellHint: maxScale >= 2 ? `Choose ${maxScale}x instead.` : undefined,
+  })
+}
+
+export function resizeTooLarge(path: string, size: Size): ForgeError {
+  return new ForgeError({
+    code: 'resize-too-large',
+    title: 'Too large to resize to',
+    detail: `${basename(path)} would be ${size.width} × ${size.height}.`,
+    hint: 'Resize works up to 16,384 px a side and 100 megapixels.',
+  })
+}
+
+export function nothingToTrim(path: string): ForgeError {
+  return new ForgeError({
+    code: 'nothing-to-trim',
+    title: 'Nothing to trim',
+    detail: `${basename(path)} has no empty edges.`,
+    short: 'no empty edges',
+  })
+}
+
+export function animatedTrim(path: string): ForgeError {
+  return new ForgeError({
+    code: 'animated-trim',
+    title: "Can't trim an animation",
+    detail: `${basename(path)} is animated; trimming works on still images.`,
   })
 }
 

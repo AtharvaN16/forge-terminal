@@ -27,6 +27,8 @@ const SCREENS: Record<string, { at: number; name?: string }> = {
   'page-picker': { at: 2, name: 'Pages' },
   dpi: { at: 3, name: 'Resolution' },
   size: { at: 4, name: 'Size' },
+  // Enhance's Resize: the size, after the row's name.
+  resize: { at: 4, name: 'Size' },
   quality: { at: 5, name: 'Quality' },
   // The folder and the name, asked as one question (P1).
   'save-as': { at: 6, name: 'Save as' },

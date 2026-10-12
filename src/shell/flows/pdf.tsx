@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_PREFERENCES, expandTilde, type Preferences } from '../../config/preferences.js'
 import { destinationOption } from '../../core/actions/destination.js'
 import type { Action, Choice, OptionSpec } from '../../core/actions/index.js'
-import { ACTIONS, unavailableReason } from '../../core/actions/index.js'
+import { PAGE_ACTIONS, unavailableReason } from '../../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../../core/actions/split.js'
 import { isForgeError } from '../../core/errors.js'
 import { formatRanges, parseRanges } from '../../core/pages.js'
@@ -38,7 +38,7 @@ import { bandFor, CARD_WIDTH } from '../width.js'
  * per-row (`appliesTo`) before ever mounting this component — one list,
  * asked twice, rather than two lists that could drift.
  */
-export const HUB_ACTIONS = ACTIONS.filter((a) => a.id !== 'convert' && a.id !== 'compress')
+export const HUB_ACTIONS = PAGE_ACTIONS
 
 /**
  * `hub` — pick an operation. `options` — walk that action's `options()`,
