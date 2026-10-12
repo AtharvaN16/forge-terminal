@@ -14,7 +14,7 @@ import {
 } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
@@ -154,10 +154,14 @@ afterEach(async () => {
   await rm(config, { recursive: true, force: true })
 })
 
-/** Everything under the root but the lock directory, which stays (empty) once used. */
+/**
+ * Everything under the root but the lock directory, which stays (empty) once
+ * used. In `/` form: readdir gives native separators, `\` on Windows.
+ */
 async function leftovers(): Promise<string[]> {
   return (await readdir(extensionsRoot(), { recursive: true }).catch(() => []))
     .filter((p) => !p.startsWith('.locks'))
+    .map((p) => p.split(sep).join('/'))
     .sort()
 }
 

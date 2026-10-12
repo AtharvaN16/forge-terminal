@@ -262,7 +262,9 @@ describe('Save as (V10c): the path row', () => {
     await settle(150)
     stdin.write(ENTER)
     await settle()
-    expect(onSubmit).toHaveBeenCalledWith(join(root, 'Documents', 'Scans/'), 'header')
+    // The path as typed, completion included: on Windows `root` has `\` and the
+    // typed rest `/`, which Windows reads as one path.
+    expect(onSubmit).toHaveBeenCalledWith(`${root}/Documents/Scans/`, 'header')
   })
 
   it('narrows the folders to what is typed, and saves to the first that matches', async () => {

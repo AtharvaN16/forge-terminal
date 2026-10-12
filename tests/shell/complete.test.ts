@@ -50,12 +50,13 @@ describe('path completion', () => {
     expect(await labels('~/')).not.toContain('~/.config/')
   })
 
-  // Escaping a space is the Mac convention, so this is pinned to darwin.
+  // Escaping a space is the Mac convention, so this is pinned to darwin. `~`
+  // expands through the host's path.join: on a Windows host a `\` precedes the name.
   it('completes to a path that survives being sent, spaces and all', async () => {
     const [shot] = await completePath('~/Desktop/Scr', { home, cwd: home, platform: 'darwin' })
     expect(shot?.insert).toBe('~/Desktop/Screenshot\\ 2026-10-11\\ at\\ 9.41.52\\ AM.png')
-    expect(unescapePath(shot?.insert ?? '', 'darwin').replace(/^.*Desktop/, '')).toBe(
-      '/Screenshot 2026-10-11 at 9.41.52 AM.png',
+    expect(unescapePath(shot?.insert ?? '', 'darwin').replace(/^.*Desktop[\\/]/, '')).toBe(
+      'Screenshot 2026-10-11 at 9.41.52 AM.png',
     )
   })
 
