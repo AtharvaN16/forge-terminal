@@ -27,8 +27,8 @@ const RELEASES = 'https://github.com/AtharvaN16/forge-terminal/releases/download
 export const CATALOG: readonly CatalogEntry[] = [
   {
     id: 'boost',
-    title: 'Boost',
-    summary: 'Upscale images 2x or 4x with a local AI model',
+    title: 'Boost resolution',
+    summary: 'Sharpen, or boost resolution 2x or 4x, with a local AI model',
     version: '1.0.0',
     minMacos: 14,
     // Apple Silicon only for now. An x64 build exists (CI still makes it) but
