@@ -11,6 +11,7 @@ import {
 } from '../config/preferences.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
+import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
   type ForgeError,
@@ -36,6 +37,8 @@ import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
+import { ColourFlow } from './colour/ColourFlow.js'
+import type { Start as ColourStart } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { DoneScreen } from './components/Done.js'
@@ -122,6 +125,8 @@ export type Step =
   | 'pdf-running'
   /** `checkWriteSafety` refused the job `PdfFlow` handed off — see `pdfBlocked`. */
   | 'pdf-blocked'
+  /** Colour mode's palette or scale: `ColourFlow` owns the conversation. */
+  | 'colour'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -579,7 +584,7 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  const [mode, setMode] = useState<'convert' | 'compress' | 'pdf'>('convert')
+  const [mode, setMode] = useState<ShellMode>('convert')
   /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
@@ -769,6 +774,11 @@ export function App({
   const [pdfSaved, setPdfSaved] = useState<string[]>([])
   /** Set to open /pdf on that Save as (Cancel on Name taken); cleared once it is left. */
   const [pdfReopen, setPdfReopen] = useState<PdfResume | undefined>(undefined)
+  /** Colour's home: the card chosen, Palette (0) or Scale (1). */
+  const [colourChoice, setColourChoice] = useState<0 | 1>(0)
+  /** How the colour flow opens, and the trail it hands up for the bar. */
+  const [colourStart, setColourStart] = useState<ColourStart>('palette')
+  const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Palette' })
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -852,6 +862,14 @@ export function App({
   /** Same as `/convert`, `/compress` or `/pdf` with nothing staged. */
   const switchMode = (next: ShellMode) => {
     if (next === mode) return
+    // Colour starts from its own home, never from a staged file: what is
+    // staged is let go, as `/colour` lets it go (see `runCommand`), and a
+    // drop still being read is dropped with it.
+    if (next === 'colour') {
+      requestId.current++
+      dropReading.current = 0
+      setStage(clearStage())
+    }
     setMode(next)
     setValues({})
   }
@@ -865,7 +883,7 @@ export function App({
   useKeys(
     (input, key) => {
       const next = MODE_ORDER[Number(input) - 1]
-      if (!/^[1-3]$/.test(input) || key.ctrl || key.meta || !next || next === mode) return
+      if (!/^[1-4]$/.test(input) || key.ctrl || key.meta || !next || next === mode) return
       const command = COMMANDS.find((c) => c.mode === next)
       if (command) runCommand(command)
     },
@@ -943,7 +961,7 @@ export function App({
         return true
       }
       const next = MODE_ORDER[Number(input) - 1]
-      if (/^[1-3]$/.test(input) && !key.ctrl && !key.meta && next) {
+      if (/^[1-4]$/.test(input) && !key.ctrl && !key.meta && next) {
         switchMode(next)
         return true
       }
@@ -1242,8 +1260,52 @@ export function App({
     setHomeError(undefined)
     setText('')
     setMode('convert')
+    setColourChoice(0)
     setStep('idle')
   }
+
+  /** Into the colour flow, opening as `start` says. */
+  const openColour = useCallback((start: ColourStart) => {
+    setColourStart(start)
+    setColourTrailNow({
+      answers: [],
+      current:
+        start === 'palette' || (typeof start === 'object' && 'palette' in start)
+          ? 'Palette'
+          : 'Scale',
+    })
+    setText('')
+    setStep('colour')
+  }, [])
+
+  /**
+   * Colour's home, with nothing typed (colour spec §6.2): ←→ choose a card and
+   * ↵ opens it; `#` opens the scale with it typed; a drop opens the palette
+   * of what was dropped; `/` puts the slash in the field, which opens the
+   * commands as on every home; 1–4 switch mode. The field is hidden here, so
+   * these are read directly rather than through its `intercept`.
+   */
+  useKeys(
+    (input, key) => {
+      if (key.ctrl || key.meta || isStrayEscapeSequence(input)) return
+      if (key.leftArrow) setColourChoice(0)
+      else if (key.rightArrow) setColourChoice(1)
+      else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
+      else if (input === '#') openColour({ typed: '#' })
+      else if (input === '/') setText('/')
+      else if (input.length > 1) {
+        // A pasted colour (a hex copied from Figma, say) is a scale; anything
+        // else pasted or dropped is an image's path.
+        const pasted = input.trim()
+        const rgb = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.test(pasted) ? parseHex(pasted) : undefined
+        openColour(rgb ? { scale: rgb } : { palette: pasted })
+      } else {
+        const next = MODE_ORDER[Number(input) - 1]
+        if (/^[1-4]$/.test(input) && next && next !== mode) switchMode(next)
+      }
+    },
+    { isActive: onHome && mode === 'colour' && text === '' },
+  )
 
   useKeys(
     (input, key) => {
@@ -1454,6 +1516,18 @@ export function App({
           id: nextId(),
           text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
         })
+        return
+      }
+
+      // Colour starts from its own home (Palette or Scale), never from a
+      // staged file: what you drop or type belongs to the screen you open
+      // (colour spec §6.2). A staged file is let go, as ctrl-n would.
+      if (command.mode === 'colour') {
+        fenceOff()
+        setStage(clearStage())
+        setMode('colour')
+        setValues({})
+        setStep('idle')
         return
       }
 
@@ -1692,6 +1766,12 @@ export function App({
         }
         return
       }
+      // Colour's home: a path typed after `/` is an image for its palette.
+      if (mode === 'colour') {
+        setText('')
+        openColour({ palette: trimmed })
+        return
+      }
       const id = ++requestId.current
       setText('')
       setHomeError(undefined)
@@ -1729,7 +1809,7 @@ export function App({
       // One file typed onto an empty home goes on at once, as it always has.
       if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
     },
-    [showError, push, runCommand, landDrop, proceedWith, refuseOnHome],
+    [showError, push, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -2633,6 +2713,7 @@ export function App({
     // A job not yet shown as Working: the bar stays as the last question left it.
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
+    if (at === 'colour') return colourTrailNow
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: [...pdfTrailNow.answers, ...pdfSaved],
@@ -2714,7 +2795,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   // Method is the first question: esc takes the file off the bench.
                   ['esc', 'remove file'],
                 ]}
@@ -2799,7 +2880,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   // A document stays staged on esc (/pdf may still want it); an image
                   // is taken off the bench. The key says which.
                   ['esc', source.kind === 'document' ? 'back' : 'remove file'],
@@ -2835,7 +2916,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -2889,7 +2970,7 @@ export function App({
                 pairs={[
                   ['↑↓', 'choose'],
                   ['↵', 'confirm'],
-                  ['1–3', 'mode'],
+                  ['1–4', 'mode'],
                   ['esc', 'back'],
                 ]}
               />
@@ -3066,6 +3147,16 @@ export function App({
             />
           ) : null}
 
+          {step === 'colour' ? (
+            <ColourFlow
+              start={colourStart}
+              width={width}
+              height={height}
+              onCancel={() => setStep('idle')}
+              onTrail={setColourTrailNow}
+            />
+          ) : null}
+
           {step === 'pdf' ? (
             <PdfFlow
               stage={stage}
@@ -3178,10 +3269,12 @@ export function App({
                     )
                   : undefined
               }
+              colourChoice={colourChoice}
               keys={homeKeys({
                 typing: text !== '',
                 completions: completions.length,
                 commands: commands !== undefined,
+                colour: mode === 'colour',
                 staged: staged
                   ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
                   : undefined,

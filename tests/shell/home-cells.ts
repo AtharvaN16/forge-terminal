@@ -8,7 +8,8 @@
  * terminal draws nothing there either way.
  */
 import { readFileSync } from 'node:fs'
-import { DARK } from '../../src/shell/theme.js'
+import { tabRows } from '../../src/shell/home-art.js'
+import { DARK, modePalette } from '../../src/shell/theme.js'
 
 export interface Cell {
   ch: string
@@ -54,12 +55,35 @@ export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[]
 }
 
 /**
- * A row of a home frame (80 × 24). The mockup leaves the row above the keys
- * blank; home has since put a rule there, in the border colour.
+ * A row of a home frame (80 × 24), as the app draws it now. Three things
+ * moved on from the frozen mockup:
+ * - the row above the keys is a rule in the border colour;
+ * - the tab rows (5–6) have a fourth mode, colour (colour spec §6.1), so they
+ *   are held to `tabRows` itself rather than the three-tab mockup;
+ * - the key row says `1–4 mode`.
  */
 export function homeRow(frame: FixtureFrame, row: number): Cell[] {
   if (row === 22) return runsRow([{ text: '─'.repeat(80), fg: DARK.border }])
-  return fixtureRow(frame, row)
+  if (row === 5 || row === 6) {
+    const tabs = tabRows({
+      width: 80,
+      palette: modePalette(DARK, frame.mode),
+      mode: frame.mode,
+      savesTo: '~/Desktop',
+      commands: frame.text.startsWith('/') && !frame.text.includes(' '),
+    })
+    return runsRow(tabs[row - 5] ?? [])
+  }
+  const cells = fixtureRow(frame, row)
+  if (row === 23) {
+    const at = cells
+      .map((c) => c.ch)
+      .join('')
+      .indexOf('1–3 mode')
+    const three = cells[at + 2]
+    if (at >= 0 && three) cells[at + 2] = { ...three, ch: '4' }
+  }
+  return cells
 }
 
 export interface Run {

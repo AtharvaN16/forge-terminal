@@ -46,24 +46,42 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
 })
 
 describe('the mode tabs (mockup tab 2, D2)', () => {
-  it('fuses the active tab to the panel and puts the folder at the right', () => {
+  const rowText = (rows: { text: string }[][], i: number) =>
+    rows[i]?.map((run) => run.text).join('') ?? ''
+  const TABS = ' 1 convert   2 compress   3 pdf   4 colour   / commands  '
+
+  it('has four modes; the destination alone when label and destination will not both fit', () => {
     const rows = tabRows({
       width: 80,
       palette: modePalette(DARK, 'convert'),
       mode: 'convert',
       savesTo: '~/Desktop',
     })
-    expectRows(rows, empty, 5)
+    expect(rowText(rows, 1)).toBe(`  ${TABS}${' '.repeat(9)}~/Desktop `)
+    // The active tab is fused to the panel: a lip above it in the panel's fill.
+    expect(rows[0]?.find((run) => run.text.startsWith('▄'))?.fg).toBe(DARK.selectionBg)
   })
 
-  it('moves the tab to the mode pressed', () => {
+  it('says where results go in full when there is room', () => {
     const rows = tabRows({
-      width: 80,
-      palette: modePalette(DARK, 'compress'),
-      mode: 'compress',
+      width: 120,
+      palette: modePalette(DARK, 'convert'),
+      mode: 'convert',
       savesTo: '~/Desktop',
     })
-    expectRows(rows, compress, 5)
+    expect(rowText(rows, 1).endsWith('saves to ~/Desktop ')).toBe(true)
+  })
+
+  it('in colour mode results go to the clipboard', () => {
+    const rows = tabRows({
+      width: 80,
+      palette: modePalette(DARK, 'colour'),
+      mode: 'colour',
+      savesTo: '~/Desktop',
+      right: { label: 'copies to', value: 'clipboard' },
+    })
+    expect(rowText(rows, 1).endsWith('clipboard ')).toBe(true)
+    expect(rows[1]?.find((run) => run.text === 'colour')?.bold).toBe(true)
   })
 
   it('drops the folder before it would collide with the tabs', () => {

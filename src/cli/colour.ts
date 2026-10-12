@@ -47,7 +47,8 @@ export async function runPalette(intent: PaletteIntent, opts: Opts): Promise<Exe
   const parent = intent.inside ? nearest(top, intent.inside) : undefined
   const groups = parent ? inside(pixels, parent) : top
   if (intent.svg) {
-    return { exitCode: 0, stdout: [paletteCard(basename(intent.input), groups)], stderr: [] }
+    const svg = paletteCard(basename(intent.input), groups, 'light', parent?.hex)
+    return { exitCode: 0, stdout: [svg], stderr: [] }
   }
   if (opts.json) {
     const doc = paletteJson(VERSION, {

@@ -26,7 +26,9 @@ export function scale(ref: Rgb): Step[] {
   // A reference lighter than the ladder's top, or darker than its floor,
   // keeps those steps level with itself rather than reversing them.
   const top = Math.max(0.975, L0)
-  const floor = Math.min(L0, Math.max(0.16, 0.42 * L0))
+  // Below L 0.16 the usual floor would sit above the reference; there the
+  // darker steps keep going down towards black instead.
+  const floor = L0 < 0.16 ? 0.42 * L0 : Math.max(0.16, 0.42 * L0)
   return STEPS.map((step, i) => {
     if (i === 5) return { step, rgb: { ...ref }, hex: toHex(ref), reference: true }
     const lighter = i < 5

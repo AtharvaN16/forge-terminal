@@ -77,8 +77,14 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
   const [rest, slash, filtered, after] = STEPS as [Step, Step, Step, Step]
 
   it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest))
-  it('2 · typed /: the tab lights and the panel holds the list', () => expectStep(slash))
-  it('3 · typed /co, then ↓: the list narrows and the strip moves', () => expectStep(filtered))
+  // The mockup's list has three modes; colour is the fourth (colour spec
+  // §6.1), so the rows from colour's onward differ from it by design. Those
+  // rows are held below by what they say, in order.
+  const fromRow = (r: number) => Array.from({ length: 21 - r }, (_, i) => r + i)
+  it('2 · typed /: the tab lights and the panel holds the list', () =>
+    expectStep(slash, fromRow(12)))
+  it('3 · typed /co, then ↓: the list narrows and the strip moves', () =>
+    expectStep(filtered, fromRow(11)))
   // Row 11 is compress's kinds line, which leaves out the mockup's "video":
   // compress has no video engine (see home-screen.test.tsx).
   it('4 · pressed ↵ on /compress: compress, with the dots back', () => expectStep(after, [11]))
@@ -98,6 +104,14 @@ describe('the list in the panel', () => {
     expect(rows.join('\n')).not.toContain('/help')
     for (const name of ['/convert', '/compress', '/pdf', '/theme'])
       expect(lines.some((l) => l.includes(name))).toBe(true)
+  })
+
+  it('lists colour after pdf among the modes, and under /co after compress', () => {
+    const all = text(screen({ mode: 'convert', text: '/' }).lastFrame()).join('\n')
+    expect(all.indexOf('/colour')).toBeGreaterThan(all.indexOf('/pdf'))
+    expect(all.indexOf('/colour')).toBeLessThan(all.indexOf('/theme'))
+    const co = text(screen({ mode: 'convert', text: '/co' }).lastFrame()).join('\n')
+    expect(co.indexOf('/colour')).toBeGreaterThan(co.indexOf('/compress'))
   })
 
   it('says so in the panel when nothing matches', () => {

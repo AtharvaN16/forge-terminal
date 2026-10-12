@@ -83,5 +83,7 @@ export function formatRgb({ r, g, b }: Rgb): string {
 
 export function formatOklch(c: Rgb): string {
   const { L, C, h } = toLch(rgbToOklab(c))
-  return `oklch(${(L * 100).toFixed(0)}% ${C.toFixed(3)} ${h.toFixed(0)})`
+  // A grey's hue is rounding noise from atan2; there is no hue to give.
+  const hue = C < 0.0005 ? 0 : h
+  return `oklch(${(L * 100).toFixed(0)}% ${C.toFixed(3)} ${hue.toFixed(0)})`
 }

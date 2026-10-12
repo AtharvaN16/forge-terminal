@@ -62,4 +62,9 @@ describe('formatting', () => {
     expect(formatRgb({ r: 53, g: 103, b: 35 })).toBe('rgb(53 103 35)')
     expect(formatOklch({ r: 101, g: 121, b: 253 })).toBe('oklch(63% 0.196 273)')
   })
+
+  it('gives a grey no hue: there is none to give', () => {
+    expect(formatOklch({ r: 119, g: 119, b: 119 })).toBe('oklch(57% 0.000 0)')
+    expect(formatOklch({ r: 255, g: 255, b: 255 })).toBe('oklch(100% 0.000 0)')
+  })
 })

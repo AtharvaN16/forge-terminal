@@ -96,13 +96,13 @@ describe('HintBar, always F1', () => {
         pairs={[
           ['↑↓', 'choose'],
           ['↵', 'confirm'],
-          ['1–3', 'mode'],
+          ['1–4', 'mode'],
           ['esc', 'back'],
         ]}
       />,
     )
     expect(keys(out)).toMatch(
-      /^ {2}↑↓ {2}choose {3}↵ {2}confirm +1–3 mode · esc back · ctrl-c quit$/,
+      /^ {2}↑↓ {2}choose {3}↵ {2}confirm +1–4 mode · esc back · ctrl-c quit$/,
     )
   })
 

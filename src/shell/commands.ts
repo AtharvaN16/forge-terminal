@@ -44,10 +44,24 @@ export const COMMANDS: Command[] = [
     group: 'modes',
   },
   {
+    name: 'colour',
+    description: 'palettes from images, scales from a colour',
+    needsSource: false,
+    mode: 'colour',
+    group: 'modes',
+  },
+  {
     name: 'theme',
     description: 'switch between light and dark',
     needsSource: false,
     group: 'settings',
+  },
+  // Not a row: the American spelling, so it works when typed.
+  {
+    name: 'color',
+    description: 'palettes from images, scales from a colour',
+    needsSource: false,
+    mode: 'colour',
   },
   // Not a row: the list is the help. Typed, it opens the list (`listCommands`).
   { name: 'help', description: 'list these commands', needsSource: false },

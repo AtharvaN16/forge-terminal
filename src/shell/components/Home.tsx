@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import stringWidth from 'string-width'
+import { COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
 import type { CommandList } from '../commands.js'
 import {
   brandRows,
@@ -75,12 +76,15 @@ export function homeKeys({
   typing,
   completions,
   commands,
+  colour = false,
   staged,
 }: {
   typing: boolean
   completions: number
   /** The command list is open. */
   commands: boolean
+  /** Colour's home: the two cards to choose between, and nothing to send. */
+  colour?: boolean
   /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
   staged?: { count: number; verb: string | null } | undefined
 }): KeySet {
@@ -119,12 +123,25 @@ export function homeKeys({
       ],
     }
   }
+  if (colour) {
+    return {
+      main: [
+        ['←→', 'choose'],
+        ['↵', 'open'],
+      ],
+      foot: [
+        ['1–4', 'mode'],
+        ['ctrl-n', 'new'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
   if (staged && staged.count > 0) {
     if (staged.verb === null) {
       return {
         main: [['esc', 'clear']],
         foot: [
-          ['1–3', 'mode'],
+          ['1–4', 'mode'],
           ['ctrl-c', 'quit'],
         ],
       }
@@ -133,7 +150,7 @@ export function homeKeys({
       main: [['↵', staged.verb]],
       foot: [
         ['esc', 'clear'],
-        ['1–3', 'mode'],
+        ['1–4', 'mode'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -142,7 +159,7 @@ export function homeKeys({
   return {
     main: [['↵', 'send']],
     foot: [
-      ['1–3', 'mode'],
+      ['1–4', 'mode'],
       ['esc', 'clear'],
       ['ctrl-n', 'new'],
       ['ctrl-c', 'quit'],
@@ -328,6 +345,7 @@ export function Home({
   under,
   note,
   keys,
+  colourChoice = 0,
 }: {
   width: number
   height: number
@@ -356,6 +374,8 @@ export function Home({
    */
   note?: ReactNode
   keys: KeySet
+  /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
+  colourChoice?: 0 | 1
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height)
@@ -369,11 +389,13 @@ export function Home({
         max: layout.surface + layout.list,
       })
     : layout.surface > 0
-      ? staged && staged.files.length === 1 && staged.files[0]
-        ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
-        : staged && staged.files.length > 1
-          ? stagedListRows({ ...art, rows: layout.surface, view: staged })
-          : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
+      ? mode === 'colour' && !typing
+        ? choiceCards({ width, palette, selected: colourChoice, samples: COLOUR_SAMPLES })
+        : staged && staged.files.length === 1 && staged.files[0]
+          ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0] })
+          : staged && staged.files.length > 1
+            ? stagedListRows({ ...art, rows: layout.surface, view: staged })
+            : surfaceRows({ ...art, rows: layout.surface, typing, kinds: MODE_KINDS[mode] })
       : []
 
   // The row under the field. With no room for a panel the staged headline
@@ -405,7 +427,13 @@ export function Home({
           <Gap />
         </>
       ) : null}
-      {tabRows({ ...art, savesTo, commands: commands !== undefined }).map((row, i) => (
+      {tabRows({
+        ...art,
+        savesTo,
+        // Colour writes no files: what it makes goes to the clipboard.
+        ...(mode === 'colour' ? { right: { label: 'copies to', value: 'clipboard' } } : {}),
+        commands: commands !== undefined,
+      }).map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed rows of art
         <Runs key={`tabs${i}`} row={row} />
       ))}
@@ -414,7 +442,9 @@ export function Home({
         <Runs key={`surface${i}`} row={row} />
       ))}
       <Gap />
-      <Box flexShrink={0}>{field}</Box>
+      {/* Colour's home has nothing to type until something is: its field
+          shows once `/`, `#` or a drop has put text in it. */}
+      <Box flexShrink={0}>{mode === 'colour' && !typing ? <Text> </Text> : field}</Box>
       {below ? (
         <>
           <Gap />

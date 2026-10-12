@@ -29,12 +29,21 @@ describe('isCommandBuffer', () => {
   })
 })
 
+describe('/colour', () => {
+  it('switches to colour mode, and /color does too without being listed', () => {
+    expect(parseCommand('/colour')?.mode).toBe('colour')
+    expect(parseCommand('/color')?.mode).toBe('colour')
+    expect(listCommands('col').items.map((c) => c.name)).toEqual(['colour'])
+  })
+})
+
 describe('listCommands', () => {
   const names = (fragment: string) => listCommands(fragment).items.map((c) => c.name)
 
   it('lists the modes, then the settings, for a bare slash, with no /help row', () => {
-    expect(names('')).toEqual(['convert', 'compress', 'pdf', 'theme'])
+    expect(names('')).toEqual(['convert', 'compress', 'pdf', 'colour', 'theme'])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
+      'modes',
       'modes',
       'modes',
       'modes',
@@ -43,14 +52,14 @@ describe('listCommands', () => {
   })
 
   it('prefix-matches, case-insensitively, and returns the typed part to draw bright', () => {
-    expect(names('co')).toEqual(['convert', 'compress'])
+    expect(names('co')).toEqual(['convert', 'compress', 'colour'])
     expect(listCommands('CO').query).toBe('co')
     expect(names('comp')).toEqual(['compress'])
   })
 
   it('opens the whole list for /help, and for the start of it', () => {
     for (const typed of ['help', 'he', 'h']) {
-      expect(names(typed)).toEqual(['convert', 'compress', 'pdf', 'theme'])
+      expect(names(typed)).toEqual(['convert', 'compress', 'pdf', 'colour', 'theme'])
       expect(listCommands(typed).query).toBe('')
     }
   })
@@ -64,6 +73,7 @@ describe('listCommands', () => {
       'convert',
       'compress',
       'pdf',
+      'colour',
       undefined,
     ])
   })
@@ -94,6 +104,8 @@ describe('parseCommand', () => {
 describe('the registry', () => {
   it('carries every command the shell can run', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
+      'color',
+      'colour',
       'compress',
       'convert',
       'help',
