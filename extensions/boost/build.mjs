@@ -2,17 +2,22 @@
 /**
  * Builds the boost payload directory.
  *
- *   node extensions/boost/build.mjs --arch arm64|x64 --out <dir> [--pth <file>] [--runner-only]
+ *   node extensions/boost/build.mjs --arch arm64|x64 --out <dir> [--platform darwin|win32]
+ *                                   [--pth <file> | --onnx <file>] [--runner-only]
  *
  * <dir> receives:
  *   runner.mjs                  runner.ts bundled; onnxruntime-node's JS and onnxruntime-common inlined
- *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/darwin/<arch>/, loaded from beside runner.mjs
- *   libonnxruntime.*.dylib      the binding links it via @loader_path
+ *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/<platform>/<arch>/, loaded from beside runner.mjs
+ *   libonnxruntime.*.dylib      darwin: the binding links it via @loader_path
+ *   *.dll                       win32: onnxruntime.dll, DirectML.dll, dxcompiler.dll, dxil.dll (same directory)
  *   realesr-general-x4v3.onnx   upstream .pth (pinned by sha256) converted by convert.py, output pinned too
  *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT) and ONNX Runtime's third-party notices
  *
  * Downloads are cached in extensions/boost/.cache/ and verified by sha256 every
  * time. --pth uses a local copy of the upstream checkpoint (still verified).
+ * --onnx uses an already-converted model instead of converting a .pth, checked against
+ * the same pinned output sha256; the Windows build takes the macOS build's output this
+ * way, so one conversion backs every archive and CI needs no Python on Windows.
  * --runner-only writes just runner.mjs and the native files (no network), for tests.
  * manifest.json is not written here — scripts/package-extension.mjs does that.
  */
@@ -45,14 +50,24 @@ const ORT_NOTICES = {
 }
 
 function parseArgs(argv) {
-  const out = { runnerOnly: false }
+  const out = { runnerOnly: false, platform: 'darwin' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--runner-only') out.runnerOnly = true
-    else if (a === '--arch' || a === '--out' || a === '--pth') out[a.slice(2)] = argv[++i]
+    else if (
+      a === '--arch' ||
+      a === '--out' ||
+      a === '--pth' ||
+      a === '--onnx' ||
+      a === '--platform'
+    )
+      out[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument: ${a}`)
   }
   if (out.arch !== 'arm64' && out.arch !== 'x64') throw new Error('--arch must be arm64 or x64')
+  if (out.platform !== 'darwin' && out.platform !== 'win32')
+    throw new Error('--platform must be darwin or win32')
+  if (out.pth && out.onnx) throw new Error('--pth and --onnx are mutually exclusive')
   if (!out.out) throw new Error('--out <dir> is required')
   return out
 }
@@ -76,7 +91,12 @@ async function pinned(name, url, expected) {
 }
 
 /** The ONNX model: converted from the pinned upstream .pth, output checked against model.json. */
-async function modelFile(localPth) {
+async function modelFile(localPth, localOnnx) {
+  if (localOnnx) {
+    if (sha256(readFileSync(localOnnx)) !== model.sha256)
+      throw new Error(`--onnx ${localOnnx} does not match model.json sha256`)
+    return localOnnx
+  }
   mkdirSync(cacheDir, { recursive: true })
   const onnx = join(cacheDir, model.file)
   if (existsSync(onnx) && sha256(readFileSync(onnx)) === model.sha256) return onnx
@@ -149,15 +169,15 @@ async function main() {
     dirname(require.resolve('onnxruntime-node/package.json')),
     'bin',
     'napi-v6',
-    'darwin',
+    args.platform,
     args.arch,
   )
   if (!existsSync(nativeDir))
-    throw new Error(`onnxruntime-node ${ORT_VERSION} has no darwin/${args.arch} binaries`)
+    throw new Error(`onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`)
   for (const f of readdirSync(nativeDir)) copyFileSync(join(nativeDir, f), join(out, f))
 
   if (args.runnerOnly) return void console.log(out)
-  copyFileSync(await modelFile(args.pth), join(out, model.file))
+  copyFileSync(await modelFile(args.pth, args.onnx), join(out, model.file))
 
   const ortNotices = readFileSync(
     await pinned(`ort-${ORT_VERSION}-ThirdPartyNotices.txt`, ORT_NOTICES.url, ORT_NOTICES.sha256),

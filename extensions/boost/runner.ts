@@ -114,13 +114,16 @@ async function openModel(ort: Ort, path: string): Promise<InferenceSession> {
     graphOptimizationLevel: 'all' as const,
     logSeverityLevel: 3 as const,
   }
+  // DirectML on Windows (any DX12 GPU), CoreML on macOS; CPU is always the way out.
+  const win = process.platform === 'win32'
+  const preferred = win ? (['dml'] as const) : ([{ name: 'coreml', coreMlFlags: 0 }] as const)
   try {
     return await ort.InferenceSession.create(path, {
       ...base,
-      executionProviders: [{ name: 'coreml', coreMlFlags: 0 }, 'cpu'],
+      executionProviders: [...preferred, 'cpu'],
     })
   } catch (err) {
-    process.stderr.write(`CoreML unavailable, using CPU: ${String(err)}\n`)
+    process.stderr.write(`${win ? 'DirectML' : 'CoreML'} unavailable, using CPU: ${String(err)}\n`)
     return await ort.InferenceSession.create(path, { ...base, executionProviders: ['cpu'] })
   }
 }

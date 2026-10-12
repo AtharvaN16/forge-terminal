@@ -11,19 +11,23 @@ name: extensions
 #      release is downloaded and verified against the catalogue instead of
 #      overwritten. Only an archive the catalogue does not list (boost x64,
 #      built but not offered) and the release does not have is uploaded.
+#
+# Windows archives are assembled on the macOS runner (they are only files) and
+# then run for real on windows-latest by the verify-windows job.
 
 on:
   push:
     tags:
       - 'ext-boost-v*'
       - 'ext-remove-background-v*'
+      - 'ext-heic-v*'
   workflow_dispatch:
     inputs:
       id:
         description: 'Extension id'
         required: true
         type: choice
-        options: [boost, remove-background]
+        options: [boost, remove-background, heic]
       version:
         description: 'Version (no leading v); a release ext-<id>-v<version> must exist or will be created'
         required: true
@@ -34,6 +38,8 @@ permissions:
 jobs:
   package:
     runs-on: macos-14
+    outputs:
+      id: ${{ steps.ref.outputs.id }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -57,7 +63,7 @@ jobs:
             rest="${tag#ext-}"
             id="${rest%-v*}"; version="${rest##*-v}"
           fi
-          case "$id" in boost|remove-background) ;; *) echo "unknown extension id: $id" >&2; exit 1 ;; esac
+          case "$id" in boost|remove-background|heic) ;; *) echo "unknown extension id: $id" >&2; exit 1 ;; esac
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=ext-$id-v$version" >> "$GITHUB_OUTPUT"
@@ -75,6 +81,15 @@ jobs:
               node extensions/boost/build.mjs --arch "$arch" --out "dist-ext/payload-$arch"
               node scripts/package-extension.mjs boost "$VERSION" "$arch" "dist-ext/payload-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
+            # Windows reuses the model the arm64 build converted (verified against the same
+            # pinned sha256), so nothing is converted twice and no Python is needed for it.
+            for arch in x64 arm64; do
+              node extensions/boost/build.mjs --platform win32 --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-win32-$arch"
+              node scripts/package-extension.mjs boost "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
+            done
+          elif [ "$ID" = "heic" ]; then
+            node extensions/heic/build.mjs --out dist-ext/payload-win32-universal
+            node scripts/package-extension.mjs heic "$VERSION" win32-universal dist-ext/payload-win32-universal dist-ext/out >> dist-ext/assets.jsonl
           else
             bash extensions/remove-background/build.sh dist-ext/payload-universal
             node scripts/package-extension.mjs remove-background "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
@@ -92,12 +107,16 @@ jobs:
               if (at >= 0) process.stdout.write(/sha256: \x27([0-9a-f]{64})\x27/.exec(src.slice(at))[1])
             ' "$1"
           }
+          # shasum on macOS, sha256sum where that is missing (Linux, Git Bash).
+          sha256_of() {
+            if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1"; else sha256sum "$1"; fi | cut -d' ' -f1
+          }
           : > dist-ext/catalogued.txt
           status=0
           for f in dist-ext/out/*.tar.gz; do
             name="$(basename "$f")"
             want="$(catalogued "$name")"
-            got="$(shasum -a 256 "$f" | cut -d' ' -f1)"
+            got="$(sha256_of "$f")"
             if [ -z "$want" ]; then
               echo "$name: not in the catalogue (built, not offered)"
             elif [ "$want" = "$got" ]; then
@@ -146,3 +165,82 @@ jobs:
             cat dist-ext/assets.jsonl
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Keep the payload directories so verify-windows runs the very files that were packaged.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payloads
+          path: dist-ext/payload-*
+          if-no-files-found: error
+
+  # Runs what the Windows archives contain, on Windows. Nothing here publishes anything.
+  verify-windows:
+    needs: package
+    if: needs.package.outputs.id == 'boost' || needs.package.outputs.id == 'heic'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: payloads
+          path: dist-ext
+
+      - name: Boost runs on Windows
+        if: needs.package.outputs.id == 'boost'
+        run: |
+          # No PNG is checked in for this, so write a 32x32 gradient with node's zlib alone.
+          node -e '
+            const zlib = require("zlib"), fs = require("fs")
+            const crcTable = Array.from({ length: 256 }, (_, n) => {
+              let c = n
+              for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+              return c >>> 0
+            })
+            const crc = (b) => {
+              let c = 0xffffffff
+              for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8)
+              return (c ^ 0xffffffff) >>> 0
+            }
+            const chunk = (type, data) => {
+              const body = Buffer.concat([Buffer.from(type), data])
+              const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
+              const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(body))
+              return Buffer.concat([len, body, sum])
+            }
+            const W = 32, H = 32
+            const ihdr = Buffer.alloc(13)
+            ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2
+            const raw = Buffer.alloc((W * 3 + 1) * H)
+            for (let y = 0; y < H; y++)
+              for (let x = 0; x < W; x++) {
+                const i = y * (W * 3 + 1) + 1 + x * 3
+                raw[i] = x * 8; raw[i + 1] = y * 8; raw[i + 2] = 128
+              }
+            fs.writeFileSync("in.png", Buffer.concat([
+              Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+              chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0)),
+            ]))
+          '
+          # runner.mjs --in <png> --out <png> --scale 1|2|4
+          node dist-ext/payload-win32-x64/runner.mjs --in in.png --out out.png --scale 2
+          test -s out.png
+          node -e '
+            const b = require("fs").readFileSync("out.png")
+            const w = b.readUInt32BE(16), h = b.readUInt32BE(20)
+            if (w !== 64 || h !== 64) { console.error("expected 64x64, got " + w + "x" + h); process.exit(1) }
+          '
+
+      - name: HEIC extension runs on Windows
+        if: needs.package.outputs.id == 'heic'
+        run: |
+          out="$(node dist-ext/payload-win32-universal/runner.mjs --info --in tests/fixtures/heic/small.heic)"
+          echo "$out"
+          printf '%s' "$out" | grep -Eq '"width"[[:space:]]*:[[:space:]]*64([^0-9]|$)'
