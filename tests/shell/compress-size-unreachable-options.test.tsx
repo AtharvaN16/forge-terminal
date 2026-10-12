@@ -44,6 +44,9 @@ async function toUnreachable() {
   ) {
     await settle(100)
   }
+  // The screen is drawn a moment before Ink attaches its key handler (an
+  // effect); a key sent in that gap is dropped, and ↵ then took the lowest quality.
+  await settle()
   return app
 }
 
