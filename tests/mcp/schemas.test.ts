@@ -5,9 +5,11 @@ import { writableFormats } from '../../src/core/capabilities.js'
 import {
   FormatsOutput,
   PAGE_OPS,
+  PaletteOutput,
   ProbeOutput,
   ROTATE_DEGREES,
   RunOutput,
+  ScaleOutput,
   SPLIT_MODES,
   SPLIT_SPEC_MODES,
   TARGETS,
@@ -48,6 +50,16 @@ describe('output schemas match what the CLI prints', () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'a.jpg')
     expect(ProbeOutput.safeParse(await jsonOf(['probe', jpg])).success).toBe(true)
+  })
+
+  it('a palette document parses as PaletteOutput', async () => {
+    const dir = await makeTempDir()
+    const jpg = await makeJpeg(dir, 'a.jpg')
+    expect(PaletteOutput.safeParse(await jsonOf(['palette', jpg])).success).toBe(true)
+  })
+
+  it('a scale document parses as ScaleOutput', async () => {
+    expect(ScaleOutput.safeParse(await jsonOf(['scale', '6579FD'])).success).toBe(true)
   })
 
   it('the formats document parses as FormatsOutput', async () => {

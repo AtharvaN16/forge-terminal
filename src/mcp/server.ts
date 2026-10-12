@@ -7,13 +7,25 @@ import {
   ConvertInput,
   FormatsInput,
   FormatsOutput,
+  PaletteInput,
+  PaletteOutput,
   PdfInput,
   ProbeInput,
   ProbeOutput,
   RunOutput,
+  ScaleInput,
+  ScaleOutput,
 } from './schemas.js'
 import { claimStdout } from './stdout-guard.js'
-import { compressTool, convertTool, formatsTool, pdfTool, probeTool } from './tools.js'
+import {
+  compressTool,
+  convertTool,
+  formatsTool,
+  paletteTool,
+  pdfTool,
+  probeTool,
+  scaleTool,
+} from './tools.js'
 
 /** What a client tells its model about Forge as a whole. */
 export const INSTRUCTIONS = [
@@ -38,9 +50,11 @@ const WRITES = {
 } as const
 
 /**
- * Forge's MCP server, with five tools on purpose. A 57-tool ImageMagick server
- * is the cautionary example of flooding an agent's context (spec §3.5). Tools
- * call core in-process; nothing here spawns the CLI.
+ * Forge's MCP server, with seven tools on purpose. A 57-tool ImageMagick server
+ * is the cautionary example of flooding an agent's context (spec §3.5). The
+ * two colour tools earn their place the way `forge_probe` does: read-only,
+ * small, and answering a question an agent cannot answer by looking at a
+ * file (colour spec §7.2). Tools call core in-process; nothing spawns the CLI.
  */
 export function createForgeServer(): McpServer {
   const server = new McpServer({ name: 'forge', version: VERSION }, { instructions: INSTRUCTIONS })
@@ -107,6 +121,32 @@ export function createForgeServer(): McpServer {
       annotations: WRITES,
     },
     (args) => pdfTool(args),
+  )
+
+  server.registerTool(
+    'forge_palette',
+    {
+      title: 'Colours of an image',
+      description:
+        "An image's main colours, most of the image first, each as hex, rgb and OKLCH with its share. With inside, the shades that one colour is made of. Writes nothing.",
+      inputSchema: PaletteInput,
+      outputSchema: PaletteOutput,
+      annotations: READS,
+    },
+    (args) => paletteTool(args),
+  )
+
+  server.registerTool(
+    'forge_scale',
+    {
+      title: 'Tonal scale',
+      description:
+        'A 50–950 tonal scale built in OKLCH with the given colour at 500, each step with its contrast against white and black text. Writes nothing.',
+      inputSchema: ScaleInput,
+      outputSchema: ScaleOutput,
+      annotations: READS,
+    },
+    (args) => scaleTool(args),
   )
 
   return server
