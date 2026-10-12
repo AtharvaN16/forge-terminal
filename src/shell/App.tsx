@@ -3201,6 +3201,9 @@ export function App({
                 after={lastResult.job.outputs[0] ?? ''}
                 savedTo={dirname(lastResult.job.outputs[0] ?? '')}
                 width={width}
+                // The terminal's rows less the header bar (2) and keys (3),
+                // and one more so the frame never fills the screen.
+                rows={height - 6}
               />
               <HintBar
                 width={width}

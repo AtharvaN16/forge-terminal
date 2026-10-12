@@ -1,4 +1,5 @@
 import { basename, dirname, isAbsolute } from 'node:path'
+import chalk from 'chalk'
 import { Box, type DOMElement, Text, useStdout } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
@@ -13,7 +14,7 @@ import { displayPath } from '../../utils/display-path.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, SYMBOLS } from '../theme.js'
+import { colourProp, modeColours, SYMBOLS } from '../theme.js'
 import { useInlinePictures } from '../useInlinePictures.js'
 import { middleEllipsis } from '../width.js'
 
@@ -42,15 +43,34 @@ export interface EnhanceDoneProps {
   /** Where it went: the folder, or the written file itself. */
   savedTo: string
   width: number
+  /**
+   * The rows this component may use; the pictures take what is left after
+   * its lines, at most `PICTURE_ROWS`. Undefined: the full 16.
+   */
+  rows?: number
 }
 
 const M = HOME_MARGIN
 /** The gap between the pictures, the ▶ in it. */
 const GAP = 4
-/** Picture height in rows: the mockup's 16, so the body is 21 rows and fits 80 × 24. */
+/** Picture height in rows at most: the mockup's 16. */
 export const PICTURE_ROWS = 16
-/** The mode's colour for the arrow (enhance violet, the mockup's #b39ae8). */
-const ENHANCE_VIOLET = '#b39ae8'
+/** Fewer rows than this for the pictures and Done says only its quiet line. */
+export const MIN_PICTURE_ROWS = 6
+/** What the component draws besides the pictures: line, gap, tabs, gap, caption. */
+const CHROME_ROWS = 5
+/** How long a resize must settle before the pictures are cut again. */
+export const RESIZE_SETTLE_MS = 100
+
+/**
+ * How tall the pictures are when the component has `rows` rows: as tall as
+ * fits, at most `PICTURE_ROWS`; 0 when fewer than `MIN_PICTURE_ROWS` fit.
+ */
+export function pictureRows(rows: number | undefined): number {
+  if (rows === undefined) return PICTURE_ROWS
+  const fit = Math.min(PICTURE_ROWS, rows - CHROME_ROWS)
+  return fit >= MIN_PICTURE_ROWS ? fit : 0
+}
 
 /** How wide each picture is for a terminal `width` columns wide. */
 export function pictureCols(width: number): number {
@@ -69,33 +89,32 @@ export function whatWasDone(
   return { what: `${scale}× resolution`, more: dims }
 }
 
-const SGR = (n: string) => `\u001b[${n}m`
-const rgbAt = (g: PixelGrid, x: number, y: number) => {
-  const i = (y * g.width + x) * 4
-  return `${g.rgba[i] ?? 0};${g.rgba[i + 1] ?? 0};${g.rgba[i + 2] ?? 0}`
-}
-
 /**
  * A grid as rows of ▀: the upper pixel the foreground, the lower the
- * background. Truecolour SGR straight in the string (Ink keeps SGR as it is)
- * — a few hundred <Text> elements per picture would cost more than they say.
+ * background, a run of equal cells styled once. Styled through chalk, the
+ * same chalk Ink draws with, so its colour level holds: FORCE_COLOR, and
+ * NO_COLOR (mapped to it at start-up, `applyColourPreference`), and 256 or
+ * 16 colours where the terminal has no true colour. One string per row — a
+ * few hundred <Text> elements per picture would cost more than they say.
  */
 export function halfBlocks(g: PixelGrid): string[] {
+  const at = (x: number, y: number): [number, number, number] => {
+    const i = (y * g.width + x) * 4
+    return [g.rgba[i] ?? 0, g.rgba[i + 1] ?? 0, g.rgba[i + 2] ?? 0]
+  }
+  const same = (p: number[], q: number[]) => p[0] === q[0] && p[1] === q[1] && p[2] === q[2]
   const out: string[] = []
   for (let y = 0; y + 1 < g.height; y += 2) {
     let row = ''
-    let fg = ''
-    let bg = ''
-    for (let x = 0; x < g.width; x++) {
-      const top = rgbAt(g, x, y)
-      const low = rgbAt(g, x, y + 1)
-      if (top !== fg) row += SGR(`38;2;${top}`)
-      if (low !== bg) row += SGR(`48;2;${low}`)
-      fg = top
-      bg = low
-      row += '▀'
+    for (let x = 0; x < g.width; ) {
+      const top = at(x, y)
+      const low = at(x, y + 1)
+      let n = 1
+      while (x + n < g.width && same(at(x + n, y), top) && same(at(x + n, y + 1), low)) n++
+      row += chalk.rgb(...top).bgRgb(...low)('▀'.repeat(n))
+      x += n
     }
-    out.push(row + SGR('39;49'))
+    out.push(row)
   }
   return out
 }
@@ -117,30 +136,52 @@ type Shown =
   | { real: false; closeup: Closeup }
   | { failed: true }
 
-export function EnhanceDone({ op, scale = 1, before, after, savedTo, width }: EnhanceDoneProps) {
+export function EnhanceDone({
+  op,
+  scale = 1,
+  before,
+  after,
+  savedTo,
+  width,
+  rows: available,
+}: EnhanceDoneProps) {
   const palette = useTheme()
   const { stdout } = useStdout()
-  const protocol = stdout.isTTY ? imageProtocol() : null
+  // No colour (NO_COLOR, a pipe): a picture is nothing but colour, so none.
+  const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
+  const protocol = stdout.isTTY && colour ? imageProtocol() : null
   const cols = pictureCols(width)
-  const rows = PICTURE_ROWS
+  const rows = colour ? pictureRows(available) : 0
   const s = op === 'remove-background' ? 1 : scale
   const [shown, setShown] = useState<Shown | undefined>(undefined)
+  /** The first cut is at once; one after a resize waits for the resize to settle. */
+  const cutBefore = useRef(false)
 
   useEffect(() => {
+    if (rows === 0) return
     let live = true
     setShown(undefined)
-    const opts = { cols, rows: PICTURE_ROWS, scale: s }
-    const load = protocol
-      ? closeupPictures(before, after, opts).then((pictures): Shown => ({ real: true, pictures }))
-      : findCloseup(before, after, opts).then((closeup): Shown => ({ real: false, closeup }))
-    load.then(
-      (v) => live && setShown(v),
-      () => live && setShown({ failed: true }),
+    const opts = { cols, rows, scale: s }
+    const timer = setTimeout(
+      () => {
+        const load = protocol
+          ? closeupPictures(before, after, opts).then(
+              (pictures): Shown => ({ real: true, pictures }),
+            )
+          : findCloseup(before, after, opts).then((closeup): Shown => ({ real: false, closeup }))
+        load.then(
+          (v) => live && setShown(v),
+          () => live && setShown({ failed: true }),
+        )
+      },
+      cutBefore.current ? RESIZE_SETTLE_MS : 0,
     )
+    cutBefore.current = true
     return () => {
       live = false
+      clearTimeout(timer)
     }
-  }, [before, after, cols, s, protocol])
+  }, [before, after, cols, rows, s, protocol])
 
   const beforeBox = useRef<DOMElement>(null)
   const afterBox = useRef<DOMElement>(null)
@@ -167,7 +208,7 @@ export function EnhanceDone({ op, scale = 1, before, after, savedTo, width }: En
   const pictureWidth = closeup ? closeup.before.width : cols
   const height = grids ? grids.before.length : rows
   const mid = Math.floor(height / 2)
-  const failed = shown !== undefined && 'failed' in shown
+  const failed = rows === 0 || (shown !== undefined && 'failed' in shown)
   const words = real
     ? caption(real.kind, 1, true)
     : closeup
@@ -179,7 +220,7 @@ export function EnhanceDone({ op, scale = 1, before, after, savedTo, width }: En
       <Box height={mid} flexShrink={0} />
       <Text>
         {' '}
-        <Text color={colourProp(palette.name === 'neutral' ? palette.violet : ENHANCE_VIOLET)} bold>
+        <Text color={colourProp(modeColours(palette, 'enhance').fg)} bold>
           ▶
         </Text>
       </Text>

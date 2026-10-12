@@ -1,12 +1,13 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import chalk from 'chalk'
 import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
 import stripAnsi from 'strip-ansi'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadSharp } from '../../src/engines/libs.js'
-import { EnhanceDone } from '../../src/shell/components/EnhanceDone.js'
+import { EnhanceDone, pictureRows } from '../../src/shell/components/EnhanceDone.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK } from '../../src/shell/theme.js'
 
@@ -29,8 +30,14 @@ async function pair(dir: string): Promise<[string, string]> {
   return [before, after]
 }
 
+const level = chalk.level
+afterEach(() => {
+  chalk.level = level
+})
+
 describe('EnhanceDone, half-block fallback', () => {
   it('draws the quiet line and the two close-ups side by side within 80 columns', async () => {
+    chalk.level = 3 // a true-colour terminal (the suite's stdout is not a TTY)
     const dir = await mkdtemp(join(tmpdir(), 'forge-enhance-done-'))
     const [before, after] = await pair(dir)
     const { lastFrame } = render(
@@ -50,5 +57,29 @@ describe('EnhanceDone, half-block fallback', () => {
     expect(grid.filter((l) => l.includes('▶'))).toHaveLength(1)
     expect(plain.at(-1)).toContain('one square is one pixel')
     expect(Math.max(...plain.map((l) => stringWidth(l)))).toBeLessThanOrEqual(80)
+  })
+
+  it('with no colour (NO_COLOR, mapped to colour level 0) writes no SGR and only the quiet line', async () => {
+    chalk.level = 0
+    const dir = await mkdtemp(join(tmpdir(), 'forge-enhance-done-'))
+    const [before, after] = await pair(dir)
+    const { lastFrame } = render(
+      <ThemeProvider palette={DARK}>
+        <EnhanceDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
+      </ThemeProvider>,
+    )
+    await new Promise((r) => setTimeout(r, 300))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('✓ sign-sharp.png   sharpened')
+    expect(frame).not.toContain('\u001b[')
+    expect(frame).not.toContain('▀')
+    expect(frame).not.toContain('before')
+  })
+
+  it('fits the pictures to the rows there are, and drops them below six', () => {
+    expect(pictureRows(undefined)).toBe(16)
+    expect(pictureRows(30)).toBe(16)
+    expect(pictureRows(18)).toBe(13)
+    expect(pictureRows(10)).toBe(0)
   })
 })
