@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
@@ -145,4 +146,61 @@ describe('a file staged, back at home', () => {
     expect(keyRow(app)).toMatch(/ctrl-c quit$/)
     expect(plain(app.lastFrame())).not.toContain('close app')
   }, 30_000)
+})
+
+describe('Name taken (L1), everywhere', () => {
+  it('asks it in convert: the title with the old file’s size and age, Keep both first', async () => {
+    const { app, dir } = await shell()
+    const png = await makeGradientPng(dir, 'test.png', 32)
+    await makeJpeg(dir, 'test.jpg')
+    app.stdin.write(png)
+    await settle()
+    app.stdin.write(ENTER)
+    await until(app, 'Convert to')
+    app.stdin.write(ENTER)
+    await until(app, 'sharper')
+    app.stdin.write(ENTER)
+    await until(app, /^ Save as/m)
+    app.stdin.write(ENTER)
+    await until(app, 'already exists')
+    const out = plain(app.lastFrame())
+    expect(out).toMatch(/^ test\.jpg already exists +[\d.]+ (B|KB) · today, \d\d:\d\d$/m)
+    expect(out).toMatch(/▌ Keep both +saves yours as test \(1\)\.jpg/)
+    expect(out.split('\n')[0]).toMatch(/Name taken ╱╱ *$/)
+    app.stdin.write(ENTER)
+    await until(app, 'convert another', 20_000)
+    expect(existsSync(join(dir, 'test (1).jpg'))).toBe(true)
+  }, 60_000)
+
+  it('asks it in /pdf too, where Keep both writes yours beside the one there', async () => {
+    const { app, dir } = await shell()
+    const pdf = await makePdf(dir, 'report.pdf', 3)
+    await makePdf(dir, 'report-rotated.pdf', 1)
+    app.stdin.write(pdf)
+    await settle()
+    app.stdin.write(ENTER)
+    await until(app, 'Convert to')
+    app.stdin.write(ESC)
+    await until(app, 'drop more')
+    app.stdin.write('/pdf')
+    await settle(200)
+    app.stdin.write(ENTER)
+    await until(app, /choose an operation/i)
+    app.stdin.write(DOWN + DOWN + DOWN + ENTER) // Rotate
+    await until(app, '90° right')
+    app.stdin.write(ENTER)
+    await until(app, /Rotate/)
+    // Today's confirm, or Save as once /pdf ends on it: ↵ runs either way.
+    app.stdin.write(ENTER)
+    await until(app, 'already exists')
+    const out = plain(app.lastFrame())
+    expect(out).toMatch(/^ report-rotated\.pdf already exists +[\d.]+ (B|KB) · today/m)
+    expect(out).not.toContain('✕')
+    expect(out).toMatch(/▌ Keep both +saves yours as report-rotated \(1\)\.pdf/)
+    app.stdin.write(ENTER)
+    const start = Date.now()
+    while (!existsSync(join(dir, 'report-rotated (1).pdf')) && Date.now() - start < 15_000)
+      await settle(50)
+    expect(existsSync(join(dir, 'report-rotated (1).pdf'))).toBe(true)
+  }, 60_000)
 })

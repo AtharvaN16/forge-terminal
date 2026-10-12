@@ -1,3 +1,4 @@
+import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
@@ -42,6 +43,7 @@ import { ErrorLine } from './components/ErrorLine.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
+import { NameTaken } from './components/NameTaken.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
@@ -157,6 +159,24 @@ interface PendingOverwrite {
   destination: string
   output: string
   keepBoth: string
+  /** The one there now, for the title's right: its size and when it changed. */
+  existing?: TakenFile | undefined
+}
+
+/** A file already at the path a save wants, as Name taken describes it. */
+interface TakenFile {
+  bytes: number
+  modified: Date
+}
+
+/** One `stat` of the file in the way, or nothing if it has gone since. */
+function takenFile(path: string): TakenFile | undefined {
+  try {
+    const st = statSync(path)
+    return { bytes: st.size, modified: st.mtime }
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -2150,7 +2170,12 @@ export function App({
       // An output that already exists is a question, not a refusal: spec §8
       // says the shell asks — keep both, replace, or cancel.
       if (refusal.error.code === 'output-exists') {
-        setPending({ destination, output, keepBoth: uniqueOutputPath(output) })
+        setPending({
+          destination,
+          output,
+          keepBoth: uniqueOutputPath(output),
+          existing: takenFile(output),
+        })
         setStep('overwrite')
         return
       }
@@ -2435,9 +2460,30 @@ export function App({
     await runPdfJobs(safe.jobs)
   }
 
-  /** `replace` retries `pdfBlocked.jobs` with `force: true`; anything else cancels. */
+  /**
+   * `keep` runs the jobs with every output that is taken given the name Keep
+   * both gives it (`uniqueOutputPath`: ` (1)`, counting up) — every one, not
+   * just the first, since a split can collide on several. `replace` retries
+   * them with `force: true`; anything else cancels.
+   */
   const answerPdfBlocked = (choice: string) => {
     if (!pdfBlocked) return
+    if (choice === 'keep') {
+      const renamed = pdfBlocked.jobs.map(
+        (job) => ({ ...job, outputs: job.outputs.map((o) => uniqueOutputPath(o)) }) as Job,
+      )
+      const safe = checkWriteSafety(renamed, { force: false })
+      setPdfBlocked(null)
+      if (safe.failures.length > 0) {
+        for (const failure of safe.failures) {
+          push({ kind: 'error', id: nextId(), error: failure.error })
+        }
+        setStep('pdf')
+        return
+      }
+      void runPdfJobs(safe.jobs)
+      return
+    }
     if (choice !== 'replace') {
       const cancelTo = pdfBlocked.cancelTo
       setPdfBlocked(null)
@@ -2459,7 +2505,26 @@ export function App({
     void runPdfJobs(forced.jobs, { force: true })
   }
 
-  // `Select` owns arrow/enter for the output-exists choice; a plain refusal
+  /**
+   * What Name taken says for a refused /pdf run: the one name that is taken,
+   * with its size and age — or how many, when a split or an extract collides
+   * on several.
+   */
+  const pdfTaken = (jobs: Job[]) => {
+    const taken = jobs.flatMap((j) => j.outputs).filter((o) => existsSync(o))
+    const [first] = taken
+    if (!first) return { name: 'The file', keepBoth: '' }
+    if (taken.length === 1) {
+      return {
+        name: basename(first),
+        keepBoth: basename(uniqueOutputPath(first)),
+        existing: takenFile(first),
+      }
+    }
+    return { name: `${taken.length} files`, keepBoth: `${basename(uniqueOutputPath(first))} …` }
+  }
+
+  // `NameTaken` owns its keys for the output-exists question; a plain refusal
   // (no bypass offered) has nothing mounted to answer escape or enter, so
   // this step owns both directly — same reasoning as the 'size' step
   // above, which owns escape for the same reason.
@@ -2557,7 +2622,7 @@ export function App({
     if (mode === 'pdf' && (at === 'pdf-running' || at === 'pdf-blocked')) {
       return {
         answers: pdfTrailNow.answers,
-        current: at === 'pdf-running' ? work?.verb : 'Overwrite',
+        current: at === 'pdf-running' ? work?.verb : 'Name taken',
       }
     }
     const waiting =
@@ -2866,28 +2931,17 @@ export function App({
 
           {step === 'overwrite' && pending ? (
             <Box flexDirection="column" marginBottom={1}>
-              <Text>{`${middleEllipsis(basename(pending.output), Math.max(12, width - 16))} already exists`}</Text>
-              <Select
-                width={pickerWidth}
-                items={[
-                  { value: 'keep', label: 'Keep both', hint: basename(pending.keepBoth) },
-                  { value: 'replace', label: 'Replace', hint: 'the existing file is lost' },
-                  { value: 'cancel', label: 'Cancel', hint: 'pick a different folder' },
-                ]}
+              <NameTaken
+                mode={mode}
+                width={width}
+                name={basename(pending.output)}
+                keepBoth={basename(pending.keepBoth)}
+                existing={pending.existing}
                 onSubmit={answerOverwrite}
                 onCancel={() => {
                   setPending(null)
                   reopenSaveAs()
                 }}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  ['esc', 'cancel'],
-                ]}
               />
             </Box>
           ) : null}
@@ -3019,55 +3073,31 @@ export function App({
           ) : null}
 
           {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
-            <Box flexDirection="column" marginBottom={1}>
-              <Text color={colourProp(palette.fail)}>
-                {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
-              </Text>
-              {/* `.detail`, never `.hint` — the hint text is CLI wording
-                ("Pass --force to replace it"), and the shell has no
-                --force flag. The choice below is the shell's own answer
-                to the same situation. */}
-              <Text
-                color={colourProp(palette.fg)}
-              >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
-              {pdfBlocked.failures[0].error.code === 'output-exists' ? (
-                <Select
-                  width={pickerWidth}
-                  items={[
-                    {
-                      value: 'cancel',
-                      label: 'Cancel',
-                      // Says where it actually goes: a page operation run from
-                      // `/pdf` has only the hub to return to, but an ordinary
-                      // document conversion has its own destination step —
-                      // see `PendingPdfRefusal.cancelTo`'s doc comment.
-                      hint:
-                        pdfBlocked.cancelTo === 'save-as'
-                          ? 'pick a different folder, nothing written'
-                          : 'back to /pdf, nothing written',
-                    },
-                    { value: 'replace', label: 'Replace', hint: 'overwrite the existing file' },
-                  ]}
+            pdfBlocked.failures[0].error.code === 'output-exists' ? (
+              <Box flexDirection="column" marginBottom={1}>
+                <NameTaken
+                  mode={mode}
+                  width={width}
+                  {...pdfTaken(pdfBlocked.jobs)}
                   onSubmit={answerPdfBlocked}
                   onCancel={() => answerPdfBlocked('cancel')}
-                  showHints={band !== 'compact'}
                 />
-              ) : (
+              </Box>
+            ) : (
+              <Box flexDirection="column" marginBottom={1}>
+                <Text color={colourProp(palette.fail)}>
+                  {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
+                </Text>
+                {/* `.detail`, never `.hint` — the hint text is CLI wording
+                  ("Pass --force to replace it"), and the shell has no
+                  --force flag. */}
+                <Text
+                  color={colourProp(palette.fg)}
+                >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
                 <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
-              )}
-              <HintBar
-                width={width}
-                pairs={
-                  pdfBlocked.failures[0].error.code === 'output-exists'
-                    ? [
-                        ['↑↓', 'choose'],
-                        ['↵', 'confirm'],
-                        ['esc', 'cancel'],
-                      ]
-                    : [['esc', 'back']]
-                }
-              />
-            </Box>
+                <HintBar width={width} pairs={[['esc', 'back']]} />
+              </Box>
+            )
           ) : null}
 
           {onHome ? (

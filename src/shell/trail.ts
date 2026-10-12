@@ -28,8 +28,9 @@ const SCREENS: Record<string, { at: number; name?: string }> = {
   quality: { at: 5, name: 'Quality' },
   // The folder and the name, asked as one question (P1).
   'save-as': { at: 6, name: 'Save as' },
-  overwrite: { at: 8, name: 'Overwrite' },
-  'pdf-blocked': { at: 8, name: 'Overwrite' },
+  // The question, not one of its answers (L1).
+  overwrite: { at: 8, name: 'Name taken' },
+  'pdf-blocked': { at: 8, name: 'Name taken' },
   converting: { at: 9 },
   'pdf-running': { at: 9 },
   // Back on the size question: what came after it (the folder, the name) is not behind it.

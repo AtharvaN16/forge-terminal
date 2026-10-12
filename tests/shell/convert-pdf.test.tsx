@@ -299,13 +299,14 @@ describe('cancelling a write collision on an ordinary document conversion', () =
     await settle(300)
 
     const blockedFrame = lastFrame() ?? ''
-    // The real refusal, not a paraphrase — same wording `outputExists` gives
-    // the CLI and `/pdf`'s own collision screen.
-    expect(blockedFrame).toContain('File already exists')
+    // Asked as Name taken (L1), the same question every save asks.
+    expect(blockedFrame).toContain('doc-1.jpg already exists')
     // Not yet the bug: still on the blocked screen, not sent anywhere.
     expect(blockedFrame).not.toContain('PDF — choose an operation')
 
-    stdin.write(ENTER) // "Cancel" is the default, first row, no arrow needed
+    stdin.write(DOWN + DOWN) // Keep both, Replace, Cancel
+    await settle()
+    stdin.write(ENTER)
     await settle(300)
 
     const frame = lastFrame() ?? ''

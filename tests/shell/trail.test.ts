@@ -12,9 +12,10 @@ describe('trailFor', () => {
     // Folder and name are one question (P1), so neither is behind it.
     expect(at('save-as')).toEqual({ answers: ['JPEG', '80'], current: 'Save as' })
     // After it, both are given: the folder, then the name.
+    // "Name taken", not "Overwrite": the trail names the question, not one answer to it.
     expect(at('overwrite')).toEqual({
       answers: ['JPEG', '80', 'Desktop', 'test.jpg'],
-      current: 'Overwrite',
+      current: 'Name taken',
     })
   })
 
@@ -43,7 +44,7 @@ describe('trailFor', () => {
       current: 'Size',
     })
     expect(trailFor({ mode: 'convert', step: 'overwrite', answers: convert }).current).toBe(
-      'Overwrite',
+      'Name taken',
     )
   })
 

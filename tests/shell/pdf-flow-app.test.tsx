@@ -272,10 +272,8 @@ describe('/pdf refuses to overwrite without asking', () => {
     await rotateOnce(stdin, file)
 
     const frame = lastFrame() ?? ''
-    // `outputExists`'s own wording ("<name> is already there"), not a
-    // fabricated message — the shell is showing the real refusal, not
-    // paraphrasing it.
-    expect(frame).toContain('already there')
+    // Asked as Name taken (L1), the question convert asks too.
+    expect(frame).toContain('doc-rotated.pdf already exists')
 
     const secondBytes = await readFile(outputPath)
     expect(secondBytes).toEqual(firstBytes) // nothing written — refused before runJobs
@@ -292,8 +290,10 @@ describe('/pdf refuses to overwrite without asking', () => {
     const outputPath = join(dir, 'doc-rotated.pdf')
     const firstBytes = await readFile(outputPath)
 
-    await rotateOnce(stdin, file) // refused, lands on the blocked step
-    stdin.write(ENTER) // "Cancel" is the safe default — first row, no arrow needed
+    await rotateOnce(stdin, file) // refused, lands on Name taken
+    stdin.write(DOWN + DOWN) // Keep both, Replace, Cancel
+    await settle()
+    stdin.write(ENTER)
     await settle(300)
 
     expect(lastFrame() ?? '').toContain('PDF — choose an operation')
@@ -308,9 +308,9 @@ describe('/pdf refuses to overwrite without asking', () => {
 
     await rotateOnce(stdin, file)
     await rotateOnce(stdin, file) // refused
-    expect(lastFrame() ?? '').toContain('already there')
+    expect(lastFrame() ?? '').toContain('already exists')
 
-    stdin.write(DOWN) // off "Cancel" onto "Replace"
+    stdin.write(DOWN) // off "Keep both" onto "Replace"
     await settle()
     stdin.write(ENTER)
     await settle(600)
