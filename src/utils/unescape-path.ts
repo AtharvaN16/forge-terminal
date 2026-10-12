@@ -6,9 +6,21 @@ import { join } from 'node:path'
  * iTerm2 backslash-escapes spaces; some terminals wrap the whole thing in
  * quotes. Inside quotes the backslashes are literal, so the two cases must
  * not both be applied.
+ *
+ * On Windows a backslash is the path separator, not an escape, and Windows
+ * Terminal pastes a dropped path double-quoted when it contains a space — so
+ * that branch only strips one matched pair of quotes.
  */
-export function unescapePath(raw: string): string {
+export function unescapePath(raw: string, platform: NodeJS.Platform = process.platform): string {
   let s = raw.trim()
+
+  if (platform === 'win32') {
+    const q = s[0]
+    if (s.length > 1 && (q === '"' || q === "'") && s.endsWith(q)) s = s.slice(1, -1)
+    if (s === '~') return homedir()
+    if (s.startsWith('~/')) return join(homedir(), s.slice(2))
+    return s
+  }
 
   const quoted =
     (s.startsWith("'") && s.endsWith("'") && s.length > 1) ||
@@ -65,5 +77,6 @@ export function splitPastedPaths(raw: string): string[] {
   }
 
   if (current) out.push(current)
-  return out.map(unescapePath)
+  // Arrow, not a bare reference: map would pass the index as `platform`.
+  return out.map((p) => unescapePath(p))
 }

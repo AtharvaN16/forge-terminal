@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { FORMATS } from '../core/formats.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { SourceInfo } from '../core/types.js'
@@ -68,7 +69,6 @@ export interface StagedView {
   fresh: number
 }
 
-const basename = (path: string) => path.split('/').pop() ?? path
 const allPdf = (sources: SourceInfo[]) => sources.every((s) => s.format === 'pdf')
 
 /** A source's facts, as the file card says them. */

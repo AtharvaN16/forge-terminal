@@ -1,6 +1,6 @@
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { expandTilde, type Preferences } from '../../config/preferences.js'
+import { knownFolder } from '../../utils/known-folders.js'
 import type { SourceInfo } from '../types.js'
 import type { OptionSpec, PathPreset } from './index.js'
 
@@ -10,10 +10,10 @@ import type { OptionSpec, PathPreset } from './index.js'
  */
 function labelFor(path: string, sourceDir: string): string {
   if (path === sourceDir) return 'Same folder'
-  if (path === join(homedir(), 'Desktop')) return 'Desktop'
-  if (path === join(homedir(), 'Downloads')) return 'Downloads'
+  if (path === knownFolder('Desktop')) return 'Desktop'
+  if (path === knownFolder('Downloads')) return 'Downloads'
   if (path === join(sourceDir, 'converted')) return 'New subfolder'
-  return path.split('/').pop() || path
+  return basename(path) || path
 }
 
 /**
@@ -36,9 +36,9 @@ export function destinationOption(
   // wins — which is why it carries the built-in's label rather than a path.
   const candidates: PathPreset[] = [
     { label: labelFor(preferred, here), path: preferred },
-    { label: 'Desktop', path: join(homedir(), 'Desktop') },
+    { label: 'Desktop', path: knownFolder('Desktop') },
     { label: 'Same folder', path: here },
-    { label: 'Downloads', path: join(homedir(), 'Downloads') },
+    { label: 'Downloads', path: knownFolder('Downloads') },
     ...(subfolder ? [{ label: 'New subfolder', path: join(here, 'converted') }] : []),
   ]
   // Two presets can resolve to the identical folder — e.g. "Same folder" and

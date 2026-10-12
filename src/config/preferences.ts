@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { knownFolder } from '../utils/known-folders.js'
+import { configBase } from './config-base.js'
 
 export interface Preferences {
   /**
@@ -24,12 +26,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
  * and a value captured at import would pin every case to whichever ran first.
  */
 export function configPath(): string {
-  const base = process.env.XDG_CONFIG_HOME
-  const root = base !== undefined && base.length > 0 ? base : join(homedir(), '.config')
-  return join(root, 'forge', 'config.json')
+  return join(configBase(), 'forge', 'config.json')
 }
 
-export function expandTilde(path: string): string {
+export function expandTilde(path: string, platform: NodeJS.Platform = process.platform): string {
+  // The default preference is `~/Desktop`; on Windows the real Desktop may be
+  // redirected (OneDrive), and `<home>\Desktop` would be a new empty folder.
+  if (platform === 'win32') {
+    if (path === '~/Desktop') return knownFolder('Desktop', platform)
+    if (path === '~/Downloads') return knownFolder('Downloads', platform)
+  }
   if (path === '~') return homedir()
   if (path.startsWith('~/')) return join(homedir(), path.slice(2))
   return path

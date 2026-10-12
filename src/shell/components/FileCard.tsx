@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import stringWidth from 'string-width'
 import { FORMATS } from '../../core/formats.js'
@@ -28,7 +29,7 @@ export function FileCard({
 }) {
   const palette = useTheme()
   const band = bandFor(width)
-  const name = source.path.split('/').pop() ?? source.path
+  const name = basename(source.path) ?? source.path
   const label = FORMATS[source.format].label
 
   const facts = cardFacts(source)

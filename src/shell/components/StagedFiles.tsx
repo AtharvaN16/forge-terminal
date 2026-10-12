@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import stringWidth from 'string-width'
 import { FORMATS } from '../../core/formats.js'
@@ -56,7 +57,7 @@ export function StagedFiles({
         </Text>
         {failures.map(({ path, error }) => (
           <Text key={path} color={colourProp(palette.dim)}>
-            {`  ${middleEllipsis(`${path.split('/').pop() ?? path} — ${error.title}`, Math.max(8, width - 2))}`}
+            {`  ${middleEllipsis(`${basename(path) ?? path} — ${error.title}`, Math.max(8, width - 2))}`}
           </Text>
         ))}
       </Box>
@@ -137,7 +138,7 @@ export function StagedFiles({
         <Text color={colourProp(palette.border)}>{` ${rule}╮`}</Text>
       </Text>
       {shown.map((source) => {
-        const name = source.path.split('/').pop() ?? source.path
+        const name = basename(source.path) ?? source.path
         const left = sameFormat ? name : `${FORMATS[source.format].label} ${name}`
         return (
           <Text key={source.path}>

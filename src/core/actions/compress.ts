@@ -1,4 +1,4 @@
-import { dirname } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
 import type { DocumentInfo, ImageInfo, SourceInfo } from '../types.js'
@@ -67,7 +67,7 @@ export const compressAction: Action = {
       {
         kind: 'select',
         id: 'mode',
-        label: `Compress ${source.path.split('/').pop() ?? 'this file'}`,
+        label: `Compress ${basename(source.path) ?? 'this file'}`,
         choices: [
           { value: 'quality', label: 'By quality', hint: 'pick a level, see the result' },
           { value: 'size', label: 'To a target size', hint: 'smallest quality that fits' },
@@ -115,7 +115,7 @@ export const compressAction: Action = {
     const source = sources[0]
     if (!source) return []
 
-    const stem = (source.path.split('/').pop() ?? 'file').replace(/\.[^.]+$/, '')
+    const stem = (basename(source.path) ?? 'file').replace(/\.[^.]+$/, '')
     const destination =
       typeof values.destination === 'string' ? values.destination : dirname(source.path)
     const output = `${destination}/${stem}${SUFFIX}${primaryExtension(source.format)}`

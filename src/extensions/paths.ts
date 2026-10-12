@@ -1,13 +1,11 @@
 import { access, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { configBase } from '../config/config-base.js'
 import { catalogEntry, type ExtensionId } from './catalog.js'
 
-/** `<configDir>/forge/extensions`; XDG_CONFIG_HOME is read at call time, as configPath() does. */
+/** `<configDir>/forge/extensions`; the base is read at call time, as configPath() does. */
 export function extensionsRoot(): string {
-  const base = process.env.XDG_CONFIG_HOME
-  const root = base !== undefined && base.length > 0 ? base : join(homedir(), '.config')
-  return join(root, 'forge', 'extensions')
+  return join(configBase(), 'forge', 'extensions')
 }
 
 export interface Installed {
