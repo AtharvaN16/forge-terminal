@@ -12,6 +12,7 @@ import {
   tabRows,
   WORDMARK3,
 } from '../home-art.js'
+import type { StagedView, UnderField } from '../stage.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
 import { middleEllipsis } from '../width.js'
@@ -71,11 +72,14 @@ export function homeKeys({
   typing,
   completions,
   commands,
+  staged,
 }: {
   typing: boolean
   completions: number
   /** The command list is open. */
   commands: boolean
+  /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
+  staged?: { count: number; verb: string | null } | undefined
 }): KeySet {
   if (commands) {
     return {
@@ -108,6 +112,25 @@ export function homeKeys({
       main: [['↵', 'send']],
       foot: [
         ['esc', 'clear'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
+  if (staged && staged.count > 0) {
+    if (staged.verb === null) {
+      return {
+        main: [['esc', 'clear']],
+        foot: [
+          ['1–3', 'mode'],
+          ['ctrl-c', 'quit'],
+        ],
+      }
+    }
+    return {
+      main: [['↵', staged.verb]],
+      foot: [
+        ['esc', 'clear'],
+        ['1–3', 'mode'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -316,6 +339,10 @@ export function Home({
    * takes the drop surface's place, in place — nothing else moves.
    */
   commands?: (CommandList & { selected: number }) | undefined
+  /** What is staged: one file draws the card on the surface, several the list. */
+  staged?: StagedView | undefined
+  /** The row under the field while something is staged: the red left-out line, or a note. */
+  under?: UnderField | undefined
   keys: KeySet
 }) {
   const palette = useTheme()
