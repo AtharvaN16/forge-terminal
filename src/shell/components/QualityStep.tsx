@@ -1,7 +1,7 @@
 import { Box } from 'ink'
 import { endsRow, SLIDER_WIDTH, sliderRow, titleRow } from '../quality-art.js'
 import { useTheme } from '../ThemeContext.js'
-import type { ShellMode } from '../theme.js'
+import { MODE_KEYS, type ShellMode } from '../theme.js'
 import type { MeasuredSize } from '../useMeasuredSize.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
@@ -64,7 +64,7 @@ export function QualityStep({
           ['↵', 'confirm'],
         ]}
         foot={[
-          ['1–3', 'mode'],
+          [MODE_KEYS, 'mode'],
           ['esc', 'back'],
           ['ctrl-c', 'quit'],
         ]}

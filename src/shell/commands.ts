@@ -44,16 +44,26 @@ export const COMMANDS: Command[] = [
     group: 'modes',
   },
   {
+    name: 'enhance',
+    description: 'sharpen, boost resolution, remove background',
+    needsSource: true,
+    mode: 'enhance',
+    group: 'modes',
+  },
+  {
     name: 'theme',
     description: 'switch between light and dark',
     needsSource: false,
     group: 'settings',
   },
+  {
+    name: 'extensions',
+    description: 'install and remove the AI tools',
+    needsSource: false,
+    group: 'settings',
+  },
   // Not a row: the list is the help. Typed, it opens the list (`listCommands`).
   { name: 'help', description: 'list these commands', needsSource: false },
-  { name: 'boost', description: 'upscale an image 2x or 4x', needsSource: true },
-  { name: 'remove-background', description: 'cut the subject out of a photo', needsSource: true },
-  { name: 'extensions', description: 'install optional features', needsSource: false },
 ]
 
 /**

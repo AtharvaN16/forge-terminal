@@ -135,7 +135,8 @@ export type Job =
       op: 'boost'
       sources: [ImageInfo]
       outputs: [string]
-      scale: 2 | 4
+      /** 1 is Sharpen: the model at the source's own size. */
+      scale: 1 | 2 | 4
       target: FormatId
       options: ConvertOptions
     }

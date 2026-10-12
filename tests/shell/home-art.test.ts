@@ -46,24 +46,32 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
 })
 
 describe('the mode tabs (mockup tab 2, D2)', () => {
-  it('fuses the active tab to the panel and puts the folder at the right', () => {
+  const rowText = (rows: { text: string }[][], i: number) =>
+    rows[i]?.map((run) => run.text).join('') ?? ''
+
+  it('has four modes, the active tab fused to the panel, the folder when there is room', () => {
     const rows = tabRows({
       width: 80,
       palette: modePalette(DARK, 'convert'),
       mode: 'convert',
       savesTo: '~/Desktop',
     })
-    expectRows(rows, empty, 5)
+    expect(rowText(rows, 1)).toBe('   1 convert   2 compress   3 pdf   4 enhance   / commands  ')
+    // The active tab is fused to the panel: a lip above it in the panel's fill.
+    expect(rows[0]?.find((run) => run.text.startsWith('▄'))?.fg).toBe(DARK.selectionBg)
+    const wide = tabRows({ width: 120, palette: DARK, mode: 'convert', savesTo: '~/Desktop' })
+    expect(rowText(wide, 1).endsWith('saves to ~/Desktop ')).toBe(true)
   })
 
   it('moves the tab to the mode pressed', () => {
     const rows = tabRows({
       width: 80,
-      palette: modePalette(DARK, 'compress'),
-      mode: 'compress',
+      palette: modePalette(DARK, 'enhance'),
+      mode: 'enhance',
       savesTo: '~/Desktop',
     })
-    expectRows(rows, compress, 5)
+    expect(rows[1]?.find((run) => run.text === 'enhance')?.bold).toBe(true)
+    expect(rows[1]?.find((run) => run.text === '4')?.fg).toBe(DARK.modeEnhance)
   })
 
   it('drops the folder before it would collide with the tabs', () => {

@@ -27,7 +27,7 @@ export function extensionTargetError(source: SourceInfo, target: FormatId) {
 
 interface Planned {
   target: FormatId
-  scale?: 2 | 4
+  scale?: 1 | 2 | 4
   output?: string
   roots?: Map<string, string>
   background: string
@@ -54,11 +54,14 @@ const targetOption = (): OptionSpec => ({
   choices: [{ value: 'png', label: 'PNG', hint: FORMATS.png.hint }],
 })
 
+/** What a boost job adds to the name: `-sharp` at 1×, else `-2x` / `-4x`. */
+export const boostSuffix = (scale: 1 | 2 | 4): string => (scale === 1 ? 'sharp' : `${scale}x`)
+
 export const boostAction: Action = {
   id: 'boost',
   label: 'Boost resolution',
   verb: 'Boosting',
-  hint: 'sharper at 2× or 4×',
+  hint: 'sharper, at its size or at 2× or 4×',
   requires: 'boost',
   appliesTo: (sources) => imagesOnly(sources) !== undefined,
   unavailable: () => 'images only',
@@ -69,6 +72,7 @@ export const boostAction: Action = {
       label: 'Scale',
       default: '2',
       choices: [
+        { value: '1', label: 'Sharpen', hint: 'the same size, sharper' },
         { value: '2', label: '2×', hint: 'twice the width and height' },
         { value: '4', label: '4×', hint: 'four times the width and height' },
       ],
@@ -79,7 +83,8 @@ export const boostAction: Action = {
     const images = imagesOnly(sources)
     if (!images) return []
     const p = common(values)
-    const scale = Number(values.scale ?? 2) === 4 ? 4 : 2
+    const asked = Number(values.scale ?? 2)
+    const scale = asked === 4 ? 4 : asked === 1 ? 1 : 2
     return images.map((source) => ({
       op: 'boost' as const,
       sources: [source],
@@ -87,7 +92,7 @@ export const boostAction: Action = {
         suffixedImagePath({
           sourcePath: source.path,
           target: p.target,
-          suffix: `${scale}x`,
+          suffix: boostSuffix(scale),
           ...(p.output === undefined ? {} : { output: p.output }),
           ...(p.roots?.get(source.path) === undefined
             ? {}

@@ -1,12 +1,14 @@
 /**
  * Boost resolution — the extension's child-process entry.
  *
- *   node runner.mjs --in <png> --out <png> --scale 2|4 [--cache <dir>]
+ *   node runner.mjs --in <png> --out <png> --scale 1|2|4 [--cache <dir>]
  *
  * Runs realesr-general-x4v3 (4×) over the image in 256 px tiles with 16 px of
  * overlap, through ONNX Runtime with the CoreML execution provider (CPU if
  * CoreML will not load). 2× is the 4× tile brought down by Lanczos, tile by
- * tile. Alpha never goes through the model: it is upscaled with Lanczos and
+ * tile; 1× (Sharpen) is the 4× tile brought down by a quarter the same way,
+ * so the image keeps its size and memory stays bound by the tile. Alpha never
+ * goes through the model: it is resized with Lanczos (kept as is at 1×) and
  * re-joined. The output is written one band of tiles at a time, so memory
  * does not grow with the image beyond the decoded input.
  *
@@ -55,7 +57,7 @@ function reply(line: Record<string, unknown>, exitCode: number): void {
 interface Args {
   input: string
   output: string
-  scale: 2 | 4
+  scale: 1 | 2 | 4
   cache?: string
 }
 
@@ -67,15 +69,15 @@ function parseArgs(argv: string[]): Args {
     if (!k?.startsWith('--') || val === undefined)
       throw new RunnerError(
         'runtime-error',
-        'usage: runner.mjs --in <png> --out <png> --scale 2|4 [--cache <dir>]',
+        'usage: runner.mjs --in <png> --out <png> --scale 1|2|4 [--cache <dir>]',
       )
     v[k.slice(2)] = val
   }
   const scale = Number(v.scale)
-  if (!v.in || !v.out || (scale !== 2 && scale !== 4))
+  if (!v.in || !v.out || (scale !== 1 && scale !== 2 && scale !== 4))
     throw new RunnerError(
       'runtime-error',
-      'usage: runner.mjs --in <png> --out <png> --scale 2|4 [--cache <dir>]',
+      'usage: runner.mjs --in <png> --out <png> --scale 1|2|4 [--cache <dir>]',
     )
   return { input: v.in, output: v.out, scale, cache: v.cache }
 }
@@ -87,8 +89,13 @@ function fits(w: number, h: number, s: number): boolean {
 /** Refuses, before any work, an output past 16384 px a side or 100 MP. */
 function checkSize(w: number, h: number, scale: number): void {
   if (fits(w, h, scale)) return
-  const smaller = [2].filter((s) => s < scale && fits(w, h, s))
   const mp = Math.round((w * scale * h * scale) / 1e6)
+  if (scale === 1)
+    throw new RunnerError(
+      'boost-too-large',
+      `${w}×${h} px (${mp} MP) is past the limit of ${MAX_SIDE} px a side and 100 MP.`,
+    )
+  const smaller = [2].filter((s) => s < scale && fits(w, h, s))
   const tail = smaller.length
     ? `The largest factor that fits is ${smaller[0]}×.`
     : 'No boost factor fits this image.'
@@ -139,7 +146,7 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   const T4 = TILE * MODEL_SCALE
   const down = S === MODEL_SCALE ? undefined : new Resampler(T4, T4, TILE * S, TILE * S)
   const alpha = img.hasAlpha ? alphaPlane(rgba, W, H) : undefined
-  const alphaUp = alpha ? new Resampler(W, H, OW, OH) : undefined
+  const alphaUp = alpha && S !== 1 ? new Resampler(W, H, OW, OH) : undefined
   const ch = img.hasAlpha ? 4 : 3
   const writer = new PngWriter(args.output, OW, OH, img.hasAlpha)
   const input = new Float32Array(3 * TILE * TILE)
@@ -187,8 +194,10 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
         }
       }
     }
-    if (alpha && alphaUp) {
-      const a = alphaUp.rows(alpha, cy * S, (cy + bh) * S)
+    if (alpha) {
+      const a = alphaUp
+        ? alphaUp.rows(alpha, cy * S, (cy + bh) * S)
+        : alpha.subarray(cy * W, (cy + bh) * W)
       for (let i = 0; i < OW * bh * S; i++) {
         const v = Math.round(a[i] ?? 0)
         band[i * 4 + 3] = v < 0 ? 0 : v > 255 ? 255 : v

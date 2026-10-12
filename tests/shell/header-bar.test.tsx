@@ -24,12 +24,14 @@ type BarFrame = FixtureFrame & { at: number }
 const BARS = loadFixture('bar-mockup.json') as BarFrame[]
 
 /** The mockup's questions and answers, per mode (its TRAIL). */
-const TRAIL: Record<ShellMode, { steps: string[]; answers: string[] }> = {
+/** The modes the mockup draws a bar for; enhance came after it. */
+type MockMode = Exclude<ShellMode, 'enhance'>
+const TRAIL: Record<MockMode, { steps: string[]; answers: string[] }> = {
   convert: { steps: ['Format', 'Quality', 'Save to', 'Name'], answers: ['JPEG', '80', 'Desktop'] },
   compress: { steps: ['Method', 'Quality', 'Save to', 'Name'], answers: ['By quality', '70'] },
   pdf: { steps: ['Action', 'Pages', 'Save to'], answers: ['Split', '1-3, 7'] },
 }
-const trailAt = (mode: ShellMode, at: number) => ({
+const trailAt = (mode: MockMode, at: number) => ({
   answers: TRAIL[mode].answers.slice(0, at),
   current: TRAIL[mode].steps[at],
 })
@@ -43,7 +45,7 @@ describe('the header bar, against the decided mockup (04)', () => {
         width: 80,
         palette: modePalette(DARK, bar.mode),
         mode: bar.mode,
-        trail: trailAt(bar.mode, bar.at),
+        trail: trailAt(bar.mode as MockMode, bar.at),
         slanted: true,
       })
       expect(describeRow(runsRow(row), fixtureRow(bar, 0))).toBe('equal')

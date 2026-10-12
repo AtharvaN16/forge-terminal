@@ -27,8 +27,8 @@ const RELEASES = 'https://github.com/AtharvaN16/forge-terminal/releases/download
 export const CATALOG: readonly CatalogEntry[] = [
   {
     id: 'boost',
-    title: 'Boost',
-    summary: 'Upscale images 2x or 4x with a local AI model',
+    title: 'Boost resolution',
+    summary: 'Sharpen, or boost resolution 2x or 4x, with a local AI model',
     version: '1.0.0',
     minMacos: 14,
     // Apple Silicon only for now. An x64 build exists (CI still makes it) but
@@ -37,8 +37,8 @@ export const CATALOG: readonly CatalogEntry[] = [
     assets: {
       arm64: {
         url: `${RELEASES}/ext-boost-v1.0.0/forge-ext-boost-1.0.0-arm64.tar.gz`,
-        bytes: 14866271,
-        sha256: 'cc669b3abf183fb65251b8399700ba5bab65e2623e0fcc716af1c18f4e5d77e9',
+        bytes: 14866325,
+        sha256: '7af24c92f95b1cd34618adde4a90926c91a8db4347d640be4921f1dc706a9a2e',
       },
     },
     licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',

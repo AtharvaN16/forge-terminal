@@ -230,6 +230,7 @@ forge extensions remove boost
 ```
 
 ```bash
+forge photo.jpg --sharpen          # photo-sharp.png (the same size, sharper)
 forge photo.jpg --boost            # photo-2x.png   (2x, the default)
 forge photo.jpg --boost 4          # photo-4x.png
 forge photo.jpg --remove-bg        # photo-cutout.png
@@ -246,7 +247,7 @@ px on a side, or over 100 MP, is refused before anything runs.
 
 `forge probe` lists `boost` / `remove-background` among a file's `actions` only
 while that extension is installed, and `--json` results report `op: "boost"` or
-`op: "remove-background"`. `forge_convert` accepts `boost: 2 | 4` and
+`op: "remove-background"`. `forge_convert` accepts `sharpen: true`, `boost: 2 | 4` and
 `removeBackground: true`, with the same `extension-missing` tool error.
 
 ## PDF
@@ -760,7 +761,7 @@ Seven tools, deliberately few:
 | --- | --- |
 | `forge_probe` | what files are and what Forge can do with them |
 | `forge_formats` | the capability matrix |
-| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `boost: 2 \| 4` and `removeBackground`, which need the optional extensions) |
+| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `sharpen`, `boost: 2 \| 4` and `removeBackground`, which need the optional extensions) |
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
 | `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades (read-only) |

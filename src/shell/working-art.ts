@@ -131,6 +131,9 @@ export function phaseLabel(
     case 'decoding':
       return 'Decoding'
     case 'encoding':
+      // An extension's child is running: what it is doing, not an encode.
+      if (job.op === 'boost') return 'Running the model'
+      if (job.op === 'remove-background') return 'Finding the subject'
       return job.op === 'convert' ? `Encoding ${FORMATS[job.target].label}` : 'Encoding'
     case 'writing': {
       const [only] = job.outputs

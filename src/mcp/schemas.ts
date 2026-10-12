@@ -107,6 +107,12 @@ export const ConvertInput = z.object({
     .optional()
     .describe('Replace existing outputs. Default false — only when the user asked.'),
   recursive: z.boolean().optional().describe('Descend into subfolders of a folder input.'),
+  sharpen: z
+    .boolean()
+    .optional()
+    .describe(
+      'Images only: sharpen at the same size with the optional boost extension, writing name-sharp. `to` is then the output format. Fails with extension-missing when it is not installed; the fix is `forge extensions add boost`.',
+    ),
   boost: z
     .union([z.literal(2), z.literal(4)])
     .optional()
