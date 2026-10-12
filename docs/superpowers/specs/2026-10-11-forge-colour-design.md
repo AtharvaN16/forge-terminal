@@ -75,12 +75,41 @@ nearest its lightness, so 500 is equally light across hues. It was declined.
 
 ### 2.4 Screens
 
-Picked in the mockups, in order: **C1** (pressing 4 offers Palette or Scale
-as two cards in home's panel), **F1** (the card at the top of each screen is
-its field), the palette starts from the **D2 drop zone**, **D1** (the photo
-drawn in its own colours, with going deeper), **S9** (the ramp, plus a
-preview of the chosen step), and the **F1 Figma card** (square outer card,
-rounded swatches).
+Picked in the mockups, in order:
+
+- **C1:** pressing 4 offers Palette or Scale as two cards in home's panel.
+- **The field:** a field at the top of each screen, drawn as the app's other
+  fields are. It is a filled block three rows tall, **neutral grey, with no
+  border**. It holds the value in use, and typing replaces it.
+- The palette starts from the **D2 drop zone**.
+- **D1:** the photo drawn in its own colours, with going deeper.
+- **S9:** the ramp, plus a preview of the chosen step.
+- **The F1 Figma card:** a square outer card with rounded swatches.
+
+### 2.5 Neutral greys, app-wide
+
+Decided with this design: **nowhere in the app uses a blue-tinted grey any
+more.** Every grey fill becomes the neutral grey of equal OKLab lightness, so
+nothing gets brighter or darker. This covers the field, home's cards, the
+drop zone, picker bands, keycaps and the slider track. In the dark theme:
+
+| Token | Was | Now |
+| --- | --- | --- |
+| `selectionBg`, `band`: drop zone, home panel, filled field | `#252c3a` | `#2c2c2c` |
+| `listBand`: picker band | `#2a3242` | `#323232` |
+| `panelBand`: band inside a panel, the chosen home card | `#33405a` | `#404040` |
+| `keycapBg` | `#2e3340` | `#333333` |
+| `track`: slider | `#2a2e37` | `#2e2e2e` |
+
+The light theme's greys are warm, not blue, so they are unchanged.
+
+This touches every screen, and it lands as its own commit on `dev`, ahead of
+colour mode, which only uses the tokens. Fixtures that encode the old greys
+must be regenerated or mapped:
+
+- `tests/shell/fixtures/*.json`, which are read from the frozen
+  `flow-parts-2026-10.html`
+- the W5/G1 fixtures
 
 ## 3. Invariants
 
@@ -251,21 +280,36 @@ helper beside the engines so that sharp stays out of `core/`.
   this home opens Palette with that image. `#` opens Scale with the field
   ready.
 
-### 6.3 Palette (F1, D2, D1)
+### 6.3 The field
 
-**Empty.** The card at the top is the field: an `IMAGE` card with only `›`
-and one dim hint, `type an image path`. There is no second line of help.
-Under it is the D2 drop zone: `↓ Drop an image here`, and on its second line
-the formats it takes (§3, invariant 2).
+Both screens open with the app's filled field at the top, in place of a card:
+
+- `Prompt`'s `field` look: a block three rows tall at the full content width,
+  filled with the neutral `selectionBg` (§2.5), with no border.
+- `›` comes first, in the mode colour while focused and dim at rest.
+- **Empty:** `›` and one dim hint, `type an image path` or `type a hex code`.
+  There is no second line of help.
+- **At rest:** it shows the value in use, dim:
+  - `› sonoma.jpg   640×640 · 58 KB`
+  - `› #6579FD ████   from sonoma.jpg`, or `was 800 of #6579FD`, when the
+    colour came from somewhere
+- **Typing:** the text appears after `›`, with the swatch once a hex is
+  whole.
+
+### 6.4 Palette (D2, D1)
+
+**Empty.** The field (§6.3), and under it the D2 drop zone:
+`↓ Drop an image here`, with the formats it takes on its second line (§3,
+invariant 2).
 
 **Opening.** A drop types the path into the field. ↵ probes it, or it opens
 by itself once a pasted path probes as an image. A non-image is refused on
-the line under the card ("`report.pdf` is a PDF, not an image"), and the
+the line under the field ("`report.pdf` is a PDF, not an image"), and the
 field keeps its text.
 
 **The palette (D1).**
 
-- The file card, as on every other screen.
+- The field at rest, showing the image's name and size.
 - Then the photo map on the left, 24 × 12.
 - On the right, one row per colour: swatch, hex, a bar as long as its share
   (scaled to the largest), and the percentage.
@@ -295,16 +339,15 @@ Copy confirmations replace the line under the view for 1.5 s:
 `✓ copied #FD6457` and
 `✓ copied 6 swatches · paste into Figma with ⌘V`.
 
-### 6.4 Scale (F1, S9)
+### 6.5 Scale (S9)
 
-**Empty** (opened from home). A `COLOUR` card that is the field: `›` and the
-dim hint `type a hex code`. Under it, the eleven step labels and outlined
-boxes, and nothing else.
+**Empty** (opened from home). The field, `› type a hex code`, then the
+eleven step labels and outlined boxes, and nothing else.
 
 **The scale.**
 
-- The card shows the reference's swatch, hex and OKLCH. When it came from
-  somewhere, the card says so: `from sonoma.jpg`, or `was 800 of #6579FD`.
+- The field at rest shows the reference's hex and swatch, and where it came
+  from (§6.3).
 - The S1 ramp: 11 swatches 6 wide, step labels above (the reference in the
   mode colour, the chosen one bold), and a `▔` under the chosen one.
 - The S9 preview: a block of the chosen step, 18 × 5, with "Aa" in white and
@@ -314,7 +357,7 @@ boxes, and nothing else.
 
 **Typing.**
 
-- `#` puts you in the card's field with `#` typed.
+- `#` puts you in the field with `#` typed.
 - The scale follows the moment the hex is whole. ↵ keeps it. esc puts the
   previous colour back.
 - A new colour starts a new history entry, so esc goes back to the last one.
@@ -330,14 +373,14 @@ boxes, and nothing else.
 
 After `r`: `✓ #343F96 is now 500 · esc goes back to #6579FD`.
 
-### 6.5 What typing means
+### 6.6 What typing means
 
 A field that is always ready would swallow `c`, `r` and `s`. So **only `#`,
 `/` and `~` start typing, plus any paste** (a drop is a paste). Every other
 letter is a key. While the field has focus, the keys are `↵ done` and
 `esc cancel` only.
 
-### 6.6 The bar's trail and back
+### 6.7 The bar's trail and back
 
 - The trail records the way back: `Palette`, `Palette ╱ #F26E69`,
   `Palette ╱ Scale`, `Palette ╱ #6579FD ╱ Scale`. esc walks it back one
@@ -349,7 +392,7 @@ letter is a key. While the field has focus, the keys are `↵ done` and
   `onTrail`, the way `pdfTrail` does.
 - No `bar` history block is added, because nothing is written.
 
-### 6.7 Fallbacks
+### 6.8 Fallbacks
 
 **Colour depth.** No 24-bit detection exists today. Add `trueColour(env)` in
 `glyphs.ts`, next to `slantedChips`:
@@ -372,7 +415,7 @@ so, it joins the set.
 - The scale is a list: step, hex, and the two ratings.
 - Every key still works, and copying is unchanged.
 
-### 6.8 Light theme
+### 6.9 Light theme
 
 Same layout. Dimming mixes toward the light background. The Figma card uses
 the light (white) variant when the shell theme is light.
@@ -472,6 +515,9 @@ src/mcp/           tools.ts, schemas.ts, server.ts (two tools)
 
 ## 11. Order
 
+0. **Neutral greys (§2.5)**, as its own commit on `dev`: the DARK tokens
+   and the regenerated fixtures. Every screen changes, so it goes first and
+   apart from colour.
 1. `core/colour`: space, contrast, parse, names (tests first).
 2. Scale.
 3. k-means, palette, going deeper, photo map; `engines/pixels.ts`.

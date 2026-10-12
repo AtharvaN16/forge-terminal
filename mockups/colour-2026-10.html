@@ -134,7 +134,7 @@
 
 <section class="tab" id="flow">
   <h2><span class="n">★</span>The whole flow</h2>
-  <p class="sub">Colour mode as decided, one moment per frame, in order. <b>C1</b>: pressing 4 offers Palette or Scale on home. <b>F1</b>: the card at the top of each screen is its field. The palette starts from the <b>drop zone</b>, shows the photo in its own colours (<b>D1</b>), and → goes deeper into a colour. <code>s</code> makes a <b>scale from a palette colour</b>, with it at <b>500</b> (<b>S9</b>); <code>r</code> makes any step the new centre. <code>↵</code> copies one hex, <code>c</code> copies all, and ⌘V in Figma gives the <b>F1 card</b>. esc always goes back one step, and the bar's trail shows the way back. The steps (click to jump):</p>
+  <p class="sub">Colour mode as decided, one moment per frame, in order. <b>C1</b>: pressing 4 offers Palette or Scale on home. The field at the top of each screen is the app's filled field, in a <b>neutral grey</b> with no border (<b>G1</b>, full width for now; tab 4). The palette starts from the <b>drop zone</b>, shows the photo in its own colours (<b>D1</b>), and → goes deeper into a colour. <code>s</code> makes a <b>scale from a palette colour</b>, with it at <b>500</b> (<b>S9</b>); <code>r</code> makes any step the new centre. <code>↵</code> copies one hex, <code>c</code> copies all, and ⌘V in Figma gives the <b>F1 card</b>. esc always goes back one step, and the bar's trail shows the way back. The steps (click to jump):</p>
   <div class="flowmap" id="flow-map"></div>
   <div class="grid" id="flow-grid"></div>
   <h3 style="margin-top:56px">Or start from a colour</h3>
@@ -187,11 +187,13 @@
 <section class="tab" id="type">
   <h2><span class="n">04</span>The field inside each screen</h2>
   <p class="sub">Each screen has its own field: the palette's takes an image (a path, or a file dropped on the terminal), the scale's takes a colour. Typing again switches to another, and the view follows the moment the value is whole. Typing <code>#</code>, <code>/</code> or <code>~</code>, or pasting, goes into the field; other letters stay keys, so <code>c</code> and <code>r</code> still work. A colour typed on the palette makes a scale from it.</p>
-  <h3 style="margin-top:8px">F3: home's field, for comparison</h3>
-  <p class="sub">What colour mode looks like if it uses home's field, the › line under the drop zone, instead of turning the card into the field (F1, picked).</p>
-  <div class="grid" id="field3-grid"></div>
-  <h3 style="margin-top:56px">F1 (picked) and F2</h3>
+  <h3 style="margin-top:8px">The field as the app draws fields: filled grey, no border</h3>
+  <p class="sub">The size and name fields are a filled block, three rows of a neutral grey (#2c2c2c, no blue in it) with no stroke, <code>›</code> in the mode's colour and the value inside. Here colour mode's field takes that look and replaces the card at the top. Each is shown in five states: the scale empty, set, and taking a new colour; the palette empty (the drop zone under it) and with an image open.</p>
+  <div class="grid" id="filled-grid"></div>
+  <details class="earlier"><summary>Earlier: F1 (card as the field), F2 (field at the bottom), F3 (home's › line)</summary>
   <div class="grid" id="field-grid"></div>
+  <div class="grid" id="field3-grid" style="margin-top:30px"></div>
+  </details>
   <details class="earlier"><summary>Earlier: T1–T3</summary>
   <p class="sub">On the palette and on the scale you can type a colour and get its scale, with it at 500. Three ways to offer that, each drawn on both screens. Each frame loops: it types <code>#E8B44C</code>, presses ↵, and walks the new scale. esc goes back to where you were, and the bar's trail keeps it.</p>
   <div class="grid" id="type-grid"></div>
@@ -247,7 +249,7 @@ const X = (() => {
   }
   return { f, b, B, I, vis, padR, center, right, grad, box, mix }
 })()
-const K = { bg: '#1e1e1e', fg: '#e4e8f0', d: '#8b93a6', x: '#5f6879', faint: '#3d4350', m: '#55c7d9', mbg: '#122c33', panel: '#252c3a', panel2: '#2b3343', cap: '#2e3340', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
+const K = { bg: '#1e1e1e', fg: '#e4e8f0', d: '#8b93a6', x: '#5f6879', faint: '#3d4350', m: '#55c7d9', mbg: '#122c33', panel: '#2c2c2c', panel2: '#333333', cap: '#333333', ok: '#6fcf7f', amber: '#e5a23c', spark: '#ffc247', heat: '#ff8c1a', ember: '#d9480f', violet: '#a68ce0', ink: '#0c1d22' }
 const { f: xf, b: xb, B: xB, I: xI, padR: xpad, center: xc, right: xr, grad: xg, box: xbox } = X
 
 /* ================================================================== KIT
@@ -277,7 +279,7 @@ const cursorAt = (rows, re, after = false) => {
   return [rows.length, 1]
 }
 const HIDE = '\x1b[?25l'
-const P = K.panel, BAND = '#2a3242', HL = '#33405a', EDGE = '#3d4350', FAINT = '#2a2e37'
+const P = K.panel, BAND = '#323232', HL = '#404040', EDGE = '#3d4350', FAINT = '#2e2e2e'
 
 /* ---------------------------------------------------------------- modes */
 const MODES = [
@@ -527,7 +529,10 @@ const L4 = ' '.repeat(M + 2)
 const pct = (p) => `${Math.round(p.share * 100)}% of the image`
 
 /** The photo as a file card. */
-const photoCard = () => fcard(CO_, { tag: 'JPEG', name: 'sonoma.jpg', meta: '640×640 · 58 KB' })
+/** While true, the cards at the top are drawn as the filled neutral field (filled.js). The Flow tab sets it. */
+let USE_FILLED = false
+const photoCard = () => (USE_FILLED ? filled(xf(K.d, 'sonoma.jpg') + '   ' + xf(K.x, '640×640 · 58 KB'), { focus: false })
+  : fcard(CO_, { tag: 'JPEG', name: 'sonoma.jpg', meta: '640×640 · 58 KB' }))
 /** The seed colour as a card, the way a file is: its value is the name. */
 const seedCard = () => {
   const s = SC.find((x) => x.seed)
@@ -1186,7 +1191,9 @@ const s9Body = (sc, sel, { faded = false } = {}) => {
   const panel = [blk(), blk(xf('#FFFFFF', xB('Aa'))), blk(xf('#111111', xB('Aa'))), blk(), blk()].map((b, i) => L4 + b + '    ' + (facts[i] ?? ''))
   return [steps, block, block, block, mark, '', ...panel]
 }
-const refCard = (ref, meta) => fcard(CO_, { tag: 'COLOUR', name: xb(ref.hex, '    ') + '  ' + xf(K.fg, xB(ref.hex)), meta })
+const refCard = (ref, meta) => (USE_FILLED
+  ? filled(valueWithSwatch(ref.hex, true) + (/from |was /.test(meta) ? '   ' + xf(K.x, meta.replace(/^.*· /, '')) : ''), { focus: false })
+  : fcard(CO_, { tag: 'COLOUR', name: xb(ref.hex, '    ') + '  ' + xf(K.fg, xB(ref.hex)), meta }))
 /** The colour card as an input: the value being typed, its swatch once it is whole. */
 const inputCard = (v) => fcard(CO_, { tag: 'COLOUR', edge: COLOUR.c,
   name: (isColour(v) ? xb(v, '    ') : xf(K.faint, '╌╌╌╌')) + '  ' + xf(K.fg, xB(v)),
@@ -1286,6 +1293,7 @@ const emptyRamp = () => {
 }
 const hint = (s) => xf(K.x, s)
 const sFieldCard = (v, focus, cur) => {
+  if (USE_FILLED) return filled(focus ? (v ? valueWithSwatch(v) : hint('type a hex code')) : valueWithSwatch(cur.hex, true), { focus })
   const ok = isColour(v)
   const name = focus ? xf(COLOUR.c, xB('›')) + ' ' + (v ? xf(K.fg, v) : hint('type a hex code')) + (ok ? '  ' + xb(v, '    ') : '')
     : xb(cur.hex, '    ') + '  ' + xf(K.fg, xB(cur.hex))
@@ -1403,6 +1411,61 @@ fig('field3-grid', { id: 'F3', name: 'Home\'s field', idea: 'The same field as h
 
 fig('field-grid', { id: 'F2', name: 'The field at the bottom', idea: 'A field on the last line above the keys, as on home; the card at the top shows what is in use. One field takes either: an image path opens a new palette, a colour makes a scale.', frames: [{ label: 'scale · same loop', make: F2scale }, { label: 'palette · same loop', make: F2pal }] })
 
+/* ========================================================= FILLED FIELD
+   Colour mode's field drawn as the app's other fields are (size, name): a
+   filled block three rows tall in the neutral panel grey, no border, `›` in
+   the mode's colour, the value after it. It replaces the card at the top. */
+/** The app's filled field: blank row, the line, blank row. Focused: › in the mode colour; at rest, dim. */
+/** A neutral grey, no blue in it: the same lightness as the panel's #252c3a. */
+const FIELD = '#2c2c2c'
+const filled = (content, { w = W, focus = true } = {}) => {
+  const lead = ' '.repeat(M)
+  return [lead + on(FIELD, '', w), lead + on(FIELD, ' ' + xf(focus ? COLOUR.c : K.x, xB('›')) + ' ' + content, w), lead + on(FIELD, '', w)]
+}
+const valueWithSwatch = (v, dimmed = false) => (v ? xf(dimmed ? K.d : K.fg, v) + (isColour(v) ? '  ' + xb(v, '    ') : '') : '')
+const ph = (s) => xf(K.x, s)
+
+const G = (w) => ({
+  scaleEmpty: () => {
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...filled(ph('type a hex code'), { w }), '', ...emptyRamp()], sKeys(true))
+    return { rows, cursor: cursorAt(rows, /› /, true) }
+  },
+  scaleSet: () => {
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...filled(valueWithSwatch(SA[5].hex, true), { w, focus: false }), '', ...s9Body(SA, 7)], sKeys(false))
+    return { rows, cursor: null }
+  },
+  scaleTyping: () => {
+    const v = '#E8B44C'
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Scale' }), '', ...filled(valueWithSwatch(v), { w }), '', ...s9Body(SCC, 5)], sKeys(true))
+    return { rows, cursor: cursorAt(rows, /› #[0-9A-Fa-f]*/, true) }
+  },
+  palEmpty: () => {
+    const s = { mode: COLOUR, typing: false }
+    const zone = surface({ lines: [`${xf(COLOUR.c, xB('↓'))}  ${xf(K.fg, xB('Drop an image here'))}`, xf(K.d, 'JPEG · PNG · HEIC · WebP · TIFF')], dot: d2dot(s) })
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...filled(ph('type an image path'), { w }), '', ...zone], keysF1({ main: [['↵', 'open']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }))
+    return { rows, cursor: cursorAt(rows, /› /, true) }
+  },
+  palSet: () => {
+    const body = P8body(5, null).slice(7, 19)
+    const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...filled(xf(K.d, 'sonoma.jpg') + '   ' + xf(K.x, '640×640 · 58 KB'), { w, focus: false }), '', ...body, '', palDetailNoPct(5, null)], dKeys(0, '↑↓'))
+    return { rows, cursor: null }
+  },
+})
+
+{
+  const variants = [
+    ['G1', 'Full width', 'The field across the content width, as the size and name fields are. It replaces the card: the value lives in the field, dim at rest with the › dim too; # or a path puts you back in it, with the › in the mode colour.', G(W)],
+    ['G2', 'Card width', 'The same filled field at the width the file card has elsewhere, so the top of the screen keeps the card\'s footprint and the ramp below reads wider than it.', G(52)],
+  ]
+  for (const [id, name, idea, g] of variants) {
+    const fr = (label, f) => { const o = f(); return { label, rows: o.rows, cursor: o.cursor } }
+    fig('filled-grid', { id, name, idea, wide: false, frames: [
+      fr('scale · empty, ready', g.scaleEmpty), fr('scale · a colour set, field at rest', g.scaleSet), fr('scale · # typed a new colour', g.scaleTyping),
+      fr('palette · empty, ready, drop zone under it', g.palEmpty), fr('palette · an image open, field at rest', g.palSet),
+    ] })
+  }
+}
+
 /* ================================================================= FLOW
    The whole of colour mode as decided: C1 on home, F1 (the card is the
    field), D1 on the palette with going deeper, S9 with make centre, c to copy
@@ -1413,7 +1476,7 @@ const c1At = (sel) => C1(sel ? 2 : 0)
 /** The palette before an image: the card is the field, and under it the decided drop zone. */
 const palEmpty = (v = '') => {
   const s = { mode: COLOUR, typing: !!v }
-  const card = fcard(CO_, { tag: 'IMAGE', edge: COLOUR.c, name: xf(COLOUR.c, xB('›')) + ' ' + (v ? xf(K.fg, v) : hint('type an image path')), meta: '' })
+  const card = filled(v ? xf(K.fg, v) : hint('type an image path'))
   const zone = surface({ lines: [`${xf(v ? K.x : COLOUR.c, xB('↓'))}  ${xf(v ? K.d : K.fg, xB('Drop an image here'))}`, xf(v ? K.faint : K.d, 'JPEG · PNG · HEIC · WebP · TIFF')], dot: d2dot(s) })
   const rows = fill24([bar(CO_, 0, { answers: [], now: 'Palette' }), '', ...card, '', ...zone],
     keysF1({ main: [['↵', 'open']], foot: [['esc', 'back'], ['ctrl-c', 'quit']] }))
@@ -1424,7 +1487,7 @@ const fromPalette = (sc, sel, { card, answers = ['Palette'], foot = '' } = {}) =
 
 const STEPS = [
   { id: '1', key: '4', title: 'Home, colour', note: 'Press 4 (or /colour): home\'s panel offers the two things colour makes. Palette is first.', r: () => c1At(0) },
-  { id: '2', key: '↵', title: 'Palette, empty', note: 'The image card is the field, ready for a path, with one quiet hint. Under it, the drop zone, with the formats it takes.', r: () => palEmpty() },
+  { id: '2', key: '↵', title: 'Palette, empty', note: 'The field at the top, filled neutral grey, ready for a path, with one quiet hint. Under it, the drop zone, with the formats it takes.', r: () => palEmpty() },
   { id: '3', key: 'drop', title: 'An image dropped', note: 'Dropping a file on the terminal types its path into the field (a drop is a paste). ↵ opens it, or it opens on its own once the path is a real image.', r: () => palEmpty('~/Desktop/sonoma.jpg') },
   { id: '4', key: '↵', title: 'The palette', note: 'D1: the photo drawn in its own six colours, the chosen one lit. ↑↓ moves; ↵ copies its hex; c copies all six; s makes a scale from it; # types a colour and makes a scale from that.', r: () => P8body(5, null, dBar(0, 5), dKeys(0, '↑↓')) },
   { id: '5', key: '→', title: 'Inside the coral', note: 'Going deeper: the coral\'s own pixels, grouped again. The photo lights only the chosen shade. The trail says where you are: Palette ╱ #F26E69.', r: () => D1(2.0) },
@@ -1434,15 +1497,16 @@ const STEPS = [
   { id: '9', key: '→→→', title: 'On 800', note: 'The preview shows the step large, with "Aa" in white and black and how each reads on it.', r: () => fromPalette(SA, 8, { card: refCard(SA[5], `${SA[5].oklch} · from sonoma.jpg`) }) },
   { id: '10', key: 'r', title: '800 made the centre', note: 'r: 800 becomes the reference, moves to 500, and the scale is rebuilt around it. The colour it came from joins the trail; esc goes back to it.', r: () => fromPalette(SB, 5, { card: refCard(SB[5], `${SB[5].oklch} · was 800 of ${SA[5].hex}`), answers: ['Palette', SA[5].hex], foot: L4 + xf(K.ok, xB('✓')) + ' ' + xf(K.fg, `${SB[5].hex} is now 500`) + xf(K.d, ` · esc goes back to ${SA[5].hex}`) }) },
   { id: '11', key: 'c', title: 'All eleven copied', note: 'c copies the scale as the F1 card. ⌘V in Figma gives the card below: real shapes and text, the layers named by step.', r: () => fromPalette(SB, 5, { card: refCard(SB[5], `${SB[5].oklch} · was 800 of ${SA[5].hex}`), answers: ['Palette', SA[5].hex], foot: copied('figma', 11) }), figma: true },
-  { id: '12', key: '#', title: 'A new colour, typed', note: 'Typing # puts you in the card again. The scale follows the moment the colour is whole; ↵ keeps it, esc puts the last one back.', r: () => { const rows = fill24([bar(CO_, 0, { answers: ['Palette', SA[5].hex], now: 'Scale' }), '', ...sFieldCard('#E8B44C', true, SCC[5]), '', ...s9Body(SCC, 5)], sKeys(true)); return { rows, cursor: cursorAt(rows, /› #[0-9A-Fa-f]*/, true) } } },
+  { id: '12', key: '#', title: 'A new colour, typed', note: 'Typing # puts you in the field again. The scale follows the moment the colour is whole; ↵ keeps it, esc puts the last one back.', r: () => { const rows = fill24([bar(CO_, 0, { answers: ['Palette', SA[5].hex], now: 'Scale' }), '', ...sFieldCard('#E8B44C', true, SCC[5]), '', ...s9Body(SCC, 5)], sKeys(true)); return { rows, cursor: cursorAt(rows, /› #[0-9A-Fa-f]*/, true) } } },
 ]
 const BRANCH = [
   { id: 'B1', key: '4 →', title: 'Home, on Scale', note: 'The other way in: a scale from a colour you already have.', r: () => c1At(1) },
-  { id: 'B2', key: '↵', title: 'Scale, empty', note: 'The colour card is the field, ready; the steps are outlines until there is a colour.', r: () => F1scale(0.5) },
+  { id: 'B2', key: '↵', title: 'Scale, empty', note: 'The field at the top is ready for a hex; the steps are outlines until there is a colour.', r: () => F1scale(0.5) },
   { id: 'B3', key: '#6579FD', title: 'Typed, and there', note: 'The moment the hex is whole, the scale is drawn with it at 500. ↵ leaves the field and the keys come back: ←→, ↵, c, r, #.', r: () => F1scale(3.0) },
 ]
 
 {
+  USE_FILLED = true   // the flow draws the decided field: filled neutral grey, full width
   const asFrame = (st) => { const out = st.r(); return { label: `${st.id} · ${st.key} → ${st.title}`, rows: out.rows ?? out, cursor: out.cursor } }
   for (const st of STEPS) {
     const fgEl = fig('flow-grid', { id: st.id, name: st.title, idea: st.note, frames: [asFrame(st)] })
@@ -1460,6 +1524,7 @@ const BRANCH = [
   const map = document.getElementById('flow-map')
   const chip = (st) => `<a class="step" href="#flow" data-to="step-${st.id}"><b>${st.id}</b> ${st.title} <i><span class="k-yes">${st.key}</span></i></a>`
   map.innerHTML = STEPS.map(chip).join('<span class="ar">→</span>') + '<span class="branch">or, from home:</span>' + BRANCH.map(chip).join('<span class="ar">→</span>')
+  USE_FILLED = false
   map.querySelectorAll('a.step').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); document.getElementById(a.dataset.to)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }))
 }
 
