@@ -67,7 +67,7 @@ describe('the size-change colour', () => {
     const block: HistoryBlock = { kind: 'result', id: 'r-larger', result }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''
     expect(frame).toContain('larger')
-    const doneColour = colourAround(frame, '✓ DONE')
+    const doneColour = colourAround(frame, '✓')
     const largerColour = colourAround(frame, 'larger')
     expect(largerColour).not.toBe(doneColour)
   })
@@ -86,7 +86,7 @@ describe('the size-change colour', () => {
     }
     const block: HistoryBlock = { kind: 'result', id: 'r-smaller', result }
     const frame = render(<HistoryEntry block={block} width={80} />).lastFrame() ?? ''
-    const doneColour = colourAround(frame, '✓ DONE')
+    const doneColour = colourAround(frame, '✓')
     const smallerColour = colourAround(frame, 'smaller')
     expect(smallerColour).toBe(doneColour)
   })

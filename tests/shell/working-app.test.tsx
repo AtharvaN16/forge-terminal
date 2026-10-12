@@ -62,8 +62,8 @@ describe('Working', () => {
     const dir = await makeTempDir()
     const app = await walkTo(await makeJpeg(dir, 'test.jpg'), dir, 'PNG')
     app.stdin.write(ENTER)
-    const frames = await framesUntil(app.lastFrame, (f) => f.includes('saved to'))
-    expect(frames.at(-1)?.frame).toContain('saved to')
+    const frames = await framesUntil(app.lastFrame, (f) => f.includes('convert another'))
+    expect(frames.at(-1)?.frame).toContain('convert another')
     expect(frames.some(({ frame }) => frame.includes(FOOT))).toBe(false)
   }, 30_000)
 
@@ -71,7 +71,7 @@ describe('Working', () => {
     const dir = await makeTempDir()
     const app = await walkTo(await makeNoiseImage(dir, 'noise.png', 900), dir, 'AVIF')
     app.stdin.write(ENTER)
-    const frames = await framesUntil(app.lastFrame, (f) => f.includes('saved to'))
+    const frames = await framesUntil(app.lastFrame, (f) => f.includes('convert another'))
 
     const working = frames.filter(({ frame }) => frame.includes(FOOT))
     expect(working.length).toBeGreaterThan(0)
@@ -96,7 +96,7 @@ describe('Working', () => {
     const dir = await makeTempDir()
     const app = await walkTo(await makeNoiseImage(dir, 'noise.png', 900), dir, 'AVIF')
     app.stdin.write(ENTER)
-    await framesUntil(app.lastFrame, (f) => f.includes('saved to'))
+    await framesUntil(app.lastFrame, (f) => f.includes('convert another'))
     await settle(200)
     expect(plain(app.lastFrame())).not.toContain(FOOT)
     expect(plain(app.frames.join('\n'))).toMatch(/Converting ╱╱/)

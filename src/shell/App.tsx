@@ -36,14 +36,13 @@ import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
+import { DoneScreen } from './components/Done.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
-import { Hints } from './components/Hints.js'
 import { CommandMenu, Home, homeKeys, Suggestions } from './components/Home.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
-import { ResultLinks } from './components/ResultLinks.js'
 import { SaveAs } from './components/SaveAs.js'
 import { Select } from './components/Select.js'
 import { SizeAside } from './components/SizeAside.js'
@@ -52,7 +51,6 @@ import { ThemePicker } from './components/ThemePicker.js'
 import { SIZE_UNIT_IDS, type SizeUnit, UnitRow } from './components/UnitRow.js'
 import { Working } from './components/Working.js'
 import { HUB_ACTIONS, PdfFlow } from './flows/pdf.js'
-import { mouseSupported } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import { addToStage, clearStage, emptyStage, type Stage } from './stage.js'
@@ -589,6 +587,14 @@ export function App({
   }
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<Result | null>(null)
+  /**
+   * Done's header bar while Done is on screen (K3·a). Done fills the screen
+   * live, so the run goes into the scrollback — its bar, then its record —
+   * only once Done is left: `doneRecord` holds those blocks until
+   * `recordDone` pushes them.
+   */
+  const [doneBar, setDoneBar] = useState<{ mode: ShellMode; trail: Trail } | null>(null)
+  const doneRecord = useRef<HistoryBlock[] | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   /** Save as's folder and proposed name, while it is open — see `SaveAsState`. */
   const [saving, setSaving] = useState<SaveAsState | null>(null)
@@ -730,6 +736,18 @@ export function App({
   const push = useCallback((block: HistoryBlock) => {
     setHistory((h) => [...h, block])
   }, [])
+
+  /** Files the run Done showed into the scrollback, once. See `doneBar`. */
+  const recordDone = useCallback(() => {
+    const blocks = doneRecord.current
+    doneRecord.current = null
+    for (const block of blocks ?? []) push(block)
+    setDoneBar(null)
+  }, [push])
+  // Whatever way Done is left, the run it showed is not lost from the scrollback.
+  useEffect(() => {
+    if (step !== 'result' && doneRecord.current) recordDone()
+  }, [step, recordDone])
 
   /**
    * Rules a dashed line under whatever is already on screen, so a change of
@@ -1056,6 +1074,7 @@ export function App({
     (input, key) => {
       if (!lastResult) return
       if (key.return) {
+        recordDone()
         // A dashed rule and a blank line either side, so a long session reads
         // as a sequence of separate operations rather than one wall of text.
         push({ kind: 'separator', id: nextId(), width })
@@ -1070,6 +1089,7 @@ export function App({
       // Acts on the measured suggestion: re-enters convert with that target
       // already chosen, so the offer is one keystroke from being taken.
       if (input === 'c' && suggestion && lastResult) {
+        recordDone()
         setSuggestion(undefined)
         setMode('convert')
         const next = { target: suggestion.target }
@@ -2034,13 +2054,12 @@ export function App({
     const result = summary.results[0]
     if (result) {
       setLastResult(result)
-      push({
-        kind: 'bar',
-        id: nextId(),
-        mode,
-        trail: doneTrail({ destination, name: basename(result.job.outputs[0] ?? output) }),
-      })
-      push({ kind: 'result', id: nextId(), result })
+      const trail = doneTrail({ destination, name: basename(result.job.outputs[0] ?? output) })
+      setDoneBar({ mode, trail })
+      doneRecord.current = [
+        { kind: 'bar', id: nextId(), mode, trail },
+        { kind: 'result', id: nextId(), result, mode },
+      ]
       setStep('result')
 
       /**
@@ -2446,9 +2465,8 @@ export function App({
           {step === 'theme' ? <ThemePicker onChoose={chooseTheme} /> : null}
 
           {/* The header bar: which mode, and the trail of answers so far —
-            on every screen after home. Not on Done: the run's own bar, its
-            trail ending in "Done", went into the scrollback above the result
-            card, which it heads (see `doneTrail`). */}
+            on every screen after home. Not on Done, which draws its own, the
+            trail ending in "Done" (see `doneTrail` and `DoneScreen`). */}
           {working && !onHome && step !== 'result' ? (
             <Box marginBottom={1}>
               <HeaderBar
@@ -2798,85 +2816,42 @@ export function App({
             </Box>
           ) : null}
 
-          {step === 'result' && lastResult ? (
-            <Box flexDirection="column" marginBottom={1}>
-              {/* Measured, not estimated: this number came from actually
-                encoding a candidate. Offered rather than applied — the file
-                the user asked for is already written, which is also why this
-                is drawn as an offer and not a warning. `SYMBOLS.warn` in
-                front of it said something had gone wrong when nothing had;
-                `accent` is the colour of the `c` key below that takes the
-                offer, so the sentence and its key read as one thing. */}
-              {suggestion ? (
-                <Box marginBottom={1}>
-                  <Text color={colourProp(palette.accent)}>
-                    {`${SYMBOLS.tip} ${FORMATS[suggestion.target].label} would be ${formatBytes(
-                      suggestion.bytes,
-                    )} — ${Math.round(suggestion.saving * 100)}% smaller again.`}
-                  </Text>
-                </Box>
-              ) : null}
-              {/* Reuses the block above rather than inventing a second visual
-                pattern for a second kind of offer. Deliberately informational
-                only, with no key of its own that stages and acts on it the
-                way `c` does for `suggestion`: doing that honestly needs the
-                written PDFs re-probed into real `SourceInfo`s first (`probe`
-                is async, and nothing here currently tracks more than their
-                paths), and `/pdf` — already one command away, and already
-                signposted elsewhere in this file — is that path already
-                built. A second, keystroke-driven way to reach the same
-                screen is not worth the complexity for what this offer is:
-                a nudge that several single-image PDFs now sitting on disk
-                are exactly what `mergeAction` combines. */}
-              {mergeOffer ? (
-                <Box marginBottom={1}>
-                  <Text color={colourProp(palette.accent)}>
-                    {`${SYMBOLS.tip} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`}
-                  </Text>
-                </Box>
-              ) : null}
-              {/* Gated on `mouseSupported()`, not drawn unconditionally.
-                The original reasoning here was that app-level hit testing
-                made this independent of `hyperlinksSupported()`'s terminal
-                allowlist — true for how a click is *routed*, but not for
-                whether one ever arrives. Confirmed against real
-                Terminal.app: reporting turns on, the frame calibrates, and
-                a click still never reaches the app — see `mouseSupported`'s
-                own doc comment for why nothing here can tell that is
-                happening. A label that looks exactly like a button and
-                never responds is worse than no label at all, and `o`/`s`
-                below already do the same thing from the keyboard. */}
-              {mouseSupported() ? (
-                <ResultLinks
-                  outputPath={lastResult.job.outputs[0]}
-                  revealLabel={revealLabel()}
-                  onOpen={openLastResult}
-                  onReveal={revealLastResult}
-                />
-              ) : null}
-              {/* Not `HintBar` itself: the mode line sits below its hints,
-                which `HintBar`'s own props have no room for and which every
-                *other* step has no reason to grow. Same spacing as
-                `HintBar`, so the two read the same — the only difference is
-                what is stacked below. */}
-              <Box flexDirection="column" width={width} marginTop={1}>
-                <Hints
-                  compact={band === 'compact'}
-                  pairs={[
-                    ['↵', mode === 'compress' ? 'compress again' : 'convert another'],
-                    ...(suggestion
-                      ? ([['c', `convert to ${FORMATS[suggestion.target].label}`]] as [
-                          string,
-                          string,
-                        ][])
-                      : []),
-                    ['o', 'open'],
-                    ['s', revealLabel().toLowerCase()],
-                    ['ctrl-c', 'close app'],
-                  ]}
-                />
-              </Box>
-            </Box>
+          {/* Done (K3·a): the file before and after, sized by bytes, filling
+              the screen with the keys on the bottom row. Its offers are
+              measured, not estimated — the suggestion came from actually
+              encoding a candidate — and offered rather than applied: the
+              file asked for is already written, which is why they are drawn
+              in `accent`, the colour of the `c` key that takes one, and not
+              as warnings. The merge offer reuses the same place: a nudge,
+              with no key of its own (doing that honestly needs the written
+              PDFs re-probed first), toward `/pdf`, which already merges.
+              No clickable "Open file · Show in Finder" labels: `o` and `s`
+              on the key row do the same, and the design has no row for them. */}
+          {step === 'result' && lastResult && doneBar ? (
+            <DoneScreen
+              mode={doneBar.mode}
+              trail={doneBar.trail}
+              result={lastResult}
+              offers={[
+                ...(suggestion
+                  ? [
+                      `${SYMBOLS.tip} ${FORMATS[suggestion.target].label} would be ${formatBytes(
+                        suggestion.bytes,
+                      )}, ${Math.round(suggestion.saving * 100)}% smaller again.`,
+                    ]
+                  : []),
+                ...(mergeOffer
+                  ? [
+                      `${SYMBOLS.tip} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`,
+                    ]
+                  : []),
+              ]}
+              again={doneBar.mode === 'compress' ? 'compress again' : 'convert another'}
+              offer={suggestion ? FORMATS[suggestion.target].label : undefined}
+              reveal={revealLabel()}
+              width={width}
+              height={height}
+            />
           ) : null}
 
           {step === 'pdf' ? (

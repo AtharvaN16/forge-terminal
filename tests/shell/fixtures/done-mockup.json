@@ -1,0 +1,780 @@
+[
+  {
+    "label": "convert · test.png to JPEG",
+    "key": "cv",
+    "mode": "convert",
+    "rows": [
+      [
+        ["  ", null, null, false],
+        ["", "#55c7d9", null, false],
+        [" convert ", "#0c1d22", "#55c7d9", true],
+        ["", "#55c7d9", null, false],
+        ["╱", "#61beda", null, false],
+        ["╱", "#62beda", null, false],
+        ["╱", "#63bdda", null, false],
+        ["╱", "#64bcda", null, false],
+        ["╱", "#65bbda", null, false],
+        ["╱", "#66bbda", null, false],
+        ["╱", "#67badb", null, false],
+        ["╱", "#68b9db", null, false],
+        ["╱", "#69b9db", null, false],
+        ["╱", "#69b8db", null, false],
+        ["╱", "#6ab7db", null, false],
+        ["╱", "#6bb7db", null, false],
+        ["╱", "#6cb6db", null, false],
+        ["╱", "#6db5db", null, false],
+        ["╱", "#6eb5db", null, false],
+        ["╱", "#6fb4db", null, false],
+        ["╱", "#70b3db", null, false],
+        ["╱", "#71b3db", null, false],
+        ["╱", "#72b2db", null, false],
+        ["╱", "#73b1dc", null, false],
+        ["╱", "#74b1dc", null, false],
+        ["╱", "#75b0dc", null, false],
+        ["╱", "#76afdc", null, false],
+        ["╱", "#77afdc", null, false],
+        [" ", null, null, false],
+        ["JPEG", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#7daadc", null, false],
+        [" ", null, null, false],
+        ["80", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#82a6dd", null, false],
+        [" ", null, null, false],
+        ["Desktop", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#8ba0de", null, false],
+        [" ", null, null, false],
+        ["test.jpg", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#9598df", null, false],
+        [" ", null, null, false],
+        ["Done", "#e7e7e7", null, true],
+        [" ", null, null, false],
+        ["╱", "#9c93df", null, false],
+        ["╱", "#9d93df", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#2c2c2c", false],
+        ["before", "#b0b0b0", "#2c2c2c", false],
+        [" ", null, "#2c2c2c", false],
+        [
+          "                                                                      ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [
+          "                                                                            ",
+          null,
+          "#2c2c2c",
+          false
+        ],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#2c2c2c", false],
+        ["PNG", "#808080", "#2c2c2c", false],
+        ["   ", null, "#2c2c2c", false],
+        ["test.png", "#b0b0b0", "#2c2c2c", false],
+        ["                                                      ", null, "#2c2c2c", false],
+        ["122 KB", "#b0b0b0", "#2c2c2c", false],
+        [" ", null, "#2c2c2c", false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [
+          "                                                                            ",
+          null,
+          "#2c2c2c",
+          false
+        ],
+        ["  ", null, null, false]
+      ],
+      [
+        ["    ", null, null, false],
+        ["│", "#55c7d9", null, false],
+        [
+          "                                                                           ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["    ", null, null, false],
+        ["▼", "#55c7d9", null, true],
+        [
+          "                                                                           ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#3d3d3d", false],
+        ["after", "#e7e7e7", "#3d3d3d", true],
+        [" ", null, "#3d3d3d", false],
+        [
+          "                                                                       ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                                              ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#4d4d4d", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#3d3d3d", false],
+        ["✓ ", "#6fcf7f", "#3d3d3d", true],
+        ["test.jpg", "#e7e7e7", "#3d3d3d", true],
+        ["                                   ", null, "#3d3d3d", false],
+        [" ", null, null, false],
+        ["74.6 KB", "#e7e7e7", null, true],
+        [" ", null, null, false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#4d4d4d", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                                              ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#4d4d4d", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["                                                                   ", null, null, false],
+        ["39% smaller", "#6fcf7f", null, true],
+        ["  ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        ["in ", "#808080", null, false],
+        ["~/Desktop", "#b0b0b0", null, false],
+        ["                                                                 ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        [" ↵ ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["convert another", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" o ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["open", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" s ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["show in Finder", "#b0b0b0", null, false],
+        ["                ", null, null, false],
+        ["ctrl-c quit", "#808080", null, false],
+        [" ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "compress · with a suggestion",
+    "key": "cm",
+    "mode": "compress",
+    "rows": [
+      [
+        ["  ", null, null, false],
+        ["", "#79c98b", null, false],
+        [" compress ", "#0c1d22", "#79c98b", true],
+        ["", "#79c98b", null, false],
+        ["╱╱", "#73c998", null, false],
+        ["╱", "#72c999", null, false],
+        ["╱", "#72c99a", null, false],
+        ["╱", "#72c99b", null, false],
+        ["╱", "#71c99c", null, false],
+        ["╱", "#71c99d", null, false],
+        ["╱", "#70c99e", null, false],
+        ["╱", "#70c89f", null, false],
+        ["╱", "#6fc8a0", null, false],
+        ["╱╱", "#6fc8a1", null, false],
+        ["╱", "#6ec8a2", null, false],
+        ["╱", "#6ec8a3", null, false],
+        ["╱", "#6dc8a4", null, false],
+        ["╱", "#6dc8a5", null, false],
+        [" ", null, null, false],
+        ["By quality", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#68c8b1", null, false],
+        [" ", null, null, false],
+        ["70", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#66c8b5", null, false],
+        [" ", null, null, false],
+        ["Desktop", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#61c8be", null, false],
+        [" ", null, null, false],
+        ["photo.jpg", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#5cc7c9", null, false],
+        [" ", null, null, false],
+        ["Done", "#e7e7e7", null, true],
+        [" ", null, null, false],
+        ["╱", "#5ac7cf", null, false],
+        ["╱", "#59c7d0", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#2c2c2c", false],
+        ["before", "#b0b0b0", "#2c2c2c", false],
+        [" ", null, "#2c2c2c", false],
+        [
+          "                                                                      ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [
+          "                                                                            ",
+          null,
+          "#2c2c2c",
+          false
+        ],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#2c2c2c", false],
+        ["JPEG", "#808080", "#2c2c2c", false],
+        ["   ", null, "#2c2c2c", false],
+        ["photo.jpg", "#b0b0b0", "#2c2c2c", false],
+        ["                                                    ", null, "#2c2c2c", false],
+        ["2.4 MB", "#b0b0b0", "#2c2c2c", false],
+        [" ", null, "#2c2c2c", false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [
+          "                                                                            ",
+          null,
+          "#2c2c2c",
+          false
+        ],
+        ["  ", null, null, false]
+      ],
+      [
+        ["    ", null, null, false],
+        ["│", "#79c98b", null, false],
+        [
+          "                                                                           ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["    ", null, null, false],
+        ["▼", "#79c98b", null, true],
+        [
+          "                                                                           ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#3d3d3d", false],
+        ["after", "#e7e7e7", "#3d3d3d", true],
+        [" ", null, "#3d3d3d", false],
+        [
+          "                                                                       ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                          ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#4d4d4d", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#3d3d3d", false],
+        ["✓ ", "#6fcf7f", "#3d3d3d", true],
+        ["photo.jpg", "#e7e7e7", "#3d3d3d", true],
+        ["              ", null, "#3d3d3d", false],
+        [" ", null, null, false],
+        ["812 KB", "#e7e7e7", null, true],
+        [" ", null, null, false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#4d4d4d", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                          ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#4d4d4d", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["                                                                   ", null, null, false],
+        ["67% smaller", "#6fcf7f", null, true],
+        ["  ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        ["in ", "#808080", null, false],
+        ["~/Desktop", "#b0b0b0", null, false],
+        ["                                                                 ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        ["✧ WebP would be 590 KB, 27% smaller again.", "#55c7d9", null, false],
+        ["                                   ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        [" ↵ ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["compress again", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" c ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["WebP", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" o ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["open", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" s ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["show in Finder", "#b0b0b0", null, false],
+        ["       ", null, null, false],
+        ["ctrl-c quit", "#808080", null, false],
+        [" ", null, null, false]
+      ]
+    ]
+  },
+  {
+    "label": "convert · larger, with a warning",
+    "key": "gif",
+    "mode": "convert",
+    "rows": [
+      [
+        ["  ", null, null, false],
+        ["", "#55c7d9", null, false],
+        [" convert ", "#0c1d22", "#55c7d9", true],
+        ["", "#55c7d9", null, false],
+        ["╱", "#61beda", null, false],
+        ["╱", "#62beda", null, false],
+        ["╱", "#63bdda", null, false],
+        ["╱", "#64bcda", null, false],
+        ["╱", "#65bbda", null, false],
+        ["╱", "#66bbda", null, false],
+        ["╱", "#67badb", null, false],
+        ["╱", "#68b9db", null, false],
+        ["╱", "#69b9db", null, false],
+        ["╱", "#69b8db", null, false],
+        ["╱", "#6ab7db", null, false],
+        ["╱", "#6bb7db", null, false],
+        ["╱", "#6cb6db", null, false],
+        ["╱", "#6db5db", null, false],
+        ["╱", "#6eb5db", null, false],
+        ["╱", "#6fb4db", null, false],
+        ["╱", "#70b3db", null, false],
+        ["╱", "#71b3db", null, false],
+        ["╱", "#72b2db", null, false],
+        ["╱", "#73b1dc", null, false],
+        ["╱", "#74b1dc", null, false],
+        ["╱", "#75b0dc", null, false],
+        ["╱", "#76afdc", null, false],
+        ["╱", "#77afdc", null, false],
+        ["╱", "#77aedc", null, false],
+        ["╱", "#78addc", null, false],
+        ["╱", "#79addc", null, false],
+        ["╱", "#7aacdc", null, false],
+        ["╱", "#7babdc", null, false],
+        [" ", null, null, false],
+        ["PNG", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#81a7dd", null, false],
+        [" ", null, null, false],
+        ["Desktop", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#8aa0de", null, false],
+        [" ", null, null, false],
+        ["party.png", "#b0b0b0", null, false],
+        [" ", null, null, false],
+        ["╱", "#9598df", null, false],
+        [" ", null, null, false],
+        ["Done", "#e7e7e7", null, true],
+        [" ", null, null, false],
+        ["╱", "#9c93df", null, false],
+        ["╱", "#9d93df", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#2c2c2c", false],
+        ["before", "#b0b0b0", "#2c2c2c", false],
+        [" ", null, "#2c2c2c", false],
+        [
+          "                                                                      ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                                                    ", null, "#2c2c2c", false],
+        ["                          ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#2c2c2c", false],
+        ["GIF", "#808080", "#2c2c2c", false],
+        ["   ", null, "#2c2c2c", false],
+        ["party.gif", "#b0b0b0", "#2c2c2c", false],
+        ["                             ", null, "#2c2c2c", false],
+        ["1.1 MB", "#b0b0b0", "#2c2c2c", false],
+        [" ", null, "#2c2c2c", false],
+        ["                          ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                                                    ", null, "#2c2c2c", false],
+        ["                          ", null, null, false]
+      ],
+      [
+        ["    ", null, null, false],
+        ["│", "#55c7d9", null, false],
+        [
+          "                                                                           ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["    ", null, null, false],
+        ["▼", "#55c7d9", null, true],
+        [
+          "                                                                           ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#3d3d3d", false],
+        ["after", "#e7e7e7", "#3d3d3d", true],
+        [" ", null, "#3d3d3d", false],
+        [
+          "                                                                       ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                                                    ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#c88041", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        [" ", null, "#3d3d3d", false],
+        ["✓ ", "#6fcf7f", "#3d3d3d", true],
+        ["party.png", "#e7e7e7", "#3d3d3d", true],
+        ["                                 ", null, "#3d3d3d", false],
+        ["1.6 MB", "#e7e7e7", "#3d3d3d", true],
+        [" ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#c88041", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["  ", null, null, false],
+        ["                                                    ", null, "#3d3d3d", false],
+        ["╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱", "#c88041", null, false],
+        ["  ", null, null, false]
+      ],
+      [
+        ["                                                                    ", null, null, false],
+        ["45% larger", "#f2994a", null, true],
+        ["  ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        ["in ", "#808080", null, false],
+        ["~/Desktop", "#b0b0b0", null, false],
+        ["                                                                 ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        [
+          "⚠ party.gif has 12 frames, and PNG cannot animate. Only the first frame",
+          "#e5c07b",
+          null,
+          false
+        ],
+        ["      ", null, null, false]
+      ],
+      [
+        ["   ", null, null, false],
+        ["was converted.", "#e5c07b", null, false],
+        ["                                                               ", null, null, false]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        [
+          "                                                                                ",
+          null,
+          null,
+          false
+        ]
+      ],
+      [
+        ["   ", null, null, false],
+        [" ↵ ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["convert another", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" o ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["open", "#b0b0b0", null, false],
+        ["  ", null, null, false],
+        [" s ", "#e7e7e7", "#333333", true],
+        [" ", null, null, false],
+        ["show in Finder", "#b0b0b0", null, false],
+        ["                ", null, null, false],
+        ["ctrl-c quit", "#808080", null, false],
+        [" ", null, null, false]
+      ]
+    ]
+  }
+]
