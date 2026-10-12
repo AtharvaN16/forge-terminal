@@ -94,6 +94,13 @@ describe('errorPanel', () => {
     for (const row of rows.slice(2, -1)) expect(text(row).trimEnd().length).toBeLessThanOrEqual(29)
   })
 
+  it('draws the hint in failTintDim, the grey chosen for the tint', () => {
+    const rows = errorPanel({ palette: LIGHT, ...e, width: W })
+    const hint = rows.at(-2)?.find((run) => run.text.includes('Check it.'))
+    expect(hint?.fg).toBe(LIGHT.failTintDim)
+    expect(LIGHT.failTintDim).not.toBe(LIGHT.dim)
+  })
+
   it('leaves the hint out when there is none', () => {
     const rows = errorPanel({ palette: DARK, title: e.title, detail: e.detail, width: W })
     // the tab, blank, title, detail, blank
@@ -123,7 +130,13 @@ describe('errorLine', () => {
     expect(text(row)).toBe(' Not a size   fifty is not a… ')
   })
 
-  it('never cuts the title', () => {
+  it('stays exactly the width when not even the title fits, cutting the title as a last resort', () => {
+    const row = errorLine({ palette: DARK, title: 'Too many symbolic links', reason, width: 20 })
+    expect(rowWidth(row)).toBe(20)
+    expect(text(row)).toBe(' Too many symbolic …')
+  })
+
+  it('never cuts the title when it fits', () => {
     const row = errorLine({ palette: DARK, title, reason, width: 14 })
     expect(text(row).trimEnd()).toBe(' Not a size')
     expect(text(row)).not.toContain('…')
@@ -160,11 +173,17 @@ describe('failTint', () => {
     expect(DARK.failTint).toBe(TINT)
   })
 
-  it('is a pale red in LIGHT on which both the title red and the text clear AA', () => {
+  it('is a pale red in LIGHT on which the title red, the text and the hint grey clear AA', () => {
     for (const p of [LIGHT, DARK] satisfies Palette[]) {
       expect(ratio(p.fail, p.failTint)).toBeGreaterThanOrEqual(4.5)
       expect(ratio(p.fg, p.failTint)).toBeGreaterThanOrEqual(4.5)
+      expect(ratio(p.failTintDim, p.failTint)).toBeGreaterThanOrEqual(4.5)
     }
+  })
+
+  it('has a hint grey that is DARK dim, so the mockup still matches, and plain gray in NEUTRAL', () => {
+    expect(DARK.failTintDim).toBe(DARK.dim)
+    expect(NEUTRAL.failTintDim).toBe('gray')
   })
 
   it('is no fill in NEUTRAL, which asserts no colour', () => {

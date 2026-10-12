@@ -126,12 +126,47 @@ describe('the home screen in the app', () => {
     expect(lines.join('\n')).not.toMatch(/^\s+failed\s*$/m)
     expect(lines.join('\n')).not.toContain('Check the filename')
 
-    // The next keystroke clears it, and the completions come back to the list.
-    app.stdin.write('~')
+    // The path stays in the field, to be corrected.
+    expect(lines[at]).toBe('    › /definitely/not/here.jpg')
+
+    // The next keystroke clears the row, and the completions come back to the list.
+    app.stdin.write('x')
     await settle()
     lines = plain(app.lastFrame()).split('\n')
     expect(lines.join('\n')).not.toContain('File not found')
+    expect(lines.find((l) => l.startsWith('    › '))).toBe('    › /definitely/not/here.jpgx')
   }, 20_000)
+
+  describe('a refusal row on home, with the field empty (a dropped file)', () => {
+    const CTRL_N = String.fromCharCode(14)
+
+    /** Home with a dropped file it cannot read: the row is up and the field is empty. */
+    async function refused() {
+      const dir = await makeTempDir()
+      const broken = join(dir, 'broken.png')
+      await writeFile(broken, 'this is not a png')
+      const app = home(dir)
+      await settle()
+      app.stdin.write(broken)
+      await settle(500)
+      expect(plain(app.lastFrame())).toContain('broken.png')
+      return app
+    }
+
+    it('goes away with esc', async () => {
+      const app = await refused()
+      app.stdin.write(ESC)
+      await settle()
+      expect(plain(app.lastFrame())).not.toContain('broken.png')
+    }, 20_000)
+
+    it('goes away with ctrl-n', async () => {
+      const app = await refused()
+      app.stdin.write(CTRL_N)
+      await settle()
+      expect(plain(app.lastFrame())).not.toContain('broken.png')
+    }, 20_000)
+  })
 
   it('clears the field with esc and offers the modes again', async () => {
     const app = home(await makeTempDir())

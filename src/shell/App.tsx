@@ -759,8 +759,24 @@ export function App({
    * under the home field. Typing, choosing a mode, or leaving home clears it.
    */
   const [homeError, setHomeError] = useState<ForgeError | undefined>(undefined)
+  /**
+   * What the field held when the row went up. A refused typed path stays in
+   * the field to be corrected, so the row clears on a *change* of the text,
+   * not on any text.
+   */
+  const homeErrorFor = useRef('')
+  /** Shows `error` under the field, with `field` left in it (a typed path stays). */
+  const refuseOnHome = useCallback((error: ForgeError, field = '') => {
+    homeErrorFor.current = field
+    setText(field)
+    setHomeError(error)
+  }, [])
   useEffect(() => {
-    if (text !== '') setHomeError(undefined)
+    if (text !== homeErrorFor.current) setHomeError(undefined)
+    // The size step's row goes the same way. Its field is emptied by the
+    // submit that raised it, so the row outlives that and goes with the next
+    // change: typing makes it stale.
+    if (text !== '') setSizeError(undefined)
   }, [text])
   // biome-ignore lint/correctness/useExhaustiveDependencies: `mode` and `step` are the triggers
   useEffect(() => {
@@ -1159,6 +1175,7 @@ export function App({
   useKeys(
     (_input, key) => {
       if (!key.escape) return
+      setHomeError(undefined)
       if (text !== '') {
         setText('')
         return
@@ -1191,6 +1208,7 @@ export function App({
     setSizeUnreachable(null)
     setSuggestion(undefined)
     setSizeError(undefined)
+    setHomeError(undefined)
     setText('')
     setMode('convert')
     setStep('idle')
@@ -1599,6 +1617,7 @@ export function App({
           drop.failures.every((f) => f.error.code === 'empty-directory')
         ) {
           setText('')
+          setHomeError(undefined)
           for (const failure of drop.failures) showError(failure.error)
           return
         }
@@ -1606,8 +1625,7 @@ export function App({
         // under the field, as a typed path is, and nothing is staged.
         const [only] = drop.failures
         if (drop.single && only && stageRef.current.sources.length === 0) {
-          setText('')
-          setHomeError(only.error)
+          refuseOnHome(only.error)
           return
         }
         setHomeError(undefined)
@@ -1646,6 +1664,9 @@ export function App({
       const id = ++requestId.current
       setText('')
       setHomeError(undefined)
+      // The path stays in the field if it is refused, to be corrected — unless
+      // something was typed in the meantime, which then stays instead.
+      const kept = () => (textRef.current === '' ? trimmed : textRef.current)
 
       let drop: DropResolution
       try {
@@ -1656,7 +1677,7 @@ export function App({
         // fired from Prompt's synchronous useInput handler, and nothing awaits
         // or catches the promise it returns. The shell must render it — as
         // the refusal of the path just typed, under the field.
-        setHomeError(isForgeError(e) ? e : unexpectedError(e))
+        refuseOnHome(isForgeError(e) ? e : unexpectedError(e), kept())
         setStep('idle')
         return
       }
@@ -1669,7 +1690,7 @@ export function App({
         // One path that could not be read is answered under the field; a
         // folder with nothing readable in it keeps a panel for each failure.
         const [only] = drop.failures
-        if (drop.single && only) setHomeError(only.error)
+        if (drop.single && only) refuseOnHome(only.error, kept())
         else for (const failure of drop.failures) showError(failure.error)
         return
       }
@@ -1677,7 +1698,7 @@ export function App({
       // One file typed onto an empty home goes on at once, as it always has.
       if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
     },
-    [showError, push, runCommand, landDrop, proceedWith],
+    [showError, push, runCommand, landDrop, proceedWith, refuseOnHome],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`

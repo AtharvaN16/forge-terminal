@@ -94,7 +94,7 @@ describe('compress in the shell', () => {
     expect(size).toBeLessThanOrEqual(2048)
   }, 30_000)
 
-  it('rejects a size it cannot parse, in the field', async () => {
+  it('rejects a size it cannot parse, in the field, until the field changes', async () => {
     const { stdin, lastFrame } = await toCompress()
     stdin.write(DOWN)
     await settle()
@@ -108,6 +108,11 @@ describe('compress in the shell', () => {
     // Still on the size step, and told why: the refusal as one tinted row.
     expect(frame).toContain('Target size')
     expect(frame).toMatch(/Not a size {3}banana is not a size\. Try 500kb or 2mb\./)
+
+    // Typing again clears it: the row never contradicts the live hint above.
+    stdin.write('5')
+    await settle()
+    expect(lastFrame() ?? '').not.toContain('Not a size')
   }, 20_000)
 
   it('/compress on a lossless source says why it cannot', async () => {

@@ -75,14 +75,16 @@ export function errorPanel({
     gap,
     ...wrapWords(title, room).map((l) => line(l, palette.fg, true)),
     ...wrapWords(detail, room).map((l) => line(l, palette.fg)),
-    ...(hint ? wrapWords(hint, room).map((l) => line(l, palette.dim)) : []),
+    ...(hint ? wrapWords(hint, room).map((l) => line(l, palette.failTintDim)) : []),
     gap,
   ]
 }
 
 /**
  * E5·b: one row — the title in `fail` bold, three cells, then the reason in
- * `fg`. A reason that does not fit is cut at the end; the title never is.
+ * `fg`. A reason that does not fit is cut at the end, and dropped when there is
+ * no room for any of it. The title is cut only when it alone is wider than the
+ * row, so the row is never wider than `width`.
  */
 export function errorLine({
   palette,
@@ -100,13 +102,14 @@ export function errorLine({
   const bg = fillOf(palette, plain)
   const lead = bg === undefined ? `${SYMBOLS.fail} ` : ' '
   const gap = '   '
+  // The title is cut only as a last resort, when not even it fits the row.
+  const shownTitle = endEllipsis(title, columns - lead.length)
   // A cell of padding on the right, as the panel has.
-  const room = columns - lead.length - width([{ text: title }]) - gap.length - 1
+  const room = columns - lead.length - width([{ text: shownTitle }]) - gap.length - 1
   const runs: Run[] = [
     { text: lead },
-    { text: title, fg: palette.fail, bold: true },
-    { text: gap },
-    { text: endEllipsis(reason, room), fg: palette.fg },
+    { text: shownTitle, fg: palette.fail, bold: true },
+    ...(room > 0 ? [{ text: gap }, { text: endEllipsis(reason, room), fg: palette.fg }] : []),
   ]
   return bg === undefined ? runs : filled(runs, columns, bg)
 }
