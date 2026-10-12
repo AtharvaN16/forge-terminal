@@ -31,7 +31,9 @@ export default defineConfig({
      * Until that happens, this trades about 30 seconds of wall-clock for a
      * deterministic result. Raise it back once the sleeps are gone.
      */
-    maxWorkers: 4,
+    // GitHub's runners have 3–4 cores, so four workers there is the
+    // saturation described above; two keeps the sleeps' bet on CI.
+    maxWorkers: process.env.CI ? 2 : 4,
     /**
      * A shared CI runner is slower and noisier than four workers on a laptop,
      * so those same sleeps still lose there now and then. Retry on CI only:
