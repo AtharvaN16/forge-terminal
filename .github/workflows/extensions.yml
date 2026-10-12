@@ -11,6 +11,15 @@ name: extensions
 #      release is downloaded and verified against the catalogue instead of
 #      overwritten. Only an archive the catalogue does not list (boost x64,
 #      built but not offered) and the release does not have is uploaded.
+#
+# The rebuild only matches when the toolchain matches the one that built the
+# published archive. remove-background is a Swift binary, so it builds on the
+# Xcode the release was made with (Xcode 27.0, 27A266a); boost reproduces on
+# macos-14. The package job prints the toolchain so a mismatch can be traced.
+#
+# Only the publish job can write to the repository. The package job runs
+# `npm ci` — every dev dependency's install scripts — with a read-only token.
+# Actions are pinned to commit SHAs; the comment names the release.
 
 on:
   push:
@@ -29,44 +38,77 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  package:
-    runs-on: macos-14
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.ref.outputs.id }}
+      version: ${{ steps.ref.outputs.version }}
+      tag: ${{ steps.ref.outputs.tag }}
+      runner: ${{ steps.ref.outputs.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Resolve id, version, tag and runner
+        id: ref
+        shell: bash
+        # Inputs reach the script as environment variables, never pasted into it.
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_ID: ${{ inputs.id }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            id="$INPUT_ID"; version="$INPUT_VERSION"
+          else
+            tag="$GITHUB_REF_NAME"
+            rest="${tag#ext-}"
+            id="${rest%-v*}"; version="${rest##*-v}"
+          fi
+          case "$id" in
+            boost) runner=macos-14 ;;
+            remove-background) runner=xcode-27 ;;
+            *) echo "::error::unknown extension id: $id"; exit 1 ;;
+          esac
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must look like 1.2.3, got: $version"; exit 1
+          fi
+          {
+            echo "id=$id"
+            echo "version=$version"
+            echo "tag=ext-$id-v$version"
+            echo "runner=$runner"
+          } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
+  package:
+    needs: resolve
+    runs-on: ${{ needs.resolve.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Node 20 is what the boost rebuild has been verified to reproduce on.
+      # Moving it is a change to the build to verify, not a free upgrade.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
           cache: npm
 
       - run: npm ci
 
-      - name: Resolve id, version and tag
-        id: ref
-        shell: bash
+      - name: Toolchain
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            id="${{ inputs.id }}"; version="${{ inputs.version }}"
-          else
-            tag="${GITHUB_REF_NAME}"
-            rest="${tag#ext-}"
-            id="${rest%-v*}"; version="${rest##*-v}"
-          fi
-          case "$id" in boost|remove-background) ;; *) echo "unknown extension id: $id" >&2; exit 1 ;; esac
-          echo "id=$id" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=ext-$id-v$version" >> "$GITHUB_OUTPUT"
+          sw_vers
+          xcodebuild -version
+          swiftc --version
+          node --version
 
       - name: Build and package
         shell: bash
         env:
-          ID: ${{ steps.ref.outputs.id }}
-          VERSION: ${{ steps.ref.outputs.version }}
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           mkdir -p dist-ext/out
           : > dist-ext/assets.jsonl
@@ -110,10 +152,32 @@ jobs:
           done
           exit $status
 
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-ext
+          path: |
+            dist-ext/out/*.tar.gz
+            dist-ext/catalogued.txt
+            dist-ext/assets.jsonl
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ext
+          path: dist-ext
+
       - name: Upload what the release lacks, verify what it has
         shell: bash
-        env:
-          TAG: ${{ steps.ref.outputs.tag }}
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Forge extension payload $TAG"
           have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
@@ -134,8 +198,6 @@ jobs:
 
       - name: Summary for the catalogue entry
         shell: bash
-        env:
-          TAG: ${{ steps.ref.outputs.tag }}
         run: |
           {
             echo "### $TAG"
