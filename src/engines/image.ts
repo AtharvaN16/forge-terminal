@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
-import { prepareOutputDir } from '../core/atomic.js'
+import { prepareOutputDir, renameAtomic } from '../core/atomic.js'
 import {
   classifyWriteError,
   conversionFailed,
@@ -221,7 +221,7 @@ export async function writeAtomic(bytes: Buffer, output: string): Promise<number
   const temp = join(dir, `.forge-tmp-${randomBytes(6).toString('hex')}-${basename(output)}`)
   try {
     await writeFile(temp, bytes)
-    await rename(temp, output)
+    await renameAtomic(temp, output)
     return bytes.length
   } catch (cause) {
     // `force` only swallows ENOENT. A cleanup failure (EACCES, EBUSY, ...)

@@ -31,6 +31,40 @@ export async function prepareOutputDir(output: string): Promise<void> {
   }
 }
 
+/** Windows holds a just-written file open for a moment (antivirus, the search indexer). */
+const WINDOWS_RETRYABLE = new Set(['EPERM', 'EBUSY', 'EACCES'])
+const WINDOWS_RENAME_ATTEMPTS = 5
+
+/**
+ * `rename`, made safe to call on Windows. There a freshly written temp file is
+ * often still held by a scanner or indexer, so the rename fails transiently
+ * with EPERM/EBUSY/EACCES; it succeeds a few tens of milliseconds later. Retry
+ * only those, with a short backoff (50, 100, 200, 400 ms), then give up with
+ * the last error. Everywhere else it is exactly `rename` — a failure there is
+ * real and retrying would only hide it.
+ */
+export async function renameAtomic(
+  from: string,
+  to: string,
+  platform: NodeJS.Platform = process.platform,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<void> {
+  if (platform !== 'win32') {
+    await rename(from, to)
+    return
+  }
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await rename(from, to)
+      return
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code
+      if (attempt >= WINDOWS_RENAME_ATTEMPTS || !code || !WINDOWS_RETRYABLE.has(code)) throw e
+      await wait(50 * 2 ** (attempt - 1))
+    }
+  }
+}
+
 /**
  * Invariant 6: temp file, then rename. Never a partial file at the real path.
  *
@@ -49,7 +83,7 @@ export async function writeAtomic(path: string, bytes: Uint8Array): Promise<numb
   const temp = `${path}.${randomBytes(6).toString('hex')}.tmp`
   try {
     await writeFile(temp, bytes)
-    await rename(temp, path)
+    await renameAtomic(temp, path)
     return bytes.byteLength
   } catch (e) {
     // `force` only swallows ENOENT. A cleanup failure (EACCES, EBUSY, ...)
