@@ -351,6 +351,7 @@ export function surfaceRows({
   mode,
   typing,
   kinds,
+  title: heading = 'Drop a file here',
 }: {
   width: number
   rows: number
@@ -358,6 +359,8 @@ export function surfaceRows({
   mode: ShellMode
   typing: boolean
   kinds: string
+  /** What to drop: colour's palette asks for an image. */
+  title?: string
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
@@ -368,7 +371,7 @@ export function surfaceRows({
   const title: Row = [
     { text: '↓', fg: typing ? palette.border : accent, bold: true },
     blank(2),
-    { text: 'Drop a file here', fg: typing ? palette.dim : palette.fg, bold: true },
+    { text: heading, fg: typing ? palette.dim : palette.fg, bold: true },
   ]
   const sub: Row = [
     { text: clip(kinds, Math.max(1, W - 2)), fg: typing ? palette.faint : palette.dim },
