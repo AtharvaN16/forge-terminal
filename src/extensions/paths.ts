@@ -1,5 +1,5 @@
 import { access, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { configBase } from '../config/config-base.js'
 import { catalogEntry, type ExtensionId } from './catalog.js'
 
@@ -36,7 +36,8 @@ export async function installed(id: ExtensionId): Promise<Installed | undefined>
     if (typeof entry !== 'string' || typeof files !== 'object' || files === null) return undefined
     if (!(entry in files)) return undefined
     const path = join(dir, entry)
-    if (!path.startsWith(`${dir}/`)) return undefined
+    // `sep`, not '/': join() builds with backslashes on Windows.
+    if (!path.startsWith(`${dir}${sep}`)) return undefined
     await access(path)
     return { id, version, dir, entry: path, kind }
   } catch {

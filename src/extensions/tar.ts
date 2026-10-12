@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join, normalize } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 
 /**
  * A minimal tar reader: regular files and directories only. Written here
@@ -51,8 +51,16 @@ export async function extractTar(tar: Buffer, destDir: string): Promise<void> {
       longName = undefined
     }
 
-    const rel = normalize(name)
-    if (rel.startsWith('/') || rel === '..' || rel.startsWith('../')) {
+    // Tar names are POSIX whatever the host, so normalise them as POSIX; a
+    // backslash or drive letter would be a separator or a root on Windows.
+    const rel = posix.normalize(name)
+    if (
+      rel.startsWith('/') ||
+      rel === '..' ||
+      rel.startsWith('../') ||
+      rel.includes('\\') ||
+      /^[A-Za-z]:/.test(rel)
+    ) {
       throw new Error(`unsafe path in archive: ${name}`)
     }
     if (type === '5') {

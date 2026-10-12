@@ -70,4 +70,10 @@ describe('extractTar refuses', () => {
     expect(result).toMatch(/unsafe path/)
     expect(await readdir(tmp)).toEqual([])
   })
+
+  it('a backslash path, which climbs out on Windows', async () => {
+    const { result, tmp } = await extract(tar(entry('..\\escape', Buffer.from('x'))))
+    expect(result).toMatch(/unsafe path/)
+    expect(await readdir(tmp)).toEqual([])
+  })
 })
