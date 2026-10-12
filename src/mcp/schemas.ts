@@ -2,7 +2,7 @@ import { isAbsolute } from 'node:path'
 import * as z from 'zod'
 import type { PageOpIntent } from '../cli/args.js'
 import { DEFAULT_PREFERENCES } from '../config/preferences.js'
-import { ACTIONS, type OptionSpec, rotateAction, splitAction } from '../core/actions/index.js'
+import { type OptionSpec, PAGE_ACTIONS, rotateAction, splitAction } from '../core/actions/index.js'
 import { writableFormats } from '../core/capabilities.js'
 import type { DocumentInfo, FormatId } from '../core/types.js'
 
@@ -35,10 +35,11 @@ const ANY_PDF: DocumentInfo = {
 /** Every format some engine writes (invariant 2). */
 export const TARGETS = writableFormats() as [FormatId, ...FormatId[]]
 
-/** The page operations: every action except the two that are not about pages. */
-export const PAGE_OPS = ACTIONS.map((a) => a.id).filter(
-  (id) => id !== 'convert' && id !== 'compress',
-) as [PageOpIntent['action'], ...PageOpIntent['action'][]]
+/** The page operations: every action that is about pages. */
+export const PAGE_OPS = PAGE_ACTIONS.map((a) => a.id) as [
+  PageOpIntent['action'],
+  ...PageOpIntent['action'][],
+]
 
 export const ROTATE_DEGREES = selectValues(
   rotateAction.options([ANY_PDF], {}, DEFAULT_PREFERENCES),

@@ -1,7 +1,7 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
-import { targetIdsFor } from '../core/capabilities.js'
 import { BOOST_MAX_SIDE, boostOverLimit } from '../core/extension-targets.js'
+import { keptFormat } from '../core/resize.js'
 import type { FormatId, ImageInfo } from '../core/types.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
@@ -32,17 +32,10 @@ export interface EnhanceRow {
   verb: string
 }
 
+export { keptFormat }
+
 const dims = (w: number, h: number) => `${w} × ${h}`
 const grouped = (n: number) => n.toLocaleString('en-US')
-
-/**
- * What Sharpen and Boost resolution write: the source's own format where the
- * image engine writes it, else JPEG for a HEIC (it cannot be written), else PNG.
- */
-export function keptFormat(source: ImageInfo): FormatId {
-  if (source.format === 'heic') return 'jpeg'
-  return targetIdsFor(source).includes(source.format) ? source.format : 'png'
-}
 
 function tooLarge(source: ImageInfo, scale: number): string | undefined {
   const over = boostOverLimit(source.width, source.height, scale)

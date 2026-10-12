@@ -92,9 +92,8 @@ describe('exif orientation (invariant 4)', () => {
     const src = await makeOrientedJpeg(dir, 'rot.jpg', 6)
     const out = join(dir, 'rot.pdf')
     const info = await image(src)
-    // Stored (pre-rotation) dimensions, same as image.ts's probe reports —
-    // the display-correct size is the swap of these.
-    expect([info.width, info.height]).toEqual([40, 80])
+    // The probe reports the upright size (stored 40x80, orientation 6).
+    expect([info.width, info.height]).toEqual([80, 40])
 
     await pdfEngine.run(
       { op: 'convert', sources: [info], outputs: [out], target: 'pdf', options },
@@ -150,8 +149,8 @@ describe('exif orientation (invariant 4)', () => {
     const { width, height } = doc.getPage(0).getSize()
     // Rotation still happened — the size assertion below can't pass by
     // quietly skipping it and embedding the source untouched instead.
-    expect(Math.round(width)).toBe(info.height)
-    expect(Math.round(height)).toBe(info.width)
+    expect(Math.round(width)).toBe(info.width)
+    expect(Math.round(height)).toBe(info.height)
 
     const outBytes = (await stat(out)).size
     expect(outBytes).toBeLessThan(sourceBytes * 3)
