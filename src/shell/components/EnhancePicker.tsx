@@ -84,6 +84,11 @@ export function EnhancePicker({
   const palette = useTheme()
   const stateOf = (row: EnhanceRow): ToolState | undefined =>
     row.extension ? tools[row.extension] : READY
+  // Windows has no Remove background row (Apple Vision); the blank row then
+  // follows the last AI row there is, so it still splits AI from built-in.
+  const gapAfter = rows.some((r) => r.id === GAP_AFTER)
+    ? GAP_AFTER
+    : rows.filter((r) => r.extension).at(-1)?.id
   const items: Choice[] = rows.flatMap((r): Choice[] => {
     const state = stateOf(r)
     const reason = r.tooLarge ?? (state?.kind === 'unsupported' ? state.reason : undefined)
@@ -92,7 +97,7 @@ export function EnhancePicker({
       label: r.label,
       ...(reason ? { disabled: true, hint: reason } : {}),
     }
-    return r.id === GAP_AFTER ? [item, { value: GAP, label: '', hint: '', disabled: true }] : [item]
+    return r.id === gapAfter ? [item, { value: GAP, label: '', hint: '', disabled: true }] : [item]
   })
   // Where Select's cursor opens: the row chosen before, else the first that can be.
   const [at, setAt] = useState(() => {

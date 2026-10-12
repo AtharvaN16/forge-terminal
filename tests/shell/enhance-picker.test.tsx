@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { ImageInfo } from '../../src/core/types.js'
 import { EnhancePicker } from '../../src/shell/components/EnhancePicker.js'
 import { enhanceRows } from '../../src/shell/enhance.js'
+import { pinPlatform } from '../helpers/platform.js'
+
+// The Mac's rows (Remove background among them); see pinPlatform.
+pinPlatform('darwin')
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
@@ -42,6 +46,26 @@ describe('the enhance picker’s split (S1)', () => {
     const boost = lines.findIndex((l) => l.includes('Boost resolution'))
     expect(lines[boost]).toMatch(/▌ Boost resolution +‹ 2× › +│/)
     expect(lines[boost + 1]).toMatch(/^ +Remove background +│/)
+  })
+
+  it('on Windows, with no Remove background row, keeps the blank row after Boost', async () => {
+    const app = render(
+      <EnhancePicker
+        format="JPEG"
+        rows={enhanceRows(photo, undefined, undefined, 'win32')}
+        tools={{ boost: { kind: 'ready' } }}
+        checking={false}
+        width={80}
+        onChoose={() => {}}
+        onStop={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+    await settle()
+    const lines = (app.lastFrame() ?? '').split('\n')
+    const boost = lines.findIndex((l) => l.includes('Boost resolution'))
+    expect(lines[boost + 1]).toMatch(/^ +│/)
+    expect(lines[boost + 2]).toContain('Trim edges')
   })
 
   it('ignores ←→ on Boost while it is not installed: the scale it opens at is 2×', async () => {
