@@ -121,6 +121,8 @@ export interface PdfFlowProps {
   prefs?: Preferences
   /** Save as's tab: make the highlighted folder the default (App writes the config). */
   onMakeDefault?: ((path: string) => void) | undefined
+  /** A save chose this folder: App remembers it for Save as's next list. */
+  onSaved?: ((folder: string) => void) | undefined
   /**
    * Open on Save as, on the folder, as a run was asked — after its save was
    * refused (the name is taken) and the user chose Cancel, where choosing a
@@ -146,6 +148,7 @@ export function PdfFlow({
   prefs = DEFAULT_PREFERENCES,
   onTrail,
   onMakeDefault,
+  onSaved,
   resume,
 }: PdfFlowProps) {
   const palette = useTheme()
@@ -316,6 +319,7 @@ export function PdfFlow({
   const saveAndRun = (folder: string, typed: string) => {
     if (!action) return
     const destination = expandTilde(folder)
+    onSaved?.(destination)
     const answers = saveValues(destination, typed)
     const planned = planJobs(action, stage.sources, answers, mergeOrder)
     setStep('run')
@@ -780,6 +784,7 @@ export function PdfFlow({
             onFolder={setSaveFolder}
             presets={destinationSpec.presets}
             defaultPath={expandTilde(prefs.defaultOutput)}
+            lastPath={destinationSpec.last}
             display={displayPath}
             onMakeDefault={(path) => onMakeDefault?.(path)}
             onSubmit={saveAndRun}

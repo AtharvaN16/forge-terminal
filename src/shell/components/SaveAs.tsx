@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
-import { Box, type DOMElement } from 'ink'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { Box, type DOMElement, type Key } from 'ink'
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { NEW_SUBFOLDER } from '../../core/actions/destination.js'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { displayName } from '../../utils/display-path.js'
 import { useClickTarget } from '../ClickTargets.js'
@@ -16,6 +18,7 @@ import {
   filesRow,
   folderRow,
   NAME_WIDTH,
+  newFolderRow,
   type PathLine,
   pathRow,
   ruleRow,
@@ -46,6 +49,17 @@ type At = string | typeof PATH_ROW | null
  */
 const DROP_MS = 450
 
+/** What `/` names a new folder at first: `converted`, or the next one free in `parent`. */
+function freeName(parent: string): string {
+  let name = 'converted'
+  for (let n = 2; existsSync(join(parent, name)); n++) name = `converted ${n}`
+  return name
+}
+
+/** A new folder's name as typed: no slash, which would make it two folders, and no line breaks. */
+const folderText = (input: string) =>
+  input.replace(process.platform === 'win32' ? /[\\/\r\n:*?"<>|]/g : /[/\r\n]/g, '')
+
 /**
  * Save as (V10c, mockups/round-5-2026-10.html): where the file goes and what
  * it is called, in one block. The name sits at the top, filled and
@@ -57,6 +71,12 @@ const DROP_MS = 450
  * row: typing there names a place (`~/…`, `/…`) — the rest of a matching
  * folder shown dim, tab taking it — or narrows the folders by name. A drop
  * anywhere lands on that row. ↵ saves with the name and folder as they stand.
+ *
+ * `/` on a folder opens a row under it naming a new folder inside it —
+ * `converted`, or the next one free — said "new folder" while no folder of
+ * that name is there. Typing goes to it; ↵ saves into it, made as the file is
+ * written; esc closes it. A slash cannot be in a file name, so the name loses
+ * nothing to the key.
  *
  * The folders are `destinationRows`, from the action's own destination spec —
  * never a list of its own (invariant 2).
@@ -78,6 +98,7 @@ export function SaveAs({
   onSubmit,
   onBack,
   aside,
+  lastPath,
 }: {
   mode: ShellMode
   /** The live terminal width. */
@@ -112,6 +133,8 @@ export function SaveAs({
   onBack: () => void
   /** What the save will do, quiet at the title's right: "Rotate 90°". */
   aside?: string | undefined
+  /** Where the last file was saved, so its row can say so. */
+  lastPath?: string | undefined
 }) {
   const palette = useTheme()
   const noColour = (process.env.NO_COLOR ?? '') !== ''
@@ -227,6 +250,54 @@ export function SaveAs({
   const drawnPath = useRef(path)
   drawnPath.current = path
 
+  /**
+   * A new folder being named under `parent` (`/`). Mirrored in a ref, as the
+   * path is: a ↵ can arrive in the same tick as the last letter.
+   */
+  const [making, setMakingState] = useState<{ parent: string; name: string } | null>(null)
+  const makingRef = useRef(making)
+  const setMaking = (next: { parent: string; name: string } | null) => {
+    makingRef.current = next
+    setMakingState(next)
+  }
+  /** A folder `/` can make a new folder in: any listed one but New subfolder, itself a new one. */
+  const canMake = (here: At): here is string =>
+    typeof here === 'string' && folders.some((r) => r.value === here && r.label !== NEW_SUBFOLDER)
+  const startNew = (): boolean => {
+    const here = atRef.current
+    if (!canMake(here)) return false
+    setMaking({ parent: here, name: freeName(here) })
+    return true
+  }
+  /** Keys while a new folder is being named: the name takes the typing. */
+  const makingKey = (input: string, key: Key) => {
+    const m = makingRef.current
+    if (!m) return
+    if (key.return) {
+      const folderName = m.name.trim()
+      if (folderName !== '') save(join(m.parent, folderName))
+      return
+    }
+    if (key.escape) {
+      setMaking(null)
+      return
+    }
+    if (key.backspace || key.delete) {
+      setMaking({ ...m, name: Array.from(m.name).slice(0, -1).join('') })
+      return
+    }
+    if (key.ctrl || key.meta || key.tab || key.upArrow || key.downArrow || !input) return
+    const typed = folderText(input)
+    if (typed) setMaking({ ...m, name: m.name + typed })
+  }
+  const newIsNew = useMemo(
+    () =>
+      making !== null &&
+      making.name.trim() !== '' &&
+      !existsSync(join(making.parent, making.name.trim())),
+    [making],
+  )
+
   const makeDefault = () => {
     const row = folders.find((r) => r.value === atRef.current)
     if (row && row.value !== defaultPath) onMakeDefault(row.value)
@@ -261,6 +332,10 @@ export function SaveAs({
   useKeys(
     (input, key) => {
       if (isStrayEscapeSequence(input)) return
+      if (makingRef.current) {
+        makingKey(input, key)
+        return
+      }
       const here = atRef.current
       if (key.return) {
         if (here === PATH_ROW) enterPath()
@@ -288,12 +363,13 @@ export function SaveAs({
       }
       // An unhandled Ctrl chord (e.g. Ctrl+N) is not text.
       if (key.ctrl || key.meta || !input) return
+      if (input === '/' && here !== PATH_ROW && startNew()) return
       take(input)
     },
-    { isActive: onPath || fixedName !== undefined },
+    { isActive: onPath || fixedName !== undefined || making !== null },
   )
 
-  const nameFocus = !onPath && fixedName === undefined
+  const nameFocus = !onPath && fixedName === undefined && making === null
   const fill = plain ? undefined : palette.selectionBg
   const edge = edgeColour(palette, plain)
   const tint = plain ? undefined : colourProp(palette.band)
@@ -327,28 +403,35 @@ export function SaveAs({
     }
   })()
 
-  const keys: Array<[string, string]> = !onPath
+  const keys: Array<[string, string]> = making
     ? [
-        ['↵', 'save'],
-        ['↑↓', 'folder'],
-        ['tab', 'make default'],
+        ['↵', 'make it and save'],
+        ['esc', 'cancel'],
       ]
-    : path === '' || (filter && folders.length === 0)
-      ? [['↑', 'folders']]
-      : placeMissing && !filter
-        ? [
-            ['↵', 'make it and save'],
-            ['↑', 'folders'],
-          ]
-        : [
-            ['↵', 'save here'],
-            ...(ghost ? [['tab', 'complete'] as [string, string]] : []),
-            ['↑', 'folders'],
-          ]
-  const foot: Array<[string, string]> = [
-    ['esc', onPath && path !== '' ? 'clear path' : 'back'],
-    ['ctrl-c', 'quit'],
-  ]
+    : !onPath
+      ? [
+          ['↵', 'save'],
+          ['↑↓', 'folder'],
+          ['tab', 'make default'],
+        ]
+      : path === '' || (filter && folders.length === 0)
+        ? [['↑', 'folders']]
+        : placeMissing && !filter
+          ? [
+              ['↵', 'make it and save'],
+              ['↑', 'folders'],
+            ]
+          : [
+              ['↵', 'save here'],
+              ...(ghost ? [['tab', 'complete'] as [string, string]] : []),
+              ['↑', 'folders'],
+            ]
+  const foot: Array<[string, string]> = making
+    ? [['ctrl-c', 'quit']]
+    : [
+        ['esc', onPath && path !== '' ? 'clear path' : 'back'],
+        ['ctrl-c', 'quit'],
+      ]
 
   const moving = motionEnabled(palette.name)
   // The list as it rests: the folders, then the path row.
@@ -360,8 +443,9 @@ export function SaveAs({
         first: i === 0,
         label: row.label,
         path: row.hint ?? '',
-        selected: !onPath && i === index,
+        selected: !onPath && making === null && i === index,
         isDefault: row.value === defaultPath,
+        isLast: row.value === lastPath,
         showPath,
         plain,
       }),
@@ -426,6 +510,8 @@ export function SaveAs({
                     onBack()
                     return true
                   }
+                  // `/`: a new folder in the highlighted one. A file name has no slash.
+                  if (input === '/' && startNew()) return true
                   // A drop: a path arriving in one piece goes to the path row.
                   if (input.length > 1 && isPathQuery(input.split(/[\r\n]/)[0] ?? '')) {
                     take(input)
@@ -448,22 +534,39 @@ export function SaveAs({
         <Runs row={ruleRow({ palette, width: fieldWidth, plain })} />
         {blank}
         {folders.map((row: Choice, i) => (
-          <FolderTarget
-            key={row.value}
-            id={`save-as-folder-${i}`}
-            isActive
-            onClick={() => save(row.value)}
-            onHover={() => go(row.value)}
-          >
-            <Runs row={shown[i] ?? []} />
-          </FolderTarget>
+          <Fragment key={row.value}>
+            <FolderTarget
+              id={`save-as-folder-${i}`}
+              isActive
+              onClick={() => save(row.value)}
+              onHover={() => go(row.value)}
+            >
+              <Runs row={shown[i] ?? []} />
+            </FolderTarget>
+            {making?.parent === row.value ? (
+              <Runs
+                row={newFolderRow({
+                  palette,
+                  width: fieldWidth,
+                  name: making.name,
+                  isNew: newIsNew,
+                  plain,
+                })}
+              />
+            ) : null}
+          </Fragment>
         ))}
         <FolderTarget id="save-as-path" isActive onClick={() => go(PATH_ROW)} onHover={() => {}}>
           <Runs row={shown[folders.length] ?? []} />
         </FolderTarget>
         {blank}
       </Box>
-      <HintBar width={width} pairs={keys} foot={foot} />
+      <HintBar
+        width={width}
+        pairs={keys}
+        foot={foot}
+        aside={making === null && !onPath && canMake(at) ? [['/', 'new folder']] : undefined}
+      />
     </Box>
   )
 }

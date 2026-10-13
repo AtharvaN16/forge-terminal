@@ -46,7 +46,15 @@ export type OptionSpec =
       step: number
       default: number
     }
-  | { kind: 'path'; id: string; label: string; default: string; presets: PathPreset[] }
+  | {
+      kind: 'path'
+      id: string
+      label: string
+      default: string
+      presets: PathPreset[]
+      /** Where the last file was saved, when it is not the default: its row says so. */
+      last?: string
+    }
   /** A free-text answer, such as a target size. */
   | { kind: 'text'; id: string; label: string; placeholder: string }
 

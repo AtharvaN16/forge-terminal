@@ -128,7 +128,7 @@ describe('convert action options', () => {
     // of the setting. The source's own folder is still offered, just not first.
     expect(dest.default).toBe(join(homedir(), 'Desktop'))
     expect(dest.presets[0]?.label).toBe('Desktop')
-    expect(dest.presets.map((p) => p.label)).toContain('Same folder')
+    expect(dest.presets.map((p) => p.label)).toContain('Same location')
     expect(dest.presets.map((p) => p.label)).toContain('New subfolder')
     expect(dest.presets.find((p) => p.label === 'Downloads')?.path).toBe(
       join(homedir(), 'Downloads'),
@@ -143,9 +143,9 @@ describe('convert action options', () => {
 
     const paths = dest.presets.map((p) => p.path)
     expect(new Set(paths).size).toBe(paths.length) // no two presets share a path
-    // "Downloads" and "Same folder" resolve to one folder here, and the more
+    // "Downloads" and "Same location" resolve to one folder here, and the more
     // specific label survives.
-    expect(dest.presets.map((p) => p.label)).toContain('Same folder')
+    expect(dest.presets.map((p) => p.label)).toContain('Same location')
     expect(dest.presets.filter((p) => p.path === join(homedir(), 'Downloads'))).toHaveLength(1)
   })
 })
@@ -266,7 +266,7 @@ describe('destination presets', () => {
 
   it('still offers the other presets alongside the default', () => {
     const labels = destination().presets.map((x) => x.label)
-    expect(labels).toContain('Same folder')
+    expect(labels).toContain('Same location')
     expect(labels).toContain('Downloads')
     expect(labels).toContain('New subfolder')
   })

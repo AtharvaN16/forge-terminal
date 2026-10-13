@@ -16,7 +16,7 @@ const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
  * The suffix that keeps a compressed file from landing on its source.
  *
  * Compression keeps the extension, so without this the default output *is*
- * the input whenever "Same folder" is chosen, and `buildPlan` would refuse
+ * the input whenever "Same location" is chosen, and `buildPlan` would refuse
  * every run under the never-write-over-the-input rule. The name step comes
  * after, so this is a default the user can overwrite rather than a rule.
  */

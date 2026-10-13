@@ -16,6 +16,8 @@ export interface Preferences {
   quality: number
   /** The once-a-day check for a newer Forge. Absent means on (src/update/check.ts). */
   updateCheck?: boolean
+  /** The folder the last file was saved to: Save as lists it after the default. */
+  lastOutput?: string
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -78,6 +80,14 @@ function validate(raw: Record<string, unknown>): { prefs: Preferences; rejected:
   if (raw.updateCheck !== undefined) {
     if (typeof raw.updateCheck === 'boolean') prefs.updateCheck = raw.updateCheck
     else rejected.push('updateCheck')
+  }
+
+  if (raw.lastOutput !== undefined) {
+    if (typeof raw.lastOutput === 'string' && raw.lastOutput.trim().length > 0) {
+      prefs.lastOutput = raw.lastOutput
+    } else {
+      rejected.push('lastOutput')
+    }
   }
 
   return { prefs, rejected }

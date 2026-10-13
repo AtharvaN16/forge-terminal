@@ -167,3 +167,27 @@ while active) and `useElapsed` (ms since it turned on, for the ripple). Neither 
 - **Motion:** `mix`, plus `useTween` and `useTicker` with fake timers. Each
   animated component is also checked to render its final frame when
   `motionEnabled()` is false.
+
+## 6. Addendum, 2026-10-13: new folders, the last place, Same location
+
+Decided in `mockups/open-key-2026-10.html` (section 03) and in chat.
+
+- **Same location** replaces "Same folder" for the folder the source is in.
+  When that folder is also Desktop or Downloads, the list keeps one row and
+  it is named Same location, in the slot the other would have had.
+- **The last place saved** (`lastOutput` in the config, written on every
+  Save as ↵, best effort) is listed right after the default, with
+  `last saved` in grey at the far end, no fill. When it is the default, no
+  extra row and no word: the default's tag says enough.
+- **`/` on a folder** opens a row under it, one step in (`└ converted`),
+  naming a new folder inside it: `converted`, or `converted 2`, `3`… when
+  taken. While no folder of that name exists the row says `new folder` in
+  grey at the far end, no fill. Typing edits it; ↵ makes it and saves into
+  it (made as the file is written, atomically, as the path row already
+  does); esc closes it. Not on New subfolder or the path row. `/` was chosen
+  because a file name cannot hold one, so the name loses nothing; `ctrl-n`
+  is the app's new-session key.
+- The hint `/ new folder` sits at the far end of the row just above the key
+  row's rule, as colour's `→ go deeper` sits beside its values; it shows
+  only while a folder that can take one is highlighted.
+- One-key **New subfolder** is unchanged: `converted/` beside the source.

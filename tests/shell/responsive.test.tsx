@@ -115,7 +115,7 @@ describe('responsiveness', () => {
   it('drops the destination preset hints in the compact band, as the target picker does', async () => {
     const compact = await frameAtDestination(40)
     const normal = await frameAtDestination(80)
-    expect(compact).toContain('Same folder')
+    expect(compact).toContain('Same location')
     expect(compact).not.toContain(`${sep}forge-test-`)
     // Only the highlighted place speaks, so the path shown is its own.
     expect(normal).toMatch(DESKTOP_ROW)

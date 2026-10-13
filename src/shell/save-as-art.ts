@@ -31,6 +31,9 @@ const NAME_COLUMN = 16
 const TAG = ' default '
 /** The tag on a path that does not exist yet: a save there makes it. */
 const NEW_TAG = ' new folder '
+/** The word on the folder the last file went to, and on a folder `/` is naming that is not there yet: grey, no fill. */
+const LAST_WORD = 'last saved'
+const NEW_WORD = 'new folder'
 
 /** The fill a row is drawn on, or none without colour. */
 const fillOf = (palette: Palette, plain: boolean) =>
@@ -218,6 +221,8 @@ export interface FolderRowSpec {
   path: string
   selected?: boolean
   isDefault?: boolean
+  /** Where the last file was saved: it says so where the default's tag would be. */
+  isLast?: boolean
   /** False in the compact band: names only. */
   showPath?: boolean
   plain?: boolean
@@ -236,6 +241,7 @@ export function folderRow({
   path,
   selected = false,
   isDefault = false,
+  isLast = false,
   showPath = true,
   plain = false,
 }: FolderRowSpec): Row {
@@ -244,8 +250,10 @@ export function folderRow({
   const band = bare ? undefined : selected ? palette.fieldBand : fill
   const tag: Row = isDefault
     ? [bare ? { text: TAG } : { text: TAG, fg: palette.defaultTag, bg: palette.defaultTagBg }]
-    : []
-  const room = listWidth(width) - 2 - (isDefault ? TAG.length + 1 : 0) - 1
+    : isLast
+      ? [{ text: LAST_WORD, fg: palette.border }]
+      : []
+  const room = listWidth(width) - 2 - (tag.length ? stringWidth(tag[0]?.text ?? '') + 1 : 0) - 1
   const shown = middleEllipsis(name, Math.max(1, Math.min(room, NAME_COLUMN * 3)))
   const body: Row = selected
     ? [
@@ -266,6 +274,53 @@ export function folderRow({
       ]
     : [{ text: '  ' }, { text: shown, fg: palette.dim }]
   return listRow({ palette, width, first, body, right: tag, band, plain })
+}
+
+/**
+ * A new folder being named inside the folder above it (`/`): one step in,
+ * under that folder's name, highlighted, the caret after the name; "new
+ * folder" at the far end while no folder of that name is there.
+ */
+export function newFolderRow({
+  palette,
+  width,
+  name,
+  isNew,
+  plain = false,
+}: {
+  palette: Palette
+  width: number
+  name: string
+  isNew: boolean
+  plain?: boolean
+}): Row {
+  const fill = fillOf(palette, plain)
+  const bare = fill === undefined
+  const band = bare ? undefined : palette.fieldBand
+  const caret: Run = bare ? { text: '▏', fg: palette.fg } : { text: ' ', bg: palette.fg }
+  const right: Row = isNew ? [{ text: NEW_WORD, fg: palette.border }] : []
+  const room = Math.max(1, listWidth(width) - 2 - 2 - 1 - (isNew ? NEW_WORD.length + 1 : 0) - 1)
+  // A long name keeps its end, where the typing is.
+  const shown =
+    stringWidth(name) > room
+      ? `…${Array.from(name)
+          .slice(-(room - 1))
+          .join('')}`
+      : name
+  return listRow({
+    palette,
+    width,
+    first: false,
+    band,
+    plain,
+    right,
+    body: [
+      { text: '  ' },
+      { text: '└ ', fg: palette.border },
+      { text: shown, fg: palette.fg, bold: true },
+      caret,
+    ],
+  })
 }
 
 /** What the path row is showing. */

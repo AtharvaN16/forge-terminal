@@ -140,6 +140,73 @@ describe('Save as (V10c): the block', () => {
   })
 })
 
+describe('Save as: the last place saved to', () => {
+  it('tags its row, quietly, at the far end', () => {
+    const f = plain(render(<Harness lastPath={join(root, 'Documents')} />).lastFrame())
+    expect(f).toMatch(/ {2}Documents +last saved /)
+    expect(f.match(/last saved/g)).toHaveLength(1)
+  })
+})
+
+describe('Save as: / makes a new folder inside the highlighted one', () => {
+  const ruleAt = (f: string | undefined) => lines(plain(f)).findLastIndex((l) => /^─+$/.test(l))
+
+  it('says so just above the key row’s rule, at the far end', () => {
+    const f = render(<Harness />).lastFrame()
+    const above = lines(plain(f))[ruleAt(f) - 1] ?? ''
+    expect(above).toMatch(/ \/ {2}new folder$/)
+    expect(keyRow(f)).not.toContain('new folder')
+  })
+
+  it('opens a row under the folder, named converted, marked new; ↵ saves into it', async () => {
+    const onSubmit = vi.fn()
+    const { stdin, lastFrame } = render(<Harness onSubmit={onSubmit} />)
+    stdin.write(DOWN) // Downloads
+    await settle()
+    stdin.write('/')
+    await settle()
+    const rows = field(lastFrame())
+    const at = rows.findIndex((l) => /^ +Downloads *$/.test(l))
+    expect(at).toBeGreaterThan(-1)
+    expect(rows[at + 1]).toMatch(/└ converted +new folder /)
+    // The name is untouched; the key row says what ↵ and esc do now.
+    expect(rows[0]).toMatch(/name {5}header/)
+    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save {3}esc {2}cancel/)
+    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).not.toContain('new folder')
+    stdin.write('-2')
+    await settle()
+    expect(field(lastFrame())[at + 1]).toMatch(/└ converted-2 +new folder /)
+    stdin.write(ENTER)
+    await settle()
+    expect(onSubmit).toHaveBeenCalledWith(join(root, 'Downloads', 'converted-2'), 'header')
+  })
+
+  it('names it converted 2 when converted is there, and drops the mark for a folder that exists', async () => {
+    await mkdir(join(root, 'Desktop', 'converted'), { recursive: true })
+    const { stdin, lastFrame } = render(<Harness />)
+    stdin.write('/')
+    await settle()
+    expect(plain(lastFrame())).toMatch(/└ converted 2 +new folder /)
+    // Back to "converted", which is there: no longer new.
+    stdin.write('\x7f\x7f')
+    await settle()
+    expect(plain(lastFrame())).toMatch(/└ converted *$/m)
+    expect(plain(lastFrame())).not.toContain('new folder ')
+  })
+
+  it('esc puts the list back as it was', async () => {
+    const onBack = vi.fn()
+    const { stdin, lastFrame } = render(<Harness onBack={onBack} />)
+    stdin.write('/')
+    await settle()
+    stdin.write(ESC)
+    await settle()
+    expect(plain(lastFrame())).not.toContain('└')
+    expect(onBack).not.toHaveBeenCalled()
+    expect(field(lastFrame())[0]).toMatch(/name {5}header/)
+  })
+})
+
 describe('Save as (V10c): the name', () => {
   it('takes typing, and saves with the name and folder on ↵', async () => {
     const onSubmit = vi.fn()

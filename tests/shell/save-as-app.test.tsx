@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readdir } from 'node:fs/promises'
+import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
@@ -58,10 +58,60 @@ describe('Save as, in the flow', () => {
     expect(out.find((l) => l.includes('convert ╱'))).toMatch(/ JPEG ╱ 80 ╱ Save as ╱╱ *$/)
     // The default output is the file's own folder here.
     expect(plain(app.lastFrame())).toMatch(/name +test +\.jpg/)
-    expect(plain(app.lastFrame())).toMatch(/▌ Same folder/)
+    expect(plain(app.lastFrame())).toMatch(/▌ Same location/)
     expect(keyRow(app.lastFrame())).toMatch(
       /↵ {2}save {3}↑↓ {2}folder {3}tab {2}make default +esc back · ctrl-c quit/,
     )
+  }, 20_000)
+
+  it('/ then ↵ saves into a new converted folder, and remembers it as the last place saved', async () => {
+    const saved = process.env.XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = await makeTempDir()
+    try {
+      const { app, dir } = await atSaveAs()
+      app.stdin.write('/')
+      await waitFor(() => plain(app.lastFrame()).includes('└ converted'))
+      expect(plain(app.lastFrame())).toMatch(/└ converted +new folder$/m)
+      app.stdin.write(ENTER)
+      await waitFor(() => existsSync(join(dir, 'converted', 'test.jpg')))
+      expect(await readdir(join(dir, 'converted'))).toEqual(['test.jpg'])
+      await waitFor(() =>
+        existsSync(join(process.env.XDG_CONFIG_HOME ?? '', 'forge', 'config.json')),
+      )
+      const config = JSON.parse(
+        await readFile(join(process.env.XDG_CONFIG_HOME ?? '', 'forge', 'config.json'), 'utf8'),
+      )
+      expect(config.lastOutput).toBe(join(dir, 'converted'))
+    } finally {
+      if (saved === undefined) delete process.env.XDG_CONFIG_HOME
+      else process.env.XDG_CONFIG_HOME = saved
+    }
+  }, 20_000)
+
+  it('tags the folder the last file went to, when it is not the default', async () => {
+    const dir = await makeTempDir()
+    const elsewhere = join(dir, 'projects')
+    await mkdir(elsewhere)
+    const file = await makeGradientPng(dir, 'test.png', 64)
+    const app = render(
+      <App
+        initialWidth={80}
+        initialHeight={24}
+        prefs={{ ...prefsFor(dir), lastOutput: elsewhere }}
+      />,
+    )
+    await settle()
+    app.stdin.write(file)
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => lines(app.lastFrame()).includes(' Convert to'))
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => /^ Quality/m.test(plain(app.lastFrame())))
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => lines(app.lastFrame()).includes(' Save as'))
+    expect(plain(app.lastFrame())).toMatch(/projects +last saved$/m)
   }, 20_000)
 
   it('saves under the name as typed, the extension added, in one ↵', async () => {
@@ -94,7 +144,7 @@ describe('Save as, in the flow', () => {
     app.stdin.write(DOWN)
     await settle()
     expect(plain(app.lastFrame())).toMatch(/name +test-mine +\.jpg/)
-    expect(plain(app.lastFrame())).not.toMatch(/▌ Same folder/)
+    expect(plain(app.lastFrame())).not.toMatch(/▌ Same location/)
   }, 20_000)
 
   it('goes back to Quality on esc once the name is empty', async () => {
@@ -122,7 +172,7 @@ describe('Save as, in the flow', () => {
     expect(out).toContain(' Save as')
     // The name as it was, the folder still chosen, esc back to Quality.
     expect(out).toMatch(/name +test +\.jpg/)
-    expect(out).toMatch(/▌ Same folder/)
+    expect(out).toMatch(/▌ Same location/)
     expect(keyRow(app.lastFrame())).toMatch(/esc back · ctrl-c quit/)
     expect((await readdir(dir)).sort()).toEqual(['test.jpg', 'test.png'])
   }, 20_000)

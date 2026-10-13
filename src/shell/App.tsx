@@ -2188,6 +2188,12 @@ export function App({
    * the user is still choosing where *this* conversion goes. `.catch` for
    * the same reason as chooseTheme: nothing awaits this promise.
    */
+  /** Where a file was just saved: Save as lists it next time, tagged. Best effort, never in the way. */
+  const rememberSaved = (folder: string) => {
+    setLivePrefs((p) => ({ ...p, lastOutput: folder }))
+    savePreferences({ lastOutput: folder }).catch(() => {})
+  }
+
   const makeDefault = (path: string) => {
     setLivePrefs((p) => ({ ...p, defaultOutput: path }))
     push({
@@ -2347,6 +2353,7 @@ export function App({
     // Not read by the action, which is always handed the destination
     // directly; kept for the header bar's trail.
     setValues((v) => ({ ...v, destination }))
+    rememberSaved(destination)
 
     const proposal = proposalFor(source, values, destination)
     if (proposal.fixedName) {
@@ -3637,6 +3644,7 @@ export function App({
                 onFolder={chooseFolder}
                 presets={destinationSpec.presets}
                 defaultPath={expandTilde(livePrefs.defaultOutput)}
+                lastPath={destinationSpec.last}
                 display={displayPath}
                 onMakeDefault={makeDefault}
                 onSubmit={confirmDestination}
@@ -3875,6 +3883,7 @@ export function App({
               }}
               onTrail={setPdfTrailNow}
               onMakeDefault={makeDefault}
+              onSaved={rememberSaved}
             />
           ) : null}
 

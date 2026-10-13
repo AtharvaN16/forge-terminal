@@ -98,7 +98,7 @@ describe('making a destination the default', () => {
     stdin.write(TAB)
     await settle(400)
     expect(lastFrame() ?? '').toContain('Save as')
-    expect(lastFrame() ?? '').toContain('Same folder') // the list still open
+    expect(lastFrame() ?? '').toContain('Same location') // the list still open
   })
 
   it('commits a note saying what changed', async () => {

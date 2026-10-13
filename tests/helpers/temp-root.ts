@@ -11,15 +11,23 @@ import { join } from 'node:path'
  * catches all of them, including subprocesses the tests spawn, without
  * touching each call site. Workers inherit the variable because they start
  * after global setup.
+ *
+ * The settings go there too: a save remembers its folder in the config
+ * (`lastOutput`), and no test may write the real one. A test that needs its
+ * own config home still sets XDG_CONFIG_HOME itself.
  */
 export default function setup(): () => void {
   const root = mkdtempSync(join(tmpdir(), 'forge-run-'))
   const previous = process.env.TMPDIR
+  const previousConfig = process.env.XDG_CONFIG_HOME
   process.env.TMPDIR = root
+  process.env.XDG_CONFIG_HOME = join(root, 'config')
 
   return () => {
     if (previous === undefined) delete process.env.TMPDIR
     else process.env.TMPDIR = previous
+    if (previousConfig === undefined) delete process.env.XDG_CONFIG_HOME
+    else process.env.XDG_CONFIG_HOME = previousConfig
     rmSync(root, { recursive: true, force: true })
   }
 }
