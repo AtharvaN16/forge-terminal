@@ -145,6 +145,18 @@ describe('forge_convert', () => {
       expect(pdf.isError).toBe(true)
       expect(await readdir(dir)).toEqual(['a.png'])
     })
+
+    it.each([
+      ['trim', { trim: true }],
+      ['resize', { resize: { percent: 50 } }],
+    ])('refuses pages with %s, as the CLI does, writing nothing', async (what, edit) => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const out = await call('forge_convert', { paths: [png], pages: '1', ...edit })
+      expect(out.isError).toBe(true)
+      expect(out.text).toContain(`${what} cannot be combined with pages`)
+      expect(await readdir(dir)).toEqual(['a.png'])
+    })
   })
 
   describe('crop', () => {

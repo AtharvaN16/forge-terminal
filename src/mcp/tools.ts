@@ -138,7 +138,8 @@ export async function convertTool(
     const clash = [
       ...(args.crop !== undefined && args.trim === true ? ['trim'] : []),
       ...asked,
-      ...(args.crop !== undefined && args.pages !== undefined ? ['pages'] : []),
+      // Every edit works on images only: pages are refused with each, as the CLI does.
+      ...(args.pages !== undefined ? ['pages'] : []),
     ][0]
     if (clash !== undefined) {
       return refuse(
