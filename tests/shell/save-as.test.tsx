@@ -151,10 +151,13 @@ describe('Save as: the last place saved to', () => {
 describe('Save as: / makes a new folder inside the highlighted one', () => {
   const ruleAt = (f: string | undefined) => lines(plain(f)).findLastIndex((l) => /^─+$/.test(l))
 
-  it('says so just above the key row’s rule, at the far end', () => {
+  it('says so just above the key row’s rule, uncapped, ending where the default tag ends', () => {
     const f = render(<Harness />).lastFrame()
-    const above = lines(plain(f))[ruleAt(f) - 1] ?? ''
-    expect(above).toMatch(/ \/ {2}new folder$/)
+    const rows = lines(plain(f))
+    const above = rows[ruleAt(f) - 1] ?? ''
+    expect(above).toMatch(/ \/ new folder$/)
+    const tagged = rows.find((l) => l.includes(' default ')) ?? ''
+    expect(above.length).toBe(tagged.indexOf(' default ') + ' default '.length)
     expect(keyRow(f)).not.toContain('new folder')
   })
 
@@ -169,10 +172,12 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     const at = rows.findIndex((l) => /^ +Downloads *$/.test(l))
     expect(at).toBeGreaterThan(-1)
     expect(rows[at + 1]).toMatch(/└ converted +new folder /)
-    // The name is untouched; the key row says what ↵ and esc do now.
+    // The name is untouched; the key row says what ↵ does, and esc is said
+    // where "/ new folder" was.
     expect(rows[0]).toMatch(/name {5}header/)
-    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save {3}esc {2}cancel/)
-    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).not.toContain('new folder')
+    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save/)
+    expect(keyRow(lastFrame())).not.toContain('esc')
+    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).toMatch(/ esc clear$/)
     stdin.write('-2')
     await settle()
     expect(field(lastFrame())[at + 1]).toMatch(/└ converted-2 +new folder /)
@@ -194,11 +199,17 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     expect(plain(lastFrame())).not.toContain('new folder ')
   })
 
-  it('esc puts the list back as it was', async () => {
+  it('esc clears the name, and a second esc puts the list back as it was', async () => {
     const onBack = vi.fn()
     const { stdin, lastFrame } = render(<Harness onBack={onBack} />)
     stdin.write('/')
     await settle()
+    stdin.write(ESC)
+    await settle()
+    expect(plain(lastFrame())).toMatch(/└ *$/m)
+    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).toMatch(/ esc close$/)
+    // Nothing to make: ↵ is not offered.
+    expect(keyRow(lastFrame())).not.toContain('make it and save')
     stdin.write(ESC)
     await settle()
     expect(plain(lastFrame())).not.toContain('└')

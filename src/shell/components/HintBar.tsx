@@ -28,6 +28,7 @@ export function HintBar({
   foot,
   width,
   aside,
+  asideEnd,
 }: {
   pairs: Array<[string, string]>
   /**
@@ -42,6 +43,8 @@ export function HintBar({
    * one that belongs to what is highlighted ("/ new folder" on a folder).
    */
   aside?: Array<[string, string]> | undefined
+  /** The column the aside ends at, to line it up with the block above; a cell short of the rule if left out. */
+  asideEnd?: number | undefined
 }) {
   const palette = useTheme()
   const given = foot !== undefined
@@ -60,7 +63,7 @@ export function HintBar({
     <>
       <Box flexGrow={1} />
       <Box width={width} marginTop={aside ? 0 : 1} flexDirection="column" flexShrink={0}>
-        {aside ? <AsideKeys pairs={aside} width={width} /> : null}
+        {aside ? <AsideKeys pairs={aside} end={Math.min(asideEnd ?? width - 1, width)} /> : null}
         <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
         <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} />
       </Box>
@@ -68,30 +71,24 @@ export function HintBar({
   )
 }
 
-/** Keys at the far end of the row above the rule, a cell short of it, capped as the key row caps them. */
-function AsideKeys({ pairs, width }: { pairs: Array<[string, string]>; width: number }) {
+/**
+ * Keys ending at column `end` of the row above the rule: uncapped, in the
+ * mode's colour, so they read as belonging to the block above, not the key row.
+ */
+function AsideKeys({ pairs, end }: { pairs: Array<[string, string]>; end: number }) {
   const palette = useTheme()
-  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
-  const capped = palette.keycapBg !== '' && !noColour
-  const cap = (key: string) => (capped ? ` ${key} ` : `[${key}]`)
   const used = pairs.reduce(
-    (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(cap(key)) + 1 + stringWidth(word),
+    (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(`${key} ${word}`),
     0,
   )
   return (
-    <Text wrap="truncate">
-      {' '.repeat(Math.max(0, width - 1 - used))}
+    <Text wrap="truncate" color={colourProp(palette.accent)}>
+      {' '.repeat(Math.max(0, end - used))}
       {pairs.map(([key, word], i) => (
         <Text key={key}>
           {i ? '  ' : ''}
-          <Text
-            backgroundColor={capped ? colourProp(palette.keycapBg) : undefined}
-            color={colourProp(palette.fg)}
-            bold
-          >
-            {cap(key)}
-          </Text>
-          <Text color={colourProp(palette.dim)}>{` ${word}`}</Text>
+          <Text bold>{key}</Text>
+          {` ${word}`}
         </Text>
       ))}
     </Text>

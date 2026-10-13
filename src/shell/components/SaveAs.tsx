@@ -22,6 +22,7 @@ import {
   type PathLine,
   pathRow,
   ruleRow,
+  tagEnd,
   underlineRow,
 } from '../save-as-art.js'
 import { Text } from '../Text.js'
@@ -75,8 +76,8 @@ const folderText = (input: string) =>
  * `/` on a folder opens a row under it naming a new folder inside it —
  * `converted`, or the next one free — said "new folder" while no folder of
  * that name is there. Typing goes to it; ↵ saves into it, made as the file is
- * written; esc closes it. A slash cannot be in a file name, so the name loses
- * nothing to the key.
+ * written; esc clears the name, and a second esc closes it. A slash cannot
+ * be in a file name, so the name loses nothing to the key.
  *
  * The folders are `destinationRows`, from the action's own destination spec —
  * never a list of its own (invariant 2).
@@ -278,8 +279,9 @@ export function SaveAs({
       if (folderName !== '') save(join(m.parent, folderName))
       return
     }
+    // esc clears the name; on an empty one, closes the row.
     if (key.escape) {
-      setMaking(null)
+      setMaking(m.name === '' ? null : { ...m, name: '' })
       return
     }
     if (key.backspace || key.delete) {
@@ -404,10 +406,9 @@ export function SaveAs({
   })()
 
   const keys: Array<[string, string]> = making
-    ? [
-        ['↵', 'make it and save'],
-        ['esc', 'cancel'],
-      ]
+    ? making.name.trim() === ''
+      ? []
+      : [['↵', 'make it and save']]
     : !onPath
       ? [
           ['↵', 'save'],
@@ -565,7 +566,14 @@ export function SaveAs({
         width={width}
         pairs={keys}
         foot={foot}
-        aside={making === null && !onPath && canMake(at) ? [['/', 'new folder']] : undefined}
+        aside={
+          making !== null
+            ? [['esc', making.name === '' ? 'close' : 'clear']]
+            : !onPath && canMake(at)
+              ? [['/', 'new folder']]
+              : undefined
+        }
+        asideEnd={tagEnd(fieldWidth)}
       />
     </Box>
   )

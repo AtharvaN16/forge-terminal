@@ -7,6 +7,7 @@ import {
   filesRow,
   folderRow,
   NAME_WIDTH,
+  newFolderRow,
   type PathLine,
   pathRow,
   ruleRow,
@@ -212,5 +213,13 @@ describe('the Save as block without colour', () => {
     ] as const) {
       expect(LIGHT[key]).toMatch(/^#[0-9a-f]{6}$/)
     }
+  })
+
+  it('draws a new folder’s └ and name in the mode’s colour: it takes typing', () => {
+    const row = cells(newFolderRow({ palette, width: W, name: 'converted', isNew: true }))
+    const at = row.findIndex((c) => c.ch === '└')
+    const named = row.slice(at, at + 2 + 'converted'.length)
+    expect(named.map((c) => c.ch).join('')).toBe('└ converted')
+    for (const c of named) if (c.ch !== ' ') expect(c.fg).toBe(palette.accent)
   })
 })
