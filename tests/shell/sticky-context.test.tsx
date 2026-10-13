@@ -79,12 +79,11 @@ describe('the command list with a file waiting', () => {
 })
 
 describe('a change of flow is fenced off from what came before', () => {
-  it('rules a line between a refusal and the /pdf screen it is not part of', async () => {
+  it('takes a refusal away on entering the /pdf screen it is not part of', async () => {
     // The reported confusion: a compress refusal stayed on screen after
     // entering /pdf, directly above the operation list, reading as though
-    // it belonged to the menu the user was now looking at. The dashed rule
-    // already exists for finished results; a change of flow deserves it for
-    // the same reason — one session, several separate operations.
+    // it belonged to the menu the user was now looking at. The refusal is
+    // live rather than history, so a change of flow removes it outright.
     const { stdin, lastFrame } = await stagePdfAtIdle()
 
     stdin.write('/compress')
@@ -101,7 +100,7 @@ describe('a change of flow is fenced off from what came before', () => {
     const frame = lastFrame() ?? ''
     // Positive first: we really are on the PDF screen.
     expect(frame).toContain('Choose an operation')
-    // And the refusal is now behind a rule rather than floating above it.
-    expect(frame).toContain('╍')
+    // And the refusal is gone rather than floating above it.
+    expect(frame).not.toContain('Nothing to compress')
   })
 })

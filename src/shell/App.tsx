@@ -49,6 +49,7 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
+import { ErrorPanel } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
@@ -919,6 +920,24 @@ export function App({
     setText(field)
     setHomeError(error)
   }, [])
+  /**
+   * Why the file in hand cannot go where it was sent (compress on a PNG, /pdf
+   * on a photo). Live, not history: a block in `<Static>` can never be taken
+   * back, and this one is only true of that file — it sat above the next
+   * file's flow, explaining a refusal nobody had made of it. It goes when
+   * the file leaves the bench (esc, a finished run, another drop).
+   */
+  const [fileRefusal, setFileRefusal] = useState<{ error: ForgeError; path: string } | undefined>(
+    undefined,
+  )
+  const refuseFile = useCallback((error: ForgeError, path: string) => {
+    setFileRefusal({ error, path })
+  }, [])
+  useEffect(() => {
+    if (!fileRefusal) return
+    const [only, ...rest] = stage.sources
+    if (only?.path !== fileRefusal.path || rest.length > 0) setFileRefusal(undefined)
+  }, [stage, fileRefusal])
   useEffect(() => {
     if (text !== homeErrorFor.current) setHomeError(undefined)
     // The size step's row goes the same way. Its field is emptied by the
@@ -1130,6 +1149,9 @@ export function App({
    * on an empty session, and never two in a row.
    */
   const fenceOff = useCallback(() => {
+    // A refusal is live (see `fileRefusal`): a new flow takes it away rather
+    // than leaving it above a screen it is not part of.
+    setFileRefusal(undefined)
     setHistory((h) => {
       if (h.length === 0) return h
       if (h[h.length - 1]?.kind === 'separator') return h
@@ -1717,7 +1739,7 @@ export function App({
           return
         }
         if (source && !compressAction.appliesTo([source])) {
-          push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
+          refuseFile(unsupportedCompress(source), source.path)
           return
         }
         fenceOff()
@@ -1771,6 +1793,7 @@ export function App({
     },
     [
       push,
+      refuseFile,
       fenceOff,
       source,
       stage.sources,
@@ -1798,7 +1821,7 @@ export function App({
       // rather than after the user has answered three more questions about it.
       if (mode === 'compress') {
         if (!compressAction.appliesTo([info])) {
-          push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
+          refuseFile(unsupportedCompress(info), info.path)
           setMode('convert')
           // `compressAction.appliesTo` only accepts a lossy image, so nothing
           // reaches this branch without a real convert target either — but
@@ -1814,7 +1837,7 @@ export function App({
       // opens the hub directly.
       if (mode === 'pdf') {
         if (!pdfActionsApply([info])) {
-          push({ kind: 'error', id: nextId(), error: unsupportedPdf(info) })
+          refuseFile(unsupportedPdf(info), info.path)
           setMode('convert')
           setStep(hasConvertTarget(info) ? 'target' : 'idle')
           return
@@ -1840,7 +1863,7 @@ export function App({
       // than opening a picker with nothing in it (see `hasConvertTarget`).
       setStep(hasConvertTarget(info) ? 'target' : 'idle')
     },
-    [mode, push, hasConvertTarget, pdfActionsApply, fenceOff],
+    [mode, push, refuseFile, hasConvertTarget, pdfActionsApply, fenceOff],
   )
 
   /**
@@ -3168,6 +3191,14 @@ export function App({
               when that happens. */}
           <MouseRouter rootRef={rootRef} revision={history.length} />
           {step === 'theme' ? <ThemePicker width={width} onChoose={chooseTheme} /> : null}
+
+          {/* Where a history block would sit — above the flow it explains —
+              but live, so it can go with the file (see `fileRefusal`). */}
+          {fileRefusal && step !== 'theme' && step !== 'extensions' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <ErrorPanel error={fileRefusal.error} width={Math.max(8, width - 2 * HOME_MARGIN)} />
+            </Box>
+          ) : null}
 
           {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
