@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_PREFERENCES, expandTilde, type Preferences } from '../../config/preferences.js'
@@ -21,6 +21,7 @@ import { Select } from '../components/Select.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { HOME_MARGIN } from '../home-art.js'
 import type { Stage } from '../stage.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { pdfTrail } from '../trail.js'
@@ -478,7 +479,7 @@ export function PdfFlow({
 
     if (action.id === 'split' && spec.id === 'mode' && spec.kind === 'select') {
       return (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <Box marginBottom={1}>
             <StepTitle mode="pdf" title="How to split" aside={pagesAside} width={width} />
           </Box>
@@ -509,7 +510,7 @@ export function PdfFlow({
     ) {
       if (pagesView === 'grid') {
         return (
-          <Box flexDirection="column" marginBottom={1}>
+          <Box flexDirection="column" flexGrow={1}>
             <Box marginBottom={1}>
               <StepTitle mode="pdf" title={spec.label} aside={docAside} width={width} />
             </Box>
@@ -542,7 +543,7 @@ export function PdfFlow({
       }
       const placeholder = spec.kind === 'text' ? spec.placeholder : ''
       return (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <StepTitle mode="pdf" title={spec.label} aside={docAside} width={width} />
           <FilledField
             value={text}
@@ -567,7 +568,7 @@ export function PdfFlow({
 
     if (spec.kind === 'select') {
       return (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <Box marginBottom={1}>
             <StepTitle mode="pdf" title={spec.label} aside={pagesAside} width={width} />
           </Box>
@@ -602,7 +603,7 @@ export function PdfFlow({
     // this — `pages` is intercepted above — but a future action's plain
     // text spec has somewhere to render.
     return (
-      <Box flexDirection="column" marginBottom={1}>
+      <Box flexDirection="column" flexGrow={1}>
         <StepTitle mode="pdf" title={spec.label} aside={pagesAside} width={width} />
         <FilledField
           value={text}
@@ -660,9 +661,9 @@ export function PdfFlow({
         : { stem: first, ext: '', fixedName: undefined }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {step === 'hub' ? (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <Box marginBottom={hubNote ? 0 : 1}>
             <StepTitle mode="pdf" title="Choose an operation" aside={docAside} width={width} />
           </Box>
@@ -690,7 +691,7 @@ export function PdfFlow({
       {step === 'options' ? renderOptionsStep() : null}
 
       {step === 'merge' ? (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <Box marginBottom={1}>
             <StepTitle mode="pdf" title="Order the files" aside={mergeAside} width={width} />
           </Box>
@@ -710,7 +711,7 @@ export function PdfFlow({
       ) : null}
 
       {step === 'split-n' ? (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <StepTitle mode="pdf" title="Pages per file" aside={pagesAside} width={width} />
           <FilledField
             value={text}
@@ -739,7 +740,7 @@ export function PdfFlow({
       ) : null}
 
       {step === 'split-grid' && doc ? (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <Box marginBottom={1}>
             <StepTitle mode="pdf" title="Where to split" aside={pagesAside} width={width} />
           </Box>
@@ -766,7 +767,7 @@ export function PdfFlow({
       ) : null}
 
       {step === 'confirm' && job && destinationSpec ? (
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" flexGrow={1}>
           <SaveAs
             mode="pdf"
             width={width}

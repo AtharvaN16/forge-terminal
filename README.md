@@ -104,6 +104,7 @@ forge config list                    # show every setting and where it lives
 forge config set output ~/Desktop    # default output folder
 forge config set theme light         # dark or light
 forge config set quality 80          # what the quality slider opens on
+forge config set update-check off    # stop the once-a-day update check
 forge config path                    # print the file location
 ```
 
@@ -111,6 +112,28 @@ A corrupt or unreadable config never blocks a conversion. Forge falls back to
 defaults, says so once, and carries on — and it validates key by key, so one
 bad setting does not cost you the ones that are fine. Keys written by a newer
 version of Forge survive a write from an older one.
+
+### Updates
+
+Once a day, in the background, Forge asks the npm registry for the latest
+version number of `forge-terminal`. That is the whole request: nothing about
+your files or your Mac is sent. When a newer Forge is out, home's band says
+`/update is available`, and a one-off command run in a terminal ends with a
+short note, at most once a day. Neither ever slows anything down: the check
+reads a cached answer, refreshes it after the command has finished, and is
+silent when offline. It is never printed with `--json`, into a pipe, or over
+MCP.
+
+```bash
+forge update                         # install a newer Forge now, if there is one
+```
+
+In the shell, `/update` checks on the spot, and ↵ installs the new version and
+restarts Forge. If npm needs permission (Node installed for the whole Mac), it
+shows the `sudo` command to run yourself instead.
+
+Turn the automatic check off with `forge config set update-check off`, the
+switch on `/update`, or `FORGE_NO_UPDATE_CHECK=1`. It is always off on CI.
 
 ### Themes
 

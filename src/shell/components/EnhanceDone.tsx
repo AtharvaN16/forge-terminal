@@ -1,6 +1,6 @@
 import { dirname, isAbsolute } from 'node:path'
 import chalk from 'chalk'
-import { Box, type DOMElement, Text, useStdout } from 'ink'
+import { Box, type DOMElement, useStdout } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import {
@@ -12,9 +12,10 @@ import {
   forgetCloseup,
 } from '../../core/closeup.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
+import { halfBlocks } from '../halfblocks.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
-import { sextants } from '../sextants.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeColours, SYMBOLS } from '../theme.js'
 import { useInlinePictures } from '../useInlinePictures.js'
@@ -30,7 +31,7 @@ import { middleEllipsis } from '../width.js'
  * Where the terminal draws images (iTerm2, WezTerm, Kitty, Ghostty) the
  * pictures are the real files, written over blank boxes Ink reserves (see
  * useInlinePictures for why and how). Elsewhere — Apple Terminal, NO_COLOR, a
- * pipe — a close-up drawn in sextants (shell/sextants.ts) of where the result
+ * pipe — a close-up drawn in half blocks (shell/halfblocks.ts) of where the result
  * changed most, at true pixel scale (core/closeup.ts). Cutouts sit on a
  * checkerboard either way.
  *
@@ -61,18 +62,33 @@ const GAP = 4
 export const PICTURE_ROWS = 16
 /** Fewer rows than this for the pictures and Done says only its quiet line. */
 export const MIN_PICTURE_ROWS = 6
-/** What the component draws besides the pictures: line, gap, tabs, gap, caption. */
-const CHROME_ROWS = 5
+/** What the component draws besides the pictures: line, gap, tabs. */
+const CHROME_ROWS = 3
+/**
+ * The one note under the pictures, and only under the character fallback: a
+ * reader seeing blocks should know the real file is not like that. No other
+ * explainer — the user asked for none, and gave this wording (2026-10-12).
+ */
+export const SKETCH_NOTE =
+  'The image preview is for illustrative purposes only; the terminal cannot display the actual image. Press O to see the result.'
+/** The key the note names, drawn in enhance's colour where it says it. */
+const NOTE_KEY = 'O'
 /** How long a resize must settle before the pictures are cut again. */
 export const RESIZE_SETTLE_MS = 100
+
+/** Rows the note takes under the pictures at `width`: a gap, then its lines. */
+export function noteRows(width: number): number {
+  return 1 + Math.ceil(stringWidth(SKETCH_NOTE) / Math.max(1, width - M - 2))
+}
 
 /**
  * How tall the pictures are when the component has `rows` rows: as tall as
  * fits, at most `PICTURE_ROWS`; 0 when fewer than `MIN_PICTURE_ROWS` fit.
+ * `note`: the rows the note under pictures drawn in characters takes.
  */
-export function pictureRows(rows: number | undefined): number {
+export function pictureRows(rows: number | undefined, note = 0): number {
   if (rows === undefined) return PICTURE_ROWS
-  const fit = Math.min(PICTURE_ROWS, rows - CHROME_ROWS)
+  const fit = Math.min(PICTURE_ROWS, rows - CHROME_ROWS - note)
   return fit >= MIN_PICTURE_ROWS ? fit : 0
 }
 
@@ -100,14 +116,6 @@ function folderOf(savedTo: string, after: string): string {
   return isAbsolute(folder) ? displayPath(folder) : folder
 }
 
-function caption(kind: Closeup['kind'], k: number, real: boolean): string {
-  if (real) return kind === 'patch' ? 'the real pictures, at full quality' : 'the real pictures'
-  if (kind === 'subject') return 'the photo, and the subject on its own'
-  if (kind === 'whole') return 'the whole picture, before and after'
-  if (k > 1) return 'same patch · each block on the left is one pixel you had'
-  return 'where it changed most, same size · close enough to see each pixel'
-}
-
 type Shown =
   | { real: true; pictures: CloseupPictures }
   | { real: false; closeup: Closeup }
@@ -128,7 +136,7 @@ export function EnhanceDone({
   const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
   const protocol = stdout.isTTY && colour ? imageProtocol() : null
   const cols = pictureCols(width)
-  const rows = colour ? pictureRows(available) : 0
+  const rows = colour ? pictureRows(available, protocol === null ? noteRows(width) : 0) : 0
   const whole = op === 'trim' || op === 'resize'
   const s = op === 'boost' ? scale : 1
   const [shown, setShown] = useState<Shown | undefined>(undefined)
@@ -179,27 +187,22 @@ export function EnhanceDone({
   const folder = room >= 8 ? middleEllipsis(folderOf(savedTo, after), room) : ''
   const grids = useMemo(
     () =>
-      closeup ? { before: sextants(closeup.before), after: sextants(closeup.after) } : undefined,
+      closeup
+        ? { before: halfBlocks(closeup.before), after: halfBlocks(closeup.after) }
+        : undefined,
     [closeup],
   )
   const pictureWidth = closeup ? closeup.before.width / DOTS_ACROSS : cols
   const height = grids ? grids.before.length : rows
   const mid = Math.floor(height / 2)
   const failed = rows === 0 || (shown !== undefined && 'failed' in shown)
-  const words = real
-    ? caption(real.kind, 1, true)
-    : closeup
-      ? caption(closeup.kind, closeup.blocksPerPixel, false)
-      : ' '
 
   const arrow = (
     <Box width={GAP} height={height} flexDirection="column" flexShrink={0}>
       <Box height={mid} flexShrink={0} />
       <Text>
         {' '}
-        <Text color={colourProp(modeColours(palette, 'enhance').fg)} bold>
-          ▶
-        </Text>
+        <Text color={colourProp(modeColours(palette, 'enhance').fg)}>▶</Text>
       </Text>
     </Box>
   )
@@ -274,12 +277,18 @@ export function EnhanceDone({
               </>
             )}
           </Box>
-          <Box height={1} flexShrink={0} />
-          <Box paddingLeft={M + 1} flexShrink={0}>
-            <Text color={colourProp(palette.border)} wrap="truncate">
-              {words}
-            </Text>
-          </Box>
+          {grids ? (
+            <>
+              <Box height={1} flexShrink={0} />
+              <Box paddingLeft={M + 1} width={width - 1} flexShrink={0}>
+                <Text color={colourProp(palette.dim)} wrap="wrap">
+                  {SKETCH_NOTE.slice(0, SKETCH_NOTE.lastIndexOf(NOTE_KEY))}
+                  <Text color={colourProp(modeColours(palette, 'enhance').fg)}>{NOTE_KEY}</Text>
+                  {SKETCH_NOTE.slice(SKETCH_NOTE.lastIndexOf(NOTE_KEY) + NOTE_KEY.length)}
+                </Text>
+              </Box>
+            </>
+          ) : null}
         </>
       )}
     </Box>

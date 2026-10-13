@@ -10,7 +10,15 @@ export default defineConfig({
      * (see `slantedChips`), so its cells would depend on which terminal ran
      * the suite. Plain everywhere, unless a test asks for slants itself.
      */
-    env: { FORGE_POWERLINE: '0' },
+    env: {
+      FORGE_POWERLINE: '0',
+      /**
+       * No test may ask the real npm registry or write the real update cache.
+       * The automatic check is off for the whole suite (src/update/check.ts);
+       * the update tests pass their own environment and fakes.
+       */
+      FORGE_NO_UPDATE_CHECK: '1',
+    },
     /**
      * Capped well below the machine's core count on purpose.
      *

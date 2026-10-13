@@ -49,6 +49,7 @@ describe('listCommands', () => {
       'enhance',
       'theme',
       'extensions',
+      'update',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
       'modes',
@@ -56,6 +57,7 @@ describe('listCommands', () => {
       'modes',
       'modes',
       'modes',
+      'settings',
       'settings',
       'settings',
     ])
@@ -77,6 +79,7 @@ describe('listCommands', () => {
         'enhance',
         'theme',
         'extensions',
+        'update',
       ])
       expect(listCommands(typed).query).toBe('')
     }
@@ -93,6 +96,7 @@ describe('listCommands', () => {
       'pdf',
       'colour',
       'enhance',
+      undefined,
       undefined,
       undefined,
     ])
@@ -133,6 +137,7 @@ describe('the registry', () => {
       'help',
       'pdf',
       'theme',
+      'update',
     ])
   })
 

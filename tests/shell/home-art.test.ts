@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { brandRows, stagedListRows, surfaceRows, tabRows, width } from '../../src/shell/home-art.js'
+import { contrast } from '../../src/core/colour/contrast.js'
+import { parseHex, type Rgb, rgbToOklab, toLch } from '../../src/core/colour/space.js'
+import {
+  brandRows,
+  oppositeColour,
+  stagedListRows,
+  surfaceRows,
+  tabRows,
+  width,
+} from '../../src/shell/home-art.js'
 import type { StagedFile, StagedView } from '../../src/shell/stage.js'
-import { DARK, modePalette, VERSION } from '../../src/shell/theme.js'
+import { DARK, LIGHT, modeColours, modePalette, VERSION } from '../../src/shell/theme.js'
 import { describeRow, fixtureRow, MOCKUP, runsRow } from './home-cells.js'
 
 const [empty, typing, compress, pdfTyping] = MOCKUP as [
@@ -219,6 +228,65 @@ describe('the staged list', () => {
         expect(t).toContain('1.0 MB')
       }
       for (const row of rows) expect(width(row)).toBeLessThanOrEqual(columns)
+    }
+  })
+})
+
+describe('the band says when a newer Forge is out (N1)', () => {
+  const line = (rows: ReturnType<typeof brandRows>) =>
+    (rows.at(-1) ?? []).map((r) => r.text).join('')
+
+  it('puts “/update is available ·” before the version, on the baseline', () => {
+    const rows = brandRows({
+      width: 80,
+      palette: modePalette(DARK, 'convert'),
+      mode: 'convert',
+      update: '9.9.9',
+    })
+    expect(line(rows)).toContain(`/update is available · v${VERSION}`)
+    expect(width(rows.at(-1) ?? [])).toBe(
+      width(
+        brandRows({ width: 80, palette: modePalette(DARK, 'convert'), mode: 'convert' }).at(-1) ??
+          [],
+      ),
+    )
+  })
+
+  it('draws the words in the opposite of the mode’s colour', () => {
+    for (const mode of ['convert', 'compress', 'pdf', 'enhance', 'colour'] as const) {
+      const p = modePalette(DARK, mode)
+      const rows = brandRows({ width: 80, palette: p, mode, update: '9.9.9' })
+      const note = (rows.at(-1) ?? []).find((r) => r.text === '/update is available')
+      expect(note?.fg).toBe(oppositeColour(p, mode))
+      expect(note?.bold).toBe(true)
+    }
+  })
+
+  it('leaves the words out, keeping the version, when the band is too short for both', () => {
+    const rows = brandRows({
+      width: 60,
+      palette: modePalette(DARK, 'convert'),
+      mode: 'convert',
+      update: '9.9.9',
+    })
+    expect(line(rows)).not.toContain('/update')
+    expect(line(rows)).toContain(`v${VERSION}`)
+  })
+})
+
+describe('oppositeColour', () => {
+  const hue = (hex: string) => toLch(rgbToOklab(parseHex(hex) as Rgb)).h
+
+  it('turns each mode’s colour half way round, and reads at 4.5:1 on the canvas', () => {
+    for (const base of [DARK, LIGHT]) {
+      for (const mode of ['convert', 'compress', 'pdf', 'enhance', 'colour'] as const) {
+        const c = oppositeColour(base, mode)
+        const turn = Math.abs(((hue(c) - hue(modeColours(base, mode).fg) + 540) % 360) - 180)
+        expect(turn, `${base.name} ${mode}`).toBeGreaterThan(150)
+        expect(contrast(parseHex(c) as Rgb, parseHex(base.canvas) as Rgb)).toBeGreaterThanOrEqual(
+          4.5,
+        )
+      }
     }
   })
 })

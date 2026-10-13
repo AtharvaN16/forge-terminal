@@ -182,6 +182,8 @@ export type Intent =
   | ScaleIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
+  /** `forge update`: check npm now and install a newer Forge. */
+  | { kind: 'update' }
   | ConfigIntent
 
 /**
@@ -288,6 +290,7 @@ Other commands:
   forge scale <colour>     50–950 from one colour, with it at 500 (--json, --svg)
   forge config [list | path | set <setting> <value>]
   forge extensions [add | remove <id>]   optional extras, such as boost and remove-background
+  forge update             install a newer Forge, if there is one
   forge mcp                run as a local MCP server over stdio, for AI agents`
 
 function parseMaxSize(raw: unknown): number {
@@ -480,7 +483,8 @@ export function parseArgs(rawArgv: string[]): Intent {
     argv[0] === 'probe' ||
     argv[0] === 'extensions' ||
     argv[0] === 'palette' ||
-    argv[0] === 'scale'
+    argv[0] === 'scale' ||
+    argv[0] === 'update'
   ) {
     return parseSubcommand(argv)
   }
@@ -489,6 +493,16 @@ export function parseArgs(rawArgv: string[]): Intent {
 }
 
 function parseSubcommand(argv: string[]): Intent {
+  if (argv[0] === 'update') {
+    const rest = argv.slice(1).filter((a) => a !== '--json')
+    if (rest.length > 0) {
+      throw invalidArguments(
+        `forge update takes nothing else, got: ${rest.join(' ')}.`,
+        'Try: forge update',
+      )
+    }
+    return { kind: 'update' }
+  }
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
   if (argv[0] === 'palette' || argv[0] === 'scale') return parseColourArgs(argv)

@@ -218,8 +218,6 @@ export interface FolderRowSpec {
   path: string
   selected?: boolean
   isDefault?: boolean
-  /** A place that does not exist yet: quieter than the rest. */
-  quiet?: boolean
   /** False in the compact band: names only. */
   showPath?: boolean
   plain?: boolean
@@ -238,7 +236,6 @@ export function folderRow({
   path,
   selected = false,
   isDefault = false,
-  quiet = false,
   showPath = true,
   plain = false,
 }: FolderRowSpec): Row {
@@ -267,7 +264,7 @@ export function folderRow({
             ]
           : []),
       ]
-    : [{ text: '  ' }, { text: shown, fg: quiet ? palette.border : palette.dim }]
+    : [{ text: '  ' }, { text: shown, fg: palette.dim }]
   return listRow({ palette, width, first, body, right: tag, band, plain })
 }
 

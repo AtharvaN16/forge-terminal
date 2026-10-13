@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
@@ -13,6 +13,7 @@ import { Runs } from '../components/Home.js'
 import { errorLine } from '../error-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeGradient, type Palette } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -287,40 +288,40 @@ export function ExtensionsFlow({
   const used = current ? inUse[current.entry.id] : undefined
   const removable = current?.installed !== undefined && used === undefined
 
-  useKeys(
-    (input, key) => {
-      if (!statuses || !current) return
-      if (busy) {
-        if (key.escape) stop.current?.abort()
-        return
+  useKeys((input, key) => {
+    if (busy) {
+      if (key.escape) stop.current?.abort()
+      return
+    }
+    // esc goes back one level: the question, then the about panel, then
+    // the screen — even before the list has loaded, or if it never does.
+    if (key.escape) {
+      if (confirm) setConfirm(false)
+      else if (about) setAbout(false)
+      else onClose()
+      return
+    }
+    if (!statuses || !current) return
+    if (confirm) {
+      if (key.return) void remove(current)
+      return
+    }
+    if (input === 'i') {
+      setAbout((a) => !a)
+      return
+    }
+    if (about) return
+    if (key.upArrow) move(-1)
+    else if (key.downArrow) move(1)
+    else if (key.return) {
+      if (current.supported && (current.installed === undefined || current.updateAvailable)) {
+        void install(current)
       }
-      if (confirm) {
-        if (key.return) void remove(current)
-        else if (key.escape) setConfirm(false)
-        return
-      }
-      if (input === 'i') {
-        setAbout((a) => !a)
-        return
-      }
-      if (key.escape) {
-        onClose()
-        return
-      }
-      if (about) return
-      if (key.upArrow) move(-1)
-      else if (key.downArrow) move(1)
-      else if (key.return) {
-        if (current.supported && (current.installed === undefined || current.updateAvailable)) {
-          void install(current)
-        }
-      } else if (input === 'x' && removable) {
-        setFreed(undefined)
-        setConfirm(true)
-      }
-    },
-    { isActive: statuses !== undefined },
-  )
+    } else if (input === 'x' && removable) {
+      setFreed(undefined)
+      setConfirm(true)
+    }
+  })
 
   const fg = colourProp(palette.fg)
   const dim = colourProp(palette.dim)
@@ -559,7 +560,7 @@ export function ExtensionsFlow({
         ],
         foot: [quit],
       }
-    if (about) return { main: [['i', 'close']], foot: [['esc', 'home'], quit] }
+    if (about) return { main: [['i', 'close']], foot: [['esc', 'back'], quit] }
     if (busy) return { main: [['esc', 'stop']], foot: [quit] }
     const s = current
     const main: Array<[string, string]> = [['↑↓', 'choose']]
@@ -567,7 +568,7 @@ export function ExtensionsFlow({
     else if (s?.supported && s.installed === undefined) main.push(['↵', 'install'])
     else if (s?.updateAvailable) main.push(['↵', 'update'])
     if (removable) main.push(['x', 'remove'])
-    return { main, foot: [['i', 'about'], ['esc', 'home'], quit] }
+    return { main, foot: [['i', 'about'], ['esc', 'back'], quit] }
   }
 
   const split = width >= LIST_WIDTH + 3 + 40
@@ -576,7 +577,7 @@ export function ExtensionsFlow({
   const rows = current ? sheet(current) : []
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <HeaderBar
           mode="convert"

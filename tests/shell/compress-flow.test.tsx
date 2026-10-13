@@ -133,6 +133,38 @@ describe('compress in the shell', () => {
     expect(all.toLowerCase()).toContain('lossless')
   }, 20_000)
 
+  it('lets the lossless refusal go with the file it was about', async () => {
+    const dir = await makeTempDir()
+    const png = await makePng(dir, 'flat.png')
+    const jpg = await makeJpeg(dir, 'photo.jpg')
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    stdin.write('/compress')
+    await settle()
+    stdin.write(ENTER)
+    await settle(200)
+    stdin.write(png)
+    await settle()
+    stdin.write(ENTER)
+    await settle(500)
+    // Refused into convert's picker, still holding the PNG: the reason stays.
+    expect(lastFrame() ?? '').toContain('Nothing to compress')
+
+    stdin.write(String.fromCharCode(27)) // esc: the PNG off the bench
+    await settle(300)
+    stdin.write('/compress')
+    await settle()
+    stdin.write(ENTER)
+    await settle(200)
+    stdin.write(jpg)
+    await settle()
+    stdin.write(ENTER)
+    await settle(500)
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('By quality')
+    expect(frame).not.toContain('Nothing to compress')
+  }, 20_000)
+
   it('leaves the convert flow untouched', async () => {
     // Dropping a file still means convert — the fastest path stays fastest.
     const dir = await makeTempDir()

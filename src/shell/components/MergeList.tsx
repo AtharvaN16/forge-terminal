@@ -1,12 +1,13 @@
 import { statSync } from 'node:fs'
 
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { moveItem, nextSortMode, type SortMode, sortSources } from '../../core/order.js'
 import type { SourceInfo } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
 import { displayName } from '../../utils/display-path.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -291,7 +292,7 @@ export function MergeList({
         ]
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {/* How many, and how many pages, is the title's to say (pdf.tsx). */}
       <Box flexDirection="column">{rows}</Box>
       {mode !== 'dropped' ? (

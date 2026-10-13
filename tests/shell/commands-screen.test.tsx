@@ -85,8 +85,9 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
   const fromRow = (r: number) => Array.from({ length: 22 - r }, (_, i) => r + i)
   // While the list is open the band (rows 1–3) and the "/" on the tab row
   // (6) are the commands' gold (K1, round 5), not the mode's colour as in the
-  // mockup; light-l6.test.tsx holds them.
-  const GOLD = [1, 2, 3, 6]
+  // mockup; light-l6.test.tsx holds them. Row 8, the "modes" heading, is
+  // gold with a rule after it (C1).
+  const GOLD = [1, 2, 3, 6, 8]
   it('2 · typed /: the tab lights and the panel holds the list', () =>
     expectStep(slash, [...GOLD, ...fromRow(12)]))
   it('3 · typed /co, then ↓: the list narrows and the strip moves', () =>

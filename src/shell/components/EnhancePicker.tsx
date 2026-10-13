@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import { useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
@@ -6,6 +6,7 @@ import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
 import { detailAt, type EnhanceRow, GAP_AFTER, type ToolState } from '../enhance.js'
 import { titleRow } from '../quality-art.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, MODE_KEYS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -234,7 +235,7 @@ export function EnhancePicker({
         ]
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <Runs
           row={titleRow({

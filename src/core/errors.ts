@@ -43,6 +43,10 @@ export type ErrorCode =
   | 'resize-too-large'
   | 'nothing-to-trim'
   | 'animated-trim'
+  | 'update-unavailable'
+  | 'update-denied'
+  | 'update-failed'
+  | 'update-unreachable'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -704,6 +708,49 @@ export function extensionNotOffered(
     detail: `${title} is not available on ${os}.`,
     hint: 'See what is available with: forge extensions',
     shellHint: 'See what is available in /extensions.',
+  })
+}
+
+/** Forge was not installed with `npm i -g` (a checkout, npx), so it cannot replace itself. */
+export function updateUnavailable(version: string): ForgeError {
+  return new ForgeError({
+    code: 'update-unavailable',
+    title: 'Cannot update this Forge',
+    detail: `This copy of Forge was not installed with npm i -g, so ${version} cannot be installed over it.`,
+    hint: 'npm i -g forge-terminal',
+  })
+}
+
+/** npm was refused write access to the global folder: Node installed for the whole Mac. */
+export function updateDenied(version: string): ForgeError {
+  return new ForgeError({
+    code: 'update-denied',
+    title: 'npm needs permission',
+    detail: `npm needs permission to update Forge to ${version}.`,
+    short: 'npm needs permission to update Forge',
+    hint: `sudo npm i -g forge-terminal@${version}`,
+  })
+}
+
+export function updateFailed(version: string, detail: string): ForgeError {
+  return new ForgeError({
+    code: 'update-failed',
+    title: 'Update failed',
+    detail: `npm could not install Forge ${version}: ${detail}`,
+    short: 'npm could not install the update',
+    hint: `npm i -g forge-terminal@${version}`,
+  })
+}
+
+/** Asked to check now, and the registry could not be reached. */
+export function updateUnreachable(): ForgeError {
+  return new ForgeError({
+    code: 'update-unreachable',
+    title: 'Could not check for updates',
+    detail: 'The npm registry could not be reached.',
+    short: 'could not reach npm',
+    hint: 'Check your connection (and HTTPS_PROXY if you use a proxy), then run: forge update',
+    shellHint: 'Check your connection, then try again.',
   })
 }
 

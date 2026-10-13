@@ -78,6 +78,35 @@ describe('first run theme picker', () => {
 })
 
 const tick = () => new Promise((r) => setTimeout(r, 30))
+const ESC = String.fromCharCode(27)
+
+describe('esc in the theme picker', () => {
+  it('/theme, then esc: back on the commands, Theme still highlighted, the theme unchanged', async () => {
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
+    const { stdin, lastFrame } = render(<App initialWidth={80} prefs={prefs} />)
+    stdin.write('/theme')
+    await settle()
+    stdin.write(ENTER)
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Select theme')
+    expect(lastFrame() ?? '').toMatch(/esc +back/)
+    stdin.write(ESC)
+    await settle(300)
+    const frame = lastFrame() ?? ''
+    expect(frame).not.toContain('Select theme')
+    expect(frame).toContain('▌ /theme')
+    expect(frame).toContain('/extensions')
+    expect((await loadPreferences()).prefs.theme).toBeUndefined()
+  })
+
+  it('on first run there is nothing to go back to: no esc', async () => {
+    const { stdin, lastFrame } = render(<App initialWidth={80} prefs={DEFAULT_PREFERENCES} />)
+    expect(lastFrame() ?? '').not.toContain('esc')
+    stdin.write(ESC)
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Select theme')
+  })
+})
 
 describe('the theme picker (round 5)', () => {
   it('says "Select theme", a blank row, then Light and Dark — no hints', () => {

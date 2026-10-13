@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { Box, type DOMElement, type Key, Static, Text, useStdout } from 'ink'
+import { Box, type DOMElement, type Key, Static, useApp, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -50,6 +50,7 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
+import { ErrorPanel } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
@@ -81,11 +82,13 @@ import {
 } from './enhance.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
+import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { HOME_MARGIN } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { largestPercent } from './resize-art.js'
+import { requestRestart } from './restart.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import {
   addToStage,
@@ -96,6 +99,7 @@ import {
   stagedView,
   underField,
 } from './stage.js'
+import { Text } from './Text.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
 import {
@@ -103,9 +107,11 @@ import {
   MODE_KEYS,
   modeForKey,
   modePalette,
+  paintsCanvas,
   paletteFor,
   type ShellMode,
   SYMBOLS,
+  VERSION,
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
 import { useAfter } from './useAfter.js'
@@ -126,6 +132,7 @@ export type Step =
   | 'idle'
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
+  | 'update'
   /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'enhance'
   /** Enhance's Resize: the 0–200 % slider (H3). */
@@ -443,6 +450,9 @@ const asFailure = (path: string, e: unknown): InputFailure => ({
   error: isForgeError(e) ? e : unexpectedError(e),
 })
 
+/** Columns of painted margin on each side of light's canvas (see `paint` in `App`). */
+export const PAINT_INSET = 2
+
 const resolution = (sources: SourceInfo[], failures: InputFailure[]): DropResolution => ({
   sources,
   failures,
@@ -517,6 +527,8 @@ export function App({
   prefs = APP_DEFAULT_PREFS,
   configWarning,
   tools = realTools,
+  updater = realUpdater,
+  latestRelease,
 }: {
   initialWidth?: number
   initialHeight?: number
@@ -524,6 +536,13 @@ export function App({
   configWarning?: string
   /** Where enhance reads and installs its tools from; tests pass a fake. */
   tools?: EnhanceTools
+  /** What /update checks and installs with; tests pass a fake. */
+  updater?: Updater
+  /**
+   * A newer Forge for home's band, found in the background at start-up.
+   * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
+   */
+  latestRelease?: () => Promise<string | undefined>
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
@@ -564,12 +583,6 @@ export function App({
       stdout.off('resize', onResize)
     }
   }, [initialHeight, stdout])
-
-  const width = measured
-  const height = measuredHeight
-  const band = bandFor(width)
-  // A picker's band stops where the file card above it does.
-  const pickerWidth = Math.min(width, CARD_WIDTH)
 
   /**
    * Seeded with the banner rather than having an effect push it, so it is
@@ -620,12 +633,51 @@ export function App({
    */
   const basePalette = paletteFor(theme)
   /**
+   * Light paints its own canvas (see the root Box), and the terminal's own
+   * padding around it keeps the terminal's colour: content at column 0 sat
+   * against a dark edge and read as cropped. So the canvas keeps a painted
+   * margin, and everything lays out in `width`, `PAINT_INSET` columns in
+   * from each side of the window.
+   */
+  const paint = paintsCanvas(basePalette)
+  const width = paint ? Math.max(20, measured - 2 * PAINT_INSET) : measured
+  // The blank row the canvas keeps on top comes out of the layout's rows: a
+  // frame taller than the window makes Ink clear and redraw every frame.
+  const height = paint ? measuredHeight - 1 : measuredHeight
+  const band = bandFor(width)
+  // A picker's band stops where the file card above it does.
+  const pickerWidth = Math.min(width, CARD_WIDTH)
+  /**
    * Preferences as they stand *now*, seeded from what was loaded at launch.
    * `d` changes the default output mid-session, and the banner, the preset
    * list and the `default` tag must all follow it without waiting for a
    * relaunch — so they all read this, never the `prefs` prop.
    */
   const [livePrefs, setLivePrefs] = useState<Preferences>(prefs)
+  const { exit } = useApp()
+
+  /**
+   * A newer Forge, for home's band (N1). Asked once at start-up, in the
+   * background: the cache answers at once, and a cache more than a day old
+   * is refreshed without holding anything up. /update keeps it current.
+   */
+  const [release, setRelease] = useState<string>()
+  const keepRelease = useCallback(async (latest: string | undefined) => {
+    const { isNewer } = await import('../update/check.js')
+    setRelease(latest !== undefined && isNewer(latest, VERSION) ? latest : undefined)
+  }, [])
+  useEffect(() => {
+    let live = true
+    const ask = latestRelease ?? (() => backgroundRelease(prefs))
+    void ask()
+      .then((v) => {
+        if (live) void keepRelease(v)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [latestRelease, prefs, keepRelease])
   const [step, setStep] = useState<Step>(prefs.theme === undefined ? 'theme' : 'idle')
   /**
    * Which action the staged file is being put through. Dropping a file means
@@ -884,6 +936,24 @@ export function App({
     setText(field)
     setHomeError(error)
   }, [])
+  /**
+   * Why the file in hand cannot go where it was sent (compress on a PNG, /pdf
+   * on a photo). Live, not history: a block in `<Static>` can never be taken
+   * back, and this one is only true of that file — it sat above the next
+   * file's flow, explaining a refusal nobody had made of it. It goes when
+   * the file leaves the bench (esc, a finished run, another drop).
+   */
+  const [fileRefusal, setFileRefusal] = useState<{ error: ForgeError; path: string } | undefined>(
+    undefined,
+  )
+  const refuseFile = useCallback((error: ForgeError, path: string) => {
+    setFileRefusal({ error, path })
+  }, [])
+  useEffect(() => {
+    if (!fileRefusal) return
+    const [only, ...rest] = stage.sources
+    if (only?.path !== fileRefusal.path || rest.length > 0) setFileRefusal(undefined)
+  }, [stage, fileRefusal])
   useEffect(() => {
     if (text !== homeErrorFor.current) setHomeError(undefined)
     // The size step's row goes the same way. Its field is emptied by the
@@ -1095,6 +1165,9 @@ export function App({
    * on an empty session, and never two in a row.
    */
   const fenceOff = useCallback(() => {
+    // A refusal is live (see `fileRefusal`): a new flow takes it away rather
+    // than leaving it above a screen it is not part of.
+    setFileRefusal(undefined)
     setHistory((h) => {
       if (h.length === 0) return h
       if (h[h.length - 1]?.kind === 'separator') return h
@@ -1445,7 +1518,8 @@ export function App({
         setStep('idle')
         return
       }
-      if (input === 'o') {
+      // O as well: enhance's note under its pictures says "Press O".
+      if (input === 'o' || input === 'O') {
         pressDone('o')
         openLastResult()
       }
@@ -1615,6 +1689,11 @@ export function App({
         return
       }
 
+      if (command.name === 'update') {
+        setStep('update')
+        return
+      }
+
       /**
        * Enhance acts on one image, as convert does. With nothing staged it
        * arms the mode for the next drop, as `/compress` and `/pdf` do.
@@ -1677,7 +1756,7 @@ export function App({
           return
         }
         if (source && !compressAction.appliesTo([source])) {
-          push({ kind: 'error', id: nextId(), error: unsupportedCompress(source) })
+          refuseFile(unsupportedCompress(source), source.path)
           return
         }
         fenceOff()
@@ -1731,6 +1810,7 @@ export function App({
     },
     [
       push,
+      refuseFile,
       fenceOff,
       source,
       stage.sources,
@@ -1758,7 +1838,7 @@ export function App({
       // rather than after the user has answered three more questions about it.
       if (mode === 'compress') {
         if (!compressAction.appliesTo([info])) {
-          push({ kind: 'error', id: nextId(), error: unsupportedCompress(info) })
+          refuseFile(unsupportedCompress(info), info.path)
           setMode('convert')
           // `compressAction.appliesTo` only accepts a lossy image, so nothing
           // reaches this branch without a real convert target either — but
@@ -1774,7 +1854,7 @@ export function App({
       // opens the hub directly.
       if (mode === 'pdf') {
         if (!pdfActionsApply([info])) {
-          push({ kind: 'error', id: nextId(), error: unsupportedPdf(info) })
+          refuseFile(unsupportedPdf(info), info.path)
           setMode('convert')
           setStep(hasConvertTarget(info) ? 'target' : 'idle')
           return
@@ -1800,7 +1880,7 @@ export function App({
       // than opening a picker with nothing in it (see `hasConvertTarget`).
       setStep(hasConvertTarget(info) ? 'target' : 'idle')
     },
-    [mode, push, hasConvertTarget, pdfActionsApply, fenceOff],
+    [mode, push, refuseFile, hasConvertTarget, pdfActionsApply, fenceOff],
   )
 
   /**
@@ -2038,6 +2118,22 @@ export function App({
    * fails to persist is worth telling the user about; it must never cost
    * them the session.
    */
+  /**
+   * Back from a setting (/theme, /extensions) to where settings live: the
+   * command list, the setting just left still highlighted.
+   */
+  const backToCommands = (name: string) => {
+    setStep('idle')
+    setText('/')
+    setCommandChoice({
+      text: '/',
+      at: Math.max(
+        0,
+        listCommands('').items.findIndex((c) => c.name === name),
+      ),
+    })
+  }
+
   const chooseTheme = (next: 'dark' | 'light') => {
     setTheme(next)
     setStep('idle')
@@ -3118,17 +3214,50 @@ export function App({
    * *live* frame's height rather than the whole session's.
    */
   const rootRef = useRef<DOMElement | null>(null)
+  /**
+   * Light paints its own canvas: the live frame fills the window, every row
+   * the full width, so a dark terminal turns light while forge runs (the
+   * terminal's own background is left alone). Each history block is painted
+   * too, so what light printed stays readable once the frame moves on. The
+   * margin (`PAINT_INSET`) is painted with it; the live frame also keeps a
+   * blank row above it.
+   */
+  const canvas = paint
+    ? { backgroundColor: palette.canvas, width: measured, paddingX: PAINT_INSET }
+    : {}
 
   return (
     <ThemeProvider palette={palette}>
       <ClickTargetProvider>
-        <Box flexDirection="column" ref={rootRef}>
+        <Box
+          flexDirection="column"
+          ref={rootRef}
+          {...canvas}
+          // The frame fills the window on every screen, as home does, so
+          // each screen's keys reach the last row (see HintBar).
+          minHeight={measuredHeight}
+          {...(paint ? { paddingTop: 1 } : {})}
+        >
           {/* Inside the provider, deliberately — see `MouseRouter`. `revision`
               recalibrates the frame's origin: committed history scrolls the
               live frame down the screen, and `history.length` changes exactly
               when that happens. */}
           <MouseRouter rootRef={rootRef} revision={history.length} />
-          {step === 'theme' ? <ThemePicker width={width} onChoose={chooseTheme} /> : null}
+          {step === 'theme' ? (
+            <ThemePicker
+              width={width}
+              onChoose={chooseTheme}
+              {...(theme ? { onCancel: () => backToCommands('theme') } : {})}
+            />
+          ) : null}
+
+          {/* Where a history block would sit — above the flow it explains —
+              but live, so it can go with the file (see `fileRefusal`). */}
+          {fileRefusal && step !== 'theme' && step !== 'extensions' ? (
+            <Box flexDirection="column" marginBottom={1}>
+              <ErrorPanel error={fileRefusal.error} width={Math.max(8, width - 2 * HOME_MARGIN)} />
+            </Box>
+          ) : null}
 
           {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
@@ -3154,11 +3283,19 @@ export function App({
             </Box>
           ) : null}
           <Static key={staticGeneration} items={history}>
-            {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
+            {(block) =>
+              paint ? (
+                <Box key={block.id} flexDirection="column" {...canvas}>
+                  <HistoryEntry block={block} width={width} />
+                </Box>
+              ) : (
+                <HistoryEntry key={block.id} block={block} width={width} />
+              )
+            }
           </Static>
 
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3192,7 +3329,7 @@ export function App({
           ) : null}
 
           {step === 'size' && source && sizeSpec?.kind === 'text' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <StepTitle
                 mode={mode}
                 title={sizeSpec.label}
@@ -3240,7 +3377,7 @@ export function App({
           ) : null}
 
           {step === 'target' && source && targetSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle mode={mode} title="Convert to" width={width} />
               </Box>
@@ -3278,7 +3415,7 @@ export function App({
           ) : null}
 
           {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3312,7 +3449,7 @@ export function App({
           ) : null}
 
           {step === 'page-picker' && source && source.kind === 'document' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <PageGrid
                 mode="cell"
                 pageCount={source.pages}
@@ -3336,7 +3473,7 @@ export function App({
           ) : null}
 
           {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3366,7 +3503,7 @@ export function App({
           ) : null}
 
           {step === 'quality' && source && qualitySpec?.kind === 'slider' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <QualityStep
                 mode={mode}
                 // What the quality is for: the format in convert, the file in compress.
@@ -3443,7 +3580,7 @@ export function App({
           ) : null}
 
           {step === 'save-as' && saving && destinationSpec?.kind === 'path' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <SaveAs
                 key={saving.opened}
                 mode={mode}
@@ -3466,7 +3603,7 @@ export function App({
           ) : null}
 
           {step === 'overwrite' && pending ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <NameTaken
                 mode={mode}
                 width={width}
@@ -3483,7 +3620,7 @@ export function App({
           ) : null}
 
           {step === 'size-unreachable' && sizeUnreachable ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3529,7 +3666,7 @@ export function App({
               bar above drifts, and this says what is happening. The same
               screen for a conversion and a page operation. */}
           {running && workShown && work ? (
-            <Box marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Working
                 mode={mode}
                 label={
@@ -3562,7 +3699,7 @@ export function App({
           {/* Enhance's Done (X5): the header bar, the quiet line and the
               picture before and after (`EnhanceDone`), then the keys. */}
           {step === 'result' && lastResult && doneBar && doneBar.mode === 'enhance' ? (
-            <Box flexDirection="column">
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
               </Box>
@@ -3625,11 +3762,26 @@ export function App({
             />
           ) : null}
 
+          {step === 'update' ? (
+            <UpdateFlow
+              width={width}
+              current={VERSION}
+              auto={livePrefs.updateCheck !== false}
+              updater={updater}
+              onClose={() => setStep('idle')}
+              onChecked={(latest) => void keepRelease(latest)}
+              onRestart={() => {
+                requestRestart()
+                exit()
+              }}
+            />
+          ) : null}
+
           {step === 'extensions' ? (
             <ExtensionsFlow
               width={width}
               onError={(error) => push({ kind: 'error', id: nextId(), error })}
-              onClose={() => setStep('idle')}
+              onClose={() => backToCommands('extensions')}
             />
           ) : null}
 
@@ -3685,7 +3837,7 @@ export function App({
 
           {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
             pdfBlocked.failures[0].error.code === 'output-exists' ? (
-              <Box flexDirection="column" marginBottom={1}>
+              <Box flexDirection="column" flexGrow={1}>
                 <NameTaken
                   mode={mode}
                   width={width}
@@ -3695,7 +3847,7 @@ export function App({
                 />
               </Box>
             ) : (
-              <Box flexDirection="column" marginBottom={1}>
+              <Box flexDirection="column" flexGrow={1}>
                 <Text color={colourProp(palette.fail)}>
                   {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
                 </Text>
@@ -3716,6 +3868,7 @@ export function App({
               width={width}
               height={height}
               intro={firstHome.current}
+              update={release}
               mode={mode}
               typing={text !== ''}
               staged={staged ? stagedView(stage, freshRows) : undefined}
@@ -3772,4 +3925,16 @@ export function App({
       </ClickTargetProvider>
     </ThemeProvider>
   )
+}
+
+/**
+ * The default for `latestRelease`: the once-a-day check, from the cache, or
+ * from npm when the cache is more than a day old. Nothing when it is off.
+ */
+async function backgroundRelease(prefs: Preferences): Promise<string | undefined> {
+  const { checkNow, isStale, readCache, updateChecksEnabled } = await import('../update/check.js')
+  if (!updateChecksEnabled(prefs)) return undefined
+  const cache = await readCache()
+  if (!isStale(cache)) return cache?.latest
+  return (await checkNow()) ?? cache?.latest
 }

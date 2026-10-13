@@ -88,12 +88,13 @@ describe('esc at the prompt', () => {
     app.stdin.write(ESC)
     await settle()
 
-    // "/U" — realistic and minimal: the start of any absolute path under
-    // /Users, and it matches none of convert/compress/theme/help.
+    // "/Us" — realistic and minimal: the start of any absolute path under
+    // /Users, and it matches no command ("/U" alone now matches /update,
+    // as "/e" matches /enhance and "/p" /pdf).
     // `CommandPalette` renders a plain, non-interactive "no command
     // matches" message here — no `<Select>`, no `useInput` at all — so
     // nothing but the stage hook itself is in a position to consume esc.
-    app.stdin.write('/U')
+    app.stdin.write('/Us')
     await settle()
     expect((app.lastFrame() ?? '').toLowerCase()).toContain('no command matches')
 
@@ -101,7 +102,7 @@ describe('esc at the prompt', () => {
     // no `useInput` inside the "no command matches" message), so this is
     // testing the stage hook and only the stage hook. The hook clears
     // whatever is typed first — same as every other text field — so this
-    // first press only takes back "/U"; the stage is untouched by it.
+    // first press only takes back "/Us"; the stage is untouched by it.
     app.stdin.write(ESC)
     await settle()
     expect(app.lastFrame() ?? '').toContain('drop more, or type a path')

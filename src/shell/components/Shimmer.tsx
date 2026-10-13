@@ -1,5 +1,5 @@
-import { Text } from 'ink'
 import { mix, motionEnabled, useTicker } from '../motion.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 

@@ -69,6 +69,12 @@ export const COMMANDS: Command[] = [
     needsSource: false,
     group: 'settings',
   },
+  {
+    name: 'update',
+    description: 'check for a new version',
+    needsSource: false,
+    group: 'settings',
+  },
   // Not a row: the American spelling, so it works when typed.
   {
     name: 'color',

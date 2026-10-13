@@ -11,13 +11,13 @@ import { loadSharp } from '../engines/libs.js'
  * place and hands back the pixels; drawing them is the shell's job. Data only
  * (invariant 1).
  *
- * The shell draws the grids in sextants (shell/sextants.ts): each cell
- * 2 × 3 dots. A cell is about twice as tall as it is wide, so a dot is not
- * square; a pixel here is one dot tall and 4/3 of a dot wide, which is.
+ * The shell draws the grids in half blocks (shell/halfblocks.ts): each
+ * cell 1 × 2 dots. A cell is about twice as tall as it is wide, so a dot is not
+ * square; a pixel here is one dot tall and `DOT_WIDE` dots wide, which is.
  *
  * Scale, as decided in the mockup (mockups/extensions-2026-10.html, "2 ·
  * Done", sources /tmp/forge-ext-mock2/images3.cjs), kept zoomed in when the
- * dots went from half-blocks to sextants (2026-10-12):
+ * dots went to finer cells and back to half blocks (2026-10-12):
  *
  *   - Sharpen (scale 1): one pixel of each file is one pixel here.
  *   - Boost 2×: the original's pixels drawn as 2 × 2 blocks, next to the new
@@ -34,7 +34,7 @@ import { loadSharp } from '../engines/libs.js'
 
 /**
  * Pixels, RGBA, row-major. A close-up's are dots: `width` a multiple of
- * `DOTS_ACROSS`, `height` of `DOTS_DOWN`, one sextant cell each.
+ * `DOTS_ACROSS`, `height` of `DOTS_DOWN`, one half-block cell each.
  */
 export interface PixelGrid {
   width: number
@@ -72,9 +72,14 @@ export interface CloseupOptions {
   whole?: boolean
 }
 
-/** Dots in a cell: a sextant's 2 across, 3 down. */
-export const DOTS_ACROSS = 2
-export const DOTS_DOWN = 3
+/** Dots in a cell: a half block's 1 across, 2 down. */
+export const DOTS_ACROSS = 1
+export const DOTS_DOWN = 2
+/**
+ * Dots across one square pixel, a dot tall: a cell is about 1 : 2, so a dot
+ * is `1 / DOTS_ACROSS` wide to `2 / DOTS_DOWN` tall.
+ */
+const DOT_WIDE = (2 * DOTS_ACROSS) / DOTS_DOWN
 
 /** The checkerboard behind transparency, as the mockup draws it (done5.js `CHK2`). */
 export const CHECKER: readonly [number, number] = [0x4a, 0x33]
@@ -394,11 +399,11 @@ export async function findCloseup(
   const gh = Math.max(1, opts.rows) * DOTS_DOWN
 
   if (opts.whole) {
-    // The before's shape in the grid (a half-block is a square pixel), the
-    // after fitted inside the same box: a trim shows smaller, on the checks.
-    const ratio = c.before.width / c.before.height
-    const w = Math.max(1, Math.min(gw, Math.round(gh * ratio)))
-    const h = Math.max(2, Math.min(gh, Math.round(w / ratio)) & ~1)
+    // The before's shape on screen (square pixels, `DOT_WIDE` dots across),
+    // the after fitted inside the same box: a trim shows smaller, on the checks.
+    const ratio = (c.before.width / c.before.height) * DOT_WIDE
+    const w = whole(Math.min(gw, Math.round(gh * ratio)), DOTS_ACROSS)
+    const h = whole(Math.min(gh, Math.round(w / ratio)), DOTS_DOWN)
     const transparent = { r: 0, g: 0, b: 0, alpha: 0 }
     const b = await rgba((await pipeline(c.before)).resize(w, h, { fit: 'fill' }))
     const a = await rgba(
@@ -439,11 +444,11 @@ export async function findCloseup(
     }
   }
 
-  // A pixel here is one dot tall and 4/3 wide: square on screen. The patch,
-  // in before pixels, is the grid in those pixels over the display factor;
-  // drawn on whole cells of dots.
-  const box = patchBox(c, Math.floor((gw * 3) / 4 / k), Math.floor(gh / k))
-  const dw = whole(Math.round((box.w * k * 4) / 3), DOTS_ACROSS)
+  // A pixel here is one dot tall and `DOT_WIDE` wide: square on screen. The
+  // patch, in before pixels, is the grid in those pixels over the display
+  // factor; drawn on whole cells of dots.
+  const box = patchBox(c, Math.floor(gw / DOT_WIDE / k), Math.floor(gh / k))
+  const dw = whole(Math.round(box.w * k * DOT_WIDE), DOTS_ACROSS)
   const dh = whole(box.h * k, DOTS_DOWN)
   const b = await rgba(
     (await pipeline(c.before))

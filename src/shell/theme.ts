@@ -302,50 +302,62 @@ export const DARK: Palette = {
 export const LIGHT: Palette = {
   name: 'light',
   fg: '#262626',
-  // Round 5 (L6): every grey is a pure grey of the warm one's OKLab
-  // lightness, as dark's are. 4.74:1 on white; the previous #8b9099 was 3.21:1.
-  dim: '#737373',
-  // 5.19:1; #a86a06 measured 4.44:1, just under AA. The accent marks the
-  // selected row, so it has to clear the bar for text, not for decoration.
-  accent: '#9a6005',
-  ok: '#1e7a35',
+  // Light audit (2026-10-12, scripts/light-audit): every text colour here
+  // holds at least the contrast its dark twin has on the same surface, and
+  // 4.5:1 wherever it is words — the round 5 greys fell short of dark's on
+  // every surface (dim on the drop zone 3.73:1, where dark's is 6.44:1).
+  // 5.58:1 on panelBand, its darkest surface; dark's dim is 4.78:1 there.
+  dim: '#4f4f4f',
+  // 4.5:1 on selectionBg (the command list's headings), 5.73:1 on white.
+  accent: '#915a01',
+  // 4.54:1 on listBand, where "59% smaller" sits on a highlighted row.
+  ok: '#0e702c',
   warn: '#8a6100',
-  fail: '#b3261e',
-  // A pale red, as dark's is a dark one. On it `fail` (#b3261e) measures
-  // 5.32:1 and `fg` (#262626) 12.31:1, both clearing AA; `dim` 3.86:1.
+  // Dark's chroma (0.140): the round 5 red was the hottest thing in light.
+  fail: '#a43c32',
+  // A pale red, as dark's is a dark one. On it `fail` measures 5.22:1 and
+  // `fg` (#262626) 12.31:1, both clearing AA.
   failTint: '#f9e3df',
-  // 4.89:1 on #f9e3df; `dim` is 3.86:1 there.
-  failTintDim: '#636363',
-  // 5.56:1 on white. Same reasoning as DARK's `larger`: a burnt orange
-  // (~34°) distinct from `warn`'s brown-gold, clearing AA the way `dim` and
-  // `accent` above do.
-  larger: '#9c5700',
-  // As dark's, against white.
-  shedHatch: '#8fbd9a',
-  grownFill: '#efe4d6',
+  // 7.21:1 on #f9e3df, dark's own ratio on its tint.
+  failTintDim: '#4a4a4a',
+  // A burnt orange (~60°) distinct from `warn`'s brown-gold; 4.53:1 on
+  // panelBand, where Done's "+51 B" sits.
+  larger: '#8b4d01',
+  // As dark's: `ok` mixed half way into the canvas.
+  shedHatch: '#87b896',
+  grownFill: '#ece3d6',
   tag: '#0a6b86',
-  label: '#6141ad',
-  modeConvert: '#087f91',
+  // Dark's chroma (0.123), as `violet`.
+  label: '#5e4b99',
+  // 4.51:1 on listBand: the "(1)" of a taken name, on the highlighted row.
+  modeConvert: '#036b7b',
   modeConvertBg: '#e6f7fa',
   modeCompress: '#24733a',
   modeCompressBg: '#eaf5ec',
-  modePdf: '#c83b1d',
+  // 4.54:1 on listBand, 4.6:1 on tabChip (its tab number).
+  modePdf: '#b82a06',
   modePdfBg: '#fceee9',
   modeColour: '#b0306a',
   modeColourBg: '#f7e3ec',
-  modeEnhance: '#6a4cc4',
+  // Dark's chroma (0.114): round 5's violet was the most vivid colour in light.
+  modeEnhance: '#64569f',
   modeEnhanceBg: '#f0ebfa',
-  // 3.11:1, meeting the boundary threshold. #c3bdb2 measured 1.87:1.
-  border: '#929292',
+  // 4.54:1 on white (dark: 4.22:1 on its canvas) — the hint row's tail and
+  // the quiet tab numbers are words. 3.09:1 on fieldBand (dark: 2.75:1).
+  border: '#767676',
   selectionBg: '#e4e4e4',
   band: '#e4e4e4',
   canvas: '#ffffff',
   textSelectionBg: '#b9cfe8',
-  brand: '#9a6005',
+  // As `accent`.
+  brand: '#915a01',
   // `fg` (#262626) on this fill measures about 11.6:1.
   keycapBg: '#e1e1e1',
-  violet: '#6141ad',
-  faint: '#bfbfbf',
+  // Dark's chroma, as `label`.
+  violet: '#5e4b99',
+  // 2.12:1 on white, 1.65:1 on selectionBg: dark's own ratios for a word
+  // that has stepped back.
+  faint: '#b2b2b2',
   listBand: '#dcdcdc',
   // `selectionBg` mixed 55% into `canvas`, as dark's is.
   shelf: '#f3f3f3',
@@ -370,7 +382,8 @@ export const LIGHT: Palette = {
   defaultTag: '#8f5000',
   // A deep blue on a pale one, as the default's tag is a burnt orange on a pale orange.
   newTagBg: '#e1e7f4',
-  newTag: '#2a55b0',
+  // Dark's chroma (0.128).
+  newTag: '#3358a3',
 }
 
 /**
@@ -708,6 +721,15 @@ export function commandsPalette(p: Palette): Palette {
 export function modePalette(p: Palette, mode: ShellMode): Palette {
   const { fg, bg } = modeColours(p, mode)
   return { ...p, accent: fg, tag: fg, label: fg, band: bg === '' ? p.band : bg }
+}
+
+/**
+ * Whether the shell paints this palette's background itself (light, L6): the
+ * App fills the window with `canvas`, so text must name its colour too —
+ * see `Text.tsx`.
+ */
+export function paintsCanvas(p: Palette): boolean {
+  return p.name === 'light' && p.canvas !== ''
 }
 
 export function paletteFor(theme: 'dark' | 'light' | undefined): Palette {

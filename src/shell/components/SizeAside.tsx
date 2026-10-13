@@ -1,5 +1,5 @@
-import { Text } from 'ink'
 import { formatBytes } from '../../core/units.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import type { MeasuredSize } from '../useMeasuredSize.js'

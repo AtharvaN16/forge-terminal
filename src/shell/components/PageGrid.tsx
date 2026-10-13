@@ -1,6 +1,7 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import type { ReactNode } from 'react'
 import { useRef, useState } from 'react'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -449,7 +450,7 @@ export function PageGrid({
     totalScreens > 1 ? `pages ${offset + 1}–${offset + visibleCount(screen)} of ${pageCount}` : null
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <Text color={colourProp(palette.dim)}>{header}</Text>
       <Box flexDirection="column" marginTop={1}>
         {rows}

@@ -1,4 +1,4 @@
-import { Text } from 'ink'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { FilledField } from './FilledField.js'

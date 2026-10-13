@@ -60,6 +60,9 @@ forge scale 6579FD --json                                  # 50–950, the colou
 For a colour, pass the hex without `#`, or quote it: an unquoted `#` starts
 a shell comment, and `forge scale` then exits 2 with "No colour given".
 
+`forge update` installs a newer Forge globally with npm. Run it only when the
+user asks for an update.
+
 Outputs go beside the source unless `-o` names a folder (or, for one file, a
 filename). Page operations always write beside the source, take no `-o`, and
 never edit the original.

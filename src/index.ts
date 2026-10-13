@@ -52,6 +52,15 @@ async function main(): Promise<void> {
      * reaches execute(). The import is lazy, so no other command loads the
      * MCP SDK (spec §3.5).
      */
+    // The background half of the once-a-day update check (cli/update-note.ts):
+    // a detached process the last command started. It asks npm, writes the
+    // answer beside the config, and exits. Nothing is printed.
+    if (argv[0] === '__update-check') {
+      const { checkNow } = await import('./update/check.js')
+      await checkNow()
+      return
+    }
+
     if (argv[0] === 'mcp') {
       const { runMcpServer } = await import('./mcp/server.js')
       await runMcpServer(argv.slice(1))
@@ -130,6 +139,14 @@ async function main(): Promise<void> {
     if (intent.kind === 'extension-op') process.once('SIGINT', () => interrupt.abort())
     const result = await execute(intent, {
       json,
+      // npm says nothing while it installs, so a person gets a spinner (invariant 7: no number).
+      ...(tty
+        ? {
+            onInstalling: (version: string) => {
+              spinner = startSpinner(process.stderr, `installing Forge ${version}`)
+            },
+          }
+        : {}),
       signal: interrupt.signal,
       ...(tty ? { onDownload } : {}),
       // Swatches in `forge palette` / `forge scale`: only for a person at a
@@ -158,6 +175,22 @@ async function main(): Promise<void> {
     if (result.stdout.length > 0) process.stdout.write(`${result.stdout.join('\n')}\n`)
     if (result.stderr.length > 0) process.stderr.write(`${result.stderr.join('\n')}\n`)
     process.exitCode = interrupt.signal.aborted ? 130 : result.exitCode
+    // A6: a newer Forge, said once a day after a command, to a person at a
+    // terminal only — never into a pipe, never with --json. It reads the
+    // cache and never waits on the network; it must never fail the command.
+    if (tty && process.stdout.isTTY && intent.kind !== 'update') {
+      try {
+        const { afterCommand, spawnRefresh } = await import('./cli/update-note.js')
+        const { runningScript } = await import('./update/install.js')
+        const note = await afterCommand(VERSION, {
+          refresh: () => spawnRefresh(runningScript(process.argv[1])),
+          colour: trueColour(),
+        })
+        if (note.length > 0) process.stderr.write(`\n${note.join('\n')}\n`)
+      } catch {
+        // No note is better than a command that fails after it succeeded.
+      }
+    }
   } catch (e) {
     if (isForgeError(e)) {
       if (json) process.stdout.write(`${JSON.stringify(errorJson(VERSION, e))}\n`)

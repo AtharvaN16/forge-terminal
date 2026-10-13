@@ -1,9 +1,9 @@
-import { Box, type DOMElement, Text } from 'ink'
+import { Box, type DOMElement } from 'ink'
 import { type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { useClickTarget } from '../ClickTargets.js'
-import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -48,9 +48,6 @@ interface SelectProps {
    */
   speakAt?: 'end' | 'hint'
 }
-
-/** How long the band takes to move between rows. */
-const GLIDE_MS = 140
 
 /** The first row that isn't `disabled`, or 0 if every row is (nothing to land on anyway). */
 function firstEnabled(items: Choice[]): number {
@@ -114,15 +111,6 @@ export function Select({
 }: SelectProps) {
   const palette = useTheme()
   const [index, setIndex] = useState(() => initialIndex(items, initialValue))
-
-  /**
-   * The band glides: it fades in on the new row and out of the one it left.
-   * `from` is that row, captured during render so the first frame of a move
-   * already knows it.
-   */
-  const glide = useRef({ from: index, to: index })
-  if (glide.current.to !== index) glide.current = { from: glide.current.to, to: index }
-  const k = easeOut(useTween(index, GLIDE_MS, { enabled: motionEnabled(palette.name) }))
 
   /**
    * `useInput` handlers are synchronous, but `useState` updates are not —
@@ -191,17 +179,12 @@ export function Select({
   const labelWidth = Math.max(0, ...items.map((i) => stringWidth(i.label)))
 
   /**
-   * The band behind row `i` right now, or nothing. Grey (`listBand`), as the
-   * decided picker draws it: the strip carries the mode's colour, the band
-   * does not.
+   * The band behind the highlighted row, or nothing. Grey (`listBand`), as
+   * the decided picker draws it: the strip carries the mode's colour, the
+   * band does not. It moves at once — a fade between rows read as ghosting.
    */
-  const bandFor = (i: number, selected: boolean): string | undefined => {
-    const band = palette.listBand
-    if (band === '') return undefined
-    if (selected) return mix(palette.canvas, band, k)
-    if (i === glide.current.from && k < 1) return mix(band, palette.canvas, k)
-    return undefined
-  }
+  const bandFor = (selected: boolean): string | undefined =>
+    selected && palette.listBand !== '' ? palette.listBand : undefined
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
   /** P1's tag: a tinted pill, or the bare word where there is no colour. */
   const tagged = !noColour && palette.defaultTagBg !== ''
@@ -239,7 +222,7 @@ export function Select({
         // Budgeted in terminal columns via `middleEllipsis`, not code units:
         // a CJK glyph is two columns and one code point.
         const shownHint = hintText === '' ? '' : middleEllipsis(hintText, room)
-        const bg = bandFor(i, selected)
+        const bg = bandFor(selected)
 
         return (
           <SelectRow

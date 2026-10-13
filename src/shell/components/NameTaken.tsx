@@ -1,9 +1,10 @@
-import { Box, type DOMElement, Text } from 'ink'
+import { Box, type DOMElement } from 'ink'
 import { type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { formatBytes } from '../../core/units.js'
 import { describeAge } from '../age.js'
 import { useClickTarget } from '../ClickTargets.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeColours, type ShellMode, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
@@ -139,7 +140,7 @@ export function NameTaken({
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <StepTitle mode={mode} title={title} aside={aside} width={width} />
       </Box>

@@ -121,6 +121,19 @@ describe('Save as (V10c): the block', () => {
     )
   })
 
+  it('draws a folder that is not made yet like every other folder', async () => {
+    const { lastFrame } = render(<Harness />)
+    await settle()
+    // The last foreground set before the name's first letter.
+    const colour = (label: string) => {
+      const line = lines(lastFrame()).find((l) => plain(l).includes(label)) ?? ''
+      const before = line.slice(0, line.indexOf(label))
+      return before.match(new RegExp(`${ESC}\\[38;2;[0-9;]+m`, 'g'))?.at(-1)
+    }
+    expect(colour('New folder…')).toBeDefined()
+    expect(colour('New folder…')).toBe(colour('Downloads'))
+  })
+
   it('says what the job will do at the title’s right, quietly', () => {
     const out = plain(render(<Harness aside="Rotate 90°" />).lastFrame())
     expect(out.split('\n')[0]).toMatch(/^ Save as +Rotate 90°$/)
@@ -464,7 +477,7 @@ describe('Save as (V10c) without colour', () => {
   })
 })
 
-describe('Save as (V10c), in motion (M3)', () => {
+describe('Save as (V10c), in motion', () => {
   afterEach(() => {
     vi.useRealTimers()
     setMotionForTests(undefined)
@@ -492,35 +505,23 @@ describe('Save as (V10c), in motion (M3)', () => {
     await settle(20)
   }
 
-  it('glides the highlight from one folder to the next, then rests where it went', async () => {
-    const before = await rest()
+  it('moves the highlight to the next folder at once, even with motion on', async () => {
+    // It used to glide (M3); the fade between rows read as ghosting.
     const after = await rest(DOWN)
     const app = moving()
     await settle()
-    expect(app.lastFrame()).toBe(before)
     app.stdin.write(DOWN)
     await settle()
-    await tick(50)
-    const mid = app.lastFrame()
-    expect(mid).not.toBe(before)
-    expect(mid).not.toBe(after)
-    await tick(200)
     expect(app.lastFrame()).toBe(after)
   })
 
-  it('fades the default’s tag across when tab moves it', async () => {
+  it('moves the default’s tag at once when tab moves it', async () => {
     const after = await rest(DOWN, TAB)
     const app = moving()
     app.stdin.write(DOWN)
     await settle()
-    await tick(300)
-    const moved = app.lastFrame()
     app.stdin.write(TAB)
     await settle()
-    await tick(50)
-    expect(app.lastFrame()).not.toBe(moved)
-    expect(app.lastFrame()).not.toBe(after)
-    await tick(200)
     expect(app.lastFrame()).toBe(after)
   })
 
