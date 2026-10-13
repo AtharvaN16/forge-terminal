@@ -10,6 +10,8 @@ import { modeColours, modeGradient, type Palette, type ShellMode } from './theme
 export interface Trail {
   answers: string[]
   current?: string | undefined
+  /** A dim word before `current`, in its part: /about's "by". */
+  lead?: string | undefined
 }
 
 /** The chip of a screen that is not a mode, drawn as a mode's would be. */
@@ -86,8 +88,17 @@ export function trailBarRow({
 
   const part = (text: string, current: boolean): Run =>
     current
-      ? { text: ` ${text} `, fg: palette.fg, bold: true }
+      ? { text: ` ${trail.lead ? `${trail.lead} ` : ''}${text} `, fg: palette.fg, bold: true }
       : { text: ` ${text} `, fg: palette.dim }
+  /** The current part, its lead split off dim. */
+  const runsOf = (p: Run): Run[] => {
+    const lead = trail.lead ? ` ${trail.lead} ` : ''
+    if (!lead || !p.bold || !p.text.startsWith(lead)) return [p]
+    return [
+      { text: lead, fg: palette.dim },
+      { ...p, text: p.text.slice(lead.length) },
+    ]
+  }
   const runWidth = (parts: Run[]) => width(parts) + Math.max(0, parts.length - 1)
   // At least one ╱ between the chip and the trail, so the trail reads as knocked out.
   const room = end - TAIL - from - 1
@@ -111,7 +122,7 @@ export function trailBarRow({
       row.push(...fill(c, 1))
       c += 1
     }
-    row.push(p)
+    row.push(...runsOf(p))
     c += stringWidth(p.text)
   })
   row.push(...fill(c, TAIL))

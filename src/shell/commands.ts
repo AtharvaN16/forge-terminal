@@ -75,6 +75,12 @@ export const COMMANDS: Command[] = [
     needsSource: false,
     group: 'settings',
   },
+  {
+    name: 'about',
+    description: 'who made Forge, and what it is built on',
+    needsSource: false,
+    group: 'settings',
+  },
   // Not a row: the American spelling, so it works when typed.
   {
     name: 'color',

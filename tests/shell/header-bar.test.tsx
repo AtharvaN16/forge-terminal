@@ -105,6 +105,17 @@ describe('the header bar beyond the mockup', () => {
     }
   })
 
+  it('can lead the current part with a dim word, as /about signs its bar', () => {
+    const cells = row({
+      slanted: false,
+      trail: { answers: [], lead: 'by', current: 'Atharva Nayak' },
+    })
+    expect(text(cells)).toMatch(/^ {2} convert ╱+ by Atharva Nayak ╱╱ {2}$/)
+    const by = text(cells).indexOf(' by ') + 1
+    expect(cells[by]).toMatchObject({ ch: 'b', fg: DARK.dim, b: false })
+    expect(cells[by + 3]).toMatchObject({ ch: 'A', fg: DARK.fg, b: true })
+  })
+
   it('keeps the hatching on absolute columns, like the home band', () => {
     const a = row({ trail: { answers: [] } })
     const b = row({ trail: { answers: ['JPEG'], current: 'Quality' } })

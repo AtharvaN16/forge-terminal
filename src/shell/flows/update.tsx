@@ -405,7 +405,7 @@ export function UpdateFlow({
   const rows = sheet()
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <HeaderBar
           mode="convert"
