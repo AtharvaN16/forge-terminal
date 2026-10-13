@@ -265,6 +265,27 @@ warns. `forge_convert` takes
 `trim: true` and `resize: { percent } | { width } | { height }`, and then `to`
 is optional.
 
+## Crop to shape
+
+Cut a photo to a shape — the largest box of that shape it holds, placed to
+keep the subject. Built in, images only, and the format is kept unless `--to`
+says otherwise:
+
+```bash
+forge photo.jpg --crop 1:1                        # photo-cropped-1x1.jpg
+forge photo.jpg --crop 4:5 --width 1080 --to webp # photo-cropped-4x5-1080x1350.webp
+forge *.jpg --crop 16:9 -o out/
+```
+
+The shape is `W:H`, two whole numbers from 1 to 100. A `--resize`, `--width`
+or `--height` applies to the cropped image. `--crop` combines with the same
+flags resize does, and is refused with the same ones — and with `--trim`: run
+one, then the other. Cropping an animated image is refused; so is cropping one
+that already has the shape, unless it is also resized, which then only warns.
+`forge_convert` takes `crop: "1:1"` (any `W:H`), and then `to` is optional.
+In the app, Crop to shape is an Enhance row with a preview you can move and
+zoom.
+
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather

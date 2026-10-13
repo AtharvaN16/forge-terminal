@@ -147,6 +147,43 @@ describe('forge_convert', () => {
     })
   })
 
+  describe('crop', () => {
+    it('cuts the largest box of the shape, keeping the format without `to`', async () => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const out = await call('forge_convert', { paths: [png], crop: '1:1' })
+      const square = join(dir, 'a-cropped-1x1.png')
+      expect(out.isError).toBe(false)
+      expect(out.doc.results[0]?.outputs).toEqual([square])
+      const meta = await sharp(square).metadata()
+      expect([meta.format, meta.width, meta.height]).toEqual(['png', 20, 20])
+    })
+
+    it('resizes the cropped image into `to`', async () => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const args = { paths: [png], crop: '1:1', resize: { width: 10 }, to: 'webp' }
+      const out = await call('forge_convert', args)
+      const small = join(dir, 'a-cropped-1x1-10x10.webp')
+      expect(out.isError).toBe(false)
+      expect(out.doc.results[0]?.outputs).toEqual([small])
+    })
+
+    it.each([
+      ['trim', { trim: true }, 'crop cannot be combined with trim'],
+      ['boost', { boost: 2, to: 'png' }, 'crop cannot be combined with boost'],
+      ['pages', { pages: '1' }, 'crop cannot be combined with pages'],
+      ['a shape that is not W:H', { crop: '16x9' }, 'not a shape'],
+    ])('refuses %s, writing nothing', async (_name, extra, says) => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'a.png')
+      const out = await call('forge_convert', { paths: [png], crop: '1:1', ...extra })
+      expect(out.isError).toBe(true)
+      expect(out.text).toContain(says)
+      expect(await readdir(dir)).toEqual(['a.png'])
+    })
+  })
+
   it('converts, returns the §3.2 shape and a file:// link per output', async () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'a.jpg')

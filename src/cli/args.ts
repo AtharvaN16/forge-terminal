@@ -1,11 +1,12 @@
 import { Command, CommanderError } from 'commander'
 import { parseHex, type Rgb } from '../core/colour/space.js'
+import { parseAspect } from '../core/crop.js'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
 import type { BoostScale } from '../core/extension-targets.js'
 import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
 import { RESIZE_MAX } from '../core/resize.js'
-import type { ConvertOptions, FormatId, ResizeSpec } from '../core/types.js'
+import type { ConvertOptions, CropSpec, FormatId, ResizeSpec } from '../core/types.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
@@ -121,15 +122,17 @@ export interface ExtensionOpIntent {
 }
 
 /**
- * `--trim`, `--resize`, `--width`, `--height`: cut empty edges and/or change
- * the size, keeping the source's own format unless `--to` says otherwise
- * (resize-and-trim spec §3.4). The work is options on an ordinary convert job
+ * `--trim`, `--crop`, `--resize`, `--width`, `--height`: cut empty edges or
+ * cut to a shape, and/or change the size, keeping the source's own format
+ * unless `--to` says otherwise (resize-and-trim spec §3.4, crop spec §3.3). The work is options on an ordinary convert job
  * (`planEdit`); the intent is its own `kind` because there may be no target.
  */
 export interface EditIntent {
   kind: 'edit'
   inputs: string[]
   trim: boolean
+  /** Never with `trim`. No box: the engine places the largest by attention. */
+  crop?: CropSpec
   resize?: ResizeSpec
   /** Absent means each source's own format. */
   target?: FormatId
@@ -537,6 +540,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
       'sharpen and enlarge 2x (default), 3x or 4x; needs the boost extension',
     )
     .option('--trim', 'cut transparent or solid-colour edges; keeps the format')
+    .option('--crop <W:H>', 'cut to a shape, e.g. 1:1, 4:5, 16:9; keeps the subject')
     .option('--resize <percent>', 'resize to a percent of the size, 1-200, e.g. 50%')
     .option('--width <px>', 'resize to this width; the height follows')
     .option('--height <px>', 'resize to this height; the width follows')
@@ -619,13 +623,16 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     ...(opts.width !== undefined ? ['--width'] : []),
     ...(opts.height !== undefined ? ['--height'] : []),
   ]
-  if (opts.trim || resizeFlags.length > 0) {
+  if (opts.trim || opts.crop !== undefined || resizeFlags.length > 0) {
     if (resizeFlags.length > 1) {
       throw invalidArguments(
         `Use one of --resize, --width and --height — got ${resizeFlags.join(' and ')}.`,
       )
     }
+    const flag = opts.crop !== undefined ? '--crop' : (resizeFlags[0] ?? '--trim')
     const clash = [
+      // Two cuts whose order would surprise.
+      ...(opts.crop !== undefined && opts.trim ? ['--trim'] : []),
       ...asked,
       ...(opts.maxSize !== undefined ? ['--max-size'] : []),
       ...(opts.pages !== undefined ? ['--pages'] : []),
@@ -633,12 +640,16 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     ][0]
     if (clash !== undefined) {
       throw invalidArguments(
-        `${resizeFlags[0] ?? '--trim'} cannot be combined with ${clash}.`,
-        clash === '--max-size'
-          ? 'Resize first, then compress the result: forge photo-1200x900.jpg --max-size 500kb'
-          : 'Run them one after the other.',
+        `${flag} cannot be combined with ${clash}.`,
+        clash !== '--max-size'
+          ? 'Run them one after the other.'
+          : flag === '--crop'
+            ? 'Crop first, then compress the result: forge photo-cropped-1x1.jpg --max-size 500kb'
+            : 'Resize first, then compress the result: forge photo-1200x900.jpg --max-size 500kb',
       )
     }
+    const crop: CropSpec | undefined =
+      opts.crop !== undefined ? { aspect: parseAspect(String(opts.crop)) } : undefined
     const resize: ResizeSpec | undefined =
       opts.resize !== undefined
         ? { percent: parsePercent(opts.resize) }
@@ -667,6 +678,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
       recursive: Boolean(opts.recursive),
       debug: Boolean(opts.debug),
     }
+    if (crop !== undefined) intent.crop = crop
     if (resize !== undefined) intent.resize = resize
     if (opts.to) intent.target = parseTarget(String(opts.to))
     if (opts.output !== undefined) intent.output = String(opts.output)

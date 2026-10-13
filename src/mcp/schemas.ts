@@ -89,7 +89,7 @@ export const ConvertInput = z.object({
     .enum(TARGETS)
     .optional()
     .describe(
-      'Target format id. Use "jpeg" for JPG. Required, except with trim or resize, which keep each image\'s own format when it is omitted.',
+      'Target format id. Use "jpeg" for JPG. Required, except with trim, crop or resize, which keep each image\'s own format when it is omitted.',
     ),
   output: absolutePath
     .optional()
@@ -119,6 +119,12 @@ export const ConvertInput = z.object({
     .optional()
     .describe(
       'Images only: cut transparent or solid-colour edges, writing name-trimmed. Keeps the format unless `to` is given. Refused for animated images and when nothing would be trimmed (unless also resizing).',
+    ),
+  crop: z
+    .string()
+    .optional()
+    .describe(
+      'Images only: cut to a shape W:H (e.g. "1:1", "4:5", "16:9", "9:16"; whole numbers 1-100), the largest box that fits, placed to keep the subject; writes name-cropped-1x1, or name-cropped-1x1-<W>x<H> with resize, which then applies to the cropped image. Keeps the format unless `to` is given. Refused for animated images and when the image already has that shape (unless also resizing). Not with trim.',
     ),
   resize: z
     .union([

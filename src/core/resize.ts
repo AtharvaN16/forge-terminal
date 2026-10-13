@@ -26,14 +26,14 @@ export function keptFormat(source: ImageInfo): FormatId {
 }
 
 /**
- * Why `--to` cannot take a trim or resize, or undefined when it can. Both are
- * the image engine's work; a target only another engine writes (a PDF) would
+ * Why `--to` cannot take a trim, crop or resize, or undefined when it can. All
+ * are the image engine's work; a target only another engine writes (a PDF) would
  * drop them silently and still name the file as if they ran. Read from the
  * image engine's own `writes`, so no format list lives here (invariant 2).
  */
 export function editTargetRefusal(
   target: FormatId,
-  what: 'trim' | 'resize',
+  what: 'trim' | 'resize' | 'crop',
 ): ForgeError | undefined {
   const writes = ENGINES.find((e) => e.id === 'image')?.writes
   if (writes?.has(target)) return undefined

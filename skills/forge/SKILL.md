@@ -1,6 +1,6 @@
 ---
 name: forge
-description: Convert, compress and edit local files on macOS with the Forge CLI (`forge`) — images (HEIC, JPEG, PNG, WebP, AVIF, GIF, TIFF), PDFs and Word documents. Use when the user wants a file in another format, smaller or under a size, or a PDF merged, split, trimmed or rotated, or an image's colour palette or a tonal scale from a colour, and `forge` is installed (`npm i -g forge-terminal`).
+description: Convert, compress and edit local files on macOS with the Forge CLI (`forge`) — images (HEIC, JPEG, PNG, WebP, AVIF, GIF, TIFF), PDFs and Word documents. Use when the user wants a file in another format, smaller or under a size, or cropped to a shape, or a PDF merged, split, trimmed or rotated, or an image's colour palette or a tonal scale from a colour, and `forge` is installed (`npm i -g forge-terminal`).
 ---
 
 # Forge
@@ -83,6 +83,22 @@ One of `--resize` / `--width` / `--height` at a time; not with `--max-size`,
 Runtime refusals: `resize-too-large` (over 16,384 px a side or 100 MP),
 `nothing-to-trim`, `animated-trim`. MCP: `forge_convert` with `trim: true`
 and/or `resize: { percent | width | height }`; `to` is then optional.
+
+## Crop to shape
+
+Built in, images only, format kept unless `--to` is given. The largest box of
+the shape, placed to keep the subject:
+
+```bash
+forge photo.jpg --crop 1:1 --json                 # photo-cropped-1x1.jpg
+forge photo.jpg --crop 4:5 --width 1080 --to webp --json   # photo-cropped-4x5-1080x1350.webp
+```
+
+Any `W:H` of whole numbers 1-100. A resize flag applies to the cropped image.
+Not with `--trim`, `--max-size`, `--sharpen`, `--boost`, `--remove-bg` or page
+operations (`invalid-arguments`). Runtime refusals: `nothing-to-crop` (already
+that shape; with a resize it is the warning `nothing-cropped` instead),
+`animated-crop`. MCP: `forge_convert` with `crop: "1:1"`; `to` is then optional.
 
 ## Optional extensions: boost and remove background
 
