@@ -23,6 +23,8 @@ import {
   cropPositionRow,
   cropStep,
   dotBoxOf,
+  FACTS_GAP,
+  PICTURE_LEFT,
 } from '../crop-art.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { useTheme } from '../ThemeContext.js'
@@ -46,7 +48,8 @@ const FALLBACK_DOTS = 32
 /**
  * The photo and attention's guess, read once per image and shape: the
  * preview comes back from Save as without decoding it again. The engine is
- * loaded only here, so the shell's start-up never pays for Sharp.
+ * loaded only here, so the shell's start-up never pays for Sharp. A failed
+ * read is not kept: the next visit tries again.
  */
 let cache:
   | { key: string; view: Promise<CropView>; guesses: Map<string, Promise<CropBox>> }
@@ -55,19 +58,27 @@ let cache:
 function loadFor(source: ImageInfo, shape: CropShape): Promise<{ view: CropView; guess: CropBox }> {
   const key = `${source.path}\u0000${source.bytes}\u0000${source.width}x${source.height}`
   if (cache?.key !== key) {
-    cache = {
+    const fresh = {
       key,
       view: import('../../engines/image.js').then((m) => m.loadCropView(source)),
-      guesses: new Map(),
+      guesses: new Map<string, Promise<CropBox>>(),
     }
+    fresh.view.catch(() => {
+      if (cache === fresh) cache = undefined
+    })
+    cache = fresh
   }
   const held = cache
   let guess = held.guesses.get(shape.label)
   if (!guess) {
-    guess = Promise.all([held.view, import('../../engines/image.js')]).then(([view, m]) =>
+    const made = Promise.all([held.view, import('../../engines/image.js')]).then(([view, m]) =>
       m.guessCrop(view, shape),
     )
-    held.guesses.set(shape.label, guess)
+    made.catch(() => {
+      if (held.guesses.get(shape.label) === made) held.guesses.delete(shape.label)
+    })
+    held.guesses.set(shape.label, made)
+    guess = made
   }
   return Promise.all([held.view, guess]).then(([view, g]) => ({ view, guess: g }))
 }
@@ -206,18 +217,24 @@ export function CropStep({
   const facts = cropFactsRows({ palette, box, size, label: shape.label })
   const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
 
-  let rows: Row[] = []
-  if (!colour) {
-    // No picture: where it would be, one line says where the crop sits.
-    const said = at ? cropPositionRow(palette, at.box) : []
-    const across = widthOf(said)
-    rows = facts.map((fact, i) => besideRow(i === 0 ? said : [], across, fact))
-  } else if (grid) {
+  let rows: Row[]
+  if (colour && grid) {
     const picture =
       dots && at ? cropPictureRows({ palette, dots, box: dotBoxOf(size, at.box, dots) }) : []
     rows = Array.from({ length: Math.max(grid.rows, facts.length) }, (_, i) =>
       besideRow(picture[i] ?? (i < grid.rows ? [blank(grid.cols)] : []), grid.cols, facts[i]),
     )
+  } else {
+    // No picture (no colour, or no room for one): where it would be, one
+    // line says where the crop sits. Beside the facts where both fit, else
+    // over them, so a narrow window still says the size and the share.
+    const said = at ? cropPositionRow(palette, at.box) : []
+    const across = widthOf(said)
+    const widest = Math.max(...facts.map(widthOf))
+    rows =
+      PICTURE_LEFT + across + FACTS_GAP + widest <= width
+        ? facts.map((fact, i) => besideRow(i === 0 ? said : [], across, fact))
+        : [...(at ? [said] : []), ...facts].map((row) => [blank(PICTURE_LEFT), ...row])
   }
 
   return (

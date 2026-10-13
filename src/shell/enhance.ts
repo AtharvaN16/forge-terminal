@@ -189,7 +189,8 @@ export function enhanceRows(
 /**
  * Crop to shape's row (spec 2026-10-13 §2.1): the shapes the photo does not
  * already have, each with the largest box it cuts — nothing is scaled, so
- * that is the size written. Dimmed for an animation, as Trim is.
+ * that is the size written. Dimmed for an animation, as Trim is, and when no
+ * shape would change it (a 1 × 1 image already has every one).
  */
 function cropRow(source: ImageInfo, asJpeg: string): EnhanceRow {
   const shapes = shapesFor(source).map((shape) => {
@@ -206,7 +207,11 @@ function cropRow(source: ImageInfo, asJpeg: string): EnhanceRow {
       short: 'Changes the shape.',
       long: 'Cuts it to a new shape around the subject. You see the crop next and can move it.',
     },
-    ...((source.frames ?? 1) > 1 ? { tooLarge: 'animated' } : {}),
+    ...((source.frames ?? 1) > 1
+      ? { tooLarge: 'animated' }
+      : shapes.length === 0
+        ? { tooLarge: 'no shape to cut' }
+        : {}),
     verb: cropAction.verb,
   }
 }

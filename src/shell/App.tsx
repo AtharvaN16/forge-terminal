@@ -2914,6 +2914,8 @@ export function App({
     const vals = rowValues(row, step)
     setValues(vals)
     if (row.id === 'crop') {
+      // No shape to cut (the row is dimmed then): never a preview with nothing to show.
+      if (!shapeOf(row, vals.shape)) return
       setCropAt(undefined)
       setStep('crop')
       return

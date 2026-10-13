@@ -135,6 +135,26 @@ describe('the Crop to shape row’s pill', () => {
     expect(p.plain().join('\n')).toContain('‹ 4× ›')
   })
 
+  it('is dimmed with why when no shape would change the image (1 × 1), and ↵ does nothing', async () => {
+    const dot = { ...photo, width: 1, height: 1 }
+    const row = enhanceRows(dot).find((r) => r.id === 'crop')
+    expect(row?.shapes).toEqual([])
+    expect(row?.tooLarge).toBe('no shape to cut')
+
+    const chose: string[] = []
+    const p = picker((r) => chose.push(r.id), dot)
+    await settle()
+    expect(p.plain().join('\n')).toMatch(/Crop to shape +no shape to cut/)
+    // The cursor never lands on it: past Resize it stays where it was.
+    for (let i = 0; i < 6; i++) {
+      p.app.stdin.write(DOWN)
+      await settle()
+    }
+    p.app.stdin.write(ENTER)
+    await settle()
+    expect(chose).not.toContain('crop')
+  })
+
   it('opens on the shape chosen before, coming back from the crop', async () => {
     const app = render(
       <ThemeProvider palette={P}>
