@@ -721,8 +721,24 @@ export function updateUnavailable(version: string): ForgeError {
   })
 }
 
-/** npm was refused write access to the global folder: Node installed for the whole Mac. */
-export function updateDenied(version: string): ForgeError {
+/**
+ * npm was refused write access to the global folder: Node installed for the
+ * whole Mac. On Windows the usual cause is a running Forge — Windows will not
+ * let a loaded DLL be replaced — and there is no sudo.
+ */
+export function updateDenied(
+  version: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  if (platform === 'win32') {
+    return new ForgeError({
+      code: 'update-denied',
+      title: 'Forge is in use',
+      detail: `npm could not replace Forge's files to update it to ${version}. Windows keeps them locked while Forge runs: close every Forge window, then run the command below. If Node is installed for every user, run it in a terminal opened as administrator.`,
+      short: 'Windows locks Forge while it runs: close it, then run this',
+      hint: `npm i -g forge-terminal@${version}`,
+    })
+  }
   return new ForgeError({
     code: 'update-denied',
     title: 'npm needs permission',

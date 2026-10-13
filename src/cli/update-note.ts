@@ -75,12 +75,19 @@ export async function afterCommand(
  * command that triggered it exits at once. `__update-check` is src/index.ts's
  * hidden entry for it. Any failure to start is silent: the next command tries.
  */
-export function spawnRefresh(script: string | undefined): void {
+export function spawnRefresh(
+  script: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+  spawnImpl: typeof spawn = spawn,
+): void {
   if (script === undefined) return
   try {
-    spawn(process.execPath, [...process.execArgv, script, '__update-check'], {
+    spawnImpl(process.execPath, [...process.execArgv, script, '__update-check'], {
       detached: true,
       stdio: 'ignore',
+      // Detached on Windows means a console of its own: without this, a
+      // black window flashes up after the command.
+      ...(platform === 'win32' ? { windowsHide: true } : {}),
     }).unref()
   } catch {
     // Nothing to do: no note today.
