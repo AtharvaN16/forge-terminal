@@ -112,7 +112,7 @@ export function ExactSizeStep({
   const a = asked(p)
   const refusal = a ? overLimit(a.size) : undefined
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <StepTitle mode={mode} title="Exact size" aside={aside} width={width} />
       <Box marginTop={1} flexDirection="column">
         {exactPairRows({

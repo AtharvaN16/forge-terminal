@@ -65,7 +65,7 @@ export function Working({
         })
       : undefined
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <Runs row={workLine({ palette, mode, spinner, label, clock, width })} />
       {count ? (
         <Box marginTop={1}>

@@ -49,7 +49,7 @@ export function QualityStep({
   // Read at render time, as `KeyRow` reads it: NO_COLOR strips every fill.
   const plain = (process.env.NO_COLOR ?? '') !== '' || palette.track === ''
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <StepTitle mode={mode} title="Quality" aside={aside} width={width} />
       <Box marginTop={1} flexDirection="column">
         <Runs row={sliderRow({ palette, value, min, max, width: band, plain })} />

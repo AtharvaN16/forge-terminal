@@ -383,7 +383,7 @@ export function SaveAs({
       : list
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <StepTitle mode={mode} title="Save as" aside={aside} width={width} />
       <Box marginTop={2} flexDirection="column">
         {blank}

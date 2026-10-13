@@ -230,7 +230,7 @@ export function EnhancePicker({
         ]
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <Runs
           row={titleRow({

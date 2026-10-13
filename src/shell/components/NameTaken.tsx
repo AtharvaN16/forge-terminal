@@ -140,7 +140,7 @@ export function NameTaken({
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <Box marginBottom={1}>
         <StepTitle mode={mode} title={title} aside={aside} width={width} />
       </Box>

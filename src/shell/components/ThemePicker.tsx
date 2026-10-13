@@ -30,7 +30,7 @@ export function ThemePicker({
   const current = useTheme()
   return (
     <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : commandsPalette(current)}>
-      <Box flexDirection="column" marginBottom={1}>
+      <Box flexDirection="column" flexGrow={1}>
         <Text bold>Select theme</Text>
         <Text> </Text>
         <Select

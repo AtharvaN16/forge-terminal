@@ -292,7 +292,7 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
 
   return (
     // The header bar above leaves a blank row; what comes first starts right under it.
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {below ? (
         <>
           {shown}

@@ -450,7 +450,7 @@ export function PageGrid({
     totalScreens > 1 ? `pages ${offset + 1}–${offset + visibleCount(screen)} of ${pageCount}` : null
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <Text color={colourProp(palette.dim)}>{header}</Text>
       <Box flexDirection="column" marginTop={1}>
         {rows}

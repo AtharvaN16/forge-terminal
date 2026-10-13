@@ -3230,7 +3230,10 @@ export function App({
           flexDirection="column"
           ref={rootRef}
           {...canvas}
-          {...(paint ? { minHeight: measuredHeight, paddingTop: 1 } : {})}
+          // The frame fills the window on every screen, as home does, so
+          // each screen's keys reach the last row (see HintBar).
+          minHeight={measuredHeight}
+          {...(paint ? { paddingTop: 1 } : {})}
         >
           {/* Inside the provider, deliberately — see `MouseRouter`. `revision`
               recalibrates the frame's origin: committed history scrolls the
@@ -3289,7 +3292,7 @@ export function App({
           </Static>
 
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3323,7 +3326,7 @@ export function App({
           ) : null}
 
           {step === 'size' && source && sizeSpec?.kind === 'text' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <StepTitle
                 mode={mode}
                 title={sizeSpec.label}
@@ -3371,7 +3374,7 @@ export function App({
           ) : null}
 
           {step === 'target' && source && targetSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle mode={mode} title="Convert to" width={width} />
               </Box>
@@ -3409,7 +3412,7 @@ export function App({
           ) : null}
 
           {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3443,7 +3446,7 @@ export function App({
           ) : null}
 
           {step === 'page-picker' && source && source.kind === 'document' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <PageGrid
                 mode="cell"
                 pageCount={source.pages}
@@ -3467,7 +3470,7 @@ export function App({
           ) : null}
 
           {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3497,7 +3500,7 @@ export function App({
           ) : null}
 
           {step === 'quality' && source && qualitySpec?.kind === 'slider' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <QualityStep
                 mode={mode}
                 // What the quality is for: the format in convert, the file in compress.
@@ -3574,7 +3577,7 @@ export function App({
           ) : null}
 
           {step === 'save-as' && saving && destinationSpec?.kind === 'path' ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <SaveAs
                 key={saving.opened}
                 mode={mode}
@@ -3597,7 +3600,7 @@ export function App({
           ) : null}
 
           {step === 'overwrite' && pending ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <NameTaken
                 mode={mode}
                 width={width}
@@ -3614,7 +3617,7 @@ export function App({
           ) : null}
 
           {step === 'size-unreachable' && sizeUnreachable ? (
-            <Box flexDirection="column" marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <StepTitle
                   mode={mode}
@@ -3660,7 +3663,7 @@ export function App({
               bar above drifts, and this says what is happening. The same
               screen for a conversion and a page operation. */}
           {running && workShown && work ? (
-            <Box marginBottom={1}>
+            <Box flexDirection="column" flexGrow={1}>
               <Working
                 mode={mode}
                 label={
@@ -3693,7 +3696,7 @@ export function App({
           {/* Enhance's Done (X5): the header bar, the quiet line and the
               picture before and after (`EnhanceDone`), then the keys. */}
           {step === 'result' && lastResult && doneBar && doneBar.mode === 'enhance' ? (
-            <Box flexDirection="column">
+            <Box flexDirection="column" flexGrow={1}>
               <Box marginBottom={1}>
                 <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
               </Box>
@@ -3831,7 +3834,7 @@ export function App({
 
           {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
             pdfBlocked.failures[0].error.code === 'output-exists' ? (
-              <Box flexDirection="column" marginBottom={1}>
+              <Box flexDirection="column" flexGrow={1}>
                 <NameTaken
                   mode={mode}
                   width={width}
@@ -3841,7 +3844,7 @@ export function App({
                 />
               </Box>
             ) : (
-              <Box flexDirection="column" marginBottom={1}>
+              <Box flexDirection="column" flexGrow={1}>
                 <Text color={colourProp(palette.fail)}>
                   {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
                 </Text>

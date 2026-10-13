@@ -292,7 +292,7 @@ export function MergeList({
         ]
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {/* How many, and how many pages, is the title's to say (pdf.tsx). */}
       <Box flexDirection="column">{rows}</Box>
       {mode !== 'dropped' ? (

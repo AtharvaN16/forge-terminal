@@ -15,7 +15,7 @@ const footSlot = (key: string): (typeof FOOT_ORDER)[number] | undefined =>
 /**
  * A step's keys, the decided way (F1): what this screen is for as caps at the
  * left, and mode, esc and quit as a quiet footnote at the right edge — under
- * a rule the width of the terminal, one blank row below what they belong to.
+ * a rule the width of the terminal, on the window's last rows.
  * The rule is the user's own and stays on every key row.
  *
  * Every screen draws its keys through here, so the row is the same
@@ -46,10 +46,16 @@ export function HintBar({
     const found = from.find(([key]) => footSlot(key) === slot)
     return found ? [found] : []
   })
+  // The spacer takes whatever height the screen has left, so the keys sit on
+  // the window's last row on every screen, as home's do — when the boxes
+  // above stretch to the frame (each screen's outer Box grows).
   return (
-    <Box width={width} marginTop={1} flexDirection="column">
-      <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
-      <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} />
-    </Box>
+    <>
+      <Box flexGrow={1} />
+      <Box width={width} marginTop={1} flexDirection="column" flexShrink={0}>
+        <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
+        <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} />
+      </Box>
+    </>
   )
 }

@@ -59,7 +59,7 @@ export function ResizeStep({
   // Read at render time, as Quality reads it: NO_COLOR strips every fill.
   const plain = (process.env.NO_COLOR ?? '') !== '' || palette.track === ''
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <StepTitle mode={mode} title="Resize to" aside={aside} width={width} />
       <Box marginTop={1} flexDirection="column">
         {resizeSliderRows({ palette, percent, width, band, plain }).map((row, i) => (
