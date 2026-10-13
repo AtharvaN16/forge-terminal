@@ -1516,7 +1516,8 @@ export function App({
         setStep('idle')
         return
       }
-      if (input === 'o') {
+      // O as well: enhance's note under its pictures says "Press O".
+      if (input === 'o' || input === 'O') {
         pressDone('o')
         openLastResult()
       }

@@ -38,7 +38,7 @@ const inside = (x: number, y: number, x0: number, y0: number, s: number) =>
   x >= x0 && x < x0 + s && y >= y0 && y < y0 + s
 
 describe('findCloseup', () => {
-  it('cuts a sharpen where it changed, each pixel square: a dot tall, 4/3 of one wide', async () => {
+  it('cuts a sharpen where it changed, each pixel square: a dot tall, one wide', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
     const before = await png(dir, 'a.png', 64, 48, grey)
     const after = await png(dir, 'b.png', 64, 48, (x, y) =>
@@ -46,14 +46,14 @@ describe('findCloseup', () => {
     )
     const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1 })
     expect(c.kind).toBe('patch')
-    // 16 × 8 cells are 32 × 24 dots: 24 pixels across (32 · 3/4), 24 down.
-    expect(c.box).toMatchObject({ w: 24, h: 24 })
+    // 16 × 8 cells are 16 × 16 dots, a pixel each.
+    expect(c.box).toMatchObject({ w: 16, h: 16 })
     expect(c.box.x).toBeLessThanOrEqual(44)
     expect(c.box.x + c.box.w).toBeGreaterThanOrEqual(54)
     expect(c.box.y).toBeLessThanOrEqual(6)
     expect(c.box.y + c.box.h).toBeGreaterThanOrEqual(16)
     expect([c.before.width, c.before.height, c.after.width, c.after.height]).toEqual([
-      32, 24, 32, 24,
+      16, 16, 16, 16,
     ])
     expect(c.output).toEqual({ width: 64, height: 48 })
   })
@@ -67,15 +67,26 @@ describe('findCloseup', () => {
     )
     const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 2 })
     expect(c.blocksPerPixel).toBe(2)
-    expect(c.box).toMatchObject({ w: 12, h: 12 })
+    expect(c.box).toMatchObject({ w: 8, h: 8 })
     expect(c.box.x).toBeLessThanOrEqual(4)
     expect(c.box.x + c.box.w).toBeGreaterThanOrEqual(10)
     expect(c.box.y).toBeLessThanOrEqual(14)
     expect(c.box.y + c.box.h).toBeGreaterThanOrEqual(20)
     expect([c.before.width, c.before.height, c.after.width, c.after.height]).toEqual([
-      32, 24, 32, 24,
+      16, 16, 16, 16,
     ])
     expect(c.output).toEqual({ width: 64, height: 48 })
+  })
+
+  it('shows a picture whole in its own shape, each pixel square', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+    // 2 : 1. Square pixels are a dot each, so 2 : 1 on screen is 2 : 1 in
+    // dots: 16 × 8 of the 16 × 16 the box has.
+    const before = await png(dir, 'a.png', 64, 32, grey)
+    const after = await png(dir, 'b.png', 64, 32, grey)
+    const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1, whole: true })
+    expect(c.kind).toBe('whole')
+    expect([c.before.width, c.before.height]).toEqual([16, 8])
   })
 
   it('shows a cutout whole, on the checkerboard', async () => {
@@ -89,16 +100,16 @@ describe('findCloseup', () => {
     )
     const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1 })
     expect(c.kind).toBe('subject')
-    expect([c.after.width, c.after.height]).toEqual([32, 24])
+    expect([c.after.width, c.after.height]).toEqual([16, 16])
     const alphas = c.after.rgba.filter((_, i) => i % 4 === 3)
     expect(alphas.every((a) => a === 255)).toBe(true)
     // The corner is background: a checker square.
     expect(CHECKER).toContain(c.after.rgba[0])
-    // Squares are whole cells, two across: 4 × 3 dots, so a cell is one colour.
+    // Squares are whole cells, two across: 2 × 2 dots, so a cell is one colour.
     const red = (x: number, y: number) => c.after.rgba[(y * c.after.width + x) * 4]
-    expect([red(3, 0), red(0, 2), red(3, 2)]).toEqual([red(0, 0), red(0, 0), red(0, 0)])
-    expect(red(4, 0)).not.toBe(red(0, 0))
-    expect(red(0, 3)).not.toBe(red(0, 0))
+    expect([red(1, 0), red(0, 1), red(1, 1)]).toEqual([red(0, 0), red(0, 0), red(0, 0)])
+    expect(red(2, 0)).not.toBe(red(0, 0))
+    expect(red(0, 2)).not.toBe(red(0, 0))
   })
 
   it('frames a cutout wider than its subject, so what was removed shows', async () => {

@@ -158,6 +158,15 @@ describe('shell conversion', () => {
     expect(frame).toContain('convert another') // still alive, still on the result stage
   })
 
+  it('opens with a capital O too, as enhance’s note says it', async () => {
+    const { stdin, lastFrame, dir } = await driveToResult()
+    await rm(join(dir, 'photo.webp'))
+    stdin.write('O')
+    await settle(1500)
+    // The open was attempted (and failed on the missing file), so O reached it.
+    expect(lastFrame()).toMatch(/^\s+failed\s*$/m)
+  })
+
   it('reports a failed reveal the same way', async () => {
     const { stdin, lastFrame, dir } = await driveToResult()
     await rm(join(dir, 'photo.webp'))
