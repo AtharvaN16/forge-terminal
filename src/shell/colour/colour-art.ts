@@ -522,10 +522,13 @@ function labelRow(
   fit: { cell: number; gap: number },
   first: number | undefined,
   colour: (i: number) => Run,
+  /** Only these cells may be named: an empty ramp names only the outlines it draws. */
+  named: (i: number) => boolean = () => true,
 ): Row {
   const at = (i: number) => i * (fit.cell + fit.gap)
   const placed: { from: number; to: number; i: number }[] = []
   const place = (i: number) => {
+    if (!named(i)) return
     const t = labels[i] as string
     const from = Math.max(0, at(i) + Math.floor((fit.cell - stringWidth(t)) / 2))
     const to = from + stringWidth(t)
@@ -636,12 +639,17 @@ export function emptyRampRows({
     ...cells.flatMap((c, i) => (i === 0 || fit.gap === 0 ? c : [blank(fit.gap), ...c])),
   ]
   // Without gaps the outlines would run together: every other one is left out.
+  const drawn = (i: number) => fit.gap > 0 || i % 2 === 0
   const outline = join(
-    steps.map((_, i) => [
-      fit.gap === 0 && i % 2 === 1 ? blank(fit.cell) : ink('╌'.repeat(fit.cell), p.faint),
-    ]),
+    steps.map((_, i) => [drawn(i) ? ink('╌'.repeat(fit.cell), p.faint) : blank(fit.cell)]),
   )
-  const labels = labelRow(steps.map(String), fit, undefined, (i) => ink(String(steps[i]), p.faint))
+  const labels = labelRow(
+    steps.map(String),
+    fit,
+    undefined,
+    (i) => ink(String(steps[i]), p.faint),
+    drawn,
+  )
   return [labels, outline, [], outline, []]
 }
 

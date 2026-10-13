@@ -317,3 +317,29 @@ describe('the steps (V1)', () => {
     expect(top(state)).toMatchObject({ kind: 'scale', sel: 8, from: 'was 600 of #6579FD' })
   })
 })
+
+describe('the steps: undoing', () => {
+  const BLUE = { r: 101, g: 121, b: 253 }
+  const TAB = key('\t', { tab: true })
+  const BACKTAB = key('', { tab: true, shift: true })
+  const at950 = () => run(initial({ scale: BLUE }), ...Array(5).fill(RIGHT)).state
+
+  it('esc puts the chosen step back, however far the values went meanwhile', () => {
+    const s = at950()
+    expect(top(s)).toMatchObject({ sel: 10 })
+    const { state } = run(s, key('s'), TAB, ...Array(8).fill(LEFT), ESC)
+    expect(state.steps).toEqual({ start: 50, end: 950, every: 100 })
+    expect(top(state)).toMatchObject({ sel: 10 })
+  })
+
+  it('a value moved away and back finds the chosen step again', () => {
+    const { state } = run(at950(), key('s'), TAB, LEFT, LEFT, RIGHT, RIGHT)
+    expect(state.steps.end).toBe(950)
+    expect(top(state)).toMatchObject({ sel: 10 })
+  })
+
+  it('shift-tab goes back a value', () => {
+    const { state } = run(at950(), key('s'), BACKTAB)
+    expect(state.stepsEdit?.field).toBe('every')
+  })
+})

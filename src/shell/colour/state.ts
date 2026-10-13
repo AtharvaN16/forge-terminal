@@ -50,8 +50,11 @@ export interface ColourState {
   error?: string
   /** Which steps a scale has (V1, mockups/scale-steps-2026-10.html); kept for the session. */
   steps: StepSpec
-  /** The steps being changed: the value in hand, and what esc puts back. */
-  stepsEdit?: { field: StepsField; before: StepSpec }
+  /**
+   * The steps being changed: the value in hand, and what esc puts back —
+   * the steps, and the screens as they were, each scale's chosen step with them.
+   */
+  stepsEdit?: { field: StepsField; before: StepSpec; history: Screen[] }
 }
 
 /** The parts of Ink's `Key` this reads. */
@@ -258,7 +261,7 @@ function onScaleKey(
   const step = steps[screen.sel]
   const centre = centreOf(s.steps)
   if (input === 's') {
-    return same({ ...s, stepsEdit: { field: 'start', before: s.steps } })
+    return same({ ...s, stepsEdit: { field: 'start', before: s.steps, history: s.history } })
   }
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
@@ -288,16 +291,24 @@ function onScaleKey(
 const FIELDS: StepsField[] = ['start', 'end', 'every']
 const CHOICES: Record<StepsField, readonly number[]> = { start: STARTS, end: ENDS, every: EVERY }
 
-/** `steps` set on the state, each scale's chosen step kept where it was, or the nearest one. */
-function withSteps(s: ColourState, steps: StepSpec): ColourState {
-  const was = stepsOf(s.steps)
+/**
+ * `steps` set on the state, each scale's chosen step on the number it had
+ * when the editing began, or the nearest one. Always from then, not from the
+ * last change, so moving a value away and back finds the same step again.
+ */
+function withSteps(
+  s: ColourState,
+  edit: NonNullable<ColourState['stepsEdit']>,
+  steps: StepSpec,
+): ColourState {
+  const was = stepsOf(edit.before)
   const now = stepsOf(steps)
   const nearest = (n: number) =>
     now.reduce(
       (best, x, i) => (Math.abs(x - n) < Math.abs((now[best] as number) - n) ? i : best),
       0,
     )
-  const history = s.history.map((h) =>
+  const history = edit.history.map((h) =>
     h.kind === 'scale' ? { ...h, sel: nearest(was[h.sel] ?? 500) } : h,
   )
   return { ...s, steps, history }
@@ -311,7 +322,9 @@ function onStepsKey(
   key: KeyLike,
 ): Out {
   if (key.return) return same({ ...s, stepsEdit: undefined })
-  if (key.escape) return same({ ...withSteps(s, edit.before), stepsEdit: undefined })
+  if (key.escape) {
+    return same({ ...s, steps: edit.before, history: edit.history, stepsEdit: undefined })
+  }
   if (key.tab || input === '\t') {
     const i = FIELDS.indexOf(edit.field)
     const next = FIELDS[(i + (key.shift ? FIELDS.length - 1 : 1)) % FIELDS.length] as StepsField
@@ -322,7 +335,7 @@ function onStepsKey(
     const i = choices.indexOf(s.steps[edit.field])
     const j = Math.max(0, Math.min(choices.length - 1, i + (key.rightArrow ? 1 : -1)))
     if (j === i) return same(s)
-    return same(withSteps(s, { ...s.steps, [edit.field]: choices[j] as number }))
+    return same(withSteps(s, edit, { ...s.steps, [edit.field]: choices[j] as number }))
   }
   return same(s)
 }

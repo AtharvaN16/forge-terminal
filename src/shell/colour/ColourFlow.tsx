@@ -516,7 +516,15 @@ function bodyRows({
     // Without colour there are no swatches to look at: the scale as text.
     if (p.selectionBg === '') {
       const rows = steps.map((x) => ({ ...x, ...onWhiteAndBlack(x.rgb) }))
-      return plainScaleRows({ palette: p, steps: rows, selected: sel })
+      const plain = plainScaleRows({ palette: p, steps: rows, selected: sel })
+      if (screen.kind !== 'scale') return plain
+      const line = stepsLine({
+        width,
+        palette: p,
+        spec: state.steps,
+        editing: state.stepsEdit?.field,
+      })
+      return [...plain, [], line]
     }
     const reads = onWhiteAndBlack(step.rgb)
     // The steps' line sits right under the ramp it describes, in the row a

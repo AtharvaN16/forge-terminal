@@ -15,6 +15,7 @@ import {
   photoRows,
   previewRows,
   rampRows,
+  stepsLine,
 } from '../../src/shell/colour/colour-art.js'
 import type { Row } from '../../src/shell/home-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
@@ -285,4 +286,38 @@ describe('the scale (S9)', () => {
     ))
 
   it('all eleven copied', () => expectRows([copiedRow(P, { count: 11 }, 'darwin')], '11', 18))
+})
+
+describe('the ramp at other widths and counts', () => {
+  const text = (row: Row) => row.map((r) => r.text).join('')
+  const steps = (n: number[]) =>
+    n.map((step) => ({ step, hex: '#6579fd', reference: step === 500 }))
+  const EVERY50 = Array.from({ length: 21 }, (_, i) => i * 50)
+
+  it('fits the field at 76 columns, 21 steps, and always names the chosen one', () => {
+    const rows = rampRows({ width: 76, palette: P, steps: steps(EVERY50), selected: 13 })
+    for (const r of rows) expect(text(r).length).toBeLessThanOrEqual(74)
+    expect(text(rows[0] as Row)).toContain('650')
+  })
+
+  it('an empty ramp without gaps names only the outlines it draws', () => {
+    const rows = emptyRampRows({ width: 76, palette: P, steps: EVERY50 })
+    const labels = text(rows[0] as Row)
+    const outline = text(rows[1] as Row)
+    for (const m of labels.matchAll(/\d+/g)) {
+      // A number wider than its cell overhangs it: its middle is what sits over the outline.
+      const middle = (m.index as number) + Math.floor(m[0].length / 2)
+      expect(outline[middle], `${m[0]} at ${m.index}`).toBe('╌')
+    }
+  })
+
+  it('the steps line ends at the field’s right edge, s steps at rest and ↵ done while editing', () => {
+    const spec = { start: 50, end: 950, every: 100 }
+    const rest = text(stepsLine({ width: 76, palette: P, spec }))
+    expect(rest).toMatch(/^ {2}50 – 950, every 100 {2}· {2}11 steps +s +steps$/)
+    expect(rest.length).toBe(74)
+    const editing = text(stepsLine({ width: 76, palette: P, spec, editing: 'every' }))
+    expect(editing).toMatch(/every +‹ 100 › +11 steps +↵ +done$/)
+    expect(editing.length).toBe(74)
+  })
 })
