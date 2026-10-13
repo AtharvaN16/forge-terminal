@@ -62,6 +62,7 @@ import {
   type Ctx,
   centreOf,
   type Effect,
+  fieldsOf,
   initial,
   initialEffects,
   reduce,
@@ -701,12 +702,11 @@ function keysFor(
     }
   }
   // The steps being changed: ↵ done sits on their line, where s steps was.
+  // Radix has nothing but the set to change, so nothing to tab to.
   if (state.stepsEdit) {
+    const more = fieldsOf(state.steps.set).length > 1
     return {
-      main: [
-        ['←→', 'change'],
-        ['tab', 'next'],
-      ],
+      main: [['←→', 'change'], ...(more ? [['tab', 'next'] as [string, string]] : [])],
       foot: [
         ['esc', 'cancel'],
         ['ctrl-c', 'quit'],

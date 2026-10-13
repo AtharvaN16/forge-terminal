@@ -88,6 +88,12 @@ describe("colour's home and screens", () => {
     expect(keyRow(app.lastFrame())).toMatch(/←→ +change +tab +next/)
     app.stdin.write(`${ESC}[C`)
     await waitFor(() => plain(app.lastFrame()).includes('‹ Even ›'))
+    // Radix has only the set to change: no tab.
+    app.stdin.write(`${ESC}[C`)
+    await waitFor(() => plain(app.lastFrame()).includes('‹ Radix ›'))
+    expect(keyRow(app.lastFrame())).not.toMatch(/tab/)
+    app.stdin.write(`${ESC}[D`)
+    await waitFor(() => plain(app.lastFrame()).includes('‹ Even ›'))
     for (let i = 0; i < 3; i++) {
       app.stdin.write('\t')
       await settle(100)

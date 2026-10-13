@@ -141,7 +141,7 @@ export function initial(start: Start, steps: StepSpec = DEFAULT_STEPS): ColourSt
   }
 }
 
-/** Where 500, the colour itself, sits among `steps`. */
+/** Where the colour itself sits among `steps`: 500, or Radix's 9. */
 export function centreOf(steps: StepSpec): number {
   return referenceIndex(steps)
 }
