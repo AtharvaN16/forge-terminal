@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
@@ -48,7 +49,7 @@ describe('/pdf mode arming', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(400)
-    const frame = app.lastFrame() ?? ''
+    const frame = unpaint(app.lastFrame() ?? '')
     expect(frame.toLowerCase()).toContain('not a pdf')
     expect(frame).toMatch(/^ {3}convert ╱/m)
     expect(frame).toContain('Convert to')

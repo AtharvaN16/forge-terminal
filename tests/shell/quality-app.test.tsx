@@ -6,6 +6,7 @@ import { encodeToBuffer } from '../../src/engines/image.js'
 import { probe } from '../../src/engines/registry.js'
 import { App } from '../../src/shell/App.js'
 import { makeGradientPng, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
@@ -13,7 +14,7 @@ const LEFT = `${ESC}[D`
 const RIGHT = `${ESC}[C`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
-const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
+const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
 const lines = (f: string | undefined) => plain(f).split('\n')
 const keyRow = (f: string | undefined) => lines(f).findLast((l) => l.trim() !== '') ?? ''
 const sizeLine = (f: string | undefined) =>

@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
-const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
+const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
 /** The header bar: the one line drawn in ╱ hatching that names a mode. */
 const barLine = (frame: string) =>
   plain(frame)

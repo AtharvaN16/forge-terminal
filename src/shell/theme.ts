@@ -134,9 +134,9 @@ export interface Palette {
    */
   band: string
   /**
-   * The terminal background this theme is designed against. Never painted —
-   * motion fades a band in from it and back out to it, so a fade starts from
-   * the colour that is (near enough) already on screen. Empty: no fades.
+   * The background this theme is designed against, and paints across the
+   * window (see `paintsCanvas`). Motion fades a band in from it and back out
+   * to it. Empty: nothing painted, no fades.
    */
   canvas: string
   /**
@@ -733,12 +733,14 @@ export function modePalette(p: Palette, mode: ShellMode): Palette {
 }
 
 /**
- * Whether the shell paints this palette's background itself (light, L6): the
- * App fills the window with `canvas`, so text must name its colour too —
- * see `Text.tsx`.
+ * Whether the shell paints this palette's background itself: the App fills
+ * the window with `canvas`, so text must name its colour too — see
+ * `Text.tsx`. Light and dark both do (L6; dark since Ghostty's blue default
+ * washed it out), so forge looks the same on any profile. Neutral, with no
+ * canvas, leaves the terminal's colours alone.
  */
 export function paintsCanvas(p: Palette): boolean {
-  return p.name === 'light' && p.canvas !== ''
+  return p.canvas !== ''
 }
 
 export function paletteFor(theme: 'dark' | 'light' | undefined): Palette {

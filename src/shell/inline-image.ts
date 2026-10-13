@@ -14,6 +14,8 @@
  * on stdin, which Ink owns.
  */
 
+import { insideMultiplexer } from './multiplexer.js'
+
 export type ImageProtocol = 'iterm' | 'kitty'
 
 const ESC = '\u001b'
@@ -66,18 +68,8 @@ export function imageProtocol(env: NodeJS.ProcessEnv = process.env): ImageProtoc
   if (forced === '0') return null
   if (forced === '1') return speaksKitty(env) ? 'kitty' : 'iterm'
   if (set(env.NO_COLOR)) return null
-  const term = env.TERM ?? ''
+  if (insideMultiplexer(env)) return null
   const program = env.TERM_PROGRAM ?? ''
-  if (
-    set(env.TMUX) ||
-    set(env.STY) ||
-    set(env.ZELLIJ) ||
-    program === 'tmux' ||
-    term.startsWith('screen') ||
-    term.startsWith('tmux')
-  ) {
-    return null
-  }
   if (program !== '') return BY_PROGRAM[program] ?? null
   return speaksKitty(env) ? 'kitty' : null
 }

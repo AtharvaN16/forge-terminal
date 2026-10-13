@@ -6,13 +6,14 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeGradientPng, makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
 const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
-const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
+const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
 const lines = (f: string | undefined) => plain(f).split('\n')
 const keyRow = (f: string | undefined) => lines(f).findLast((l) => l.trim() !== '') ?? ''
 

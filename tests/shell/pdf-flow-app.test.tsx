@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ENTER = String.fromCharCode(13)
 const ESC = String.fromCharCode(27)
@@ -297,7 +298,7 @@ describe('/pdf refuses to overwrite without asking', () => {
     stdin.write(ENTER)
     await settle(300)
 
-    const frame = (lastFrame() ?? '').replace(SGR, '')
+    const frame = unpaint((lastFrame() ?? '').replace(SGR, ''))
     expect(frame).not.toContain('choose an operation')
     expect(frame).toMatch(/^ Save as +Rotate 90°$/m)
     // Back on Save as, the name as it was given and the folders there to change.

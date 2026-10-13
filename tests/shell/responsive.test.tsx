@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
-import { App } from '../../src/shell/App.js'
+import { App, PAINT_INSET } from '../../src/shell/App.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 import { TSX_CLI } from '../helpers/run-forge.js'
 
@@ -170,7 +170,8 @@ describe('dividers', () => {
     for (const w of [60, 80, 100]) {
       const frame = render(<App initialWidth={w} />).lastFrame() ?? ''
       const rule = frame.split('\n').find((l) => /^─+$/.test(l.trim()))
-      if (rule) expect(rule.trim().length).toBe(w)
+      // The window's width, less the canvas's painted margin each side.
+      if (rule) expect(rule.trim().length).toBe(w - 2 * PAINT_INSET)
     }
   })
 })

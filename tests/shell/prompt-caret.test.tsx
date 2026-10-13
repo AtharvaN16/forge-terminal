@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`
@@ -22,7 +23,7 @@ vi.hoisted(() => {
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping SGR is the point
 const ANSI = /\[[0-9;]*m/g
-const plain = (f: string | undefined) => (f ?? '').replace(ANSI, '')
+const plain = (f: string | undefined) => unpaint((f ?? '').replace(ANSI, ''))
 /** Save as's name row (V10c): "name", then the name in its box, then the extension. */
 const nameLine = (f: string | undefined) =>
   plain(f)
@@ -133,7 +134,7 @@ describe('hint bar', () => {
     const { lastFrame } = await toRename()
     const rules = plain(lastFrame())
       .split('\n')
-      .filter((l) => /^─{80}$/.test(l))
+      .filter((l) => /^─{76}$/.test(l))
     expect(rules.length).toBe(1)
   })
 })

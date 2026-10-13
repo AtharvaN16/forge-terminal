@@ -6,6 +6,7 @@ import { convertAction } from '../../src/core/actions/convert.js'
 import type { DocumentInfo, ImageInfo } from '../../src/core/types.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const doc: DocumentInfo = {
   kind: 'document',
@@ -67,7 +68,7 @@ const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching SGR escapes is the point
 const ANSI = /\u001b\[[0-9;]*m/g
-const plain = (frame: string | undefined) => (frame ?? '').replace(ANSI, '')
+const plain = (frame: string | undefined) => unpaint((frame ?? '').replace(ANSI, ''))
 
 const prefsFor = (dir: string) => ({
   ...DEFAULT_PREFERENCES,
@@ -179,7 +180,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     // not the finished result either (asserted below).
     const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 10/.test(f))
     // Working (W5): the operation's verb and the file, then a solid bar of pages.
-    expect(midFrame).toMatch(/^ {3}Converting doc\.pdf/m)
+    expect(plain(midFrame)).toMatch(/^ {3}Converting doc\.pdf/m)
     expect(midFrame).toMatch(/page \d+ of 10/)
     // A page count under the total this document actually has: proof the
     // frame was caught mid-run, not read after everything had already
