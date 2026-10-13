@@ -9,35 +9,54 @@ import { fromLch, inGamut, oklabToRgb, type Rgb, rgbToOklab, toHex, toLch } from
  * tests; change them only with new measurements.
  *
  * Which steps there are is chosen (§4.4.1): places on a ruler from 0, near
- * white, to 1000, near black. A step between two of the ladder's is
- * interpolated, so the default eleven keep their exact hex.
+ * white, to 1000, near black, with the colour always at 500. A place between
+ * two of the ladder's is interpolated, so the default eleven keep their
+ * exact hex.
  */
 
+/** Tailwind's 50 … 950; an even count named by place; or Radix's twelve. */
+export type StepSet = 'tailwind' | 'even' | 'radix'
+
 export interface StepSpec {
-  /** The lightest step: 0 to 450, in 50s. */
+  set: StepSet
+  /** The lightest place: 0 to 450, in 50s. Not Radix's. */
   start: number
-  /** The darkest step: 550 to 1000, in 50s. */
+  /** The darkest place: 550 to 1000, in 50s. Not Radix's. */
   end: number
-  /** The steps between are the multiples of this: 50, 100 or 250. */
-  every: number
+  /** How many steps an even set has: 3 to 21. */
+  count: number
 }
 
-export const DEFAULT_STEPS: StepSpec = { start: 50, end: 950, every: 100 }
+export const DEFAULT_STEPS: StepSpec = { set: 'tailwind', start: 50, end: 950, count: 11 }
+export const SETS: readonly StepSet[] = ['tailwind', 'even', 'radix']
 export const STARTS = [0, 50, 100, 150, 200, 250, 300, 350, 400, 450] as const
 export const ENDS = [550, 600, 650, 700, 750, 800, 850, 900, 950, 1000] as const
-/** 25 is left out: 0–1000 every 25 is 41 swatches, too narrow to tell apart. */
-export const EVERY = [50, 100, 250] as const
+/** 3 to 21: at 21 the ramp's cells are three columns wide at 80 columns. */
+export const COUNTS = Array.from({ length: 19 }, (_, i) => i + 3)
+
+/**
+ * Radix's twelve, by what each is for: app backgrounds 1–2, component
+ * backgrounds 3–5, borders 6–8, the solid colour 9, its hover 10, text 11–12.
+ */
+const RADIX = [20, 50, 100, 150, 200, 260, 330, 420, 500, 560, 750, 920]
+/** Where Radix puts the solid colour: the 9th of 12. */
+const RADIX_REFERENCE = 8
 
 export interface Step {
+  /** Its name: the place on the ruler (Tailwind, even), or 1–12 (Radix). */
   step: number
+  /** Its place on the ruler, 0 to 1000; 500 is the reference. */
+  at: number
   rgb: Rgb
   hex: string
-  /** True for 500, which is the reference exactly. */
+  /** True for the reference, which is the colour exactly. */
   reference: boolean
 }
 
 /** Why `spec` is not a set of steps a scale can have, or undefined when it is. */
-export function stepsProblem({ start, end, every }: StepSpec): string | undefined {
+export function stepsProblem({ set, start, end, count }: StepSpec): string | undefined {
+  if (!SETS.includes(set)) return `The set must be tailwind, even or radix; got ${set}.`
+  if (set === 'radix') return undefined
   if (!(STARTS as readonly number[]).includes(start)) {
     return start % 50 === 0
       ? `The start must be from 0 to 450, so the colour (500) stays in the scale; got ${start}.`
@@ -48,21 +67,54 @@ export function stepsProblem({ start, end, every }: StepSpec): string | undefine
       ? `The end must be from 550 to 1000, so the colour (500) stays in the scale; got ${end}.`
       : `The end must be a multiple of 50; got ${end}.`
   }
-  if (!(EVERY as readonly number[]).includes(every)) {
-    return `Every must be 50, 100 or 250; got ${every}.`
+  if (set === 'even' && !COUNTS.includes(count)) {
+    return `An even set has 3 to 21 steps; got ${count}.`
   }
   return undefined
 }
 
-/** The start, the end, and every multiple of `every` between them; 500 is always one. */
-export function stepsOf({ start, end, every }: StepSpec): number[] {
-  const out = new Set<number>([start, end, 500])
-  for (let s = Math.ceil((start + 1) / every) * every; s < end; s += every) out.add(s)
-  return [...out].sort((a, b) => a - b)
+/**
+ * The places a set of steps sits at, each with its name. An even count is
+ * split between the places lighter than the colour and those darker, in
+ * proportion to how much of the range each side has, so 500 is always one;
+ * each is named by its place to the 10, or to the 5 or the 1 where two
+ * would share a name.
+ */
+export function placesOf(spec: StepSpec): { step: number; at: number }[] {
+  const { set, start, end, count } = spec
+  if (set === 'radix') return RADIX.map((at, i) => ({ step: i + 1, at }))
+  if (set === 'tailwind') {
+    const at = new Set<number>([start, end, 500])
+    for (let s = Math.ceil((start + 1) / 100) * 100; s < end; s += 100) at.add(s)
+    return [...at].sort((a, b) => a - b).map((p) => ({ step: p, at: p }))
+  }
+  const gaps = count - 1
+  const share = Math.round((gaps * (500 - start)) / (end - start))
+  const light = Math.max(1, Math.min(gaps - 1, share))
+  const dark = gaps - light
+  const at: number[] = []
+  for (let i = 0; i <= light; i++) at.push(start + ((500 - start) * i) / light)
+  for (let j = 1; j <= dark; j++) at.push(500 + ((end - 500) * j) / dark)
+  for (const to of [10, 5, 1]) {
+    const names = at.map((p) => Math.round(p / to) * to)
+    if (new Set(names).size === names.length)
+      return at.map((p, i) => ({ step: names[i] as number, at: p }))
+  }
+  return at.map((p) => ({ step: p, at: p }))
+}
+
+/** The names of a set's steps, lightest first. */
+export function stepsOf(spec: StepSpec): number[] {
+  return placesOf(spec).map((p) => p.step)
 }
 
 /** The default steps: 50, 100, 200 … 900, 950. */
 export const STEPS = stepsOf(DEFAULT_STEPS)
+
+/** Where the colour itself sits among a set's steps. */
+export function referenceIndex(spec: StepSpec): number {
+  return spec.set === 'radix' ? RADIX_REFERENCE : placesOf(spec).findIndex((p) => p.at === 500)
+}
 
 /** How far a lighter step has gone from the reference towards the top, 0 to 1. */
 const UP: [number, number][] = [
@@ -99,7 +151,7 @@ const PAST_FLOOR = 0.35
 
 export function scale(ref: Rgb, spec: StepSpec = DEFAULT_STEPS): Step[] {
   const problem = stepsProblem(spec)
-  if (problem) throw invalidArguments(problem, 'Try: start 50, end 950, every 100.')
+  if (problem) throw invalidArguments(problem, 'Try: Tailwind, from 50 to 950.')
   const { L: L0, C: C0, h } = toLch(rgbToOklab(ref))
   const grey = C0 < 0.015
   // A reference lighter than the ladder's top, or darker than its floor,
@@ -108,32 +160,32 @@ export function scale(ref: Rgb, spec: StepSpec = DEFAULT_STEPS): Step[] {
   // Below L 0.16 the usual floor would sit above the reference; there the
   // darker steps keep going down towards black instead.
   const floor = L0 < 0.16 ? 0.42 * L0 : Math.max(0.16, 0.42 * L0)
-  return stepsOf(spec).map((step) => {
-    if (step === 500) return { step, rgb: { ...ref }, hex: toHex(ref), reference: true }
+  return placesOf(spec).map(({ step, at: place }) => {
+    if (place === 500) return { step, at: place, rgb: { ...ref }, hex: toHex(ref), reference: true }
     let L: number
     let C: number
-    if (step >= 50 && step < 500) {
-      const f = along(UP, step)
+    if (place >= 50 && place < 500) {
+      const f = along(UP, place)
       L = L0 + (top - L0) * f
       C = C0 * (1 - 0.88 * f)
-    } else if (step < 50) {
+    } else if (place < 50) {
       // Past 50, on towards white, the last of the chroma going with it.
-      const t = (50 - step) / 50
+      const t = (50 - place) / 50
       L = top + (Math.max(WHITE_END, top) - top) * t
       C = C0 * 0.12 * (1 - t)
-    } else if (step <= 950) {
-      const g = along(DOWN, step)
+    } else if (place <= 950) {
+      const g = along(DOWN, place)
       L = L0 - (L0 - floor) * g
       C = C0 * (1 - 0.45 * g)
     } else {
       // Past 950, on below the floor.
-      const t = (step - 950) / 50
+      const t = (place - 950) / 50
       L = floor * (1 - PAST_FLOOR * t)
       C = C0 * 0.55 * (1 - 0.4 * t)
     }
     if (grey) C = 0
     while (C > 0 && !inGamut(fromLch({ L, C, h }))) C -= 0.002
     const rgb = oklabToRgb(fromLch({ L, C: Math.max(0, C), h }))
-    return { step, rgb, hex: toHex(rgb), reference: false }
+    return { step, at: place, rgb, hex: toHex(rgb), reference: false }
   })
 }

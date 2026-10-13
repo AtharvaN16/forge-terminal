@@ -163,6 +163,8 @@ function stepsOf({ start, end, every }: Steps): number[] {
 
 interface Step {
   step: number
+  /** What the ramp calls it, when that is not the step's number (Radix's 1–12). */
+  label?: string
   hex: string
   rgb: Rgb
   reference: boolean
@@ -242,7 +244,7 @@ function ramp(L: Look, steps: Step[], sel: number): Row[] {
   // Labels: the chosen one first, then the rest wherever they do not touch.
   const placed: { from: number; to: number; i: number }[] = []
   const tryPlace = (i: number, force = false) => {
-    const t = String((steps[i] as Step).step)
+    const t = (steps[i] as Step).label ?? String((steps[i] as Step).step)
     const from = at(i) + Math.floor((cell - t.length) / 2)
     const to = from + t.length
     if (!force && placed.some((p) => from < p.to + 1 && to + 1 > p.from)) return
@@ -258,10 +260,9 @@ function ramp(L: Look, steps: Step[], sel: number): Row[] {
   for (const p of placed) {
     const s = steps[p.i] as Step
     labels.push(blank(p.from - col))
+    const t = s.label ?? String(s.step)
     labels.push(
-      p.i === sel
-        ? run(String(s.step), L.p.fg, undefined, true)
-        : run(String(s.step), s.reference ? L.p.accent : L.p.border),
+      p.i === sel ? run(t, L.p.fg, undefined, true) : run(t, s.reference ? L.p.accent : L.p.border),
     )
     col = p.to
   }
@@ -282,7 +283,12 @@ function ramp(L: Look, steps: Step[], sel: number): Row[] {
 function preview(L: Look, s: Step): Row[] {
   return previewRows({
     palette: L.p,
-    step: { step: s.step, hex: s.hex, oklch: formatOklch(s.rgb), ...onWhiteAndBlack(s.rgb) },
+    step: {
+      step: s.label ? Number(s.label) : s.step,
+      hex: s.hex,
+      oklch: formatOklch(s.rgb),
+      ...onWhiteAndBlack(s.rgb),
+    },
   })
 }
 
@@ -668,10 +674,177 @@ const SUBS: { id: string; sub: string; note: string; pick?: boolean }[] = [
   },
 ]
 
+/* ------------------------------------------ round 3: a set, or a count */
+
+type SetName = 'Tailwind' | 'Even' | 'Radix'
+interface Sets {
+  set: SetName
+  start: number
+  end: number
+  count: number
+}
+const TW: Sets = { set: 'Tailwind', start: 50, end: 950, count: 11 }
+/** Radix's twelve, by what each is for: backgrounds 1–5, borders 6–8, the solid colour 9, text 11–12. */
+const RADIX = [20, 50, 100, 150, 200, 260, 330, 420, 500, 560, 750, 920]
+
+/**
+ * Places on the ruler, each with its name. 500, the colour, is always one:
+ * an even count is split into the steps lighter than it and darker than it,
+ * in proportion to how much of the range each side has, so the colour is a
+ * step whatever the count. Even steps are named by their place, to the 10.
+ */
+function placesOf(st: Sets): { pos: number; label: string }[] {
+  if (st.set === 'Tailwind') {
+    return stepsOf({ start: st.start, end: st.end, every: 100 }).map((pos) => ({
+      pos,
+      label: String(pos),
+    }))
+  }
+  if (st.set === 'Radix') return RADIX.map((pos, i) => ({ pos, label: String(i + 1) }))
+  const gaps = st.count - 1
+  let light = Math.round((gaps * (500 - st.start)) / (st.end - st.start))
+  light = Math.max(st.start < 500 ? 1 : 0, Math.min(gaps - (st.end > 500 ? 1 : 0), light))
+  const dark = gaps - light
+  const out: number[] = []
+  for (let i = 0; i <= light; i++) out.push(st.start + ((500 - st.start) * i) / light)
+  for (let j = 1; j <= dark; j++) out.push(500 + ((st.end - 500) * j) / dark)
+  return out.map((pos) => ({ pos, label: String(Math.round(pos / 10) * 10) }))
+}
+
+function scaleOf3(hex: string, st: Sets): Step[] {
+  const ref = parseHex(hex) as Rgb
+  return placesOf(st).map(({ pos, label }) => {
+    const rgb = stepColour(ref, pos)
+    return { step: Math.round(pos), label, rgb, hex: toHex(rgb), reference: pos === 500 }
+  })
+}
+const refOf = (steps: Step[]) => steps.findIndex((s) => s.reference)
+
+/** The line at rest: which set, its ends, how many. */
+function setsLine(L: Look, st: Sets): Row {
+  const places = placesOf(st)
+  const ends = `${places[0]?.label} – ${places[places.length - 1]?.label}`
+  const tail = st.set === 'Radix' ? '12 steps · your colour at 9' : `${places.length} steps`
+  return withEnd(
+    L,
+    [
+      blank(2),
+      run(st.set, L.p.fg, undefined, true),
+      run(`  ${ends}`, L.p.dim),
+      run(`  ·  ${tail}`, L.p.border),
+    ],
+    false,
+  )
+}
+
+type Focus3 = 'set' | 'start' | 'end' | 'count'
+/** The line while it is being changed: the set first, then what that set lets you change. */
+function setsEditor(L: Look, st: Sets, focus: Focus3): Row {
+  const pill = (f: Focus3, v: string | number): Run[] =>
+    f === focus
+      ? [run(` ‹ ${v} › `, L.p.ink, L.p.thumb, true)]
+      : [run(` ${v} `, L.p.fg, L.p.fieldBand)]
+  const row: Row = [blank(2), ...pill('set', st.set)]
+  if (st.set === 'Tailwind') {
+    row.push(
+      run('  from ', L.p.dim),
+      ...pill('start', st.start),
+      run('  to ', L.p.dim),
+      ...pill('end', st.end),
+    )
+    row.push(run(`   ${placesOf(st).length} steps`, L.p.border))
+  } else if (st.set === 'Even') {
+    row.push(
+      run('  from ', L.p.dim),
+      ...pill('start', st.start),
+      run('  to ', L.p.dim),
+      ...pill('end', st.end),
+    )
+    row.push(run('  steps ', L.p.dim), ...pill('count', st.count))
+  } else {
+    row.push(run('   1 – 12 · your colour at 9', L.p.border))
+  }
+  return withEnd(L, row, true)
+}
+
+function r3(L: Look, st: Sets, opts: { focus?: Focus3; sel?: number } = {}): Row[] {
+  const steps = scaleOf3(HEX, st)
+  const sel = opts.sel ?? refOf(steps)
+  const line = opts.focus ? setsEditor(L, st, opts.focus) : setsLine(L, st)
+  return screen(
+    L,
+    ['Scale'],
+    HEX,
+    [...ramp(L, steps, sel), line, [], ...preview(L, steps[sel] as Step)],
+    opts.focus ? EDIT_KEYS2(L) : REST_KEYS(L),
+  )
+}
+
+const r3Only = (L: Look, st: Sets, hex = HEX): Row[] => {
+  const steps = scaleOf3(hex, st)
+  const places = placesOf(st)
+  const what =
+    st.set === 'Even'
+      ? `Even  ${st.start} – ${st.end}, ${st.count} steps`
+      : st.set === 'Radix'
+        ? 'Radix  1 – 12, your colour at 9'
+        : `Tailwind  ${places[0]?.label} – ${places[places.length - 1]?.label}`
+  return [
+    [blank(4), run(what, L.p.fg, undefined, true), run(`   ${places.length} steps`, L.p.border)],
+    [],
+    ...ramp(L, steps, refOf(steps)).map((r) => [blank(2), ...r]),
+  ]
+}
+const r3Stack = (L: Look, list: Sets[]): Row[] => {
+  const rows: Row[] = [[]]
+  for (const st of list) rows.push(...r3Only(L, st), [])
+  return rows
+}
+const EVEN = (start: number, end: number, count: number): Sets => ({
+  set: 'Even',
+  start,
+  end,
+  count,
+})
+
+const ROUND3: { id: string; title: string; intro: string; figs: Fig[] } = {
+  id: 'r3',
+  title: '★ Round 3 · a set, or a count',
+  intro:
+    'The line under the ramp now starts with <b>which set</b> of steps, the way online generators do it. <b>Tailwind</b> is the 50 … 950 you have today, and you can still trim its ends. <b>Even</b> takes a <b>count</b> instead of “every”: 3 to 21 steps spread evenly from one end to the other, named by where they fall, to the nearest 10. Your colour is always one of them: the count is split between the lighter side and the darker side, in proportion, so 500 is always a step. <b>Radix</b> is their twelve, numbered 1 – 12, with your colour at 9 where Radix puts its solid colour, light backgrounds and borders above it and text colours below. The first value in the line is now the set: ←→ changes it, and tab goes on to what that set lets you change.',
+  figs: [
+    {
+      id: 'C1',
+      name: 'At rest · the set in hand · Even · 15 steps · done · Radix',
+      pick: true,
+      note: 'Each moment, left to right: today’s scale; <b>s</b> with the set in hand; → makes it Even, which renames the same range by place (50, 140, 230 …); tab to <b>steps</b> and → to 15 over 0 – 1000; ↵ keeps it; and the Radix set for comparison.',
+      draw: (L) => [
+        r3(L, TW),
+        r3(L, TW, { focus: 'set' }),
+        r3(L, EVEN(50, 950, 11), { focus: 'set' }),
+        r3(L, EVEN(0, 1000, 15), { focus: 'count' }),
+        r3(L, EVEN(0, 1000, 15), { sel: 10 }),
+        r3(L, { ...TW, set: 'Radix' }),
+      ],
+    },
+    {
+      id: 'C2',
+      name: 'What each set gives, on one colour',
+      note: 'Tailwind trimmed to 100 – 900; Even at 5, 9, 15 and 21 over 0 – 1000; Radix’s twelve. With a count, the spacing is the same on each side of your colour only when the range is: over 0 – 1000 it is, over 100 – 950 the darker side’s steps sit a little further apart.',
+      draw: (L) => [
+        r3Stack(L, [TW, { ...TW, start: 100, end: 900 }, { ...TW, set: 'Radix' }]),
+        r3Stack(L, [EVEN(0, 1000, 5), EVEN(0, 1000, 9), EVEN(0, 1000, 15)]),
+        r3Stack(L, [EVEN(0, 1000, 21), EVEN(100, 950, 12), EVEN(0, 1000, 12)]),
+      ],
+    },
+  ],
+}
+
 const TABS: { id: string; title: string; intro: string; figs: Fig[] }[] = [
+  ROUND3,
   {
     id: 'v1b',
-    title: '★ V1 · round 2',
+    title: 'V1 · round 2 (built)',
     intro:
       'V1 with your two changes. <b>r make centre</b> steps back into the quiet keys at the right, beside <b>#&nbsp;new colour</b>. Pressing <b>s</b> turns the line’s <b>s steps</b> into <b>↵ done</b> in the same place, so the key that finishes sits where you started. The key row while editing keeps only ←→ change and tab next, with esc cancel at the right. Home: Scale reads <b>create shades from one colour</b>.',
     figs: [

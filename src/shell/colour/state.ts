@@ -1,11 +1,14 @@
 import {
+  COUNTS,
   DEFAULT_STEPS,
   ENDS,
-  EVERY,
+  placesOf,
+  referenceIndex,
+  SETS,
   STARTS,
+  type StepSet,
   type StepSpec,
   scale,
-  stepsOf,
 } from '../../core/colour/scale.js'
 import { parseHex, type Rgb, toHex } from '../../core/colour/space.js'
 import type { Trail } from '../bar-art.js'
@@ -33,7 +36,7 @@ export type Screen =
   | { kind: 'scale'; ref: Rgb; from?: string; sel: number }
 
 /** The value `s` is changing on the line under the ramp. */
-export type StepsField = 'start' | 'end' | 'every'
+export type StepsField = 'set' | 'start' | 'end' | 'count'
 
 export interface ColourState {
   /** The way back; the last entry is on screen. */
@@ -140,7 +143,7 @@ export function initial(start: Start, steps: StepSpec = DEFAULT_STEPS): ColourSt
 
 /** Where 500, the colour itself, sits among `steps`. */
 export function centreOf(steps: StepSpec): number {
-  return stepsOf(steps).indexOf(500)
+  return referenceIndex(steps)
 }
 
 /** What to do as the flow opens: an image handed in is opened at once. */
@@ -261,7 +264,7 @@ function onScaleKey(
   const step = steps[screen.sel]
   const centre = centreOf(s.steps)
   if (input === 's') {
-    return same({ ...s, stepsEdit: { field: 'start', before: s.steps, history: s.history } })
+    return same({ ...s, stepsEdit: { field: 'set', before: s.steps, history: s.history } })
   }
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
@@ -282,14 +285,35 @@ function onScaleKey(
   if (input === 'r' && step && screen.sel !== centre) {
     const was = `was ${step.step} of ${toHex(screen.ref)}`
     const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: centre })
-    const said = `${step.hex} is now 500 · esc goes back to ${toHex(screen.ref)}`
+    const said = `${step.hex} is now ${steps[centre]?.step ?? 500} · esc goes back to ${toHex(screen.ref)}`
     return same(flash({ ...next, field: field(step.hex, false) }, said, ctx))
   }
   return same(s)
 }
 
-const FIELDS: StepsField[] = ['start', 'end', 'every']
-const CHOICES: Record<StepsField, readonly number[]> = { start: STARTS, end: ENDS, every: EVERY }
+/** The values a set lets you change, in the line's order: the set itself first. */
+export function fieldsOf(set: StepSet): StepsField[] {
+  if (set === 'radix') return ['set']
+  if (set === 'even') return ['set', 'start', 'end', 'count']
+  return ['set', 'start', 'end']
+}
+const CHOICES: Record<Exclude<StepsField, 'set'>, readonly number[]> = {
+  start: STARTS,
+  end: ENDS,
+  count: COUNTS,
+}
+
+/** `steps` with `field` moved one choice left or right, stopping at the ends; undefined at an end. */
+function moved(steps: StepSpec, field: StepsField, by: 1 | -1): StepSpec | undefined {
+  if (field === 'set') {
+    const i = SETS.indexOf(steps.set)
+    const next = SETS[i + by]
+    return next ? { ...steps, set: next } : undefined
+  }
+  const choices = CHOICES[field]
+  const next = choices[choices.indexOf(steps[field]) + by]
+  return next === undefined ? undefined : { ...steps, [field]: next }
+}
 
 /**
  * `steps` set on the state, each scale's chosen step on the number it had
@@ -301,8 +325,9 @@ function withSteps(
   edit: NonNullable<ColourState['stepsEdit']>,
   steps: StepSpec,
 ): ColourState {
-  const was = stepsOf(edit.before)
-  const now = stepsOf(steps)
+  // By place on the ruler, not by name: Radix's 9 and Tailwind's 500 are the same colour.
+  const was = placesOf(edit.before).map((p) => p.at)
+  const now = placesOf(steps).map((p) => p.at)
   const nearest = (n: number) =>
     now.reduce(
       (best, x, i) => (Math.abs(x - n) < Math.abs((now[best] as number) - n) ? i : best),
@@ -326,16 +351,14 @@ function onStepsKey(
     return same({ ...s, steps: edit.before, history: edit.history, stepsEdit: undefined })
   }
   if (key.tab || input === '\t') {
-    const i = FIELDS.indexOf(edit.field)
-    const next = FIELDS[(i + (key.shift ? FIELDS.length - 1 : 1)) % FIELDS.length] as StepsField
+    const fields = fieldsOf(s.steps.set)
+    const i = fields.indexOf(edit.field)
+    const next = fields[(i + (key.shift ? fields.length - 1 : 1)) % fields.length] as StepsField
     return same({ ...s, stepsEdit: { ...edit, field: next } })
   }
   if (key.leftArrow || key.rightArrow) {
-    const choices = CHOICES[edit.field]
-    const i = choices.indexOf(s.steps[edit.field])
-    const j = Math.max(0, Math.min(choices.length - 1, i + (key.rightArrow ? 1 : -1)))
-    if (j === i) return same(s)
-    return same(withSteps(s, edit, { ...s.steps, [edit.field]: choices[j] as number }))
+    const next = moved(s.steps, edit.field, key.rightArrow ? 1 : -1)
+    return next ? same(withSteps(s, edit, next)) : same(s)
   }
   return same(s)
 }

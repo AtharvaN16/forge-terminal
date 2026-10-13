@@ -653,13 +653,20 @@ export function emptyRampRows({
   return [labels, outline, [], outline, []]
 }
 
-export type StepsField = 'start' | 'end' | 'every'
+export type StepsField = 'set' | 'start' | 'end' | 'count'
+
+const SET_NAMES: Record<StepSpec['set'], string> = {
+  tailwind: 'Tailwind',
+  even: 'Even',
+  radix: 'Radix',
+}
 
 /**
- * The line under the ramp (V1, mockups/scale-steps-2026-10.html): which
- * steps the scale has, and `s steps` at the field's right edge. While they
- * are being changed the three values are pills, the one in hand white with
- * ‹ › round it, and `s steps` has become `↵ done` in its place.
+ * The line under the ramp (C1, mockups/scale-steps-2026-10.html, round 3):
+ * which set of steps, its ends and how many, and `s steps` at the field's
+ * right edge. While it is being changed the set comes first, then what that
+ * set lets you change, each a pill, the one in hand white with ‹ › round it,
+ * and `s steps` has become `↵ done` in its place.
  */
 export function stepsLine({
   width: columns,
@@ -672,17 +679,20 @@ export function stepsLine({
   spec: StepSpec
   editing?: StepsField | undefined
 }): Row {
-  const count = `${stepsOf(spec).length} steps`
+  const names = stepsOf(spec)
+  const count = `${names.length} steps`
+  const radix = '12 steps · your colour at 9'
   if (!editing) {
     const row: Row = [
       blank(2),
-      ink(`${spec.start} – ${spec.end}, every ${spec.every}`, p.dim),
-      ink(`  ·  ${count}`, p.border),
+      ink(SET_NAMES[spec.set], p.fg, true),
+      ink(`  ${names[0]} – ${names[names.length - 1]}`, p.dim),
+      ink(`  ·  ${spec.set === 'radix' ? radix : count}`, p.border),
     ]
     return withKey(p, row, 's', 'steps', columns - 1)
   }
   const plain = p.thumb === ''
-  const pill = (f: StepsField, v: number): Run =>
+  const pill = (f: StepsField, v: string | number): Run =>
     f === editing
       ? plain
         ? ink(`‹ ${v} ›`, p.fg, true)
@@ -690,15 +700,18 @@ export function stepsLine({
       : plain
         ? ink(` ${v} `, p.dim)
         : { text: ` ${v} `, fg: lc(p.fg), bg: lc(p.fieldBand) }
-  const row: Row = [
-    blank(2),
-    ink('from ', p.dim),
-    pill('start', spec.start),
-    ink('  to ', p.dim),
-    pill('end', spec.end),
-    ink('  every ', p.dim),
-    pill('every', spec.every),
-    ink(`   ${count}`, p.border),
-  ]
+  const row: Row = [blank(2), pill('set', SET_NAMES[spec.set])]
+  if (spec.set === 'radix') {
+    row.push(ink(`   1 – 12 · your colour at 9`, p.border))
+  } else {
+    row.push(
+      ink('  from ', p.dim),
+      pill('start', spec.start),
+      ink('  to ', p.dim),
+      pill('end', spec.end),
+    )
+    if (spec.set === 'even') row.push(ink('  steps ', p.dim), pill('count', spec.count))
+    else row.push(ink(`   ${count}`, p.border))
+  }
   return withKey(p, row, '↵', 'done', columns - 1)
 }

@@ -54,10 +54,14 @@ describe('card', () => {
 describe('scaleCard with chosen steps', () => {
   it('names its steps when they are not the default', () => {
     const ref = { r: 101, g: 121, b: 253 }
-    const spec = { start: 100, end: 900, every: 50 }
+    const spec = { set: 'even', start: 100, end: 900, count: 17 } as const
     const svg = scaleCard(ref, scale(ref, spec), 'light', spec)
-    expect(svg).toContain('from #6579FD · 100–900, every 50 in OKLCH')
+    expect(svg).toContain('from #6579FD · 100–900, 17 even steps in OKLCH')
     expect(svg.match(/id="[a-z]+-\d+"/g)).toHaveLength(17)
+    const radix = { set: 'radix', start: 50, end: 950, count: 11 } as const
+    expect(scaleCard(ref, scale(ref, radix), 'light', radix)).toContain('Radix 1–12 in OKLCH')
+    const tw = { set: 'tailwind', start: 100, end: 900, count: 11 } as const
+    expect(scaleCard(ref, scale(ref, tw), 'light', tw)).toContain('Tailwind 100–900 in OKLCH')
     expect(scaleCard(ref, scale(ref))).toContain('from #6579FD · 50–950 in OKLCH')
   })
 })

@@ -77,36 +77,37 @@ describe("colour's home and screens", () => {
     app.stdin.write('6579FD')
     await settle()
     app.stdin.write(ENTER)
-    await waitFor(() => plain(app.lastFrame()).includes('50 – 950, every 100'))
+    await waitFor(() => plain(app.lastFrame()).includes('Tailwind  50 – 950'))
     expect(plain(app.lastFrame())).toMatch(/11 steps +s +steps/)
     expect(keyRow(app.lastFrame())).toMatch(/r make centre · # new colour/)
     expect(lines(app.lastFrame())).toHaveLength(24)
 
     app.stdin.write('s')
-    await waitFor(() => plain(app.lastFrame()).includes('‹ 50 ›'))
+    await waitFor(() => plain(app.lastFrame()).includes('‹ Tailwind ›'))
     expect(plain(app.lastFrame())).toMatch(/↵ +done/)
     expect(keyRow(app.lastFrame())).toMatch(/←→ +change +tab +next/)
-    app.stdin.write('\t')
-    await settle(100)
-    app.stdin.write('\t')
-    await settle(100)
-    app.stdin.write(`${ESC}[D`)
-    await waitFor(
-      () =>
-        plain(app.lastFrame()).includes('17 steps') || plain(app.lastFrame()).includes('19 steps'),
-    )
-    expect(plain(app.lastFrame())).toContain('19 steps')
+    app.stdin.write(`${ESC}[C`)
+    await waitFor(() => plain(app.lastFrame()).includes('‹ Even ›'))
+    for (let i = 0; i < 3; i++) {
+      app.stdin.write('\t')
+      await settle(100)
+    }
+    for (let i = 0; i < 4; i++) {
+      app.stdin.write(`${ESC}[C`)
+      await settle(100)
+    }
+    await waitFor(() => plain(app.lastFrame()).includes('‹ 15 ›'))
     app.stdin.write(ENTER)
-    await waitFor(() => plain(app.lastFrame()).includes('50 – 950, every 50'))
+    await waitFor(() => plain(app.lastFrame()).includes('Even  50 – 950  ·  15 steps'))
     expect(lines(app.lastFrame())).toHaveLength(24)
 
-    // Out to colour's home and back with another colour: the steps are still every 50.
+    // Out to colour's home and back with another colour: the steps are still Even, 15.
     app.stdin.write(ESC)
     await waitFor(() => plain(app.lastFrame()).includes('create shades from one colour'))
     await settle(300)
     app.stdin.write('#F26E69')
-    await waitFor(() => plain(app.lastFrame()).includes('every 50'))
-    expect(plain(app.lastFrame())).toContain('50 – 950, every 50  ·  19 steps')
+    await waitFor(() => plain(app.lastFrame()).includes('15 steps'))
+    expect(plain(app.lastFrame())).toContain('Even  50 – 950  ·  15 steps')
   }, 30_000)
 
   it('# on colour home opens the scale with # typed', async () => {

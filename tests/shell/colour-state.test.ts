@@ -239,62 +239,73 @@ describe('leaving, and the flash', () => {
   })
 })
 
-describe('the steps (V1)', () => {
+describe('the steps (C1)', () => {
   const BLUE = { r: 101, g: 121, b: 253 }
   const TAB = key('\t', { tab: true })
+  const BACKTAB = key('', { tab: true, shift: true })
   const onScale = () => initial({ scale: BLUE })
 
-  it('s starts changing them at the start; ←→ moves it in 50s; ↵ keeps it', () => {
+  it('s starts with the set in hand; → makes it Even, keeping the ends', () => {
     let { state } = run(onScale(), key('s'))
-    expect(state.stepsEdit).toMatchObject({ field: 'start' })
+    expect(state.stepsEdit).toMatchObject({ field: 'set' })
     ;({ state } = run(state, RIGHT))
-    expect(state.steps).toEqual({ start: 100, end: 950, every: 100 })
+    expect(state.steps).toEqual({ set: 'even', start: 50, end: 950, count: 11 })
     ;({ state } = run(state, ENTER))
     expect(state.stepsEdit).toBeUndefined()
-    expect(state.steps).toEqual({ start: 100, end: 950, every: 100 })
+    expect(state.steps.set).toBe('even')
   })
 
-  it('tab goes on to the end, then every; ←→ there picks 50, 100 or 250', () => {
-    const { state } = run(onScale(), key('s'), TAB, LEFT, TAB, LEFT)
-    expect(state.stepsEdit?.field).toBe('every')
-    expect(state.steps).toEqual({ start: 50, end: 900, every: 50 })
+  it('tab goes through what the set lets you change: Tailwind its ends, Even its count too, Radix nothing', () => {
+    expect(run(onScale(), key('s'), TAB, TAB, TAB).state.stepsEdit?.field).toBe('set')
+    const even = run(onScale(), key('s'), RIGHT, TAB, TAB, TAB).state
+    expect(even.stepsEdit?.field).toBe('count')
+    const radix = run(onScale(), key('s'), RIGHT, RIGHT, TAB).state
+    expect(radix.steps.set).toBe('radix')
+    expect(radix.stepsEdit?.field).toBe('set')
   })
 
-  it('stops at the ends of each value rather than wrapping', () => {
-    const { state } = run(onScale(), key('s'), LEFT, LEFT, LEFT)
-    expect(state.steps.start).toBe(0)
-    const back = run(
-      onScale(),
-      key('s'),
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-      RIGHT,
-    )
-    expect(back.state.steps.start).toBe(450)
+  it('the count goes from 3 to 21 and stops there; the ends move in 50s', () => {
+    const at = (...keys: Action[]) => run(onScale(), key('s'), RIGHT, ...keys).state.steps
+    expect(at(TAB, LEFT).start).toBe(0)
+    expect(at(TAB, TAB, RIGHT).end).toBe(1000)
+    expect(at(TAB, TAB, TAB, ...Array(20).fill(LEFT)).count).toBe(3)
+    expect(at(TAB, TAB, TAB, ...Array(20).fill(RIGHT)).count).toBe(21)
+  })
+
+  it('the set stops at Tailwind and at Radix rather than wrapping', () => {
+    expect(run(onScale(), key('s'), LEFT).state.steps.set).toBe('tailwind')
+    expect(run(onScale(), key('s'), RIGHT, RIGHT, RIGHT).state.steps.set).toBe('radix')
   })
 
   it('esc puts the steps back as they were and leaves nothing else', () => {
     const { state, effects } = run(onScale(), key('s'), RIGHT, TAB, LEFT, ESC)
-    expect(state.steps).toEqual({ start: 50, end: 950, every: 100 })
+    expect(state.steps).toEqual({ set: 'tailwind', start: 50, end: 950, count: 11 })
     expect(state.stepsEdit).toBeUndefined()
     expect(effects).toEqual([])
     expect(top(state)?.kind).toBe('scale')
   })
 
-  it('keeps the chosen step on the same number when the steps change', () => {
-    // 800 is the ninth of the default steps; every 50 makes it the fifteenth.
+  it('keeps the chosen step on the same place when the steps change; Radix finds the colour at 9', () => {
+    // 800 is the ninth of the default steps.
     let { state } = run(onScale(), RIGHT, RIGHT, RIGHT)
     expect(top(state)).toMatchObject({ sel: 8 })
-    ;({ state } = run(state, key('s'), TAB, TAB, LEFT, ENTER))
-    expect(state.steps.every).toBe(50)
-    expect(top(state)).toMatchObject({ sel: 15 })
+    // Even over 0–1000 with 21 steps: 800 is the seventeenth.
+    ;({ state } = run(
+      state,
+      key('s'),
+      RIGHT,
+      TAB,
+      LEFT,
+      TAB,
+      RIGHT,
+      TAB,
+      ...Array(10).fill(RIGHT),
+      ENTER,
+    ))
+    expect(state.steps).toEqual({ set: 'even', start: 0, end: 1000, count: 21 })
+    expect(top(state)).toMatchObject({ sel: 16 })
+    const radix = run(onScale(), key('s'), RIGHT, RIGHT, ENTER).state
+    expect(top(radix)).toMatchObject({ sel: 8 })
   })
 
   it('other keys do nothing while the steps are being changed', () => {
@@ -304,8 +315,8 @@ describe('the steps (V1)', () => {
     expect(state.stepsEdit).toBeDefined()
   })
 
-  it('a new colour and a new centre keep the steps, and start on 500', () => {
-    const steps = { start: 100, end: 900, every: 50 }
+  it('a new colour and a new centre keep the steps, and start on the colour', () => {
+    const steps = { set: 'radix', start: 50, end: 950, count: 11 } as const
     let { state } = run(
       initial('scale', steps),
       { type: 'text', text: '#6579FD' },
@@ -314,32 +325,27 @@ describe('the steps (V1)', () => {
     expect(top(state)).toMatchObject({ sel: 8 })
     ;({ state } = run(state, RIGHT, RIGHT, key('r')))
     expect(state.steps).toEqual(steps)
-    expect(top(state)).toMatchObject({ kind: 'scale', sel: 8, from: 'was 600 of #6579FD' })
+    expect(top(state)).toMatchObject({ kind: 'scale', sel: 8, from: 'was 11 of #6579FD' })
+    expect(state.flash?.text).toMatch(/is now 9 ·/)
   })
-})
-
-describe('the steps: undoing', () => {
-  const BLUE = { r: 101, g: 121, b: 253 }
-  const TAB = key('\t', { tab: true })
-  const BACKTAB = key('', { tab: true, shift: true })
-  const at950 = () => run(initial({ scale: BLUE }), ...Array(5).fill(RIGHT)).state
 
   it('esc puts the chosen step back, however far the values went meanwhile', () => {
-    const s = at950()
-    expect(top(s)).toMatchObject({ sel: 10 })
-    const { state } = run(s, key('s'), TAB, ...Array(8).fill(LEFT), ESC)
-    expect(state.steps).toEqual({ start: 50, end: 950, every: 100 })
+    const at950 = run(onScale(), ...Array(5).fill(RIGHT)).state
+    expect(top(at950)).toMatchObject({ sel: 10 })
+    const { state } = run(at950, key('s'), TAB, TAB, ...Array(8).fill(LEFT), ESC)
+    expect(state.steps).toEqual({ set: 'tailwind', start: 50, end: 950, count: 11 })
     expect(top(state)).toMatchObject({ sel: 10 })
   })
 
   it('a value moved away and back finds the chosen step again', () => {
-    const { state } = run(at950(), key('s'), TAB, LEFT, LEFT, RIGHT, RIGHT)
+    const at950 = run(onScale(), ...Array(5).fill(RIGHT)).state
+    const { state } = run(at950, key('s'), TAB, TAB, LEFT, LEFT, RIGHT, RIGHT)
     expect(state.steps.end).toBe(950)
     expect(top(state)).toMatchObject({ sel: 10 })
   })
 
   it('shift-tab goes back a value', () => {
-    const { state } = run(at950(), key('s'), BACKTAB)
-    expect(state.stepsEdit?.field).toBe('every')
+    const { state } = run(onScale(), key('s'), BACKTAB)
+    expect(state.stepsEdit?.field).toBe('end')
   })
 })

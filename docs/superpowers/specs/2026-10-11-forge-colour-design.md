@@ -207,26 +207,35 @@ with the reference at L₀, C₀, h:
 - **Gamut:** a step outside sRGB loses chroma, 0.002 at a time, until it
   fits.
 
-#### 4.4.1 Choosing the steps (added 2026-10-13)
+#### 4.4.1 Choosing the steps (added 2026-10-13, round 3)
 
-`scale(ref, spec)` takes a `StepSpec` of `{ start, end, every }`; the default,
-`{ 50, 950, 100 }`, is the scale above. Decided on
-`mockups/scale-steps-2026-10.html` (V1).
+`scale(ref, spec)` takes a `StepSpec` of `{ set, start, end, count }`; the
+default, Tailwind from 50 to 950, is the scale above. Decided on
+`mockups/scale-steps-2026-10.html` (round 3, C1), after looking at how
+online generators do it: tints.dev (lightness of imagined 0 and 1000
+swatches), ColorBox (a count, start and end lightness, and a curve), Radix
+(twelve steps by purpose), Material (tones 0–100).
 
-- The numbers are places on a ruler from **0** (near white) to **1000** (near
-  black). The colour is always **500**.
-- **start** is 0–450 and **end** 550–1000, both in 50s, so the colour is
-  always in its own scale. **every** is 50, 100 or 250. 25 is left out: 0–1000
-  every 25 would be 41 swatches, too narrow to tell apart at 80 columns.
-- The steps are the start, the end, and every multiple of `every` between
-  them: `{ 50, 950, 100 }` gives 50, 100, 200 … 900, 950. At most 21 (0–1000
-  every 50).
-- A step between two of the ladder's is interpolated along it, so the default
-  eleven keep their exact hex. Past 50, lightness goes on to 0.995 and the
-  last of the chroma goes; past 950, lightness drops to 0.65 of the floor
-  and chroma to 0.6 of what it was at 950.
-- A spec outside those values is refused with what was expected
-  (`stepsProblem`).
+- Every step is a **place** on a ruler from **0** (near white) to **1000**
+  (near black), and the colour is always at **500**. A place between two of
+  the ladder's is interpolated along it, so the default eleven keep their
+  exact hex. Past 50, lightness goes on to 0.995 and the last of the chroma
+  goes; past 950, lightness drops to 0.65 of the floor and chroma to 0.6 of
+  what it was at 950.
+- **Tailwind**: 50, 100, 200 … 900, 950. Its ends move in 50s, the start
+  0–450 and the end 550–1000; the hundreds between stay.
+- **Even**: `count` steps, 3 to 21, spread evenly from `start` to `end`
+  (the same ends as Tailwind's). The count is split between the places
+  lighter than the colour and those darker, in proportion to how much of
+  the range each side has, so 500 is always a step. Each step is named by
+  its place to the 10 (15 over 0–1000: 0, 70, 140 … 930, 1000), or to the 5
+  or the 1 where two would share a name.
+- **Radix**: twelve, numbered 1–12, the colour at 9 where Radix puts its
+  solid colour; 1–8 are its backgrounds and borders, 10 the solid's hover,
+  11–12 text. Its places are fixed: 20, 50, 100, 150, 200, 260, 330, 420,
+  500, 560, 750, 920. Start, end and count do not apply.
+- At most 21 steps (Even), which still fit the ramp at 80 columns. A spec
+  outside these values is refused with what was expected (`stepsProblem`).
 
 Worked example, measured: `#6579FD` gives 50 `#F4F6FF` … 500 `#6579FD` …
 950 `#161B58`. Its 800, `#343F96`, made the reference with `r`, gives
@@ -389,8 +398,9 @@ eleven step labels and outlined boxes, and nothing else.
   labels above (the reference in the mode colour, the chosen one bold); a
   label that would touch its neighbour's is left out, never the chosen one's.
   A `▔` under the chosen one.
-- **The steps' line**, right under the ramp: `50 – 950, every 100 · 11
-  steps`, and `s steps` at the field's right edge (§4.4.1).
+- **The steps' line**, right under the ramp: the set in bold, its first and
+  last names, and how many (`Tailwind  50 – 950  ·  11 steps`; Radix adds
+  `· your colour at 9`), and `s steps` at the field's right edge (§4.4.1).
 - The S9 preview: a block of the chosen step, 18 × 5, with "Aa" in white and
   "Aa" in black. Beside it in plain text: step and hex, OKLCH, and "white
   text 9.1 AAA" and "black text 2.3 fails", with the rating in green when it
@@ -418,19 +428,22 @@ After `r`: `✓ #343F96 is now 500 · esc goes back to #6579FD`.
 The key row shows ←→ choose, ↵ copy and c copy all; `r make centre` and `#
 new colour` are quiet keys at its right.
 
-**Changing the steps.** `s` turns the line into `from 50 to 950 every 100`,
-each value a pill. The value in hand is white with `‹ ›` round it, and `s
-steps` becomes `↵ done` in its place. ←→ changes the value, stopping at its
-ends, and tab goes to the next (shift-tab back). The ramp redraws as each
-value changes, and the chosen step stays on the same number, or the nearest
-one. ↵ keeps the steps; esc puts back what they were. The key row while
+**Changing the steps.** `s` turns the line into pills, the set first and
+then what that set lets you change: Tailwind `from` and `to`; Even `from`,
+`to` and `steps` (the count); Radix nothing more. The value in hand is white with `‹ ›` round it, and `s
+steps` becomes `↵ done` in its place. ←→ changes the value (the set goes
+Tailwind, Even, Radix), stopping at its ends, and tab goes to the next
+(shift-tab back). The ramp redraws as each value changes, and the chosen
+step stays on the same place on the ruler, or the nearest one, so Radix's
+9 is Tailwind's 500. ↵ keeps the steps; esc puts back what they were. The key row while
 editing: ←→ change, tab next, and esc cancel at the right. Every other key
 does nothing until then.
 
 The steps are kept for the session: a new colour (`#`), a new centre (`r`),
 and leaving colour and coming back all keep them. The Figma card's subtitle
-names them when they are not the default (`from #6579FD · 100–900, every 50
-in OKLCH`).
+names them when they are not the default (`from #6579FD · 0–1000, 15 even
+steps in OKLCH`, `Tailwind 100–900`, `Radix 1–12`). After `r`, the note
+names the colour's step in the set (`is now 9` in Radix).
 
 In a terminal without true colour, the "colours shown approximately" note
 takes the detail row, which a scale does not otherwise use, so the steps'

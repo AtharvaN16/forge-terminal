@@ -85,8 +85,15 @@ export function paletteCard(
   )
 }
 
-const sameSteps = (a: StepSpec, b: StepSpec): boolean =>
-  a.start === b.start && a.end === b.end && a.every === b.every
+/** What a card says of its steps: nothing extra for the default, which is what it always was. */
+function stepsWords(spec: StepSpec): string {
+  if (spec.set === 'radix') return 'Radix 1–12'
+  if (spec.set === 'even') return `${spec.start}–${spec.end}, ${spec.count} even steps`
+  const d = DEFAULT_STEPS
+  return spec.start === d.start && spec.end === d.end
+    ? '50–950'
+    : `Tailwind ${spec.start}–${spec.end}`
+}
 
 export function scaleCard(
   reference: Rgb,
@@ -95,10 +102,9 @@ export function scaleCard(
   spec: StepSpec = DEFAULT_STEPS,
 ): string {
   const name = hueName(reference)
-  const every = sameSteps(spec, DEFAULT_STEPS) ? '' : `, every ${spec.every}`
   return card(
     `${name[0]?.toUpperCase() ?? ''}${name.slice(1)}`,
-    `from ${toHex(reference)} · ${spec.start}–${spec.end}${every} in OKLCH`,
+    `from ${toHex(reference)} · ${stepsWords(spec)} in OKLCH`,
     steps.map((s) => ({ id: `${name}-${s.step}`, name: String(s.step), value: s.hex, hex: s.hex })),
     theme,
   )
