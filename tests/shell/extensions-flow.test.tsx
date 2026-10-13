@@ -145,3 +145,42 @@ describe('ExtensionsFlow (M3 · T2)', () => {
     expect(frame(f)).not.toContain('needs')
   })
 })
+
+describe('ExtensionsFlow, esc goes back', () => {
+  it('goes back while the list is still loading', async () => {
+    const manager: ExtensionsManager = {
+      list: () => new Promise(() => {}),
+      install: async () => {},
+      remove: async () => false,
+      inUse: async () => undefined,
+    }
+    const onClose = vi.fn()
+    const f = render(
+      <ExtensionsFlow width={100} manager={manager} onError={vi.fn()} onClose={onClose} />,
+    )
+    await tick()
+    f.stdin.write(ESC)
+    await tick()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the about panel first, then goes back', async () => {
+    const { manager } = fakeManager({ installed: ['boost'] })
+    const onClose = vi.fn()
+    const f = render(
+      <ExtensionsFlow width={100} manager={manager} onError={vi.fn()} onClose={onClose} />,
+    )
+    await until(() => frame(f).includes('installed · 15 MB'))
+    expect(frame(f)).toMatch(/esc +back/)
+    await tick()
+    f.stdin.write('i')
+    await until(() => frame(f).includes('Real-ESRGAN'))
+    f.stdin.write(ESC)
+    await until(() => !frame(f).includes('Real-ESRGAN'))
+    expect(frame(f)).not.toContain('Real-ESRGAN')
+    expect(onClose).not.toHaveBeenCalled()
+    f.stdin.write(ESC)
+    await tick()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})

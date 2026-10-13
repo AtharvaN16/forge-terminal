@@ -1,7 +1,7 @@
 import { Box } from 'ink'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
-import { NEUTRAL } from '../theme.js'
+import { commandsPalette, NEUTRAL } from '../theme.js'
 import { HintBar } from './HintBar.js'
 import { Select } from './Select.js'
 
@@ -20,13 +20,16 @@ import { Select } from './Select.js'
 export function ThemePicker({
   width,
   onChoose,
+  onCancel,
 }: {
   width: number
   onChoose: (theme: 'dark' | 'light') => void
+  /** esc: back, keeping the theme. Absent on first run, which has nothing to go back to. */
+  onCancel?: () => void
 }) {
   const current = useTheme()
   return (
-    <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : current}>
+    <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : commandsPalette(current)}>
       <Box flexDirection="column" marginBottom={1}>
         <Text bold>Select theme</Text>
         <Text> </Text>
@@ -38,6 +41,7 @@ export function ThemePicker({
           ]}
           initialValue="dark"
           onSubmit={(value) => onChoose(value === 'light' ? 'light' : 'dark')}
+          {...(onCancel ? { onCancel } : {})}
         />
         <HintBar
           width={width}
@@ -45,7 +49,7 @@ export function ThemePicker({
             ['↑↓', 'choose'],
             ['↵', 'confirm'],
           ]}
-          foot={[]}
+          foot={onCancel ? [['esc', 'back']] : []}
         />
       </Box>
     </ThemeProvider>

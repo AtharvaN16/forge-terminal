@@ -2116,6 +2116,22 @@ export function App({
    * fails to persist is worth telling the user about; it must never cost
    * them the session.
    */
+  /**
+   * Back from a setting (/theme, /extensions) to where settings live: the
+   * command list, the setting just left still highlighted.
+   */
+  const backToCommands = (name: string) => {
+    setStep('idle')
+    setText('/')
+    setCommandChoice({
+      text: '/',
+      at: Math.max(
+        0,
+        listCommands('').items.findIndex((c) => c.name === name),
+      ),
+    })
+  }
+
   const chooseTheme = (next: 'dark' | 'light') => {
     setTheme(next)
     setStep('idle')
@@ -3221,7 +3237,13 @@ export function App({
               live frame down the screen, and `history.length` changes exactly
               when that happens. */}
           <MouseRouter rootRef={rootRef} revision={history.length} />
-          {step === 'theme' ? <ThemePicker width={width} onChoose={chooseTheme} /> : null}
+          {step === 'theme' ? (
+            <ThemePicker
+              width={width}
+              onChoose={chooseTheme}
+              {...(theme ? { onCancel: () => backToCommands('theme') } : {})}
+            />
+          ) : null}
 
           {/* Where a history block would sit — above the flow it explains —
               but live, so it can go with the file (see `fileRefusal`). */}
@@ -3753,7 +3775,7 @@ export function App({
             <ExtensionsFlow
               width={width}
               onError={(error) => push({ kind: 'error', id: nextId(), error })}
-              onClose={() => setStep('idle')}
+              onClose={() => backToCommands('extensions')}
             />
           ) : null}
 
