@@ -61,8 +61,18 @@ export function zoomedBox(
   pct: number,
 ): Box {
   const largest = largestBox(size, aspect)
-  const width = px((largest.width * pct) / 100)
-  const height = px((largest.height * pct) / 100)
+  // One side is scaled and the other derived through the ratio (as largestBox
+  // does), so the box keeps the shape; rounding both drifted (16:9 → 806 × 454).
+  // The longer side leads: the shorter one from it is the closer pair.
+  let width: number
+  let height: number
+  if (aspect.w >= aspect.h) {
+    width = px((largest.width * pct) / 100)
+    height = Math.min(size.height, px((width * aspect.h) / aspect.w))
+  } else {
+    height = px((largest.height * pct) / 100)
+    width = Math.min(size.width, px((height * aspect.w) / aspect.h))
+  }
   return {
     left: clamp(Math.round(centre.x - width / 2), 0, size.width - width),
     top: clamp(Math.round(centre.y - height / 2), 0, size.height - height),

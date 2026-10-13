@@ -122,6 +122,40 @@ describe('zoomedBox', () => {
       height: 3024,
     })
   })
+
+  it('keeps the exact shape at every step: one side is the other through the ratio, rounded', () => {
+    const sizes = [
+      LANDSCAPE,
+      PORTRAIT,
+      SQUARE,
+      { width: 1920, height: 1080 },
+      { width: 333, height: 777 },
+    ]
+    for (const size of sizes) {
+      for (const shape of CROP_SHAPES) {
+        const largest = largestBox(size, shape)
+        for (let pct = 100; pct >= 20; pct -= 10) {
+          const { width, height } = zoomedBox(size, shape, centreOf(largest), pct)
+          // The nearest whole pair to the ratio: one side, through it, rounds to the other.
+          const fits =
+            Math.abs((width * shape.h) / shape.w - height) <= 0.5 ||
+            Math.abs((height * shape.w) / shape.h - width) <= 0.5
+          expect(
+            fits,
+            `${shape.label} on ${size.width}×${size.height} at ${pct} %: ${width}×${height}`,
+          ).toBe(true)
+          expect(width).toBeLessThanOrEqual(size.width)
+          expect(height).toBeLessThanOrEqual(size.height)
+          if (pct === 100) expect([width, height]).toEqual([largest.width, largest.height])
+        }
+      }
+    }
+    // The case that drifted: 16:9 of 4032 × 3024 at 20 % was 806 × 454.
+    expect(zoomedBox(LANDSCAPE, wide, { x: 2016, y: 1512 }, 20)).toMatchObject({
+      width: 806,
+      height: 453,
+    })
+  })
 })
 
 describe('movedBox and movableAxes', () => {
