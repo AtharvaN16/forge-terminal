@@ -1,8 +1,10 @@
-import { Box } from 'ink'
+import { Box, type DOMElement, measureElement } from 'ink'
+import { useEffect, useRef, useState } from 'react'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { KeyRow } from './Home.js'
+import { type Notice, NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
 
 /**
  * Keys that belong in the footnote, in the order the footnote says them: the
@@ -37,6 +39,21 @@ export function HintBar({
   width: number
 }) {
   const palette = useTheme()
+  const notices = useNotices()
+  /**
+   * What the shell just said sits on the keys, out of the spacer, when the
+   * screen has the rows for it. Until that is measured — and on a screen
+   * that fills the window — the newest takes the blank row above the rule
+   * instead, as one line: never more rows than the window has.
+   */
+  const spacer = useRef<DOMElement | null>(null)
+  const [fits, setFits] = useState<readonly Notice[] | null>(null)
+  const full = notices.length > 0 && fits === notices
+  useEffect(() => {
+    if (notices.length === 0 || full || !spacer.current) return
+    const free = measureElement(spacer.current).height
+    if (free >= noticeRows(notices, width, palette) + 1) setFits(notices)
+  })
   const given = foot !== undefined
   const main = given ? pairs : pairs.filter(([key]) => footSlot(key) === undefined)
   const from = foot ?? pairs
@@ -49,10 +66,17 @@ export function HintBar({
   // The spacer takes whatever height the screen has left, so the keys sit on
   // the window's last row on every screen, as home's do — when the boxes
   // above stretch to the frame (each screen's outer Box grows).
+  const line = notices.length > 0 && !full
   return (
     <>
-      <Box flexGrow={1} />
-      <Box width={width} marginTop={1} flexDirection="column" flexShrink={0}>
+      <Box ref={spacer} flexGrow={1} />
+      {full ? (
+        <Box marginTop={1} flexShrink={0}>
+          <Notices notices={notices} width={width} />
+        </Box>
+      ) : null}
+      <Box width={width} marginTop={line ? 0 : 1} flexDirection="column" flexShrink={0}>
+        {line ? <NoticeLine notices={notices} width={width} /> : null}
         <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
         <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} />
       </Box>

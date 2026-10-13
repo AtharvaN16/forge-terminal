@@ -12,6 +12,7 @@ import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
 import { KeyRow, Runs } from './Home.js'
+import { NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
 
 /**
  * Done (B6a): what a single-file convert or compress leaves on screen. The
@@ -123,8 +124,16 @@ export function DoneScreen({
     warnings: result.warnings.map((w) => w.message),
     width,
   })
+  // What the shell just said (a failed open) sits on the keys, with a blank
+  // row above, out of the blank rows Done has; one line where they are fewer.
+  const notices = useNotices()
+  const bare = doneLayout({ height, body: body.length, notes: notes.length })
+  const spare = bare.top + bare.bottom + (notes.length > 0 ? bare.between - 1 : 0)
+  const fullRows = notices.length > 0 ? noticeRows(notices, width, palette) + 1 : 0
+  const full = fullRows > 0 && spare >= fullRows
+  const noticed = full ? fullRows : notices.length > 0 ? 1 : 0
   const { top, between, bottom } = doneLayout({
-    height,
+    height: height - noticed,
     body: body.length,
     notes: notes.length,
   })
@@ -150,6 +159,13 @@ export function DoneScreen({
         </>
       ) : null}
       <Blank rows={bottom} />
+      {full ? (
+        <Box marginTop={1} flexShrink={0}>
+          <Notices notices={notices} width={width} />
+        </Box>
+      ) : noticed > 0 ? (
+        <NoticeLine notices={notices} width={width} />
+      ) : null}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
       <KeyRow
         main={keys}

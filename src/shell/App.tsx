@@ -60,12 +60,13 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
-import { ErrorPanel, errorPanelRows } from './components/ErrorPanel.js'
+import { ErrorPanel } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
 import { NameTaken } from './components/NameTaken.js'
+import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
@@ -431,8 +432,11 @@ const MEASURE_MAX_PIXELS = 12_000_000
 /** How long a job runs before Working is shown at all (W5). */
 const WORK_AFTER_MS = 300
 
-/** How long a failed run's panel stays under home's field before it goes to the scrollback. */
-export const FAILURE_SHOWN_MS = 8_000
+/** How long what the shell just said stays on screen before it goes to the scrollback (`notices`). */
+export const NOTICE_SHOWN_MS = 8_000
+/** Notices drawn at once; older ones go to the scrollback. */
+const MAX_NOTICES = 3
+const NO_NOTICES: readonly Notice[] = []
 
 const GOTO_PDF = '__goto-pdf__'
 
@@ -1298,44 +1302,66 @@ export function App({
   }, [step, recordDone])
 
   /**
-   * A run that failed and ended the action (E5), live under home's field
-   * rather than in `<Static>`: home fills the window, so a block printed
-   * above it is already off the top of the screen — the run looked like it
-   * just went home. It goes to the scrollback once something new starts
-   * (`fenceOff`, another file, typing, leaving home), or after
-   * `FAILURE_SHOWN_MS`, so it does not sit on home for good. The ref is
-   * what `commitFailure` reads, so a second failure in the same handler
-   * commits the first, not nothing.
+   * What the shell just said — a failed run (E5), a refusal, a note — held
+   * live rather than printed to `<Static>` at once: every screen fills the
+   * window, so a block printed above it is already off the top of the screen
+   * (a failed run looked like it just went home). Home draws them under its
+   * field, every other screen above its keys (`Notices`). They go to the
+   * scrollback, in order, once something new starts (`fenceOff`, a change to
+   * what is staged or typed), or after `NOTICE_SHOWN_MS`. The ref is what
+   * `commitNotices` reads, so two in one handler are both kept. A held `bar`
+   * is not drawn live; it keeps its place ahead of the notes it heads.
    */
-  const [runFailure, setRunFailure] = useState<ForgeError | undefined>(undefined)
-  const runFailureRef = useRef<ForgeError | undefined>(undefined)
-  const commitFailure = useCallback(() => {
-    const error = runFailureRef.current
-    if (!error) return
-    runFailureRef.current = undefined
-    setRunFailure(undefined)
-    push({ kind: 'error', id: nextId(), error })
+  const [notices, setNotices] = useState<HistoryBlock[]>([])
+  const noticesRef = useRef<HistoryBlock[]>([])
+  const commitNotices = useCallback(() => {
+    const held = noticesRef.current
+    if (held.length === 0) return
+    noticesRef.current = []
+    setNotices([])
+    for (const block of held) push(block)
   }, [push])
-  /** Holds `e` above home, committing any failure held before it. */
-  const holdFailure = useCallback(
-    (e: unknown) => {
-      commitFailure()
-      const error = isForgeError(e) ? e : unexpectedError(e)
-      runFailureRef.current = error
-      setRunFailure(error)
+  const hold = useCallback(
+    (block: HistoryBlock) => {
+      const next = [...noticesRef.current, block]
+      // Past the last few, the oldest go on to the scrollback.
+      while (next.filter(isNotice).length > MAX_NOTICES) {
+        const oldest = next.shift()
+        if (oldest) push(oldest)
+      }
+      noticesRef.current = next
+      setNotices(next)
     },
-    [commitFailure],
+    [push],
   )
-  const fileStaged = stage.sources.length > 0
+  const holdFailure = useCallback(
+    (e: unknown) =>
+      hold({ kind: 'error', id: nextId(), error: isForgeError(e) ? e : unexpectedError(e) }),
+    [hold],
+  )
+  /**
+   * What was staged and typed when the newest notice was first drawn: a
+   * change from that is something new. Taken after the render that shows it,
+   * so the change that came with it (a failed run clearing the stage) is not.
+   */
+  const shownWith = useRef<{ id: string; stage: Stage; text: string } | null>(null)
   useEffect(() => {
-    if (runFailure && (!onHome || fileStaged || text !== '')) commitFailure()
-  }, [runFailure, onHome, fileStaged, text, commitFailure])
-  // Keyed on the failure itself: a second one shows for the whole time too.
+    const newest = notices.at(-1)
+    if (!newest) {
+      shownWith.current = null
+      return
+    }
+    const seen = shownWith.current
+    if (seen?.id !== newest.id) shownWith.current = { id: newest.id, stage, text }
+    else if (seen.stage !== stage || seen.text !== text) commitNotices()
+  }, [notices, stage, text, commitNotices])
+  // Keyed on the list: a new notice gets the whole time, and those with it.
   useEffect(() => {
-    if (!runFailure) return
-    const id = setTimeout(commitFailure, FAILURE_SHOWN_MS)
+    if (notices.length === 0) return
+    const id = setTimeout(commitNotices, NOTICE_SHOWN_MS)
     return () => clearTimeout(id)
-  }, [runFailure, commitFailure])
+  }, [notices, commitNotices])
+  const liveNotices = useMemo(() => notices.filter(isNotice), [notices])
 
   /**
    * Rules a dashed line under whatever is already on screen, so a change of
@@ -1356,13 +1382,13 @@ export function App({
     // than leaving it above a screen it is not part of.
     setFileRefusal(undefined)
     // Above the rule, as it would have been had it gone to the scrollback at once.
-    commitFailure()
+    commitNotices()
     setHistory((h) => {
       if (h.length === 0) return h
       if (h[h.length - 1]?.kind === 'separator') return h
       return [...h, { kind: 'separator' as const, id: nextId(), width }]
     })
-  }, [width, commitFailure])
+  }, [width, commitNotices])
 
   /**
    * A config that could not be read is told to the user once, as history,
@@ -1378,20 +1404,15 @@ export function App({
   useEffect(() => {
     if (warned.current || configWarning === undefined) return
     warned.current = true
-    push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${configWarning}` })
-  }, [configWarning, push])
+    hold({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${configWarning}` })
+  }, [configWarning, hold])
 
   /**
    * The one way anything in this file reports a failure. Whatever was thrown
    * — a `ForgeError`, or something nothing anticipated — becomes a history
    * block the user can actually read, never a raw stack trace (spec §11).
    */
-  const showError = useCallback(
-    (e: unknown) => {
-      push({ kind: 'error', id: nextId(), error: isForgeError(e) ? e : unexpectedError(e) })
-    },
-    [push],
-  )
+  const showError = holdFailure
 
   /**
    * Refuses to convert or compress a staged batch rather than silently
@@ -1407,12 +1428,12 @@ export function App({
    * symbol paired with words so the reason survives a monochrome terminal.
    */
   const refuseBatch = useCallback(() => {
-    push({
+    hold({
       kind: 'note',
       id: nextId(),
       text: `${SYMBOLS.warn} Converting several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
     })
-  }, [push])
+  }, [hold])
 
   /**
    * Whether `convertAction` actually has somewhere to send this source.
@@ -1905,7 +1926,7 @@ export function App({
           return
         }
         if (source && source.kind !== 'image') {
-          push({ kind: 'note', id: nextId(), text: enhanceRefusal(source) })
+          hold({ kind: 'note', id: nextId(), text: enhanceRefusal(source) })
           return
         }
         setMode('enhance')
@@ -1915,7 +1936,7 @@ export function App({
       }
 
       if (command.name === 'help') {
-        push({
+        hold({
           kind: 'note',
           id: nextId(),
           text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
@@ -1997,7 +2018,7 @@ export function App({
         // few lines up; `pdfActionsApply` is `/pdf`'s version of the same
         // check, so all three commands in this file agree on the rule.
         if (!pdfActionsApply(stage.sources)) {
-          push({
+          hold({
             kind: 'note',
             id: nextId(),
             text: `${SYMBOLS.warn} /pdf needs the staged files to be PDFs.`,
@@ -2010,7 +2031,6 @@ export function App({
       }
     },
     [
-      push,
       refuseFile,
       fenceOff,
       source,
@@ -2019,6 +2039,7 @@ export function App({
       refuseBatch,
       hasConvertTarget,
       pdfActionsApply,
+      hold,
     ],
   )
 
@@ -2068,7 +2089,7 @@ export function App({
       // file compress cannot take does.
       if (mode === 'enhance') {
         if (info.kind !== 'image') {
-          push({ kind: 'note', id: nextId(), text: enhanceRefusal(info) })
+          hold({ kind: 'note', id: nextId(), text: enhanceRefusal(info) })
           setMode('convert')
           setStep(hasConvertTarget(info) ? 'target' : 'idle')
           return
@@ -2081,7 +2102,7 @@ export function App({
       // than opening a picker with nothing in it (see `hasConvertTarget`).
       setStep(hasConvertTarget(info) ? 'target' : 'idle')
     },
-    [mode, push, refuseFile, hasConvertTarget, pdfActionsApply, fenceOff],
+    [mode, refuseFile, hasConvertTarget, pdfActionsApply, fenceOff, hold],
   )
 
   /**
@@ -2177,7 +2198,7 @@ export function App({
         if (command) {
           runCommand(command)
         } else {
-          push({
+          hold({
             kind: 'note',
             id: nextId(),
             text: `no command matches ${trimmed} — try /help`,
@@ -2228,7 +2249,7 @@ export function App({
       // One file typed onto an empty home goes on at once, as it always has.
       if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
     },
-    [showError, push, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour],
+    [showError, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour, hold],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -2255,7 +2276,7 @@ export function App({
     setStep('idle')
   }
 
-  /** A run failed: the action ends, as `clearSource`, and home shows why (`runFailure`). */
+  /** A run failed: the action ends, as `clearSource`, and home shows why (`notices`). */
   const failRun = (e: unknown) => {
     clearSource()
     holdFailure(e)
@@ -2362,7 +2383,7 @@ export function App({
 
   const makeDefault = (path: string) => {
     setLivePrefs((p) => ({ ...p, defaultOutput: path }))
-    push({
+    hold({
       kind: 'note',
       id: nextId(),
       text: `${SYMBOLS.ok} default output is now ${printable(path)}`,
@@ -2739,7 +2760,7 @@ export function App({
       // other refusal ends the action, and ending one clears the stage —
       // see `failRun`.
       if (refusal.error.code === 'output-is-input') {
-        push({ kind: 'error', id: nextId(), error: refusal.error })
+        hold({ kind: 'error', id: nextId(), error: refusal.error })
         reopenSaveAs()
       } else failRun(refusal.error)
       return
@@ -2832,7 +2853,7 @@ export function App({
           setStep('overwrite')
           return
         }
-        push({ kind: 'error', id: nextId(), error: refusal.error })
+        hold({ kind: 'error', id: nextId(), error: refusal.error })
         reopenSaveAs()
         return
       }
@@ -3163,7 +3184,7 @@ export function App({
     setWork({ startedAt: Date.now(), verb: verbOf(jobs[0]) ?? action.verb })
     setStep('pdf-running')
     setPageProgress(null)
-    // Held above home once it is back (see `runFailure`), the last on screen.
+    // Held for home once it is back (see `notices`).
     const failed: unknown[] = []
     try {
       /**
@@ -3184,7 +3205,7 @@ export function App({
       })
       const [first] = summary.results
       if (first) {
-        push({
+        hold({
           kind: 'bar',
           id: nextId(),
           mode,
@@ -3192,7 +3213,7 @@ export function App({
         })
       }
       for (const result of summary.results) {
-        push({
+        hold({
           kind: 'note',
           id: nextId(),
           text: `${SYMBOLS.ok} ${describePdfResult(result)}`,
@@ -3203,7 +3224,7 @@ export function App({
         // so this is a guard against the next one that does rather than a live
         // fix — but it costs a loop and the alternative was a silent drop.
         for (const warning of result.warnings) {
-          push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
+          hold({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
         }
       }
       for (const failure of [...summary.refusals, ...summary.failures]) failed.push(failure.error)
@@ -3271,7 +3292,7 @@ export function App({
       setPdfBlocked(null)
       if (safe.failures.length > 0) {
         for (const failure of safe.failures) {
-          push({ kind: 'error', id: nextId(), error: failure.error })
+          hold({ kind: 'error', id: nextId(), error: failure.error })
         }
         setStep('pdf')
         return
@@ -3296,7 +3317,7 @@ export function App({
       // A collision: `force` never bypasses it (see `checkWriteSafety`), so
       // this is the rare remainder "Replace" cannot fix.
       for (const failure of forced.failures) {
-        push({ kind: 'error', id: nextId(), error: failure.error })
+        hold({ kind: 'error', id: nextId(), error: failure.error })
       }
       setStep('pdf')
       return
@@ -3463,487 +3484,493 @@ export function App({
    * the live frame keeps above it.
    */
   const canvas = paint ? { backgroundColor: palette.canvas, width: measured, paddingX: inset } : {}
-  // A failed run's panel sits under home's field; home makes room for it.
-  const failureWidth = Math.max(8, width - 2 * HOME_MARGIN)
-  const failureNote = onHome && runFailure && !homeError ? runFailure : undefined
+  // Home draws the notices under its field, and makes room for them (a
+  // refusal of what was typed takes the slot first); every other screen
+  // above its keys.
+  const homeNotices = onHome && !homeError ? liveNotices : NO_NOTICES
+  const keyNotices = onHome ? NO_NOTICES : liveNotices
 
   return (
     <ThemeProvider palette={palette}>
-      <ClickTargetProvider>
-        <Box
-          flexDirection="column"
-          ref={rootRef}
-          {...canvas}
-          // The frame fills the window on every screen, as home does, so
-          // each screen's keys reach the last row (see HintBar).
-          minHeight={measuredHeight}
-          paddingTop={top}
-        >
-          {/* Inside the provider, deliberately — see `MouseRouter`. `revision`
+      <NoticesContext.Provider value={keyNotices}>
+        <ClickTargetProvider>
+          <Box
+            flexDirection="column"
+            ref={rootRef}
+            {...canvas}
+            // The frame fills the window on every screen, as home does, so
+            // each screen's keys reach the last row (see HintBar).
+            minHeight={measuredHeight}
+            paddingTop={top}
+          >
+            {/* Inside the provider, deliberately — see `MouseRouter`. `revision`
               recalibrates the frame's origin: committed history scrolls the
               live frame down the screen, and `history.length` changes exactly
               when that happens. */}
-          <MouseRouter rootRef={rootRef} revision={history.length} />
-          {step === 'theme' ? (
-            <ThemePicker
-              width={width}
-              onChoose={chooseTheme}
-              {...(theme ? { onCancel: () => backToCommands('theme') } : {})}
-            />
-          ) : null}
+            <MouseRouter rootRef={rootRef} revision={history.length} />
+            {step === 'theme' ? (
+              <ThemePicker
+                width={width}
+                onChoose={chooseTheme}
+                {...(theme ? { onCancel: () => backToCommands('theme') } : {})}
+              />
+            ) : null}
 
-          {/* Where a history block would sit — above the flow it explains —
+            {/* Where a history block would sit — above the flow it explains —
               but live, so it can go with the file (see `fileRefusal`). */}
-          {fileRefusal && step !== 'theme' && !SETTINGS_STEPS.has(step) ? (
-            <Box flexDirection="column" marginBottom={1}>
-              <ErrorPanel error={fileRefusal.error} width={Math.max(8, width - 2 * HOME_MARGIN)} />
-            </Box>
-          ) : null}
+            {fileRefusal && step !== 'theme' && !SETTINGS_STEPS.has(step) ? (
+              <Box flexDirection="column" marginBottom={1}>
+                <ErrorPanel
+                  error={fileRefusal.error}
+                  width={Math.max(8, width - 2 * HOME_MARGIN)}
+                />
+              </Box>
+            ) : null}
 
-          {/* The header bar: which mode, and the trail of answers so far —
+            {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
             trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
             the settings (/extensions, /update, /about), which are no mode and
             each draw their own chip. */}
-          {working && !onHome && step !== 'result' && !SETTINGS_STEPS.has(step) ? (
-            <Box marginBottom={1}>
-              <HeaderBar
-                mode={mode}
-                trail={barTrail()}
-                width={width}
-                drift={running && workShown}
-              />
-            </Box>
-          ) : null}
+            {working && !onHome && step !== 'result' && !SETTINGS_STEPS.has(step) ? (
+              <Box marginBottom={1}>
+                <HeaderBar
+                  mode={mode}
+                  trail={barTrail()}
+                  width={width}
+                  drift={running && workShown}
+                />
+              </Box>
+            ) : null}
 
-          {/* The staged list, shown live rather than committed to scrollback,
+            {/* The staged list, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back.
             Not on home: its drop panel holds the stage there. */}
-          {stage.sources.length > 0 && step !== 'theme' && step !== 'result' && !onHome ? (
-            <Box marginBottom={1}>
-              <StagedFiles stage={stage} width={width} dim={running && workShown} />
-            </Box>
-          ) : null}
-          <Static key={staticGeneration} items={history}>
-            {(block) =>
-              paint ? (
-                <Box key={block.id} flexDirection="column" {...canvas}>
-                  <HistoryEntry block={block} width={width} />
-                </Box>
-              ) : (
-                <HistoryEntry key={block.id} block={block} width={width} />
-              )
-            }
-          </Static>
-
-          {step === 'mode' && source && modeSpec?.kind === 'select' ? (
-            <Box flexDirection="column" flexGrow={1}>
+            {stage.sources.length > 0 && step !== 'theme' && step !== 'result' && !onHome ? (
               <Box marginBottom={1}>
-                <StepTitle
-                  mode={mode}
-                  title="Method"
-                  aside={displayName(source.path)}
-                  width={width}
-                />
+                <StagedFiles stage={stage} width={width} dim={running && workShown} />
               </Box>
-              <Select
-                width={pickerWidth}
-                items={modeSpec.choices}
-                initialValue={modeSpec.default}
-                onSubmit={(chosen) => {
-                  setValues((v) => ({ ...v, mode: chosen }))
-                  setStep(chosen === 'size' ? 'size' : 'quality')
-                }}
-                onCancel={clearSource}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  [MODE_KEYS, 'mode'],
-                  // Method is the first question: esc takes the file off the bench.
-                  ['esc', 'remove file'],
-                ]}
-              />
-            </Box>
-          ) : null}
+            ) : null}
+            <Static key={staticGeneration} items={history}>
+              {(block) =>
+                paint ? (
+                  <Box key={block.id} flexDirection="column" {...canvas}>
+                    <HistoryEntry block={block} width={width} />
+                  </Box>
+                ) : (
+                  <HistoryEntry key={block.id} block={block} width={width} />
+                )
+              }
+            </Static>
 
-          {step === 'size' && source && sizeSpec?.kind === 'text' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <StepTitle
-                mode={mode}
-                title={sizeSpec.label}
-                aside={`${displayName(source.path)} · ${formatBytes(source.bytes)}`}
-                width={width}
-              />
-              {/* Save as's field, the unit inside it at the right: the amount
-                  and its unit are one answer, read as one line. */}
-              <SizeField
-                value={text}
-                onChange={setText}
-                onSubmit={submitSize}
-                placeholder={sizeSpec.placeholder}
-                unit={sizeUnit}
-                unitFocused={unitFocused}
-                width={width}
-              />
-              {/* Said only when what was typed is not a size at all; what it
-                  is, when it is one, the field already shows. */}
-              {text.trim() !== '' && describeSize(sizeWithUnit(text)) === undefined ? (
-                <Text color={colourProp(palette.dim)}>
-                  {`  ${SYMBOLS.warn} not a size — try 500kb or 2mb`}
-                </Text>
-              ) : null}
-              {sizeError ? (
-                <Box flexDirection="column">
-                  <Text> </Text>
-                  <ErrorLine
-                    title="Not a size"
-                    reason={sizeError}
-                    width={Math.max(8, width - 2 * HOME_MARGIN)}
+            {step === 'mode' && source && modeSpec?.kind === 'select' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <Box marginBottom={1}>
+                  <StepTitle
+                    mode={mode}
+                    title="Method"
+                    aside={displayName(source.path)}
+                    width={width}
                   />
                 </Box>
-              ) : null}
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↵', 'confirm'],
-                  ['tab', unitFocused ? 'amount' : 'unit'],
-                  ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
-                  ['esc', 'back'],
-                ]}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'target' && source && targetSpec?.kind === 'select' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Box marginBottom={1}>
-                <StepTitle mode={mode} title="Convert to" width={width} />
+                <Select
+                  width={pickerWidth}
+                  items={modeSpec.choices}
+                  initialValue={modeSpec.default}
+                  onSubmit={(chosen) => {
+                    setValues((v) => ({ ...v, mode: chosen }))
+                    setStep(chosen === 'size' ? 'size' : 'quality')
+                  }}
+                  onCancel={clearSource}
+                  showHints={band !== 'compact'}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↑↓', 'choose'],
+                    ['↵', 'confirm'],
+                    [MODE_KEYS, 'mode'],
+                    // Method is the first question: esc takes the file off the bench.
+                    ['esc', 'remove file'],
+                  ]}
+                />
               </Box>
-              <Select
-                width={pickerWidth}
-                items={targetItems}
-                onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
-                speak={(item, budget) =>
-                  item.value === GOTO_PDF ? null : (
-                    <SizeAside size={targetSize} sourceBytes={source.bytes} budget={budget} />
-                  )
-                }
-                onSubmit={(target) => {
-                  if (target === GOTO_PDF) {
-                    if (pdfCommand) runCommand(pdfCommand)
-                    return
-                  }
-                  chooseTarget(source, target)
-                }}
-                onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  [MODE_KEYS, 'mode'],
-                  // A document stays staged on esc (/pdf may still want it); an image
-                  // is taken off the bench. The key says which.
-                  ['esc', source.kind === 'document' ? 'back' : 'remove file'],
-                ]}
-              />
-            </Box>
-          ) : null}
+            ) : null}
 
-          {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Box marginBottom={1}>
+            {step === 'size' && source && sizeSpec?.kind === 'text' ? (
+              <Box flexDirection="column" flexGrow={1}>
                 <StepTitle
                   mode={mode}
-                  title={pagesSpec.label}
+                  title={sizeSpec.label}
+                  aside={`${displayName(source.path)} · ${formatBytes(source.bytes)}`}
+                  width={width}
+                />
+                {/* Save as's field, the unit inside it at the right: the amount
+                  and its unit are one answer, read as one line. */}
+                <SizeField
+                  value={text}
+                  onChange={setText}
+                  onSubmit={submitSize}
+                  placeholder={sizeSpec.placeholder}
+                  unit={sizeUnit}
+                  unitFocused={unitFocused}
+                  width={width}
+                />
+                {/* Said only when what was typed is not a size at all; what it
+                  is, when it is one, the field already shows. */}
+                {text.trim() !== '' && describeSize(sizeWithUnit(text)) === undefined ? (
+                  <Text color={colourProp(palette.dim)}>
+                    {`  ${SYMBOLS.warn} not a size — try 500kb or 2mb`}
+                  </Text>
+                ) : null}
+                {sizeError ? (
+                  <Box flexDirection="column">
+                    <Text> </Text>
+                    <ErrorLine
+                      title="Not a size"
+                      reason={sizeError}
+                      width={Math.max(8, width - 2 * HOME_MARGIN)}
+                    />
+                  </Box>
+                ) : null}
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↵', 'confirm'],
+                    ['tab', unitFocused ? 'amount' : 'unit'],
+                    ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
+                    ['esc', 'back'],
+                  ]}
+                />
+              </Box>
+            ) : null}
+
+            {step === 'target' && source && targetSpec?.kind === 'select' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <Box marginBottom={1}>
+                  <StepTitle mode={mode} title="Convert to" width={width} />
+                </Box>
+                <Select
+                  width={pickerWidth}
+                  items={targetItems}
+                  onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
+                  speak={(item, budget) =>
+                    item.value === GOTO_PDF ? null : (
+                      <SizeAside size={targetSize} sourceBytes={source.bytes} budget={budget} />
+                    )
+                  }
+                  onSubmit={(target) => {
+                    if (target === GOTO_PDF) {
+                      if (pdfCommand) runCommand(pdfCommand)
+                      return
+                    }
+                    chooseTarget(source, target)
+                  }}
+                  onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
+                  showHints={band !== 'compact'}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↑↓', 'choose'],
+                    ['↵', 'confirm'],
+                    [MODE_KEYS, 'mode'],
+                    // A document stays staged on esc (/pdf may still want it); an image
+                    // is taken off the bench. The key says which.
+                    ['esc', source.kind === 'document' ? 'back' : 'remove file'],
+                  ]}
+                />
+              </Box>
+            ) : null}
+
+            {step === 'pages' && source && pagesSpec?.kind === 'select' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <Box marginBottom={1}>
+                  <StepTitle
+                    mode={mode}
+                    title={pagesSpec.label}
+                    aside={
+                      source.kind === 'document'
+                        ? `${displayName(source.path)} · ${source.pages} pages`
+                        : displayName(source.path)
+                    }
+                    width={width}
+                  />
+                </Box>
+                <Select
+                  width={pickerWidth}
+                  items={pagesSpec.choices}
+                  initialValue={pagesSpec.default}
+                  onSubmit={choosePages}
+                  onCancel={() => setStep('target')}
+                  showHints={band !== 'compact'}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↑↓', 'choose'],
+                    ['↵', 'confirm'],
+                    [MODE_KEYS, 'mode'],
+                    ['esc', 'back'],
+                  ]}
+                />
+              </Box>
+            ) : null}
+
+            {step === 'page-picker' && source && source.kind === 'document' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <PageGrid
+                  mode="cell"
+                  pageCount={source.pages}
+                  selected={Array.isArray(values.pages) ? (values.pages as number[]) : []}
+                  cuts={[]}
+                  onSubmit={submitPagePicker}
+                  onCancel={() => setStep('pages')}
+                  width={width}
+                  height={height}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['space', 'toggle'],
+                    ['a', 'all'],
+                    ['↵', 'confirm'],
+                    ['esc', 'back'],
+                  ]}
+                />
+              </Box>
+            ) : null}
+
+            {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <Box marginBottom={1}>
+                  <StepTitle
+                    mode={mode}
+                    title={dpiSpec.label}
+                    aside={displayName(source.path)}
+                    width={width}
+                  />
+                </Box>
+                <Select
+                  width={pickerWidth}
+                  items={dpiSpec.choices}
+                  initialValue={dpiSpec.default}
+                  onSubmit={(dpi) => chooseDpi(source, dpi)}
+                  onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
+                  showHints={band !== 'compact'}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↑↓', 'choose'],
+                    ['↵', 'confirm'],
+                    [MODE_KEYS, 'mode'],
+                    ['esc', 'back'],
+                  ]}
+                />
+              </Box>
+            ) : null}
+
+            {step === 'quality' && source && qualitySpec?.kind === 'slider' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <QualityStep
+                  mode={mode}
+                  // What the quality is for: the format in convert, the file in compress.
                   aside={
-                    source.kind === 'document'
-                      ? `${displayName(source.path)} · ${source.pages} pages`
-                      : displayName(source.path)
+                    mode === 'compress'
+                      ? displayName(source.path)
+                      : typeof values.target === 'string'
+                        ? FORMATS[values.target as FormatId].label
+                        : undefined
                   }
+                  min={qualitySpec.min}
+                  max={qualitySpec.max}
+                  step={qualitySpec.step}
+                  value={qualityNow}
+                  onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
+                  onSubmit={chooseQuality}
+                  onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
+                  size={qualitySize}
+                  sourceBytes={source.bytes}
                   width={width}
                 />
               </Box>
-              <Select
-                width={pickerWidth}
-                items={pagesSpec.choices}
-                initialValue={pagesSpec.default}
-                onSubmit={choosePages}
-                onCancel={() => setStep('target')}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
+            ) : null}
+
+            {step === 'enhance' && source?.kind === 'image' && toolStates ? (
+              <EnhancePicker
+                format={FORMATS[source.format].label}
+                rows={enhanceRows(
+                  source,
+                  measure,
+                  boostScales(
+                    toolStates.boost?.kind === 'ready' ? toolStates.boost.version : undefined,
+                  ),
+                )}
+                tools={toolStates}
+                checking={checking}
+                chosen={{ tool: values.tool, step: values.shape ?? values.scale }}
                 width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  [MODE_KEYS, 'mode'],
-                  ['esc', 'back'],
-                ]}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'page-picker' && source && source.kind === 'document' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <PageGrid
-                mode="cell"
-                pageCount={source.pages}
-                selected={Array.isArray(values.pages) ? (values.pages as number[]) : []}
-                cuts={[]}
-                onSubmit={submitPagePicker}
-                onCancel={() => setStep('pages')}
-                width={width}
-                height={height}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['space', 'toggle'],
-                  ['a', 'all'],
-                  ['↵', 'confirm'],
-                  ['esc', 'back'],
-                ]}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'dpi' && source && dpiSpec?.kind === 'select' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Box marginBottom={1}>
-                <StepTitle
-                  mode={mode}
-                  title={dpiSpec.label}
-                  aside={displayName(source.path)}
-                  width={width}
-                />
-              </Box>
-              <Select
-                width={pickerWidth}
-                items={dpiSpec.choices}
-                initialValue={dpiSpec.default}
-                onSubmit={(dpi) => chooseDpi(source, dpi)}
-                onCancel={() => setStep(Array.isArray(values.pages) ? 'page-picker' : 'pages')}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  [MODE_KEYS, 'mode'],
-                  ['esc', 'back'],
-                ]}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'quality' && source && qualitySpec?.kind === 'slider' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <QualityStep
-                mode={mode}
-                // What the quality is for: the format in convert, the file in compress.
-                aside={
-                  mode === 'compress'
-                    ? displayName(source.path)
-                    : typeof values.target === 'string'
-                      ? FORMATS[values.target as FormatId].label
-                      : undefined
-                }
-                min={qualitySpec.min}
-                max={qualitySpec.max}
-                step={qualitySpec.step}
-                value={qualityNow}
-                onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
-                onSubmit={chooseQuality}
-                onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
-                size={qualitySize}
-                sourceBytes={source.bytes}
-                width={width}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'enhance' && source?.kind === 'image' && toolStates ? (
-            <EnhancePicker
-              format={FORMATS[source.format].label}
-              rows={enhanceRows(
-                source,
-                measure,
-                boostScales(
-                  toolStates.boost?.kind === 'ready' ? toolStates.boost.version : undefined,
-                ),
-              )}
-              tools={toolStates}
-              checking={checking}
-              chosen={{ tool: values.tool, step: values.shape ?? values.scale }}
-              width={width}
-              onChoose={(row, step) => {
-                const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
-                if (state?.kind === 'ready') chooseEnhance(row, step)
-                else if (state?.kind === 'absent') void installThen(row)
-              }}
-              onStop={stopInstall}
-              onCancel={clearSource}
-            />
-          ) : null}
-
-          {step === 'resize' && source?.kind === 'image' ? (
-            <ResizeStep
-              mode={mode}
-              aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
-              from={source}
-              percent={resizePercent}
-              max={largestPercent(source)}
-              onChange={setResizePercent}
-              onSubmit={(percent) => chooseResize({ percent })}
-              onExact={() => setStep('exact-size')}
-              onCancel={() => setStep('enhance')}
-              width={width}
-            />
-          ) : null}
-
-          {step === 'crop' && source?.kind === 'image' && cropShape ? (
-            <CropStep
-              key={`${source.path}\u0000${cropShape.label}`}
-              mode={mode}
-              source={source}
-              shape={cropShape}
-              initial={cropAt}
-              onChange={setCropAt}
-              onSubmit={chooseCrop}
-              // Back to the list, the shape still on the pill.
-              onCancel={() => setStep('enhance')}
-              width={width}
-            />
-          ) : null}
-
-          {step === 'exact-size' && source?.kind === 'image' ? (
-            <ExactSizeStep
-              mode={mode}
-              aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
-              from={source}
-              percent={resizePercent}
-              onSubmit={chooseResize}
-              onCancel={() => setStep('resize')}
-              width={width}
-            />
-          ) : null}
-
-          {step === 'save-as' && saving && destinationSpec?.kind === 'path' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <SaveAs
-                key={saving.opened}
-                mode={mode}
-                width={width}
-                name={text}
-                onNameChange={editName}
-                proposed={saving.stem}
-                ext={saving.ext}
-                fixedName={saving.fixedName}
-                folder={saving.folder}
-                onFolder={chooseFolder}
-                presets={destinationSpec.presets}
-                defaultPath={expandTilde(livePrefs.defaultOutput)}
-                lastPath={destinationSpec.last}
-                display={displayPath}
-                onMakeDefault={makeDefault}
-                onSubmit={confirmDestination}
-                onBack={destinationBack}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'overwrite' && pending ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <NameTaken
-                mode={mode}
-                width={width}
-                name={displayName(pending.output)}
-                keepBoth={displayName(pending.keepBoth)}
-                existing={pending.existing}
-                onSubmit={answerOverwrite}
-                onCancel={() => {
-                  setPending(null)
-                  reopenSaveAs()
+                onChoose={(row, step) => {
+                  const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
+                  if (state?.kind === 'ready') chooseEnhance(row, step)
+                  else if (state?.kind === 'absent') void installThen(row)
                 }}
+                onStop={stopInstall}
+                onCancel={clearSource}
               />
-            </Box>
-          ) : null}
+            ) : null}
 
-          {step === 'size-unreachable' && sizeUnreachable ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Box marginBottom={1}>
-                <StepTitle
+            {step === 'resize' && source?.kind === 'image' ? (
+              <ResizeStep
+                mode={mode}
+                aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
+                from={source}
+                percent={resizePercent}
+                max={largestPercent(source)}
+                onChange={setResizePercent}
+                onSubmit={(percent) => chooseResize({ percent })}
+                onExact={() => setStep('exact-size')}
+                onCancel={() => setStep('enhance')}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'crop' && source?.kind === 'image' && cropShape ? (
+              <CropStep
+                key={`${source.path}\u0000${cropShape.label}`}
+                mode={mode}
+                source={source}
+                shape={cropShape}
+                initial={cropAt}
+                onChange={setCropAt}
+                onSubmit={chooseCrop}
+                // Back to the list, the shape still on the pill.
+                onCancel={() => setStep('enhance')}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'exact-size' && source?.kind === 'image' ? (
+              <ExactSizeStep
+                mode={mode}
+                aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
+                from={source}
+                percent={resizePercent}
+                onSubmit={chooseResize}
+                onCancel={() => setStep('resize')}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'save-as' && saving && destinationSpec?.kind === 'path' ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <SaveAs
+                  key={saving.opened}
                   mode={mode}
-                  title={`${source ? displayName(source.path) : 'This file'} can't get below ${formatBytes(
-                    sizeUnreachable.smallest,
-                  )}`}
-                  aside={`asked for ${formatBytes(sizeUnreachable.targetBytes)}`}
                   width={width}
+                  name={text}
+                  onNameChange={editName}
+                  proposed={saving.stem}
+                  ext={saving.ext}
+                  fixedName={saving.fixedName}
+                  folder={saving.folder}
+                  onFolder={chooseFolder}
+                  presets={destinationSpec.presets}
+                  defaultPath={expandTilde(livePrefs.defaultOutput)}
+                  lastPath={destinationSpec.last}
+                  display={displayPath}
+                  onMakeDefault={makeDefault}
+                  onSubmit={confirmDestination}
+                  onBack={destinationBack}
                 />
               </Box>
-              <Select
-                width={pickerWidth}
-                items={[
-                  {
-                    value: 'lowest',
-                    label: `Use ${formatBytes(sizeUnreachable.smallest)} anyway`,
-                    // What the answer does, the way Name taken's answers say it.
-                    hint: `saves it at ${formatBytes(sizeUnreachable.smallest)}`,
-                  },
-                  { value: 'size', label: 'Try a different target size' },
-                  { value: 'quality', label: 'Compress by quality instead' },
-                  { value: 'format', label: 'Convert to a different format' },
-                ]}
-                onSubmit={answerSizeUnreachable}
-                onCancel={() => {
-                  setSizeUnreachable(null)
-                  clearSource()
-                }}
-                showHints={band !== 'compact'}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↑↓', 'choose'],
-                  ['↵', 'confirm'],
-                  ['esc', 'cancel'],
-                ]}
-              />
-            </Box>
-          ) : null}
+            ) : null}
 
-          {/* Working (W5), once a job has run long enough to need it: the
+            {step === 'overwrite' && pending ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <NameTaken
+                  mode={mode}
+                  width={width}
+                  name={displayName(pending.output)}
+                  keepBoth={displayName(pending.keepBoth)}
+                  existing={pending.existing}
+                  onSubmit={answerOverwrite}
+                  onCancel={() => {
+                    setPending(null)
+                    reopenSaveAs()
+                  }}
+                />
+              </Box>
+            ) : null}
+
+            {step === 'size-unreachable' && sizeUnreachable ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <Box marginBottom={1}>
+                  <StepTitle
+                    mode={mode}
+                    title={`${source ? displayName(source.path) : 'This file'} can't get below ${formatBytes(
+                      sizeUnreachable.smallest,
+                    )}`}
+                    aside={`asked for ${formatBytes(sizeUnreachable.targetBytes)}`}
+                    width={width}
+                  />
+                </Box>
+                <Select
+                  width={pickerWidth}
+                  items={[
+                    {
+                      value: 'lowest',
+                      label: `Use ${formatBytes(sizeUnreachable.smallest)} anyway`,
+                      // What the answer does, the way Name taken's answers say it.
+                      hint: `saves it at ${formatBytes(sizeUnreachable.smallest)}`,
+                    },
+                    { value: 'size', label: 'Try a different target size' },
+                    { value: 'quality', label: 'Compress by quality instead' },
+                    { value: 'format', label: 'Convert to a different format' },
+                  ]}
+                  onSubmit={answerSizeUnreachable}
+                  onCancel={() => {
+                    setSizeUnreachable(null)
+                    clearSource()
+                  }}
+                  showHints={band !== 'compact'}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↑↓', 'choose'],
+                    ['↵', 'confirm'],
+                    ['esc', 'cancel'],
+                  ]}
+                />
+              </Box>
+            ) : null}
+
+            {/* Working (W5), once a job has run long enough to need it: the
               bar above drifts, and this says what is happening. The same
               screen for a conversion and a page operation. */}
-          {running && workShown && work ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Working
-                mode={mode}
-                label={
-                  attempt
-                    ? 'Finding the right quality'
-                    : pageProgress
-                      ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
-                      : (work.phase ?? work.verb)
-                }
-                startedAt={work.startedAt}
-                search={attempt}
-                pages={attempt ? undefined : (pageProgress ?? undefined)}
-                stoppable={mode === 'enhance'}
-                width={width}
-              />
-            </Box>
-          ) : null}
+            {running && workShown && work ? (
+              <Box flexDirection="column" flexGrow={1}>
+                <Working
+                  mode={mode}
+                  label={
+                    attempt
+                      ? 'Finding the right quality'
+                      : pageProgress
+                        ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
+                        : (work.phase ?? work.verb)
+                  }
+                  startedAt={work.startedAt}
+                  search={attempt}
+                  pages={attempt ? undefined : (pageProgress ?? undefined)}
+                  stoppable={mode === 'enhance'}
+                  width={width}
+                />
+              </Box>
+            ) : null}
 
-          {/* Done (K3·a): the file before and after, sized by bytes, filling
+            {/* Done (K3·a): the file before and after, sized by bytes, filling
               the screen with the keys on the bottom row. Its offers are
               measured, not estimated — the suggestion came from actually
               encoding a candidate — and offered rather than applied: the
@@ -3954,252 +3981,253 @@ export function App({
               PDFs re-probed first), toward `/pdf`, which already merges.
               No clickable "Open file · Show in Finder" labels: `o` and `s`
               on the key row do the same, and the design has no row for them. */}
-          {/* Enhance's Done (X5): the header bar, the quiet line and the
+            {/* Enhance's Done (X5): the header bar, the quiet line and the
               picture before and after (`EnhanceDone`), then the keys. */}
-          {step === 'result' && lastResult && doneBar && doneBar.mode === 'enhance' ? (
-            <Box flexDirection="column" flexGrow={1}>
-              <Box marginBottom={1}>
-                <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
-              </Box>
-              <EnhanceDone
-                op={
-                  lastResult.job.op === 'convert'
-                    ? lastResult.job.options.crop
-                      ? 'crop'
-                      : lastResult.job.options.resize
-                        ? 'resize'
-                        : 'trim'
-                    : lastResult.job.op === 'remove-background'
-                      ? 'remove-background'
-                      : 'boost'
-                }
-                {...(lastResult.job.op === 'boost' ? { scale: lastResult.job.scale } : {})}
-                before={lastResult.job.sources[0].path}
-                after={lastResult.job.outputs[0] ?? ''}
-                savedTo={dirname(lastResult.job.outputs[0] ?? '')}
-                width={width}
-                // The terminal's rows less the header bar (2) and keys (3),
-                // and one more so the frame never fills the screen.
-                rows={height - 6}
-              />
-              <HintBar
-                width={width}
-                pairs={[
-                  ['↵', 'enhance another'],
-                  ['o', 'open'],
-                  ['s', revealLabel()],
-                ]}
-                foot={[['ctrl-c', 'quit']]}
-              />
-            </Box>
-          ) : null}
-
-          {step === 'result' && lastResult && doneBar && doneBar.mode !== 'enhance' ? (
-            <DoneScreen
-              mode={doneBar.mode}
-              trail={doneBar.trail}
-              result={lastResult}
-              offers={[
-                ...(suggestion
-                  ? [
-                      `${SYMBOLS.tip} ${FORMATS[suggestion.target].label} would be ${formatBytes(
-                        suggestion.bytes,
-                      )}, ${Math.round(suggestion.saving * 100)}% smaller again.`,
-                    ]
-                  : []),
-                ...(mergeOffer
-                  ? [
-                      `${SYMBOLS.tip} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`,
-                    ]
-                  : []),
-              ]}
-              again={doneBar.mode === 'compress' ? 'compress again' : 'convert another'}
-              offer={suggestion ? FORMATS[suggestion.target].label : undefined}
-              reveal={revealLabel()}
-              width={width}
-              height={height}
-              pressed={donePressed}
-            />
-          ) : null}
-
-          {step === 'update' ? (
-            <UpdateFlow
-              width={width}
-              current={VERSION}
-              auto={livePrefs.updateCheck !== false}
-              updater={updater}
-              onClose={() => backToCommands('update')}
-              onChecked={(latest) => void keepRelease(latest)}
-              onRestart={() => {
-                requestRestart()
-                exit()
-              }}
-            />
-          ) : null}
-
-          {step === 'about' ? (
-            <AboutFlow
-              width={width}
-              height={height}
-              version={VERSION}
-              system={about}
-              onClose={() => backToCommands('about')}
-            />
-          ) : null}
-
-          {step === 'extensions' ? (
-            <ExtensionsFlow
-              width={width}
-              onError={(error) => push({ kind: 'error', id: nextId(), error })}
-              onClose={() => backToCommands('extensions')}
-            />
-          ) : null}
-
-          {step === 'colour' ? (
-            <ColourFlow
-              start={colourStart}
-              width={width}
-              height={height}
-              onCancel={() => setStep('idle')}
-              onTrail={setColourTrailNow}
-              steps={colourSteps}
-              onSteps={setColourSteps}
-            />
-          ) : null}
-
-          {step === 'pdf' ? (
-            <PdfFlow
-              stage={stage}
-              width={width}
-              height={height}
-              prefs={livePrefs}
-              resume={pdfReopen}
-              onDone={(jobs, resume) => {
-                const outputs = jobs.flatMap((j) => j.outputs)
-                const [first] = outputs
-                setPdfSaved(
-                  first
-                    ? [
-                        displayName(displayPath(dirname(first))),
-                        outputs.length > 1 ? `${outputs.length} files` : displayName(first),
-                      ]
-                    : [],
-                )
-                setPdfAsked(resume)
-                setPdfReopen(undefined)
-                void handlePdfDone(jobs)
-              }}
-              // Keeps the stage rather than `clearSource`: `mode` is still
-              // 'pdf' on the way back out (nothing here resets it), so
-              // dropping a second PDF at idle re-enters the hub with both
-              // staged — the escape hatch merge needs, now that a single
-              // drop opens the hub directly instead of requiring `/pdf`
-              // to be typed again. Abandoning the file entirely is still
-              // one keystroke further: esc again at idle, on an empty
-              // field, clears the stage the same way it already does
-              // everywhere else in this file.
-              onCancel={() => {
-                setPdfReopen(undefined)
-                backToPromptKeepingStage()
-              }}
-              onTrail={setPdfTrailNow}
-              onMakeDefault={makeDefault}
-              onSaved={rememberSaved}
-            />
-          ) : null}
-
-          {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
-            pdfBlocked.failures[0].error.code === 'output-exists' ? (
+            {step === 'result' && lastResult && doneBar && doneBar.mode === 'enhance' ? (
               <Box flexDirection="column" flexGrow={1}>
-                <NameTaken
-                  mode={mode}
+                <Box marginBottom={1}>
+                  <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
+                </Box>
+                <EnhanceDone
+                  op={
+                    lastResult.job.op === 'convert'
+                      ? lastResult.job.options.crop
+                        ? 'crop'
+                        : lastResult.job.options.resize
+                          ? 'resize'
+                          : 'trim'
+                      : lastResult.job.op === 'remove-background'
+                        ? 'remove-background'
+                        : 'boost'
+                  }
+                  {...(lastResult.job.op === 'boost' ? { scale: lastResult.job.scale } : {})}
+                  before={lastResult.job.sources[0].path}
+                  after={lastResult.job.outputs[0] ?? ''}
+                  savedTo={dirname(lastResult.job.outputs[0] ?? '')}
                   width={width}
-                  {...pdfTaken(pdfBlocked.jobs)}
-                  onSubmit={answerPdfBlocked}
-                  onCancel={() => answerPdfBlocked('cancel')}
+                  // The terminal's rows less the header bar (2) and keys (3),
+                  // and one more so the frame never fills the screen.
+                  rows={height - 6}
+                />
+                <HintBar
+                  width={width}
+                  pairs={[
+                    ['↵', 'enhance another'],
+                    ['o', 'open'],
+                    ['s', revealLabel()],
+                  ]}
+                  foot={[['ctrl-c', 'quit']]}
                 />
               </Box>
-            ) : (
-              <Box flexDirection="column" flexGrow={1}>
-                <Text color={colourProp(palette.fail)}>
-                  {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
-                </Text>
-                {/* `.detail`, never `.hint` — the hint text is CLI wording
+            ) : null}
+
+            {step === 'result' && lastResult && doneBar && doneBar.mode !== 'enhance' ? (
+              <DoneScreen
+                mode={doneBar.mode}
+                trail={doneBar.trail}
+                result={lastResult}
+                offers={[
+                  ...(suggestion
+                    ? [
+                        `${SYMBOLS.tip} ${FORMATS[suggestion.target].label} would be ${formatBytes(
+                          suggestion.bytes,
+                        )}, ${Math.round(suggestion.saving * 100)}% smaller again.`,
+                      ]
+                    : []),
+                  ...(mergeOffer
+                    ? [
+                        `${SYMBOLS.tip} ${mergeOffer} PDFs from this session could become one — /pdf, then Merge.`,
+                      ]
+                    : []),
+                ]}
+                again={doneBar.mode === 'compress' ? 'compress again' : 'convert another'}
+                offer={suggestion ? FORMATS[suggestion.target].label : undefined}
+                reveal={revealLabel()}
+                width={width}
+                height={height}
+                pressed={donePressed}
+              />
+            ) : null}
+
+            {step === 'update' ? (
+              <UpdateFlow
+                width={width}
+                current={VERSION}
+                auto={livePrefs.updateCheck !== false}
+                updater={updater}
+                onClose={() => backToCommands('update')}
+                onChecked={(latest) => void keepRelease(latest)}
+                onRestart={() => {
+                  requestRestart()
+                  exit()
+                }}
+              />
+            ) : null}
+
+            {step === 'about' ? (
+              <AboutFlow
+                width={width}
+                height={height}
+                version={VERSION}
+                system={about}
+                onClose={() => backToCommands('about')}
+              />
+            ) : null}
+
+            {step === 'extensions' ? (
+              <ExtensionsFlow
+                width={width}
+                onError={(error) => hold({ kind: 'error', id: nextId(), error })}
+                onClose={() => backToCommands('extensions')}
+              />
+            ) : null}
+
+            {step === 'colour' ? (
+              <ColourFlow
+                start={colourStart}
+                width={width}
+                height={height}
+                onCancel={() => setStep('idle')}
+                onTrail={setColourTrailNow}
+                steps={colourSteps}
+                onSteps={setColourSteps}
+              />
+            ) : null}
+
+            {step === 'pdf' ? (
+              <PdfFlow
+                stage={stage}
+                width={width}
+                height={height}
+                prefs={livePrefs}
+                resume={pdfReopen}
+                onDone={(jobs, resume) => {
+                  const outputs = jobs.flatMap((j) => j.outputs)
+                  const [first] = outputs
+                  setPdfSaved(
+                    first
+                      ? [
+                          displayName(displayPath(dirname(first))),
+                          outputs.length > 1 ? `${outputs.length} files` : displayName(first),
+                        ]
+                      : [],
+                  )
+                  setPdfAsked(resume)
+                  setPdfReopen(undefined)
+                  void handlePdfDone(jobs)
+                }}
+                // Keeps the stage rather than `clearSource`: `mode` is still
+                // 'pdf' on the way back out (nothing here resets it), so
+                // dropping a second PDF at idle re-enters the hub with both
+                // staged — the escape hatch merge needs, now that a single
+                // drop opens the hub directly instead of requiring `/pdf`
+                // to be typed again. Abandoning the file entirely is still
+                // one keystroke further: esc again at idle, on an empty
+                // field, clears the stage the same way it already does
+                // everywhere else in this file.
+                onCancel={() => {
+                  setPdfReopen(undefined)
+                  backToPromptKeepingStage()
+                }}
+                onTrail={setPdfTrailNow}
+                onMakeDefault={makeDefault}
+                onSaved={rememberSaved}
+              />
+            ) : null}
+
+            {step === 'pdf-blocked' && pdfBlocked?.failures[0] ? (
+              pdfBlocked.failures[0].error.code === 'output-exists' ? (
+                <Box flexDirection="column" flexGrow={1}>
+                  <NameTaken
+                    mode={mode}
+                    width={width}
+                    {...pdfTaken(pdfBlocked.jobs)}
+                    onSubmit={answerPdfBlocked}
+                    onCancel={() => answerPdfBlocked('cancel')}
+                  />
+                </Box>
+              ) : (
+                <Box flexDirection="column" flexGrow={1}>
+                  <Text color={colourProp(palette.fail)}>
+                    {SYMBOLS.fail} {pdfBlocked.failures[0].error.title}
+                  </Text>
+                  {/* `.detail`, never `.hint` — the hint text is CLI wording
                   ("Pass --force to replace it"), and the shell has no
                   --force flag. */}
-                <Text
-                  color={colourProp(palette.fg)}
-                >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
-                <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
-                <HintBar width={width} pairs={[['esc', 'back']]} />
-              </Box>
-            )
-          ) : null}
+                  <Text
+                    color={colourProp(palette.fg)}
+                  >{`  ${pdfBlocked.failures[0].error.detail}`}</Text>
+                  <Text color={colourProp(palette.dim)}>{'  esc or enter to go back'}</Text>
+                  <HintBar width={width} pairs={[['esc', 'back']]} />
+                </Box>
+              )
+            ) : null}
 
-          {onHome ? (
-            <Home
-              width={width}
-              height={height}
-              intro={firstHome.current}
-              update={release}
-              mode={mode}
-              typing={text !== ''}
-              staged={staged ? stagedView(stage, freshRows) : undefined}
-              under={underField(stage, mode)}
-              note={
-                homeError ? (
-                  <ErrorLine
-                    title={homeError.title}
-                    reason={homeError.short ?? homeError.detail}
-                    width={Math.max(8, width - 2 * HOME_MARGIN)}
+            {onHome ? (
+              <Home
+                width={width}
+                height={height}
+                intro={firstHome.current}
+                update={release}
+                mode={mode}
+                typing={text !== ''}
+                staged={staged ? stagedView(stage, freshRows) : undefined}
+                under={underField(stage, mode)}
+                note={
+                  homeError ? (
+                    <ErrorLine
+                      title={homeError.title}
+                      reason={homeError.short ?? homeError.detail}
+                      width={Math.max(8, width - 2 * HOME_MARGIN)}
+                    />
+                  ) : homeNotices.length > 0 ? (
+                    <Notices notices={homeNotices} width={width} />
+                  ) : undefined
+                }
+                noteRows={
+                  homeNotices.length > 0 ? noticeRows(homeNotices, width, palette) : undefined
+                }
+                field={
+                  <Prompt
+                    value={text}
+                    onChange={setText}
+                    onSubmit={submitPath}
+                    placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
+                    isActive
+                    variant="home"
+                    width={width}
+                    rawOnSubmit
+                    intercept={homeKey}
                   />
-                ) : failureNote ? (
-                  <ErrorPanel error={failureNote} width={failureWidth} />
-                ) : undefined
-              }
-              noteRows={
-                failureNote ? errorPanelRows(failureNote, failureWidth, palette).length : undefined
-              }
-              field={
-                <Prompt
-                  value={text}
-                  onChange={setText}
-                  onSubmit={submitPath}
-                  placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
-                  isActive
-                  variant="home"
-                  width={width}
-                  rawOnSubmit
-                  intercept={homeKey}
-                />
-              }
-              commands={commands}
-              list={
-                completions.length > 0
-                  ? (rows) => (
-                      <Suggestions
-                        items={completions.map((c) => c.label)}
-                        selected={chosen}
-                        width={width}
-                        rows={rows}
-                      />
-                    )
-                  : undefined
-              }
-              colourChoice={colourChoice}
-              keys={homeKeys({
-                typing: text !== '',
-                completions: completions.length,
-                commands: commands !== undefined,
-                colour: mode === 'colour',
-                staged: staged
-                  ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
-                  : undefined,
-              })}
-            />
-          ) : null}
-        </Box>
-      </ClickTargetProvider>
+                }
+                commands={commands}
+                list={
+                  completions.length > 0
+                    ? (rows) => (
+                        <Suggestions
+                          items={completions.map((c) => c.label)}
+                          selected={chosen}
+                          width={width}
+                          rows={rows}
+                        />
+                      )
+                    : undefined
+                }
+                colourChoice={colourChoice}
+                keys={homeKeys({
+                  typing: text !== '',
+                  completions: completions.length,
+                  commands: commands !== undefined,
+                  colour: mode === 'colour',
+                  staged: staged
+                    ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
+                    : undefined,
+                })}
+              />
+            ) : null}
+          </Box>
+        </ClickTargetProvider>
+      </NoticesContext.Provider>
     </ThemeProvider>
   )
 }

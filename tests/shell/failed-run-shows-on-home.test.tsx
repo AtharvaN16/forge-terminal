@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
-import { App, FAILURE_SHOWN_MS } from '../../src/shell/App.js'
+import { App, NOTICE_SHOWN_MS } from '../../src/shell/App.js'
 import type { EnhanceTools } from '../../src/shell/enhance.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir } from '../helpers/fixtures.js'
@@ -121,10 +121,10 @@ describe('a run that fails and goes home', () => {
   )
 
   it.skipIf(process.platform === 'win32')(
-    'goes to the scrollback by itself after FAILURE_SHOWN_MS, home whole again',
+    'goes to the scrollback by itself after NOTICE_SHOWN_MS, home whole again',
     async () => {
       const { frame, live } = await failOnHome()
-      await settle(FAILURE_SHOWN_MS / 2)
+      await settle(NOTICE_SHOWN_MS / 2)
       expect(live()).toContain('No subject found')
 
       await until(() => !live().includes('No subject'))

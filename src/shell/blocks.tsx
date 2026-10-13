@@ -54,7 +54,7 @@ export type HistoryBlock =
  * Done's folder line. This lives in history, so the answer is still in the
  * scrollback after the next conversion starts.
  */
-function SavedTo({ output, width }: { output: string; width: number }) {
+export function SavedTo({ output, width }: { output: string; width: number }) {
   const palette = useTheme()
   const folder = dirname(output)
   const prefix = '  saved to '
