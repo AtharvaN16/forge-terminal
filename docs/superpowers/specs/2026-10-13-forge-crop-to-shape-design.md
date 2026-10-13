@@ -31,7 +31,8 @@ It is plain Sharp — no dependency, no download, Mac and Windows alike.
   the subject. You see the crop next and can move it.` · last line
   `becomes 3024 × 3024` — the largest box of that shape, `becomes` dim and the
   size bold.
-- Animated GIF / WebP: the row is dimmed with `animated` (as Trim is).
+- Animated GIF / WebP: the row is dimmed with `animated` (as Trim is); an
+  image that already has every shape (1 × 1) with `no shape to cut`.
 - ↵ opens the preview at the shape on the pill.
 
 ### 2.2 The preview (P3)
@@ -59,9 +60,11 @@ It is plain Sharp — no dependency, no download, Mac and Windows alike.
   always fits to its right.
 - **Outside the crop (P3)**: a cell wholly outside is `╱` over its own colour
   faded towards the canvas (bg = the mean of its two dots, each mixed 72 %
-  towards `canvas` in dark, 70 % in light; fg = that mixed half way to
-  `border`). A cell half inside keeps `▀` with only its outside dot faded.
-  Inside: the photo's own colours.
+  towards `canvas` in dark, 70 % in light; fg = the cell's faded top dot
+  mixed half way to `border`). A cell half inside keeps `▀` with only its
+  outside dot faded. Inside: the photo's own colours.
+- **Transparency** is drawn on Done's checkerboard (`onChecker`, squares two
+  cells by one), never as the colours stored under it.
 - **Facts**, right of the picture: `3024 × 3024` bold + ` · 1:1` dim; under it
   `keeps 75 % of the photo` dim (the crop's area as a share of the photo's,
   rounded). Nothing else — no "starts on the subject" / "moved" lines.
@@ -81,7 +84,7 @@ It is plain Sharp — no dependency, no download, Mac and Windows alike.
 | esc | Back to the list, the shape kept on the pill | in the tail |
 
 - **One step** = one dot of the drawn picture along that axis (photo side ÷
-  picture dots, rounded, at least 1 px), so every press visibly moves the
+  picture dots, rounded up, at least 1 px), so every press visibly moves the
   hatch. Terminal key repeat does the rest.
 - **At the largest crop** it spans the whole width or the whole height, so
   only one pair of arrows moves it: ←→ for a shape narrower than the photo,
@@ -145,13 +148,15 @@ after side by side, both whole), as every Enhance tool.
   → `.resize()` → flatten → metadata → encode. Trim and crop never meet (§3.3).
 - `run` resolves a box-less crop once, before writing: `guessCrop` on the
   source, then hands the box to the pipeline (as it resolves Resize's size).
-- `loadCropView(source)` → `{ size: Size; thumb: { width; height; rgb } }`:
+- `loadCropView(source)` → `{ size: Size; thumb: { width; height; rgb; alpha? } }`:
   the upright photo decoded once to at most 1024 px on its long side (HEIC
   through the usual `sips` path). Read when the preview opens.
 - `guessCrop(input, size, aspect)` → `Box`: Sharp
   `resize(w, h, { fit: 'cover', position: sharp.strategy.attention })` on the
   1024 px thumbnail, its `cropOffsetLeft/Top` (negative) scaled back to full
-  size and clamped. Measured: attention can prefer a bright sky to a person
+  size and clamped. Attention runs on the thumbnail flattened onto a flat
+  neutral colour (mid grey), so what transparency hides — a removed
+  background — cannot pull the box. Measured: attention can prefer a bright sky to a person
   (the mockup's first scene picked a sun) — the reason the preview exists.
 
 ### 3.3 CLI

@@ -63,6 +63,19 @@ describe('describeResult', () => {
     expect(describeResult(result).verb).toBe('compressed')
   })
 
+  it('calls a crop a crop, also when it is resized after', () => {
+    const job = convertJob(image('/in.jpg', 'jpeg', 1000), 'jpeg', ['/in-cropped-1x1.jpg'])
+    if (job.op !== 'convert') throw new Error('unreachable')
+    const crop = { aspect: { w: 1, h: 1 } }
+    const cropped = { ...job, options: { ...job.options, crop } }
+    const both = { ...job, options: { ...job.options, crop, resize: { width: 50 } } }
+
+    expect(describeResult({ job: cropped, outputBytes: 400, warnings: [] }).verb).toBe('cropped')
+    expect(describeResult({ job: both, outputBytes: 400, warnings: [] }).verb).toBe(
+      'cropped and resized',
+    )
+  })
+
   /**
    * The bug this replaces: the shell reported `✓ done — doc-01.jpg` for a
    * twenty-page render, naming one file of twenty.

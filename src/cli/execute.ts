@@ -580,13 +580,14 @@ async function runExtensionOp(intent: ExtensionOpIntent, opts: ExecuteOptions): 
 }
 
 /**
- * `--trim` / `--resize` / `--width` / `--height`: images only, planned by the
- * same `planEdit` the shell uses and run through the shared `runPlan`, so
- * write safety and atomic writes are not reimplemented. The engine refuses an
- * over-limit size, an empty trim and an animated trim per file at run time.
+ * `--trim` / `--crop` / `--resize` / `--width` / `--height`: images only,
+ * planned by the same `planEdit` the shell uses and run through the shared
+ * `runPlan`, so write safety and atomic writes are not reimplemented. The
+ * engine places a box-less crop by attention, and refuses an over-limit size,
+ * an empty trim or crop and an animated trim or crop per file at run time.
  */
 async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunReport> {
-  const what = intent.resize !== undefined ? 'resize' : 'trim'
+  const what = intent.crop !== undefined ? 'crop' : intent.resize !== undefined ? 'resize' : 'trim'
   // Before anything is read: the CLI and MCP both come through here.
   const refusal = intent.target === undefined ? undefined : editTargetRefusal(intent.target, what)
   if (refusal) return nothingRan(intent.kind, [{ path: '', error: refusal }])
@@ -608,6 +609,7 @@ async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunRep
   }
   const jobs = planEdit(images, {
     trim: intent.trim,
+    ...(intent.crop === undefined ? {} : { crop: intent.crop }),
     ...(intent.resize === undefined ? {} : { resize: intent.resize }),
     ...(intent.target === undefined ? {} : { target: intent.target }),
     ...(intent.output === undefined ? {} : { output: intent.output }),

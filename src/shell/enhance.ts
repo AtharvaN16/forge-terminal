@@ -1,6 +1,7 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
-import { resizeAction, trimAction } from '../core/actions/resize.js'
+import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { type CropShape, largestBox, shapesFor } from '../core/crop.js'
 import {
   BOOST_MAX_SIDE,
   type BoostScale,
@@ -18,11 +19,12 @@ import type { ExtensionStatus } from '../extensions/manager.js'
  * mockups/boost-row-2026-10.html B3 and S1): one picker of rows, the first
  * three each one of the two optional extensions run a particular way —
  * Boost resolution one row whose scale changes on the row — then, after one
- * blank row (E3, mockups/resize-2026-10.html), Trim edges and Resize, which
- * are built in. Pure: what the rows are and say for an image, nothing drawn.
+ * blank row (E3, mockups/resize-2026-10.html), Trim edges, Resize and Crop to
+ * shape (mockups/crop-2026-10.html), which are built in. Pure: what the rows
+ * are and say for an image, nothing drawn.
  */
 
-export type EnhanceToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize'
+export type EnhanceToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize' | 'crop'
 
 /** The row the picker leaves a blank row after (E3): the AI tools above it, the plain ones below. */
 export const GAP_AFTER: EnhanceToolId = 'cutout'
@@ -44,9 +46,11 @@ export interface EnhanceRow {
   scale?: 1
   /** Boost resolution: the scales this image can take, smallest first; ←→ steps through them. */
   scales?: Array<{ scale: BoostScale; detail: Detail }>
+  /** Crop to shape: the shapes this image can be cut to, in the pill's order; ←→ steps through them. */
+  shapes?: Array<{ shape: CropShape; detail: Detail }>
   /** What the file is written as: the source's own format, or PNG for a cutout. */
   target: FormatId
-  /** What the row makes; Boost's at its smallest scale. */
+  /** What the row makes; Boost's at its smallest scale, Crop's at its first shape. */
   detail: Detail
   /** What the pane beside the list says the tool does (S1): the short answer, then why. */
   pane: { short: string; long: string }
@@ -178,7 +182,75 @@ export function enhanceRows(
       },
       verb: resizeAction.verb,
     },
+    cropRow(source, asJpeg),
   ]
+}
+
+/**
+ * Crop to shape's row (spec 2026-10-13 §2.1): the shapes the photo does not
+ * already have, each with the largest box it cuts — nothing is scaled, so
+ * that is the size written. Dimmed for an animation, as Trim is, and when no
+ * shape would change it (a 1 × 1 image already has every one).
+ */
+function cropRow(source: ImageInfo, asJpeg: string): EnhanceRow {
+  const shapes = shapesFor(source).map((shape) => {
+    const box = largestBox(source, shape)
+    return { shape, detail: { dim: 'becomes ', bold: dims(box.width, box.height), after: asJpeg } }
+  })
+  return {
+    id: 'crop',
+    label: 'Crop to shape',
+    shapes,
+    target: keptFormat(source),
+    detail: shapes[0]?.detail ?? { dim: '', bold: '' },
+    pane: {
+      short: 'Changes the shape.',
+      long: 'Cuts it to a new shape around the subject. You see the crop next and can move it.',
+    },
+    ...((source.frames ?? 1) > 1
+      ? { tooLarge: 'animated' }
+      : shapes.length === 0
+        ? { tooLarge: 'no shape to cut' }
+        : {}),
+    verb: cropAction.verb,
+  }
+}
+
+/** One stop on a row's pill: what ↵ answers with, what the pill says, what the row makes there. */
+export interface PillStep {
+  value: number | string
+  label: string
+  detail: Detail
+}
+
+/**
+ * The pill a row carries at its band's far end, if any: Boost's scales or
+ * Crop's shapes, one pill for both. `noun` is the key row's word for ←→.
+ */
+export function pillOf(row: EnhanceRow): { noun: string; steps: PillStep[] } | undefined {
+  if (row.scales) {
+    return {
+      noun: 'scale',
+      steps: row.scales.map((s) => ({ value: s.scale, label: `${s.scale}×`, detail: s.detail })),
+    }
+  }
+  if (row.shapes) {
+    return {
+      noun: 'shape',
+      steps: row.shapes.map((s) => ({
+        value: s.shape.label,
+        label: s.shape.label,
+        detail: s.detail,
+      })),
+    }
+  }
+  return undefined
+}
+
+/** The pill step `value` names (a scale, a shape's label; as a number or its string), else the first. */
+const stepAt = (row: EnhanceRow, value: unknown): PillStep | undefined => {
+  const steps = pillOf(row)?.steps ?? []
+  return steps.find((s) => String(s.value) === String(value)) ?? steps[0]
 }
 
 /** One row by id; `offered` and `platform` as for `enhanceRows` (Boost's scales depend on it). */
@@ -191,9 +263,9 @@ export function enhanceRow(
   return enhanceRows(source, undefined, offered, platform).find((r) => r.id === id)
 }
 
-/** What a row makes at `scale` (one of Boost's), else at its own. */
-export function detailAt(row: EnhanceRow, scale?: number): Detail {
-  return row.scales?.find((s) => s.scale === scale)?.detail ?? row.detail
+/** What a row makes at `step` (one of Boost's scales, one of Crop's shapes), else at its own. */
+export function detailAt(row: EnhanceRow, step?: number | string): Detail {
+  return pillOf(row)?.steps.find((s) => String(s.value) === String(step))?.detail ?? row.detail
 }
 
 /** The action a row runs through: the same plan-and-run path as the CLI. */
@@ -202,22 +274,31 @@ export const actionForRow = (row: Pick<EnhanceRow, 'id' | 'extension'>): Action 
     ? trimAction
     : row.id === 'resize'
       ? resizeAction
-      : row.extension === 'boost'
-        ? boostAction
-        : removeBackgroundAction
+      : row.id === 'crop'
+        ? cropAction
+        : row.extension === 'boost'
+          ? boostAction
+          : removeBackgroundAction
 
-/** The answers Save as and the run plan with, for a row at `scale` (one of Boost's). */
-export function rowValues(row: EnhanceRow, scale?: number): Record<string, unknown> {
-  const k = row.scales
-    ? (row.scales.find((s) => s.scale === scale) ?? row.scales[0])?.scale
-    : row.scale
+/**
+ * The answers Save as and the run plan with, for a row at `step` on its pill:
+ * Boost's scale, Crop's shape (its box is the preview's to add).
+ */
+export function rowValues(row: EnhanceRow, step?: number | string): Record<string, unknown> {
+  const at = stepAt(row, step)
+  const k = row.scales ? at?.value : row.scale
   return {
     tool: row.id,
     target: row.target,
     ...(k === undefined ? {} : { scale: String(k) }),
+    ...(row.shapes && at ? { shape: at.label } : {}),
     ...(row.id === 'trim' ? { trim: true } : {}),
   }
 }
+
+/** The shape `label` names among Crop's, if the row offers it. */
+export const shapeOf = (row: EnhanceRow | undefined, label: unknown): CropShape | undefined =>
+  row?.shapes?.find((s) => s.shape.label === label)?.shape
 
 /** Where a tool stands on this Mac, as the picker's row shows it. */
 export type ToolState =

@@ -12,7 +12,7 @@ import {
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
-import { resizeAction, trimAction } from '../core/actions/resize.js'
+import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
 import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
 import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
@@ -29,7 +29,15 @@ import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import { type InputFailure, resolveDirectory } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
-import type { FormatId, Job, Progress, ResizeSpec, Result, SourceInfo } from '../core/types.js'
+import type {
+  Box as CropBox,
+  FormatId,
+  Job,
+  Progress,
+  ResizeSpec,
+  Result,
+  SourceInfo,
+} from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
@@ -47,6 +55,7 @@ import { ColourFlow } from './colour/ColourFlow.js'
 import type { Start as ColourStart } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
+import { type CropAt, CropStep } from './components/CropStep.js'
 import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
@@ -78,6 +87,7 @@ import {
   enhanceRows,
   realTools,
   rowValues,
+  shapeOf,
   type ToolState,
   toolState,
 } from './enhance.js'
@@ -145,6 +155,8 @@ export type Step =
   | 'resize'
   /** Resize's `#`: the exact Width × Height pair (X). */
   | 'exact-size'
+  /** Enhance's Crop to shape: the preview, where the crop is moved and zoomed (P3). */
+  | 'crop'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -294,7 +306,8 @@ const isExtensionAction = (act: Action): boolean =>
   act === boostAction ||
   act === removeBackgroundAction ||
   act === trimAction ||
-  act === resizeAction
+  act === resizeAction ||
+  act === cropAction
 
 /** What enhance says to a file that is not an image. */
 const enhanceRefusal = (source: SourceInfo): string =>
@@ -748,6 +761,11 @@ export function App({
   /** Resize's slider, in percent of the upright size. */
   const [resizePercent, setResizePercent] = useState(100)
   /**
+   * Where the crop stood when its preview was left for Save as, so coming
+   * back finds it there. A row chosen afresh starts on the guess again.
+   */
+  const [cropAt, setCropAt] = useState<CropAt | undefined>(undefined)
+  /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
    * one colour story. The base is kept for `modeColours`, which needs the
@@ -922,6 +940,8 @@ export function App({
   /** Enhance's chosen row, once one is: what Save as names and the run does. */
   const enhancing: EnhanceRow | undefined =
     mode === 'enhance' && source?.kind === 'image' ? enhanceRow(source, values.tool) : undefined
+  /** Crop to shape's shape, from the row's pill: what its preview cuts. */
+  const cropShape = shapeOf(enhancing, values.shape)
   /** What Save as names and runs for: the row's extension action in enhance. */
   const currentAction = enhancing ? actionForRow(enhancing) : action
   const [lastResult, setLastResult] = useState<Result | null>(null)
@@ -1106,7 +1126,9 @@ export function App({
       if (command) runCommand(command)
     },
     {
-      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance', 'resize'].includes(step),
+      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance', 'resize', 'crop'].includes(
+        step,
+      ),
     },
   )
 
@@ -2509,7 +2531,7 @@ export function App({
   const destinationBack = () => {
     setText('')
     if (mode === 'enhance') {
-      setStep(values.tool === 'resize' ? 'resize' : 'enhance')
+      setStep(values.tool === 'resize' ? 'resize' : values.tool === 'crop' ? 'crop' : 'enhance')
       return
     }
     if (specFor('quality')) {
@@ -2900,12 +2922,20 @@ export function App({
 
   /**
    * A row chosen whose tool is on this Mac: on to Save as, with the row's
-   * answers (Boost's at `scale`). Resize asks its size first.
+   * answers (at its pill's step: Boost's scale, Crop's shape). Resize asks
+   * its size first; Crop to shape shows where it cuts.
    */
-  const chooseEnhance = (row: EnhanceRow, scale?: number) => {
+  const chooseEnhance = (row: EnhanceRow, step?: number | string) => {
     if (!source) return
-    const vals = rowValues(row, scale)
+    const vals = rowValues(row, step)
     setValues(vals)
+    if (row.id === 'crop') {
+      // No shape to cut (the row is dimmed then): never a preview with nothing to show.
+      if (!shapeOf(row, vals.shape)) return
+      setCropAt(undefined)
+      setStep('crop')
+      return
+    }
     if (row.id === 'resize') {
       // An oversized source opens at its own limit, never past it (spec §2.3).
       setResizePercent(source.kind === 'image' ? Math.min(100, largestPercent(source)) : 100)
@@ -2913,6 +2943,15 @@ export function App({
       return
     }
     openSaveAs({ values: vals, action: actionForRow(row) })
+  }
+
+  /** The crop where the preview left it: on to Save as, the box with its shape. */
+  const chooseCrop = (box: CropBox) => {
+    if (!cropShape) return
+    const { w, h } = cropShape
+    const vals = { ...values, tool: 'crop', crop: { aspect: { w, h }, box } }
+    setValues(vals)
+    openSaveAs({ values: vals, action: cropAction })
   }
 
   /** Resize's size, from the slider or the exact pair: on to Save as. */
@@ -3330,11 +3369,14 @@ export function App({
     return {
       mode: modeSpec ? answerFor(modeSpec, values.mode) : undefined,
       // Enhance's answer is the row's name ("Sharpen"), not the format it
-      // keeps, and Boost's scale with it ("Boost resolution 4×").
+      // keeps, and its pill's step with it ("Boost resolution 4×", "Crop to
+      // shape 1:1").
       target: enhancing
         ? enhancing.scales && typeof values.scale === 'string'
           ? `${enhancing.label} ${values.scale}×`
-          : enhancing.label
+          : enhancing.shapes && typeof values.shape === 'string'
+            ? `${enhancing.label} ${values.shape}`
+            : enhancing.label
         : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
@@ -3366,6 +3408,13 @@ export function App({
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
     if (at === 'colour') return colourTrailNow
+    // Crop to shape ╱ 1:1: the preview is named by the shape it cuts.
+    if (at === 'crop' && enhancing) {
+      return {
+        answers: [enhancing.label],
+        current: typeof values.shape === 'string' ? values.shape : undefined,
+      }
+    }
     // Resize ╱ Exact size ╱ Size: the pair is the slider's question, asked another way.
     if (at === 'exact-size') {
       const slider = trailFor({ mode, step: 'resize', answers: trailAnswers() })
@@ -3722,11 +3771,11 @@ export function App({
               )}
               tools={toolStates}
               checking={checking}
-              chosen={{ tool: values.tool, scale: values.scale }}
+              chosen={{ tool: values.tool, step: values.shape ?? values.scale }}
               width={width}
-              onChoose={(row, scale) => {
+              onChoose={(row, step) => {
                 const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
-                if (state?.kind === 'ready') chooseEnhance(row, scale)
+                if (state?.kind === 'ready') chooseEnhance(row, step)
                 else if (state?.kind === 'absent') void installThen(row)
               }}
               onStop={stopInstall}
@@ -3744,6 +3793,21 @@ export function App({
               onChange={setResizePercent}
               onSubmit={(percent) => chooseResize({ percent })}
               onExact={() => setStep('exact-size')}
+              onCancel={() => setStep('enhance')}
+              width={width}
+            />
+          ) : null}
+
+          {step === 'crop' && source?.kind === 'image' && cropShape ? (
+            <CropStep
+              key={`${source.path}\u0000${cropShape.label}`}
+              mode={mode}
+              source={source}
+              shape={cropShape}
+              initial={cropAt}
+              onChange={setCropAt}
+              onSubmit={chooseCrop}
+              // Back to the list, the shape still on the pill.
               onCancel={() => setStep('enhance')}
               width={width}
             />
@@ -3889,9 +3953,11 @@ export function App({
               <EnhanceDone
                 op={
                   lastResult.job.op === 'convert'
-                    ? lastResult.job.options.resize
-                      ? 'resize'
-                      : 'trim'
+                    ? lastResult.job.options.crop
+                      ? 'crop'
+                      : lastResult.job.options.resize
+                        ? 'resize'
+                        : 'trim'
                     : lastResult.job.op === 'remove-background'
                       ? 'remove-background'
                       : 'boost'

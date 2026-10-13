@@ -12,6 +12,7 @@ import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
 import { wholePercents } from '../core/colour/palette.js'
 import { parseHex } from '../core/colour/space.js'
+import { type CropSpec, parseAspect } from '../core/crop.js'
 import { type ForgeError, invalidArguments, isForgeError } from '../core/errors.js'
 import { probeFiles } from '../core/probe-report.js'
 import {
@@ -130,16 +131,32 @@ export async function convertTool(
     ...(args.boost !== undefined ? ['boost'] : []),
     ...(args.removeBackground === true ? ['removeBackground'] : []),
   ]
-  const editing = args.trim === true || args.resize !== undefined
+  const editing = args.trim === true || args.crop !== undefined || args.resize !== undefined
   if (editing) {
-    // The CLI's own refusal for --trim/--resize beside an extension flag.
-    if (asked.length > 0) {
+    // The CLI's own refusals for --trim/--crop/--resize beside another operation.
+    const what = args.crop !== undefined ? 'crop' : args.trim === true ? 'trim' : 'resize'
+    const clash = [
+      ...(args.crop !== undefined && args.trim === true ? ['trim'] : []),
+      ...asked,
+      // Every edit works on images only: pages are refused with each, as the CLI does.
+      ...(args.pages !== undefined ? ['pages'] : []),
+    ][0]
+    if (clash !== undefined) {
       return refuse(
         invalidArguments(
-          `${args.trim === true ? 'trim' : 'resize'} cannot be combined with ${asked[0]}.`,
+          `${what} cannot be combined with ${clash}.`,
           'Run them one after the other.',
         ),
       )
+    }
+    let crop: CropSpec | undefined
+    if (args.crop !== undefined) {
+      try {
+        crop = { aspect: parseAspect(args.crop) }
+      } catch (e) {
+        if (!isForgeError(e)) throw e
+        return refuse(invalidArguments(e.detail, 'Try crop "1:1" or "16:9".'))
+      }
     }
     const edit: EditIntent = {
       kind: 'edit',
@@ -153,6 +170,7 @@ export async function convertTool(
       force: args.overwrite ?? false,
       recursive: args.recursive ?? false,
       debug: false,
+      ...(crop === undefined ? {} : { crop }),
       ...(args.resize === undefined ? {} : { resize: args.resize }),
       ...(args.to === undefined ? {} : { target: args.to }),
       ...(args.output === undefined ? {} : { output: args.output }),
@@ -163,7 +181,7 @@ export async function convertTool(
     return refuse(
       invalidArguments(
         'forge_convert needs `to`, the target format.',
-        "Only trim and resize may leave it out, to keep each image's own format.",
+        "Only trim, crop and resize may leave it out, to keep each image's own format.",
       ),
     )
   }
