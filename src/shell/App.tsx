@@ -636,15 +636,17 @@ export function App({
    */
   const basePalette = paletteFor(theme)
   /**
-   * Light and dark paint their own canvas (see the root Box), and the
-   * terminal's own padding around it can keep the terminal's colour: content
-   * at column 0 sat against a dark edge and read as cropped. So the canvas
-   * keeps a painted margin, and everything lays out in `width`,
-   * `PAINT_INSET` columns in from each side of the window.
+   * Light and dark paint their own canvas (see the root Box). Where the
+   * terminal's own background follows it (OSC 11), its padding is the
+   * margin. Where it cannot (NO_COLOR, a multiplexer), that padding keeps
+   * the terminal's colour: content at column 0 sat against a dark edge and
+   * read as cropped. So there the canvas keeps a painted margin, and
+   * everything lays out in `width`, `PAINT_INSET` columns in from each side.
    */
   const paint = paintsCanvas(basePalette)
-  useTerminalBackground(basePalette)
-  const width = paint ? Math.max(20, measured - 2 * PAINT_INSET) : measured
+  const followed = useTerminalBackground(basePalette)
+  const inset = paint && !followed ? PAINT_INSET : 0
+  const width = paint ? Math.max(20, measured - 2 * inset) : measured
   // The blank row the canvas keeps on top comes out of the layout's rows: a
   // frame taller than the window makes Ink clear and redraw every frame.
   const height = paint ? measuredHeight - 1 : measuredHeight
@@ -3272,12 +3274,10 @@ export function App({
    * it runs (the terminal's own default background follows it too — see
    * `useTerminalBackground`). Each history block is painted too, so what
    * forge printed stays readable once the frame moves on. The
-   * margin (`PAINT_INSET`) is painted with it; the live frame also keeps a
-   * blank row above it.
+   * margin (`inset`), if any, is painted with it; the live frame also keeps
+   * a blank row above it.
    */
-  const canvas = paint
-    ? { backgroundColor: palette.canvas, width: measured, paddingX: PAINT_INSET }
-    : {}
+  const canvas = paint ? { backgroundColor: palette.canvas, width: measured, paddingX: inset } : {}
 
   return (
     <ThemeProvider palette={palette}>
