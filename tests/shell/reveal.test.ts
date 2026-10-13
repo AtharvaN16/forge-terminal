@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { openPath, revealLabel, revealPath } from '../../src/shell/reveal.js'
+import { openPath, openUrl, revealLabel, revealPath } from '../../src/shell/reveal.js'
 
 // A factory, not automock: automock keeps execFile's util.promisify.custom as a
 // stub returning undefined, which would bypass the callback this test drives.
@@ -33,6 +33,17 @@ describe('open and reveal on macOS', () => {
     await revealPath('/a/b.png', 'darwin')
     expect(calls()[0]?.slice(0, 2)).toEqual(['open', ['/a/b.png']])
     expect(calls()[1]?.slice(0, 2)).toEqual(['open', ['-R', '/a/b.png']])
+  })
+})
+
+describe('opening a web address', () => {
+  it('hands it to open on macOS, and to explorer.exe on Windows without looking for a file', async () => {
+    await openUrl('https://atharvanayak.design/', 'darwin')
+    expect(calls()[0]?.slice(0, 2)).toEqual(['open', ['https://atharvanayak.design/']])
+    vi.mocked(access).mockRejectedValue(new Error('ENOENT'))
+    finishWith(Object.assign(new Error('exit 1'), { code: 1 }))
+    await expect(openUrl('https://atharvanayak.design/', 'win32')).resolves.toBeUndefined()
+    expect(calls()[1]?.slice(0, 2)).toEqual(['explorer.exe', ['https://atharvanayak.design/']])
   })
 })
 

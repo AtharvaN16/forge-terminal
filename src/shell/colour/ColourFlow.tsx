@@ -12,8 +12,8 @@ import {
   photoMap,
   wholePercents,
 } from '../../core/colour/palette.js'
-import { scale } from '../../core/colour/scale.js'
-import { formatOklch, formatRgb, type Rgb } from '../../core/colour/space.js'
+import { DEFAULT_STEPS, type StepSpec, scale, stepsOf } from '../../core/colour/scale.js'
+import { formatOklch, formatRgb, type Rgb, toHex } from '../../core/colour/space.js'
 import { isForgeError, nothingVisible } from '../../core/errors.js'
 import { formatBytes } from '../../core/units.js'
 import { samplePixels } from '../../engines/pixels.js'
@@ -53,12 +53,14 @@ import {
   plainScaleRows,
   previewRows,
   rampRows,
+  stepsLine,
   withKey,
 } from './colour-art.js'
 import {
   type Action,
   type ColourState,
   type Ctx,
+  centreOf,
   type Effect,
   initial,
   initialEffects,
@@ -82,6 +84,10 @@ export interface ColourFlowProps {
   /** esc on the first screen: back to colour's home. */
   onCancel: () => void
   onTrail?: ((trail: Trail) => void) | undefined
+  /** Which steps a scale has, kept by App for the session. */
+  steps?: StepSpec | undefined
+  /** The steps were changed and kept (↵ on the line under the ramp). */
+  onSteps?: ((steps: StepSpec) => void) | undefined
 }
 
 /** What one opened image holds: its pixels, and its colours at every level opened so far. */
@@ -127,9 +133,17 @@ function photoMax(pixels: Pixels, rows: number): number {
   return Math.min(PHOTO_COLS, Math.floor((tall * pixels.width) / pixels.height))
 }
 
-export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFlowProps) {
+export function ColourFlow({
+  start,
+  width,
+  height,
+  onCancel,
+  onTrail,
+  steps = DEFAULT_STEPS,
+  onSteps,
+}: ColourFlowProps) {
   const p = useTheme()
-  const [state, setState] = useState<ColourState>(() => initial(start))
+  const [state, setState] = useState<ColourState>(() => initial(start, steps))
   const stateRef = useRef(state)
   stateRef.current = state
   const image = useRef<Image | null>(null)
@@ -218,7 +232,9 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
       const inside = screen.level.length > 0 ? parentOf(screen, groupsAt).hex : undefined
       return paletteCard(screen.name, groupsAt(screen.level), theme, inside)
     }
-    if (screen.kind === 'scale') return scaleCard(screen.ref, scale(screen.ref), theme)
+    if (screen.kind === 'scale') {
+      return scaleCard(screen.ref, scale(screen.ref, s.steps), theme, s.steps)
+    }
     return ''
   }
 
@@ -232,6 +248,13 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
     const id = setInterval(() => dispatch({ type: 'tick' }), 250)
     return () => clearInterval(id)
   }, [state.flash])
+
+  // Steps kept (not while they are still being changed) outlive the flow.
+  const keptSteps = state.stepsEdit ? undefined : JSON.stringify(state.steps)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the kept steps' content
+  useEffect(() => {
+    if (keptSteps !== undefined) onSteps?.(state.steps)
+  }, [keptSteps, onSteps])
 
   const trail = trailOf(state, ctx())
   const trailKey = JSON.stringify(trail)
@@ -251,6 +274,10 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
 
   const screen = state.history[state.history.length - 1] as Screen
   const truecolour = useMemo(() => trueColour(), [])
+  // Swatches in a 256-colour terminal are near, not exact: said once, quietly.
+  // A scale has no detail of its own, so the note takes that row there, and
+  // the line under the ramp still leaves the screen its height.
+  const approximate = !truecolour && p.selectionBg !== ''
   // A palette coming in brings its colours up in turn (M7): only an image's
   // first palette, not a step into one of its colours or back out.
   const arriving = screen.kind === 'palette' && screen.level.length === 0 ? image.current : null
@@ -337,8 +364,16 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
         </>
       )}
       <Text> </Text>
-      <Line row={state.flash ? flashRow(p, state.flash.text) : detail} />
-      {!truecolour && p.selectionBg !== '' ? <Runs row={approximateRow(p)} /> : null}
+      <Line
+        row={
+          state.flash
+            ? flashRow(p, state.flash.text)
+            : approximate && onScaleScreen(screen)
+              ? approximateRow(p)
+              : detail
+        }
+      />
+      {approximate && !onScaleScreen(screen) ? <Runs row={approximateRow(p)} /> : null}
       <HintBar pairs={keys.main} foot={keys.foot} width={width} />
     </Box>
   )
@@ -351,7 +386,7 @@ function restingField(p: ReturnType<typeof useTheme>, screen: Screen): Row {
   if (screen.kind === 'palette')
     return fieldValue({ palette: p, value: screen.name, detail: screen.meta })
   if (screen.kind === 'scale') {
-    const hex = scale(screen.ref)[5]?.hex ?? ''
+    const hex = toHex(screen.ref)
     return fieldValue({
       palette: p,
       value: hex,
@@ -472,21 +507,35 @@ function bodyRows({
   }
   if (screen.kind === 'scale-empty' || screen.kind === 'scale') {
     const ref: Rgb | undefined = state.preview ?? (screen.kind === 'scale' ? screen.ref : undefined)
-    if (!ref) {
-      return emptyRampRows({ palette: p, steps: scale({ r: 0, g: 0, b: 0 }).map((s) => s.step) })
-    }
-    const steps = scale(ref)
-    const sel = screen.kind === 'scale' && !state.preview ? screen.sel : 5
-    const step = steps[sel] ?? steps[5]
+    if (!ref) return emptyRampRows({ width, palette: p, steps: stepsOf(state.steps) })
+    const steps = scale(ref, state.steps)
+    const centre = centreOf(state.steps)
+    const sel = screen.kind === 'scale' && !state.preview ? screen.sel : centre
+    const step = steps[sel] ?? steps[centre]
     if (!step) return []
     // Without colour there are no swatches to look at: the scale as text.
     if (p.selectionBg === '') {
       const rows = steps.map((x) => ({ ...x, ...onWhiteAndBlack(x.rgb) }))
-      return plainScaleRows({ palette: p, steps: rows, selected: sel })
+      const plain = plainScaleRows({ palette: p, steps: rows, selected: sel })
+      if (screen.kind !== 'scale') return plain
+      const line = stepsLine({
+        width,
+        palette: p,
+        spec: state.steps,
+        editing: state.stepsEdit?.field,
+      })
+      return [...plain, [], line]
     }
     const reads = onWhiteAndBlack(step.rgb)
+    // The steps' line sits right under the ramp it describes, in the row a
+    // gap took before it, so the screen is no taller than it was.
+    const line: Row =
+      screen.kind === 'scale'
+        ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit?.field })
+        : []
     return [
-      ...rampRows({ palette: p, steps, selected: sel }),
+      ...rampRows({ width, palette: p, steps, selected: sel }),
+      line,
       [],
       ...previewRows({ palette: p, step: { ...step, oklch: formatOklch(step.rgb), ...reads } }),
     ]
@@ -651,14 +700,27 @@ function keysFor(
       ],
     }
   }
+  // The steps being changed: ↵ done sits on their line, where s steps was.
+  if (state.stepsEdit) {
+    return {
+      main: [
+        ['←→', 'change'],
+        ['tab', 'next'],
+      ],
+      foot: [
+        ['esc', 'cancel'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
   return {
     main: [
       ['←→', 'choose'],
       ['↵', 'copy'],
       ['c', 'copy all'],
-      ['r', 'make centre'],
     ],
     foot: [
+      ['r', 'make centre'],
       ['#', 'new colour'],
       ['esc', 'back'],
     ],

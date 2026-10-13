@@ -51,6 +51,15 @@ export async function openPath(
   await run('open', [path])
 }
 
+/** Opens a web address in the default browser. */
+export async function openUrl(
+  url: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  if (platform === 'win32') return runExplorer([url])
+  await run('open', [url])
+}
+
 /** Reveals a file in Finder (Explorer on Windows) with it selected. */
 export async function revealPath(
   path: string,

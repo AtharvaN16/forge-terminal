@@ -1,6 +1,7 @@
 import { Box } from 'ink'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
+import type { Credit } from '../../core/attributions.js'
 import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
 import { formatBytes } from '../../core/units.js'
 import { assetFor, type CatalogEntry, type PlatformKey } from '../../extensions/catalog.js'
@@ -95,6 +96,12 @@ function sheetFor(entry: CatalogEntry) {
       parts: [[entry.licence, '']] as Array<[string, string]>,
     }
   )
+}
+
+/** What an installed tool brought with it, for /about's Attributions: its parts, each doing the tool's job. */
+export function extensionCredits(entry: CatalogEntry): Credit[] {
+  const sheet = sheetFor(entry)
+  return sheet.parts.map(([name, licence]) => ({ name, licence, does: sheet.name }))
 }
 
 /** What a Mac needs for the tool, from its builds: Apple Silicon when arm64 is the only one. */
@@ -334,7 +341,7 @@ export function ExtensionsFlow({
     ? { answers: [sheetFor(installing.entry).name], current: 'Installing' }
     : confirm
       ? { answers: ['Extensions'], current: 'Remove' }
-      : { answers: [], current: 'Extensions' }
+      : { answers: [] }
 
   const pill = (text: string) => (
     <Text backgroundColor={colourProp(palette.pill)} color={colourProp(palette.ink)} bold>

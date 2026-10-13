@@ -13,6 +13,7 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
 import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
@@ -90,6 +91,7 @@ import {
   type ToolState,
   toolState,
 } from './enhance.js'
+import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
@@ -146,6 +148,7 @@ export type Step =
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
   | 'update'
+  | 'about'
   /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'enhance'
   /** Enhance's Resize: the 0–200 % slider (H3). */
@@ -562,6 +565,9 @@ async function resolveDrop(text: string): Promise<DropResolution> {
   return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
 }
 
+/** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
+const SETTINGS_STEPS: ReadonlySet<string> = new Set(['extensions', 'update', 'about'])
+
 export function App({
   initialWidth,
   initialHeight,
@@ -569,6 +575,7 @@ export function App({
   configWarning,
   tools = realTools,
   updater = realUpdater,
+  about = realAbout,
   latestRelease,
 }: {
   initialWidth?: number
@@ -579,6 +586,8 @@ export function App({
   tools?: EnhanceTools
   /** What /update checks and installs with; tests pass a fake. */
   updater?: Updater
+  /** What /about opens links and reads credits with; tests pass a fake. */
+  about?: AboutSystem
   /**
    * A newer Forge for home's band, found in the background at start-up.
    * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
@@ -965,6 +974,8 @@ export function App({
   /** How the colour flow opens, and the trail it hands up for the bar. */
   const [colourStart, setColourStart] = useState<ColourStart>('palette')
   const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Palette' })
+  /** Which steps a scale has, as last kept on the line under its ramp; for the session. */
+  const [colourSteps, setColourSteps] = useState<StepSpec>(DEFAULT_STEPS)
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -1284,11 +1295,11 @@ export function App({
   }, [step, recordDone])
 
   /**
-   * A run that failed and ended the action (E5), live above home rather than
-   * in `<Static>`: home fills the window, so a block printed above it is
-   * already off the top of the screen — the run looked like it just went
-   * home. It goes to the scrollback once something new starts (`fenceOff`,
-   * another file, leaving home). The ref is what `commitFailure` reads, so
+   * A run that failed and ended the action (E5), live under home's field
+   * rather than in `<Static>`: home fills the window, so a block printed
+   * above it is already off the top of the screen — the run looked like it
+   * just went home. It goes to the scrollback once something new starts
+   * (`fenceOff`, another file, typing, leaving home). The ref is what `commitFailure` reads, so
    * a second failure in the same handler commits the first, not nothing.
    */
   const [runFailure, setRunFailure] = useState<ForgeError | undefined>(undefined)
@@ -1312,8 +1323,8 @@ export function App({
   )
   const fileStaged = stage.sources.length > 0
   useEffect(() => {
-    if (runFailure && (!onHome || fileStaged)) commitFailure()
-  }, [runFailure, onHome, fileStaged, commitFailure])
+    if (runFailure && (!onHome || fileStaged || text !== '')) commitFailure()
+  }, [runFailure, onHome, fileStaged, text, commitFailure])
 
   /**
    * Rules a dashed line under whatever is already on screen, so a change of
@@ -1865,6 +1876,11 @@ export function App({
 
       if (command.name === 'update') {
         setStep('update')
+        return
+      }
+
+      if (command.name === 'about') {
+        setStep('about')
         return
       }
 
@@ -3436,10 +3452,9 @@ export function App({
    * the live frame keeps above it.
    */
   const canvas = paint ? { backgroundColor: palette.canvas, width: measured, paddingX: inset } : {}
-  // Home makes room under the window for a failed run's panel and its gap.
+  // A failed run's panel sits under home's field; home makes room for it.
   const failureWidth = Math.max(8, width - 2 * HOME_MARGIN)
-  const failureRows =
-    onHome && runFailure ? errorPanelRows(runFailure, failureWidth, palette).length + 1 : 0
+  const failureNote = onHome && runFailure && !homeError ? runFailure : undefined
 
   return (
     <ThemeProvider palette={palette}>
@@ -3468,7 +3483,7 @@ export function App({
 
           {/* Where a history block would sit — above the flow it explains —
               but live, so it can go with the file (see `fileRefusal`). */}
-          {fileRefusal && step !== 'theme' && step !== 'extensions' ? (
+          {fileRefusal && step !== 'theme' && !SETTINGS_STEPS.has(step) ? (
             <Box flexDirection="column" marginBottom={1}>
               <ErrorPanel error={fileRefusal.error} width={Math.max(8, width - 2 * HOME_MARGIN)} />
             </Box>
@@ -3477,8 +3492,9 @@ export function App({
           {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
             trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
-            /extensions, which is no mode and draws its own "extensions" chip. */}
-          {working && !onHome && step !== 'result' && step !== 'extensions' ? (
+            the settings (/extensions, /update, /about), which are no mode and
+            each draw their own chip. */}
+          {working && !onHome && step !== 'result' && !SETTINGS_STEPS.has(step) ? (
             <Box marginBottom={1}>
               <HeaderBar
                 mode={mode}
@@ -4010,6 +4026,16 @@ export function App({
             />
           ) : null}
 
+          {step === 'about' ? (
+            <AboutFlow
+              width={width}
+              height={height}
+              version={VERSION}
+              system={about}
+              onClose={() => backToCommands('about')}
+            />
+          ) : null}
+
           {step === 'extensions' ? (
             <ExtensionsFlow
               width={width}
@@ -4025,6 +4051,8 @@ export function App({
               height={height}
               onCancel={() => setStep('idle')}
               onTrail={setColourTrailNow}
+              steps={colourSteps}
+              onSteps={setColourSteps}
             />
           ) : null}
 
@@ -4097,15 +4125,10 @@ export function App({
             )
           ) : null}
 
-          {onHome && runFailure ? (
-            <Box flexDirection="column" marginBottom={1} flexShrink={0}>
-              <ErrorPanel error={runFailure} width={failureWidth} />
-            </Box>
-          ) : null}
           {onHome ? (
             <Home
               width={width}
-              height={height - failureRows}
+              height={height}
               intro={firstHome.current}
               update={release}
               mode={mode}
@@ -4119,7 +4142,12 @@ export function App({
                     reason={homeError.short ?? homeError.detail}
                     width={Math.max(8, width - 2 * HOME_MARGIN)}
                   />
+                ) : failureNote ? (
+                  <ErrorPanel error={failureNote} width={failureWidth} />
                 ) : undefined
+              }
+              noteRows={
+                failureNote ? errorPanelRows(failureNote, failureWidth, palette).length : undefined
               }
               field={
                 <Prompt

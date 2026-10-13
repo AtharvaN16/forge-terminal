@@ -1,6 +1,7 @@
+import stringWidth from 'string-width'
 import { rate } from '../../core/colour/contrast.js'
 import { OUTSIDE, TRANSPARENT } from '../../core/colour/palette.js'
-import { scale } from '../../core/colour/scale.js'
+import { type StepSpec, scale, stepsOf } from '../../core/colour/scale.js'
 import { blank, mix, type Row, type Run, surfaceRows, width } from '../home-art.js'
 import type { Palette } from '../theme.js'
 
@@ -44,8 +45,6 @@ const faint = (p: Palette, h: string): string => mix(lc(h), lc(p.canvas), 0.9)
 
 /* ------------------------------------------------------------- home: C1 */
 
-const CARD = 36
-
 /**
  * What the two cards preview: a palette (the six colours of the mockup's
  * photo) and a scale (from its blue). Decoration, the same on every run.
@@ -74,15 +73,17 @@ export function choiceCards({
   samples: { palette: string[]; scale: string[] }
 }): Row[] {
   const W = columns - 4
+  // Two cards side by side in the panel: a cell of panel at each side, two between.
+  const CARD = Math.floor((W - 4) / 2)
   const cards = [
     {
       name: 'Palette',
-      sub: 'the colours of an image',
+      sub: 'extract colours from an image',
       preview: samples.palette.map((h) => fill('    ', h)),
     },
     {
       name: 'Scale',
-      sub: '50 to 950 from one colour',
+      sub: 'create shades from one colour',
       preview: samples.scale.map((h) => fill('  ', h)),
     },
   ]
@@ -489,6 +490,7 @@ export function approximateRow(p: Palette): Row {
 
 /* ------------------------------------------------------------ the scale */
 
+/** The widest a ramp's cell is drawn, however much room there is. */
 const CELL = 6
 
 interface StepLike {
@@ -498,36 +500,93 @@ interface StepLike {
   seed?: boolean
 }
 
+/**
+ * How a ramp of `n` steps fits in the field's width (`columns - 4`): cells
+ * as wide as fit, up to `CELL`, a blank between them while cells are at
+ * least four wide, and none once they are narrower.
+ */
+function rampFit(columns: number, n: number): { cell: number; gap: number } {
+  const room = columns - 4
+  const spaced = Math.floor((room - (n - 1)) / n)
+  if (spaced >= 4) return { cell: Math.min(CELL, spaced), gap: 1 }
+  return { cell: Math.max(1, Math.min(CELL, Math.floor(room / n))), gap: 0 }
+}
+
+/**
+ * The step numbers over the cells. A number that would touch its
+ * neighbour's is left out, the chosen one's first, so the chosen step is
+ * always named; `colour` says what each is drawn in.
+ */
+function labelRow(
+  labels: string[],
+  fit: { cell: number; gap: number },
+  first: number | undefined,
+  colour: (i: number) => Run,
+  /** Only these cells may be named: an empty ramp names only the outlines it draws. */
+  named: (i: number) => boolean = () => true,
+): Row {
+  const at = (i: number) => i * (fit.cell + fit.gap)
+  const placed: { from: number; to: number; i: number }[] = []
+  const place = (i: number) => {
+    if (!named(i)) return
+    const t = labels[i] as string
+    const from = Math.max(0, at(i) + Math.floor((fit.cell - stringWidth(t)) / 2))
+    const to = from + stringWidth(t)
+    if (placed.some((q) => from < q.to + 1 && to + 1 > q.from)) return
+    placed.push({ from, to, i })
+  }
+  if (first !== undefined) place(first)
+  labels.forEach((_, i) => {
+    if (i !== first) place(i)
+  })
+  placed.sort((a, b) => a.from - b.from)
+  const row: Row = [blank(2)]
+  let col = 0
+  for (const q of placed) {
+    if (q.from > col) row.push(blank(q.from - col))
+    row.push(colour(q.i))
+    col = q.to
+  }
+  const end = at(labels.length - 1) + fit.cell
+  if (end > col) row.push(blank(end - col))
+  return row
+}
+
 /** S1: the step numbers, three rows of swatches, and a `▔` under the chosen one. */
 export function rampRows({
+  width: columns,
   palette: p,
   steps,
   selected,
 }: {
+  width: number
   palette: Palette
   steps: StepLike[]
   selected: number
 }): Row[] {
+  const fit = rampFit(columns, steps.length)
   const join = (cells: Row[]): Row => [
     blank(2),
-    ...cells.flatMap((c, i) => (i === 0 ? c : [blank(1), ...c])),
+    ...cells.flatMap((c, i) => (i === 0 || fit.gap === 0 ? c : [blank(fit.gap), ...c])),
   ]
-  const label = (s: StepLike, i: number): Row =>
-    centre(
-      [
-        i === selected
-          ? ink(String(s.step), p.fg, true)
-          : ink(String(s.step), (s.reference ?? s.seed) ? p.accent : p.border),
-      ],
-      CELL,
-    )
-  const swatches = join(steps.map((s) => [fill(' '.repeat(CELL), s.hex)]))
+  const labels = labelRow(
+    steps.map((s) => String(s.step)),
+    fit,
+    selected,
+    (i) => {
+      const s = steps[i] as StepLike
+      return i === selected
+        ? ink(String(s.step), p.fg, true)
+        : ink(String(s.step), (s.reference ?? s.seed) ? p.accent : p.border)
+    },
+  )
+  const swatches = join(steps.map((s) => [fill(' '.repeat(fit.cell), s.hex)]))
   return [
-    join(steps.map(label)),
+    labels,
     swatches,
     swatches,
     swatches,
-    join(steps.map((_, i) => [i === selected ? ink('▔'.repeat(CELL), p.fg) : blank(CELL)])),
+    join(steps.map((_, i) => [i === selected ? ink('▔'.repeat(fit.cell), p.fg) : blank(fit.cell)])),
   ]
 }
 
@@ -565,11 +624,81 @@ export function previewRows({
 }
 
 /** Before there is a colour: the step numbers and the swatches as outlines. */
-export function emptyRampRows({ palette: p, steps }: { palette: Palette; steps: number[] }): Row[] {
+export function emptyRampRows({
+  width: columns,
+  palette: p,
+  steps,
+}: {
+  width: number
+  palette: Palette
+  steps: number[]
+}): Row[] {
+  const fit = rampFit(columns, steps.length)
   const join = (cells: Row[]): Row => [
     blank(2),
-    ...cells.flatMap((c, i) => (i === 0 ? c : [blank(1), ...c])),
+    ...cells.flatMap((c, i) => (i === 0 || fit.gap === 0 ? c : [blank(fit.gap), ...c])),
   ]
-  const outline = join(steps.map(() => [ink('╌'.repeat(CELL), p.faint)]))
-  return [join(steps.map((s) => centre([ink(String(s), p.faint)], CELL))), outline, [], outline, []]
+  // Without gaps the outlines would run together: every other one is left out.
+  const drawn = (i: number) => fit.gap > 0 || i % 2 === 0
+  const outline = join(
+    steps.map((_, i) => [drawn(i) ? ink('╌'.repeat(fit.cell), p.faint) : blank(fit.cell)]),
+  )
+  const labels = labelRow(
+    steps.map(String),
+    fit,
+    undefined,
+    (i) => ink(String(steps[i]), p.faint),
+    drawn,
+  )
+  return [labels, outline, [], outline, []]
+}
+
+export type StepsField = 'start' | 'end' | 'every'
+
+/**
+ * The line under the ramp (V1, mockups/scale-steps-2026-10.html): which
+ * steps the scale has, and `s steps` at the field's right edge. While they
+ * are being changed the three values are pills, the one in hand white with
+ * ‹ › round it, and `s steps` has become `↵ done` in its place.
+ */
+export function stepsLine({
+  width: columns,
+  palette: p,
+  spec,
+  editing,
+}: {
+  width: number
+  palette: Palette
+  spec: StepSpec
+  editing?: StepsField | undefined
+}): Row {
+  const count = `${stepsOf(spec).length} steps`
+  if (!editing) {
+    const row: Row = [
+      blank(2),
+      ink(`${spec.start} – ${spec.end}, every ${spec.every}`, p.dim),
+      ink(`  ·  ${count}`, p.border),
+    ]
+    return withKey(p, row, 's', 'steps', columns - 1)
+  }
+  const plain = p.thumb === ''
+  const pill = (f: StepsField, v: number): Run =>
+    f === editing
+      ? plain
+        ? ink(`‹ ${v} ›`, p.fg, true)
+        : { text: ` ‹ ${v} › `, fg: lc(p.ink), bg: lc(p.thumb), bold: true }
+      : plain
+        ? ink(` ${v} `, p.dim)
+        : { text: ` ${v} `, fg: lc(p.fg), bg: lc(p.fieldBand) }
+  const row: Row = [
+    blank(2),
+    ink('from ', p.dim),
+    pill('start', spec.start),
+    ink('  to ', p.dim),
+    pill('end', spec.end),
+    ink('  every ', p.dim),
+    pill('every', spec.every),
+    ink(`   ${count}`, p.border),
+  ]
+  return withKey(p, row, '↵', 'done', columns - 1)
 }

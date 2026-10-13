@@ -15,6 +15,7 @@ import {
   photoRows,
   previewRows,
   rampRows,
+  stepsLine,
 } from '../../src/shell/colour/colour-art.js'
 import type { Row } from '../../src/shell/home-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
@@ -77,11 +78,44 @@ function expectRows(rows: Row[], id: string, from: number, describe = describeRo
  */
 function expectCards(rows: Row[], id: string, from: number) {
   rows.forEach((row, i) => {
-    const expected = fixtureRow(frame(id), from + i).map((c) =>
-      c.ch === '▌' ? { ch: ' ', fg: null, bg: c.bg, b: false } : c,
+    const expected = resub(
+      fixtureRow(frame(id), from + i).map((c) =>
+        c.ch === '▌' ? { ch: ' ', fg: null, bg: c.bg, b: false } : c,
+      ),
     )
     expect(describeRow(runsRow(row), expected), `${id}, row ${from + i}`).toBe('equal')
   })
+}
+
+/**
+ * The cards' subtitles were rewritten after the mockup was frozen
+ * (mockups/scale-steps-2026-10.html, H5): each old one is swapped for its new
+ * text, in its colours, over the blanks after it.
+ */
+const SUBTITLES: [string, string][] = [
+  ['the colours of an image', 'extract colours from an image'],
+  ['50 to 950 from one colour', 'create shades from one colour'],
+]
+function resub<C extends { ch: string; fg: string | null; bg: string | null }>(cells: C[]): C[] {
+  const text = cells.map((c) => c.ch).join('')
+  let out = cells
+  for (const [was, now] of SUBTITLES) {
+    const at = text.indexOf(was)
+    if (at < 0) continue
+    const style = out[at] as C
+    const blankAt = out[at + was.length] as C
+    out = [
+      ...out.slice(0, at),
+      // A space has no ink of its own, as the fixture records it.
+      ...[...now].map((ch) => ({ ...style, ch, ...(ch === ' ' ? { fg: null } : {}) })),
+      ...out.slice(at + now.length),
+    ]
+    // The old text was shorter: the cells it spilled over were blanks of the card's fill.
+    for (let k = at + was.length; k < at + now.length; k++) {
+      if (cells[k]?.ch !== ' ' || cells[k]?.bg !== blankAt.bg) throw new Error(`no room at ${k}`)
+    }
+  }
+  return out
 }
 
 const PAL = data.palette
@@ -236,16 +270,54 @@ describe('the palette (D1)', () => {
 
 describe('the scale (S9)', () => {
   it('the ramp, 500 from the reference, the chosen step marked', () =>
-    expectRows(rampRows({ palette: P, steps: data.scA, selected: 5 }), '8', 6))
+    expectRows(rampRows({ width: 80, palette: P, steps: data.scA, selected: 5 }), '8', 6))
 
   it('the preview: Aa in white and black, and the facts in plain text', () =>
     expectRows(previewRows({ palette: P, step: data.scA[5] as Step }), '8', 12))
 
   it('a typed colour, its ramp', () =>
-    expectRows(rampRows({ palette: P, steps: data.scC, selected: 5 }), '12', 6))
+    expectRows(rampRows({ width: 80, palette: P, steps: data.scC, selected: 5 }), '12', 6))
 
   it('before there is a colour: the steps as outlines', () =>
-    expectRows(emptyRampRows({ palette: P, steps: data.scA.map((s) => s.step) }), 'B2', 6))
+    expectRows(
+      emptyRampRows({ width: 80, palette: P, steps: data.scA.map((s) => s.step) }),
+      'B2',
+      6,
+    ))
 
   it('all eleven copied', () => expectRows([copiedRow(P, { count: 11 }, 'darwin')], '11', 18))
+})
+
+describe('the ramp at other widths and counts', () => {
+  const text = (row: Row) => row.map((r) => r.text).join('')
+  const steps = (n: number[]) =>
+    n.map((step) => ({ step, hex: '#6579fd', reference: step === 500 }))
+  const EVERY50 = Array.from({ length: 21 }, (_, i) => i * 50)
+
+  it('fits the field at 76 columns, 21 steps, and always names the chosen one', () => {
+    const rows = rampRows({ width: 76, palette: P, steps: steps(EVERY50), selected: 13 })
+    for (const r of rows) expect(text(r).length).toBeLessThanOrEqual(74)
+    expect(text(rows[0] as Row)).toContain('650')
+  })
+
+  it('an empty ramp without gaps names only the outlines it draws', () => {
+    const rows = emptyRampRows({ width: 76, palette: P, steps: EVERY50 })
+    const labels = text(rows[0] as Row)
+    const outline = text(rows[1] as Row)
+    for (const m of labels.matchAll(/\d+/g)) {
+      // A number wider than its cell overhangs it: its middle is what sits over the outline.
+      const middle = (m.index as number) + Math.floor(m[0].length / 2)
+      expect(outline[middle], `${m[0]} at ${m.index}`).toBe('╌')
+    }
+  })
+
+  it('the steps line ends at the field’s right edge, s steps at rest and ↵ done while editing', () => {
+    const spec = { start: 50, end: 950, every: 100 }
+    const rest = text(stepsLine({ width: 76, palette: P, spec }))
+    expect(rest).toMatch(/^ {2}50 – 950, every 100 {2}· {2}11 steps +s +steps$/)
+    expect(rest.length).toBe(74)
+    const editing = text(stepsLine({ width: 76, palette: P, spec, editing: 'every' }))
+    expect(editing).toMatch(/every +‹ 100 › +11 steps +↵ +done$/)
+    expect(editing.length).toBe(74)
+  })
 })

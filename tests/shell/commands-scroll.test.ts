@@ -34,7 +34,8 @@ describe('the commands list says when it scrolls', () => {
     expect(bar.every((ch) => ch === '┃' || ch === '│')).toBe(true)
     expect(bar[0]).toBe('┃')
     expect(bar.at(-1)).toBe('│')
-    expect(text(out.at(-1) as Row)).toContain('↓ 1 more')
+    // /update and /about sit below the panel at 80 × 24.
+    expect(text(out.at(-1) as Row)).toContain('↓ 2 more')
     // The bar takes a fill cell: no row is wider than an unbarred one.
     for (const r of out) expect(width(r)).toBe(80 - HOME_MARGIN)
   })

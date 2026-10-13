@@ -1,6 +1,6 @@
 import { hueName } from './names.js'
 import type { Group } from './palette.js'
-import type { Step } from './scale.js'
+import { DEFAULT_STEPS, type Step, type StepSpec } from './scale.js'
 import { formatRgb, type Rgb, toHex } from './space.js'
 
 /**
@@ -85,15 +85,20 @@ export function paletteCard(
   )
 }
 
+const sameSteps = (a: StepSpec, b: StepSpec): boolean =>
+  a.start === b.start && a.end === b.end && a.every === b.every
+
 export function scaleCard(
   reference: Rgb,
   steps: Step[],
   theme: 'light' | 'dark' = 'light',
+  spec: StepSpec = DEFAULT_STEPS,
 ): string {
   const name = hueName(reference)
+  const every = sameSteps(spec, DEFAULT_STEPS) ? '' : `, every ${spec.every}`
   return card(
     `${name[0]?.toUpperCase() ?? ''}${name.slice(1)}`,
-    `from ${toHex(reference)} · 50–950 in OKLCH`,
+    `from ${toHex(reference)} · ${spec.start}–${spec.end}${every} in OKLCH`,
     steps.map((s) => ({ id: `${name}-${s.step}`, name: String(s.step), value: s.hex, hex: s.hex })),
     theme,
   )

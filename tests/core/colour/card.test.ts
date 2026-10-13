@@ -50,3 +50,14 @@ describe('card', () => {
     expect(scaleCard(ref, scale(ref))).toBe(scaleCard(ref, scale(ref)))
   })
 })
+
+describe('scaleCard with chosen steps', () => {
+  it('names its steps when they are not the default', () => {
+    const ref = { r: 101, g: 121, b: 253 }
+    const spec = { start: 100, end: 900, every: 50 }
+    const svg = scaleCard(ref, scale(ref, spec), 'light', spec)
+    expect(svg).toContain('from #6579FD · 100–900, every 50 in OKLCH')
+    expect(svg.match(/id="[a-z]+-\d+"/g)).toHaveLength(17)
+    expect(scaleCard(ref, scale(ref))).toContain('from #6579FD · 50–950 in OKLCH')
+  })
+})

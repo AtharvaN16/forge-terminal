@@ -1,4 +1,12 @@
-import { scale } from '../../core/colour/scale.js'
+import {
+  DEFAULT_STEPS,
+  ENDS,
+  EVERY,
+  STARTS,
+  type StepSpec,
+  scale,
+  stepsOf,
+} from '../../core/colour/scale.js'
 import { parseHex, type Rgb, toHex } from '../../core/colour/space.js'
 import type { Trail } from '../bar-art.js'
 
@@ -24,6 +32,9 @@ export type Screen =
   | { kind: 'scale-empty' }
   | { kind: 'scale'; ref: Rgb; from?: string; sel: number }
 
+/** The value `s` is changing on the line under the ramp. */
+export type StepsField = 'start' | 'end' | 'every'
+
 export interface ColourState {
   /** The way back; the last entry is on screen. */
   history: Screen[]
@@ -37,6 +48,13 @@ export interface ColourState {
   preview?: Rgb
   flash?: { text: string; until: number }
   error?: string
+  /** Which steps a scale has (V1, mockups/scale-steps-2026-10.html); kept for the session. */
+  steps: StepSpec
+  /**
+   * The steps being changed: the value in hand, and what esc puts back —
+   * the steps, and the screens as they were, each scale's chosen step with them.
+   */
+  stepsEdit?: { field: StepsField; before: StepSpec; history: Screen[] }
 }
 
 /** The parts of Ink's `Key` this reads. */
@@ -47,6 +65,8 @@ export interface KeyLike {
   rightArrow?: boolean
   return?: boolean
   escape?: boolean
+  tab?: boolean
+  shift?: boolean
   ctrl?: boolean
   meta?: boolean
 }
@@ -91,25 +111,36 @@ export type Start = 'palette' | 'scale' | { palette: string } | { scale: Rgb } |
 
 const FLASH_MS = 1500
 
-export function initial(start: Start): ColourState {
-  if (start === 'palette') return { history: [{ kind: 'palette-empty' }], field: field('', true) }
-  if (start === 'scale') return { history: [{ kind: 'scale-empty' }], field: field('', true) }
+export function initial(start: Start, steps: StepSpec = DEFAULT_STEPS): ColourState {
+  if (start === 'palette') {
+    return { history: [{ kind: 'palette-empty' }], field: field('', true), steps }
+  }
+  if (start === 'scale')
+    return { history: [{ kind: 'scale-empty' }], field: field('', true), steps }
   if ('typed' in start) {
     return {
       history: [{ kind: 'scale-empty' }],
       field: { text: start.typed, focus: true, before: '' },
+      steps,
     }
   }
   if ('palette' in start) {
     return {
       history: [{ kind: 'palette-empty' }],
       field: { text: start.palette, focus: true, before: '' },
+      steps,
     }
   }
   return {
-    history: [{ kind: 'scale', ref: start.scale, sel: 5 }],
+    history: [{ kind: 'scale', ref: start.scale, sel: centreOf(steps) }],
     field: field(toHex(start.scale), false),
+    steps,
   }
+}
+
+/** Where 500, the colour itself, sits among `steps`. */
+export function centreOf(steps: StepSpec): number {
+  return stepsOf(steps).indexOf(500)
 }
 
 /** What to do as the flow opens: an image handed in is opened at once. */
@@ -164,7 +195,7 @@ function focusWith(s: ColourState, text: string): ColourState {
 }
 
 function scaleFrom(s: ColourState, ref: Rgb, from: string | undefined): ColourState {
-  const screen: Screen = { kind: 'scale', ref, sel: 5, ...(from ? { from } : {}) }
+  const screen: Screen = { kind: 'scale', ref, sel: centreOf(s.steps), ...(from ? { from } : {}) }
   const next = top(s).kind === 'scale-empty' ? replaceTop(s, screen) : push(s, screen)
   return { ...next, field: field(toHex(ref), false), preview: undefined, error: undefined }
 }
@@ -226,8 +257,12 @@ function onScaleKey(
   key: KeyLike,
   ctx: Ctx,
 ): Out {
-  const steps = scale(screen.ref)
+  const steps = scale(screen.ref, s.steps)
   const step = steps[screen.sel]
+  const centre = centreOf(s.steps)
+  if (input === 's') {
+    return same({ ...s, stepsEdit: { field: 'start', before: s.steps, history: s.history } })
+  }
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
     return same(replaceTop(s, { ...screen, sel: Math.min(steps.length - 1, screen.sel + 1) }))
@@ -244,17 +279,70 @@ function onScaleKey(
       effects: [{ type: 'copy-all' }],
     }
   }
-  if (input === 'r' && step && screen.sel !== 5) {
+  if (input === 'r' && step && screen.sel !== centre) {
     const was = `was ${step.step} of ${toHex(screen.ref)}`
-    const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: 5 })
+    const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: centre })
     const said = `${step.hex} is now 500 · esc goes back to ${toHex(screen.ref)}`
     return same(flash({ ...next, field: field(step.hex, false) }, said, ctx))
   }
   return same(s)
 }
 
+const FIELDS: StepsField[] = ['start', 'end', 'every']
+const CHOICES: Record<StepsField, readonly number[]> = { start: STARTS, end: ENDS, every: EVERY }
+
+/**
+ * `steps` set on the state, each scale's chosen step on the number it had
+ * when the editing began, or the nearest one. Always from then, not from the
+ * last change, so moving a value away and back finds the same step again.
+ */
+function withSteps(
+  s: ColourState,
+  edit: NonNullable<ColourState['stepsEdit']>,
+  steps: StepSpec,
+): ColourState {
+  const was = stepsOf(edit.before)
+  const now = stepsOf(steps)
+  const nearest = (n: number) =>
+    now.reduce(
+      (best, x, i) => (Math.abs(x - n) < Math.abs((now[best] as number) - n) ? i : best),
+      0,
+    )
+  const history = edit.history.map((h) =>
+    h.kind === 'scale' ? { ...h, sel: nearest(was[h.sel] ?? 500) } : h,
+  )
+  return { ...s, steps, history }
+}
+
+/** Keys while the steps are being changed: ←→ the value, tab the next, ↵ keeps, esc undoes. */
+function onStepsKey(
+  s: ColourState,
+  edit: NonNullable<ColourState['stepsEdit']>,
+  input: string,
+  key: KeyLike,
+): Out {
+  if (key.return) return same({ ...s, stepsEdit: undefined })
+  if (key.escape) {
+    return same({ ...s, steps: edit.before, history: edit.history, stepsEdit: undefined })
+  }
+  if (key.tab || input === '\t') {
+    const i = FIELDS.indexOf(edit.field)
+    const next = FIELDS[(i + (key.shift ? FIELDS.length - 1 : 1)) % FIELDS.length] as StepsField
+    return same({ ...s, stepsEdit: { ...edit, field: next } })
+  }
+  if (key.leftArrow || key.rightArrow) {
+    const choices = CHOICES[edit.field]
+    const i = choices.indexOf(s.steps[edit.field])
+    const j = Math.max(0, Math.min(choices.length - 1, i + (key.rightArrow ? 1 : -1)))
+    if (j === i) return same(s)
+    return same(withSteps(s, edit, { ...s.steps, [edit.field]: choices[j] as number }))
+  }
+  return same(s)
+}
+
 function onKey(s: ColourState, input: string, key: KeyLike, ctx: Ctx): Out {
   if (s.field.focus) return onKeyWhileTyping(s, key)
+  if (s.stepsEdit) return onStepsKey(s, s.stepsEdit, input, key)
   const screen = top(s)
   if (key.escape) return back(s)
   if (key.ctrl || key.meta) return same(s)
