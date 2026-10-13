@@ -116,6 +116,12 @@ describe('UpdateFlow (V4)', () => {
     f.stdin.write(ENTER)
     await until(() => calls.copied.length > 0)
     expect(calls.copied).toEqual(['sudo npm i -g forge-terminal@0.2.2'])
+    // The copy says so beside the pill, then the line goes back to how to use it.
+    await until(() => frame(f).includes('✓ copied'))
+    const said = lines(f).find((l) => l.includes('↵ copy')) ?? ''
+    expect(said).toMatch(/↵ copy +✓ copied to the clipboard *$/)
+    await until(() => frame(f).includes('run it in any terminal'))
+    expect(frame(f)).not.toContain('✓ copied')
   })
 
   it('when npm cannot be reached, says so and ↵ tries again', async () => {

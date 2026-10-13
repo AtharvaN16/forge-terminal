@@ -61,6 +61,8 @@ const LIST_WIDTH = 31
 const SPIN_MS = 80
 /** The clock appears after this long, as the working screen's does (W5). */
 const CLOCK_AFTER_MS = 3000
+/** How long "✓ copied" stands beside the pill: as long as colour's copy confirmation. */
+const COPIED_MS = 1500
 
 interface UpdateFlowProps {
   width: number
@@ -98,6 +100,13 @@ export function UpdateFlow({
   const [state, setState] = useState<State>({ kind: 'checking' })
   const [row, setRow] = useState<0 | 1>(0)
   const [auto, setAuto] = useState(autoAtOpen)
+  /** ↵ copy just put the command on the clipboard: said beside the pill for a moment. */
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const id = setTimeout(() => setCopied(false), COPIED_MS)
+    return () => clearTimeout(id)
+  }, [copied])
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -159,8 +168,12 @@ export function UpdateFlow({
     if (!key.return) return
     if (state.kind === 'available') void install(state.latest)
     else if (state.kind === 'installed') onRestart()
-    else if (state.kind === 'refused') updater.copy(state.command)
-    else if (state.kind === 'latest' || state.kind === 'unreachable') void check()
+    else if (state.kind === 'refused') {
+      updater.copy(state.command)
+      // A fresh copy restarts the moment, as a second one in colour does.
+      setCopied(false)
+      setTimeout(() => setCopied(true), 0)
+    } else if (state.kind === 'latest' || state.kind === 'unreachable') void check()
   })
 
   const spinning = (busy || state.kind === 'checking') && motionEnabled(palette.name)
@@ -356,7 +369,16 @@ export function UpdateFlow({
           '',
           <Text key="copy">
             {pill('↵ copy')}
-            <Text color={dim}>{'  run it in any terminal'}</Text>
+            {copied ? (
+              <>
+                <Text color={colourProp(palette.ok)} bold>
+                  {'  ✓ copied'}
+                </Text>
+                <Text color={dim}>{' to the clipboard'}</Text>
+              </>
+            ) : (
+              <Text color={dim}>{'  run it in any terminal'}</Text>
+            )}
           </Text>,
         ]
     }
