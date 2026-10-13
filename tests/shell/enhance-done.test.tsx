@@ -46,22 +46,36 @@ describe('EnhanceDone, half-block fallback', () => {
         <EnhanceDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
       </ThemeProvider>,
     )
-    await vi.waitFor(() => expect((lastFrame() ?? '').split('\n')[3]).toContain('48;2;'), {
+    await vi.waitFor(() => expect((lastFrame() ?? '').split('\n')[4]).toContain('48;2;'), {
       timeout: 5000,
     })
     const lines = (lastFrame() ?? '').split('\n')
     const plain = lines.map((l) => stripAnsi(l))
-    expect(plain[0]).toMatch(/✓ sign-sharp\.png {3}sharpened · same size · 64 × 48\s+in /)
+    // The quiet line is the file and its folder: what was done is not said.
+    expect(plain[0]).toMatch(/✓ sign-sharp\.png\s+in /)
+    expect(plain[0]).not.toMatch(/sharpened|same size|64 × 48/)
     expect(plain[2]).toMatch(/^ {2} before +after\s*$/)
-    // Sixteen rows of picture under the tabs, then a gap and the one note
-    // that says the picture is drawn in characters.
-    const grid = plain.slice(3, -3)
+    // Each picture in a frame: its top edge under the tabs, sixteen rows of
+    // picture between the sides, the bottom edge, then a gap and the note.
+    expect(plain[3]).toMatch(/^ {2}┌─{34}┐ {4}┌─{34}┐\s*$/)
+    const grid = plain.slice(4, -4)
     expect(grid).toHaveLength(16)
-    // Two pictures 36 cells wide, the ▶ between them on the middle row.
-    const arrow = grid.filter((l) => l.includes('▶'))
+    for (const l of grid) expect(l).toMatch(/^ {2}│.{34}│.{4}│.{34}│\s*$/)
+    expect(plain[20]).toMatch(/^ {2}└─{34}┘ {4}└─{34}┘\s*$/)
+    // The ▶ between them on the middle row.
+    const arrow = plain.filter((l) => l.includes('▶'))
     expect(arrow).toHaveLength(1)
     const row = arrow[0] ?? ''
     expect(stringWidth(row.slice(0, row.indexOf('▶')))).toBe(HOME_MARGIN + 36 + 1)
+    // Before: tag and frame in one grey. After: enhance's tint behind its tag
+    // and its violet for the frame and the tag's word.
+    const rgb = (hex: string) =>
+      [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')
+    expect(lines[2]).toContain(`48;2;${rgb(DARK.panelBand)}`)
+    expect(lines[2]).toContain(`48;2;${rgb(DARK.modeEnhanceBg)}`)
+    expect(lines[2]).toMatch(new RegExp(`38;2;${rgb(DARK.modeEnhance)}m(\u001b\\[1m)? after `))
+    expect(lines[3]).toMatch(new RegExp(`38;2;${rgb(DARK.panelBand)}m┌`))
+    expect(lines[3]).toMatch(new RegExp(`38;2;${rgb(DARK.modeEnhance)}m┌`))
     // Drawn in colour: every row has backgrounds, and the dark square shows
     // as more than one of them.
     expect(
@@ -70,12 +84,13 @@ describe('EnhanceDone, half-block fallback', () => {
         .map((l) => l.trim())
         .join(' '),
     ).toBe(
-      'The image preview is for illustrative purposes only; the terminal cannot display the actual image. Press O to see the result.',
+      'The image preview is for illustrative purposes only; the terminal cannot display the actual image. Press  O  to see the result.',
     )
-    // The key in the note is enhance's own violet, as a key on its screen.
-    const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(DARK.modeEnhance.slice(i, i + 2), 16))
-    expect(lines.slice(-2).join('')).toMatch(new RegExp(`38;2;${r};${g};${b}m(\\u001b\\[1m)?O`))
-    const pictured = lines.slice(3, -3)
+    // The key in the note is a key cap, its letter enhance's own violet.
+    const note = lines.slice(-2).join('')
+    expect(note).toContain(`48;2;${rgb(DARK.keycapBg)}`)
+    expect(note).toMatch(new RegExp(`38;2;${rgb(DARK.modeEnhance)}m(\\u001b\\[1m)? O `))
+    const pictured = lines.slice(4, -4)
     expect(pictured.every((l) => l.includes('\u001b[48;2;'))).toBe(true)
     expect(new Set(pictured.join('').match(/48;2;\d+;\d+;\d+/g)).size).toBeGreaterThan(1)
     expect(Math.max(...plain.map((l) => stringWidth(l)))).toBeLessThanOrEqual(80)
@@ -92,23 +107,25 @@ describe('EnhanceDone, half-block fallback', () => {
     )
     await new Promise((r) => setTimeout(r, 300))
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('✓ sign-sharp.png   sharpened')
+    expect(frame).toContain('✓ sign-sharp.png')
+    expect(frame).not.toContain('sharpened')
     expect(frame).not.toContain('\u001b[')
     expect(frame).not.toContain('▶')
     expect(frame).not.toContain('before')
   })
 
   it('fits the pictures to the rows there are, and drops them below six', () => {
+    // Besides the pictures: the line, a gap, the tabs and the frame's two edges.
     expect(pictureRows(undefined)).toBe(16)
     expect(pictureRows(30)).toBe(16)
-    expect(pictureRows(18)).toBe(15)
-    expect(pictureRows(9)).toBe(6)
-    expect(pictureRows(8)).toBe(0)
+    expect(pictureRows(18)).toBe(13)
+    expect(pictureRows(11)).toBe(6)
+    expect(pictureRows(10)).toBe(0)
     // Drawn in characters, two rows go to the note under the pictures.
     // The note wraps to two lines at 80 columns: a gap and two rows.
     expect(noteRows(80)).toBe(3)
     expect(noteRows(200)).toBe(2)
-    expect(pictureRows(18, 3)).toBe(12)
-    expect(pictureRows(11, 3)).toBe(0)
+    expect(pictureRows(18, 3)).toBe(10)
+    expect(pictureRows(13, 3)).toBe(0)
   })
 })

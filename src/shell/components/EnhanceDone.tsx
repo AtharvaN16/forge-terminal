@@ -1,7 +1,7 @@
 import { dirname, isAbsolute } from 'node:path'
 import chalk from 'chalk'
 import { Box, type DOMElement, useStdout } from 'ink'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import {
   type Closeup,
@@ -23,10 +23,13 @@ import { middleEllipsis } from '../width.js'
 
 /**
  * Enhance's Done (X5, mockups/extensions-2026-10.html tab "2 · Done",
- * sources /tmp/forge-ext-mock2/done5.js): one quiet line — ✓ name, what was
- * done, the folder — then the picture before and after, side by side at the
- * same scale, a violet ▶ between, K3·a-style tabs on top (before dim, after
- * bold). No byte bars: for enhance the payoff is the picture.
+ * sources /tmp/forge-ext-mock2/done5.js): one quiet line — ✓ name and the
+ * folder — then the picture before and after, side by side at the same scale,
+ * a violet ▶ between, K3·a-style tabs on top. Each picture sits in a frame
+ * the colour of its tab, so where it starts and ends shows: before in one
+ * grey, after in enhance's violet with its tint behind the tab
+ * (mockups/open-key-2026-10.html, 02). No byte bars: for enhance the payoff
+ * is the picture.
  *
  * Where the terminal draws images (iTerm2, WezTerm, Kitty, Ghostty) the
  * pictures are the real files, written over blank boxes Ink reserves (see
@@ -62,8 +65,8 @@ const GAP = 4
 export const PICTURE_ROWS = 16
 /** Fewer rows than this for the pictures and Done says only its quiet line. */
 export const MIN_PICTURE_ROWS = 6
-/** What the component draws besides the pictures: line, gap, tabs. */
-const CHROME_ROWS = 3
+/** What the component draws besides the pictures: line, gap, tabs, the frame's two edges. */
+const CHROME_ROWS = 5
 /**
  * The one note under the pictures, and only under the character fallback: a
  * reader seeing blocks should know the real file is not like that. No other
@@ -71,14 +74,17 @@ const CHROME_ROWS = 3
  */
 export const SKETCH_NOTE =
   'The image preview is for illustrative purposes only; the terminal cannot display the actual image. Press O to see the result.'
-/** The key the note names, drawn in enhance's colour where it says it. */
+/** The key the note names, drawn as a key cap where it says it, its letter in enhance's colour. */
 const NOTE_KEY = 'O'
+/** The key as its cap draws it: a cell either side. */
+const NOTE_CAP = ` ${NOTE_KEY} `
 /** How long a resize must settle before the pictures are cut again. */
 export const RESIZE_SETTLE_MS = 100
 
 /** Rows the note takes under the pictures at `width`: a gap, then its lines. */
 export function noteRows(width: number): number {
-  return 1 + Math.ceil(stringWidth(SKETCH_NOTE) / Math.max(1, width - M - 2))
+  const said = stringWidth(SKETCH_NOTE) - NOTE_KEY.length + NOTE_CAP.length
+  return 1 + Math.ceil(said / Math.max(1, width - M - 2))
 }
 
 /**
@@ -92,23 +98,9 @@ export function pictureRows(rows: number | undefined, note = 0): number {
   return fit >= MIN_PICTURE_ROWS ? fit : 0
 }
 
-/** How wide each picture is for a terminal `width` columns wide. */
+/** How wide each picture is for a terminal `width` columns wide: its frame's two sides are not counted. */
 export function pictureCols(width: number): number {
-  return Math.max(8, Math.min(48, Math.floor((width - M - GAP - 1) / 2)))
-}
-
-/** What was done, and the line's quieter second half. */
-export function whatWasDone(
-  op: EnhanceDoneProps['op'],
-  scale: 1 | 2 | 3 | 4,
-  size?: { width: number; height: number },
-): { what: string; more: string } {
-  const dims = size ? `${size.width} × ${size.height}` : ''
-  if (op === 'remove-background') return { what: 'background removed', more: 'transparent PNG' }
-  if (op === 'trim') return { what: 'edges trimmed', more: dims }
-  if (op === 'resize') return { what: 'resized', more: dims }
-  if (scale === 1) return { what: 'sharpened', more: dims ? `same size · ${dims}` : 'same size' }
-  return { what: `${scale}× resolution`, more: dims }
+  return Math.max(8, Math.min(48, Math.floor((width - M - GAP - 1) / 2))) - 2
 }
 
 function folderOf(savedTo: string, after: string): string {
@@ -178,11 +170,10 @@ export function EnhanceDone({
   const pictures = useMemo(() => (real ? [real.before, real.after] : undefined), [real])
   useInlinePictures({ boxes, pictures, protocol, cols, rows })
 
-  const { what, more } = whatWasDone(op, s, (real ?? closeup)?.output)
   const name = displayName(after)
-  // The line keeps the name and what was done whole; the folder gives way
-  // (middle-shortened), and goes when there is no room for it at all.
-  const said = `${SYMBOLS.ok} ${name}   ${what}${more ? ` · ${more}` : ''}`
+  // The line keeps the name whole; the folder gives way (middle-shortened),
+  // and goes when there is no room for it at all.
+  const said = `${SYMBOLS.ok} ${name}`
   const room = width - 1 - (M + 1) - stringWidth(said) - 2 - 'in '.length
   const folder = room >= 8 ? middleEllipsis(folderOf(savedTo, after), room) : ''
   const grids = useMemo(
@@ -194,15 +185,23 @@ export function EnhanceDone({
   )
   const pictureWidth = closeup ? closeup.before.width / DOTS_ACROSS : cols
   const height = grids ? grids.before.length : rows
-  const mid = Math.floor(height / 2)
+  // The ▶ on the middle row of the framed pictures.
+  const mid = Math.floor((height + 2) / 2)
+  const enhance = modeColours(palette, 'enhance')
+  /** A picture inside its frame, `edge` its colour. */
+  const frame = (edge: string, picture: ReactNode) => (
+    <Box borderStyle="single" borderColor={colourProp(edge)} flexShrink={0}>
+      {picture}
+    </Box>
+  )
   const failed = rows === 0 || (shown !== undefined && 'failed' in shown)
 
   const arrow = (
-    <Box width={GAP} height={height} flexDirection="column" flexShrink={0}>
+    <Box width={GAP} height={height + 2} flexDirection="column" flexShrink={0}>
       <Box height={mid} flexShrink={0} />
       <Text>
         {' '}
-        <Text color={colourProp(modeColours(palette, 'enhance').fg)}>▶</Text>
+        <Text color={colourProp(enhance.fg)}>▶</Text>
       </Text>
     </Box>
   )
@@ -218,9 +217,6 @@ export function EnhanceDone({
             <Text color={colourProp(palette.fg)} bold>
               {name}
             </Text>
-            {'   '}
-            <Text color={colourProp(palette.dim)}>{what}</Text>
-            {more ? <Text color={colourProp(palette.border)}>{` · ${more}`}</Text> : null}
           </Text>
         </Box>
         {folder ? (
@@ -236,44 +232,49 @@ export function EnhanceDone({
         <>
           <Box height={1} flexShrink={0} />
           <Box paddingLeft={M} flexShrink={0}>
-            <Box width={pictureWidth + GAP} flexShrink={0}>
-              <Text
-                backgroundColor={colourProp(palette.selectionBg)}
-                color={colourProp(palette.dim)}
-              >
+            <Box width={pictureWidth + 2 + GAP} flexShrink={0}>
+              <Text backgroundColor={colourProp(palette.panelBand)} color={colourProp(palette.dim)}>
                 {' before '}
               </Text>
             </Box>
-            <Text
-              backgroundColor={colourProp(palette.panelBand)}
-              color={colourProp(palette.fg)}
-              bold
-            >
+            <Text backgroundColor={colourProp(enhance.bg)} color={colourProp(enhance.fg)} bold>
               {' after '}
             </Text>
           </Box>
           <Box paddingLeft={M} flexShrink={0}>
             {grids ? (
               <>
-                <Box flexDirection="column" width={pictureWidth} flexShrink={0}>
-                  {grids.before.map((row, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-                    <Text key={i}>{row}</Text>
-                  ))}
-                </Box>
+                {frame(
+                  palette.panelBand,
+                  <Box flexDirection="column" width={pictureWidth} flexShrink={0}>
+                    {grids.before.map((row, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+                      <Text key={i}>{row}</Text>
+                    ))}
+                  </Box>,
+                )}
                 {arrow}
-                <Box flexDirection="column" width={pictureWidth} flexShrink={0}>
-                  {grids.after.map((row, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-                    <Text key={i}>{row}</Text>
-                  ))}
-                </Box>
+                {frame(
+                  enhance.fg,
+                  <Box flexDirection="column" width={pictureWidth} flexShrink={0}>
+                    {grids.after.map((row, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+                      <Text key={i}>{row}</Text>
+                    ))}
+                  </Box>,
+                )}
               </>
             ) : (
               <>
-                <Box ref={beforeBox} width={cols} height={rows} flexShrink={0} />
+                {frame(
+                  palette.panelBand,
+                  <Box ref={beforeBox} width={cols} height={rows} flexShrink={0} />,
+                )}
                 {arrow}
-                <Box ref={afterBox} width={cols} height={rows} flexShrink={0} />
+                {frame(
+                  enhance.fg,
+                  <Box ref={afterBox} width={cols} height={rows} flexShrink={0} />,
+                )}
               </>
             )}
           </Box>
@@ -283,7 +284,13 @@ export function EnhanceDone({
               <Box paddingLeft={M + 1} width={width - 1} flexShrink={0}>
                 <Text color={colourProp(palette.dim)} wrap="wrap">
                   {SKETCH_NOTE.slice(0, SKETCH_NOTE.lastIndexOf(NOTE_KEY))}
-                  <Text color={colourProp(modeColours(palette, 'enhance').fg)}>{NOTE_KEY}</Text>
+                  <Text
+                    backgroundColor={colourProp(palette.keycapBg)}
+                    color={colourProp(enhance.fg)}
+                    bold
+                  >
+                    {NOTE_CAP}
+                  </Text>
                   {SKETCH_NOTE.slice(SKETCH_NOTE.lastIndexOf(NOTE_KEY) + NOTE_KEY.length)}
                 </Text>
               </Box>
