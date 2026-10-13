@@ -50,7 +50,7 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
-import { ErrorPanel } from './components/ErrorPanel.js'
+import { ErrorPanel, errorPanelRows } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
@@ -1262,6 +1262,38 @@ export function App({
   }, [step, recordDone])
 
   /**
+   * A run that failed and ended the action (E5), live above home rather than
+   * in `<Static>`: home fills the window, so a block printed above it is
+   * already off the top of the screen — the run looked like it just went
+   * home. It goes to the scrollback once something new starts (`fenceOff`,
+   * another file, leaving home). The ref is what `commitFailure` reads, so
+   * a second failure in the same handler commits the first, not nothing.
+   */
+  const [runFailure, setRunFailure] = useState<ForgeError | undefined>(undefined)
+  const runFailureRef = useRef<ForgeError | undefined>(undefined)
+  const commitFailure = useCallback(() => {
+    const error = runFailureRef.current
+    if (!error) return
+    runFailureRef.current = undefined
+    setRunFailure(undefined)
+    push({ kind: 'error', id: nextId(), error })
+  }, [push])
+  /** Holds `e` above home, committing any failure held before it. */
+  const holdFailure = useCallback(
+    (e: unknown) => {
+      commitFailure()
+      const error = isForgeError(e) ? e : unexpectedError(e)
+      runFailureRef.current = error
+      setRunFailure(error)
+    },
+    [commitFailure],
+  )
+  const fileStaged = stage.sources.length > 0
+  useEffect(() => {
+    if (runFailure && (!onHome || fileStaged)) commitFailure()
+  }, [runFailure, onHome, fileStaged, commitFailure])
+
+  /**
    * Rules a dashed line under whatever is already on screen, so a change of
    * flow reads as a new operation rather than a continuation of the last one.
    *
@@ -1279,12 +1311,14 @@ export function App({
     // A refusal is live (see `fileRefusal`): a new flow takes it away rather
     // than leaving it above a screen it is not part of.
     setFileRefusal(undefined)
+    // Above the rule, as it would have been had it gone to the scrollback at once.
+    commitFailure()
     setHistory((h) => {
       if (h.length === 0) return h
       if (h[h.length - 1]?.kind === 'separator') return h
       return [...h, { kind: 'separator' as const, id: nextId(), width }]
     })
-  }, [width])
+  }, [width, commitFailure])
 
   /**
    * A config that could not be read is told to the user once, as history,
@@ -2172,6 +2206,12 @@ export function App({
     setStep('idle')
   }
 
+  /** A run failed: the action ends, as `clearSource`, and home shows why (`runFailure`). */
+  const failRun = (e: unknown) => {
+    clearSource()
+    holdFailure(e)
+  }
+
   /**
    * Backs out of the target picker without discarding what is staged.
    *
@@ -2644,14 +2684,15 @@ export function App({
         setStep('overwrite')
         return
       }
-      push({ kind: 'error', id: nextId(), error: refusal.error })
       // Writing over the source has no "replace" worth offering — there is
       // no outcome there that keeps the original. Back to the destination
       // step, where choosing a different folder is the actual fix. Any
       // other refusal ends the action, and ending one clears the stage —
-      // see `clearSource`.
-      if (refusal.error.code === 'output-is-input') reopenSaveAs()
-      else clearSource()
+      // see `failRun`.
+      if (refusal.error.code === 'output-is-input') {
+        push({ kind: 'error', id: nextId(), error: refusal.error })
+        reopenSaveAs()
+      } else failRun(refusal.error)
       return
     }
 
@@ -2700,8 +2741,8 @@ export function App({
       }
     } else {
       const failure = summary.failures[0]
-      if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
-      clearSource()
+      if (failure) failRun(failure.error)
+      else clearSource()
     }
   }
 
@@ -2776,12 +2817,10 @@ export function App({
         setStep('result')
         return
       }
-      if (outcome.failures[0])
-        push({ kind: 'error', id: nextId(), error: outcome.failures[0].error })
-      clearSource()
+      if (outcome.failures[0]) failRun(outcome.failures[0].error)
+      else clearSource()
     } catch (e) {
-      showError(e)
-      clearSource()
+      failRun(e)
     } finally {
       if (searchAbort.current === controller) searchAbort.current = undefined
       converting.current = false
@@ -2964,8 +3003,7 @@ export function App({
       // synchronous useInput handler — so a rethrow here would become an
       // unhandled rejection instead of something the user ever sees. Render
       // it instead, exactly like submitPath does for probe().
-      showError(e)
-      clearSource()
+      failRun(e)
     } finally {
       converting.current = false
       setWork(null)
@@ -2991,10 +3029,7 @@ export function App({
       // a second time.
       const { targetBytes: _alreadySearched, ...settled } = opts
       void finishConversion(planned, destination, output, settled)
-        .catch((e) => {
-          showError(e)
-          clearSource()
-        })
+        .catch(failRun)
         .finally(() => {
           converting.current = false
           setWork(null)
@@ -3062,6 +3097,8 @@ export function App({
     setWork({ startedAt: Date.now(), verb: verbOf(jobs[0]) ?? action.verb })
     setStep('pdf-running')
     setPageProgress(null)
+    // Held above home once it is back (see `runFailure`), the last on screen.
+    const failed: unknown[] = []
     try {
       /**
        * `force` is threaded rather than defaulted because these jobs have
@@ -3103,19 +3140,18 @@ export function App({
           push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
         }
       }
-      for (const failure of [...summary.refusals, ...summary.failures]) {
-        push({ kind: 'error', id: nextId(), error: failure.error })
-      }
+      for (const failure of [...summary.refusals, ...summary.failures]) failed.push(failure.error)
     } catch (e) {
       // Mirrors `convert()`'s own catch: this runs from a handler PdfFlow's
       // synchronous `useInput` fired, and nothing else awaits this promise.
-      showError(e)
+      failed.push(e)
     } finally {
       setPageProgress(null)
       setWork(null)
       setStage(clearStage())
       setValues({})
       setStep('idle')
+      for (const e of failed) holdFailure(e)
     }
   }
 
@@ -3351,6 +3387,10 @@ export function App({
    * the live frame keeps above it.
    */
   const canvas = paint ? { backgroundColor: palette.canvas, width: measured, paddingX: inset } : {}
+  // Home makes room under the window for a failed run's panel and its gap.
+  const failureWidth = Math.max(8, width - 2 * HOME_MARGIN)
+  const failureRows =
+    onHome && runFailure ? errorPanelRows(runFailure, failureWidth, palette).length + 1 : 0
 
   return (
     <ThemeProvider palette={palette}>
@@ -3991,10 +4031,15 @@ export function App({
             )
           ) : null}
 
+          {onHome && runFailure ? (
+            <Box flexDirection="column" marginBottom={1} flexShrink={0}>
+              <ErrorPanel error={runFailure} width={failureWidth} />
+            </Box>
+          ) : null}
           {onHome ? (
             <Home
               width={width}
-              height={height}
+              height={height - failureRows}
               intro={firstHome.current}
               update={release}
               mode={mode}
