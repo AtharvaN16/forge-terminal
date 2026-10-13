@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { ImageInfo } from '../../src/core/types.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
-import { detailAt, enhanceRow, enhanceRows, rowValues, toolState } from '../../src/shell/enhance.js'
+import {
+  actionForRow,
+  detailAt,
+  enhanceRow,
+  enhanceRows,
+  pillOf,
+  rowValues,
+  toolState,
+} from '../../src/shell/enhance.js'
 import { pinPlatform } from '../helpers/platform.js'
 
 // The Mac's rows (Remove background among them); see pinPlatform.
@@ -26,6 +34,7 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
       ['cutout', 'Remove background'],
       ['trim', 'Trim edges'],
       ['resize', 'Resize'],
+      ['crop', 'Crop to shape'],
     ])
   })
 
@@ -74,6 +83,7 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
       'Keeps the subject.',
       'Cuts off plain borders.',
       'Any size, no new detail.',
+      'Changes the shape.',
     ])
     expect(rows[0]?.pane.long).toContain('on-device model')
     expect(rows[1]?.pane.long).toContain('on-device model')
@@ -96,5 +106,53 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
     const sharpen = enhanceRow(image(1200, 900), 'sharpen')
     if (!sharpen) throw new Error('no sharpen row')
     expect(rowValues(sharpen)).toEqual({ tool: 'sharpen', target: 'png', scale: '1' })
+  })
+})
+
+describe('the Crop to shape row (crop-2026-10.html, tab 2)', () => {
+  it('is built in, after Resize, and offers every shape the photo does not already have', () => {
+    const crop = enhanceRow(image(1600, 900), 'crop')
+    expect(crop?.extension).toBeUndefined()
+    // 1600 × 900 is already 16:9: that largest box would cut nothing.
+    expect(crop?.shapes?.map((s) => [s.shape.label, s.detail.dim, s.detail.bold])).toEqual([
+      ['1:1', 'becomes ', '900 × 900'],
+      ['4:5', 'becomes ', '720 × 900'],
+      ['9:16', 'becomes ', '506 × 900'],
+    ])
+    expect(crop?.pane).toEqual({
+      short: 'Changes the shape.',
+      long: 'Cuts it to a new shape around the subject. You see the crop next and can move it.',
+    })
+    expect(crop?.verb).toBe('Cropping')
+    expect(crop && actionForRow(crop).id).toBe('crop')
+  })
+
+  it('is dimmed for an animation, which cannot be cropped', () => {
+    const gif = { ...image(400, 300, 'gif'), frames: 12 } as ImageInfo
+    expect(enhanceRow(gif, 'crop')?.tooLarge).toBe('animated')
+    expect(enhanceRow(image(400, 300), 'crop')?.tooLarge).toBeUndefined()
+  })
+
+  it('answers with the shape on the pill', () => {
+    const crop = enhanceRow(image(1200, 900), 'crop')
+    if (!crop) throw new Error('no crop row')
+    expect(rowValues(crop, '16:9')).toEqual({ tool: 'crop', target: 'png', shape: '16:9' })
+    expect(rowValues(crop)).toEqual({ tool: 'crop', target: 'png', shape: '1:1' })
+    expect(detailAt(crop, '4:5')).toEqual({ dim: 'becomes ', bold: '720 × 900', after: '' })
+  })
+
+  it('gives Boost and Crop the same pill: Boost steps scales, Crop steps shapes', () => {
+    const rows = enhanceRows(image(1200, 900))
+    const boost = rows.find((r) => r.id === 'boost')
+    const crop = rows.find((r) => r.id === 'crop')
+    if (!boost || !crop) throw new Error('rows missing')
+    expect(pillOf(boost)).toMatchObject({ noun: 'scale' })
+    expect(pillOf(boost)?.steps.map((s) => [s.value, s.label])).toEqual([
+      [2, '2×'],
+      [4, '4×'],
+    ])
+    expect(pillOf(crop)).toMatchObject({ noun: 'shape' })
+    expect(pillOf(crop)?.steps.map((s) => s.label)).toEqual(['1:1', '4:5', '16:9', '9:16'])
+    expect(pillOf(rows[0] as (typeof rows)[0])).toBeUndefined()
   })
 })

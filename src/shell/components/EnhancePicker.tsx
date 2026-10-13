@@ -4,7 +4,7 @@ import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
-import { detailAt, type EnhanceRow, GAP_AFTER, type ToolState } from '../enhance.js'
+import { detailAt, type EnhanceRow, GAP_AFTER, pillOf, type ToolState } from '../enhance.js'
 import { titleRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -22,8 +22,8 @@ const READY: ToolState = { kind: 'ready' }
 /** The install byte band's width, a cell tall (G1's look for a real count). */
 const BYTE_BAND = 12
 
-/** The scale pill at the end of Boost's band: ` ‹ ` `4×` ` › `. */
-const PILL = stringWidth(' ‹ 4× › ')
+/** A pill at the end of a band (Boost's scale, Crop's shape): ` ‹ ` the step ` › `. */
+const pillWidth = (label: string) => stringWidth(` ‹ ${label} › `)
 
 /** The narrowest the pane gets before its words wrap a line each. */
 const PANE_MIN = 30
@@ -50,7 +50,9 @@ export function bytesOf(done: number, total: number): { got: string; of: string 
  * what you get: the size, "transparent PNG", or — for a tool not on this Mac
  * yet — the download and the key, "14.9 MB download · ↵ installs". Boost
  * resolution is one row; while it is highlighted a pill at the end of its
- * band holds the scale, and ←→ steps it. No row is a default. A row too large
+ * band holds the scale, and ←→ steps it. Crop to shape carries the same pill
+ * for its shape (mockups/crop-2026-10.html) — one pill, any row with steps
+ * (`pillOf`), each row keeping its own step. No row is a default. A row too large
  * for this image is dimmed with the reason on it. While a tool installs, the
  * pane's last line becomes the grey byte band ("6.2 of 14.9 MB"), then
  * "checking".
@@ -74,10 +76,13 @@ export function EnhancePicker({
   /** Every byte is in and the archive is being checked. */
   checking: boolean
   width: number
-  /** The row and scale chosen before, coming back from Save as: the picker opens on them. */
-  chosen?: { tool?: unknown; scale?: unknown }
-  /** ↵ on a row, at Boost's scale: run it, or install its tool first. */
-  onChoose: (row: EnhanceRow, scale?: number) => void
+  /**
+   * The row and its pill's step chosen before (Boost's scale, Crop's shape),
+   * coming back from a later screen: the picker opens on them.
+   */
+  chosen?: { tool?: unknown; step?: unknown }
+  /** ↵ on a row, at its pill's step (Boost's scale, Crop's shape): run it, or install its tool first. */
+  onChoose: (row: EnhanceRow, step?: number | string) => void
   /** esc while installing. */
   onStop: () => void
   onCancel: () => void
@@ -112,19 +117,26 @@ export function EnhancePicker({
   })
   const here = rows.find((r) => r.id === items[at]?.value)
   const hereState = here ? stateOf(here) : undefined
-  const scales = here?.scales ?? []
+  const pill = here ? pillOf(here) : undefined
+  const steps = pill?.steps ?? []
 
-  // Boost's scale, as an index into its row's scales. A ref too, so ↵ in the
-  // same burst of keys as → reads the step already taken (Select's reasoning).
-  const [opening] = useState(() =>
-    Math.max(
-      0,
-      scales.findIndex((s) => String(s.scale) === String(chosen?.scale)),
-    ),
-  )
-  const [step, setStep] = useState(opening)
-  const stepRef = useRef(opening)
-  const scale = scales[Math.min(step, scales.length - 1)]?.scale
+  // Each row's place on its pill, as an index into its steps, by row id. A
+  // ref too, so ↵ in the same burst of keys as → reads the step already
+  // taken (Select's reasoning).
+  const [opening] = useState(() => {
+    const row = rows.find((r) => r.id === chosen?.tool)
+    const k = row
+      ? (pillOf(row)?.steps.findIndex((s) => String(s.value) === String(chosen?.step)) ?? -1)
+      : -1
+    return row && k > 0 ? { [row.id]: k } : {}
+  })
+  const [placed, setPlaced] = useState<Record<string, number>>(opening)
+  const placedRef = useRef<Record<string, number>>(opening)
+  /** Where `row` stands on its pill: its index, within its steps. */
+  const indexOf = (row: EnhanceRow, n: number) => Math.min(placedRef.current[row.id] ?? 0, n - 1)
+  const stepNow = here
+    ? steps[Math.max(0, Math.min(placed[here.id] ?? 0, steps.length - 1))]
+    : undefined
   const installing = Object.values(tools).some((t) => t?.kind === 'installing')
 
   useKeys(
@@ -133,33 +145,40 @@ export function EnhancePicker({
     },
     { isActive: installing },
   )
-  // ←→ step the scale only where the pill shows: Boost, installed.
+  // ←→ step the pill only where it shows: a row with steps, its tool installed.
   useKeys(
     (_input, key) => {
-      const k = stepRef.current + (key.rightArrow ? 1 : key.leftArrow ? -1 : 0)
-      if (k === stepRef.current || k < 0 || k >= scales.length) return
-      stepRef.current = k
-      setStep(k)
+      if (!here) return
+      const from = indexOf(here, steps.length)
+      const k = from + (key.rightArrow ? 1 : key.leftArrow ? -1 : 0)
+      if (k === from || k < 0 || k >= steps.length) return
+      placedRef.current = { ...placedRef.current, [here.id]: k }
+      setPlaced(placedRef.current)
     },
-    { isActive: !installing && scales.length > 1 && hereState?.kind === 'ready' },
+    { isActive: !installing && steps.length > 1 && hereState?.kind === 'ready' },
   )
 
-  // The list's column: the names and Boost's pill always fit, so a row never
-  // wraps; a dimmed row's reason widens it while the pane keeps PANE_MIN.
+  // The list's column: the names and the widest pill always fit, so a row
+  // never wraps; a dimmed row's reason widens it while the pane keeps PANE_MIN.
   const labels = Math.max(...rows.map((r) => stringWidth(r.label)))
   const reasons = Math.max(0, ...items.map((i) => (i.disabled ? stringWidth(i.hint ?? '') : 0)))
-  const least = 2 + labels + 2 + PILL + 2
+  const pills = Math.max(
+    pillWidth('4×'),
+    ...rows.flatMap((r) => pillOf(r)?.steps.map((s) => pillWidth(s.label)) ?? []),
+  )
+  const least = 2 + labels + 2 + pills + 2
   const left = Math.max(least, Math.min(2 + labels + 2 + reasons + 1, width - 3 - PANE_MIN))
   const paneWidth = Math.max(1, width - left - 3)
 
   const dim = colourProp(palette.dim)
   const fg = colourProp(palette.fg)
 
-  /** Boost's scale pill, on its band while it is highlighted. */
-  const pill = (item: Choice) => {
+  /** The highlighted row's pill (Boost's scale, Crop's shape), at its band's far end. */
+  const pillFor = (item: Choice) => {
     const row = rows.find((r) => r.id === item.value)
-    if (!row?.scales || scale === undefined || stateOf(row)?.kind !== 'ready') return null
-    const i = Math.min(step, row.scales.length - 1)
+    const own = row ? pillOf(row) : undefined
+    if (!row || !own || own.steps.length === 0 || stateOf(row)?.kind !== 'ready') return null
+    const i = Math.max(0, Math.min(placed[row.id] ?? 0, own.steps.length - 1))
     const chip = palette.folderChip === '' ? {} : { backgroundColor: palette.folderChip }
     const arrow = (live: boolean, text: string) => (
       <Text bold={live} color={colourProp(live ? palette.accent : palette.border)} {...chip}>
@@ -170,9 +189,9 @@ export function EnhancePicker({
       <Text>
         {arrow(i > 0, ' ‹ ')}
         <Text bold color={fg} {...chip}>
-          {`${scale}×`}
+          {own.steps[i]?.label}
         </Text>
-        {arrow(i < row.scales.length - 1, ' › ')}
+        {arrow(i < own.steps.length - 1, ' › ')}
       </Text>
     )
   }
@@ -205,7 +224,7 @@ export function EnhancePicker({
       )
     }
     if (hereState === undefined) return null
-    const detail = detailAt(here, scale)
+    const detail = detailAt(here, stepNow?.value)
     return (
       <Text>
         {detail.dim ? <Text color={dim}>{detail.dim}</Text> : null}
@@ -228,8 +247,8 @@ export function EnhancePicker({
         ]
       : [
           ['↑↓', 'choose'],
-          ...(scales.length > 1 && hereState?.kind === 'ready'
-            ? ([['←→', 'scale']] as Array<[string, string]>)
+          ...(pill && steps.length > 1 && hereState?.kind === 'ready'
+            ? ([['←→', pill.noun]] as Array<[string, string]>)
             : []),
           ['↵', 'confirm'],
         ]
@@ -256,12 +275,12 @@ export function EnhancePicker({
             onSubmit={(id) => {
               const row = rows.find((r) => r.id === id)
               if (!row) return
-              const k = row.scales?.[Math.min(stepRef.current, row.scales.length - 1)]?.scale
-              onChoose(row, k)
+              const own = pillOf(row)?.steps ?? []
+              onChoose(row, own[Math.max(0, indexOf(row, own.length))]?.value)
             }}
             onCancel={onCancel}
             isActive={!installing}
-            speak={pill}
+            speak={pillFor}
           />
         </Box>
         {here ? (
