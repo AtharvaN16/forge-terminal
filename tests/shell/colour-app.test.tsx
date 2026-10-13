@@ -81,6 +81,27 @@ describe("colour's home and screens", () => {
     expect(plain(app.lastFrame())).toContain('› g.png')
   }, 20_000)
 
+  it('the palette: the photo in a frame, → go deeper beside the values, not in the key row', async () => {
+    const { app, dir } = await colourHome()
+    app.stdin.write(await makeGradientPng(dir, 'g.png', 48))
+    await waitFor(() => /\d+%\s*$/m.test(plain(app.lastFrame())))
+    await settle()
+    const rows = lines(app.lastFrame())
+    // The frame's corners, at the photo's left edge, four cells in.
+    const top = rows.findIndex((l) => l.startsWith('    ┌'))
+    const bottom = rows.findIndex((l) => l.startsWith('    └'))
+    expect(top).toBeGreaterThan(-1)
+    expect(bottom).toBeGreaterThan(top)
+    expect(rows[top]).toMatch(/^ {4}┌─+┐/)
+    expect(rows[bottom]).toMatch(/^ {4}└─+┘/)
+    for (const row of rows.slice(top + 1, bottom)) expect(row).toMatch(/^ {4}│.+│/)
+    // The values, then the key at the line's far end.
+    const detail = rows.find((l) => /^ {4}#[0-9A-F]{6} {2}rgb\(/.test(l)) ?? ''
+    expect(detail).toMatch(/oklch\(.+\) +→ +go deeper$/)
+    expect(keyRow(app.lastFrame())).not.toContain('open')
+    expect(keyRow(app.lastFrame())).toMatch(/↑↓ +choose +↵ +copy +c +copy all/)
+  }, 20_000)
+
   it('a PDF dropped there is refused with its reason, and nothing quits', async () => {
     const { app, dir } = await colourHome()
     app.stdin.write(await makePdf(dir, 'report.pdf'))

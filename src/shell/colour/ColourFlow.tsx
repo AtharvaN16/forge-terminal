@@ -44,6 +44,7 @@ import {
   fieldRows,
   fieldValue,
   flashRow,
+  framed,
   insideColumn,
   paletteBody,
   paletteColumn,
@@ -52,6 +53,7 @@ import {
   plainScaleRows,
   previewRows,
   rampRows,
+  withKey,
 } from './colour-art.js'
 import {
   type Action,
@@ -96,6 +98,19 @@ const FORMATS = 'JPEG · PNG · HEIC · WebP · TIFF'
  */
 const PHOTO_ROWS = 12
 const CHROME = 12
+/** The photo's widest, in cells: what it was before it had a frame. */
+const PHOTO_COLS = 24
+/** The photo's tallest, in pixels: its frame takes two of `PHOTO_ROWS`, two pixels a row. */
+const PHOTO_TALL = (PHOTO_ROWS - 2) * 2
+
+/**
+ * The longer side `photoMap` draws the photo at: a wide photo keeps its full
+ * width unless that would make it taller than the frame leaves room for.
+ */
+function photoMax(pixels: Pixels): number {
+  if (pixels.width < pixels.height) return PHOTO_TALL
+  return Math.min(PHOTO_COLS, Math.floor((PHOTO_TALL * pixels.width) / pixels.height))
+}
 
 export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFlowProps) {
   const p = useTheme()
@@ -235,7 +250,7 @@ export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFl
     pixels: image.current?.pixels,
     arrivedFor: arriving && arrivedFor < ARRIVE_MS ? arrivedFor : undefined,
   })
-  const detail = detailFor({ p, screen, state, groupsAt })
+  const detail = detailFor({ p, screen, state, groupsAt, width })
   const keys = keysFor(screen, state)
 
   // Palette with nothing dropped yet (C4): the drop zone first, the field
@@ -490,7 +505,7 @@ function bodyRows({
           rows: showPhoto ? PHOTO_ROWS : items.length + 2,
         })
   if (!showPhoto || !pixels) return column.map((row) => [blank(4), ...row])
-  return paletteBody(photoFor(p, screen, groupsAt, pixels), column)
+  return paletteBody(framed(p, photoFor(p, screen, groupsAt, pixels)), column)
 }
 
 /** The colour a drill level is inside: its hex, its whole percentage, and its share of the image. */
@@ -518,7 +533,7 @@ function photoFor(
   pixels: Pixels,
 ): Row[] {
   const here = groupsAt(screen.level)
-  const map = photoMap(pixels, here)
+  const map = photoMap(pixels, here, photoMax(pixels))
   if (screen.level.length === 0) {
     return photoRows({ palette: p, map, colours: here.map((g) => g.hex), lit: screen.sel })
   }
@@ -528,7 +543,7 @@ function photoFor(
     map,
     colours: here.map((g) => g.hex),
     lit: screen.sel,
-    outside: { map: photoMap(pixels, top), colours: top.map((g) => g.hex) },
+    outside: { map: photoMap(pixels, top, photoMax(pixels)), colours: top.map((g) => g.hex) },
   })
 }
 
@@ -536,22 +551,26 @@ function detailFor({
   p,
   screen,
   groupsAt,
+  width,
 }: {
   p: ReturnType<typeof useTheme>
   screen: Screen
   state: ColourState
   groupsAt: (level: number[]) => Group[]
+  width: number
 }): Row {
   if (screen.kind !== 'palette') return []
   const groups = groupsAt(screen.level)
   const g = groups[screen.sel]
   if (!g) return []
+  // At the top, → goes into the chosen colour: said beside it, not in the key row.
   if (screen.level.length === 0) {
-    return detailRow(p, [
+    const values = detailRow(p, [
       { text: g.hex, strong: true },
       { text: formatRgb(g.rgb) },
       { text: formatOklch(g.rgb) },
     ])
+    return withKey(p, values, '→', 'go deeper', width)
   }
   const parent = parentOf(screen, groupsAt)
   const pct = wholePercents(groups.map((x) => x.share))[screen.sel] ?? 0
@@ -602,7 +621,6 @@ function keysFor(
     return {
       main: [
         ['↑↓', 'choose'],
-        ['→', 'open'],
         ['↵', 'copy'],
         ['c', 'copy all'],
       ],

@@ -338,6 +338,35 @@ export function insideColumn({
   ]
 }
 
+/**
+ * The photo inside a one-cell frame in the border grey, so where the image
+ * starts and ends shows against a dark photo on a dark terminal.
+ */
+export function framed(p: Palette, photo: Row[]): Row[] {
+  const cols = width(photo[0] ?? [])
+  const edge = (text: string): Run => ink(text, p.border)
+  return [
+    [edge(`┌${'─'.repeat(cols)}┐`)],
+    ...photo.map((row) => [edge('│'), ...row, edge('│')]),
+    [edge(`└${'─'.repeat(cols)}┘`)],
+  ]
+}
+
+/**
+ * The detail line with a key at its far end, one cell short of `w`: what
+ * `→` does to the chosen colour, said beside it rather than in the key row.
+ * The cap is drawn as the key row draws its caps; without fills, bracketed.
+ */
+export function withKey(p: Palette, row: Row, key: string, word: string, w: number): Row {
+  const cap: Run =
+    p.keycapBg === ''
+      ? { text: `[${key}]`, fg: p.fg, bold: true }
+      : { text: ` ${key} `, fg: p.fg, bg: p.keycapBg, bold: true }
+  const tail: Row = [cap, ink(` ${word}`, p.dim)]
+  const gap = w - 1 - width(row) - width(tail)
+  return gap < 2 ? row : [...row, blank(gap), ...tail]
+}
+
 /** The photo at column 4, the list four cells after it. */
 export function paletteBody(photo: Row[], list: Row[]): Row[] {
   const cols = width(photo[0] ?? [])
