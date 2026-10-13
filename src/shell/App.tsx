@@ -1262,11 +1262,11 @@ export function App({
   }, [step, recordDone])
 
   /**
-   * A run that failed and ended the action (E5), live above home rather than
-   * in `<Static>`: home fills the window, so a block printed above it is
-   * already off the top of the screen — the run looked like it just went
-   * home. It goes to the scrollback once something new starts (`fenceOff`,
-   * another file, leaving home). The ref is what `commitFailure` reads, so
+   * A run that failed and ended the action (E5), live under home's field
+   * rather than in `<Static>`: home fills the window, so a block printed
+   * above it is already off the top of the screen — the run looked like it
+   * just went home. It goes to the scrollback once something new starts
+   * (`fenceOff`, another file, typing, leaving home). The ref is what `commitFailure` reads, so
    * a second failure in the same handler commits the first, not nothing.
    */
   const [runFailure, setRunFailure] = useState<ForgeError | undefined>(undefined)
@@ -1290,8 +1290,8 @@ export function App({
   )
   const fileStaged = stage.sources.length > 0
   useEffect(() => {
-    if (runFailure && (!onHome || fileStaged)) commitFailure()
-  }, [runFailure, onHome, fileStaged, commitFailure])
+    if (runFailure && (!onHome || fileStaged || text !== '')) commitFailure()
+  }, [runFailure, onHome, fileStaged, text, commitFailure])
 
   /**
    * Rules a dashed line under whatever is already on screen, so a change of
@@ -3387,10 +3387,9 @@ export function App({
    * the live frame keeps above it.
    */
   const canvas = paint ? { backgroundColor: palette.canvas, width: measured, paddingX: inset } : {}
-  // Home makes room under the window for a failed run's panel and its gap.
+  // A failed run's panel sits under home's field; home makes room for it.
   const failureWidth = Math.max(8, width - 2 * HOME_MARGIN)
-  const failureRows =
-    onHome && runFailure ? errorPanelRows(runFailure, failureWidth, palette).length + 1 : 0
+  const failureNote = onHome && runFailure && !homeError ? runFailure : undefined
 
   return (
     <ThemeProvider palette={palette}>
@@ -4031,15 +4030,10 @@ export function App({
             )
           ) : null}
 
-          {onHome && runFailure ? (
-            <Box flexDirection="column" marginBottom={1} flexShrink={0}>
-              <ErrorPanel error={runFailure} width={failureWidth} />
-            </Box>
-          ) : null}
           {onHome ? (
             <Home
               width={width}
-              height={height - failureRows}
+              height={height}
               intro={firstHome.current}
               update={release}
               mode={mode}
@@ -4053,7 +4047,12 @@ export function App({
                     reason={homeError.short ?? homeError.detail}
                     width={Math.max(8, width - 2 * HOME_MARGIN)}
                   />
+                ) : failureNote ? (
+                  <ErrorPanel error={failureNote} width={failureWidth} />
                 ) : undefined
+              }
+              noteRows={
+                failureNote ? errorPanelRows(failureNote, failureWidth, palette).length : undefined
               }
               field={
                 <Prompt
