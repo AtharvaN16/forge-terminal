@@ -67,4 +67,17 @@ describe('/update in the shell', () => {
     expect(app.lastFrame()).toContain('Drop a file here')
     app.unmount()
   })
+
+  it('puts the keys on the window’s last row', async () => {
+    const app = open(async () => undefined)
+    await settle(400)
+    app.stdin.write('/update')
+    await settle()
+    app.stdin.write(ENTER)
+    await until(() => (app.lastFrame() ?? '').includes('Forge 9.9.9'))
+    const lines = (app.lastFrame() ?? '').split('\n')
+    expect(lines.length).toBeGreaterThanOrEqual(30)
+    expect(lines.at(-1)).toContain('ctrl-c quit')
+    app.unmount()
+  })
 })
