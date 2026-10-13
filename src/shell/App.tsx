@@ -2328,7 +2328,7 @@ export function App({
    * them the session.
    */
   /**
-   * Back from a setting (/theme, /extensions) to where settings live: the
+   * Back from a setting (/theme, /extensions, /update, /about) to where settings live: the
    * command list, the setting just left still highlighted.
    */
   const backToCommands = (name: string) => {
@@ -4028,7 +4028,7 @@ export function App({
               current={VERSION}
               auto={livePrefs.updateCheck !== false}
               updater={updater}
-              onClose={() => setStep('idle')}
+              onClose={() => backToCommands('update')}
               onChecked={(latest) => void keepRelease(latest)}
               onRestart={() => {
                 requestRestart()

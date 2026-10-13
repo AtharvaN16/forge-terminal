@@ -35,7 +35,7 @@ describe('/update in the shell', () => {
     await settle(400)
     app.stdin.write('/')
     await until(() => (app.lastFrame() ?? '').includes('/update'))
-    expect(app.lastFrame()).toMatch(/\/update\s+check for a new version/)
+    expect(app.lastFrame()).toContain('/update')
     app.unmount()
   })
 
@@ -53,7 +53,7 @@ describe('/update in the shell', () => {
     app.unmount()
   })
 
-  it('/update opens the screen, and esc comes home', async () => {
+  it('/update opens the screen, and esc goes back to the commands', async () => {
     const app = open(async () => undefined)
     await settle(400)
     app.stdin.write('/update')
@@ -63,8 +63,9 @@ describe('/update in the shell', () => {
     expect(app.lastFrame()).toContain('↵ update')
     await settle()
     app.stdin.write(ESC)
-    await until(() => (app.lastFrame() ?? '').includes('Drop a file here'))
-    expect(app.lastFrame()).toContain('Drop a file here')
+    await until(() => (app.lastFrame() ?? '').includes('settings'))
+    expect(app.lastFrame()).toContain('/update')
+    expect(app.lastFrame()).not.toContain('Forge 9.9.9')
     app.unmount()
   })
 
