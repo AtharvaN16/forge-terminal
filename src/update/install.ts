@@ -106,7 +106,7 @@ export async function installUpdate(
   const platform = opts.platform ?? process.platform
   if (platform === 'win32') return installOnWindows(version, opts)
   const script = opts.script ?? runningScript(process.argv[1])
-  if (!installedGlobally(script)) throw updateUnavailable(version)
+  if (!installedGlobally(script, platform)) throw updateUnavailable(version)
   const npm = opts.npm ?? npmBeside(process.execPath)
   const run = opts.run ?? runProcess
   const { code, output } = await run(
