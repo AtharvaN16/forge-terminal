@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import { type ReactNode, useState } from 'react'
 import stringWidth from 'string-width'
 import { COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
@@ -28,6 +28,7 @@ import {
   useTween,
 } from '../motion.js'
 import type { StagedView, UnderField } from '../stage.js'
+import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
 import { colourProp, commandsPalette, MODE_KEYS, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'

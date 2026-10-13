@@ -1,4 +1,5 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 

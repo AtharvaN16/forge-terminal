@@ -213,7 +213,7 @@ describe('the home screen in the app', () => {
       const frame = plain(app.lastFrame())
       expect(frame).not.toContain('Drop a file here')
       expect(frame).toContain('█▀▀▀ █▀▀█')
-      expect(frame).toMatch(/modes\n.*▌ \/convert/)
+      expect(frame).toMatch(/modes ─+ *\n.*▌ \/convert/)
       expect(frame).toContain('settings')
       expect(fieldLine(frame)).toBe('    › /')
       expect(frame.split('\n').at(-1)).toMatch(/run +esc +back/)

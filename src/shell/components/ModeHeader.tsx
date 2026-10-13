@@ -1,5 +1,6 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import type { ReactNode } from 'react'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type Palette, type ShellMode } from '../theme.js'
 

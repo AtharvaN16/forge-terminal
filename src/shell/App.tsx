@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { Box, type DOMElement, type Key, Static, Text, useApp, useStdout } from 'ink'
+import { Box, type DOMElement, type Key, Static, useApp, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_PREFERENCES,
@@ -97,6 +97,7 @@ import {
   stagedView,
   underField,
 } from './stage.js'
+import { Text } from './Text.js'
 import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
 import {
@@ -104,6 +105,7 @@ import {
   MODE_KEYS,
   modeForKey,
   modePalette,
+  paintsCanvas,
   paletteFor,
   type ShellMode,
   SYMBOLS,
@@ -446,6 +448,9 @@ const asFailure = (path: string, e: unknown): InputFailure => ({
   error: isForgeError(e) ? e : unexpectedError(e),
 })
 
+/** Columns of painted margin on each side of light's canvas (see `paint` in `App`). */
+export const PAINT_INSET = 2
+
 const resolution = (sources: SourceInfo[], failures: InputFailure[]): DropResolution => ({
   sources,
   failures,
@@ -577,12 +582,6 @@ export function App({
     }
   }, [initialHeight, stdout])
 
-  const width = measured
-  const height = measuredHeight
-  const band = bandFor(width)
-  // A picker's band stops where the file card above it does.
-  const pickerWidth = Math.min(width, CARD_WIDTH)
-
   /**
    * Seeded with the banner rather than having an effect push it, so it is
    * `<Static>` item zero from the very first frame. Ink flushes static output
@@ -631,6 +630,21 @@ export function App({
    * them — never picked up a theme chosen or changed mid-session.
    */
   const basePalette = paletteFor(theme)
+  /**
+   * Light paints its own canvas (see the root Box), and the terminal's own
+   * padding around it keeps the terminal's colour: content at column 0 sat
+   * against a dark edge and read as cropped. So the canvas keeps a painted
+   * margin, and everything lays out in `width`, `PAINT_INSET` columns in
+   * from each side of the window.
+   */
+  const paint = paintsCanvas(basePalette)
+  const width = paint ? Math.max(20, measured - 2 * PAINT_INSET) : measured
+  // The blank row the canvas keeps on top comes out of the layout's rows: a
+  // frame taller than the window makes Ink clear and redraw every frame.
+  const height = paint ? measuredHeight - 1 : measuredHeight
+  const band = bandFor(width)
+  // A picker's band stops where the file card above it does.
+  const pickerWidth = Math.min(width, CARD_WIDTH)
   /**
    * Preferences as they stand *now*, seeded from what was loaded at launch.
    * `d` changes the default output mid-session, and the banner, the preset
@@ -3180,11 +3194,27 @@ export function App({
    * *live* frame's height rather than the whole session's.
    */
   const rootRef = useRef<DOMElement | null>(null)
+  /**
+   * Light paints its own canvas: the live frame fills the window, every row
+   * the full width, so a dark terminal turns light while forge runs (the
+   * terminal's own background is left alone). Each history block is painted
+   * too, so what light printed stays readable once the frame moves on. The
+   * margin (`PAINT_INSET`) is painted with it; the live frame also keeps a
+   * blank row above it.
+   */
+  const canvas = paint
+    ? { backgroundColor: palette.canvas, width: measured, paddingX: PAINT_INSET }
+    : {}
 
   return (
     <ThemeProvider palette={palette}>
       <ClickTargetProvider>
-        <Box flexDirection="column" ref={rootRef}>
+        <Box
+          flexDirection="column"
+          ref={rootRef}
+          {...canvas}
+          {...(paint ? { minHeight: measuredHeight, paddingTop: 1 } : {})}
+        >
           {/* Inside the provider, deliberately — see `MouseRouter`. `revision`
               recalibrates the frame's origin: committed history scrolls the
               live frame down the screen, and `history.length` changes exactly
@@ -3224,7 +3254,15 @@ export function App({
             </Box>
           ) : null}
           <Static key={staticGeneration} items={history}>
-            {(block) => <HistoryEntry key={block.id} block={block} width={width} />}
+            {(block) =>
+              paint ? (
+                <Box key={block.id} flexDirection="column" {...canvas}>
+                  <HistoryEntry block={block} width={width} />
+                </Box>
+              ) : (
+                <HistoryEntry key={block.id} block={block} width={width} />
+              )
+            }
           </Static>
 
           {step === 'mode' && source && modeSpec?.kind === 'select' ? (

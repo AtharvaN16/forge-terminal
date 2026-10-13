@@ -341,9 +341,9 @@ const NAME_COLUMN = 12
 
 /**
  * The commands, drawn on the drop surface's fill in place of its dots: the
- * modes, then the settings, each under a dim heading and only when something
- * in it matches. A row is the slash, what has been typed (bright), the rest
- * of the name and its description. The chosen row is the picker's — a band
+ * modes, then the settings, each under a gold heading and a rule (C1) and
+ * only when something in it matches. A row is the slash, what has been
+ * typed (bright), the rest of the name and its description. The chosen row is the picker's — a band
  * with a `▌` strip — and the strip takes the colour of the mode the command
  * would switch to, or the commands' gold for a setting.
  *
@@ -391,7 +391,16 @@ export function commandRows({
     const members = items.filter((c) => c.group === group)
     if (members.length === 0) continue
     if (lines.length > 0) lines.push(line([]))
-    lines.push(line([{ text: '    ' }, { text: group, fg: palette.border }]))
+    // C1 (round 5): the heading in the commands' gold, and a quiet rule on to
+    // the panel's end, as Save as parts its name from its folders.
+    const rule = Math.max(0, W - 8 - group.length - 1)
+    lines.push(
+      line([
+        { text: '    ' },
+        { text: group, fg: palette.brand, bold: true },
+        { text: ` ${'─'.repeat(rule)}`, fg: palette.faint },
+      ]),
+    )
     for (const c of members) {
       const chosen = items.indexOf(c) === selected
       const rest = c.name.slice(query.length)

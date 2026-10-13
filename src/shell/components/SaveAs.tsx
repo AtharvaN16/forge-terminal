@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 
-import { Box, type DOMElement, Text } from 'ink'
+import { Box, type DOMElement } from 'ink'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { displayName } from '../../utils/display-path.js'
@@ -21,6 +21,7 @@ import {
   ruleRow,
   underlineRow,
 } from '../save-as-art.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'

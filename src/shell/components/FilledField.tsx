@@ -1,6 +1,7 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import type { ReactNode } from 'react'
 import { FIELD_WIDTH, fieldBlank } from '../save-as-art.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { Runs } from './Home.js'
 import { Prompt } from './Prompt.js'
