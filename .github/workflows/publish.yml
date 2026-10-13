@@ -15,6 +15,7 @@ name: publish
 # Release: merge to main, bump the version, run `npm test` locally (CI
 # skips tests/shell), then
 #   git tag v<version> && git push origin v<version>
+# (or v<version>-next to stage it under the `next` dist-tag; see below)
 # and once the run is green, approve it from your own machine:
 #   npm stage list forge-terminal
 #   npm stage approve <stage-id>        (asks for your 2FA code)
@@ -46,13 +47,24 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      # v<version> stages under `latest`. v<version>-next stages the same
+      # version under `next`: `npm i -g forge-terminal@next` gets it, while
+      # `npm i -g forge-terminal` and the update check (which reads `latest`)
+      # do not, until `npm dist-tag add forge-terminal@<version> latest`.
+      # A pre-release version (1.2.0-beta.0) always goes under `next`; npm
+      # refuses one with no explicit tag anyway.
       - name: The tag is this version, on main
         shell: bash
         run: |
           want="v$(node -p 'require("./package.json").version')"
-          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+          tag="$GITHUB_REF_NAME"
+          dist=latest
+          if [[ "$want" == *-* ]]; then dist=next; fi
+          if [ "$tag" = "$want-next" ]; then tag="$want"; dist=next; fi
+          if [ "$tag" != "$want" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match package.json ($want)"; exit 1
           fi
+          echo "DIST_TAG=$dist" >> "$GITHUB_ENV"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
             echo "::error::$GITHUB_REF_NAME is not on main"; exit 1
           }
@@ -74,4 +86,5 @@ jobs:
       - run: npm install -g npm@11.19.0
 
       # --ignore-scripts: prepublishOnly would run the checks above again.
-      - run: npm stage publish --provenance --access public --ignore-scripts
+      # DIST_TAG comes from the tag check above.
+      - run: npm stage publish --provenance --access public --ignore-scripts --tag "$DIST_TAG"

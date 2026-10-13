@@ -1,7 +1,7 @@
 {
   "name": "forge-terminal",
-  "version": "0.2.1",
-  "description": "A terminal-native file converter for macOS",
+  "version": "0.3.0",
+  "description": "A terminal-native file converter for macOS and Windows",
   "keywords": [
     "convert",
     "converter",
@@ -14,7 +14,8 @@
     "cli",
     "terminal",
     "tui",
-    "macos"
+    "macos",
+    "windows"
   ],
   "homepage": "https://github.com/AtharvaN16/forge-terminal#readme",
   "repository": {

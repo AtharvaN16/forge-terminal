@@ -1,6 +1,6 @@
 # Forge
 
-**Convert** — a terminal-native file converter for macOS. Command: `forge`.
+**Convert** — a terminal-native file converter for macOS and Windows. Command: `forge`.
 
 ## What it is
 
@@ -30,8 +30,10 @@ and arrow keys instead of flags. See [Interactive shell](#interactive-shell).
 
 ## Installation
 
-**Requires macOS and Node 20 or newer** (developed and tested on Node 24).
-Check with `node --version`; if you don't have it, `brew install node`.
+**Requires macOS or Windows 10/11, and Node 20 or newer** (developed and
+tested on Node 24). Check with `node --version`; if you don't have it,
+`brew install node` on a Mac, or the LTS installer from nodejs.org on Windows.
+On Windows, use Windows Terminal for the full experience.
 
 ```bash
 npm install -g forge-terminal
@@ -41,7 +43,7 @@ That puts `forge` on your `PATH`, so it works from any directory. Verify:
 
 ```bash
 forge --version
-# 0.2.1
+# 0.3.0
 
 forge photo.jpg --to webp
 ```
@@ -266,13 +268,16 @@ is optional.
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather
-than part of the install. Both need macOS 14 or later. Nothing downloads until
-you ask:
+than part of the install. On a Mac both need macOS 14 or later; on Windows,
+Boost runs on DirectML and remove background is not available yet. Windows
+also has a `heic` extension, because macOS opens iPhone photos itself and
+Windows needs a decoder. Nothing downloads until you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
-forge extensions add boost              # about 15 MB; Apple Silicon only for now
-forge extensions add remove-background  # about 32 KB
+forge extensions add boost              # about 15 MB on Apple Silicon (no Intel Mac build), 23 MB on Windows
+forge extensions add remove-background  # about 32 KB; macOS only
+forge extensions add heic               # about 0.5 MB; Windows only
 forge extensions remove boost
 ```
 
@@ -886,7 +891,7 @@ photo.png · PNG · 122 KB · 2756×774
 With `--json`:
 
 ```json
-{"forge":"0.2.1","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+{"forge":"0.3.0","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
 ```
 
 `targets` and `actions` come from the engines' own capabilities, so they are
@@ -912,7 +917,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 ```jsonc
 {
-  "forge": "0.2.1",
+  "forge": "0.3.0",
   "ok": false,
   "results": [
     {

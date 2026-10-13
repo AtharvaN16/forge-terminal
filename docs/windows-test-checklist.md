@@ -8,8 +8,8 @@ write down anything that looks odd, even if it still worked.
 1. Install Node.js (the "LTS" version) from https://nodejs.org.
 2. Open **Windows Terminal** (search for it in the Start menu).
 3. Install Convert by typing this and pressing Enter:
-   `npm i -g forge-terminal`
-4. Check it worked by typing `forge --version`. It should print a version number.
+   `npm i -g forge-terminal@0.3.0`
+4. Check it worked by typing `forge --version`. It should print `0.3.0`.
 
 ## Try these
 
