@@ -128,9 +128,7 @@ describe('light mode (L6): the drop zone', () => {
 describe('the commands’ own colour: the brand’s gold (K1)', () => {
   it('draws "/" on its tab in the gold while the list is open', () => {
     for (const p of [DARK, LIGHT]) {
-      const row = cells(
-        tabRows({ width: 80, palette: p, mode: 'convert', savesTo: '~', commands: true })[1],
-      )
+      const row = cells(tabRows({ palette: p, mode: 'convert', commands: true })[1])
       expect(row.find((c) => c.ch === '/')?.fg).toBe(p.brand)
     }
   })
@@ -180,7 +178,6 @@ describe('the commands’ own colour: the brand’s gold (K1)', () => {
           height={24}
           mode="convert"
           typing
-          savesTo="~/Desktop"
           commands={{ ...list, selected: 0 }}
           field={
             <Prompt

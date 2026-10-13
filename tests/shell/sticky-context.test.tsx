@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeMarkedPdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ENTER = String.fromCharCode(13)
 const ESC = String.fromCharCode(27)
@@ -49,7 +50,7 @@ describe('the staged file is never invisible', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    const frame = lastFrame() ?? ''
+    const frame = unpaint(lastFrame() ?? '')
     expect(frame).toContain('Choose an operation')
     // The staged file stays named here too.
     expect(frame).toContain('resonance_brochure.pdf')

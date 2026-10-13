@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeGradientPng, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
-const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
+const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
 const lines = (f: string | undefined) => plain(f).split('\n')
 
 /**
@@ -49,9 +50,10 @@ describe('Done, in the flow', () => {
   it('fills the screen: the bar ending in Done on top, the keys on the bottom row', async () => {
     const { app } = await atDone()
     const out = lines(app.lastFrame())
-    expect(out).toHaveLength(24)
+    // The window's 24 rows, less the canvas's blank row on top.
+    expect(out).toHaveLength(23)
     expect(out[0]).toMatch(/JPEG ╱ 80 ╱ .+ ╱ test\.jpg ╱ Done ╱╱ *$/)
-    expect(out[23]).toMatch(
+    expect(out[22]).toMatch(
       /^ {4}↵ {2}convert another {3}o {2}open {3}s {2}show in \S+ +ctrl-c quit$/,
     )
     const all = plain(app.lastFrame())
@@ -60,7 +62,7 @@ describe('Done, in the flow', () => {
     expect(all).toContain('✓ test.jpg')
     expect(all).toMatch(/\d+(\.\d)?% (smaller|larger)|same size/)
     expect(all).toMatch(/^ {2,3}(now|was) \S+ \S+ +(now|was) \S+ \S+ ?$/m)
-    expect(out[22]).toBe('─'.repeat(80))
+    expect(out[21]).toBe('─'.repeat(76))
     // Not today's receipt.
     expect(all).not.toContain('✓ DONE')
     expect(all).not.toContain('saved to')

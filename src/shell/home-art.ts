@@ -268,30 +268,21 @@ export function brandIntro(rows: Row[], front: number, palette: Palette): Row[] 
  * The row above is left blank: a half-cell lip there drew as a hairline seam
  * in terminals that leave a gap between rows. "/ commands" is always there, dim
  * at rest; while the field holds a command it is the active tab, and no mode
- * is. Where the output goes sits at the right end of the row: in full
- * ("saves to ~/Desktop") when there is room, the destination alone when
- * there is not (four tabs fill most of 80 columns), and nothing when even
- * that would collide with the tabs.
+ * is. Nothing sits at the row's right: "saves to ~/Desktop" (and colour's
+ * "copies to clipboard") was taken out on 2026-10-13 — Save as says where a
+ * file goes when it matters.
  */
 export function tabRows({
-  width: columns,
   palette,
   mode,
-  savesTo,
-  right = { label: 'saves to', value: savesTo },
   commands = false,
 }: {
-  width: number
   palette: Palette
   mode: ShellMode
-  savesTo: string
-  /** Where results go, when not a folder: colour mode copies to the clipboard. */
-  right?: { label: string; value: string }
   /** The command list is open: "/ commands" is the active tab. */
   commands?: boolean
 }): Row[] {
   const M = HOME_MARGIN
-  const W = columns - M * 2
   const chip = palette.tabChip === '' ? undefined : palette.tabChip
   const top: Row = [blank(M)]
   const tabs: Row = []
@@ -322,18 +313,7 @@ export function tabRows({
     tab(String(i + 1), modeColours(palette, m).fg, m, !commands && m === mode)
   })
   tab('/', palette.brand, 'commands', commands)
-
-  const full: Row = [
-    { text: right.label, fg: palette.border },
-    blank(1),
-    { text: right.value, fg: palette.dim },
-    blank(1),
-  ]
-  const short: Row = [{ text: right.value, fg: palette.dim }, blank(1)]
-  const row: Row = [blank(M), ...tabs]
-  const saves = [full, short].find((r) => W - width(tabs) - width(r) >= 1)
-  if (saves) row.push(blank(W - width(tabs) - width(saves)), ...saves)
-  return [top, row]
+  return [top, [blank(M), ...tabs]]
 }
 
 /** How wide a command's name column is, slash included. */

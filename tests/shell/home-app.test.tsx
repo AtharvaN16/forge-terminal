@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makePng, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
@@ -13,7 +14,7 @@ const DOWN = `${ESC}[B`
 const UP = `${ESC}[A`
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
-const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
+const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
 
 function home(dir: string) {
   return render(
@@ -36,7 +37,8 @@ describe('the home screen in the app', () => {
     const app = home(await makeTempDir())
     await settle()
     const frame = plain(app.lastFrame())
-    expect(frame.split('\n')).toHaveLength(24)
+    // The window's 24 rows, less the canvas's blank row on top.
+    expect(frame.split('\n')).toHaveLength(23)
     expect(frame).toContain('Drop a file here')
     expect(frame).toContain('1 convert')
     expect(fieldLine(frame)).toBe('    › or type a path')
@@ -197,7 +199,8 @@ describe('the home screen in the app', () => {
     await settle()
     const frame = plain(app.lastFrame())
     expect(frame).toContain('compress')
-    expect(frame.split('\n')).toHaveLength(24)
+    // The window's 24 rows, less the canvas's blank row on top.
+    expect(frame.split('\n')).toHaveLength(23)
     expect(frame.split('\n').at(-1)).toContain('run')
   })
 

@@ -8,6 +8,7 @@ import { App } from '../../src/shell/App.js'
 import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { SYMBOLS } from '../../src/shell/theme.js'
 import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ENTER = String.fromCharCode(13)
 const DOWN = `${String.fromCharCode(27)}[B`
@@ -275,7 +276,7 @@ describe('the format suggestion', () => {
 describe('knowing which mode you are in', () => {
   it('names the mode once compress is active', async () => {
     const { lastFrame } = await toCompress()
-    const frame = lastFrame() ?? ''
+    const frame = unpaint(lastFrame() ?? '')
     // Once a file is on screen the header bar names the mode: its chip.
     expect(frame).toMatch(/^ {3}compress ╱/m)
   })
@@ -289,7 +290,7 @@ describe('knowing which mode you are in', () => {
     await settle()
     stdin.write(ENTER)
     await settle(400)
-    const frame = lastFrame() ?? ''
+    const frame = unpaint(lastFrame() ?? '')
     expect(frame).toMatch(/^ {3}convert ╱/m)
     expect(frame).not.toContain('compress')
   }, 20_000)

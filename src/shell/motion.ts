@@ -62,7 +62,9 @@ const cellsOf = (row: Row): Cell[] =>
  * mix, and its glyph swaps at the midpoint — except that a blank shows only
  * its fill, so a glyph replacing one fades up out of that fill from the
  * start. A missing fill is `canvas`, a missing ink `fg`; the shorter row is
- * padded with blanks. Adjacent cells that end up alike are one run again.
+ * padded with blanks. A cell neither row fills stays unfilled: the canvas is
+ * only a guess at the terminal's background, and painting it there shows as
+ * dark patches on any other. Adjacent cells that end up alike are one run again.
  */
 export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg: string }): Row {
   const t = Math.max(0, Math.min(1, k))
@@ -83,7 +85,7 @@ export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg:
           : {
               text: x.ch === ' ' ? y.ch : y.ch === ' ' ? x.ch : t < 0.5 ? x.ch : y.ch,
               fg: mix(inkOf(x), inkOf(y), t),
-              bg: mix(bgOf(x), bgOf(y), t),
+              bg: x.bg || y.bg ? mix(bgOf(x), bgOf(y), t) : undefined,
               bold: t < 0.5 ? x.bold : y.bold,
             }
     const last = out[out.length - 1]

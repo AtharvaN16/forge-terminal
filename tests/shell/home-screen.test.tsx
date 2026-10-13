@@ -33,7 +33,6 @@ function screen({
         height={height}
         mode={mode}
         typing={typing}
-        savesTo="~/Desktop"
         field={
           <Prompt
             value={text}

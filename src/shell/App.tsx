@@ -120,6 +120,7 @@ import { useAfter } from './useAfter.js'
 import { useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
+import { useTerminalBackground } from './useTerminalBackground.js'
 import { bandFor, CARD_WIDTH } from './width.js'
 import { phaseLabel } from './working-art.js'
 
@@ -452,7 +453,7 @@ const asFailure = (path: string, e: unknown): InputFailure => ({
   error: isForgeError(e) ? e : unexpectedError(e),
 })
 
-/** Columns of painted margin on each side of light's canvas (see `paint` in `App`). */
+/** Columns of painted margin on each side of the canvas (see `paint` in `App`). */
 export const PAINT_INSET = 2
 
 const resolution = (sources: SourceInfo[], failures: InputFailure[]): DropResolution => ({
@@ -635,13 +636,14 @@ export function App({
    */
   const basePalette = paletteFor(theme)
   /**
-   * Light paints its own canvas (see the root Box), and the terminal's own
-   * padding around it keeps the terminal's colour: content at column 0 sat
-   * against a dark edge and read as cropped. So the canvas keeps a painted
-   * margin, and everything lays out in `width`, `PAINT_INSET` columns in
-   * from each side of the window.
+   * Light and dark paint their own canvas (see the root Box), and the
+   * terminal's own padding around it can keep the terminal's colour: content
+   * at column 0 sat against a dark edge and read as cropped. So the canvas
+   * keeps a painted margin, and everything lays out in `width`,
+   * `PAINT_INSET` columns in from each side of the window.
    */
   const paint = paintsCanvas(basePalette)
+  useTerminalBackground(basePalette)
   const width = paint ? Math.max(20, measured - 2 * PAINT_INSET) : measured
   // The blank row the canvas keeps on top comes out of the layout's rows: a
   // frame taller than the window makes Ink clear and redraw every frame.
@@ -3265,10 +3267,11 @@ export function App({
    */
   const rootRef = useRef<DOMElement | null>(null)
   /**
-   * Light paints its own canvas: the live frame fills the window, every row
-   * the full width, so a dark terminal turns light while forge runs (the
-   * terminal's own background is left alone). Each history block is painted
-   * too, so what light printed stays readable once the frame moves on. The
+   * Light and dark paint their own canvas: the live frame fills the window,
+   * every row the full width, so forge looks the same on any profile while
+   * it runs (the terminal's own default background follows it too — see
+   * `useTerminalBackground`). Each history block is painted too, so what
+   * forge printed stays readable once the frame moves on. The
    * margin (`PAINT_INSET`) is painted with it; the live frame also keeps a
    * blank row above it.
    */
@@ -3934,7 +3937,6 @@ export function App({
                   />
                 ) : undefined
               }
-              savesTo={displayPath(livePrefs.defaultOutput)}
               field={
                 <Prompt
                   value={text}

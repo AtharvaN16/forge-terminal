@@ -95,7 +95,8 @@ describe('esc in the theme picker', () => {
     const frame = lastFrame() ?? ''
     expect(frame).not.toContain('Select theme')
     expect(frame).toContain('▌ /theme')
-    expect(frame).toContain('/extensions')
+    // The commands list again, scrolled to keep Theme in view.
+    expect(frame).toContain('/convert')
     expect((await loadPreferences()).prefs.theme).toBeUndefined()
   })
 

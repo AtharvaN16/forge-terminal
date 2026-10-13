@@ -62,6 +62,15 @@ describe('blendRows', () => {
     expect(cells(blendRows(a, b, 0.5, ends))).toEqual([{ ch: 'x', fg: '#808080', bg: '#000000' }])
   })
 
+  it('leaves a cell unfilled when neither row fills it', () => {
+    // The canvas is a guess at the terminal's background: painting it where
+    // nothing had a fill shows as dark patches on any other background.
+    const a = [{ text: 'a ', fg: '#000000' }]
+    const b = [{ text: ' b', fg: '#ffffff' }]
+    expect(cells(blendRows(a, b, 0.5, ends)).map((c) => c.bg)).toEqual([undefined, undefined])
+    expect(cells(blendRows([], b, 0.5, ends)).map((c) => c.bg)).toEqual([undefined, undefined])
+  })
+
   it('pads the shorter row with blanks on the canvas', () => {
     const out = blendRows([{ text: 'a' }], [{ text: 'abc' }], 1, ends)
     expect(

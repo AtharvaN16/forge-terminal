@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
@@ -99,7 +100,7 @@ describe('a running split names itself correctly, not as rendering', () => {
     // Caught mid-run: a real page count from a real `page` event, not the
     // phase line Working shows before the first one arrives, and not the
     // finished frame either (asserted separately below).
-    const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 300/.test(f))
+    const midFrame = unpaint(await waitFor(lastFrame, (f) => /page \d+ of 300/.test(f)))
     expect(midFrame).toMatch(/page \d+ of 300/)
     const caughtDone = Number(midFrame.match(/page (\d+) of 300/)?.[1])
     expect(caughtDone).toBeGreaterThan(0)

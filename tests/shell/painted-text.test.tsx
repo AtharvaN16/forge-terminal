@@ -3,7 +3,7 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import { Text } from '../../src/shell/Text.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
-import { DARK, LIGHT } from '../../src/shell/theme.js'
+import { DARK, LIGHT, NEUTRAL } from '../../src/shell/theme.js'
 
 vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
@@ -43,9 +43,18 @@ describe('Text on a painted canvas', () => {
     expect(lastFrame()).not.toContain(LIGHT_FG)
   })
 
-  it('leaves dark to the terminal’s own foreground', () => {
+  it('takes dark’s ink too, now that dark paints its canvas', () => {
     const { lastFrame } = render(
       <ThemeProvider palette={DARK}>
+        <Text>JPEG</Text>
+      </ThemeProvider>,
+    )
+    expect(lastFrame()).toContain('\u001b[38;2;231;231;231mJPEG')
+  })
+
+  it('leaves the neutral palette to the terminal’s own foreground', () => {
+    const { lastFrame } = render(
+      <ThemeProvider palette={NEUTRAL}>
         <Box>
           <Text>JPEG</Text>
         </Box>

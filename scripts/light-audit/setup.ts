@@ -2,6 +2,7 @@
  * Light-mode audit (see README.md): every frame the shell suite renders,
  * drawn in LIGHT instead of DARK, checked cell by cell. Not a test — the
  * suite's own assertions will fail in light; only the findings matter.
+ * `AUDIT_THEME=dark` audits dark as drawn, on its own painted canvas.
  */
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { afterAll, afterEach, expect, vi } from 'vitest'
@@ -9,9 +10,11 @@ import { ansiHex, type Cell, cells, contrast, dimmed } from './cells.js'
 
 const OUT = process.env.LIGHT_AUDIT_OUT ?? '/tmp/forge-light-audit'
 mkdirSync(OUT, { recursive: true })
+const DARK_AUDIT = process.env.AUDIT_THEME === 'dark'
 
 vi.mock('../../src/shell/theme.js', async (orig) => {
   const real = await orig<typeof import('../../src/shell/theme.js')>()
+  if (process.env.AUDIT_THEME === 'dark') return real
   return { ...real, DARK: real.LIGHT, paletteFor: () => real.LIGHT }
 })
 
@@ -28,7 +31,8 @@ vi.mock('ink-testing-library', async (orig) => {
   }
 })
 
-const CANVAS = '#ffffff'
+const CANVAS = DARK_AUDIT ? '#1e1e1e' : '#ffffff'
+const INK = DARK_AUDIT ? '#e7e7e7' : '#262626'
 type Finding = {
   kind: 'default-fg' | 'contrast'
   fg: string
@@ -48,6 +52,9 @@ const isText = (ch: string) => /[\p{L}\p{N}]/u.test(ch)
 function audit(frame: string, test: string) {
   if (seen.has(frame)) return
   seen.add(frame)
+  // Dark: only frames the App painted. A component drawn on its own sits on
+  // no canvas at all, so the terminal's ink is right there.
+  if (DARK_AUDIT && !frame.includes('48;2;30;30;30m')) return
   const cs = cells(frame)
   // Runs of cells sharing a style, so a finding carries readable text.
   let run: Cell[] = []
@@ -63,7 +70,7 @@ function audit(frame: string, test: string) {
     }
     let fg = c.fg
     let bg = c.bg ?? CANVAS
-    if (c.inverse) [fg, bg] = [bg, fg ?? '#262626']
+    if (c.inverse) [fg, bg] = [bg, fg ?? INK]
     const glyph = ![...text].some(isText)
     if (fg === undefined) {
       record({
