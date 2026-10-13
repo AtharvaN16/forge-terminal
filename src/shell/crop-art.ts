@@ -1,3 +1,4 @@
+import { onChecker } from '../core/closeup.js'
 import { type Box, type Dots, keptShare, movableAxes } from '../core/crop.js'
 import type { Size } from '../core/size.js'
 import { blank, mix, type Row, type Run } from './home-art.js'
@@ -33,21 +34,43 @@ const hexOf = (rgb: Uint8Array, i: number) =>
   `#${[rgb[i] ?? 0, rgb[i + 1] ?? 0, rgb[i + 2] ?? 0].map((v) => v.toString(16).padStart(2, '0')).join('')}`
 
 /**
+ * Dots with transparency laid on Done's checkerboard (`onChecker`): squares
+ * two dots across and two down — two cells by one, so each cell is one
+ * colour, as Done's fallback draws it. Opaque dots come back as they are.
+ */
+export function onCheckerDots(dots: Dots): Dots {
+  const { alpha } = dots
+  if (!alpha) return dots
+  const n = dots.cols * dots.dotRows
+  const rgba = new Uint8Array(n * 4)
+  for (let i = 0; i < n; i++) {
+    rgba.set(dots.rgb.subarray(i * 3, i * 3 + 3), i * 4)
+    rgba[i * 4 + 3] = alpha[i] ?? 255
+  }
+  const laid = onChecker({ width: dots.cols, height: dots.dotRows, rgba }, 2, 2).rgba
+  const rgb = new Uint8Array(n * 3)
+  for (let i = 0; i < n; i++) rgb.set(laid.subarray(i * 4, i * 4 + 3), i * 3)
+  return { cols: dots.cols, dotRows: dots.dotRows, rgb }
+}
+
+/**
  * The picture's rows. A cell is two dots (`▀`: fg the top, bg the bottom). A
  * dot outside the crop is faded towards the canvas (72 % in dark, 70 % in
  * light); a cell with both dots outside is `╱` over the mean of the two, the
- * line that mixed half way to `border` (P3, the hatch Forge uses for what
- * goes away). Cells alike are one run.
+ * line its faded top dot mixed half way to `border` (P3, the hatch Forge
+ * uses for what goes away). Transparency is drawn on the checkerboard first.
+ * Cells alike are one run.
  */
 export function cropPictureRows({
   palette,
-  dots,
+  dots: given,
   box,
 }: {
   palette: Palette
   dots: Dots
   box: DotBox
 }): Row[] {
+  const dots = onCheckerDots(given)
   const canvas = solid(palette.canvas, '#000000')
   const border = solid(palette.border, '#808080')
   const fade = palette.name === 'light' ? 0.7 : 0.72

@@ -14,6 +14,7 @@ let subject: ImageInfo
 let padded: ImageInfo
 let square: ImageInfo
 let gif: ImageInfo
+let cutout: ImageInfo
 
 const isRed = ([r, g, b]: [number, number, number]) => r > 200 && g < 60 && b < 60
 const isBlue = ([r, g, b]: [number, number, number]) => b > 200 && r < 60 && g < 60
@@ -63,11 +64,30 @@ beforeAll(async () => {
     .png()
     .toFile(join(dir, 'square.png'))
 
+  // A cutout 1000x500: transparent everywhere but a green disc on the right,
+  // its transparent left half still holding a removed background's saturated
+  // red. Seen, it is the disc; its hidden colours say the left. Under 1024 px,
+  // so the thumbnail is not resized (a resize would zero the hidden colours).
+  const rgba = Buffer.alloc(1000 * 500 * 4)
+  for (let y = 0; y < 500; y++) {
+    for (let x = 0; x < 1000; x++) {
+      const i = (y * 1000 + x) * 4
+      const disc = (x - 800) ** 2 + (y - 250) ** 2 < 100 ** 2
+      if (disc) rgba.set([40, 200, 60, 255], i)
+      else if (x < 500) rgba.set([255, 0, 0, 0], i)
+      else rgba.set([128, 128, 128, 0], i)
+    }
+  }
+  await sharp(rgba, { raw: { width: 1000, height: 500, channels: 4 } })
+    .png()
+    .toFile(join(dir, 'cutout.png'))
+
   sideways = (await probe(join(dir, 'sideways.jpg'))) as ImageInfo
   subject = (await probe(join(dir, 'subject.jpg'))) as ImageInfo
   padded = (await probe(join(dir, 'padded.png'))) as ImageInfo
   square = (await probe(join(dir, 'square.png'))) as ImageInfo
   gif = (await probe(await makeAnimatedGif(dir, 'anim.gif'))) as ImageInfo
+  cutout = (await probe(join(dir, 'cutout.png'))) as ImageInfo
 })
 
 async function convert(
@@ -127,8 +147,19 @@ describe('crop to shape', () => {
     expect(big.size).toEqual({ width: 1200, height: 600 })
     expect([big.thumb.width, big.thumb.height]).toEqual([1024, 512])
 
+    // Opaque: no alpha to carry.
+    expect(small.thumb.alpha).toBeUndefined()
+
+    // Transparency is carried, not dropped: the corner is see-through, the block red.
     const alpha = await loadCropView(padded)
     expect(alpha.thumb.rgb.length).toBe(100 * 100 * 3)
+    expect(alpha.thumb.alpha?.length).toBe(100 * 100)
+    expect(alpha.thumb.alpha?.[0]).toBe(0)
+    const middle = 50 * 100 + 50
+    expect(alpha.thumb.alpha?.[middle]).toBe(255)
+    expect(
+      isRed([...alpha.thumb.rgb.subarray(middle * 3, middle * 3 + 3)] as [number, number, number]),
+    ).toBe(true)
   })
 
   it('reads a HEIC through sips', async (ctx) => {
@@ -150,6 +181,13 @@ describe('crop to shape', () => {
       width: 600,
       height: 600,
     })
+  })
+
+  it('guesses from what is seen, not the colours hidden under transparency', async () => {
+    const box = await guessCrop(await loadCropView(cutout), { w: 1, h: 1 })
+    expect(box).toMatchObject({ width: 500, height: 500 })
+    // The disc (x 700–900) is inside: the box is on the right, not on the hidden red.
+    expect(box.left).toBeGreaterThanOrEqual(400)
   })
 
   it('places a box-less crop itself before writing, at the largest size', async () => {

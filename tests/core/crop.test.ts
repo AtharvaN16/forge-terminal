@@ -220,6 +220,20 @@ describe('sampleDots', () => {
     const dots = sampleDots({ width: 4, height: 4, rgb }, 2, 1)
     expect([dots.cols, dots.dotRows]).toEqual([2, 2])
     expect([...dots.rgb]).toEqual([50, 10, 200, 90, 10, 200, 130, 10, 200, 170, 10, 200])
+    expect(dots.alpha).toBeUndefined()
+  })
+
+  it('weighs colour by alpha, so a hidden colour never darkens an edge', () => {
+    // 2×2 → one dot pair: the top row a white pixel beside a transparent black
+    // one, the bottom row two transparent reds (the colour of what was removed).
+    const rgb = new Uint8Array([255, 255, 255, 0, 0, 0, 255, 0, 0, 255, 0, 0])
+    const alpha = new Uint8Array([255, 0, 0, 0])
+    const dots = sampleDots({ width: 2, height: 2, rgb, alpha }, 1, 1)
+    // The top dot is white, half seen; not grey.
+    expect([...dots.rgb.subarray(0, 3)]).toEqual([255, 255, 255])
+    expect(dots.alpha?.[0]).toBe(128)
+    // The bottom dot is wholly transparent: no colour, none seen.
+    expect(dots.alpha?.[1]).toBe(0)
   })
 })
 

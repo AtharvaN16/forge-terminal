@@ -124,28 +124,40 @@ export function parseAspect(text: string): Aspect {
   return { w, h }
 }
 
-/** A thumbnail: `width × height` pixels, RGB, 3 bytes each. */
+/**
+ * A thumbnail: `width × height` pixels, RGB, 3 bytes each, and with
+ * transparency its alpha, one byte each. No `alpha`: opaque.
+ */
 export interface Thumb {
   width: number
   height: number
   rgb: Uint8Array
+  alpha?: Uint8Array | undefined
 }
 
-/** The preview's dot grid: `cols × dotRows` dots, RGB, 3 bytes each (dotRows = 2 × cell rows). */
+/**
+ * The preview's dot grid: `cols × dotRows` dots, RGB, 3 bytes each (dotRows =
+ * 2 × cell rows), and the alpha of each when the thumbnail had one.
+ */
 export interface Dots {
   cols: number
   dotRows: number
   rgb: Uint8Array
+  alpha?: Uint8Array | undefined
 }
 
 /**
  * Area-averages a thumbnail into `cols × rows*2` dots: two per cell, one for
  * each half of a `▀`. A pixel straddling a dot's edge counts by how much of
  * it falls inside, so the grid never shimmers as the picture is resized.
+ * Colour is weighed by alpha (premultiplied), so what transparency hides —
+ * black, or a removed background — never tints a dot; the alpha is the
+ * share of the dot that is seen.
  */
 export function sampleDots(thumb: Thumb, cols: number, rows: number): Dots {
   const dotRows = rows * 2
   const rgb = new Uint8Array(cols * dotRows * 3)
+  const alpha = thumb.alpha ? new Uint8Array(cols * dotRows) : undefined
   const sx = thumb.width / cols
   const sy = thumb.height / dotRows
   for (let dy = 0; dy < dotRows; dy++) {
@@ -157,21 +169,26 @@ export function sampleDots(thumb: Thumb, cols: number, rows: number): Dots {
       let r = 0
       let g = 0
       let b = 0
+      let seen = 0
       let area = 0
       for (let y = Math.floor(y0); y < Math.min(Math.ceil(y1), thumb.height); y++) {
         const wy = Math.min(y + 1, y1) - Math.max(y, y0)
         for (let x = Math.floor(x0); x < Math.min(Math.ceil(x1), thumb.width); x++) {
+          const p = y * thumb.width + x
           const w = (Math.min(x + 1, x1) - Math.max(x, x0)) * wy
-          const i = (y * thumb.width + x) * 3
-          r += (thumb.rgb[i] ?? 0) * w
-          g += (thumb.rgb[i + 1] ?? 0) * w
-          b += (thumb.rgb[i + 2] ?? 0) * w
+          const wa = w * (thumb.alpha ? (thumb.alpha[p] ?? 0) / 255 : 1)
+          const i = p * 3
+          r += (thumb.rgb[i] ?? 0) * wa
+          g += (thumb.rgb[i + 1] ?? 0) * wa
+          b += (thumb.rgb[i + 2] ?? 0) * wa
+          seen += wa
           area += w
         }
       }
-      const o = (dy * cols + dx) * 3
-      if (area > 0) rgb.set([r / area, g / area, b / area].map(Math.round), o)
+      const d = dy * cols + dx
+      if (seen > 0) rgb.set([r / seen, g / seen, b / seen].map(Math.round), d * 3)
+      if (alpha && area > 0) alpha[d] = Math.round((seen * 255) / area)
     }
   }
-  return { cols, dotRows, rgb }
+  return { cols, dotRows, rgb, ...(alpha ? { alpha } : {}) }
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CHECKER } from '../../src/core/closeup.js'
 import { CROP_SHAPES, centreOf, largestBox, movedBox, zoomedBox } from '../../src/core/crop.js'
 import {
   cropFactsRows,
@@ -72,6 +73,34 @@ describe('the crop picture (P3)', () => {
     const [row] = cropPictureRows({ palette: P, dots, box: { x: 0, y: 1, w: 4, h: 1 } })
     const cells = cellsOf(row ?? [])
     expect(cells[2]).toEqual({ ch: '▀', fg: mix(top(2), P.canvas, 0.72), bg: bottom(2) })
+  })
+
+  it('draws transparency on Done’s checkerboard, not as the black under it', () => {
+    // 4 × 4 dots, every one transparent black: two rows of cells.
+    const clear = {
+      cols: 4,
+      dotRows: 4,
+      rgb: new Uint8Array(4 * 4 * 3),
+      alpha: new Uint8Array(4 * 4),
+    }
+    const rows = cropPictureRows({ palette: P, dots: clear, box: { x: 0, y: 0, w: 4, h: 4 } })
+    const [a, b] = CHECKER.map((v) => `#${v.toString(16).padStart(2, '0').repeat(3)}`)
+    // A square is two cells across, one down, so each cell is one colour (as Done's).
+    expect(cellsOf(rows[0] ?? []).map((c) => [c.fg, c.bg])).toEqual([
+      [a, a],
+      [a, a],
+      [b, b],
+      [b, b],
+    ])
+    expect(cellsOf(rows[1] ?? []).map((c) => c.fg)).toEqual([b, b, a, a])
+    // Half seen: the colour laid half over the check.
+    const half = {
+      ...clear,
+      rgb: new Uint8Array(4 * 4 * 3).fill(255),
+      alpha: new Uint8Array(16).fill(128),
+    }
+    const [row] = cropPictureRows({ palette: P, dots: half, box: { x: 0, y: 0, w: 4, h: 4 } })
+    expect(cellsOf(row ?? [])[0]?.fg).toBe(mix(a as string, '#ffffff', 128 / 255))
   })
 
   it('draws a run of cells in one colour as one run', () => {

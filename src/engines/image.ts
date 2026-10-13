@@ -424,8 +424,11 @@ const CROP_VIEW_SIDE = 1024
 
 /**
  * The upright image decoded once to at most 1024 px on its long side (never
- * enlarged), as raw RGB. Through `pipelineFor`, so the HEIC path and EXIF
- * rotation are the ones every conversion uses.
+ * enlarged), as raw RGB, and its alpha when any of it is see-through: the
+ * colours under transparency are hidden (often black, or a removed
+ * background's), so the preview draws them on a checkerboard and attention
+ * never sees them. Through `pipelineFor`, so the HEIC path and EXIF rotation
+ * are the ones every conversion uses.
  */
 export async function loadCropView(source: ImageInfo): Promise<CropView> {
   const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
@@ -433,12 +436,23 @@ export async function loadCropView(source: ImageInfo): Promise<CropView> {
   try {
     const { data, info } = await pipeline
       .resize(CROP_VIEW_SIDE, CROP_VIEW_SIDE, { fit: 'inside', withoutEnlargement: true })
-      .removeAlpha()
+      .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true })
+    const n = info.width * info.height
+    const c = info.channels
+    const rgb = new Uint8Array(n * 3)
+    const alpha = new Uint8Array(n)
+    let clear = false
+    for (let i = 0; i < n; i++) {
+      // Grey and alpha (two channels) spreads its grey to all three.
+      for (let k = 0; k < 3; k++) rgb[i * 3 + k] = data[i * c + (c >= 4 ? k : 0)] ?? 0
+      alpha[i] = data[i * c + c - 1] ?? 255
+      if (alpha[i] !== 255) clear = true
+    }
     return {
       size: { width: source.width, height: source.height },
-      thumb: { width: info.width, height: info.height, rgb: new Uint8Array(data) },
+      thumb: { width: info.width, height: info.height, rgb, ...(clear ? { alpha } : {}) },
     }
   } catch (cause) {
     throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
@@ -447,16 +461,22 @@ export async function loadCropView(source: ImageInfo): Promise<CropView> {
   }
 }
 
+/** What transparency is laid on for attention: flat and colourless, so it holds nothing to find. */
+const ATTENTION_UNDER = 128
+
 /**
  * Where the largest box of `aspect` goes: Sharp's attention strategy on the
  * thumbnail, its offset scaled back to full size. Attention is a guess (it can
  * prefer a bright sky to a person), which is why the shell shows a preview.
+ * A transparent thumbnail is flattened onto mid grey first: attention reads
+ * RGB only, and the colours under transparency (a removed background's) would
+ * otherwise pull the box towards what is no longer there.
  */
 export async function guessCrop(view: CropView, aspect: Aspect): Promise<Box> {
   const { thumb, size } = view
   const small = largestBox(thumb, aspect)
   const sharp = await loadSharp()
-  const { info } = await sharp(thumb.rgb, {
+  const { info } = await sharp(seenOnGrey(thumb), {
     raw: { width: thumb.width, height: thumb.height, channels: 3 },
   })
     .resize(small.width, small.height, { fit: 'cover', position: sharp.strategy.attention })
@@ -471,6 +491,18 @@ export async function guessCrop(view: CropView, aspect: Aspect): Promise<Box> {
     left: Math.min(Math.max(left, 0), size.width - box.width),
     top: Math.min(Math.max(top, 0), size.height - box.height),
   }
+}
+
+/** The thumbnail's RGB with any transparency laid on `ATTENTION_UNDER` grey. */
+function seenOnGrey(thumb: Thumb): Uint8Array {
+  const { alpha } = thumb
+  if (!alpha) return thumb.rgb
+  const out = new Uint8Array(thumb.rgb.length)
+  for (let i = 0; i < out.length; i++) {
+    const a = (alpha[Math.floor(i / 3)] ?? 255) / 255
+    out[i] = Math.round(ATTENTION_UNDER + ((thumb.rgb[i] ?? 0) - ATTENTION_UNDER) * a)
+  }
+  return out
 }
 
 async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Result> {
