@@ -9,9 +9,10 @@
  *   runner.mjs                  runner.ts bundled; onnxruntime-node's JS and onnxruntime-common inlined
  *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/<platform>/<arch>/, loaded from beside runner.mjs
  *   libonnxruntime.*.dylib      darwin: the binding links it via @loader_path
- *   *.dll                       win32: onnxruntime.dll, DirectML.dll, dxcompiler.dll, dxil.dll (same directory)
+ *   onnxruntime.dll, DirectML.dll  win32: the binding loads them from the same directory
  *   realesr-general-x4v3.onnx   upstream .pth (pinned by sha256) converted by convert.py, output pinned too
- *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT) and ONNX Runtime's third-party notices
+ *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT), DirectML's terms (win32 only)
+ *                               and ONNX Runtime's third-party notices
  *
  * Downloads are cached in extensions/boost/.cache/ and verified by sha256 every
  * time. --pth uses a local copy of the upstream checkpoint (still verified).
@@ -44,6 +45,16 @@ const model = JSON.parse(readFileSync(join(here, 'model.json'), 'utf8'))
 const require = createRequire(import.meta.url)
 
 const ORT_VERSION = '1.23.2'
+/**
+ * win32 ships exactly these, not the whole directory. It also holds dxcompiler.dll and
+ * dxil.dll, which are only ONNX Runtime's optional shader-compiler path for its WebGPU
+ * provider ("Use DXC instead of FXC for compiling HLSL when both dxcompiler.dll and
+ * dxil.dll is available", in onnxruntime.dll); DirectML itself imports only d3d12/dxgi.
+ * Boost uses DirectML or the CPU, so those two would be 20-24 MB of dead weight per arch.
+ */
+const WIN32_NATIVE = ['onnxruntime_binding.node', 'onnxruntime.dll', 'DirectML.dll']
+/** The DirectML.dll inside onnxruntime-node 1.23.2's win32 binaries (its version resource). */
+const DIRECTML_VERSION = '1.15.4'
 const ORT_NOTICES = {
   url: `https://raw.githubusercontent.com/microsoft/onnxruntime/v${ORT_VERSION}/ThirdPartyNotices.txt`,
   sha256: 'e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc',
@@ -174,7 +185,8 @@ async function main() {
   )
   if (!existsSync(nativeDir))
     throw new Error(`onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`)
-  for (const f of readdirSync(nativeDir)) copyFileSync(join(nativeDir, f), join(out, f))
+  const native = args.platform === 'win32' ? WIN32_NATIVE : readdirSync(nativeDir)
+  for (const f of native) copyFileSync(join(nativeDir, f), join(out, f))
 
   if (args.runnerOnly) return void console.log(out)
   copyFileSync(await modelFile(args.pth, args.onnx), join(out, model.file))
@@ -183,11 +195,24 @@ async function main() {
     await pinned(`ort-${ORT_VERSION}-ThirdPartyNotices.txt`, ORT_NOTICES.url, ORT_NOTICES.sha256),
     'utf8',
   )
-  writeFileSync(join(out, 'NOTICES.txt'), notices(ortNotices))
+  writeFileSync(join(out, 'NOTICES.txt'), notices(ortNotices, args.platform))
   console.log(out)
 }
 
-function notices(ortThirdParty) {
+/** DirectML's licence lets it ship only inside something else, so the notice says so. */
+const DIRECTML_NOTICE = `----------------------------------------------------------------------------
+DirectML ${DIRECTML_VERSION} (DirectML.dll, win32 only)
+----------------------------------------------------------------------------
+
+DirectML.dll — Microsoft DirectX Machine Learning (DirectML), redistributable.
+Copyright (c) Microsoft Corporation. Distributed as part of this extension
+under the Microsoft Software License Terms for DirectML:
+https://www.nuget.org/packages/Microsoft.AI.DirectML/${DIRECTML_VERSION}/License — it may
+not be redistributed on its own.
+
+`
+
+function notices(ortThirdParty, platform) {
   return `Forge "Boost resolution" extension — third-party notices
 
 The model file realesr-general-x4v3.onnx is converted (format only, weights
@@ -255,7 +280,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-----------------------------------------------------------------------------
+${platform === 'win32' ? DIRECTML_NOTICE : ''}----------------------------------------------------------------------------
 ONNX Runtime third-party notices (ThirdPartyNotices.txt, v${ORT_VERSION})
 ----------------------------------------------------------------------------
 

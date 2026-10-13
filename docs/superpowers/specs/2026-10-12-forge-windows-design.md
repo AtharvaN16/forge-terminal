@@ -186,7 +186,9 @@ platform, since no legitimate archive has them.
   `dxcompiler.dll`, `dxil.dll` (~60 MB unpacked for x64, measured). So the
   Windows archive is packaged on the existing macOS CI runner:
   `extensions/boost/build.mjs` gains `--platform darwin|win32` and copies the
-  matching directory. On Windows the DLLs sit beside the `.node` file, which
+  matching directory — on win32 only the binding, `onnxruntime.dll` and
+  `DirectML.dll`; `dxcompiler.dll`/`dxil.dll` serve only ONNX Runtime's WebGPU
+  provider, which Boost does not use. On Windows the DLLs sit beside the `.node` file, which
   is where Node's addon loader resolves dependents from.
 - Version: Windows assets are **boost 1.1.0**; the Mac asset stays 1.0.0 and
   is not rebuilt (§5.1 per-asset versions).

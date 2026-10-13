@@ -24,11 +24,9 @@ describe('boost build.mjs --runner-only', () => {
     ])
   }, 60_000)
 
-  it('--platform win32 copies the binding and every DLL, including DirectML', async () => {
+  it('--platform win32 copies the binding, ONNX Runtime and DirectML, not the DXC shader compiler', async () => {
     expect(await files('--platform', 'win32', '--arch', 'x64')).toEqual([
       'DirectML.dll',
-      'dxcompiler.dll',
-      'dxil.dll',
       'onnxruntime.dll',
       'onnxruntime_binding.node',
       'runner.mjs',
