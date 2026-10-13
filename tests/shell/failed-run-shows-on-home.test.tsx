@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
-import { App } from '../../src/shell/App.js'
+import { App, FAILURE_SHOWN_MS } from '../../src/shell/App.js'
 import type { EnhanceTools } from '../../src/shell/enhance.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir } from '../helpers/fixtures.js'
@@ -34,72 +34,76 @@ afterEach(() => fake.restore())
  * nothing on screen to say so. The E5 panel stays live on home instead,
  * under the drop zone and its field, and home makes room for it.
  */
+/** /enhance, Remove background on a tile the stand-in finds no subject in, and back on home. */
+async function failOnHome() {
+  const home = await fake.home()
+  await fake.install(home, 'remove-background')
+  await writeFile(
+    join(home, 'forge', 'extensions', 'remove-background', '1.0.0', 'runner.mjs'),
+    NO_SUBJECT,
+  )
+  const tools: EnhanceTools = {
+    async list() {
+      return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
+        (entry): ExtensionStatus => ({
+          entry,
+          ...(entry.id === 'remove-background' ? { installed: '1.0.0' } : {}),
+          updateAvailable: false,
+          supported: true,
+          downloadBytes: 1,
+        }),
+      )
+    },
+    async install() {},
+  }
+  const dir = await makeTempDir()
+  const png = join(dir, 'cover.png')
+  await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
+    .png()
+    .toFile(png)
+
+  const app = render(
+    <App
+      initialWidth={80}
+      initialHeight={ROWS}
+      prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
+      tools={tools}
+    />,
+  )
+  const frame = () => app.lastFrame() ?? ''
+  /** The window: the frame's last ROWS lines, under whatever is in the scrollback. */
+  const live = () => frame().split('\n').slice(-ROWS).join('\n')
+  app.stdin.write('/enhance')
+  await settle()
+  app.stdin.write(ENTER)
+  await settle()
+  app.stdin.write(png)
+  await until(() => frame().includes('cover.png'))
+  app.stdin.write(ENTER)
+  await until(() => frame().includes('Enhance PNG'))
+  await settle(300)
+  app.stdin.write(DOWN)
+  await settle(60)
+  app.stdin.write(DOWN)
+  await until(() => frame().includes('Keeps the subject.'))
+  app.stdin.write(ENTER)
+  await until(() => frame().includes('Save as'))
+  await settle(400)
+  app.stdin.write(ENTER)
+  await until(() => live().includes('No subject found'))
+  return { app, frame, live, png }
+}
+
 describe('a run that fails and goes home', () => {
   it.skipIf(process.platform === 'win32')(
     'keeps its E5 panel on screen, under the drop zone, within the window',
     async () => {
-      const home = await fake.home()
-      await fake.install(home, 'remove-background')
-      await writeFile(
-        join(home, 'forge', 'extensions', 'remove-background', '1.0.0', 'runner.mjs'),
-        NO_SUBJECT,
-      )
-      const tools: EnhanceTools = {
-        async list() {
-          return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
-            (entry): ExtensionStatus => ({
-              entry,
-              ...(entry.id === 'remove-background' ? { installed: '1.0.0' } : {}),
-              updateAvailable: false,
-              supported: true,
-              downloadBytes: 1,
-            }),
-          )
-        },
-        async install() {},
-      }
-      const dir = await makeTempDir()
-      const png = join(dir, 'cover.png')
-      await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
-        .png()
-        .toFile(png)
+      const { app, frame, live, png } = await failOnHome()
 
-      const app = render(
-        <App
-          initialWidth={80}
-          initialHeight={ROWS}
-          prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
-          tools={tools}
-        />,
-      )
-      const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/enhance')
-      await settle()
-      app.stdin.write(ENTER)
-      await settle()
-      app.stdin.write(png)
-      await until(() => frame().includes('cover.png'))
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Enhance PNG'))
-      await settle(300)
-      app.stdin.write(DOWN)
-      await settle(60)
-      app.stdin.write(DOWN)
-      await until(() => frame().includes('Keeps the subject.'))
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Save as'))
-      await settle(400)
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Drop a file here'))
-      await settle()
-
-      // The live frame is the window's last ROWS lines; the panel is in them,
-      // under the drop zone and its field, above the keys.
-      const lines = frame().split('\n').slice(-ROWS)
-      const live = lines.join('\n')
-      expect(live).toMatch(/^\s+failed\s*$/m)
-      expect(live).toContain('No subject found')
-      expect(live).toContain('ctrl-c quit')
+      // The panel is in the window, under the drop zone and its field, above the keys.
+      const lines = live().split('\n')
+      expect(live()).toMatch(/^\s+failed\s*$/m)
+      expect(live()).toContain('ctrl-c quit')
       const at = (re: RegExp) => lines.findIndex((l) => re.test(l))
       expect(at(/Drop a file here/)).toBeGreaterThan(-1)
       expect(at(/^\s+failed\s*$/)).toBeGreaterThan(at(/or type a path/))
@@ -109,8 +113,23 @@ describe('a run that fails and goes home', () => {
 
       // The next file starts fresh: the panel goes to the scrollback.
       app.stdin.write(png)
-      await until(() => !frame().split('\n').slice(-ROWS).join('\n').includes('No subject'))
+      await until(() => !live().includes('No subject'))
       expect(frame()).toContain('No subject found')
+      expect(frame().match(/No subject found/g)).toHaveLength(1)
+    },
+    60_000,
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'goes to the scrollback by itself after FAILURE_SHOWN_MS, home whole again',
+    async () => {
+      const { frame, live } = await failOnHome()
+      await settle(FAILURE_SHOWN_MS / 2)
+      expect(live()).toContain('No subject found')
+
+      await until(() => !live().includes('No subject'))
+      expect(live()).not.toMatch(/^\s+failed\s*$/m)
+      expect(live()).toContain('ctrl-c quit')
       expect(frame().match(/No subject found/g)).toHaveLength(1)
     },
     60_000,

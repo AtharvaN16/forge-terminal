@@ -431,6 +431,9 @@ const MEASURE_MAX_PIXELS = 12_000_000
 /** How long a job runs before Working is shown at all (W5). */
 const WORK_AFTER_MS = 300
 
+/** How long a failed run's panel stays under home's field before it goes to the scrollback. */
+export const FAILURE_SHOWN_MS = 8_000
+
 const GOTO_PDF = '__goto-pdf__'
 
 /** The `/pdf` command, looked up once rather than re-found on every render. */
@@ -1299,8 +1302,10 @@ export function App({
    * rather than in `<Static>`: home fills the window, so a block printed
    * above it is already off the top of the screen — the run looked like it
    * just went home. It goes to the scrollback once something new starts
-   * (`fenceOff`, another file, typing, leaving home). The ref is what `commitFailure` reads, so
-   * a second failure in the same handler commits the first, not nothing.
+   * (`fenceOff`, another file, typing, leaving home), or after
+   * `FAILURE_SHOWN_MS`, so it does not sit on home for good. The ref is
+   * what `commitFailure` reads, so a second failure in the same handler
+   * commits the first, not nothing.
    */
   const [runFailure, setRunFailure] = useState<ForgeError | undefined>(undefined)
   const runFailureRef = useRef<ForgeError | undefined>(undefined)
@@ -1325,6 +1330,12 @@ export function App({
   useEffect(() => {
     if (runFailure && (!onHome || fileStaged || text !== '')) commitFailure()
   }, [runFailure, onHome, fileStaged, text, commitFailure])
+  // Keyed on the failure itself: a second one shows for the whole time too.
+  useEffect(() => {
+    if (!runFailure) return
+    const id = setTimeout(commitFailure, FAILURE_SHOWN_MS)
+    return () => clearTimeout(id)
+  }, [runFailure, commitFailure])
 
   /**
    * Rules a dashed line under whatever is already on screen, so a change of
