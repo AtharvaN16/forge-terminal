@@ -77,11 +77,44 @@ function expectRows(rows: Row[], id: string, from: number, describe = describeRo
  */
 function expectCards(rows: Row[], id: string, from: number) {
   rows.forEach((row, i) => {
-    const expected = fixtureRow(frame(id), from + i).map((c) =>
-      c.ch === '▌' ? { ch: ' ', fg: null, bg: c.bg, b: false } : c,
+    const expected = resub(
+      fixtureRow(frame(id), from + i).map((c) =>
+        c.ch === '▌' ? { ch: ' ', fg: null, bg: c.bg, b: false } : c,
+      ),
     )
     expect(describeRow(runsRow(row), expected), `${id}, row ${from + i}`).toBe('equal')
   })
+}
+
+/**
+ * The cards' subtitles were rewritten after the mockup was frozen
+ * (mockups/scale-steps-2026-10.html, H5): each old one is swapped for its new
+ * text, in its colours, over the blanks after it.
+ */
+const SUBTITLES: [string, string][] = [
+  ['the colours of an image', 'extract colours from an image'],
+  ['50 to 950 from one colour', 'create shades from one colour'],
+]
+function resub<C extends { ch: string; fg: string | null; bg: string | null }>(cells: C[]): C[] {
+  const text = cells.map((c) => c.ch).join('')
+  let out = cells
+  for (const [was, now] of SUBTITLES) {
+    const at = text.indexOf(was)
+    if (at < 0) continue
+    const style = out[at] as C
+    const blankAt = out[at + was.length] as C
+    out = [
+      ...out.slice(0, at),
+      // A space has no ink of its own, as the fixture records it.
+      ...[...now].map((ch) => ({ ...style, ch, ...(ch === ' ' ? { fg: null } : {}) })),
+      ...out.slice(at + now.length),
+    ]
+    // The old text was shorter: the cells it spilled over were blanks of the card's fill.
+    for (let k = at + was.length; k < at + now.length; k++) {
+      if (cells[k]?.ch !== ' ' || cells[k]?.bg !== blankAt.bg) throw new Error(`no room at ${k}`)
+    }
+  }
+  return out
 }
 
 const PAL = data.palette
@@ -236,16 +269,20 @@ describe('the palette (D1)', () => {
 
 describe('the scale (S9)', () => {
   it('the ramp, 500 from the reference, the chosen step marked', () =>
-    expectRows(rampRows({ palette: P, steps: data.scA, selected: 5 }), '8', 6))
+    expectRows(rampRows({ width: 80, palette: P, steps: data.scA, selected: 5 }), '8', 6))
 
   it('the preview: Aa in white and black, and the facts in plain text', () =>
     expectRows(previewRows({ palette: P, step: data.scA[5] as Step }), '8', 12))
 
   it('a typed colour, its ramp', () =>
-    expectRows(rampRows({ palette: P, steps: data.scC, selected: 5 }), '12', 6))
+    expectRows(rampRows({ width: 80, palette: P, steps: data.scC, selected: 5 }), '12', 6))
 
   it('before there is a colour: the steps as outlines', () =>
-    expectRows(emptyRampRows({ palette: P, steps: data.scA.map((s) => s.step) }), 'B2', 6))
+    expectRows(
+      emptyRampRows({ width: 80, palette: P, steps: data.scA.map((s) => s.step) }),
+      'B2',
+      6,
+    ))
 
   it('all eleven copied', () => expectRows([copiedRow(P, { count: 11 }, 'darwin')], '11', 18))
 })

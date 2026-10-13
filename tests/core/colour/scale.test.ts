@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { STEPS, scale } from '../../../src/core/colour/scale.js'
-import { inGamut, parseHex, rgbToOklab, toLch } from '../../../src/core/colour/space.js'
+import {
+  DEFAULT_STEPS,
+  STEPS,
+  scale,
+  stepsOf,
+  stepsProblem,
+} from '../../../src/core/colour/scale.js'
+import { inGamut, parseHex, type Rgb, rgbToOklab, toLch } from '../../../src/core/colour/space.js'
 
 const hex = (h: string) => parseHex(h) as NonNullable<ReturnType<typeof parseHex>>
 const L = (h: string) => rgbToOklab(hex(h)).L
@@ -98,3 +104,75 @@ describe('scale', () => {
     }
   })
 })
+
+describe('scale with chosen steps', () => {
+  it('lists the start, the end, and every multiple between, with 500 always one', () => {
+    expect(stepsOf(DEFAULT_STEPS)).toEqual([...STEPS])
+    expect(stepsOf({ start: 100, end: 900, every: 100 })).toEqual([
+      100, 200, 300, 400, 500, 600, 700, 800, 900,
+    ])
+    expect(stepsOf({ start: 100, end: 900, every: 50 })).toHaveLength(17)
+    expect(stepsOf({ start: 0, end: 1000, every: 50 })).toHaveLength(21)
+    expect(stepsOf({ start: 50, end: 950, every: 250 })).toEqual([50, 250, 500, 750, 950])
+  })
+
+  it('leaves the default scale exactly as it was', () => {
+    for (const ref of ['#6579FD', '#343F96', '#F26E69', '#808080']) {
+      expect(scale(hex(ref), DEFAULT_STEPS)).toEqual(scale(hex(ref)))
+    }
+  })
+
+  it('a step between two of the default ones sits between them, on the same curve', () => {
+    const every50 = scale(hex('#6579FD'), { start: 50, end: 950, every: 50 })
+    const byStep = new Map(every50.map((s) => [s.step, s.hex]))
+    for (const s of scale(hex('#6579FD'))) expect(byStep.get(s.step)).toBe(s.hex)
+    const l = (step: number) => L(byStep.get(step) as string)
+    expect(l(150)).toBeLessThan(l(100))
+    expect(l(150)).toBeGreaterThan(l(200))
+  })
+
+  it('0 to 1000 never brightens, stays in sRGB, and keeps the reference at 500', () => {
+    for (const ref of SWEEP_ALL) {
+      const s = scale(hex(ref), { start: 0, end: 1000, every: 50 })
+      expect(s.find((x) => x.reference)?.step).toBe(500)
+      expect(s.find((x) => x.step === 500)?.hex).toBe(ref.toUpperCase())
+      for (let i = 1; i < s.length; i++) {
+        expect(inGamut(rgbToOklab((s[i] as { rgb: Rgb }).rgb))).toBe(true)
+        expect(L((s[i] as { hex: string }).hex), `${ref} at ${s[i]?.step}`).toBeLessThanOrEqual(
+          L((s[i - 1] as { hex: string }).hex) + 0.002,
+        )
+      }
+    }
+  })
+
+  it('a grey stays grey out to 0 and 1000', () => {
+    for (const x of scale(hex('#808080'), { start: 0, end: 1000, every: 100 })) {
+      expect(x.rgb.r).toBe(x.rgb.g)
+      expect(x.rgb.g).toBe(x.rgb.b)
+    }
+  })
+
+  it('says why a set of steps cannot be made', () => {
+    expect(stepsProblem(DEFAULT_STEPS)).toBeUndefined()
+    expect(stepsProblem({ start: 0, end: 1000, every: 50 })).toBeUndefined()
+    expect(stepsProblem({ start: 500, end: 950, every: 100 })).toMatch(/start/i)
+    expect(stepsProblem({ start: 50, end: 450, every: 100 })).toMatch(/end/i)
+    expect(stepsProblem({ start: 75, end: 950, every: 100 })).toMatch(/50/)
+    expect(stepsProblem({ start: 50, end: 950, every: 25 })).toMatch(/every/i)
+    expect(() => scale(hex('#6579FD'), { start: 50, end: 950, every: 25 })).toThrow()
+  })
+})
+
+const SWEEP_ALL = [
+  '#6579FD',
+  '#0A0A2A',
+  '#00000A',
+  '#FFFFFF',
+  '#000000',
+  '#808080',
+  '#FFFF00',
+  '#F26E69',
+  '#F4F6FF',
+  '#070931',
+  '#71717A',
+]

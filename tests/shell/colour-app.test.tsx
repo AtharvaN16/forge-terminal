@@ -37,7 +37,7 @@ async function home(width = 80) {
 async function colourHome() {
   const h = await home()
   h.app.stdin.write('5')
-  await waitFor(() => plain(h.app.lastFrame()).includes('the colours of an image'))
+  await waitFor(() => plain(h.app.lastFrame()).includes('extract colours from an image'))
   await settle()
   return h
 }
@@ -47,7 +47,7 @@ describe("colour's home and screens", () => {
     const { app } = await colourHome()
     const out = plain(app.lastFrame())
     expect(out).toContain('Palette')
-    expect(out).toContain('50 to 950 from one colour')
+    expect(out).toContain('create shades from one colour')
     expect(out).not.toContain('or type a path')
     expect(keyRow(app.lastFrame())).toMatch(/←→ +choose +↵ +open/)
   }, 20_000)
@@ -64,9 +64,50 @@ describe("colour's home and screens", () => {
     app.stdin.write(ESC)
     await settle(300)
     app.stdin.write(ESC)
-    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
-    expect(plain(app.lastFrame())).toContain('the colours of an image')
+    await waitFor(() => plain(app.lastFrame()).includes('extract colours from an image'))
+    expect(plain(app.lastFrame())).toContain('extract colours from an image')
   }, 20_000)
+
+  it('s changes the steps on the line under the ramp; ↵ done keeps them for the session', async () => {
+    const { app } = await colourHome()
+    app.stdin.write(`${ESC}[C`)
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => plain(app.lastFrame()).includes('type a hex code'))
+    app.stdin.write('6579FD')
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => plain(app.lastFrame()).includes('50 – 950, every 100'))
+    expect(plain(app.lastFrame())).toMatch(/11 steps +s +steps/)
+    expect(keyRow(app.lastFrame())).toMatch(/r make centre · # new colour/)
+    expect(lines(app.lastFrame())).toHaveLength(24)
+
+    app.stdin.write('s')
+    await waitFor(() => plain(app.lastFrame()).includes('‹ 50 ›'))
+    expect(plain(app.lastFrame())).toMatch(/↵ +done/)
+    expect(keyRow(app.lastFrame())).toMatch(/←→ +change +tab +next/)
+    app.stdin.write('\t')
+    await settle(100)
+    app.stdin.write('\t')
+    await settle(100)
+    app.stdin.write(`${ESC}[D`)
+    await waitFor(
+      () =>
+        plain(app.lastFrame()).includes('17 steps') || plain(app.lastFrame()).includes('19 steps'),
+    )
+    expect(plain(app.lastFrame())).toContain('19 steps')
+    app.stdin.write(ENTER)
+    await waitFor(() => plain(app.lastFrame()).includes('50 – 950, every 50'))
+    expect(lines(app.lastFrame())).toHaveLength(24)
+
+    // Out to colour's home and back with another colour: the steps are still every 50.
+    app.stdin.write(ESC)
+    await waitFor(() => plain(app.lastFrame()).includes('create shades from one colour'))
+    await settle(300)
+    app.stdin.write('#F26E69')
+    await waitFor(() => plain(app.lastFrame()).includes('every 50'))
+    expect(plain(app.lastFrame())).toContain('50 – 950, every 50  ·  19 steps')
+  }, 30_000)
 
   it('# on colour home opens the scale with # typed', async () => {
     const { app } = await colourHome()
@@ -117,7 +158,7 @@ describe("colour's home and screens", () => {
     await settle(400)
     app.stdin.write(`${ESC}[<0;10;5M`)
     await settle(400)
-    expect(plain(app.lastFrame())).toContain('the colours of an image')
+    expect(plain(app.lastFrame())).toContain('extract colours from an image')
     expect(plain(app.lastFrame())).not.toContain('could not be found')
   }, 20_000)
 
@@ -153,7 +194,7 @@ describe("colour's home and screens", () => {
     app.stdin.write(png)
     await waitFor(() => plain(app.lastFrame()).includes('drop more'))
     app.stdin.write('5')
-    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
+    await waitFor(() => plain(app.lastFrame()).includes('extract colours from an image'))
     await settle()
     expect(plain(app.lastFrame())).not.toContain('g.png')
     app.stdin.write('1')
@@ -176,8 +217,8 @@ describe('colour, the fifth mode', () => {
     expect(tabRow(app.lastFrame())).toContain('5 colour')
     expect(keyRow(app.lastFrame())).toMatch(/1–5 ←→ +mode/)
     app.stdin.write('5')
-    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
-    expect(plain(app.lastFrame())).toContain('the colours of an image')
+    await waitFor(() => plain(app.lastFrame()).includes('extract colours from an image'))
+    expect(plain(app.lastFrame())).toContain('extract colours from an image')
     // The tab row says nothing of where results go (2026-10-13).
     expect(tabRow(app.lastFrame())).not.toContain('clipboard')
   }, 20_000)
@@ -191,10 +232,10 @@ describe('colour, the fifth mode', () => {
     await settle(300) // the picker's keys attach after its first frame
     expect(keyRow(app.lastFrame())).toMatch(/1–5 +mode/)
     app.stdin.write('5')
-    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
-    expect(plain(app.lastFrame())).toContain('the colours of an image')
+    await waitFor(() => plain(app.lastFrame()).includes('extract colours from an image'))
+    expect(plain(app.lastFrame())).toContain('extract colours from an image')
     app.stdin.write(CTRL_N)
     await waitFor(() => plain(app.lastFrame()).includes('Drop a file here'))
-    expect(plain(app.lastFrame())).not.toContain('the colours of an image')
+    expect(plain(app.lastFrame())).not.toContain('extract colours from an image')
   }, 20_000)
 })

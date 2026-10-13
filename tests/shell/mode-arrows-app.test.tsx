@@ -35,7 +35,7 @@ const on = {
   compress: (f: string) => f.includes('images · PDF') && !f.includes('HEIC'),
   // enhance's line is the start of convert's, so convert's tail must be gone.
   enhance: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
-  colour: (f: string) => f.includes('the colours of an image'),
+  colour: (f: string) => f.includes('extract colours from an image'),
   commands: (f: string) => f.includes('modes ─') && f.includes('/convert'),
 }
 const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))

@@ -13,6 +13,7 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { resizeAction, trimAction } from '../core/actions/resize.js'
+import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
 import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
@@ -912,6 +913,8 @@ export function App({
   /** How the colour flow opens, and the trail it hands up for the bar. */
   const [colourStart, setColourStart] = useState<ColourStart>('palette')
   const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Palette' })
+  /** Which steps a scale has, as last kept on the line under its ramp; for the session. */
+  const [colourSteps, setColourSteps] = useState<StepSpec>(DEFAULT_STEPS)
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
   const [pdfBlocked, setPdfBlocked] = useState<PendingPdfRefusal | null>(null)
   /** Set only while `step === 'size-unreachable'` — see `PendingSizeUnreachable`. */
@@ -3848,6 +3851,8 @@ export function App({
               height={height}
               onCancel={() => setStep('idle')}
               onTrail={setColourTrailNow}
+              steps={colourSteps}
+              onSteps={setColourSteps}
             />
           ) : null}
 

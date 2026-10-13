@@ -238,3 +238,82 @@ describe('leaving, and the flash', () => {
     expect(reduce(state, { type: 'tick' }, ctx(1600)).state.flash).toBeUndefined()
   })
 })
+
+describe('the steps (V1)', () => {
+  const BLUE = { r: 101, g: 121, b: 253 }
+  const TAB = key('\t', { tab: true })
+  const onScale = () => initial({ scale: BLUE })
+
+  it('s starts changing them at the start; ←→ moves it in 50s; ↵ keeps it', () => {
+    let { state } = run(onScale(), key('s'))
+    expect(state.stepsEdit).toMatchObject({ field: 'start' })
+    ;({ state } = run(state, RIGHT))
+    expect(state.steps).toEqual({ start: 100, end: 950, every: 100 })
+    ;({ state } = run(state, ENTER))
+    expect(state.stepsEdit).toBeUndefined()
+    expect(state.steps).toEqual({ start: 100, end: 950, every: 100 })
+  })
+
+  it('tab goes on to the end, then every; ←→ there picks 50, 100 or 250', () => {
+    const { state } = run(onScale(), key('s'), TAB, LEFT, TAB, LEFT)
+    expect(state.stepsEdit?.field).toBe('every')
+    expect(state.steps).toEqual({ start: 50, end: 900, every: 50 })
+  })
+
+  it('stops at the ends of each value rather than wrapping', () => {
+    const { state } = run(onScale(), key('s'), LEFT, LEFT, LEFT)
+    expect(state.steps.start).toBe(0)
+    const back = run(
+      onScale(),
+      key('s'),
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+      RIGHT,
+    )
+    expect(back.state.steps.start).toBe(450)
+  })
+
+  it('esc puts the steps back as they were and leaves nothing else', () => {
+    const { state, effects } = run(onScale(), key('s'), RIGHT, TAB, LEFT, ESC)
+    expect(state.steps).toEqual({ start: 50, end: 950, every: 100 })
+    expect(state.stepsEdit).toBeUndefined()
+    expect(effects).toEqual([])
+    expect(top(state)?.kind).toBe('scale')
+  })
+
+  it('keeps the chosen step on the same number when the steps change', () => {
+    // 800 is the ninth of the default steps; every 50 makes it the fifteenth.
+    let { state } = run(onScale(), RIGHT, RIGHT, RIGHT)
+    expect(top(state)).toMatchObject({ sel: 8 })
+    ;({ state } = run(state, key('s'), TAB, TAB, LEFT, ENTER))
+    expect(state.steps.every).toBe(50)
+    expect(top(state)).toMatchObject({ sel: 15 })
+  })
+
+  it('other keys do nothing while the steps are being changed', () => {
+    const { state, effects } = run(onScale(), key('s'), key('c'), key('r'), key('#'))
+    expect(effects).toEqual([])
+    expect(state.field.focus).toBe(false)
+    expect(state.stepsEdit).toBeDefined()
+  })
+
+  it('a new colour and a new centre keep the steps, and start on 500', () => {
+    const steps = { start: 100, end: 900, every: 50 }
+    let { state } = run(
+      initial('scale', steps),
+      { type: 'text', text: '#6579FD' },
+      { type: 'submit' },
+    )
+    expect(top(state)).toMatchObject({ sel: 8 })
+    ;({ state } = run(state, RIGHT, RIGHT, key('r')))
+    expect(state.steps).toEqual(steps)
+    expect(top(state)).toMatchObject({ kind: 'scale', sel: 8, from: 'was 600 of #6579FD' })
+  })
+})

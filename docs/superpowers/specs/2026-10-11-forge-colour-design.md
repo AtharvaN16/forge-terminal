@@ -207,6 +207,27 @@ with the reference at L₀, C₀, h:
 - **Gamut:** a step outside sRGB loses chroma, 0.002 at a time, until it
   fits.
 
+#### 4.4.1 Choosing the steps (added 2026-10-13)
+
+`scale(ref, spec)` takes a `StepSpec` of `{ start, end, every }`; the default,
+`{ 50, 950, 100 }`, is the scale above. Decided on
+`mockups/scale-steps-2026-10.html` (V1).
+
+- The numbers are places on a ruler from **0** (near white) to **1000** (near
+  black). The colour is always **500**.
+- **start** is 0–450 and **end** 550–1000, both in 50s, so the colour is
+  always in its own scale. **every** is 50, 100 or 250. 25 is left out: 0–1000
+  every 25 would be 41 swatches, too narrow to tell apart at 80 columns.
+- The steps are the start, the end, and every multiple of `every` between
+  them: `{ 50, 950, 100 }` gives 50, 100, 200 … 900, 950. At most 21 (0–1000
+  every 50).
+- A step between two of the ladder's is interpolated along it, so the default
+  eleven keep their exact hex. Past 50, lightness goes on to 0.995 and the
+  last of the chroma goes; past 950, lightness drops to 0.65 of the floor
+  and chroma to 0.6 of what it was at 950.
+- A spec outside those values is refused with what was expected
+  (`stepsProblem`).
+
 Worked example, measured: `#6579FD` gives 50 `#F4F6FF` … 500 `#6579FD` …
 950 `#161B58`. Its 800, `#343F96`, made the reference with `r`, gives
 50 `#F4F6FF` … 950 `#070931`.
@@ -284,8 +305,9 @@ helper beside the engines so that sharp stays out of `core/`.
 ### 6.2 Home (C1)
 
 - With colour active, the panel holds two cards side by side: **Palette**
-  ("the colours of an image", a strip of a sample palette) and **Scale**
-  ("50 to 950 from one colour", a sample ramp). The chosen card gets the
+  ("extract colours from an image", a strip of a sample palette) and
+  **Scale** ("create shades from one colour", a sample ramp). Each card is
+  half the panel less its gaps, so the pair fits inside the margins. The chosen card gets the
   picker's band and the ▌ strip in the mode colour. ←→ chooses and ↵ opens.
 - The tab row's right side says `copies to clipboard`, where other modes say
   `saves to …`.
@@ -362,8 +384,13 @@ eleven step labels and outlined boxes, and nothing else.
 
 - The field at rest shows the reference's hex and swatch, and where it came
   from (§6.3).
-- The S1 ramp: 11 swatches 6 wide, step labels above (the reference in the
-  mode colour, the chosen one bold), and a `▔` under the chosen one.
+- The S1 ramp: one swatch per step, as wide as fit in the field's width (at
+  most 6), with a blank between them while they are at least 4 wide. Step
+  labels above (the reference in the mode colour, the chosen one bold); a
+  label that would touch its neighbour's is left out, never the chosen one's.
+  A `▔` under the chosen one.
+- **The steps' line**, right under the ramp: `50 – 950, every 100 · 11
+  steps`, and `s steps` at the field's right edge (§4.4.1).
 - The S9 preview: a block of the chosen step, 18 × 5, with "Aa" in white and
   "Aa" in black. Beside it in plain text: step and hex, OKLCH, and "white
   text 9.1 AAA" and "black text 2.3 fails", with the rating in green when it
@@ -380,12 +407,34 @@ eleven step labels and outlined boxes, and nothing else.
 | --- | --- |
 | ←→ | choose a step |
 | ↵ | copy its hex |
-| c | copy all eleven, as the Figma card |
+| c | copy all the steps, as the Figma card |
+| s | change the steps (below) |
 | r | make this step the centre: it becomes the reference at 500 and the scale is rebuilt |
 | # | a new colour |
 | esc | back one: the previous reference, then the palette (if it came from one), then home |
 
 After `r`: `✓ #343F96 is now 500 · esc goes back to #6579FD`.
+
+The key row shows ←→ choose, ↵ copy and c copy all; `r make centre` and `#
+new colour` are quiet keys at its right.
+
+**Changing the steps.** `s` turns the line into `from 50 to 950 every 100`,
+each value a pill. The value in hand is white with `‹ ›` round it, and `s
+steps` becomes `↵ done` in its place. ←→ changes the value, stopping at its
+ends, and tab goes to the next (shift-tab back). The ramp redraws as each
+value changes, and the chosen step stays on the same number, or the nearest
+one. ↵ keeps the steps; esc puts back what they were. The key row while
+editing: ←→ change, tab next, and esc cancel at the right. Every other key
+does nothing until then.
+
+The steps are kept for the session: a new colour (`#`), a new centre (`r`),
+and leaving colour and coming back all keep them. The Figma card's subtitle
+names them when they are not the default (`from #6579FD · 100–900, every 50
+in OKLCH`).
+
+In a terminal without true colour, the "colours shown approximately" note
+takes the detail row, which a scale does not otherwise use, so the steps'
+line leaves the screen no taller than it was.
 
 ### 6.6 What typing means
 
