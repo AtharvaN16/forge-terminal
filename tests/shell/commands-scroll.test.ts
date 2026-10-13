@@ -39,12 +39,14 @@ describe('the commands list says when it scrolls', () => {
     for (const r of out) expect(width(r)).toBe(80 - HOME_MARGIN)
   })
 
-  it('moves the thumb to the bottom and says what is above at the end', () => {
+  it('moves the thumb to the bottom at the end, with no note once nothing is below', () => {
     const out = panel(last)
     const bar = out.slice(1, -1).map((r) => [...text(r)][BAR])
     expect(bar[0]).toBe('│')
     expect(bar.at(-1)).toBe('┃')
-    expect(text(out.at(-1) as Row)).toContain('↑ 1 more')
+    // What scrolled off the top is not hidden in any sense that matters: the
+    // note is for what is still to come (2026-10-13).
+    expect(text(out.at(-1) as Row)).not.toContain('more')
   })
 
   it('draws nothing when the whole list fits', () => {

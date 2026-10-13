@@ -460,15 +460,19 @@ export function commandRows({
   const barred = shown.map((row, i) =>
     i >= at && i < at + thumb ? edge(row, '┃', palette.dim) : edge(row, '│', palette.faint),
   )
+  // Only what is still below: rows scrolled off the top were already seen,
+  // and "↑ n more" read as if something were still hidden (2026-10-13).
   const below = total - start - room
-  const note = below > 0 ? `↓ ${below} more` : `↑ ${start} more`
+  const note = `↓ ${below} more`
   const out = [
     line([]),
     ...barred,
-    line([
-      { text: ' '.repeat(Math.max(0, W - 1 - width([{ text: note }]))) },
-      { text: note, fg: palette.dim },
-    ]),
+    below > 0
+      ? line([
+          { text: ' '.repeat(Math.max(0, W - 1 - width([{ text: note }]))) },
+          { text: note, fg: palette.dim },
+        ])
+      : line([]),
   ]
   while (out.length < h) out.push(line([]))
   return out

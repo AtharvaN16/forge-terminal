@@ -2,14 +2,15 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
-import { MODE_ORDER, modeStep } from '../../src/shell/theme.js'
+import { tabStep } from '../../src/shell/theme.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 /**
- * ←→ on home step through the modes in tab order, wrapping at the ends, while
- * the field is empty (as 1–5 do). Colour's home uses ←→ for its two cards, so
- * there the arrows move between the cards first and leave colour past them
- * (decided 2026-10-13).
+ * ←→ on home walk the tab row — the five modes, then "/ commands" — wrapping
+ * at the ends, while nothing is typed (as 1–5 pick a mode). Colour's home uses
+ * ←→ for its two cards, so there the arrows move between the cards first and
+ * go on past them; on the commands tab they only switch while the field holds
+ * the bare "/" (decided 2026-10-13).
  */
 const ESC = String.fromCharCode(27)
 const LEFT = `${ESC}[D`
@@ -26,13 +27,18 @@ async function waitFor(ok: () => boolean, ms = 10_000) {
   }
 }
 
-/** What each mode's home says, to tell them apart in plain text. */
-const SAYS = {
-  convert: 'images · HEIC · PDF · Word',
-  compress: 'images · PDF',
-  enhance: 'images · HEIC',
-  colour: 'the colours of an image',
-} as const
+type Rendered = ReturnType<typeof render>
+const frame = (app: Rendered) => plain(app.lastFrame())
+/** Which tab the screen is on, told apart by what each one says. */
+const on = {
+  convert: (f: string) => f.includes('images · HEIC · PDF · Word') && !f.includes('modes ─'),
+  compress: (f: string) => f.includes('images · PDF') && !f.includes('HEIC'),
+  // enhance's line is the start of convert's, so convert's tail must be gone.
+  enhance: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
+  colour: (f: string) => f.includes('the colours of an image'),
+  commands: (f: string) => f.includes('modes ─') && f.includes('/convert'),
+}
+const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))
 
 async function home() {
   const app = render(
@@ -42,16 +48,18 @@ async function home() {
       prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: await makeTempDir() }}
     />,
   )
-  await waitFor(() => plain(app.lastFrame()).includes(SAYS.convert))
+  await reach(app, 'convert')
   await settle()
   return app
 }
 
-describe('modeStep', () => {
-  it('steps in tab order and wraps at both ends', () => {
-    expect(modeStep('convert', 1)).toBe('compress')
-    expect(modeStep(MODE_ORDER.at(-1) as (typeof MODE_ORDER)[number], 1)).toBe('convert')
-    expect(modeStep('convert', -1)).toBe(MODE_ORDER.at(-1))
+describe('tabStep', () => {
+  it('walks the modes, then commands, and wraps at both ends', () => {
+    expect(tabStep('convert', 1)).toBe('compress')
+    expect(tabStep('colour', 1)).toBe('commands')
+    expect(tabStep('commands', 1)).toBe('convert')
+    expect(tabStep('convert', -1)).toBe('commands')
+    expect(tabStep('commands', -1)).toBe('colour')
   })
 })
 
@@ -59,52 +67,60 @@ describe('←→ on home', () => {
   it('→ goes to the next mode and ← back, while the field is empty', async () => {
     const app = await home()
     app.stdin.write(RIGHT)
-    await waitFor(() => plain(app.lastFrame()).includes(SAYS.compress))
+    await reach(app, 'compress')
     app.stdin.write(LEFT)
-    await waitFor(() => plain(app.lastFrame()).includes(SAYS.convert))
+    await reach(app, 'convert')
   }, 20_000)
 
-  it('← on convert wraps to colour, landing on its right card', async () => {
+  it('← walks back through commands, colour’s two cards and on to enhance', async () => {
     const app = await home()
     app.stdin.write(LEFT)
-    await waitFor(() => plain(app.lastFrame()).includes(SAYS.colour))
-    // Scale is chosen, so ← steps to Palette before it leaves colour.
+    await reach(app, 'commands')
+    await settle()
+    app.stdin.write(LEFT)
+    await reach(app, 'colour')
+    // Arriving from the right lands on Scale: ← steps to Palette, then leaves.
     await settle()
     app.stdin.write(LEFT)
     await settle(300)
-    expect(plain(app.lastFrame())).toContain(SAYS.colour)
+    expect(on.colour(frame(app))).toBe(true)
     app.stdin.write(LEFT)
-    // enhance's line is the start of convert's, so convert's tail must be gone.
-    await waitFor(() => {
-      const f = plain(app.lastFrame())
-      return f.includes(SAYS.enhance) && !f.includes(SAYS.convert)
-    })
+    await reach(app, 'enhance')
   }, 20_000)
 
-  it('→ past colour’s right card wraps to convert', async () => {
+  it('→ past colour’s right card opens the commands, and → again wraps to convert', async () => {
     const app = await home()
     app.stdin.write('5')
-    await waitFor(() => plain(app.lastFrame()).includes(SAYS.colour))
+    await reach(app, 'colour')
     await settle()
     app.stdin.write(RIGHT)
     await settle(300)
-    expect(plain(app.lastFrame())).toContain(SAYS.colour)
+    expect(on.colour(frame(app))).toBe(true)
     app.stdin.write(RIGHT)
-    await waitFor(() => plain(app.lastFrame()).includes(SAYS.convert))
+    await reach(app, 'commands')
+    await settle()
+    app.stdin.write(RIGHT)
+    await reach(app, 'convert')
   }, 20_000)
 
-  it('moves the cursor instead once something is typed', async () => {
+  it('moves the cursor instead once something is typed, on a mode or on commands', async () => {
     const app = await home()
     app.stdin.write('ab')
     await settle()
     app.stdin.write(RIGHT)
     await settle(300)
-    expect(plain(app.lastFrame())).toContain(SAYS.convert)
-    expect(plain(app.lastFrame())).not.toContain(SAYS.compress)
+    expect(on.convert(frame(app))).toBe(true)
+
+    const filtered = await home()
+    filtered.stdin.write('/co')
+    await waitFor(() => frame(filtered).includes('/compress'))
+    filtered.stdin.write(RIGHT)
+    await settle(300)
+    expect(frame(filtered)).toContain('/compress')
   }, 20_000)
 
   it('says so on the key row', async () => {
     const app = await home()
-    expect(plain(app.lastFrame()).split('\n').at(-1)).toMatch(/1–5 ←→ +mode/)
+    expect(frame(app).split('\n').at(-1)).toMatch(/1–5 ←→ +mode/)
   }, 20_000)
 })

@@ -104,14 +104,15 @@ import { ThemeProvider } from './ThemeContext.js'
 import { writeToTerminal } from './terminal-write.js'
 import {
   colourProp,
+  type HomeTab,
   MODE_KEYS,
   modeForKey,
   modePalette,
-  modeStep,
   paintsCanvas,
   paletteFor,
   type ShellMode,
   SYMBOLS,
+  tabStep,
   VERSION,
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
@@ -1022,13 +1023,19 @@ export function App({
   }
 
   /**
-   * ← or → on home: the mode beside this one in tab order, wrapping (decided
-   * 2026-10-13). Into colour it lands on the card nearest the side it came
-   * from — Palette from the left, Scale from the right — so the next press
-   * carries on the same way through colour's two cards.
+   * ← or → on home: the tab beside `from` on the tab row — the modes, then
+   * "/ commands" — wrapping (decided 2026-10-13). The commands tab is the
+   * bare "/" in the field, as typing it opens the list. Into colour it lands
+   * on the card nearest the side it came from — Palette from the left, Scale
+   * from the right — so the next press carries on through colour's two cards.
    */
-  const stepMode = (delta: 1 | -1) => {
-    const next = modeStep(mode, delta)
+  const stepTab = (from: HomeTab, delta: 1 | -1) => {
+    const next = tabStep(from, delta)
+    if (next === 'commands') {
+      setText('/')
+      return
+    }
+    setText('')
     if (next === 'colour') setColourChoice(delta > 0 ? 0 : 1)
     switchMode(next)
   }
@@ -1060,6 +1067,18 @@ export function App({
    */
   const commandKey = (_input: string, key: Key): boolean => {
     if (!commands) return false
+    // ←→ leave the commands tab for its neighbours on the tab row while
+    // nothing is typed after the slash; past that they move the cursor.
+    if (
+      (key.leftArrow || key.rightArrow) &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.super &&
+      textRef.current === '/'
+    ) {
+      stepTab('commands', key.rightArrow ? 1 : -1)
+      return true
+    }
     const last = commands.items.length - 1
     if (key.downArrow || key.upArrow) {
       const step = key.downArrow ? 1 : -1
@@ -1130,7 +1149,7 @@ export function App({
       }
       // An empty field has no cursor to move, so ←→ are free for the modes.
       if (!key.ctrl && !key.meta && !key.super && (key.leftArrow || key.rightArrow)) {
-        stepMode(key.rightArrow ? 1 : -1)
+        stepTab(mode, key.rightArrow ? 1 : -1)
         return true
       }
       return key.tab
@@ -1472,10 +1491,10 @@ export function App({
       // ←→ choose a card, and past the end card step to the next mode as on
       // every other home (decided 2026-10-13).
       if (key.leftArrow) {
-        if (colourChoice === 0) stepMode(-1)
+        if (colourChoice === 0) stepTab('colour', -1)
         else setColourChoice(0)
       } else if (key.rightArrow) {
-        if (colourChoice === 1) stepMode(1)
+        if (colourChoice === 1) stepTab('colour', 1)
         else setColourChoice(1)
       } else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
       else if (input === '#') openColour({ typed: '#' })
