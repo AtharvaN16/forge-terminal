@@ -82,7 +82,8 @@ const BAR_COLUMN = 77
  * modes, only the fill and band are held, not the text drawn on them.
  */
 const DESCRIPTION_COLUMN = 16
-const LIST_ROWS = [9, 10, 11]
+const FIRST_LIST_ROW = 9
+const LAST_LIST_ROW = 11
 const unwritten = (cells: Cell[]): Cell[] =>
   cells.map((c, x) => (x < DESCRIPTION_COLUMN ? c : { ...c, ch: ' ', fg: null, b: false }))
 
@@ -96,12 +97,12 @@ function expectStep(step: Step, skip: number[] = [], bar = false) {
   for (let row = 0; row < 24; row++) {
     if (skip.includes(row)) continue
     const actual = ansiRow(lines[row] ?? '')
-    const from = listed && row > LIST_ROWS[0] && row <= 12 ? row - 1 : row
+    const from = listed && row > FIRST_LIST_ROW && row <= LAST_LIST_ROW + 1 ? row - 1 : row
     if (bar) {
       const want = homeRow(step, from)[BAR_COLUMN]
       if (want && actual[BAR_COLUMN]) actual[BAR_COLUMN] = want
     }
-    const inList = listed && LIST_ROWS.includes(from)
+    const inList = listed && from >= FIRST_LIST_ROW && from <= LAST_LIST_ROW
     const [got, want] = inList
       ? [unwritten(actual), unwritten(homeRow(step, from))]
       : [actual, homeRow(step, from)]
