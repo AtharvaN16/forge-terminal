@@ -1,4 +1,5 @@
 import { Box } from 'ink'
+import { HOME_MARGIN } from '../home-art.js'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
 import { commandsPalette, modeGradient, NEUTRAL } from '../theme.js'
@@ -34,16 +35,19 @@ export function ThemePicker({
       <Box flexDirection="column" flexGrow={1}>
         {onCancel ? <ThemeBar width={width} /> : <Text bold>Select theme</Text>}
         <Text> </Text>
-        <Select
-          width={width}
-          items={[
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-          ]}
-          initialValue="dark"
-          onSubmit={(value) => onChoose(value === 'light' ? 'light' : 'dark')}
-          {...(onCancel ? { onCancel } : {})}
-        />
+        {/* Reopened, the rows' band runs exactly as far as the settings' bar above it: the margin in from each edge. */}
+        <Box marginLeft={onCancel ? HOME_MARGIN : 0}>
+          <Select
+            width={onCancel ? width - HOME_MARGIN * 2 : width}
+            items={[
+              { value: 'light', label: 'Light' },
+              { value: 'dark', label: 'Dark' },
+            ]}
+            initialValue="dark"
+            onSubmit={(value) => onChoose(value === 'light' ? 'light' : 'dark')}
+            {...(onCancel ? { onCancel } : {})}
+          />
+        </Box>
         <HintBar
           width={width}
           pairs={[
