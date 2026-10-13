@@ -408,7 +408,7 @@ export function SaveAs({
   const keys: Array<[string, string]> = making
     ? making.name.trim() === ''
       ? []
-      : [['↵', 'make it and save']]
+      : [['↵', 'create and save']]
     : !onPath
       ? [
           ['↵', 'save'],
@@ -419,7 +419,7 @@ export function SaveAs({
         ? [['↑', 'folders']]
         : placeMissing && !filter
           ? [
-              ['↵', 'make it and save'],
+              ['↵', 'create and save'],
               ['↑', 'folders'],
             ]
           : [

@@ -175,7 +175,7 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     // The name is untouched; the key row says what ↵ does, and esc is said
     // where "/ new folder" was.
     expect(rows[0]).toMatch(/name {5}header/)
-    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save/)
+    expect(keyRow(lastFrame())).toMatch(/↵ {2}create and save/)
     expect(keyRow(lastFrame())).not.toContain('esc')
     expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).toMatch(/ esc clear$/)
     stdin.write('-2')
@@ -209,7 +209,7 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     expect(plain(lastFrame())).toMatch(/└ *$/m)
     expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).toMatch(/ esc close$/)
     // Nothing to make: ↵ is not offered.
-    expect(keyRow(lastFrame())).not.toContain('make it and save')
+    expect(keyRow(lastFrame())).not.toContain('create and save')
     stdin.write(ESC)
     await settle()
     expect(plain(lastFrame())).not.toContain('└')
@@ -332,7 +332,7 @@ describe('Save as (V10c): the path row', () => {
     stdin.write('tmp/forge-nope')
     await settle(150)
     expect(plain(lastFrame())).toMatch(/▌ \/tmp\/forge-nope +new folder/)
-    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save {3}↑ {2}folders +esc clear path/)
+    expect(keyRow(lastFrame())).toMatch(/↵ {2}create and save {3}↑ {2}folders +esc clear path/)
     stdin.write(ENTER)
     await settle()
     expect(onSubmit).toHaveBeenCalledWith('/tmp/forge-nope', 'header')
