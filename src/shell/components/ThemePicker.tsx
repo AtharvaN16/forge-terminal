@@ -1,7 +1,8 @@
 import { Box } from 'ink'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
-import { commandsPalette, NEUTRAL } from '../theme.js'
+import { commandsPalette, modeGradient, NEUTRAL } from '../theme.js'
+import { HeaderBar } from './HeaderBar.js'
 import { HintBar } from './HintBar.js'
 import { Select } from './Select.js'
 
@@ -13,7 +14,7 @@ import { Select } from './Select.js'
  * theme is known — and light paints its canvas, where NEUTRAL's terminal
  * colours could be light on white — so it keeps the current palette.
  *
- * Round 5: "Select theme", a blank row, the two names with no hints, and the
+ * Round 5: "Select theme" (reopened: the settings' bar instead), a blank row, the two names with no hints, and the
  * keys under a rule as on every other screen. The cursor opens on Dark, what
  * most terminals are.
  */
@@ -31,7 +32,7 @@ export function ThemePicker({
   return (
     <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : commandsPalette(current)}>
       <Box flexDirection="column" flexGrow={1}>
-        <Text bold>Select theme</Text>
+        {onCancel ? <ThemeBar width={width} /> : <Text bold>Select theme</Text>}
         <Text> </Text>
         <Select
           width={width}
@@ -53,5 +54,18 @@ export function ThemePicker({
         />
       </Box>
     </ThemeProvider>
+  )
+}
+
+/** Reopened with /theme, the picker is a setting like the others: their gold bar, named "theme". */
+function ThemeBar({ width }: { width: number }) {
+  const palette = useTheme()
+  return (
+    <HeaderBar
+      mode="convert"
+      chip={{ label: 'theme', colour: palette.brand, stops: modeGradient(palette, 'commands') }}
+      trail={{ answers: [] }}
+      width={width}
+    />
   )
 }

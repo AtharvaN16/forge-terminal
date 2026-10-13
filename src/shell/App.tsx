@@ -38,7 +38,7 @@ import { probe } from '../engines/registry.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { printable } from '../utils/printable.js'
-import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
+import { splitPastedPaths, startsLikePath, unescapePath } from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
@@ -51,7 +51,7 @@ import { DoneScreen } from './components/Done.js'
 import { EnhanceDone } from './components/EnhanceDone.js'
 import { EnhancePicker } from './components/EnhancePicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
-import { ErrorPanel } from './components/ErrorPanel.js'
+import { ErrorPanel, errorPanelRows } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
@@ -81,6 +81,7 @@ import {
   type ToolState,
   toolState,
 } from './enhance.js'
+import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
@@ -137,6 +138,7 @@ export type Step =
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
   | 'update'
+  | 'about'
   /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'enhance'
   /** Enhance's Resize: the 0–200 % slider (H3). */
@@ -425,6 +427,31 @@ const pdfCommand = COMMANDS.find((c) => c.name === 'pdf')
 const FRESH_MS = 1200
 
 /**
+ * How soon after a piece of a paste the next piece must be handled to be
+ * joined to it. A terminal that does not bracket pastes can still split one
+ * across reads; the pieces come a few ms apart, but a busy render between
+ * them can hold the second back. No one types that fast after a paste.
+ */
+const DROP_PIECE_MS = 100
+
+/** Text, not a key: what a piece of a paste looks like when it arrives. */
+const isText = (input: string, key: Key) =>
+  input !== '' &&
+  !key.ctrl &&
+  !key.meta &&
+  !key.super &&
+  !key.return &&
+  !key.escape &&
+  !key.tab &&
+  !key.backspace &&
+  !key.delete &&
+  !key.upArrow &&
+  !key.downArrow &&
+  !key.leftArrow &&
+  !key.rightArrow &&
+  !isStrayEscapeSequence(input)
+
+/**
  * What a pasted or typed path turned out to name. `anyExists` is false when
  * nothing in it is on disk at all — every failure a missing file or a path
  * that cannot be one — which is how a paste of plain text, or half a path,
@@ -525,6 +552,9 @@ async function resolveDrop(text: string): Promise<DropResolution> {
   return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
 }
 
+/** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
+const SETTINGS_STEPS: ReadonlySet<string> = new Set(['extensions', 'update', 'about'])
+
 export function App({
   initialWidth,
   initialHeight,
@@ -532,6 +562,7 @@ export function App({
   configWarning,
   tools = realTools,
   updater = realUpdater,
+  about = realAbout,
   latestRelease,
 }: {
   initialWidth?: number
@@ -542,6 +573,8 @@ export function App({
   tools?: EnhanceTools
   /** What /update checks and installs with; tests pass a fake. */
   updater?: Updater
+  /** What /about opens links and reads credits with; tests pass a fake. */
+  about?: AboutSystem
   /**
    * A newer Forge for home's band, found in the background at start-up.
    * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
@@ -826,6 +859,14 @@ export function App({
   stepRef.current = step
   /** The `requestId` of a drop being read right now, or 0 — ↵ waits on it. */
   const dropReading = useRef(0)
+  /**
+   * The last paste onto the empty home field, for the next piece of it to be
+   * joined to (`DROP_PIECE_MS`): all of it so far, what of it the field
+   * shows (nothing while it is read; all of it once it named nothing, or
+   * ended in a slash), and when it came. Gone once it lands as a drop: the
+   * paste is over, and a key pressed then is a key.
+   */
+  const dropPiece = useRef<{ text: string; shown: string; at: number } | undefined>(undefined)
   /**
    * How many of the last staged files the latest drop added, for the band
    * they wear for `FRESH_MS`. `at` makes each drop a new value, so a second
@@ -1119,28 +1160,63 @@ export function App({
    * holding the stage takes it on: one file to its next step, several PDFs in
    * pdf mode to the hub, anything else nowhere until batch exists. (esc
    * clearing the stage is the idle esc handler's, below.)
+   *
+   * A paste onto the empty field is taken, not shown: drawn and then cleared
+   * for the card, a dropped path blinked in the field while its file was
+   * read. It is put back if it names nothing. A piece that follows it within
+   * `DROP_PIECE_MS` is joined to it and the whole read again
+   * (docs/superpowers/specs/2026-10-13-forge-paste-drops-design.md).
    */
   const homeKey = (input: string, key: Key, value: string): boolean => {
-    if (commandKey(input, key)) return true
-    if (value === '') {
-      const [pasted = '', ...rest] = input.split(/[\r\n]/)
+    const piece = dropPiece.current
+    // `value` can still be '' for a piece read back into the field but not
+    // drawn yet.
+    const joining =
+      piece !== undefined &&
+      Date.now() - piece.at < DROP_PIECE_MS &&
+      (value === piece.shown || value === '') &&
+      isText(input, key)
+    if (!joining && commandKey(input, key)) return true
+    if (value === '' || joining) {
+      const whole = joining ? piece.text + input : input
+      const [pasted = '', ...rest] = whole.split(/[\r\n]/)
       if (
-        [...input].length > 1 &&
+        [...whole].length > 1 &&
         !key.ctrl &&
         !key.meta &&
-        !isStrayEscapeSequence(input) &&
+        !isStrayEscapeSequence(whole) &&
         pasted.trim() !== '' &&
-        !isCommandBuffer(pasted) &&
-        // A drag never ends a path in a slash; "~/Desktop/" pasted to be
-        // finished by hand is typing, and stays in the field.
-        !/\/\s*$/.test(pasted)
+        !isCommandBuffer(pasted)
       ) {
-        // With a line break the field would submit it, so it is taken here;
-        // without one the field shows it while it is read.
-        const broke = rest.length > 0
-        readDrop(pasted, broke)
-        return broke
+        // Words are typing: nothing to read off the disk first. With a line
+        // break the field would submit them, so they are put in it instead.
+        if (!startsLikePath(pasted)) {
+          if (rest.length === 0) return false
+          setText(pasted)
+          return true
+        }
+        // A drag never ends a path in a slash; "~/Desktop/" pasted to be
+        // finished by hand is typing, and stays in the field — though a next
+        // piece can still make it a drop.
+        if (/\/\s*$/.test(pasted) && rest.length === 0) {
+          dropPiece.current = { text: whole, shown: whole, at: Date.now() }
+          if (value !== '' || !joining) return false
+          // The pieces before this one were taken: the read of them is
+          // dropped, and the whole goes in the field.
+          requestId.current++
+          dropReading.current = 0
+          setText(whole)
+          return true
+        }
+        // A line break ends a paste: nothing after it is joined to it.
+        dropPiece.current =
+          rest.length === 0 ? { text: whole, shown: '', at: Date.now() } : undefined
+        if (value !== '') setText('')
+        readDrop(pasted)
+        return true
       }
+    }
+    if (value === '') {
       // ↵ waits for a drop still being read: acting on the stage as it stood
       // would let the read land mid-wizard and add files the run never sees.
       if (key.return && dropReading.current !== 0) return true
@@ -1197,6 +1273,38 @@ export function App({
   }, [step, recordDone])
 
   /**
+   * A run that failed and ended the action (E5), live under home's field
+   * rather than in `<Static>`: home fills the window, so a block printed
+   * above it is already off the top of the screen — the run looked like it
+   * just went home. It goes to the scrollback once something new starts
+   * (`fenceOff`, another file, typing, leaving home). The ref is what `commitFailure` reads, so
+   * a second failure in the same handler commits the first, not nothing.
+   */
+  const [runFailure, setRunFailure] = useState<ForgeError | undefined>(undefined)
+  const runFailureRef = useRef<ForgeError | undefined>(undefined)
+  const commitFailure = useCallback(() => {
+    const error = runFailureRef.current
+    if (!error) return
+    runFailureRef.current = undefined
+    setRunFailure(undefined)
+    push({ kind: 'error', id: nextId(), error })
+  }, [push])
+  /** Holds `e` above home, committing any failure held before it. */
+  const holdFailure = useCallback(
+    (e: unknown) => {
+      commitFailure()
+      const error = isForgeError(e) ? e : unexpectedError(e)
+      runFailureRef.current = error
+      setRunFailure(error)
+    },
+    [commitFailure],
+  )
+  const fileStaged = stage.sources.length > 0
+  useEffect(() => {
+    if (runFailure && (!onHome || fileStaged || text !== '')) commitFailure()
+  }, [runFailure, onHome, fileStaged, text, commitFailure])
+
+  /**
    * Rules a dashed line under whatever is already on screen, so a change of
    * flow reads as a new operation rather than a continuation of the last one.
    *
@@ -1214,12 +1322,14 @@ export function App({
     // A refusal is live (see `fileRefusal`): a new flow takes it away rather
     // than leaving it above a screen it is not part of.
     setFileRefusal(undefined)
+    // Above the rule, as it would have been had it gone to the scrollback at once.
+    commitFailure()
     setHistory((h) => {
       if (h.length === 0) return h
       if (h[h.length - 1]?.kind === 'separator') return h
       return [...h, { kind: 'separator' as const, id: nextId(), width }]
     })
-  }, [width])
+  }, [width, commitFailure])
 
   /**
    * A config that could not be read is told to the user once, as history,
@@ -1519,7 +1629,8 @@ export function App({
         if (next && next !== mode) switchMode(next)
       }
     },
-    { isActive: onHome && mode === 'colour' && text === '' },
+    // Its field is not mounted, so pastes are taken here: a drop arrives whole.
+    { isActive: onHome && mode === 'colour' && text === '', pastes: true },
   )
 
   useKeys(
@@ -1746,6 +1857,11 @@ export function App({
         return
       }
 
+      if (command.name === 'about') {
+        setStep('about')
+        return
+      }
+
       /**
        * Enhance acts on one image, as convert does. With nothing staged it
        * arms the mode for the next drop, as `/compress` and `/pdf` do.
@@ -1958,11 +2074,11 @@ export function App({
    * of text, so this is the moment the zone can answer.
    *
    * If nothing in it is on disk it was never a drop — plain text, or half a
-   * path to finish by hand — and it stays in the field as typed: put back
-   * when `homeKey` had to take it for its line break, left alone otherwise.
+   * path to finish by hand — and it is put in the field as typed, unless the
+   * field was typed into meanwhile.
    * A later ↵, paste or esc claims `requestId` and this result is dropped.
    */
-  const readDrop = (pasted: string, broke: boolean) => {
+  const readDrop = (pasted: string) => {
     const id = ++requestId.current
     dropReading.current = id
     const settled = () => {
@@ -1972,17 +2088,19 @@ export function App({
       return requestId.current === id && stepRef.current === 'idle'
     }
     const leaveAsText = () => {
-      if (broke && textRef.current === '') setText(pasted)
+      if (textRef.current !== '') return
+      setText(pasted)
+      const piece = dropPiece.current
+      if (piece) dropPiece.current = { ...piece, shown: pasted }
     }
     resolveDrop(pasted).then(
       (drop) => {
         if (!settled()) return
-        // Typed into since, without a line break: an edit, not a drop.
-        if (!broke && textRef.current !== pasted) return
         if (!drop.anyExists) {
           leaveAsText()
           return
         }
+        dropPiece.current = undefined
         // Only empty folders: nothing was left out, there was nothing to
         // read. Said the way a typed folder says it, hint and all.
         if (
@@ -2102,6 +2220,12 @@ export function App({
     setStage(clearStage())
     setValues({})
     setStep('idle')
+  }
+
+  /** A run failed: the action ends, as `clearSource`, and home shows why (`runFailure`). */
+  const failRun = (e: unknown) => {
+    clearSource()
+    holdFailure(e)
   }
 
   /**
@@ -2576,14 +2700,15 @@ export function App({
         setStep('overwrite')
         return
       }
-      push({ kind: 'error', id: nextId(), error: refusal.error })
       // Writing over the source has no "replace" worth offering — there is
       // no outcome there that keeps the original. Back to the destination
       // step, where choosing a different folder is the actual fix. Any
       // other refusal ends the action, and ending one clears the stage —
-      // see `clearSource`.
-      if (refusal.error.code === 'output-is-input') reopenSaveAs()
-      else clearSource()
+      // see `failRun`.
+      if (refusal.error.code === 'output-is-input') {
+        push({ kind: 'error', id: nextId(), error: refusal.error })
+        reopenSaveAs()
+      } else failRun(refusal.error)
       return
     }
 
@@ -2632,8 +2757,8 @@ export function App({
       }
     } else {
       const failure = summary.failures[0]
-      if (failure) push({ kind: 'error', id: nextId(), error: failure.error })
-      clearSource()
+      if (failure) failRun(failure.error)
+      else clearSource()
     }
   }
 
@@ -2708,12 +2833,10 @@ export function App({
         setStep('result')
         return
       }
-      if (outcome.failures[0])
-        push({ kind: 'error', id: nextId(), error: outcome.failures[0].error })
-      clearSource()
+      if (outcome.failures[0]) failRun(outcome.failures[0].error)
+      else clearSource()
     } catch (e) {
-      showError(e)
-      clearSource()
+      failRun(e)
     } finally {
       if (searchAbort.current === controller) searchAbort.current = undefined
       converting.current = false
@@ -2896,8 +3019,7 @@ export function App({
       // synchronous useInput handler — so a rethrow here would become an
       // unhandled rejection instead of something the user ever sees. Render
       // it instead, exactly like submitPath does for probe().
-      showError(e)
-      clearSource()
+      failRun(e)
     } finally {
       converting.current = false
       setWork(null)
@@ -2923,10 +3045,7 @@ export function App({
       // a second time.
       const { targetBytes: _alreadySearched, ...settled } = opts
       void finishConversion(planned, destination, output, settled)
-        .catch((e) => {
-          showError(e)
-          clearSource()
-        })
+        .catch(failRun)
         .finally(() => {
           converting.current = false
           setWork(null)
@@ -2994,6 +3113,8 @@ export function App({
     setWork({ startedAt: Date.now(), verb: verbOf(jobs[0]) ?? action.verb })
     setStep('pdf-running')
     setPageProgress(null)
+    // Held above home once it is back (see `runFailure`), the last on screen.
+    const failed: unknown[] = []
     try {
       /**
        * `force` is threaded rather than defaulted because these jobs have
@@ -3035,19 +3156,18 @@ export function App({
           push({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${warning.message}` })
         }
       }
-      for (const failure of [...summary.refusals, ...summary.failures]) {
-        push({ kind: 'error', id: nextId(), error: failure.error })
-      }
+      for (const failure of [...summary.refusals, ...summary.failures]) failed.push(failure.error)
     } catch (e) {
       // Mirrors `convert()`'s own catch: this runs from a handler PdfFlow's
       // synchronous `useInput` fired, and nothing else awaits this promise.
-      showError(e)
+      failed.push(e)
     } finally {
       setPageProgress(null)
       setWork(null)
       setStage(clearStage())
       setValues({})
       setStep('idle')
+      for (const e of failed) holdFailure(e)
     }
   }
 
@@ -3283,6 +3403,9 @@ export function App({
    * the live frame keeps above it.
    */
   const canvas = paint ? { backgroundColor: palette.canvas, width: measured, paddingX: inset } : {}
+  // A failed run's panel sits under home's field; home makes room for it.
+  const failureWidth = Math.max(8, width - 2 * HOME_MARGIN)
+  const failureNote = onHome && runFailure && !homeError ? runFailure : undefined
 
   return (
     <ThemeProvider palette={palette}>
@@ -3311,7 +3434,7 @@ export function App({
 
           {/* Where a history block would sit — above the flow it explains —
               but live, so it can go with the file (see `fileRefusal`). */}
-          {fileRefusal && step !== 'theme' && step !== 'extensions' ? (
+          {fileRefusal && step !== 'theme' && !SETTINGS_STEPS.has(step) ? (
             <Box flexDirection="column" marginBottom={1}>
               <ErrorPanel error={fileRefusal.error} width={Math.max(8, width - 2 * HOME_MARGIN)} />
             </Box>
@@ -3320,8 +3443,9 @@ export function App({
           {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
             trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
-            /extensions, which is no mode and draws its own "extensions" chip. */}
-          {working && !onHome && step !== 'result' && step !== 'extensions' ? (
+            the settings (/extensions, /update, /about), which are no mode and
+            each draw their own chip. */}
+          {working && !onHome && step !== 'result' && !SETTINGS_STEPS.has(step) ? (
             <Box marginBottom={1}>
               <HeaderBar
                 mode={mode}
@@ -3836,6 +3960,16 @@ export function App({
             />
           ) : null}
 
+          {step === 'about' ? (
+            <AboutFlow
+              width={width}
+              height={height}
+              version={VERSION}
+              system={about}
+              onClose={() => backToCommands('about')}
+            />
+          ) : null}
+
           {step === 'extensions' ? (
             <ExtensionsFlow
               width={width}
@@ -3942,7 +4076,12 @@ export function App({
                     reason={homeError.short ?? homeError.detail}
                     width={Math.max(8, width - 2 * HOME_MARGIN)}
                   />
+                ) : failureNote ? (
+                  <ErrorPanel error={failureNote} width={failureWidth} />
                 ) : undefined
+              }
+              noteRows={
+                failureNote ? errorPanelRows(failureNote, failureWidth, palette).length : undefined
               }
               field={
                 <Prompt

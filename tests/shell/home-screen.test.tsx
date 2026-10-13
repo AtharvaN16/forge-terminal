@@ -124,6 +124,15 @@ describe('the home screen at other sizes', () => {
     expect(homeLayout(80, 10).surface).toBe(0)
     expect(homeLayout(30, 24).brand).toBe(false)
   })
+
+  it('makes room under the field for a note taller than the list, from the drop zone', () => {
+    // A failed run's E5 panel: 6 rows, a blank row above it and the rule below.
+    const layout = homeLayout(80, 24, 6)
+    expect(layout.list).toBeGreaterThanOrEqual(1 + 6 + 1)
+    expect(layout).toEqual({ brand: true, surface: 5, list: 8 })
+    // A note that fits the list as it is changes nothing.
+    expect(homeLayout(80, 24, 2)).toEqual(homeLayout(80, 24))
+  })
 })
 
 describe('the key row (F1)', () => {

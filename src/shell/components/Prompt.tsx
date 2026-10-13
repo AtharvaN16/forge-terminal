@@ -649,7 +649,9 @@ export function Prompt({
         commit([...c.slice(0, at), ...typed, ...c.slice(at)].join(''), at + typed.length)
       }
     },
-    { isActive },
+    // A paste arrives here whole, as one `input`, and goes in at the caret
+    // like typing — `intercept` sees it first (see `PASTE`).
+    { isActive, pastes: true },
   )
 
   const cells = Array.from(value)

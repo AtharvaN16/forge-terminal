@@ -27,7 +27,12 @@ import {
   toLch,
 } from '../src/core/colour/space.js'
 import { trailBarRow } from '../src/shell/bar-art.js'
-import { COLOUR_SAMPLES, fieldRows, fieldValue, previewRows } from '../src/shell/colour/colour-art.js'
+import {
+  COLOUR_SAMPLES,
+  fieldRows,
+  fieldValue,
+  previewRows,
+} from '../src/shell/colour/colour-art.js'
 import { blank, type Row, type Run, width } from '../src/shell/home-art.js'
 import { sliderRow } from '../src/shell/quality-art.js'
 import { DARK, LIGHT, modePalette, type Palette } from '../src/shell/theme.js'
@@ -244,7 +249,9 @@ function ramp(L: Look, steps: Step[], sel: number): Row[] {
     placed.push({ from: Math.max(0, from), to, i })
   }
   tryPlace(sel, true)
-  steps.forEach((_, i) => i !== sel && tryPlace(i))
+  steps.forEach((_, i) => {
+    if (i !== sel) tryPlace(i)
+  })
   placed.sort((a, b) => a.from - b.from)
   const labels: Row = [blank(2)]
   let col = 0
@@ -290,12 +297,7 @@ const countOf = (st: Steps) => `${stepsOf(st).length} steps`
 const REST_KEYS = (L: Look, extra: [string, string][] = []) =>
   keys(
     L,
-    [
-      ['←→', 'choose'],
-      ['↵', 'copy'],
-      ['c', 'copy all'],
-      ...extra,
-    ],
+    [['←→', 'choose'], ['↵', 'copy'], ['c', 'copy all'], ...extra],
     [
       ['r', 'make centre'],
       ['#', 'new colour'],
@@ -311,7 +313,9 @@ function stepsLine(L: Look, st: Steps): Row {
 }
 /** The line's right end: `s steps` at rest, `↵ done` while the values are being changed. */
 function withEnd(L: Look, left: Row, editing: boolean): Row {
-  const right: Row = editing ? [cap(L, '↵'), run(' done', L.p.dim)] : [cap(L, 's'), run(' steps', L.p.dim)]
+  const right: Row = editing
+    ? [cap(L, '↵'), run(' done', L.p.dim)]
+    : [cap(L, 's'), run(' steps', L.p.dim)]
   return [...pad(left, 2 + AVAIL - width(right)), ...right]
 }
 
@@ -334,7 +338,8 @@ function stepsEditor(L: Look, st: Steps, focus: Focus): Row {
   ]
 }
 /** Round two: the editor with `↵ done` where `s steps` was. */
-const stepsEditor2 = (L: Look, st: Steps, focus: Focus): Row => withEnd(L, stepsEditor(L, st, focus), true)
+const stepsEditor2 = (L: Look, st: Steps, focus: Focus): Row =>
+  withEnd(L, stepsEditor(L, st, focus), true)
 
 const EDIT_KEYS2 = (L: Look) =>
   keys(
@@ -393,8 +398,17 @@ function v2Rows(L: Look, st: Steps, focus: Focus): Row[] {
     run(t.padEnd(7), f === focus ? L.p.fg : L.p.dim, undefined, f === focus),
   ]
   const slider = (f: Focus, v: number, min: number, max: number, ends: [string, string]): Row[] => [
-    [blank(1), ...label(f, f === 'start' ? 'Start' : 'End'), ...sliderRow({ palette: L.p, value: v, min, max, width: SL })],
-    [blank(11), run(ends[0], L.p.border), blank(SL + 1 - ends[0].length - ends[1].length), run(ends[1], L.p.border)],
+    [
+      blank(1),
+      ...label(f, f === 'start' ? 'Start' : 'End'),
+      ...sliderRow({ palette: L.p, value: v, min, max, width: SL }),
+    ],
+    [
+      blank(11),
+      run(ends[0], L.p.border),
+      blank(SL + 1 - ends[0].length - ends[1].length),
+      run(ends[1], L.p.border),
+    ],
   ]
   const choices: Row = [blank(1), ...label('every', 'Every')]
   for (const v of [50, 100, 250]) {
@@ -455,7 +469,17 @@ function v3(L: Look, chosen: number, custom?: { st: Steps; focus: Focus }): Row[
     const bg = on ? L.p.band : undefined
     const lead: Row = [on ? run('▌', L.p.accent, bg) : blank(1), run(' ', undefined, bg)]
     if (!pr.st) {
-      if (on && custom) return pad([...lead, ...stepsEditor(L, custom.st, custom.focus).slice(1).map((r) => (r.bg ? r : { ...r, bg }))], AVAIL, bg)
+      if (on && custom)
+        return pad(
+          [
+            ...lead,
+            ...stepsEditor(L, custom.st, custom.focus)
+              .slice(1)
+              .map((r) => (r.bg ? r : { ...r, bg })),
+          ],
+          AVAIL,
+          bg,
+        )
       return pad([...lead, run('Custom…', on ? L.p.fg : L.p.dim, bg, on)], on ? AVAIL : 0, bg)
     }
     const st = pr.st
@@ -467,7 +491,9 @@ function v3(L: Look, chosen: number, custom?: { st: Steps; focus: Focus }): Row[
     ]
     const now = i === 0 ? [run('✓ now', L.p.ok, bg)] : []
     const row = [...lead, ...text]
-    return on ? [...pad(row, AVAIL - 6, bg), ...now, ...pad([], 6 - width(now), bg)] : [...row, ...(now.length ? [blank(Math.max(0, AVAIL - 6 - width(row))), ...now] : [])]
+    return on
+      ? [...pad(row, AVAIL - 6, bg), ...now, ...pad([], 6 - width(now), bg)]
+      : [...row, ...(now.length ? [blank(Math.max(0, AVAIL - 6 - width(row))), ...now] : [])]
   })
   return screen(
     L,
@@ -493,10 +519,23 @@ const CARD = 34
 function homeCards(L: Look, selected: 0 | 1, subs: [string, string]): Row[] {
   const p = L.p
   const W = AVAIL
-  const on = (bg: string, runs: Row, w: number): Row => pad(runs.map((r) => (r.bg ? r : { ...r, bg })), w, bg)
+  const on = (bg: string, runs: Row, w: number): Row =>
+    pad(
+      runs.map((r) => (r.bg ? r : { ...r, bg })),
+      w,
+      bg,
+    )
   const cards = [
-    { name: 'Palette', sub: subs[0], preview: COLOUR_SAMPLES.palette.map((h) => run('    ', undefined, h.toLowerCase())) },
-    { name: 'Scale', sub: subs[1], preview: COLOUR_SAMPLES.scale.map((h) => run('  ', undefined, h.toLowerCase())) },
+    {
+      name: 'Palette',
+      sub: subs[0],
+      preview: COLOUR_SAMPLES.palette.map((h) => run('    ', undefined, h.toLowerCase())),
+    },
+    {
+      name: 'Scale',
+      sub: subs[1],
+      preview: COLOUR_SAMPLES.scale.map((h) => run('  ', undefined, h.toLowerCase())),
+    },
   ]
   const card = (i: number): Row[] => {
     const c = cards[i] as (typeof cards)[number]
@@ -517,7 +556,10 @@ function homeCards(L: Look, selected: 0 | 1, subs: [string, string]): Row[] {
   const edge: Row = [blank(2), ...on(p.selectionBg, [], W)]
   return [
     edge,
-    ...a.map((row, i) => [blank(2), ...on(p.selectionBg, [blank(1), ...row, blank(2), ...(b[i] ?? []), blank(1)], W)]),
+    ...a.map((row, i) => [
+      blank(2),
+      ...on(p.selectionBg, [blank(1), ...row, blank(2), ...(b[i] ?? []), blank(1)], W),
+    ]),
     edge,
   ]
 }
@@ -544,7 +586,11 @@ function html(rows: Row[], p: Palette): string {
       let out = ''
       let used = 0
       for (const x of r) {
-        const style = [x.fg ? `color:${x.fg}` : '', x.bg ? `background:${x.bg}` : '', x.bold ? 'font-weight:700' : '']
+        const style = [
+          x.fg ? `color:${x.fg}` : '',
+          x.bg ? `background:${x.bg}` : '',
+          x.bold ? 'font-weight:700' : '',
+        ]
           .filter(Boolean)
           .join(';')
         let inner = ''
@@ -707,14 +753,21 @@ const TABS: { id: string; title: string; intro: string; figs: Fig[] }[] = [
         note: 'All five share the same 500 (#6579FD). When the swatches get narrow, the ramp drops the gaps between them first. After that it drops labels that would touch their neighbours, but always keeps the chosen step’s.',
         draw: (L) => [
           stack(L, [DEFAULT, { start: 100, end: 900, every: 100 }, S_1750]),
-          stack(L, [{ start: 0, end: 1000, every: 100 }, { start: 0, end: 1000, every: 50 }, { start: 50, end: 950, every: 250 }]),
+          stack(L, [
+            { start: 0, end: 1000, every: 100 },
+            { start: 0, end: 1000, every: 50 },
+            { start: 50, end: 950, every: 250 },
+          ]),
         ],
       },
       {
         id: 'R2',
         name: 'A grey and a warm colour, 0 – 1000 every 50',
         note: 'The two ends of the ruler on colours that behave differently: a neutral grey (still pure grey, see the note on tinted greys in chat) and a coral that loses chroma as it nears white.',
-        draw: (L) => [stack(L, [{ start: 0, end: 1000, every: 50 }], '#71717A'), stack(L, [{ start: 0, end: 1000, every: 50 }], '#F26E69')],
+        draw: (L) => [
+          stack(L, [{ start: 0, end: 1000, every: 50 }], '#71717A'),
+          stack(L, [{ start: 0, end: 1000, every: 50 }], '#F26E69'),
+        ],
       },
     ],
   },
@@ -728,7 +781,10 @@ const TABS: { id: string; title: string; intro: string; figs: Fig[] }[] = [
       name: `“${s.sub}”`,
       pick: s.pick,
       note: s.note,
-      draw: (L: Look) => [home(L, 0, ['extract colours from an image', s.sub]), home(L, 1, ['extract colours from an image', s.sub])],
+      draw: (L: Look) => [
+        home(L, 0, ['extract colours from an image', s.sub]),
+        home(L, 1, ['extract colours from an image', s.sub]),
+      ],
     })),
   },
 ]

@@ -62,15 +62,21 @@ export interface HomeLayout {
   list: number
 }
 
-export function homeLayout(width: number, height: number): HomeLayout {
+/**
+ * `noteRows`: a note under the field that the list must hold (a failed run's
+ * E5 panel), with its blank row above and the rule below; the drop surface
+ * gives up what the list lacks for it.
+ */
+export function homeLayout(width: number, height: number, noteRows = 0): HomeLayout {
+  const listMin = Math.max(LIST_MIN, noteRows + 2)
   const word = WORDMARK3[0]?.length ?? 0
   const brandFits = width - HOME_MARGIN * 2 - word - 3 >= 2
   if (brandFits) {
-    const surface = Math.min(SURFACE_MAX, height - BASE - BRAND - LIST_MIN)
+    const surface = Math.min(SURFACE_MAX, height - BASE - BRAND - listMin)
     if (surface >= SURFACE_MIN)
       return { brand: true, surface, list: height - BASE - BRAND - surface }
   }
-  const surface = Math.min(SURFACE_MAX, height - BASE - LIST_MIN)
+  const surface = Math.min(SURFACE_MAX, height - BASE - listMin)
   if (surface >= SURFACE_MIN) return { brand: false, surface, list: height - BASE - surface }
   return { brand: false, surface: 0, list: Math.max(0, height - BASE) }
 }
@@ -373,6 +379,7 @@ export function Home({
   staged,
   under,
   note,
+  noteRows,
   keys,
   colourChoice = 0,
   intro = false,
@@ -402,6 +409,8 @@ export function Home({
    * and the list is not drawn while it is up.
    */
   note?: ReactNode
+  /** The note's height where it may not fit the list as it is (see `homeLayout`). */
+  noteRows?: number | undefined
   keys: KeySet
   /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
   colourChoice?: 0 | 1
@@ -414,7 +423,7 @@ export function Home({
   update?: string | undefined
 }) {
   const palette = useTheme()
-  const layout = homeLayout(width, height)
+  const layout = homeLayout(width, height, noteRows)
   const art = { width, palette, mode }
   // The drop surface ripples (M1) only while it is all that is on the panel
   // and nothing is typed; anything else holds it still, and it starts again

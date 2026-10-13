@@ -64,6 +64,15 @@ const open = (manager: ExtensionsManager) =>
 const frame = (f: ReturnType<typeof open>) => f.lastFrame() ?? ''
 
 describe('ExtensionsFlow (M3 · T2)', () => {
+  it('leaves the bar’s far end to the hatching at rest: the chip already names the screen', async () => {
+    const { manager } = fakeManager()
+    const f = open(manager)
+    await until(() => frame(f).includes('↵ install'))
+    const bar = frame(f).split('\n')[0] ?? ''
+    expect(bar).toMatch(/extensions ╱+\s*$/)
+    expect(bar).not.toContain('Extensions')
+  })
+
   it('installs with the real byte count, never a percentage, then shows it installed', async () => {
     const { manager, release } = fakeManager()
     const f = open(manager)

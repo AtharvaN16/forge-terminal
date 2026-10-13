@@ -180,6 +180,22 @@ describe("colour's home and screens", () => {
     20_000,
   )
 
+  it('an image dropped whole, bracketed, on colour home opens its palette', async () => {
+    const { app, dir } = await colourHome()
+    const png = await makeGradientPng(dir, 'g.png', 48)
+    app.stdin.write(`${ESC}[200~${png.slice(0, 5)}`)
+    app.stdin.write(`${png.slice(5)}${ESC}[201~`)
+    await waitFor(() => /\d+%\s*$/m.test(plain(app.lastFrame())))
+    expect(plain(app.lastFrame())).toContain('› g.png')
+  }, 20_000)
+
+  it('a bracketed hex paste on colour home opens its scale', async () => {
+    const { app } = await colourHome()
+    app.stdin.write(`${ESC}[200~#6579FD${ESC}[201~`)
+    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    expect(plain(app.lastFrame())).toContain('#6579FD')
+  }, 20_000)
+
   it('a hex pasted on colour home opens its scale', async () => {
     const { app } = await colourHome()
     app.stdin.write('#6579FD')

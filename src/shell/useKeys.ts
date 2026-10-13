@@ -1,4 +1,4 @@
-import { type Key, useInput } from 'ink'
+import { type Key, useInput, usePaste } from 'ink'
 
 /**
  * `useInput`, minus key *releases*.
@@ -21,10 +21,53 @@ import { type Key, useInput } from 'ink'
  */
 export function useKeys(
   handler: (input: string, key: Key) => void,
-  options?: { isActive?: boolean },
+  options?: { isActive?: boolean; pastes?: boolean },
 ): void {
-  useInput((input, key) => {
-    if (key.eventType === 'release') return
-    handler(input, key)
-  }, options)
+  const isActive = options?.isActive ?? true
+  useInput(
+    (input, key) => {
+      if (key.eventType === 'release') return
+      handler(input, key)
+    },
+    { isActive },
+  )
+  usePaste((text) => handler(text, PASTE), { isActive: isActive && options?.pastes === true })
+}
+
+/**
+ * The key a paste arrives with under `pastes: true`: nothing pressed, only
+ * text.
+ *
+ * `pastes` turns on bracketed paste (Ink's `usePaste`), so the terminal wraps
+ * a paste — and a drop, which is a paste of the dropped paths — in markers,
+ * and Ink holds it until the end marker however many reads it spans. The
+ * text then reaches `handler` as one `input`, exactly as a paste small
+ * enough to arrive in one read always did, so a handler that reads a
+ * multi-character input as a paste keeps working
+ * (docs/superpowers/specs/2026-10-13-forge-paste-drops-design.md).
+ *
+ * Only what takes text asks for it: while any `pastes` handler is active Ink
+ * sends pastes to those alone, and to `useInput` only when none is.
+ */
+export const PASTE: Key = {
+  upArrow: false,
+  downArrow: false,
+  leftArrow: false,
+  rightArrow: false,
+  pageDown: false,
+  pageUp: false,
+  home: false,
+  end: false,
+  return: false,
+  escape: false,
+  ctrl: false,
+  shift: false,
+  tab: false,
+  backspace: false,
+  delete: false,
+  meta: false,
+  super: false,
+  hyper: false,
+  capsLock: false,
+  numLock: false,
 }
