@@ -1,5 +1,4 @@
 import { Box } from 'ink'
-import stringWidth from 'string-width'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
@@ -27,8 +26,6 @@ export function HintBar({
   pairs,
   foot,
   width,
-  aside,
-  asideEnd,
 }: {
   pairs: Array<[string, string]>
   /**
@@ -38,13 +35,6 @@ export function HintBar({
    */
   foot?: Array<[string, string]> | undefined
   width: number
-  /**
-   * A key said just above the rule, at its far end, rather than in the row:
-   * one that belongs to what is highlighted ("/ new folder" on a folder).
-   */
-  aside?: Array<[string, string]> | undefined
-  /** The column the aside ends at, to line it up with the block above; a cell short of the rule if left out. */
-  asideEnd?: number | undefined
 }) {
   const palette = useTheme()
   const given = foot !== undefined
@@ -62,35 +52,10 @@ export function HintBar({
   return (
     <>
       <Box flexGrow={1} />
-      <Box width={width} marginTop={aside ? 0 : 1} flexDirection="column" flexShrink={0}>
-        {aside ? <AsideKeys pairs={aside} end={Math.min(asideEnd ?? width - 1, width)} /> : null}
+      <Box width={width} marginTop={1} flexDirection="column" flexShrink={0}>
         <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
         <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} />
       </Box>
     </>
-  )
-}
-
-/**
- * Keys ending at column `end` of the row above the rule: uncapped, in the
- * mode's colour, so they read as belonging to the block above, not the key row.
- */
-function AsideKeys({ pairs, end }: { pairs: Array<[string, string]>; end: number }) {
-  const palette = useTheme()
-  const used = pairs.reduce(
-    (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(`${key} ${word}`),
-    0,
-  )
-  return (
-    <Text wrap="truncate" color={colourProp(palette.accent)}>
-      {' '.repeat(Math.max(0, end - used))}
-      {pairs.map(([key, word], i) => (
-        <Text key={key}>
-          {i ? '  ' : ''}
-          <Text bold>{key}</Text>
-          {` ${word}`}
-        </Text>
-      ))}
-    </Text>
   )
 }

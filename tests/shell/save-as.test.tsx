@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { Box } from 'ink'
 import { render } from 'ink-testing-library'
 import type { ComponentProps } from 'react'
 import { useState } from 'react'
@@ -149,16 +150,32 @@ describe('Save as: the last place saved to', () => {
 })
 
 describe('Save as: / makes a new folder inside the highlighted one', () => {
-  const ruleAt = (f: string | undefined) => lines(plain(f)).findLastIndex((l) => /^─+$/.test(l))
+  /** The row just under the block: the path row, the block's last blank row, then this. */
+  const under = (f: string | undefined) => {
+    const rows = lines(plain(f))
+    return rows[rows.findIndex((l) => l.includes('Type the path')) + 2] ?? ''
+  }
 
-  it('says so just above the key row’s rule, uncapped, ending where the default tag ends', () => {
+  it('says so just under the block, uncapped, ending where the default tag ends', () => {
     const f = render(<Harness />).lastFrame()
     const rows = lines(plain(f))
-    const above = rows[ruleAt(f) - 1] ?? ''
+    const above = under(f)
     expect(above).toMatch(/ \/ new folder$/)
     const tagged = rows.find((l) => l.includes(' default ')) ?? ''
     expect(above.length).toBe(tagged.indexOf(' default ') + ' default '.length)
     expect(keyRow(f)).not.toContain('new folder')
+  })
+
+  it('stays with the block in a tall window, not down by the keys', () => {
+    const f = render(
+      <Box height={40} flexDirection="column">
+        <Harness />
+      </Box>,
+    ).lastFrame()
+    const rows = lines(plain(f))
+    expect(under(f)).toMatch(/ \/ new folder$/)
+    const ruleAt = rows.findLastIndex((l) => /^─+$/.test(l))
+    expect(rows[ruleAt - 1]?.trim()).toBe('')
   })
 
   it('opens a row under the folder, named converted, marked new; ↵ saves into it', async () => {
@@ -177,7 +194,7 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     expect(rows[0]).toMatch(/name {5}header/)
     expect(keyRow(lastFrame())).toMatch(/↵ {2}create and save/)
     expect(keyRow(lastFrame())).not.toContain('esc')
-    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).toMatch(/ esc clear$/)
+    expect(under(lastFrame())).toMatch(/ esc clear$/)
     stdin.write('-2')
     await settle()
     expect(field(lastFrame())[at + 1]).toMatch(/└ converted-2 +new folder /)
@@ -207,7 +224,7 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     stdin.write(ESC)
     await settle()
     expect(plain(lastFrame())).toMatch(/└ *$/m)
-    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).toMatch(/ esc close$/)
+    expect(under(lastFrame())).toMatch(/ esc close$/)
     // Nothing to make: ↵ is not offered.
     expect(keyRow(lastFrame())).not.toContain('create and save')
     stdin.write(ESC)

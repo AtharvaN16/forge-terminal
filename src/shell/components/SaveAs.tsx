@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-
 import { Box, type DOMElement, type Key } from 'ink'
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import { NEW_SUBFOLDER } from '../../core/actions/destination.js'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { displayName } from '../../utils/display-path.js'
@@ -562,20 +562,44 @@ export function SaveAs({
         </FolderTarget>
         {blank}
       </Box>
-      <HintBar
-        width={width}
-        pairs={keys}
-        foot={foot}
-        aside={
+      <UnderKeys
+        pairs={
           making !== null
             ? [['esc', making.name === '' ? 'close' : 'clear']]
             : !onPath && canMake(at)
               ? [['/', 'new folder']]
-              : undefined
+              : []
         }
-        asideEnd={tagEnd(fieldWidth)}
+        end={tagEnd(fieldWidth)}
       />
+      <HintBar width={width} pairs={keys} foot={foot} />
     </Box>
+  )
+}
+
+/**
+ * Keys that belong to the highlighted row ("/ new folder", "esc clear"), on
+ * the row under the block, ending at column `end` — where the tags do.
+ * Uncapped, in the mode's colour, so they read as the block's, not the key
+ * row's. The row is kept when there are none, so nothing below it moves.
+ */
+function UnderKeys({ pairs, end }: { pairs: Array<[string, string]>; end: number }) {
+  const palette = useTheme()
+  const used = pairs.reduce(
+    (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(`${key} ${word}`),
+    0,
+  )
+  return (
+    <Text wrap="truncate" color={colourProp(palette.accent)}>
+      {' '.repeat(Math.max(0, end - used))}
+      {pairs.map(([key, word], i) => (
+        <Text key={key}>
+          {i ? '  ' : ''}
+          <Text bold>{key}</Text>
+          {` ${word}`}
+        </Text>
+      ))}
+    </Text>
   )
 }
 
