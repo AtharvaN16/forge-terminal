@@ -31,12 +31,12 @@ type Rendered = ReturnType<typeof render>
 const frame = (app: Rendered) => plain(app.lastFrame())
 /** Which tab the screen is on, told apart by what each one says. */
 const on = {
-  convert: (f: string) => f.includes('images · HEIC · PDF · Word') && !f.includes('modes ─'),
+  convert: (f: string) => f.includes('images · HEIC · PDF · Word') && !f.includes('Modes ─'),
   compress: (f: string) => f.includes('images · PDF') && !f.includes('HEIC'),
   // enhance's line is the start of convert's, so convert's tail must be gone.
   enhance: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
   colour: (f: string) => f.includes('extract colours from an image'),
-  commands: (f: string) => f.includes('modes ─') && f.includes('/convert'),
+  commands: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
 }
 const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))
 

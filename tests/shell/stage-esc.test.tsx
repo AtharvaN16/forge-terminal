@@ -48,11 +48,11 @@ describe('esc at the prompt', () => {
     app.stdin.write(ESC)
     await settle()
 
-    // Open the palette with a partial command. Its description text is what
+    // Open the palette with a partial command. Its `Modes` heading is what
     // proves the palette itself is open.
     app.stdin.write('/conv')
     await settle()
-    expect(app.lastFrame() ?? '').toContain("change a file's format")
+    expect(app.lastFrame() ?? '').toContain('Modes')
 
     // One esc: this is the keystroke `Select`'s own escape handling already
     // owns (it clears the palette's text buffer via onCancel) — it must
@@ -63,7 +63,7 @@ describe('esc at the prompt', () => {
     const afterEsc = app.lastFrame() ?? ''
     // The buffer really did clear — the palette is gone and the prompt
     // shows its placeholder again, not the leftover "/conv" text.
-    expect(afterEsc).not.toContain("change a file's format")
+    expect(afterEsc).not.toContain('Modes')
     expect(afterEsc).toContain('drop more, or type a path')
 
     // The stage really did survive: asking to /convert still has a.pdf to

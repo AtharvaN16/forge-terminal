@@ -11,7 +11,7 @@ const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
 
 describe('the command list in the prompt', () => {
   it('opens on a bare slash', async () => {
-    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={40} prefs={prefs} />)
     stdin.write('/')
     await settle()
     const frame = lastFrame() ?? ''
@@ -32,7 +32,7 @@ describe('the command list in the prompt', () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/Users/me/photo.png')
     await settle()
-    expect(lastFrame() ?? '').not.toContain('make a file smaller')
+    expect(lastFrame() ?? '').not.toContain('Modes')
   })
 
   it('closes when the slash is deleted', async () => {
@@ -42,7 +42,7 @@ describe('the command list in the prompt', () => {
     expect(lastFrame() ?? '').toContain('/compress')
     stdin.write(BACKSPACE)
     await settle()
-    expect(lastFrame() ?? '').not.toContain('make a file smaller')
+    expect(lastFrame() ?? '').not.toContain('Modes')
   })
 
   it('runs /theme from the list', async () => {
@@ -68,7 +68,7 @@ describe('the command list in the prompt', () => {
   })
 
   it('/help opens the whole list, which is the help', async () => {
-    const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={40} prefs={prefs} />)
     stdin.write('/help')
     await settle()
     const frame = lastFrame() ?? ''

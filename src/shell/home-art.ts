@@ -316,14 +316,11 @@ export function tabRows({
   return [top, [blank(M), ...tabs]]
 }
 
-/** How wide a command's name column is, slash included. */
-const NAME_COLUMN = 12
-
 /**
  * The commands, drawn on the drop surface's fill in place of its dots: the
  * modes, then the settings, each under a gold heading and a rule (C1) and
  * only when something in it matches. A row is the slash, what has been
- * typed (bright), the rest of the name and its description. The chosen row is the picker's — a band
+ * typed (bright) and the rest of the name. The chosen row is the picker's — a band
  * with a `▌` strip — and the strip takes the colour of the mode the command
  * would switch to, or the commands' gold for a setting.
  *
@@ -377,30 +374,28 @@ export function commandRows({
     lines.push(
       line([
         { text: '    ' },
-        { text: group, fg: palette.brand, bold: true },
+        { text: group.charAt(0).toUpperCase() + group.slice(1), fg: palette.brand, bold: true },
         { text: ` ${'─'.repeat(rule)}`, fg: palette.faint },
       ]),
     )
+    lines.push(line([]))
     for (const c of members) {
       const chosen = items.indexOf(c) === selected
       const rest = c.name.slice(query.length)
       const name: Run[] = [
         { text: `/${query}`, fg: palette.fg, bold: true },
         { text: rest, fg: chosen ? palette.fg : palette.dim, bold: chosen },
-        { text: ' '.repeat(Math.max(1, NAME_COLUMN - 1 - c.name.length)) },
       ]
       if (!chosen) {
-        lines.push(line([{ text: '    ' }, ...name, { text: c.description, fg: palette.border }]))
+        lines.push(line([{ text: '    ' }, ...name]))
         continue
       }
       chosenLine = lines.length
       const strip = c.mode ? modeColours(palette, c.mode).fg : palette.brand
-      const inner: Run[] = [
-        { text: '▌', fg: strip },
-        { text: ' ' },
-        ...name,
-        { text: c.description, fg: palette.dim },
-      ].map((run) => ({ ...run, bg: band }))
+      const inner: Run[] = [{ text: '▌', fg: strip }, { text: ' ' }, ...name].map((run) => ({
+        ...run,
+        bg: band,
+      }))
       const bandWidth = Math.max(0, W - 4)
       lines.push(
         line([

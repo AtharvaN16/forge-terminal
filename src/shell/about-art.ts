@@ -94,8 +94,8 @@ const LICENCE = 24
 /**
  * Every line of Attributions, unscrolled (T1, mockup round 3): each section's
  * title in the commands' gold on a faint rule, as /commands heads its
- * groups, then a row per part, a blank line before each section but the
- * first. The main parts are bright and say what they do; the rest are dim.
+ * groups, a blank line, then a row per part, and a blank line before each
+ * section but the first. The main parts are bright and say what they do; the rest are dim.
  */
 export function creditLines({
   palette,
@@ -114,10 +114,13 @@ export function creditLines({
       blank(ABOUT_INDENT),
       { text: section.title, fg: palette.brand, bold: true },
       {
-        text: ` ${'─'.repeat(Math.max(0, W - stringWidth(section.title) - 2))}`,
+        // Two short of the width: a row that reaches the scroll bar's column is
+        // clipped to plain text, which drew the heading white on a bright rule.
+        text: ` ${'─'.repeat(Math.max(0, W - stringWidth(section.title) - 4))}`,
         fg: palette.faint,
       },
     ])
+    lines.push([])
     for (const c of section.credits) {
       const main = c.does !== undefined
       lines.push([
