@@ -213,7 +213,9 @@ describe('the home screen in the app', () => {
       const frame = plain(app.lastFrame())
       expect(frame).not.toContain('Drop a file here')
       expect(frame).toContain('█▀▀▀ █▀▀█')
-      expect(frame).toMatch(/modes ─+ *\n.*▌ \/convert/)
+      // The list is a row longer than the panel at 80 × 24, so the scroll
+      // bar (S2) ends the line.
+      expect(frame).toMatch(/modes ─+ *[┃│]? *\n.*▌ \/convert/)
       expect(frame).toContain('settings')
       expect(fieldLine(frame)).toBe('    › /')
       expect(frame.split('\n').at(-1)).toMatch(/run +esc +back/)

@@ -63,12 +63,23 @@ function screen({
   )
 }
 
-function expectStep(step: Step, skip: number[] = []) {
+/**
+ * The panel's last column, where the scroll bar goes when the list is longer
+ * than the panel (S2, mockups/commands-scroll-2026-10.html). The N6 mockup
+ * predates it; commands-scroll.test.ts holds the bar itself.
+ */
+const BAR_COLUMN = 77
+
+function expectStep(step: Step, skip: number[] = [], bar = false) {
   const lines = (screen(step).lastFrame() ?? '').split('\n')
   expect(lines).toHaveLength(24)
   for (let row = 0; row < 24; row++) {
     if (skip.includes(row)) continue
     const actual = ansiRow(lines[row] ?? '')
+    if (bar) {
+      const want = homeRow(step, row)[BAR_COLUMN]
+      if (want && actual[BAR_COLUMN]) actual[BAR_COLUMN] = want
+    }
     expect(describeHomeRow(actual, homeRow(step, row)), `${step.label}, row ${row}`).toBe('equal')
   }
 }
@@ -89,7 +100,7 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
   // gold with a rule after it (C1).
   const GOLD = [1, 2, 3, 6, 8]
   it('2 · typed /: the tab lights and the panel holds the list', () =>
-    expectStep(slash, [...GOLD, ...fromRow(12)]))
+    expectStep(slash, [...GOLD, ...fromRow(12)], true))
   it('3 · typed /co, then ↓: the list narrows and the strip moves', () =>
     expectStep(filtered, [...GOLD, ...fromRow(11)]))
   // Row 11 is compress's kinds line, which leaves out the mockup's "video":

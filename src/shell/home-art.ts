@@ -438,7 +438,38 @@ export function commandRows({
   const room = Math.max(1, max - 2)
   const start = Math.min(Math.max(0, chosenLine - room + 1), Math.max(0, lines.length - room))
   const shown = lines.slice(start, start + room)
-  const out = [line([]), ...shown, line([])]
+  const total = lines.length
+  if (total <= room) {
+    const out = [line([]), ...shown, line([])]
+    while (out.length < h) out.push(line([]))
+    return out
+  }
+
+  // S2 (mockups/commands-scroll-2026-10.html): past `room` the list scrolls,
+  // so a thin bar on the panel's last column and a note on its bottom edge
+  // say so. At 80 × 24 /update was one row below the panel with nothing to
+  // show it was there. The bar takes the trailing fill's last cell, so no
+  // row gets wider.
+  const thumb = Math.max(1, Math.round((room * room) / total))
+  const at = Math.round((start / (total - room)) * (room - thumb))
+  const edge = (row: Row, ch: string, fg: string): Row => {
+    const end = row[row.length - 1] as Run
+    if (end.text.length === 0) return row
+    return [...row.slice(0, -1), { ...end, text: end.text.slice(1) }, { text: ch, fg, bg: fill }]
+  }
+  const barred = shown.map((row, i) =>
+    i >= at && i < at + thumb ? edge(row, '┃', palette.dim) : edge(row, '│', palette.faint),
+  )
+  const below = total - start - room
+  const note = below > 0 ? `↓ ${below} more` : `↑ ${start} more`
+  const out = [
+    line([]),
+    ...barred,
+    line([
+      { text: ' '.repeat(Math.max(0, W - 1 - width([{ text: note }]))) },
+      { text: note, fg: palette.dim },
+    ]),
+  ]
   while (out.length < h) out.push(line([]))
   return out
 }
