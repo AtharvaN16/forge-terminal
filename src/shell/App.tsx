@@ -37,7 +37,7 @@ import { probe } from '../engines/registry.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { printable } from '../utils/printable.js'
-import { splitPastedPaths, unescapePath } from '../utils/unescape-path.js'
+import { splitPastedPaths, startsLikePath, unescapePath } from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
@@ -422,6 +422,31 @@ const pdfCommand = COMMANDS.find((c) => c.name === 'pdf')
 
 /** How long the rows a drop just added wear the band before they settle. */
 const FRESH_MS = 1200
+
+/**
+ * How soon after a piece of a paste the next piece must be handled to be
+ * joined to it. A terminal that does not bracket pastes can still split one
+ * across reads; the pieces come a few ms apart, but a busy render between
+ * them can hold the second back. No one types that fast after a paste.
+ */
+const DROP_PIECE_MS = 100
+
+/** Text, not a key: what a piece of a paste looks like when it arrives. */
+const isText = (input: string, key: Key) =>
+  input !== '' &&
+  !key.ctrl &&
+  !key.meta &&
+  !key.super &&
+  !key.return &&
+  !key.escape &&
+  !key.tab &&
+  !key.backspace &&
+  !key.delete &&
+  !key.upArrow &&
+  !key.downArrow &&
+  !key.leftArrow &&
+  !key.rightArrow &&
+  !isStrayEscapeSequence(input)
 
 /**
  * What a pasted or typed path turned out to name. `anyExists` is false when
@@ -826,6 +851,14 @@ export function App({
   /** The `requestId` of a drop being read right now, or 0 — ↵ waits on it. */
   const dropReading = useRef(0)
   /**
+   * The last paste onto the empty home field, for the next piece of it to be
+   * joined to (`DROP_PIECE_MS`): all of it so far, what of it the field
+   * shows (nothing while it is read; all of it once it named nothing, or
+   * ended in a slash), and when it came. Gone once it lands as a drop: the
+   * paste is over, and a key pressed then is a key.
+   */
+  const dropPiece = useRef<{ text: string; shown: string; at: number } | undefined>(undefined)
+  /**
    * How many of the last staged files the latest drop added, for the band
    * they wear for `FRESH_MS`. `at` makes each drop a new value, so a second
    * drop inside the window restarts it.
@@ -1116,28 +1149,63 @@ export function App({
    * holding the stage takes it on: one file to its next step, several PDFs in
    * pdf mode to the hub, anything else nowhere until batch exists. (esc
    * clearing the stage is the idle esc handler's, below.)
+   *
+   * A paste onto the empty field is taken, not shown: drawn and then cleared
+   * for the card, a dropped path blinked in the field while its file was
+   * read. It is put back if it names nothing. A piece that follows it within
+   * `DROP_PIECE_MS` is joined to it and the whole read again
+   * (docs/superpowers/specs/2026-10-13-forge-paste-drops-design.md).
    */
   const homeKey = (input: string, key: Key, value: string): boolean => {
-    if (commandKey(input, key)) return true
-    if (value === '') {
-      const [pasted = '', ...rest] = input.split(/[\r\n]/)
+    const piece = dropPiece.current
+    // `value` can still be '' for a piece read back into the field but not
+    // drawn yet.
+    const joining =
+      piece !== undefined &&
+      Date.now() - piece.at < DROP_PIECE_MS &&
+      (value === piece.shown || value === '') &&
+      isText(input, key)
+    if (!joining && commandKey(input, key)) return true
+    if (value === '' || joining) {
+      const whole = joining ? piece.text + input : input
+      const [pasted = '', ...rest] = whole.split(/[\r\n]/)
       if (
-        [...input].length > 1 &&
+        [...whole].length > 1 &&
         !key.ctrl &&
         !key.meta &&
-        !isStrayEscapeSequence(input) &&
+        !isStrayEscapeSequence(whole) &&
         pasted.trim() !== '' &&
-        !isCommandBuffer(pasted) &&
-        // A drag never ends a path in a slash; "~/Desktop/" pasted to be
-        // finished by hand is typing, and stays in the field.
-        !/\/\s*$/.test(pasted)
+        !isCommandBuffer(pasted)
       ) {
-        // With a line break the field would submit it, so it is taken here;
-        // without one the field shows it while it is read.
-        const broke = rest.length > 0
-        readDrop(pasted, broke)
-        return broke
+        // Words are typing: nothing to read off the disk first. With a line
+        // break the field would submit them, so they are put in it instead.
+        if (!startsLikePath(pasted)) {
+          if (rest.length === 0) return false
+          setText(pasted)
+          return true
+        }
+        // A drag never ends a path in a slash; "~/Desktop/" pasted to be
+        // finished by hand is typing, and stays in the field — though a next
+        // piece can still make it a drop.
+        if (/\/\s*$/.test(pasted) && rest.length === 0) {
+          dropPiece.current = { text: whole, shown: whole, at: Date.now() }
+          if (value !== '' || !joining) return false
+          // The pieces before this one were taken: the read of them is
+          // dropped, and the whole goes in the field.
+          requestId.current++
+          dropReading.current = 0
+          setText(whole)
+          return true
+        }
+        // A line break ends a paste: nothing after it is joined to it.
+        dropPiece.current =
+          rest.length === 0 ? { text: whole, shown: '', at: Date.now() } : undefined
+        if (value !== '') setText('')
+        readDrop(pasted)
+        return true
       }
+    }
+    if (value === '') {
       // ↵ waits for a drop still being read: acting on the stage as it stood
       // would let the read land mid-wizard and add files the run never sees.
       if (key.return && dropReading.current !== 0) return true
@@ -1516,7 +1584,8 @@ export function App({
         if (next && next !== mode) switchMode(next)
       }
     },
-    { isActive: onHome && mode === 'colour' && text === '' },
+    // Its field is not mounted, so pastes are taken here: a drop arrives whole.
+    { isActive: onHome && mode === 'colour' && text === '', pastes: true },
   )
 
   useKeys(
@@ -1955,11 +2024,11 @@ export function App({
    * of text, so this is the moment the zone can answer.
    *
    * If nothing in it is on disk it was never a drop — plain text, or half a
-   * path to finish by hand — and it stays in the field as typed: put back
-   * when `homeKey` had to take it for its line break, left alone otherwise.
+   * path to finish by hand — and it is put in the field as typed, unless the
+   * field was typed into meanwhile.
    * A later ↵, paste or esc claims `requestId` and this result is dropped.
    */
-  const readDrop = (pasted: string, broke: boolean) => {
+  const readDrop = (pasted: string) => {
     const id = ++requestId.current
     dropReading.current = id
     const settled = () => {
@@ -1969,17 +2038,19 @@ export function App({
       return requestId.current === id && stepRef.current === 'idle'
     }
     const leaveAsText = () => {
-      if (broke && textRef.current === '') setText(pasted)
+      if (textRef.current !== '') return
+      setText(pasted)
+      const piece = dropPiece.current
+      if (piece) dropPiece.current = { ...piece, shown: pasted }
     }
     resolveDrop(pasted).then(
       (drop) => {
         if (!settled()) return
-        // Typed into since, without a line break: an edit, not a drop.
-        if (!broke && textRef.current !== pasted) return
         if (!drop.anyExists) {
           leaveAsText()
           return
         }
+        dropPiece.current = undefined
         // Only empty folders: nothing was left out, there was nothing to
         // read. Said the way a typed folder says it, hint and all.
         if (

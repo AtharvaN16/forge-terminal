@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { splitPastedPaths, unescapePath } from '../../src/utils/unescape-path.js'
+import { splitPastedPaths, startsLikePath, unescapePath } from '../../src/utils/unescape-path.js'
 
 describe('unescapePath on win32', () => {
   it('on win32, strips the quotes Windows Terminal adds around a path with spaces', () => {
@@ -27,6 +27,21 @@ describe('unescapePath on darwin', () => {
 
   it('unescapes other backslash escapes', () => {
     expect(onMac("/Users/me/it\\'s.jpg")).toBe("/Users/me/it's.jpg")
+  })
+
+  it('reads a file:// URL, which some terminals drop, as the path it names', () => {
+    expect(onMac('file:///Users/me/My%20Photo.jpg')).toBe('/Users/me/My Photo.jpg')
+    expect(onMac('file://localhost/Users/me/a.jpg')).toBe('/Users/me/a.jpg')
+  })
+
+  it('reads a file:// URL that was shell-escaped or quoted', () => {
+    expect(onMac("'file:///Users/me/My%20Photo.jpg'")).toBe('/Users/me/My Photo.jpg')
+    expect(onMac('file:///Users/me/it\\%27s.jpg')).toBe("/Users/me/it's.jpg")
+  })
+
+  it('leaves text that only looks like a URL alone', () => {
+    expect(onMac('https://example.com/a.jpg')).toBe('https://example.com/a.jpg')
+    expect(onMac('file:not-a-url')).toBe('file:not-a-url')
   })
 
   it('strips single quotes without unescaping inside them', () => {
@@ -69,6 +84,13 @@ describe('splitPastedPaths on darwin', () => {
     expect(split("'/a/My Photo.jpg' /a/two.jpg")).toEqual(['/a/My Photo.jpg', '/a/two.jpg'])
   })
 
+  it('splits several dropped file:// URLs into their paths', () => {
+    expect(split('file:///a/one.jpg file:///a/My%20two.jpg')).toEqual([
+      '/a/one.jpg',
+      '/a/My two.jpg',
+    ])
+  })
+
   it('returns one path for one path', () => {
     expect(split('/a/one.jpg')).toEqual(['/a/one.jpg'])
   })
@@ -84,5 +106,33 @@ describe('splitPastedPaths on darwin', () => {
     // absorbed into a single chunk. Two dropped paths can silently become
     // one. Not something this function is expected to fix.
     expect(split("'/a/one.jpg /a/two.jpg")).toEqual(["'/a/one.jpg /a/two.jpg"])
+  })
+})
+
+describe('startsLikePath', () => {
+  it('is true for what a terminal drops on a Mac: absolute, home, quoted, escaped, file URL', () => {
+    for (const text of [
+      '/Users/me/a.png',
+      '~/Desktop/a.png',
+      "'/Users/me/My Photo.png'",
+      '/Users/me/My\\ Photo.png /Users/me/b.png',
+      'file:///Users/me/a.png',
+      './a.png',
+    ]) {
+      expect(startsLikePath(text, 'darwin'), text).toBe(true)
+    }
+  })
+
+  it('is false for words, a hex, or a URL that is not a file', () => {
+    for (const text of ['foo bar', '#6579FD', 'https://example.com/a.png', 'photo.png']) {
+      expect(startsLikePath(text, 'darwin'), text).toBe(false)
+    }
+  })
+
+  it('on win32, is true for a drive, a share, or a quoted path', () => {
+    for (const text of ['C:\\Users\\a.png', '"C:\\My Files\\a.png"', '\\\\server\\a.png']) {
+      expect(startsLikePath(text, 'win32'), text).toBe(true)
+    }
+    expect(startsLikePath('foo bar', 'win32')).toBe(false)
   })
 })
