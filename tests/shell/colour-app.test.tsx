@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeGradientPng, makePdf, makeTempDir } from '../helpers/fixtures.js'
+import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
@@ -86,7 +87,8 @@ describe("colour's home and screens", () => {
     app.stdin.write(await makeGradientPng(dir, 'g.png', 48))
     await waitFor(() => /\d+%\s*$/m.test(plain(app.lastFrame())))
     await settle()
-    const rows = lines(app.lastFrame())
+    // Read in layout columns: the painted canvas's margin taken off.
+    const rows = unpaint(plain(app.lastFrame())).split('\n')
     // The frame's corners, at the photo's left edge, four cells in.
     const top = rows.findIndex((l) => l.startsWith('    ┌'))
     const bottom = rows.findIndex((l) => l.startsWith('    └'))

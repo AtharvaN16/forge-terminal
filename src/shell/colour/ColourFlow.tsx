@@ -98,18 +98,33 @@ const FORMATS = 'JPEG · PNG · HEIC · WebP · TIFF'
  */
 const PHOTO_ROWS = 12
 const CHROME = 12
+/**
+ * The fewest rows the framed photo is drawn in: its frame and six rows of
+ * picture. Below that the list goes alone.
+ */
+const MIN_PHOTO_ROWS = 8
 /** The photo's widest, in cells: what it was before it had a frame. */
 const PHOTO_COLS = 24
-/** The photo's tallest, in pixels: its frame takes two of `PHOTO_ROWS`, two pixels a row. */
-const PHOTO_TALL = (PHOTO_ROWS - 2) * 2
 
 /**
- * The longer side `photoMap` draws the photo at: a wide photo keeps its full
- * width unless that would make it taller than the frame leaves room for.
+ * Rows for the framed photo when the screen is `height` tall: as many as
+ * fit, at most `PHOTO_ROWS`; 0 when fewer than `MIN_PHOTO_ROWS` fit. A
+ * painted canvas takes a row of the window, so at 80×24 there are 11.
  */
-function photoMax(pixels: Pixels): number {
-  if (pixels.width < pixels.height) return PHOTO_TALL
-  return Math.min(PHOTO_COLS, Math.floor((PHOTO_TALL * pixels.width) / pixels.height))
+function photoRowsFor(height: number): number {
+  const fit = Math.min(PHOTO_ROWS, height - CHROME)
+  return fit >= MIN_PHOTO_ROWS ? fit : 0
+}
+
+/**
+ * The longer side `photoMap` draws the photo at, in `rows` rows framed: its
+ * frame takes two, each of the rest two pixels tall. A wide photo keeps its
+ * full width unless that would make it taller than the frame leaves room for.
+ */
+function photoMax(pixels: Pixels, rows: number): number {
+  const tall = (rows - 2) * 2
+  if (pixels.width < pixels.height) return tall
+  return Math.min(PHOTO_COLS, Math.floor((tall * pixels.width) / pixels.height))
 }
 
 export function ColourFlow({ start, width, height, onCancel, onTrail }: ColourFlowProps) {
@@ -484,14 +499,15 @@ function bodyRows({
   if (p.selectionBg === '') {
     return plainPaletteRows({ palette: p, items, selected: screen.sel })
   }
-  const showPhoto = height - CHROME >= PHOTO_ROWS
+  const framedRows = photoRowsFor(height)
+  const showPhoto = framedRows > 0
   const column =
     screen.level.length === 0
       ? paletteColumn({
           palette: p,
           items,
           selected: screen.sel,
-          rows: showPhoto ? PHOTO_ROWS : items.length,
+          rows: showPhoto ? framedRows : items.length,
           arrive:
             arrivedFor === undefined
               ? undefined
@@ -502,10 +518,10 @@ function bodyRows({
           parent: parentOf(screen, groupsAt),
           items,
           selected: screen.sel,
-          rows: showPhoto ? PHOTO_ROWS : items.length + 2,
+          rows: showPhoto ? framedRows : items.length + 2,
         })
   if (!showPhoto || !pixels) return column.map((row) => [blank(4), ...row])
-  return paletteBody(framed(p, photoFor(p, screen, groupsAt, pixels)), column)
+  return paletteBody(framed(p, photoFor(p, screen, groupsAt, pixels, framedRows)), column)
 }
 
 /** The colour a drill level is inside: its hex, its whole percentage, and its share of the image. */
@@ -531,9 +547,12 @@ function photoFor(
   screen: Extract<Screen, { kind: 'palette' }>,
   groupsAt: (level: number[]) => Group[],
   pixels: Pixels,
+  /** The rows the framed photo has. */
+  rows: number,
 ): Row[] {
   const here = groupsAt(screen.level)
-  const map = photoMap(pixels, here, photoMax(pixels))
+  const max = photoMax(pixels, rows)
+  const map = photoMap(pixels, here, max)
   if (screen.level.length === 0) {
     return photoRows({ palette: p, map, colours: here.map((g) => g.hex), lit: screen.sel })
   }
@@ -543,7 +562,7 @@ function photoFor(
     map,
     colours: here.map((g) => g.hex),
     lit: screen.sel,
-    outside: { map: photoMap(pixels, top, photoMax(pixels)), colours: top.map((g) => g.hex) },
+    outside: { map: photoMap(pixels, top, max), colours: top.map((g) => g.hex) },
   })
 }
 
