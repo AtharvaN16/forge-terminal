@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { largestBox, zoomedBox } from '../../src/core/crop.js'
+import { CROP_SHAPES, centreOf, largestBox, movedBox, zoomedBox } from '../../src/core/crop.js'
 import {
   cropFactsRows,
   cropKeys,
@@ -93,6 +93,70 @@ describe('the crop’s place in dots, and one step', () => {
   it('moves one dot of the picture a press, at least a pixel', () => {
     expect(cropStep(size, { cols: 40, dotRows: 20 })).toEqual({ x: 30, y: 30 })
     expect(cropStep({ width: 10, height: 10 }, { cols: 40, dotRows: 40 })).toEqual({ x: 1, y: 1 })
+  })
+
+  it('visibly moves the hatch on every press that is not stopped by an edge', () => {
+    const photos = [
+      { width: 1920, height: 1080 },
+      { width: 4032, height: 3024 },
+      { width: 3024, height: 4032 },
+      { width: 1200, height: 600 },
+      { width: 641, height: 479 },
+      { width: 1000, height: 1000 },
+      { width: 7000, height: 1000 },
+    ]
+    const screens = [
+      [60, 10],
+      [80, 19],
+      [120, 30],
+      [160, 40],
+      [200, 45],
+    ] as const
+    for (const photo of photos) {
+      for (const [width, rows] of screens) {
+        const grid = cropPictureSize(photo, rows, width)
+        if (!grid) continue
+        const dots = { cols: grid.cols, dotRows: grid.rows * 2 }
+        const step = cropStep(photo, dots)
+        for (const shape of CROP_SHAPES) {
+          const largest = largestBox(photo, shape)
+          for (const start of [largest, zoomedBox(photo, shape, centreOf(largest), 60)]) {
+            for (const [dx, dy] of [
+              [step.x, 0],
+              [-step.x, 0],
+              [0, step.y],
+              [0, -step.y],
+            ] as const) {
+              let box = start
+              for (let press = 0; press < 400; press++) {
+                const next = movedBox(photo, box, dx, dy)
+                const at = `${shape.label} on ${photo.width}×${photo.height}, ${width}×${rows}, ${box.left},${box.top} by ${dx},${dy}`
+                const whole = next.left - box.left === dx && next.top - box.top === dy
+                if (whole) {
+                  expect(dotBoxOf(photo, next, dots), at).not.toEqual(dotBoxOf(photo, box, dots))
+                }
+                if (next.left === box.left && next.top === box.top) {
+                  // At the edge: the press does nothing.
+                  expect(movedBox(photo, next, dx, dy), at).toEqual(next)
+                  break
+                }
+                box = next
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('moved the hatch on the press that used to leave it still (1920 × 1080, 160 × 45, 1:1 at 240)', () => {
+    const photo = { width: 1920, height: 1080 }
+    const grid = cropPictureSize(photo, 40, 160)
+    if (!grid) throw new Error('no picture')
+    const dots = { cols: grid.cols, dotRows: grid.rows * 2 }
+    const box = { left: 240, top: 0, width: 1080, height: 1080 }
+    const next = movedBox(photo, box, cropStep(photo, dots).x, 0)
+    expect(dotBoxOf(photo, next, dots)).not.toEqual(dotBoxOf(photo, box, dots))
   })
 
   it('fits the picture under the title with square dots, leaving a 26-column facts column', () => {

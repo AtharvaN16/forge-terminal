@@ -91,11 +91,16 @@ export function dotBoxOf(size: Size, box: Box, dots: { cols: number; dotRows: nu
   }
 }
 
-/** One press of an arrow: one dot of the drawn picture along that axis, in pixels, at least one. */
+/**
+ * One press of an arrow: one dot of the drawn picture along that axis, in
+ * pixels, at least one. Rounded up: a step of at least a whole dot always
+ * moves `dotBoxOf`'s rounded position, so every press moves the hatch (one
+ * rounded down could fall short of a dot and leave it where it was).
+ */
 export function cropStep(size: Size, dots: { cols: number; dotRows: number }) {
   return {
-    x: Math.max(1, Math.round(size.width / dots.cols)),
-    y: Math.max(1, Math.round(size.height / dots.dotRows)),
+    x: Math.max(1, Math.ceil(size.width / dots.cols)),
+    y: Math.max(1, Math.ceil(size.height / dots.dotRows)),
   }
 }
 
