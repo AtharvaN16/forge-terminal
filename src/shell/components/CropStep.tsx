@@ -168,13 +168,32 @@ export function CropStep({
   const grid = cropPictureSize(size, space - CHROME_ROWS, width)
   const dotsAcross = grid ? { cols: grid.cols, dotRows: grid.rows * 2 } : undefined
   const step = cropStep(size, dotsAcross ?? { cols: FALLBACK_DOTS, dotRows: FALLBACK_DOTS })
+  const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
   const view = loaded?.view
-  const cols = grid?.cols ?? 0
+  const cols = colour ? (grid?.cols ?? 0) : 0
   const tall = grid?.rows ?? 0
   // Sampled again only when the picture's size or the photo changes, never on a move.
   const dots = useMemo(
     () => (view && cols > 0 ? sampleDots(view.thumb, cols, tall) : undefined),
     [view, cols, tall],
+  )
+  // Drawn again only when the crop's place in dots, the dots or the colours
+  // it fades to change: the App re-renders this step on every press it hears
+  // of, with a new palette object each time, so the colours are the key.
+  const dotBox = dots && at ? dotBoxOf(size, at.box, dots) : undefined
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the box's sides and the palette's colours, not their (new each render) objects
+  const picture = useMemo(
+    () => (dots && dotBox ? cropPictureRows({ palette, dots, box: dotBox }) : []),
+    [
+      dots,
+      dotBox?.x,
+      dotBox?.y,
+      dotBox?.w,
+      dotBox?.h,
+      palette.name,
+      palette.canvas,
+      palette.border,
+    ],
   )
 
   useKeys((input, key) => {
@@ -215,12 +234,9 @@ export function CropStep({
   const changed =
     at !== undefined && loaded !== undefined && (at.zoom !== 100 || !same(at.box, loaded.guess))
   const facts = cropFactsRows({ palette, box, size, label: shape.label })
-  const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
 
   let rows: Row[]
   if (colour && grid) {
-    const picture =
-      dots && at ? cropPictureRows({ palette, dots, box: dotBoxOf(size, at.box, dots) }) : []
     rows = Array.from({ length: Math.max(grid.rows, facts.length) }, (_, i) =>
       besideRow(picture[i] ?? (i < grid.rows ? [blank(grid.cols)] : []), grid.cols, facts[i]),
     )

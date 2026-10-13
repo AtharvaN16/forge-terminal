@@ -3,17 +3,29 @@ import chalk from 'chalk'
 import { Box } from 'ink'
 import { render } from 'ink-testing-library'
 import sharp from 'sharp'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ImageInfo } from '../../src/core/types.js'
 import { CropStep } from '../../src/shell/components/CropStep.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
+/** How often the picture is drawn: it should be only when the crop or the picture changes. */
+const drawn = vi.hoisted(() => ({ count: 0 }))
+vi.mock('../../src/shell/crop-art.js', async (original) => {
+  const real = await original<typeof import('../../src/shell/crop-art.js')>()
+  return {
+    ...real,
+    cropPictureRows: (...args: Parameters<typeof real.cropPictureRows>) => {
+      drawn.count++
+      return real.cropPictureRows(...args)
+    },
+  }
+})
+
 /** The crop preview on its own, at sizes and in states the whole flow does not reach. */
 const ESC = String.fromCharCode(27)
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
-const P = modePalette(DARK, 'enhance')
 const until = async (cond: () => boolean) => {
   for (let i = 0; i < 400 && !cond(); i++) await new Promise((r) => setTimeout(r, 25))
 }
@@ -48,21 +60,29 @@ const imageAt = (path: string): ImageInfo => ({
   frames: 1,
 })
 
-function step(source: ImageInfo, width: number) {
-  const app = render(
-    <ThemeProvider palette={P}>
+const SHAPE = { w: 1, h: 1, label: '1:1' }
+const quiet = () => {}
+
+function tree(source: ImageInfo, width: number) {
+  // A new palette object each time, as the App's `modePalette` makes on every render.
+  return (
+    <ThemeProvider palette={modePalette(DARK, 'enhance')}>
       <Box height={20} flexDirection="column">
         <CropStep
           mode="enhance"
           source={source}
-          shape={{ w: 1, h: 1, label: '1:1' }}
-          onSubmit={() => {}}
-          onCancel={() => {}}
+          shape={SHAPE}
+          onSubmit={quiet}
+          onCancel={quiet}
           width={width}
         />
       </Box>
-    </ThemeProvider>,
+    </ThemeProvider>
   )
+}
+
+function step(source: ImageInfo, width: number) {
+  const app = render(tree(source, width))
   return { app, frame: () => (app.lastFrame() ?? '').replace(SGR, '') }
 }
 
@@ -93,5 +113,25 @@ describe('the crop preview', () => {
     await until(() => again.frame().includes('left 600 px'))
     expect(again.frame()).toContain('left 600 px · top 0 px')
     again.app.unmount()
+  }, 20_000)
+
+  it('draws the picture again only when the crop moves, not on every render', async () => {
+    const dir = await makeTempDir()
+    const path = join(dir, 'still.png')
+    await photoAt(path)
+    const source = imageAt(path)
+    const { app, frame } = step(source, 80)
+    await until(() => frame().includes('▀'))
+    await new Promise((r) => setTimeout(r, 100))
+    const before = drawn.count
+    // The App re-renders the step on each press it hears about: same props, same picture.
+    for (let i = 0; i < 3; i++) app.rerender(tree(source, 80))
+    await new Promise((r) => setTimeout(r, 100))
+    expect(drawn.count).toBe(before)
+    // A move draws it again.
+    app.stdin.write(`${ESC}[D`)
+    await until(() => drawn.count > before)
+    expect(drawn.count).toBe(before + 1)
+    app.unmount()
   }, 20_000)
 })
