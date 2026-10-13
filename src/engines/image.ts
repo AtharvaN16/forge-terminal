@@ -4,7 +4,9 @@ import { access, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import { prepareOutputDir, renameAtomic } from '../core/atomic.js'
+import { type Aspect, aspectLabel, type Box, largestBox, type Thumb } from '../core/crop.js'
 import {
+  animatedCrop,
   animatedTrim,
   classifyWriteError,
   conversionFailed,
@@ -15,6 +17,7 @@ import {
   isForgeError,
   notADirectory,
   notAFile,
+  nothingToCrop,
   nothingToTrim,
   pathTooLong,
   permissionDenied,
@@ -265,8 +268,8 @@ async function pipelineFor(
   input?: Buffer,
   /**
    * The size Resize writes, resolved once by the caller (`run`) from the
-   * upright — and, with a trim, the trimmed — size. Passed in so this never
-   * measures; a resize without one is only derivable when nothing is trimmed.
+   * upright — and, with a trim or a crop, the cut — size. Passed in so this
+   * never measures; a resize without one is only derivable when nothing is cut.
    */
   outputSize?: Size,
 ): Promise<{ pipeline: Sharp; cleanup: () => Promise<void> }> {
@@ -306,13 +309,18 @@ async function pipelineFor(
   // skipping it here shipped every HEIC photo on its side.
   pipeline = pipeline.rotate()
 
-  // Trim and resize (spec 2026-10-12), on the upright image. Both sides are
-  // given to Sharp with `fill`, so its own rounding never disagrees with the
-  // size the file name and the card state.
+  // Trim or crop, then resize (specs 2026-10-12, 2026-10-13), on the upright
+  // image: a crop's box is in upright pixels. Both sides are given to Sharp
+  // with `fill`, so its own rounding never disagrees with the size the file
+  // name and the card state.
   if (options.trim) pipeline = pipeline.trim()
+  if (options.crop) {
+    if (!options.crop.box) throw new Error('pipelineFor needs the crop placed (run does it)')
+    pipeline = pipeline.extract(options.crop.box)
+  }
   if (options.resize) {
-    if (!outputSize && options.trim) {
-      throw new Error('pipelineFor needs the resolved size to resize a trimmed image')
+    if (!outputSize && (options.trim || options.crop)) {
+      throw new Error('pipelineFor needs the resolved size to resize a cut image')
     }
     const size = outputSize ?? resizedSize(source, options.resize)
     pipeline = pipeline.resize(size.width, size.height, { fit: 'fill' })
@@ -405,6 +413,66 @@ export async function measureImage(source: ImageInfo): Promise<ImageMeasure> {
   }
 }
 
+/** What the crop preview reads, once per source: the upright size, and a thumbnail. */
+export interface CropView {
+  size: Size
+  thumb: Thumb
+}
+
+/** The thumbnail's long side: enough for the preview's dots and for attention. */
+const CROP_VIEW_SIDE = 1024
+
+/**
+ * The upright image decoded once to at most 1024 px on its long side (never
+ * enlarged), as raw RGB. Through `pipelineFor`, so the HEIC path and EXIF
+ * rotation are the ones every conversion uses.
+ */
+export async function loadCropView(source: ImageInfo): Promise<CropView> {
+  const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
+  const { pipeline, cleanup } = await pipelineFor(source, 'png', options, false)
+  try {
+    const { data, info } = await pipeline
+      .resize(CROP_VIEW_SIDE, CROP_VIEW_SIDE, { fit: 'inside', withoutEnlargement: true })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    return {
+      size: { width: source.width, height: source.height },
+      thumb: { width: info.width, height: info.height, rgb: new Uint8Array(data) },
+    }
+  } catch (cause) {
+    throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
+  } finally {
+    await cleanup()
+  }
+}
+
+/**
+ * Where the largest box of `aspect` goes: Sharp's attention strategy on the
+ * thumbnail, its offset scaled back to full size. Attention is a guess (it can
+ * prefer a bright sky to a person), which is why the shell shows a preview.
+ */
+export async function guessCrop(view: CropView, aspect: Aspect): Promise<Box> {
+  const { thumb, size } = view
+  const small = largestBox(thumb, aspect)
+  const sharp = await loadSharp()
+  const { info } = await sharp(thumb.rgb, {
+    raw: { width: thumb.width, height: thumb.height, channels: 3 },
+  })
+    .resize(small.width, small.height, { fit: 'cover', position: sharp.strategy.attention })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  const box = largestBox(size, aspect)
+  // Sharp reports where it cut as a negative offset (or 0).
+  const left = Math.round((-(info.cropOffsetLeft ?? 0) * size.width) / thumb.width)
+  const top = Math.round((-(info.cropOffsetTop ?? 0) * size.height) / thumb.height)
+  return {
+    ...box,
+    left: Math.min(Math.max(left, 0), size.width - box.width),
+    top: Math.min(Math.max(top, 0), size.height - box.height),
+  }
+}
+
 async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Result> {
   if (job.op !== 'convert') {
     throw new Error(`image engine cannot ${job.op}`)
@@ -435,16 +503,41 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     })
   }
 
-  // Trim and resize are decided here, once, before anything is written: the
-  // refusals, the "nothing trimmed" warning, and the size the pipeline gets.
+  // Trim, crop and resize are decided here, once, before anything is
+  // written: the refusals, the "nothing trimmed/cropped" warnings, where the
+  // crop goes, and the size the pipeline gets.
+  let options = job.options
   let outputSize: Size | undefined
-  if (job.options.trim || job.options.resize) {
+  if (options.trim || options.crop || options.resize) {
     let base: Size = { width: source.width, height: source.height }
-    if (job.options.trim) {
+    if (options.trim && options.crop) throw new Error('a job cannot both trim and crop')
+    if (options.crop) {
+      if (isAnimated) throw animatedCrop(source.path)
+      const { aspect } = options.crop
+      const whole = (b: Box) => b.width === source.width && b.height === source.height
+      const largest = largestBox(base, aspect)
+      // Placing is only worth a decode when there is somewhere to place it.
+      const box =
+        options.crop.box ??
+        (whole(largest) ? largest : await guessCrop(await loadCropView(source), aspect))
+      if (whole(box)) {
+        if (!options.resize) throw nothingToCrop(source.path, aspectLabel(aspect))
+        warnings.push({
+          code: 'nothing-cropped',
+          message: `${displayName(source.path)} is already ${aspectLabel(aspect)}; resized only.`,
+        })
+        const { crop: _, ...rest } = options
+        options = rest
+      } else {
+        options = { ...options, crop: { aspect, box } }
+        base = { width: box.width, height: box.height }
+      }
+    }
+    if (options.trim) {
       if (isAnimated) throw animatedTrim(source.path)
       const { trimmed } = await measureImage(source)
       if (trimmed === 'nothing') {
-        if (!job.options.resize) throw nothingToTrim(source.path)
+        if (!options.resize) throw nothingToTrim(source.path)
         warnings.push({
           code: 'nothing-trimmed',
           message: `${displayName(source.path)} has no empty edges; resized only.`,
@@ -453,8 +546,8 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
         base = trimmed
       }
     }
-    if (job.options.resize) {
-      outputSize = resizedSize(base, job.options.resize)
+    if (options.resize) {
+      outputSize = resizedSize(base, options.resize)
       if (sizeOverLimit(outputSize)) throw resizeTooLarge(source.path, outputSize)
     }
   }
@@ -463,7 +556,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
   const { pipeline, cleanup } = await pipelineFor(
     source,
     job.target,
-    job.options,
+    options,
     keepFrames,
     undefined,
     outputSize,
@@ -477,7 +570,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     // for the whole of an encode that has not happened yet. The phases the
     // shell shows (W5) are the true ones only if each is its own step.
     onPhase({ phase: 'encoding' })
-    const encoded = await encode(pipeline, job.target, job.options.quality).toBuffer()
+    const encoded = await encode(pipeline, job.target, options.quality).toBuffer()
 
     onPhase({ phase: 'writing' })
     const outputBytes = await writeAtomic(encoded, output)
