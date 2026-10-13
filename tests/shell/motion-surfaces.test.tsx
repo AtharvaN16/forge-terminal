@@ -140,27 +140,23 @@ describe('HeaderBar mode wipe', () => {
   })
 })
 
-describe('picker glide', () => {
+describe('picker highlight', () => {
   const DOWN = `${String.fromCharCode(27)}[B`
   const items = [
     { value: 'a', label: 'JPEG' },
     { value: 'b', label: 'WebP' },
   ]
 
-  it('fades the band onto the new row, then rests on the band colour', async () => {
+  it('moves the band to the new row at once, even with motion on', async () => {
+    // It used to fade across; the fade read as ghosting.
     setMotionForTests(true)
     const { Select } = await import('../../src/shell/components/Select.js')
     const app = render(inTheme(<Select width={40} items={items} onSubmit={() => {}} />))
     await flush()
     app.stdin.write(DOWN)
     await flush()
-    await advance(33)
-    const mid = (app.lastFrame() ?? '').split('\n')[1] ?? ''
-    expect(mid).toContain('48;2;')
-    expect(mid).not.toContain(bgOf(DARK.listBand))
-    await advance(200)
-    const rest = (app.lastFrame() ?? '').split('\n')
-    expect(rest[1]).toContain(bgOf(DARK.listBand))
-    expect(rest[0]).not.toContain('48;2;')
+    const rows = (app.lastFrame() ?? '').split('\n')
+    expect(rows[1]).toContain(bgOf(DARK.listBand))
+    expect(rows[0]).not.toContain('48;2;')
   })
 })

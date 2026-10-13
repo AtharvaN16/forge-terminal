@@ -7,7 +7,7 @@ import { displayName } from '../../utils/display-path.js'
 import { useClickTarget } from '../ClickTargets.js'
 import { completePath } from '../complete.js'
 import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
-import { easeOut, mix, motionEnabled, useBlendedRows, useTween } from '../motion.js'
+import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import {
   edgeColour,
@@ -40,11 +40,10 @@ const PATH_ROW = Symbol('path row')
 type At = string | typeof PATH_ROW | null
 
 /**
- * Motion (M3): the highlight glides between rows, and the default's tag
- * fades across when tab moves it, both over GLIDE_MS; a dropped folder
- * lights the path row in the mode's colour, fading back over DROP_MS.
+ * Motion: a dropped folder lights the path row in the mode's colour, fading
+ * back over DROP_MS. The highlight and the default's tag move at once — they
+ * used to glide (M3), and the fade between rows read as ghosting.
  */
-const GLIDE_MS = 140
 const DROP_MS = 450
 
 /**
@@ -150,11 +149,6 @@ export function SaveAs({
   const place = useMemo(
     () => (isPath ? destinationRows(path, presets, defaultPath, display)[0] : undefined),
     [isPath, path, presets, defaultPath, display],
-  )
-  /** Folders that are not there yet — a save there makes them — are drawn quieter. */
-  const missing = useMemo(
-    () => new Set(folders.filter((r) => !existsSync(r.value)).map((r) => r.value)),
-    [folders],
   )
   const placeMissing = useMemo(() => (place ? !existsSync(place.value) : false), [place])
 
@@ -368,24 +362,17 @@ export function SaveAs({
         path: row.hint ?? '',
         selected: !onPath && i === index,
         isDefault: row.value === defaultPath,
-        quiet: missing.has(row.value),
         showPath,
         plain,
       }),
     ),
     pathRow({ palette, width: fieldWidth, line, first: folders.length === 0, showPath, plain }),
   ]
-  // A move of the highlight or of the tag fades; typing on the path row does not.
-  const glided = useBlendedRows(`${String(at)}\u0000${defaultPath}`, list, GLIDE_MS, {
-    enabled: moving,
-    canvas: palette.canvas,
-    fg: palette.fg,
-  })
   const lit = 1 - easeOut(useTween(drops, DROP_MS, { enabled: moving }))
   const shown =
     lit > 0 && dropped
-      ? glided.map((row, i) =>
-          i === glided.length - 1
+      ? list.map((row, i) =>
+          i === list.length - 1
             ? row.map((run, j) =>
                 j > 0 && run.bg === palette.fieldBand
                   ? { ...run, bg: mix(palette.fieldBand, palette.accent, 0.55 * lit) }
@@ -393,7 +380,7 @@ export function SaveAs({
               )
             : row,
         )
-      : glided
+      : list
 
   return (
     <Box flexDirection="column">
