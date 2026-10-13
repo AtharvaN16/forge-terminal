@@ -82,6 +82,13 @@ export interface KeySet {
 }
 
 /**
+ * The mode keys on an empty field: the digits and ←→, which step through the
+ * modes in tab order (decided 2026-10-13). Said on the key row because a key
+ * nobody is told about is a key nobody uses.
+ */
+const MODE_ARROWS = `${MODE_KEYS} ←→`
+
+/**
  * The key row for the home screen's state. Only keys that do something right
  * now: Tab and the arrows appear with completions to act on, not before.
  */
@@ -154,7 +161,7 @@ export function homeKeys({
       return {
         main: [['esc', 'clear']],
         foot: [
-          [MODE_KEYS, 'mode'],
+          [MODE_ARROWS, 'mode'],
           ['ctrl-c', 'quit'],
         ],
       }
@@ -163,7 +170,7 @@ export function homeKeys({
       main: [['↵', staged.verb]],
       foot: [
         ['esc', 'clear'],
-        [MODE_KEYS, 'mode'],
+        [MODE_ARROWS, 'mode'],
         ['ctrl-c', 'quit'],
       ],
     }
@@ -172,7 +179,7 @@ export function homeKeys({
   return {
     main: [['↵', 'send']],
     foot: [
-      [MODE_KEYS, 'mode'],
+      [MODE_ARROWS, 'mode'],
       ['esc', 'clear'],
       ['ctrl-n', 'new'],
       ['ctrl-c', 'quit'],

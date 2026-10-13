@@ -107,6 +107,7 @@ import {
   MODE_KEYS,
   modeForKey,
   modePalette,
+  modeStep,
   paintsCanvas,
   paletteFor,
   type ShellMode,
@@ -1021,6 +1022,18 @@ export function App({
   }
 
   /**
+   * ← or → on home: the mode beside this one in tab order, wrapping (decided
+   * 2026-10-13). Into colour it lands on the card nearest the side it came
+   * from — Palette from the left, Scale from the right — so the next press
+   * carries on the same way through colour's two cards.
+   */
+  const stepMode = (delta: 1 | -1) => {
+    const next = modeStep(mode, delta)
+    if (next === 'colour') setColourChoice(delta > 0 ? 0 : 1)
+    switchMode(next)
+  }
+
+  /**
    * `1`–`3` on a screen with no text field — the pickers and the quality
    * slider — move the file to that mode, as its command would (see
    * `runCommand` for what that means for the file). Screens that take text
@@ -1113,6 +1126,11 @@ export function App({
       const next = modeForKey(input)
       if (!key.ctrl && !key.meta && next) {
         switchMode(next)
+        return true
+      }
+      // An empty field has no cursor to move, so ←→ are free for the modes.
+      if (!key.ctrl && !key.meta && !key.super && (key.leftArrow || key.rightArrow)) {
+        stepMode(key.rightArrow ? 1 : -1)
         return true
       }
       return key.tab
@@ -1451,9 +1469,15 @@ export function App({
   useKeys(
     (input, key) => {
       if (key.ctrl || key.meta || isStrayEscapeSequence(input)) return
-      if (key.leftArrow) setColourChoice(0)
-      else if (key.rightArrow) setColourChoice(1)
-      else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
+      // ←→ choose a card, and past the end card step to the next mode as on
+      // every other home (decided 2026-10-13).
+      if (key.leftArrow) {
+        if (colourChoice === 0) stepMode(-1)
+        else setColourChoice(0)
+      } else if (key.rightArrow) {
+        if (colourChoice === 1) stepMode(1)
+        else setColourChoice(1)
+      } else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
       else if (input === '#') openColour({ typed: '#' })
       else if (input === '/') setText('/')
       else if (input.length > 1) {

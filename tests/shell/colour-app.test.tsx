@@ -151,7 +151,7 @@ describe('colour, the fifth mode', () => {
   it('5 on home makes colour the mode; results go to the clipboard', async () => {
     const { app } = await home(96)
     expect(tabRow(app.lastFrame())).toContain('5 colour')
-    expect(keyRow(app.lastFrame())).toMatch(/1–5 +mode/)
+    expect(keyRow(app.lastFrame())).toMatch(/1–5 ←→ +mode/)
     app.stdin.write('5')
     await waitFor(() => tabRow(app.lastFrame()).includes('clipboard'))
     expect(tabRow(app.lastFrame())).toContain('clipboard')

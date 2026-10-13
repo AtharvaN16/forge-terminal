@@ -93,7 +93,13 @@ describe('the staged drop zone, against the mockup (80 × 24)', () => {
     const lines = (
       screen({ files: [photo], headline: '1 image', total: '122 KB', fresh: 0 }).lastFrame() ?? ''
     ).split('\n')
-    expectRows(one, lines, [...UP_TO_FIELD, 23])
+    expectRows(one, lines, UP_TO_FIELD)
+    // The mockup's key row predates ←→ for the modes (2026-10-13).
+    const keys = ansiRow(lines[23] ?? '')
+      .map((c) => c.ch)
+      .join('')
+    expect(keys).toMatch(/↵ +convert/)
+    expect(keys).toMatch(/1–5 ←→ +mode/)
   })
 
   it('three files are a list under their headline', () => {

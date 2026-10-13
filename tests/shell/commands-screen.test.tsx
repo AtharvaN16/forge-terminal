@@ -87,7 +87,9 @@ function expectStep(step: Step, skip: number[] = [], bar = false) {
 describe('commands as a fourth tab of home (N6), against the decided mockup', () => {
   const [rest, slash, filtered, after] = STEPS as [Step, Step, Step, Step]
 
-  it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest))
+  // Row 23, the key row, says "1–5 ←→ mode" since ←→ step through the modes
+  // (2026-10-13), after this mockup; mode-arrows-app.test.tsx holds it.
+  it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest, [23]))
   // The mockup's list has three modes; colour is the fourth (colour spec
   // §6.1) and enhance the fifth, and /extensions a second setting
   // (mockups/extensions-2026-10.html), so the rows from colour's onward differ
@@ -105,7 +107,7 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
     expectStep(filtered, [...GOLD, ...fromRow(11)]))
   // Row 11 is compress's kinds line, which leaves out the mockup's "video":
   // compress has no video engine (see home-screen.test.tsx).
-  it('4 · pressed ↵ on /compress: compress, with the dots back', () => expectStep(after, [11]))
+  it('4 · pressed ↵ on /compress: compress, with the dots back', () => expectStep(after, [11, 23]))
 })
 
 describe('the list in the panel', () => {

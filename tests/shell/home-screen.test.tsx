@@ -74,7 +74,11 @@ describe('the home screen, against the decided mockup (80 × 24)', () => {
     FixtureFrame,
   ]
 
-  it('empty', () => expectFrame(empty))
+  // The key row says "1–5 ←→ mode" since ←→ step through the modes
+  // (2026-10-13), after these mockups; mode-arrows-app.test.tsx holds it.
+  const KEY_ROW = 23
+
+  it('empty', () => expectFrame(empty, [KEY_ROW]))
 
   it('typing a path', () => expectFrame(typing))
 
@@ -82,7 +86,7 @@ describe('the home screen, against the decided mockup (80 × 24)', () => {
 
   it('after pressing 2, but without promising video', () => {
     // The mockup lists "images · PDF · video"; compress has no video engine.
-    expectFrame(compress, [11])
+    expectFrame(compress, [11, KEY_ROW])
     const lines = (screen(compress).lastFrame() ?? '').split('\n')
     const kinds = ansiRow(lines[11] ?? '')
       .map((c) => c.ch)

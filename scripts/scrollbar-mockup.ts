@@ -7,6 +7,9 @@
  * only the bar (and S2's note) is added here.
  *
  *   npx tsx scripts/scrollbar-mockup.ts   → mockups/commands-scroll-2026-10.html
+ *
+ * S2 was picked and now lives in `commandRows`, so a rerun draws it under
+ * every variant. The committed page is the record of the choice.
  */
 import { writeFileSync } from 'node:fs'
 import { listCommands } from '../src/shell/commands.js'
@@ -121,12 +124,12 @@ const VARIANTS: { id: Variant; name: string; idea: string; pick?: boolean }[] = 
 const lastIndex = listCommands('').items.length - 1
 const figures = VARIANTS.map((v) => {
   const pair = (selected: number, label: string) =>
-    [DARK, LIGHT]
+    `${[DARK, LIGHT]
       .map(
         (p) =>
           `<div class="t" style="background:${p === LIGHT ? '#ffffff' : '#1e1e1e'}">${html(screen(p, v.id, selected), p)}</div>`,
       )
-      .join('') + `<div class="cap">${label}</div>`
+      .join('')}<div class="cap">${label}</div>`
   return `<figure><div class="vt"><span class="id">${v.id === 'none' ? '—' : v.id}</span><span class="name">${v.name}</span>${v.pick ? '<span class="pick">RECOMMENDED</span>' : ''}</div>
 <p class="idea">${esc(v.idea)}</p>
 <div class="theme">${pair(0, 'top of the list (/convert chosen)')}</div>

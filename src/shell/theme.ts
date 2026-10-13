@@ -459,6 +459,12 @@ export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', '
 /** The digits that pick a mode, as the key rows say them: "1–5". */
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
 
+/** The mode beside `mode` in tab order, wrapping at the ends: what ← and → on home go to. */
+export function modeStep(mode: ShellMode, delta: 1 | -1): ShellMode {
+  const n = MODE_ORDER.length
+  return MODE_ORDER[(MODE_ORDER.indexOf(mode) + delta + n) % n] as ShellMode
+}
+
 /** The mode digit `input` names, or undefined: `1` is convert, and so on. */
 export function modeForKey(input: string): ShellMode | undefined {
   return /^[1-9]$/.test(input) ? MODE_ORDER[Number(input) - 1] : undefined
