@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-
 import { Box, type DOMElement, type Key } from 'ink'
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import { NEW_SUBFOLDER } from '../../core/actions/destination.js'
 import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { displayName } from '../../utils/display-path.js'
@@ -22,6 +22,7 @@ import {
   type PathLine,
   pathRow,
   ruleRow,
+  tagEnd,
   underlineRow,
 } from '../save-as-art.js'
 import { Text } from '../Text.js'
@@ -75,8 +76,8 @@ const folderText = (input: string) =>
  * `/` on a folder opens a row under it naming a new folder inside it —
  * `converted`, or the next one free — said "new folder" while no folder of
  * that name is there. Typing goes to it; ↵ saves into it, made as the file is
- * written; esc closes it. A slash cannot be in a file name, so the name loses
- * nothing to the key.
+ * written; esc clears the name, and a second esc closes it. A slash cannot
+ * be in a file name, so the name loses nothing to the key.
  *
  * The folders are `destinationRows`, from the action's own destination spec —
  * never a list of its own (invariant 2).
@@ -278,8 +279,9 @@ export function SaveAs({
       if (folderName !== '') save(join(m.parent, folderName))
       return
     }
+    // esc clears the name; on an empty one, closes the row.
     if (key.escape) {
-      setMaking(null)
+      setMaking(m.name === '' ? null : { ...m, name: '' })
       return
     }
     if (key.backspace || key.delete) {
@@ -404,10 +406,9 @@ export function SaveAs({
   })()
 
   const keys: Array<[string, string]> = making
-    ? [
-        ['↵', 'make it and save'],
-        ['esc', 'cancel'],
-      ]
+    ? making.name.trim() === ''
+      ? []
+      : [['↵', 'create and save']]
     : !onPath
       ? [
           ['↵', 'save'],
@@ -418,7 +419,7 @@ export function SaveAs({
         ? [['↑', 'folders']]
         : placeMissing && !filter
           ? [
-              ['↵', 'make it and save'],
+              ['↵', 'create and save'],
               ['↑', 'folders'],
             ]
           : [
@@ -561,13 +562,44 @@ export function SaveAs({
         </FolderTarget>
         {blank}
       </Box>
-      <HintBar
-        width={width}
-        pairs={keys}
-        foot={foot}
-        aside={making === null && !onPath && canMake(at) ? [['/', 'new folder']] : undefined}
+      <UnderKeys
+        pairs={
+          making !== null
+            ? [['esc', making.name === '' ? 'close' : 'clear']]
+            : !onPath && canMake(at)
+              ? [['/', 'new folder']]
+              : []
+        }
+        end={tagEnd(fieldWidth)}
       />
+      <HintBar width={width} pairs={keys} foot={foot} />
     </Box>
+  )
+}
+
+/**
+ * Keys that belong to the highlighted row ("/ new folder", "esc clear"), on
+ * the row under the block, ending at column `end` — where the tags do.
+ * Uncapped, in the mode's colour, so they read as the block's, not the key
+ * row's. The row is kept when there are none, so nothing below it moves.
+ */
+function UnderKeys({ pairs, end }: { pairs: Array<[string, string]>; end: number }) {
+  const palette = useTheme()
+  const used = pairs.reduce(
+    (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(`${key} ${word}`),
+    0,
+  )
+  return (
+    <Text wrap="truncate" color={colourProp(palette.accent)}>
+      {' '.repeat(Math.max(0, end - used))}
+      {pairs.map(([key, word], i) => (
+        <Text key={key}>
+          {i ? '  ' : ''}
+          <Text bold>{key}</Text>
+          {` ${word}`}
+        </Text>
+      ))}
+    </Text>
   )
 }
 

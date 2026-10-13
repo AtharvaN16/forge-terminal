@@ -1,11 +1,15 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Terminals paste a *shell-escaped* path when you drop a file on them.
  * iTerm2 backslash-escapes spaces; some terminals wrap the whole thing in
  * quotes. Inside quotes the backslashes are literal, so the two cases must
  * not both be applied.
+ *
+ * A dropped `file://` URL is read as the path it names, percent-escapes and
+ * all.
  *
  * On Windows a backslash is the path separator, not an escape, and Windows
  * Terminal pastes a dropped path double-quoted when it contains a space — so
@@ -29,6 +33,15 @@ export function unescapePath(raw: string, platform: NodeJS.Platform = process.pl
 
   if (quoted) s = s.slice(1, -1)
   else s = s.replace(/\\(.)/g, '$1')
+
+  // Some terminals drop a file as its URL: `file:///Users/me/My%20Photo.jpg`.
+  if (s.startsWith('file://')) {
+    try {
+      return fileURLToPath(s, { windows: false })
+    } catch {
+      return s
+    }
+  }
 
   if (s === '~') return homedir()
   if (s.startsWith('~/')) return join(homedir(), s.slice(2))
@@ -83,4 +96,16 @@ export function splitPastedPaths(
   if (current) out.push(current)
   // Arrow, not a bare reference: map would pass the index as `platform`.
   return out.map((p) => unescapePath(p, platform))
+}
+
+/**
+ * True when a paste starts the way a dropped path does: a terminal drops
+ * absolute paths (`/…`, or `C:\…` and `\\server\…` on Windows), escaped,
+ * quoted or as a `file://` URL. `~/…` and `./…` count too, since a path
+ * pasted by hand can be either. Words, a hex, a bare file name do not, so
+ * they are typing, not something to read off the disk first.
+ */
+export function startsLikePath(raw: string, platform: NodeJS.Platform = process.platform): boolean {
+  const [first = ''] = splitPastedPaths(raw, platform)
+  return (platform === 'win32' ? /^(?:[~/.\\]|[A-Za-z]:[\\/])/ : /^[~/.]/).test(first)
 }

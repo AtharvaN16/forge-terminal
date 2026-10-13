@@ -172,6 +172,8 @@ export function filesRow({
 
 /** How wide the list is, after the labels' column, with a cell to spare at the end. */
 const listWidth = (width: number) => Math.max(0, width - CONTENT_AT - 1)
+/** The column a row's tag ("default", "last saved") ends at: a cell short of the list's band. */
+export const tagEnd = (width: number) => CONTENT_AT + listWidth(width) - 1
 
 /**
  * A list row, `first` carrying the "to" label: `body` on `band` the list's
@@ -279,7 +281,9 @@ export function folderRow({
 /**
  * A new folder being named inside the folder above it (`/`): one step in,
  * under that folder's name, highlighted, the caret after the name; "new
- * folder" at the far end while no folder of that name is there.
+ * folder" at the far end while no folder of that name is there. The └ and
+ * the name are in the mode's colour, as the name field's underline is: this
+ * row takes typing.
  */
 export function newFolderRow({
   palette,
@@ -316,8 +320,8 @@ export function newFolderRow({
     right,
     body: [
       { text: '  ' },
-      { text: '└ ', fg: palette.border },
-      { text: shown, fg: palette.fg, bold: true },
+      { text: '└ ', fg: palette.accent },
+      { text: shown, fg: palette.accent, bold: true },
       caret,
     ],
   })

@@ -22,8 +22,8 @@ function fakeTerminal(isTTY = true) {
 }
 
 function Harness({ palette }: { palette: Palette }) {
-  useTerminalBackground(palette)
-  return <Text>x</Text>
+  const followed = useTerminalBackground(palette)
+  return <Text>{followed ? 'followed' : 'own'}</Text>
 }
 
 const SET_DARK = backgroundSequence(DARK, {}) as string
@@ -91,5 +91,24 @@ describe('useTerminalBackground', () => {
     app.unmount()
     await tick()
     expect(ours(out.written)).toEqual([])
+  })
+
+  it('says whether the terminal follows the canvas: only when it was told to', async () => {
+    const said = async (palette: Palette, isTTY = true) => {
+      const out = fakeTerminal(isTTY)
+      const app = render(<Harness palette={palette} />, {
+        stdout: out as never,
+        patchConsole: false,
+      })
+      await tick()
+      app.unmount()
+      return out.written.join('')
+    }
+    expect(await said(DARK)).toContain('followed')
+    expect(await said(LIGHT)).toContain('followed')
+    expect(await said(NEUTRAL)).toContain('own')
+    expect(await said(DARK, false)).toContain('own')
+    vi.stubEnv('TMUX', '/tmp/tmux-501/default,1,0')
+    expect(await said(DARK)).toContain('own')
   })
 })

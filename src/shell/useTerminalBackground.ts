@@ -16,10 +16,14 @@ import { reraise } from './useMouse.js'
  *
  * A theme change writes the new colour at once, with no reset in between —
  * that would flash the profile's own colour.
+ *
+ * Returns whether the background is set — so the terminal's own padding
+ * wears the canvas, and the canvas needs no painted margin of its own.
  */
-export function useTerminalBackground(palette: Palette): void {
+export function useTerminalBackground(palette: Palette): boolean {
   const { stdout } = useStdout()
   const sequence = backgroundSequence(palette, process.env)
+  const isTTY = (stdout as NodeJS.WriteStream | undefined)?.isTTY === true
   /** Whether a set is in force, so the reset is written only after one. */
   const isSet = useRef(false)
 
@@ -74,4 +78,6 @@ export function useTerminalBackground(palette: Palette): void {
       process.removeListener('exit', reset)
     }
   }, [stdout])
+
+  return sequence !== null && isTTY
 }

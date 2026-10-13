@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { Box } from 'ink'
 import { render } from 'ink-testing-library'
 import type { ComponentProps } from 'react'
 import { useState } from 'react'
@@ -149,13 +150,32 @@ describe('Save as: the last place saved to', () => {
 })
 
 describe('Save as: / makes a new folder inside the highlighted one', () => {
-  const ruleAt = (f: string | undefined) => lines(plain(f)).findLastIndex((l) => /^─+$/.test(l))
+  /** The row just under the block: the path row, the block's last blank row, then this. */
+  const under = (f: string | undefined) => {
+    const rows = lines(plain(f))
+    return rows[rows.findIndex((l) => l.includes('Type the path')) + 2] ?? ''
+  }
 
-  it('says so just above the key row’s rule, at the far end', () => {
+  it('says so just under the block, uncapped, ending where the default tag ends', () => {
     const f = render(<Harness />).lastFrame()
-    const above = lines(plain(f))[ruleAt(f) - 1] ?? ''
-    expect(above).toMatch(/ \/ {2}new folder$/)
+    const rows = lines(plain(f))
+    const above = under(f)
+    expect(above).toMatch(/ \/ new folder$/)
+    const tagged = rows.find((l) => l.includes(' default ')) ?? ''
+    expect(above.length).toBe(tagged.indexOf(' default ') + ' default '.length)
     expect(keyRow(f)).not.toContain('new folder')
+  })
+
+  it('stays with the block in a tall window, not down by the keys', () => {
+    const f = render(
+      <Box height={40} flexDirection="column">
+        <Harness />
+      </Box>,
+    ).lastFrame()
+    const rows = lines(plain(f))
+    expect(under(f)).toMatch(/ \/ new folder$/)
+    const ruleAt = rows.findLastIndex((l) => /^─+$/.test(l))
+    expect(rows[ruleAt - 1]?.trim()).toBe('')
   })
 
   it('opens a row under the folder, named converted, marked new; ↵ saves into it', async () => {
@@ -169,10 +189,12 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     const at = rows.findIndex((l) => /^ +Downloads *$/.test(l))
     expect(at).toBeGreaterThan(-1)
     expect(rows[at + 1]).toMatch(/└ converted +new folder /)
-    // The name is untouched; the key row says what ↵ and esc do now.
+    // The name is untouched; the key row says what ↵ does, and esc is said
+    // where "/ new folder" was.
     expect(rows[0]).toMatch(/name {5}header/)
-    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save {3}esc {2}cancel/)
-    expect(lines(plain(lastFrame()))[ruleAt(lastFrame()) - 1]).not.toContain('new folder')
+    expect(keyRow(lastFrame())).toMatch(/↵ {2}create and save/)
+    expect(keyRow(lastFrame())).not.toContain('esc')
+    expect(under(lastFrame())).toMatch(/ esc clear$/)
     stdin.write('-2')
     await settle()
     expect(field(lastFrame())[at + 1]).toMatch(/└ converted-2 +new folder /)
@@ -194,11 +216,17 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     expect(plain(lastFrame())).not.toContain('new folder ')
   })
 
-  it('esc puts the list back as it was', async () => {
+  it('esc clears the name, and a second esc puts the list back as it was', async () => {
     const onBack = vi.fn()
     const { stdin, lastFrame } = render(<Harness onBack={onBack} />)
     stdin.write('/')
     await settle()
+    stdin.write(ESC)
+    await settle()
+    expect(plain(lastFrame())).toMatch(/└ *$/m)
+    expect(under(lastFrame())).toMatch(/ esc close$/)
+    // Nothing to make: ↵ is not offered.
+    expect(keyRow(lastFrame())).not.toContain('create and save')
     stdin.write(ESC)
     await settle()
     expect(plain(lastFrame())).not.toContain('└')
@@ -321,7 +349,7 @@ describe('Save as (V10c): the path row', () => {
     stdin.write('tmp/forge-nope')
     await settle(150)
     expect(plain(lastFrame())).toMatch(/▌ \/tmp\/forge-nope +new folder/)
-    expect(keyRow(lastFrame())).toMatch(/↵ {2}make it and save {3}↑ {2}folders +esc clear path/)
+    expect(keyRow(lastFrame())).toMatch(/↵ {2}create and save {3}↑ {2}folders +esc clear path/)
     stdin.write(ENTER)
     await settle()
     expect(onSubmit).toHaveBeenCalledWith('/tmp/forge-nope', 'header')
