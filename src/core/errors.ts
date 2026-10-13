@@ -43,6 +43,8 @@ export type ErrorCode =
   | 'resize-too-large'
   | 'nothing-to-trim'
   | 'animated-trim'
+  | 'nothing-to-crop'
+  | 'animated-crop'
   | 'update-unavailable'
   | 'update-denied'
   | 'update-failed'
@@ -873,6 +875,24 @@ export function animatedTrim(path: string): ForgeError {
     code: 'animated-trim',
     title: "Can't trim an animation",
     detail: `${displayName(path)} is animated; trimming works on still images.`,
+  })
+}
+
+/** `shape` is the label, `1:1`: the image already has it, so a crop would cut nothing. */
+export function nothingToCrop(path: string, shape: string): ForgeError {
+  return new ForgeError({
+    code: 'nothing-to-crop',
+    title: 'Nothing to crop',
+    detail: `${displayName(path)} is already ${shape}.`,
+    short: `already ${shape}`,
+  })
+}
+
+export function animatedCrop(path: string): ForgeError {
+  return new ForgeError({
+    code: 'animated-crop',
+    title: "Can't crop an animation",
+    detail: `${displayName(path)} is animated; cropping works on still images.`,
   })
 }
 

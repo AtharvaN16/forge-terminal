@@ -32,6 +32,7 @@ describe('action registry', () => {
       rotate: 'Rotating',
       trim: 'Trimming edges',
       resize: 'Resizing',
+      crop: 'Cropping',
     })
   })
 
@@ -46,6 +47,7 @@ describe('action registry', () => {
       'rotate',
       'trim',
       'resize',
+      'crop',
     ])
   })
 

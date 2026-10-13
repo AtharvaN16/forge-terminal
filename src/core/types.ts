@@ -89,8 +89,30 @@ export interface ConvertOptions {
   password?: string
   /** Trim transparent or solid-colour edges, after EXIF rotation. */
   trim?: boolean
-  /** The output size, of the upright (and trimmed) image. */
+  /** The output size, of the upright (and trimmed or cropped) image. */
   resize?: ResizeSpec
+  /** Cut to a shape, after EXIF rotation and before any resize. Never with `trim`. */
+  crop?: CropSpec
+}
+
+/** A shape as a ratio of two whole numbers: 16:9 is `{ w: 16, h: 9 }`. */
+export interface Aspect {
+  w: number
+  h: number
+}
+
+/** A crop rectangle in upright pixels (after EXIF rotation). */
+export interface Box {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/** Crop to shape: the shape, and where. No `box` → the engine places the largest box by attention. */
+export interface CropSpec {
+  aspect: Aspect
+  box?: Box
 }
 
 /** How big Resize makes the image: a percentage of its size, or one exact side (the other follows). */
@@ -174,6 +196,8 @@ export type WarningCode =
   | 'config-unreadable'
   /** Trim found no empty edges, so only the resize was applied. */
   | 'nothing-trimmed'
+  /** The image already had the crop's shape, so only the resize was applied. */
+  | 'nothing-cropped'
 
 export interface Warning {
   code: WarningCode

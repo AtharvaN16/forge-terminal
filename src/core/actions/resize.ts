@@ -1,19 +1,31 @@
+import { cropSuffix, largestBox } from '../crop.js'
 import { placeOutput, suffixedImagePath } from '../output-path.js'
 import { keptFormat, resizedSize, sizeSuffix, specSuffix } from '../resize.js'
-import type { ConvertOptions, FormatId, ImageInfo, Job, ResizeSpec, SourceInfo } from '../types.js'
+import type {
+  ConvertOptions,
+  CropSpec,
+  FormatId,
+  ImageInfo,
+  Job,
+  ResizeSpec,
+  SourceInfo,
+} from '../types.js'
 import { answer } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
 
 /**
- * Trim edges and Resize (spec 2026-10-12): two options on the ordinary
- * convert job, planned together because they share a name, a format rule and
- * a destination. The engine does the work (`pipelineFor`); this only decides
- * what is asked of it and where the result goes.
+ * Trim edges, Resize (spec 2026-10-12) and Crop to shape (spec 2026-10-13):
+ * options on the ordinary convert job, planned together because they share a
+ * name, a format rule and a destination. The engine does the work
+ * (`pipelineFor`); this only decides what is asked of it and where the result
+ * goes.
  */
 
 export interface EditRequest {
   trim: boolean
   resize?: ResizeSpec
+  /** Never with `trim`: two cuts whose order would surprise. */
+  crop?: CropSpec
   /** Absent means the source's own format (`keptFormat`). */
   target?: FormatId
   output?: string
@@ -31,6 +43,14 @@ export interface EditRequest {
  * plan time, so the name carries the spec instead of a size.
  */
 function suffixFor(source: ImageInfo, req: EditRequest): string {
+  if (req.crop) {
+    const shape = cropSuffix(req.crop.aspect)
+    if (!req.resize) return shape
+    // Known at plan time: the box given, else the largest, which is what the
+    // engine cuts when it places the box itself.
+    const cut = req.crop.box ?? largestBox(source, req.crop.aspect)
+    return `${shape}-${sizeSuffix(resizedSize(cut, req.resize))}`
+  }
   if (req.trim && req.resize) return `trimmed-${specSuffix(req.resize)}`
   if (req.resize) return sizeSuffix(resizedSize(source, req.resize))
   return 'trimmed'
@@ -38,6 +58,7 @@ function suffixFor(source: ImageInfo, req: EditRequest): string {
 
 /** One convert job per image. */
 export function planEdit(images: ImageInfo[], req: EditRequest): Job[] {
+  if (req.trim && req.crop) throw new Error('planEdit cannot trim and crop the same image')
   return images.map((source) => {
     const target = req.target ?? keptFormat(source)
     const options: ConvertOptions = {
@@ -46,6 +67,7 @@ export function planEdit(images: ImageInfo[], req: EditRequest): Job[] {
       ...(req.quality === undefined ? {} : { quality: req.quality }),
       ...(req.trim ? { trim: true } : {}),
       ...(req.resize ? { resize: req.resize } : {}),
+      ...(req.crop ? { crop: req.crop } : {}),
     }
     const root = req.roots?.get(source.path)
     const named = suffixedImagePath({
@@ -73,13 +95,27 @@ const imagesOnly = (sources: SourceInfo[]): ImageInfo[] | undefined =>
 const isSpec = (v: unknown): v is ResizeSpec =>
   typeof v === 'object' && v !== null && ('percent' in v || 'width' in v || 'height' in v)
 
-function actionFor(id: 'trim' | 'resize', label: string, verb: string, hint: string): Action {
+const isCrop = (v: unknown): v is CropSpec =>
+  typeof v === 'object' &&
+  v !== null &&
+  'aspect' in v &&
+  typeof v.aspect === 'object' &&
+  v.aspect !== null &&
+  'w' in v.aspect &&
+  'h' in v.aspect
+
+function actionFor(
+  id: 'trim' | 'resize' | 'crop',
+  label: string,
+  verb: string,
+  hint: string,
+): Action {
   return {
     id,
     label,
     verb,
     hint,
-    // An animation cannot be trimmed (the engine refuses one), only resized.
+    // An animation cannot be trimmed or cropped (the engine refuses one), only resized.
     appliesTo: (sources) =>
       imagesOnly(sources)?.every((s) => id === 'resize' || s.frames <= 1) === true,
     unavailable: (sources) => (imagesOnly(sources) ? 'animated' : 'images only'),
@@ -88,9 +124,12 @@ function actionFor(id: 'trim' | 'resize', label: string, verb: string, hint: str
     plan(sources, values): Job[] {
       const images = imagesOnly(sources)
       if (!images) return []
+      // A crop is nothing without its shape; the shell and the CLI always give one.
+      if (id === 'crop' && !isCrop(values.crop)) return []
       return planEdit(images, {
         trim: id === 'trim' || values.trim === true,
         ...(isSpec(values.resize) ? { resize: values.resize } : {}),
+        ...(isCrop(values.crop) ? { crop: values.crop } : {}),
         ...(typeof values.target === 'string' ? { target: values.target as FormatId } : {}),
         ...(typeof values.output === 'string' ? { output: values.output } : {}),
         ...(values.roots instanceof Map ? { roots: values.roots as Map<string, string> } : {}),
@@ -111,3 +150,4 @@ export const trimAction: Action = actionFor(
   'cut empty borders',
 )
 export const resizeAction: Action = actionFor('resize', 'Resize', 'Resizing', 'smaller or larger')
+export const cropAction: Action = actionFor('crop', 'Crop to shape', 'Cropping', 'change the shape')
