@@ -101,7 +101,9 @@ describe('UpdateFlow (V4)', () => {
   })
 
   it('when npm is refused, shows why in one row and ↵ copies the sudo command', async () => {
-    const { updater, calls, release } = fakeUpdater({ installError: updateDenied('0.2.2') })
+    const { updater, calls, release } = fakeUpdater({
+      installError: updateDenied('0.2.2', 'darwin'),
+    })
     const f = open(updater)
     await until(() => frame(f).includes('↵ update'))
     await tick()

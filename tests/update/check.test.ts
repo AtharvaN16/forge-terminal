@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   availableUpdate,
@@ -95,7 +96,7 @@ describe('the once-a-day cache', () => {
   })
 
   it('lives beside the config file', () => {
-    expect(cachePath()).toBe(`${process.env.XDG_CONFIG_HOME}/forge/update-check.json`)
+    expect(cachePath()).toBe(join(process.env.XDG_CONFIG_HOME ?? '', 'forge', 'update-check.json'))
   })
 
   it('round-trips, and a missing or broken file reads as no cache', async () => {
