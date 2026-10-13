@@ -50,6 +50,7 @@ describe('listCommands', () => {
       'theme',
       'extensions',
       'update',
+      'about',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
       'modes',
@@ -57,6 +58,7 @@ describe('listCommands', () => {
       'modes',
       'modes',
       'modes',
+      'settings',
       'settings',
       'settings',
       'settings',
@@ -80,6 +82,7 @@ describe('listCommands', () => {
         'theme',
         'extensions',
         'update',
+        'about',
       ])
       expect(listCommands(typed).query).toBe('')
     }
@@ -96,6 +99,7 @@ describe('listCommands', () => {
       'pdf',
       'colour',
       'enhance',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -128,6 +132,7 @@ describe('parseCommand', () => {
 describe('the registry', () => {
   it('carries every command the shell can run', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
+      'about',
       'color',
       'colour',
       'compress',
@@ -139,6 +144,11 @@ describe('the registry', () => {
       'theme',
       'update',
     ])
+  })
+
+  it('lists /about last among the settings', () => {
+    expect(listCommands('a').items.map((c) => c.name)).toEqual(['about'])
+    expect(listCommands('a').items[0]?.group).toBe('settings')
   })
 
   it('gives every command a description, since the palette shows them', () => {
