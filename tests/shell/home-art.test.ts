@@ -88,14 +88,10 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
     rows[i]?.map((run) => run.text).join('') ?? ''
   const TABS = ' 1 convert   2 compress   3 pdf   4 enhance   5 colour   / commands  '
 
-  it('has five modes; the destination alone when label and destination will not both fit', () => {
-    const rows = tabRows({
-      width: 92,
-      palette: modePalette(DARK, 'convert'),
-      mode: 'convert',
-      savesTo: '~/Desktop',
-    })
-    expect(rowText(rows, 1)).toBe(`  ${TABS}${' '.repeat(9)}~/Desktop `)
+  it('has five modes and the commands tab, and nothing at the row’s right', () => {
+    const rows = tabRows({ palette: modePalette(DARK, 'convert'), mode: 'convert' })
+    // No "saves to ~/Desktop": the owner took it out (2026-10-13).
+    expect(rowText(rows, 1)).toBe(`  ${TABS}`)
     // H2: the active tab on a dark grey chip, the rest bare; no lip above it
     // (a half-cell lip drew as a hairline in Terminal.app).
     expect(rowText(rows, 0).trim()).toBe('')
@@ -103,49 +99,19 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
     expect(rows[1]?.find((run) => run.text === 'compress')?.bg).toBeUndefined()
   })
 
-  it('says where results go in full when there is room', () => {
-    const rows = tabRows({
-      width: 120,
-      palette: modePalette(DARK, 'convert'),
-      mode: 'convert',
-      savesTo: '~/Desktop',
-    })
-    expect(rowText(rows, 1).endsWith('saves to ~/Desktop ')).toBe(true)
-  })
-
-  it('in colour mode results go to the clipboard', () => {
-    const rows = tabRows({
-      width: 90,
-      palette: modePalette(DARK, 'colour'),
-      mode: 'colour',
-      savesTo: '~/Desktop',
-      right: { label: 'copies to', value: 'clipboard' },
-    })
-    expect(rowText(rows, 1).endsWith('clipboard ')).toBe(true)
+  it('says nothing of the clipboard in colour mode either', () => {
+    const rows = tabRows({ palette: modePalette(DARK, 'colour'), mode: 'colour' })
+    expect(rowText(rows, 1)).toBe(`  ${TABS}`)
     expect(rows[1]?.find((run) => run.text === 'colour')?.bold).toBe(true)
   })
 
   it('moves the tab to the mode pressed', () => {
     const rows = tabRows({
-      width: 80,
       palette: modePalette(DARK, 'enhance'),
       mode: 'enhance',
-      savesTo: '~/Desktop',
     })
     expect(rows[1]?.find((run) => run.text === 'enhance')?.bold).toBe(true)
     expect(rows[1]?.find((run) => run.text === '4')?.fg).toBe(DARK.modeEnhance)
-  })
-
-  it('drops the folder before it would collide with the tabs', () => {
-    const rows = tabRows({
-      width: 50,
-      palette: modePalette(DARK, 'convert'),
-      mode: 'convert',
-      savesTo: '~/Desktop',
-    })
-    const text = rows[1]?.map((run) => run.text).join('') ?? ''
-    expect(text).toContain('3 pdf')
-    expect(text).not.toContain('saves to')
   })
 })
 

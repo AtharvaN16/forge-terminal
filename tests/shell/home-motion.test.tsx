@@ -41,7 +41,6 @@ function home(mode: ShellMode, staged?: StagedView, intro = false) {
         height={24}
         mode={mode}
         typing={text !== ''}
-        savesTo="~/Desktop"
         staged={staged}
         intro={intro}
         field={

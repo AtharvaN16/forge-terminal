@@ -78,10 +78,8 @@ export function homeRow(frame: FixtureFrame, row: number): Cell[] {
   if (row === 22) return runsRow([{ text: '─'.repeat(80), fg: DARK.border }])
   if (row === 5 || row === 6) {
     const tabs = tabRows({
-      width: 80,
       palette: modePalette(DARK, frame.mode),
       mode: frame.mode,
-      savesTo: '~/Desktop',
       commands: frame.text.startsWith('/') && !frame.text.includes(' '),
     })
     return runsRow(tabs[row - 5] ?? [])

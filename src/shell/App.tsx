@@ -3928,7 +3928,6 @@ export function App({
                   />
                 ) : undefined
               }
-              savesTo={displayPath(livePrefs.defaultOutput)}
               field={
                 <Prompt
                   value={text}

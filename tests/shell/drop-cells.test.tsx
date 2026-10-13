@@ -53,7 +53,6 @@ function screen(staged: StagedView, under?: UnderField, verb: string | null = 'c
         height={24}
         mode={mode}
         typing={false}
-        savesTo="~/Desktop"
         field={
           <Prompt
             value=""

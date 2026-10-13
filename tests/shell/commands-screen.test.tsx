@@ -44,7 +44,6 @@ function screen({
         height={height}
         mode={mode}
         typing={text !== ''}
-        savesTo="~/Desktop"
         commands={commands}
         field={
           <Prompt

@@ -148,13 +148,15 @@ describe("colour's home and screens", () => {
 })
 
 describe('colour, the fifth mode', () => {
-  it('5 on home makes colour the mode; results go to the clipboard', async () => {
+  it('5 on home makes colour the mode', async () => {
     const { app } = await home(96)
     expect(tabRow(app.lastFrame())).toContain('5 colour')
     expect(keyRow(app.lastFrame())).toMatch(/1–5 ←→ +mode/)
     app.stdin.write('5')
-    await waitFor(() => tabRow(app.lastFrame()).includes('clipboard'))
-    expect(tabRow(app.lastFrame())).toContain('clipboard')
+    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
+    expect(plain(app.lastFrame())).toContain('the colours of an image')
+    // The tab row says nothing of where results go (2026-10-13).
+    expect(tabRow(app.lastFrame())).not.toContain('clipboard')
   }, 20_000)
 
   it('5 on a picker switches to colour, and ctrl-n goes back to convert', async () => {
@@ -166,13 +168,10 @@ describe('colour, the fifth mode', () => {
     await settle(300) // the picker's keys attach after its first frame
     expect(keyRow(app.lastFrame())).toMatch(/1–5 +mode/)
     app.stdin.write('5')
-    await waitFor(() => tabRow(app.lastFrame()).includes('clipboard'))
-    expect(tabRow(app.lastFrame())).toContain('clipboard')
+    await waitFor(() => plain(app.lastFrame()).includes('the colours of an image'))
+    expect(plain(app.lastFrame())).toContain('the colours of an image')
     app.stdin.write(CTRL_N)
-    await waitFor(
-      () =>
-        tabRow(app.lastFrame()).includes('~/') || !tabRow(app.lastFrame()).includes('clipboard'),
-    )
-    expect(tabRow(app.lastFrame())).not.toContain('clipboard')
+    await waitFor(() => plain(app.lastFrame()).includes('Drop a file here'))
+    expect(plain(app.lastFrame())).not.toContain('the colours of an image')
   }, 20_000)
 })

@@ -367,7 +367,6 @@ export function Home({
   height,
   mode,
   typing,
-  savesTo,
   field,
   list,
   commands,
@@ -384,8 +383,6 @@ export function Home({
   mode: ShellMode
   /** Something is in the field: the block steps back so the field leads. */
   typing: boolean
-  /** Where output goes, as the user would type it. */
-  savesTo: string
   /** The field — a `Prompt` in its `home` variant. */
   field: ReactNode
   /** What sits under the field, given how many entries it has room for. */
@@ -491,9 +488,6 @@ export function Home({
     : resting
   const tabsAtRest = tabRows({
     ...art,
-    savesTo,
-    // Colour writes no files: what it makes goes to the clipboard.
-    ...(mode === 'colour' ? { right: { label: 'copies to', value: 'clipboard' } } : {}),
     commands: commands !== undefined,
   })
   // The tabs come up out of the background as the band's edge passes them.

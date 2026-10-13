@@ -42,7 +42,6 @@ function home(text = '') {
         height={24}
         mode="convert"
         typing={typing}
-        savesTo="~/Desktop"
         field={
           <Prompt
             value={text}
