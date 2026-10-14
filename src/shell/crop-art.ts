@@ -59,10 +59,16 @@ export function onCheckerDots(dots: Dots): Dots {
  * light); a cell with both dots outside is `╱` over the mean of the two, the
  * line its faded top dot mixed half way to `border` (P3, the hatch Forge
  * uses for what goes away). On the crop's four corners, inside it, a bracket
- * in `edge` (G, mockups/crop-frame-2026-10.html): arms one dot thick and a
- * quarter of the shorter side long, at least two. At this size the hatch
- * alone does not say where the cut falls, and a whole frame in one colour
- * can merge with the same colour in the photo; a corner shape cannot.
+ * in `edge` (G, mockups/crop-frame-2026-10.html): arms a quarter of the
+ * shorter side long, at least two dots. At this size the hatch alone does
+ * not say where the cut falls, and a whole frame in one colour can merge
+ * with the same colour in the photo; a corner shape cannot.
+ *
+ * The brackets are whole cells — a row across, two columns down — in the cells
+ * wholly inside the crop, and a cell of one colour is a space on it, as
+ * `halfBlockCell` draws one: a terminal that draws `▀` from its font (Apple
+ * Terminal) leaves the glyph short of the cell, and the background showing
+ * round a bracket's half cell read as a second line beside it.
  * Transparency is drawn on the checkerboard first. Cells alike are one run.
  */
 export function cropPictureRows({
@@ -84,15 +90,19 @@ export function cropPictureRows({
   const inside = (x: number, y: number) =>
     x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h
   const arm = Math.max(2, Math.round(Math.min(box.w, box.h) / 4))
-  // A dot on the crop's own edge, within an arm of one of its corners.
-  const bracket = (x: number, y: number) => {
-    if (edge === undefined || !inside(x, y)) return false
+  // The cell rows wholly inside the crop: the arms across sit on the first and the last.
+  const top = Math.ceil(box.y / 2)
+  const bottom = Math.floor((box.y + box.h) / 2) - 1
+  const down = Math.max(1, Math.ceil(arm / 2))
+  // A cell on the crop's edge row, or its two edge columns (a row is two dots tall,
+  // a column one across: the stroke is two dots both ways), within an arm of a corner.
+  const bracket = (x: number, r: number) => {
+    if (edge === undefined || r < top || r > bottom || x < box.x || x >= box.x + box.w) return false
     const dx = Math.min(x - box.x, box.x + box.w - 1 - x)
-    const dy = Math.min(y - box.y, box.y + box.h - 1 - y)
-    return (dx === 0 && dy < arm) || (dy === 0 && dx < arm)
+    const dr = Math.min(r - top, bottom - r)
+    return (dx < 2 && dr < down) || (dr === 0 && dx < arm)
   }
   const shown = (x: number, y: number) => {
-    if (bracket(x, y)) return edge as string
     const c = hexOf(dots.rgb, (y * dots.cols + x) * 3)
     return inside(x, y) ? c : mix(c, canvas, fade)
   }
@@ -105,9 +115,13 @@ export function cropPictureRows({
       const t = shown(x, yt)
       const b = shown(x, yb)
       const cut = !inside(x, yt) && !inside(x, yb)
-      const cell: Run = cut
-        ? { text: '╱', fg: mix(t, border, 0.5), bg: mix(t, b, 0.5) }
-        : { text: '▀', fg: t, bg: b }
+      const cell: Run = bracket(x, r)
+        ? { text: ' ', fg: edge, bg: edge }
+        : cut
+          ? { text: '╱', fg: mix(t, border, 0.5), bg: mix(t, b, 0.5) }
+          : t === b
+            ? { text: ' ', fg: t, bg: t }
+            : { text: '▀', fg: t, bg: b }
       const last = row.at(-1)
       if (last && last.fg === cell.fg && last.bg === cell.bg && last.text.endsWith(cell.text)) {
         last.text += cell.text

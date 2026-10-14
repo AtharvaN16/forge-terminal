@@ -130,8 +130,8 @@ describe('Crop to shape in Enhance', () => {
     // The guess is on the disc: the left half is what is cut.
     const guess = pictureOf(raw())
     const firstRow = guess[0]?.replace(SGR, '') ?? ''
-    expect(firstRow.trimStart().startsWith('╱')).toBe(true)
-    expect(firstRow).toContain('▀')
+    // Hatch, then the photo (a cell of one colour is a space on it).
+    expect(firstRow.trimStart()).toMatch(/^╱+[ ▀]/)
 
     // ← moves it one dot of the picture: the hatch moves; r reset appears.
     await press(LEFT)

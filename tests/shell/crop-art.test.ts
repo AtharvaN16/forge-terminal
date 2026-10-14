@@ -103,44 +103,32 @@ describe('the crop picture (P3)', () => {
     expect(cellsOf(row ?? [])[0]?.fg).toBe(mix(a as string, '#ffffff', 128 / 255))
   })
 
-  it('marks the crop’s corners with brackets inside it, in the edge colour (G)', () => {
-    // 8 × 6 dots of one grey, the crop 6 × 4 from (1, 2): arms two dots long
-    // (a quarter of the shorter side, at least two), one dot thick.
-    const flat = { cols: 8, dotRows: 6, rgb: new Uint8Array(8 * 6 * 3).fill(200) }
+  it('marks the crop’s corners with brackets inside it, in whole cells of the edge colour (G)', () => {
+    // 10 × 10 dots of one grey, the crop 8 × 8 from (1, 1): arms two dots
+    // long (a quarter of the shorter side, at least two). A half block's
+    // glyph does not fill its cell in every terminal (Apple Terminal draws it
+    // from the font), so the background showed round it as a second line:
+    // the brackets are spaces on the edge colour, in the cells wholly inside.
+    const flat = { cols: 10, dotRows: 10, rgb: new Uint8Array(10 * 10 * 3).fill(200) }
     const edge = '#cc66ff'
-    const rows = cropPictureRows({ palette: P, dots: flat, box: { x: 1, y: 2, w: 6, h: 4 }, edge })
+    const rows = cropPictureRows({ palette: P, dots: flat, box: { x: 1, y: 1, w: 8, h: 8 }, edge })
     const grey = '#c8c8c8'
     const faded = mix(grey, P.canvas, 0.72)
-    const hatch = { ch: '╱', fg: mix(faded, P.border, 0.5), bg: faded }
-    const pairs = (i: number) =>
-      cellsOf(rows[i] ?? []).map((c) => (c.ch === '╱' ? c : [c.fg, c.bg]))
-    // Above the crop: hatch only, nothing drawn outside it.
-    expect(pairs(0)).toEqual(Array(8).fill(hatch))
-    // Its top two dot rows: the top arms across, the side arms down.
-    expect(pairs(1)).toEqual([
-      hatch,
-      [edge, edge],
-      [edge, grey],
-      [grey, grey],
-      [grey, grey],
-      [edge, grey],
-      [edge, edge],
-      hatch,
-    ])
-    // Its bottom two: the side arms, then the bottom arms.
-    expect(pairs(2)).toEqual([
-      hatch,
-      [edge, edge],
-      [grey, edge],
-      [grey, grey],
-      [grey, grey],
-      [grey, edge],
-      [edge, edge],
-      hatch,
-    ])
+    const half = { ch: '▀', fg: faded, bg: grey }
+    const E = { ch: ' ', fg: edge, bg: edge }
+    const G = { ch: ' ', fg: grey, bg: grey }
+    const at = (i: number) => cellsOf(rows[i] ?? []).slice(1, 9)
+    // Row 0 holds dots 0–1: the crop's top edge is its bottom half, so no arm there.
+    expect(at(0)).toEqual(Array(8).fill(half))
+    // Row 1, the first wholly inside: the top arms across.
+    expect(at(1)).toEqual([E, E, G, G, G, G, E, E])
+    // Row 2: the side arms down (two dots: one row).
+    expect(at(2)).toEqual([G, G, G, G, G, G, G, G])
+    // Row 3, the last wholly inside: the bottom arms.
+    expect(at(3)).toEqual([E, E, G, G, G, G, E, E])
   })
 
-  it('makes the arms a quarter of the crop’s shorter side', () => {
+  it('runs the side arms down as many rows as the arm is long', () => {
     const flat = { cols: 16, dotRows: 16, rgb: new Uint8Array(16 * 16 * 3).fill(200) }
     const edge = '#cc66ff'
     const rows = cropPictureRows({
@@ -149,26 +137,25 @@ describe('the crop picture (P3)', () => {
       box: { x: 2, y: 2, w: 12, h: 12 },
       edge,
     })
-    // Row 1 holds dots 2–3: the top edge (dot 2) is edge for three dots from each corner.
-    const tops = cellsOf(rows[1] ?? []).map((c) => c.fg === edge)
-    expect(tops).toEqual([
-      false,
-      false,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      false,
-      false,
-    ])
+    const isEdge = (i: number) => cellsOf(rows[i] ?? []).map((c) => c.bg === edge)
+    // Arms three dots long: three cells across, two rows down.
+    const across = [false, false, true, true, true, false, false, false]
+    expect(isEdge(1)).toEqual([...across, ...[...across].reverse()])
+    // Two columns wide: a row is two dots tall, a column one across.
+    const side = [false, false, true, true, ...Array(8).fill(false), true, true, false, false]
+    expect(isEdge(2)).toEqual(side)
+    expect(isEdge(3)).toEqual(Array(16).fill(false))
+  })
+
+  it('draws a cell of one colour as a space on it: no glyph, so no seam', () => {
+    const [row] = cropPictureRows({
+      palette: P,
+      dots: { cols: 2, dotRows: 2, rgb: new Uint8Array([9, 9, 9, 1, 2, 3, 9, 9, 9, 4, 5, 6]) },
+      box: { x: 0, y: 0, w: 2, h: 2 },
+    })
+    const cells = cellsOf(row ?? [])
+    expect(cells[0]).toEqual({ ch: ' ', fg: '#090909', bg: '#090909' })
+    expect(cells[1]?.ch).toBe('▀')
   })
 
   it('draws no brackets without an edge colour', () => {
@@ -181,7 +168,7 @@ describe('the crop picture (P3)', () => {
     const flat = { cols: 4, dotRows: 2, rgb: new Uint8Array(4 * 2 * 3).fill(200) }
     const [row] = cropPictureRows({ palette: P, dots: flat, box: { x: 0, y: 0, w: 4, h: 2 } })
     expect(row).toHaveLength(1)
-    expect(row?.[0]?.text).toBe('▀▀▀▀')
+    expect(row?.[0]?.text).toBe('    ')
   })
 })
 
