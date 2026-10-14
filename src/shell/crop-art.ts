@@ -58,17 +58,22 @@ export function onCheckerDots(dots: Dots): Dots {
  * dot outside the crop is faded towards the canvas (72 % in dark, 70 % in
  * light); a cell with both dots outside is `╱` over the mean of the two, the
  * line its faded top dot mixed half way to `border` (P3, the hatch Forge
- * uses for what goes away). Transparency is drawn on the checkerboard first.
- * Cells alike are one run.
+ * uses for what goes away). Around the crop, one dot out, a bar in `edge` on
+ * each side it does not meet the picture's edge on, corners included: at this
+ * size the hatch alone does not say where the cut falls. Transparency is
+ * drawn on the checkerboard first. Cells alike are one run.
  */
 export function cropPictureRows({
   palette,
   dots: given,
   box,
+  edge,
 }: {
   palette: Palette
   dots: Dots
   box: DotBox
+  /** The frame's colour; none is drawn without one. */
+  edge?: string
 }): Row[] {
   const dots = onCheckerDots(given)
   const canvas = solid(palette.canvas, '#000000')
@@ -76,7 +81,17 @@ export function cropPictureRows({
   const fade = palette.name === 'light' ? 0.7 : 0.72
   const inside = (x: number, y: number) =>
     x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h
+  // The ring of dots one out from the crop. A side at the picture's edge
+  // falls off the picture, so it is never drawn.
+  const framed = (x: number, y: number) =>
+    edge !== undefined &&
+    !inside(x, y) &&
+    x >= box.x - 1 &&
+    x <= box.x + box.w &&
+    y >= box.y - 1 &&
+    y <= box.y + box.h
   const shown = (x: number, y: number) => {
+    if (framed(x, y)) return edge as string
     const c = hexOf(dots.rgb, (y * dots.cols + x) * 3)
     return inside(x, y) ? c : mix(c, canvas, fade)
   }
@@ -88,7 +103,7 @@ export function cropPictureRows({
     for (let x = 0; x < dots.cols; x++) {
       const t = shown(x, yt)
       const b = shown(x, yb)
-      const cut = !inside(x, yt) && !inside(x, yb)
+      const cut = !inside(x, yt) && !inside(x, yb) && !framed(x, yt) && !framed(x, yb)
       const cell: Run = cut
         ? { text: '╱', fg: mix(t, border, 0.5), bg: mix(t, b, 0.5) }
         : { text: '▀', fg: t, bg: b }

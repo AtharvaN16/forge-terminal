@@ -103,6 +103,53 @@ describe('the crop picture (P3)', () => {
     expect(cellsOf(row ?? [])[0]?.fg).toBe(mix(a as string, '#ffffff', 128 / 255))
   })
 
+  it('frames the crop with a bar one dot thick just outside it, in the edge colour', () => {
+    // 6 × 6 dots of one grey, the crop the middle 2 × 2: the frame is the
+    // ring of dots around it (x 1–4, y 1–4), corners included.
+    const flat = { cols: 6, dotRows: 6, rgb: new Uint8Array(6 * 6 * 3).fill(200) }
+    const edge = '#cc66ff'
+    const rows = cropPictureRows({ palette: P, dots: flat, box: { x: 2, y: 2, w: 2, h: 2 }, edge })
+    const grey = '#c8c8c8'
+    const faded = mix(grey, P.canvas, 0.72)
+    const hatch = { ch: '╱', fg: mix(faded, P.border, 0.5), bg: faded }
+    // Row 0 (dots 0–1): the top bar is the bottom dot, from x 1 to x 4.
+    expect(cellsOf(rows[0] ?? [])).toEqual([
+      hatch,
+      { ch: '▀', fg: faded, bg: edge },
+      { ch: '▀', fg: faded, bg: edge },
+      { ch: '▀', fg: faded, bg: edge },
+      { ch: '▀', fg: faded, bg: edge },
+      hatch,
+    ])
+    // Row 1 (dots 2–3): the crop, a bar each side.
+    expect(cellsOf(rows[1] ?? [])).toEqual([
+      hatch,
+      { ch: '▀', fg: edge, bg: edge },
+      { ch: '▀', fg: grey, bg: grey },
+      { ch: '▀', fg: grey, bg: grey },
+      { ch: '▀', fg: edge, bg: edge },
+      hatch,
+    ])
+    // Row 2 (dots 4–5): the bottom bar is the top dot.
+    expect(cellsOf(rows[2] ?? [])[1]).toEqual({ ch: '▀', fg: edge, bg: faded })
+    expect(cellsOf(rows[2] ?? [])[0]).toEqual(hatch)
+  })
+
+  it('draws no bar on a side the crop meets the picture’s edge on', () => {
+    // 16:9 out of a taller photo: the crop spans the width, so only above and below.
+    const flat = { cols: 4, dotRows: 6, rgb: new Uint8Array(4 * 6 * 3).fill(200) }
+    const edge = '#cc66ff'
+    const rows = cropPictureRows({ palette: P, dots: flat, box: { x: 0, y: 1, w: 4, h: 3 }, edge })
+    const grey = '#c8c8c8'
+    const faded = mix(grey, P.canvas, 0.72)
+    expect(cellsOf(rows[0] ?? []).map((c) => [c.fg, c.bg])).toEqual(Array(4).fill([edge, grey]))
+    expect(cellsOf(rows[1] ?? []).map((c) => [c.fg, c.bg])).toEqual(Array(4).fill([grey, grey]))
+    expect(cellsOf(rows[2] ?? []).map((c) => [c.fg, c.bg])).toEqual(Array(4).fill([edge, faded]))
+    // The whole photo kept: no frame at all.
+    const whole = cropPictureRows({ palette: P, dots: flat, box: { x: 0, y: 0, w: 4, h: 6 }, edge })
+    expect(whole.flat().some((r) => r.fg === edge || r.bg === edge)).toBe(false)
+  })
+
   it('draws a run of cells in one colour as one run', () => {
     const flat = { cols: 4, dotRows: 2, rgb: new Uint8Array(4 * 2 * 3).fill(200) }
     const [row] = cropPictureRows({ palette: P, dots: flat, box: { x: 0, y: 0, w: 4, h: 2 } })

@@ -28,7 +28,7 @@ import {
 } from '../crop-art.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { useTheme } from '../ThemeContext.js'
-import { MODE_KEYS, type ShellMode } from '../theme.js'
+import { MODE_KEYS, modeColours, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
@@ -181,9 +181,11 @@ export function CropStep({
   // it fades to change: the App re-renders this step on every press it hears
   // of, with a new palette object each time, so the colours are the key.
   const dotBox = dots && at ? dotBoxOf(size, at.box, dots) : undefined
+  // The crop's frame, in the mode's own colour.
+  const edge = modeColours(palette, mode).fg
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the box's sides and the palette's colours, not their (new each render) objects
   const picture = useMemo(
-    () => (dots && dotBox ? cropPictureRows({ palette, dots, box: dotBox }) : []),
+    () => (dots && dotBox ? cropPictureRows({ palette, dots, box: dotBox, edge }) : []),
     [
       dots,
       dotBox?.x,
@@ -193,6 +195,7 @@ export function CropStep({
       palette.name,
       palette.canvas,
       palette.border,
+      edge,
     ],
   )
 
