@@ -2,7 +2,7 @@
  * Forge's version, everywhere it is shown: the shell, --version and --json.
  * Must match package.json (tests/cli/args.test.ts).
  */
-export const VERSION = '0.3.5'
+export const VERSION = '0.3.6'
 
 /**
  * Symbols are paired with words at every call site so meaning survives a
