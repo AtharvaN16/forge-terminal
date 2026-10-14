@@ -59,6 +59,8 @@ forge scale 6579FD --json                                  # 50–950, the colou
 
 For a colour, pass the hex without `#`, or quote it: an unquoted `#` starts
 a shell comment, and `forge scale` then exits 2 with "No colour given".
+`rgb()`, `hsl()`, `oklch()` and colour names (`crimson`, `cherry red`) work
+too, quoted.
 
 `forge update` installs a newer Forge globally with npm. Run it only when the
 user asks for an update.

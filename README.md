@@ -43,7 +43,7 @@ That puts `forge` on your `PATH`, so it works from any directory. Verify:
 
 ```bash
 forge --version
-# 0.3.2
+# 0.3.3
 
 forge photo.jpg --to webp
 ```
@@ -605,28 +605,47 @@ colour. Both are in the shell as its fourth mode, and on the command line.
 
 ### In the shell
 
-Press **4** (or type `/colour`). Home shows two cards, **Palette** and
-**Scale**. Choose one with ←→ and open it with ↵. You can also drop an image
-straight onto colour's home, or press `#` to type a colour.
+Press **5** (or type `/colour`). Home shows three cards: **Extract**,
+**Scale** and **Palette**. Choose one with ←→ and open it with ↵. You can
+also drop an image straight onto colour's home, or press `#` (or paste a
+colour) to type one.
 
-- **Palette.** Drop an image, or type its path into the field at the top. The
+The colour box takes a hex code, `rgb()`, `hsl()`, `oklch()` or a colour
+name: CSS's 148 and the xkcd colour survey's 949 everyday ones, so
+`cherry red` works. Something it can't read turns red, marked `wrong input`.
+
+- **Extract.** Drop an image, or type its path into the field at the top. The
   photo is drawn in its own colours next to the list, with each colour's share
   of the image.
   - ↑↓ choose a colour; it stays lit in the photo and the rest dim.
   - → goes inside a colour: its shades, lit where they are in the photo.
     ← comes back.
   - `s` makes a scale from the chosen colour.
-- **Scale.** Type a hex code. You get 50–950 with your colour at 500, and a
+- **Scale.** Type a colour. You get 50–950 with your colour at 500, and a
   preview of the chosen step: "Aa" in white and black, with each rated
   (AAA, AA, large, fails).
-  - ←→ choose a step.
+  - ←→ choose a step; `s` chooses the steps (Tailwind, Even, Radix).
+  - `tab` switches between three tabs. **Colour** is the scale itself.
+    **Neutral** is a grey scale tinted with your colour's hue (tint: none,
+    faint, soft, strong). **Alpha** is each step as the most see-through
+    `#RRGGBBAA` that looks the same over white (or black), drawn over a
+    checkerboard with its opacity on it.
   - `r` makes that step the new centre and rebuilds the scale around it.
-  - `#` types a new colour.
+  - `→` at the end of a colour in the box asks for a second: ↵ **mixes**
+    the two, in OKLab or OKLCH, in 3 to 21 steps.
+- **Palette.** Type one colour and get a whole palette that goes with it:
+  red, orange, yellow, green, teal, blue, purple and pink, each a 50–950
+  scale, and a neutral.
+  - `m` chooses a mode: Full set, Monochromatic, Analogous, Complementary,
+    Split complementary, Triadic or Pastel.
+  - `t` tweaks the whole palette: brightness, saturation and contrast from
+    −100 to +100, hue from −180° to +180°. ←→ moves by 1, ⇧←→ by 10, and `r`
+    resets.
 
-On both screens, ↵ copies the chosen hex and `c` copies the whole set. Paste
+On every screen, ↵ copies the chosen hex and `c` copies the whole set. Paste
 it into Figma with ⌘V: you get real shapes and text layers, named
 `blue-500` and so on. esc goes back one step, and the bar at the top shows
-the way back. Under `NO_COLOR`, both screens are plain text with every key
+the way back. Under `NO_COLOR`, the screens are plain text with every key
 still working.
 
 ### On the command line
@@ -657,8 +676,10 @@ $ forge scale 6579FD
 - **`forge scale <colour>`** gives 50–950 built in OKLCH, with your colour
   exactly at 500. Each step is rated for white and black text (WCAG: AAA, AA,
   large, fails). Ratios are rounded down, so 4.48:1 shows as `4.4 large` and
-  is never passed off as AA. Pass the colour without the `#`, or quote it (`'#6579FD'`):
-  an unquoted `#` starts a comment in the shell.
+  is never passed off as AA. The colour can be written as the colour box
+  takes it (`forge scale crimson`, `forge scale 'rgb(210 4 45)'`). Pass a hex
+  without the `#`, or quote it (`'#6579FD'`): an unquoted `#` starts a
+  comment in the shell.
 - **`--svg`** prints a card of swatches. Pipe it to `pbcopy` and press ⌘V in
   Figma to get real shapes and text layers: `forge scale 6579FD --svg | pbcopy`.
 - **`--json`** returns `palette` (`source`, `colours[]` with `hex`, `rgb`,
@@ -868,11 +889,11 @@ Seven tools, deliberately few:
 | --- | --- |
 | `forge_probe` | what files are and what Forge can do with them |
 | `forge_formats` | the capability matrix |
-| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `sharpen`, `boost: 2 \| 3 \| 4` and `removeBackground`, which need the optional extensions) |
+| `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `trim`, `crop`, `resize`, `sharpen`, `boost: 2 \| 3 \| 4` and `removeBackground`, the last two needing the optional extensions) |
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
 | `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades (read-only) |
-| `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text (read-only) |
+| `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text; the colour as hex, `rgb()`, `hsl()`, `oklch()` or a name (read-only) |
 
 Paths must be absolute. Results come back as structured content in the
 `--json` shape below, with a `file://` link to every output, and never as
@@ -912,7 +933,7 @@ photo.png · PNG · 122 KB · 2756×774
 With `--json`:
 
 ```json
-{"forge":"0.3.2","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+{"forge":"0.3.3","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
 ```
 
 `targets` and `actions` come from the engines' own capabilities, so they are
@@ -938,7 +959,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 ```jsonc
 {
-  "forge": "0.3.2",
+  "forge": "0.3.3",
   "ok": false,
   "results": [
     {
