@@ -157,18 +157,24 @@ describe('a paste or drop on home', () => {
     expect(fieldLine(frame)).toBe('    › drop more, or type a path')
   }, 20_000)
 
-  it('reads a dropped file:// URL as the file it names', async () => {
-    const dir = await makeTempDir()
-    const png = await makePng(dir, 'my photo.png')
-    const app = home(dir)
-    await settle()
+  // A Mac terminal's drop. Windows Terminal drops a plain path, and the
+  // win32 branch of unescapePath reads no URL.
+  it.skipIf(process.platform === 'win32')(
+    'reads a dropped file:// URL as the file it names',
+    async () => {
+      const dir = await makeTempDir()
+      const png = await makePng(dir, 'my photo.png')
+      const app = home(dir)
+      await settle()
 
-    app.stdin.write(bracketed(`file://${png.replaceAll(' ', '%20')}`))
-    await settle(400)
-    const frame = plain(app.lastFrame())
-    expect(frame).toContain('my photo.png')
-    expect(fieldLine(frame)).toBe('    › drop more, or type a path')
-  }, 20_000)
+      app.stdin.write(bracketed(`file://${png.replaceAll(' ', '%20')}`))
+      await settle(400)
+      const frame = plain(app.lastFrame())
+      expect(frame).toContain('my photo.png')
+      expect(fieldLine(frame)).toBe('    › drop more, or type a path')
+    },
+    20_000,
+  )
 
   it('puts a bracketed paste that names nothing on disk in the field', async () => {
     const dir = await makeTempDir()
@@ -191,7 +197,7 @@ describe('a paste or drop on home', () => {
     app.stdin.write(bracketed(png))
     await settle(400)
     const frame = plain(app.lastFrame())
-    expect(fieldLine(frame)).toMatch(/^ {4}› x\/./)
+    expect(fieldLine(frame).startsWith(`    › x${png.slice(0, 3)}`)).toBe(true)
     // Nothing staged: the field still leads and the panel offers no "drop more".
     expect(frame).not.toContain('drop more')
   }, 20_000)

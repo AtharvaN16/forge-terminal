@@ -36,7 +36,10 @@ describe('extension lock', () => {
         { what: name, onWait: () => log.push(`${name} waits`) },
       )
     const first = job('a')
-    await sleep(20)
+    // Until a holds it, not a fixed 20 ms: a slow Windows runner missed that,
+    // and its retry ran while the first try's job a was still taking the lock
+    // — under the restored config home, with no .locks to write in.
+    while ((await extensionInUse('boost')) === undefined) await sleep(5)
     expect(await extensionInUse('boost')).toEqual({ pid: process.pid, what: 'a' })
     await Promise.all([first, job('b')])
     // b says it is waiting (Working's "Waiting for another window") before a ends.

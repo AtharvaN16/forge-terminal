@@ -110,10 +110,9 @@ describe('splitPastedPaths on darwin', () => {
 })
 
 describe('startsLikePath', () => {
-  it('is true for what a terminal drops on a Mac: absolute, home, quoted, escaped, file URL', () => {
+  it('is true for what a terminal drops on a Mac: absolute, quoted, escaped, file URL', () => {
     for (const text of [
       '/Users/me/a.png',
-      '~/Desktop/a.png',
       "'/Users/me/My Photo.png'",
       '/Users/me/My\\ Photo.png /Users/me/b.png',
       'file:///Users/me/a.png',
@@ -123,14 +122,26 @@ describe('startsLikePath', () => {
     }
   })
 
+  // `~` expands to the home of the machine running the test, and a Windows
+  // runner's is `C:\Users\…` — no Mac path. win32's own case is below.
+  it.skipIf(process.platform === 'win32')('is true for a path under home on a Mac', () => {
+    expect(startsLikePath('~/Desktop/a.png', 'darwin')).toBe(true)
+  })
+
   it('is false for words, a hex, or a URL that is not a file', () => {
     for (const text of ['foo bar', '#6579FD', 'https://example.com/a.png', 'photo.png']) {
       expect(startsLikePath(text, 'darwin'), text).toBe(false)
     }
   })
 
-  it('on win32, is true for a drive, a share, or a quoted path', () => {
-    for (const text of ['C:\\Users\\a.png', '"C:\\My Files\\a.png"', '\\\\server\\a.png']) {
+  it('on win32, is true for a drive, a share, home, or a quoted path', () => {
+    for (const text of [
+      'C:\\Users\\a.png',
+      '"C:\\My Files\\a.png"',
+      '\\\\server\\a.png',
+      '~\\Pictures\\a.png',
+      '~/Desktop/a.png',
+    ]) {
       expect(startsLikePath(text, 'win32'), text).toBe(true)
     }
     expect(startsLikePath('foo bar', 'win32')).toBe(false)
