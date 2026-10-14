@@ -66,6 +66,15 @@ export async function launchShell(start: ShellStart): Promise<void> {
         mode: 'auto',
         flags: ['disambiguateEscapeCodes', 'reportEventTypes'],
       },
+      /**
+       * Only the lines that changed are written, each over itself. Without
+       * it Ink erases the whole frame and writes it again on every render —
+       * 30 rows erased per frame of a mode change's fade, measured. A
+       * terminal that honours synchronized output (Ghostty) hides that; one
+       * that does not (Apple Terminal) shows the blank between, and the
+       * screen flashed on every mode change (2026-10-14).
+       */
+      incrementalRendering: true,
     },
   )
   await instance.waitUntilExit()

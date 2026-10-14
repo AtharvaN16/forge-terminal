@@ -79,11 +79,16 @@ const cellsOf = (row: Row): Cell[] =>
  * background, and painting it there shows as dark patches on any other.
  * Adjacent cells that end up alike are one run again.
  *
- * Where the row's glyphs change (one screen's words for another's), every
- * glyph fades out into its fill over the first half and the new ones up over
- * the second, swapping unseen at the midpoint. Swapped cell by cell where
- * they were, two lines of words read as one garble half way. A row that was
- * blank has nothing to fade out, so its glyphs fade up from the start.
+ * Where a word changes (one screen's words for another's), its glyphs fade
+ * out into their fill over the first half and the new ones up over the
+ * second, swapping unseen at the midpoint. Swapped cell by cell where they
+ * were, two lines of words read as one garble half way. A word here is a run
+ * of two or more cells that hold a glyph in either row; only a run in which
+ * some glyph changes, and that has glyphs in both rows, dips. A lone glyph —
+ * a dot of the drop zone, which ripples on through the fade — swaps at the
+ * midpoint as before, and a word that stays is left alone: dipping whole
+ * rows flashed both (2026-10-14). Words where there was nothing fade up
+ * from the start; words going to nothing are gone by the midpoint.
  */
 export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg: string }): Row {
   const t = Math.max(0, Math.min(1, k))
@@ -92,17 +97,12 @@ export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg:
   const n = Math.max(from.length, to.length)
   const bgOf = (c: Cell) => c.bg || ends.canvas
   const inkOf = (c: Cell) => (c.ch === ' ' ? bgOf(c) : c.fg || ends.fg)
-  const glyphs = (cs: Cell[]) =>
-    cs
-      .map((c) => c.ch)
-      .join('')
-      .trimEnd()
-  const was = glyphs(from)
-  const dip = was !== '' && was.trim() !== '' && was !== glyphs(to)
+  const dips = wordsThatChange(from, to, n)
   const out: Run[] = []
   for (let i = 0; i < n; i++) {
     const x = from[i] ?? { ch: ' ' }
     const y = to[i] ?? { ch: ' ' }
+    const dip = dips[i] === true
     const bg = x.bg || y.bg ? mix(bgOf(x), bgOf(y), t) : undefined
     const fill = bg ?? ends.canvas
     const cell: Run =
@@ -129,6 +129,38 @@ export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg:
     else out.push(cell)
   }
   return out
+}
+
+/**
+ * For each of `n` cells, whether it is in a word that changes between `from`
+ * and `to` (see `blendRows`): a run of two or more cells that hold a glyph in
+ * either row, some glyph of which differs, which had glyphs to fade out —
+ * or any run, one glyph or more, that goes to nothing.
+ */
+function wordsThatChange(from: Cell[], to: Cell[], n: number): boolean[] {
+  const dips = new Array<boolean>(n).fill(false)
+  const ch = (cs: Cell[], i: number) => cs[i]?.ch ?? ' '
+  for (let i = 0; i < n; ) {
+    if (ch(from, i) === ' ' && ch(to, i) === ' ') {
+      i++
+      continue
+    }
+    let end = i
+    let changed = false
+    let was = false
+    let comes = false
+    while (end < n && (ch(from, end) !== ' ' || ch(to, end) !== ' ')) {
+      if (ch(from, end) !== ch(to, end)) changed = true
+      if (ch(from, end) !== ' ') was = true
+      if (ch(to, end) !== ' ') comes = true
+      end++
+    }
+    // Going to nothing, it is gone by the midpoint too, not left fading
+    // beside the words that came; a lone glyph changing for another swaps.
+    if (changed && was && (!comes || end - i >= 2)) dips.fill(true, i, end)
+    i = end
+  }
+  return dips
 }
 
 /** Fast start, gentle stop. */

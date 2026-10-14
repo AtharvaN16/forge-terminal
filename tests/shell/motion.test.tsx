@@ -74,6 +74,39 @@ describe('blendRows', () => {
     ])
   })
 
+  it('leaves what did not change alone when words beside it do: dots, and words that stay', () => {
+    // The drop zone's dots ripple on through a mode change, so a row's dots
+    // differ from the frame the fade began with. Dipping the whole row then
+    // flashed the dots and "Drop a file here" out and back in.
+    const a = [{ text: '·  Drop here  ·', fg: '#ffffff', bg: '#000000' }]
+    const b = [{ text: '•  Drop here  ·', fg: '#ffffff', bg: '#000000' }]
+    const mid = cells(blendRows(a, b, 0.5, ends))
+    // The words that stayed are as they were, at full ink.
+    expect(mid.slice(3, 12).map((c) => [c.ch, c.fg])).toEqual(
+      [...'Drop here'].map((ch) => [ch, ch === ' ' ? '#000000' : '#ffffff']),
+    )
+    // A lone dot that changed swaps, as before: no dip to the fill.
+    expect(mid[0]?.fg).toBe('#ffffff')
+  })
+
+  it('fades words up from the start where there was nothing, one letter or many', () => {
+    // "build a palette" where the drop zone's row was blank: no word to fade
+    // out, so all of it comes up together, the "a" with the rest.
+    const a = [{ text: '               ', fg: '#ffffff', bg: '#000000' }]
+    const b = [{ text: 'build a palette', fg: '#ffffff', bg: '#000000' }]
+    const quarter = cells(blendRows(a, b, 0.25, ends))
+    expect(quarter[0]?.ch).toBe('b')
+    expect(quarter[6]?.ch).toBe('a')
+    expect(quarter[0]?.fg).toBe(quarter[6]?.fg)
+  })
+
+  it('has words going to nothing gone by the midpoint', () => {
+    const a = [{ text: 'here', fg: '#ffffff', bg: '#000000' }]
+    const b = [{ text: '    ', fg: '#ffffff', bg: '#000000' }]
+    expect(cells(blendRows(a, b, 0.25, ends))[0]).toMatchObject({ ch: 'h', fg: '#808080' })
+    expect(cells(blendRows(a, b, 0.5, ends))[0]?.fg).toBe('#000000')
+  })
+
   it('fades a glyph up out of the fill of the blank it replaces', () => {
     const a = [{ text: ' ', bg: '#000000' }]
     const b = [{ text: 'x', fg: '#ffffff' }]
