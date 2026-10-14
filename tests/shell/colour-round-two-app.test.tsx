@@ -20,12 +20,12 @@ async function waitFor(ok: () => boolean, ms = 10_000) {
   while (!ok() && Date.now() - start < ms) await settle(30)
 }
 
-async function colourHome() {
+async function colourHome(height = 24) {
   const dir = await makeTempDir()
   const app = render(
     <App
       initialWidth={80}
-      initialHeight={24}
+      initialHeight={height}
       prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
     />,
   )
@@ -104,6 +104,27 @@ describe('colour, round two, in the app', () => {
     expect(plain(app.lastFrame())).toMatch(/rgb\(300 0 0\) +wrong input/)
   }, 30_000)
 
+  it('a blank row between the field and Scale’s tabs, where the window has one to spare', async () => {
+    for (const height of [24, 30]) {
+      const app = await colourHome(height)
+      app.stdin.write(RIGHT)
+      await settle(150)
+      app.stdin.write('\r')
+      await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+      app.stdin.write('#6579FD')
+      await settle()
+      app.stdin.write('\r')
+      await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
+      const all = lines(app.lastFrame())
+      const tabs = all.findIndex((l) => l.includes('tab  switch'))
+      // The field is three rows, its last blank: under it, a blank row or the tabs.
+      const blanks = tabs - all.findIndex((l) => l.includes('› #6579FD')) - 1
+      expect(blanks, `${height} rows`).toBe(height === 24 ? 1 : 2)
+      expect(all, `${height} rows`).toHaveLength(height)
+      app.unmount()
+    }
+  }, 30_000)
+
   it('→ after a colour asks for a second; ↵ mixes them', async () => {
     const app = await colourHome()
     app.stdin.write(RIGHT)
@@ -112,8 +133,11 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#F26E69')
     await settle()
+    // A whole colour: the field's far end says what → does.
+    expect(plain(app.lastFrame())).toMatch(/#F26E69 +→ gradient to a second colour/)
     app.stdin.write(RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
+    expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
     app.stdin.write('#6579FD')
     await settle()
     app.stdin.write('\r')
@@ -157,7 +181,8 @@ describe('colour, round two, in the app', () => {
     await settle(100)
     app.stdin.write(RIGHT)
     await settle()
-    expect(plain(app.lastFrame())).not.toContain('→')
+    // No arrow put after the colour (the far end's hint has one of its own).
+    expect(plain(app.lastFrame())).not.toMatch(/#ff0000 →/)
     app.stdin.write(RIGHT)
     await settle()
     app.stdin.write(RIGHT)

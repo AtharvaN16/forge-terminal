@@ -37,7 +37,7 @@ import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
 import { trueColour } from '../glyphs.js'
-import { blank, type Row } from '../home-art.js'
+import { blank, type Row, width as widthOf } from '../home-art.js'
 import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import { Text } from '../Text.js'
@@ -481,6 +481,8 @@ function restingField(p: ReturnType<typeof useTheme>, screen: Screen): Row {
 
 /** The empty box's one hint (§12.4): a colour on Scale and Palette, a path on Extract. */
 const COLOUR_HINT = 'type a hex, rgb(), hsl(), oklch() or a colour name'
+/** At the field's far end once a whole colour is typed where → mixes (approved 2026-10-14). */
+const GRADIENT_HINT = '→ gradient to a second colour'
 function hintFor(screen: Screen): string {
   return screen.kind === 'palette' || screen.kind === 'palette-empty'
     ? 'type an image path'
@@ -556,16 +558,30 @@ function FieldEditor({
       : []
   // After the colour and its →: the hint for the second (approved, §12.3).
   const waiting = pair && !pair.b && /→\s*$/.test(value)
+  /** `text` in grey at the far end of the field, after `before`. */
+  const farEnd = (before: Row, text: string): Row => [
+    ...before,
+    blank(Math.max(2, width - 9 - stringWidth(value) - widthOf(before) - stringWidth(text))),
+    { text, fg: p.border },
+  ]
+  // A whole colour, where → would start a mix: the key that does it (approved),
+  // where it fits beside what was typed.
+  const mixable =
+    mixes &&
+    one !== undefined &&
+    !pair?.b &&
+    !/→/.test(value) &&
+    width - 9 - stringWidth(value) - widthOf(swatch(one.rgb, true)) - stringWidth(GRADIENT_HINT) >=
+      2
   const after: Row = wrong
-    ? [
-        blank(Math.max(2, width - 9 - stringWidth(value) - 'wrong input'.length)),
-        { text: 'wrong input', fg: p.border },
-      ]
+    ? farEnd([], 'wrong input')
     : waiting
       ? [{ text: 'type a second colour to mix', fg: p.border }]
       : pair?.b
         ? swatch(pair.b)
-        : swatch(one?.rgb, true)
+        : mixable
+          ? farEnd(swatch(one?.rgb, true), GRADIENT_HINT)
+          : swatch(one?.rgb, true)
   const pad = <Box width={width - 4} height={1} {...fillProps} />
   return (
     <Box flexDirection="column" marginLeft={2}>
@@ -650,8 +666,11 @@ function bodyRows({
     const line: Row = tabbed
       ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit?.field, extra })
       : []
+    // A blank row between the field and the tabs where the window has one to
+    // spare: at 80×24 every row is taken, and the tabs sit right under the field.
+    const gap: Row[] = height > TIGHT_HEIGHT ? [[]] : []
     const tabs = tabbed
-      ? scaleTabRows({ width, palette: p, at: SCALE_TABS.indexOf(state.tab) })
+      ? [...gap, ...scaleTabRows({ width, palette: p, at: SCALE_TABS.indexOf(state.tab) })]
       : []
     const bg = state.over === 'white' ? WHITE : BLACK
     // Without colour there are no swatches to look at: the scale as text.
@@ -722,7 +741,7 @@ function bodyRows({
   if (screen.kind === 'system-empty' || screen.kind === 'system') {
     const labels = stepsOf(state.steps).map(String)
     if (screen.kind === 'system-empty') {
-      return [[], [], ...emptyGridRows({ width, palette: p, labels, lines: GRID_LINES })]
+      return [[], [], ...emptyGridRows({ width, palette: p, labels, lines: gridLinesFor(height) })]
     }
     const sys = systemOf(state, screen.ref)
     const rows = [
@@ -759,15 +778,15 @@ function bodyRows({
       labels,
       rows,
       reference: centreOf(state.steps),
-      sel: state.win ? { row: -1, col: -1 } : screen.sel,
-      lines: GRID_LINES,
+      sel: screen.sel,
+      framed: !state.win,
+      lines: gridLinesFor(height),
     })
-    // When the chosen cell is on the last row, the stroke's bottom takes the gap's line.
     // Under s, the steps line takes the mode's line, as it does under a scale's ramp.
     const under = state.stepsEdit
       ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit.field })
       : modeRow(p, width, MODE_NAMES[state.mode])
-    const body: Row[] = [top, [], ...grid, ...(grid.length > GRID_LINES + 1 ? [] : [[]]), under]
+    const body: Row[] = [top, [], ...grid, [], under]
     return state.win ? windowFor(p, state, screen.ref, body, width) : body
   }
   // The palette, or inside one of its colours.
@@ -1009,8 +1028,15 @@ function keysFor(
   }
 }
 
-/** The lines Palette's grid may take under its step numbers (§12.6). */
+/** The rows a screen has at 80×24 (the window less the painted canvas's): Scale's every one taken. */
+const TIGHT_HEIGHT = 23
+
+/**
+ * The lines Palette's grid may take under its step numbers (§12.6): what
+ * the screen leaves it, nine at 80×24.
+ */
 const GRID_LINES = 9
+const gridLinesFor = (height: number) => Math.max(GRID_LINES, height - 14)
 
 /** Palette's open window (W1), drawn over its body: the Mode list, or the Tweak sliders. */
 function windowFor(

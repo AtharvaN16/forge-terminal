@@ -1,6 +1,4 @@
 import stringWidth from 'string-width'
-import { onWhiteAndBlack } from '../../core/colour/contrast.js'
-import { parseHex } from '../../core/colour/space.js'
 import { blank, mix, type Row, type Run, width } from '../home-art.js'
 import { sliderRow } from '../quality-art.js'
 import type { Palette } from '../theme.js'
@@ -50,20 +48,12 @@ function rowFrom(cells: Cell[]): Row {
   return out
 }
 
-/** White or near-black, whichever reads on `hex`. */
-function readsOn(hex: string): string {
-  const rgb = parseHex(hex)
-  if (!rgb) return '#ffffff'
-  const r = onWhiteAndBlack(rgb)
-  return r.white >= r.black ? '#ffffff' : '#111111'
-}
-
 /* ---------------------------------------------------------------- grid */
 
 export interface GridRow {
   name: string
   hexes: string[]
-  /** The row of the colour typed; its reference cell gets the ◤. */
+  /** The row of the colour typed; its reference cell is underlined. */
   yours: boolean
 }
 
@@ -72,28 +62,46 @@ export const NAME_COLUMN = 10
 const MAX_NAME_COLUMN = 14
 export const nameColumn = (names: string[]) =>
   Math.max(NAME_COLUMN, Math.min(MAX_NAME_COLUMN, Math.max(0, ...names.map((n) => n.length)) + 2))
-const MAX_CELL = 4
+const MAX_CELL = 8
+const MAX_TALL = 3
+/** The fewest rows a scrolled grid shows before its swatches go down to one line. */
+const MIN_SHOWN = 4
 
 /**
- * How the grid's cells fit in `columns`: as wide as fit, up to four, with a
- * gap of one between them always (the gap carries the chosen cell's stroke).
+ * How the grid's cells fit in `columns`: as wide as fit, up to eight, with a
+ * gap of one between them always (the gap carries the chosen cell's frame),
+ * a frame column either side, and the scroll bar's two at the end.
  */
 export function gridFit(columns: number, n: number, names = NAME_COLUMN): { cell: number; gap: 1 } {
-  const room = columns - 4 - names
-  return { cell: Math.max(1, Math.min(MAX_CELL, Math.floor((room - (n - 1)) / n))), gap: 1 }
+  const room = columns - 5 - names - n
+  return { cell: Math.max(1, Math.min(MAX_CELL, Math.floor(room / n))), gap: 1 }
+}
+
+/**
+ * How tall the swatches are and how many rows show in `lines`: each row its
+ * swatches and the gap line above, and one more gap under the last. Every
+ * row shows when it can, growing up to three lines; otherwise the grid
+ * scrolls, two lines a row while `MIN_SHOWN` rows still fit, one below that.
+ */
+export function gridLayout(lines: number, n: number): { tall: number; shown: number } {
+  let tall = Math.max(1, Math.min(MAX_TALL, Math.floor((lines - 1) / Math.max(1, n)) - 1))
+  if (tall < 2 && Math.floor((lines - 1) / 3) >= MIN_SHOWN) tall = 2
+  return { tall, shown: Math.max(1, Math.min(n, Math.floor((lines - 1) / (tall + 1)))) }
 }
 
 /**
  * The grid (§12.6): the step numbers over it, a row per colour named down
- * the left, the neutral last. Rows have a gap between them as columns do:
- * each row's swatches fill the lower half of its first line. With fewer
- * colours rows grow, up to three lines, to fill `lines`.
+ * the left, the neutral last. A swatch is whole cells, spaces on its colour:
+ * a half block's glyph does not fill its cell in every terminal (Apple
+ * Terminal draws it from the font) and left lines inside the swatches.
+ * Rows have a gap line between them as columns have a gap column.
  *
- * The chosen cell is wider, half a column into each gap, with a stroke all
- * round in the text colour: the gap columns are half stroke, half cell; the
- * half line above it and the half line under it are stroke. Your colour's
- * reference cell has ◤ in its top-left corner, or a small ▖ where a cell is
- * one line and a triangle cannot fit.
+ * The chosen cell has a thin frame round it in the text colour, `╭─╮ │ ╰─╯`,
+ * in the gaps, so no swatch is covered. Your colour's reference cell is
+ * underlined in the mode's colour, `━`, in the gap under it, as the tab in
+ * use is. When not every row fits in `lines`, the rows shown keep the
+ * chosen one in the middle, and a bar at the right says where they are in
+ * the list.
  */
 export function gridRows({
   width: columns,
@@ -102,6 +110,7 @@ export function gridRows({
   rows: all,
   reference,
   sel,
+  framed = true,
   lines,
 }: {
   width: number
@@ -110,21 +119,27 @@ export function gridRows({
   rows: GridRow[]
   /** Which column is the colour itself (500, or Radix's 9). */
   reference: number
+  /** The chosen cell; the rows shown follow its row. */
   sel: { row: number; col: number }
+  /** Whether the chosen cell has its frame (not while a window is open over the grid). */
+  framed?: boolean
   /** The lines the colours may take, under the step numbers. */
   lines: number
 }): Row[] {
   const nameW = nameColumn(all.map((r) => r.name))
-  const { cell } = gridFit(columns, labels.length, nameW)
-  const canvas = lc(p.canvas)
+  const n = labels.length
+  const { cell } = gridFit(columns, n, nameW)
+  const { tall, shown } = gridLayout(lines, all.length)
+  const first = Math.max(0, Math.min(all.length - shown, sel.row - Math.floor((shown - 1) / 2)))
   const frame = lc(p.fg)
-  const tall = Math.max(1, Math.min(3, Math.floor(lines / Math.max(1, all.length))))
   const C = (ch: string, fg?: string, bg?: string, bold = false): Cell => ({ ch, fg, bg, bold })
-  const isSel = (r: number) => r === sel.row
-  const isBelow = (r: number) => r === sel.row + 1
+
+  const at = (i: number) => 2 + nameW + i * (cell + 1)
+  // The cells, the right frame column, a blank, the bar.
+  const W = at(n - 1) + cell + 3
+  const line = (): Cell[] => Array.from({ length: W }, () => C(' '))
 
   // The step numbers: the chosen column's first, so it is never the one left out.
-  const at = (i: number) => 2 + nameW + i * (cell + 1)
   const placed: { from: number; to: number; i: number }[] = []
   const place = (i: number) => {
     const t = labels[i] as string
@@ -137,7 +152,7 @@ export function gridRows({
   labels.forEach((_, i) => {
     if (i !== sel.col) place(i)
   })
-  const labelCells: Cell[] = Array.from({ length: at(labels.length - 1) + cell + 1 }, () => C(' '))
+  const labelCells = line()
   for (const q of placed) {
     const on = q.i === sel.col
     const fg = on ? p.fg : q.i === reference ? p.accent : p.border
@@ -145,60 +160,58 @@ export function gridRows({
       labelCells[q.from + k] = C(ch, lc(fg), undefined, on)
     })
   }
-  const out: Row[] = [rowFrom(labelCells)]
 
-  /** The gap column before cell `i` on line `k` of row `r`. */
-  const gap = (r: number, k: number, i: number, hexes: string[]): Cell => {
-    const chosen = lc(hexes[sel.col] ?? canvas)
-    if (isSel(r) && i === sel.col) {
-      return k === 0 ? C('▗', lc(hexes[i] as string), frame) : C('▐', lc(hexes[i] as string), frame)
+  /** The gap line above row `r`: the chosen cell's frame, top or bottom, where it is. */
+  const gap = (r: number): Cell[] => {
+    const cells = line()
+    const top = r === sel.row
+    if (framed && sel.col >= 0 && (top || r - 1 === sel.row)) {
+      cells[at(sel.col) - 1] = C(top ? '╭' : '╰', frame)
+      for (let c = 0; c < cell; c++) cells[at(sel.col) + c] = C('─', frame)
+      cells[at(sel.col) + cell] = C(top ? '╮' : '╯', frame)
     }
-    if (isSel(r) && i === sel.col + 1)
-      return k === 0 ? C('▖', chosen, frame) : C('▌', chosen, frame)
-    if (isBelow(r) && k === 0 && (i === sel.col || i === sel.col + 1)) return C('▀', frame, canvas)
-    return C(' ')
+    // Under your colour's reference cell, its underline: over the frame's edge where they meet.
+    if (all[r - 1]?.yours && reference >= 0 && reference < n) {
+      for (let c = 0; c < cell; c++) cells[at(reference) + c] = C('━', lc(p.accent))
+    }
+    return cells
   }
 
-  all.forEach((x, r) => {
+  const body: Cell[][] = []
+  for (let r = first; r < first + shown; r++) {
+    const x = all[r] as GridRow
+    body.push(gap(r))
     for (let k = 0; k < tall; k++) {
-      const cells: Cell[] = [C(' '), C(' ')]
-      const name = k === 0 ? x.name : ''
-      const nameFg = lc(x.yours ? p.accent : isSel(r) ? p.fg : p.dim)
-      for (let c = 0; c < nameW; c++) {
-        cells.push(C(name[c] ?? ' ', name[c] ? nameFg : undefined, undefined, isSel(r) || x.yours))
+      const cells = line()
+      if (k === 0) {
+        const fg = lc(x.yours ? p.accent : r === sel.row ? p.fg : p.dim)
+        ;[...x.name.slice(0, nameW - 1)].forEach((ch, c) => {
+          cells[2 + c] = C(ch, fg, undefined, r === sel.row || x.yours)
+        })
       }
       x.hexes.forEach((h, i) => {
-        const g = gap(r, k, i, x.hexes)
-        if (i > 0) cells.push(g)
-        else if (g.ch !== ' ') cells[cells.length - 1] = g
-        const strokeTop = k === 0 && (isSel(r) || isBelow(r)) && i === sel.col
-        const mine = x.yours && i === reference
-        for (let c = 0; c < cell; c++) {
-          if (k === 0) {
-            if (mine && c === 0 && tall === 1)
-              cells.push(C('▖', lc(readsOn(h)), strokeTop ? frame : canvas))
-            else cells.push(C('▄', lc(h), strokeTop ? frame : canvas))
-          } else if (mine && c === 0 && k === 1) cells.push(C('◤', lc(readsOn(h)), lc(h)))
-          else cells.push(C(' ', undefined, lc(h)))
-        }
+        for (let c = 0; c < cell; c++) cells[at(i) + c] = C(' ', undefined, lc(h))
       })
-      const end = gap(r, k, x.hexes.length, x.hexes)
-      if (end.ch !== ' ') cells.push(end)
-      out.push(rowFrom(cells))
+      if (framed && r === sel.row && sel.col >= 0) {
+        cells[at(sel.col) - 1] = C('│', frame)
+        cells[at(sel.col) + cell] = C('│', frame)
+      }
+      body.push(cells)
     }
-  })
-  // The half line under the last row: the stroke's bottom, when the chosen cell is there.
-  if (sel.row === all.length - 1) {
-    const cells: Cell[] = Array.from({ length: 2 + nameW }, () => C(' '))
-    labels.forEach((_, i) => {
-      const edge = i === sel.col || i === sel.col + 1
-      if (i > 0) cells.push(edge ? C('▀', frame) : C(' '))
-      else if (sel.col === 0) cells[cells.length - 1] = C('▀', frame)
-      for (let c = 0; c < cell; c++) cells.push(i === sel.col ? C('▀', frame) : C(' '))
-    })
-    if (sel.col === labels.length - 1) cells.push(C('▀', frame))
-    out.push(rowFrom(cells))
   }
+  body.push(gap(first + shown))
+
+  // Where the rows shown are in the list: a thumb on a faint track, as the windows' bars.
+  if (shown < all.length) {
+    const h = body.length
+    const thumb = Math.max(1, Math.round((h * shown) / all.length))
+    const start = Math.round(((h - thumb) * first) / Math.max(1, all.length - shown))
+    body.forEach((cells, k) => {
+      cells[W - 1] = k >= start && k < start + thumb ? C('┃', lc(p.fg)) : C('│', lc(p.faint))
+    })
+  }
+
+  const out: Row[] = [rowFrom(labelCells), ...body.map(rowFrom)]
   while (out.length < lines + 1) out.push([])
   return out
 }

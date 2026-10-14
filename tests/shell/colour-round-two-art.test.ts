@@ -102,56 +102,125 @@ describe('the Alpha tab (A1, P1)', () => {
 
 describe('Palette’s grid (§12.6)', () => {
   const sys = system({ r: 0xd2, g: 0x04, b: 0x2d }, 'full')
-  const gridOf = (sel: { row: number; col: number }, s = sys) =>
+  const labels = scale(BLUE).map((x) => String(x.step))
+  const gridOf = (
+    sel: { row: number; col: number },
+    { s = sys, lines = 28, width: w = 76, framed = true } = {},
+  ) =>
     gridRows({
-      width: 76,
+      width: w,
       palette: P,
-      labels: DEFAULT_STEPS.set === 'tailwind' ? scale(BLUE).map((x) => String(x.step)) : [],
+      labels,
       rows: [
         ...s.rows.map((r) => ({ name: r.name, hexes: r.steps.map((x) => x.hex), yours: r.yours })),
         { name: 'neutral', hexes: s.neutral.map((x) => x.hex), yours: false },
       ],
       reference: 5,
       sel,
-      lines: 9,
+      framed,
+      lines,
     })
+  const frame = P.fg.toLowerCase()
+  // 76 columns, names 10 wide: cells of four, the first at column 12.
+  const at = (i: number) => 12 + i * 5
 
   it('the step numbers, a row per colour named down the left, the neutral last', () => {
     const rows = gridOf({ row: 5, col: 7 })
-    expect(rows).toHaveLength(10)
+    expect(rows).toHaveLength(29)
     expect(text(rows[0])).toMatch(/50 +100 +200.*950/)
-    expect(text(rows[1])).toMatch(/^ {2}red/)
-    expect(text(rows[9])).toMatch(/^ {2}neutral/)
+    // A gap line, then red's swatches, two lines tall, a gap line, orange's…
+    expect(text(rows[2])).toMatch(/^ {2}red/)
+    expect(text(rows[5])).toMatch(/^ {2}orange/)
+    expect(text(rows[26])).toMatch(/^ {2}neutral/)
   })
 
-  it('a gap between rows: swatches fill only the lower half of a one-line row', () => {
-    const row = gridOf({ row: 5, col: 7 })[2] as Row
-    const swatches = row.filter((r) => r.text.includes('▄'))
-    expect(swatches.length).toBeGreaterThan(0)
-    expect(swatches.every((r) => r.bg === P.canvas.toLowerCase())).toBe(true)
-  })
-
-  it('the chosen cell: wider, with a stroke round it in the text colour', () => {
+  it('swatches are whole cells, spaces on their colour: no half blocks to leave seams', () => {
     const rows = gridOf({ row: 5, col: 7 })
-    const frame = P.fg.toLowerCase()
-    const chosen = rows[6] as Row
-    // Half stroke, half cell, in the gap columns either side.
-    expect(chosen.some((r) => r.text.startsWith('▗') && r.bg === frame)).toBe(true)
-    expect(chosen.some((r) => r.text.includes('▖') && r.bg === frame)).toBe(true)
-    // The stroke's bottom: the half line above the next row.
-    expect((rows[7] as Row).some((r) => r.text.includes('▀') && r.fg === frame)).toBe(true)
+    expect(rows.every((row) => row.every((r) => !/[▀▄▌▐▖▗▘▝]/.test(r.text)))).toBe(true)
+    const red = rows[2] as Row
+    const hex = (sys.rows[0]?.steps[0]?.hex ?? '').toLowerCase()
+    expect(red.some((r) => r.text === '    ' && r.bg === hex)).toBe(true)
   })
 
-  it('your colour’s cell is marked: ▖ on one-line rows, ◤ where rows are taller', () => {
-    const one = gridOf({ row: 5, col: 7 })[1] as Row
-    expect(one.some((r) => r.text === '▖')).toBe(true)
+  it('the chosen cell: a thin frame round it in the gaps, in the text colour', () => {
+    const rows = gridOf({ row: 5, col: 7 })
+    const cells = (i: number) => [...text(rows[i])]
+    // Row 5's gap line is 1 + 5 × 3 = 16; its swatches 17–18; the gap under, 19.
+    expect(
+      cells(16)
+        .slice(at(7) - 1, at(7) + 5)
+        .join(''),
+    ).toBe('╭────╮')
+    expect(cells(17)[at(7) - 1]).toBe('│')
+    expect(cells(18)[at(7) + 4]).toBe('│')
+    expect(
+      cells(19)
+        .slice(at(7) - 1, at(7) + 5)
+        .join(''),
+    ).toBe('╰────╯')
+    expect((rows[16] as Row).find((r) => r.text.includes('─'))?.fg).toBe(frame)
+    // Nowhere else (row 5 is not your colour's row).
+    const strokes = rows.flatMap((row) => [...text(row)]).filter((ch) => '╭╮╰╯│─'.includes(ch))
+    expect(strokes).toHaveLength(2 + 4 + 2 + 2 + 2 + 4)
+  })
+
+  it('no frame while a window is open over the grid', () => {
+    const rows = gridOf({ row: 5, col: 7 }, { framed: false })
+    expect(rows.every((row) => !/[╭╮╰╯│─]/.test(text(row)))).toBe(true)
+  })
+
+  it('your colour’s cell is underlined in the mode’s colour, in the gap under it', () => {
+    const yours = sys.rows.findIndex((r) => r.yours)
+    const accent = P.accent.toLowerCase()
+    const rows = gridOf({ row: 0, col: 0 })
+    // Its swatches on lines 2 + 3 × row and the next; the gap under them after.
+    const under = rows[4 + yours * 3] as Row
+    expect([...text(under)].slice(at(5), at(5) + 4).join('')).toBe('━━━━')
+    expect(under.find((r) => r.text.includes('━'))?.fg).toBe(accent)
+    expect(rows.every((row) => !text(row).includes('◤'))).toBe(true)
+    // Chosen, the underline takes the middle of the frame's bottom edge.
+    const chosen = gridOf({ row: yours, col: 5 })
+    expect([...text(chosen[4 + yours * 3])].slice(at(5) - 1, at(5) + 5).join('')).toBe('╰━━━━╯')
+  })
+
+  it('fewer colours: every row shows, up to three lines tall', () => {
     const opposite = system({ r: 0xd2, g: 0x04, b: 0x2d }, 'opposite')
-    const tall = gridOf({ row: 2, col: 0 }, opposite)
-    expect(tall.some((row) => row.some((r) => r.text === '◤'))).toBe(true)
+    const rows = gridOf({ row: 0, col: 0 }, { s: opposite, lines: 40 })
+    const tall = rows.filter((row) => text(row).includes('    ') && row.some((r) => r.bg)).length
+    expect(tall).toBe((opposite.rows.length + 1) * 3)
   })
 
-  it('the chosen cell on the last row: the stroke’s bottom takes a line of its own', () => {
-    expect(gridOf({ row: 8, col: 10 })).toHaveLength(11)
+  it('too many rows for the lines: it scrolls, the chosen row kept in the middle, a bar at the right', () => {
+    const rows = gridOf({ row: 8, col: 10 }, { lines: 13 })
+    expect(rows).toHaveLength(14)
+    // Two-line swatches while four rows fit: blue to neutral, the last four.
+    expect(text(rows[2])).toMatch(/^ {2}blue/)
+    expect(text(rows[11])).toMatch(/^ {2}neutral/)
+    const bar = rows.slice(1).map((r) => [...text(r)].at(-1))
+    expect(bar.every((ch) => ch === '│' || ch === '┃')).toBe(true)
+    // At the end of the list, so the thumb is at the bottom.
+    expect(bar.at(-1)).toBe('┃')
+    expect(bar[0]).toBe('│')
+    const middle = gridOf({ row: 4, col: 0 }, { lines: 13 })
+    // Teal chosen: green, teal, blue, purple.
+    expect(text(middle[2])).toMatch(/^ {2}green/)
+  })
+
+  it('down to one-line swatches when four rows would not fit; no bar when all fit', () => {
+    const rows = gridOf({ row: 0, col: 0 }, { lines: 10 })
+    expect(rows).toHaveLength(11)
+    expect(text(rows[2])).toMatch(/^ {2}red/)
+    expect(text(rows[4])).toMatch(/^ {2}orange/)
+    expect(gridOf({ row: 0, col: 0 }).every((r) => !text(r).includes('┃'))).toBe(true)
+  })
+
+  it('cells grow with the window, up to eight wide, never past it', () => {
+    for (const w of [76, 100, 160]) {
+      const rows = gridOf({ row: 5, col: 7 }, { width: w })
+      for (const row of rows) expect(width(row)).toBeLessThan(w)
+    }
+    const wide = gridOf({ row: 0, col: 0 }, { width: 160 })[2] as Row
+    expect(wide.some((r) => r.text === ' '.repeat(8) && r.bg)).toBe(true)
   })
 
   it('before a colour: faint numbers and outlines', () => {

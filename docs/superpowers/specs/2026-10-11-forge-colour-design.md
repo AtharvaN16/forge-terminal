@@ -661,7 +661,9 @@ field, the steps line and the preview stay where they are.
 
 In a scale, `→` at the end of a whole colour in the box puts ` → ` after
 it and asks for a second (`->` and `>` type the same); the box's hint until then is `type a second colour to mix`
-(approved). ↵ makes the mix: the bar says **Scale ╱ Mix**, the ramp runs
+(approved). Before that, once a whole colour is typed, the box's far end
+says `→ gradient to a second colour` in grey (approved 2026-10-14), where
+it fits. ↵ makes the mix: the bar says **Scale ╱ Mix**, the ramp runs
 from one to the other, labelled by how far along (0–100), the preview is
 the scale's. The line under the ramp holds the way across (OKLab straight,
 OKLCH round the hue wheel) and the count (3–21), changed under `s` like the
@@ -700,13 +702,19 @@ one colour"), Palette ("build a palette / from one colour").
   colour, `r` reset (once tweaked), esc back. Under `s` the steps line
   takes the mode's line, as it does under Scale's ramp.
 - **The grid:** a row per colour named down the left, the step numbers over
-  it. Rows have a gap between them as columns do: each row's swatches fill
-  the lower half of their first line (Full set's nine rows are thin bars;
-  approved). With fewer colours, rows grow up to three lines.
-- **The chosen cell** is wider (half a column into each gap) with a stroke
-  all round in the text colour (X7 plus stroke). **Your colour's cell** has
-  ◤ in its top-left corner (a small ▖ on one-line cells, where a triangle
-  cannot fit). The step number above and the row's name are bold.
+  it. Swatches are whole cells, spaces on their colour, never half blocks:
+  Apple Terminal draws `▀ ▄` from the font, short of the cell, and the
+  seams read as lines inside the boxes (2026-10-14). A gap line between
+  rows, a gap column between cells. Cells grow with the window up to 8
+  wide; swatches are two lines tall while four rows still fit, one below
+  that, up to three when every row fits. When not every row fits, the grid
+  scrolls with the chosen row kept in the middle, and a bar (`┃` on a faint
+  `│`) at its right says where.
+- **The chosen cell** has a thin frame, `╭─╮ │ ╰─╯`, in the text colour, in
+  the gaps round it. **Your colour's cell** is underlined, `━` in the mode's
+  colour in the gap under it, taking the middle of the frame's bottom edge
+  when chosen (2026-10-14; replaces ◤). The step number above and the
+  row's name are bold.
 - **Modes** (`m`, a centred window over the faded screen, W1; each mode with
   its colours as chips; it scrolls when too short): Full set, Monochromatic,
   Analogous, Complementary, Split complementary, Triadic, Pastel. Maths in

@@ -21,6 +21,7 @@ import {
 import { type Row, width } from '../../src/shell/home-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import {
+  type Cell,
   describeHomeRow,
   describeRow,
   type FixtureFrame,
@@ -63,6 +64,18 @@ const FX = loadFixture('colour-mockup.json') as {
 const { data } = FX
 const frame = (id: string) => FX.frames.find((f) => f.id === id) as FixtureFrame
 const P = modePalette(DARK, 'colour')
+
+/**
+ * The mockup drew a photo cell of one colour as `▀` on itself; the app draws
+ * it as a space on that colour, since a terminal that draws `▀` from its font
+ * leaves a seam round the glyph. The two look alike: held as one.
+ */
+const seamless = (cells: Cell[]): Cell[] =>
+  cells.map((c) =>
+    c.ch === '▀' && c.fg !== null && c.fg === c.bg ? { ...c, ch: ' ', fg: null } : c,
+  )
+const describePhotoRow = (actual: Cell[], expected: Cell[]) =>
+  describeRow(actual, seamless(expected))
 
 function expectRows(rows: Row[], id: string, from: number, describe = describeRow) {
   rows.forEach((row, i) => {
@@ -110,13 +123,29 @@ describe('home in colour mode: three cards (colour spec §12.6)', () => {
           i === selected ? P.panelBand.toLowerCase() : P.selectionBg.toLowerCase(),
         )
       })
-      // Each card's preview: its first sample's colour is in its row.
+      // Each card's preview: its second sample's colour is in its row.
       const preview = rows[6] as Row
-      for (const hex of [samples.palette[0], samples.scale[0], samples.system[0]]) {
+      for (const hex of [samples.palette[1], samples.scale[1], samples.system[1]]) {
         expect(preview.some((r) => r.bg === (hex as string).toLowerCase())).toBe(true)
       }
     })
   }
+
+  it('draws every card’s swatches square: two cells across, one row down', () => {
+    const all = [...samples.palette, ...samples.scale, ...samples.system].map((h) =>
+      h.toLowerCase(),
+    )
+    for (const w of [80, 120]) {
+      const preview = choiceCards({ width: w, palette: P, selected: 0, samples })[6] as Row
+      const boxes = preview.filter((r) => all.includes(r.bg ?? ''))
+      expect(boxes.every((r) => r.text === '  ')).toBe(true)
+    }
+    // At 80 columns a card fits nine: the scale keeps its middle, 100 to 900.
+    const narrow = choiceCards({ width: 80, palette: P, selected: 0, samples })[6] as Row
+    const has = (hex: string) => narrow.some((r) => r.bg === hex.toLowerCase())
+    expect(has('#DFE6FE') && has('#252D76')).toBe(true)
+    expect(has('#F4F6FF') || has('#161B58')).toBe(false)
+  })
 })
 
 describe('the field, filled and neutral', () => {
@@ -204,7 +233,7 @@ describe('the palette (D1)', () => {
       items: PAL.map((p, i) => ({ hex: p.hex, pct: PCT[i] as number })),
       selected: CORAL,
     })
-    expectRows(paletteBody(photo, list), '4', 6)
+    expectRows(paletteBody(photo, list), '4', 6, describePhotoRow)
   })
 
   it('the chosen colour, said three ways', () =>
@@ -234,7 +263,7 @@ describe('the palette (D1)', () => {
       items: SUBS.map((s, i) => ({ hex: s.hex, pct: SUB_PCT[i] as number })),
       selected: 0,
     })
-    expectRows(paletteBody(photo, list), '5', 6)
+    expectRows(paletteBody(photo, list), '5', 6, describePhotoRow)
     expectRows(
       [
         detailRow(P, [

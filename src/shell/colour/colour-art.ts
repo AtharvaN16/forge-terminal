@@ -69,6 +69,9 @@ export const COLOUR_SAMPLES = {
   ],
 }
 
+/** A square swatch's width in cells, one row tall. */
+const SQUARE = 2
+
 /** The three cards' names and subtitles, each subtitle on two lines (colour spec §12.6). */
 export const COLOUR_CARDS = [
   { name: 'Extract', sub: ['extract colours', 'from an image'] },
@@ -97,11 +100,19 @@ export function choiceCards({
   const W = columns - 4
   // Three cards in the panel: a cell of panel at each side, two between each.
   const CARD = Math.floor((W - 6) / 3)
-  const swatches = (hexes: string[], w: number) => hexes.map((h) => fill(' '.repeat(w), h))
+  // Square swatches, as Scale's ramp draws them: a cell is half as wide as
+  // it is tall, so two across and one down. A strip longer than the card
+  // keeps its middle (a scale loses its lightest and darkest first).
+  const fit = Math.max(1, Math.floor((CARD - 4) / SQUARE))
+  const swatches = (hexes: string[]) => {
+    const drop = Math.max(0, hexes.length - fit)
+    const kept = hexes.slice(Math.floor(drop / 2), hexes.length - Math.ceil(drop / 2))
+    return kept.map((h) => fill(' '.repeat(SQUARE), h))
+  }
   const previews: Row[] = [
-    swatches(samples.palette, Math.max(1, Math.floor((CARD - 4) / samples.palette.length))),
-    swatches(samples.scale, Math.max(1, Math.floor((CARD - 4) / samples.scale.length))),
-    swatches(samples.system, Math.max(1, Math.floor((CARD - 4) / samples.system.length))),
+    swatches(samples.palette),
+    swatches(samples.scale),
+    swatches(samples.system),
   ]
   const card = (i: number): Row[] => {
     const c = COLOUR_CARDS[i] as (typeof COLOUR_CARDS)[number]
@@ -261,6 +272,8 @@ export function photoRows({
       const top = at(r * 2, x)
       const bottom = at(r * 2 + 1, x)
       if (top === undefined && bottom === undefined) return blank(1)
+      // One colour throughout is a space on it: no glyph, so no seam (halfBlockCell).
+      if (top === bottom) return { text: ' ', fg: top, bg: bottom }
       return { text: '▀', ...(top ? { fg: top } : {}), ...(bottom ? { bg: bottom } : {}) }
     }),
   )
