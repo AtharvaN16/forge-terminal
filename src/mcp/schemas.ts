@@ -251,7 +251,11 @@ export const FormatsOutput = z.strictObject({
 })
 
 /** Colour (colour spec §7.2). Read-only, like `forge_probe`. */
-const Hex = z.string().describe('A hex colour: #RRGGBB, #RGB, or without the #')
+const Hex = z
+  .string()
+  .describe(
+    'A colour: #RRGGBB, #RGB (or without the #), rgb(), hsl(), oklch(), or a CSS or common colour name',
+  )
 
 export const PaletteInput = z.object({
   path: absolutePath.describe('An image file (absolute path): a photo, a screenshot or artwork'),

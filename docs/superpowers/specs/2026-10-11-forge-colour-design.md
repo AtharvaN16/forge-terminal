@@ -724,5 +724,6 @@ Figma keeps `fill-opacity` on paste is to be checked by hand.
 ### 12.8 Not in this round
 
 The CLI and MCP keep `forge palette` (an image's colours) and `forge scale`
-as they are, except that `forge scale` reads its colour with `parseColour`.
+as they are, except that `forge scale`, `--inside` and the MCP tools read a
+colour with `parseColour`.
 Steps, neutrals, alpha, mix and Palette are app-only for now.

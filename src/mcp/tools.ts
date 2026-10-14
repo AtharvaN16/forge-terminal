@@ -11,7 +11,7 @@ import type {
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
 import { wholePercents } from '../core/colour/palette.js'
-import { parseHex } from '../core/colour/space.js'
+import { parseColour } from '../core/colour/parse.js'
 import { type CropSpec, parseAspect } from '../core/crop.js'
 import { type ForgeError, invalidArguments, isForgeError } from '../core/errors.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -308,7 +308,7 @@ function textError(text: string): CallToolResult {
  * very document `forge palette --json` prints, so the two cannot drift.
  */
 export async function paletteTool(args: PaletteArgs): Promise<CallToolResult> {
-  const inside = args.inside === undefined ? undefined : parseHex(args.inside)
+  const inside = args.inside === undefined ? undefined : parseColour(args.inside)?.rgb
   if (args.inside !== undefined && !inside) {
     return textError(`${args.inside} is not a colour. Try #RRGGBB.`)
   }
@@ -329,8 +329,12 @@ export async function paletteTool(args: PaletteArgs): Promise<CallToolResult> {
 }
 
 export async function scaleTool(args: ScaleArgs): Promise<CallToolResult> {
-  const colour = parseHex(args.colour)
-  if (!colour) return textError(`${args.colour} is not a colour. Try #RRGGBB.`)
+  const colour = parseColour(args.colour)?.rgb
+  if (!colour) {
+    return textError(
+      `${args.colour} is not a colour. Try #RRGGBB, rgb(), hsl(), oklch() or a colour name.`,
+    )
+  }
   const { runScale } = await import('../cli/colour.js')
   const out = await runScale({ kind: 'scale', colour, svg: false }, { json: true, colour: false })
   const doc = JSON.parse(out.stdout[0] ?? '{}') as ScaleJson

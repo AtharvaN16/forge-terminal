@@ -1,5 +1,6 @@
 import { Command, CommanderError } from 'commander'
-import { parseHex, type Rgb } from '../core/colour/space.js'
+import { parseColour } from '../core/colour/parse.js'
+import type { Rgb } from '../core/colour/space.js'
 import { parseAspect } from '../core/crop.js'
 import { invalidArguments, invalidDpi } from '../core/errors.js'
 import type { BoostScale } from '../core/extension-targets.js'
@@ -365,11 +366,12 @@ function colourArg(raw: string | undefined): Rgb {
       "Try: forge scale 6579FD — or quote it, '#6579FD', because an unquoted # starts a comment in the shell.",
     )
   }
-  const rgb = parseHex(raw)
+  // As the app's colour box reads it (colour spec §12.4): a transparency is read and left out.
+  const rgb = parseColour(raw)?.rgb
   if (!rgb) {
     throw invalidArguments(
       `${raw} is not a colour.`,
-      'Try a hex code, for example 6579FD or #6579FD.',
+      "Try a hex code (6579FD), rgb(), hsl(), oklch() or a colour name, quoted: 'rgb(101 121 253)'.",
     )
   }
   return rgb

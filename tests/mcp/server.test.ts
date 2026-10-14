@@ -446,7 +446,7 @@ describe('colour tools', () => {
     expect(pdf.isError).toBe(true)
     expect(pdf.text).toContain('not an image')
     expect(pdf.text).toContain('A palette is taken from a photo')
-    const bad = await call('forge_scale', { colour: 'blue' })
+    const bad = await call('forge_scale', { colour: 'notacolour' })
     expect(bad.isError).toBe(true)
     expect(bad.text).toContain('not a colour')
   })

@@ -63,11 +63,22 @@ describe('forge scale', () => {
         hint: expect.stringMatching(/quote/),
       }),
     )
-    for (const bad of ['blue', '#GGGGGG', '#12345']) {
+    for (const bad of ['notacolour', '#GGGGGG', '#12345', 'rgb(300 0 0)']) {
       expect(() => parseArgs(['scale', bad]), bad).toThrow(
         expect.objectContaining({ code: 'invalid-arguments', detail: `${bad} is not a colour.` }),
       )
     }
+  })
+})
+
+describe('the colour, typed any way the app takes (colour spec §12.4, §12.8)', () => {
+  it('reads rgb(), hsl(), oklch() and names, as the app’s colour box does', () => {
+    expect(parseArgs(['scale', 'crimson'])).toMatchObject({ colour: { r: 0xdc, g: 0x14, b: 0x3c } })
+    expect(parseArgs(['scale', 'rgb(210 4 45)'])).toMatchObject({ colour: { r: 210, g: 4, b: 45 } })
+    expect(parseArgs(['scale', 'cherry red'])).toMatchObject({
+      colour: { r: 0xf7, g: 0x02, b: 0x2a },
+    })
+    expect(parseArgs(['scale', 'oklch(63% 0.196 273)'])).toMatchObject({ kind: 'scale' })
   })
 })
 
