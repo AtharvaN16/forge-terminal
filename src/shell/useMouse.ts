@@ -181,12 +181,23 @@ export function useMouse(
  * is a one-shot answer to a question this app asked. Both read the same
  * channel, so both go through Ink's reassembled input rather than a raw
  * `data` listener.
+ *
+ * Raw mode is switched on here, not left to whichever `useInput` happens to
+ * mount: the reply is typed back at the terminal, and until stdin is raw the
+ * tty echoes it. On the first frame nothing else had switched it on yet, so
+ * `^[[24;80R` was printed after a frame that fills the window — it wrapped,
+ * scrolled the screen a row, and Ink's incremental renderer, which never
+ * rewrites a row that did not change, left those rows a row up as second
+ * copies (2026-10-14). This effect runs before `useFrameOrigin`'s query,
+ * which is declared after it in the same component.
  */
 export function useCursorReport(
   onReport: (position: { row: number; col: number }) => void,
   isActive = true,
 ): void {
-  const { internal_eventEmitter } = useStdin() as ReturnType<typeof useStdin> & {
+  const { setRawMode, isRawModeSupported, internal_eventEmitter } = useStdin() as ReturnType<
+    typeof useStdin
+  > & {
     internal_eventEmitter?: {
       on: (event: string, listener: (data: string) => void) => void
       removeListener: (event: string, listener: (data: string) => void) => void
@@ -198,11 +209,15 @@ export function useCursorReport(
 
   useEffect(() => {
     if (!isActive) return
+    if (isRawModeSupported) setRawMode(true)
     const onInput = (data: string) => {
       const position = parseCursorReport(data)
       if (position) handler.current(position)
     }
     internal_eventEmitter?.on('input', onInput)
-    return () => internal_eventEmitter?.removeListener('input', onInput)
-  }, [isActive, internal_eventEmitter])
+    return () => {
+      internal_eventEmitter?.removeListener('input', onInput)
+      if (isRawModeSupported) setRawMode(false)
+    }
+  }, [isActive, isRawModeSupported, setRawMode, internal_eventEmitter])
 }
