@@ -303,8 +303,26 @@ describe('the neutral follows the hue tweak', () => {
   it('turns with the rest', () => {
     const base = { r: 0xd2, g: 0x04, b: 0x2d }
     const h0 = toLch(rgbToOklab((system(base, 'full').neutral[5] as { rgb: Rgb }).rgb)).h
-    const h1 = toLch(rgbToOklab((system(base, 'full', { ...NO_TWEAK, hue: 90 }).neutral[5] as { rgb: Rgb }).rgb)).h
+    const h1 = toLch(
+      rgbToOklab((system(base, 'full', { ...NO_TWEAK, hue: 90 }).neutral[5] as { rgb: Rgb }).rgb),
+    ).h
     const turned = ((h1 - h0 + 540) % 360) - 180
     expect(Math.abs(turned - 90)).toBeLessThan(6)
+  })
+})
+
+describe('from a grey, or a pale colour', () => {
+  it('Pastel from grey gives each family its own hue, not eight of the same', () => {
+    const grey = { r: 0x80, g: 0x80, b: 0x80 }
+    const fives = system(grey, 'pastel').rows.map((r) => (r.steps[5] as { hex: string }).hex)
+    expect(new Set(fives).size).toBe(fives.length)
+  })
+
+  it('a pale yellow’s harmonies are named by their hue, not "grey"', () => {
+    const pale = { r: 0xfa, g: 0xf3, b: 0xc8 }
+    for (const mode of ['triad', 'split', 'opposite'] as const) {
+      const names = system(pale, mode).rows.map((r) => r.name)
+      expect(names, mode).not.toContain('grey')
+    }
   })
 })

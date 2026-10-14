@@ -412,7 +412,7 @@ export function Home({
   /** The note's height where it may not fit the list as it is (see `homeLayout`). */
   noteRows?: number | undefined
   keys: KeySet
-  /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
+  /** Colour's home: which card is chosen, Extract (0), Scale (1) or Palette (2). */
   colourChoice?: 0 | 1 | 2
   /**
    * The session's first home (M8b): the band draws itself in as it mounts and

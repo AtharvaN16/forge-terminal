@@ -659,13 +659,15 @@ field, the steps line and the preview stay where they are.
 
 ### 12.3 Mix (M1)
 
-In a scale, a `→` (or a space) after the colour in the box asks for a
-second; the box's hint until then is `type a second colour to mix`
+In a scale, `→` at the end of a whole colour in the box puts ` → ` after
+it and asks for a second (`->` and `>` type the same); the box's hint until then is `type a second colour to mix`
 (approved). ↵ makes the mix: the bar says **Scale ╱ Mix**, the ramp runs
 from one to the other, labelled by how far along (0–100), the preview is
 the scale's. The line under the ramp holds the way across (OKLab straight,
 OKLCH round the hue wheel) and the count (3–21), changed under `s` like the
-steps. Pasting `#A #B` works the same.
+steps. Pasting `#A #B` (two hexes, a space between) works the same, here
+and on colour's home. A mix typed over another colour's scale goes on top
+of that colour's own scale, so esc walks back through both.
 
 ### 12.4 Typing a colour
 
@@ -695,7 +697,8 @@ one colour"), Palette ("build a palette / from one colour").
 - **The screen:** the chosen swatch's line (`blue 700  #004598  oklch(…)`),
   a gap, the grid, a gap, the mode's line: its name, then `m mode`,
   `t tweak`, `s steps`. Keys: ↑↓←→ choose, ↵ copy, `c` copy all, `#` new
-  colour, `r` reset (once tweaked), esc back.
+  colour, `r` reset (once tweaked), esc back. Under `s` the steps line
+  takes the mode's line, as it does under Scale's ramp.
 - **The grid:** a row per colour named down the left, the step numbers over
   it. Rows have a gap between them as columns do: each row's swatches fill
   the lower half of their first line (Full set's nine rows are thin bars;

@@ -104,8 +104,6 @@ describe('typing a colour (§12.4, §12.5)', () => {
     expect(wrong.wrong).toBe(true)
     expect(wrong.field.text).toBe('rgb(300 0 0)')
     expect(top(wrong)).toEqual({ kind: 'scale-empty' })
-    // The editor empties itself after ↵: the wrong input is kept.
-    expect(run(wrong, text('')).state.field.text).toBe('rgb(300 0 0)')
     expect(run(wrong, text('rgb(30 0 0)')).state.wrong).toBeUndefined()
   })
 
@@ -130,8 +128,15 @@ describe('Mix (§12.3)', () => {
   it('↵ on two colours mixes them on the first one’s scale; the bar says Scale ╱ Mix; esc goes back', () => {
     const { state } = run(onScale(), key('#'), text('#F26E69 → #6579FD'), SUBMIT)
     expect(top(state)).toMatchObject({ kind: 'mix', sel: 4 })
-    expect(trailOf(state, ctx())).toEqual({ answers: ['#F26E69'], current: 'Mix' })
+    expect(trailOf(state, ctx())).toEqual({ answers: ['#6579FD', '#F26E69'], current: 'Mix' })
     expect(top(run(state, ESC).state)).toMatchObject({ kind: 'scale', ref: { r: 0xf2 } })
+  })
+
+  it('a mix typed over another colour’s scale goes on top of its own: esc walks back through both', () => {
+    const { state } = run(onScale(), key('#'), text('#F26E69 → #6579FD'), SUBMIT)
+    expect(state.history.map((h) => h.kind)).toEqual(['scale', 'scale', 'mix'])
+    const back = run(state, ESC, ESC).state
+    expect(top(back)).toMatchObject({ kind: 'scale', ref: BLUE })
   })
 
   it('s changes the way across and the count; the chosen step stays as far along', () => {

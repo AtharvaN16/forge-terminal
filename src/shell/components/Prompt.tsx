@@ -136,7 +136,12 @@ interface PromptProps {
    * `1`–`3` on an empty field, and Tab and the arrows for its completions,
    * without the field typing them.
    */
-  intercept?: (input: string, key: Key, value: string) => boolean
+  intercept?: (input: string, key: Key, value: string, atEnd: boolean) => boolean
+  /**
+   * Keep what was typed after ↵. The colour box submits, and on wrong input
+   * stays open with the text still there to correct (colour spec §12.4).
+   */
+  keepOnSubmit?: boolean
   /**
    * Skips this component's own `unescapePath` call, handing `onSubmit` the
    * buffer exactly as typed or pasted.
@@ -219,6 +224,7 @@ export function Prompt({
   rawOnSubmit = false,
   disableSubmit = false,
   intercept,
+  keepOnSubmit = false,
   suffix = '',
   after: trailing,
   marker = true,
@@ -339,7 +345,7 @@ export function Prompt({
 
   useKeys(
     (input, key) => {
-      if (intercept?.(input, key, valueRef.current)) return
+      if (intercept?.(input, key, valueRef.current, caret() === chars().length)) return
 
       /**
        * Escape clears the field rather than acting as a second "back" key
@@ -578,6 +584,7 @@ export function Prompt({
         // routes through `runCommand`, which clears it.
         if (disableSubmit) return
         onSubmit(rawOnSubmit ? valueRef.current : unescapePath(valueRef.current))
+        if (keepOnSubmit) return
         valueRef.current = ''
         caretRef.current = 0
         onChange('')

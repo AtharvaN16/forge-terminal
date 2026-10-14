@@ -447,8 +447,8 @@ const onScaleScreen = (screen: Screen) =>
   screen.kind === 'system' ||
   screen.kind === 'system-empty'
 /** Screens whose body fills the rows the gap above the detail line would take. */
-const full = (screen: Screen, state: ColourState) =>
-  (screen.kind === 'scale' && !state.preview) || screen.kind === 'system'
+const full = (screen: Screen, _state: ColourState) =>
+  screen.kind === 'scale' || screen.kind === 'system'
 
 /** The field at rest: the image and its size, or the colour, its swatch and where it came from. */
 function restingField(p: ReturnType<typeof useTheme>, screen: Screen): Row {
@@ -582,9 +582,11 @@ function FieldEditor({
           after={<RunsText row={after} />}
           {...(wrong ? { valueColour: p.fail } : {})}
           width={width - 5}
-          intercept={(_input, key, now) => {
-            // → after a whole colour asks for the second, for a mix.
-            if (key.rightArrow && mixes && !/→/.test(now) && parseColour(now.trim())) {
+          keepOnSubmit
+          intercept={(_input, key, now, atEnd) => {
+            // → at the end of a whole colour asks for the second, for a mix;
+            // anywhere else it moves the cursor, as it always does.
+            if (key.rightArrow && atEnd && mixes && !/→/.test(now) && parseColour(now.trim())) {
               onChange(`${now.trimEnd()} → `)
               return true
             }
@@ -761,13 +763,11 @@ function bodyRows({
       lines: GRID_LINES,
     })
     // When the chosen cell is on the last row, the stroke's bottom takes the gap's line.
-    const body: Row[] = [
-      top,
-      [],
-      ...grid,
-      ...(grid.length > GRID_LINES + 1 ? [] : [[]]),
-      modeRow(p, width, MODE_NAMES[state.mode]),
-    ]
+    // Under s, the steps line takes the mode's line, as it does under a scale's ramp.
+    const under = state.stepsEdit
+      ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit.field })
+      : modeRow(p, width, MODE_NAMES[state.mode])
+    const body: Row[] = [top, [], ...grid, ...(grid.length > GRID_LINES + 1 ? [] : [[]]), under]
     return state.win ? windowFor(p, state, screen.ref, body, width) : body
   }
   // The palette, or inside one of its colours.

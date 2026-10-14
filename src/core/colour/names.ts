@@ -28,5 +28,11 @@ const FAMILIES: [number, string][] = [
 export function hueName(c: Rgb): string {
   const { C, h } = toLch(rgbToOklab(c))
   if (C < 0.03) return 'grey'
-  return (FAMILIES.find(([upTo]) => h < upTo) ?? [360, 'rose'])[1]
+  return familyAt(h)
+}
+
+/** The family a hue angle falls in, however little colour there is at it. */
+export function familyAt(h: number): string {
+  const at = ((h % 360) + 360) % 360
+  return (FAMILIES.find(([upTo]) => at < upTo) ?? [360, 'rose'])[1]
 }

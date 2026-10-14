@@ -1,4 +1,4 @@
-import { hueName } from './names.js'
+import { familyAt, hueName } from './names.js'
 import { DEFAULT_STEPS, referenceIndex, type Step, type StepSpec, scale } from './scale.js'
 import { fromLch, type Lch, oklabToRgb, type Rgb, rgbToOklab, toHex, toLch } from './space.js'
 
@@ -204,8 +204,10 @@ function modeColours(base: Rgb, mode: Mode, t: Tweak): Colour[] {
   }
   if (mode === 'pastel') {
     // The untweaked full set, made light and soft; then the tweaks.
-    return fullSet(base, NO_TWEAK).map((c) => {
-      const { h } = lchOf(c.rgb)
+    // From a grey, the rows have no hue of their own: each takes its family's.
+    return fullSet(base, NO_TWEAK).map((c, i) => {
+      const own = lchOf(c.rgb)
+      const h = own.C < 0.01 ? lchOf((FAMILY[i] as (typeof FAMILY)[number]).hex).h : own.h
       return { ...c, rgb: made(0.86, Math.min(0.1, maxC(0.86, h)) * 0.85, h, t) }
     })
   }
@@ -215,7 +217,9 @@ function modeColours(base: Rgb, mode: Mode, t: Tweak): Colour[] {
     const h = (b.h + turn + 360) % 360
     const C = vivid * maxC(b.L, h)
     // Named untweaked, as yours is, so turning the hue does not rename the rows.
-    return { name: hueName(made(b.L, C, h, NO_TWEAK)), rgb: made(b.L, C, h, t), yours: false }
+    // A pale harmony keeps its hue's name: a light yellow's opposite is a blue, if a faint one.
+    const name = vivid > 0 ? familyAt(h) : hueName(made(b.L, C, h, NO_TWEAK))
+    return { name, rgb: made(b.L, C, h, t), yours: false }
   })
   // Your colour first, then round the wheel.
   return colours.sort((x, y) => Number(y.yours) - Number(x.yours))

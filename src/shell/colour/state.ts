@@ -347,12 +347,15 @@ function mixFrom(s: ColourState, a: Rgb, b: Rgb): ColourState {
   const now = top(s)
   // The mix sits on the scale of its first colour: that one, if it is not already on screen.
   const other = now.kind === 'scale' && toHex(now.ref) !== toHex(a)
+  const scaleOfA: Screen = { kind: 'scale', ref: a, sel: centreOf(s.steps) }
   const base =
-    now.kind === 'scale-empty' || other
-      ? replaceTop(s, { kind: 'scale', ref: a, sel: centreOf(s.steps) })
-      : now.kind === 'mix'
-        ? { ...s, history: s.history.slice(0, -1) }
-        : s
+    now.kind === 'scale-empty'
+      ? replaceTop(s, scaleOfA)
+      : other
+        ? push(s, scaleOfA)
+        : now.kind === 'mix'
+          ? { ...s, history: s.history.slice(0, -1) }
+          : s
   return {
     ...push(base, screen),
     field: field(`${toHex(a)} → ${toHex(b)}`, false),
@@ -774,8 +777,6 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
     case 'key':
       return onKey(s, action.input, action.key, ctx)
     case 'text': {
-      // The editor empties itself after ↵; wrong input stays in the box, red.
-      if (action.text === '' && s.wrong) return same(s)
       const rgb =
         onScale(top(s)) || action.text.startsWith('#')
           ? typedColour(top(s), action.text)

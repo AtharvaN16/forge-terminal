@@ -13,8 +13,8 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { parseColour } from '../core/colour/parse.js'
 import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
-import { parseHex } from '../core/colour/space.js'
 import { describeResult } from '../core/describe.js'
 import {
   type ForgeError,
@@ -52,7 +52,7 @@ import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
 import { ColourFlow } from './colour/ColourFlow.js'
-import type { Start as ColourStart } from './colour/state.js'
+import { type Start as ColourStart, typedPair } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { type CropAt, CropStep } from './components/CropStep.js'
@@ -1676,11 +1676,16 @@ export function App({
       } else if (input === '#') openColour({ typed: '#' })
       else if (input === '/') setText('/')
       else if (input.length > 1) {
-        // A pasted colour (a hex copied from Figma, say) is a scale; anything
-        // else pasted or dropped is an image's path.
+        // A pasted colour (a hex copied from Figma, an rgb() or oklch() from a
+        // browser) is a scale, and two are a mix, typed into Scale's box; anything
+        // else pasted or dropped is an image's path. A path never reads as a
+        // colour: it starts with / ~ or ., or ends with an extension.
         const pasted = input.trim()
-        const rgb = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.test(pasted) ? parseHex(pasted) : undefined
-        openColour(rgb ? { scale: rgb } : { palette: pasted })
+        const pathLike = /^[/~.]/.test(pasted) || /\.[a-z0-9]{2,5}$/i.test(pasted)
+        const rgb = pathLike ? undefined : parseColour(pasted)?.rgb
+        if (rgb) openColour({ scale: rgb })
+        else if (!pathLike && typedPair(pasted)?.b) openColour({ typed: pasted })
+        else openColour({ palette: pasted })
       } else {
         const next = modeForKey(input)
         if (next && next !== mode) switchMode(next)

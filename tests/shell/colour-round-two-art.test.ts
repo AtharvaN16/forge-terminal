@@ -36,7 +36,12 @@ describe('Scale’s tabs and lines', () => {
   })
 
   it('the steps line says the tab’s setting at rest, and makes it the last pill under s', () => {
-    const rest = stepsLine({ width: 76, palette: P, spec: DEFAULT_STEPS, extra: { field: 'tint', value: 'soft' } })
+    const rest = stepsLine({
+      width: 76,
+      palette: P,
+      spec: DEFAULT_STEPS,
+      extra: { field: 'tint', value: 'soft' },
+    })
     expect(text(rest)).toMatch(/Tailwind {2}50 – 950 {2}· {2}11 steps {2}· {2}soft tint +s +steps/)
     const editing = stepsLine({
       width: 76,
@@ -70,7 +75,10 @@ describe('the Alpha tab (A1, P1)', () => {
 
   it('each step’s opacity on the middle line; the chosen one bold', () => {
     expect(text(rows[2])).toMatch(/4% +13%.*91%/)
-    const chosen = (rows[2] as Row).filter((r) => r.bold).map((r) => r.text).join('')
+    const chosen = (rows[2] as Row)
+      .filter((r) => r.bold)
+      .map((r) => r.text)
+      .join('')
     expect(chosen).toBe(`${alphas[5]?.pct}%`)
   })
 
@@ -80,7 +88,12 @@ describe('the Alpha tab (A1, P1)', () => {
   })
 
   it('the preview: the 8-digit hex, the opacity, and what it is over white and over black', () => {
-    const preview = alphaPreviewRows({ palette: P, step: 500, alpha: alphas[5] as never, over: 'white' })
+    const preview = alphaPreviewRows({
+      palette: P,
+      step: 500,
+      alpha: alphas[5] as never,
+      over: 'white',
+    })
     expect(text(preview[0])).toMatch(/500 {2}#[0-9A-F]{8}/)
     expect(text(preview[1])).toMatch(/\d+% opaque · rgb\(\d+ \d+ \d+ \/ \d+%\)/)
     expect(text(preview[3])).toContain('over white  #6579FD')
@@ -151,10 +164,16 @@ describe('Palette’s windows (W1)', () => {
   const under: Row[] = Array.from({ length: 14 }, () => [{ text: 'x'.repeat(76), fg: P.fg }])
 
   it('a framed window over the screen, the title in its top edge; the screen behind fades', () => {
-    const lines = modeLines(P, [
-      { name: 'Full set', hexes: ['#ff0000', '#00ff00'] },
-      { name: 'Pastel', hexes: ['#ffcccc'] },
-    ], 1, 0, 2)
+    const lines = modeLines(
+      P,
+      [
+        { name: 'Full set', hexes: ['#ff0000', '#00ff00'] },
+        { name: 'Pastel', hexes: ['#ffcccc'] },
+      ],
+      1,
+      0,
+      2,
+    )
     const rows = windowOver(P, under, { title: 'Mode', lines, width: 56, columns: 76, top: 2 })
     expect(text(rows[2])).toContain('╭─ Mode ─')
     expect(text(rows[2 + lines.length + 1])).toContain('╰──')

@@ -67,16 +67,19 @@ export interface GridRow {
   yours: boolean
 }
 
-/** The names' column, before the swatches. */
+/** The names' column, before the swatches: as wide as the longest name and a space, from 10 to 14. */
 export const NAME_COLUMN = 10
+const MAX_NAME_COLUMN = 14
+export const nameColumn = (names: string[]) =>
+  Math.max(NAME_COLUMN, Math.min(MAX_NAME_COLUMN, Math.max(0, ...names.map((n) => n.length)) + 2))
 const MAX_CELL = 4
 
 /**
  * How the grid's cells fit in `columns`: as wide as fit, up to four, with a
  * gap of one between them always (the gap carries the chosen cell's stroke).
  */
-export function gridFit(columns: number, n: number): { cell: number; gap: 1 } {
-  const room = columns - 4 - NAME_COLUMN
+export function gridFit(columns: number, n: number, names = NAME_COLUMN): { cell: number; gap: 1 } {
+  const room = columns - 4 - names
   return { cell: Math.max(1, Math.min(MAX_CELL, Math.floor((room - (n - 1)) / n))), gap: 1 }
 }
 
@@ -111,7 +114,8 @@ export function gridRows({
   /** The lines the colours may take, under the step numbers. */
   lines: number
 }): Row[] {
-  const { cell } = gridFit(columns, labels.length)
+  const nameW = nameColumn(all.map((r) => r.name))
+  const { cell } = gridFit(columns, labels.length, nameW)
   const canvas = lc(p.canvas)
   const frame = lc(p.fg)
   const tall = Math.max(1, Math.min(3, Math.floor(lines / Math.max(1, all.length))))
@@ -120,7 +124,7 @@ export function gridRows({
   const isBelow = (r: number) => r === sel.row + 1
 
   // The step numbers: the chosen column's first, so it is never the one left out.
-  const at = (i: number) => 2 + NAME_COLUMN + i * (cell + 1)
+  const at = (i: number) => 2 + nameW + i * (cell + 1)
   const placed: { from: number; to: number; i: number }[] = []
   const place = (i: number) => {
     const t = labels[i] as string
@@ -160,7 +164,7 @@ export function gridRows({
       const cells: Cell[] = [C(' '), C(' ')]
       const name = k === 0 ? x.name : ''
       const nameFg = lc(x.yours ? p.accent : isSel(r) ? p.fg : p.dim)
-      for (let c = 0; c < NAME_COLUMN; c++) {
+      for (let c = 0; c < nameW; c++) {
         cells.push(C(name[c] ?? ' ', name[c] ? nameFg : undefined, undefined, isSel(r) || x.yours))
       }
       x.hexes.forEach((h, i) => {
@@ -185,7 +189,7 @@ export function gridRows({
   })
   // The half line under the last row: the stroke's bottom, when the chosen cell is there.
   if (sel.row === all.length - 1) {
-    const cells: Cell[] = Array.from({ length: 2 + NAME_COLUMN }, () => C(' '))
+    const cells: Cell[] = Array.from({ length: 2 + nameW }, () => C(' '))
     labels.forEach((_, i) => {
       const edge = i === sel.col || i === sel.col + 1
       if (i > 0) cells.push(edge ? C('▀', frame) : C(' '))
