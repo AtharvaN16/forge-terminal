@@ -178,8 +178,9 @@ async function search(before: Opened, after: Opened, k: number): Promise<Search>
   const a = await rgba((await pipeline(after)).resize(w, h, { fit: 'fill', kernel: 'lanczos3' }))
   const diff = new Float64Array(w * h)
   const alpha = new Uint8Array(w * h)
-  let beforeOpaque = true
-  let clear = 0
+  // Cleared: opaque before, clear after. A picture clear in places already
+  // (an app icon's rounded corners) is still a cutout when more went.
+  let cleared = 0
   for (let i = 0; i < w * h; i++) {
     const j = i * 4
     const lum = (g: Uint8Array) =>
@@ -187,10 +188,9 @@ async function search(before: Opened, after: Opened, k: number): Promise<Search>
     diff[i] = Math.abs(lum(b.rgba) - lum(a.rgba))
     const al = a.rgba[j + 3] ?? 255
     alpha[i] = al
-    if (al < 128) clear++
-    if ((b.rgba[j + 3] ?? 255) < 250) beforeOpaque = false
+    if (al < 128 && (b.rgba[j + 3] ?? 255) >= 250) cleared++
   }
-  return { w, h, s, diff, alpha, cutout: beforeOpaque && clear > w * h * 0.005 }
+  return { w, h, s, diff, alpha, cutout: cleared > w * h * 0.005 }
 }
 
 /**
@@ -478,6 +478,16 @@ export interface CloseupPictures {
   output: { width: number; height: number }
 }
 
+/** `grid` as PNG bytes: what a terminal that draws pictures is sent. */
+export async function encodePng(grid: PixelGrid): Promise<Buffer> {
+  const sharp = await loadSharp()
+  return sharp(Buffer.from(grid.rgba), {
+    raw: { width: grid.width, height: grid.height, channels: 4 },
+  })
+    .png()
+    .toBuffer()
+}
+
 /** The longest side a real picture is sent at; the terminal scales it into its cells. */
 const PICTURE_MAX = 720
 
@@ -523,15 +533,11 @@ export async function closeupPictures(
   after: string,
   opts: CloseupOptions,
 ): Promise<CloseupPictures> {
-  const sharp = await loadSharp()
   const c = await choose(before, after, opts.scale)
   const output = { width: c.after.width, height: c.after.height }
   const cap = { width: PICTURE_MAX, height: PICTURE_MAX, fit: 'inside' as const }
   const boxed = (g: PixelGrid) => padToBox(g, opts.cols, opts.rows)
-  const png = (g: PixelGrid) =>
-    sharp(Buffer.from(g.rgba), { raw: { width: g.width, height: g.height, channels: 4 } })
-      .png()
-      .toBuffer()
+  const png = encodePng
   if (c.sr.cutout || opts.whole) {
     const b = await png(boxed(await rgba((await pipeline(c.before)).resize(cap))))
     const a = await png(onChecker(boxed(await rgba((await pipeline(c.after)).resize(cap))), 12))

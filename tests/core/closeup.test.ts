@@ -112,6 +112,23 @@ describe('findCloseup', () => {
     expect(red(0, 2)).not.toBe(red(0, 0))
   })
 
+  it('knows a cutout of a picture that had transparent corners already (an app icon)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+    // A rounded square: clear at its four corners before anything was removed.
+    const corner = (x: number, y: number) => Math.min(x, 39 - x) + Math.min(y, 39 - y) < 6
+    const disc = (x: number, y: number) => (x - 20) ** 2 + (y - 20) ** 2 < 64
+    const before = await png(dir, 'a.png', 40, 40, (x, y) =>
+      corner(x, y) ? [0, 0, 0, 0] : disc(x, y) ? [220, 30, 30, 255] : [30, 30, 160, 255],
+    )
+    const after = await png(dir, 'b.png', 40, 40, (x, y) =>
+      disc(x, y) ? [220, 30, 30, 255] : [0, 0, 0, 0],
+    )
+    const c = await findCloseup(before, after, { cols: 16, rows: 8, scale: 1 })
+    expect(c.kind).toBe('subject')
+    const real = await closeupPictures(before, after, { cols: 16, rows: 8, scale: 1 })
+    expect(real.kind).toBe('subject')
+  })
+
   it('frames a cutout wider than its subject, so what was removed shows', async () => {
     // A card: a rectangle the grid's shape, filling its own box. Framed to
     // that box alone, before and after would be the same opaque card.
