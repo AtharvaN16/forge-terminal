@@ -13,6 +13,7 @@ import {
   emptyGridRows,
   gridRows,
   modeLines,
+  TWEAK_WINDOW_WIDTH,
   tweakLines,
   windowOver,
 } from '../../src/shell/colour/system-art.js'
@@ -283,5 +284,15 @@ describe('Palette’s windows (W1)', () => {
     expect(all).toContain('−35')
     expect(all).toContain('0°')
     expect((lines.at(-1) as Row).filter((r) => r.bg).length).toBe(2)
+  })
+
+  it('fits a scale’s eleven chips, or an even set’s 21, inside the window', () => {
+    const slider = [{ label: 'brightness', value: 0, max: 100, unit: '' }]
+    for (const n of [9, 11, 21]) {
+      const hexes = Array.from({ length: n }, () => '#808080')
+      const strip = tweakLines(P, slider, 0, hexes).at(-1) as Row
+      expect(strip.filter((r) => r.bg)).toHaveLength(n)
+      expect(width(strip), `${n} chips`).toBeLessThanOrEqual(TWEAK_WINDOW_WIDTH - 2)
+    }
   })
 })

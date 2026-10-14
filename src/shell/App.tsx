@@ -52,6 +52,7 @@ import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
 import { ClickTargetProvider } from './ClickTargets.js'
 import { ColourFlow } from './colour/ColourFlow.js'
+import { COLOUR_CARD_KEYS } from './colour/colour-art.js'
 import { type Start as ColourStart, typedPair } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
@@ -1101,19 +1102,18 @@ export function App({
 
   /**
    * ← or → on home: the tab beside `from` on the tab row — the modes, then
-   * "/ commands" — wrapping (decided 2026-10-13). The commands tab is the
-   * bare "/" in the field, as typing it opens the list. Into colour it lands
-   * on the card nearest the side it came from — Palette from the left, Scale
-   * from the right — so the next press carries on through colour's two cards.
+   * "/ commands" — stopping at both ends (decided 2026-10-14). The commands
+   * tab is the bare "/" in the field, as typing it opens the list. Colour is
+   * passed through like any tab: its cards are chosen with a s d.
    */
   const stepTab = (from: HomeTab, delta: 1 | -1) => {
     const next = tabStep(from, delta)
+    if (next === from) return
     if (next === 'commands') {
       setText('/')
       return
     }
     setText('')
-    if (next === 'colour') setColourChoice(delta > 0 ? 0 : 2)
     switchMode(next)
   }
 
@@ -1654,8 +1654,8 @@ export function App({
   }, [])
 
   /**
-   * Colour's home, with nothing typed (colour spec §6.2): ←→ choose a card and
-   * ↵ opens it; `#` opens the scale with it typed; a drop opens the palette
+   * Colour's home, with nothing typed (colour spec §6.2): a s d open a card,
+   * left to right, and ↵ the last one opened; ←→ step to the next tab, as on every home; `#` opens the scale with it typed; a drop opens the palette
    * of what was dropped; `/` puts the slash in the field, which opens the
    * commands as on every home; the mode digits switch mode. The field is hidden here, so
    * these are read directly rather than through its `intercept`.
@@ -1663,16 +1663,18 @@ export function App({
   useKeys(
     (input, key) => {
       if (key.ctrl || key.meta || isStrayEscapeSequence(input)) return
-      // ←→ choose a card, and past the end card step to the next mode as on
-      // every other home (decided 2026-10-13).
-      if (key.leftArrow) {
-        if (colourChoice === 0) stepTab('colour', -1)
-        else setColourChoice((colourChoice - 1) as 0 | 1)
-      } else if (key.rightArrow) {
-        if (colourChoice === 2) stepTab('colour', 1)
-        else setColourChoice((colourChoice + 1) as 1 | 2)
-      } else if (key.return) {
-        openColour(colourChoice === 0 ? 'palette' : colourChoice === 1 ? 'scale' : 'system')
+      // ←→ are the tab row's, as on every other home; a s d (either case),
+      // the keys under the left hand in the cards' order, open a card at
+      // once, and ↵ the one last opened (decided 2026-10-14).
+      const card = COLOUR_CARD_KEYS.indexOf(input.toLowerCase())
+      const open = (at: 0 | 1 | 2) => {
+        setColourChoice(at)
+        openColour(at === 0 ? 'palette' : at === 1 ? 'scale' : 'system')
+      }
+      if (key.leftArrow || key.rightArrow) stepTab('colour', key.rightArrow ? 1 : -1)
+      else if (input.length === 1 && card >= 0) open(card as 0 | 1 | 2)
+      else if (key.return) {
+        open(colourChoice)
       } else if (input === '#') openColour({ typed: '#' })
       else if (input === '/') setText('/')
       else if (input.length > 1) {

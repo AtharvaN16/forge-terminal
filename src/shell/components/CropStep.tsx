@@ -1,6 +1,7 @@
 import chalk from 'chalk'
-import { Box, type DOMElement, measureElement } from 'ink'
+import { Box, type DOMElement, measureElement, useStdout } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { encodePng } from '../../core/closeup.js'
 import {
   CROP_ZOOM_MIN,
   CROP_ZOOM_STEP,
@@ -18,6 +19,7 @@ import {
   besideRow,
   cropFactsRows,
   cropKeys,
+  cropPicturePixels,
   cropPictureRows,
   cropPictureSize,
   cropPositionRow,
@@ -25,10 +27,13 @@ import {
   dotBoxOf,
   FACTS_GAP,
   PICTURE_LEFT,
+  PICTURE_PX,
 } from '../crop-art.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
+import { imageProtocol } from '../inline-image.js'
 import { useTheme } from '../ThemeContext.js'
 import { MODE_KEYS, modeColours, type ShellMode } from '../theme.js'
+import { useInlinePictures } from '../useInlinePictures.js'
 import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
@@ -88,8 +93,9 @@ const same = (a: CropBox, b: CropBox) =>
 
 /**
  * Crop to shape's preview (spec 2026-10-13 §2.2–2.3, mockups/crop-2026-10.html
- * P3): the whole photo in half blocks, what the crop cuts hatched, the size
- * and the share kept beside it. It opens on attention's guess; the arrows
+ * P3): the whole photo in half blocks — or, where the terminal draws
+ * pictures, as one — what the crop cuts hatched, the size and the share kept
+ * beside it. It opens on attention's guess; the arrows
  * move the crop a dot of the picture at a time, + and − zoom it around its
  * centre, r puts it back on the guess, ↵ takes it to Save as.
  *
@@ -199,6 +205,43 @@ export function CropStep({
     ],
   )
 
+  // A terminal that draws pictures (Ghostty, iTerm2) is sent the preview as
+  // one, sampled a pixel a dot at PICTURE_PX dots a cell, drawn again on each
+  // move; the rows leave its box blank. Everywhere else, the rows above.
+  const { stdout } = useStdout()
+  const protocol = stdout.isTTY && colour ? imageProtocol() : null
+  const fine = useMemo(
+    () =>
+      view && protocol && cols > 0
+        ? sampleDots(view.thumb, cols * PICTURE_PX, tall * PICTURE_PX)
+        : undefined,
+    [view, protocol, cols, tall],
+  )
+  const fineBox = fine && at ? dotBoxOf(size, at.box, fine) : undefined
+  const [png, setPng] = useState<Buffer | undefined>(undefined)
+  const drawn = useRef(0)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the box's sides and the palette's colours, as `picture` is
+  useEffect(() => {
+    if (!fine || !fineBox) return
+    // Presses come faster than pictures are made: only the latest is shown.
+    const mine = ++drawn.current
+    encodePng(cropPicturePixels({ palette, dots: fine, box: fineBox, edge })).then(
+      (bytes) => mine === drawn.current && setPng(bytes),
+      () => {},
+    )
+  }, [fine, fineBox?.x, fineBox?.y, fineBox?.w, fineBox?.h, palette.name, palette.canvas, edge])
+  const picturesBox = useRef<DOMElement>(null)
+  const boxes = useMemo(() => [picturesBox], [])
+  const pictures = useMemo(() => (protocol && png ? [png] : undefined), [protocol, png])
+  useInlinePictures({
+    boxes,
+    pictures,
+    protocol,
+    cols: grid?.cols ?? 0,
+    rows: grid?.rows ?? 0,
+    offsets: [{ row: 0, col: PICTURE_LEFT }],
+  })
+
   useKeys((input, key) => {
     const now = atRef.current
     if (key.escape) {
@@ -241,7 +284,11 @@ export function CropStep({
   let rows: Row[]
   if (colour && grid) {
     rows = Array.from({ length: Math.max(grid.rows, facts.length) }, (_, i) =>
-      besideRow(picture[i] ?? (i < grid.rows ? [blank(grid.cols)] : []), grid.cols, facts[i]),
+      besideRow(
+        (protocol ? undefined : picture[i]) ?? (i < grid.rows ? [blank(grid.cols)] : []),
+        grid.cols,
+        facts[i],
+      ),
     )
   } else {
     // No picture (no colour, or no room for one): where it would be, one
@@ -259,7 +306,7 @@ export function CropStep({
   return (
     <Box ref={ref} flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
       <StepTitle mode={mode} title={`Crop to ${shape.label}`} width={width} />
-      <Box marginTop={1} flexDirection="column">
+      <Box ref={picturesBox} marginTop={1} flexDirection="column">
         {rows.map((row, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
           <Runs key={i} row={row} />

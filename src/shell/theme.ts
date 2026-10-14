@@ -462,10 +462,14 @@ export const MODE_KEYS = `1–${MODE_ORDER.length}`
 /** A tab on home's tab row: the modes, then "/ commands". */
 export type HomeTab = ShellMode | 'commands'
 
-/** The tab beside `from` on home's tab row, wrapping at the ends: what ← and → go to. */
+/**
+ * The tab beside `from` on home's tab row: what ← and → go to. They stop at
+ * the ends rather than wrap (decided 2026-10-14), so `from` itself there.
+ */
 export function tabStep(from: HomeTab, delta: 1 | -1): HomeTab {
   const tabs: readonly HomeTab[] = [...MODE_ORDER, 'commands']
-  return tabs[(tabs.indexOf(from) + delta + tabs.length) % tabs.length] as HomeTab
+  const at = Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(from) + delta))
+  return tabs[at] as HomeTab
 }
 
 /** The mode digit `input` names, or undefined: `1` is convert, and so on. */

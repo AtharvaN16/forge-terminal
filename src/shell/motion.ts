@@ -46,6 +46,19 @@ export function mix(a: string, b: string, k: number): string {
   return out
 }
 
+/**
+ * `p` with every hex colour in it `v` of the way up from `canvas`: 0 is all
+ * canvas, 1 is `p` itself. For fading a whole component that reads its
+ * colours from the theme (the home field), where there are no rows to blend.
+ */
+export function fadedPalette<P extends object>(p: P, canvas: string, v: number): P {
+  if (v >= 1) return p
+  const out: Record<string, unknown> = { ...(p as Record<string, unknown>) }
+  for (const [name, value] of Object.entries(p))
+    if (typeof value === 'string' && HEX.test(value)) out[name] = mix(canvas, value, v)
+  return out as P
+}
+
 /** One cell of a row: a glyph and its colours. */
 interface Cell {
   ch: string
@@ -59,12 +72,18 @@ const cellsOf = (row: Row): Cell[] =>
 
 /**
  * Row `a` moved `k` of the way to row `b`, cell for cell: each cell's colours
- * mix, and its glyph swaps at the midpoint — except that a blank shows only
- * its fill, so a glyph replacing one fades up out of that fill from the
- * start. A missing fill is `canvas`, a missing ink `fg`; the shorter row is
- * padded with blanks. A cell neither row fills stays unfilled: the canvas is
- * only a guess at the terminal's background, and painting it there shows as
- * dark patches on any other. Adjacent cells that end up alike are one run again.
+ * mix — except that a blank shows only its fill, so a glyph replacing one
+ * fades up out of that fill from the start. A missing fill is `canvas`, a
+ * missing ink `fg`; the shorter row is padded with blanks. A cell neither row
+ * fills stays unfilled: the canvas is only a guess at the terminal's
+ * background, and painting it there shows as dark patches on any other.
+ * Adjacent cells that end up alike are one run again.
+ *
+ * Where the row's glyphs change (one screen's words for another's), every
+ * glyph fades out into its fill over the first half and the new ones up over
+ * the second, swapping unseen at the midpoint. Swapped cell by cell where
+ * they were, two lines of words read as one garble half way. A row that was
+ * blank has nothing to fade out, so its glyphs fade up from the start.
  */
 export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg: string }): Row {
   const t = Math.max(0, Math.min(1, k))
@@ -73,21 +92,37 @@ export function blendRows(a: Row, b: Row, k: number, ends: { canvas: string; fg:
   const n = Math.max(from.length, to.length)
   const bgOf = (c: Cell) => c.bg || ends.canvas
   const inkOf = (c: Cell) => (c.ch === ' ' ? bgOf(c) : c.fg || ends.fg)
+  const glyphs = (cs: Cell[]) =>
+    cs
+      .map((c) => c.ch)
+      .join('')
+      .trimEnd()
+  const was = glyphs(from)
+  const dip = was !== '' && was.trim() !== '' && was !== glyphs(to)
   const out: Run[] = []
   for (let i = 0; i < n; i++) {
     const x = from[i] ?? { ch: ' ' }
     const y = to[i] ?? { ch: ' ' }
+    const bg = x.bg || y.bg ? mix(bgOf(x), bgOf(y), t) : undefined
+    const fill = bg ?? ends.canvas
     const cell: Run =
       t === 0
         ? { text: x.ch, fg: x.fg, bg: x.bg, bold: x.bold }
         : t === 1
           ? { text: y.ch, fg: y.fg, bg: y.bg, bold: y.bold }
-          : {
-              text: x.ch === ' ' ? y.ch : y.ch === ' ' ? x.ch : t < 0.5 ? x.ch : y.ch,
-              fg: mix(inkOf(x), inkOf(y), t),
-              bg: x.bg || y.bg ? mix(bgOf(x), bgOf(y), t) : undefined,
-              bold: t < 0.5 ? x.bold : y.bold,
-            }
+          : dip
+            ? {
+                text: t < 0.5 ? x.ch : y.ch,
+                fg: t < 0.5 ? mix(inkOf(x), fill, t * 2) : mix(fill, inkOf(y), t * 2 - 1),
+                bg,
+                bold: t < 0.5 ? x.bold : y.bold,
+              }
+            : {
+                text: x.ch === ' ' ? y.ch : y.ch === ' ' ? x.ch : t < 0.5 ? x.ch : y.ch,
+                fg: mix(inkOf(x), inkOf(y), t),
+                bg,
+                bold: t < 0.5 ? x.bold : y.bold,
+              }
     const last = out[out.length - 1]
     if (last && last.fg === cell.fg && last.bg === cell.bg && last.bold === cell.bold)
       last.text += cell.text

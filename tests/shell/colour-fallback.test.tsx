@@ -55,7 +55,7 @@ describe('without true colour', () => {
   it('says the swatches are approximate', async () => {
     process.env.FORGE_TRUECOLOR = '0'
     const app = flow(DARK, { scale: { r: 101, g: 121, b: 253 } })
-    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    await waitFor(() => plain(app.lastFrame()).includes('normal  large'))
     expect(plain(app.lastFrame())).toContain(
       'colours shown approximately · this terminal has 256 colours',
     )
@@ -64,7 +64,7 @@ describe('without true colour', () => {
   it('and says nothing of the kind where it is true colour', async () => {
     process.env.FORGE_TRUECOLOR = '1'
     const app = flow(DARK, { scale: { r: 101, g: 121, b: 253 } })
-    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    await waitFor(() => plain(app.lastFrame()).includes('normal  large'))
     expect(plain(app.lastFrame())).not.toContain('colours shown approximately')
   })
 })

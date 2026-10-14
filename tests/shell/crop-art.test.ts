@@ -4,6 +4,7 @@ import { CROP_SHAPES, centreOf, largestBox, movedBox, zoomedBox } from '../../sr
 import {
   cropFactsRows,
   cropKeys,
+  cropPicturePixels,
   cropPictureRows,
   cropPictureSize,
   cropPositionRow,
@@ -47,6 +48,17 @@ const cellsOf = (row: { text: string; fg?: string; bg?: string }[]) =>
   row.flatMap((r) => [...r.text].map((ch) => ({ ch, fg: r.fg, bg: r.bg })))
 
 describe('the crop picture (P3)', () => {
+  it('draws the hatch in the edge colour where there is one, so what goes reads as gone', () => {
+    const edge = '#a78bfa'
+    const [row] = cropPictureRows({ palette: P, dots, box: { x: 1, y: 0, w: 2, h: 2 }, edge })
+    const faded = (c: string) => mix(c, P.canvas, 0.72)
+    expect(cellsOf(row ?? [])[0]).toEqual({
+      ch: '╱',
+      fg: mix(faded(top(0)), edge, 0.65),
+      bg: mix(faded(top(0)), faded(bottom(0)), 0.5),
+    })
+  })
+
   it('hatches a cell wholly outside: ╱, its dots faded 72 % to the canvas, the line half way to border', () => {
     const [row] = cropPictureRows({ palette: P, dots, box: { x: 1, y: 0, w: 2, h: 2 } })
     const cells = cellsOf(row ?? [])
@@ -297,5 +309,58 @@ describe('the facts and the key row', () => {
     const row = cropPositionRow(P, { left: 1008, top: 0, width: 3024, height: 3024 })
     expect(row.map((r) => r.text).join('')).toBe('left 1,008 px · top 0 px')
     expect(row[0]?.fg).toBe(P.dim)
+  })
+})
+
+describe('the crop picture as pixels, for a terminal that draws pictures', () => {
+  const edge = '#a78bfa'
+  const grey = (cols: number, dotRows: number) => ({
+    cols,
+    dotRows,
+    rgb: new Uint8Array(cols * dotRows * 3).fill(0x80),
+  })
+  const px = (g: { width: number; rgba: Uint8Array }, x: number, y: number) => {
+    const i = (y * g.width + x) * 4
+    return `#${[...g.rgba.subarray(i, i + 3)].map((v) => v.toString(16).padStart(2, '0')).join('')}`
+  }
+
+  it('is the dots, one pixel each, opaque', () => {
+    const g = cropPicturePixels({
+      palette: P,
+      dots: grey(40, 40),
+      box: { x: 0, y: 0, w: 40, h: 40 },
+      edge,
+    })
+    expect([g.width, g.height]).toEqual([40, 40])
+    expect(g.rgba.filter((_, i) => i % 4 === 3).every((a) => a === 255)).toBe(true)
+  })
+
+  it('keeps the crop as it is, and fades what is cut, hatched in the edge colour', () => {
+    const g = cropPicturePixels({
+      palette: P,
+      dots: grey(64, 64),
+      box: { x: 32, y: 0, w: 32, h: 64 },
+      edge,
+    })
+    // The middle of the crop, clear of its brackets: the photo.
+    expect(px(g, 48, 32)).toBe('#808080')
+    // Outside: the faded photo, or a stroke of the hatch over it.
+    const faded = mix('#808080', P.canvas, 0.72)
+    const stroke = mix(faded, edge, 0.65)
+    const seen = new Set(Array.from({ length: 32 }, (_, x) => px(g, x, 20)))
+    expect(seen).toEqual(new Set([faded, stroke]))
+  })
+
+  it('puts the brackets on the crop’s corners, inside it, in the edge colour', () => {
+    const g = cropPicturePixels({
+      palette: P,
+      dots: grey(64, 64),
+      box: { x: 0, y: 0, w: 64, h: 64 },
+      edge,
+    })
+    expect(px(g, 0, 0)).toBe(edge)
+    expect(px(g, 63, 63)).toBe(edge)
+    expect(px(g, 10, 0)).toBe(edge)
+    expect(px(g, 32, 0)).toBe('#808080')
   })
 })

@@ -322,6 +322,7 @@ helper beside the engines so that sharp stays out of `core/`.
   **Scale** ("create shades from one colour", a sample ramp). Each card is
   half the panel less its gaps, so the pair fits inside the margins. The chosen card gets the
   picker's band and the ▌ strip in the mode colour. ←→ chooses and ↵ opens.
+  (Since 2026-10-14 three cards, chosen with `a s d`; ←→ are the tab row's, §12.9.)
 - The tab row's right side says `copies to clipboard`, where other modes say
   `saves to …`.
 - **There is no field at rest.** Typing `/` shows the field with the slash
@@ -659,11 +660,14 @@ field, the steps line and the preview stay where they are.
 
 ### 12.3 Mix (M1)
 
-In a scale, `→` at the end of a whole colour in the box puts ` → ` after
-it and asks for a second (`->` and `>` type the same); the box's hint until then is `type a second colour to mix`
-(approved). Before that, once a whole colour is typed, the box's far end
-says `→ gradient to a second colour` in grey (approved 2026-10-14), where
-it fits. ↵ makes the mix: the bar says **Scale ╱ Mix**, the ramp runs
+In a scale, `⇧→` at the end of a whole colour in the box puts ` → ` after
+it and asks for a second (`->` and `>` type the same); `→` alone only moves
+the cursor, as `→` moves along the ramp (2026-10-14). The box's hint until
+then is `type a second colour to mix` (approved). Before that, once a whole
+colour is typed, the box's far end says `↵ done`; once ↵ has drawn the
+scale, the resting box's far end says `⇧ → gradient to a second colour`
+(2026-10-14) — the key glyphs bold in the mode's colour, a space between
+them, the words grey — where it fits. ⇧→ starts the mix from either. ↵ makes the mix: the bar says **Scale ╱ Mix**, the ramp runs
 from one to the other, labelled by how far along (0–100), the preview is
 the scale's. The line under the ramp holds the way across (OKLab straight,
 OKLCH round the hue wheel) and the count (3–21), changed under `s` like the
@@ -731,6 +735,48 @@ one colour"), Palette ("build a palette / from one colour").
 `fill-opacity` carrying the alpha, the 8-digit hex under it), `systemCard`
 (a grid: steps across the top, a row per colour, the neutral last). Whether
 Figma keeps `fill-opacity` on paste is to be checked by hand.
+
+### 12.9 Round three (2026-10-14)
+
+- **Home's keys.** ←→ walk the tab row (the five modes, then `/ commands`)
+  and stop at both ends: → on commands and ← on convert do nothing. They
+  pass through colour like any tab. Colour's three cards open at once with
+  `A S D` (either case), the keys under the left hand in the cards' order;
+  each card shows its key before its name, bold in the mode's colour. ↵
+  opens the card last opened, which keeps the band. The key row says
+  `A S D open`, `1–5 ←→ mode`.
+- **A gradient from a shown scale.** `⇧→` on Scale opens the box with the
+  colour and its ` → `, as typing it would; the resting box's far end says
+  `⇧ → gradient to a second colour`, where it fits (§12.3).
+- **Going to or from colour's home** fades as every mode change does (M1b),
+  but a row whose words change fades its old words out into their fill over
+  the first half and the new ones up over the second, rather than swapping
+  letter by letter half way (which read as one garbled line). The field,
+  which colour's home has none of, fades out or in the same way.
+- **Contrast, as Figma reads it.** Scale's preview grades white and black
+  text by use, as Figma's picker and Stark do: under a quiet `normal  large`
+  head, each row is the ratio (`5.5:1`), then the best WCAG grade for normal
+  text (AA 4.5, AAA 7) and for large text, 18 pt or 14 pt bold (AA 3, AAA
+  4.5). A pass is green, a fail `✗` in red. No graphics column (decided).
+  The plain-text fallback and the CLI keep their one-word rating.
+- **Tweak on Scale.** `t` opens Palette's Tweak window over a scale
+  (brightness, saturation, hue, contrast; ←→ 1, ⇧←→ 10, `r` reset, ↵ done,
+  esc cancel), its strip the scale's steps. The tweak is the scale's own,
+  kept on its screen: Palette's is not touched, a new colour starts
+  untweaked, esc back finds the last scale still tweaked. It moves the scale
+  as Palette's row for the colour is moved (the colour tweaked, then the
+  contrast about the centre step), on every tab, and Copy all copies what is
+  shown. `r make centre` on a tweaked scale starts the new one untweaked:
+  the step is the tweaked colour already. The steps line says `t tweak` before
+  `s steps`. The window's strip narrows its chips when there are more than
+  fit at three cells (eleven at two, up to 21 at one).
+- **Extract's photo in a terminal that draws pictures** (Ghostty, Kitty,
+  iTerm2, WezTerm; `inline-image.ts`) is the photo itself, sent as a PNG
+  into the same framed box: the chosen colour's pixels as they are, the
+  other colours' taken 60 % to the canvas, and inside a colour the rest of
+  the photo 80 %. Lighter than the rows' 78 % / 90 %: there the photo is its
+  colours; here it is the photo, and a dark one dimmed that far is gone.
+  Everywhere else, the half blocks as before.
 
 ### 12.8 Not in this round
 

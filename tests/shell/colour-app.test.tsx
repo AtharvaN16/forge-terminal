@@ -49,17 +49,28 @@ describe("colour's home and screens", () => {
     expect(out).toContain('Palette')
     expect(out).toContain('create shades')
     expect(out).not.toContain('or type a path')
-    expect(keyRow(app.lastFrame())).toMatch(/←→ +choose +↵ +open/)
+    expect(keyRow(app.lastFrame())).toMatch(/A S D +open/)
+    // Each card carries its key.
+    expect(plain(app.lastFrame())).toMatch(/A Extract +S Scale +D Palette/)
   }, 20_000)
 
-  it('→ ↵ opens the scale; a typed colour draws it; the bar says Scale; esc esc is home again', async () => {
+  it('A S D open Extract, Scale and Palette at once, in either case', async () => {
+    const first = await colourHome()
+    first.app.stdin.write('a')
+    await waitFor(() => plain(first.app.lastFrame()).includes('type an image path'))
+    expect(plain(first.app.lastFrame())).toContain('type an image path')
+    const second = await colourHome()
+    second.app.stdin.write('D')
+    await waitFor(() => plain(second.app.lastFrame()).includes('Palette //'))
+    expect(lines(second.app.lastFrame()).find((l) => l.includes('colour'))).toMatch(/Palette/)
+  }, 20_000)
+
+  it('s opens the scale; a typed colour draws it; the bar says Scale; esc esc is home again', async () => {
     const { app } = await colourHome()
-    app.stdin.write(`${ESC}[C`)
-    await settle()
-    app.stdin.write(ENTER)
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('6579FD')
-    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    await waitFor(() => plain(app.lastFrame()).includes('normal  large'))
     expect(lines(app.lastFrame()).find((l) => l.includes('colour'))).toMatch(/Scale/)
     app.stdin.write(ESC)
     await settle(300)
@@ -70,15 +81,13 @@ describe("colour's home and screens", () => {
 
   it('s changes the steps on the line under the ramp; ↵ done keeps them for the session', async () => {
     const { app } = await colourHome()
-    app.stdin.write(`${ESC}[C`)
-    await settle()
-    app.stdin.write(ENTER)
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('6579FD')
     await settle()
     app.stdin.write(ENTER)
     await waitFor(() => plain(app.lastFrame()).includes('Tailwind  50 – 950'))
-    expect(plain(app.lastFrame())).toMatch(/11 steps +s +steps/)
+    expect(plain(app.lastFrame())).toMatch(/11 steps +t +tweak +s +steps/)
     expect(keyRow(app.lastFrame())).toMatch(/r make centre · # new colour/)
     expect(lines(app.lastFrame())).toHaveLength(24)
 
@@ -199,14 +208,14 @@ describe("colour's home and screens", () => {
   it('a bracketed hex paste on colour home opens its scale', async () => {
     const { app } = await colourHome()
     app.stdin.write(`${ESC}[200~#6579FD${ESC}[201~`)
-    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    await waitFor(() => plain(app.lastFrame()).includes('normal  large'))
     expect(plain(app.lastFrame())).toContain('#6579FD')
   }, 20_000)
 
   it('a hex pasted on colour home opens its scale', async () => {
     const { app } = await colourHome()
     app.stdin.write('#6579FD')
-    await waitFor(() => plain(app.lastFrame()).includes('white text'))
+    await waitFor(() => plain(app.lastFrame()).includes('normal  large'))
     expect(plain(app.lastFrame())).toContain('#6579FD')
     expect(plain(app.lastFrame())).not.toContain('could not be found')
   }, 20_000)

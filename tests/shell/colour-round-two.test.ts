@@ -9,6 +9,7 @@ import {
   initial,
   type KeyLike,
   reduce,
+  tabSteps,
   trailOf,
   typedPair,
 } from '../../src/shell/colour/state.js'
@@ -168,6 +169,43 @@ describe('Palette (§12.6)', () => {
     expect(top(far)).toMatchObject({ sel: { row: 8, col: 10 } })
     expect(run(onPalette(), ENTER).effects).toEqual([{ type: 'copy', text: '#D2042D' }])
     expect(run(onPalette(), key('c')).effects).toEqual([{ type: 'copy-all' }])
+  })
+
+  it('t opens Tweak on Scale too: its own, on its own scale, which it moves; esc undoes', () => {
+    const plainSteps = (st: ColourState) => {
+      const sc = top(st)
+      return sc?.kind === 'scale' ? tabSteps(st, sc.ref, sc.tweak).map((x) => x.hex) : []
+    }
+    let s = run(onScale(), key('t')).state
+    expect(s.win).toMatchObject({ kind: 'tweak', at: 0 })
+    s = run(s, SHIFT_RIGHT, SHIFT_RIGHT).state
+    expect(top(s)).toMatchObject({ kind: 'scale', tweak: { brightness: 20 } })
+    // Palette's tweak is not touched.
+    expect(s.tweak).toEqual(NO_TWEAK)
+    const untouched = plainSteps(onScale())
+    expect(plainSteps(s)).not.toEqual(untouched)
+    expect(run(s, ESC).state).toMatchObject({ win: undefined })
+    expect(plainSteps(run(s, ESC).state)).toEqual(untouched)
+    const kept = run(s, ENTER).state
+    expect(kept.win).toBeUndefined()
+    expect(plainSteps(kept)).toEqual(plainSteps(s))
+    // A step made the centre is the tweaked colour already: the new scale starts untweaked.
+    const made = run(kept, LEFT, key('r')).state
+    expect(top(made)).toMatchObject({ kind: 'scale' })
+    expect((top(made) as { tweak?: unknown }).tweak).toBeUndefined()
+    // esc goes back to the tweaked scale, still tweaked.
+    expect(top(run(made, ESC).state)).toMatchObject({ tweak: { brightness: 20 } })
+  })
+
+  it('contrast on Scale spreads the steps from the colour, which stays', () => {
+    const s = run(onScale(), key('t'), DOWN, DOWN, DOWN, SHIFT_RIGHT, SHIFT_RIGHT, ENTER).state
+    const sc = top(s)
+    if (sc?.kind !== 'scale') throw new Error('not a scale')
+    expect(sc.tweak?.contrast).toBe(20)
+    const before = tabSteps(onScale(), sc.ref)
+    const after = tabSteps(s, sc.ref, sc.tweak)
+    expect(after[5]?.hex).toBe(before[5]?.hex)
+    expect(after[0]?.hex).not.toBe(before[0]?.hex)
   })
 
   it('m opens the Mode window on the mode in use; ↓ ↵ chooses, esc leaves it as it was', () => {

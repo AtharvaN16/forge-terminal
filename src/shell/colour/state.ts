@@ -22,6 +22,7 @@ import {
   NO_TWEAK,
   system,
   type Tweak,
+  tweakSteps,
 } from '../../core/colour/system.js'
 import type { Trail } from '../bar-art.js'
 
@@ -45,7 +46,14 @@ export type Screen =
       sel: number
     }
   | { kind: 'scale-empty' }
-  | { kind: 'scale'; ref: Rgb; from?: string; sel: number }
+  | {
+      kind: 'scale'
+      ref: Rgb
+      from?: string
+      sel: number
+      /** Its own Tweak window's (2026-10-14): none until one is kept. */
+      tweak?: Tweak
+    }
   /** Two colours mixed (colour spec §12.3), reached from a scale. */
   | { kind: 'mix'; a: Rgb; b: Rgb; sel: number }
   /** A palette from one colour (§12.6): the screen called Palette. */
@@ -271,9 +279,13 @@ export function typedPair(text: string): { a: Rgb; b?: Rgb } | undefined {
   return undefined
 }
 
-/** The steps Scale shows on its Colour or Neutral tab (Alpha draws the Colour steps). */
-export function tabSteps(s: ColourState, ref: Rgb) {
-  return s.tab === 'neutral' ? neutral(ref, s.tint, s.steps) : scale(ref, s.steps)
+/**
+ * The steps Scale shows on its Colour or Neutral tab (Alpha draws the Colour
+ * steps), with the scale's `tweak` on them, as Palette's own row has its.
+ */
+export function tabSteps(s: ColourState, ref: Rgb, tweak: Tweak = NO_TWEAK) {
+  const make = (r: Rgb) => (s.tab === 'neutral' ? neutral(r, s.tint, s.steps) : scale(r, s.steps))
+  return isTweaked(tweak) ? tweakSteps(make, ref, tweak, centreOf(s.steps)) : make(ref)
 }
 
 /** The steps a mix shows. */
@@ -449,7 +461,7 @@ function onScaleKey(
   key: KeyLike,
   ctx: Ctx,
 ): Out {
-  const steps = tabSteps(s, screen.ref)
+  const steps = tabSteps(s, screen.ref, screen.tweak)
   const step = steps[screen.sel]
   const centre = centreOf(s.steps)
   if (key.tab || input === '\t') {
@@ -458,6 +470,13 @@ function onScaleKey(
     return same({ ...s, tab: next as ScaleTab })
   }
   if (input === 's') return same(editSteps(s, 'set'))
+  // Palette's Tweak window, on this scale's own tweak.
+  if (input === 't') {
+    return same({ ...s, win: { kind: 'tweak', at: 0, before: screen.tweak ?? NO_TWEAK } })
+  }
+  // ⇧→ asks for a second colour, for a mix, as it does while the colour is
+  // typed: the box opens with this one and its → (2026-10-14).
+  if (key.rightArrow && key.shift) return same(focusWith(s, `${toHex(screen.ref)} → `))
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
     return same(replaceTop(s, { ...screen, sel: Math.min(steps.length - 1, screen.sel + 1) }))
@@ -569,6 +588,20 @@ function onYours(s: ColourState): ColourState {
   return replaceTop(s, { ...screen, sel: { ...screen.sel, row: yours } })
 }
 
+/** The tweak the Tweak window moves: the scale's own on a scale, else Palette's. */
+export function tweakOf(s: ColourState): Tweak {
+  const screen = top(s)
+  return screen.kind === 'scale' ? (screen.tweak ?? NO_TWEAK) : s.tweak
+}
+
+/** `s` with `t` as the tweak the window moves. None on a scale is none kept. */
+function withTweak(s: ColourState, t: Tweak): ColourState {
+  const screen = top(s)
+  if (screen.kind !== 'scale') return { ...s, tweak: t }
+  const { tweak: _, ...rest } = screen
+  return replaceTop(s, isTweaked(t) ? { ...rest, tweak: t } : rest)
+}
+
 /** How far each tweak reaches either way: Photoshop's ranges (§12.6). */
 const REACH: Record<keyof Tweak, number> = {
   brightness: 100,
@@ -587,19 +620,22 @@ function onWindowKey(s: ColourState, win: PaletteWindow, input: string, key: Key
     if (key.return) return same(onYours({ ...s, mode: MODES[win.at] as Mode, win: undefined }))
     return same(s)
   }
-  if (key.escape) return same({ ...s, tweak: win.before, win: undefined })
+  // Over a scale the window moves the scale's own tweak; over Palette, Palette's.
+  const now = tweakOf(s)
+  const put = (t: Tweak, rest: Partial<ColourState> = {}) => same({ ...withTweak(s, t), ...rest })
+  if (key.escape) return put(win.before, { win: undefined })
   if (key.return) return same({ ...s, win: undefined })
   if (key.upArrow) return same({ ...s, win: { ...win, at: Math.max(0, win.at - 1) } })
   if (key.downArrow) {
     return same({ ...s, win: { ...win, at: Math.min(TWEAK_KEYS.length - 1, win.at + 1) } })
   }
-  if (input === 'r') return same({ ...s, tweak: NO_TWEAK })
+  if (input === 'r') return put(NO_TWEAK)
   if (key.leftArrow || key.rightArrow) {
     const name = TWEAK_KEYS[win.at] as keyof Tweak
     const by = (key.rightArrow ? 1 : -1) * (key.shift ? 10 : 1)
     const reach = REACH[name]
-    const value = Math.max(-reach, Math.min(reach, s.tweak[name] + by))
-    return same({ ...s, tweak: { ...s.tweak, [name]: value } })
+    const value = Math.max(-reach, Math.min(reach, now[name] + by))
+    return put({ ...now, [name]: value })
   }
   return same(s)
 }

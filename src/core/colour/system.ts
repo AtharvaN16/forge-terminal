@@ -153,6 +153,15 @@ function contrasted(steps: Step[], k: number, at: number): Step[] {
   })
 }
 
+/**
+ * One scale with the tweaks on it, as Palette's own row has them: the steps
+ * `make` makes from the tweaked colour, then the contrast about step `at`.
+ * Scale's tweak (2026-10-14).
+ */
+export function tweakSteps(make: (ref: Rgb) => Step[], base: Rgb, t: Tweak, at: number): Step[] {
+  return contrasted(make(tweakRgb(base, t)), t.contrast, at)
+}
+
 interface Colour {
   name: string
   role?: SystemRow['role']

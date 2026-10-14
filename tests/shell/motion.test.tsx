@@ -48,11 +48,30 @@ describe('blendRows', () => {
     expect(cells(blendRows(a, b, 1, ends))).toEqual(cells(b))
   })
 
-  it('mixes each cell’s colours in between, the glyph swapping at the midpoint', () => {
+  it('mixes each cell’s colours in between where the glyphs stay', () => {
     const a = [{ text: 'a', fg: '#000000', bg: '#000000' }]
-    const b = [{ text: 'b', fg: '#ffffff', bg: '#202020' }]
+    const b = [{ text: 'a', fg: '#ffffff', bg: '#202020' }]
     expect(cells(blendRows(a, b, 0.25, ends))).toEqual([{ ch: 'a', fg: '#404040', bg: '#080808' }])
-    expect(cells(blendRows(a, b, 0.75, ends))[0]?.ch).toBe('b')
+  })
+
+  it('fades words that change out into the fill, then the new ones up, never mixing letters', () => {
+    // Swapped letter by letter at the midpoint, two words showed as one
+    // garble ("↓reDropsafile here"): the drop zone's line under a card's.
+    const a = [{ text: 'ab', fg: '#ffffff', bg: '#000000' }]
+    const b = [{ text: 'cb', fg: '#ffffff', bg: '#000000' }]
+    expect(cells(blendRows(a, b, 0.25, ends))).toEqual([
+      { ch: 'a', fg: '#808080', bg: '#000000' },
+      { ch: 'b', fg: '#808080', bg: '#000000' },
+    ])
+    // Half way, nothing shows: the old ink has gone, the new not come.
+    expect(cells(blendRows(a, b, 0.5, ends)).map((c) => [c.ch, c.fg])).toEqual([
+      ['c', '#000000'],
+      ['b', '#000000'],
+    ])
+    expect(cells(blendRows(a, b, 0.75, ends)).map((c) => [c.ch, c.fg])).toEqual([
+      ['c', '#808080'],
+      ['b', '#808080'],
+    ])
   })
 
   it('fades a glyph up out of the fill of the blank it replaces', () => {

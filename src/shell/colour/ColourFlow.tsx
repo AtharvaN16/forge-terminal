@@ -1,7 +1,8 @@
-import { Box } from 'ink'
+import { Box, type DOMElement, useStdout } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
+import { encodePng, padToBox } from '../../core/closeup.js'
 import { alphaOf, BLACK, WHITE } from '../../core/colour/alpha.js'
 import {
   alphaCard,
@@ -12,7 +13,6 @@ import {
   systemCard,
 } from '../../core/colour/card.js'
 import { onWhiteAndBlack } from '../../core/colour/contrast.js'
-import { neutral } from '../../core/colour/neutral.js'
 import {
   canOpen,
   type Group,
@@ -23,7 +23,7 @@ import {
   wholePercents,
 } from '../../core/colour/palette.js'
 import { parseColour } from '../../core/colour/parse.js'
-import { DEFAULT_STEPS, type StepSpec, scale, stepsOf } from '../../core/colour/scale.js'
+import { DEFAULT_STEPS, type StepSpec, stepsOf } from '../../core/colour/scale.js'
 import { formatOklch, formatRgb, type Rgb, toHex } from '../../core/colour/space.js'
 import { isTweaked, MODE_NAMES, MODES, system } from '../../core/colour/system.js'
 import { isForgeError, nothingVisible } from '../../core/errors.js'
@@ -38,12 +38,14 @@ import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
 import { trueColour } from '../glyphs.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
+import { imageProtocol } from '../inline-image.js'
 import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useAfter } from '../useAfter.js'
+import { useInlinePictures } from '../useInlinePictures.js'
 import { useKeys } from '../useKeys.js'
 import { workLine } from '../working-art.js'
 import {
@@ -63,6 +65,7 @@ import {
   mixLine,
   paletteBody,
   paletteColumn,
+  photoPixels,
   photoRows,
   plainPaletteRows,
   plainScaleRows,
@@ -90,6 +93,7 @@ import {
   TWEAK_KEYS,
   tabSteps,
   trailOf,
+  tweakOf,
   typedPair,
 } from './state.js'
 import {
@@ -167,6 +171,21 @@ function photoMax(pixels: Pixels, rows: number): number {
   if (pixels.width < pixels.height) return tall
   return Math.min(PHOTO_COLS, Math.floor((tall * pixels.width) / pixels.height))
 }
+
+/**
+ * The photo's box in cells, framed in `rows` rows: what `photoMap` draws it
+ * at (its longer side `photoMax`), a cell two of its pixels tall.
+ */
+function photoCells(pixels: Pixels, rows: number): { cols: number; rows: number } {
+  const max = photoMax(pixels, rows)
+  const wide = pixels.width >= pixels.height
+  const across = wide ? max : Math.max(1, Math.round((max * pixels.width) / pixels.height))
+  const down = wide ? Math.max(1, Math.round((max * pixels.height) / pixels.width)) : max
+  return { cols: across, rows: Math.ceil(down / 2) }
+}
+
+/** Where the picture sits in the palette's body: under its frame's top, past the four-cell lead and the frame's side. */
+const PHOTO_AT = [{ row: 1, col: 5 }]
 
 export function ColourFlow({
   start,
@@ -268,18 +287,20 @@ export function ColourFlow({
       return paletteCard(screen.name, groupsAt(screen.level), theme, inside)
     }
     if (screen.kind === 'scale') {
+      // What is copied is what is shown: the scale with its tweak on.
+      const shown = tabSteps(s, screen.ref, screen.tweak)
       if (s.tab === 'neutral') {
-        return neutralCard(screen.ref, neutral(screen.ref, s.tint, s.steps), s.tint, theme, s.steps)
+        return neutralCard(screen.ref, shown, s.tint, theme, s.steps)
       }
       if (s.tab === 'alpha') {
         const bg = s.over === 'white' ? WHITE : BLACK
-        const alphas = scale(screen.ref, s.steps).map((x) => ({
+        const alphas = shown.map((x) => ({
           step: x.step,
           ...alphaOf(x.rgb, bg),
         }))
         return alphaCard(screen.ref, alphas, s.over, theme, s.steps)
       }
-      return scaleCard(screen.ref, scale(screen.ref, s.steps), theme, s.steps)
+      return scaleCard(screen.ref, shown, theme, s.steps)
     }
     if (screen.kind === 'mix') {
       const steps = mixOf(s, screen)
@@ -340,6 +361,52 @@ export function ColourFlow({
   // first palette, not a step into one of its colours or back out.
   const arriving = screen.kind === 'palette' && screen.level.length === 0 ? image.current : null
   const arrivedFor = ARRIVE_MS * useTween(arriving, ARRIVE_MS, { enabled: motionEnabled(p.name) })
+  // A terminal that draws pictures (Ghostty, iTerm2) is sent the photo as
+  // one, its own pixels lit and dimmed as the rows light the groups; the
+  // rows leave its box blank. Everywhere else, the photo in half blocks.
+  const { stdout } = useStdout()
+  const protocol = stdout.isTTY && p.selectionBg !== '' ? imageProtocol() : null
+  const px = image.current?.pixels
+  const framedRows = photoRowsFor(height)
+  const cells =
+    screen.kind === 'palette' && px && framedRows > 0 ? photoCells(px, framedRows) : undefined
+  const real = protocol !== null && cells !== undefined
+  const [png, setPng] = useState<Buffer | undefined>(undefined)
+  const drawn = useRef(0)
+  const level = screen.kind === 'palette' ? screen.level.join('/') : ''
+  const lit = screen.kind === 'palette' ? screen.sel : -1
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the level and choice the photo shows, and the canvas it dims to
+  useEffect(() => {
+    if (!real || !px || !cells || screen.kind !== 'palette') return
+    // Choices come faster than pictures are made: only the latest is shown.
+    const mine = ++drawn.current
+    const grid = photoPixels({
+      palette: p,
+      pixels: px,
+      groups: groupsAt(screen.level),
+      lit: screen.sel,
+      inside: screen.level.length > 0,
+    })
+    encodePng(padToBox(grid, cells.cols, cells.rows)).then(
+      (bytes) => mine === drawn.current && setPng(bytes),
+      () => {},
+    )
+  }, [real, px, level, lit, p.canvas, cells?.cols, cells?.rows])
+  // Another image: not the last one's picture while this one's is made.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a new image only
+  useEffect(() => setPng(undefined), [px])
+  const bodyBox = useRef<DOMElement>(null)
+  const boxes = useMemo(() => [bodyBox], [])
+  const pictures = useMemo(() => (real && png ? [png] : undefined), [real, png])
+  useInlinePictures({
+    boxes,
+    pictures,
+    protocol,
+    cols: cells?.cols ?? 0,
+    rows: cells?.rows ?? 0,
+    offsets: PHOTO_AT,
+  })
+
   const body = bodyRows({
     p,
     screen,
@@ -347,7 +414,8 @@ export function ColourFlow({
     groupsAt,
     width,
     height,
-    pixels: image.current?.pixels,
+    real,
+    pixels: px,
     arrivedFor: arriving && arrivedFor < ARRIVE_MS ? arrivedFor : undefined,
   })
   const detail = detailFor({ p, screen, state, groupsAt, width })
@@ -374,7 +442,7 @@ export function ColourFlow({
     fieldRows({
       width,
       palette: p,
-      content: restingField(p, screen),
+      content: restingField(p, screen, width),
       focus: false,
     })
       .map((row) => row.map((run) => (run.bg === p.selectionBg ? { ...run, bg: fill } : run)))
@@ -402,10 +470,14 @@ export function ColourFlow({
       }
     />
   )
-  const shown = body.map((row, i) => (
-    // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-    <Line key={i} row={row} />
-  ))
+  const shown = (
+    <Box ref={bodyBox} flexDirection="column" flexShrink={0}>
+      {body.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+        <Line key={i} row={row} />
+      ))}
+    </Box>
+  )
 
   return (
     // The header bar above leaves a blank row; what comes first starts right under it.
@@ -451,17 +523,22 @@ const full = (screen: Screen, _state: ColourState) =>
   screen.kind === 'scale' || screen.kind === 'system'
 
 /** The field at rest: the image and its size, or the colour, its swatch and where it came from. */
-function restingField(p: ReturnType<typeof useTheme>, screen: Screen): Row {
+function restingField(p: ReturnType<typeof useTheme>, screen: Screen, width: number): Row {
   if (screen.kind === 'palette')
     return fieldValue({ palette: p, value: screen.name, detail: screen.meta })
   if (screen.kind === 'scale') {
     const hex = toHex(screen.ref)
-    return fieldValue({
+    const value = fieldValue({
       palette: p,
       value: hex,
       swatch: true,
       ...(screen.from ? { detail: screen.from } : {}),
     })
+    // ⇧→ still starts a mix here: the far end says so, where the editor
+    // would, and where it fits.
+    const hint = keyHint(p, ...GRADIENT_HINT)
+    const gap = width - 9 - widthOf(value) - widthOf(hint)
+    return gap >= 2 ? [...value, blank(gap), ...hint] : value
   }
   if (screen.kind === 'system')
     return fieldValue({ palette: p, value: toHex(screen.ref), swatch: true })
@@ -481,8 +558,24 @@ function restingField(p: ReturnType<typeof useTheme>, screen: Screen): Row {
 
 /** The empty box's one hint (§12.4): a colour on Scale and Palette, a path on Extract. */
 const COLOUR_HINT = 'type a hex, rgb(), hsl(), oklch() or a colour name'
-/** At the field's far end once a whole colour is typed where → mixes (approved 2026-10-14). */
-const GRADIENT_HINT = '→ gradient to a second colour'
+/**
+ * A key and what it does, at the field's far end: the key bold in the mode's
+ * colour, a space between its glyphs so ⇧ and → read as two, the words
+ * quiet (2026-10-14).
+ */
+function keyHint(p: ReturnType<typeof useTheme>, keys: string, words: string): Row {
+  return [
+    { text: keys, fg: p.accent, bold: true },
+    { text: ` ${words}`, fg: p.border },
+  ]
+}
+/** While a colour is typed on a scale: ↵ is done. */
+const DONE_HINT = ['↵', 'done'] as const
+/**
+ * Once the scale is shown, where ⇧→ mixes (approved 2026-10-14; ⇧ since
+ * then, as → moves along the ramp; only after ↵, from then on).
+ */
+const GRADIENT_HINT = ['⇧ →', 'gradient to a second colour'] as const
 function hintFor(screen: Screen): string {
   return screen.kind === 'palette' || screen.kind === 'palette-empty'
     ? 'type an image path'
@@ -558,29 +651,34 @@ function FieldEditor({
       : []
   // After the colour and its →: the hint for the second (approved, §12.3).
   const waiting = pair && !pair.b && /→\s*$/.test(value)
-  /** `text` in grey at the far end of the field, after `before`. */
-  const farEnd = (before: Row, text: string): Row => [
+  /**
+   * `tail` at the far end of the field, after `before`: ending where the
+   * resting field's hint ends, two cells short of the fill, not against it.
+   */
+  const room = width - 10 - stringWidth(value)
+  const farEnd = (before: Row, tail: Row): Row => [
     ...before,
-    blank(Math.max(2, width - 9 - stringWidth(value) - widthOf(before) - stringWidth(text))),
-    { text, fg: p.border },
+    blank(Math.max(2, room - widthOf(before) - widthOf(tail))),
+    ...tail,
   ]
-  // A whole colour, where → would start a mix: the key that does it (approved),
-  // where it fits beside what was typed.
-  const mixable =
+  // A whole colour typed on a scale: ↵ is done (asked for, 2026-10-14), where
+  // it fits beside what was typed. ⇧→ already starts a mix here, but its
+  // helper waits for the scale to be shown (`restingField`).
+  const done = keyHint(p, ...DONE_HINT)
+  const finished =
     mixes &&
     one !== undefined &&
     !pair?.b &&
     !/→/.test(value) &&
-    width - 9 - stringWidth(value) - widthOf(swatch(one.rgb, true)) - stringWidth(GRADIENT_HINT) >=
-      2
+    room - widthOf(swatch(one.rgb, true)) - widthOf(done) >= 2
   const after: Row = wrong
-    ? farEnd([], 'wrong input')
+    ? farEnd([], [{ text: 'wrong input', fg: p.border }])
     : waiting
       ? [{ text: 'type a second colour to mix', fg: p.border }]
       : pair?.b
         ? swatch(pair.b)
-        : mixable
-          ? farEnd(swatch(one?.rgb, true), GRADIENT_HINT)
+        : finished
+          ? farEnd(swatch(one?.rgb, true), done)
           : swatch(one?.rgb, true)
   const pad = <Box width={width - 4} height={1} {...fillProps} />
   return (
@@ -600,9 +698,17 @@ function FieldEditor({
           width={width - 5}
           keepOnSubmit
           intercept={(_input, key, now, atEnd) => {
-            // → at the end of a whole colour asks for the second, for a mix;
-            // anywhere else it moves the cursor, as it always does.
-            if (key.rightArrow && atEnd && mixes && !/→/.test(now) && parseColour(now.trim())) {
+            // ⇧→ at the end of a whole colour asks for the second, for a mix.
+            // Not → alone: on a scale that moves along the ramp, and here it
+            // moves the cursor, as it always does.
+            if (
+              key.rightArrow &&
+              key.shift &&
+              atEnd &&
+              mixes &&
+              !/→/.test(now) &&
+              parseColour(now.trim())
+            ) {
               onChange(`${now.trimEnd()} → `)
               return true
             }
@@ -632,6 +738,7 @@ function bodyRows({
   groupsAt,
   width,
   height,
+  real = false,
   pixels,
   arrivedFor,
 }: {
@@ -641,6 +748,8 @@ function bodyRows({
   groupsAt: (level: number[]) => Group[]
   width: number
   height: number
+  /** The photo is drawn as a real picture over its box: the rows leave the box blank. */
+  real?: boolean
   pixels: Pixels | undefined
   /** How long ago the palette came in, while its colours are still arriving (M7). */
   arrivedFor?: number | undefined
@@ -651,7 +760,9 @@ function bodyRows({
   if (screen.kind === 'scale-empty' || screen.kind === 'scale') {
     const ref: Rgb | undefined = state.preview ?? (screen.kind === 'scale' ? screen.ref : undefined)
     if (!ref) return emptyRampRows({ width, palette: p, steps: stepsOf(state.steps) })
-    const steps = tabSteps(state, ref)
+    // A colour being typed is drawn as it is; a shown scale with its own tweak.
+    const tweak = screen.kind === 'scale' && !state.preview ? screen.tweak : undefined
+    const steps = tabSteps(state, ref, tweak)
     const centre = centreOf(state.steps)
     const sel = screen.kind === 'scale' && !state.preview ? screen.sel : centre
     const step = steps[sel] ?? steps[centre]
@@ -664,7 +775,14 @@ function bodyRows({
           ? { field: 'over' as const, value: state.over }
           : undefined
     const line: Row = tabbed
-      ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit?.field, extra })
+      ? stepsLine({
+          width,
+          palette: p,
+          spec: state.steps,
+          editing: state.stepsEdit?.field,
+          extra,
+          tweak: true,
+        })
       : []
     // A blank row between the field and the tabs where the window has one to
     // spare: at 80×24 every row is taken, and the tabs sit right under the field.
@@ -686,7 +804,7 @@ function bodyRows({
     }
     if (tabbed && state.tab === 'alpha') {
       const alphas = steps.map((x) => alphaOf(x.rgb, bg))
-      return [
+      const body: Row[] = [
         ...tabs,
         ...alphaRampRows({ width, palette: p, steps, alphas, selected: sel, over: state.over }),
         line,
@@ -698,17 +816,19 @@ function bodyRows({
           over: state.over,
         }),
       ]
+      return state.win ? windowFor(p, state, ref, body, width) : body
     }
     const reads = onWhiteAndBlack(step.rgb)
     // The steps' line sits right under the ramp it describes, in the row a
     // gap took before it, so the screen is no taller than it was.
-    return [
+    const body: Row[] = [
       ...tabs,
       ...rampRows({ width, palette: p, steps, selected: sel }),
       line,
       [],
       ...previewRows({ palette: p, step: { ...step, oklch: formatOklch(step.rgb), ...reads } }),
     ]
+    return state.win ? windowFor(p, state, ref, body, width) : body
   }
   if (screen.kind === 'mix') {
     const steps = mixOf(state, screen)
@@ -819,7 +939,13 @@ function bodyRows({
           rows: showPhoto ? framedRows : items.length + 2,
         })
   if (!showPhoto || !pixels) return column.map((row) => [blank(4), ...row])
-  return paletteBody(framed(p, photoFor(p, screen, groupsAt, pixels, framedRows)), column)
+  const photo = real
+    ? (() => {
+        const box = photoCells(pixels, framedRows)
+        return Array.from({ length: box.rows }, (): Row => [blank(box.cols)])
+      })()
+    : photoFor(p, screen, groupsAt, pixels, framedRows)
+  return paletteBody(framed(p, photo), column)
 }
 
 /** The colour a drill level is inside: its hex, its whole percentage, and its share of the image. */
@@ -1071,13 +1197,20 @@ function windowFor(
       scroll: visible < MODES.length ? { at: first, of: MODES.length } : undefined,
     })
   }
+  // Over a scale, its own tweak, and its steps as the strip that moves with it.
+  const tweak = tweakOf(state)
+  const screen = state.history[state.history.length - 1] as Screen
   const sliders: Slider[] = TWEAK_KEYS.map((k) => ({
     label: k,
-    value: state.tweak[k],
+    value: tweak[k],
     max: k === 'hue' ? 180 : 100,
     unit: k === 'hue' ? '°' : '',
   }))
-  const lines = tweakLines(p, sliders, win.at, chipsOf(systemOf(state, ref)))
+  const strip =
+    screen.kind === 'scale'
+      ? tabSteps(state, ref, tweak).map((x) => x.hex)
+      : chipsOf(systemOf(state, ref))
+  const lines = tweakLines(p, sliders, win.at, strip)
   return windowOver(p, body, {
     title: 'Tweak',
     lines,

@@ -61,8 +61,15 @@ It is plain Sharp — no dependency, no download, Mac and Windows alike.
 - **Outside the crop (P3)**: a cell wholly outside is `╱` over its own colour
   faded towards the canvas (bg = the mean of its two dots, each mixed 72 %
   towards `canvas` in dark, 70 % in light; fg = the cell's faded top dot
-  mixed half way to `border`). A cell half inside keeps `▀` with only its
-  outside dot faded. Inside: the photo's own colours.
+  mixed 65 % of the way to the mode's colour, so what is cut reads as cut —
+  half way to `border` until 2026-10-14). A cell half inside keeps `▀` with
+  only its outside dot faded. Inside: the photo's own colours.
+- **In a terminal that draws pictures** (Ghostty, Kitty, iTerm2, WezTerm;
+  `inline-image.ts`) the preview is sent as a PNG into the picture's box,
+  drawn again on each move: the thumbnail sampled 8 pixels a cell across
+  (square pixels), what is cut faded as above and hatched with `╱` lines a
+  cell apart in the mode's colour, the brackets in the mode's colour. The
+  rows leave the box blank. Everywhere else, the half blocks.
 - **Transparency** is drawn on Done's checkerboard (`onChecker`, squares two
   cells by one), never as the colours stored under it.
 - **Facts**, right of the picture: `3024 × 3024` bold + ` · 1:1` dim; under it

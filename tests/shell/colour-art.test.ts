@@ -13,12 +13,13 @@ import {
   insideColumn,
   paletteBody,
   paletteColumn,
+  photoPixels,
   photoRows,
   previewRows,
   rampRows,
   stepsLine,
 } from '../../src/shell/colour/colour-art.js'
-import { type Row, width } from '../../src/shell/home-art.js'
+import { mix, type Row, width } from '../../src/shell/home-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import {
   type Cell,
@@ -112,7 +113,13 @@ describe('home in colour mode: three cards (colour spec §12.6)', () => {
       const rows = choiceCards({ width: 80, palette: P, selected, samples })
       expect(rows).toHaveLength(9)
       for (const row of rows) expect(width(row)).toBe(78)
-      expect(text(rows[2] as Row)).toMatch(/Extract +Scale +Palette/)
+      expect(text(rows[2] as Row)).toMatch(/A Extract +S Scale +D Palette/)
+      // Each name after its key, the key in the mode's colour.
+      for (const key of ['A', 'S', 'D']) {
+        const run = (rows[2] as Row).find((r) => r.text === key)
+        expect(run?.fg).toBe(P.accent.toLowerCase())
+        expect(run?.bold).toBe(true)
+      }
       expect(text(rows[3] as Row)).toMatch(/extract colours +create shades +build a palette/)
       expect(text(rows[4] as Row)).toMatch(/from an image +from one colour +from one colour/)
       // The chosen card's name sits on panelBand; the others on the panel's fill.
@@ -284,8 +291,48 @@ describe('the scale (S9)', () => {
   it('the ramp, 500 from the reference, the chosen step marked', () =>
     expectRows(rampRows({ width: 80, palette: P, steps: data.scA, selected: 5 }), '8', 6))
 
-  it('the preview: Aa in white and black, and the facts in plain text', () =>
-    expectRows(previewRows({ palette: P, step: data.scA[5] as Step }), '8', 12))
+  it('the preview: Aa in white and black, and contrast by use, as Figma reads it (2026-10-14)', () => {
+    const rows = previewRows({
+      palette: P,
+      step: { step: 500, hex: '#73608A', oklch: 'oklch(52% 0.068 305)', white: 5.5, black: 3.7 },
+    })
+    expect(rows).toHaveLength(5)
+    const text = (row: Row | undefined) =>
+      (row ?? [])
+        .map((r) => r.text)
+        .join('')
+        .slice(4 + 18 + 4)
+        .trimEnd()
+    expect(rows.map(text)).toEqual([
+      '500  #73608A',
+      'oklch(52% 0.068 305)',
+      '               normal  large',
+      'white  5.5:1   AA      AAA',
+      'black  3.7:1   ✗       AA',
+    ])
+    // A pass in ok's green, a fail in fail's red; the heads quiet.
+    const run = (r: number, t: string) => rows[r]?.find((x) => x.text === t)
+    expect(run(3, 'AA')?.fg).toBe(P.ok.toLowerCase())
+    expect(run(3, 'AAA')?.fg).toBe(P.ok.toLowerCase())
+    expect(run(4, '✗')?.fg).toBe(P.fail.toLowerCase())
+    expect(run(2, 'normal')?.fg).toBe(P.border.toLowerCase())
+  })
+
+  it('grades large text AAA from 4.5 and normal text from 7, and fails both under 3', () => {
+    const rows = previewRows({
+      palette: P,
+      step: { step: 200, hex: '#B8E1BD', oklch: 'o', white: 1.4, black: 14.5 },
+    })
+    const cells = (row: Row | undefined) =>
+      (row ?? [])
+        .map((r) => r.text)
+        .join('')
+        .slice(26)
+        .trim()
+        .split(/ +/)
+    expect(cells(rows[3])).toEqual(['white', '1.4:1', '✗', '✗'])
+    expect(cells(rows[4])).toEqual(['black', '14.5:1', 'AAA', 'AAA'])
+  })
 
   it('a typed colour, its ramp', () =>
     expectRows(rampRows({ width: 80, palette: P, steps: data.scC, selected: 5 }), '12', 6))
@@ -336,5 +383,33 @@ describe('the ramp at other widths and counts', () => {
     expect(text(stepsLine({ width: 76, palette: P, spec: radix }))).toMatch(
       /Radix {2}1 – 12 {2}· {2}12 steps · your colour at 9 +s +steps$/,
     )
+  })
+})
+
+describe('the photo as pixels, for a terminal that draws pictures', () => {
+  // 2 × 2: red, green; blue, and a clear pixel.
+  const pixels = {
+    width: 2,
+    height: 2,
+    rgba: new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0]),
+  }
+  const hexAt = (g: { rgba: Uint8Array }, i: number) =>
+    `#${[...g.rgba.subarray(i * 4, i * 4 + 3)].map((v) => v.toString(16).padStart(2, '0')).join('')}`
+
+  it('draws the chosen colour’s pixels as they are and dims the rest, less than the rows do', () => {
+    const groups = [{ members: Uint32Array.of(0) }, { members: Uint32Array.of(1, 2) }]
+    const g = photoPixels({ palette: P, pixels, groups, lit: 0, inside: false })
+    expect([g.width, g.height]).toEqual([2, 2])
+    expect(hexAt(g, 0)).toBe('#ff0000')
+    expect(hexAt(g, 1)).toBe(mix('#00ff00', P.canvas.toLowerCase(), 0.6))
+    expect(hexAt(g, 2)).toBe(mix('#0000ff', P.canvas.toLowerCase(), 0.6))
+    expect(g.rgba[15]).toBe(0)
+  })
+
+  it('inside a colour, draws what is outside it faint', () => {
+    const groups = [{ members: Uint32Array.of(1) }]
+    const g = photoPixels({ palette: P, pixels, groups, lit: 0, inside: true })
+    expect(hexAt(g, 1)).toBe('#00ff00')
+    expect(hexAt(g, 0)).toBe(mix('#ff0000', P.canvas.toLowerCase(), 0.8))
   })
 })

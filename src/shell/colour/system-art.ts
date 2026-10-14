@@ -2,6 +2,7 @@ import stringWidth from 'string-width'
 import { blank, mix, type Row, type Run, width } from '../home-art.js'
 import { sliderRow } from '../quality-art.js'
 import type { Palette } from '../theme.js'
+import { withKeys } from './colour-art.js'
 
 /**
  * Palette's screen (colour spec §12.6) as rows of runs: the grid of a
@@ -263,22 +264,6 @@ export function chosenRow(p: Palette, name: string, step: string, hex: string, o
   ]
 }
 
-/** The keys at the line's far end, drawn as the key row's caps. */
-function withKeys(p: Palette, row: Row, pairs: [string, string][], w: number): Row {
-  const tail: Row = []
-  pairs.forEach(([k, word], i) => {
-    if (i) tail.push(blank(2))
-    tail.push(
-      p.keycapBg === ''
-        ? { text: `[${k}]`, fg: p.fg, bold: true }
-        : { text: ` ${k} `, fg: p.fg, bg: p.keycapBg, bold: true },
-      ink(` ${word}`, p.dim),
-    )
-  })
-  const gap = w - 1 - width(row) - width(tail)
-  return gap < 2 ? row : [...row, blank(gap), ...tail]
-}
-
 /** The line under the grid: the mode's name, and `m mode  t tweak  s steps`. */
 export function modeRow(p: Palette, columns: number, modeName: string): Row {
   return withKeys(
@@ -450,10 +435,17 @@ export function tweakLines(p: Palette, sliders: Slider[], focus: number, hexes: 
     )
     lines.push([blank(1), ink(s.label.padEnd(12), on ? p.fg : p.dim, on), ...bar])
   })
+  // Three cells a chip, a cell apart, narrower when there are more than fit
+  // (a scale's eleven, an even set's up to 21); touching at one cell a chip.
+  const room = TWEAK_WINDOW_WIDTH - 2 - 13 - 1
+  const n = Math.max(1, hexes.length)
+  const spaced = Math.floor((room + 1) / n) - 1
+  const [chip, gap] =
+    spaced >= 1 ? [Math.min(3, spaced), 1] : [Math.max(1, Math.floor(room / n)), 0]
   const strip: Row = [blank(13)]
   hexes.forEach((h, i) => {
-    if (i) strip.push(blank(1))
-    strip.push({ text: '   ', bg: lc(h) })
+    if (i && gap) strip.push(blank(gap))
+    strip.push({ text: ' '.repeat(chip), bg: lc(h) })
   })
   lines.push([], strip)
   return lines

@@ -6,11 +6,11 @@ import { tabStep } from '../../src/shell/theme.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 /**
- * ←→ on home walk the tab row — the five modes, then "/ commands" — wrapping
- * at the ends, while nothing is typed (as 1–5 pick a mode). Colour's home uses
- * ←→ for its two cards, so there the arrows move between the cards first and
- * go on past them; on the commands tab they only switch while the field holds
- * the bare "/" (decided 2026-10-13).
+ * ←→ on home walk the tab row — the five modes, then "/ commands" — and stop
+ * at both ends, while nothing is typed (as 1–5 pick a mode). They pass
+ * through colour like any other tab: its cards are chosen with a s d. On the
+ * commands tab they only switch while the field holds the bare "/" (decided
+ * 2026-10-14).
  */
 const ESC = String.fromCharCode(27)
 const LEFT = `${ESC}[D`
@@ -54,11 +54,11 @@ async function home() {
 }
 
 describe('tabStep', () => {
-  it('walks the modes, then commands, and wraps at both ends', () => {
+  it('walks the modes, then commands, and stops at both ends', () => {
     expect(tabStep('convert', 1)).toBe('compress')
     expect(tabStep('colour', 1)).toBe('commands')
-    expect(tabStep('commands', 1)).toBe('convert')
-    expect(tabStep('convert', -1)).toBe('commands')
+    expect(tabStep('commands', 1)).toBe('commands')
+    expect(tabStep('convert', -1)).toBe('convert')
     expect(tabStep('commands', -1)).toBe('colour')
   })
 })
@@ -72,41 +72,32 @@ describe('←→ on home', () => {
     await reach(app, 'convert')
   }, 20_000)
 
-  it('← walks back through commands, colour’s three cards and on to enhance', async () => {
+  it('← on the first tab stays there', async () => {
     const app = await home()
     app.stdin.write(LEFT)
-    await reach(app, 'commands')
-    await settle()
-    app.stdin.write(LEFT)
-    await reach(app, 'colour')
-    // Arriving from the right lands on Palette: ← steps to Scale, to Extract, then leaves.
-    await settle()
-    app.stdin.write(LEFT)
     await settle(300)
-    expect(on.colour(frame(app))).toBe(true)
-    app.stdin.write(LEFT)
-    await settle(300)
-    expect(on.colour(frame(app))).toBe(true)
-    app.stdin.write(LEFT)
-    await reach(app, 'enhance')
+    expect(on.convert(frame(app))).toBe(true)
   }, 20_000)
 
-  it('→ past colour’s right card opens the commands, and → again wraps to convert', async () => {
+  it('passes straight through colour, and stops at the commands', async () => {
     const app = await home()
-    app.stdin.write('5')
-    await reach(app, 'colour')
+    app.stdin.write('4')
+    await reach(app, 'enhance')
     await settle()
     app.stdin.write(RIGHT)
-    await settle(300)
-    expect(on.colour(frame(app))).toBe(true)
-    app.stdin.write(RIGHT)
-    await settle(300)
-    expect(on.colour(frame(app))).toBe(true)
+    await reach(app, 'colour')
+    await settle()
     app.stdin.write(RIGHT)
     await reach(app, 'commands')
     await settle()
     app.stdin.write(RIGHT)
-    await reach(app, 'convert')
+    await settle(300)
+    expect(on.commands(frame(app))).toBe(true)
+    app.stdin.write(LEFT)
+    await reach(app, 'colour')
+    await settle()
+    app.stdin.write(LEFT)
+    await reach(app, 'enhance')
   }, 20_000)
 
   it('moves the cursor instead once something is typed, on a mode or on commands', async () => {

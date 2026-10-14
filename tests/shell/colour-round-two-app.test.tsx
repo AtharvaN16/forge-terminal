@@ -8,6 +8,7 @@ import { makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
 const RIGHT = `${ESC}[C`
+const SHIFT_RIGHT = `${ESC}[1;2C`
 const DOWN = `${ESC}[B`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
@@ -39,12 +40,8 @@ async function colourHome(height = 24) {
 describe('colour, round two, in the app', () => {
   it('home has three cards; the third opens Palette, which a colour fills', async () => {
     const app = await colourHome()
-    expect(plain(app.lastFrame())).toMatch(/Extract +Scale +Palette/)
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    expect(plain(app.lastFrame())).toMatch(/A Extract +S Scale +D Palette/)
+    app.stdin.write('d')
     await waitFor(() =>
       plain(app.lastFrame()).includes('type a hex, rgb(), hsl(), oklch() or a colour name'),
     )
@@ -82,9 +79,7 @@ describe('colour, round two, in the app', () => {
 
   it('Scale’s three tabs each fit the window; wrong input turns up in the box', async () => {
     const app = await colourHome()
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
@@ -107,9 +102,7 @@ describe('colour, round two, in the app', () => {
   it('a blank row between the field and Scale’s tabs, where the window has one to spare', async () => {
     for (const height of [24, 30]) {
       const app = await colourHome(height)
-      app.stdin.write(RIGHT)
-      await settle(150)
-      app.stdin.write('\r')
+      app.stdin.write('s')
       await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
       app.stdin.write('#6579FD')
       await settle()
@@ -125,17 +118,17 @@ describe('colour, round two, in the app', () => {
     }
   }, 30_000)
 
-  it('→ after a colour asks for a second; ↵ mixes them', async () => {
+  it('⇧→ after a colour asks for a second; ↵ mixes them', async () => {
     const app = await colourHome()
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#F26E69')
     await settle()
-    // A whole colour: the field's far end says what → does.
-    expect(plain(app.lastFrame())).toMatch(/#F26E69 +→ gradient to a second colour/)
-    app.stdin.write(RIGHT)
+    // A whole colour typed: the field's far end says ↵ is done. The
+    // gradient's helper waits until it is (⇧→ works all the same).
+    expect(plain(app.lastFrame())).toMatch(/#F26E69 .* ↵ done/)
+    expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
+    app.stdin.write(SHIFT_RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
     expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
     app.stdin.write('#6579FD')
@@ -146,11 +139,55 @@ describe('colour, round two, in the app', () => {
     expect(lines(app.lastFrame())).toHaveLength(24)
   }, 30_000)
 
+  it('⇧→ still starts a gradient once the scale is shown, and the field says so', async () => {
+    const app = await colourHome()
+    app.stdin.write('s')
+    await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+    app.stdin.write('#32A852')
+    await settle()
+    app.stdin.write('\r')
+    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
+    expect(plain(app.lastFrame())).toMatch(/#32A852 .* ⇧ → gradient to a second colour/)
+    // → alone still walks the ramp.
+    app.stdin.write(RIGHT)
+    await settle()
+    expect(plain(app.lastFrame())).not.toContain('type a second colour to mix')
+    app.stdin.write(SHIFT_RIGHT)
+    await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
+    app.stdin.write('#6579FD')
+    await settle()
+    app.stdin.write('\r')
+    await waitFor(() => plain(app.lastFrame()).includes('straight across'))
+    expect(plain(app.lastFrame())).toMatch(/╱ Mix/)
+    expect(lines(app.lastFrame())).toHaveLength(24)
+  }, 30_000)
+
+  it('t on a scale opens Tweak over it; ↵ keeps the scale moved', async () => {
+    const app = await colourHome()
+    app.stdin.write('s')
+    await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+    app.stdin.write('#32A852')
+    await settle()
+    app.stdin.write('\r')
+    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
+    const before = plain(app.lastFrame())
+    expect(before).toMatch(/t +tweak +s +steps/)
+    app.stdin.write('t')
+    await waitFor(() => plain(app.lastFrame()).includes('Tweak'))
+    expect(plain(app.lastFrame())).toMatch(/brightness/)
+    expect(keyRow(app.lastFrame())).toMatch(/⇧←→ +10/)
+    app.stdin.write(SHIFT_RIGHT)
+    await settle()
+    app.stdin.write('\r')
+    await waitFor(() => !plain(app.lastFrame()).includes('brightness'))
+    // The scale is lighter: the centre step's hex is another.
+    expect(plain(app.lastFrame())).not.toContain('500  #32A852')
+    expect(lines(app.lastFrame())).toHaveLength(24)
+  }, 30_000)
+
   it('wrong input can be corrected in place: backspace, then a colour, then ↵', async () => {
     const app = await colourHome()
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('z')
     await settle()
@@ -167,11 +204,9 @@ describe('colour, round two, in the app', () => {
     expect(plain(app.lastFrame())).toContain('#DC143C')
   }, 30_000)
 
-  it('→ inside a colour moves the cursor; only at the end does it ask for a second', async () => {
+  it('→ moves the cursor; only ⇧→ at the end asks for a second', async () => {
     const app = await colourHome()
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#ff0000')
     await settle()
@@ -183,17 +218,19 @@ describe('colour, round two, in the app', () => {
     await settle()
     // No arrow put after the colour (the far end's hint has one of its own).
     expect(plain(app.lastFrame())).not.toMatch(/#ff0000 →/)
+    // At the end now: → alone still asks for nothing, it is the ramp's key.
     app.stdin.write(RIGHT)
     await settle()
     app.stdin.write(RIGHT)
+    await settle()
+    expect(plain(app.lastFrame())).not.toMatch(/#ff0000 →/)
+    app.stdin.write(SHIFT_RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
   }, 30_000)
 
   it('typing a new colour over a tabbed scale keeps the screen at 24 rows', async () => {
     const app = await colourHome()
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
@@ -210,11 +247,7 @@ describe('colour, round two, in the app', () => {
 
   it('s on Palette shows the steps line in the mode line’s place', async () => {
     const app = await colourHome()
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write(RIGHT)
-    await settle(150)
-    app.stdin.write('\r')
+    app.stdin.write('d')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#D2042D')
     await settle()

@@ -1,7 +1,7 @@
 import { Box } from 'ink'
-import { type ReactNode, useState } from 'react'
+import { cloneElement, isValidElement, type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
-import { COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
+import { COLOUR_CARD_KEYS, COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
 import type { CommandList } from '../commands.js'
 import {
   brandIntro,
@@ -22,6 +22,7 @@ import {
 import {
   blendRows,
   easeOut,
+  fadedPalette,
   motionEnabled,
   useBlendedRows,
   useElapsed,
@@ -109,7 +110,7 @@ export function homeKeys({
   completions: number
   /** The command list is open. */
   commands: boolean
-  /** Colour's home: the two cards to choose between, and nothing to send. */
+  /** Colour's home: the three cards to choose between, and nothing to send. */
   colour?: boolean
   /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
   staged?: { count: number; verb: string | null } | undefined
@@ -151,12 +152,9 @@ export function homeKeys({
   }
   if (colour) {
     return {
-      main: [
-        ['←→', 'choose'],
-        ['↵', 'open'],
-      ],
+      main: [[COLOUR_CARD_KEYS.join(' ').toUpperCase(), 'open']],
       foot: [
-        [MODE_KEYS, 'mode'],
+        [MODE_ARROWS, 'mode'],
         ['ctrl-n', 'new'],
         ['ctrl-c', 'quit'],
       ],
@@ -511,6 +509,25 @@ export function Home({
     canvas: palette.canvas,
     fg: palette.fg,
   })
+  // Colour's home has no field: going to or from it, the field fades with
+  // the panel — out over the first half, in over the second — rather than
+  // going or coming at once while the rest is still fading (M1b).
+  const fieldless = (m: ShellMode) => m === 'colour' && !typing
+  const modes = useRef({ now: mode, before: mode })
+  if (modes.current.now !== mode) modes.current = { now: mode, before: modes.current.now }
+  const fieldAt = easeOut(useTween(mode, MODE_FADE_MS, { enabled: motionEnabled(palette.name) }))
+  const crossing = fieldAt < 1 && fieldless(modes.current.before) !== fieldless(mode)
+  const fieldShows = !fieldless(crossing && fieldAt < 0.5 ? modes.current.before : mode)
+  // Fading out, it is the field colour's home does not have: shown, not typed into.
+  const leaving = crossing && fieldless(mode)
+  const fieldNow =
+    leaving && isValidElement<{ isActive?: boolean }>(field)
+      ? cloneElement(field, { isActive: false })
+      : field
+  const fieldPalette = crossing
+    ? fadedPalette(palette, palette.canvas, Math.abs(1 - 2 * fieldAt))
+    : palette
+
   const shownBrand = faded.slice(0, brand.length)
   const shownTabs = faded.slice(brand.length, brand.length + tabs.length)
   const shownPanel = faded.slice(brand.length + tabs.length)
@@ -538,11 +555,13 @@ export function Home({
       {/* Colour's home has nothing to type until something is: its field
           shows once `/`, `#` or a drop has put text in it. */}
       <Box flexShrink={0}>
-        {mode === 'colour' && !typing ? (
+        {!fieldShows ? (
           <Box height={3} />
         ) : commands ? (
           // While a command is typed the field's marker is the commands' gold.
           <ThemeProvider palette={commandsPalette(palette)}>{field}</ThemeProvider>
+        ) : crossing ? (
+          <ThemeProvider palette={fieldPalette}>{fieldNow}</ThemeProvider>
         ) : (
           field
         )}

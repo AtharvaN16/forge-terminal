@@ -1,5 +1,5 @@
 import { type DOMElement, useStdout } from 'ink'
-import { type RefObject, useLayoutEffect } from 'react'
+import { type RefObject, useLayoutEffect, useRef } from 'react'
 import { type ImageProtocol, inlineImageSequence, kittyDelete } from './inline-image.js'
 
 /**
@@ -26,10 +26,16 @@ import { type ImageProtocol, inlineImageSequence, kittyDelete } from './inline-i
  * repaint overwrites iTerm2's image cells with blanks; Kitty's image stays,
  * and is replaced in place because it is drawn again under the same id.
  *
- * Leaving: in a layout effect's cleanup, which React runs during the commit,
- * before Ink writes the next screen. iTerm2's pictures are erased cell by cell
- * (Ink's next frame would overwrite most of them, but not cells it leaves
- * blank); Kitty's are deleted by id, since erasing text leaves them on screen.
+ * A new picture in the same box (the crop moved, another colour chosen) is
+ * drawn over the old one: Kitty's under the same id, which replaces it in
+ * place, iTerm2's over its cells. Taking one off first would show the empty
+ * box between the two.
+ *
+ * Leaving, or the box changing size: in a layout effect's cleanup, which React
+ * runs during the commit, before Ink writes the next screen. iTerm2's
+ * pictures are erased cell by cell (Ink's next frame would overwrite most of
+ * them, but not cells it leaves blank); Kitty's are deleted by id, since
+ * erasing text leaves them on screen.
  */
 
 const ESC = '\u001b'
@@ -99,40 +105,86 @@ function erased(at: Placement, cols: number, rows: number): string {
   return placed(at, body)
 }
 
+/** Where a picture sits inside its box, in cells: for one drawn among rows rather than in a box of its own. */
+export interface PictureOffset {
+  row: number
+  col: number
+}
+
 export function useInlinePictures(opts: {
   boxes: ReadonlyArray<RefObject<DOMElement | null>>
   pictures: readonly Buffer[] | undefined
   protocol: ImageProtocol | null
   cols: number
   rows: number
+  offsets?: ReadonlyArray<PictureOffset> | undefined
 }): void {
   const { stdout } = useStdout()
-  const { boxes, pictures, protocol, cols, rows } = opts
+  const { boxes, pictures, protocol, cols, rows, offsets } = opts
+  // Keyed by value: a new array each render is the same place.
+  const at = (offsets ?? []).map((o) => `${o.row},${o.col}`).join(';')
+  /** Kitty ids, one per picture, kept for this screen's life: a new picture under the same id replaces the old in place. */
+  const ids = useRef<number[]>([])
+  /** What is on screen now, and how it was drawn, to take it off again. */
+  const shown = useRef<
+    { at: Placement[]; protocol: ImageProtocol; cols: number; rows: number } | undefined
+  >(undefined)
+  /** Set while writing a picture, so the watcher does not take it for Ink's. */
+  const ours = useRef(false)
+
+  const send = (s: string) => {
+    ours.current = true
+    try {
+      stdout.write(s)
+    } finally {
+      ours.current = false
+    }
+  }
+  const idOf = (i: number) => {
+    ids.current[i] ??= nextKittyId++
+    return ids.current[i] as number
+  }
+  /** Takes the pictures off: Kitty's deleted by id (erasing text leaves them), iTerm2's erased cell by cell. */
+  const clear = () => {
+    const was = shown.current
+    if (!was) return
+    shown.current = undefined
+    if (was.protocol === 'kitty') send(was.at.map((_, i) => kittyDelete(idOf(i))).join(''))
+    else send(was.at.map((p) => erased(p, was.cols, was.rows)).join(''))
+  }
+
+  // Off when the box changes size or the protocol changes, and when the
+  // screen is left: in the commit, before Ink writes the next screen. A new
+  // picture alone is not a reason: it is drawn over the old one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `clear` reads refs only
+  useLayoutEffect(() => clear, [protocol, cols, rows, stdout])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `at` stands for `offsets`; `send` and `clear` read refs only
   useLayoutEffect(() => {
-    if (!pictures || !protocol || !stdout.isTTY) return
-    const ids = pictures.map(() => nextKittyId++)
-    const seqs = pictures.map((png, i) => inlineImageSequence(png, cols, rows, protocol, ids[i]))
+    if (!pictures || !protocol || !stdout.isTTY) {
+      clear()
+      return
+    }
+    const seqs = pictures.map((png, i) => inlineImageSequence(png, cols, rows, protocol, idOf(i)))
     const original = stdout.write
-    let ours = false
     let live = true
     let timer: NodeJS.Timeout | undefined
-    let shown: Placement[] = []
 
-    const send = (s: string) => {
-      ours = true
-      try {
-        original.call(stdout, s)
-      } finally {
-        ours = false
-      }
-    }
     const paint = () => {
       timer = undefined
       if (!live) return
-      const at = boxes.map((b) => placementOf(b.current, stdout.rows ?? 24))
-      if (at.some((p) => p === undefined)) return
-      shown = at as Placement[]
-      send(shown.map((p, i) => placed(p, seqs[i] ?? '')).join(''))
+      const places = boxes.map((b, i) => {
+        const p = placementOf(b.current, stdout.rows ?? 24)
+        const o = offsets?.[i]
+        return p && o ? { up: p.up - o.row, col: p.col + o.col } : p
+      })
+      if (places.some((p) => p === undefined || p.up < 0)) return
+      const now = places as Placement[]
+      // Moved: the old place is cleared first, or iTerm2's cells stay behind.
+      const was = shown.current
+      if (was?.at.some((p, i) => p.up !== now[i]?.up || p.col !== now[i]?.col)) clear()
+      shown.current = { at: now, protocol, cols, rows }
+      send(now.map((p, i) => placed(p, seqs[i] ?? '')).join(''))
     }
     const schedule = () => {
       if (timer) clearTimeout(timer)
@@ -140,7 +192,7 @@ export function useInlinePictures(opts: {
     }
     const watcher = function (this: NodeJS.WriteStream, ...args: unknown[]) {
       const result = (original as (...a: unknown[]) => boolean).apply(this, args)
-      if (live && !ours) schedule()
+      if (live && !ours.current) schedule()
       return result
     } as typeof stdout.write
     stdout.write = watcher
@@ -151,8 +203,6 @@ export function useInlinePictures(opts: {
       if (timer) clearTimeout(timer)
       // Someone wrapped write after us: leave theirs in place; ours is now a pass-through.
       if (stdout.write === watcher) stdout.write = original
-      if (protocol === 'kitty') send(ids.map(kittyDelete).join(''))
-      else if (shown.length > 0) send(shown.map((p) => erased(p, cols, rows)).join(''))
     }
-  }, [boxes, pictures, protocol, cols, rows, stdout])
+  }, [boxes, pictures, protocol, cols, rows, at, stdout])
 }

@@ -1,4 +1,5 @@
 import stringWidth from 'string-width'
+import type { PixelGrid } from '../../core/closeup.js'
 import { type Alpha, composite } from '../../core/colour/alpha.js'
 import { onWhiteAndBlack, rate } from '../../core/colour/contrast.js'
 import type { MixSpace } from '../../core/colour/mix.js'
@@ -79,6 +80,9 @@ export const COLOUR_CARDS = [
   { name: 'Palette', sub: ['build a palette', 'from one colour'] },
 ] as const
 
+/** The keys that open the cards on colour's home, in the cards' order; either case. */
+export const COLOUR_CARD_KEYS: readonly string[] = ['a', 's', 'd']
+
 /**
  * Home's panel in colour mode: three cards, Extract, Scale and Palette, each
  * with a preview of what it makes. The chosen one is on `panelBand`, and that
@@ -120,9 +124,11 @@ export function choiceCards({
     const bg = me ? p.panelBand : p.selectionBg
     const strip: Run = me && !isHex(bg) ? ink('▌', p.accent) : blank(1)
     const line = (txt: Row): Row => on(bg, [strip, blank(1), ...txt], CARD)
+    // The key that opens it, before its name, in the mode's colour (2026-10-14).
+    const key = ink((COLOUR_CARD_KEYS[i] ?? '').toUpperCase(), p.accent, true)
     return [
       line([]),
-      line([ink(c.name, me ? p.fg : p.dim, true)]),
+      line([key, blank(1), ink(c.name, me ? p.fg : p.dim, true)]),
       line([ink(c.sub[0], me ? p.dim : p.border)]),
       line([ink(c.sub[1], me ? p.dim : p.border)]),
       line([]),
@@ -279,6 +285,57 @@ export function photoRows({
   )
 }
 
+/** How far `photoPixels` takes the other colours to the canvas, and the rest of the photo inside a colour. */
+const PICTURE_DIM = 0.6
+const PICTURE_FAINT = 0.8
+
+/**
+ * The photo as pixels, for a terminal that draws pictures (Ghostty, iTerm2):
+ * each pixel its own colour, lit and dimmed as `photoRows` lights and dims
+ * the groups — the `lit` group's pixels as they are, the other groups'
+ * dimmed, and `inside` a colour, the pixels in none of `groups` (the rest of
+ * the photo) faint. Less of both than the rows: there the photo is its
+ * colours, here it is the photo, and dimmed as far it is gone on a dark one.
+ * A see-through pixel stays see-through.
+ */
+export function photoPixels({
+  palette: p,
+  pixels,
+  groups,
+  lit,
+  inside,
+}: {
+  palette: Palette
+  pixels: PixelGrid
+  groups: ReadonlyArray<{ members: Uint32Array }>
+  lit: number
+  inside: boolean
+}): PixelGrid {
+  const n = pixels.width * pixels.height
+  // How far each pixel goes to the canvas: not at all (lit), dimmed, faint.
+  const away = new Float32Array(n).fill(inside ? PICTURE_FAINT : PICTURE_DIM)
+  groups.forEach((g, gi) => {
+    for (const i of g.members) away[i] = gi === lit ? 0 : PICTURE_DIM
+  })
+  const canvas = parseHex(isHex(p.canvas) ? p.canvas : '#000000') ?? { r: 0, g: 0, b: 0 }
+  const to = [canvas.r, canvas.g, canvas.b]
+  const rgba = new Uint8Array(n * 4)
+  for (let i = 0; i < n; i++) {
+    const a = pixels.rgba[i * 4 + 3] ?? 255
+    if (a < 128) continue
+    const k = away[i] ?? 0
+    for (let c = 0; c < 3; c++) {
+      const v = pixels.rgba[i * 4 + c] ?? 0
+      rgba[i * 4 + c] = Math.round(v + ((to[c] ?? 0) - v) * k)
+    }
+    rgba[i * 4 + 3] = 255
+  }
+  return { width: pixels.width, height: pixels.height, rgba }
+}
+
+/** A contrast grade not met. */
+const SYMBOLS_FAIL = '✗'
+
 const BAR = 14
 const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
 const ROW = 42
@@ -400,11 +457,21 @@ export function framed(p: Palette, photo: Row[]): Row[] {
  * The cap is drawn as the key row draws its caps; without fills, bracketed.
  */
 export function withKey(p: Palette, row: Row, key: string, word: string, w: number): Row {
-  const cap: Run =
-    p.keycapBg === ''
-      ? { text: `[${key}]`, fg: p.fg, bold: true }
-      : { text: ` ${key} `, fg: p.fg, bg: p.keycapBg, bold: true }
-  const tail: Row = [cap, ink(` ${word}`, p.dim)]
+  return withKeys(p, row, [[key, word]], w)
+}
+
+/** `withKey` with several keys, two cells apart; none where they do not all fit. */
+export function withKeys(p: Palette, row: Row, pairs: [string, string][], w: number): Row {
+  const tail: Row = []
+  pairs.forEach(([k, word], i) => {
+    if (i) tail.push(blank(2))
+    tail.push(
+      p.keycapBg === ''
+        ? { text: `[${k}]`, fg: p.fg, bold: true }
+        : { text: ` ${k} `, fg: p.fg, bg: p.keycapBg, bold: true },
+      ink(` ${word}`, p.dim),
+    )
+  })
   const gap = w - 1 - width(row) - width(tail)
   return gap < 2 ? row : [...row, blank(gap), ...tail]
 }
@@ -633,7 +700,13 @@ export function rampRows({
 
 const BLOCK = 18
 
-/** S9: the chosen step large, "Aa" in white and in black on it, and the facts beside it. */
+/**
+ * S9: the chosen step large, "Aa" in white and in black on it, and the facts
+ * beside it. How white and black text read on it is a table by use, as
+ * Figma's picker and Stark grade it (2026-10-14): the ratio, then the best
+ * WCAG grade for normal text (AA 4.5, AAA 7) and for large text — 18 pt, or
+ * 14 pt bold — (AA 3, AAA 4.5); a pass in green, ✗ in red.
+ */
 export function previewRows({
   palette: p,
   step: s,
@@ -642,17 +715,22 @@ export function previewRows({
   step: { step: number; hex: string; oklch: string; white: number; black: number }
 }): Row[] {
   const block = (txt: Row = []): Row => on(s.hex, centre(txt, BLOCK), BLOCK)
+  const grade = (ratio: number, aa: number, aaa: number, w: number): Row => {
+    const g = ratio >= aaa ? 'AAA' : ratio >= aa ? 'AA' : undefined
+    return pad([g ? ink(g, p.ok) : ink(SYMBOLS_FAIL, p.fail)], w)
+  }
   const reads = (label: string, ratio: number): Row => [
-    ink(label, p.border),
-    ink(`${ratio.toFixed(1)} `, p.dim),
-    ink(rate(ratio), ratio >= 4.5 ? p.ok : p.border),
+    ...pad([ink(label, p.border)], 7),
+    ...pad([ink(`${ratio.toFixed(1)}:1`, p.dim)], 8),
+    ...grade(ratio, 4.5, 7, 8),
+    ...grade(ratio, 3, 4.5, 0),
   ]
   const facts: Row[] = [
     [ink(String(s.step), p.fg, true), blank(2), ink(s.hex, p.fg, true)],
     [ink(s.oklch, p.dim)],
-    [],
-    reads('white text  ', s.white),
-    reads('black text  ', s.black),
+    [blank(15), ink('normal', p.border), blank(2), ink('large', p.border)],
+    reads('white', s.white),
+    reads('black', s.black),
   ]
   const blocks = [
     block(),
@@ -715,6 +793,7 @@ export function stepsLine({
   spec,
   editing,
   extra,
+  tweak = false,
 }: {
   width: number
   palette: Palette
@@ -722,6 +801,8 @@ export function stepsLine({
   editing?: StepsField | undefined
   /** The tab's own setting, last on the line: a neutral's tint, an alpha's background (§12.1). */
   extra?: { field: 'tint' | 'over'; value: string } | undefined
+  /** `t tweak` before `s steps`: a scale has its own Tweak window (2026-10-14). */
+  tweak?: boolean
 }): Row {
   const words = extra
     ? extra.field === 'tint'
@@ -739,7 +820,13 @@ export function stepsLine({
       ink(`  ·  ${spec.set === 'radix' ? radix : count}`, p.border),
       ...(extra ? [ink(`  ·  ${words}`, p.border)] : []),
     ]
-    return withKey(p, row, 's', 'steps', columns - 1)
+    const keys: [string, string][] = tweak
+      ? [
+          ['t', 'tweak'],
+          ['s', 'steps'],
+        ]
+      : [['s', 'steps']]
+    return withKeys(p, row, keys, columns - 1)
   }
   const plain = p.thumb === ''
   const pill = (f: StepsField, v: string | number): Run =>
