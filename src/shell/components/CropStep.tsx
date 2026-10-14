@@ -181,7 +181,7 @@ export function CropStep({
   // it fades to change: the App re-renders this step on every press it hears
   // of, with a new palette object each time, so the colours are the key.
   const dotBox = dots && at ? dotBoxOf(size, at.box, dots) : undefined
-  // The crop's frame, in the mode's own colour.
+  // The crop's corner brackets, in the mode's own colour.
   const edge = modeColours(palette, mode).fg
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the box's sides and the palette's colours, not their (new each render) objects
   const picture = useMemo(
