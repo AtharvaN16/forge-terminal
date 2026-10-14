@@ -126,7 +126,7 @@ describe('the scale', () => {
   it('empty: a hint; a typed hex draws the ramp; r recentres', async () => {
     const { app, onTrail } = flow('scale')
     await settle()
-    expect(plain(app.lastFrame())).toContain('type a hex code')
+    expect(plain(app.lastFrame())).toContain('type a hex, rgb(), hsl(), oklch() or a colour name')
     app.stdin.write('#6579FD')
     await waitFor(() => plain(app.lastFrame()).includes('white text'))
     app.stdin.write(ENTER)

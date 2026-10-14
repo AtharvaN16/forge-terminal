@@ -121,7 +121,7 @@ describe('the palette', () => {
     expect(state.history).toHaveLength(1)
     ;({ state } = run(state, DOWN, DOWN, DOWN, DOWN, DOWN, RIGHT))
     expect(top(state)).toMatchObject({ kind: 'palette', level: [5], sel: 0 })
-    expect(trailOf(state, ctx())).toEqual({ answers: ['Palette'], current: '#F26E69' })
+    expect(trailOf(state, ctx())).toEqual({ answers: ['Extract'], current: '#F26E69' })
     ;({ state } = run(state, LEFT))
     expect(top(state)).toMatchObject({ level: [], sel: 5 })
     ;({ state } = run(state, RIGHT, ESC))
@@ -136,7 +136,7 @@ describe('the palette', () => {
       from: 'from sonoma.jpg',
       sel: 5,
     })
-    expect(trailOf(state, ctx())).toEqual({ answers: ['Palette'], current: 'Scale' })
+    expect(trailOf(state, ctx())).toEqual({ answers: ['Extract'], current: 'Scale' })
     ;({ state } = run(state, ESC))
     expect(top(state)).toMatchObject({ kind: 'palette', sel: 4 })
   })

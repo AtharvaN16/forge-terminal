@@ -128,6 +128,8 @@ interface PromptProps {
   after?: ReactNode
   /** `inline` only: false draws no `› ` before the value (Save as's name box). */
   marker?: boolean
+  /** The value's colour, when not the usual text colour: red for wrong input in colour's box. */
+  valueColour?: string
   /**
    * Offered every key before the field acts on it, with the text as it is
    * right now; returning true consumes the key. How the home screen takes
@@ -220,6 +222,7 @@ export function Prompt({
   suffix = '',
   after: trailing,
   marker = true,
+  valueColour,
 }: PromptProps) {
   const palette = useTheme()
   const valueRef = useRef(value)
@@ -797,6 +800,7 @@ export function Prompt({
 
   const selectionColour = colourProp(palette.textSelectionBg)
 
+  const valueFg = valueColour ?? palette.fg
   const line = span ? (
     <Text>
       <Text color={colourProp(palette.fg)}>{cells.slice(0, span.from).join('')}</Text>
@@ -810,9 +814,9 @@ export function Prompt({
     </Text>
   ) : value ? (
     <Text>
-      <Text color={colourProp(palette.fg)}>{before}</Text>
-      {isActive ? caretGlyph(under) : <Text color={colourProp(palette.fg)}>{under}</Text>}
-      <Text color={colourProp(palette.fg)}>{after}</Text>
+      <Text color={colourProp(valueFg)}>{before}</Text>
+      {isActive ? caretGlyph(under) : <Text color={colourProp(valueFg)}>{under}</Text>}
+      <Text color={colourProp(valueFg)}>{after}</Text>
     </Text>
   ) : (
     <Text>
@@ -893,7 +897,7 @@ export function Prompt({
         {rest.join('')}
       </Text>
     ) : onTail ? (
-      <Text color={colourProp(palette.fg)}>{value}</Text>
+      <Text color={colourProp(valueFg)}>{value}</Text>
     ) : (
       line
     )

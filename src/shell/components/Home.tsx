@@ -413,7 +413,7 @@ export function Home({
   noteRows?: number | undefined
   keys: KeySet
   /** Colour's home: which card is chosen, Palette (0) or Scale (1). */
-  colourChoice?: 0 | 1
+  colourChoice?: 0 | 1 | 2
   /**
    * The session's first home (M8b): the band draws itself in as it mounts and
    * the tabs fade up under it, once. Any key cuts it short.

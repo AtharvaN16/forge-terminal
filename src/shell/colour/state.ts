@@ -1,3 +1,7 @@
+import { alphaOf, BLACK, WHITE } from '../../core/colour/alpha.js'
+import { MIX_COUNTS, type MixSpace, mixSteps } from '../../core/colour/mix.js'
+import { DEFAULT_TINT, neutral, type Tint } from '../../core/colour/neutral.js'
+import { parseColour } from '../../core/colour/parse.js'
 import {
   COUNTS,
   DEFAULT_STEPS,
@@ -11,6 +15,14 @@ import {
   scale,
 } from '../../core/colour/scale.js'
 import { parseHex, type Rgb, toHex } from '../../core/colour/space.js'
+import {
+  isTweaked,
+  MODES,
+  type Mode,
+  NO_TWEAK,
+  system,
+  type Tweak,
+} from '../../core/colour/system.js'
 import type { Trail } from '../bar-art.js'
 
 /**
@@ -34,9 +46,28 @@ export type Screen =
     }
   | { kind: 'scale-empty' }
   | { kind: 'scale'; ref: Rgb; from?: string; sel: number }
+  /** Two colours mixed (colour spec §12.3), reached from a scale. */
+  | { kind: 'mix'; a: Rgb; b: Rgb; sel: number }
+  /** A palette from one colour (§12.6): the screen called Palette. */
+  | { kind: 'system-empty' }
+  | { kind: 'system'; ref: Rgb; sel: { row: number; col: number } }
 
-/** The value `s` is changing on the line under the ramp. */
-export type StepsField = 'set' | 'start' | 'end' | 'count'
+/** Scale's tabs over the ramp (§12.1). */
+export type ScaleTab = 'colour' | 'neutral' | 'alpha'
+export const SCALE_TABS: readonly ScaleTab[] = ['colour', 'neutral', 'alpha']
+export type Over = 'white' | 'black'
+export const TINT_ORDER: readonly Tint[] = ['none', 'faint', 'soft', 'strong']
+export const OVERS: readonly Over[] = ['white', 'black']
+export const MIX_SPACES: readonly MixSpace[] = ['oklab', 'oklch']
+
+/** The value `s` is changing on the line under the ramp, or under a mix. */
+export type StepsField = 'set' | 'start' | 'end' | 'count' | 'tint' | 'over' | 'way' | 'mixCount'
+
+/** What Palette's windows are doing (W1): choosing a mode, or moving the four sliders. */
+export type PaletteWindow =
+  | { kind: 'mode'; at: number }
+  | { kind: 'tweak'; at: number; before: Tweak }
+export const TWEAK_KEYS: readonly (keyof Tweak)[] = ['brightness', 'saturation', 'hue', 'contrast']
 
 export interface ColourState {
   /** The way back; the last entry is on screen. */
@@ -57,7 +88,28 @@ export interface ColourState {
    * The steps being changed: the value in hand, and what esc puts back —
    * the steps, and the screens as they were, each scale's chosen step with them.
    */
-  stepsEdit?: { field: StepsField; before: StepSpec; history: Screen[] }
+  stepsEdit?: {
+    field: StepsField
+    before: StepSpec
+    history: Screen[]
+    /** The tab's own setting, and the mix's, as they were. */
+    was: Pick<ColourState, 'tint' | 'over' | 'mixSpace' | 'mixCount'>
+  }
+  /** Which of Scale's tabs is showing. */
+  tab: ScaleTab
+  /** A neutral's tint, and an alpha's background: the last pill on the steps line. */
+  tint: Tint
+  over: Over
+  /** How a mix goes across, and how many steps it has. */
+  mixSpace: MixSpace
+  mixCount: number
+  /** Palette's mode and tweaks. */
+  mode: Mode
+  tweak: Tweak
+  /** A window open over Palette's grid. */
+  win?: PaletteWindow
+  /** What was typed could not be read: drawn red, `wrong input` at the box's far end. */
+  wrong?: boolean
 }
 
 /** The parts of Ink's `Key` this reads. */
@@ -110,34 +162,55 @@ export interface Ctx {
  * once), on a colour, or on the scale with something already typed (`#`
  * pressed on colour's home).
  */
-export type Start = 'palette' | 'scale' | { palette: string } | { scale: Rgb } | { typed: string }
+export type Start =
+  | 'palette'
+  | 'scale'
+  | 'system'
+  | { palette: string }
+  | { scale: Rgb }
+  | { typed: string }
 
 const FLASH_MS = 1500
 
+/** What every flow starts with besides its screens. */
+const SETTINGS = {
+  tab: 'colour' as ScaleTab,
+  tint: DEFAULT_TINT,
+  over: 'white' as Over,
+  mixSpace: 'oklab' as MixSpace,
+  mixCount: 9,
+  mode: 'full' as Mode,
+  tweak: NO_TWEAK,
+}
+
 export function initial(start: Start, steps: StepSpec = DEFAULT_STEPS): ColourState {
+  const base = { ...SETTINGS, steps }
   if (start === 'palette') {
-    return { history: [{ kind: 'palette-empty' }], field: field('', true), steps }
+    return { ...base, history: [{ kind: 'palette-empty' }], field: field('', true) }
   }
   if (start === 'scale')
-    return { history: [{ kind: 'scale-empty' }], field: field('', true), steps }
+    return { ...base, history: [{ kind: 'scale-empty' }], field: field('', true) }
+  if (start === 'system') {
+    return { ...base, history: [{ kind: 'system-empty' }], field: field('', true) }
+  }
   if ('typed' in start) {
     return {
+      ...base,
       history: [{ kind: 'scale-empty' }],
       field: { text: start.typed, focus: true, before: '' },
-      steps,
     }
   }
   if ('palette' in start) {
     return {
+      ...base,
       history: [{ kind: 'palette-empty' }],
       field: { text: start.palette, focus: true, before: '' },
-      steps,
     }
   }
   return {
+    ...base,
     history: [{ kind: 'scale', ref: start.scale, sel: centreOf(steps) }],
     field: field(toHex(start.scale), false),
-    steps,
   }
 }
 
@@ -160,12 +233,57 @@ function field(text: string, focus: boolean): ColourState['field'] {
 const top = (s: ColourState): Screen => s.history[s.history.length - 1] as Screen
 const onPalette = (screen: Screen) => screen.kind === 'palette' || screen.kind === 'palette-empty'
 const onScale = (screen: Screen) => screen.kind === 'scale' || screen.kind === 'scale-empty'
+const onSystem = (screen: Screen) => screen.kind === 'system' || screen.kind === 'system-empty'
 
-/** A typed colour: on a scale with or without `#`; on the palette only with it, so a path never reads as one. */
+/**
+ * A typed colour. On Extract only a hex with its `#`, so a path never reads
+ * as one; on Scale and Palette anything `parseColour` reads (§12.4).
+ */
 function typedColour(screen: Screen, text: string): Rgb | undefined {
   const t = text.trim()
-  if (onPalette(screen) && !t.startsWith('#')) return undefined
-  return parseHex(t)
+  if (onPalette(screen)) return t.startsWith('#') ? parseHex(t) : undefined
+  return parseColour(t)?.rgb
+}
+
+/** What splits two colours typed for a mix: an arrow, or `->`, `>`. */
+const MIX_ARROW = /\s*(?:→|->|>)\s*/
+
+/**
+ * Two colours typed into Scale's box, for a mix (§12.3): either side of an
+ * arrow, or two hexes with a space between. `first` when only the first is
+ * there yet, still waiting for the second.
+ */
+export function typedPair(text: string): { a: Rgb; b?: Rgb } | undefined {
+  const t = text.trim()
+  if (MIX_ARROW.test(t)) {
+    const [left = '', right = ''] = t.split(MIX_ARROW)
+    const a = parseColour(left)?.rgb
+    if (!a) return undefined
+    const b = right.trim() === '' ? undefined : parseColour(right)?.rgb
+    return right.trim() === '' || b ? { a, ...(b ? { b } : {}) } : undefined
+  }
+  const parts = t.split(/\s+/)
+  if (parts.length === 2 && parts.every((x) => /^#[0-9a-f]+$/i.test(x))) {
+    const a = parseColour(parts[0] as string)?.rgb
+    const b = parseColour(parts[1] as string)?.rgb
+    return a && b ? { a, b } : undefined
+  }
+  return undefined
+}
+
+/** The steps Scale shows on its Colour or Neutral tab (Alpha draws the Colour steps). */
+export function tabSteps(s: ColourState, ref: Rgb) {
+  return s.tab === 'neutral' ? neutral(ref, s.tint, s.steps) : scale(ref, s.steps)
+}
+
+/** The steps a mix shows. */
+export function mixOf(s: ColourState, screen: Extract<Screen, { kind: 'mix' }>) {
+  return mixSteps(screen.a, screen.b, s.mixCount, s.mixSpace)
+}
+
+/** Palette's colours: every row's steps, the neutral last. */
+export function systemOf(s: ColourState, ref: Rgb) {
+  return system(ref, s.mode, s.tweak, s.steps)
 }
 
 type Out = { state: ColourState; effects: Effect[] }
@@ -184,8 +302,20 @@ function back(s: ColourState): Out {
   if (s.history.length <= 1) return { state: s, effects: [{ type: 'back' }] }
   const history = s.history.slice(0, -1)
   const now = history[history.length - 1] as Screen
-  const text = now.kind === 'scale' ? toHex(now.ref) : now.kind === 'palette' ? now.path : ''
-  return same({ ...s, history, field: field(text, false), preview: undefined, error: undefined })
+  const text =
+    now.kind === 'scale' || now.kind === 'system'
+      ? toHex(now.ref)
+      : now.kind === 'palette'
+        ? now.path
+        : ''
+  return same({
+    ...s,
+    history,
+    field: field(text, false),
+    preview: undefined,
+    error: undefined,
+    wrong: undefined,
+  })
 }
 
 function flash(s: ColourState, text: string, ctx: Ctx): ColourState {
@@ -199,23 +329,79 @@ function focusWith(s: ColourState, text: string): ColourState {
 
 function scaleFrom(s: ColourState, ref: Rgb, from: string | undefined): ColourState {
   const screen: Screen = { kind: 'scale', ref, sel: centreOf(s.steps), ...(from ? { from } : {}) }
-  const next = top(s).kind === 'scale-empty' ? replaceTop(s, screen) : push(s, screen)
-  return { ...next, field: field(toHex(ref), false), preview: undefined, error: undefined }
+  // A new colour on a mix is a scale again, in the mix's place.
+  const kind = top(s).kind
+  const next = kind === 'scale-empty' || kind === 'mix' ? replaceTop(s, screen) : push(s, screen)
+  return {
+    ...next,
+    field: field(toHex(ref), false),
+    preview: undefined,
+    error: undefined,
+    wrong: undefined,
+  }
+}
+
+/** Two colours mixed: on from the scale of the first. */
+function mixFrom(s: ColourState, a: Rgb, b: Rgb): ColourState {
+  const screen: Screen = { kind: 'mix', a, b, sel: Math.floor(s.mixCount / 2) }
+  const now = top(s)
+  // The mix sits on the scale of its first colour: that one, if it is not already on screen.
+  const other = now.kind === 'scale' && toHex(now.ref) !== toHex(a)
+  const base =
+    now.kind === 'scale-empty' || other
+      ? replaceTop(s, { kind: 'scale', ref: a, sel: centreOf(s.steps) })
+      : now.kind === 'mix'
+        ? { ...s, history: s.history.slice(0, -1) }
+        : s
+  return {
+    ...push(base, screen),
+    field: field(`${toHex(a)} → ${toHex(b)}`, false),
+    preview: undefined,
+    error: undefined,
+    wrong: undefined,
+  }
+}
+
+/** A palette from `ref`, in Palette's place. */
+function systemFrom(s: ColourState, ref: Rgb): ColourState {
+  // The cursor starts on the colour itself, wherever its family's row is.
+  const yours = Math.max(
+    0,
+    systemOf(s, ref).rows.findIndex((r) => r.yours),
+  )
+  const screen: Screen = { kind: 'system', ref, sel: { row: yours, col: centreOf(s.steps) } }
+  return {
+    ...replaceTop(s, screen),
+    field: field(toHex(ref), false),
+    preview: undefined,
+    error: undefined,
+    wrong: undefined,
+  }
 }
 
 function onKeyWhileTyping(s: ColourState, key: KeyLike): Out {
   if (!key.escape) return same(s)
   const screen = top(s)
-  const empty = screen.kind === 'palette-empty' || screen.kind === 'scale-empty'
+  const empty =
+    screen.kind === 'palette-empty' ||
+    screen.kind === 'scale-empty' ||
+    screen.kind === 'system-empty'
   if (s.field.text === s.field.before) {
     if (empty) return back(s)
-    return same({ ...s, field: { ...s.field, focus: false }, preview: undefined, error: undefined })
+    return same({
+      ...s,
+      field: { ...s.field, focus: false },
+      preview: undefined,
+      error: undefined,
+      wrong: undefined,
+    })
   }
   return same({
     ...s,
     field: { text: s.field.before, focus: empty, before: s.field.before },
     preview: undefined,
     error: undefined,
+    wrong: undefined,
   })
 }
 
@@ -260,12 +446,51 @@ function onScaleKey(
   key: KeyLike,
   ctx: Ctx,
 ): Out {
-  const steps = scale(screen.ref, s.steps)
+  const steps = tabSteps(s, screen.ref)
   const step = steps[screen.sel]
   const centre = centreOf(s.steps)
-  if (input === 's') {
-    return same({ ...s, stepsEdit: { field: 'set', before: s.steps, history: s.history } })
+  if (key.tab || input === '\t') {
+    const i = SCALE_TABS.indexOf(s.tab)
+    const next = SCALE_TABS[(i + (key.shift ? SCALE_TABS.length - 1 : 1)) % SCALE_TABS.length]
+    return same({ ...s, tab: next as ScaleTab })
   }
+  if (input === 's') return same(editSteps(s, 'set'))
+  if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
+  if (key.rightArrow) {
+    return same(replaceTop(s, { ...screen, sel: Math.min(steps.length - 1, screen.sel + 1) }))
+  }
+  if (key.return && step) {
+    // On Alpha the step is copied as its see-through 8-digit hex.
+    const text =
+      s.tab === 'alpha' ? alphaOf(step.rgb, s.over === 'white' ? WHITE : BLACK).hex8 : step.hex
+    return { state: flash(s, `copied ${text}`, ctx), effects: [{ type: 'copy', text }] }
+  }
+  if (input === 'c') {
+    return {
+      state: flash(s, `copied ${steps.length} swatches`, ctx),
+      effects: [{ type: 'copy-all' }],
+    }
+  }
+  // Making a step the centre is the colour's own; a neutral's centre is fixed, an alpha follows its colour.
+  if (input === 'r' && s.tab === 'colour' && step && screen.sel !== centre) {
+    const was = `was ${step.step} of ${toHex(screen.ref)}`
+    const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: centre })
+    const said = `${step.hex} is now ${steps[centre]?.step ?? 500} · esc goes back to ${toHex(screen.ref)}`
+    return same(flash({ ...next, field: field(step.hex, false) }, said, ctx))
+  }
+  return same(s)
+}
+
+function onMixKey(
+  s: ColourState,
+  screen: Extract<Screen, { kind: 'mix' }>,
+  input: string,
+  key: KeyLike,
+  ctx: Ctx,
+): Out {
+  const steps = mixOf(s, screen)
+  const step = steps[screen.sel]
+  if (input === 's') return same(editSteps(s, 'way'))
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
     return same(replaceTop(s, { ...screen, sel: Math.min(steps.length - 1, screen.sel + 1) }))
@@ -282,11 +507,96 @@ function onScaleKey(
       effects: [{ type: 'copy-all' }],
     }
   }
-  if (input === 'r' && step && screen.sel !== centre) {
-    const was = `was ${step.step} of ${toHex(screen.ref)}`
-    const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: centre })
-    const said = `${step.hex} is now ${steps[centre]?.step ?? 500} · esc goes back to ${toHex(screen.ref)}`
-    return same(flash({ ...next, field: field(step.hex, false) }, said, ctx))
+  return same(s)
+}
+
+function onSystemKey(
+  s: ColourState,
+  screen: Extract<Screen, { kind: 'system' }>,
+  input: string,
+  key: KeyLike,
+  ctx: Ctx,
+): Out {
+  const sys = systemOf(s, screen.ref)
+  const rows = [...sys.rows.map((r) => r.steps), sys.neutral]
+  const { row, col } = screen.sel
+  const step = rows[row]?.[col]
+  const at = (r: number, c: number) =>
+    same(
+      replaceTop(s, {
+        ...screen,
+        sel: {
+          row: Math.max(0, Math.min(rows.length - 1, r)),
+          col: Math.max(0, Math.min((rows[0]?.length ?? 1) - 1, c)),
+        },
+      }),
+    )
+  if (key.upArrow) return at(row - 1, col)
+  if (key.downArrow) return at(row + 1, col)
+  if (key.leftArrow) return at(row, col - 1)
+  if (key.rightArrow) return at(row, col + 1)
+  if (key.return && step) {
+    return {
+      state: flash(s, `copied ${step.hex}`, ctx),
+      effects: [{ type: 'copy', text: step.hex }],
+    }
+  }
+  if (input === 'c') {
+    return {
+      state: flash(s, `copied ${rows.length} rows of swatches`, ctx),
+      effects: [{ type: 'copy-all' }],
+    }
+  }
+  if (input === 'm') return same({ ...s, win: { kind: 'mode', at: MODES.indexOf(s.mode) } })
+  if (input === 't') return same({ ...s, win: { kind: 'tweak', at: 0, before: s.tweak } })
+  if (input === 's') return same(editSteps(s, 'set'))
+  if (input === 'r' && isTweaked(s.tweak)) return same({ ...s, tweak: NO_TWEAK })
+  return same(s)
+}
+
+/** The colour's own row in Palette's grid, for a cursor after the mode changes. */
+function onYours(s: ColourState): ColourState {
+  const screen = top(s)
+  if (screen.kind !== 'system') return s
+  const rows = systemOf(s, screen.ref).rows
+  const yours = Math.max(
+    0,
+    rows.findIndex((r) => r.yours),
+  )
+  return replaceTop(s, { ...screen, sel: { ...screen.sel, row: yours } })
+}
+
+/** How far each tweak reaches either way: Photoshop's ranges (§12.6). */
+const REACH: Record<keyof Tweak, number> = {
+  brightness: 100,
+  saturation: 100,
+  hue: 180,
+  contrast: 100,
+}
+
+/** Keys while a window is open over Palette: the Mode list, or the Tweak sliders. */
+function onWindowKey(s: ColourState, win: PaletteWindow, input: string, key: KeyLike): Out {
+  if (win.kind === 'mode') {
+    if (key.escape) return same({ ...s, win: undefined })
+    if (key.upArrow) return same({ ...s, win: { ...win, at: Math.max(0, win.at - 1) } })
+    if (key.downArrow)
+      return same({ ...s, win: { ...win, at: Math.min(MODES.length - 1, win.at + 1) } })
+    if (key.return) return same(onYours({ ...s, mode: MODES[win.at] as Mode, win: undefined }))
+    return same(s)
+  }
+  if (key.escape) return same({ ...s, tweak: win.before, win: undefined })
+  if (key.return) return same({ ...s, win: undefined })
+  if (key.upArrow) return same({ ...s, win: { ...win, at: Math.max(0, win.at - 1) } })
+  if (key.downArrow) {
+    return same({ ...s, win: { ...win, at: Math.min(TWEAK_KEYS.length - 1, win.at + 1) } })
+  }
+  if (input === 'r') return same({ ...s, tweak: NO_TWEAK })
+  if (key.leftArrow || key.rightArrow) {
+    const name = TWEAK_KEYS[win.at] as keyof Tweak
+    const by = (key.rightArrow ? 1 : -1) * (key.shift ? 10 : 1)
+    const reach = REACH[name]
+    const value = Math.max(-reach, Math.min(reach, s.tweak[name] + by))
+    return same({ ...s, tweak: { ...s.tweak, [name]: value } })
   }
   return same(s)
 }
@@ -297,7 +607,39 @@ export function fieldsOf(set: StepSet): StepsField[] {
   if (set === 'even') return ['set', 'start', 'end', 'count']
   return ['set', 'start', 'end']
 }
-const CHOICES: Record<Exclude<StepsField, 'set'>, readonly number[]> = {
+
+/**
+ * What `s` changes on the screen in hand: a mix's way across and count; on
+ * Scale the set's values, then the tab's own setting last (a neutral's tint,
+ * an alpha's background); on Palette the set's values.
+ */
+export function fieldsFor(s: ColourState): StepsField[] {
+  const screen = s.history[s.history.length - 1] as Screen
+  if (screen.kind === 'mix') return ['way', 'mixCount']
+  const set = fieldsOf(s.steps.set)
+  if (screen.kind === 'scale' && s.tab === 'neutral') return [...set, 'tint']
+  if (screen.kind === 'scale' && s.tab === 'alpha') return [...set, 'over']
+  return set
+}
+
+/** Start changing the steps: what esc puts back is kept. */
+function editSteps(s: ColourState, field: StepsField): ColourState {
+  return {
+    ...s,
+    stepsEdit: {
+      field,
+      before: s.steps,
+      history: s.history,
+      was: { tint: s.tint, over: s.over, mixSpace: s.mixSpace, mixCount: s.mixCount },
+    },
+  }
+}
+
+/** One choice along a list, stopping at its ends; undefined at an end. */
+function along<T>(list: readonly T[], now: T, by: 1 | -1): T | undefined {
+  return list[list.indexOf(now) + by]
+}
+const CHOICES: Record<'start' | 'end' | 'count', readonly number[]> = {
   start: STARTS,
   end: ENDS,
   count: COUNTS,
@@ -305,6 +647,7 @@ const CHOICES: Record<Exclude<StepsField, 'set'>, readonly number[]> = {
 
 /** `steps` with `field` moved one choice left or right, stopping at the ends; undefined at an end. */
 function moved(steps: StepSpec, field: StepsField, by: 1 | -1): StepSpec | undefined {
+  if (field !== 'set' && field !== 'start' && field !== 'end' && field !== 'count') return undefined
   if (field === 'set') {
     const i = SETS.indexOf(steps.set)
     const next = SETS[i + by]
@@ -334,7 +677,11 @@ function withSteps(
       0,
     )
   const history = edit.history.map((h) =>
-    h.kind === 'scale' ? { ...h, sel: nearest(was[h.sel] ?? 500) } : h,
+    h.kind === 'scale'
+      ? { ...h, sel: nearest(was[h.sel] ?? 500) }
+      : h.kind === 'system'
+        ? { ...h, sel: { ...h.sel, col: nearest(was[h.sel.col] ?? 500) } }
+        : h,
   )
   return { ...s, steps, history }
 }
@@ -348,16 +695,47 @@ function onStepsKey(
 ): Out {
   if (key.return) return same({ ...s, stepsEdit: undefined })
   if (key.escape) {
-    return same({ ...s, steps: edit.before, history: edit.history, stepsEdit: undefined })
+    return same({
+      ...s,
+      ...edit.was,
+      steps: edit.before,
+      history: edit.history,
+      stepsEdit: undefined,
+    })
   }
   if (key.tab || input === '\t') {
-    const fields = fieldsOf(s.steps.set)
+    const fields = fieldsFor(s)
     const i = fields.indexOf(edit.field)
     const next = fields[(i + (key.shift ? fields.length - 1 : 1)) % fields.length] as StepsField
     return same({ ...s, stepsEdit: { ...edit, field: next } })
   }
   if (key.leftArrow || key.rightArrow) {
-    const next = moved(s.steps, edit.field, key.rightArrow ? 1 : -1)
+    const by = key.rightArrow ? 1 : -1
+    const f = edit.field
+    if (f === 'tint') {
+      const tint = along(TINT_ORDER, s.tint, by)
+      return same(tint ? { ...s, tint } : s)
+    }
+    if (f === 'over') {
+      const over = along(OVERS, s.over, by)
+      return same(over ? { ...s, over } : s)
+    }
+    if (f === 'way') {
+      const mixSpace = along(MIX_SPACES, s.mixSpace, by)
+      return same(mixSpace ? { ...s, mixSpace } : s)
+    }
+    if (f === 'mixCount') {
+      const mixCount = along(MIX_COUNTS, s.mixCount, by)
+      if (mixCount === undefined) return same(s)
+      // The chosen step stays as far along as it was.
+      const history = s.history.map((h) =>
+        h.kind === 'mix'
+          ? { ...h, sel: Math.round((h.sel / (s.mixCount - 1)) * (mixCount - 1)) }
+          : h,
+      )
+      return same({ ...s, mixCount, history })
+    }
+    const next = moved(s.steps, f, by)
     return next ? same(withSteps(s, edit, next)) : same(s)
   }
   return same(s)
@@ -366,6 +744,7 @@ function onStepsKey(
 function onKey(s: ColourState, input: string, key: KeyLike, ctx: Ctx): Out {
   if (s.field.focus) return onKeyWhileTyping(s, key)
   if (s.stepsEdit) return onStepsKey(s, s.stepsEdit, input, key)
+  if (s.win) return onWindowKey(s, s.win, input, key)
   const screen = top(s)
   if (key.escape) return back(s)
   if (key.ctrl || key.meta) return same(s)
@@ -385,6 +764,8 @@ function onKey(s: ColourState, input: string, key: KeyLike, ctx: Ctx): Out {
 
   if (screen.kind === 'palette') return onPaletteKey(s, screen, input, key, ctx)
   if (screen.kind === 'scale') return onScaleKey(s, screen, input, key, ctx)
+  if (screen.kind === 'mix') return onMixKey(s, screen, input, key, ctx)
+  if (screen.kind === 'system') return onSystemKey(s, screen, input, key, ctx)
   return same(s)
 }
 
@@ -393,6 +774,8 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
     case 'key':
       return onKey(s, action.input, action.key, ctx)
     case 'text': {
+      // The editor empties itself after ↵; wrong input stays in the box, red.
+      if (action.text === '' && s.wrong) return same(s)
       const rgb =
         onScale(top(s)) || action.text.startsWith('#')
           ? typedColour(top(s), action.text)
@@ -417,18 +800,26 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
       return same({
         ...s,
         field: { ...s.field, text: action.text },
-        preview: rgb,
+        preview: onSystem(top(s)) ? undefined : rgb,
         error: undefined,
+        wrong: undefined,
       })
     }
     case 'submit': {
       const text = s.field.text.trim()
-      const rgb = typedColour(top(s), text)
+      const screen = top(s)
+      if (onScale(screen) || screen.kind === 'mix') {
+        const pair = typedPair(text)
+        if (pair?.b) return same(mixFrom(s, pair.a, pair.b))
+      }
+      const rgb = typedColour(screen, text)
+      if (rgb && onSystem(screen)) return same(systemFrom(s, rgb))
       if (rgb) return same(scaleFrom(s, rgb, undefined))
-      if (onPalette(top(s)) && text !== '' && !text.startsWith('#')) {
+      if (onPalette(screen) && text !== '' && !text.startsWith('#')) {
         return { state: s, effects: [{ type: 'open', path: text }] }
       }
-      return same(s)
+      // Something typed that is no colour: the box says so, and keeps it.
+      return same(text === '' ? s : { ...s, wrong: true, preview: undefined })
     }
     case 'opened': {
       const screen: Screen = {
@@ -467,9 +858,11 @@ export function trailOf(s: ColourState, ctx: Ctx): Trail {
   const name = (screen: Screen): string => {
     if (screen.kind === 'palette' && screen.level.length > 0) {
       const parent = screen.level.slice(0, -1)
-      return ctx.colours(parent)[screen.level[screen.level.length - 1] as number] ?? 'Palette'
+      return ctx.colours(parent)[screen.level[screen.level.length - 1] as number] ?? 'Extract'
     }
-    if (onPalette(screen)) return 'Palette'
+    if (onPalette(screen)) return 'Extract'
+    if (screen.kind === 'mix') return 'Mix'
+    if (onSystem(screen)) return 'Palette'
     return 'Scale'
   }
   const answers = s.history

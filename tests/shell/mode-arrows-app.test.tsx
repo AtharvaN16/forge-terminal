@@ -35,7 +35,7 @@ const on = {
   compress: (f: string) => f.includes('images · PDF') && !f.includes('HEIC'),
   // enhance's line is the start of convert's, so convert's tail must be gone.
   enhance: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
-  colour: (f: string) => f.includes('extract colours from an image'),
+  colour: (f: string) => f.includes('extract colours'),
   commands: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
 }
 const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))
@@ -72,15 +72,18 @@ describe('←→ on home', () => {
     await reach(app, 'convert')
   }, 20_000)
 
-  it('← walks back through commands, colour’s two cards and on to enhance', async () => {
+  it('← walks back through commands, colour’s three cards and on to enhance', async () => {
     const app = await home()
     app.stdin.write(LEFT)
     await reach(app, 'commands')
     await settle()
     app.stdin.write(LEFT)
     await reach(app, 'colour')
-    // Arriving from the right lands on Scale: ← steps to Palette, then leaves.
+    // Arriving from the right lands on Palette: ← steps to Scale, to Extract, then leaves.
     await settle()
+    app.stdin.write(LEFT)
+    await settle(300)
+    expect(on.colour(frame(app))).toBe(true)
     app.stdin.write(LEFT)
     await settle(300)
     expect(on.colour(frame(app))).toBe(true)
@@ -93,6 +96,9 @@ describe('←→ on home', () => {
     app.stdin.write('5')
     await reach(app, 'colour')
     await settle()
+    app.stdin.write(RIGHT)
+    await settle(300)
+    expect(on.colour(frame(app))).toBe(true)
     app.stdin.write(RIGHT)
     await settle(300)
     expect(on.colour(frame(app))).toBe(true)

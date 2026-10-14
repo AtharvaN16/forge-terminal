@@ -1,7 +1,10 @@
 import stringWidth from 'string-width'
-import { rate } from '../../core/colour/contrast.js'
+import { type Alpha, composite } from '../../core/colour/alpha.js'
+import { onWhiteAndBlack, rate } from '../../core/colour/contrast.js'
+import type { MixSpace } from '../../core/colour/mix.js'
 import { OUTSIDE, TRANSPARENT } from '../../core/colour/palette.js'
 import { type StepSpec, scale, stepsOf } from '../../core/colour/scale.js'
+import { parseHex, type Rgb, toHex } from '../../core/colour/space.js'
 import { blank, mix, type Row, type Run, surfaceRows, width } from '../home-art.js'
 import type { Palette } from '../theme.js'
 
@@ -52,14 +55,33 @@ const faint = (p: Palette, h: string): string => mix(lc(h), lc(p.canvas), 0.9)
 export const COLOUR_SAMPLES = {
   palette: ['#356723', '#77A726', '#AD95E9', '#ACE02C', '#6579FD', '#F26E69'],
   scale: scale({ r: 0x65, g: 0x79, b: 0xfd }).map((s) => s.hex),
+  /** A palette from one colour: Full set's 500s from #D2042D, then its neutral. */
+  system: [
+    '#D2042D',
+    '#D85B12',
+    '#C7930F',
+    '#15A64C',
+    '#0E9E8C',
+    '#1874E5',
+    '#9C3DE6',
+    '#D53689',
+    '#8C7271',
+  ],
 }
 
+/** The three cards' names and subtitles, each subtitle on two lines (colour spec §12.6). */
+export const COLOUR_CARDS = [
+  { name: 'Extract', sub: ['extract colours', 'from an image'] },
+  { name: 'Scale', sub: ['create shades', 'from one colour'] },
+  { name: 'Palette', sub: ['build a palette', 'from one colour'] },
+] as const
+
 /**
- * Home's panel in colour mode: two cards, Palette and Scale, each with a
- * preview of what it makes. The chosen one is on `panelBand`, and that
+ * Home's panel in colour mode: three cards, Extract, Scale and Palette, each
+ * with a preview of what it makes. The chosen one is on `panelBand`, and that
  * lighter fill is all that marks it (round 5, G4). Without fills to tell
- * them apart, a `▌` in the mode's colour marks it instead. Eight rows, as
- * tall as the drop surface it replaces.
+ * them apart, a `▌` in the mode's colour marks it instead. Nine rows: three
+ * cards side by side only fit with each subtitle on two lines.
  */
 export function choiceCards({
   width: columns,
@@ -69,26 +91,20 @@ export function choiceCards({
 }: {
   width: number
   palette: Palette
-  selected: 0 | 1
-  samples: { palette: string[]; scale: string[] }
+  selected: 0 | 1 | 2
+  samples: { palette: string[]; scale: string[]; system: string[] }
 }): Row[] {
   const W = columns - 4
-  // Two cards side by side in the panel: a cell of panel at each side, two between.
-  const CARD = Math.floor((W - 4) / 2)
-  const cards = [
-    {
-      name: 'Palette',
-      sub: 'extract colours from an image',
-      preview: samples.palette.map((h) => fill('    ', h)),
-    },
-    {
-      name: 'Scale',
-      sub: 'create shades from one colour',
-      preview: samples.scale.map((h) => fill('  ', h)),
-    },
+  // Three cards in the panel: a cell of panel at each side, two between each.
+  const CARD = Math.floor((W - 6) / 3)
+  const swatches = (hexes: string[], w: number) => hexes.map((h) => fill(' '.repeat(w), h))
+  const previews: Row[] = [
+    swatches(samples.palette, Math.max(1, Math.floor((CARD - 4) / samples.palette.length))),
+    swatches(samples.scale, Math.max(1, Math.floor((CARD - 4) / samples.scale.length))),
+    swatches(samples.system, Math.max(1, Math.floor((CARD - 4) / samples.system.length))),
   ]
   const card = (i: number): Row[] => {
-    const c = cards[i] as (typeof cards)[number]
+    const c = COLOUR_CARDS[i] as (typeof COLOUR_CARDS)[number]
     const me = i === selected
     const bg = me ? p.panelBand : p.selectionBg
     const strip: Run = me && !isHex(bg) ? ink('▌', p.accent) : blank(1)
@@ -96,20 +112,32 @@ export function choiceCards({
     return [
       line([]),
       line([ink(c.name, me ? p.fg : p.dim, true)]),
-      line([ink(c.sub, me ? p.dim : p.border)]),
+      line([ink(c.sub[0], me ? p.dim : p.border)]),
+      line([ink(c.sub[1], me ? p.dim : p.border)]),
       line([]),
-      line(c.preview),
+      line(previews[i] as Row),
       line([]),
     ]
   }
-  const a = card(0)
-  const b = card(1)
+  const cards = [card(0), card(1), card(2)]
   const edge: Row = [blank(2), ...on(p.selectionBg, [], W)]
   return [
     edge,
-    ...a.map((row, i) => [
+    ...(cards[0] as Row[]).map((row, i) => [
       blank(2),
-      ...on(p.selectionBg, [blank(1), ...row, blank(2), ...(b[i] ?? []), blank(1)], W),
+      ...on(
+        p.selectionBg,
+        [
+          blank(1),
+          ...row,
+          blank(2),
+          ...(cards[1]?.[i] ?? []),
+          blank(2),
+          ...(cards[2]?.[i] ?? []),
+          blank(1),
+        ],
+        W,
+      ),
     ]),
     edge,
   ]
@@ -653,7 +681,7 @@ export function emptyRampRows({
   return [labels, outline, [], outline, []]
 }
 
-export type StepsField = 'set' | 'start' | 'end' | 'count'
+export type StepsField = 'set' | 'start' | 'end' | 'count' | 'tint' | 'over' | 'way' | 'mixCount'
 
 const SET_NAMES: Record<StepSpec['set'], string> = {
   tailwind: 'Tailwind',
@@ -673,12 +701,20 @@ export function stepsLine({
   palette: p,
   spec,
   editing,
+  extra,
 }: {
   width: number
   palette: Palette
   spec: StepSpec
   editing?: StepsField | undefined
+  /** The tab's own setting, last on the line: a neutral's tint, an alpha's background (§12.1). */
+  extra?: { field: 'tint' | 'over'; value: string } | undefined
 }): Row {
+  const words = extra
+    ? extra.field === 'tint'
+      ? `${extra.value} tint`
+      : `over ${extra.value}`
+    : ''
   const names = stepsOf(spec)
   const count = `${names.length} steps`
   const radix = '12 steps · your colour at 9'
@@ -688,6 +724,7 @@ export function stepsLine({
       ink(SET_NAMES[spec.set], p.fg, true),
       ink(`  ${names[0]} – ${names[names.length - 1]}`, p.dim),
       ink(`  ·  ${spec.set === 'radix' ? radix : count}`, p.border),
+      ...(extra ? [ink(`  ·  ${words}`, p.border)] : []),
     ]
     return withKey(p, row, 's', 'steps', columns - 1)
   }
@@ -711,7 +748,214 @@ export function stepsLine({
       pill('end', spec.end),
     )
     if (spec.set === 'even') row.push(ink('  steps ', p.dim), pill('count', spec.count))
-    else row.push(ink(`   ${count}`, p.border))
+    else if (!extra) row.push(ink(`   ${count}`, p.border))
   }
+  if (extra) row.push(ink(`  ${extra.field} `, p.dim), pill(extra.field, extra.value))
   return withKey(p, row, '↵', 'done', columns - 1)
+}
+
+const SPACE_NAMES: Record<MixSpace, string> = { oklab: 'OKLab', oklch: 'OKLCH' }
+const SPACE_WORDS: Record<MixSpace, string> = {
+  oklab: 'straight across',
+  oklch: 'round the hue wheel',
+}
+
+/**
+ * The line under a mix's ramp (§12.3): the way across and how many steps,
+ * `s steps` at the far end; under `s`, the way and the count as pills.
+ */
+export function mixLine({
+  width: columns,
+  palette: p,
+  space,
+  count,
+  editing,
+}: {
+  width: number
+  palette: Palette
+  space: MixSpace
+  count: number
+  editing?: 'way' | 'mixCount' | undefined
+}): Row {
+  if (!editing) {
+    return withKey(
+      p,
+      [
+        blank(2),
+        ink(SPACE_NAMES[space], p.fg, true),
+        ink(`  ${SPACE_WORDS[space]}`, p.dim),
+        ink(`  ·  ${count} steps`, p.border),
+      ],
+      's',
+      'steps',
+      columns - 1,
+    )
+  }
+  const plain = p.thumb === ''
+  const pill = (on: boolean, v: string | number): Run =>
+    on
+      ? plain
+        ? ink(`‹ ${v} ›`, p.fg, true)
+        : { text: ` ‹ ${v} › `, fg: lc(p.ink), bg: lc(p.thumb), bold: true }
+      : plain
+        ? ink(` ${v} `, p.dim)
+        : { text: ` ${v} `, fg: lc(p.fg), bg: lc(p.fieldBand) }
+  return withKey(
+    p,
+    [
+      blank(2),
+      pill(editing === 'way', SPACE_NAMES[space]),
+      ink('  steps ', p.dim),
+      pill(editing === 'mixCount', count),
+    ],
+    '↵',
+    'done',
+    columns - 1,
+  )
+}
+
+/** Scale's tabs (§12.1), drawn as /about's (L2): names with room round them, a rule under, heavy under the one in use. */
+export function scaleTabRows({
+  width: columns,
+  palette: p,
+  at,
+}: {
+  width: number
+  palette: Palette
+  at: number
+}): Row[] {
+  const names: Row = [blank(2)]
+  const rule: Row = [blank(2)]
+  let used = 0
+  ;['Colour', 'Neutral', 'Alpha'].forEach((name, i) => {
+    const on = i === at
+    const w = name.length + 4
+    names.push(ink(`  ${name}  `, on ? p.fg : p.dim, on))
+    rule.push(ink((on ? '━' : '─').repeat(w), on ? p.accent : p.faint))
+    used += w
+  })
+  rule.push(ink('─'.repeat(Math.max(0, columns - 4 - used)), p.faint))
+  return [withKey(p, names, 'tab', 'switch', columns - 1), rule]
+}
+
+/** The checkerboard an alpha is drawn over: Figma's white and grey, or black and a dark grey. */
+const BOARD: Record<'white' | 'black', [Rgb, Rgb]> = {
+  white: [
+    { r: 255, g: 255, b: 255 },
+    { r: 0xd9, g: 0xd9, b: 0xd9 },
+  ],
+  black: [
+    { r: 0, g: 0, b: 0 },
+    { r: 0x3a, g: 0x3a, b: 0x3a },
+  ],
+}
+
+/** `w` cells of the board under `a`, in two-column squares; `r` is the line, so squares alternate. */
+function board(a: Alpha, over: 'white' | 'black', w: number, r: number): Row {
+  const [light, dark] = BOARD[over].map((bg) => toHex(composite(a, bg))) as [string, string]
+  return Array.from({ length: w }, (_, c) =>
+    fill(' ', (Math.floor(c / 2) + r) % 2 === 0 ? light : dark),
+  )
+}
+
+/**
+ * The Alpha tab's ramp (A1, P1): each step laid over a checkerboard, so a
+ * nearly clear step shows the board and a nearly solid one hides it; its
+ * opacity written on the middle line, in white or near-black, whichever
+ * reads, the chosen one bold. Under four columns a cell has no room for
+ * "100%", and the numbers drop out (the preview still says it).
+ */
+export function alphaRampRows({
+  width: columns,
+  palette: p,
+  steps,
+  alphas,
+  selected,
+  over,
+}: {
+  width: number
+  palette: Palette
+  steps: StepLike[]
+  alphas: Alpha[]
+  selected: number
+  over: 'white' | 'black'
+}): Row[] {
+  const fit = rampFit(columns, steps.length)
+  const join = (cells: Row[]): Row => [
+    blank(2),
+    ...cells.flatMap((c, i) => (i === 0 || fit.gap === 0 ? c : [blank(fit.gap), ...c])),
+  ]
+  const labels = labelRow(
+    steps.map((s) => String(s.step)),
+    fit,
+    selected,
+    (i) => {
+      const s = steps[i] as StepLike
+      return i === selected
+        ? ink(String(s.step), p.fg, true)
+        : ink(String(s.step), (s.reference ?? s.seed) ? p.accent : p.border)
+    },
+  )
+  const line = (r: number): Row =>
+    join(
+      alphas.map((a, i) => {
+        const cells = board(a, over, fit.cell, r)
+        if (r !== 1 || fit.cell < 4) return cells
+        const text = `${a.pct}%`
+        const fg = readsOn(toHex(composite(a, BOARD[over][0])))
+        const from = Math.floor((fit.cell - text.length) / 2)
+        return cells.map((run, c) => {
+          const ch = text[c - from]
+          return ch ? { ...run, text: ch, fg, bold: i === selected } : run
+        })
+      }),
+    )
+  return [
+    labels,
+    line(0),
+    line(1),
+    line(2),
+    join(steps.map((_, i) => [i === selected ? ink('▔'.repeat(fit.cell), p.fg) : blank(fit.cell)])),
+  ]
+}
+
+/** White or near-black, whichever reads on `hex`. */
+function readsOn(hex: string): string {
+  const rgb = parseHex(hex)
+  if (!rgb) return '#ffffff'
+  const r = onWhiteAndBlack(rgb)
+  return r.white >= r.black ? '#ffffff' : '#111111'
+}
+
+/**
+ * The Alpha tab's preview: the step over the board, larger; its 8-digit
+ * hex, its opacity, and what it looks like over white and over black.
+ */
+export function alphaPreviewRows({
+  palette: p,
+  step,
+  alpha: a,
+  over,
+}: {
+  palette: Palette
+  step: number
+  alpha: Alpha
+  over: 'white' | 'black'
+}): Row[] {
+  const facts: Row[] = [
+    [ink(String(step), p.fg, true), blank(2), ink(a.hex8, p.fg, true)],
+    [
+      ink(`${a.pct}% opaque · `, p.dim),
+      ink(`rgb(${a.rgb.r} ${a.rgb.g} ${a.rgb.b} / ${a.pct}%)`, p.border),
+    ],
+    [],
+    [ink('over white  ', p.border), ink(toHex(composite(a, BOARD.white[0])), p.dim)],
+    [ink('over black  ', p.border), ink(toHex(composite(a, BOARD.black[0])), p.dim)],
+  ]
+  return [0, 1, 2, 3, 4].map((r) => [
+    blank(4),
+    ...board(a, over, BLOCK, r),
+    blank(4),
+    ...(facts[r] ?? []),
+  ])
 }

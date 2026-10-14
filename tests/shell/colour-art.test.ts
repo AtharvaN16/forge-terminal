@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { OUTSIDE, wholePercents } from '../../src/core/colour/palette.js'
 import {
+  COLOUR_SAMPLES,
   choiceCards,
   copiedRow,
   detailRow,
@@ -17,7 +18,7 @@ import {
   rampRows,
   stepsLine,
 } from '../../src/shell/colour/colour-art.js'
-import type { Row } from '../../src/shell/home-art.js'
+import { type Row, width } from '../../src/shell/home-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import {
   describeHomeRow,
@@ -76,48 +77,6 @@ function expectRows(rows: Row[], id: string, from: number, describe = describeRo
  * its lighter fill alone says it is chosen — so the mockup's `▌` is a blank
  * cell of that fill.
  */
-function expectCards(rows: Row[], id: string, from: number) {
-  rows.forEach((row, i) => {
-    const expected = resub(
-      fixtureRow(frame(id), from + i).map((c) =>
-        c.ch === '▌' ? { ch: ' ', fg: null, bg: c.bg, b: false } : c,
-      ),
-    )
-    expect(describeRow(runsRow(row), expected), `${id}, row ${from + i}`).toBe('equal')
-  })
-}
-
-/**
- * The cards' subtitles were rewritten after the mockup was frozen
- * (mockups/scale-steps-2026-10.html, H5): each old one is swapped for its new
- * text, in its colours, over the blanks after it.
- */
-const SUBTITLES: [string, string][] = [
-  ['the colours of an image', 'extract colours from an image'],
-  ['50 to 950 from one colour', 'create shades from one colour'],
-]
-function resub<C extends { ch: string; fg: string | null; bg: string | null }>(cells: C[]): C[] {
-  const text = cells.map((c) => c.ch).join('')
-  let out = cells
-  for (const [was, now] of SUBTITLES) {
-    const at = text.indexOf(was)
-    if (at < 0) continue
-    const style = out[at] as C
-    const blankAt = out[at + was.length] as C
-    out = [
-      ...out.slice(0, at),
-      // A space has no ink of its own, as the fixture records it.
-      ...[...now].map((ch) => ({ ...style, ch, ...(ch === ' ' ? { fg: null } : {}) })),
-      ...out.slice(at + now.length),
-    ]
-    // The old text was shorter: the cells it spilled over were blanks of the card's fill.
-    for (let k = at + was.length; k < at + now.length; k++) {
-      if (cells[k]?.ch !== ' ' || cells[k]?.bg !== blankAt.bg) throw new Error(`no room at ${k}`)
-    }
-  }
-  return out
-}
-
 const PAL = data.palette
 const PCT = wholePercents(PAL.map((p) => p.share))
 const TOP = data.grid.map((r) => [...r].map(Number))
@@ -128,12 +87,36 @@ const INSIDE_MAP = (data.subgrid[CORAL] ?? []).map((r) =>
   [...r].map((c) => (c === '.' ? OUTSIDE : Number(c))),
 )
 
-describe('home in colour mode (C1)', () => {
-  const samples = { palette: PAL.map((p) => p.hex), scale: data.scA.map((s) => s.hex) }
-  it('Palette chosen', () =>
-    expectCards(choiceCards({ width: 80, palette: P, selected: 0, samples }), '1', 7))
-  it('Scale chosen', () =>
-    expectCards(choiceCards({ width: 80, palette: P, selected: 1, samples }), 'B1', 7))
+describe('home in colour mode: three cards (colour spec §12.6)', () => {
+  const samples = {
+    palette: PAL.map((p) => p.hex),
+    scale: data.scA.map((s) => s.hex),
+    system: COLOUR_SAMPLES.system,
+  }
+  const text = (row: Row) => row.map((r) => r.text).join('')
+  for (const selected of [0, 1, 2] as const) {
+    it(`card ${selected} chosen: names, two-line subtitles, the chosen one on the band`, () => {
+      const rows = choiceCards({ width: 80, palette: P, selected, samples })
+      expect(rows).toHaveLength(9)
+      for (const row of rows) expect(width(row)).toBe(78)
+      expect(text(rows[2] as Row)).toMatch(/Extract +Scale +Palette/)
+      expect(text(rows[3] as Row)).toMatch(/extract colours +create shades +build a palette/)
+      expect(text(rows[4] as Row)).toMatch(/from an image +from one colour +from one colour/)
+      // The chosen card's name sits on panelBand; the others on the panel's fill.
+      const names = ['Extract', 'Scale', 'Palette']
+      names.forEach((name, i) => {
+        const run = (rows[2] as Row).find((r) => r.text === name)
+        expect(run?.bg).toBe(
+          i === selected ? P.panelBand.toLowerCase() : P.selectionBg.toLowerCase(),
+        )
+      })
+      // Each card's preview: its first sample's colour is in its row.
+      const preview = rows[6] as Row
+      for (const hex of [samples.palette[0], samples.scale[0], samples.system[0]]) {
+        expect(preview.some((r) => r.bg === (hex as string).toLowerCase())).toBe(true)
+      }
+    })
+  }
 })
 
 describe('the field, filled and neutral', () => {

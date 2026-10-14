@@ -976,11 +976,11 @@ export function App({
   const [pdfSaved, setPdfSaved] = useState<string[]>([])
   /** Set to open /pdf on that Save as (Cancel on Name taken); cleared once it is left. */
   const [pdfReopen, setPdfReopen] = useState<PdfResume | undefined>(undefined)
-  /** Colour's home: the card chosen, Palette (0) or Scale (1). */
-  const [colourChoice, setColourChoice] = useState<0 | 1>(0)
+  /** Colour's home: the card chosen, Extract (0), Scale (1) or Palette (2). */
+  const [colourChoice, setColourChoice] = useState<0 | 1 | 2>(0)
   /** How the colour flow opens, and the trail it hands up for the bar. */
   const [colourStart, setColourStart] = useState<ColourStart>('palette')
-  const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Palette' })
+  const [colourTrailNow, setColourTrailNow] = useState<Trail>({ answers: [], current: 'Extract' })
   /** Which steps a scale has, as last kept on the line under its ramp; for the session. */
   const [colourSteps, setColourSteps] = useState<StepSpec>(DEFAULT_STEPS)
   /** Set only while `step === 'pdf-blocked'` — what a refused `/pdf` run can still do. */
@@ -1113,7 +1113,7 @@ export function App({
       return
     }
     setText('')
-    if (next === 'colour') setColourChoice(delta > 0 ? 0 : 1)
+    if (next === 'colour') setColourChoice(delta > 0 ? 0 : 2)
     switchMode(next)
   }
 
@@ -1644,8 +1644,10 @@ export function App({
       answers: [],
       current:
         start === 'palette' || (typeof start === 'object' && 'palette' in start)
-          ? 'Palette'
-          : 'Scale',
+          ? 'Extract'
+          : start === 'system'
+            ? 'Palette'
+            : 'Scale',
     })
     setText('')
     setStep('colour')
@@ -1665,12 +1667,13 @@ export function App({
       // every other home (decided 2026-10-13).
       if (key.leftArrow) {
         if (colourChoice === 0) stepTab('colour', -1)
-        else setColourChoice(0)
+        else setColourChoice((colourChoice - 1) as 0 | 1)
       } else if (key.rightArrow) {
-        if (colourChoice === 1) stepTab('colour', 1)
-        else setColourChoice(1)
-      } else if (key.return) openColour(colourChoice === 0 ? 'palette' : 'scale')
-      else if (input === '#') openColour({ typed: '#' })
+        if (colourChoice === 2) stepTab('colour', 1)
+        else setColourChoice((colourChoice + 1) as 1 | 2)
+      } else if (key.return) {
+        openColour(colourChoice === 0 ? 'palette' : colourChoice === 1 ? 'scale' : 'system')
+      } else if (input === '#') openColour({ typed: '#' })
       else if (input === '/') setText('/')
       else if (input.length > 1) {
         // A pasted colour (a hex copied from Figma, say) is a scale; anything
