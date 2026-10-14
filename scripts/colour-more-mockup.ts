@@ -37,7 +37,7 @@ import {
   stepsLine,
   withKey,
 } from '../src/shell/colour/colour-art.js'
-import { blank, mix, type Row, type Run, width } from '../src/shell/home-art.js'
+import { blank, type Row, type Run, width } from '../src/shell/home-art.js'
 import { sliderRow } from '../src/shell/quality-art.js'
 import { DARK, LIGHT, modePalette, type Palette } from '../src/shell/theme.js'
 
@@ -56,7 +56,10 @@ type Grid = Cell[][]
 const read = (f: string) => JSON.parse(readFileSync(f, 'utf8')) as Record<string, Grid>
 const CAPTURED = {
   dark: { ...read('/tmp/forge-na/frames2-dark.json'), ...read('/tmp/forge-na/frames-dark.json') },
-  light: { ...read('/tmp/forge-na/frames2-light.json'), ...read('/tmp/forge-na/frames-light.json') },
+  light: {
+    ...read('/tmp/forge-na/frames2-light.json'),
+    ...read('/tmp/forge-na/frames-light.json'),
+  },
 }
 
 const rowOf = (cells: Cell[]): Row => {
@@ -94,7 +97,12 @@ const centre = (row: Row, w: number): Row => {
   const left = Math.max(0, Math.floor((w - width(row)) / 2))
   return pad([blank(left), ...row], w)
 }
-const cap = (p: Palette, k: string): Run => ({ text: ` ${k} `, fg: p.fg, bg: p.keycapBg, bold: true })
+const cap = (p: Palette, k: string): Run => ({
+  text: ` ${k} `,
+  fg: p.fg,
+  bg: p.keycapBg,
+  bold: true,
+})
 const hexRgb = (h: string) => parseHex(h) as Rgb
 const readsOn = (hex: string) => {
   const r = onWhiteAndBlack(hexRgb(hex))
@@ -123,7 +131,10 @@ function withKeys(p: Palette, row: Row, pairs: [string, string][], w = CONTENT -
 }
 
 /** The field's content: a value, swatches, and something quiet after. */
-function value(L: Look, parts: (string | { swatch: string } | { quiet: string } | { bright: string })[]): Row {
+function value(
+  L: Look,
+  parts: (string | { swatch: string } | { quiet: string } | { bright: string })[],
+): Row {
   const row: Row = []
   parts.forEach((x, i) => {
     if (i) row.push(blank(typeof x === 'object' && 'swatch' in x ? 2 : 3))
@@ -154,7 +165,9 @@ function screen(
     slanted: false,
   })
   const head = fieldRows({ width: CONTENT, palette: L.p, content: field, focus })
-  const rows = [[], ...head, ...(tight ? [] : [[]]), ...body].map((r) => (r.length ? [blank(2), ...r] : r))
+  const rows = [[], ...head, ...(tight ? [] : [[]]), ...body].map((r) =>
+    r.length ? [blank(2), ...r] : r,
+  )
   while (rows.length < 20) rows.push([])
   const rule = rowsOf(L.grids.scale as Grid)[22] as Row
   return [[], bar, ...rows.slice(0, 20), rule, keys]
@@ -200,12 +213,12 @@ function seen(hex: string, v: Vision): string {
   const c = hexRgb(hex)
   const x = [c.r, c.g, c.b].map((n) => lin(n / 255))
   const m = MACHADO[v]
-  const y = m.map((row) => row[0] * (x[0] as number) + row[1] * (x[1] as number) + row[2] * (x[2] as number))
-  const [r, g, b] = y.map((n) => Math.round(Math.max(0, Math.min(1, gam(Math.max(0, n)))) * 255)) as [
-    number,
-    number,
-    number,
-  ]
+  const y = m.map(
+    (row) => row[0] * (x[0] as number) + row[1] * (x[1] as number) + row[2] * (x[2] as number),
+  )
+  const [r, g, b] = y.map((n) =>
+    Math.round(Math.max(0, Math.min(1, gam(Math.max(0, n)))) * 255),
+  ) as [number, number, number]
   return toHex({ r, g, b })
 }
 const dE = (a: string, b: string) => {
@@ -239,7 +252,11 @@ function mix(a: string, b: string, t: number, space: 'oklab' | 'oklch'): string 
   const x = rgbToOklab(hexRgb(a))
   const y = rgbToOklab(hexRgb(b))
   if (space === 'oklab') {
-    const lab: Lab = { L: x.L + (y.L - x.L) * t, a: x.a + (y.a - x.a) * t, b: x.b + (y.b - x.b) * t }
+    const lab: Lab = {
+      L: x.L + (y.L - x.L) * t,
+      a: x.a + (y.a - x.a) * t,
+      b: x.b + (y.b - x.b) * t,
+    }
     return toHex(oklabToRgb(lab))
   }
   const p = toLch(x)
@@ -285,7 +302,6 @@ function namesOf(hexes: string[]): string[] {
   })
 }
 const NAMES = namesOf(PALETTE)
-
 
 /* ------------------------------------------- tab 0: a system from one colour */
 
@@ -343,9 +359,11 @@ interface Tweak {
   contrast?: number
 }
 /** Brightness: towards white above 0, towards black below. */
-const lighten = (L: number, k: number) => (k >= 0 ? L + (0.98 - L) * (k / 100) : L + (L - 0.05) * (k / 100))
+const lighten = (L: number, k: number) =>
+  k >= 0 ? L + (0.98 - L) * (k / 100) : L + (L - 0.05) * (k / 100)
 /** Saturation: towards grey below 0, towards the most vivid sRGB allows above. */
-const saturate = (C: number, max: number, k: number) => (k >= 0 ? C + (Math.max(C, max) - C) * (k / 100) : C * (1 + k / 100))
+const saturate = (C: number, max: number, k: number) =>
+  k >= 0 ? C + (Math.max(C, max) - C) * (k / 100) : C * (1 + k / 100)
 const isTweaked = (tw: Tweak) => !!(tw.bright || tw.sat || tw.hue || tw.contrast)
 /** Your colour with the tweaks on it; untouched when there are none. */
 function tweakHex(hex: string, tw: Tweak): string {
@@ -374,14 +392,18 @@ function systemOf(base: string, tw: Tweak = NO_TWEAK): { rows: SysRow[]; neutral
   const turn = Math.max(-10, Math.min(10, hueGap(b.h, home.h) / 2))
   const vivid = Math.min(1, b.C / maxC(b.L, b.h))
   const rows = FAMILY.map((f, i): SysRow => {
-    if (i === slot) return { name: f.name, role: f.role, hexes: scaleOf(tweakHex(base, tw)), yours: true }
+    if (i === slot)
+      return { name: f.name, role: f.role, hexes: scaleOf(tweakHex(base, tw)), yours: true }
     const n = nat[i] as (typeof nat)[number]
     const matched =
       b.L >= home.L ? n.L + ((b.L - home.L) * (1 - n.L)) / (1 - home.L) : (n.L * b.L) / home.L
     const L0 = lighten(matched, tw.bright)
     const h = (n.h + turn + (tw.hue ?? 0) + 360) % 360
     const own = n.C / maxC(n.L, n.h)
-    const C = Math.min(maxC(L0, h), saturate(vivid * Math.min(1, own) * maxC(L0, h), maxC(L0, h), tw.sat))
+    const C = Math.min(
+      maxC(L0, h),
+      saturate(vivid * Math.min(1, own) * maxC(L0, h), maxC(L0, h), tw.sat),
+    )
     const hex = toHex(oklabToRgb(fromLch({ L: L0, C, h })))
     return { name: f.name, role: f.role, hexes: scaleOf(hex), yours: false }
   })
@@ -423,14 +445,17 @@ function sysGrid(
   LABELS.forEach((n, i) => {
     if (i) labels.push(blank(1))
     const on = i === sel.col
-    labels.push(...centre([ink(String(n), on ? L.p.fg : i === 5 ? L.p.accent : L.p.border, on)], cell))
+    labels.push(
+      ...centre([ink(String(n), on ? L.p.fg : i === 5 ? L.p.accent : L.p.border, on)], cell),
+    )
   })
   const line = (r: number, k = 0, tall = 1): Row => {
     const x = all[r] as SysRow
     const on = r === sel.row
     const nameRun = ink(x.name, x.yours ? L.p.accent : on ? L.p.fg : L.p.dim, on || x.yours)
     const role = opts.roles && x.role ? [ink(`  ${x.role}`, L.p.border)] : []
-    const named = k === 0 ? [...(LOCKED.includes(r) ? [ink('◆ ', L.p.accent)] : []), nameRun, ...role] : []
+    const named =
+      k === 0 ? [...(LOCKED.includes(r) ? [ink('◆ ', L.p.accent)] : []), nameRun, ...role] : []
     const out: Row = [...lead, ...named, blank(nameW - width(named))]
 
     const wideSel = SEL === 'wide' && on
@@ -464,8 +489,15 @@ function sysGrid(
   return rows
 }
 
-function sysDetail(L: Look, sys: { rows: SysRow[]; neutral: string[] }, sel: { row: number; col: number }): Row {
-  const x = sel.row < sys.rows.length ? (sys.rows[sel.row] as SysRow) : { name: 'neutral', hexes: sys.neutral, yours: false }
+function sysDetail(
+  L: Look,
+  sys: { rows: SysRow[]; neutral: string[] },
+  sel: { row: number; col: number },
+): Row {
+  const x =
+    sel.row < sys.rows.length
+      ? (sys.rows[sel.row] as SysRow)
+      : { name: 'neutral', hexes: sys.neutral, yours: false }
   const h = x.hexes[sel.col] as string
   return [
     blank(2),
@@ -504,7 +536,17 @@ const sysLine = (L: Look, tw: Tweak = NO_TWEAK, keys = true) =>
       : [],
   )
 /** One of the tweaks as the quality screen's slider: grey band, white pill. */
-function tweakRow(L: Look, label: string, v: number, on: boolean, w = 40, labelW = 12, lead = 2, max = 100, unit = ''): Row {
+function tweakRow(
+  L: Look,
+  label: string,
+  v: number,
+  on: boolean,
+  w = 40,
+  labelW = 12,
+  lead = 2,
+  max = 100,
+  unit = '',
+): Row {
   return [
     blank(lead),
     ...pad([ink(label, on ? L.p.fg : L.p.dim, on)], labelW),
@@ -515,7 +557,7 @@ function tweakRow(L: Look, label: string, v: number, on: boolean, w = 40, labelW
 }
 
 /** S1: the fourth tab of the scale screen; `t` turns its last two lines into the tweaks. */
-function sysTab(
+function _sysTab(
   L: Look,
   sel = { row: 0, col: 5 },
   opts: { tw?: Tweak; editing?: 'bright' | 'sat' } = {},
@@ -560,17 +602,29 @@ function sysTab(
               ['esc', 'back'],
             ],
       )
-  return screen(L, ['Scale'], cherryField(L), [...kindTabs(L, 3), ...sysGrid(L, sys, opts.editing ? { row: -1, col: -1 } : sel), ...tail], keys)
+  return screen(
+    L,
+    ['Scale'],
+    cherryField(L),
+    [...kindTabs(L, 3), ...sysGrid(L, sys, opts.editing ? { row: -1, col: -1 } : sel), ...tail],
+    keys,
+  )
 }
 
 /** S2: its own screen, from `g` on the scale; room for the roles. */
-function sysOwn(L: Look, sel = { row: 0, col: 5 }): Row[] {
+function _sysOwn(L: Look, sel = { row: 0, col: 5 }): Row[] {
   const sys = systemOf(CHERRY)
   return screen(
     L,
     ['Scale', 'System'],
     cherryField(L),
-    [...sysGrid(L, sys, sel, { roles: true, gap: true }), [], sysLine(L), [], sysDetail(L, sys, sel)],
+    [
+      ...sysGrid(L, sys, sel, { roles: true, gap: true }),
+      [],
+      sysLine(L),
+      [],
+      sysDetail(L, sys, sel),
+    ],
     keyRow(
       L.p,
       [
@@ -587,7 +641,7 @@ function sysOwn(L: Look, sel = { row: 0, col: 5 }): Row[] {
 }
 
 /** The same system as HTML swatches, to judge the colours themselves. */
-function sysHtml(title: string, base: string, tw: Tweak = NO_TWEAK): string {
+function _sysHtml(title: string, base: string, tw: Tweak = NO_TWEAK): string {
   const sys = systemFor(base, 'full', tw)
   const all = [...sys.rows, { name: 'neutral', hexes: sys.neutral, yours: false } as SysRow]
   const head = `<div class="g-row"><span class="g-name"></span>${LABELS.map((n) => `<span class="g-lab">${n}</span>`).join('')}</div>`
@@ -595,21 +649,22 @@ function sysHtml(title: string, base: string, tw: Tweak = NO_TWEAK): string {
     .map(
       (r) =>
         `<div class="g-row"><span class="g-name${r.yours ? ' yours' : ''}">${r.name}${r.role ? ` <i>${r.role}</i>` : ''}</span>${r.hexes
-          .map((h, i) => `<span class="g-sw${r.yours && i === 5 ? ' ref' : ''}" style="background:${h}" title="${h}"></span>`)
+          .map(
+            (h, i) =>
+              `<span class="g-sw${r.yours && i === 5 ? ' ref' : ''}" style="background:${h}" title="${h}"></span>`,
+          )
           .join('')}</div>`,
     )
     .join('')
   return `<div class="g"><div class="st"><b>${esc(title)}</b> <span>${base}</span></div>${head}${rows}</div>`
 }
 
-function sysCard(base: string, title: string): string {
+function _sysCard(base: string, title: string): string {
   const sys = systemOf(base)
   const rows = [...sys.rows.map((r) => r.hexes), sys.neutral]
   const names = [...sys.rows.map((r) => r.name), 'neutral']
   return gridCard(rows, names, title, `from ${base} · 8 colours and a neutral · 50–950 in OKLCH`)
 }
-
-
 
 /* ------------------------------------------------ marking your colour's cell */
 
@@ -622,7 +677,15 @@ let SEL: 'dot' | 'wide' = 'wide'
 let LOCKED: number[] = []
 
 /** The cell, four wide: the dot if it's chosen, and your colour's mark if it's yours. */
-function cellMark(L: Look, m: Mark, mine: boolean, h: string, dot: boolean, k: number, tall: number): Row {
+function cellMark(
+  L: Look,
+  m: Mark,
+  mine: boolean,
+  h: string,
+  dot: boolean,
+  k: number,
+  tall: number,
+): Row {
   const ink2 = lc(readsOn(h))
   const chars = [' ', ' ', ' ', ' ']
   const fgs: (string | undefined)[] = [undefined, undefined, undefined, undefined]
@@ -662,7 +725,16 @@ function cellMark(L: Look, m: Mark, mine: boolean, h: string, dot: boolean, k: n
 }
 
 /** The gap before cell `i`: a blank, or part of your colour's mark. */
-function gapMark(L: Look, m: Mark, yours: boolean, i: number, h: string, h500: string, k: number, mid: number): Run {
+function gapMark(
+  L: Look,
+  m: Mark,
+  yours: boolean,
+  i: number,
+  h: string,
+  h500: string,
+  k: number,
+  mid: number,
+): Run {
   if (!yours) return blank(1)
   if (m === 'pointer' && i === 6 && k === mid) return ink('◂', L.p.fg)
   if (m === 'wide' && i === 5) return ink('▐', h)
@@ -672,18 +744,53 @@ function gapMark(L: Look, m: Mark, yours: boolean, i: number, h: string, h500: s
 /** The colour as typed, when the palette has been tweaked (for the split mark). */
 let TWEAKED_FROM: string | undefined
 
-const MARKS: { m: Mark; id: string; name: string; note: string }[] = [
-  { m: 'tri', id: 'X1', name: 'A triangle in the corner', note: '◤ in the top-left corner of the cell, in white or near-black, whichever shows on it. Your idea. Stays put when the dot is on the cell.' },
-  { m: 'notch', id: 'X2', name: 'A corner cut away', note: 'The cell’s top-left corner is missing, so its shape is different from every other cell. No colour of its own, so it never clashes.' },
-  { m: 'pointer', id: 'X3', name: 'A pointer in the gap', note: '◂ just right of the cell, in the text colour. Nothing drawn on the colour itself.' },
-  { m: 'under', id: 'X4', name: 'A line along the bottom', note: 'A thin line inside the cell’s bottom edge. On taller cells (fewer colours) it sits under the dot.' },
-  { m: 'wide', id: 'X5', name: 'A wider cell', note: 'The cell bulges half a column into the gap on each side: the one swatch bigger than the rest.' },
-  { m: 'split', id: 'X6', name: 'The triangle, and once tweaked, the original beside it', note: 'Before any tweak, the triangle. After one, the cell’s left half is the colour as you typed it and the right half what it is now: you see how far the tweaks have taken it.' },
-  { m: 'name', id: 'X0', name: 'Nothing on the cell', note: 'Only the row’s name in the mode colour, and the 500 column’s number in it too: where they cross is yours.' },
+const _MARKS: { m: Mark; id: string; name: string; note: string }[] = [
+  {
+    m: 'tri',
+    id: 'X1',
+    name: 'A triangle in the corner',
+    note: '◤ in the top-left corner of the cell, in white or near-black, whichever shows on it. Your idea. Stays put when the dot is on the cell.',
+  },
+  {
+    m: 'notch',
+    id: 'X2',
+    name: 'A corner cut away',
+    note: 'The cell’s top-left corner is missing, so its shape is different from every other cell. No colour of its own, so it never clashes.',
+  },
+  {
+    m: 'pointer',
+    id: 'X3',
+    name: 'A pointer in the gap',
+    note: '◂ just right of the cell, in the text colour. Nothing drawn on the colour itself.',
+  },
+  {
+    m: 'under',
+    id: 'X4',
+    name: 'A line along the bottom',
+    note: 'A thin line inside the cell’s bottom edge. On taller cells (fewer colours) it sits under the dot.',
+  },
+  {
+    m: 'wide',
+    id: 'X5',
+    name: 'A wider cell',
+    note: 'The cell bulges half a column into the gap on each side: the one swatch bigger than the rest.',
+  },
+  {
+    m: 'split',
+    id: 'X6',
+    name: 'The triangle, and once tweaked, the original beside it',
+    note: 'Before any tweak, the triangle. After one, the cell’s left half is the colour as you typed it and the right half what it is now: you see how far the tweaks have taken it.',
+  },
+  {
+    m: 'name',
+    id: 'X0',
+    name: 'Nothing on the cell',
+    note: 'Only the row’s name in the mode colour, and the 500 column’s number in it too: where they cross is yours.',
+  },
 ]
 
 /** Each mark three ways: at rest (dot elsewhere), the dot on it with taller cells, and tweaked. */
-function markFrames(L: Look, m: Mark): Row[][] {
+function _markFrames(L: Look, m: Mark): Row[][] {
   const before = MARK
   const selBefore = SEL
   SEL = 'dot'
@@ -699,7 +806,7 @@ function markFrames(L: Look, m: Mark): Row[][] {
 }
 
 /** X7: the chosen cell wider, your colour's triangle; at rest, on yours, tweaked, and at both edges. */
-function x7Frames(L: Look): Row[][] {
+function _x7Frames(L: Look): Row[][] {
   MARK = 'tri'
   SEL = 'wide'
   return [
@@ -751,7 +858,11 @@ function contrastScale(hexes: string[], k: number): string[] {
     return toHex(oklabToRgb(fromLch({ L: L0, C, h: c.h })))
   })
 }
-function systemFor(base: string, mode: Mode, tw: Tweak = NO_TWEAK): { rows: SysRow[]; neutral: string[] } {
+function systemFor(
+  base: string,
+  mode: Mode,
+  tw: Tweak = NO_TWEAK,
+): { rows: SysRow[]; neutral: string[] } {
   const sys = systemForBase(base, mode, tw)
   const k = tw.contrast ?? 0
   return {
@@ -759,7 +870,11 @@ function systemFor(base: string, mode: Mode, tw: Tweak = NO_TWEAK): { rows: SysR
     neutral: contrastScale(sys.neutral, k),
   }
 }
-function systemForBase(base: string, mode: Mode, tw: Tweak = NO_TWEAK): { rows: SysRow[]; neutral: string[] } {
+function systemForBase(
+  base: string,
+  mode: Mode,
+  tw: Tweak = NO_TWEAK,
+): { rows: SysRow[]; neutral: string[] } {
   if (mode === 'full') return systemOf(base, tw)
   const b = lchOf(base)
   const vivid = Math.min(1, b.C / maxC(b.L, b.h))
@@ -767,7 +882,9 @@ function systemForBase(base: string, mode: Mode, tw: Tweak = NO_TWEAK): { rows: 
   const make = (L0: number, C0: number, h: number) => {
     const Lt = lighten(L0, tw.bright)
     const C = Math.min(maxC(Lt, h), saturate(C0, maxC(Lt, h), tw.sat))
-    return toHex(oklabToRgb(fromLch({ L: Lt, C: Math.max(0, C), h: (h + (tw.hue ?? 0) + 360) % 360 })))
+    return toHex(
+      oklabToRgb(fromLch({ L: Lt, C: Math.max(0, C), h: (h + (tw.hue ?? 0) + 360) % 360 })),
+    )
   }
   const fam = hueName(hexRgb(base))
   if (mode === 'mono') {
@@ -805,18 +922,26 @@ function systemForBase(base: string, mode: Mode, tw: Tweak = NO_TWEAK): { rows: 
 const countWords = (sys: { rows: SysRow[] }) => `${sys.rows.length} colours and a neutral`
 /** The line under the grid: the mode first, what it holds, and the keys. */
 function modeLine(L: Look, mode: Mode): Row {
-  return withKeys(L.p, [blank(2), ink(MODE_NAME[mode], L.p.fg, true)], [
-    ['m', 'mode'],
-    ['t', 'tweak'],
-    ['s', 'steps'],
-  ])
+  return withKeys(
+    L.p,
+    [blank(2), ink(MODE_NAME[mode], L.p.fg, true)],
+    [
+      ['m', 'mode'],
+      ['t', 'tweak'],
+      ['s', 'steps'],
+    ],
+  )
 }
 
 /**
  * The Palette screen (its own screen in colour mode): the chosen swatch's
  * line, a gap, the grid, a gap, the mode and its keys.
  */
-function modeTab(L: Look, mode: Mode, opts: { sel?: { row: number; col: number }; tw?: Tweak } = {}): Row[] {
+function modeTab(
+  L: Look,
+  mode: Mode,
+  opts: { sel?: { row: number; col: number }; tw?: Tweak } = {},
+): Row[] {
   const tw = opts.tw ?? NO_TWEAK
   const sys = systemFor(CHERRY, mode, tw)
   const sel = opts.sel ?? { row: 0, col: 5 }
@@ -824,7 +949,13 @@ function modeTab(L: Look, mode: Mode, opts: { sel?: { row: number; col: number }
     L,
     ['Palette'],
     cherryField(L),
-    [sysDetail(L, sys, sel), [], ...gappedGrid(L, sys, sel), ...(sel.row === sys.rows.length ? [] : [[]]), modeLine(L, mode)],
+    [
+      sysDetail(L, sys, sel),
+      [],
+      ...gappedGrid(L, sys, sel),
+      ...(sel.row === sys.rows.length ? [] : [[]]),
+      modeLine(L, mode),
+    ],
     keyRow(
       L.p,
       [
@@ -845,7 +976,6 @@ function modeTab(L: Look, mode: Mode, opts: { sel?: { row: number; col: number }
   )
 }
 
-
 /**
  * The grid with a gap between rows as well as between columns: each row's
  * swatches fill only the lower half of their first line, so half a line of
@@ -854,7 +984,12 @@ function modeTab(L: Look, mode: Mode, opts: { sel?: { row: number; col: number }
  * the gap columns are half stroke, half cell; the half line above it and
  * the half line under it are stroke.
  */
-function gappedGrid(L: Look, sys: { rows: SysRow[]; neutral: string[] }, sel: { row: number; col: number }, fill = 9): Row[] {
+function gappedGrid(
+  L: Look,
+  sys: { rows: SysRow[]; neutral: string[] },
+  sel: { row: number; col: number },
+  fill = 9,
+): Row[] {
   const nameW = 10
   const cell = 4
   const canvas = lc(L.p.canvas)
@@ -865,7 +1000,9 @@ function gappedGrid(L: Look, sys: { rows: SysRow[]; neutral: string[] }, sel: { 
   LABELS.forEach((n, i) => {
     if (i) labels.push(blank(1))
     const on = i === sel.col
-    labels.push(...centre([ink(String(n), on ? L.p.fg : i === 5 ? L.p.accent : L.p.border, on)], cell))
+    labels.push(
+      ...centre([ink(String(n), on ? L.p.fg : i === 5 ? L.p.accent : L.p.border, on)], cell),
+    )
   })
   const C = (ch: string, fg?: string, bg?: string, bold = false): Cel => ({ ch, fg, bg, bold })
   const rows: Row[] = [labels]
@@ -873,8 +1010,12 @@ function gappedGrid(L: Look, sys: { rows: SysRow[]; neutral: string[] }, sel: { 
   const isBelow = (r: number) => r === sel.row + 1
   /** The gap column before cell `i` on line k of row r. */
   const gap = (r: number, k: number, i: number, hexes: string[]): Cel => {
-    if (isSelRow(r) && i === sel.col) return k === 0 ? C('▗', lc(hexes[i] as string), frame) : C('▐', lc(hexes[i] as string), frame)
-    if (isSelRow(r) && i === sel.col + 1) return k === 0 ? C('▖', lc(hexes[sel.col] as string), frame) : C('▌', lc(hexes[sel.col] as string), frame)
+    if (isSelRow(r) && i === sel.col)
+      return k === 0 ? C('▗', lc(hexes[i] as string), frame) : C('▐', lc(hexes[i] as string), frame)
+    if (isSelRow(r) && i === sel.col + 1)
+      return k === 0
+        ? C('▖', lc(hexes[sel.col] as string), frame)
+        : C('▌', lc(hexes[sel.col] as string), frame)
     if (isBelow(r) && k === 0 && (i === sel.col || i === sel.col + 1)) return C('▀', frame, canvas)
     return C(' ')
   }
@@ -884,17 +1025,20 @@ function gappedGrid(L: Look, sys: { rows: SysRow[]; neutral: string[] }, sel: { 
       const cells: Cel[] = [C(' '), C(' ')]
       const name = k === 0 ? x.name : ''
       const nameFg = x.yours ? lc(L.p.accent) : isSelRow(r) ? lc(L.p.fg) : lc(L.p.dim)
-      for (let c = 0; c < nameW; c++) cells.push(C(name[c] ?? ' ', nameFg, undefined, isSelRow(r) || x.yours))
+      for (let c = 0; c < nameW; c++)
+        cells.push(C(name[c] ?? ' ', nameFg, undefined, isSelRow(r) || x.yours))
       x.hexes.forEach((h, i) => {
         const g = gap(r, k, i, x.hexes)
         if (i > 0) cells.push(g)
         else if (g.ch !== ' ') cells[cells.length - 1] = g
-        const strokeTop = k === 0 && ((isSelRow(r) && i === sel.col) || (isBelow(r) && i === sel.col))
+        const strokeTop =
+          k === 0 && ((isSelRow(r) && i === sel.col) || (isBelow(r) && i === sel.col))
         const mine = x.yours && i === 5
         for (let c = 0; c < cell; c++) {
           if (k === 0) {
             // Your colour: a small square in its lower-left corner, the triangle's place.
-            if (mine && c === 0 && tall === 1) cells.push(C('▖', lc(readsOn(h)), strokeTop ? frame : canvas))
+            if (mine && c === 0 && tall === 1)
+              cells.push(C('▖', lc(readsOn(h)), strokeTop ? frame : canvas))
             else cells.push(C('▄', lc(h), strokeTop ? frame : canvas))
           } else if (mine && c === 0 && k === 1) cells.push(C('◤', lc(readsOn(h)), lc(h)))
           else cells.push(C(' ', undefined, lc(h)))
@@ -967,9 +1111,25 @@ function homeCards3(L: Look, selected: number): Row[] {
   const CARD = Math.floor((W - 6) / 3)
   const full = systemFor(CHERRY, 'full')
   const cards = [
-    { name: 'Extract', sub: ['extract colours', 'from an image'], preview: ['#356723', '#77A726', '#AD95E9', '#ACE02C', '#6579FD', '#F26E69'].map((h) => fill('   ', h)) },
-    { name: 'Scale', sub: ['create shades', 'from one colour'], preview: scaleOf(A).map((h) => fill(' ', h)) },
-    { name: 'Palette', sub: ['build a palette', 'from one colour'], preview: [...full.rows.map((r) => r.hexes[5] as string), full.neutral[5] as string].map((h) => fill('  ', h)) },
+    {
+      name: 'Extract',
+      sub: ['extract colours', 'from an image'],
+      preview: ['#356723', '#77A726', '#AD95E9', '#ACE02C', '#6579FD', '#F26E69'].map((h) =>
+        fill('   ', h),
+      ),
+    },
+    {
+      name: 'Scale',
+      sub: ['create shades', 'from one colour'],
+      preview: scaleOf(A).map((h) => fill(' ', h)),
+    },
+    {
+      name: 'Palette',
+      sub: ['build a palette', 'from one colour'],
+      preview: [...full.rows.map((r) => r.hexes[5] as string), full.neutral[5] as string].map((h) =>
+        fill('  ', h),
+      ),
+    },
   ]
   const on = (bg: string, runs: Row, w: number): Row => {
     const row = runs.map((r) => (r.bg ? r : { ...r, bg: lc(bg) }))
@@ -996,7 +1156,19 @@ function homeCards3(L: Look, selected: number): Row[] {
     edge,
     ...[0, 1, 2, 3, 4, 5, 6].map((r) => [
       blank(4),
-      ...on(p.selectionBg, [blank(1), ...(cs[0]?.[r] ?? []), blank(2), ...(cs[1]?.[r] ?? []), blank(2), ...(cs[2]?.[r] ?? []), blank(1)], W),
+      ...on(
+        p.selectionBg,
+        [
+          blank(1),
+          ...(cs[0]?.[r] ?? []),
+          blank(2),
+          ...(cs[1]?.[r] ?? []),
+          blank(2),
+          ...(cs[2]?.[r] ?? []),
+          blank(1),
+        ],
+        W,
+      ),
     ]),
     edge,
   ]
@@ -1054,7 +1226,9 @@ function windowOver(
   const fade = (h?: string) => (h && /^#[0-9a-f]{6}$/i.test(h) ? mix(lc(h), canvas, 0.7) : h)
   const faded = win.fade ?? true
   const grid = under.map((r, i) =>
-    !faded || i === 0 || i >= 22 ? cellsOf(r) : cellsOf(r).map((c) => ({ ...c, fg: fade(c.fg), bg: fade(c.bg), bold: false })),
+    !faded || i === 0 || i >= 22
+      ? cellsOf(r)
+      : cellsOf(r).map((c) => ({ ...c, fg: fade(c.fg), bg: fade(c.bg), bold: false })),
   )
   const W = win.width
   const left = win.left ?? Math.floor((N - W) / 2)
@@ -1140,19 +1314,34 @@ function chipsOf(mode: Mode, w: number, gap: number, glyph: string, tw: Tweak = 
   return out
 }
 /** A list row: the one in hand on the band, with a › in the mode colour. */
-function listRow(L: Look, name: string, on: boolean, inner: number, nameW: number, chips: Row): Row {
+function listRow(
+  L: Look,
+  name: string,
+  on: boolean,
+  inner: number,
+  nameW: number,
+  chips: Row,
+): Row {
   const band = on ? lc(L.p.panelBand) : undefined
   const row: Row = [
     { text: on ? ' › ' : '   ', fg: lc(L.p.accent), bold: true, bg: band },
     { ...ink(name, on ? L.p.fg : L.p.dim, on), bg: band },
   ]
-  row.push({ text: ' '.repeat(Math.max(1, nameW + 3 - width(row))), bg: band }, ...chips.map((c) => ({ ...c, bg: band })))
+  row.push(
+    { text: ' '.repeat(Math.max(1, nameW + 3 - width(row))), bg: band },
+    ...chips.map((c) => ({ ...c, bg: band })),
+  )
   row.push({ text: ' '.repeat(Math.max(0, inner - width(row))), bg: band })
   return row
 }
 
 /** The Mode window, in one of four styles. */
-function modeWin(L: Look, style: WinStyle, current: Mode, opts: { visible?: number; first?: number } = {}): Row[] {
+function modeWin(
+  L: Look,
+  style: WinStyle,
+  current: Mode,
+  opts: { visible?: number; first?: number } = {},
+): Row[] {
   const p = L.p
   if (style === 'centre') {
     // W1: centred over the faded screen; each mode with its colours, as chips.
@@ -1160,7 +1349,12 @@ function modeWin(L: Look, style: WinStyle, current: Mode, opts: { visible?: numb
     const visible = opts.visible ?? MODES.length
     const first = opts.first ?? 0
     const shown = MODES.slice(first, first + visible)
-    const lines: Row[] = [[], ...shown.map((m) => listRow(L, MODE_NAME[m], m === current, W - 2, 21, chipsOf(m, 2, 1, '▄')))]
+    const lines: Row[] = [
+      [],
+      ...shown.map((m) =>
+        listRow(L, MODE_NAME[m], m === current, W - 2, 21, chipsOf(m, 2, 1, '▄')),
+      ),
+    ]
     const more = MODES.length - (first + shown.length)
     lines.push(more > 0 ? [blank(3), ink(`↓ ${more} more`, p.border)] : [])
     return withKeysRow(
@@ -1191,17 +1385,37 @@ function modeWin(L: Look, style: WinStyle, current: Mode, opts: { visible?: numb
     const lines: Row[] = [rowA, rowB]
     return withKeysRow(
       L,
-      windowOver(L, modeTab(L, current), { title: 'Mode', lines, width: 76, left: 2, top: 21 - lines.length - 1, fade: false }),
+      windowOver(L, modeTab(L, current), {
+        title: 'Mode',
+        lines,
+        width: 76,
+        left: 2,
+        top: 21 - lines.length - 1,
+        fade: false,
+      }),
       modeKeys(L, true),
     )
   }
   if (style === 'side') {
     // W3: a panel down the right; names and small chips; the grid's left part stays live.
     const W = 34
-    const lines: Row[] = [[], ...MODES.flatMap((m) => [listRow(L, MODE_NAME[m], m === current, W - 2, 19, chipsOf(m, 1, 0, '▄'))]), []]
+    const lines: Row[] = [
+      [],
+      ...MODES.flatMap((m) => [
+        listRow(L, MODE_NAME[m], m === current, W - 2, 19, chipsOf(m, 1, 0, '▄')),
+      ]),
+      [],
+    ]
     return withKeysRow(
       L,
-      windowOver(L, modeTab(L, current), { title: 'Mode', lines, width: W, left: N - W - 2, top: 6, fade: false }),
+      windowOver(L, modeTab(L, current), {
+        title: 'Mode',
+        lines,
+        width: W,
+        left: N - W - 2,
+        top: 6,
+        fade: false,
+      }),
       modeKeys(L),
     )
   }
@@ -1210,7 +1424,14 @@ function modeWin(L: Look, style: WinStyle, current: Mode, opts: { visible?: numb
   const lines: Row[] = MODES.map((m) => listRow(L, MODE_NAME[m], m === current, W - 2, 19, []))
   return withKeysRow(
     L,
-    windowOver(L, modeTab(L, current), { title: 'Mode', lines, width: W, left: 46, top: 21 - lines.length - 2, fade: false }),
+    windowOver(L, modeTab(L, current), {
+      title: 'Mode',
+      lines,
+      width: W,
+      left: 46,
+      top: 21 - lines.length - 2,
+      fade: false,
+    }),
     modeKeys(L),
   )
 }
@@ -1225,19 +1446,51 @@ function tweakWin(L: Look, style: WinStyle, tw: Tweak, on: keyof Tweak): Row[] {
     const lines: Row[] = [[]]
     TWEAKS.forEach((t, i) => {
       if (i) lines.push([])
-      lines.push(tweakRow(L, t.label, v(t.key), t.key === on, 36, 12, 1, t.key === 'hue' ? 180 : 100, t.key === 'hue' ? '°' : ''))
+      lines.push(
+        tweakRow(
+          L,
+          t.label,
+          v(t.key),
+          t.key === on,
+          36,
+          12,
+          1,
+          t.key === 'hue' ? 180 : 100,
+          t.key === 'hue' ? '°' : '',
+        ),
+      )
     })
     lines.push([], [blank(1), ...pad([], 12), ...chipsOf('full', 3, 1, ' ', tw)], [])
-    return withKeysRow(L, windowOver(L, under, { title: 'Tweak', lines, width: W, top: 21 - lines.length - 1 }), tweakKeys(L))
+    return withKeysRow(
+      L,
+      windowOver(L, under, { title: 'Tweak', lines, width: W, top: 21 - lines.length - 1 }),
+      tweakKeys(L),
+    )
   }
   if (style === 'sheet') {
-    const half = (t: (typeof TWEAKS)[number]): Row => tweakRow(L, t.label, v(t.key), t.key === on, 22, 11, 1)
+    const half = (t: (typeof TWEAKS)[number]): Row =>
+      tweakRow(L, t.label, v(t.key), t.key === on, 22, 11, 1)
     const pair = (a: number, b: number): Row => {
       const left = half(TWEAKS[a] as (typeof TWEAKS)[number])
-      return [...left, blank(Math.max(2, 37 - width(left))), ...half(TWEAKS[b] as (typeof TWEAKS)[number])]
+      return [
+        ...left,
+        blank(Math.max(2, 37 - width(left))),
+        ...half(TWEAKS[b] as (typeof TWEAKS)[number]),
+      ]
     }
     const lines: Row[] = [pair(0, 1), pair(2, 3)]
-    return withKeysRow(L, windowOver(L, under, { title: 'Tweak', lines, width: 76, left: 2, top: 21 - lines.length - 1, fade: false }), tweakKeys(L))
+    return withKeysRow(
+      L,
+      windowOver(L, under, {
+        title: 'Tweak',
+        lines,
+        width: 76,
+        left: 2,
+        top: 21 - lines.length - 1,
+        fade: false,
+      }),
+      tweakKeys(L),
+    )
   }
   if (style === 'side') {
     const W = 34
@@ -1247,11 +1500,33 @@ function tweakWin(L: Look, style: WinStyle, tw: Tweak, on: keyof Tweak): Row[] {
       lines.push(tweakRow(L, '', v(t.key), t.key === on, 28, 0, 1))
       lines.push([])
     })
-    return withKeysRow(L, windowOver(L, under, { title: 'Tweak', lines, width: W, left: N - W - 2, top: 6, fade: false }), tweakKeys(L))
+    return withKeysRow(
+      L,
+      windowOver(L, under, {
+        title: 'Tweak',
+        lines,
+        width: W,
+        left: N - W - 2,
+        top: 6,
+        fade: false,
+      }),
+      tweakKeys(L),
+    )
   }
   const W = 46
   const lines: Row[] = TWEAKS.map((t) => tweakRow(L, t.label, v(t.key), t.key === on, 30, 11, 1))
-  return withKeysRow(L, windowOver(L, under, { title: 'Tweak', lines, width: W, left: 30, top: 21 - lines.length - 2, fade: false }), tweakKeys(L))
+  return withKeysRow(
+    L,
+    windowOver(L, under, {
+      title: 'Tweak',
+      lines,
+      width: W,
+      left: 30,
+      top: 21 - lines.length - 2,
+      fade: false,
+    }),
+    tweakKeys(L),
+  )
 }
 
 /** The key row is the window's while it's open. */
@@ -1260,14 +1535,17 @@ function withKeysRow(_L: Look, rows: Row[], keys: Row): Row[] {
   return rows
 }
 
-function modeHtml(base: string, mode: Mode): string {
+function _modeHtml(base: string, mode: Mode): string {
   const sys = systemFor(base, mode)
   const all = [...sys.rows, { name: 'neutral', hexes: sys.neutral, yours: false } as SysRow]
   const rows = all
     .map(
       (r) =>
         `<div class="g-row"><span class="g-name${r.yours ? ' yours' : ''}">${r.name}</span>${r.hexes
-          .map((h, i) => `<span class="g-sw${r.yours && i === 5 ? ' ref' : ''}" style="background:${h}" title="${h}"></span>`)
+          .map(
+            (h, i) =>
+              `<span class="g-sw${r.yours && i === 5 ? ' ref' : ''}" style="background:${h}" title="${h}"></span>`,
+          )
           .join('')}</div>`,
     )
     .join('')
@@ -1290,7 +1568,9 @@ function grid(L: Look, opts: { row: number; col: number; tall?: boolean; top?: n
   LABELS.forEach((n, i) => {
     if (i) labels.push(blank(1))
     const on = i === opts.col
-    labels.push(...centre([ink(String(n), on ? L.p.fg : i === 5 ? L.p.accent : L.p.border, on)], cell))
+    labels.push(
+      ...centre([ink(String(n), on ? L.p.fg : i === 5 ? L.p.accent : L.p.border, on)], cell),
+    )
   })
   const line = (r: number, withDot: boolean, named = true): Row => {
     const hexes = rows[r] as string[]
@@ -1324,7 +1604,7 @@ function grid(L: Look, opts: { row: number; col: number; tall?: boolean; top?: n
   return body
 }
 
-function gridScreen(L: Look, row: number, col: number, tall = false): Row[] {
+function _gridScreen(L: Look, row: number, col: number, tall = false): Row[] {
   const hexes = row < PALETTE.length ? scaleOf(PALETTE[row] as string) : NEUTRAL
   const h = hexes[col] as string
   const name = row < PALETTE.length ? (NAMES[row] as string) : 'neutral'
@@ -1421,7 +1701,7 @@ function gridCard(
 /* ----------------------------------------------- tab 2: colour vision */
 
 /** V1 on the palette: everything redrawn as that eye sees it, look-alikes marked. */
-function visionPalette(L: Look, v: Vision): Row[] {
+function _visionPalette(L: Look, v: Vision): Row[] {
   if (v === 'normal')
     return paletteWithKey(L, [
       ['v', 'vision'],
@@ -1456,7 +1736,12 @@ function visionPalette(L: Look, v: Vision): Row[] {
           ink(VISION_NAME[v], L.p.fg, true),
           ink(`  ${VISION_WHO[v]}`, L.p.dim),
           ...(pairs.length
-            ? [ink(`  ·  ${pairs.length} pair${pairs.length > 1 ? 's' : ''} look alike`, L.p.accent)]
+            ? [
+                ink(
+                  `  ·  ${pairs.length} pair${pairs.length > 1 ? 's' : ''} look alike`,
+                  L.p.accent,
+                ),
+              ]
             : [ink('  ·  all tell apart', L.p.ok)]),
         ]
   rows[19] = withKey(L.p, note, 'v', v === 'tritan' ? 'normal' : 'next', CONTENT + 2)
@@ -1464,7 +1749,10 @@ function visionPalette(L: Look, v: Vision): Row[] {
     width: N,
     palette: L.p,
     mode: 'colour',
-    trail: { answers: v === 'normal' ? [] : ['Palette'], current: v === 'normal' ? 'Palette' : 'Vision' },
+    trail: {
+      answers: v === 'normal' ? [] : ['Palette'],
+      current: v === 'normal' ? 'Palette' : 'Vision',
+    },
     slanted: false,
   })
   rows[23] = keyRow(
@@ -1489,18 +1777,22 @@ function visionPalette(L: Look, v: Vision): Row[] {
 }
 
 /** V2: its own screen, every colour seen four ways, look-alikes marked in their column. */
-function visionTable(L: Look, sel: number): Row[] {
+function _visionTable(L: Look, sel: number): Row[] {
   const kinds: Vision[] = ['normal', 'protan', 'deutan', 'tritan']
   const colW = 14
   const sw = 10
   const lead: Row = [blank(4)]
   const head: Row = [...lead, blank(11)]
-  for (const k of kinds) head.push(...pad([ink(k === 'normal' ? 'you' : VISION_NAME[k], L.p.dim)], colW))
+  for (const k of kinds)
+    head.push(...pad([ink(k === 'normal' ? 'you' : VISION_NAME[k], L.p.dim)], colW))
   const alike = kinds.map((k) => alikePairs(PALETTE, k))
   const rows: Row[] = [head]
   PALETTE.forEach((h, i) => {
     const on = i === sel
-    const row: Row = [...lead, ...pad([ink(`${i + 1} `, L.p.border), ink(h, on ? L.p.fg : L.p.dim, on)], 11)]
+    const row: Row = [
+      ...lead,
+      ...pad([ink(`${i + 1} `, L.p.border), ink(h, on ? L.p.fg : L.p.dim, on)], 11),
+    ]
     kinds.forEach((k, c) => {
       const s = seen(h, k)
       const pair = alike[c]?.find(([a, b]) => a === i || b === i)
@@ -1668,7 +1960,11 @@ function typingSecond(L: Look, typed: string): Row[] {
       [],
       ...previewRows({
         palette: L.p,
-        step: { ...(steps[5] as (typeof steps)[number]), oklch: formatOklch(hexRgb(A)), ...onWhiteAndBlack(hexRgb(A)) },
+        step: {
+          ...(steps[5] as (typeof steps)[number]),
+          oklch: formatOklch(hexRgb(A)),
+          ...onWhiteAndBlack(hexRgb(A)),
+        },
       }),
     ],
     keyRow(
@@ -1684,15 +1980,31 @@ function typingSecond(L: Look, typed: string): Row[] {
 }
 
 /** M3: home with a third card; the subtitles shortened so three fit. */
-function homeThree(L: Look, selected: number): Row[] {
+function _homeThree(L: Look, selected: number): Row[] {
   const rows = rowsOf(L.grids.home as Grid)
   const p = L.p
   const W = CONTENT - 4
   const CARD = Math.floor((W - 6) / 3)
   const cards = [
-    { name: 'Palette', sub: 'colours of an image', preview: ['#356723', '#77A726', '#AD95E9', '#ACE02C', '#6579FD', '#F26E69'].map((h) => fill('   ', h)) },
-    { name: 'Scale', sub: 'shades of one colour', preview: scaleOf(A).map((h) => fill(' ', h)).slice(0, 11) },
-    { name: 'Mix', sub: 'blend two colours', preview: mixSteps(A, B, 9, 'oklab').map((s) => fill('  ', s.hex)) },
+    {
+      name: 'Palette',
+      sub: 'colours of an image',
+      preview: ['#356723', '#77A726', '#AD95E9', '#ACE02C', '#6579FD', '#F26E69'].map((h) =>
+        fill('   ', h),
+      ),
+    },
+    {
+      name: 'Scale',
+      sub: 'shades of one colour',
+      preview: scaleOf(A)
+        .map((h) => fill(' ', h))
+        .slice(0, 11),
+    },
+    {
+      name: 'Mix',
+      sub: 'blend two colours',
+      preview: mixSteps(A, B, 9, 'oklab').map((s) => fill('  ', s.hex)),
+    },
   ]
   const on = (bg: string, runs: Row, w: number): Row => {
     const row = runs.map((r) => (r.bg ? r : { ...r, bg: lc(bg) }))
@@ -1720,7 +2032,15 @@ function homeThree(L: Look, selected: number): Row[] {
       blank(4),
       ...on(
         p.selectionBg,
-        [blank(1), ...(cs[0]?.[r] ?? []), blank(2), ...(cs[1]?.[r] ?? []), blank(2), ...(cs[2]?.[r] ?? []), blank(1)],
+        [
+          blank(1),
+          ...(cs[0]?.[r] ?? []),
+          blank(2),
+          ...(cs[1]?.[r] ?? []),
+          blank(2),
+          ...(cs[2]?.[r] ?? []),
+          blank(1),
+        ],
         W,
       ),
     ]),
@@ -1742,12 +2062,16 @@ interface Typed {
 function typedScreen(L: Look, t: Typed): Row[] {
   // Wrong input: what was typed turns red, and the field says so quietly at its far end.
   const field: Row = t.error
-    ? [ink(t.typed, L.p.fail), blank(CONTENT - 4 - 4 - t.typed.length - t.error.length), ink(t.error, L.p.border)]
+    ? [
+        ink(t.typed, L.p.fail),
+        blank(CONTENT - 4 - 4 - t.typed.length - t.error.length),
+        ink(t.error, L.p.border),
+      ]
     : [ink(t.typed, L.p.fg)]
   if (t.hex) field.push(blank(2), fill('    ', t.hex), blank(3), ink(t.hex, L.p.dim))
   if (t.note) field.push(ink(`  ·  ${t.note}`, L.p.border))
   const steps = t.hex ? scale(hexRgb(t.hex)) : undefined
-  const empty = rowsOf(L.grids.scaleEmpty as Grid)
+  const _empty = rowsOf(L.grids.scaleEmpty as Grid)
   const body: Row[] = steps
     ? [
         ...rampRows({ width: CONTENT, palette: L.p, steps, selected: 5 }),
@@ -1802,11 +2126,19 @@ function emptyTyping(L: Look): Row[] {
 }
 
 /** C1: an empty field offers the colour on the clipboard; ↵ takes it. */
-function clipboardOffer(L: Look, offer: boolean): Row[] {
+function _clipboardOffer(L: Look, offer: boolean): Row[] {
   const field: Row = offer
-    ? [ink('type a colour', L.p.border), blank(4), ink('↵', L.p.fg, true), ink(' use ', L.p.border), fill('  ', '#F26E69'), ink(' #F26E69', L.p.dim), ink(' from the clipboard', L.p.border)]
+    ? [
+        ink('type a colour', L.p.border),
+        blank(4),
+        ink('↵', L.p.fg, true),
+        ink(' use ', L.p.border),
+        fill('  ', '#F26E69'),
+        ink(' #F26E69', L.p.dim),
+        ink(' from the clipboard', L.p.border),
+      ]
     : [ink('type a colour', L.p.border)]
-  const empty = rowsOf(L.grids.scaleEmpty as Grid)
+  const _empty = rowsOf(L.grids.scaleEmpty as Grid)
   return screen(
     L,
     ['Scale'],
@@ -1832,21 +2164,54 @@ function hsl(h: number, sat: number, l: number): string {
 }
 const oklchHex = (L0: number, C: number, h: number) => toHex(oklabToRgb(fromLch({ L: L0, C, h })))
 const FORMATS: { title: string; t: Typed; note: string }[] = [
-  { title: 'oklch()', t: { typed: 'oklch(63% 0.196 273)', hex: oklchHex(0.63, 0.196, 273) }, note: 'What a designer copies out of Figma’s or a browser’s colour picker. The hex it comes to is said beside it.' },
-  { title: 'rgb() and hsl()', t: { typed: 'hsl(230 97% 69%)', hex: hsl(230, 0.97, 0.69) }, note: 'CSS’s own forms, old (commas) and new (spaces), with or without the alpha.' },
-  { title: 'A name', t: { typed: 'cherry red', hex: '#F7022A' }, note: 'Names from two lists: CSS’s 148 (rebeccapurple, crimson) and the xkcd colour survey’s 949 (cherry red, dusty rose, forest green; public domain). Where both have a name, CSS’s wins. Letters typed into the field go to the field, so this only works once the field is open (# or ↵), never as keys on the screen.' },
-  { title: 'Eight-digit hex', t: { typed: '#6579FDCC', hex: '#6579FD' }, note: 'A scale is made from a solid colour, so the alpha is dropped, and said so. The Alpha tab gives it back, for every step.' },
-  { title: 'Something it can’t read', t: { typed: 'rgb(300 0 0)', error: 'wrong input' }, note: 'Said in one line where the ✓ after a copy goes, with a version that would work. The field keeps what was typed.' },
+  {
+    title: 'oklch()',
+    t: { typed: 'oklch(63% 0.196 273)', hex: oklchHex(0.63, 0.196, 273) },
+    note: 'What a designer copies out of Figma’s or a browser’s colour picker. The hex it comes to is said beside it.',
+  },
+  {
+    title: 'rgb() and hsl()',
+    t: { typed: 'hsl(230 97% 69%)', hex: hsl(230, 0.97, 0.69) },
+    note: 'CSS’s own forms, old (commas) and new (spaces), with or without the alpha.',
+  },
+  {
+    title: 'A name',
+    t: { typed: 'cherry red', hex: '#F7022A' },
+    note: 'Names from two lists: CSS’s 148 (rebeccapurple, crimson) and the xkcd colour survey’s 949 (cherry red, dusty rose, forest green; public domain). Where both have a name, CSS’s wins. Letters typed into the field go to the field, so this only works once the field is open (# or ↵), never as keys on the screen.',
+  },
+  {
+    title: 'Eight-digit hex',
+    t: { typed: '#6579FDCC', hex: '#6579FD' },
+    note: 'A scale is made from a solid colour, so the alpha is dropped, and said so. The Alpha tab gives it back, for every step.',
+  },
+  {
+    title: 'Something it can’t read',
+    t: { typed: 'rgb(300 0 0)', error: 'wrong input' },
+    note: 'Said in one line where the ✓ after a copy goes, with a version that would work. The field keeps what was typed.',
+  },
 ]
 
 /* ------------------------------------------------------------- render */
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const GLYPH: Record<string, string> = { '╱': 'd', '▀': 'u', '▄': 'l', '█': 'f', '▌': 'h', '▐': 'rh', '▟': 'nt', '◤': 'tr', '▁': 'e', '▗': 'qr', '▖': 'ql' }
+const GLYPH: Record<string, string> = {
+  '╱': 'd',
+  '▀': 'u',
+  '▄': 'l',
+  '█': 'f',
+  '▌': 'h',
+  '▐': 'rh',
+  '▟': 'nt',
+  '◤': 'tr',
+  '▁': 'e',
+  '▗': 'qr',
+  '▖': 'ql',
+}
 
 function html(rows: Row[], p: Palette, label: string): string {
   rows.forEach((r, i) => {
-    if (width(r) > N) console.warn(`${label}: row ${i} is ${width(r)} wide:`, r.map((x) => x.text).join(''))
+    if (width(r) > N)
+      console.warn(`${label}: row ${i} is ${width(r)} wide:`, r.map((x) => x.text).join(''))
   })
   if (rows.length !== 24) console.warn(`${label}: ${rows.length} rows`)
   const body = rows
@@ -1854,7 +2219,11 @@ function html(rows: Row[], p: Palette, label: string): string {
       let out = ''
       let used = 0
       for (const x of r) {
-        const style = [x.fg ? `color:${x.fg}` : '', x.bg ? `background:${x.bg}` : '', x.bold ? 'font-weight:700' : '']
+        const style = [
+          x.fg ? `color:${x.fg}` : '',
+          x.bg ? `background:${x.bg}` : '',
+          x.bold ? 'font-weight:700' : '',
+        ]
           .filter(Boolean)
           .join(';')
         let inner = ''
@@ -1895,28 +2264,30 @@ function figure(f: Fig): string {
 }
 
 /** Swatch strips for the mix comparison. */
-function strip(title: string, sub: string, hexes: string[], names: (string | number)[]): string {
+function _strip(title: string, sub: string, hexes: string[], names: (string | number)[]): string {
   const cells = hexes
-    .map((h, i) => `<div class="c"><div class="sw" style="background:${h}"></div><b>${names[i]}</b><span>${esc(h)}</span></div>`)
+    .map(
+      (h, i) =>
+        `<div class="c"><div class="sw" style="background:${h}"></div><b>${names[i]}</b><span>${esc(h)}</span></div>`,
+    )
     .join('')
   return `<div class="strip"><div class="st"><b>${esc(title)}</b> <span>${esc(sub)}</span></div><div class="cells">${cells}</div></div>`
 }
 
 /* ---------------------------------------------------------- the page */
 
-const visionCounts = (['protan', 'deutan', 'tritan'] as Vision[])
+const _visionCounts = (['protan', 'deutan', 'tritan'] as Vision[])
   .map((v) => {
     const ps = alikePairs(PALETTE, v)
     return `${VISION_NAME[v]}: ${ps.length ? ps.map(([a, b, d]) => `${PALETTE[a]} ≈ ${PALETTE[b]} (${d.toFixed(3)})`).join(', ') : 'none'}`
   })
   .join('<br>')
 
-const MIX_PAIRS: [string, string][] = [
+const _MIX_PAIRS: [string, string][] = [
   [A, B],
   ['#2E7DFF', '#FFC233'],
   ['#14B8A6', '#E11D48'],
 ]
-
 
 /* ------------------------------------------- the Coolors tools, folded in */
 
@@ -1930,16 +2301,20 @@ interface PalOpts {
   undo?: boolean
 }
 /** The Palette screen, any colours: with the generator's keys on the line. */
-function palScreen(L: Look, o: PalOpts): Row[] {
+function _palScreen(L: Look, o: PalOpts): Row[] {
   const sel = o.sel ?? { row: 0, col: 5 }
   LOCKED = o.locked ?? []
-  const line = withKeys(L.p, [blank(2), ink(MODE_NAME[o.mode ?? 'full'], L.p.fg, true)], [
-    ['space', 'new'],
-    ['l', 'lock'],
-    ['m', 'mode'],
-    ['t', 'tweak'],
-    ['s', 'steps'],
-  ])
+  const line = withKeys(
+    L.p,
+    [blank(2), ink(MODE_NAME[o.mode ?? 'full'], L.p.fg, true)],
+    [
+      ['space', 'new'],
+      ['l', 'lock'],
+      ['m', 'mode'],
+      ['t', 'tweak'],
+      ['s', 'steps'],
+    ],
+  )
   const rows = screen(
     L,
     ['Palette'],
@@ -1969,7 +2344,7 @@ function palScreen(L: Look, o: PalOpts): Row[] {
 }
 
 /** Before a colour: the box waits, and `space` makes one up. */
-function palEmptyGen(L: Look): Row[] {
+function _palEmptyGen(L: Look): Row[] {
   const rows = paletteEmpty(L)
   rows[23] = keyRow(
     L.p,
@@ -1988,10 +2363,15 @@ function palEmptyGen(L: Look): Row[] {
 const GEN1 = '#3E7CB1'
 const GEN2 = '#2A9D8F'
 /** `space` with red and yellow locked: they stay, the rest follow the new colour. */
-function lockedSpace(): { rows: SysRow[]; neutral: string[] } {
+function _lockedSpace(): { rows: SysRow[]; neutral: string[] } {
   const a = systemFor(GEN1, 'full')
   const b = systemFor(GEN2, 'full')
-  return { rows: b.rows.map((r, i) => (i === 0 || i === 2 ? { ...(a.rows[i] as SysRow), yours: false } : r)), neutral: b.neutral }
+  return {
+    rows: b.rows.map((r, i) =>
+      i === 0 || i === 2 ? { ...(a.rows[i] as SysRow), yours: false } : r,
+    ),
+    neutral: b.neutral,
+  }
 }
 
 /**
@@ -1999,26 +2379,37 @@ function lockedSpace(): { rows: SysRow[]; neutral: string[] } {
  * step as background (columns), the ratio written in the text colour on the
  * background colour. `tab` moves to the next colour's scale.
  */
-function contrastWin(L: Look, family: number, selRow: number, selCol: number): Row[] {
+function _contrastWin(L: Look, family: number, selRow: number, selCol: number): Row[] {
   const sys = systemFor(CHERRY, 'full')
   const fam = sys.rows[family] as SysRow
   const hexes = fam.hexes
   const W = 70
   const cell = 5
   const head: Row = [blank(6)]
-  LABELS.forEach((n, j) => head.push(...centre([ink(String(n), j === selCol ? L.p.fg : L.p.border, j === selCol)], cell)))
+  LABELS.forEach((n, j) => {
+    head.push(...centre([ink(String(n), j === selCol ? L.p.fg : L.p.border, j === selCol)], cell))
+  })
   const lines: Row[] = [[], head]
   hexes.forEach((fg, i) => {
-    const row: Row = [blank(1), ...pad([ink(String(LABELS[i]), i === selRow ? L.p.fg : L.p.border, i === selRow)], 5)]
+    const row: Row = [
+      blank(1),
+      ...pad([ink(String(LABELS[i]), i === selRow ? L.p.fg : L.p.border, i === selRow)], 5),
+    ]
     hexes.forEach((bg, j) => {
       const r = Math.floor(contrast(hexRgb(fg), hexRgb(bg)) * 10) / 10
       const txt = i === j ? '·' : r >= 10 ? String(Math.floor(r)) : r.toFixed(1)
       const me = i === selRow && j === selCol
-      row.push({ text: (me ? `‹${txt}›` : ` ${txt}`).padEnd(cell), fg: lc(fg), bg: lc(bg), bold: me })
+      row.push({
+        text: (me ? `‹${txt}›` : ` ${txt}`).padEnd(cell),
+        fg: lc(fg),
+        bg: lc(bg),
+        bold: me,
+      })
     })
     lines.push(row)
   })
-  const r = Math.floor(contrast(hexRgb(hexes[selRow] as string), hexRgb(hexes[selCol] as string)) * 10) / 10
+  const r =
+    Math.floor(contrast(hexRgb(hexes[selRow] as string), hexRgb(hexes[selCol] as string)) * 10) / 10
   const rating = rate(r)
   lines.push(
     [],
@@ -2033,7 +2424,12 @@ function contrastWin(L: Look, family: number, selRow: number, selCol: number): R
   )
   return withKeysRow(
     L,
-    windowOver(L, modeTab(L, 'full', { sel: { row: family, col: 5 } }), { title: `Contrast · ${fam.name}`, lines, width: W, top: 21 - lines.length - 1 }),
+    windowOver(L, modeTab(L, 'full', { sel: { row: family, col: 5 } }), {
+      title: `Contrast · ${fam.name}`,
+      lines,
+      width: W,
+      top: 21 - lines.length - 1,
+    }),
     keyRow(
       L.p,
       [
@@ -2050,16 +2446,28 @@ const FORMATS_EX: { name: string; file?: string; preview: string[] }[] = [
   { name: 'Figma card', preview: ['<svg … a grid card', '  9 rows × 11 swatches'] },
   {
     name: 'CSS variables',
-    preview: ['--red-50: #FFF4F3;', '--red-100: #FFE1DE;', '--red-200: #FFC7C1;', '--red-300: #FB9F97;', '…'],
+    preview: [
+      '--red-50: #FFF4F3;',
+      '--red-100: #FFE1DE;',
+      '--red-200: #FFC7C1;',
+      '--red-300: #FB9F97;',
+      '…',
+    ],
   },
-  { name: 'Tailwind theme', preview: ['@theme {', '  --color-red-50: …;', '  --color-red-100: …;', '  …', '}'] },
-  { name: 'JSON', preview: ['{ "red": {', '    "50": "#FFF4F3",', '    "100": "#FFE1DE",', '    …'] },
+  {
+    name: 'Tailwind theme',
+    preview: ['@theme {', '  --color-red-50: …;', '  --color-red-100: …;', '  …', '}'],
+  },
+  {
+    name: 'JSON',
+    preview: ['{ "red": {', '    "50": "#FFF4F3",', '    "100": "#FFE1DE",', '    …'],
+  },
   { name: 'Adobe swatches', file: 'palette.ase', preview: [] },
   { name: 'Procreate', file: 'palette.swatches', preview: [] },
   { name: 'GIMP · Krita', file: 'palette.gpl', preview: [] },
 ]
 /** e: the formats down the left, the chosen one's first lines on the right. */
-function exportWin(L: Look, sel: number, under: Row[]): Row[] {
+function _exportWin(L: Look, sel: number, under: Row[]): Row[] {
   const W = 62
   const inner = W - 2
   const f = FORMATS_EX[sel] as (typeof FORMATS_EX)[number]
@@ -2073,7 +2481,13 @@ function exportWin(L: Look, sel: number, under: Row[]): Row[] {
       { ...ink(x.name, on ? L.p.fg : L.p.dim, on), bg: band },
     ]
     left.push({ text: ' '.repeat(Math.max(0, 22 - width(left))), bg: band })
-    const pv = f.file ? (i === 0 ? right : []) : f.preview[i] ? [ink(f.preview[i] as string, L.p.border)] : []
+    const pv = f.file
+      ? i === 0
+        ? right
+        : []
+      : f.preview[i]
+        ? [ink(f.preview[i] as string, L.p.border)]
+        : []
     const row: Row = [...left, blank(3), ...pv]
     lines.push(pad(row, inner))
   })
@@ -2096,7 +2510,7 @@ function exportWin(L: Look, sel: number, under: Row[]): Row[] {
 }
 
 /** "A on B" in Scale's box: the ramp is B's, the preview is A on the chosen step. */
-function onScreen(L: Look, sel: number): Row[] {
+function _onScreen(L: Look, sel: number): Row[] {
   const fgHex = '#FFFFFF'
   const steps = scale(hexRgb('#6579FD'))
   const s5 = steps[sel] as (typeof steps)[number]
@@ -2111,22 +2525,46 @@ function onScreen(L: Look, sel: number): Row[] {
     [ink(String(s5.step), L.p.fg, true), blank(2), ink(s5.hex, L.p.fg, true)],
     [ink(formatOklch(s5.rgb), L.p.dim)],
     [],
-    [ink('#FFFFFF on it  ', L.p.border), ink(`${r.toFixed(1)} `, L.p.dim), ink(rating, rating === 'AA' || rating === 'AAA' ? L.p.ok : L.p.border)],
+    [
+      ink('#FFFFFF on it  ', L.p.border),
+      ink(`${r.toFixed(1)} `, L.p.dim),
+      ink(rating, rating === 'AA' || rating === 'AAA' ? L.p.ok : L.p.border),
+    ],
     [],
   ]
-  const blocks = [block(), block([ink('Aa', fgHex, true)]), block([ink('Aa', fgHex)]), block(), block()]
+  const blocks = [
+    block(),
+    block([ink('Aa', fgHex, true)]),
+    block([ink('Aa', fgHex)]),
+    block(),
+    block(),
+  ]
   const preview = blocks.map((b, i) => [blank(4), ...b, blank(4), ...(facts[i] ?? [])])
   return screen(
     L,
     ['Scale'],
-    [ink('#FFFFFF', L.p.dim), blank(2), fill('    ', fgHex), blank(3), ink('on', L.p.dim), blank(3), ink('#6579FD', L.p.dim), blank(2), fill('    ', '#6579FD')],
+    [
+      ink('#FFFFFF', L.p.dim),
+      blank(2),
+      fill('    ', fgHex),
+      blank(3),
+      ink('on', L.p.dim),
+      blank(3),
+      ink('#6579FD', L.p.dim),
+      blank(2),
+      fill('    ', '#6579FD'),
+    ],
     [
       ...kindTabs3(L),
       ...rampRows({ width: CONTENT, palette: L.p, steps, selected: sel }),
-      withKeys(L.p, [blank(2), ink('Tailwind', L.p.fg, true), ink('  50 – 950', L.p.dim)], [
-        ['f', 'nearest that passes'],
-        ['s', 'steps'],
-      ]),
+      withKeys(
+        L.p,
+        [blank(2), ink('Tailwind', L.p.fg, true), ink('  50 – 950', L.p.dim)],
+        [
+          ['f', 'nearest that passes'],
+          ['s', 'steps'],
+        ],
+      ),
       [],
       ...preview,
     ],
@@ -2162,7 +2600,7 @@ function kindTabs3(L: Look): Row[] {
 /* ---------------------------------------------------------- the page */
 
 /** The Colour tab, with System as the fourth tab, for step 1. */
-function colourTab(L: Look): Row[] {
+function _colourTab(L: Look): Row[] {
   const steps = scale(hexRgb(CHERRY))
   const s5 = steps[5] as (typeof steps)[number]
   return screen(
@@ -2174,7 +2612,10 @@ function colourTab(L: Look): Row[] {
       ...rampRows({ width: CONTENT, palette: L.p, steps, selected: 5 }),
       stepsLine({ width: CONTENT, palette: L.p, spec: DEFAULT_STEPS }),
       [],
-      ...previewRows({ palette: L.p, step: { ...s5, oklch: formatOklch(s5.rgb), ...onWhiteAndBlack(s5.rgb) } }),
+      ...previewRows({
+        palette: L.p,
+        step: { ...s5, oklch: formatOklch(s5.rgb), ...onWhiteAndBlack(s5.rgb) },
+      }),
     ],
     keyRow(
       L.p,
@@ -2194,7 +2635,7 @@ function colourTab(L: Look): Row[] {
 }
 
 /** After `c`: the line under the grid says what went to the clipboard. */
-function copied(L: Look, mode: Mode, tw: Tweak): Row[] {
+function _copied(L: Look, mode: Mode, tw: Tweak): Row[] {
   const rows = modeTab(L, mode, { tw })
   const sys = systemFor(CHERRY, mode, tw)
   rows[7] = [
@@ -2220,25 +2661,37 @@ const MODE_SAYS: Record<Mode, string> = {
 const modesGlance = () =>
   `<div class="glance">${MODES.map((m) => {
     const sys = systemFor(CHERRY, m)
-    const chips = [...sys.rows.map((r) => ({ h: r.hexes[5] as string, yours: r.yours })), { h: sys.neutral[5] as string, yours: false }]
-      .map((c) => `<span class="chip${c.yours ? ' ref' : ''}" style="background:${c.h}" title="${c.h}"></span>`)
+    const chips = [
+      ...sys.rows.map((r) => ({ h: r.hexes[5] as string, yours: r.yours })),
+      { h: sys.neutral[5] as string, yours: false },
+    ]
+      .map(
+        (c) =>
+          `<span class="chip${c.yours ? ' ref' : ''}" style="background:${c.h}" title="${c.h}"></span>`,
+      )
       .join('')
     return `<div class="gl-row"><b>${MODE_NAME[m]}</b><span class="gl-says">${MODE_SAYS[m]}</span><span class="gl-chips">${chips}</span></div>`
   }).join('')}</div>`
 
-const step = (n: number, name: string, note: string, draw: (L: Look) => Row[][]): string =>
+const _step = (n: number, name: string, note: string, draw: (L: Look) => Row[][]): string =>
   figure({ id: String(n), name, note, draw })
 
-const fold = (summary: string, body: string) => `<details><summary>${summary}</summary>${body}</details>`
+const _fold = (summary: string, body: string) =>
+  `<details><summary>${summary}</summary>${body}</details>`
 
 /** A screen with its label (Step 1, Option A…) and a one-line caption. */
-const card = (label: string, caption: string, draw: (L: Look) => Row[][], ask?: number[], question?: string): string =>
-  figure({ id: label, name: caption, note: '', draw, ask, question })
+const card = (
+  label: string,
+  caption: string,
+  draw: (L: Look) => Row[][],
+  ask?: number[],
+  question?: string,
+): string => figure({ id: label, name: caption, note: '', draw, ask, question })
 /** A flow: steps in order, an arrow between each. */
 const steps = (title: string, cards: string[]) =>
   `<h3 class="kind"><span class="tag flowtag">Flow</span>${title}</h3><div class="flow">${cards.join('<div class="arrow">→</div>')}</div>`
 /** Options: alternatives side by side, to pick from. */
-const options = (title: string, cards: string[]) =>
+const _options = (title: string, cards: string[]) =>
   `<h3 class="kind"><span class="tag opttag">Options</span>${title}</h3><div class="flow">${cards.join('<div class="or">or</div>')}</div>`
 const single = (title: string, cards: string[]) =>
   `<h3 class="kind"><span class="tag onetag">Screen</span>${title}</h3><div class="flow">${cards.join('')}</div>`
@@ -2251,16 +2704,28 @@ const TABS: { id: string; title: string; body: string }[] = [
       `<p class="lead">Type one colour, get every common colour to go with it, each with a 50–950 scale.</p>` +
       steps('From colour’s home to a tweaked palette', [
         card('Step 1', 'Colour home: choose Palette', (L) => [homeCards3(L, 2)]),
-        card('Step 2', 'Type a colour: the full set', (L) => [modeTab(L, 'full', { sel: { row: 5, col: 7 } })]),
+        card('Step 2', 'Type a colour: the full set', (L) => [
+          modeTab(L, 'full', { sel: { row: 5, col: 7 } }),
+        ]),
         card('Step 3', 'm: choose a mode', (L) => [modeWin(L, 'centre', 'opposite')]),
         card('Step 4', 'The mode chosen', (L) => [modeTab(L, 'opposite')]),
-        card('Step 5', 't: tweak the whole palette', (L) => [tweakWin(L, 'centre', { bright: 20, sat: -35, hue: 0, contrast: 0 }, 'sat')]),
-        card('Step 6', 'Tweaked; r resets', (L) => [modeTab(L, 'full', { sel: { row: 5, col: 7 }, tw: { bright: 20, sat: -35 } })]),
+        card('Step 5', 't: tweak the whole palette', (L) => [
+          tweakWin(L, 'centre', { bright: 20, sat: -35, hue: 0, contrast: 0 }, 'sat'),
+        ]),
+        card('Step 6', 'Tweaked; r resets', (L) => [
+          modeTab(L, 'full', { sel: { row: 5, col: 7 }, tw: { bright: 20, sat: -35 } }),
+        ]),
       ]) +
       single('The grid up close: gaps between rows, the chosen cell wider with a stroke', [
-        card('Screen 1', 'Full set, the cursor on blue 700', (L) => [modeTab(L, 'full', { sel: { row: 5, col: 7 } })]),
-        card('Screen 2', 'Complementary’s taller cells, the cursor on your colour', (L) => [modeTab(L, 'opposite', { sel: { row: 0, col: 5 } })]),
-        card('Screen 3', 'The corner: neutral 950', (L) => [modeTab(L, 'full', { sel: { row: 8, col: 10 } })]),
+        card('Screen 1', 'Full set, the cursor on blue 700', (L) => [
+          modeTab(L, 'full', { sel: { row: 5, col: 7 } }),
+        ]),
+        card('Screen 2', 'Complementary’s taller cells, the cursor on your colour', (L) => [
+          modeTab(L, 'opposite', { sel: { row: 0, col: 5 } }),
+        ]),
+        card('Screen 3', 'The corner: neutral 950', (L) => [
+          modeTab(L, 'full', { sel: { row: 8, col: 10 } }),
+        ]),
       ]) +
       `<h3>The seven modes</h3>${modesGlance()}`,
   },
@@ -2270,9 +2735,17 @@ const TABS: { id: string; title: string; body: string }[] = [
     body:
       `<p class="lead">Two colours, the shades between them.</p>` +
       steps('From a scale to a mix', [
-        card('Step 1', 'In Scale, type → and a second colour', (L) => [typingSecond(L, '')], [1], 'Is the hint “type a second colour to mix” all right, in the box until you type?'),
+        card(
+          'Step 1',
+          'In Scale, type → and a second colour',
+          (L) => [typingSecond(L, '')],
+          [1],
+          'Is the hint “type a second colour to mix” all right, in the box until you type?',
+        ),
         card('Step 2', '↵: the mix', (L) => [mixScreen(L, ['Scale', 'Mix'])]),
-        card('Step 3', 's: OKLab or OKLCH, how many steps', (L) => [mixScreen(L, ['Scale', 'Mix'], { sp: 'oklch', edit: 'space' })]),
+        card('Step 3', 's: OKLab or OKLCH, how many steps', (L) => [
+          mixScreen(L, ['Scale', 'Mix'], { sp: 'oklch', edit: 'space' }),
+        ]),
       ]),
   },
   {
@@ -2286,14 +2759,32 @@ const TABS: { id: string; title: string; body: string }[] = [
         ['crimson', '#DC143C'],
         ['#6579FDCC', '#6579FD'],
       ]
-        .map(([t, h]) => `<tr><td><code>${t}</code></td><td>→</td><td><span class="chip" style="background:${h}"></span> ${h}</td></tr>`)
+        .map(
+          ([t, h]) =>
+            `<tr><td><code>${t}</code></td><td>→</td><td><span class="chip" style="background:${h}"></span> ${h}</td></tr>`,
+        )
         .join('')}</table>` +
       single('What it looks like', [
         card('Screen 1', 'The box, empty: its hint lists what it takes', (L) => [emptyTyping(L)]),
-        card('Screen 2', 'A colour typed another way: its hex beside it', (L) => [typedScreen(L, (FORMATS[0] as (typeof FORMATS)[number]).t)]),
-        card('Screen 3', 'A colour name: CSS’s 148 and 949 everyday ones (crimson, cherry red)', (L) => [typedScreen(L, { typed: 'crimson', hex: '#DC143C' }), typedScreen(L, { typed: 'cherry red', hex: '#F7022A' })]),
-        card('Screen 4', 'Wrong input: the text red, “wrong input” at the box’s far end', (L) => [typedScreen(L, (FORMATS[4] as (typeof FORMATS)[number]).t)]),
-        card('Screen 5', 'A hex with transparency (#6579FDCC): the colour is used, the transparency ignored', (L) => [typedScreen(L, (FORMATS[3] as (typeof FORMATS)[number]).t)]),
+        card('Screen 2', 'A colour typed another way: its hex beside it', (L) => [
+          typedScreen(L, (FORMATS[0] as (typeof FORMATS)[number]).t),
+        ]),
+        card(
+          'Screen 3',
+          'A colour name: CSS’s 148 and 949 everyday ones (crimson, cherry red)',
+          (L) => [
+            typedScreen(L, { typed: 'crimson', hex: '#DC143C' }),
+            typedScreen(L, { typed: 'cherry red', hex: '#F7022A' }),
+          ],
+        ),
+        card('Screen 4', 'Wrong input: the text red, “wrong input” at the box’s far end', (L) => [
+          typedScreen(L, (FORMATS[4] as (typeof FORMATS)[number]).t),
+        ]),
+        card(
+          'Screen 5',
+          'A hex with transparency (#6579FDCC): the colour is used, the transparency ignored',
+          (L) => [typedScreen(L, (FORMATS[3] as (typeof FORMATS)[number]).t)],
+        ),
       ]),
   },
 ]

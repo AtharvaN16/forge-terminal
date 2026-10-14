@@ -163,7 +163,8 @@ describe('scale', () => {
       const r = toLch(rgbToOklab(hex(ref)))
       const s = scale(hex(ref))
       const off = (x: Rgb) => Math.abs(((toLch(rgbToOklab(x)).h - r.h + 540) % 360) - 180)
-      const [s50, s950] = [s[0], s[10]] as { rgb: Rgb; hex: string }[]
+      const s50 = s[0] as { rgb: Rgb; hex: string }
+      const s950 = s[10] as { rgb: Rgb; hex: string }
       expect(toLch(rgbToOklab(s50.rgb)).C, `${ref} → ${s50.hex}`).toBeGreaterThan(0)
       expect(toLch(rgbToOklab(s950.rgb)).C, `${ref} → ${s950.hex}`).toBeGreaterThan(0.005)
       expect(off(s950.rgb), `${ref} → ${s950.hex}`).toBeLessThanOrEqual(3)

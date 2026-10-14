@@ -231,7 +231,12 @@ const centre = (row: Row, w: number): Row => {
   const left = Math.max(0, Math.floor((w - width(row)) / 2))
   return pad([blank(left), ...row], w)
 }
-const cap = (p: Palette, k: string): Run => ({ text: ` ${k} `, fg: p.fg, bg: p.keycapBg, bold: true })
+const cap = (p: Palette, k: string): Run => ({
+  text: ` ${k} `,
+  fg: p.fg,
+  bg: p.keycapBg,
+  bold: true,
+})
 
 /** The key row as HintBar draws it: caps on the left, the quiet foot at the right. */
 function keyRow(p: Palette, main: [string, string][], foot: [string, string][]): Row {
@@ -322,8 +327,7 @@ const BOARD = { white: ['#ffffff', '#d9d9d9'], black: ['#000000', '#3a3a3a'] } a
 type Over = keyof typeof BOARD
 
 /** An alpha step over each square of the board. */
-const boardOf = (x: Alpha, o: Over) =>
-  BOARD[o].map((b) => over(x, hexRgb(b))) as [string, string]
+const boardOf = (x: Alpha, o: Over) => BOARD[o].map((b) => over(x, hexRgb(b))) as [string, string]
 
 /**
  * A1: each cell is the step laid over a checkerboard. Where it is nearly
@@ -337,7 +341,10 @@ function alphaRamp(L: Look, xs: Alpha[], labels: number[], sel: number, o: Over,
   labels.forEach((n, i) => {
     if (i) labelRow.push(blank(1))
     labelRow.push(
-      ...centre([ink(String(n), i === sel ? L.p.fg : i === MID ? L.p.accent : L.p.border, i === sel)], cell),
+      ...centre(
+        [ink(String(n), i === sel ? L.p.fg : i === MID ? L.p.accent : L.p.border, i === sel)],
+        cell,
+      ),
     )
   })
   const swatch = (r: number): Row => {
@@ -392,7 +399,10 @@ function alphaRampPct(L: Look, xs: Alpha[], labels: number[], sel: number, o: Ov
   labels.forEach((n, i) => {
     if (i) labelRow.push(blank(1))
     labelRow.push(
-      ...centre([ink(String(n), i === sel ? L.p.fg : i === MID ? L.p.accent : L.p.border, i === sel)], cell),
+      ...centre(
+        [ink(String(n), i === sel ? L.p.fg : i === MID ? L.p.accent : L.p.border, i === sel)],
+        cell,
+      ),
     )
   })
   const swatch = (withPct: boolean): Row => {
@@ -422,7 +432,10 @@ function alphaPreview(L: Look, step: number, x: Alpha, o: Over): Row[] {
   const block = (r: number) => checker(BLOCK, r, 0, a, b)
   const facts: Row[] = [
     [ink(String(step), L.p.fg, true), blank(2), ink(x.hex8, L.p.fg, true)],
-    [ink(`${x.pct}% opaque · `, L.p.dim), ink(`rgb(${x.rgb.r} ${x.rgb.g} ${x.rgb.b} / ${x.pct}%)`, L.p.border)],
+    [
+      ink(`${x.pct}% opaque · `, L.p.dim),
+      ink(`rgb(${x.rgb.r} ${x.rgb.g} ${x.rgb.b} / ${x.pct}%)`, L.p.border),
+    ],
     [],
     [ink('over white  ', L.p.border), ink(over(x, WHITE), L.p.dim)],
     [ink('over black  ', L.p.border), ink(over(x, BLACK), L.p.dim)],
@@ -444,7 +457,11 @@ function line(L: Look, extra?: string, keys: [string, string][] = [['s', 'steps'
 }
 
 /** The steps line being changed, with this kind's own setting as the last pill. */
-function editLine(L: Look, focus: 'set' | 'tint' | 'over', last: { label: string; value: string }): Row {
+function editLine(
+  L: Look,
+  focus: 'set' | 'tint' | 'over',
+  last: { label: string; value: string },
+): Row {
   const p = L.p
   const pill = (on: boolean, v: string): Run =>
     on
@@ -507,7 +524,15 @@ const LABELS = COLOUR.map((s) => s.step)
 function k1(L: Look, kind: Kind, opts: { sel?: number; a2?: boolean; pct?: Pct } = {}): Row[] {
   const sel = opts.sel ?? MID
   const foot: [string, string][] =
-    kind === 'colour' ? [['r', 'make centre'], ['#', 'new colour']] : [['#', 'new colour'], ['esc', 'back']]
+    kind === 'colour'
+      ? [
+          ['r', 'make centre'],
+          ['#', 'new colour'],
+        ]
+      : [
+          ['#', 'new colour'],
+          ['esc', 'back'],
+        ]
   let ramp: Row[]
   let ln: Row
   let prev: Row[]
@@ -597,13 +622,25 @@ function k2(L: Look, kind: Kind, opts: { sel?: number } = {}): Row[] {
  * that goes with it. ↑↓ moves between them; the ▔ marks the chosen cell on
  * whichever is chosen, and the label row names that ramp's step.
  */
-function pairRamp(L: Look, top: Step[] | Alpha[], bottom: Step[] | Alpha[], sel: number, row: 0 | 1, alpha: boolean): Row[] {
+function pairRamp(
+  L: Look,
+  top: Step[] | Alpha[],
+  bottom: Step[] | Alpha[],
+  sel: number,
+  row: 0 | 1,
+  alpha: boolean,
+): Row[] {
   const cell = CELL
   const lead = (on: boolean): Row => [on ? ink('▌', L.p.fg) : blank(1), blank(1)]
   const labels: Row = [blank(2)]
   LABELS.forEach((n, i) => {
     if (i) labels.push(blank(1))
-    labels.push(...centre([ink(String(n), i === sel ? L.p.fg : i === MID ? L.p.accent : L.p.border, i === sel)], cell))
+    labels.push(
+      ...centre(
+        [ink(String(n), i === sel ? L.p.fg : i === MID ? L.p.accent : L.p.border, i === sel)],
+        cell,
+      ),
+    )
   })
   const draw = (xs: Step[] | Alpha[], r: number, on: boolean): Row => {
     const out: Row = [...lead(on)]
@@ -644,7 +681,8 @@ function k3(L: Look, row: 0 | 1, alpha = false, sel = MID): Row[] {
     ['a', alpha ? 'solid' : 'alpha'],
     ['s', 'steps'],
   ])
-  const chosen = row === 0 ? (alpha ? null : (COLOUR[sel] as Step)) : alpha ? null : (NEUTRAL[sel] as Step)
+  const chosen =
+    row === 0 ? (alpha ? null : (COLOUR[sel] as Step)) : alpha ? null : (NEUTRAL[sel] as Step)
   const prev = chosen
     ? solidPreview(L, chosen)
     : alphaPreview(L, LABELS[sel] as number, (row === 0 ? ALPHA_W : nAlpha)[sel] as Alpha, 'white')
@@ -671,7 +709,8 @@ const GLYPH: Record<string, string> = { '╱': 'd', '▀': 'u', '▄': 'l', '█
 
 function html(rows: Row[], p: Palette, label: string): string {
   rows.forEach((r, i) => {
-    if (width(r) > N) console.warn(`${label}: row ${i} is ${width(r)} wide:`, r.map((x) => x.text).join(''))
+    if (width(r) > N)
+      console.warn(`${label}: row ${i} is ${width(r)} wide:`, r.map((x) => x.text).join(''))
   })
   if (rows.length !== 24) console.warn(`${label}: ${rows.length} rows`)
   const body = rows
@@ -723,7 +762,14 @@ function figure(f: Fig): string {
 /* ----------------------------------------------------- the maths, shown */
 
 /** A strip of swatches with each hex under it, for the "how" tab. */
-function strip(title: string, sub: string, hexes: string[], names: (string | number)[], board?: Over, alphas?: Alpha[]): string {
+function strip(
+  title: string,
+  sub: string,
+  hexes: string[],
+  names: (string | number)[],
+  board?: Over,
+  alphas?: Alpha[],
+): string {
   const cells = hexes
     .map((h, i) => {
       const a = alphas?.[i]
@@ -746,12 +792,22 @@ function howTab(): string {
   ]
   const before = greys
     .map(([n, h]) =>
-      strip(`${n} · today`, 'tint dropped from every step but 500', scale(hexRgb(h)).map((s) => s.hex), LABELS),
+      strip(
+        `${n} · today`,
+        'tint dropped from every step but 500',
+        scale(hexRgb(h)).map((s) => s.hex),
+        LABELS,
+      ),
     )
     .join('')
   const after = greys
     .map(([n, h]) =>
-      strip(`${n} · fixed`, 'tint kept, never stronger than the colour’s own', scaleFree(hexRgb(h)).map((s) => s.hex), LABELS),
+      strip(
+        `${n} · fixed`,
+        'tint kept, never stronger than the colour’s own',
+        scaleFree(hexRgb(h)).map((s) => s.hex),
+        LABELS,
+      ),
     )
     .join('')
   const tints = (['none', 'faint', 'soft', 'strong'] as Tint[])
@@ -765,9 +821,33 @@ function howTab(): string {
     )
     .join('')
   const coral = (['soft'] as Tint[])
-    .map((t) => strip(`#F26E69 → ${t}`, 'the same tint, a warm hue', neutralOf('#F26E69', t).map((s) => s.hex), LABELS))
+    .map((t) =>
+      strip(
+        `#F26E69 → ${t}`,
+        'the same tint, a warm hue',
+        neutralOf('#F26E69', t).map((s) => s.hex),
+        LABELS,
+      ),
+    )
     .join('')
-  const tw = strip('Tailwind gray, for comparison', 'its 500 is #6B7280', ['#F9FAFB', '#F3F4F6', '#E5E7EB', '#D1D5DB', '#9CA3AF', '#6B7280', '#4B5563', '#374151', '#1F2937', '#111827', '#030712'], LABELS)
+  const tw = strip(
+    'Tailwind gray, for comparison',
+    'its 500 is #6B7280',
+    [
+      '#F9FAFB',
+      '#F3F4F6',
+      '#E5E7EB',
+      '#D1D5DB',
+      '#9CA3AF',
+      '#6B7280',
+      '#4B5563',
+      '#374151',
+      '#1F2937',
+      '#111827',
+      '#030712',
+    ],
+    LABELS,
+  )
   const aw = strip(
     `${HEX} as alpha over white`,
     'each looks exactly like its solid step when laid over white',
@@ -814,7 +894,12 @@ function cardsTab(): string {
   const neutral = card(
     'Blue neutral',
     `from ${HEX} · soft tint · 50–950 in OKLCH`,
-    NEUTRAL.map((s) => ({ id: `neutral-${s.step}`, name: String(s.step), value: s.hex, hex: s.hex })),
+    NEUTRAL.map((s) => ({
+      id: `neutral-${s.step}`,
+      name: String(s.step),
+      value: s.hex,
+      hex: s.hex,
+    })),
   )
   const alpha = alphaCard('Blue alpha', `from ${HEX} · over white · 50–950`, ALPHA_W, LABELS)
   writeFileSync('/tmp/forge-na/alpha-card.svg', alpha)
@@ -829,22 +914,27 @@ const TABS: { id: string; title: string; intro: string; body: string }[] = [
   {
     id: 'pct',
     title: '★ Percentages',
-    intro:
-      'Each step’s opacity, written on its swatch (P1). Shown with 500 chosen, then 100.',
+    intro: 'Each step’s opacity, written on its swatch (P1). Shown with 500 chosen, then 100.',
     body: [
       {
         id: 'P1',
         name: 'Written on the board',
         chosen: true,
         note: 'The percentage in the middle row of each swatch, in white or near-black, whichever reads on that step; the chosen one bold. No new rows, and the number sits on the thing it describes. At 21 steps the cells are three wide, so “100%” no longer fits; there the numbers would drop out and only the chosen step’s shows, in the preview.',
-        draw: (L: Look) => [k1(L, 'alpha', { pct: 'inside' }), k1(L, 'alpha', { pct: 'inside', sel: 1 })],
+        draw: (L: Look) => [
+          k1(L, 'alpha', { pct: 'inside' }),
+          k1(L, 'alpha', { pct: 'inside', sel: 1 }),
+        ],
       },
       {
         id: 'P2',
         chosen: false,
         name: 'In place of the marker',
         note: 'The row the ▔ marker uses carries every percentage instead, quiet; the chosen one is bright on a grey pill, which also marks it. No new rows, swatches left clean.',
-        draw: (L: Look) => [k1(L, 'alpha', { pct: 'marker' }), k1(L, 'alpha', { pct: 'marker', sel: 1 })],
+        draw: (L: Look) => [
+          k1(L, 'alpha', { pct: 'marker' }),
+          k1(L, 'alpha', { pct: 'marker', sel: 1 }),
+        ],
       },
       {
         id: 'P3',
@@ -893,8 +983,7 @@ const TABS: { id: string; title: string; intro: string; body: string }[] = [
   {
     id: 'alpha',
     title: 'Showing alpha',
-    intro:
-      'Alpha over a checkerboard (A1): the board shows through where a step is nearly clear.',
+    intro: 'Alpha over a checkerboard (A1): the board shows through where a step is nearly clear.',
     body: [
       {
         id: 'A1',
@@ -931,7 +1020,12 @@ const TABS: { id: string; title: string; intro: string; body: string }[] = [
             [
               [],
               ...tabs(L, 'neutral'),
-              ...rampRows({ width: CONTENT, palette: L.p, steps: neutralOf(HEX, 'strong'), selected: MID }),
+              ...rampRows({
+                width: CONTENT,
+                palette: L.p,
+                steps: neutralOf(HEX, 'strong'),
+                selected: MID,
+              }),
               editLine(L, 'tint', { label: 'tint', value: 'strong' }),
               [],
               ...solidPreview(L, neutralOf(HEX, 'strong')[MID] as Step),
