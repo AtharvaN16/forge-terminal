@@ -99,10 +99,107 @@ describe('scale', () => {
   })
 
   it('a grey reference gives a grey scale', () => {
-    for (const x of scale(hex('#808080'))) {
-      expect(x.rgb.r).toBe(x.rgb.g)
-      expect(x.rgb.g).toBe(x.rgb.b)
+    for (const ref of ['#808080', '#000000', '#FFFFFF', '#333333', '#C0C0C0']) {
+      for (const x of scale(hex(ref))) {
+        expect(x.rgb.r, `${ref} → ${x.hex}`).toBe(x.rgb.g)
+        expect(x.rgb.g, `${ref} → ${x.hex}`).toBe(x.rgb.b)
+      }
     }
+  })
+
+  it('pins other colours’ scales, unchanged by the grey fix', () => {
+    const pinned: Record<string, string[]> = {
+      '#F26E69': [
+        '#FFF4F3',
+        '#FFE2DF',
+        '#FFCBC6',
+        '#FFADA6',
+        '#F98D86',
+        '#F26E69',
+        '#CF5B57',
+        '#AE4845',
+        '#8D3634',
+        '#6E2423',
+        '#501414',
+      ],
+      '#ACE02C': [
+        '#F3FAE9',
+        '#E9F7D4',
+        '#DCF3B8',
+        '#CCED95',
+        '#BBE768',
+        '#ACE02C',
+        '#91BE18',
+        '#779E04',
+        '#5E7E01',
+        '#475F03',
+        '#304301',
+      ],
+      '#64748B': [
+        '#F5F7FA',
+        '#DFE4EA',
+        '#C4CBD6',
+        '#A4AEBD',
+        '#828FA3',
+        '#64748B',
+        '#536176',
+        '#434F61',
+        '#343E4D',
+        '#252E3A',
+        '#171E28',
+      ],
+    }
+    for (const [ref, hexes] of Object.entries(pinned)) {
+      expect(
+        scale(hex(ref)).map((x) => x.hex),
+        ref,
+      ).toEqual(hexes)
+    }
+  })
+
+  it('a nearly grey colour keeps its tint on every step, never more than its own', () => {
+    // Tailwind zinc and stone 500: under chroma 0.015, once flattened to grey.
+    for (const ref of ['#71717A', '#78716C']) {
+      const r = toLch(rgbToOklab(hex(ref)))
+      const s = scale(hex(ref))
+      const off = (x: Rgb) => Math.abs(((toLch(rgbToOklab(x)).h - r.h + 540) % 360) - 180)
+      const [s50, s950] = [s[0], s[10]] as { rgb: Rgb; hex: string }[]
+      expect(toLch(rgbToOklab(s50.rgb)).C, `${ref} → ${s50.hex}`).toBeGreaterThan(0)
+      expect(toLch(rgbToOklab(s950.rgb)).C, `${ref} → ${s950.hex}`).toBeGreaterThan(0.005)
+      expect(off(s950.rgb), `${ref} → ${s950.hex}`).toBeLessThanOrEqual(3)
+      // At 50 the chroma is about 0.001, one byte's worth, so the hue can
+      // only lean the right way; the maths holds it before rounding.
+      expect(off(s50.rgb), `${ref} → ${s50.hex}`).toBeLessThanOrEqual(45)
+      for (const x of s) {
+        expect(toLch(rgbToOklab(x.rgb)).C, `${ref} → ${x.hex}`).toBeLessThanOrEqual(r.C + 0.002)
+      }
+    }
+    expect(scale(hex('#71717A')).map((x) => x.hex)).toEqual([
+      '#F6F7F8',
+      '#E3E3E5',
+      '#CACACE',
+      '#ACACB2',
+      '#8D8D94',
+      '#71717A',
+      '#5F5F67',
+      '#4D4D54',
+      '#3C3C42',
+      '#2C2C31',
+      '#1D1D21',
+    ])
+    expect(scale(hex('#78716C')).map((x) => x.hex)).toEqual([
+      '#F7F6F6',
+      '#E5E3E1',
+      '#CDCAC8',
+      '#B1ACA9',
+      '#938D88',
+      '#78716C',
+      '#655F5A',
+      '#534D49',
+      '#413C39',
+      '#302C29',
+      '#201D1B',
+    ])
   })
 })
 

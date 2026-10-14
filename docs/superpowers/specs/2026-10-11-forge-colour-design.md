@@ -202,8 +202,11 @@ with the reference at L₀, C₀, h:
   0.68, 0.46, 0.22. C = C₀·(1 − 0.88·f).
 - **Darker steps** 600–950: L = L₀ − (L₀ − L_min)·g, with g = 0.2, 0.4, 0.6,
   0.8, 1.0. L_min = max(0.16, 0.42·L₀). C = C₀·(1 − 0.45·g).
-- **Hue is held.** If C₀ < 0.015 the reference is treated as grey, and every
-  step gets chroma 0.
+- **Hue is held.** Chroma only ever falls away from the reference, so a
+  step is never more tinted than the colour. Only a reference with no
+  chroma to speak of (C₀ < 0.0005, rounding noise) is treated as grey.
+  (Until 2026-10-13 the cut-off was 0.015, which stripped Tailwind zinc and
+  stone of their tint on every step but 500; §12.2.)
 - **Gamut:** a step outside sRGB loses chroma, 0.002 at a time, until it
   fits.
 
@@ -261,9 +264,10 @@ Properties the tests hold the code to:
 
 ### 4.6 Parsing and formatting
 
-- **Input**, in the shell and the CLI: `#RGB` or `#RRGGBB`, case-insensitive.
-  The CLI also accepts it without the `#`, because an unquoted `#` starts a
-  comment in bash. Anything else is refused with what was expected.
+- **Input**, in the shell and the CLI: `parseColour` (§12.5): hex (3, 4, 6
+  or 8 digits, with or without `#`), `rgb()`, `hsl()`, `oklch()`, `oklab()`,
+  and colour names (CSS's 148, then the xkcd survey's 949). A transparency
+  in the input is read and ignored: a scale is made from a solid colour.
 - **Output:** the hex as `#RRGGBB` in uppercase. The facts line shows
   `rgb(r g b)` and `oklch(L% C h)` as well.
 
@@ -585,9 +589,13 @@ src/mcp/           tools.ts, schemas.ts, server.ts (two tools)
 - Figma styles or variables.
 - Display P3.
 - The Tailwind-style nearest-step placement.
-- Colour formats other than hex as input (`rgb()`, `oklch()`).
+- ~~Colour formats other than hex as input~~: in, §12.5.
 - Palettes from URLs.
-- Harmonies, dark-mode derivation, semantic roles.
+- ~~Harmonies, semantic roles~~: in, as Palette's modes, §12.6. Dark-mode
+  derivation stays out.
+- A colour generator, a contrast checker and an export window (the
+  Coolors-style tools, 2026-10-13): considered and dropped.
+- A colour-vision (colour-blindness) check: considered and dropped.
 
 ## 11. Order
 
@@ -614,3 +622,107 @@ screen, G1 Quality slider) touches `App.tsx`, `theme.ts`, `Home.tsx` and
 `trail.ts`. This branch starts from `ad2de63` and will need a rebase onto
 that work once it lands. Step 6 is where the conflicts will be, so do it
 after the rebase if that work has landed by then.
+
+## 12. Round two (2026-10-13)
+
+Decided over two mockups: `mockups/neutral-alpha-2026-10.html` and
+`mockups/colour-more-2026-10.html`, both built by scripts of the same name.
+The user's picks are recorded there and in this section.
+
+### 12.1 Scale's three tabs (K1)
+
+The scale screen gets tabs over the ramp: **Colour · Neutral · Alpha**,
+drawn like /about's (L2): names with room around them, a faint rule under,
+heavy in the mode's colour under the one in use. `tab` switches. The
+field, the steps line and the preview stay where they are.
+
+- **Colour** is today's scale.
+- **Neutral** is the scale of `neutralRef(ref, tint)`: a grey at OKLCH
+  L 0.553 (where every Tailwind grey's 500 sits), tinted with the colour's
+  hue. Tint: none, faint, soft, strong = chroma 0, 0.012, 0.024, 0.04 at
+  500 (Tailwind's neutral, zinc/stone, gray, slate). Default soft.
+- **Alpha** is each step as the most see-through `#RRGGBBAA` that looks
+  exactly like it over white (or black), blended in sRGB (Radix's method).
+  Drawn over a checkerboard (A1), each step's opacity written on the middle
+  row of its swatch (P1); at counts where a cell is under four columns wide
+  the numbers drop out and only the preview says it. The preview block is
+  the step over the board; its facts are `500  #0223FC9B`, `61% opaque ·
+  rgb(2 35 252 / 61%)`, then what it looks like over white and over black.
+- A neutral's tint and an alpha's background (white, black) are the last
+  pill on the steps line under `s`.
+- `r make centre` only on Colour. `↵` copies the step (the 8-digit hex on
+  Alpha); `c` copies the tab's card (§12.7).
+
+### 12.2 The grey fix
+
+§4.4: tinted greys keep their tint on every step.
+
+### 12.3 Mix (M1)
+
+In a scale, a `→` (or a space) after the colour in the box asks for a
+second; the box's hint until then is `type a second colour to mix`
+(approved). ↵ makes the mix: the bar says **Scale ╱ Mix**, the ramp runs
+from one to the other, labelled by how far along (0–100), the preview is
+the scale's. The line under the ramp holds the way across (OKLab straight,
+OKLCH round the hue wheel) and the count (3–21), changed under `s` like the
+steps. Pasting `#A #B` works the same.
+
+### 12.4 Typing a colour
+
+- The box's hint: `type a hex, rgb(), hsl(), oklch() or a colour name`
+  (approved).
+- Something typed another way shows its hex beside it.
+- **Wrong input:** what was typed turns red, and `wrong input` sits in grey
+  at the far end inside the box. Nothing is said under it.
+- An 8-digit hex: the colour is used, its transparency ignored, nothing said.
+- No clipboard offer.
+
+### 12.5 `parseColour`
+
+`src/core/colour/parse.ts`; the name tables in `colour-names.ts` (CSS, W3C;
+xkcd colour survey, CC0). Names match case-insensitively with spaces,
+hyphens and underscores ignored; CSS wins a clash. Out-of-range numbers are
+wrong input.
+
+### 12.6 Palette from one colour
+
+Its own screen in colour mode, named **Palette**. Today's photo Palette is
+renamed **Extract**. Colour's home has three cards, subtitles on two lines:
+Extract ("extract colours / from an image"), Scale ("create shades / from
+one colour"), Palette ("build a palette / from one colour").
+
+- **The box** takes a colour as Scale's does. The grid waits as outlines.
+- **The screen:** the chosen swatch's line (`blue 700  #004598  oklch(…)`),
+  a gap, the grid, a gap, the mode's line: its name, then `m mode`,
+  `t tweak`, `s steps`. Keys: ↑↓←→ choose, ↵ copy, `c` copy all, `#` new
+  colour, `r` reset (once tweaked), esc back.
+- **The grid:** a row per colour named down the left, the step numbers over
+  it. Rows have a gap between them as columns do: each row's swatches fill
+  the lower half of their first line (Full set's nine rows are thin bars;
+  approved). With fewer colours, rows grow up to three lines.
+- **The chosen cell** is wider (half a column into each gap) with a stroke
+  all round in the text colour (X7 plus stroke). **Your colour's cell** has
+  ◤ in its top-left corner (a small ▖ on one-line cells, where a triangle
+  cannot fit). The step number above and the row's name are bold.
+- **Modes** (`m`, a centred window over the faded screen, W1; each mode with
+  its colours as chips; it scrolls when too short): Full set, Monochromatic,
+  Analogous, Complementary, Split complementary, Triadic, Pastel. Maths in
+  `system.ts`, ported from the mockup.
+- **Tweak** (`t`, the same window): brightness, saturation, contrast −100 to
+  +100, hue −180° to +180° (Photoshop's ranges); ←→ 1, ⇧←→ 10; a strip of
+  the palette's colours changes as they move. They move every row, yours
+  too. `r` resets to the palette as the mode made it.
+- **No helper text** on this screen beyond what is listed here.
+
+### 12.7 Cards
+
+`neutralCard`, `alphaCard` (a checkerboard under each swatch, the swatch's
+`fill-opacity` carrying the alpha, the 8-digit hex under it), `systemCard`
+(a grid: steps across the top, a row per colour, the neutral last). Whether
+Figma keeps `fill-opacity` on paste is to be checked by hand.
+
+### 12.8 Not in this round
+
+The CLI and MCP keep `forge palette` (an image's colours) and `forge scale`
+as they are, except that `forge scale` reads its colour with `parseColour`.
+Steps, neutrals, alpha, mix and Palette are app-only for now.

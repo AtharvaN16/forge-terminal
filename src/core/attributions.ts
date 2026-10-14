@@ -42,6 +42,9 @@ const APP: Array<Credit & { packages: string[] }> = [
  */
 const NATIVE: Credit[] = [{ name: '@hyzyla/pdfium', licence: 'MIT' }]
 
+/** Data compiled into the source rather than a package, so no licence file names it. */
+const DATA: Credit[] = [{ name: 'xkcd colour survey', licence: 'CC0-1.0' }]
+
 /**
  * Every package in the build's licence file: its sections start
  * `name@version — licence`. A licence the package wrote as an SPDX
@@ -72,7 +75,7 @@ export function attributions({
   extensions: Credit[]
 }): CreditSection[] {
   const named = new Set(APP.flatMap((c) => c.packages))
-  const others = [...bundled.filter((c) => !named.has(c.name)), ...NATIVE].sort((a, b) =>
+  const others = [...bundled.filter((c) => !named.has(c.name)), ...NATIVE, ...DATA].sort((a, b) =>
     sortKey(a).localeCompare(sortKey(b)),
   )
   return [

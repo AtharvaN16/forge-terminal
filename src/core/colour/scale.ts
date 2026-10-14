@@ -148,12 +148,19 @@ function along(knots: [number, number][], s: number): number {
 const WHITE_END = 0.995
 /** How much of the floor's lightness 1000 gives up, below 950. */
 const PAST_FLOOR = 0.35
+/**
+ * Below this chroma a colour is grey and its hue is rounding noise from
+ * atan2. Only that is flattened: zinc and stone (C ≈ 0.012) keep their tint
+ * on every step, and since no step has more chroma than the reference, a
+ * nearly grey colour still gives a nearly grey scale.
+ */
+const GREY = 0.0005
 
 export function scale(ref: Rgb, spec: StepSpec = DEFAULT_STEPS): Step[] {
   const problem = stepsProblem(spec)
   if (problem) throw invalidArguments(problem, 'Try: Tailwind, from 50 to 950.')
   const { L: L0, C: C0, h } = toLch(rgbToOklab(ref))
-  const grey = C0 < 0.015
+  const grey = C0 < GREY
   // A reference lighter than the ladder's top, or darker than its floor,
   // keeps those steps level with itself rather than reversing them.
   const top = Math.max(0.975, L0)
