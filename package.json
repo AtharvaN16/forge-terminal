@@ -85,5 +85,10 @@
     "vitest": "^4.1.11",
     "word-extractor": "^1.0.4",
     "zod": "^4.6.5"
+  },
+  "overrides": {
+    "onnxruntime-node": {
+      "adm-zip": "$adm-zip"
+    }
   }
 }
