@@ -1,6 +1,6 @@
 {
   "name": "forge-terminal",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "A terminal-native file converter for macOS and Windows",
   "keywords": [
     "convert",
