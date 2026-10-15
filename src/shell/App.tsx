@@ -1144,8 +1144,16 @@ export function App({
    * open: ↑↓ choose a row and ↵ runs it. ↵ with nothing listed falls through
    * to the field, which reports that no command matches.
    */
-  const commandKey = (_input: string, key: Key): boolean => {
+  const commandKey = (input: string, key: Key): boolean => {
     if (!commands) return false
+    // A mode digit right after the slash is the tab row's, not a search: no
+    // command name starts with a digit, so it could only match nothing.
+    const digitMode = modeForKey(input)
+    if (digitMode && !key.ctrl && !key.meta && !key.super && textRef.current === '/') {
+      setText('')
+      if (digitMode !== mode) switchMode(digitMode)
+      return true
+    }
     // ←→ leave the commands tab for its neighbours on the tab row while
     // nothing is typed after the slash; past that they move the cursor.
     if (
