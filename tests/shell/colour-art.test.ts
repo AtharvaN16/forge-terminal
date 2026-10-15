@@ -138,6 +138,25 @@ describe('home in colour mode: three cards (colour spec §12.6)', () => {
     })
   }
 
+  it('takes the rows the drop surface would, so a mode change never moves what is under it', () => {
+    for (const rows of [4, 5, 6, 7, 8, 9]) {
+      const cards = choiceCards({ width: 80, palette: P, selected: 1, samples, rows })
+      expect(cards).toHaveLength(rows)
+      for (const row of cards) expect(width(row)).toBe(78)
+      // Whatever is shed, every card keeps its name and its swatches.
+      const lines = cards.map(text)
+      expect(lines.some((l) => /A Extract +S Scale +D Palette/.test(l))).toBe(true)
+      expect(cards.some((row) => row.some((r) => r.bg === samples.scale[1]?.toLowerCase()))).toBe(
+        true,
+      )
+    }
+    // At 8 the blank row above the swatches goes first; the subtitles stay.
+    const eight = choiceCards({ width: 80, palette: P, selected: 0, samples, rows: 8 })
+    expect(text(eight[3] as Row)).toMatch(/extract colours/)
+    expect(text(eight[4] as Row)).toMatch(/from an image/)
+    expect(eight[5]?.some((r) => r.bg === samples.palette[1]?.toLowerCase())).toBe(true)
+  })
+
   it('draws every card’s swatches square: two cells across, one row down', () => {
     const all = [...samples.palette, ...samples.scale, ...samples.system].map((h) =>
       h.toLowerCase(),

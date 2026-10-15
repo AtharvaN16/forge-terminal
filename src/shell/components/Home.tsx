@@ -445,7 +445,13 @@ export function Home({
       })
     : layout.surface > 0
       ? mode === 'colour' && !typing
-        ? choiceCards({ width, palette, selected: colourChoice, samples: COLOUR_SAMPLES })
+        ? choiceCards({
+            width,
+            palette,
+            selected: colourChoice,
+            samples: COLOUR_SAMPLES,
+            rows: layout.surface,
+          })
         : staged && staged.files.length === 1 && staged.files[0]
           ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
           : staged && staged.files.length > 1

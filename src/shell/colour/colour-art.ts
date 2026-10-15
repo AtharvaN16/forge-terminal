@@ -83,25 +83,50 @@ export const COLOUR_CARDS = [
 /** The keys that open the cards on colour's home, in the cards' order; either case. */
 export const COLOUR_CARD_KEYS: readonly string[] = ['a', 's', 'd']
 
+type CardPart = 'gap' | 'name' | 'sub0' | 'sub1' | 'swatches'
+
+/** Rows of the panel at full size: an edge, a seven-row card, an edge. */
+const CARDS_FULL = 9
+
+/**
+ * What a card holds at each panel height (index = panel rows − 4; four is
+ * the least, an edge each side round the name and the swatches). A shorter
+ * panel sheds the blank above the swatches first, then the blank at the top,
+ * the second subtitle line, the blank at the bottom, and the first subtitle.
+ */
+const CARD_SHAPES: CardPart[][] = [
+  ['name', 'swatches'],
+  ['name', 'sub0', 'swatches'],
+  ['name', 'sub0', 'swatches', 'gap'],
+  ['name', 'sub0', 'sub1', 'swatches', 'gap'],
+  ['gap', 'name', 'sub0', 'sub1', 'swatches', 'gap'],
+  ['gap', 'name', 'sub0', 'sub1', 'gap', 'swatches', 'gap'],
+]
+
 /**
  * Home's panel in colour mode: three cards, Extract, Scale and Palette, each
  * with a preview of what it makes. The chosen one is on `panelBand`, and that
  * lighter fill is all that marks it (round 5, G4). Without fills to tell
- * them apart, a `▌` in the mode's colour marks it instead. Nine rows: three
- * cards side by side only fit with each subtitle on two lines.
+ * them apart, a `▌` in the mode's colour marks it instead. Nine rows at
+ * full size: three cards side by side only fit with each subtitle on two
+ * lines. `rows` shrinks it to the drop surface's height (see `CARD_SHAPES`).
  */
 export function choiceCards({
   width: columns,
   palette: p,
   selected,
   samples,
+  rows = CARDS_FULL,
 }: {
   width: number
   palette: Palette
   selected: 0 | 1 | 2
   samples: { palette: string[]; scale: string[]; system: string[] }
+  /** The panel's height; home passes the drop surface's, so a mode change moves nothing under it. */
+  rows?: number
 }): Row[] {
   const W = columns - 4
+  const shape = CARD_SHAPES[Math.min(CARDS_FULL, Math.max(4, rows)) - 4] as CardPart[]
   // Three cards in the panel: a cell of panel at each side, two between each.
   const CARD = Math.floor((W - 6) / 3)
   // Square swatches, as Scale's ramp draws them: a cell is half as wide as
@@ -126,15 +151,14 @@ export function choiceCards({
     const line = (txt: Row): Row => on(bg, [strip, blank(1), ...txt], CARD)
     // The key that opens it, before its name, in the mode's colour (2026-10-14).
     const key = ink((COLOUR_CARD_KEYS[i] ?? '').toUpperCase(), p.accent, true)
-    return [
-      line([]),
-      line([key, blank(1), ink(c.name, me ? p.fg : p.dim, true)]),
-      line([ink(c.sub[0], me ? p.dim : p.border)]),
-      line([ink(c.sub[1], me ? p.dim : p.border)]),
-      line([]),
-      line(previews[i] as Row),
-      line([]),
-    ]
+    const full = {
+      gap: line([]),
+      name: line([key, blank(1), ink(c.name, me ? p.fg : p.dim, true)]),
+      sub0: line([ink(c.sub[0], me ? p.dim : p.border)]),
+      sub1: line([ink(c.sub[1], me ? p.dim : p.border)]),
+      swatches: line(previews[i] as Row),
+    }
+    return shape.map((part) => full[part])
   }
   const cards = [card(0), card(1), card(2)]
   const edge: Row = [blank(2), ...on(p.selectionBg, [], W)]
