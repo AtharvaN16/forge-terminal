@@ -171,6 +171,19 @@ CLI-only `--speed`, `--fps`, `--bitrate 128k`, `--loudness -16`, `--frame
 
 ## 4. Out of v1
 
+Deferred from this spec while building (2026-10-17):
+
+- GIF Done's measured animated-WebP offer (§3.5): measuring it means a
+  second ffmpeg encode after every GIF; to add with the suggestion step.
+- `--frame` (§3.8): Save a frame as a picture.
+- Keeping the creation date (§3.2): metadata is stripped whole for now.
+- Checking a found ffmpeg has the encoders Forge uses (§3.7): only
+  VideoToolbox failures fall back to software today.
+- An HEVC target size is one pass at the bitrate, held by the size check
+  after it, rather than two.
+
+Also out:
+
 Presets and `forge watch` for video (both still settling), Finder Quick
 Actions for video, MCP tools (after the CLI flags), subtitles editing,
 several-track selection, AV1.
