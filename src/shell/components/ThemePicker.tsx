@@ -2,7 +2,7 @@ import { Box } from 'ink'
 import { HOME_MARGIN } from '../home-art.js'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
-import { commandsPalette, modeGradient, NEUTRAL } from '../theme.js'
+import { menuPalette, modeGradient, NEUTRAL } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
 import { HintBar } from './HintBar.js'
 import { Select } from './Select.js'
@@ -31,7 +31,7 @@ export function ThemePicker({
 }) {
   const current = useTheme()
   return (
-    <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : commandsPalette(current)}>
+    <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : menuPalette(current)}>
       <Box flexDirection="column" flexGrow={1}>
         {onCancel ? <ThemeBar width={width} /> : <Text bold>Select theme</Text>}
         <Text> </Text>
@@ -67,7 +67,7 @@ function ThemeBar({ width }: { width: number }) {
   return (
     <HeaderBar
       mode="convert"
-      chip={{ label: 'theme', colour: palette.brand, stops: modeGradient(palette, 'commands') }}
+      chip={{ label: 'theme', colour: palette.brand, stops: modeGradient(palette, 'menu') }}
       trail={{ answers: [] }}
       width={width}
     />

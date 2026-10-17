@@ -1258,7 +1258,7 @@ export function App({
   const stepTab = (from: HomeTab, delta: 1 | -1) => {
     const next = tabStep(from, delta)
     if (next === from) return
-    if (next === 'commands') {
+    if (next === 'menu') {
       setText('/')
       return
     }
@@ -1312,7 +1312,7 @@ export function App({
       !key.super &&
       textRef.current === '/'
     ) {
-      stepTab('commands', key.rightArrow ? 1 : -1)
+      stepTab('menu', key.rightArrow ? 1 : -1)
       return true
     }
     const last = commands.items.length - 1
@@ -5000,7 +5000,7 @@ export function App({
                 keys={homeKeys({
                   typing: text !== '',
                   completions: completions.length,
-                  commands: commands !== undefined,
+                  menu: commands !== undefined,
                   colour: mode === 'colour',
                   staged: staged
                     ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }

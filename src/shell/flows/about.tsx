@@ -41,9 +41,9 @@ export const realAbout: AboutSystem = {
   },
 }
 
-/** The commands' gold, as the other settings: /about is reached from them. */
+/** The menu's gold, as the other settings: /about is reached from the menu. */
 export function aboutChip(p: Palette): BarChip {
-  return { label: 'about', colour: p.brand, stops: modeGradient(p, 'commands') }
+  return { label: 'about', colour: p.brand, stops: modeGradient(p, 'menu') }
 }
 
 /** Above the list: the bar and its gap, the tab bar and its gap. Below: the note, the key row's gap, rule and keys. */

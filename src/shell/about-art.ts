@@ -93,7 +93,7 @@ const LICENCE = 24
 
 /**
  * Every line of Attributions, unscrolled (T1, mockup round 3): each section's
- * title in the commands' gold on a faint rule, as /commands heads its
+ * title in the menu's gold on a faint rule, as the menu heads its
  * groups, a blank line, then a row per part, and a blank line before each
  * section but the first. The main parts are bright and say what they do; the rest are dim.
  */

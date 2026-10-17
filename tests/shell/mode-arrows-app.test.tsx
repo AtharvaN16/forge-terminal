@@ -36,7 +36,7 @@ const on = {
   // edit's line is the start of convert's, so convert's tail must be gone.
   edit: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
   colour: (f: string) => f.includes('extract colours'),
-  commands: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
+  menu: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
 }
 const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))
 
@@ -54,12 +54,12 @@ async function home() {
 }
 
 describe('tabStep', () => {
-  it('walks the modes, then commands, and stops at both ends', () => {
+  it('walks the modes, then the menu, and stops at both ends', () => {
     expect(tabStep('convert', 1)).toBe('compress')
-    expect(tabStep('colour', 1)).toBe('commands')
-    expect(tabStep('commands', 1)).toBe('commands')
+    expect(tabStep('colour', 1)).toBe('menu')
+    expect(tabStep('menu', 1)).toBe('menu')
     expect(tabStep('convert', -1)).toBe('convert')
-    expect(tabStep('commands', -1)).toBe('colour')
+    expect(tabStep('menu', -1)).toBe('colour')
   })
 })
 
@@ -79,7 +79,7 @@ describe('←→ on home', () => {
     expect(on.convert(frame(app))).toBe(true)
   }, 20_000)
 
-  it('passes straight through colour, and stops at the commands', async () => {
+  it('passes straight through colour, and stops at the menu', async () => {
     const app = await home()
     app.stdin.write('4')
     await reach(app, 'edit')
@@ -88,11 +88,11 @@ describe('←→ on home', () => {
     await reach(app, 'colour')
     await settle()
     app.stdin.write(RIGHT)
-    await reach(app, 'commands')
+    await reach(app, 'menu')
     await settle()
     app.stdin.write(RIGHT)
     await settle(300)
-    expect(on.commands(frame(app))).toBe(true)
+    expect(on.menu(frame(app))).toBe(true)
     app.stdin.write(LEFT)
     await reach(app, 'colour')
     await settle()
@@ -100,7 +100,7 @@ describe('←→ on home', () => {
     await reach(app, 'edit')
   }, 20_000)
 
-  it('moves the cursor instead once something is typed, on a mode or on commands', async () => {
+  it('moves the cursor instead once something is typed, on a mode or on the menu', async () => {
     const app = await home()
     app.stdin.write('ab')
     await settle()

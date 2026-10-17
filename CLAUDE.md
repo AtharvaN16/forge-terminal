@@ -27,6 +27,15 @@ git push                       # → origin/main
 git switch dev
 ```
 
+## Names
+
+- **menu** is home's last tab, "/ menu", and the list that typing `/` opens.
+  In code: the `'menu'` tab and scheme, `menuPalette`, the menu's gold.
+  It was called "/ commands" until 2026-10-17. Older specs and mockups still
+  say that.
+- **commands** are the entries in the menu (`/help`, `/theme`, `/update` …):
+  `commands.ts`, `Command`, `CommandList`. Never use it as the tab's name.
+
 ## Load-bearing invariants
 
 These are cheap to break and expensive to notice. Do not regress them.

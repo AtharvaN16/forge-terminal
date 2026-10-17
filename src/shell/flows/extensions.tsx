@@ -127,12 +127,12 @@ export function byteCount(done: number, total: number): { got: string; of: strin
   return { got: unit === 'B' || v >= 100 ? String(Math.round(v)) : v.toFixed(1), of: `of ${of}` }
 }
 
-/** The commands' gold (K1, round 5), which `/extensions` is drawn in: it is a setting, reached from them. */
+/** The menu's gold (K1, round 5), which `/extensions` is drawn in: it is a setting, reached from the menu. */
 export function extensionsChip(p: Palette): BarChip {
   return {
     label: 'extensions',
     colour: p.brand,
-    stops: modeGradient(p, 'commands'),
+    stops: modeGradient(p, 'menu'),
   }
 }
 

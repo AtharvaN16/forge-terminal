@@ -63,7 +63,7 @@ function screen({
             width={width}
           />
         }
-        keys={homeKeys({ typing: text !== '', completions: 0, commands: commands !== undefined })}
+        keys={homeKeys({ typing: text !== '', completions: 0, menu: commands !== undefined })}
       />
     </ThemeProvider>,
   )
@@ -196,7 +196,7 @@ describe('the list in the panel', () => {
 
 describe('the key row while the list is open', () => {
   it('runs, goes back, and says typing filters', () => {
-    expect(homeKeys({ typing: true, completions: 0, commands: true })).toEqual({
+    expect(homeKeys({ typing: true, completions: 0, menu: true })).toEqual({
       main: [
         ['↵', 'run'],
         ['esc', 'back'],
@@ -210,8 +210,6 @@ describe('the key row while the list is open', () => {
   })
 
   it('no longer says "/ menu" at rest: the tab row does', () => {
-    expect(homeKeys({ typing: false, completions: 0, commands: false }).main).toEqual([
-      ['↵', 'send'],
-    ])
+    expect(homeKeys({ typing: false, completions: 0, menu: false }).main).toEqual([['↵', 'send']])
   })
 })

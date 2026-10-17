@@ -16,11 +16,11 @@ import {
 } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import {
-  commandsPalette,
   DARK,
   dotGradient,
   LIGHT,
   MODE_ORDER,
+  menuPalette,
   modeGradient,
   modePalette,
   modeWash,
@@ -128,21 +128,21 @@ describe('light mode (L6): the drop zone', () => {
 describe('the commands’ own colour: the brand’s gold (K1)', () => {
   it('draws "/" on its tab in the gold while the list is open', () => {
     for (const p of [DARK, LIGHT]) {
-      const row = cells(tabRows({ palette: p, mode: 'convert', commands: true })[1])
+      const row = cells(tabRows({ palette: p, mode: 'convert', menu: true })[1])
       expect(row.find((c) => c.ch === '/')?.fg).toBe(p.brand)
     }
   })
 
   it('runs the logo’s band in gold, washed in light', () => {
     for (const p of [DARK, LIGHT]) {
-      const hatch = brandRows({ width: 80, palette: p, mode: 'convert', commands: true })
+      const hatch = brandRows({ width: 80, palette: p, mode: 'convert', menu: true })
         .flatMap(cells)
         .filter((c) => c.ch === '╱')
-      const stops = modeGradient(p, 'commands')
+      const stops = modeGradient(p, 'menu')
       expect(stops).not.toEqual(modeGradient(p, 'convert'))
       // The first hatch cell is at the margin, on a span the width plus eight.
       expect(hatch[0]?.fg).toBe(gradientAt(HOME_MARGIN, 88, stops))
-      const wash = modeWash(p, 'commands')
+      const wash = modeWash(p, 'menu')
       expect(hatch[0]?.bg).toBe(wash ? gradientAt(HOME_MARGIN, 88, wash) : undefined)
     }
   })
@@ -165,7 +165,7 @@ describe('the commands’ own colour: the brand’s gold (K1)', () => {
   })
 
   it('hands its gold to what is drawn while the list is open', () => {
-    const p = commandsPalette(modePalette(DARK, 'pdf'))
+    const p = menuPalette(modePalette(DARK, 'pdf'))
     expect([p.accent, p.tag, p.label]).toEqual([DARK.brand, DARK.brand, DARK.brand])
   })
 
@@ -190,7 +190,7 @@ describe('the commands’ own colour: the brand’s gold (K1)', () => {
               width={80}
             />
           }
-          keys={homeKeys({ typing: true, completions: 0, commands: true })}
+          keys={homeKeys({ typing: true, completions: 0, menu: true })}
         />
       </ThemeProvider>,
     )
@@ -208,7 +208,7 @@ describe('/extensions, a setting, in the commands’ gold', () => {
     for (const p of [DARK, LIGHT]) {
       const chip = extensionsChip(p)
       expect(chip.colour).toBe(p.brand)
-      expect(chip.stops).toEqual(modeGradient(p, 'commands'))
+      expect(chip.stops).toEqual(modeGradient(p, 'menu'))
     }
   })
 })
