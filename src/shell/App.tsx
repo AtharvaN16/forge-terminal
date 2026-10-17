@@ -73,6 +73,7 @@ import { EditPicker } from './components/EditPicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
 import { ErrorPanel } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
+import { FfmpegStep } from './components/FfmpegStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
@@ -179,6 +180,8 @@ export type Step =
   | 'exact-size'
   /** Edit's Crop to shape: the preview, where the crop is moved and zoomed (P3). */
   | 'crop'
+  /** Video and sound with no ffmpeg here: the download, in place (video spec §3.7). */
+  | 'ffmpeg'
   /** Video and sound: Trim's screen, and GIF's which part (video spec §3.4, §3.5). */
   | 'length'
   /** Sound: the bitrate, in kbps, as convert's and compress's quality. */
@@ -2355,10 +2358,8 @@ export function App({
       // rather than after the user has answered three more questions about it.
       // A video or sound file ffmpeg has not read: nothing but convert's
       // picker can be shown for it, and that says how to get ffmpeg.
-      if (info.kind === 'media' && !info.facts && mode !== 'convert') {
-        refuseFile(ffmpegMissing(info.path), info.path)
-        setMode('convert')
-        setStep('target')
+      if (info.kind === 'media' && !info.facts) {
+        setStep('ffmpeg')
         return
       }
       if (mode === 'compress') {
@@ -3467,6 +3468,72 @@ export function App({
    * showing the real bytes (`installExtension`'s `onProgress`), then goes on
    * to Save as by itself. esc stops it and keeps nothing.
    */
+  /** The video extension's state, while a file waits for ffmpeg ('ffmpeg' step). */
+  const [ffmpegState, setFfmpegState] = useState<ToolState | undefined>(undefined)
+  useEffect(() => {
+    if (step !== 'ffmpeg') return
+    let live = true
+    setFfmpegState(undefined)
+    tools.list().then(
+      (all) => {
+        if (!live) return
+        const status = all.find((s) => s.entry.id === 'video')
+        setFfmpegState(
+          status ? toolState(status) : { kind: 'unsupported', reason: 'no download here' },
+        )
+      },
+      () => live && setFfmpegState({ kind: 'unsupported', reason: 'no download here' }),
+    )
+    return () => {
+      live = false
+    }
+  }, [step, tools])
+
+  /** ffmpeg is here now (installed, or found): read the file again and go on where it was going. */
+  const lookAgain = () => {
+    const waiting = source
+    if (!waiting) return
+    probe(waiting.path).then((info) => {
+      if (info.kind === 'media' && !info.facts) {
+        hold({
+          kind: 'note',
+          id: nextId(),
+          text: `${SYMBOLS.warn} ffmpeg is still not on this computer`,
+        })
+        return
+      }
+      setStage(addToStage(emptyStage(), [info], []))
+      proceedWith(info)
+    }, showError)
+  }
+
+  const installFfmpeg = async () => {
+    if (installAbort.current) return
+    const controller = new AbortController()
+    installAbort.current = controller
+    const total = ffmpegState?.kind === 'absent' ? ffmpegState.downloadBytes : 0
+    setFfmpegState({ kind: 'installing', done: 0, total })
+    setChecking(false)
+    let ok = false
+    try {
+      await tools.install('video', {
+        signal: controller.signal,
+        onProgress: (done, all) => {
+          if (controller.signal.aborted) return
+          setFfmpegState({ kind: 'installing', done, total: all })
+          if (all > 0 && done >= all) setChecking(true)
+        },
+      })
+      ok = true
+    } catch (e) {
+      if (!controller.signal.aborted) showError(e)
+    }
+    if (installAbort.current === controller) installAbort.current = undefined
+    setChecking(false)
+    if (ok && !controller.signal.aborted) lookAgain()
+    else setFfmpegState(total > 0 ? { kind: 'absent', downloadBytes: total } : undefined)
+  }
+
   const installThen = async (row: EditRow) => {
     if (installAbort.current) return
     const controller = new AbortController()
@@ -4439,6 +4506,19 @@ export function App({
                   )
                 })()
               : null}
+
+            {step === 'ffmpeg' && source?.kind === 'media' ? (
+              <FfmpegStep
+                state={ffmpegState}
+                checking={checking}
+                how={process.platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'}
+                onInstall={() => void installFfmpeg()}
+                onLookAgain={lookAgain}
+                onStop={() => installAbort.current?.abort()}
+                onCancel={clearSource}
+                width={width}
+              />
+            ) : null}
 
             {step === 'length' && source?.kind === 'media' && source.facts ? (
               <LengthStep

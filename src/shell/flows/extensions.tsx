@@ -85,6 +85,19 @@ const SHEETS: Record<
       ['libheif-js', 'LGPL-3.0'],
     ],
   },
+  // ffmpeg, for a Mac without Homebrew's: what lets video and sound open at all.
+  video: {
+    name: 'Video and sound',
+    gives: 'Converts, compresses and trims video and sound',
+    again: 'A video or sound file will offer to download it again.',
+    parts: [
+      ['FFmpeg', 'GPL-2.0-or-later'],
+      ['x264', 'GPL-2.0-or-later'],
+      ['LAME', 'LGPL-2.0-or-later'],
+      ['Opus, libogg, libvorbis, libvpx', 'BSD-3-Clause'],
+      ['zimg', 'WTFPL'],
+    ],
+  },
 }
 
 function sheetFor(entry: CatalogEntry) {

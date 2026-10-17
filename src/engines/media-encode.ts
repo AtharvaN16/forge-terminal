@@ -19,6 +19,11 @@ export interface EncodeInput {
   platform: NodeJS.Platform
   /** Where a two-pass encode keeps its first pass's notes. */
   passlog: string
+  /**
+   * The encoders and filters this ffmpeg was built with. Absent: assume
+   * everything (Homebrew's has it all); a lean build is planned around.
+   */
+  has?: ReadonlySet<string>
 }
 
 export interface EncodeStep {
@@ -93,6 +98,7 @@ const AUDIO_FITS: Partial<Record<FormatId, readonly string[]>> = {
 function audioEncoder(
   target: FormatId,
   platform: NodeJS.Platform,
+  can: (name: string) => boolean,
 ): { encoder: string; kbps?: number } {
   switch (target) {
     case 'webm':
@@ -109,7 +115,7 @@ function audioEncoder(
     case 'ogg':
       return { encoder: 'libvorbis', kbps: 128 }
     default:
-      return { encoder: platform === 'darwin' ? 'aac_at' : 'aac', kbps: 128 }
+      return { encoder: platform === 'darwin' && can('aac_at') ? 'aac_at' : 'aac', kbps: 128 }
   }
 }
 
@@ -158,6 +164,7 @@ export function planEncode(job: EncodeInput): EncodePlan {
   const gif = target === 'gif'
   const compress = options.compress !== undefined
   const darwin = platform === 'darwin'
+  const can = (name: string) => job.has === undefined || job.has.has(name)
 
   const start = m.cut?.start ?? 0
   const end = Math.min(m.cut?.end ?? facts.duration, facts.duration)
@@ -198,7 +205,8 @@ export function planEncode(job: EncodeInput): EncodePlan {
   // ---- the picture
   const vf: string[] = []
   if (wantVideo && v) {
-    if (v.hdr && target !== 'hevc') vf.push(TONEMAP)
+    // Tone-mapping needs zscale; a build without it writes HDR's colours as they are.
+    if (v.hdr && target !== 'hevc' && can('zscale')) vf.push(TONEMAP)
     if (options.crop?.box) {
       const b = options.crop.box
       vf.push(`crop=${even(b.width)}:${even(b.height)}:${b.left}:${b.top}`)
@@ -243,12 +251,17 @@ export function planEncode(job: EncodeInput): EncodePlan {
         videoArgs.push('-crf', String(crf), '-b:v', '0')
       }
     } else if (target === 'hevc') {
+      const x265 = can('libx265') || !darwin
       if (videoKbps !== undefined) {
-        // x265 is not run in two passes here: one pass at the bitrate, and
-        // the engine's check after it holds the size.
-        videoArgs.push('-c:v', 'libx265', '-preset', 'fast', '-b:v', `${videoKbps}k`)
-      } else if (darwin && !compress) videoArgs.push('-c:v', 'hevc_videotoolbox', '-q:v', '60')
-      else {
+        // HEVC is not run in two passes: one pass at the bitrate, and the
+        // engine's check after it holds the size.
+        if (x265) videoArgs.push('-c:v', 'libx265', '-preset', 'fast', '-b:v', `${videoKbps}k`)
+        else videoArgs.push('-c:v', 'hevc_videotoolbox', '-b:v', `${videoKbps}k`)
+      } else if (darwin && (!compress || !x265)) {
+        // Apple's encoder: its own quality scale, 1–100.
+        const q = compress ? Math.round(20 + ((options.quality ?? 60) * 60) / 100) : 60
+        videoArgs.push('-c:v', 'hevc_videotoolbox', '-q:v', String(q))
+      } else {
         const crf = compress ? x265CrfOf(options.quality ?? 60) : 26
         videoArgs.push('-c:v', 'libx265', '-crf', String(crf), '-preset', 'fast')
       }
@@ -293,7 +306,7 @@ export function planEncode(job: EncodeInput): EncodePlan {
   else if (copyAudio) audioArgs.push('-c:a', 'copy')
   else {
     if (af.length) audioArgs.push('-af', af.join(','))
-    const enc = audioEncoder(target, platform)
+    const enc = audioEncoder(target, platform, can)
     audioArgs.push('-c:a', enc.encoder)
     const rate = kbps ?? enc.kbps
     if (rate !== undefined && enc.kbps !== undefined) audioArgs.push('-b:a', `${rate}k`)

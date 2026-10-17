@@ -22,6 +22,8 @@ const ENTRIES = {
   boost: { entry: 'runner.mjs', kind: 'node' },
   'remove-background': { entry: 'forge-cutout', kind: 'exec' },
   heic: { entry: 'runner.mjs', kind: 'node' },
+  // ffmpeg beside ffprobe; Forge finds both in the extension's folder.
+  video: { entry: 'ffmpeg', kind: 'exec' },
 }
 // Bare labels are the Mac builds, as published before Windows; win32 ones say so.
 const ARCHES = ['arm64', 'x64', 'universal', 'win32-x64', 'win32-arm64', 'win32-universal']

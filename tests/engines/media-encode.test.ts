@@ -18,8 +18,10 @@ function plan(
   options: Partial<ConvertOptions> = {},
   facts: MediaFacts = screen,
   platform: NodeJS.Platform = 'darwin',
+  has?: ReadonlySet<string>,
 ) {
   return planEncode({
+    ...(has ? { has } : {}),
     input: '/in/rec.mov',
     output: '/out/.tmp-rec.mp4',
     target,
@@ -224,5 +226,37 @@ describe('review fixes', () => {
   it('never makes a video bigger when resizing (a width over its own is its own)', () => {
     const args = single(plan('mp4', { resize: { width: 4000 } }))
     expect(flag(args, '-vf')).toContain('min(4000\\,iw)')
+  })
+})
+
+describe('what this ffmpeg has', () => {
+  const lean = new Set([
+    'libx264',
+    'aac',
+    'libmp3lame',
+    'libopus',
+    'libvpx-vp9',
+    'h264_videotoolbox',
+    'hevc_videotoolbox',
+  ])
+  it('skips tone-mapping without zscale', () => {
+    const hdr = {
+      ...screen,
+      video: { ...(screen.video as NonNullable<MediaFacts['video']>), hdr: true },
+    }
+    expect(single(plan('mp4', {}, hdr, 'darwin', lean)).join(' ')).not.toContain('zscale')
+  })
+
+  it('uses ffmpeg’s own AAC without Apple’s', () => {
+    expect(flag(single(plan('mp4', { media: { speed: 2 } }, screen, 'darwin', lean)), '-c:a')).toBe(
+      'aac',
+    )
+  })
+
+  it('fits HEVC with Apple’s encoder when there is no x265', () => {
+    const p = plan('hevc', { media: { targetBytes: 10_000_000 } }, screen, 'darwin', lean)
+    const args = p.steps.at(-1)?.args ?? []
+    expect(flag(args, '-c:v')).toBe('hevc_videotoolbox')
+    expect(flag(args, '-b:v')).toMatch(/k$/)
   })
 })

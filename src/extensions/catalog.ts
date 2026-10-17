@@ -2,7 +2,7 @@
  * The catalogue of optional extensions, compiled into Forge (spec §4.2).
  * Forge never downloads a catalogue and never runs anything not listed here.
  */
-export type ExtensionId = 'boost' | 'remove-background' | 'heic'
+export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
 export type PlatformKey = `${'darwin' | 'win32'}-${'arm64' | 'x64' | 'universal'}`
@@ -91,6 +91,19 @@ export const CATALOG: readonly CatalogEntry[] = [
       },
     },
     licence: 'libheif and libde265 (LGPL-3.0), via libheif-js',
+  },
+  {
+    // ffmpeg for a Mac without Homebrew's (video spec §3.7). Built from source
+    // by extensions/video/build.sh; its source is published beside it, as the
+    // GPL asks. No asset until it is published: until then nothing offers it,
+    // and Forge says how to get ffmpeg instead.
+    id: 'video',
+    title: 'Video and sound',
+    summary: 'Convert, compress and trim video and sound (ffmpeg)',
+    minMacos: 13,
+    assets: {},
+    licence:
+      'FFmpeg (GPL-2.0-or-later) with x264 (GPL-2.0), LAME (LGPL-2.0), Opus and libvpx (BSD), zimg (WTFPL)',
   },
 ]
 

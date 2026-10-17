@@ -32,13 +32,14 @@ on:
       - 'ext-boost-v*'
       - 'ext-remove-background-v*'
       - 'ext-heic-v*'
+      - 'ext-video-v*'
   workflow_dispatch:
     inputs:
       id:
         description: 'Extension id'
         required: true
         type: choice
-        options: [boost, remove-background, heic]
+        options: [boost, remove-background, heic, video]
       version:
         description: 'Version (no leading v); a release ext-<id>-v<version> must exist or will be created'
         required: true
@@ -76,6 +77,8 @@ jobs:
             remove-background) runner=xcode-27 ;;
             # Pure JavaScript and WebAssembly, packaged for Windows; any macOS runner assembles it.
             heic) runner=macos-14 ;;
+            # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
+            video) runner=macos-14 ;;
             *) echo "::error::unknown extension id: $id"; exit 1 ;;
           esac
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -112,6 +115,11 @@ jobs:
           swiftc --version
           node --version
 
+      # ffmpeg's build tools; only the video extension compiles C.
+      - name: Build tools (video)
+        if: needs.resolve.outputs.id == 'video'
+        run: brew install nasm pkg-config autoconf automake libtool
+
       - name: Build and package
         shell: bash
         env:
@@ -131,6 +139,11 @@ jobs:
               node extensions/boost/build.mjs --platform win32 --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-win32-$arch"
               node scripts/package-extension.mjs boost "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
+          elif [ "$ID" = "video" ]; then
+            # The GPL asks for the source beside the binaries: the source bundle goes
+            # into out/ too, so publish uploads it to the same release.
+            sh extensions/video/build.sh dist-ext/payload-arm64 dist-ext/out
+            node scripts/package-extension.mjs video "$VERSION" arm64 dist-ext/payload-arm64 dist-ext/out >> dist-ext/assets.jsonl
           elif [ "$ID" = "heic" ]; then
             node extensions/heic/build.mjs --out dist-ext/payload-win32-universal
             node scripts/package-extension.mjs heic "$VERSION" win32-universal dist-ext/payload-win32-universal dist-ext/out >> dist-ext/assets.jsonl

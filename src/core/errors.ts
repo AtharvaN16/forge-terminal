@@ -988,8 +988,11 @@ export function animatedCrop(path: string): ForgeError {
 export function ffmpegMissing(
   path: string,
   platform: NodeJS.Platform = process.platform,
+  /** Forge's own download (the video extension) is offered on this computer. */
+  downloadable = false,
 ): ForgeError {
-  const how = platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'
+  const own = platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'
+  const how = downloadable ? `forge extensions add video (or ${own})` : own
   return new ForgeError({
     code: 'ffmpeg-missing',
     title: 'Video and sound need ffmpeg',

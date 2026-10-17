@@ -10,6 +10,8 @@ const execFileAsync = promisify(execFile)
 export interface Ffmpeg {
   ffmpeg: string
   ffprobe: string
+  /** The encoders and filters it was built with; absent when they could not be read. */
+  has?: ReadonlySet<string>
 }
 
 /**
@@ -39,17 +41,49 @@ async function runnable(path: string): Promise<boolean> {
   }
 }
 
+/** Every name in `ffmpeg -encoders` or `-filters` output: the second word of each row. */
+export function readNames(text: string): Set<string> {
+  const names = new Set<string>()
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\s*[A-Z.|]{3,6}\s+(\S+)\s/)
+    if (m?.[1] && m[1] !== '=') names.add(m[1])
+  }
+  return names
+}
+
+/** The folder of Forge's own ffmpeg (the video extension), when it is installed. */
+async function extensionDir(): Promise<string | undefined> {
+  try {
+    const { installed } = await import('../extensions/paths.js')
+    return (await installed('video'))?.dir
+  } catch {
+    return undefined
+  }
+}
+
 async function resolveFfmpeg(): Promise<Ffmpeg | undefined> {
-  for (const dir of ffmpegCandidates(process.platform, process.env)) {
+  // A user's own ffmpeg first (PATH, Homebrew), then Forge's download.
+  const ext = await extensionDir()
+  const dirs = [...ffmpegCandidates(process.platform, process.env), ...(ext ? [ext] : [])]
+  for (const dir of dirs) {
     const ffmpeg = join(dir, exe('ffmpeg'))
     const ffprobe = join(dir, exe('ffprobe'))
     if (!(await runnable(ffmpeg)) || !(await runnable(ffprobe))) continue
     try {
       await execFileAsync(ffmpeg, ['-hide_banner', '-version'], { timeout: 5000 })
-      return { ffmpeg, ffprobe }
     } catch {
       // Present but broken (a half-removed install): look further.
+      continue
     }
+    const [encoders, filters] = await Promise.all(
+      ['-encoders', '-filters'].map((flag) =>
+        execFileAsync(ffmpeg, ['-hide_banner', flag], { timeout: 5000, maxBuffer: 4 << 20 })
+          .then(({ stdout }) => readNames(stdout))
+          .catch(() => undefined),
+      ),
+    )
+    const has = encoders && filters ? new Set([...encoders, ...filters]) : undefined
+    return { ffmpeg, ffprobe, ...(has ? { has } : {}) }
   }
   return undefined
 }
@@ -57,14 +91,16 @@ async function resolveFfmpeg(): Promise<Ffmpeg | undefined> {
 let found: Promise<Ffmpeg | undefined> | undefined
 let forced: { value: Ffmpeg | undefined } | null = null
 
-/**
- * Where ffmpeg and ffprobe are, or undefined when this machine has neither.
- * Cached for the process, as `libreOfficeAvailable` is: installing ffmpeg and
- * running Forge again picks it up.
- */
+/** Where ffmpeg and ffprobe are, or undefined when this machine has neither. */
 export function findFfmpeg(): Promise<Ffmpeg | undefined> {
   if (forced) return Promise.resolve(forced.value)
-  found ??= resolveFfmpeg()
+  // Found is kept for the process; not found is looked for again next time,
+  // so ffmpeg installed while Forge is open is picked up without a restart.
+  const look = found ?? resolveFfmpeg()
+  found = look.then((t) => {
+    if (!t) found = undefined
+    return t
+  })
   return found
 }
 

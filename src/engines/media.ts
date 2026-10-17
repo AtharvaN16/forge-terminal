@@ -101,6 +101,13 @@ async function probeAs(path: string, want: 'video' | 'sound'): Promise<MediaInfo
   return { kind: 'media', path, format, bytes, ...(facts ? { facts } : {}) }
 }
 
+/** Whether Forge's own ffmpeg (the video extension) can be downloaded on this computer. */
+async function videoOffered(): Promise<boolean> {
+  const { assetFor, catalogEntry } = await import('../extensions/catalog.js')
+  const entry = catalogEntry('video')
+  return entry !== undefined && assetFor(entry) !== undefined
+}
+
 /** The facts of a job's source: as probed, or read now (a GIF probed by the image engine). */
 async function factsOf(source: SourceInfo, tools: Ffmpeg): Promise<MediaFacts> {
   if (source.kind === 'media' && source.facts) return source.facts
@@ -162,7 +169,7 @@ async function run(
   const source = job.sources[0]
   const output = job.outputs[0]
   const tools = await findFfmpeg()
-  if (!tools) throw ffmpegMissing(source.path)
+  if (!tools) throw ffmpegMissing(source.path, process.platform, await videoOffered())
   const facts = await factsOf(source, tools)
   await prepareOutputDir(output)
 
@@ -187,6 +194,7 @@ async function run(
       options,
       platform,
       passlog,
+      ...(tools.has ? { has: tools.has } : {}),
     })
   let options = job.options
   let plan = planFor(process.platform)

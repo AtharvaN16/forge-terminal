@@ -7,6 +7,7 @@ import {
   forceFfmpegForTests,
   frameAt,
   probeMedia,
+  readNames,
   readProgress,
   runFfmpeg,
   soundLevels,
@@ -114,5 +115,23 @@ describe.skipIf(!ffmpegHere)('levels and frames', () => {
     const out = join(await makeTempDir(), 'frame.png')
     await frameAt(clip, 1, out)
     expect(existsSync(out)).toBe(true)
+  })
+})
+
+describe('readNames', () => {
+  it('reads the encoders and filters this ffmpeg was built with', () => {
+    const text = [
+      'Encoders:',
+      ' V..... = Video',
+      ' ------',
+      ' V....D libx264              libx264 H.264',
+      ' A....D aac                  AAC',
+      ' ... zscale            V->V       Apply resizing',
+    ].join('\n')
+    const names = readNames(text)
+    expect(names.has('libx264')).toBe(true)
+    expect(names.has('aac')).toBe(true)
+    expect(names.has('zscale')).toBe(true)
+    expect(names.has('=')).toBe(false)
   })
 })

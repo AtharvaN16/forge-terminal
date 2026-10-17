@@ -29,6 +29,8 @@ const SCREENS: Record<string, { at: number; name?: string }> = {
   size: { at: 4, name: 'Size' },
   // Edit's Resize: the size, after the row's name.
   resize: { at: 4, name: 'Size' },
+  // A video waiting for ffmpeg: the one question is whether to get it.
+  ffmpeg: { at: 1, name: 'Video and sound' },
   // Trim's screen, and GIF's which part (video spec §3.4, §3.5).
   length: { at: 4, name: 'Length' },
   // A sound file's quality: its bitrate.

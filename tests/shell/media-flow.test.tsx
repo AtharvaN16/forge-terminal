@@ -3,8 +3,11 @@ import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
-import { probeMedia } from '../../src/engines/ffmpeg.js'
+import { findFfmpeg, forceFfmpegForTests, probeMedia } from '../../src/engines/ffmpeg.js'
+import { CATALOG } from '../../src/extensions/catalog.js'
+import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
+import type { EditTools } from '../../src/shell/edit.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 import { ffmpegHere, makeClip } from '../helpers/media.js'
 
@@ -18,13 +21,14 @@ const until = async (cond: () => boolean) => {
 }
 const typed = (path: string) => (process.platform === 'win32' ? path.replaceAll('\\', '/') : path)
 
-async function start(mode: string) {
+async function start(mode: string, tools?: EditTools) {
   const dir = await makeTempDir()
   const app = render(
     <App
       initialWidth={80}
       initialHeight={24}
       prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
+      {...(tools ? { tools } : {})}
     />,
   )
   const frame = () => app.lastFrame() ?? ''
@@ -127,5 +131,77 @@ describe.skipIf(!ffmpegHere)('video and sound in the shell', () => {
     app.stdin.write('1kb')
     await until(() => frame().includes('cannot compress more'))
     app.unmount()
+  }, 60_000)
+})
+
+describe.skipIf(!ffmpegHere)('without ffmpeg', () => {
+  it('says how to get it, and goes on by itself once it is there', async () => {
+    const clip = await makeClip({ seconds: 1 })
+    const real = await findFfmpeg()
+    forceFfmpegForTests(undefined)
+    try {
+      const { app, frame } = await start('2')
+      app.stdin.write(typed(clip))
+      await until(() => frame().includes('clip.mov'))
+      // Known from its bytes alone: a video, its size, nothing more.
+      expect(frame()).toContain('video · ')
+      app.stdin.write(ENTER)
+      await until(() => frame().includes('needs ffmpeg'))
+      expect(frame()).toContain('Video and sound')
+      expect(frame()).toContain('look again')
+      // Installed in another window: ↵ finds it, and compress goes on.
+      forceFfmpegForTests(real ?? null)
+      await settle()
+      app.stdin.write(ENTER)
+      await until(() => frame().includes('Method'))
+      expect(frame()).toContain('0:01')
+      app.unmount()
+    } finally {
+      forceFfmpegForTests(null)
+    }
+  }, 60_000)
+
+  it('offers the download in place, then goes on', async () => {
+    const clip = await makeClip({ seconds: 1 })
+    const real = await findFfmpeg()
+    forceFfmpegForTests(undefined)
+    const entry = { ...(CATALOG.find((e) => e.id === 'video') as (typeof CATALOG)[number]) }
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const tools: EditTools = {
+      async list() {
+        return [
+          {
+            entry,
+            updateAvailable: false,
+            supported: true,
+            downloadBytes: 31_400_000,
+          } as ExtensionStatus,
+        ]
+      },
+      async install(_id, { onProgress }) {
+        onProgress(12_600_000, 31_400_000)
+        await gate
+        forceFfmpegForTests(real ?? null)
+        return { version: '1.0.0' }
+      },
+    }
+    try {
+      const { app, frame } = await start('1', tools)
+      app.stdin.write(typed(clip))
+      await until(() => frame().includes('clip.mov'))
+      app.stdin.write(ENTER)
+      await until(() => frame().includes('31.4 MB download'))
+      await settle()
+      app.stdin.write(ENTER)
+      await until(() => frame().includes('12.6 of 31.4 MB'))
+      release()
+      await until(() => frame().includes('sound only'))
+      app.unmount()
+    } finally {
+      forceFfmpegForTests(null)
+    }
   }, 60_000)
 })
