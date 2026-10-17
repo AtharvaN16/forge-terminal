@@ -48,7 +48,7 @@ export const realManager: ExtensionsManager = {
 }
 
 /**
- * What the sheet says about each tool, in the shell's words (enhance mode's
+ * What the sheet says about each tool, in the shell's words (edit mode's
  * names, not the catalogue ids): what it gives you, what will ask for it
  * again once it is gone, and its parts and licences for `i`. A tool missing
  * here falls back to the catalogue's own title, summary and licence line.
@@ -75,7 +75,7 @@ const SHEETS: Record<
       ['a small helper', 'MIT'],
     ],
   },
-  // Windows only: no Enhance row of its own, it is what lets a HEIC open at all.
+  // Windows only: no Edit row of its own, it is what lets a HEIC open at all.
   heic: {
     name: 'HEIC photos',
     gives: 'Opens iPhone photos (HEIC)',

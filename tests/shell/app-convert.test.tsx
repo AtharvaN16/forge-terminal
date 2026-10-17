@@ -162,7 +162,7 @@ describe('shell conversion', () => {
     expect(frame).toContain('convert another') // still alive, still on the result stage
   })
 
-  it('opens with a capital O too, as enhance’s note says it', async () => {
+  it('opens with a capital O too, as edit’s note says it', async () => {
     const { stdin, lastFrame, dir } = await driveToResult()
     await rm(join(dir, 'photo.webp'))
     stdin.write('O')

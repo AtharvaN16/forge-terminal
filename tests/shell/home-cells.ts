@@ -66,7 +66,7 @@ export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[]
  * moved on from the frozen mockup:
  * - the row above the keys is a rule in the border colour;
  * - the tab rows (5–6) have more modes than the mockup's three (colour, colour
- *   spec §6.1; enhance, mockups/extensions-2026-10.html), so they are held to
+ *   spec §6.1; edit, mockups/extensions-2026-10.html), so they are held to
  *   `tabRows` itself;
  * - the key row names every mode digit (`MODE_KEYS`, "1–5");
  * - round 5 (P2): the field sits on a recessed shelf three rows tall, attached

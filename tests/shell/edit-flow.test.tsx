@@ -15,7 +15,7 @@ import {
 } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
-import type { EnhanceTools } from '../../src/shell/enhance.js'
+import type { EditTools } from '../../src/shell/edit.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 import { pinPlatform } from '../helpers/platform.js'
@@ -54,7 +54,7 @@ pinPlatform('darwin')
 const fake = fakeExtensions()
 afterEach(() => fake.restore())
 
-describe('enhance mode', () => {
+describe('edit mode', () => {
   // Remove background is a Mac-only row, and pinned to darwin on a Windows
   // runner Save as would split a C:\ path the Mac way for its name. Windows'
   // install in place is the Boost row's test below.
@@ -68,7 +68,7 @@ describe('enhance mode', () => {
       const gate = new Promise<void>((r) => {
         release = r
       })
-      const tools: EnhanceTools = {
+      const tools: EditTools = {
         async list() {
           return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
             (entry): ExtensionStatus => ({
@@ -107,14 +107,14 @@ describe('enhance mode', () => {
       )
       const frame = () => app.lastFrame() ?? ''
 
-      app.stdin.write('/enhance')
+      app.stdin.write('/edit')
       await settle()
       app.stdin.write(ENTER)
       await settle()
       app.stdin.write(typed(png))
       await until(() => frame().includes('banner.png'))
       app.stdin.write(ENTER)
-      await until(() => frame().includes('Enhance PNG'))
+      await until(() => frame().includes('Edit PNG'))
 
       // At rest on Sharpen: the rows are names, and the pane right of the line
       // says what the highlighted one does, beside it, then what it makes.
@@ -153,7 +153,7 @@ describe('enhance mode', () => {
       await settle(400) // let Save as's key handler attach
       app.stdin.write(ENTER)
       const out = join(dir, 'banner-cutout.png')
-      await until(() => existsSync(out) && frame().includes('enhance another'))
+      await until(() => existsSync(out) && frame().includes('edit another'))
       expect(frame()).toContain('banner-cutout.png')
       const meta = await sharp(out).metadata()
       expect([meta.width, meta.height, meta.hasAlpha]).toEqual([4100, 50, true])
@@ -162,7 +162,7 @@ describe('enhance mode', () => {
   )
 
   /** The pinned platform's tools, those in `installed` installed; `install` is the test's. */
-  const someTools = (install: EnhanceTools['install'], installed: Set<string>): EnhanceTools => ({
+  const someTools = (install: EditTools['install'], installed: Set<string>): EditTools => ({
     async list() {
       return CATALOG.filter((entry) => offeredOn(entry)).map(
         (entry): ExtensionStatus => ({
@@ -177,8 +177,8 @@ describe('enhance mode', () => {
     install,
   })
 
-  /** /enhance, a small PNG, and the cursor on Remove background (not installed). */
-  async function atRemoveBackground(tools: EnhanceTools) {
+  /** /edit, a small PNG, and the cursor on Remove background (not installed). */
+  async function atRemoveBackground(tools: EditTools) {
     const dir = await makeTempDir()
     const png = join(dir, 'tile.png')
     await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
@@ -193,14 +193,14 @@ describe('enhance mode', () => {
       />,
     )
     const frame = () => app.lastFrame() ?? ''
-    app.stdin.write('/enhance')
+    app.stdin.write('/edit')
     await settle()
     app.stdin.write(ENTER)
     await settle()
     app.stdin.write(typed(png))
     await until(() => frame().includes('tile.png'))
     app.stdin.write(ENTER)
-    await until(() => frame().includes('Enhance PNG'))
+    await until(() => frame().includes('Edit PNG'))
     await settle(300)
     // Sharpen, Boost resolution, then Remove background (Trim and Resize follow).
     for (let i = 0; i < 2; i++) {
@@ -271,14 +271,14 @@ describe('enhance mode', () => {
         />,
       )
       const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/enhance')
+      app.stdin.write('/edit')
       await settle()
       app.stdin.write(ENTER)
       await settle()
       app.stdin.write(typed(png))
       await until(() => frame().includes('tile.png'))
       app.stdin.write(ENTER)
-      await until(() => frame().includes('Enhance PNG'))
+      await until(() => frame().includes('Edit PNG'))
       await settle(300)
       app.stdin.write(DOWN)
       await until(() => frame().includes('Makes it bigger.'))
@@ -298,7 +298,7 @@ describe('enhance mode', () => {
     }, 60_000)
 
     it('offers 3× on the Boost row when boost 1.1.0 is installed', async () => {
-      const tools: EnhanceTools = {
+      const tools: EditTools = {
         async list() {
           return CATALOG.filter((entry) => offeredOn(entry)).map(
             (entry): ExtensionStatus => ({
@@ -325,14 +325,14 @@ describe('enhance mode', () => {
         />,
       )
       const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/enhance')
+      app.stdin.write('/edit')
       await settle()
       app.stdin.write(ENTER)
       await settle()
       app.stdin.write(typed(png))
       await until(() => frame().includes('tile.png'))
       app.stdin.write(ENTER)
-      await until(() => frame().includes('Enhance PNG'))
+      await until(() => frame().includes('Edit PNG'))
       await settle(300)
       app.stdin.write(DOWN)
       await until(() => frame().includes('becomes 80 × 60'))
@@ -366,14 +366,14 @@ describe('enhance mode', () => {
         />,
       )
       const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/enhance')
+      app.stdin.write('/edit')
       await settle()
       app.stdin.write(ENTER)
       await settle()
       app.stdin.write(typed(png))
       await until(() => frame().includes('tile.png'))
       app.stdin.write(ENTER)
-      await until(() => frame().includes('Enhance PNG'))
+      await until(() => frame().includes('Edit PNG'))
       await settle(300)
 
       // Sharpen has no scale: no ←→ in the keys.
@@ -408,7 +408,7 @@ describe('enhance mode', () => {
       app.stdin.write(ESC)
       await settle()
       app.stdin.write(ESC)
-      await until(() => frame().includes('Enhance PNG'))
+      await until(() => frame().includes('Edit PNG'))
       await settle(200)
       expect(frame()).toMatch(/▌ Boost resolution +‹ 4× ›/)
       expect(frame()).toContain('becomes 160 × 120')
@@ -419,7 +419,7 @@ describe('enhance mode', () => {
       await settle(400)
       app.stdin.write(ENTER)
       const out = join(dir, 'tile-4x.png')
-      await until(() => existsSync(out) && frame().includes('enhance another'))
+      await until(() => existsSync(out) && frame().includes('edit another'))
       const meta = await sharp(out).metadata()
       expect([meta.width, meta.height]).toEqual([160, 120])
     }, 90_000)

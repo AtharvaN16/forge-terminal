@@ -119,17 +119,17 @@ describe('what the shell says is on screen, not only in the scrollback', () => {
     expect(app.row('╭─ JPEG')).toBeGreaterThanOrEqual(0)
   }, 20_000)
 
-  it('another screen: enhance sent a PDF says why it is converting instead', async () => {
+  it('another screen: edit sent a PDF says why it is converting instead', async () => {
     const app = await shell()
     const file = await makePdf(app.dir, 'doc.pdf', 1)
-    app.stdin.write('4') // enhance
+    app.stdin.write('4') // edit
     await settle()
     app.stdin.write(file)
     await settle()
     app.stdin.write(ENTER)
-    await until(() => app.row('Enhance works on images') >= 0)
+    await until(() => app.row('Edit works on images') >= 0)
     // On the screen it went to, under its bar — not in the scrollback above it.
-    expect(app.row('Enhance works on images')).toBeGreaterThan(app.row(/╱╱\s*$/))
+    expect(app.row('Edit works on images')).toBeGreaterThan(app.row(/╱╱\s*$/))
     expect(app.row('ctrl-c quit')).toBe(ROWS - 1)
   })
 })

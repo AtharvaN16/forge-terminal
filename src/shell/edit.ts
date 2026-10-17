@@ -15,7 +15,7 @@ import { type ExtensionId, offeredHere } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
 
 /**
- * Enhance (mode 5, mockups/extensions-2026-10.html tabs Flow and 1 Picker;
+ * Edit (mode 5, mockups/extensions-2026-10.html tabs Flow and 1 Picker;
  * mockups/boost-row-2026-10.html B3 and S1): one picker of rows, the first
  * three each one of the two optional extensions run a particular way —
  * Boost resolution one row whose scale changes on the row — then, after one
@@ -24,10 +24,10 @@ import type { ExtensionStatus } from '../extensions/manager.js'
  * are and say for an image, nothing drawn.
  */
 
-export type EnhanceToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize' | 'crop'
+export type EditToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize' | 'crop'
 
 /** The row the picker leaves a blank row after (E3): the AI tools above it, the plain ones below. */
-export const GAP_AFTER: EnhanceToolId = 'cutout'
+export const GAP_AFTER: EditToolId = 'cutout'
 
 /** What a row makes: dim words, then the fact in bold. */
 export interface Detail {
@@ -36,8 +36,8 @@ export interface Detail {
   after?: string
 }
 
-export interface EnhanceRow {
-  id: EnhanceToolId
+export interface EditRow {
+  id: EditToolId
   /** The row's name, and the trail's answer: never just "Boost". */
   label: string
   /** The extension that does it; absent for a built-in tool, which is always ready. */
@@ -77,7 +77,7 @@ function tooLarge(source: ImageInfo, scale: number): string | undefined {
  * Trim's row: the size a trim leaves, once `measure` has it; dimmed with why
  * when there is nothing to cut or the image is animated.
  */
-function trimRow(source: ImageInfo, measure: ImageMeasure | undefined): EnhanceRow {
+function trimRow(source: ImageInfo, measure: ImageMeasure | undefined): EditRow {
   const trimmed = measure?.trimmed
   return {
     id: 'trim',
@@ -103,12 +103,12 @@ function trimRow(source: ImageInfo, measure: ImageMeasure | undefined): EnhanceR
  * what the installed boost makes (`boostScales`); the Boost row keeps those
  * that fit this image. Remove background is a Mac-only row (`platform`).
  */
-export function enhanceRows(
+export function editRows(
   source: ImageInfo,
   measure?: ImageMeasure,
   offered: readonly BoostScale[] = boostScales(undefined),
   platform: NodeJS.Platform = process.platform,
-): EnhanceRow[] {
+): EditRow[] {
   const kept = keptFormat(source)
   const asJpeg = source.format === 'heic' ? ' · as JPEG' : ''
   const scales = offered
@@ -167,7 +167,7 @@ export function enhanceRows(
               long: 'Everything behind the subject becomes transparent.',
             },
             verb: 'Removing background',
-          } satisfies EnhanceRow,
+          } satisfies EditRow,
         ]
       : []),
     trimRow(source, measure),
@@ -192,7 +192,7 @@ export function enhanceRows(
  * that is the size written. Dimmed for an animation, as Trim is, and when no
  * shape would change it (a 1 × 1 image already has every one).
  */
-function cropRow(source: ImageInfo, asJpeg: string): EnhanceRow {
+function cropRow(source: ImageInfo, asJpeg: string): EditRow {
   const shapes = shapesFor(source).map((shape) => {
     const box = largestBox(source, shape)
     return { shape, detail: { dim: 'becomes ', bold: dims(box.width, box.height), after: asJpeg } }
@@ -227,7 +227,7 @@ export interface PillStep {
  * The pill a row carries at its band's far end, if any: Boost's scales or
  * Crop's shapes, one pill for both. `noun` is the key row's word for ←→.
  */
-export function pillOf(row: EnhanceRow): { noun: string; steps: PillStep[] } | undefined {
+export function pillOf(row: EditRow): { noun: string; steps: PillStep[] } | undefined {
   if (row.scales) {
     return {
       noun: 'scale',
@@ -248,28 +248,28 @@ export function pillOf(row: EnhanceRow): { noun: string; steps: PillStep[] } | u
 }
 
 /** The pill step `value` names (a scale, a shape's label; as a number or its string), else the first. */
-const stepAt = (row: EnhanceRow, value: unknown): PillStep | undefined => {
+const stepAt = (row: EditRow, value: unknown): PillStep | undefined => {
   const steps = pillOf(row)?.steps ?? []
   return steps.find((s) => String(s.value) === String(value)) ?? steps[0]
 }
 
-/** One row by id; `offered` and `platform` as for `enhanceRows` (Boost's scales depend on it). */
-export function enhanceRow(
+/** One row by id; `offered` and `platform` as for `editRows` (Boost's scales depend on it). */
+export function editRow(
   source: ImageInfo,
   id: unknown,
   offered?: readonly BoostScale[],
   platform: NodeJS.Platform = process.platform,
-): EnhanceRow | undefined {
-  return enhanceRows(source, undefined, offered, platform).find((r) => r.id === id)
+): EditRow | undefined {
+  return editRows(source, undefined, offered, platform).find((r) => r.id === id)
 }
 
 /** What a row makes at `step` (one of Boost's scales, one of Crop's shapes), else at its own. */
-export function detailAt(row: EnhanceRow, step?: number | string): Detail {
+export function detailAt(row: EditRow, step?: number | string): Detail {
   return pillOf(row)?.steps.find((s) => String(s.value) === String(step))?.detail ?? row.detail
 }
 
 /** The action a row runs through: the same plan-and-run path as the CLI. */
-export const actionForRow = (row: Pick<EnhanceRow, 'id' | 'extension'>): Action =>
+export const actionForRow = (row: Pick<EditRow, 'id' | 'extension'>): Action =>
   row.id === 'trim'
     ? trimAction
     : row.id === 'resize'
@@ -284,7 +284,7 @@ export const actionForRow = (row: Pick<EnhanceRow, 'id' | 'extension'>): Action 
  * The answers Save as and the run plan with, for a row at `step` on its pill:
  * Boost's scale, Crop's shape (its box is the preview's to add).
  */
-export function rowValues(row: EnhanceRow, step?: number | string): Record<string, unknown> {
+export function rowValues(row: EditRow, step?: number | string): Record<string, unknown> {
   const at = stepAt(row, step)
   const k = row.scales ? at?.value : row.scale
   return {
@@ -297,7 +297,7 @@ export function rowValues(row: EnhanceRow, step?: number | string): Record<strin
 }
 
 /** The shape `label` names among Crop's, if the row offers it. */
-export const shapeOf = (row: EnhanceRow | undefined, label: unknown): CropShape | undefined =>
+export const shapeOf = (row: EditRow | undefined, label: unknown): CropShape | undefined =>
   row?.shapes?.find((s) => s.shape.label === label)?.shape
 
 /** Where a tool stands on this Mac, as the picker's row shows it. */
@@ -315,8 +315,8 @@ export function toolState(status: ExtensionStatus | undefined): ToolState {
   return { kind: 'absent', downloadBytes: status.downloadBytes ?? 0 }
 }
 
-/** The slice of `src/extensions/manager.ts` enhance needs, injectable so tests need no network. */
-export interface EnhanceTools {
+/** The slice of `src/extensions/manager.ts` edit needs, injectable so tests need no network. */
+export interface EditTools {
   list(): Promise<ExtensionStatus[]>
   install(
     id: string,
@@ -325,7 +325,7 @@ export interface EnhanceTools {
 }
 
 /** Loaded on first use, so the shell's start-up never touches `src/extensions/`. */
-export const realTools: EnhanceTools = {
+export const realTools: EditTools = {
   async list() {
     return (await import('../extensions/manager.js')).listExtensions()
   },

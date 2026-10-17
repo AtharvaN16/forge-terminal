@@ -1,8 +1,8 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import type { ImageInfo } from '../../src/core/types.js'
-import { EnhancePicker } from '../../src/shell/components/EnhancePicker.js'
-import { type EnhanceRow, enhanceRows } from '../../src/shell/enhance.js'
+import { EditPicker } from '../../src/shell/components/EditPicker.js'
+import { type EditRow, editRows } from '../../src/shell/edit.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import { pinPlatform } from '../helpers/platform.js'
@@ -27,7 +27,7 @@ const LEFT = `${ESC}[D`
 const ENTER = String.fromCharCode(13)
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const settle = () => new Promise((r) => setTimeout(r, 60))
-const P = modePalette(DARK, 'enhance')
+const P = modePalette(DARK, 'edit')
 
 const photo = {
   kind: 'image',
@@ -41,14 +41,14 @@ const photo = {
 } as ImageInfo
 
 function picker(
-  onChoose: (row: EnhanceRow, step?: number | string) => void = () => {},
+  onChoose: (row: EditRow, step?: number | string) => void = () => {},
   image: ImageInfo = photo,
 ) {
   const app = render(
     <ThemeProvider palette={P}>
-      <EnhancePicker
+      <EditPicker
         format="JPEG"
-        rows={enhanceRows(image)}
+        rows={editRows(image)}
         tools={{ boost: { kind: 'ready' }, 'remove-background': { kind: 'ready' } }}
         checking={false}
         width={80}
@@ -137,7 +137,7 @@ describe('the Crop to shape row’s pill', () => {
 
   it('is dimmed with why when no shape would change the image (1 × 1), and ↵ does nothing', async () => {
     const dot = { ...photo, width: 1, height: 1 }
-    const row = enhanceRows(dot).find((r) => r.id === 'crop')
+    const row = editRows(dot).find((r) => r.id === 'crop')
     expect(row?.shapes).toEqual([])
     expect(row?.tooLarge).toBe('no shape to cut')
 
@@ -158,9 +158,9 @@ describe('the Crop to shape row’s pill', () => {
   it('opens on the shape chosen before, coming back from the crop', async () => {
     const app = render(
       <ThemeProvider palette={P}>
-        <EnhancePicker
+        <EditPicker
           format="JPEG"
-          rows={enhanceRows(photo)}
+          rows={editRows(photo)}
           tools={{ boost: { kind: 'ready' }, 'remove-background': { kind: 'ready' } }}
           checking={false}
           width={80}

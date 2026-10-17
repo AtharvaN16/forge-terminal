@@ -33,8 +33,8 @@ const frame = (app: Rendered) => plain(app.lastFrame())
 const on = {
   convert: (f: string) => f.includes('images · HEIC · PDF · Word') && !f.includes('Modes ─'),
   compress: (f: string) => f.includes('images · PDF') && !f.includes('HEIC'),
-  // enhance's line is the start of convert's, so convert's tail must be gone.
-  enhance: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
+  // edit's line is the start of convert's, so convert's tail must be gone.
+  edit: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
   colour: (f: string) => f.includes('extract colours'),
   commands: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
 }
@@ -82,7 +82,7 @@ describe('←→ on home', () => {
   it('passes straight through colour, and stops at the commands', async () => {
     const app = await home()
     app.stdin.write('4')
-    await reach(app, 'enhance')
+    await reach(app, 'edit')
     await settle()
     app.stdin.write(RIGHT)
     await reach(app, 'colour')
@@ -97,7 +97,7 @@ describe('←→ on home', () => {
     await reach(app, 'colour')
     await settle()
     app.stdin.write(LEFT)
-    await reach(app, 'enhance')
+    await reach(app, 'edit')
   }, 20_000)
 
   it('moves the cursor instead once something is typed, on a mode or on commands', async () => {

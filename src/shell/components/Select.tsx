@@ -44,7 +44,7 @@ interface SelectProps {
   /**
    * Where `speak` puts what it says: at the far end of the band (`end`, the
    * format list's measured size), or where a hint goes, after the names
-   * (`hint`, enhance's details).
+   * (`hint`, edit's details).
    */
   speakAt?: 'end' | 'hint'
 }

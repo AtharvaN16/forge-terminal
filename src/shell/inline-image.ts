@@ -1,5 +1,5 @@
 /**
- * Real pictures in the terminal (enhance's Done, X5): which inline-image
+ * Real pictures in the terminal (edit's Done, X5): which inline-image
  * protocol this terminal speaks, and the escape sequence that draws a PNG in
  * a box of cells with it.
  *

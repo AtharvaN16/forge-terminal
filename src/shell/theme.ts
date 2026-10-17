@@ -119,9 +119,9 @@ export interface Palette {
   /** Mode header colour for colour (palette and scale). */
   modeColour: string
   modeColourBg: string
-  /** Mode header colour for enhance (Sharpen, Boost resolution, Remove background). */
-  modeEnhance: string
-  modeEnhanceBg: string
+  /** Mode header colour for edit (Sharpen, Boost resolution, Remove background). */
+  modeEdit: string
+  modeEditBg: string
   /** Resting frame colour. */
   border: string
   /** Fill behind the selected row. Empty means "draw no band". */
@@ -255,8 +255,8 @@ export const DARK: Palette = {
   modePdfBg: '#361c16',
   modeColour: '#f27ba8',
   modeColourBg: '#3a1e2b',
-  modeEnhance: '#b39ae8',
-  modeEnhanceBg: '#2a2238',
+  modeEdit: '#b39ae8',
+  modeEditBg: '#2a2238',
   // 4.2:1 on #1e1e1e: dim labels, hints and frames. Above the 3:1 a boundary
   // needs, and still a clear step below `dim`.
   border: '#808080',
@@ -340,8 +340,8 @@ export const LIGHT: Palette = {
   modeColour: '#b0306a',
   modeColourBg: '#f7e3ec',
   // Dark's chroma (0.114): round 5's violet was the most vivid colour in light.
-  modeEnhance: '#64569f',
-  modeEnhanceBg: '#f0ebfa',
+  modeEdit: '#64569f',
+  modeEditBg: '#f0ebfa',
   // 4.54:1 on white (dark: 4.22:1 on its canvas) — the hint row's tail and
   // the quiet tab numbers are words. 3.09:1 on fieldBand (dark: 2.75:1).
   border: '#767676',
@@ -420,8 +420,8 @@ export const NEUTRAL: Palette = {
   modePdfBg: '',
   modeColour: 'magenta',
   modeColourBg: '',
-  modeEnhance: 'magenta',
-  modeEnhanceBg: '',
+  modeEdit: 'magenta',
+  modeEditBg: '',
   border: 'gray',
   selectionBg: '',
   band: '',
@@ -451,10 +451,10 @@ export const NEUTRAL: Palette = {
   newTag: '',
 }
 
-export type ShellMode = 'convert' | 'compress' | 'pdf' | 'colour' | 'enhance'
+export type ShellMode = 'convert' | 'compress' | 'pdf' | 'colour' | 'edit'
 
 /** The modes in the order they are numbered on the home screen: 1, 2, 3, … */
-export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'enhance', 'colour']
+export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'edit', 'colour']
 
 /** The digits that pick a mode, as the key rows say them: "1–5". */
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
@@ -483,18 +483,18 @@ export const MODE_MARKERS: Record<ShellMode, string> = {
   compress: '↓',
   pdf: '▣',
   colour: '◐',
-  enhance: '✦',
+  edit: '✦',
 }
 
-/** Enhance's hatching runs violet to a deeper violet (mockups/extensions-2026-10.html). */
-const ENHANCE_END = '#7d6ad0'
+/** Edit's hatching runs violet to a deeper violet (mockups/extensions-2026-10.html). */
+const EDIT_END = '#7d6ad0'
 
 /** A mode's own colour and the fill drawn behind it. */
 export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: string } {
   if (mode === 'compress') return { fg: p.modeCompress, bg: p.modeCompressBg }
   if (mode === 'pdf') return { fg: p.modePdf, bg: p.modePdfBg }
   if (mode === 'colour') return { fg: p.modeColour, bg: p.modeColourBg }
-  if (mode === 'enhance') return { fg: p.modeEnhance, bg: p.modeEnhanceBg }
+  if (mode === 'edit') return { fg: p.modeEdit, bg: p.modeEditBg }
   return { fg: p.modeConvert, bg: p.modeConvertBg }
 }
 
@@ -502,7 +502,7 @@ export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: stri
  * The colours a mode's gradient runs through, on the home screen's band, its
  * dots and the header bar's hatching: convert cyan to violet, compress green
  * to cyan, pdf red to amber, colour through a spectrum (colour spec §6.1)
- * where true colour can show one, and enhance violet to a deeper violet.
+ * where true colour can show one, and edit violet to a deeper violet.
  * Read from fields `modePalette` never moves, so the result is the same
  * whether `p` is the base palette or a mode's.
  *
@@ -558,7 +558,7 @@ const LIGHT_BAND: Record<ShellMode, readonly string[]> = {
     '#d98c20',
     '#d99522',
   ],
-  enhance: [
+  edit: [
     '#9b5af8',
     '#985cf8',
     '#965ef8',
@@ -638,7 +638,7 @@ const LIGHT_WASH: Record<ShellMode, readonly string[]> = {
     '#feeddc',
     '#feeed9',
   ],
-  enhance: [
+  edit: [
     '#f2edfe',
     '#f1edfe',
     '#f1edfe',
@@ -688,7 +688,7 @@ const LIGHT_DOTS: Record<ShellMode, readonly string[]> = {
   convert: ['#138291', '#8467bd'],
   compress: ['#2b8748', '#138291'],
   pdf: ['#d54322', '#a06c10'],
-  enhance: ['#8567bc', '#7b67cd'],
+  edit: ['#8567bc', '#7b67cd'],
   colour: ['#cb4b49', '#a06c10', '#618110', '#138291', '#5869ec', '#8268bd'],
 }
 
@@ -698,7 +698,7 @@ export function modeGradient(p: Palette, scheme: Scheme): readonly string[] {
   if (scheme === 'compress') return [p.modeCompress, p.modeConvert]
   if (scheme === 'pdf') return [p.modePdf, p.brand]
   if (scheme === 'colour') return p.name === 'dark' ? SPECTRUM : [p.modeColour, p.violet]
-  if (scheme === 'enhance') return [p.modeEnhance, p.name === 'dark' ? ENHANCE_END : p.violet]
+  if (scheme === 'edit') return [p.modeEdit, p.name === 'dark' ? EDIT_END : p.violet]
   return [p.modeConvert, p.violet]
 }
 

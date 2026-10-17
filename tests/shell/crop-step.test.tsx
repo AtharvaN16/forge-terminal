@@ -66,10 +66,10 @@ const quiet = () => {}
 function tree(source: ImageInfo, width: number) {
   // A new palette object each time, as the App's `modePalette` makes on every render.
   return (
-    <ThemeProvider palette={modePalette(DARK, 'enhance')}>
+    <ThemeProvider palette={modePalette(DARK, 'edit')}>
       <Box height={20} flexDirection="column">
         <CropStep
-          mode="enhance"
+          mode="edit"
           source={source}
           shape={SHAPE}
           onSubmit={quiet}

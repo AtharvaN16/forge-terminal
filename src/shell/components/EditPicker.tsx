@@ -4,7 +4,7 @@ import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
-import { detailAt, type EnhanceRow, GAP_AFTER, pillOf, type ToolState } from '../enhance.js'
+import { detailAt, type EditRow, GAP_AFTER, pillOf, type ToolState } from '../edit.js'
 import { titleRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -42,7 +42,7 @@ export function bytesOf(done: number, total: number): { got: string; of: string 
 }
 
 /**
- * Enhance's picker (mockups/boost-row-2026-10.html, S1 and B3): "Enhance
+ * Edit's picker (mockups/boost-row-2026-10.html, S1 and B3): "Edit
  * <FORMAT>" over rows that are names — the AI tools, a blank row (E3,
  * mockups/resize-2026-10.html), then Trim edges and Resize, which are built
  * in and always ready — a quiet line to their right, and a pane beyond it
@@ -57,7 +57,7 @@ export function bytesOf(done: number, total: number): { got: string; of: string 
  * pane's last line becomes the grey byte band ("6.2 of 14.9 MB"), then
  * "checking".
  */
-export function EnhancePicker({
+export function EditPicker({
   format,
   rows,
   tools,
@@ -70,7 +70,7 @@ export function EnhancePicker({
 }: {
   /** The source's format label: "PNG". */
   format: string
-  rows: EnhanceRow[]
+  rows: EditRow[]
   /** Where each extension stands; undefined while it is being read. */
   tools: Partial<Record<ExtensionId, ToolState>>
   /** Every byte is in and the archive is being checked. */
@@ -82,13 +82,13 @@ export function EnhancePicker({
    */
   chosen?: { tool?: unknown; step?: unknown }
   /** ↵ on a row, at its pill's step (Boost's scale, Crop's shape): run it, or install its tool first. */
-  onChoose: (row: EnhanceRow, step?: number | string) => void
+  onChoose: (row: EditRow, step?: number | string) => void
   /** esc while installing. */
   onStop: () => void
   onCancel: () => void
 }) {
   const palette = useTheme()
-  const stateOf = (row: EnhanceRow): ToolState | undefined =>
+  const stateOf = (row: EditRow): ToolState | undefined =>
     row.extension ? tools[row.extension] : READY
   // Windows has no Remove background row (Apple Vision); the blank row then
   // follows the last AI row there is, so it still splits AI from built-in.
@@ -133,7 +133,7 @@ export function EnhancePicker({
   const [placed, setPlaced] = useState<Record<string, number>>(opening)
   const placedRef = useRef<Record<string, number>>(opening)
   /** Where `row` stands on its pill: its index, within its steps. */
-  const indexOf = (row: EnhanceRow, n: number) => Math.min(placedRef.current[row.id] ?? 0, n - 1)
+  const indexOf = (row: EditRow, n: number) => Math.min(placedRef.current[row.id] ?? 0, n - 1)
   const stepNow = here
     ? steps[Math.max(0, Math.min(placed[here.id] ?? 0, steps.length - 1))]
     : undefined
@@ -259,8 +259,8 @@ export function EnhancePicker({
         <Runs
           row={titleRow({
             palette,
-            mode: 'enhance',
-            title: `Enhance ${format}`,
+            mode: 'edit',
+            title: `Edit ${format}`,
             width,
           })}
         />

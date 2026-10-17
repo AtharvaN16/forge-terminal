@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assetFor, CATALOG, offeredHere } from '../../src/extensions/catalog.js'
-import { enhanceRows } from '../../src/shell/enhance.js'
+import { editRows } from '../../src/shell/edit.js'
 
 // macOS 15, whatever this machine runs: the Mac listing is pinned on any CI host.
 vi.mock('node:os', async (orig) => ({
@@ -81,7 +81,7 @@ describe('by OS', () => {
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
 
-  it('Enhance has no Remove background row where it is not offered', () => {
+  it('Edit has no Remove background row where it is not offered', () => {
     const photo = {
       kind: 'image',
       path: '/p.png',
@@ -92,9 +92,7 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    expect(enhanceRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
-    expect(enhanceRows(photo, undefined, undefined, 'win32').map((r) => r.id)).not.toContain(
-      'cutout',
-    )
+    expect(editRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
+    expect(editRows(photo, undefined, undefined, 'win32').map((r) => r.id)).not.toContain('cutout')
   })
 })

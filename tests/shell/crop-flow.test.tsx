@@ -8,7 +8,7 @@ import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { assetFor, CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
-import type { EnhanceTools } from '../../src/shell/enhance.js'
+import type { EditTools } from '../../src/shell/edit.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
@@ -28,7 +28,7 @@ const WINDOWS = process.platform === 'win32'
 /** Sharpen, Boost, Remove background on a Mac, Trim edges, Resize: Crop is the next row. */
 const ROWS_ABOVE = WINDOWS ? 4 : 5
 
-const tools: EnhanceTools = {
+const tools: EditTools = {
   async list() {
     return CATALOG.filter((entry) => offeredOn(entry)).map(
       (entry): ExtensionStatus => ({
@@ -74,7 +74,7 @@ const pictureOf = (raw: string) => {
   })
 }
 
-describe('Crop to shape in Enhance', () => {
+describe('Crop to shape in Edit', () => {
   it('previews attention’s crop, moves, zooms and resets it, and writes the square', async () => {
     const dir = await makeTempDir()
     const png = await photo(dir)
@@ -94,12 +94,12 @@ describe('Crop to shape in Enhance', () => {
       await settle(ms)
     }
 
-    await press('/enhance', 250)
+    await press('/edit', 250)
     await press(ENTER, 250)
     app.stdin.write(png)
     await until(() => frame().includes('photo.png'))
     app.stdin.write(ENTER)
-    await until(() => frame().includes('Enhance PNG'))
+    await until(() => frame().includes('Edit PNG'))
     await settle(300)
 
     for (let i = 0; i < ROWS_ABOVE; i++) await press(DOWN)
@@ -112,7 +112,7 @@ describe('Crop to shape in Enhance', () => {
     await press(ENTER)
     await until(() => frame().includes('Crop to 4:5'))
     await press(ESC)
-    await until(() => frame().includes('Enhance PNG'))
+    await until(() => frame().includes('Edit PNG'))
     expect(frame()).toMatch(/▌ Crop to shape +‹ 4:5 ›/)
     await press(LEFT)
     await until(() => frame().includes('‹ 1:1 ›'))
@@ -161,7 +161,7 @@ describe('Crop to shape in Enhance', () => {
     await settle(400) // let Save as's key handler attach
     app.stdin.write(ENTER)
     const out = join(dir, 'photo-cropped-1x1.png')
-    await until(() => existsSync(out) && frame().includes('enhance another'))
+    await until(() => existsSync(out) && frame().includes('edit another'))
     const meta = await sharp(out).metadata()
     expect([meta.width, meta.height]).toEqual([600, 600])
     // The square is the disc's side: its middle pixel is red.
@@ -190,12 +190,12 @@ describe('Crop to shape in Enhance', () => {
       app.stdin.write(key)
       await settle(ms)
     }
-    await press('/enhance', 250)
+    await press('/edit', 250)
     await press(ENTER, 250)
     app.stdin.write(png)
     await until(() => frame().includes('photo.png'))
     app.stdin.write(ENTER)
-    await until(() => frame().includes('Enhance PNG'))
+    await until(() => frame().includes('Edit PNG'))
     await settle(300)
     for (let i = 0; i < ROWS_ABOVE; i++) await press(DOWN)
     await press(ENTER)

@@ -4,12 +4,12 @@ import { CATALOG } from '../../src/extensions/catalog.js'
 import {
   actionForRow,
   detailAt,
-  enhanceRow,
-  enhanceRows,
+  editRow,
+  editRows,
   pillOf,
   rowValues,
   toolState,
-} from '../../src/shell/enhance.js'
+} from '../../src/shell/edit.js'
 import { pinPlatform } from '../helpers/platform.js'
 
 // The Mac's rows (Remove background among them); see pinPlatform.
@@ -26,9 +26,9 @@ const image = (width: number, height: number, format: ImageInfo['format'] = 'png
     hasAlpha: false,
   }) as ImageInfo
 
-describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
+describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
   it('has one Boost resolution row among the AI tools, then Trim edges and Resize', () => {
-    expect(enhanceRows(image(1200, 900)).map((r) => [r.id, r.label])).toEqual([
+    expect(editRows(image(1200, 900)).map((r) => [r.id, r.label])).toEqual([
       ['sharpen', 'Sharpen'],
       ['boost', 'Boost resolution'],
       ['cutout', 'Remove background'],
@@ -39,7 +39,7 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
   })
 
   it('gives the Boost row every scale that fits, each with the size it makes', () => {
-    const boost = enhanceRow(image(1200, 900), 'boost')
+    const boost = editRow(image(1200, 900), 'boost')
     expect(boost?.scales?.map((s) => [s.scale, s.detail.bold])).toEqual([
       [2, '2400 × 1800'],
       [4, '4800 × 3600'],
@@ -47,7 +47,7 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
   })
 
   it('offers 3× when the installed boost makes it', () => {
-    const [, boost] = enhanceRows(image(1200, 900), undefined, [2, 3, 4])
+    const [, boost] = editRows(image(1200, 900), undefined, [2, 3, 4])
     expect(boost?.scales?.map((s) => [s.scale, s.detail.bold])).toEqual([
       [2, '2400 × 1800'],
       [3, '3600 × 2700'],
@@ -65,18 +65,18 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
 
   it('leaves out a scale past the limits, and dims the row only when none fits', () => {
     // 4100 px wide: 2× fits, 4× would be 16,400 px a side.
-    const wide = enhanceRow(image(4100, 50), 'boost')
+    const wide = editRow(image(4100, 50), 'boost')
     expect(wide?.scales?.map((s) => s.scale)).toEqual([2])
     expect(wide?.tooLarge).toBeUndefined()
 
     // 9000 px wide: even 2× is 18,000 px a side.
-    const huge = enhanceRow(image(9000, 50), 'boost')
+    const huge = editRow(image(9000, 50), 'boost')
     expect(huge?.scales).toEqual([])
     expect(huge?.tooLarge).toBe('18,000 px, over 16,384')
   })
 
   it('says what each tool does for the pane, as an on-device model, never “AI”', () => {
-    const rows = enhanceRows(image(1200, 900))
+    const rows = editRows(image(1200, 900))
     expect(rows.map((r) => r.pane.short)).toEqual([
       'Keeps the size.',
       'Makes it bigger.',
@@ -91,19 +91,19 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
   })
 
   it('reads the detail for a scale: “becomes” and the size, JPEG noted for a HEIC', () => {
-    const heic = enhanceRow(image(1000, 500, 'heic'), 'boost')
+    const heic = editRow(image(1000, 500, 'heic'), 'boost')
     if (!heic) throw new Error('no boost row')
     expect(detailAt(heic, 4)).toEqual({ dim: 'becomes ', bold: '4000 × 2000', after: ' · as JPEG' })
-    const sharpen = enhanceRow(image(1000, 500), 'sharpen')
+    const sharpen = editRow(image(1000, 500), 'sharpen')
     if (!sharpen) throw new Error('no sharpen row')
     expect(detailAt(sharpen)).toEqual({ dim: 'same size · ', bold: '1000 × 500', after: '' })
   })
 
   it('answers with the scale chosen on the row', () => {
-    const boost = enhanceRow(image(1200, 900), 'boost')
+    const boost = editRow(image(1200, 900), 'boost')
     if (!boost) throw new Error('no boost row')
     expect(rowValues(boost, 4)).toEqual({ tool: 'boost', target: 'png', scale: '4' })
-    const sharpen = enhanceRow(image(1200, 900), 'sharpen')
+    const sharpen = editRow(image(1200, 900), 'sharpen')
     if (!sharpen) throw new Error('no sharpen row')
     expect(rowValues(sharpen)).toEqual({ tool: 'sharpen', target: 'png', scale: '1' })
   })
@@ -111,7 +111,7 @@ describe('enhance rows (boost-row-2026-10.html: B3, S1)', () => {
 
 describe('the Crop to shape row (crop-2026-10.html, tab 2)', () => {
   it('is built in, after Resize, and offers every shape the photo does not already have', () => {
-    const crop = enhanceRow(image(1600, 900), 'crop')
+    const crop = editRow(image(1600, 900), 'crop')
     expect(crop?.extension).toBeUndefined()
     // 1600 × 900 is already 16:9: that largest box would cut nothing.
     expect(crop?.shapes?.map((s) => [s.shape.label, s.detail.dim, s.detail.bold])).toEqual([
@@ -129,12 +129,12 @@ describe('the Crop to shape row (crop-2026-10.html, tab 2)', () => {
 
   it('is dimmed for an animation, which cannot be cropped', () => {
     const gif = { ...image(400, 300, 'gif'), frames: 12 } as ImageInfo
-    expect(enhanceRow(gif, 'crop')?.tooLarge).toBe('animated')
-    expect(enhanceRow(image(400, 300), 'crop')?.tooLarge).toBeUndefined()
+    expect(editRow(gif, 'crop')?.tooLarge).toBe('animated')
+    expect(editRow(image(400, 300), 'crop')?.tooLarge).toBeUndefined()
   })
 
   it('answers with the shape on the pill', () => {
-    const crop = enhanceRow(image(1200, 900), 'crop')
+    const crop = editRow(image(1200, 900), 'crop')
     if (!crop) throw new Error('no crop row')
     expect(rowValues(crop, '16:9')).toEqual({ tool: 'crop', target: 'png', shape: '16:9' })
     expect(rowValues(crop)).toEqual({ tool: 'crop', target: 'png', shape: '1:1' })
@@ -142,7 +142,7 @@ describe('the Crop to shape row (crop-2026-10.html, tab 2)', () => {
   })
 
   it('gives Boost and Crop the same pill: Boost steps scales, Crop steps shapes', () => {
-    const rows = enhanceRows(image(1200, 900))
+    const rows = editRows(image(1200, 900))
     const boost = rows.find((r) => r.id === 'boost')
     const crop = rows.find((r) => r.id === 'crop')
     if (!boost || !crop) throw new Error('rows missing')

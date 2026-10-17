@@ -7,7 +7,7 @@ import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App, NOTICE_SHOWN_MS } from '../../src/shell/App.js'
-import type { EnhanceTools } from '../../src/shell/enhance.js'
+import type { EditTools } from '../../src/shell/edit.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 import { pinPlatform } from '../helpers/platform.js'
@@ -34,7 +34,7 @@ afterEach(() => fake.restore())
  * nothing on screen to say so. The E5 panel stays live on home instead,
  * under the drop zone and its field, and home makes room for it.
  */
-/** /enhance, Remove background on a tile the stand-in finds no subject in, and back on home. */
+/** /edit, Remove background on a tile the stand-in finds no subject in, and back on home. */
 async function failOnHome() {
   const home = await fake.home()
   await fake.install(home, 'remove-background')
@@ -42,7 +42,7 @@ async function failOnHome() {
     join(home, 'forge', 'extensions', 'remove-background', '1.0.0', 'runner.mjs'),
     NO_SUBJECT,
   )
-  const tools: EnhanceTools = {
+  const tools: EditTools = {
     async list() {
       return CATALOG.filter((entry) => offeredOn(entry, 'darwin')).map(
         (entry): ExtensionStatus => ({
@@ -73,14 +73,14 @@ async function failOnHome() {
   const frame = () => app.lastFrame() ?? ''
   /** The window: the frame's last ROWS lines, under whatever is in the scrollback. */
   const live = () => frame().split('\n').slice(-ROWS).join('\n')
-  app.stdin.write('/enhance')
+  app.stdin.write('/edit')
   await settle()
   app.stdin.write(ENTER)
   await settle()
   app.stdin.write(png)
   await until(() => frame().includes('cover.png'))
   app.stdin.write(ENTER)
-  await until(() => frame().includes('Enhance PNG'))
+  await until(() => frame().includes('Edit PNG'))
   await settle(300)
   app.stdin.write(DOWN)
   await settle(60)

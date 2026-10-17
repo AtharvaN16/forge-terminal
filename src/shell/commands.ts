@@ -51,10 +51,10 @@ export const COMMANDS: Command[] = [
     group: 'modes',
   },
   {
-    name: 'enhance',
+    name: 'edit',
     description: 'sharpen, boost resolution, remove background',
     needsSource: true,
-    mode: 'enhance',
+    mode: 'edit',
     group: 'modes',
   },
   {

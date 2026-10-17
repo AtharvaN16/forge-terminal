@@ -19,8 +19,8 @@ function styleFor(mode: ShellMode, palette: Palette): ModeStyle {
   if (mode === 'compress') {
     return { borderStyle: 'round', marker: '↓', colour: palette.modeCompress }
   }
-  if (mode === 'enhance') {
-    return { borderStyle: 'round', marker: '✦', colour: palette.modeEnhance }
+  if (mode === 'edit') {
+    return { borderStyle: 'round', marker: '✦', colour: palette.modeEdit }
   }
   return { borderStyle: 'double', marker: '▣', colour: palette.modePdf }
 }

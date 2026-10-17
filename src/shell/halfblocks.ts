@@ -21,7 +21,7 @@ type RGB = [number, number, number]
 /**
  * Said under every picture drawn in half blocks: a reader seeing blocks
  * should know the real file is not like that. The user's wording
- * (2026-10-12), given for enhance's Done, which goes on to name the key that
+ * (2026-10-12), given for edit's Done, which goes on to name the key that
  * opens the result; Extract and Crop to shape have no such key, so they say
  * this alone (2026-10-16).
  */
@@ -31,7 +31,7 @@ export const SKETCH_ONLY =
 /**
  * The note under a half-block picture whose rows start `lead` cells in, in a
  * window `width` wide: a gap, then its lines in `fg`, one cell short of the
- * edge, as enhance's Done wraps its own.
+ * edge, as edit's Done wraps its own.
  */
 export function sketchNoteRows(fg: string, lead: number, width: number): Row[] {
   const lines = wrapWords(SKETCH_ONLY, Math.max(1, width - lead - 1))

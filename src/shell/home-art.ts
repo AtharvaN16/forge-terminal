@@ -95,7 +95,7 @@ export const MODE_KINDS: Record<ShellMode, string> = {
   compress: 'images · PDF',
   pdf: 'split · merge · rotate',
   colour: 'palette · scale',
-  enhance: 'images · HEIC',
+  edit: 'images · HEIC',
 }
 
 /**

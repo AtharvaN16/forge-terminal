@@ -343,7 +343,7 @@ flags resize does, and is refused with the same ones — and with `--trim`: run
 one, then the other. Cropping an animated image is refused; so is cropping one
 that already has the shape, unless it is also resized, which then only warns.
 `forge_convert` takes `crop: "1:1"` (any `W:H`), and then `to` is optional.
-In the app, Crop to shape is an Enhance row with a preview you can move and
+In the app, Crop to shape is an Edit row with a preview you can move and
 zoom.
 
 ## Boost resolution and remove background
@@ -387,7 +387,7 @@ while that extension is installed, and `--json` results report `op: "boost"` or
 `op: "remove-background"`. `forge_convert` accepts `sharpen: true`, `boost: 2 | 3 | 4` and
 `removeBackground: true`, with the same `extension-missing` tool error.
 
-The shell's enhance Done shows the real pictures in iTerm2, WezTerm, Kitty and Ghostty (a half-block close-up elsewhere); `FORGE_INLINE_IMAGES=0` turns them off, `=1` forces them on (e.g. tmux with passthrough).
+The shell's edit Done shows the real pictures in iTerm2, WezTerm, Kitty and Ghostty (a half-block close-up elsewhere); `FORGE_INLINE_IMAGES=0` turns them off, `=1` forces them on (e.g. tmux with passthrough).
 
 ## PDF
 

@@ -22,13 +22,13 @@ import { useInlinePictures } from '../useInlinePictures.js'
 import { middleEllipsis } from '../width.js'
 
 /**
- * Enhance's Done (X5, mockups/extensions-2026-10.html tab "2 · Done",
+ * Edit's Done (X5, mockups/extensions-2026-10.html tab "2 · Done",
  * sources /tmp/forge-ext-mock2/done5.js): one quiet line — ✓ name and the
  * folder — then the picture before and after, side by side at the same scale,
  * a violet ▶ between, K3·a-style tabs on top. Each picture sits in a frame
  * the colour of its tab, so where it starts and ends shows: before in one
- * grey, after in enhance's violet with its tint behind the tab
- * (mockups/open-key-2026-10.html, 02). No byte bars: for enhance the payoff
+ * grey, after in edit's violet with its tint behind the tab
+ * (mockups/open-key-2026-10.html, 02). No byte bars: for edit the payoff
  * is the picture.
  *
  * Where the terminal draws images (iTerm2, WezTerm, Kitty, Ghostty) the
@@ -38,11 +38,11 @@ import { middleEllipsis } from '../width.js'
  * changed most, at true pixel scale (core/closeup.ts). Cutouts sit on a
  * checkerboard either way.
  *
- * Pure presentation: the keys (↵ enhance another · o open · s show in
+ * Pure presentation: the keys (↵ edit another · o open · s show in
  * Finder) and the header bar belong to the App.
  */
 
-export interface EnhanceDoneProps {
+export interface EditDoneProps {
   /** `trim`, `resize` and `crop` are convert jobs (Trim edges, Resize, Crop to shape): both pictures whole. */
   op: 'boost' | 'remove-background' | 'trim' | 'resize' | 'crop'
   scale?: 1 | 2 | 3 | 4
@@ -75,7 +75,7 @@ const CHROME_ROWS = 5
  * explainer — the user asked for none, and gave this wording (2026-10-12).
  */
 export const SKETCH_NOTE = `${SKETCH_ONLY} Press O to see the result.`
-/** The key the note names, drawn as a key cap where it says it, its letter in enhance's colour. */
+/** The key the note names, drawn as a key cap where it says it, its letter in edit's colour. */
 const NOTE_KEY = 'O'
 /** The key as its cap draws it: a cell either side. */
 const NOTE_CAP = ` ${NOTE_KEY} `
@@ -114,7 +114,7 @@ type Shown =
   | { real: false; closeup: Closeup }
   | { failed: true }
 
-export function EnhanceDone({
+export function EditDone({
   op,
   scale = 1,
   before,
@@ -123,7 +123,7 @@ export function EnhanceDone({
   placed,
   width,
   rows: available,
-}: EnhanceDoneProps) {
+}: EditDoneProps) {
   const palette = useTheme()
   const { stdout } = useStdout()
   // No colour (NO_COLOR, a pipe): a picture is nothing but colour, so none.
@@ -190,7 +190,7 @@ export function EnhanceDone({
   const height = grids ? grids.before.length : rows
   // The ▶ on the middle row of the framed pictures.
   const mid = Math.floor((height + 2) / 2)
-  const enhance = modeColours(palette, 'enhance')
+  const edit = modeColours(palette, 'edit')
   /** A picture inside its frame, `edge` its colour. */
   const frame = (edge: string, picture: ReactNode) => (
     <Box borderStyle="single" borderColor={colourProp(edge)} flexShrink={0}>
@@ -204,7 +204,7 @@ export function EnhanceDone({
       <Box height={mid} flexShrink={0} />
       <Text>
         {' '}
-        <Text color={colourProp(enhance.fg)}>▶</Text>
+        <Text color={colourProp(edit.fg)}>▶</Text>
       </Text>
     </Box>
   )
@@ -240,7 +240,7 @@ export function EnhanceDone({
                 {' before '}
               </Text>
             </Box>
-            <Text backgroundColor={colourProp(enhance.bg)} color={colourProp(enhance.fg)} bold>
+            <Text backgroundColor={colourProp(edit.bg)} color={colourProp(edit.fg)} bold>
               {' after '}
             </Text>
           </Box>
@@ -258,7 +258,7 @@ export function EnhanceDone({
                 )}
                 {arrow}
                 {frame(
-                  enhance.fg,
+                  edit.fg,
                   <Box flexDirection="column" width={pictureWidth} flexShrink={0}>
                     {grids.after.map((row, i) => (
                       // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
@@ -274,10 +274,7 @@ export function EnhanceDone({
                   <Box ref={beforeBox} width={cols} height={rows} flexShrink={0} />,
                 )}
                 {arrow}
-                {frame(
-                  enhance.fg,
-                  <Box ref={afterBox} width={cols} height={rows} flexShrink={0} />,
-                )}
+                {frame(edit.fg, <Box ref={afterBox} width={cols} height={rows} flexShrink={0} />)}
               </>
             )}
           </Box>
@@ -289,7 +286,7 @@ export function EnhanceDone({
                   {SKETCH_NOTE.slice(0, SKETCH_NOTE.lastIndexOf(NOTE_KEY))}
                   <Text
                     backgroundColor={colourProp(palette.keycapBg)}
-                    color={colourProp(enhance.fg)}
+                    color={colourProp(edit.fg)}
                     bold
                   >
                     {NOTE_CAP}

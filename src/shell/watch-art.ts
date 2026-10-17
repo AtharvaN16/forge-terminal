@@ -355,7 +355,7 @@ export function kindRow({
 }
 
 /**
- * Enhance's pill (B3), as runs: ` ‹ ` the step ` › ` on the folder chip, an
+ * Edit's pill (B3), as runs: ` ‹ ` the step ` › ` on the folder chip, an
  * arrow in the mode's colour where ←→ can still go and grey at the end.
  */
 export function pillRuns({

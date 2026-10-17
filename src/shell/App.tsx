@@ -62,8 +62,8 @@ import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } f
 import { type Completion, completePath } from './complete.js'
 import { type CropAt, CropStep } from './components/CropStep.js'
 import { DoneScreen } from './components/Done.js'
-import { EnhanceDone } from './components/EnhanceDone.js'
-import { EnhancePicker } from './components/EnhancePicker.js'
+import { EditDone } from './components/EditDone.js'
+import { EditPicker } from './components/EditPicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
 import { ErrorPanel } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
@@ -87,16 +87,16 @@ import { Working } from './components/Working.js'
 import { safeStem } from './destinations.js'
 import {
   actionForRow,
-  type EnhanceRow,
-  type EnhanceTools,
-  enhanceRow,
-  enhanceRows,
+  type EditRow,
+  type EditTools,
+  editRow,
+  editRows,
   realTools,
   rowValues,
   shapeOf,
   type ToolState,
   toolState,
-} from './enhance.js'
+} from './edit.js'
 import { notePanel } from './error-art.js'
 import { fieldKey } from './field-key.js'
 import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
@@ -162,13 +162,13 @@ export type Step =
   | 'extensions'
   | 'update'
   | 'about'
-  /** Enhance's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
-  | 'enhance'
-  /** Enhance's Resize: the 0–200 % slider (H3). */
+  /** Edit's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
+  | 'edit'
+  /** Edit's Resize: the 0–200 % slider (H3). */
   | 'resize'
   /** Resize's `#`: the exact Width × Height pair (X). */
   | 'exact-size'
-  /** Enhance's Crop to shape: the preview, where the crop is moved and zoomed (P3). */
+  /** Edit's Crop to shape: the preview, where the crop is moved and zoomed (P3). */
   | 'crop'
   /** Compress: by quality, or to a target size. */
   | 'mode'
@@ -320,7 +320,7 @@ interface PendingPdfRefusal {
 
 let blockSeq = 0
 
-/** Enhance's actions name their output with `output`, not `destination`. */
+/** Edit's actions name their output with `output`, not `destination`. */
 const isExtensionAction = (act: Action): boolean =>
   act === boostAction ||
   act === removeBackgroundAction ||
@@ -328,9 +328,9 @@ const isExtensionAction = (act: Action): boolean =>
   act === resizeAction ||
   act === cropAction
 
-/** What enhance says to a file that is not an image. */
-const enhanceRefusal = (source: SourceInfo): string =>
-  `${SYMBOLS.warn} Enhance works on images; ${displayName(source.path)} is ${FORMATS[source.format].label}.`
+/** What edit says to a file that is not an image. */
+const editRefusal = (source: SourceInfo): string =>
+  `${SYMBOLS.warn} Edit works on images; ${displayName(source.path)} is ${FORMATS[source.format].label}.`
 
 const nextId = () => `b${++blockSeq}`
 
@@ -629,8 +629,8 @@ export function App({
   initialHeight?: number
   prefs?: Preferences
   configWarning?: string
-  /** Where enhance reads and installs its tools from; tests pass a fake. */
-  tools?: EnhanceTools
+  /** Where edit reads and installs its tools from; tests pass a fake. */
+  tools?: EditTools
   /** What /update checks and installs with; tests pass a fake. */
   updater?: Updater
   /** What /about opens links and reads credits with; tests pass a fake. */
@@ -796,7 +796,7 @@ export function App({
    */
   const [mode, setMode] = useState<ShellMode>('convert')
   /**
-   * Enhance's tools as this Mac has them — installed, not, or installing with
+   * Edit's tools as this Mac has them — installed, not, or installing with
    * the real bytes so far — read when its picker opens. `checking` once every
    * byte is in and the archive is being verified.
    */
@@ -806,7 +806,7 @@ export function App({
   const [checking, setChecking] = useState(false)
   const installAbort = useRef<AbortController | undefined>(undefined)
   /**
-   * What Trim and Resize know about the image in Enhance: its upright size
+   * What Trim and Resize know about the image in Edit: its upright size
    * and what a trim leaves. Measured once per image when the list opens.
    */
   const [imageMeasure, setImageMeasure] = useState<
@@ -1004,12 +1004,12 @@ export function App({
     selected: commandChoice.text === text ? commandChoice.at : 0,
   }
   const [values, setValues] = useState<Record<string, unknown>>({})
-  /** Enhance's chosen row, once one is: what Save as names and the run does. */
-  const enhancing: EnhanceRow | undefined =
-    mode === 'enhance' && source?.kind === 'image' ? enhanceRow(source, values.tool) : undefined
+  /** Edit's chosen row, once one is: what Save as names and the run does. */
+  const enhancing: EditRow | undefined =
+    mode === 'edit' && source?.kind === 'image' ? editRow(source, values.tool) : undefined
   /** Crop to shape's shape, from the row's pill: what its preview cuts. */
   const cropShape = shapeOf(enhancing, values.shape)
-  /** What Save as names and runs for: the row's extension action in enhance. */
+  /** What Save as names and runs for: the row's extension action in edit. */
   const currentAction = enhancing ? actionForRow(enhancing) : action
   const [lastResult, setLastResult] = useState<Result | null>(null)
   /**
@@ -1243,7 +1243,7 @@ export function App({
       if (command) runCommand(command)
     },
     {
-      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'enhance', 'resize', 'crop'].includes(
+      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'edit', 'resize', 'crop'].includes(
         step,
       ),
     },
@@ -1675,12 +1675,12 @@ export function App({
     (_input, key) => {
       if (!key.escape || !searchAbort.current) return
       searchAbort.current.abort()
-      if (mode === 'enhance') {
+      if (mode === 'edit') {
         // An extension job: the child is killed and nothing is written. Back
         // to the picker, the file still there.
         searchAbort.current = undefined
         setValues({})
-        setStep('enhance')
+        setStep('edit')
         return
       }
       /**
@@ -1914,7 +1914,7 @@ export function App({
           return
         }
       }
-      // O as well: enhance's note under its pictures says "Press O".
+      // O as well: edit's note under its pictures says "Press O".
       if (input === 'o' || input === 'O') {
         pressDone('o')
         openLastResult()
@@ -2131,21 +2131,21 @@ export function App({
       }
 
       /**
-       * Enhance acts on one image, as convert does. With nothing staged it
+       * Edit acts on one image, as convert does. With nothing staged it
        * arms the mode for the next drop, as `/compress` and `/pdf` do.
        */
-      if (command.name === 'enhance') {
+      if (command.name === 'edit') {
         if (stagedBatch) {
           refuseBatch()
           return
         }
         if (source && source.kind !== 'image') {
-          hold({ kind: 'note', id: nextId(), text: enhanceRefusal(source) })
+          hold({ kind: 'note', id: nextId(), text: editRefusal(source) })
           return
         }
-        setMode('enhance')
+        setMode('edit')
         setValues({})
-        setStep(source ? 'enhance' : 'idle')
+        setStep(source ? 'edit' : 'idle')
         return
       }
 
@@ -2306,16 +2306,16 @@ export function App({
         setStep('pdf')
         return
       }
-      // Enhance takes images; anything else falls back to convert, as a
+      // Edit takes images; anything else falls back to convert, as a
       // file compress cannot take does.
-      if (mode === 'enhance') {
+      if (mode === 'edit') {
         if (info.kind !== 'image') {
-          hold({ kind: 'note', id: nextId(), text: enhanceRefusal(info) })
+          hold({ kind: 'note', id: nextId(), text: editRefusal(info) })
           setMode('convert')
           setStep(hasConvertTarget(info) ? 'target' : 'idle')
           return
         }
-        setStep('enhance')
+        setStep('edit')
         return
       }
       // A source with a real convert target — every image, and a PDF too —
@@ -2830,8 +2830,8 @@ export function App({
   /** Back from Save as: to whichever step actually precedes it for this source. */
   const destinationBack = () => {
     setText('')
-    if (mode === 'enhance') {
-      setStep(values.tool === 'resize' ? 'resize' : values.tool === 'crop' ? 'crop' : 'enhance')
+    if (mode === 'edit') {
+      setStep(values.tool === 'resize' ? 'resize' : values.tool === 'crop' ? 'crop' : 'edit')
       return
     }
     if (specFor('quality')) {
@@ -3089,9 +3089,9 @@ export function App({
   }
 
   /**
-   * Enhance's run: the same plan-and-run path as the CLI (`action.plan` then
+   * Edit's run: the same plan-and-run path as the CLI (`action.plan` then
    * `runPlan`), with esc wired to the AbortSignal so the extension's child is
-   * killed and nothing is written. Done is X5 (`EnhanceDone`).
+   * killed and nothing is written. Done is X5 (`EditDone`).
    */
   const runExtensionJob = async (
     destination: string,
@@ -3179,7 +3179,7 @@ export function App({
    * (the catalogue is compiled in, installed state is on disk).
    */
   useEffect(() => {
-    if (step !== 'enhance') return
+    if (step !== 'edit') return
     let live = true
     tools.list().then(
       (all) => {
@@ -3210,7 +3210,7 @@ export function App({
    * list opens. The engine is loaded only then. A failure leaves the row
    * without its fact; the run itself says what went wrong.
    */
-  const measureFor = source?.kind === 'image' && step === 'enhance' ? source : undefined
+  const measureFor = source?.kind === 'image' && step === 'edit' ? source : undefined
   useEffect(() => {
     if (!measureFor || imageMeasure?.path === measureFor.path) return
     let live = true
@@ -3233,7 +3233,7 @@ export function App({
    * answers (at its pill's step: Boost's scale, Crop's shape). Resize asks
    * its size first; Crop to shape shows where it cuts.
    */
-  const chooseEnhance = (row: EnhanceRow, step?: number | string) => {
+  const chooseEdit = (row: EditRow, step?: number | string) => {
     if (!source) return
     const vals = rowValues(row, step)
     setValues(vals)
@@ -3274,7 +3274,7 @@ export function App({
    * showing the real bytes (`installExtension`'s `onProgress`), then goes on
    * to Save as by itself. esc stops it and keeps nothing.
    */
-  const installThen = async (row: EnhanceRow) => {
+  const installThen = async (row: EditRow) => {
     if (installAbort.current) return
     const controller = new AbortController()
     installAbort.current = controller
@@ -3314,9 +3314,9 @@ export function App({
       set({ kind: 'ready', ...(version === undefined ? {} : { version }) })
       // A row with a scale to choose stays put: its pill shows now, and ↵
       // goes on. Any other row goes straight on to Save as.
-      const now = source?.kind === 'image' ? enhanceRow(source, row.id, boostScales(version)) : row
+      const now = source?.kind === 'image' ? editRow(source, row.id, boostScales(version)) : row
       const toChoose = (now?.scales?.length ?? 0) > 1
-      if (stepRef.current === 'enhance' && !toChoose) chooseEnhance(row)
+      if (stepRef.current === 'edit' && !toChoose) chooseEdit(row)
       return
     }
     // Stopped or failed: the row says what is really on disk now. A stop that
@@ -3735,7 +3735,7 @@ export function App({
     const bySize = mode === 'compress' && values.mode === 'size'
     return {
       mode: modeSpec ? answerFor(modeSpec, values.mode) : undefined,
-      // Enhance's answer is the row's name ("Sharpen"), not the format it
+      // Edit's answer is the row's name ("Sharpen"), not the format it
       // keeps, and its pill's step with it ("Boost resolution 4×", "Crop to
       // shape 1:1").
       target: enhancing
@@ -3754,11 +3754,10 @@ export function App({
         !bySize && qualitySpec && typeof values.quality === 'number'
           ? String(values.quality)
           : undefined,
-      // Enhance's trail is the row and the name (the mockup's), no folder.
+      // Edit's trail is the row and the name (the mockup's), no folder.
       // A copied image's place is the clipboard, and it has no file name.
       destination:
-        extra.place ??
-        (folder && mode !== 'enhance' ? displayName(displayPath(folder)) : undefined),
+        extra.place ?? (folder && mode !== 'edit' ? displayName(displayPath(folder)) : undefined),
       name: extra.place ? undefined : (extra.name ?? savedAs),
     }
   }
@@ -4200,10 +4199,10 @@ export function App({
               </Box>
             ) : null}
 
-            {step === 'enhance' && source?.kind === 'image' && toolStates ? (
-              <EnhancePicker
+            {step === 'edit' && source?.kind === 'image' && toolStates ? (
+              <EditPicker
                 format={FORMATS[source.format].label}
-                rows={enhanceRows(
+                rows={editRows(
                   source,
                   measure,
                   boostScales(
@@ -4216,7 +4215,7 @@ export function App({
                 width={width}
                 onChoose={(row, step) => {
                   const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
-                  if (state?.kind === 'ready') chooseEnhance(row, step)
+                  if (state?.kind === 'ready') chooseEdit(row, step)
                   else if (state?.kind === 'absent') void installThen(row)
                 }}
                 onStop={stopInstall}
@@ -4234,7 +4233,7 @@ export function App({
                 onChange={setResizePercent}
                 onSubmit={(percent) => chooseResize({ percent })}
                 onExact={() => setStep('exact-size')}
-                onCancel={() => setStep('enhance')}
+                onCancel={() => setStep('edit')}
                 width={width}
               />
             ) : null}
@@ -4249,7 +4248,7 @@ export function App({
                 onChange={setCropAt}
                 onSubmit={chooseCrop}
                 // Back to the list, the shape still on the pill.
-                onCancel={() => setStep('enhance')}
+                onCancel={() => setStep('edit')}
                 width={width}
               />
             ) : null}
@@ -4367,7 +4366,7 @@ export function App({
                   startedAt={work.startedAt}
                   search={attempt}
                   pages={attempt ? undefined : (pageProgress ?? undefined)}
-                  stoppable={mode === 'enhance'}
+                  stoppable={mode === 'edit'}
                   width={width}
                 />
               </Box>
@@ -4384,14 +4383,14 @@ export function App({
               PDFs re-probed first), toward `/pdf`, which already merges.
               No clickable "Open file · Show in Finder" labels: `o` and `s`
               on the key row do the same, and the design has no row for them. */}
-            {/* Enhance's Done (X5): the header bar, the quiet line and the
-              picture before and after (`EnhanceDone`), then the keys. */}
-            {step === 'result' && lastResult && doneBar && doneBar.mode === 'enhance' ? (
+            {/* Edit's Done (X5): the header bar, the quiet line and the
+              picture before and after (`EditDone`), then the keys. */}
+            {step === 'result' && lastResult && doneBar && doneBar.mode === 'edit' ? (
               <Box flexDirection="column" flexGrow={1}>
                 <Box marginBottom={1}>
-                  <HeaderBar mode="enhance" trail={doneBar.trail} width={width} />
+                  <HeaderBar mode="edit" trail={doneBar.trail} width={width} />
                 </Box>
-                <EnhanceDone
+                <EditDone
                   op={
                     lastResult.job.op === 'convert'
                       ? lastResult.job.options.crop
@@ -4422,13 +4421,13 @@ export function App({
                   pairs={
                     clipDone?.status === 'placed'
                       ? [
-                          ['↵', 'enhance another'],
+                          ['↵', 'edit another'],
                           ['u', 'undo'],
                           ['s', 'save a copy'],
                           ['o', 'open'],
                         ]
                       : [
-                          ['↵', 'enhance another'],
+                          ['↵', 'edit another'],
                           ['o', 'open'],
                           ['s', revealLabel()],
                         ]
@@ -4438,7 +4437,7 @@ export function App({
               </Box>
             ) : null}
 
-            {step === 'result' && lastResult && doneBar && doneBar.mode !== 'enhance' ? (
+            {step === 'result' && lastResult && doneBar && doneBar.mode !== 'edit' ? (
               <DoneScreen
                 mode={doneBar.mode}
                 trail={doneBar.trail}

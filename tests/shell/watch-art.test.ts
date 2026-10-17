@@ -279,7 +279,7 @@ describe('kindRow', () => {
 })
 
 describe('pillRuns', () => {
-  it('is Enhance’s pill: an arrow lit where ←→ can still go', () => {
+  it('is Edit’s pill: an arrow lit where ←→ can still go', () => {
     const runs = pillRuns({ palette, mode: 'convert', label: '300 dpi', at: 2, of: 3 })
     expect(text(runs)).toBe(' ‹ 300 dpi › ')
     expect(runs[0]).toMatchObject({ fg: modeColours(palette, 'convert').fg, bold: true })

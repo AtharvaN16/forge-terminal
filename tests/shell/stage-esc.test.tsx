@@ -90,7 +90,7 @@ describe('esc at the prompt', () => {
 
     // "/Us" — realistic and minimal: the start of any absolute path under
     // /Users, and it matches no command ("/U" alone now matches /update,
-    // as "/e" matches /enhance and "/p" /pdf).
+    // as "/e" matches /edit and "/p" /pdf).
     // `CommandPalette` renders a plain, non-interactive "no command
     // matches" message here — no `<Select>`, no `useInput` at all — so
     // nothing but the stage hook itself is in a position to consume esc.

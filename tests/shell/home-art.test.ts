@@ -86,7 +86,7 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
 describe('the mode tabs (mockup tab 2, D2)', () => {
   const rowText = (rows: { text: string }[][], i: number) =>
     rows[i]?.map((run) => run.text).join('') ?? ''
-  const TABS = ' 1 convert   2 compress   3 pdf   4 enhance   5 colour   / commands  '
+  const TABS = ' 1 convert   2 compress   3 pdf   4 edit   5 colour   / commands  '
 
   it('has five modes and the commands tab, and nothing at the row’s right', () => {
     const rows = tabRows({ palette: modePalette(DARK, 'convert'), mode: 'convert' })
@@ -107,11 +107,11 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
 
   it('moves the tab to the mode pressed', () => {
     const rows = tabRows({
-      palette: modePalette(DARK, 'enhance'),
-      mode: 'enhance',
+      palette: modePalette(DARK, 'edit'),
+      mode: 'edit',
     })
-    expect(rows[1]?.find((run) => run.text === 'enhance')?.bold).toBe(true)
-    expect(rows[1]?.find((run) => run.text === '4')?.fg).toBe(DARK.modeEnhance)
+    expect(rows[1]?.find((run) => run.text === 'edit')?.bold).toBe(true)
+    expect(rows[1]?.find((run) => run.text === '4')?.fg).toBe(DARK.modeEdit)
   })
 })
 
@@ -219,7 +219,7 @@ describe('the band says when a newer Forge is out (N1)', () => {
   })
 
   it('draws the words in the opposite of the mode’s colour', () => {
-    for (const mode of ['convert', 'compress', 'pdf', 'enhance', 'colour'] as const) {
+    for (const mode of ['convert', 'compress', 'pdf', 'edit', 'colour'] as const) {
       const p = modePalette(DARK, mode)
       const rows = brandRows({ width: 80, palette: p, mode, update: '9.9.9' })
       const note = (rows.at(-1) ?? []).find((r) => r.text === '/update is available')
@@ -245,7 +245,7 @@ describe('oppositeColour', () => {
 
   it('turns each mode’s colour half way round, and reads at 4.5:1 on the canvas', () => {
     for (const base of [DARK, LIGHT]) {
-      for (const mode of ['convert', 'compress', 'pdf', 'enhance', 'colour'] as const) {
+      for (const mode of ['convert', 'compress', 'pdf', 'edit', 'colour'] as const) {
         const c = oppositeColour(base, mode)
         const turn = Math.abs(((hue(c) - hue(modeColours(base, mode).fg) + 540) % 360) - 180)
         expect(turn, `${base.name} ${mode}`).toBeGreaterThan(150)

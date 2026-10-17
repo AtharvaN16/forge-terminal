@@ -7,7 +7,7 @@ import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { assetFor, CATALOG, offeredOn } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
-import type { EnhanceTools } from '../../src/shell/enhance.js'
+import type { EditTools } from '../../src/shell/edit.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 const ESC = String.fromCharCode(27)
@@ -29,7 +29,7 @@ const LAST_AI_ROW = WINDOWS ? 'Boost resolution' : 'Remove background'
 const AI_ROWS = WINDOWS ? 2 : 3
 
 /** Every extension this OS offers, installed: Trim and Resize must not depend on any. */
-const tools: EnhanceTools = {
+const tools: EditTools = {
   async list() {
     return CATALOG.filter((entry) => offeredOn(entry)).map(
       (entry): ExtensionStatus => ({
@@ -45,7 +45,7 @@ const tools: EnhanceTools = {
   async install() {},
 }
 
-describe('Trim edges and Resize in Enhance', () => {
+describe('Trim edges and Resize in Edit', () => {
   it('measures the trim, then resizes by the slider and the exact pair through to Done', async () => {
     // 400 × 300, transparent but for a 200 × 100 block: a trim leaves the block.
     const dir = await makeTempDir()
@@ -76,12 +76,12 @@ describe('Trim edges and Resize in Enhance', () => {
       await settle(ms)
     }
 
-    await press('/enhance', 250)
+    await press('/edit', 250)
     await press(ENTER, 250)
     app.stdin.write(png)
     await until(() => frame().includes('photo.png'))
     app.stdin.write(ENTER)
-    await until(() => frame().includes('Enhance PNG'))
+    await until(() => frame().includes('Edit PNG'))
     await settle(300)
 
     // E3: one blank row between the AI tools and the plain ones — blank on
@@ -132,7 +132,7 @@ describe('Trim edges and Resize in Enhance', () => {
     await settle(400) // let Save as's key handler attach
     app.stdin.write(ENTER)
     const out = join(dir, 'photo-100x75.png')
-    await until(() => existsSync(out) && frame().includes('enhance another'))
+    await until(() => existsSync(out) && frame().includes('edit another'))
     expect(frame()).toContain('photo-100x75.png')
     const meta = await sharp(out).metadata()
     expect([meta.width, meta.height]).toEqual([100, 75])

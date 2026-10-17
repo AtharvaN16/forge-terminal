@@ -7,7 +7,7 @@ import stringWidth from 'string-width'
 import stripAnsi from 'strip-ansi'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadSharp } from '../../src/engines/libs.js'
-import { EnhanceDone, noteRows, pictureRows } from '../../src/shell/components/EnhanceDone.js'
+import { EditDone, noteRows, pictureRows } from '../../src/shell/components/EditDone.js'
 import { HOME_MARGIN } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK } from '../../src/shell/theme.js'
@@ -36,14 +36,14 @@ afterEach(() => {
   chalk.level = level
 })
 
-describe('EnhanceDone, half-block fallback', () => {
+describe('EditDone, half-block fallback', () => {
   it('draws the quiet line and the two close-ups side by side within 80 columns', async () => {
     chalk.level = 3 // a true-colour terminal (the suite's stdout is not a TTY)
-    const dir = await mkdtemp(join(tmpdir(), 'forge-enhance-done-'))
+    const dir = await mkdtemp(join(tmpdir(), 'forge-edit-done-'))
     const [before, after] = await pair(dir)
     const { lastFrame } = render(
       <ThemeProvider palette={DARK}>
-        <EnhanceDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
+        <EditDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
       </ThemeProvider>,
     )
     await vi.waitFor(() => expect((lastFrame() ?? '').split('\n')[4]).toContain('48;2;'), {
@@ -67,15 +67,15 @@ describe('EnhanceDone, half-block fallback', () => {
     expect(arrow).toHaveLength(1)
     const row = arrow[0] ?? ''
     expect(stringWidth(row.slice(0, row.indexOf('▶')))).toBe(HOME_MARGIN + 36 + 1)
-    // Before: tag and frame in one grey. After: enhance's tint behind its tag
+    // Before: tag and frame in one grey. After: edit's tint behind its tag
     // and its violet for the frame and the tag's word.
     const rgb = (hex: string) =>
       [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')
     expect(lines[2]).toContain(`48;2;${rgb(DARK.panelBand)}`)
-    expect(lines[2]).toContain(`48;2;${rgb(DARK.modeEnhanceBg)}`)
-    expect(lines[2]).toMatch(new RegExp(`38;2;${rgb(DARK.modeEnhance)}m(\u001b\\[1m)? after `))
+    expect(lines[2]).toContain(`48;2;${rgb(DARK.modeEditBg)}`)
+    expect(lines[2]).toMatch(new RegExp(`38;2;${rgb(DARK.modeEdit)}m(\u001b\\[1m)? after `))
     expect(lines[3]).toMatch(new RegExp(`38;2;${rgb(DARK.panelBand)}m┌`))
-    expect(lines[3]).toMatch(new RegExp(`38;2;${rgb(DARK.modeEnhance)}m┌`))
+    expect(lines[3]).toMatch(new RegExp(`38;2;${rgb(DARK.modeEdit)}m┌`))
     // Drawn in colour: every row has backgrounds, and the dark square shows
     // as more than one of them.
     expect(
@@ -86,10 +86,10 @@ describe('EnhanceDone, half-block fallback', () => {
     ).toBe(
       'The image preview is for illustrative purposes only; the terminal cannot display the actual image. Press  O  to see the result.',
     )
-    // The key in the note is a key cap, its letter enhance's own violet.
+    // The key in the note is a key cap, its letter edit's own violet.
     const note = lines.slice(-2).join('')
     expect(note).toContain(`48;2;${rgb(DARK.keycapBg)}`)
-    expect(note).toMatch(new RegExp(`38;2;${rgb(DARK.modeEnhance)}m(\\u001b\\[1m)? O `))
+    expect(note).toMatch(new RegExp(`38;2;${rgb(DARK.modeEdit)}m(\\u001b\\[1m)? O `))
     const pictured = lines.slice(4, -4)
     expect(pictured.every((l) => l.includes('\u001b[48;2;'))).toBe(true)
     expect(new Set(pictured.join('').match(/48;2;\d+;\d+;\d+/g)).size).toBeGreaterThan(1)
@@ -98,11 +98,11 @@ describe('EnhanceDone, half-block fallback', () => {
 
   it('with no colour (NO_COLOR, mapped to colour level 0) writes no SGR and only the quiet line', async () => {
     chalk.level = 0
-    const dir = await mkdtemp(join(tmpdir(), 'forge-enhance-done-'))
+    const dir = await mkdtemp(join(tmpdir(), 'forge-edit-done-'))
     const [before, after] = await pair(dir)
     const { lastFrame } = render(
       <ThemeProvider palette={DARK}>
-        <EnhanceDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
+        <EditDone op="boost" scale={1} before={before} after={after} savedTo={dir} width={80} />
       </ThemeProvider>,
     )
     await new Promise((r) => setTimeout(r, 300))

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ImageInfo } from '../../src/core/types.js'
-import { enhanceRows } from '../../src/shell/enhance.js'
+import { editRows } from '../../src/shell/edit.js'
 import type { Row } from '../../src/shell/home-art.js'
 import {
   exactFromWidth,
@@ -40,7 +40,7 @@ describe('the exact pair (X)', () => {
     expect(exactFromWidth(PHOTO, 1200)).toEqual({ width: 1200, height: 900 })
     const rows = exactPairRows({
       palette: DARK,
-      mode: 'enhance',
+      mode: 'edit',
       width: '1200',
       height: '900',
       focus: 'width',
@@ -65,7 +65,7 @@ describe('the Trim row', () => {
       ...PHOTO,
     } as ImageInfo
     const trim = (trimmed: 'nothing' | 'animated') =>
-      enhanceRows(img, { upright: PHOTO, trimmed }).find((r) => r.id === 'trim')?.tooLarge
+      editRows(img, { upright: PHOTO, trimmed }).find((r) => r.id === 'trim')?.tooLarge
     expect([trim('nothing'), trim('animated')]).toEqual(['no empty edges', 'animated'])
   })
 })

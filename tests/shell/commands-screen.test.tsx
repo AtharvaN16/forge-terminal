@@ -117,7 +117,7 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
   // (2026-10-13), after this mockup; mode-arrows-app.test.tsx holds it.
   it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest, [23]))
   // The mockup's list has three modes; colour is the fourth (colour spec
-  // §6.1) and enhance the fifth, and /extensions a second setting
+  // §6.1) and edit the fifth, and /extensions a second setting
   // (mockups/extensions-2026-10.html), so the rows from colour's onward differ
   // from it by design. Those rows are held below by what they say, in order.
   // The longer list pushes the field's shelf (round 5, P2) down to row 21.
@@ -153,11 +153,11 @@ describe('the list in the panel', () => {
       expect(lines.some((l) => l.includes(name))).toBe(true)
   })
 
-  it('lists colour then enhance after pdf among the modes, and under /co after compress', () => {
+  it('lists colour then edit after pdf among the modes, and under /co after compress', () => {
     const all = text(screen({ mode: 'convert', text: '/', height: 40 }).lastFrame()).join('\n')
     expect(all.indexOf('/colour')).toBeGreaterThan(all.indexOf('/pdf'))
-    expect(all.indexOf('/enhance')).toBeGreaterThan(all.indexOf('/colour'))
-    expect(all.indexOf('/enhance')).toBeLessThan(all.indexOf('/theme'))
+    expect(all.indexOf('/edit')).toBeGreaterThan(all.indexOf('/colour'))
+    expect(all.indexOf('/edit')).toBeLessThan(all.indexOf('/theme'))
     expect(all.indexOf('/extensions')).toBeGreaterThan(all.indexOf('/theme'))
     expect(all).not.toContain('/boost')
     const co = text(screen({ mode: 'convert', text: '/co' }).lastFrame()).join('\n')

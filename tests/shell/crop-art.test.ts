@@ -19,8 +19,8 @@ import { DARK, LIGHT, modePalette } from '../../src/shell/theme.js'
  * scripts/crop-mockup.ts `picture()`): what is cut is ╱ over its own colour
  * faded towards the canvas; inside, the photo's own colours.
  */
-const P = modePalette(DARK, 'enhance')
-const L = modePalette(LIGHT, 'enhance')
+const P = modePalette(DARK, 'edit')
+const L = modePalette(LIGHT, 'edit')
 
 /** 4 × 2 dots (one row of cells): every dot its own colour. */
 const COLOURS = [

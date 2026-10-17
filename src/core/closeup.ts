@@ -4,7 +4,7 @@ import { decodeHeic, looksLikeHeic } from '../engines/heic.js'
 import { loadSharp } from '../engines/libs.js'
 
 /**
- * Enhance's Done (X5) shows the picture, not the bytes. At 80 × 24 a whole
+ * Edit's Done (X5) shows the picture, not the bytes. At 80 × 24 a whole
  * photo is about 80 × 40 pixels and a sharpen vanishes in it, so where the
  * terminal cannot draw real images Done draws a close-up at true pixel scale,
  * cut where the result differs most from what you had. This module finds that
