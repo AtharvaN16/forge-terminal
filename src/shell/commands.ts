@@ -52,7 +52,7 @@ export const COMMANDS: Command[] = [
   },
   {
     name: 'edit',
-    description: 'sharpen, boost resolution, remove background',
+    description: 'sharpen, boost resolution, remove background, resize, trim, crop',
     needsSource: true,
     mode: 'edit',
     group: 'modes',
