@@ -30,6 +30,8 @@ export function Working({
   search,
   pages,
   stoppable = false,
+  unit,
+  savedAsItGoes = false,
   width,
 }: {
   mode: ShellMode
@@ -43,6 +45,10 @@ export function Working({
   pages?: { done: number; total: number } | undefined
   /** esc stops this job (an extension's child is killed; nothing is written). */
   stoppable?: boolean | undefined
+  /** What `pages` counts when it is not pages: a folder's files ("images"). */
+  unit?: string | undefined
+  /** Each file is saved as it finishes (a folder), so the footnote must not say otherwise. */
+  savedAsItGoes?: boolean
   width: number
 }) {
   const palette = useTheme()
@@ -60,6 +66,7 @@ export function Working({
           mode,
           done: pages.done,
           total: pages.total,
+          unit,
           // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
           plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
         })
@@ -79,7 +86,9 @@ export function Working({
           width={width}
           pairs={stoppable ? [['esc', 'stop']] : []}
           foot={[
-            ['nothing is saved until it is done', ''],
+            ...(savedAsItGoes
+              ? []
+              : ([['nothing is saved until it is done', '']] as Array<[string, string]>)),
             ['ctrl-c', 'quit'],
           ]}
         />

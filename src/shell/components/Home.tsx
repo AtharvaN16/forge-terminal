@@ -8,6 +8,7 @@ import {
   brandRows,
   commandRows,
   DROP_RING_MS,
+  folderCardOnDots,
   HOME_MARGIN,
   INTRO_MS,
   MODE_KINDS,
@@ -33,6 +34,7 @@ import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
 import { colourProp, commandsPalette, MODE_KEYS, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
+import { folderCardLines } from '../watch-art.js'
 import { middleEllipsis } from '../width.js'
 
 /**
@@ -438,8 +440,13 @@ export function Home({
   const bare = !commands && !staged && !typing && mode !== 'colour' && layout.surface > 0
   const ripple = useElapsed(bare && motionEnabled(palette.name))
   // A file that has just landed runs one ring through the card's dots (M2a).
-  const landed =
-    staged && staged.files.length === 1 && staged.fresh > 0 ? (staged.files[0]?.name ?? null) : null
+  const landed = staged?.folder
+    ? staged.fresh > 0
+      ? staged.folder.name
+      : null
+    : staged && staged.files.length === 1 && staged.fresh > 0
+      ? (staged.files[0]?.name ?? null)
+      : null
   const ringAt = useTween(landed, DROP_RING_MS, { enabled: motionEnabled(palette.name) })
   const ring = landed !== null && ringAt < 1 ? ringAt : undefined
   const panel = commands
@@ -461,17 +468,30 @@ export function Home({
             samples: COLOUR_SAMPLES,
             rows: layout.surface,
           })
-        : staged && staged.files.length === 1 && staged.files[0]
-          ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
-          : staged && staged.files.length > 1
-            ? stagedListRows({ ...art, rows: layout.surface, view: staged })
-            : surfaceRows({
-                ...art,
-                rows: layout.surface,
-                typing,
-                kinds: MODE_KINDS[mode],
-                ripple,
-              })
+        : staged?.folder
+          ? folderCardOnDots({
+              ...art,
+              rows: layout.surface,
+              ring,
+              card: folderCardLines({
+                palette,
+                mode,
+                name: staged.folder.name,
+                lines: staged.folder.lines,
+                width: width - 2 * HOME_MARGIN - 6,
+              }),
+            })
+          : staged && staged.files.length === 1 && staged.files[0]
+            ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
+            : staged && staged.files.length > 1
+              ? stagedListRows({ ...art, rows: layout.surface, view: staged })
+              : surfaceRows({
+                  ...art,
+                  rows: layout.surface,
+                  typing,
+                  kinds: MODE_KINDS[mode],
+                  ripple,
+                })
       : []
 
   // The row under the field. With no room for a panel the staged headline
@@ -481,9 +501,11 @@ export function Home({
     staged && first && layout.surface === 0
       ? [
           { text: ' '.repeat(HOME_MARGIN + 2) },
-          staged.files.length === 1
-            ? { text: first.name, fg: palette.fg, bold: true }
-            : { text: staged.headline, fg: palette.fg, bold: true },
+          staged.folder
+            ? { text: staged.folder.name, fg: palette.fg, bold: true }
+            : staged.files.length === 1
+              ? { text: first.name, fg: palette.fg, bold: true }
+              : { text: staged.headline, fg: palette.fg, bold: true },
           staged.files.length === 1
             ? { text: ` · ${first.size}`, fg: palette.dim }
             : { text: `   ${staged.total}`, fg: palette.border },

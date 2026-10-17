@@ -65,6 +65,13 @@ too, quoted.
 `forge update` installs a newer Forge globally with npm. Run it only when the
 user asks for an update.
 
+`forge watch <folder> --to <format>` converts the folder, then every file
+added to it, until it is interrupted (SIGINT). It never exits by itself, so
+start it only when the user asks for a folder to be watched, in the
+background. With `--json` it prints one JSON document per line:
+`converted-existing`, `watching`, then `converted`, `failed` or `left-alone`
+per file, and `stopped` with the totals.
+
 Outputs go beside the source unless `-o` names a folder (or, for one file, a
 filename). Page operations always write beside the source, take no `-o`, and
 never edit the original.

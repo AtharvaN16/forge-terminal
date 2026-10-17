@@ -15,8 +15,13 @@ const prefsFor = (dir: string) => ({
   defaultOutput: dir,
 })
 
-async function drop(path: string) {
+async function drop(path: string, mode?: string) {
   const app = render(<App initialWidth={100} initialHeight={30} prefs={prefsFor(path)} />)
+  if (mode) {
+    await settle()
+    app.stdin.write(mode)
+    await settle()
+  }
   app.stdin.write(path)
   await settle()
   app.stdin.write(ENTER)
@@ -31,26 +36,45 @@ async function drop(path: string) {
  * directory of images (UX audit #11).
  */
 describe('dropping a folder', () => {
-  it('stages a folder of PDFs as a merge list', async () => {
+  it('in /pdf, stages a folder of PDFs as a merge list', async () => {
+    const dir = join(await makeTempDir(), 'invoices')
+    await mkdir(dir)
+    await makePdf(dir, 'jan.pdf', 2)
+    await makePdf(dir, 'feb.pdf', 3)
+
+    const frame = (await drop(dir, '3')).lastFrame() ?? ''
+    expect(frame).toContain('jan.pdf')
+    expect(frame).toContain('feb.pdf')
+    expect(frame).not.toContain('Not a file')
+  }, 20_000)
+
+  /**
+   * forge watch (mockups/watch-2026-10.html): in convert mode a folder is
+   * one thing, its card, and ↵ asks for the folder as a whole.
+   */
+  it('in convert mode, asks for the folder as a whole', async () => {
     const dir = join(await makeTempDir(), 'invoices')
     await mkdir(dir)
     await makePdf(dir, 'jan.pdf', 2)
     await makePdf(dir, 'feb.pdf', 3)
 
     const frame = (await drop(dir)).lastFrame() ?? ''
-    expect(frame).toContain('2 PDFs')
-    expect(frame).toContain('jan.pdf')
-    expect(frame).toContain('feb.pdf')
+    expect(frame).toContain('FOLDER – invoices')
+    expect(frame).toMatch(/Convert to\s+2 PDFs/)
     expect(frame).not.toContain('Not a file')
   }, 20_000)
 
-  it('treats a folder holding one image as that image', async () => {
+  it('a folder holding one image is still the folder in convert mode', async () => {
     const dir = join(await makeTempDir(), 'one')
     await mkdir(dir)
     await makeJpeg(dir, 'photo.jpg')
 
-    const frame = (await drop(`${dir}/`)).lastFrame() ?? ''
-    expect(frame).toContain('Convert to')
+    const app = await drop(`${dir}/`)
+    expect(app.lastFrame() ?? '').toContain('FOLDER – one')
+    expect(app.lastFrame() ?? '').toContain('1 image · ')
+    app.stdin.write(ENTER)
+    await settle(500)
+    expect(app.lastFrame() ?? '').toMatch(/Convert to\s+1 image/)
   }, 20_000)
 
   it('says an empty folder holds nothing, without CLI flags in the hint', async () => {

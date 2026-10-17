@@ -43,6 +43,7 @@ export function QualityStep({
   points = false,
   noBigger = false,
   dither,
+  modeKeys = true,
 }: {
   mode: ShellMode
   /** What the quality is for, at the title's right: the format, or the file. */
@@ -63,6 +64,8 @@ export function QualityStep({
   noBigger?: boolean
   /** Dithering, where it would change the file: on or off, and d to switch. */
   dither?: { on: boolean; onToggle: () => void } | undefined
+  /** The mode digits work here; not in a folder's flow, which a mode cannot take over. */
+  modeKeys?: boolean
 }) {
   const palette = useTheme()
   const blocked = noBigger && size.status === 'done' && size.bytes >= sourceBytes
@@ -125,7 +128,7 @@ export function QualityStep({
           ['↵', 'confirm'],
         ]}
         foot={[
-          [MODE_KEYS, 'mode'],
+          ...(modeKeys ? ([[MODE_KEYS, 'mode']] as Array<[string, string]>) : []),
           ['esc', 'back'],
           ['ctrl-c', 'quit'],
         ]}

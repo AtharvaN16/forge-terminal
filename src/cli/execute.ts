@@ -850,6 +850,13 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       return intent.kind === 'palette' ? await runPalette(intent, o) : await runScale(intent, o)
     }
     if (intent.kind === 'shell') return { exitCode: 0, stdout: [], stderr: [] }
+    // It runs until ctrl-c and prints as it goes; src/index.ts starts it itself.
+    if (intent.kind === 'watch') {
+      throw invalidArguments(
+        'forge watch runs in a terminal until ctrl-c.',
+        'Try: forge watch ./images --to webp',
+      )
+    }
     return renderRun(await runIntent(intent, opts), { json, debug })
   } catch (e) {
     if (!isForgeError(e)) throw e

@@ -18,6 +18,7 @@ import { parseColour } from '../core/colour/parse.js'
 import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
 import { describeResult } from '../core/describe.js'
 import {
+  emptyDirectory,
   type ForgeError,
   isForgeError,
   unexpectedError,
@@ -26,9 +27,10 @@ import {
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
 import { boostScales } from '../core/extension-targets.js'
+import { type FolderScan, scanFolder } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
-import { type InputFailure, resolveDirectory } from '../core/resolve.js'
+import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type {
   Box as CropBox,
@@ -101,6 +103,7 @@ import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
+import { WatchFlow } from './flows/watch.js'
 import { useFocusIn } from './focus.js'
 import { HOME_MARGIN, type Row } from './home-art.js'
 import { motionEnabled } from './motion.js'
@@ -113,6 +116,7 @@ import {
   addToStage,
   clearStage,
   emptyStage,
+  folderStage,
   type Stage,
   stagedVerb,
   stagedView,
@@ -192,6 +196,8 @@ export type Step =
   | 'pdf-blocked'
   /** Colour mode's palette or scale: `ColourFlow` owns the conversation. */
   | 'colour'
+  /** A folder in convert mode, converted then watched: `WatchFlow` owns it. */
+  | 'watch'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -494,6 +500,8 @@ interface DropResolution {
    * several paths at once.
    */
   single?: boolean
+  /** A folder, read whole: staged as the folder it is (see `folderStage`). */
+  folder?: FolderScan
 }
 
 /**
@@ -572,8 +580,13 @@ async function resolveDrop(text: string): Promise<DropResolution> {
       () => false,
     )
     if (isDirectory) {
-      const found = await resolveDirectory(whole, { recursive: false })
-      return resolution(found.sources, found.failures)
+      // Read whole and by content (`scanFolder`): every file, each kind
+      // counted, so a folder can be one thing on home — and watched.
+      const scan = await scanFolder(whole)
+      if (scan.sources.length === 0) {
+        return resolution([], [...scan.failures, { path: whole, error: emptyDirectory(whole) }])
+      }
+      return { ...resolution(scan.sources, scan.failures), folder: scan }
     }
   }
   return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
@@ -1009,6 +1022,8 @@ export function App({
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
+  /** Where `WatchFlow` is, as the header bar's trail — it owns its own steps. */
+  const [watchTrailNow, setWatchTrailNow] = useState<Trail>({ answers: [], current: 'Format' })
   /** How the last /pdf run was asked, so a refused save can reopen its Save as. */
   const [pdfAsked, setPdfAsked] = useState<PdfResume | undefined>(undefined)
   /**
@@ -1333,7 +1348,8 @@ export function App({
       const staged = stageRef.current
       if (key.return && staged.sources.length > 0) {
         const [only] = staged.sources
-        if (only && staged.sources.length === 1) proceedWith(only)
+        if (staged.folder && mode === 'convert') setStep('watch')
+        else if (only && staged.sources.length === 1) proceedWith(only)
         else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
         return true
       }
@@ -2127,6 +2143,12 @@ export function App({
       }
 
       if (command.name === 'convert') {
+        if (stage.folder) {
+          setMode('convert')
+          setValues({})
+          setStep('watch')
+          return
+        }
         if (stagedBatch) {
           refuseBatch()
           return
@@ -2205,6 +2227,7 @@ export function App({
       fenceOff,
       source,
       stage.sources,
+      stage.folder,
       stagedBatch,
       refuseBatch,
       hasConvertTarget,
@@ -2287,7 +2310,13 @@ export function App({
     const added = new Set(drop.sources.map((s) => s.path).filter((p) => !known.has(p))).size
     setText('')
     setValues({})
-    setStage((s) => addToStage(s, drop.sources, drop.failures))
+    const { folder } = drop
+    // A folder onto an empty home stays a folder; onto anything staged it adds its files.
+    setStage((s) =>
+      folder && s.sources.length === 0
+        ? folderStage(folder)
+        : addToStage(s, drop.sources, drop.failures),
+    )
     setFresh({ count: added, at: Date.now() })
   }, [])
 
@@ -2450,7 +2479,9 @@ export function App({
       }
       landDrop(drop)
       // One file typed onto an empty home goes on at once, as it always has.
-      if (nothingStaged && first && drop.sources.length === 1) proceedWith(first)
+      // A folder in convert mode waits on home as its card, for ↵.
+      const folderHere = drop.folder !== undefined && mode === 'convert'
+      if (nothingStaged && first && drop.sources.length === 1 && !folderHere) proceedWith(first)
     },
     [showError, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour, hold],
   )
@@ -3761,6 +3792,7 @@ export function App({
     // A job not yet shown as Working: the bar stays as the last question left it.
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
+    if (at === 'watch') return watchTrailNow
     if (at === 'colour') return colourTrailNow
     // Crop to shape ╱ 1:1: the preview is named by the shape it cuts.
     if (at === 'crop' && enhancing) {
@@ -3868,7 +3900,11 @@ export function App({
             {/* The staged list, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back.
             Not on home: its drop panel holds the stage there. */}
-            {stage.sources.length > 0 && step !== 'theme' && step !== 'result' && !onHome ? (
+            {stage.sources.length > 0 &&
+            step !== 'theme' &&
+            step !== 'result' &&
+            step !== 'watch' &&
+            !onHome ? (
               <Box marginBottom={1}>
                 <StagedFiles stage={stage} width={width} dim={running && workShown} />
               </Box>
@@ -4450,6 +4486,20 @@ export function App({
               />
             ) : null}
 
+            {step === 'watch' && stage.folder ? (
+              <WatchFlow
+                scan={stage.folder}
+                width={width}
+                height={height}
+                prefs={livePrefs}
+                onTrail={setWatchTrailNow}
+                onCancel={backToPromptKeepingStage}
+                onClose={clearSource}
+                onMakeDefault={makeDefault}
+                onSaved={rememberSaved}
+              />
+            ) : null}
+
             {step === 'pdf' ? (
               <PdfFlow
                 stage={stage}
@@ -4527,7 +4577,7 @@ export function App({
                 update={release}
                 mode={mode}
                 typing={text !== ''}
-                staged={staged ? stagedView(stage, freshRows) : undefined}
+                staged={staged ? stagedView(stage, freshRows, mode) : undefined}
                 under={underField(stage, mode)}
                 note={
                   homeError ? (

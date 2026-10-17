@@ -191,7 +191,27 @@ export interface ClipIntent {
   debug: boolean
 }
 
+/**
+ * `forge watch <folder> --to <format>`: converts what the folder holds, then
+ * every file that lands in it, until ctrl-c. One folder, one level, as a
+ * folder drop reads it.
+ */
+export interface WatchIntent {
+  kind: 'watch'
+  folder: string
+  target: FormatId
+  quality?: number
+  /** A PDF rendered to an image: 36-600, 150 when not given. */
+  dpi?: number
+  /** Where outputs go; beside each file when not given. */
+  output?: string
+  /** Leave what is there alone; convert only what lands. */
+  newOnly: boolean
+  debug: boolean
+}
+
 export type Intent =
+  | WatchIntent
   | ClipIntent
   | ConvertIntent
   | CompressIntent
@@ -312,6 +332,9 @@ Other commands:
   forge scale <colour>     50–950 from one colour, with it at 500 (--json, --svg)
   forge clip               compress the copied image and put it back (--to, --quality,
                            --max-size, --save [folder], --undo)
+  forge watch <folder> --to <format>
+                           convert the folder, then every file added to it, until ctrl-c
+                           (--quality, --dpi, -o <folder>, --new-only, --json)
   forge config [list | path | set <setting> <value>]
   forge extensions [add | remove <id>]   optional extras, such as boost and remove-background
   forge update             install a newer Forge, if there is one
@@ -395,6 +418,70 @@ function parseClipArgs(argv: string[]): ClipIntent {
     )
   }
   return intent
+}
+
+/** Claimed before Commander, like `clip`, and read by hand the same way. */
+function parseWatchArgs(argv: string[]): WatchIntent {
+  const rest = argv.slice(1)
+  const folders: string[] = []
+  let target: FormatId | undefined
+  const intent: Omit<WatchIntent, 'folder' | 'target'> = {
+    kind: 'watch',
+    newOnly: false,
+    debug: false,
+  }
+  const extra: Partial<WatchIntent> = {}
+  const value = (flag: string, i: number): string => {
+    const v = rest[i + 1]
+    if (v === undefined || v.startsWith('-')) throw invalidArguments(`${flag} needs a value.`)
+    return v
+  }
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i] as string
+    if (a === '--json') continue
+    else if (a === '--debug') intent.debug = true
+    else if (a === '--new-only') intent.newOnly = true
+    else if (a === '--to' || a === '-t') target = parseTarget(value(a, i++))
+    else if (a === '--quality' || a === '-q') extra.quality = parseQuality(value(a, i++))
+    else if (a === '--output' || a === '-o') extra.output = value(a, i++)
+    else if (a === '--dpi') {
+      const raw = value(a, i++)
+      const dpi = Number(raw)
+      if (!Number.isInteger(dpi) || dpi < 36 || dpi > 600) throw invalidDpi(raw)
+      extra.dpi = dpi
+    } else if (a.startsWith('-')) {
+      throw invalidArguments(
+        `forge watch does not take ${a}.`,
+        'Try: forge watch ./images --to webp',
+      )
+    } else folders.push(a)
+  }
+  const [folder, ...more] = folders
+  if (folder === undefined) {
+    throw invalidArguments('forge watch needs a folder.', 'Try: forge watch ./images --to webp')
+  }
+  if (more.length > 0) {
+    throw invalidArguments(
+      'forge watch watches one folder at a time.',
+      `Try: forge watch ${folder} --to webp`,
+    )
+  }
+  if (target === undefined) {
+    throw invalidArguments(
+      'forge watch needs a format to convert to.',
+      `Try: forge watch ${folder} --to webp`,
+    )
+  }
+  return {
+    kind: 'watch',
+    folder,
+    target,
+    ...(extra.quality === undefined ? {} : { quality: extra.quality }),
+    ...(extra.dpi === undefined ? {} : { dpi: extra.dpi }),
+    ...(extra.output === undefined ? {} : { output: extra.output }),
+    newOnly: intent.newOnly,
+    debug: intent.debug,
+  }
 }
 
 /** Claimed before Commander, like `probe` and `config`. Takes an action and an id, and `--json`. */
@@ -550,6 +637,7 @@ export function parseArgs(rawArgv: string[]): Intent {
   const argv = rawArgv
   if (
     argv[0] === 'clip' ||
+    argv[0] === 'watch' ||
     argv[0] === 'config' ||
     argv[0] === 'probe' ||
     argv[0] === 'extensions' ||
@@ -575,6 +663,7 @@ function parseSubcommand(argv: string[]): Intent {
     return { kind: 'update' }
   }
   if (argv[0] === 'clip') return parseClipArgs(argv)
+  if (argv[0] === 'watch') return parseWatchArgs(argv)
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
   if (argv[0] === 'palette' || argv[0] === 'scale') return parseColourArgs(argv)
