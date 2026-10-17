@@ -48,7 +48,9 @@ These are cheap to break and expensive to notice. Do not regress them.
 4. `.rotate()` runs before any other Sharp operation (EXIF orientation).
 5. Alpha is flattened when the target format cannot carry it.
 6. Writes are atomic — temp file, then rename.
-7. Progress is never fabricated. Single-file conversion has no percentage.
+7. Progress is never fabricated. Single-file conversion has no percentage —
+   except where the total is a fact: a video's or sound file's duration, which
+   ffmpeg reports encoding against (video spec §3.6).
 
 ## Skills
 
