@@ -3,9 +3,8 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { isForgeError } from '../../core/errors.js'
 import type { BarChip } from '../bar-art.js'
-import { HeaderBar } from '../components/HeaderBar.js'
-import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
+import { ScreenBar, ScreenKeys } from '../components/MenuPopup.js'
 import { errorLine } from '../error-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
@@ -406,15 +405,7 @@ export function UpdateFlow({
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Box marginBottom={1}>
-        <HeaderBar
-          mode="convert"
-          chip={updateChip(palette)}
-          trail={trail}
-          width={width}
-          drift={busy}
-        />
-      </Box>
+      <ScreenBar chip={updateChip(palette)} trail={trail} width={width} drift={busy} />
       <Box flexDirection={split ? 'row' : 'column'} paddingLeft={HOME_MARGIN}>
         <Box flexDirection="column" width={LIST_WIDTH} flexShrink={0}>
           {list}
@@ -447,7 +438,7 @@ export function UpdateFlow({
           )}
         </Box>
       </Box>
-      <HintBar width={width} pairs={k.main} foot={k.foot} />
+      <ScreenKeys width={width} pairs={k.main} foot={k.foot} />
     </Box>
   )
 }

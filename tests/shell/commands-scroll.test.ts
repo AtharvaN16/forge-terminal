@@ -26,10 +26,14 @@ function panel(selected: number, rows?: number) {
 }
 
 describe('the commands list says when it scrolls', () => {
-  const last = listCommands('').items.length - 1
+  // The mockups' list draws the modes, then the settings, whatever order it
+  // is handed them in (the / menu lists the settings first).
+  const items = listCommands('').items
+  const first = items.findIndex((c) => c.group === 'modes')
+  const last = items.findLastIndex((c) => c.group === 'settings')
 
   it('draws a bar on the right edge and says how many rows are below', () => {
-    const out = panel(0)
+    const out = panel(first)
     const bar = out.slice(1, -1).map((r) => [...text(r)][BAR])
     expect(bar.every((ch) => ch === '┃' || ch === '│')).toBe(true)
     expect(bar[0]).toBe('┃')
@@ -51,7 +55,7 @@ describe('the commands list says when it scrolls', () => {
   })
 
   it('draws nothing when the whole list fits', () => {
-    const out = panel(0, 20)
+    const out = panel(first, 20)
     expect(out.map(text).join('\n')).not.toMatch(/[┃│]|more/)
   })
 })

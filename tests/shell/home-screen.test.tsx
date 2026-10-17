@@ -49,7 +49,7 @@ function screen({
             ? (rows) => <Suggestions items={items} selected={0} width={width} rows={rows} />
             : undefined
         }
-        keys={homeKeys({ typing, completions: items.length, menu: false })}
+        keys={homeKeys({ typing, completions: items.length })}
       />
     </ThemeProvider>,
   )
@@ -147,7 +147,7 @@ describe('the key row (F1)', () => {
   })
 
   it('offers only what works: no tab or arrows without completions', () => {
-    expect(homeKeys({ typing: true, completions: 0, menu: false })).toEqual({
+    expect(homeKeys({ typing: true, completions: 0 })).toEqual({
       main: [['↵', 'send']],
       foot: [
         ['esc', 'clear'],

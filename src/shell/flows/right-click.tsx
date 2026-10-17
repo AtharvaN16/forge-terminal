@@ -2,9 +2,8 @@ import { Box } from 'ink'
 import { useEffect, useState } from 'react'
 import type { BarChip } from '../bar-art.js'
 import { keyHint } from '../components/Done.js'
-import { HeaderBar } from '../components/HeaderBar.js'
-import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
+import { ScreenBar, ScreenKeys } from '../components/MenuPopup.js'
 import { blank, HOME_MARGIN, type Row } from '../home-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -142,16 +141,12 @@ export function RightClickFlow({
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Box marginBottom={1}>
-        <HeaderBar
-          mode="convert"
-          chip={rightClickChip(palette)}
-          trail={{ answers: [], current: 'Right-click menu' }}
-          width={width}
-          drift={busy}
-        />
-      </Box>
-      <Text> </Text>
+      <ScreenBar
+        chip={rightClickChip(palette)}
+        trail={{ answers: [], current: 'Right-click menu' }}
+        width={width}
+        drift={busy}
+      />
       <Runs row={status} />
       <Text> </Text>
       <Text> </Text>
@@ -162,7 +157,7 @@ export function RightClickFlow({
       <Text> </Text>
       <Runs row={command} />
       <Box flexGrow={1} />
-      <HintBar width={width} pairs={[]} foot={[['esc', 'back']]} />
+      <ScreenKeys width={width} pairs={[]} foot={[['esc', 'back']]} />
     </Box>
   )
 }

@@ -8,9 +8,8 @@ import { assetFor, type CatalogEntry, type PlatformKey } from '../../extensions/
 import type { LockHolder } from '../../extensions/lock.js'
 import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { BarChip } from '../bar-art.js'
-import { HeaderBar } from '../components/HeaderBar.js'
-import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
+import { ScreenBar, ScreenKeys } from '../components/MenuPopup.js'
 import { errorLine } from '../error-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
@@ -585,15 +584,12 @@ export function ExtensionsFlow({
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Box marginBottom={1}>
-        <HeaderBar
-          mode="convert"
-          chip={extensionsChip(palette)}
-          trail={trail}
-          width={width}
-          drift={busy !== undefined}
-        />
-      </Box>
+      <ScreenBar
+        chip={extensionsChip(palette)}
+        trail={trail}
+        width={width}
+        drift={busy !== undefined}
+      />
       {statuses && current ? (
         <Box flexDirection={split ? 'row' : 'column'} paddingLeft={HOME_MARGIN}>
           <Box flexDirection="column" width={LIST_WIDTH} flexShrink={0}>
@@ -629,7 +625,7 @@ export function ExtensionsFlow({
           <Text color={dim}>Reading the catalogue…</Text>
         </Box>
       )}
-      <HintBar width={width} pairs={k.main} foot={k.foot} />
+      <ScreenKeys width={width} pairs={k.main} foot={k.foot} />
     </Box>
   )
 }

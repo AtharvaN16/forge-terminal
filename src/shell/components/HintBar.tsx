@@ -30,6 +30,7 @@ export function HintBar({
   width,
   above,
   off,
+  hint,
 }: {
   pairs: Array<[string, string]>
   /**
@@ -43,6 +44,11 @@ export function HintBar({
   above?: ReactNode
   /** Keys among `pairs` that do nothing right now, greyed. */
   off?: readonly string[]
+  /**
+   * A row in the blank above the rule, as the / menu's "/ menu" hint sits.
+   * Something the shell just said takes the row while it shows.
+   */
+  hint?: ReactNode
 }) {
   const palette = useTheme()
   const notices = useNotices()
@@ -86,8 +92,8 @@ export function HintBar({
           <Notices notices={notices} width={width} />
         </Box>
       ) : null}
-      <Box width={width} marginTop={line ? 0 : 1} flexDirection="column" flexShrink={0}>
-        {line ? <NoticeLine notices={notices} width={width} /> : null}
+      <Box width={width} marginTop={line || hint ? 0 : 1} flexDirection="column" flexShrink={0}>
+        {line ? <NoticeLine notices={notices} width={width} /> : hint}
         <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
         <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} off={off} />
       </Box>

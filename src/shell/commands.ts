@@ -1,4 +1,4 @@
-import type { ShellMode } from './theme.js'
+import { MODE_ORDER, type ShellMode } from './theme.js'
 
 export interface Command {
   /** Without the leading slash. */
@@ -113,8 +113,20 @@ export function isCommandBuffer(text: string): boolean {
   return !rest.includes('/') && !rest.includes(' ')
 }
 
+/**
+ * The / menu's rows, top to bottom (decided 2026-10-17): the settings, then
+ * the modes in the tab row's order, read from MODE_ORDER so a new mode joins
+ * the menu where its tab is.
+ */
+function menuOrder(): Command[] {
+  const settings = COMMANDS.filter((c) => c.group === 'settings')
+  const rank = (c: Command) => (c.mode ? MODE_ORDER.indexOf(c.mode) : MODE_ORDER.length)
+  const modes = COMMANDS.filter((c) => c.group === 'modes').sort((a, b) => rank(a) - rank(b))
+  return [...settings, ...modes]
+}
+
 export interface CommandList {
-  /** The listed commands that match, modes before settings. */
+  /** The listed commands that match, in the menu's order: settings, then modes. */
   items: Command[]
   /** What is typed after the slash, as far as it matches: drawn bright on each row. */
   query: string
@@ -130,7 +142,7 @@ export interface CommandList {
 export function listCommands(fragment: string): CommandList {
   const typed = fragment.trim()
   const needle = typed.toLowerCase()
-  const listed = COMMANDS.filter((c) => c.group !== undefined)
+  const listed = menuOrder()
   const items = listed.filter((c) => c.name.startsWith(needle))
   if (items.length === 0 && needle !== '' && 'help'.startsWith(needle))
     return { items: listed, query: '', typed }

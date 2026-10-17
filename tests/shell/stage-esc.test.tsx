@@ -96,7 +96,10 @@ describe('esc at the prompt', () => {
     // nothing but the stage hook itself is in a position to consume esc.
     app.stdin.write('/Us')
     await settle()
-    expect((app.lastFrame() ?? '').toLowerCase()).toContain('no command matches')
+    // Matching no command, it is a path again (the / menu, 2026-10-17): the
+    // popup closes and "/Us" sits in home's own field.
+    expect(app.lastFrame() ?? '').toContain('/Us')
+    expect(app.lastFrame() ?? '').not.toContain('Settings ─')
 
     // Esc: nothing is mounted to consume this keystroke (no `<Select>`,
     // no `useInput` inside the "no command matches" message), so this is

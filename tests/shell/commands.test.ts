@@ -40,30 +40,30 @@ describe('/colour', () => {
 describe('listCommands', () => {
   const names = (fragment: string) => listCommands(fragment).items.map((c) => c.name)
 
-  it('lists the modes, then the settings, for a bare slash, with no /help row', () => {
+  it('lists the settings, then the modes in tab order, for a bare slash, with no /help row', () => {
     expect(names('')).toEqual([
-      'convert',
-      'compress',
-      'pdf',
-      'colour',
-      'edit',
       'theme',
       'extensions',
       'right-click',
       'update',
       'about',
+      'convert',
+      'compress',
+      'pdf',
+      'edit',
+      'colour',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
-      'modes',
-      'modes',
-      'modes',
-      'modes',
-      'modes',
       'settings',
       'settings',
       'settings',
       'settings',
       'settings',
+      'modes',
+      'modes',
+      'modes',
+      'modes',
+      'modes',
     ])
   })
 
@@ -76,16 +76,16 @@ describe('listCommands', () => {
   it('opens the whole list for /help, and for the start of it', () => {
     for (const typed of ['help', 'he', 'h']) {
       expect(names(typed)).toEqual([
-        'convert',
-        'compress',
-        'pdf',
-        'colour',
-        'edit',
         'theme',
         'extensions',
         'right-click',
         'update',
         'about',
+        'convert',
+        'compress',
+        'pdf',
+        'edit',
+        'colour',
       ])
       expect(listCommands(typed).query).toBe('')
     }
@@ -97,16 +97,16 @@ describe('listCommands', () => {
 
   it('names the mode each mode command switches to', () => {
     expect(listCommands('').items.map((c) => c.mode)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       'convert',
       'compress',
       'pdf',
-      'colour',
       'edit',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      'colour',
     ])
   })
 })

@@ -2,8 +2,6 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import { contrast } from '../../src/core/colour/contrast.js'
 import { listCommands } from '../../src/shell/commands.js'
-import { Home, homeKeys } from '../../src/shell/components/Home.js'
-import { Prompt } from '../../src/shell/components/Prompt.js'
 import {
   brandRows,
   commandRows,
@@ -14,7 +12,6 @@ import {
   surfaceRows,
   tabRows,
 } from '../../src/shell/home-art.js'
-import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import {
   DARK,
   dotGradient,
@@ -169,31 +166,19 @@ describe('the commands’ own colour: the brand’s gold (K1)', () => {
     expect([p.accent, p.tag, p.label]).toEqual([DARK.brand, DARK.brand, DARK.brand])
   })
 
-  it('draws the field’s › in gold on home while a command is typed', () => {
-    const list = listCommands('')
-    const { lastFrame } = render(
-      <ThemeProvider palette={modePalette(DARK, 'convert')}>
-        <Home
-          width={80}
-          height={24}
-          mode="convert"
-          typing
-          commands={{ ...list, selected: 0 }}
-          field={
-            <Prompt
-              value="/"
-              onChange={() => {}}
-              onSubmit={() => {}}
-              placeholder="or type a path"
-              isActive
-              variant="home"
-              width={80}
-            />
-          }
-          keys={homeKeys({ typing: true, completions: 0, menu: true })}
-        />
-      </ThemeProvider>,
+  it('draws the / menu’s field › in gold', async () => {
+    const { App } = await import('../../src/shell/App.js')
+    const { DEFAULT_PREFERENCES } = await import('../../src/config/preferences.js')
+    const { lastFrame, stdin } = render(
+      <App
+        initialWidth={80}
+        initialHeight={24}
+        prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark' }}
+      />,
     )
+    await new Promise((r) => setTimeout(r, 250))
+    stdin.write('/')
+    await new Promise((r) => setTimeout(r, 250))
     const marker = (lastFrame() ?? '')
       .split('\n')
       .flatMap((l) => ansiRow(l))

@@ -42,11 +42,15 @@ const command = async (app: ReturnType<typeof open>, name: string) => {
   await settle()
   app.stdin.write(ENTER)
 }
-/** The bars on screen: each is a chip word followed by hatching. */
+/**
+ * The bars on screen: each is a chip word followed by hatching. A setting
+ * opens inside the / menu's popup (2026-10-17), so its bar may start after
+ * the box's edge, and it is the menu's chip with the setting named after it.
+ */
 const bars = (app: ReturnType<typeof open>) =>
   frame(app)
     .split('\n')
-    .filter((l) => /^\s*\S*\s?[a-z]+\s?\S*╱{4,}/.test(l))
+    .filter((l) => /^\s*│?\s*\S*\s?[a-z]+\s?\S*╱{4,}/.test(l))
 
 describe('/about in the shell', () => {
   it('is listed under settings', async () => {
@@ -59,12 +63,12 @@ describe('/about in the shell', () => {
     app.unmount()
   })
 
-  it('opens under its own bar alone, signed by Atharva Nayak', async () => {
+  it('opens inside the menu, under one bar, signed by Atharva Nayak', async () => {
     const app = open()
     await command(app, 'about')
     await until(() => frame(app).includes('by Atharva Nayak'))
     expect(bars(app)).toHaveLength(1)
-    expect(bars(app)[0]).toMatch(/about/)
+    expect(bars(app)[0]).toMatch(/menu ╱+.*About/)
     app.unmount()
   })
 
@@ -90,19 +94,19 @@ describe('the settings’ bars', () => {
     await command(app, 'update')
     await until(() => frame(app).includes('↵ update'))
     expect(bars(app)).toHaveLength(1)
-    expect(bars(app)[0]).toMatch(/update/)
+    expect(bars(app)[0]).toMatch(/menu ╱+.*Update/)
     const lines = frame(app).split('\n')
     expect(lines.at(-1)).toMatch(/choose/)
     expect(lines).toHaveLength(24)
     app.unmount()
   })
 
-  it('/theme opens under a theme bar', async () => {
+  it('/theme opens under the menu’s bar, named Theme', async () => {
     const app = open()
     await command(app, 'theme')
     await until(() => frame(app).includes('Light'))
     expect(bars(app)).toHaveLength(1)
-    expect(bars(app)[0]).toMatch(/theme/)
+    expect(bars(app)[0]).toMatch(/menu ╱+.*Theme/)
     app.unmount()
   })
 })

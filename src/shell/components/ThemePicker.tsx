@@ -4,7 +4,7 @@ import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
 import { menuPalette, modeGradient, NEUTRAL } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
-import { HintBar } from './HintBar.js'
+import { ScreenKeys, useInMenu } from './MenuPopup.js'
 import { Select } from './Select.js'
 
 /**
@@ -30,11 +30,13 @@ export function ThemePicker({
   onCancel?: () => void
 }) {
   const current = useTheme()
+  // In the / menu's popup, which draws the bar (named "Theme") and the blank row under it.
+  const inMenu = useInMenu()
   return (
     <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : menuPalette(current)}>
       <Box flexDirection="column" flexGrow={1}>
-        {onCancel ? <ThemeBar width={width} /> : <Text bold>Select theme</Text>}
-        <Text> </Text>
+        {inMenu ? null : onCancel ? <ThemeBar width={width} /> : <Text bold>Select theme</Text>}
+        {inMenu ? null : <Text> </Text>}
         {/* Reopened, the rows' band runs exactly as far as the settings' bar above it: the margin in from each edge. */}
         <Box marginLeft={onCancel ? HOME_MARGIN : 0}>
           <Select
@@ -48,7 +50,7 @@ export function ThemePicker({
             {...(onCancel ? { onCancel } : {})}
           />
         </Box>
-        <HintBar
+        <ScreenKeys
           width={width}
           pairs={[
             ['↑↓', 'choose'],

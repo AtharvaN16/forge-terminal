@@ -2,7 +2,15 @@ import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Box, type DOMElement, type Key, Static, useApp, useStdout } from 'ink'
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   DEFAULT_PREFERENCES,
   expandTilde,
@@ -70,7 +78,8 @@ import { ErrorPanel } from './components/ErrorPanel.js'
 import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
-import { Home, homeKeys, Suggestions } from './components/Home.js'
+import { Home, homeKeys, Runs, Suggestions } from './components/Home.js'
+import { MenuPopup } from './components/MenuPopup.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -109,6 +118,7 @@ import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { WatchFlow } from './flows/watch.js'
 import { useFocusIn } from './focus.js'
 import { HOME_MARGIN, type Row } from './home-art.js'
+import { menuListRows } from './menu-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -132,6 +142,7 @@ import {
   colourProp,
   type HomeTab,
   MODE_KEYS,
+  menuPalette,
   modeColours,
   modeForKey,
   modePalette,
@@ -3976,6 +3987,49 @@ export function App({
   const homeNotices = onHome && !homeError ? liveNotices : NO_NOTICES
   const keyNotices = onHome ? NO_NOTICES : liveNotices
 
+  /**
+   * The / menu (decided 2026-10-17): a popup over home while what is typed is
+   * a command some row matches; once nothing matches it is a path again, in
+   * home's own field. A setting chosen from it opens inside it.
+   */
+  const menuOpen = commands !== undefined && commands.items.length > 0
+  /** The popup's inside: one column in from each side, the border and a column of padding. */
+  const menuInner = Math.max(20, width - 6)
+  /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
+  const menuBody = Math.max(6, height - 3 - 6)
+  const homeField = (w: number) => (
+    <Prompt
+      value={text}
+      onChange={setText}
+      onSubmit={submitPath}
+      placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
+      isActive
+      variant="home"
+      width={w}
+      rawOnSubmit
+      intercept={homeKey}
+      hint={pasteHint}
+    />
+  )
+  const inMenu = (title: string, name: string, node: ReactNode) => (
+    <MenuPopup
+      width={width}
+      height={height}
+      title={title}
+      body={node}
+      field={
+        <Text>
+          {'    '}
+          <Text color={colourProp(palette.brand)} bold>
+            {'›'}
+          </Text>
+          <Text color={colourProp(palette.dim)}>{` /${name}`}</Text>
+        </Text>
+      }
+      keys={{ pairs: [], foot: [] }}
+    />
+  )
+
   return (
     <ThemeProvider palette={palette}>
       <NoticesContext.Provider value={keyNotices}>
@@ -3995,11 +4049,20 @@ export function App({
               when that happens. */}
             <MouseRouter rootRef={rootRef} revision={history.length} />
             {step === 'theme' ? (
-              <ThemePicker
-                width={width}
-                onChoose={chooseTheme}
-                {...(theme ? { onCancel: () => backToCommands('theme') } : {})}
-              />
+              // Reopened from the menu it sits in the popup; on first run it stands alone.
+              theme ? (
+                inMenu(
+                  'Theme',
+                  'theme',
+                  <ThemePicker
+                    width={menuInner}
+                    onChoose={chooseTheme}
+                    onCancel={() => backToCommands('theme')}
+                  />,
+                )
+              ) : (
+                <ThemePicker width={width} onChoose={chooseTheme} />
+              )
             ) : null}
 
             {/* Where a history block would sit — above the flow it explains —
@@ -4579,46 +4642,62 @@ export function App({
               ? presets.screen
               : null}
 
-            {step === 'update' ? (
-              <UpdateFlow
-                width={width}
-                current={VERSION}
-                auto={livePrefs.updateCheck !== false}
-                updater={updater}
-                onClose={() => backToCommands('update')}
-                onChecked={(latest) => void keepRelease(latest)}
-                onRestart={() => {
-                  requestRestart()
-                  exit()
-                }}
-              />
-            ) : null}
+            {step === 'update'
+              ? inMenu(
+                  'Update',
+                  'update',
+                  <UpdateFlow
+                    width={menuInner}
+                    current={VERSION}
+                    auto={livePrefs.updateCheck !== false}
+                    updater={updater}
+                    onClose={() => backToCommands('update')}
+                    onChecked={(latest) => void keepRelease(latest)}
+                    onRestart={() => {
+                      requestRestart()
+                      exit()
+                    }}
+                  />,
+                )
+              : null}
 
-            {step === 'right-click' ? (
-              <RightClickFlow
-                width={width}
-                system={rightClick}
-                onClose={() => backToCommands('right-click')}
-              />
-            ) : null}
+            {step === 'right-click'
+              ? inMenu(
+                  'Right-click',
+                  'right-click',
+                  <RightClickFlow
+                    width={menuInner}
+                    system={rightClick}
+                    onClose={() => backToCommands('right-click')}
+                  />,
+                )
+              : null}
 
-            {step === 'about' ? (
-              <AboutFlow
-                width={width}
-                height={height}
-                version={VERSION}
-                system={about}
-                onClose={() => backToCommands('about')}
-              />
-            ) : null}
+            {step === 'about'
+              ? inMenu(
+                  'About',
+                  'about',
+                  <AboutFlow
+                    width={menuInner}
+                    height={menuBody}
+                    version={VERSION}
+                    system={about}
+                    onClose={() => backToCommands('about')}
+                  />,
+                )
+              : null}
 
-            {step === 'extensions' ? (
-              <ExtensionsFlow
-                width={width}
-                onError={(error) => hold({ kind: 'error', id: nextId(), error })}
-                onClose={() => backToCommands('extensions')}
-              />
-            ) : null}
+            {step === 'extensions'
+              ? inMenu(
+                  'Extensions',
+                  'extensions',
+                  <ExtensionsFlow
+                    width={menuInner}
+                    onError={(error) => hold({ kind: 'error', id: nextId(), error })}
+                    onClose={() => backToCommands('extensions')}
+                  />,
+                )
+              : null}
 
             {step === 'colour' ? (
               <ColourFlow
@@ -4715,7 +4794,35 @@ export function App({
               )
             ) : null}
 
-            {onHome ? (
+            {onHome && menuOpen && commands ? (
+              <MenuPopup
+                width={width}
+                height={height}
+                body={
+                  <Box flexDirection="column">
+                    {menuListRows({ palette, width: menuInner, rows: menuBody, ...commands }).map(
+                      (row, i) =>
+                        // biome-ignore lint/suspicious/noArrayIndexKey: the list's rows are positional
+                        row.length === 0 ? <Text key={i}> </Text> : <Runs key={i} row={row} />,
+                    )}
+                  </Box>
+                }
+                field={
+                  <ThemeProvider palette={{ ...menuPalette(palette), shelf: '' }}>
+                    {homeField(menuInner)}
+                  </ThemeProvider>
+                }
+                keys={{
+                  pairs: [
+                    ['↑↓', 'choose'],
+                    ['↵', 'open'],
+                  ],
+                  foot: [['esc', 'close']],
+                }}
+              />
+            ) : null}
+
+            {onHome && !menuOpen ? (
               <Home
                 width={width}
                 height={height}
@@ -4739,21 +4846,7 @@ export function App({
                 noteRows={
                   homeNotices.length > 0 ? noticeRows(homeNotices, width, palette) : undefined
                 }
-                field={
-                  <Prompt
-                    value={text}
-                    onChange={setText}
-                    onSubmit={submitPath}
-                    placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
-                    isActive
-                    variant="home"
-                    width={width}
-                    rawOnSubmit
-                    intercept={homeKey}
-                    hint={pasteHint}
-                  />
-                }
-                commands={commands}
+                field={homeField(width)}
                 list={
                   completions.length > 0
                     ? (rows) => (
@@ -4770,7 +4863,6 @@ export function App({
                 keys={homeKeys({
                   typing: text !== '',
                   completions: completions.length,
-                  menu: commands !== undefined,
                   colour: mode === 'colour',
                   staged: staged
                     ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }

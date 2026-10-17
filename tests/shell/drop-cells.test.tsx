@@ -69,7 +69,6 @@ function screen(staged: StagedView, under?: UnderField, verb: string | null = 'c
         keys={homeKeys({
           typing: false,
           completions: 0,
-          menu: false,
           staged: { count: staged.files.length, verb },
         })}
       />
