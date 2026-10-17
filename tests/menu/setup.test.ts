@@ -88,6 +88,20 @@ describe('ensureMenu', () => {
     expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).toContain(e.forge)
   })
 
+  it('adds nothing, and says nothing, while it is switched off', async () => {
+    const e = env()
+    expect(await ensureMenu(e, { global: true, enabled: false })).toBeUndefined()
+    expect(existsSync(services(e))).toBe(false)
+  })
+
+  it('takes the menu out at the next start if it was switched off some other way', async () => {
+    const e = env()
+    await ensureMenu(e, { global: true })
+    await ensureMenu(e, { global: true, enabled: false })
+    expect(existsSync(join(services(e), 'Open Forge.workflow'))).toBe(false)
+    expect(readState(e)).toBeUndefined()
+  })
+
   it('does nothing where there is no menu to add to', async () => {
     expect(await ensureMenu(env({ platform: 'linux' }), { global: true })).toBeUndefined()
   })

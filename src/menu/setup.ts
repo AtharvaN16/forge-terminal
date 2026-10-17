@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { installMenu, type MenuEnv, readState, stateMatches } from './install.js'
+import { installMenu, type MenuEnv, readState, removeMenu, stateMatches } from './install.js'
 
 /**
  * Setting the menu up as the shell starts. Decided: the menu is the same for
@@ -12,9 +12,20 @@ import { installMenu, type MenuEnv, readState, stateMatches } from './install.js
  * with `npm run dev` leaves the menu alone, so a Finder item never ends up
  * pointing at someone's working copy (`forge menu install` does it by hand).
  */
-export async function ensureMenu(e: MenuEnv, o: { global: boolean }): Promise<string | undefined> {
+export async function ensureMenu(
+  e: MenuEnv,
+  o: {
+    global: boolean
+    /** /right-click's switch; absent is on. Off keeps the menu out, and takes it out if it is there. */
+    enabled?: boolean
+  },
+): Promise<string | undefined> {
   if (!o.global || (e.platform !== 'darwin' && e.platform !== 'win32')) return undefined
   const state = readState(e)
+  if (o.enabled === false) {
+    if (state !== undefined) await removeMenu(e)
+    return undefined
+  }
   if (state !== undefined && stateMatches(state, e)) return undefined
   await installMenu(e)
   if (state !== undefined) return undefined

@@ -104,6 +104,7 @@ import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { usePresetsOnDone } from './flows/presets.js'
+import { RightClickFlow, type RightClickSystem, realRightClick } from './flows/right-click.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { WatchFlow } from './flows/watch.js'
 import { useFocusIn } from './focus.js'
@@ -162,6 +163,7 @@ export type Step =
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
   | 'update'
+  | 'right-click'
   | 'about'
   /** Edit's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'edit'
@@ -643,7 +645,12 @@ type ClipDone =
 const PASTE_HINT = { key: '⌘V', words: 'to paste from clipboard' } as const
 
 /** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
-const SETTINGS_STEPS: ReadonlySet<string> = new Set(['extensions', 'update', 'about'])
+const SETTINGS_STEPS: ReadonlySet<string> = new Set([
+  'extensions',
+  'right-click',
+  'update',
+  'about',
+])
 
 export function App({
   initialWidth,
@@ -653,6 +660,7 @@ export function App({
   tools = realTools,
   updater = realUpdater,
   about = realAbout,
+  rightClick = realRightClick,
   latestRelease,
   pasteboard = null,
   clipRoot,
@@ -669,6 +677,8 @@ export function App({
   updater?: Updater
   /** What /about opens links and reads credits with; tests pass a fake. */
   about?: AboutSystem
+  /** What /right-click switches the menu with; tests pass a fake. */
+  rightClick?: RightClickSystem
   /**
    * A newer Forge for home's band, found in the background at start-up.
    * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
@@ -2179,6 +2189,11 @@ export function App({
 
       if (command.name === 'update') {
         setStep('update')
+        return
+      }
+
+      if (command.name === 'right-click') {
+        setStep('right-click')
         return
       }
 
@@ -4576,6 +4591,14 @@ export function App({
                   requestRestart()
                   exit()
                 }}
+              />
+            ) : null}
+
+            {step === 'right-click' ? (
+              <RightClickFlow
+                width={width}
+                system={rightClick}
+                onClose={() => backToCommands('right-click')}
               />
             ) : null}
 

@@ -70,6 +70,12 @@ export const COMMANDS: Command[] = [
     group: 'settings',
   },
   {
+    name: 'right-click',
+    description: 'Forge in the right-click menu',
+    needsSource: false,
+    group: 'settings',
+  },
+  {
     name: 'update',
     description: 'check for a new version',
     needsSource: false,

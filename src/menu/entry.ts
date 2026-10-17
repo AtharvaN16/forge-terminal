@@ -48,7 +48,31 @@ export async function menuAtStart(version: string): Promise<string | undefined> 
   if (process.env.FORGE_NO_MENU) return undefined
   const e = await realMenuEnv(version)
   rememberTerminal(e, process.env)
-  return ensureMenu(e, { global: installedGlobally(e.forge, e.platform) })
+  const { loadPreferences } = await import('../config/preferences.js')
+  const { prefs } = await loadPreferences()
+  return ensureMenu(e, {
+    global: installedGlobally(e.forge, e.platform),
+    enabled: prefs.rightClickMenu !== false,
+  })
+}
+
+/** /right-click: whether Forge is in the right-click menu now. */
+export async function menuIsOn(): Promise<boolean> {
+  const { isInstalled } = await import('./install.js')
+  return isInstalled(await realMenuEnv(''))
+}
+
+/**
+ * /right-click's switch: puts the menu in or takes it out now, and keeps the
+ * choice in the settings so every start honours it.
+ */
+export async function switchMenu(on: boolean): Promise<void> {
+  const { VERSION } = await import('../shell/theme.js')
+  const { savePreferences } = await import('../config/preferences.js')
+  const e = await realMenuEnv(VERSION)
+  if (on) await installMenu(e)
+  else await removeMenu(e)
+  await savePreferences({ rightClickMenu: on })
 }
 
 /** After an extension is added or removed: Sharpen comes and goes with Boost. Never throws. */
@@ -131,5 +155,5 @@ export async function runUninstall(version: string, out: (line: string) => void)
       child.on('error', (err) => resolve({ code: null, output: `${output}\n${err.message}` }))
       child.on('close', (code) => resolve({ code, output }))
     })
-  return uninstallForge(e, { npm, out })
+  return uninstallForge(e, { forgeDir: join(configBase(), 'forge'), npm, out })
 }

@@ -49,6 +49,7 @@ describe('listCommands', () => {
       'edit',
       'theme',
       'extensions',
+      'right-click',
       'update',
       'about',
     ])
@@ -58,6 +59,7 @@ describe('listCommands', () => {
       'modes',
       'modes',
       'modes',
+      'settings',
       'settings',
       'settings',
       'settings',
@@ -81,6 +83,7 @@ describe('listCommands', () => {
         'edit',
         'theme',
         'extensions',
+        'right-click',
         'update',
         'about',
       ])
@@ -99,6 +102,7 @@ describe('listCommands', () => {
       'pdf',
       'colour',
       'edit',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -141,6 +145,7 @@ describe('the registry', () => {
       'extensions',
       'help',
       'pdf',
+      'right-click',
       'theme',
       'update',
     ])
