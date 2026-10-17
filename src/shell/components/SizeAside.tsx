@@ -10,6 +10,8 @@ import { Shimmer } from './Shimmer.js'
  * columns. With less room it would wrap, so it is not said at all.
  */
 const NEEDS = 25
+/** "1023.9 KB  cannot compress more", for `/compress`. */
+const NEEDS_REFUSAL = 31
 
 /**
  * What the highlighted format says about itself: its measured size and how
@@ -20,13 +22,19 @@ export function SizeAside({
   size,
   sourceBytes,
   budget,
+  noBigger = false,
 }: {
   size: MeasuredSize
   sourceBytes: number
   budget: number
+  /**
+   * `/compress`, which never writes a file that is not smaller (E3): such a
+   * size says "cannot compress more" instead of how much larger it is.
+   */
+  noBigger?: boolean
 }) {
   const palette = useTheme()
-  if (size.status === 'idle' || budget < NEEDS) return null
+  if (size.status === 'idle' || budget < (noBigger ? NEEDS_REFUSAL : NEEDS)) return null
   if (size.status === 'measuring') {
     return <Shimmer text="measuring…" base={palette.dim} highlight={palette.fg} />
   }
@@ -34,11 +42,13 @@ export function SizeAside({
   const ratio = sourceBytes > 0 ? size.bytes / sourceBytes : 1
   const pct = Math.round(Math.abs(1 - ratio) * 100)
   const [phrase, colour] =
-    pct === 0
-      ? ['about the same', palette.dim]
-      : ratio < 1
-        ? [`${pct}% smaller`, palette.ok]
-        : [`${pct}% larger`, palette.larger]
+    noBigger && size.bytes >= sourceBytes
+      ? ['cannot compress more', palette.larger]
+      : pct === 0
+        ? ['about the same', palette.dim]
+        : ratio < 1
+          ? [`${pct}% smaller`, palette.ok]
+          : [`${pct}% larger`, palette.larger]
   return (
     <Text>
       <Text bold color={colourProp(palette.fg)}>

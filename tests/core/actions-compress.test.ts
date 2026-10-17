@@ -26,11 +26,12 @@ describe('compress action', () => {
     expect(compressAction.appliesTo([source({ format: 'webp' })])).toBe(true)
   })
 
-  it('does not apply to a lossless source — there is no quality to trade', () => {
-    // Compressing a PNG by quality is not a thing the encoder can do;
-    // formats.ts declares it lossless and image.ts encodes it losslessly on
-    // purpose. Making a PNG smaller means changing its format.
-    expect(compressAction.appliesTo([source({ format: 'png' })])).toBe(false)
+  it('applies to a PNG or GIF, which /compress may cut to a palette', () => {
+    expect(compressAction.appliesTo([source({ format: 'png' })])).toBe(true)
+    expect(compressAction.appliesTo([source({ format: 'gif', frames: 12 })])).toBe(true)
+  })
+
+  it('does not apply to a TIFF — there is no quality to trade', () => {
     expect(compressAction.appliesTo([source({ format: 'tiff' })])).toBe(false)
   })
 
@@ -47,6 +48,52 @@ describe('compress action', () => {
     expect(s.default).toBe(DEFAULT_PREFERENCES.quality)
     expect(s.min).toBe(1)
     expect(s.max).toBe(100)
+  })
+
+  it('gives a PNG three points, 30 · 65 · 100, rather than a range', () => {
+    const s = compressAction
+      .options([source({ format: 'png' })], { mode: 'quality' }, DEFAULT_PREFERENCES)
+      .find((o) => o.id === 'quality')
+    if (s?.kind !== 'slider') throw new Error('expected a slider')
+    expect([s.min, s.max, s.step]).toEqual([30, 100, 35])
+    expect(s.points).toBe(true)
+  })
+
+  it('opens a PNG on the point at or above the usual quality, never below it', () => {
+    const at = (quality: number) => {
+      const s = compressAction
+        .options(
+          [source({ format: 'gif' })],
+          { mode: 'quality' },
+          { ...DEFAULT_PREFERENCES, quality },
+        )
+        .find((o) => o.id === 'quality')
+      return s?.kind === 'slider' ? s.default : undefined
+    }
+    expect(at(80)).toBe(100)
+    expect(at(65)).toBe(65)
+    expect(at(50)).toBe(65)
+    expect(at(10)).toBe(30)
+  })
+
+  it('keeps the range for a JPEG', () => {
+    const s = spec({ mode: 'quality' }, 'quality')
+    if (s?.kind !== 'slider') throw new Error('expected a slider')
+    expect(s.points).toBeUndefined()
+  })
+
+  it('promises smaller on every job, in flat colours unless dithering is asked for', () => {
+    const plan = (values: Record<string, unknown>) => {
+      const [job] = compressAction.plan([source({ format: 'png', path: '/tmp/a.png' })], {
+        mode: 'quality',
+        quality: 65,
+        destination: '/tmp/out',
+        ...values,
+      })
+      return job?.op === 'convert' ? job.options.compress : undefined
+    }
+    expect(plan({})).toEqual({ dither: false })
+    expect(plan({ dither: true })).toEqual({ dither: true })
   })
 
   it('offers a text field once target size is chosen', () => {

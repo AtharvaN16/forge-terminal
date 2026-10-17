@@ -1,11 +1,6 @@
 import { dirname, join } from 'node:path'
 import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
-import {
-  clipboardUnavailable,
-  clipNotSmaller,
-  noClipboardImage,
-  nothingToUndo,
-} from '../core/errors.js'
+import { clipboardUnavailable, noClipboardImage, nothingToUndo } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import { runJson } from '../core/report-data.js'
 import type { FormatId } from '../core/types.js'
@@ -115,12 +110,9 @@ export async function runClip(
   const result = report.results[0]
   if (!result || report.failures.length > 0) return { report, status: 'failed' }
 
+  // Compressing never comes out larger: the engine refuses that before
+  // writing (`cannot-compress-more`), so it arrives above as a failure.
   const output = result.job.outputs[0] as string
-  // Compressing is a promise of smaller. A conversion is asked for by format,
-  // and a larger file can be the right answer there.
-  if (run.kind === 'compress' && result.outputBytes >= source.bytes) {
-    throw clipNotSmaller(source.bytes, result.outputBytes)
-  }
   const base = { report, output, source: { format: source.format, bytes: source.bytes }, target }
   if ((await putBack(pb, taken, output, target)) === 'changed') {
     return { ...base, status: 'changed', saved: await saveCopy(output, await defaultFolder(deps)) }

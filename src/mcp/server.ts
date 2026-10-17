@@ -111,7 +111,7 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Compress files',
       description:
-        'Make files smaller without changing their format: by quality (1-100) or to fit a size such as "500kb". Writes <name>-small.<ext> beside the source unless output is given. A lossless format such as PNG cannot be compressed; convert it instead.',
+        'Make files smaller without changing their format: by quality (1-100) or to fit a size such as "500kb". Writes <name>-small.<ext> beside the source unless output is given. PNG and GIF are cut to fewer colours. A result no smaller than the source is never written (error code cannot-compress-more).',
       inputSchema: CompressInput,
       outputSchema: RunOutput,
       annotations: WRITES,

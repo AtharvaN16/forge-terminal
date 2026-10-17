@@ -1,5 +1,5 @@
 import { Box, type DOMElement, measureElement } from 'ink'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
@@ -28,6 +28,8 @@ export function HintBar({
   pairs,
   foot,
   width,
+  above,
+  off,
 }: {
   pairs: Array<[string, string]>
   /**
@@ -37,6 +39,10 @@ export function HintBar({
    */
   foot?: Array<[string, string]> | undefined
   width: number
+  /** One row a blank row above the rule: a note about a key on the screen (Quality's d, N4). */
+  above?: ReactNode
+  /** Keys among `pairs` that do nothing right now, greyed. */
+  off?: readonly string[]
 }) {
   const palette = useTheme()
   const notices = useNotices()
@@ -70,6 +76,11 @@ export function HintBar({
   return (
     <>
       <Box ref={spacer} flexGrow={1} />
+      {above ? (
+        <Box marginTop={1} flexShrink={0}>
+          {above}
+        </Box>
+      ) : null}
       {full ? (
         <Box marginTop={1} flexShrink={0}>
           <Notices notices={notices} width={width} />
@@ -78,7 +89,7 @@ export function HintBar({
       <Box width={width} marginTop={line ? 0 : 1} flexDirection="column" flexShrink={0}>
         {line ? <NoticeLine notices={notices} width={width} /> : null}
         <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
-        <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} />
+        <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} off={off} />
       </Box>
     </>
   )

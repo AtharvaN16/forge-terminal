@@ -1979,23 +1979,58 @@ export function App({
     ) {
       return undefined
     }
-    return async (quality) => {
+    return async (key) => {
+      const [quality, dither] = key.split('|')
       const [planned] = action.plan([source], {
         ...values,
         quality: Number(quality),
+        dither: dither === 'dither',
         destination: expandTilde(livePrefs.defaultOutput),
       })
       if (planned?.op !== 'convert') throw new Error('nothing to measure')
       return (await encodeToBuffer(source, planned.target, planned.options)).length
     }
   }, [source, stage.sources.length, band, action, values, livePrefs.defaultOutput])
+  const ditherOn = values.dither === true
+  const qualityKey = (quality: number, dither: boolean) =>
+    `${quality}|${dither ? 'dither' : 'flat'}`
+  const qualityReset = source
+    ? `${source.path}|${source.bytes}|${mode}|${String(values.target)}|${String(values.pages)}|${String(values.dpi)}`
+    : undefined
   const qualitySize = useMeasuredSize({
-    highlighted: step === 'quality' ? String(qualityNow) : undefined,
+    highlighted: step === 'quality' ? qualityKey(qualityNow, ditherOn) : undefined,
     measure: measureQuality,
-    resetKey: source
-      ? `${source.path}|${source.bytes}|${mode}|${String(values.target)}|${String(values.pages)}|${String(values.dpi)}`
-      : undefined,
+    resetKey: qualityReset,
   })
+
+  /**
+   * Dithering (N4), on a PNG's or GIF's points only: the same point encoded
+   * the other way, alongside, so the note can say whether d would change
+   * anything. Forge does not judge the look; it only knows whether the file
+   * would differ.
+   */
+  const pointsSpec = specFor('quality')
+  const points = pointsSpec?.kind === 'slider' && pointsSpec.points === true
+  const otherSize = useMeasuredSize({
+    highlighted: step === 'quality' && points ? qualityKey(qualityNow, !ditherOn) : undefined,
+    measure: measureQuality,
+    resetKey: qualityReset,
+  })
+  const offerDither = (() => {
+    if (!points || pointsSpec?.kind !== 'slider') return false
+    // Switched on, it stays said, so it can be switched off again.
+    if (ditherOn) return true
+    const top = qualityNow >= pointsSpec.max
+    // Not measured (a large image, a narrow window): below the top point
+    // it is worth offering; at the top it most often changes nothing.
+    if (measureQuality === undefined) return !top
+    if (qualitySize.status !== 'done' || otherSize.status !== 'done') return false
+    const [a, b] = [qualitySize.bytes, otherSize.bytes]
+    // Identical: d would change nothing at all (a logo of a few colours).
+    if (a === b) return false
+    // At the top point only where it really changes the file (a gradient).
+    return !top || Math.abs(a - b) / Math.min(a, b) >= 0.01
+  })()
 
   /**
    * `probe()` is genuinely I/O-bound (`stat`, `access`, then sharp reading
@@ -4087,6 +4122,16 @@ export function App({
                   size={qualitySize}
                   sourceBytes={source.bytes}
                   width={width}
+                  points={qualitySpec.points === true}
+                  noBigger={mode === 'compress'}
+                  dither={
+                    offerDither
+                      ? {
+                          on: ditherOn,
+                          onToggle: () => setValues((v) => ({ ...v, dither: v.dither !== true })),
+                        }
+                      : undefined
+                  }
                 />
               </Box>
             ) : null}

@@ -22,6 +22,15 @@ export async function makePng(dir: string, name: string): Promise<string> {
   return path
 }
 
+/** A lossless TIFF: the one image /compress has nothing to offer for. */
+export async function makeTiff(dir: string, name: string): Promise<string> {
+  const path = join(dir, name)
+  await sharp({ create: { width: 40, height: 20, channels: 3, background: '#c86432' } })
+    .tiff({ compression: 'deflate' })
+    .toFile(path)
+  return path
+}
+
 export async function makeTransparentPng(dir: string, name: string): Promise<string> {
   const path = join(dir, name)
   await sharp({

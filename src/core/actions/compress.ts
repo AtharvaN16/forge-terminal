@@ -22,6 +22,21 @@ const soleDocument = (sources: SourceInfo[]): DocumentInfo | undefined =>
  */
 const SUFFIX = '-small'
 
+/**
+ * The three points a PNG or GIF slider stops at. A palette's size moves in
+ * steps, not smoothly — measured flat or even backwards between neighbouring
+ * qualities — so a 1–100 range would mostly offer differences that are not
+ * there. 100 still saves 58–76% on a screenshot; 30 is where it may start to
+ * look different. `--quality` still takes any number.
+ */
+const POINTS = { min: 30, max: 100, step: 35 } as const
+
+/** The point at or above `quality`: a PNG never opens lossier than the user's usual quality. */
+const pointFor = (quality: number): number => {
+  const steps = Math.ceil((quality - POINTS.min) / POINTS.step)
+  return Math.min(POINTS.max, POINTS.min + Math.max(0, steps) * POINTS.step)
+}
+
 export const compressAction: Action = {
   id: 'compress',
   label: 'Compress',
@@ -29,17 +44,16 @@ export const compressAction: Action = {
   hint: 'make it smaller',
 
   /**
-   * Only formats with a quality dial.
-   *
-   * Compressing a PNG by quality is not something the encoder can do —
-   * `formats.ts` declares PNG lossless and `engines/image.ts` encodes it
-   * losslessly on purpose — so offering it here would promise something that
-   * cannot happen. Making a PNG smaller means changing its format, which is
-   * what `/convert` is for.
+   * Formats with a quality dial, and the two this gives one: a PNG or GIF can
+   * be cut to fewer colours (`quantisable`). `/convert` keeps both lossless;
+   * only here may they lose something.
    */
   appliesTo: (sources) => {
     const image = soleImage(sources)
-    if (image !== undefined) return FORMATS[image.format].lossy
+    if (image !== undefined) {
+      const spec = FORMATS[image.format]
+      return spec.lossy || spec.quantisable === true
+    }
 
     /**
      * A PDF qualifies when it holds at least one image this can re-encode.
@@ -78,15 +92,27 @@ export const compressAction: Action = {
     ]
 
     if (values.mode === 'quality') {
-      specs.push({
-        kind: 'slider',
-        id: 'quality',
-        label: 'Quality',
-        min: 1,
-        max: 100,
-        step: 5,
-        default: prefs.quality,
-      })
+      const points = source.kind === 'image' && FORMATS[source.format].quantisable === true
+      specs.push(
+        points
+          ? {
+              kind: 'slider',
+              id: 'quality',
+              label: 'Quality',
+              ...POINTS,
+              default: pointFor(prefs.quality),
+              points: true,
+            }
+          : {
+              kind: 'slider',
+              id: 'quality',
+              label: 'Quality',
+              min: 1,
+              max: 100,
+              step: 5,
+              default: prefs.quality,
+            },
+      )
     } else if (values.mode === 'size') {
       specs.push({
         kind: 'text',
@@ -136,6 +162,8 @@ export const compressAction: Action = {
           ...(mode === 'quality' && typeof values.quality === 'number'
             ? { quality: values.quality }
             : {}),
+          // Smaller or nothing, for every format; dithering only when asked.
+          compress: { dither: values.dither === true },
         },
       },
     ]

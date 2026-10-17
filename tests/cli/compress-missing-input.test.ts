@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
-import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { makeNoiseImage, makeTempDir } from '../helpers/fixtures.js'
 
 const run = (argv: string[]) => execute(parseArgs(argv))
 
@@ -28,7 +28,7 @@ describe('compress with a missing input', () => {
 
   it('still compresses the files that do exist, and reports the one that does not', async () => {
     const dir = await makeTempDir()
-    const real = await makeJpeg(dir, 'noisy.jpg')
+    const real = await makeNoiseImage(dir, 'noisy.jpg', 64, 'jpeg')
 
     const out = await run([real, join(dir, 'ghost.jpg'), '--quality', '40'])
 

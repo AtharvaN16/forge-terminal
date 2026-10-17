@@ -16,9 +16,12 @@ const WORTH_SAYING = 0.25
  * The naming here is a judgement about formats, not a capability list: the
  * candidate is checked against `targetIdsFor` before being returned, so a
  * format the engine cannot actually write is never proposed (invariant 2).
+ *
+ * A GIF gets nothing either: compressing one keeps it a GIF, and offering
+ * WebP for it was considered and dropped (2026-10-16).
  */
 export function candidateFor(source: SourceInfo): FormatId | undefined {
-  if (source.format === 'avif') return undefined
+  if (source.format === 'avif' || source.format === 'gif') return undefined
   const wanted: FormatId = source.format === 'webp' ? 'avif' : 'webp'
   return targetIdsFor(source).includes(wanted) ? wanted : undefined
 }

@@ -52,7 +52,7 @@ export type ErrorCode =
   | 'no-clipboard-image'
   | 'clipboard-unavailable'
   | 'nothing-to-undo'
-  | 'clip-not-smaller'
+  | 'cannot-compress-more'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -892,13 +892,38 @@ export function nothingToUndo(): ForgeError {
   })
 }
 
-/** A compression of a copied image that came out larger: it is not put back. */
-export function clipNotSmaller(before: number, after: number): ForgeError {
+/**
+ * `/compress` promises a smaller file. One another tool already squeezed, or
+ * a JPEG asked for more quality than it was saved at, comes out bigger, so
+ * nothing is written. `searched` is the target-size search finding nothing
+ * smaller at any quality: there is no lower quality left to suggest.
+ */
+export function cannotCompressMore(
+  path: string,
+  before: number,
+  after: number,
+  searched = false,
+): ForgeError {
+  const name = displayName(path)
+  if (searched) {
+    return new ForgeError({
+      code: 'cannot-compress-more',
+      title: 'Cannot compress more',
+      detail: `${name} is no smaller even at the lowest quality, so nothing was written.`,
+      short: 'nothing written',
+    })
+  }
+  const outcome =
+    after > before
+      ? `would grow from ${formatBytes(before)} to ${formatBytes(after)}`
+      : `would stay at ${formatBytes(before)}`
   return new ForgeError({
-    code: 'clip-not-smaller',
-    title: 'Already smaller',
-    detail: `The copied image is ${formatBytes(before)}; at this quality it would be ${formatBytes(after)}. The clipboard is unchanged.`,
-    hint: 'Try a lower --quality, or --max-size.',
+    code: 'cannot-compress-more',
+    title: 'Cannot compress more',
+    detail: `${name} ${outcome}, so nothing was written.`,
+    short: 'nothing written',
+    hint: 'Try a lower --quality.',
+    shellHint: 'Try a lower quality.',
   })
 }
 

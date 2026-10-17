@@ -19,6 +19,7 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     animatable: false,
     lossy: false,
     hint: 'lossless',
+    quantisable: true,
   },
   webp: {
     id: 'webp',
@@ -57,6 +58,7 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     animatable: true,
     lossy: false,
     hint: 'animation',
+    quantisable: true,
   },
   tiff: {
     id: 'tiff',

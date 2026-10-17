@@ -175,6 +175,52 @@ describe('runPlan', () => {
   })
 })
 
+describe('runPlan with /compress', () => {
+  const compressJob = (): Job => {
+    const job = jobFor()
+    if (job.op === 'convert') job.options.compress = { dither: false }
+    return job
+  }
+
+  it('aims under the file itself when the size asked for is bigger than it', async () => {
+    // A 5 MB scan asked to fit 8 MB: the highest quality that fits 8 MB is
+    // 6 MB, which is no compression at all.
+    const engine = stubEngine([{}], ({ quality }) => (quality ?? 100) * 60_000)
+    await runPlan([compressJob()], {
+      force: true,
+      targetBytes: 8_000_000,
+      engineFor: () => engine,
+    })
+    const ran = (engine.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Extract<
+      Job,
+      { op: 'convert' }
+    >
+    expect((ran.options.quality ?? 100) * 60_000).toBeLessThan(5_000_000)
+  })
+
+  it('writes nothing when no quality is smaller than the file, and offers nothing to accept', async () => {
+    const engine = stubEngine([{}], () => 5_200_000)
+    const outcome = await runPlan([compressJob()], {
+      force: true,
+      targetBytes: 8_000_000,
+      engineFor: () => engine,
+    })
+    expect(engine.run).not.toHaveBeenCalled()
+    expect(outcome.unreachable).toHaveLength(0)
+    expect(outcome.failures[0]?.error.code).toBe('cannot-compress-more')
+  })
+
+  it('still reports a size it cannot reach when the size was the limit', async () => {
+    const engine = stubEngine([{}], () => 3_000_000)
+    const outcome = await runPlan([compressJob()], {
+      force: true,
+      targetBytes: 1_000_000,
+      engineFor: () => engine,
+    })
+    expect(outcome.unreachable[0]?.error.code).toBe('target-unreachable')
+  })
+})
+
 /**
  * These rules used to be asserted against `buildPlan`, which enforced them for
  * conversions while page operations and the compress path each had to remember

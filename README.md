@@ -226,9 +226,16 @@ forge *.jpg --max-size 1mb          # a whole folder
 has. `--quality` and `--max-size` are mutually exclusive — they ask the same
 question two ways, and Forge will not guess which wins.
 
-Compression only applies to formats with a quality dial. A PNG is lossless, so
-there is nothing to trade away; `/convert` it to WebP instead, and Forge says
-so if you try.
+A PNG or GIF is compressed by cutting it to fewer colours, which is what
+makes it lossy here: `/convert` keeps both lossless. The slider stops at three
+points, 30 · 65 · 100, since a palette's size moves in steps; `--quality` takes
+any number. Colours stay flat unless you press `d` for dithering, which looks
+smoother and costs bytes. A GIF keeps every frame and its timing.
+
+Compressing never writes a bigger file. A file another tool already squeezed,
+or a JPEG asked for more quality than it was saved at, would grow, so Forge
+says "Cannot compress more" and writes nothing. A TIFF is lossless with no
+palette to cut; `/convert` it to WebP instead.
 
 After compressing, if another format would be meaningfully smaller, Forge says
 so — and it encodes a candidate to find out rather than guessing:
@@ -969,8 +976,8 @@ always true for that file. `format` is read from the file's content, not its
 name. `actions` lists `convert` plus what else applies: `compress`,
 `split`, `extract`, `delete`, `rotate`; `merge` appears only when several
 PDFs are probed together. `compress` appears when quality or size can be
-reduced: lossy images, and PDFs that contain compressible images (a PNG has
-only `convert`). Run it as `--quality N` or `--max-size S` without `--to`;
+reduced: lossy images, PNG and GIF, and PDFs that contain compressible images
+(a TIFF has only `convert`). Run it as `--quality N` or `--max-size S` without `--to`;
 its `--json` result reports `op: "convert"`. The encrypted PDF above omits
 `compress` and `merge`; a plain PDF with images would also list `compress`.
 A probe has `width`/`height` for an image,

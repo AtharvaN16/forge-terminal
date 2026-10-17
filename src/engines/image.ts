@@ -8,6 +8,7 @@ import { type Aspect, aspectLabel, type Box, largestBox, type Thumb } from '../c
 import {
   animatedCrop,
   animatedTrim,
+  cannotCompressMore,
   classifyWriteError,
   conversionFailed,
   corruptFormatSource,
@@ -188,8 +189,15 @@ async function probe(path: string): Promise<SourceInfo> {
  * third format `WRITES` ever gained, which is exactly the hardcoded
  * output-format decision invariant 2 exists to prevent.
  */
-export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sharp {
+export function encode(
+  pipeline: Sharp,
+  target: FormatId,
+  quality?: number,
+  /** `/compress`'s own settings: a quantisable target is cut to a palette. */
+  compress?: ConvertOptions['compress'],
+): Sharp {
   const q = quality ?? FORMATS[target].defaultQuality
+  if (compress && FORMATS[target].quantisable) return quantise(pipeline, target, quality, compress)
   switch (target) {
     case 'jpeg':
       return pipeline.jpeg({ quality: q, mozjpeg: true })
@@ -220,6 +228,45 @@ export function encode(pipeline: Sharp, target: FormatId, quality?: number): Sha
       throw new Error('doc is not an image target; the capability graph should have prevented this')
   }
 }
+
+/**
+ * PNG and GIF made smaller by losing something, which only `/compress` asks
+ * for: `/convert` keeps both lossless.
+ *
+ * A PNG becomes a palette of at most 256 colours (libimagequant), `quality`
+ * deciding how far the colours may drift. A GIF is a palette already, so what
+ * it can give is between frames: at a lower quality a pixel that barely
+ * changed from the last frame is left as it was (`interFrameMaxError`, 0–32),
+ * which is where an animation's bytes go. No frame is dropped: one that comes
+ * out the same as the frame before is merged into it, its time added on, so
+ * the animation plays exactly as long.
+ *
+ * Flat colours unless dithering is asked for: dither scatters dots that
+ * compress worse, and on flat art it measured twice the bytes.
+ */
+function quantise(
+  pipeline: Sharp,
+  target: FormatId,
+  quality: number | undefined,
+  { dither }: { dither: boolean },
+): Sharp {
+  const q = quality ?? 100
+  const amount = dither ? 1 : 0
+  if (target === 'gif') {
+    return pipeline.gif({ interFrameMaxError: Math.round((32 * (100 - q)) / 100), dither: amount })
+  }
+  return pipeline.png({
+    palette: true,
+    quality: q,
+    dither: amount,
+    compressionLevel: 9,
+    effort: 10,
+  })
+}
+
+/** Whether an encode to `target` keeps every frame of `source`: an animation into a format that can animate. */
+const keepsFrames = (source: SourceInfo, target: FormatId): boolean =>
+  source.kind === 'image' && source.frames > 1 && FORMATS[target].animatable
 
 /**
  * Writes via a sibling temp file and renames. A crash mid-write can then never
@@ -365,9 +412,16 @@ export async function encodeToBuffer(
   target: FormatId,
   options: ConvertOptions,
 ): Promise<Buffer> {
-  const { pipeline, cleanup } = await pipelineFor(source, target, options, false)
+  // Every frame, as the conversion keeps them: a size measured from the
+  // first frame of an animation is a size nobody will get.
+  const { pipeline, cleanup } = await pipelineFor(
+    source,
+    target,
+    options,
+    keepsFrames(source, target),
+  )
   try {
-    return await encode(pipeline, target, options.quality).toBuffer()
+    return await encode(pipeline, target, options.quality, options.compress).toBuffer()
   } finally {
     await cleanup()
   }
@@ -523,7 +577,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
 
   onPhase({ phase: 'reading' })
   const isAnimated = source.frames > 1
-  const keepFrames = isAnimated && spec.animatable
+  const keepFrames = keepsFrames(source, job.target)
 
   // Rule 4: never drop frames silently.
   if (isAnimated && !spec.animatable) {
@@ -602,7 +656,13 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     // for the whole of an encode that has not happened yet. The phases the
     // shell shows (W5) are the true ones only if each is its own step.
     onPhase({ phase: 'encoding' })
-    const encoded = await encode(pipeline, job.target, options.quality).toBuffer()
+    const encoded = await encode(pipeline, job.target, options.quality, options.compress).toBuffer()
+
+    // `/compress` promises smaller. Refused before the write, so a bigger
+    // file never lands, not even for a moment.
+    if (options.compress && encoded.length >= source.bytes) {
+      throw cannotCompressMore(source.path, source.bytes, encoded.length)
+    }
 
     onPhase({ phase: 'writing' })
     const outputBytes = await writeAtomic(encoded, output)
@@ -653,8 +713,10 @@ async function measurer(job: Job): Promise<Measurer | undefined> {
   // A lossless target has no quality to search: `encode` ignores quality for
   // PNG, GIF and TIFF, so every attempt would measure the same bytes.
   // Declining makes `runPlan` refuse with a reason instead of "searching" a
-  // dial that is not connected to anything.
-  if (!FORMATS[job.target].lossy) return undefined
+  // dial that is not connected to anything. `/compress` connects one to PNG
+  // and GIF.
+  const spec = FORMATS[job.target]
+  if (!spec.lossy && !(spec.quantisable && job.options.compress)) return undefined
   const source = job.sources[0]
   if (source.kind !== 'image') return undefined
 
@@ -662,8 +724,15 @@ async function measurer(job: Job): Promise<Measurer | undefined> {
   return {
     ladder: [{}],
     measure: async (options) => {
-      const { pipeline } = await pipelineFor(source, job.target, options, false, input)
-      return (await encode(pipeline, job.target, options.quality).toBuffer()).length
+      const { pipeline } = await pipelineFor(
+        source,
+        job.target,
+        options,
+        keepsFrames(source, job.target),
+        input,
+      )
+      return (await encode(pipeline, job.target, options.quality, options.compress).toBuffer())
+        .length
     },
   }
 }

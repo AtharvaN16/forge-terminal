@@ -1,7 +1,7 @@
 import { readFile, rm, stat } from 'node:fs/promises'
 import type { PDFDocument } from 'pdf-lib'
 import { writeAtomic } from '../core/atomic.js'
-import { emptySelection, encryptedSource } from '../core/errors.js'
+import { cannotCompressMore, emptySelection, encryptedSource } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import { cutsToRanges, normalisePages } from '../core/pages.js'
 import type {
@@ -418,6 +418,11 @@ async function compressDocument(
     quality: job.options.quality ?? 60,
     dpi: job.options.dpi ?? 150,
   })
+
+  // `/compress` promises smaller: a copy no smaller than the source is not written.
+  if (job.options.compress && bytes.length >= source.bytes) {
+    throw cannotCompressMore(source.path, source.bytes, bytes.length)
+  }
 
   onPhase({ phase: 'writing' })
   const outputBytes = await writeAtomic(job.outputs[0], bytes)

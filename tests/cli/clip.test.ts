@@ -6,7 +6,7 @@ import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { isForgeError } from '../../src/core/errors.js'
 import { displayPath } from '../../src/utils/display-path.js'
-import { makeNoiseImage, makePng, makeTempDir } from '../helpers/fixtures.js'
+import { makeNoiseImage, makeTempDir } from '../helpers/fixtures.js'
 import { memoryPasteboard } from '../helpers/pasteboard.js'
 
 function parseError(argv: string[]) {
@@ -128,7 +128,7 @@ describe('forge clip', () => {
     })
 
     expect(out.exitCode).toBe(1)
-    expect(out.stderr.join('\n')).toMatch(/Already smaller/)
+    expect(out.stderr.join('\n')).toMatch(/Cannot compress more/)
     expect(held(clip).bytes).toEqual(bytes)
   })
 
@@ -160,16 +160,18 @@ describe('forge clip', () => {
     expect(out.stderr.join('\n')).toContain('The clipboard holds text, not a picture.')
   })
 
-  it('says a PNG cannot be compressed yet, and leaves it alone', async () => {
+  it('compresses a copied PNG and puts it back as a PNG', async () => {
     const clip = memoryPasteboard()
-    await clip.copyImage(await makePng(await makeTempDir(), 'shot.png'))
+    await clip.copyImage(await makeNoiseImage(await makeTempDir(), 'shot.png', 96))
+    const before = held(clip).bytes.length
 
     const out = await execute(parseArgs(['clip']), {
       clip: { pasteboard: clip.pb, root: await makeTempDir(), fallback: await makeTempDir() },
     })
 
-    expect(out.exitCode).toBe(1)
-    expect(held(clip).format).toBeUndefined()
+    expect(out.exitCode).toBe(0)
+    expect((await sharp(held(clip).bytes).metadata()).format).toBe('png')
+    expect(held(clip).bytes.length).toBeLessThan(before)
   })
 
   it('--undo puts the original back', async () => {

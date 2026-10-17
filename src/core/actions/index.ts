@@ -45,6 +45,11 @@ export type OptionSpec =
       max: number
       step: number
       default: number
+      /**
+       * A few points rather than a range: each one is marked on the band, and
+       * the lowest may look different, so it says so (PNG and GIF).
+       */
+      points?: true
     }
   | {
       kind: 'path'

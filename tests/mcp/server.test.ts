@@ -22,6 +22,7 @@ import { fakeExtensions } from '../helpers/fake-extension.js'
 import {
   makeGradientPng,
   makeJpeg,
+  makeNoiseImage,
   makePdf,
   makePng,
   makeTempDir,
@@ -290,7 +291,7 @@ describe('forge_convert', () => {
 describe('forge_compress', () => {
   it('compresses by quality beside the source', async () => {
     const dir = await makeTempDir()
-    const jpg = await makeJpeg(dir, 'a.jpg')
+    const jpg = await makeNoiseImage(dir, 'a.jpg', 64, 'jpeg')
     const out = await call('forge_compress', { paths: [jpg], quality: 40 })
     expect(out.isError).toBe(false)
     expect(out.doc.results[0]?.outputs).toEqual([join(dir, 'a-small.jpg')])
@@ -298,7 +299,7 @@ describe('forge_compress', () => {
 
   it('compresses to fit a size', async () => {
     const dir = await makeTempDir()
-    const jpg = await makeJpeg(dir, 'a.jpg')
+    const jpg = await makeNoiseImage(dir, 'a.jpg', 64, 'jpeg')
     const out = await call('forge_compress', { paths: [jpg], maxSize: '1mb' })
     expect(out.isError).toBe(false)
   })

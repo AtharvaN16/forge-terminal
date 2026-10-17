@@ -28,6 +28,10 @@ describe('candidateFor', () => {
     expect(candidateFor(source({ format: 'avif' }))).toBeUndefined()
   })
 
+  it('has nothing to suggest for a GIF: an animation compressed stays a GIF', () => {
+    expect(candidateFor(source({ format: 'gif', frames: 8 }))).toBeUndefined()
+  })
+
   it('never proposes a format the engine cannot write', () => {
     for (const format of ['jpeg', 'webp', 'avif', 'gif', 'tiff'] as const) {
       const candidate = candidateFor(source({ format }))

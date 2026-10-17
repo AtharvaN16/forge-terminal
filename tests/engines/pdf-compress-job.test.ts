@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -63,6 +64,20 @@ describe('compressing a PDF through the engine', () => {
     const result = await pdfEngine.run(await compressJob(dir, source, 30), () => {})
     expect(result.warnings.map((w) => w.code)).toContain('pdf-no-images')
     expect(result.warnings.map((w) => w.message).join(' ')).toMatch(/no images/i)
+  })
+
+  it('writes nothing for /compress when the PDF would not get smaller', async () => {
+    // /compress promises smaller. A scan already at 72 dpi, asked for full
+    // quality, has nothing to give: its images are kept, and the copy is no
+    // smaller than the file it came from.
+    const dir = await makeTempDir()
+    const source = (await probe(await makeScannedPdf(dir, 'low.pdf', { dpi: 72 }))) as DocumentInfo
+    const job = await compressJob(dir, source, 100)
+    if (job.op !== 'convert') throw new Error('expected convert')
+    job.options.compress = { dither: false }
+    const error = await pdfEngine.run(job, () => {}).catch((e: unknown) => e)
+    expect((error as { code?: string }).code).toBe('cannot-compress-more')
+    expect(existsSync(join(dir, 'out.pdf'))).toBe(false)
   })
 
   it('names the reason when none of the images are a kind it can re-encode', async () => {

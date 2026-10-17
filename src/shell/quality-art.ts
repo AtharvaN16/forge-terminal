@@ -29,6 +29,8 @@ export function sliderRow({
   width = SLIDER_WIDTH,
   plain = palette.track === '',
   unit = '',
+  marks = [],
+  warn = false,
 }: {
   palette: Palette
   value: number
@@ -39,25 +41,65 @@ export function sliderRow({
   plain?: boolean
   /** After the value on the thumb: `%` for Resize's band. */
   unit?: string
+  /**
+   * The only values the band stops at (A3·a): each one not under the thumb
+   * is a dot in the middle of where its thumb would be.
+   */
+  marks?: readonly number[]
+  /**
+   * The value may look different (W1, the lowest of a PNG's points): the
+   * thumb in `larger` orange and the band after it in the soft orange tint.
+   */
+  warn?: boolean
 }): Row {
   const label = ` ${value}${unit} `
-  const room = Math.max(0, width - stringWidth(label))
-  const ratio = max === min ? 0 : (Math.min(max, Math.max(min, value)) - min) / (max - min)
-  const k = Math.round(ratio * room)
-  const rest = room - k
+  const w = stringWidth(label)
+  const room = Math.max(0, width - w)
+  const at = (v: number) => {
+    const ratio = max === min ? 0 : (Math.min(max, Math.max(min, v)) - min) / (max - min)
+    return Math.round(ratio * room)
+  }
+  const k = at(value)
+  const dots = new Set(marks.filter((v) => v !== value).map((v) => at(v) + Math.floor(w / 2)))
+  /** `n` cells of the band from `from`, a dot wherever a mark falls. */
+  const stretch = (
+    from: number,
+    n: number,
+    cell: string,
+    dot: Omit<Row[number], 'text'>,
+    base: Omit<Row[number], 'text'>,
+  ) => {
+    const out: Row = []
+    let run = ''
+    for (let c = from; c < from + n; c++) {
+      if (!dots.has(c)) {
+        run += cell
+        continue
+      }
+      if (run) out.push({ text: run, ...base })
+      out.push({ text: '•', ...dot })
+      run = ''
+    }
+    if (run) out.push({ text: run, ...base })
+    return out
+  }
+  const after = w + k
+  const rest = width - after
   if (plain) {
     return [
       blank(LEAD),
-      { text: '━'.repeat(k), fg: palette.dim },
+      ...stretch(0, k, '━', { fg: palette.dim }, { fg: palette.dim }),
       { text: label, fg: palette.fg, bold: true },
-      { text: '─'.repeat(rest), fg: palette.border },
+      ...stretch(after, rest, '─', { fg: palette.border }, { fg: palette.border }),
     ].filter((r) => r.text !== '')
   }
+  const track = warn ? palette.defaultTagBg : palette.track
+  const onTrack = warn ? palette.defaultTag : palette.trackFill
   return [
     blank(LEAD),
-    { text: ' '.repeat(k), bg: palette.trackFill },
-    { text: label, fg: palette.ink, bg: palette.thumb, bold: true },
-    { text: ' '.repeat(rest), bg: palette.track },
+    ...stretch(0, k, ' ', { fg: palette.track, bg: palette.trackFill }, { bg: palette.trackFill }),
+    { text: label, fg: palette.ink, bg: warn ? palette.larger : palette.thumb, bold: true },
+    ...stretch(after, rest, ' ', { fg: onTrack, bg: track }, { bg: track }),
   ].filter((r) => r.text !== '')
 }
 

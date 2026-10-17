@@ -251,12 +251,15 @@ export function KeyRow({
   width,
   lead = HOME_MARGIN + 1,
   pressed,
+  off = [],
 }: KeySet & {
   width: number
   /** Where the first key starts: one cell in from the content above it. */
   lead?: number
   /** A key just pressed, drawn inverted for a moment so the press shows (M6b). */
   pressed?: string | undefined
+  /** Keys that do nothing right now, greyed: Quality's ↵ where nothing would be written (E3). */
+  off?: readonly string[]
 }) {
   const palette = useTheme()
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
@@ -284,12 +287,18 @@ export function KeyRow({
               backgroundColor={
                 capped ? (key === pressed ? palette.fg : palette.keycapBg) : undefined
               }
-              color={colourProp(key === pressed ? palette.canvas : palette.fg)}
-              bold
+              color={colourProp(
+                key === pressed ? palette.canvas : off.includes(key) ? palette.border : palette.fg,
+              )}
+              bold={!off.includes(key)}
             >
               {cap(key)}
             </Text>
-            <Text color={colourProp(key === pressed ? palette.fg : palette.dim)}>{` ${word}`}</Text>
+            <Text
+              color={colourProp(
+                key === pressed ? palette.fg : off.includes(key) ? palette.border : palette.dim,
+              )}
+            >{` ${word}`}</Text>
           </Text>
         ))}
         {' '.repeat(gap)}

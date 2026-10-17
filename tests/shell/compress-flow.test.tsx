@@ -7,7 +7,7 @@ import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { SYMBOLS } from '../../src/shell/theme.js'
-import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
+import { makeGradientPng, makeJpeg, makeTempDir, makeTiff } from '../helpers/fixtures.js'
 import { unpaint } from '../helpers/unpaint.js'
 
 const ENTER = String.fromCharCode(13)
@@ -22,7 +22,12 @@ const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
  */
 async function toCompress(name = 'photo.jpg') {
   const dir = await makeTempDir()
-  const file = await makeJpeg(dir, name)
+  // A smooth picture saved at 95: compressing it really does make it
+  // smaller, and WebP does better again.
+  const file = join(dir, name)
+  await sharp(await makeGradientPng(dir, 'smooth.png', 128))
+    .jpeg({ quality: 95 })
+    .toFile(file)
   const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
   const app = render(<App initialWidth={100} prefs={prefs} />)
   app.stdin.write('/compress')
@@ -58,7 +63,7 @@ describe('compress in the shell', () => {
     await settle()
     await finish(stdin)
 
-    const written = (await readdir(dir)).filter((f) => f !== 'photo.jpg')
+    const written = (await readdir(dir)).filter((f) => f.includes('-small'))
     expect(written).toHaveLength(1)
     expect(written[0]).toContain('-small')
     expect(written[0]?.endsWith('.jpg')).toBe(true)
@@ -118,14 +123,14 @@ describe('compress in the shell', () => {
 
   it('/compress on a lossless source says why it cannot', async () => {
     const dir = await makeTempDir()
-    const png = await makePng(dir, 'flat.png')
+    const tiff = await makeTiff(dir, 'flat.tiff')
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
     const { stdin, lastFrame, frames } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/compress')
     await settle()
     stdin.write(ENTER)
     await settle(200)
-    stdin.write(png)
+    stdin.write(tiff)
     await settle()
     stdin.write(ENTER)
     await settle(500)
@@ -136,7 +141,7 @@ describe('compress in the shell', () => {
 
   it('lets the lossless refusal go with the file it was about', async () => {
     const dir = await makeTempDir()
-    const png = await makePng(dir, 'flat.png')
+    const tiff = await makeTiff(dir, 'flat.tiff')
     const jpg = await makeJpeg(dir, 'photo.jpg')
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
@@ -144,14 +149,14 @@ describe('compress in the shell', () => {
     await settle()
     stdin.write(ENTER)
     await settle(200)
-    stdin.write(png)
+    stdin.write(tiff)
     await settle()
     stdin.write(ENTER)
     await settle(500)
-    // Refused into convert's picker, still holding the PNG: the reason stays.
+    // Refused into convert's picker, still holding the TIFF: the reason stays.
     expect(lastFrame() ?? '').toContain('Nothing to compress')
 
-    stdin.write(String.fromCharCode(27)) // esc: the PNG off the bench
+    stdin.write(String.fromCharCode(27)) // esc: the TIFF off the bench
     await settle(300)
     stdin.write('/compress')
     await settle()

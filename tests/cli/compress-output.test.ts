@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
-import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
+import { makeNoiseImage, makeTempDir } from '../helpers/fixtures.js'
 
 const run = (argv: string[]) => execute(parseArgs(argv))
 
@@ -17,7 +17,7 @@ const run = (argv: string[]) => execute(parseArgs(argv))
 describe('compress honours --output', () => {
   it('writes into the directory --output names, not beside the source', async () => {
     const dir = await makeTempDir()
-    const src = await makeJpeg(dir, 'noisy.jpg')
+    const src = await makeNoiseImage(dir, 'noisy.jpg', 64, 'jpeg')
     const elsewhere = join(dir, 'elsewhere')
     await mkdir(elsewhere)
 
@@ -30,7 +30,7 @@ describe('compress honours --output', () => {
 
   it('creates a directory --output names that does not exist yet', async () => {
     const dir = await makeTempDir()
-    const src = await makeJpeg(dir, 'noisy.jpg')
+    const src = await makeNoiseImage(dir, 'noisy.jpg', 64, 'jpeg')
 
     const result = await run([src, '--quality', '40', '-o', join(dir, 'out')])
 
@@ -40,7 +40,7 @@ describe('compress honours --output', () => {
 
   it('writes to the exact file --output names', async () => {
     const dir = await makeTempDir()
-    const src = await makeJpeg(dir, 'noisy.jpg')
+    const src = await makeNoiseImage(dir, 'noisy.jpg', 64, 'jpeg')
     const target = join(dir, 'tiny.jpg')
 
     const result = await run([src, '--quality', '40', '-o', target])
@@ -52,7 +52,7 @@ describe('compress honours --output', () => {
 
   it('makes the output-exists advice true: a different --output gets past it', async () => {
     const dir = await makeTempDir()
-    const src = await makeJpeg(dir, 'noisy.jpg')
+    const src = await makeNoiseImage(dir, 'noisy.jpg', 64, 'jpeg')
 
     expect((await run([src, '--quality', '40'])).exitCode).toBe(0)
     const refused = await run([src, '--quality', '40'])

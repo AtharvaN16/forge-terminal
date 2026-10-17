@@ -77,7 +77,8 @@ const CASES: { name: string; argv: (f: Fixtures) => string[]; code: 0 | 1 | 2 }[
   // 1 — understood, but these files could not be done; other files could
   { name: 'a missing file', argv: (f) => [f.ghost, '--to', 'webp'], code: 1 },
   { name: 'a target this file cannot become', argv: (f) => [f.jpg, '--to', 'heic'], code: 1 },
-  { name: 'compressing a lossless file', argv: (f) => [f.png, '--quality', '50'], code: 1 },
+  // A 40×20 flat JPEG asked for 100 only grows: /compress writes nothing.
+  { name: 'compressing a file that would grow', argv: (f) => [f.jpg, '--quality', '100'], code: 1 },
   { name: 'merging something that is not a PDF', argv: (f) => [f.jpg, f.pdf3, '--merge'], code: 1 },
   { name: 'merging a single PDF', argv: (f) => [f.pdf3, '--merge'], code: 1 },
   { name: 'splitting a one-page PDF', argv: (f) => [f.pdf1, '--split', 'every-page'], code: 1 },

@@ -73,3 +73,47 @@ describe('the quality slider, against the decided G1', () => {
     expect(row.trimEnd()).toHaveLength(49)
   })
 })
+
+describe('the three-point slider (A3·a, W1)', () => {
+  const at = (value: number, palette = DARK) =>
+    runsRow(
+      sliderRow({ palette, value, min: 30, max: 100, marks: [30, 65, 100], warn: value === 30 }),
+    )
+
+  it('marks the other points with a dot in the middle of where their thumb would be', () => {
+    const cells = at(65)
+    expect(text(cells).trimEnd()).toBe(`   •${' '.repeat(19)} 65 ${' '.repeat(20)}•`)
+    // Before the thumb a dot sits on the fill, after it on the track.
+    expect(cells[3]).toMatchObject({ fg: DARK.track, bg: DARK.trackFill })
+    expect(cells[47]).toMatchObject({ fg: DARK.trackFill, bg: DARK.track })
+  })
+
+  it('keeps the band 48 cells wide at every point', () => {
+    for (const value of [30, 65, 100]) {
+      const cells = at(value)
+      expect(cells.slice(1, 49).every((c) => c.bg !== null)).toBe(true)
+      expect(cells[49]?.bg).toBeNull()
+    }
+  })
+
+  it('turns orange at 30: the thumb, and the band in a dark orange tint, no word', () => {
+    const cells = at(30)
+    expect(cells.find((c) => c.ch === '3')).toMatchObject({
+      fg: DARK.ink,
+      bg: DARK.larger,
+      b: true,
+    })
+    const rest = cells.slice(5, 49)
+    expect(rest.every((c) => c.bg === DARK.defaultTagBg)).toBe(true)
+    expect(rest.filter((c) => c.ch === '•').every((c) => c.fg === DARK.defaultTag)).toBe(true)
+    expect(text(cells).trim()).toBe(`30${' '.repeat(21)}•${' '.repeat(21)}•`)
+  })
+
+  it('without fills, marks the points in the rule', () => {
+    const plain = { ...DARK, trackFill: '', track: '', thumb: '' }
+    const row = text(
+      runsRow(sliderRow({ palette: plain, value: 65, min: 30, max: 100, marks: [30, 65, 100] })),
+    )
+    expect(row).toMatch(/^ ━━•━+ 65 ─+•─ *$/)
+  })
+})

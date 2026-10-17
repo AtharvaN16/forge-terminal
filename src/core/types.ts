@@ -28,6 +28,12 @@ export interface FormatSpec {
    * one engine encodes to these formats and they must not disagree.
    */
   defaultQuality?: number
+  /**
+   * Lossless as `/convert` writes it, but `/compress` may cut it to a palette
+   * of at most 256 colours, and an animation's frames may differ a little
+   * from what they were. PNG and GIF.
+   */
+  quantisable?: true
 }
 
 /** What a file actually is, determined by reading it — never by its extension. */
@@ -93,6 +99,12 @@ export interface ConvertOptions {
   resize?: ResizeSpec
   /** Cut to a shape, after EXIF rotation and before any resize. Never with `trim`. */
   crop?: CropSpec
+  /**
+   * Set by `/compress`. The result must come out smaller than the source, or
+   * nothing is written. A quantisable format (PNG, GIF) is cut to a palette
+   * at `quality`, in flat colours unless `dither`.
+   */
+  compress?: { dither: boolean }
 }
 
 /** A shape as a ratio of two whole numbers: 16:9 is `{ w: 16, h: 9 }`. */

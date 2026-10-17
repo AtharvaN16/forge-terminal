@@ -2,6 +2,7 @@ import { engineForJob } from '../engines/registry.js'
 import type { Engine, Measurer } from '../engines/types.js'
 import { findQuality } from './compress.js'
 import {
+  cannotCompressMore,
   conversionFailed,
   type ForgeError,
   isForgeError,
@@ -142,6 +143,14 @@ async function searchJob(
     }
   }
   const m = measurer
+  /**
+   * `/compress` promises smaller. Asked for a size the file already fits,
+   * the highest quality under that size can be bigger than the file, so the
+   * search aims just under the file instead.
+   */
+  const source = job.sources[0]
+  const capped = job.options.compress !== undefined && source.bytes <= targetBytes
+  const aim = capped ? source.bytes - 1 : targetBytes
   // The measurer may have done async I/O (reading, decoding a HEIC). An abort
   // during that window must not still start a full-quality encode.
   if (signal?.aborted) return { kind: 'cancelled' }
@@ -152,7 +161,7 @@ async function searchJob(
     for (const rung of m.ladder) {
       const found = await findQuality({
         encode: (quality) => m.measure({ ...job.options, ...rung, quality }),
-        targetBytes,
+        targetBytes: aim,
         onAttempt: (attempt, of) => emit({ type: 'search:attempt', job, attempt, of, rung }),
         ...(signal === undefined ? {} : { signal }),
       })
@@ -180,6 +189,14 @@ async function searchJob(
     return failed(e)
   }
 
+  // Nothing smaller than the file at any quality: there is no closest to
+  // accept, since accepting it would write a bigger file.
+  if (capped) {
+    return {
+      kind: 'failed',
+      failure: { path, error: cannotCompressMore(path, source.bytes, smallest, true) },
+    }
+  }
   const settings = closest ?? { quality: 1 }
   return {
     kind: 'unreachable',
