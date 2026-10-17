@@ -1,8 +1,10 @@
 {
   "name": "forge-terminal",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "description": "A terminal-native file converter for macOS and Windows",
   "whatsNew": [
+    {"title": "Transcribe", "text": "Turn a video, a sound file or a YouTube link into notes and a transcript, on your Mac. Press 6 on home, or run forge transcribe."},
+    {"title": "/ menu moved", "text": "It now sits above the keys, on the right. Type / to open it, as before."},
     {
       "title": "Watch a folder",
       "text": "Drop a folder on Convert. Forge converts what is in it, then each new file that lands there. In a terminal: forge watch."
