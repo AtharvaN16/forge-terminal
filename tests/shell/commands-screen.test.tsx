@@ -115,7 +115,7 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
 
   // Row 23, the key row, says "1–5 ←→ mode" since ←→ step through the modes
   // (2026-10-13), after this mockup; mode-arrows-app.test.tsx holds it.
-  it('1 · home: "/ commands" waits, dim, after the modes', () => expectStep(rest, [23]))
+  it('1 · home: "/ menu" waits, dim, after the modes', () => expectStep(rest, [23]))
   // The mockup's list has three modes; colour is the fourth (colour spec
   // §6.1) and edit the fifth, and /extensions a second setting
   // (mockups/extensions-2026-10.html), so the rows from colour's onward differ
@@ -209,7 +209,7 @@ describe('the key row while the list is open', () => {
     })
   })
 
-  it('no longer says "/ commands" at rest: the tab row does', () => {
+  it('no longer says "/ menu" at rest: the tab row does', () => {
     expect(homeKeys({ typing: false, completions: 0, commands: false }).main).toEqual([
       ['↵', 'send'],
     ])

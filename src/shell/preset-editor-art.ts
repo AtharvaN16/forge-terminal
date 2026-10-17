@@ -50,16 +50,28 @@ const pad = (row: Row, n: number, bg?: string): Row => {
 const band = (row: Row, bg: string | undefined): Row =>
   bg ? row.map((r) => (r.bg ? r : { ...r, bg })) : row
 
-function rowLine(p: Palette, row: EditorRow, lit: boolean, inner: number): Row {
+function rowLine(p: Palette, row: EditorRow, lit: boolean, inner: number, glyph?: string): Row {
   const bg = lit && p.panelBand ? p.panelBand : undefined
   const head: Row = [
     { text: lit ? ' › ' : '   ', fg: p.accent, bold: true },
-    { text: row.on ? '● ' : '○ ', fg: row.on ? p.accent : p.border },
-    { text: OP_NAMES[row.id].padEnd(NAME_W), fg: row.on || lit ? p.fg : p.dim, bold: lit },
+    { text: row.on ? '● ' : '○ ', fg: row.why ? p.faint : row.on ? p.accent : p.border },
+    {
+      text: OP_NAMES[row.id].padEnd(NAME_W),
+      fg: row.why ? p.faint : row.on || lit ? p.fg : p.dim,
+      bold: lit,
+    },
   ]
   let value: Row
-  if (lit && row.id === 'quality' && typeof row.value === 'number') {
-    value = sliderRow({ palette: p, value: row.value, min: 1, max: 100, width: 30 }).slice(1)
+  if (row.why) {
+    // Cannot apply here: dim, the reason where the answer would be (E2).
+    value = [{ text: row.why, fg: p.faint }]
+  } else if (row.missing !== undefined) {
+    // Its extension is not added: → offers it under the row (E3).
+    value = [{ text: 'not added', fg: p.faint }]
+  } else if (lit && row.id === 'quality' && typeof row.value === 'number') {
+    // The quality screen's slider, as long as the window leaves room for.
+    const room = Math.max(10, Math.min(30, inner - 3 - 2 - NAME_W - 1))
+    value = sliderRow({ palette: p, value: row.value, min: 1, max: 100, width: room }).slice(1)
   } else {
     const words = valueText(row)
     const plain = row.id === 'trim' || row.id === 'sharpen' || row.id === 'cutout'
@@ -69,15 +81,28 @@ function rowLine(p: Palette, row: EditorRow, lit: boolean, inner: number): Row {
         ? []
         : [{ text: '—', fg: p.faint }]
   }
-  const more: Row = lit && HAS_WINDOW.includes(row.id) ? [{ text: '  ›', fg: p.border }] : []
+  // The row being rerun spins before its answer (E5).
+  if (glyph) value = [{ text: `${glyph} `, fg: p.accent, bold: true }, ...value]
+  const more: Row =
+    lit && !row.why && (HAS_WINDOW.includes(row.id) || row.missing !== undefined)
+      ? [{ text: '  ›', fg: p.border }]
+      : []
   return pad(band([...head, ...value, ...more], bg), inner, bg)
 }
 
 /** The window's lines: a blank row, a row per operation, a blank row, the file as it is now, a blank row. */
-export function editorLines(p: Palette, e: Editor, foot: Row, inner: number): Row[] {
+export function editorLines(
+  p: Palette,
+  e: Editor,
+  foot: Row,
+  inner: number,
+  spin?: { id: OpId; glyph: string },
+): Row[] {
   return [
     [],
-    ...e.rows.map((row, i) => rowLine(p, row, i === e.at, inner)),
+    ...e.rows.map((row, i) =>
+      rowLine(p, row, i === e.at, inner, spin?.id === row.id ? spin.glyph : undefined),
+    ),
     [],
     [blank(3), ...foot],
     [],
@@ -113,6 +138,18 @@ export function subLines(p: Palette, e: Editor, inner: number, size?: Size): Row
     { text: ' ', bg: p.band },
     { text: ` ${unit}`, fg: p.dim },
   ]
+  if (sub.add) {
+    // A missing extension: what adding it downloads, then that it is being added.
+    const row = e.rows.find((r) => r.id === sub.id)
+    const mb = Math.max(1, Math.round((row?.missing ?? 0) / 1_000_000))
+    return [
+      [],
+      sub.adding
+        ? [blank(3), { text: 'adding', fg: p.dim }]
+        : [blank(3), { text: ` add · ${mb} MB `, fg: p.ink, bg: p.pill, bold: true }],
+      [],
+    ]
+  }
   if (sub.id === 'convert') {
     return [
       [],

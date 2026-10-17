@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Row } from '../../src/shell/home-art.js'
-import { openEditor, press } from '../../src/shell/preset-editor.js'
+import { openEditor, press, withMissing, withReasons } from '../../src/shell/preset-editor.js'
 import { editorLines, subLines } from '../../src/shell/preset-editor-art.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 
@@ -56,6 +56,24 @@ describe('the Continue editing window’s lines', () => {
     expect(row?.find((r) => r.text.includes('800'))?.fg).toBe(DARK.faint)
   })
 
+  it('dims a row that cannot apply, its reason where the value would be', () => {
+    const e = withReasons(open(), { trim: 'no empty edges' })
+    const row = editorLines(P, e, foot, 66)[5]
+    expect(text(row)).toMatch(/^ {3}○ Trim edges {9}no empty edges/)
+    expect(row?.every((r) => !r.text.trim() || r.fg === DARK.faint || r.fg === P.accent)).toBe(true)
+  })
+
+  it('says not added on a row whose extension is missing', () => {
+    const row = editorLines(P, withMissing(open(), { sharpen: 41_000_000 }), foot, 66)[7]
+    expect(text(row)).toMatch(/^ {3}○ Sharpen {12}not added/)
+  })
+
+  it('spins on the row being rerun', () => {
+    const e = press(press(press(open(), 'down'), 'down'), 'space') // Trim edges
+    const row = editorLines(P, e, foot, 66, { id: 'trim', glyph: '⠹' })[5]
+    expect(text(row)).toMatch(/● Trim edges {9}⠹/)
+  })
+
   it('ends in the file as it is now, a blank row either side', () => {
     const lines = editorLines(P, open(), foot, 66).map(text)
     expect(lines.slice(-3)).toEqual(['', '   ✓ photo.webp   now 2 MB', ''])
@@ -80,5 +98,16 @@ describe('a row’s own window', () => {
     const e = press(press(open(), 'right'), { digit: '5' })
     const lines = subLines(P, e, 40).map(text)
     expect(lines.some((l) => l.includes('To a target size') && l.includes('5'))).toBe(true)
+  })
+
+  it('offers the extension with its size, then says it is adding it', () => {
+    const at = ['down', 'down', 'down', 'down'] as const
+    const e = withMissing(
+      at.reduce((x, k) => press(x, k), open()),
+      { sharpen: 41_000_000 },
+    )
+    const offer = press(e, 'space')
+    expect(subLines(P, offer, 40).map(text).join('\n')).toContain('add · 41 MB')
+    expect(subLines(P, press(offer, 'enter'), 40).map(text).join('\n')).toContain('adding')
   })
 })

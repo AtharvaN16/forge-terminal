@@ -459,7 +459,7 @@ export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', '
 /** The digits that pick a mode, as the key rows say them: "1–5". */
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
 
-/** A tab on home's tab row: the modes, then "/ commands". */
+/** A tab on home's tab row: the modes, then "/ menu". */
 export type HomeTab = ShellMode | 'commands'
 
 /**

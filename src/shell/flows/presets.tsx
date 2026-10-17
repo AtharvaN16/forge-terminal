@@ -12,11 +12,12 @@ import { type Preset, type PresetSteps, passesFor } from '../../core/preset.js'
 import { runPreset } from '../../core/preset-run.js'
 import type { FormatId, ImageInfo, Result } from '../../core/types.js'
 import { offeredHere } from '../../extensions/catalog.js'
+import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { Trail } from '../bar-art.js'
 import type { DonePreset } from '../components/Done.js'
 import { PresetEditorScreen, type PresetPreview } from '../components/PresetEditor.js'
 import { type PresetFolder, PresetSaveScreen } from '../components/PresetSave.js'
-import type { Editor } from '../preset-editor.js'
+import { type Editor, type OpId, reasonsFor } from '../preset-editor.js'
 import { valueText } from '../preset-editor-art.js'
 import type { ShellMode } from '../theme.js'
 
@@ -81,6 +82,14 @@ export function usePresetsOnDone(o: {
   save: (patch: Partial<Preferences>) => Promise<void>
   /** Clipboard results and other modes have no presets. */
   enabled: boolean
+  /** The extensions on this machine, and adding one: the shell's own, injectable for tests. */
+  tools: {
+    list(): Promise<ExtensionStatus[]>
+    install(
+      id: string,
+      opts: { onProgress: (done: number, total: number) => void; signal: AbortSignal },
+    ): Promise<unknown>
+  }
 }) {
   const [editor, setEditor] = useState<Editor | undefined>()
   const [steps, setSteps] = useState<PresetSteps | undefined>()
@@ -99,6 +108,64 @@ export function usePresetsOnDone(o: {
     await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })))
   }, [])
   useEffect(() => () => void sweep(), [sweep])
+
+  // Why rows cannot apply (E2): what the probe knows at once, the trim once the image is read.
+  const [reasons, setReasons] = useState<Partial<Record<OpId, string>>>({})
+  const editing = o.open === 'edit' ? source : undefined
+  useEffect(() => {
+    if (!editing) return
+    setReasons(reasonsFor(editing, undefined))
+    let live = true
+    import('../../engines/image.js')
+      .then(({ measureImage }) => measureImage(editing))
+      .then(
+        (measure) => {
+          if (live) setReasons(reasonsFor(editing, measure))
+        },
+        () => {},
+      )
+    return () => {
+      live = false
+    }
+  }, [editing])
+
+  // Rows whose extension is not added (E3), and the boost scales the installed one makes.
+  const [missing, setMissing] = useState<Partial<Record<OpId, number>>>({})
+  const [unavailable, setUnavailable] = useState<Partial<Record<OpId, string>>>({})
+  const [boostVersion, setBoostVersion] = useState<string | undefined>()
+  const tools = o.tools
+  const check = useCallback(async () => {
+    const all = await tools.list().catch((): ExtensionStatus[] => [])
+    const away: Partial<Record<OpId, number>> = {}
+    const not: Partial<Record<OpId, string>> = {}
+    const rows: Array<[string, OpId[]]> = [
+      ['boost', ['sharpen', 'boost']],
+      ['remove-background', ['cutout']],
+    ]
+    for (const [id, ops] of rows) {
+      const status = all.find((s) => s.entry.id === id)
+      if (!status || status.installed !== undefined) continue
+      for (const op of ops) {
+        if (status.supported) away[op] = status.downloadBytes ?? 0
+        else not[op] = status.reason ?? 'not available'
+      }
+    }
+    setMissing(away)
+    setUnavailable(not)
+    setBoostVersion(all.find((s) => s.entry.id === 'boost')?.installed)
+  }, [tools])
+  useEffect(() => {
+    if (editing) void check()
+  }, [editing, check])
+  const add = useCallback(
+    (op: OpId) => {
+      const id = op === 'cutout' ? 'remove-background' : 'boost'
+      void tools
+        .install(id, { onProgress: () => {}, signal: new AbortController().signal })
+        .then(check, check)
+    },
+    [tools, check],
+  )
 
   const reset = () => {
     setEditor(undefined)
@@ -166,9 +233,12 @@ export function usePresetsOnDone(o: {
           width={o.width}
           height={o.height}
           targets={targetsFor(original).map((t) => t.id)}
-          scales={boostScales(undefined)}
+          scales={boostScales(boostVersion)}
           cutout={offeredHere('remove-background')}
           initial={editor}
+          reasons={{ ...unavailable, ...reasons }}
+          missing={missing}
+          onAdd={add}
           run={run}
           onCancel={() => o.setOpen(null)}
           onDone={(next, preview: Preview | undefined, left) => {

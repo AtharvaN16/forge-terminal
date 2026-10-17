@@ -98,7 +98,9 @@ export function PresetSaveScreen({
   })
 
   const p = palette
-  const fw = WINDOW_WIDTH - 2
+  // As wide as Continue editing's, narrower in a narrow terminal.
+  const W = Math.min(WINDOW_WIDTH, width - 4)
+  const fw = W - 2
   const caret = making === null ? [{ text: ' ', bg: p.fg }] : []
   const lines: Row[] = [
     fieldBlank({ palette: p, width: fw }),
@@ -158,7 +160,7 @@ export function PresetSaveScreen({
   const rows = windowOver(p, doneUnder(p, result, mode, width, height), {
     title: 'Save as preset',
     lines: framed,
-    width: WINDOW_WIDTH,
+    width: W,
     columns: width,
     top: Math.max(0, Math.floor((area - framed.length - 2) / 2)),
   })

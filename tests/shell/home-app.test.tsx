@@ -42,9 +42,9 @@ describe('the home screen in the app', () => {
     expect(frame).toContain('Drop a file here')
     expect(frame).toContain('1 convert')
     expect(fieldLine(frame)).toBe('    › or type a path')
-    // "/ commands" is a tab of its own, so the key row no longer says it.
-    expect(frame.split('\n')[6]).toContain('/ commands')
-    expect(frame.split('\n').at(-1)).not.toContain('commands')
+    // "/ menu" is a tab of its own, so the key row no longer says it.
+    expect(frame.split('\n')[6]).toContain('/ menu')
+    expect(frame.split('\n').at(-1)).not.toContain('menu')
     // The old banner's mode line is gone with it.
     expect(frame).not.toContain('current mode')
   })
