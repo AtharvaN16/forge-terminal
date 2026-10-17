@@ -274,7 +274,8 @@ export function WatchFlow({
       } else if (
         event.type === 'job:phase' &&
         'phase' in event.progress &&
-        event.progress.phase !== 'page'
+        event.progress.phase !== 'page' &&
+        event.progress.phase !== 'time'
       ) {
         const label = `${phaseLabel(event.job, event.progress.phase)} · ${displayName(event.job.sources[0].path)}`
         setWork((w) => ({ ...w, label }))

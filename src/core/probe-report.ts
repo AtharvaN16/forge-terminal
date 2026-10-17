@@ -22,6 +22,9 @@ export type ProbeReport = {
   height?: number
   pages?: number
   encrypted?: boolean
+  /** A video's or sound file's length, in seconds. */
+  duration?: number
+  fps?: number
   /**
    * `targetIdsFor(source)` — includes the file's own format, which recompresses.
    * For an encrypted PDF, only the formats its pages rasterise to.
@@ -56,6 +59,15 @@ export function describeSource(
   }
   if (source.kind === 'image') {
     return { ...common, width: source.width, height: source.height, ...can }
+  }
+  if (source.kind === 'media') {
+    const f = source.facts
+    return {
+      ...common,
+      ...(f ? { duration: f.duration } : {}),
+      ...(f?.video ? { width: f.video.width, height: f.video.height, fps: f.video.fps } : {}),
+      ...can,
+    }
   }
   return { ...common, pages: source.pages, encrypted: source.encrypted, ...can }
 }

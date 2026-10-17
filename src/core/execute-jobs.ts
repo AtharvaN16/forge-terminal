@@ -130,6 +130,30 @@ async function searchJob(
     failure: { path, error: isForgeError(e) ? e : conversionFailed(path, e) },
   })
 
+  // Video and sound hit a size in the encode itself: arithmetic says whether
+  // it can be reached, and the job carries it to the engine. Never bigger
+  // than the file, as for every compress.
+  const engine = resolveEngine(job)
+  if (engine?.sizeTo) {
+    const src = job.sources[0]
+    const aim =
+      job.options.compress !== undefined && src.bytes <= targetBytes ? src.bytes - 1 : targetBytes
+    const out = engine.sizeTo(job, aim)
+    if (out) {
+      return {
+        kind: 'unreachable',
+        entry: {
+          job,
+          smallest: out.floor,
+          settings: { quality: 1, media: { ...job.options.media, targetBytes: out.floor } },
+          error: targetUnreachable(src, targetBytes, out.floor),
+        },
+      }
+    }
+    job.options = { ...job.options, media: { ...job.options.media, targetBytes: aim } }
+    return { kind: 'ready' }
+  }
+
   let measurer: Measurer | undefined
   try {
     measurer = await resolveEngine(job)?.measurer?.(job)

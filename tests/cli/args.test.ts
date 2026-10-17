@@ -87,7 +87,7 @@ describe('parseArgs', () => {
   })
 
   it('rejects an unknown target format', () => {
-    expect(codeOf(['a.jpg', '--to', 'mp4'])).toBe('invalid-arguments')
+    expect(codeOf(['a.jpg', '--to', 'xyz'])).toBe('invalid-arguments')
   })
 
   it('rejects a quality outside 1-100', () => {

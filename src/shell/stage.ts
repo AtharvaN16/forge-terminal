@@ -1,5 +1,6 @@
 import type { FolderScan } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
+import { mediaFacts } from '../core/media.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { SourceInfo } from '../core/types.js'
 import { formatBytes } from '../core/units.js'
@@ -88,6 +89,7 @@ const allPdf = (sources: SourceInfo[]) => sources.every((s) => s.format === 'pdf
 
 /** A source's facts, as the file card says them. */
 export function cardFacts(source: SourceInfo): string {
+  if (source.kind === 'media') return mediaFacts(source)
   return (
     source.kind === 'image'
       ? [

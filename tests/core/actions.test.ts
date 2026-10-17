@@ -205,7 +205,7 @@ describe('convert action plan target validation', () => {
   })
 
   it('throws a ForgeError when target is not a format Forge knows', () => {
-    expect(planCode({ target: 'mp4' })).toBe('invalid-arguments')
+    expect(planCode({ target: 'xyz' })).toBe('invalid-arguments')
   })
 })
 

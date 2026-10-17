@@ -1,6 +1,7 @@
 import { Box } from 'ink'
 import stringWidth from 'string-width'
 import { FORMATS } from '../../core/formats.js'
+import { clockOf } from '../../core/timecode.js'
 import type { SourceInfo } from '../../core/types.js'
 import { lastSegment } from '../../utils/last-segment.js'
 import type { Stage } from '../stage.js'
@@ -21,6 +22,7 @@ function factFor(source: SourceInfo): string {
     // same reasoning as `FileCard`'s identical guard.
     return source.pages > 0 ? `${source.pages} ${source.pages === 1 ? 'page' : 'pages'}` : ''
   }
+  if (source.kind === 'media') return source.facts ? clockOf(source.facts.duration) : ''
   return `${source.width}×${source.height}`
 }
 

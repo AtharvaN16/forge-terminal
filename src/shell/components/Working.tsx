@@ -4,7 +4,7 @@ import type { Row } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { useTheme } from '../ThemeContext.js'
 import type { ShellMode } from '../theme.js'
-import { clockFor, pagesRow, triesRow, workLine } from '../working-art.js'
+import { clockFor, pagesRow, timeRow, triesRow, workLine } from '../working-art.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
 
@@ -29,6 +29,7 @@ export function Working({
   startedAt,
   search,
   pages,
+  time,
   stoppable = false,
   unit,
   savedAsItGoes = false,
@@ -43,6 +44,8 @@ export function Working({
   search?: { n: number; of: number } | undefined
   /** Pages done of a known total, for an operation that reports them. */
   pages?: { done: number; total: number } | undefined
+  /** A video's or sound file's seconds encoded of its true total, and when this pass began. */
+  time?: { done: number; total: number; since: number } | undefined
   /** esc stops this job (an extension's child is killed; nothing is written). */
   stoppable?: boolean | undefined
   /** What `pages` counts when it is not pages: a folder's files ("images"). */
@@ -70,7 +73,16 @@ export function Working({
           // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
           plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
         })
-      : undefined
+      : time
+        ? timeRow({
+            palette,
+            mode,
+            done: time.done,
+            total: time.total,
+            elapsedMs: Date.now() - time.since,
+            plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
+          })
+        : undefined
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Runs row={workLine({ palette, mode, spinner, label, clock, width })} />

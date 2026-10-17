@@ -45,4 +45,16 @@ export interface Engine {
    * could run but cannot measure — a page operation has no quality dial.
    */
   measurer?(job: Job): Promise<Measurer | undefined>
+  /**
+   * Present on engines that hit a byte target in the encode itself (video:
+   * two passes at a bitrate) rather than by search. Pure arithmetic, nothing
+   * encoded: undefined when `targetBytes` can be reached — the job then runs
+   * with it — or the smallest this source can get, in bytes, when it cannot.
+   */
+  sizeTo?(job: Job, targetBytes: number): { floor: number } | undefined
+  /**
+   * What this source can become, when that depends on more than its format
+   * (a silent video has no sound to keep). Absent: `writes`.
+   */
+  writesFor?(source: SourceInfo): ReadonlySet<FormatId>
 }

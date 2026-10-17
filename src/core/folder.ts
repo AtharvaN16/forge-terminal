@@ -172,20 +172,35 @@ export type FolderFileRead =
  * a failure — the name is used to word the outcome, never to decide the format.
  */
 export async function readFolderFile(path: string): Promise<FolderFileRead> {
-  try {
-    return { kind: 'source', source: await probe(path) }
-  } catch (e) {
-    const bytes = await stat(path).then(
+  const size = () =>
+    stat(path).then(
       (s) => s.size,
       () => 0,
     )
+  try {
+    const source = await probe(path)
+    // Video and sound convert one file at a time; a folder of them is not
+    // offered yet (video spec §4), so they stay their own kind, left alone.
+    if (source.kind === 'media') {
+      const video = FORMATS[source.format].media === 'video'
+      return {
+        kind: video ? 'videos' : 'audio',
+        sniffed: video ? 'video' : 'audio',
+        bytes: source.bytes,
+      }
+    }
+    return { kind: 'source', source }
+  } catch (e) {
+    const bytes = await size()
+    const sniffed = await sniffKind(path).catch((): Sniffed => 'other')
+    if (sniffed === 'video' || sniffed === 'audio') {
+      return { kind: sniffed === 'video' ? 'videos' : 'audio', sniffed, bytes }
+    }
     if (READ_EXTENSIONS.has(extname(path).toLowerCase())) {
       const error = isForgeError(e) ? e : undefined
       if (error) return { kind: 'failed', failure: { path, error }, bytes }
     }
-    const sniffed = await sniffKind(path).catch((): Sniffed => 'other')
-    const kind = sniffed === 'video' ? 'videos' : sniffed === 'audio' ? 'audio' : 'other'
-    return { kind, sniffed, bytes }
+    return { kind: 'other', sniffed, bytes }
   }
 }
 

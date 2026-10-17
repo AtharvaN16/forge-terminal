@@ -1,5 +1,6 @@
 import stringWidth from 'string-width'
 import { FORMATS } from '../core/formats.js'
+import { clockOf } from '../core/timecode.js'
 import type { Job, Phase } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
 import { blank, clip, type Row, type Run } from './home-art.js'
@@ -121,6 +122,42 @@ export function pagesRow({
       fg: palette.dim,
     },
   ].filter((r) => r.text !== '')
+}
+
+/** When the time left is first said: before then the speed is not yet known. */
+export const TIME_LEFT_AFTER_MS = 5000
+
+/**
+ * A video's or sound file's bar (video spec §3.6): the page bar's look, filled
+ * to the seconds encoded of the seconds the output will have — a true total,
+ * which is why it may be drawn at all (invariant 7). After 5 s it says the
+ * time left, from the speed this pass has kept so far.
+ */
+export function timeRow({
+  palette,
+  mode,
+  done,
+  total,
+  elapsedMs,
+  plain = palette.track === '',
+}: {
+  palette: Palette
+  mode: ShellMode
+  done: number
+  total: number
+  /** Since this pass began. */
+  elapsedMs: number
+  plain?: boolean
+}): Row {
+  // The page bar's own cells, without its words.
+  const bar = pagesRow({ palette, mode, done, total, plain, unit: '' }).slice(0, -1)
+  const row: Row = [...bar, { text: `  ${clockOf(done)} of ${clockOf(total)}`, fg: palette.dim }]
+  if (elapsedMs >= TIME_LEFT_AFTER_MS && done > 0 && done < total) {
+    const left = ((total - done) / done) * (elapsedMs / 1000)
+    const said = left < 60 ? `${Math.max(1, Math.round(left))} s` : `${Math.round(left / 60)} min`
+    row.push({ text: `  ·  about ${said} left`, fg: palette.border })
+  }
+  return row
 }
 
 /**

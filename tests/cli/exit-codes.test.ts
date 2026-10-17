@@ -56,7 +56,7 @@ const CASES: { name: string; argv: (f: Fixtures) => string[]; code: 0 | 1 | 2 }[
   { name: 'an unknown flag', argv: (f) => [f.jpg, '--bogus'], code: 2 },
   { name: 'a flag missing its value', argv: (f) => [f.jpg, '--to'], code: 2 },
   { name: 'no target format', argv: (f) => [f.jpg], code: 2 },
-  { name: 'a format Forge does not know', argv: (f) => [f.jpg, '--to', 'mp4'], code: 2 },
+  { name: 'a format Forge does not know', argv: (f) => [f.jpg, '--to', 'xyz'], code: 2 },
   {
     name: 'contradictory flags',
     argv: (f) => [f.jpg, '--quality', '40', '--max-size', '1mb'],

@@ -24,7 +24,11 @@ export function targetIdsFor(source: SourceInfo): FormatId[] {
   const ids = new Set<FormatId>()
   for (const engine of ENGINES) {
     if (!engine.reads.has(source.format)) continue
-    for (const id of engine.writes) ids.add(id)
+    for (const id of engine.writesFor?.(source) ?? engine.writes) {
+      // Written only so a file keeps its own format (MOV): never another's target.
+      if (FORMATS[id].keepsOnly && id !== source.format) continue
+      ids.add(id)
+    }
   }
   return sortByRegistryOrder([...ids])
 }

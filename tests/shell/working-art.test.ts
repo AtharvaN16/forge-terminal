@@ -3,7 +3,14 @@ import { SPINNER_FRAMES } from '../../src/cli/spinner.js'
 import type { Job } from '../../src/core/types.js'
 import { trailBarRow } from '../../src/shell/bar-art.js'
 import { DARK, LIGHT, modePalette } from '../../src/shell/theme.js'
-import { clockFor, pagesRow, phaseLabel, triesRow, workLine } from '../../src/shell/working-art.js'
+import {
+  clockFor,
+  pagesRow,
+  phaseLabel,
+  timeRow,
+  triesRow,
+  workLine,
+} from '../../src/shell/working-art.js'
 import {
   describeRow,
   type FixtureFrame,
@@ -234,5 +241,31 @@ describe('phaseLabel: the phase as the line says it', () => {
     expect(phaseLabel({ ...job, outputs: ['/a/1.jpg', '/a/2.jpg', '/a/3.jpg'] }, 'writing')).toBe(
       'Writing 3 files',
     )
+  })
+})
+
+describe('the time bar, for video and sound', () => {
+  const text = (row: ReturnType<typeof timeRow>) => row.map((r) => r.text).join('')
+
+  it('fills to the seconds encoded of the seconds there will be, as the page bar does', () => {
+    const row = timeRow({ palette: DARK, mode: 'convert', done: 14, total: 38, elapsedMs: 2000 })
+    const bar = pagesRow({ palette: DARK, mode: 'convert', done: 14, total: 38 })
+    expect(row.slice(0, 3)).toEqual(bar.slice(0, 3))
+    expect(text(row)).toContain('0:14 of 0:38')
+  })
+
+  it('says the time left only after 5 s, from the speed measured', () => {
+    expect(
+      text(timeRow({ palette: DARK, mode: 'convert', done: 10, total: 40, elapsedMs: 4000 })),
+    ).not.toContain('left')
+    expect(
+      text(timeRow({ palette: DARK, mode: 'convert', done: 10, total: 40, elapsedMs: 5000 })),
+    ).toContain('about 15 s left')
+  })
+
+  it('says minutes once it is a minute or more', () => {
+    expect(
+      text(timeRow({ palette: DARK, mode: 'convert', done: 10, total: 200, elapsedMs: 10_000 })),
+    ).toContain('about 3 min left')
   })
 })

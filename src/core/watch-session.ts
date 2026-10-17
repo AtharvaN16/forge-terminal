@@ -155,7 +155,8 @@ export function startWatch(opts: {
         if (
           event.type === 'job:phase' &&
           'phase' in event.progress &&
-          event.progress.phase !== 'page'
+          event.progress.phase !== 'page' &&
+          event.progress.phase !== 'time'
         ) {
           opts.onEvent({ type: 'phase', path, phase: event.progress.phase, job: event.job })
         }

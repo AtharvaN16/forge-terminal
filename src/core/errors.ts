@@ -53,6 +53,7 @@ export type ErrorCode =
   | 'clipboard-unavailable'
   | 'nothing-to-undo'
   | 'cannot-compress-more'
+  | 'ffmpeg-missing'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -959,6 +960,24 @@ export function animatedCrop(path: string): ForgeError {
     code: 'animated-crop',
     title: "Can't crop an animation",
     detail: `${displayName(path)} is animated; cropping works on still images.`,
+  })
+}
+
+/**
+ * A video or sound file, and no ffmpeg to read or write it (video spec §3.7).
+ * Nothing downloads by itself from the CLI or an agent: this says how.
+ */
+export function ffmpegMissing(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const how = platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'
+  return new ForgeError({
+    code: 'ffmpeg-missing',
+    title: 'Video and sound need ffmpeg',
+    detail: `${displayName(path)} is a video or sound file, and ffmpeg is not on this computer.`,
+    short: 'ffmpeg is not on this computer',
+    hint: `Install it with ${how}, then run Forge again.`,
   })
 }
 

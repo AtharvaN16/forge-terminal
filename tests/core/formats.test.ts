@@ -2,17 +2,30 @@ import { describe, expect, it } from 'vitest'
 import { ALL_FORMAT_IDS, FORMATS, formatById, primaryExtension } from '../../src/core/formats.js'
 
 describe('format registry', () => {
-  it('knows all ten formats', () => {
+  it('knows the image, document, video and sound formats', () => {
     expect(ALL_FORMAT_IDS.sort()).toEqual([
+      'aiff',
+      'avi',
       'avif',
       'doc',
       'docx',
+      'flac',
       'gif',
       'heic',
+      'hevc',
       'jpeg',
+      'm4a',
+      'mkv',
+      'mov',
+      'mp3',
+      'mp4',
+      'ogg',
+      'opus',
       'pdf',
       'png',
       'tiff',
+      'wav',
+      'webm',
       'webp',
     ])
   })
@@ -38,7 +51,7 @@ describe('format registry', () => {
 
   it('resolves a format by id and returns undefined for nonsense', () => {
     expect(formatById('webp')?.label).toBe('WebP')
-    expect(formatById('mp4')).toBeUndefined()
+    expect(formatById('xyz')).toBeUndefined()
   })
 
   it('gives a primary extension for output filenames', () => {

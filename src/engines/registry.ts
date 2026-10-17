@@ -2,6 +2,7 @@ import { isForgeError } from '../core/errors.js'
 import type { FormatId, Job, SourceInfo } from '../core/types.js'
 import { extensionEngine } from './extension.js'
 import { imageEngine } from './image.js'
+import { soundEngine, videoEngine } from './media.js'
 import { pdfEngine } from './pdf.js'
 import { pdfiumEngine } from './pdfium.js'
 import type { Engine } from './types.js'
@@ -20,7 +21,18 @@ import { wordEngine } from './word.js'
  * that ambiguity always resolves the same way it did before `wordEngine`
  * existed.
  */
-export const ENGINES: Engine[] = [imageEngine, pdfEngine, wordEngine, extensionEngine, pdfiumEngine]
+export const ENGINES: Engine[] = [
+  imageEngine,
+  // Straight after the image engine: they decline a non-media file from its
+  // first bytes, and a video must never fall through to the PDF and Word
+  // engines, which read a whole file into memory before refusing it.
+  videoEngine,
+  soundEngine,
+  pdfEngine,
+  wordEngine,
+  extensionEngine,
+  pdfiumEngine,
+]
 
 export function engineForSource(format: FormatId): Engine | undefined {
   return ENGINES.find((e) => e.reads.has(format))

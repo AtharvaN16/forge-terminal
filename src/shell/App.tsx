@@ -874,6 +874,17 @@ export function App({
     job: Job
   } | null>(null)
   /**
+   * A video's or sound file's seconds encoded of the seconds it will have
+   * (video spec §3.6): a true total, so Working draws a real bar. `pass` while
+   * a size is hit in two passes; `since` when this pass began, for the time left.
+   */
+  const [timeProgress, setTimeProgress] = useState<{
+    done: number
+    total: number
+    pass?: { at: 1 | 2; of: 2 } | undefined
+    since: number
+  } | null>(null)
+  /**
    * The job running now, for the Working screen (W5): when it began, what it
    * is doing as its action says it, and the last phase it reported — never a
    * guess. `null` when nothing runs.
@@ -1676,6 +1687,14 @@ export function App({
     (_input, key) => {
       if (!key.escape || !searchAbort.current) return
       searchAbort.current.abort()
+      if (timeProgress !== null && mode !== 'edit') {
+        // A video or sound encode: ffmpeg is killed and its temp file removed.
+        // Back to the step that started it, the file still staged.
+        searchAbort.current = undefined
+        setTimeProgress(null)
+        setStep(mode === 'compress' ? 'mode' : 'target')
+        return
+      }
       if (mode === 'edit') {
         // An extension job: the child is killed and nothing is written. Back
         // to the picker, the file still there.
@@ -2933,6 +2952,16 @@ export function App({
       setPageProgress({ done: progress.done, total: progress.total, job })
       return
     }
+    if (progress.phase === 'time') {
+      setTimeProgress((t) => ({
+        done: progress.done,
+        total: progress.total,
+        pass: progress.pass,
+        // A new pass starts its own clock: its speed is its own.
+        since: t && t.pass?.at === progress.pass?.at ? t.since : Date.now(),
+      }))
+      return
+    }
     const phase = phaseLabel(job, progress.phase)
     setWork((w) => (w ? { ...w, phase } : w))
   }
@@ -2959,6 +2988,10 @@ export function App({
      */
     const controller = new AbortController()
     searchAbort.current = controller
+    setTimeProgress(null)
+    // A video or sound encode can be stopped all the way through (ffmpeg is
+    // killed, nothing is written), so esc stays live past the size search.
+    const media = planned.sources[0].kind === 'media'
 
     const outcome = await runPlan([planned], {
       force: opts.force ?? false,
@@ -2971,12 +3004,13 @@ export function App({
         // Settled: what runs now is the encode itself, which esc cannot stop.
         if (event.type === 'search:settled') {
           setAttempt(undefined)
-          searchAbort.current = undefined
+          if (!media) searchAbort.current = undefined
         }
         if (event.type === 'job:phase') showPhase(event.job, event.progress)
       },
     })
     setAttempt(undefined)
+    setTimeProgress(null)
     searchAbort.current = undefined
 
     /**
@@ -4360,14 +4394,17 @@ export function App({
                   label={
                     attempt
                       ? 'Finding the right quality'
-                      : pageProgress
-                        ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
-                        : (work.phase ?? work.verb)
+                      : timeProgress?.pass
+                        ? `Pass ${timeProgress.pass.at} of 2 · ${work.phase ?? work.verb}`
+                        : pageProgress
+                          ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
+                          : (work.phase ?? work.verb)
                   }
                   startedAt={work.startedAt}
                   search={attempt}
                   pages={attempt ? undefined : (pageProgress ?? undefined)}
-                  stoppable={mode === 'edit'}
+                  time={attempt ? undefined : (timeProgress ?? undefined)}
+                  stoppable={mode === 'edit' || timeProgress !== null}
                   width={width}
                 />
               </Box>

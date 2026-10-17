@@ -226,6 +226,10 @@ export function encode(
       )
     case 'doc':
       throw new Error('doc is not an image target; the capability graph should have prevented this')
+    default:
+      throw new Error(
+        `${target} is not an image target; the capability graph should have prevented this`,
+      )
   }
 }
 

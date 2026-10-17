@@ -9,6 +9,21 @@ export type FormatId =
   | 'pdf'
   | 'docx'
   | 'doc'
+  // Video (video spec §2). `hevc` is a codec written into an .mp4; never a source.
+  | 'mp4'
+  | 'mov'
+  | 'hevc'
+  | 'webm'
+  | 'mkv'
+  | 'avi'
+  // Sound.
+  | 'mp3'
+  | 'm4a'
+  | 'opus'
+  | 'flac'
+  | 'aiff'
+  | 'wav'
+  | 'ogg'
 
 export interface FormatSpec {
   id: FormatId
@@ -34,6 +49,16 @@ export interface FormatSpec {
    * from what they were. PNG and GIF.
    */
   quantisable?: true
+  /**
+   * What a video or sound format holds, which groups it in the picker:
+   * `video` (pictures, perhaps sound) or `sound` (sound only).
+   */
+  media?: 'video' | 'sound'
+  /**
+   * Written only so a file can keep its own format (compress, trim); never
+   * offered as something else's target. MOV, Matroska.
+   */
+  keepsOnly?: true
 }
 
 /** What a file actually is, determined by reading it — never by its extension. */
@@ -75,7 +100,46 @@ export interface DocumentInfo {
   }
 }
 
-export type SourceInfo = ImageInfo | DocumentInfo
+export interface VideoFacts {
+  codec: string
+  /** Upright pixels: a phone video stored sideways reports its real shape. */
+  width: number
+  height: number
+  fps: number
+  /** Degrees clockwise to show it upright: 0, 90, 180 or 270. */
+  rotation: number
+  /** HLG or PQ: needs tone-mapping for a format that can't carry it. */
+  hdr: boolean
+}
+
+export interface AudioFacts {
+  codec: string
+  channels: number
+  sampleRate: number
+}
+
+export interface MediaFacts {
+  /** Seconds. */
+  duration: number
+  /** Absent for a sound file (cover art does not count). */
+  video?: VideoFacts
+  /** Absent for a silent video. */
+  audio?: AudioFacts
+}
+
+/**
+ * A video or a sound file. `facts` is what ffprobe read; absent until ffmpeg
+ * is on this Mac, when only the bytes say what the file is.
+ */
+export interface MediaInfo {
+  kind: 'media'
+  path: string
+  format: FormatId
+  bytes: number
+  facts?: MediaFacts
+}
+
+export type SourceInfo = ImageInfo | DocumentInfo | MediaInfo
 
 export interface ConvertOptions {
   /** 1-100. Ignored for lossless targets. */
@@ -105,6 +169,8 @@ export interface ConvertOptions {
    * at `quality`, in flat colours unless `dither`.
    */
   compress?: { dither: boolean }
+  /** Video and sound only. */
+  media?: MediaOptions
 }
 
 /** A shape as a ratio of two whole numbers: 16:9 is `{ w: 16, h: 9 }`. */
@@ -190,6 +256,30 @@ export type Job =
     }
 
 /**
+ * What `/edit` and the CLI-only flags ask of a video or sound file (video
+ * spec §2, §3.4). Everything else about the encode is Forge's choice.
+ */
+export interface MediaOptions {
+  /** Seconds kept: from `start` to `end` (the end of the file when absent). */
+  cut?: { start: number; end?: number | undefined }
+  /** The sound taken out; the picture copied as it is. */
+  mute?: boolean
+  /** CLI only. 0.25–4. */
+  speed?: number
+  /** CLI only. */
+  fps?: number
+  /** CLI only, kbps: the sound's bitrate. Also sound convert's quality. */
+  bitrate?: number
+  /** Loudness evened out to this, in LUFS (−16 for podcasts). */
+  loudness?: number
+  /**
+   * The bytes to fit, set by `runPlan` once the engine's arithmetic says it
+   * can be reached (video spec §3.3). The encode hits it in two passes.
+   */
+  targetBytes?: number
+}
+
+/**
  * Every warning's stable identifier. --json and the MCP server print it, so a
  * consumer can act on a warning without parsing its prose. A code is never
  * renamed or removed in a minor version (spec §3.2).
@@ -210,6 +300,10 @@ export type WarningCode =
   | 'nothing-trimmed'
   /** The image already had the crop's shape, so only the resize was applied. */
   | 'nothing-cropped'
+  /** A cut copied rather than re-encoded starts on the keyframe at or before the asked start. */
+  | 'media-cut-keyframe'
+  /** A size was hit by making the picture smaller or the frame rate lower. */
+  | 'media-fitted'
 
 export interface Warning {
   code: WarningCode
@@ -228,7 +322,15 @@ export interface Result {
  * The `page` variant may only be emitted where the total is genuinely known
  * in advance. Spec §12 forbids fabricated progress, and a page count is real.
  */
-export type Progress = { phase: Phase } | { phase: 'page'; done: number; total: number }
+export type Progress =
+  | { phase: Phase }
+  | { phase: 'page'; done: number; total: number }
+  /**
+   * Seconds of the output encoded of the seconds it will have: a video's or a
+   * sound file's true total (video spec §3.6). `pass` while a size is being
+   * hit in two passes.
+   */
+  | { phase: 'time'; done: number; total: number; pass?: { at: 1 | 2; of: 2 } }
 
 /**
  * Progress's first variant. `waiting`: queued behind another forge using the
