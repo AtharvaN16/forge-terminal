@@ -261,7 +261,7 @@ class TooLarge extends Error {}
  * extensions root and is removed on any outcome, so a failure at any step
  * leaves the previous install untouched and nothing partial behind.
  */
-export async function installExtension(
+async function installOnly(
   id: string,
   opts: {
     onProgress?: (done: number, total: number) => void
@@ -393,7 +393,7 @@ export async function installExtension(
  * (in any forge) holds the tool's lock, and holds it itself while deleting,
  * so no job can start on a half-deleted model.
  */
-export async function removeExtension(
+async function removeOnly(
   id: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
@@ -415,6 +415,35 @@ export async function removeExtension(
     },
     { waitMs: 0, action: 'remove', what: `${entry.title} is being removed` },
   )
+}
+
+/**
+ * Boost is what Sharpen runs on, so adding or removing it puts Sharpen in
+ * Forge into the right-click menu or takes it out (src/menu/). Never fails
+ * the install or removal itself.
+ */
+async function afterChange(id: string) {
+  if (id !== 'boost') return
+  const { resyncMenu } = await import('../menu/entry.js')
+  await resyncMenu()
+}
+
+export async function installExtension(
+  id: string,
+  opts: Parameters<typeof installOnly>[1] = {},
+): Promise<Installed> {
+  const done = await installOnly(id, opts)
+  await afterChange(id)
+  return done
+}
+
+export async function removeExtension(
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<boolean> {
+  const removed = await removeOnly(id, platform)
+  await afterChange(id)
+  return removed
 }
 
 export type { ExtensionId }

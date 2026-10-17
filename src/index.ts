@@ -61,6 +61,25 @@ async function main(): Promise<void> {
       return
     }
 
+    // `forge menu …`: what the right-click menu's items run (src/menu/). Never
+    // typed by anyone: the launcher calls `run` with a click's action and
+    // files, and `run` opens a terminal on `open`, which is the shell with the
+    // files staged.
+    if (argv[0] === 'menu') {
+      const { openedFor, parseMenuArgs } = await import('./menu/command.js')
+      const cmd = parseMenuArgs(argv.slice(1))
+      if (cmd.kind === 'open') {
+        const { applyColourPreference } = await import('./shell/theme.js')
+        applyColourPreference()
+        const { bootShell } = await import('./shell/boot.js')
+        await bootShell(undefined, { opened: openedFor(cmd.action, cmd.paths) })
+        return
+      }
+      const { runMenuCommand } = await import('./menu/entry.js')
+      process.exitCode = await runMenuCommand(cmd, VERSION)
+      return
+    }
+
     if (argv[0] === 'mcp') {
       const { runMcpServer } = await import('./mcp/server.js')
       await runMcpServer(argv.slice(1))
@@ -105,7 +124,11 @@ async function main(): Promise<void> {
       // boot.ts starts importing the shell and plays the intro at the same
       // time. It is React-free, so nothing here gets ahead of the line above.
       const { bootShell } = await import('./shell/boot.js')
-      await bootShell()
+      // The right-click menu is set up in the background once the shell is
+      // up, saying so the first time (src/menu/setup.ts).
+      await bootShell(undefined, {
+        menuNote: async () => (await import('./menu/entry.js')).menuAtStart(VERSION),
+      })
       return
     }
 

@@ -47,6 +47,7 @@ import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import type { ExtensionId } from '../extensions/catalog.js'
+import type { Opened } from '../menu/command.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import type { Pasteboard } from '../utils/pasteboard.js'
 import { printable } from '../utils/printable.js'
@@ -598,6 +599,37 @@ async function resolveDrop(text: string): Promise<DropResolution> {
 }
 
 /**
+ * Reads the files the right-click menu opened Forge with. Unlike a drop these
+ * are exact paths, one per argument, so they are never unescaped or split: a
+ * Windows path is all backslashes. One folder is read as a dropped folder is.
+ */
+async function resolvePaths(paths: string[]): Promise<DropResolution> {
+  const [only] = paths
+  if (only !== undefined && paths.length === 1) {
+    const isDirectory = await stat(only).then(
+      (s) => s.isDirectory(),
+      () => false,
+    )
+    if (isDirectory) {
+      const scan = await scanFolder(only)
+      if (scan.sources.length === 0)
+        return resolution([], [...scan.failures, { path: only, error: emptyDirectory(only) }])
+      return { ...resolution(scan.sources, scan.failures), folder: scan }
+    }
+  }
+  const sources: SourceInfo[] = []
+  const failures: InputFailure[] = []
+  for (const path of paths) {
+    try {
+      sources.push(await probe(path))
+    } catch (e) {
+      failures.push(asFailure(path, e))
+    }
+  }
+  return resolution(sources, failures)
+}
+
+/**
  * What became of a copied image's result: on the clipboard; saved to the
  * default folder because something else was copied meanwhile (E3); or left
  * aside because a compression came out larger, which is never put back.
@@ -624,6 +656,8 @@ export function App({
   latestRelease,
   pasteboard = null,
   clipRoot,
+  opened,
+  menuNote,
 }: {
   initialWidth?: number
   initialHeight?: number
@@ -647,6 +681,13 @@ export function App({
   pasteboard?: Pasteboard | null
   /** Where a copied image and its result are kept; the system temp folder by default. */
   clipRoot?: string
+  /**
+   * Opened from the right-click menu (`forge menu open`): files to stage, the
+   * mode to stage them in, and whether to take the first step as ↵ would.
+   */
+  opened?: Opened
+  /** Sets the right-click menu up; resolves to a note to show the first time. Tests pass a fake. */
+  menuNote?: () => Promise<string | undefined>
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
@@ -794,7 +835,7 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  const [mode, setMode] = useState<ShellMode>('convert')
+  const [mode, setMode] = useState<ShellMode>(opened?.mode ?? 'convert')
   /**
    * Edit's tools as this Mac has them — installed, not, or installing with
    * the real bytes so far — read when its picker opens. `checking` once every
@@ -1373,10 +1414,7 @@ export function App({
       if (key.return && dropReading.current !== 0) return true
       const staged = stageRef.current
       if (key.return && staged.sources.length > 0) {
-        const [only] = staged.sources
-        if (staged.folder && mode === 'convert') setStep('watch')
-        else if (only && staged.sources.length === 1) proceedWith(only)
-        else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
+        enterStaged(staged)
         return true
       }
       const next = modeForKey(input)
@@ -1529,6 +1567,24 @@ export function App({
     warned.current = true
     hold({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${configWarning}` })
   }, [configWarning, hold])
+
+  /**
+   * The right-click menu is set up in the background as the shell starts;
+   * the first time, it says so here, once. Nothing is said when it was
+   * already there, or when setting it up failed: the shell is not the place
+   * to report on Finder.
+   */
+  const menuNoted = useRef(false)
+  useEffect(() => {
+    if (menuNoted.current || !menuNote) return
+    menuNoted.current = true
+    menuNote().then(
+      (text) => {
+        if (text) hold({ kind: 'note', id: nextId(), text })
+      },
+      () => {},
+    )
+  }, [menuNote, hold])
 
   /**
    * The one way anything in this file reports a failure. Whatever was thrown
@@ -2347,6 +2403,32 @@ export function App({
     )
     setFresh({ count: added, at: Date.now() })
   }, [])
+
+  /** ↵ on a staged home: the first step for what is staged, in the current mode. */
+  const enterStaged = (staged: Stage) => {
+    const [only] = staged.sources
+    if (staged.folder && mode === 'convert') setStep('watch')
+    else if (only && staged.sources.length === 1) proceedWith(only)
+    else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
+  }
+
+  /**
+   * Opened from the right-click menu: the files land as a drop would, once
+   * the first-run theme question (if any) is out of the way. Convert and
+   * Compress then take the first step for you; Open in Forge waits on home.
+   */
+  const openedLanded = useRef(false)
+  const openedAdvance = useRef(opened?.advance === true)
+  useEffect(() => {
+    if (!opened || opened.paths.length === 0 || openedLanded.current || step === 'theme') return
+    openedLanded.current = true
+    void resolvePaths(opened.paths).then(landDrop)
+  }, [opened, step, landDrop])
+  useEffect(() => {
+    if (!openedAdvance.current || step !== 'idle' || stage.sources.length === 0) return
+    openedAdvance.current = false
+    enterStaged(stage)
+  })
 
   /**
    * Reads a paste into the empty home field the moment it lands — a drop

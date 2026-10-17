@@ -242,6 +242,8 @@ export type Intent =
   | { kind: 'shell' }
   /** `forge update`: check npm now and install a newer Forge. */
   | { kind: 'update' }
+  /** `forge uninstall`: take the right-click menu out, then have npm remove Forge. */
+  | { kind: 'uninstall' }
   | ConfigIntent
 
 /**
@@ -659,7 +661,8 @@ export function parseArgs(rawArgv: string[]): Intent {
     argv[0] === 'extensions' ||
     argv[0] === 'palette' ||
     argv[0] === 'scale' ||
-    argv[0] === 'update'
+    argv[0] === 'update' ||
+    argv[0] === 'uninstall'
   ) {
     return parseSubcommand(argv)
   }
@@ -677,6 +680,16 @@ function parseSubcommand(argv: string[]): Intent {
       )
     }
     return { kind: 'update' }
+  }
+  if (argv[0] === 'uninstall') {
+    const rest = argv.slice(1)
+    if (rest.length > 0) {
+      throw invalidArguments(
+        `forge uninstall takes nothing else, got: ${rest.join(' ')}.`,
+        'Try: forge uninstall',
+      )
+    }
+    return { kind: 'uninstall' }
   }
   if (argv[0] === 'clip') return parseClipArgs(argv)
   if (argv[0] === 'watch') return parseWatchArgs(argv)

@@ -1,0 +1,66 @@
+/**
+ * What Forge puts in the right-click menu: Finder's Quick Actions on a Mac,
+ * Explorer's menu on Windows (mockups/finder-2026-10.html, decided).
+ *
+ * The same for everyone, no settings. An image gets Open Forge, Convert in
+ * Forge, Compress in Forge and Sharpen in Forge; a folder the first three; a
+ * PDF only Open in Forge, which opens it in PDF mode. Video and sound join
+ * Open in Forge when those modes land.
+ */
+
+/** What a menu item does when clicked. */
+export type MenuAction = 'open' | 'convert' | 'compress' | 'sharpen' | 'open-pdf'
+
+/** The file kinds an item is offered for. The system hides it for anything else. */
+export type MenuKind = 'image' | 'folder' | 'pdf'
+
+/** The colour of the slashes in the item's icon: a mode's, or Forge's own gradient. */
+export type MenuPaint = 'forge' | 'convert' | 'compress' | 'edit' | 'pdf'
+
+export interface MenuItem {
+  action: MenuAction
+  label: string
+  kinds: MenuKind[]
+  /** Opens Forge in a terminal window; false runs and says how it went in a notification. */
+  window: boolean
+  paint: MenuPaint
+}
+
+/**
+ * The items, in menu order. Sharpen needs the Boost extension, so it is
+ * only offered once that is installed.
+ */
+export function menuItems(o: { sharpen: boolean }): MenuItem[] {
+  const items: MenuItem[] = [
+    {
+      action: 'open',
+      label: 'Open Forge',
+      kinds: ['image', 'folder'],
+      window: true,
+      paint: 'forge',
+    },
+    {
+      action: 'convert',
+      label: 'Convert in Forge',
+      kinds: ['image', 'folder'],
+      window: true,
+      paint: 'convert',
+    },
+    {
+      action: 'compress',
+      label: 'Compress in Forge',
+      kinds: ['image', 'folder'],
+      window: true,
+      paint: 'compress',
+    },
+    {
+      action: 'sharpen',
+      label: 'Sharpen in Forge',
+      kinds: ['image'],
+      window: false,
+      paint: 'edit',
+    },
+    { action: 'open-pdf', label: 'Open in Forge', kinds: ['pdf'], window: true, paint: 'pdf' },
+  ]
+  return o.sharpen ? items : items.filter((i) => i.action !== 'sharpen')
+}

@@ -84,7 +84,7 @@ const runProcess: Run = (cmd, args, signal) =>
     child.on('close', (code) => resolve({ code, output }))
   })
 
-function lastWords(output: string): string {
+export function lastWords(output: string): string {
   const lines = output
     .split('\n')
     .map((l) => l.replace(/^npm (error|ERR!)\s*/, '').trim())

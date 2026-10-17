@@ -816,6 +816,12 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         stderr: [],
       }
     }
+    if (intent.kind === 'uninstall') {
+      const { runUninstall } = await import('../menu/entry.js')
+      const stdout: string[] = []
+      const exitCode = await runUninstall(VERSION, (line) => stdout.push(line))
+      return { exitCode, stdout, stderr: [] }
+    }
     if (intent.kind === 'extensions') {
       const { runExtensions } = await import('./extensions-command.js')
       const result = await runExtensions(intent, { onDownload: opts.onDownload })
