@@ -126,7 +126,7 @@ describe('colour, round two, in the app', () => {
     await settle()
     // A whole colour typed: the field's far end says ↵ is done. The
     // gradient's helper waits until it is (⇧→ works all the same).
-    expect(plain(app.lastFrame())).toMatch(/#F26E69 .* ↵ done/)
+    expect(plain(app.lastFrame())).toMatch(/#F26E69 .* ↵ {2}done/)
     expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
     app.stdin.write(SHIFT_RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
@@ -147,7 +147,7 @@ describe('colour, round two, in the app', () => {
     await settle()
     app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
-    expect(plain(app.lastFrame())).toMatch(/#32A852 .* ⇧ → gradient to a second colour/)
+    expect(plain(app.lastFrame())).toMatch(/#32A852 .* ⇧ → {2}gradient to a second colour/)
     // → alone still walks the ramp.
     app.stdin.write(RIGHT)
     await settle()

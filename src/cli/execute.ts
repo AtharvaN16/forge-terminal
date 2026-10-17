@@ -118,6 +118,8 @@ export interface ExecuteOptions {
    * piped output is plain text.
    */
   colour?: boolean
+  /** `forge clip`'s clipboard and folders; the real ones unless a test gives its own. */
+  clip?: import('./clip-command.js').ClipDeps
 }
 
 /** The intents that convert, compress or edit files: everything `runIntent` accepts. */
@@ -789,6 +791,11 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
   const debug = 'debug' in intent ? intent.debug : false
   try {
     if (intent.kind === 'config') return await runConfigCommand(intent, json)
+    if (intent.kind === 'clip') {
+      // Lazy, like config: nothing else needs the clipboard.
+      const { runClipCommand } = await import('./clip-command.js')
+      return await runClipCommand(intent, { ...opts, json, debug })
+    }
     if (intent.kind === 'update') {
       const { runUpdate } = await import('./update-command.js')
       const result = await runUpdate(VERSION, {

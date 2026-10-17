@@ -2,12 +2,14 @@ import { basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import type {
+  ClipIntent,
   CompressIntent,
   ConvertIntent,
   EditIntent,
   ExtensionOpIntent,
   PageOpIntent,
 } from '../cli/args.js'
+import { type ClipDeps, clipLines, runClip, runUndo } from '../cli/clip-command.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
 import { wholePercents } from '../core/colour/palette.js'
@@ -28,6 +30,7 @@ import {
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
 import type {
+  ClipArgs,
   CompressArgs,
   ConvertArgs,
   PaletteArgs,
@@ -257,6 +260,62 @@ export async function compressTool(args: CompressArgs): Promise<CallToolResult> 
   if (args.dpi !== undefined) intent.dpi = args.dpi
   if (args.output !== undefined) intent.output = args.output
   return fromReport(await runWriting(intent))
+}
+
+/**
+ * `forge clip` for an agent: the copied image, compressed or converted and
+ * put back. Serialised with the other writing tools, since a clipboard is as
+ * shared as a folder.
+ */
+export async function clipTool(args: ClipArgs, deps: ClipDeps = {}): Promise<CallToolResult> {
+  try {
+    if (args.undo) {
+      await oneWriterAtATime(() => runUndo(deps))
+      return {
+        content: [{ type: 'text', text: '✓ The original is back on the clipboard' }],
+        structuredContent: {
+          ...runJson(VERSION, { results: [], failures: [] }),
+          clipboard: 'restored',
+        },
+        isError: false,
+      }
+    }
+    const intent: ClipIntent = { kind: 'clip', undo: false, debug: false }
+    if (args.to !== undefined) intent.target = args.to
+    if (args.quality !== undefined) intent.quality = args.quality
+    if (args.save !== undefined) intent.save = args.save
+    if (args.maxSize !== undefined) {
+      const maxBytes = parseSize(args.maxSize)
+      if (maxBytes === undefined) {
+        return refuse(
+          invalidArguments(
+            `${args.maxSize} is not a size.`,
+            'Try a number with a unit, for example 500kb, 2mb or 1.5mb.',
+          ),
+        )
+      }
+      intent.maxBytes = maxBytes
+    }
+    const outcome = await oneWriterAtATime(() => runClip(intent, { ...NO_PROMPT, clip: deps }))
+    if (outcome.status === 'failed') return fromReport(outcome.report)
+    const doc = runJson(VERSION, outcome.report)
+    const result = runResult(doc)
+    return {
+      ...result,
+      content: [
+        { type: 'text', text: clipLines(outcome).join('\n') },
+        ...(result.content ?? []).slice(1),
+      ],
+      structuredContent: {
+        ...doc,
+        clipboard: outcome.status,
+        ...(outcome.saved === undefined ? {} : { saved: outcome.saved }),
+      },
+    }
+  } catch (e) {
+    if (!isForgeError(e)) throw e
+    return refuse(e)
+  }
 }
 
 /**

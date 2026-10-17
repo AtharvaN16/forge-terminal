@@ -1,6 +1,6 @@
 import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
-import { errorLine, errorPanel } from '../../src/shell/error-art.js'
+import { errorLine, errorPanel, notePanel } from '../../src/shell/error-art.js'
 import { type Row, width as rowWidth } from '../../src/shell/home-art.js'
 import { DARK, LIGHT, NEUTRAL, type Palette } from '../../src/shell/theme.js'
 import {
@@ -188,5 +188,45 @@ describe('failTint', () => {
 
   it('is no fill in NEUTRAL, which asserts no colour', () => {
     expect(NEUTRAL.failTint).toBe('')
+  })
+})
+
+describe('notePanel (E3, the clipboard changed)', () => {
+  const text = (row: Row) => row.map((r) => r.text).join('')
+
+  it('pads the tint a row above and below, with a gap under the title', () => {
+    const rows = notePanel({
+      palette: DARK,
+      title: 'Clipboard changed',
+      lines: ['The file you uploaded is no longer in the clipboard.', 'Saved to Desktop.'],
+      width: 72,
+    })
+    expect(rows.map(text).map((t) => t.trimEnd())).toEqual([
+      '',
+      ' Clipboard changed',
+      '',
+      ' The file you uploaded is no longer in the clipboard.',
+      ' Saved to Desktop.',
+      '',
+    ])
+    for (const row of rows) {
+      expect(rowWidth(row)).toBe(72)
+      expect(row.every((r) => r.bg === DARK.failTint)).toBe(true)
+    }
+    expect(rows[1]?.find((r) => r.text === 'Clipboard changed')).toMatchObject({
+      fg: DARK.fail,
+      bold: true,
+    })
+  })
+
+  it('without a fill, says it with a cross instead', () => {
+    const rows = notePanel({
+      palette: DARK,
+      title: 'Clipboard changed',
+      lines: ['x'],
+      width: 40,
+      plain: true,
+    })
+    expect(rows.map(text).map((t) => t.trimEnd())).toEqual(['✕ Clipboard changed', '  x'])
   })
 })

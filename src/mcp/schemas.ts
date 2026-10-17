@@ -169,6 +169,27 @@ export const CompressInput = z
     message: 'Give exactly one of quality or maxSize.',
   })
 
+export const ClipInput = z
+  .object({
+    to: z
+      .enum(TARGETS)
+      .optional()
+      .describe("Convert to this format id. Default: compress, keeping the image's own format."),
+    quality: z.number().int().min(1).max(100).optional().describe('Compress to this quality.'),
+    maxSize: z.string().optional().describe('Compress until it fits, e.g. "500kb".'),
+    save: absolutePath.optional().describe('Also write the result into this folder.'),
+    undo: z
+      .boolean()
+      .optional()
+      .describe('Put the last original back instead. Takes no other argument.'),
+  })
+  .refine((a) => !(a.quality !== undefined && a.maxSize !== undefined), {
+    message: 'Give at most one of quality or maxSize.',
+  })
+  .refine((a) => !a.undo || Object.keys(a).every((k) => k === 'undo'), {
+    message: 'undo takes no other argument.',
+  })
+
 export const PdfInput = z.object({
   op: z.enum(PAGE_OPS).describe('The page operation.'),
   paths: paths.describe(
@@ -184,6 +205,7 @@ export const PdfInput = z.object({
 export type ProbeArgs = z.infer<typeof ProbeInput>
 export type ConvertArgs = z.infer<typeof ConvertInput>
 export type CompressArgs = z.infer<typeof CompressInput>
+export type ClipArgs = z.infer<typeof ClipInput>
 export type PdfArgs = z.infer<typeof PdfInput>
 
 // Outputs: the §3.2 / §3.3 documents. Strict, so that a field added in
@@ -212,6 +234,11 @@ export const RunOutput = z.strictObject({
   ok: z.boolean(),
   results: z.array(ResultOut),
   failures: z.array(FailureOut),
+})
+
+export const ClipOutput = RunOutput.extend({
+  clipboard: z.enum(['placed', 'changed', 'restored']).optional(),
+  saved: z.string().optional(),
 })
 
 export const ProbeOutput = z.strictObject({

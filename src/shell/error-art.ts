@@ -113,3 +113,36 @@ export function errorLine({
   ]
   return bg === undefined ? runs : filled(runs, columns, bg)
 }
+
+/**
+ * A notice too long for E5·b's one row, on its tint (clipboard E3, the
+ * user's own wording, 2026-10-16): a padding row, the title in `fail` bold,
+ * a gap, a row per sentence in `fg`, a padding row. Without a fill the shape
+ * says it as E5·b does, with a cross, and the padding goes.
+ */
+export function notePanel({
+  palette,
+  title,
+  lines,
+  width: columns,
+  plain = false,
+}: {
+  palette: Palette
+  title: string
+  lines: string[]
+  width: number
+  plain?: boolean
+}): Row[] {
+  const bg = fillOf(palette, plain)
+  if (bg === undefined) {
+    return [
+      [{ text: `${SYMBOLS.fail} ${title}`, fg: palette.fail, bold: true }],
+      ...lines.map((l): Row => [{ text: `  ${l}`, fg: palette.fg }]),
+    ]
+  }
+  const room = Math.max(1, columns - 2)
+  const pad = filled([], columns, bg)
+  const line = (text: string, fg: string, bold = false): Row =>
+    filled([{ text: ' ' }, { text: endEllipsis(text, room), fg, bold }], columns, bg)
+  return [pad, line(title, palette.fail, true), pad, ...lines.map((l) => line(l, palette.fg)), pad]
+}

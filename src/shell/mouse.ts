@@ -102,10 +102,13 @@ export const MOUSE_OFF = '\x1b[?1006l\x1b[?1002l\x1b[?1003l\x1b[?1000l'
  * is not a CSI parameter run, must stay typeable, because brackets are legal
  * in filenames — `shot[1].png` must still work. A bare NUL (`\x00`), which
  * some terminals send as filler, is filtered for the same reason: it is
- * wire noise, not something anyone typed.
+ * wire noise, not something anyone typed. So are the focus reports, `[I` and
+ * `[O` (`focus.ts`), which carry no parameters at all.
  */
 export function isStrayEscapeSequence(input: string): boolean {
-  return /^\[(?:[<>?][\d;]*|[\d;]+)[A-Za-z~]$/.test(input) || input === '\x00'
+  return (
+    /^\[(?:[<>?][\d;]*|[\d;]+)[A-Za-z~]$/.test(input) || /^\[[IO]$/.test(input) || input === '\x00'
+  )
 }
 
 /**

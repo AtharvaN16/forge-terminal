@@ -174,7 +174,25 @@ export interface ScaleIntent {
   svg: boolean
 }
 
+/**
+ * `forge clip`: the copied image, compressed (or with `--to`, converted) and
+ * put back on the clipboard. No inputs: the clipboard is the input and the
+ * destination.
+ */
+export interface ClipIntent {
+  kind: 'clip'
+  /** Put the last original back instead. Takes no other flag. */
+  undo: boolean
+  target?: FormatId
+  quality?: number
+  maxBytes?: number
+  /** Also write the result to a folder; `true` is the default folder. */
+  save?: string | true
+  debug: boolean
+}
+
 export type Intent =
+  | ClipIntent
   | ConvertIntent
   | CompressIntent
   | PageOpIntent
@@ -292,6 +310,8 @@ Other commands:
   forge probe <files...>   what each file is and what Forge can do with it
   forge palette <image>    an image's main colours (--json, --svg, --inside <hex>)
   forge scale <colour>     50–950 from one colour, with it at 500 (--json, --svg)
+  forge clip               compress the copied image and put it back (--to, --quality,
+                           --max-size, --save [folder], --undo)
   forge config [list | path | set <setting> <value>]
   forge extensions [add | remove <id>]   optional extras, such as boost and remove-background
   forge update             install a newer Forge, if there is one
@@ -330,6 +350,51 @@ function parseProbeArgs(argv: string[]): ProbeIntent {
     )
   }
   return { kind: 'probe', inputs: rest }
+}
+
+/**
+ * Claimed before Commander, like `probe`. Hand-read because `--save` takes an
+ * optional folder, and Commander's optional value would swallow whatever
+ * follows it.
+ */
+function parseClipArgs(argv: string[]): ClipIntent {
+  const intent: ClipIntent = { kind: 'clip', undo: false, debug: false }
+  const rest = argv.slice(1)
+  const value = (flag: string, i: number): string => {
+    const v = rest[i + 1]
+    if (v === undefined || v.startsWith('-')) throw invalidArguments(`${flag} needs a value.`)
+    return v
+  }
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i] as string
+    if (a === '--json') continue
+    else if (a === '--debug') intent.debug = true
+    else if (a === '--undo') intent.undo = true
+    else if (a === '--to' || a === '-t') intent.target = parseTarget(value(a, i++))
+    else if (a === '--quality' || a === '-q') intent.quality = parseQuality(value(a, i++))
+    else if (a === '--max-size') intent.maxBytes = parseMaxSize(value(a, i++))
+    else if (a === '--save') {
+      const next = rest[i + 1]
+      intent.save = next === undefined || next.startsWith('-') ? true : (rest[++i] as string)
+    } else if (a.startsWith('-')) {
+      throw invalidArguments(`forge clip does not take ${a}.`, 'Try: forge --help')
+    } else {
+      throw invalidArguments(
+        `forge clip takes no files: it reads the clipboard, not ${a}.`,
+        `To compress a file, try: forge ${a} --quality 80`,
+      )
+    }
+  }
+  if (intent.undo && Object.keys(intent).some((k) => !['kind', 'undo', 'debug'].includes(k))) {
+    throw invalidArguments('--undo takes no other flag.', 'Try: forge clip --undo')
+  }
+  if (intent.quality !== undefined && intent.maxBytes !== undefined) {
+    throw invalidArguments(
+      'Use either --quality or --max-size, not both.',
+      'They are two ways of asking for the same thing, and Forge will not guess which wins.',
+    )
+  }
+  return intent
 }
 
 /** Claimed before Commander, like `probe` and `config`. Takes an action and an id, and `--json`. */
@@ -484,6 +549,7 @@ function takeBoost(argv: string[]): { rest: string[]; scale?: BoostScale } {
 export function parseArgs(rawArgv: string[]): Intent {
   const argv = rawArgv
   if (
+    argv[0] === 'clip' ||
     argv[0] === 'config' ||
     argv[0] === 'probe' ||
     argv[0] === 'extensions' ||
@@ -508,6 +574,7 @@ function parseSubcommand(argv: string[]): Intent {
     }
     return { kind: 'update' }
   }
+  if (argv[0] === 'clip') return parseClipArgs(argv)
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
   if (argv[0] === 'palette' || argv[0] === 'scale') return parseColourArgs(argv)

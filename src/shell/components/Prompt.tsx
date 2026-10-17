@@ -5,12 +5,14 @@ import { unescapePath } from '../../utils/unescape-path.js'
 import { useClickTarget } from '../ClickTargets.js'
 import { copy, paste } from '../clipboard.js'
 import { positionInFrame } from '../frame-geometry.js'
+import type { Row } from '../home-art.js'
 import { isStrayEscapeSequence, offsetForColumn } from '../mouse.js'
 import { FIELD_WIDTH } from '../save-as-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp } from '../theme.js'
 import { useKeys } from '../useKeys.js'
+import { Runs } from './Home.js'
 
 /**
  * Consumes as many characters starting at `from` as fit within `maxWidth`
@@ -126,6 +128,11 @@ interface PromptProps {
   suffix?: string
   /** `inline` only: whatever the line goes on to say after the suffix. */
   after?: ReactNode
+  /**
+   * `home` only: a key hint at the field's far end while it is empty, two
+   * cells short of its edge (`fieldKey`) — ⌘V while a picture is copied.
+   */
+  hint?: Row | undefined
   /** `inline` only: false draws no `› ` before the value (Save as's name box). */
   marker?: boolean
   /** The value's colour, when not the usual text colour: red for wrong input in colour's box. */
@@ -227,6 +234,7 @@ export function Prompt({
   keepOnSubmit = false,
   suffix = '',
   after: trailing,
+  hint,
   marker = true,
   valueColour,
 }: PromptProps) {
@@ -872,10 +880,17 @@ export function Prompt({
         )}
       </Text>
     )
+    const far =
+      hint && !value && !span ? (
+        <Box flexShrink={0} marginRight={2}>
+          <Runs row={hint} />
+        </Box>
+      ) : null
     if (!shelf) {
       return (
         <Box ref={lineRef} width={width}>
-          {words('    ')}
+          <Box flexGrow={1}>{words('    ')}</Box>
+          {far}
         </Box>
       )
     }
@@ -886,7 +901,8 @@ export function Prompt({
     return (
       <Box marginLeft={2} width={inner} flexDirection="column" backgroundColor={shelf} paddingY={1}>
         <Box ref={lineRef} width={inner}>
-          {words('  ')}
+          <Box flexGrow={1}>{words('  ')}</Box>
+          {far}
         </Box>
       </Box>
     )

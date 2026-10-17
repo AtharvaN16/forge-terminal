@@ -69,9 +69,10 @@ async function call<T = RunJson>(
 }
 
 describe('the tool list', () => {
-  it('offers exactly the seven tools, annotated', async () => {
+  it('offers exactly the eight tools, annotated', async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'forge_clip',
       'forge_compress',
       'forge_convert',
       'forge_formats',

@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Box, type DOMElement, type Key, Static, useApp, useStdout } from 'ink'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -13,6 +13,7 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
 import { parseColour } from '../core/colour/parse.js'
 import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
 import { describeResult } from '../core/describe.js'
@@ -45,6 +46,7 @@ import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { displayName, displayPath } from '../utils/display-path.js'
+import type { Pasteboard } from '../utils/pasteboard.js'
 import { printable } from '../utils/printable.js'
 import { splitPastedPaths, startsLikePath, unescapePath } from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
@@ -93,11 +95,14 @@ import {
   type ToolState,
   toolState,
 } from './enhance.js'
+import { notePanel } from './error-art.js'
+import { fieldKey } from './field-key.js'
 import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
-import { HOME_MARGIN } from './home-art.js'
+import { useFocusIn } from './focus.js'
+import { HOME_MARGIN, type Row } from './home-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -120,6 +125,7 @@ import {
   colourProp,
   type HomeTab,
   MODE_KEYS,
+  modeColours,
   modeForKey,
   modePalette,
   paintsCanvas,
@@ -131,7 +137,7 @@ import {
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
 import { useAfter } from './useAfter.js'
-import { useKeys } from './useKeys.js'
+import { PASTE, useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
 import { useTerminalBackground } from './useTerminalBackground.js'
@@ -573,6 +579,19 @@ async function resolveDrop(text: string): Promise<DropResolution> {
   return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
 }
 
+/**
+ * What became of a copied image's result: on the clipboard; saved to the
+ * default folder because something else was copied meanwhile (E3); or left
+ * aside because a compression came out larger, which is never put back.
+ */
+type ClipDone =
+  | { status: 'placed'; output: string }
+  | { status: 'changed'; saved: string }
+  | { status: 'larger' }
+
+/** The ⌘V hint, and the key it names: what a terminal sends as an empty paste. */
+const PASTE_HINT = { key: '⌘V', words: 'to paste from clipboard' } as const
+
 /** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
 const SETTINGS_STEPS: ReadonlySet<string> = new Set(['extensions', 'update', 'about'])
 
@@ -585,6 +604,8 @@ export function App({
   updater = realUpdater,
   about = realAbout,
   latestRelease,
+  pasteboard = null,
+  clipRoot,
 }: {
   initialWidth?: number
   initialHeight?: number
@@ -601,6 +622,13 @@ export function App({
    * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
    */
   latestRelease?: () => Promise<string | undefined>
+  /**
+   * The clipboard as a picture, for ⌘V on home; null where there is none
+   * (not macOS, over SSH). launch.tsx passes the real one; tests a fake.
+   */
+  pasteboard?: Pasteboard | null
+  /** Where a copied image and its result are kept; the system temp folder by default. */
+  clipRoot?: string
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
@@ -880,6 +908,19 @@ export function App({
    */
   const stageRef = useRef(stage)
   stageRef.current = stage
+  /**
+   * The copied image while it is staged or running (clipboard, 2026-10-16):
+   * read into a run folder of its own, its result written there and put back
+   * on the clipboard, with no Save as.
+   */
+  const [clip, setClip] = useState<Taken | null>(null)
+  const clipRef = useRef(clip)
+  clipRef.current = clip
+  /** Whether the clipboard holds a picture, for home's ⌘V hint. */
+  const [clipHint, setClipHint] = useState(false)
+  const [clipDone, setClipDone] = useState<ClipDone | null>(null)
+  /** Bumped to run the copied image once its answers are in (see `openSaveAs`). */
+  const [clipRun, setClipRun] = useState(0)
   /** Mirrors `step`, for a drop's read to know whether home is still showing. */
   const stepRef = useRef(step)
   stepRef.current = step
@@ -1060,6 +1101,34 @@ export function App({
   /** The rows the latest drop added, for their band — none while motion is off. */
   const freshRows = motionEnabled(palette.name) ? fresh.count : 0
 
+  /**
+   * Looks at the clipboard for home's ⌘V hint: on opening, each time home
+   * comes back, and when the window comes back to the front — a picture is
+   * usually copied in another app. A look that fails says no picture.
+   */
+  const lookAtClipboard = useCallback(() => {
+    if (!pasteboard) return
+    pasteboard
+      .peek()
+      .then((p) => setClipHint(p.image !== null))
+      .catch(() => setClipHint(false))
+  }, [pasteboard])
+  useEffect(() => {
+    if (onHome) lookAtClipboard()
+  }, [onHome, lookAtClipboard])
+  useFocusIn(lookAtClipboard, pasteboard !== null)
+  /** The hint, while the field is empty on a home with nothing staged. */
+  const pasteHint =
+    clipHint && onHome && !staged && text === '' && mode !== 'colour'
+      ? fieldKey({
+          palette,
+          key: PASTE_HINT.key,
+          words: PASTE_HINT.words,
+          colour: modeColours(palette, mode).fg,
+          plain: (process.env.NO_COLOR ?? '') !== '',
+        })
+      : undefined
+
   /** Path completions for the home field, and which one Tab would take. */
   const [completions, setCompletions] = useState<Completion[]>([])
   const [chosen, setChosen] = useState(0)
@@ -1205,6 +1274,10 @@ export function App({
    * (docs/superpowers/specs/2026-10-13-forge-paste-drops-design.md).
    */
   const homeKey = (input: string, key: Key, value: string): boolean => {
+    if (pasteboard && ((key === PASTE && input === '') || (key.ctrl && input === 'v'))) {
+      pasteClipboard()
+      return true
+    }
     const piece = dropPiece.current
     // `value` can still be '' for a piece read back into the field but not
     // drawn yet.
@@ -1726,13 +1799,43 @@ export function App({
    * function per action, not two copies that can drift — the `.catch`
    * above is easy to omit from a second copy.
    */
+  /** The file Done is about: the copy saved to the default folder after E3, else the result. */
+  const lastFile = (): string | undefined =>
+    clipDone?.status === 'changed' ? clipDone.saved : lastResult?.job.outputs[0]
   const openLastResult = () => {
-    if (!lastResult) return
-    openPath(lastResult.job.outputs[0]).catch(showError)
+    const file = lastFile()
+    if (file !== undefined) openPath(file).catch(showError)
   }
   const revealLastResult = () => {
-    if (!lastResult) return
-    revealPath(lastResult.job.outputs[0]).catch(showError)
+    const file = lastFile()
+    if (file !== undefined) revealPath(file).catch(showError)
+  }
+
+  /** u on a copied image's Done: the original back on the clipboard. */
+  const undoCopied = () => {
+    if (!pasteboard) return
+    undoClip(pasteboard, clipRoot)
+      .then((ok) => {
+        if (ok)
+          hold({
+            kind: 'note',
+            id: nextId(),
+            text: `${SYMBOLS.ok} the original is back on the clipboard`,
+          })
+      })
+      .catch(showError)
+  }
+  /** s on a copied image's Done: the result kept as a file too, in the default folder. */
+  const saveCopied = (output: string) => {
+    saveCopy(output, expandTilde(livePrefs.defaultOutput))
+      .then((saved) =>
+        hold({
+          kind: 'note',
+          id: nextId(),
+          text: `${SYMBOLS.ok} saved to ${printable(displayPath(saved))}`,
+        }),
+      )
+      .catch(showError)
   }
 
   /** The Done key last pressed, for its cap to answer (M6b); `n` makes each press new. */
@@ -1750,8 +1853,22 @@ export function App({
         setStage(clearStage())
         setValues({})
         setLastResult(null)
+        setClip(null)
+        setClipDone(null)
         setStep('idle')
         return
+      }
+      if (clipDone?.status === 'placed') {
+        if (input === 'u') {
+          pressDone('u')
+          undoCopied()
+          return
+        }
+        if (input === 's') {
+          pressDone('s')
+          saveCopied(clipDone.output)
+          return
+        }
       }
       // O as well: enhance's note under its pictures says "Press O".
       if (input === 'o' || input === 'O') {
@@ -2150,6 +2267,39 @@ export function App({
    * field was typed into meanwhile.
    * A later ↵, paste or esc claims `requestId` and this result is dropped.
    */
+  /**
+   * ⌘V with a picture copied: the terminal has no text to paste, so it sends
+   * an empty paste, or nothing at all — ctrl-v is here for that. Either way
+   * the picture is read off the clipboard and lands as a dropped file does,
+   * named "Copied image", replacing one pasted before it. Nothing copied
+   * means nothing happens: the hint was not showing either.
+   */
+  const pasteClipboard = () => {
+    if (!pasteboard) return
+    const id = ++requestId.current
+    dropReading.current = id
+    const settled = () => {
+      if (dropReading.current === id) dropReading.current = 0
+      return requestId.current === id && stepRef.current === 'idle'
+    }
+    void (async () => {
+      try {
+        const taken = await takeImage(pasteboard, clipRoot)
+        const info = taken ? await probe(taken.source) : undefined
+        if (!settled() || !taken || !info) return
+        const before = clipRef.current
+        if (before) {
+          setStage((s) => ({ ...s, sources: s.sources.filter((x) => x.path !== before.source) }))
+        }
+        setClip(taken)
+        landDrop({ sources: [info], failures: [], anyExists: true })
+      } catch (e) {
+        settled()
+        showError(e)
+      }
+    })()
+  }
+
   const readDrop = (pasted: string) => {
     const id = ++requestId.current
     dropReading.current = id
@@ -2464,6 +2614,12 @@ export function App({
     name?: string
   } = {}) => {
     if (!src) return
+    // A copied image has no file to name or place: it goes back where it
+    // came from. Run once the answers just given are in (`clipRun`).
+    if (clipRef.current && src.path === clipRef.current.source) {
+      setClipRun((n) => n + 1)
+      return
+    }
     // An extension action has no destination option of its own; its folders
     // are the ones a conversion of the same image would offer.
     const spec = (isExtensionAction(act) ? convertAction : act)
@@ -2787,12 +2943,16 @@ export function App({
     const summary = outcome
     const result = summary.results[0]
     if (result) {
+      const copied = clipRef.current !== null && clipRef.current.source === source.path
+      const done = copied ? await settleClip(result) : null
       setLastResult(result)
-      const trail = doneTrail({ destination, name: displayName(result.job.outputs[0] ?? output) })
+      const trail = copied
+        ? doneTrail({ place: 'Clipboard' })
+        : doneTrail({ destination, name: displayName(result.job.outputs[0] ?? output) })
       setDoneBar({ mode, trail })
       doneRecord.current = [
         { kind: 'bar', id: nextId(), mode, trail },
-        { kind: 'result', id: nextId(), result, mode },
+        { kind: 'result', id: nextId(), result, mode, place: clipPlace(done) },
       ]
       setStep('result')
 
@@ -2877,11 +3037,15 @@ export function App({
       }
       const result = outcome.results[0]
       if (result) {
+        const copied = clipRef.current !== null && clipRef.current.source === source.path
+        if (copied) await settleClip(result)
         const name = displayName(result.job.outputs[0] ?? '')
-        const trail = doneTrail({
-          destination: dirname(result.job.outputs[0] ?? destination),
-          name,
-        })
+        const trail = copied
+          ? doneTrail({ place: 'Clipboard' })
+          : doneTrail({
+              destination: dirname(result.job.outputs[0] ?? destination),
+              name,
+            })
         setLastResult(result)
         setDoneBar({ mode, trail })
         doneRecord.current = [
@@ -3070,6 +3234,65 @@ export function App({
   const stopInstall = () => {
     installAbort.current?.abort()
   }
+
+  /**
+   * The copied image's run, in place of Save as: its result is written into
+   * its own run folder as "Copied image" with the format's extension, then
+   * put back (`settleClip`). After a render, so `values` holds the answer
+   * that was just given. Replacing is safe there: the folder is Forge's own.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per bump, with the answers as they stand then
+  useEffect(() => {
+    const taken = clipRef.current
+    if (clipRun === 0 || !taken || !source || source.path !== taken.source) return
+    const { ext } = proposalFor(source, values, taken.outDir, currentAction)
+    const output = join(taken.outDir, `Copied image${ext}`)
+    setClipDone(null)
+    setSavedAs(undefined)
+    if (enhancing) void runExtensionJob(taken.outDir, { output, force: true })
+    else void convert(taken.outDir, { output, force: true })
+  }, [clipRun])
+
+  /**
+   * A copied image's result, put back on the clipboard. Not when something
+   * else was copied while it ran: that copy is left alone and the result is
+   * saved to the default folder instead (E3). Not when a compression came
+   * out larger, either — that is never put back.
+   */
+  const settleClip = async (result: Result): Promise<ClipDone | null> => {
+    const done = await clipOutcome(result)
+    setClipDone(done)
+    return done
+  }
+  const clipOutcome = async (result: Result): Promise<ClipDone | null> => {
+    const taken = clipRef.current
+    const output = result.job.outputs[0]
+    const target = 'target' in result.job ? result.job.target : undefined
+    if (!pasteboard || !taken || output === undefined || target === undefined) return null
+    if (mode === 'compress' && result.outputBytes >= result.job.sources[0].bytes) {
+      return { status: 'larger' }
+    }
+    try {
+      if ((await putBack(pasteboard, taken, output, target)) === 'placed') {
+        return { status: 'placed', output }
+      }
+      return {
+        status: 'changed',
+        saved: await saveCopy(output, expandTilde(livePrefs.defaultOutput)),
+      }
+    } catch (e) {
+      showError(e)
+      return null
+    }
+  }
+
+  /** The scrollback's folder line and bar name for a copied image's result. */
+  const clipPlace = (done: ClipDone | null) =>
+    done?.status === 'placed'
+      ? { folder: 'Clipboard', name: 'On the clipboard' }
+      : done?.status === 'changed'
+        ? { folder: displayPath(dirname(done.saved)), name: displayName(done.saved) }
+        : undefined
 
   const convert = async (destination: string, opts: { force?: boolean; output?: string } = {}) => {
     if (!source) return
@@ -3412,7 +3635,7 @@ export function App({
    * lists it; `destination` is a path.
    */
   const trailAnswers = (
-    extra: { destination?: string; name?: string | undefined } = {},
+    extra: { destination?: string; name?: string | undefined; place?: string } = {},
   ): Partial<Record<Question, string>> => {
     const folder = extra.destination ?? (values.destination as string | undefined)
     const bySize = mode === 'compress' && values.mode === 'size'
@@ -3438,19 +3661,65 @@ export function App({
           ? String(values.quality)
           : undefined,
       // Enhance's trail is the row and the name (the mockup's), no folder.
-      destination: folder && mode !== 'enhance' ? displayName(displayPath(folder)) : undefined,
-      name: extra.name ?? savedAs,
+      // A copied image's place is the clipboard, and it has no file name.
+      destination:
+        extra.place ??
+        (folder && mode !== 'enhance' ? displayName(displayPath(folder)) : undefined),
+      name: extra.place ? undefined : (extra.name ?? savedAs),
     }
   }
 
   /** The trail a finished run is recorded with: every answer, then "Done". */
-  const doneTrail = (extra: { destination?: string; name?: string }): Trail => ({
+  const doneTrail = (extra: { destination?: string; name?: string; place?: string }): Trail => ({
     answers:
       mode === 'pdf'
         ? pdfTrailNow.answers
         : trailFor({ mode, step: 'result', answers: trailAnswers(extra) }).answers,
     current: 'Done',
   })
+
+  /**
+   * Done for a copied image (clipboard Step 6 and E3): the bar is named for
+   * where the result went, and the keys are the clipboard's — u puts the
+   * original back, s keeps a file too. When something else was copied
+   * meanwhile, the user's own words (2026-10-16) say where it went instead.
+   */
+  const clipDoneProps = (again: string) => {
+    if (clipDone?.status === 'placed') {
+      return {
+        afterName: 'On the clipboard',
+        keys: [
+          ['↵', again],
+          ['u', 'undo'],
+          ['s', 'save a copy'],
+          ['o', 'open'],
+        ] as Array<[string, string]>,
+      }
+    }
+    if (clipDone?.status !== 'changed') return {}
+    const inset = HOME_MARGIN + 2
+    const verb = mode === 'compress' ? 'compressed' : 'converted'
+    const block = notePanel({
+      palette,
+      title: 'Clipboard changed',
+      lines: [
+        'The file you uploaded is no longer in the clipboard.',
+        `The ${verb} image is saved to ${displayName(dirname(clipDone.saved))}.`,
+      ],
+      width: Math.max(8, width - 2 * inset),
+      plain: (process.env.NO_COLOR ?? '') !== '',
+    }).map((row): Row => [{ text: ' '.repeat(inset) }, ...row])
+    const reveal = revealLabel()
+    return {
+      afterName: displayName(clipDone.saved),
+      block,
+      keys: [
+        ['↵', again],
+        ['o', 'open'],
+        ['s', reveal.charAt(0).toLowerCase() + reveal.slice(1)],
+      ] as Array<[string, string]>,
+    }
+  }
 
   /** The header bar's trail for the screen on now. */
   const barTrail = (): Trail => {
@@ -3806,7 +4075,14 @@ export function App({
                   step={qualitySpec.step}
                   value={qualityNow}
                   onChange={(q) => setValues((v) => ({ ...v, quality: q }))}
-                  onSubmit={chooseQuality}
+                  onSubmit={(q) => {
+                    // A copied image is never put back larger: ↵ waits for
+                    // the size, and is off where it would grow.
+                    const copied = clip !== null && clip.source === source.path
+                    const grows = qualitySize.status !== 'done' || qualitySize.bytes >= source.bytes
+                    if (copied && mode === 'compress' && grows) return
+                    chooseQuality(q)
+                  }}
                   onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
                   size={qualitySize}
                   sourceBytes={source.bytes}
@@ -4021,7 +4297,12 @@ export function App({
                   {...(lastResult.job.op === 'boost' ? { scale: lastResult.job.scale } : {})}
                   before={lastResult.job.sources[0].path}
                   after={lastResult.job.outputs[0] ?? ''}
-                  savedTo={dirname(lastResult.job.outputs[0] ?? '')}
+                  savedTo={
+                    clipDone?.status === 'changed'
+                      ? dirname(clipDone.saved)
+                      : dirname(lastResult.job.outputs[0] ?? '')
+                  }
+                  placed={clipDone?.status === 'placed' ? 'On the clipboard' : undefined}
                   width={width}
                   // The terminal's rows less the header bar (2) and keys (3),
                   // and one more so the frame never fills the screen.
@@ -4029,11 +4310,20 @@ export function App({
                 />
                 <HintBar
                   width={width}
-                  pairs={[
-                    ['↵', 'enhance another'],
-                    ['o', 'open'],
-                    ['s', revealLabel()],
-                  ]}
+                  pairs={
+                    clipDone?.status === 'placed'
+                      ? [
+                          ['↵', 'enhance another'],
+                          ['u', 'undo'],
+                          ['s', 'save a copy'],
+                          ['o', 'open'],
+                        ]
+                      : [
+                          ['↵', 'enhance another'],
+                          ['o', 'open'],
+                          ['s', revealLabel()],
+                        ]
+                  }
                   foot={[['ctrl-c', 'quit']]}
                 />
               </Box>
@@ -4064,6 +4354,9 @@ export function App({
                 width={width}
                 height={height}
                 pressed={donePressed}
+                {...clipDoneProps(
+                  doneBar.mode === 'compress' ? 'compress again' : 'convert another',
+                )}
               />
             ) : null}
 
@@ -4216,6 +4509,7 @@ export function App({
                     width={width}
                     rawOnSubmit
                     intercept={homeKey}
+                    hint={pasteHint}
                   />
                 }
                 commands={commands}

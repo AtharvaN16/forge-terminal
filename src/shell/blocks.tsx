@@ -28,7 +28,14 @@ export type HistoryBlock =
    * A finished convert or compress, filed once Done is left. `mode` colours
    * its arrow; convert where it is not given.
    */
-  | { kind: 'result'; id: string; result: Result; mode?: ShellMode | undefined }
+  | {
+      kind: 'result'
+      id: string
+      result: Result
+      mode?: ShellMode | undefined
+      /** Where it went, when not its folder, and its bar's name: a copied image's result. */
+      place?: { folder: string; name: string } | undefined
+    }
   | { kind: 'error'; id: string; error: ForgeError }
   /**
    * `savedTo` is an output path, for a note that reports written files (a
@@ -128,5 +135,12 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
     throw new Error(`HistoryEntry cannot render a "${block.result.job.op}" result yet`)
   }
   /** Done as the scrollback keeps it, under the run's bar (K3·a). */
-  return <DoneRecord result={block.result} mode={block.mode ?? 'convert'} width={width} />
+  return (
+    <DoneRecord
+      result={block.result}
+      mode={block.mode ?? 'convert'}
+      width={width}
+      place={block.place}
+    />
+  )
 }

@@ -87,11 +87,20 @@ export function DoneScreen({
   width,
   height,
   pressed,
+  afterName,
+  keys: ownKeys,
+  block,
 }: {
   mode: ShellMode
   /** The run's answers, ending in "Done". */
   trail: Trail
   result: Result
+  /** What the result's bar is named, when not its file: "On the clipboard". */
+  afterName?: string | undefined
+  /** The key row, when not the usual ↵ · c · o · s. */
+  keys?: Array<[string, string]> | undefined
+  /** Rows shown where the offers go, in their place: E3's tinted panel. */
+  block?: Row[] | undefined
   /** Offers to show at the foot (`✧` sentences), in order. */
   offers: string[]
   /** What ↵ does: "convert another", "compress again". */
@@ -117,13 +126,17 @@ export function DoneScreen({
     ms >= DRAW_MS
       ? undefined
       : { bar: easeOut(ms / BAR_MS), label: Math.max(0, Math.min(1, (ms - LABEL_FROM) / LABEL_MS)) }
-  const body = doneBody({ palette, facts: doneFacts(result, mode), width, draw })
-  const notes = doneNotes({
-    palette,
-    offers,
-    warnings: result.warnings.map((w) => w.message),
-    width,
-  })
+  const facts = doneFacts(result, mode)
+  if (afterName !== undefined) facts.after.name = afterName
+  const body = doneBody({ palette, facts, width, draw })
+  const notes =
+    block ??
+    doneNotes({
+      palette,
+      offers,
+      warnings: result.warnings.map((w) => w.message),
+      width,
+    })
   // What the shell just said (a failed open) sits on the keys, with a blank
   // row above, out of the blank rows Done has; one line where they are fewer.
   const notices = useNotices()
@@ -137,7 +150,7 @@ export function DoneScreen({
     body: body.length,
     notes: notes.length,
   })
-  const keys: Array<[string, string]> = [
+  const keys: Array<[string, string]> = ownKeys ?? [
     ['↵', again],
     ...(offer ? ([['c', offer]] as Array<[string, string]>) : []),
     ['o', 'open'],
@@ -185,17 +198,22 @@ export function DoneRecord({
   result,
   mode,
   width,
+  place,
 }: {
   result: Result
   mode: ShellMode
   width: number
+  /** The folder line and the bar's name, when not the result's own: "Clipboard". */
+  place?: { folder: string; name: string } | undefined
 }) {
   const palette = useTheme()
+  const facts = doneFacts(result, mode)
+  if (place) facts.after.name = place.name
   const body = doneBody({
     palette,
-    facts: doneFacts(result, mode),
+    facts,
     width,
-    folder: displayPath(dirname(result.job.outputs[0] ?? '')),
+    folder: place?.folder ?? displayPath(dirname(result.job.outputs[0] ?? '')),
   })
   const warnings = doneNotes({
     palette,

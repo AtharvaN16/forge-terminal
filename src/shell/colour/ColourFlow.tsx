@@ -36,6 +36,7 @@ import { copy } from '../clipboard.js'
 import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
+import { fieldKey } from '../field-key.js'
 import { trueColour } from '../glyphs.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
@@ -559,15 +560,13 @@ function restingField(p: ReturnType<typeof useTheme>, screen: Screen, width: num
 /** The empty box's one hint (§12.4): a colour on Scale and Palette, a path on Extract. */
 const COLOUR_HINT = 'type a hex, rgb(), hsl(), oklch() or a colour name'
 /**
- * A key and what it does, at the field's far end: the key bold in the mode's
- * colour, a space between its glyphs so ⇧ and → read as two, the words
- * quiet (2026-10-14).
+ * A key and what it does, at the field's far end, as every field's key hint
+ * is drawn (`fieldKey`), in grey rather than the mode's pink: the swatches
+ * already compete for attention (2026-10-16). A space between the glyphs so
+ * ⇧ and → read as two.
  */
 function keyHint(p: ReturnType<typeof useTheme>, keys: string, words: string): Row {
-  return [
-    { text: keys, fg: p.accent, bold: true },
-    { text: ` ${words}`, fg: p.border },
-  ]
+  return fieldKey({ palette: p, key: keys, words, colour: p.border, ink: p.canvas })
 }
 /** While a colour is typed on a scale: ↵ is done. */
 const DONE_HINT = ['↵', 'done'] as const

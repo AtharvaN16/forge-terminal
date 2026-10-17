@@ -241,6 +241,34 @@ so — and it encodes a candidate to find out rather than guessing:
   ↵ convert another · c convert to WebP · o open · s show in finder · ctrl-c close app
 ```
 
+## The clipboard
+
+On a Mac, a copied image can be the file. Copy a screenshot (⌃⇧⌘4) or an
+image in a browser, Figma or Preview, and home's field says `⌘V to paste from
+clipboard`. ⌘V lands it as a card named **Copied image**; pick a mode as for
+any file. There is no Save as: the result goes back on the clipboard, so the
+next ⌘V — in Slack, GitHub, a chat — pastes it. On Done, `u` puts the original
+back and `s` also saves the result to the default folder.
+
+If your terminal sends nothing on ⌘V with only a picture copied, ctrl-v does
+the same.
+
+Forge never overwrites something you copied while it worked: the result is
+saved to the default folder instead, and Done says so. A compression that
+would come out larger is never put back.
+
+From the command line:
+
+```bash
+forge clip                   # compress the copied image, then ⌘V
+forge clip --max-size 1mb    # to fit
+forge clip --to webp         # convert it on the clipboard
+forge clip --save ~/Desktop  # and keep a file too
+forge clip --undo            # put the last original back
+```
+
+Agents get the same as the MCP tool `forge_clip`.
+
 ## Resize and trim edges
 
 Both need nothing extra, keep the file's own format unless `--to` says otherwise,

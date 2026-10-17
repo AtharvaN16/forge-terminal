@@ -50,6 +50,8 @@ export interface EnhanceDoneProps {
   after: string
   /** Where it went: the folder, or the written file itself. */
   savedTo: string
+  /** What the line says instead of the name and folder: "On the clipboard". */
+  placed?: string | undefined
   width: number
   /**
    * The rows this component may use; the pictures take what is left after
@@ -119,6 +121,7 @@ export function EnhanceDone({
   before,
   after,
   savedTo,
+  placed,
   width,
   rows: available,
 }: EnhanceDoneProps) {
@@ -173,9 +176,10 @@ export function EnhanceDone({
   const name = displayName(after)
   // The line keeps the name whole; the folder gives way (middle-shortened),
   // and goes when there is no room for it at all.
-  const said = `${SYMBOLS.ok} ${name}`
+  const said = `${SYMBOLS.ok} ${placed ?? name}`
   const room = width - 1 - (M + 1) - stringWidth(said) - 2 - 'in '.length
-  const folder = room >= 8 ? middleEllipsis(folderOf(savedTo, after), room) : ''
+  const folder =
+    placed === undefined && room >= 8 ? middleEllipsis(folderOf(savedTo, after), room) : ''
   const grids = useMemo(
     () =>
       closeup

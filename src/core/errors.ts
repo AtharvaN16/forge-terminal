@@ -49,6 +49,10 @@ export type ErrorCode =
   | 'update-denied'
   | 'update-failed'
   | 'update-unreachable'
+  | 'no-clipboard-image'
+  | 'clipboard-unavailable'
+  | 'nothing-to-undo'
+  | 'clip-not-smaller'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -858,6 +862,43 @@ export function resizeTooLarge(path: string, size: Size): ForgeError {
     title: 'Too large to resize to',
     detail: `${displayName(path)} would be ${size.width} × ${size.height}.`,
     hint: 'Resize works up to 16,384 px a side and 100 megapixels.',
+  })
+}
+
+/** `forge clip` with no picture copied. `holds` says what is there instead. */
+export function noClipboardImage(holds: 'text' | 'nothing'): ForgeError {
+  return new ForgeError({
+    code: 'no-clipboard-image',
+    title: 'No image',
+    detail:
+      holds === 'text' ? 'The clipboard holds text, not a picture.' : 'The clipboard is empty.',
+    hint: 'Copy a picture, or take a screenshot with ⌃⇧⌘4, then run forge clip again.',
+  })
+}
+
+export function clipboardUnavailable(): ForgeError {
+  return new ForgeError({
+    code: 'clipboard-unavailable',
+    title: 'No clipboard',
+    detail: 'Forge reads the clipboard on a Mac, and not over SSH.',
+  })
+}
+
+export function nothingToUndo(): ForgeError {
+  return new ForgeError({
+    code: 'nothing-to-undo',
+    title: 'Nothing to undo',
+    detail: 'No copied image has been changed yet.',
+  })
+}
+
+/** A compression of a copied image that came out larger: it is not put back. */
+export function clipNotSmaller(before: number, after: number): ForgeError {
+  return new ForgeError({
+    code: 'clip-not-smaller',
+    title: 'Already smaller',
+    detail: `The copied image is ${formatBytes(before)}; at this quality it would be ${formatBytes(after)}. The clipboard is unchanged.`,
+    hint: 'Try a lower --quality, or --max-size.',
   })
 }
 

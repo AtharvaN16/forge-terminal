@@ -1,8 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
+import type { ClipDeps } from '../cli/clip-command.js'
 import { invalidArguments } from '../core/errors.js'
 import { VERSION } from '../shell/theme.js'
 import {
+  ClipInput,
+  ClipOutput,
   CompressInput,
   ConvertInput,
   FormatsInput,
@@ -18,6 +21,7 @@ import {
 } from './schemas.js'
 import { claimStdout } from './stdout-guard.js'
 import {
+  clipTool,
   compressTool,
   convertTool,
   formatsTool,
@@ -55,13 +59,13 @@ const WRITES = {
 } as const
 
 /**
- * Forge's MCP server, with seven tools on purpose. A 57-tool ImageMagick server
+ * Forge's MCP server, with eight tools on purpose. A 57-tool ImageMagick server
  * is the cautionary example of flooding an agent's context (spec §3.5). The
  * two colour tools earn their place the way `forge_probe` does: read-only,
  * small, and answering a question an agent cannot answer by looking at a
  * file (colour spec §7.2). Tools call core in-process; nothing spawns the CLI.
  */
-export function createForgeServer(): McpServer {
+export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
   const server = new McpServer({ name: 'forge', version: VERSION }, { instructions: INSTRUCTIONS })
 
   server.registerTool(
@@ -113,6 +117,19 @@ export function createForgeServer(): McpServer {
       annotations: WRITES,
     },
     (args) => compressTool(args),
+  )
+
+  server.registerTool(
+    'forge_clip',
+    {
+      title: 'Compress the copied image',
+      description:
+        'The image on the macOS clipboard, made smaller (quality or maxSize) or converted (to), and put back on the clipboard, so the next paste is the result. The result is also kept as a file, linked. A newer copy is never overwritten: if something else was copied meanwhile, the result goes to the default folder instead. A compression that would come out larger is refused. undo: true puts the last original back.',
+      inputSchema: ClipInput,
+      outputSchema: ClipOutput,
+      annotations: { ...WRITES, destructiveHint: true },
+    },
+    (args) => clipTool(args, deps.clip),
   )
 
   server.registerTool(

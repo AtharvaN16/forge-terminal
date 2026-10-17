@@ -33,7 +33,7 @@ function inFolder(output: string, where: Where): string {
   return ` in ${shown.endsWith('/') ? shown : `${shown}/`}`
 }
 
-function changePhrase(from: number, to: number): string {
+export function changePhrase(from: number, to: number): string {
   const { pct, direction } = percentChange(from, to)
   if (direction === 'same') return 'same size'
   return `${pct}% ${direction}`

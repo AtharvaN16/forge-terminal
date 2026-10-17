@@ -1,5 +1,6 @@
 import { render } from 'ink'
 import type { Preferences } from '../config/preferences.js'
+import { clipboardSupported, macPasteboard } from '../utils/pasteboard.js'
 import { App } from './App.js'
 import { ThemeProvider } from './ThemeContext.js'
 import type { Palette } from './theme.js'
@@ -29,7 +30,11 @@ export async function launchShell(start: ShellStart): Promise<void> {
   const { prefs, palette, warning } = start
   const instance = render(
     <ThemeProvider palette={palette}>
-      <App prefs={prefs} {...(warning === undefined ? {} : { configWarning: warning })} />
+      <App
+        prefs={prefs}
+        pasteboard={clipboardSupported() ? macPasteboard() : null}
+        {...(warning === undefined ? {} : { configWarning: warning })}
+      />
     </ThemeProvider>,
     {
       /**
