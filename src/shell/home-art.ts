@@ -125,7 +125,7 @@ export function hatch(
 
 /**
  * FORGE knocked out of a band of hatching in the mode's gradient — the
- * commands' gold while the command list is open — with the version knocked
+ * menu's gold while the menu is open — with the version knocked
  * out of the bottom row at the right end, on the letters' baseline. In light
  * the hatching sits on its wash (L6). Empty when the terminal is too narrow
  * for the word.
@@ -137,8 +137,8 @@ export function hatch(
  * It stands apart from the band's hatching in every mode by construction.
  */
 const opposites = new Map<string, string>()
-export function oppositeColour(palette: Palette, scheme: ShellMode | 'commands'): string {
-  const base = scheme === 'commands' ? palette.brand : modeColours(palette, scheme).fg
+export function oppositeColour(palette: Palette, scheme: ShellMode | 'menu'): string {
+  const base = scheme === 'menu' ? palette.brand : modeColours(palette, scheme).fg
   const key = `${base}|${palette.canvas}`
   const known = opposites.get(key)
   if (known !== undefined) return known
@@ -166,19 +166,20 @@ export function brandRows({
   width: columns,
   palette,
   mode,
-  commands = false,
+  menu = false,
   update,
 }: {
   width: number
   palette: Palette
   mode: ShellMode
-  commands?: boolean
+  /** The menu is open: the band takes its gold. */
+  menu?: boolean
   /** A newer Forge, from the update check: the baseline says "/update is available ·" before the version. */
   update?: string | undefined
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
-  const scheme = commands ? 'commands' : mode
+  const scheme = menu ? 'menu' : mode
   const stops = modeGradient(palette, scheme)
   const wash = modeWash(palette, scheme)
   const span = columns + 8
@@ -275,12 +276,12 @@ export function brandIntro(rows: Row[], front: number, palette: Palette): Row[] 
 export function tabRows({
   palette,
   mode,
-  commands = false,
+  menu = false,
 }: {
   palette: Palette
   mode: ShellMode
-  /** The command list is open: "/ menu" is the active tab. */
-  commands?: boolean
+  /** The menu is open: "/ menu" is the active tab. */
+  menu?: boolean
 }): Row[] {
   const M = HOME_MARGIN
   const chip = palette.tabChip === '' ? undefined : palette.tabChip
@@ -310,9 +311,9 @@ export function tabRows({
     tabs.push(blank(1))
   }
   MODE_ORDER.forEach((m, i) => {
-    tab(String(i + 1), modeColours(palette, m).fg, m, !commands && m === mode)
+    tab(String(i + 1), modeColours(palette, m).fg, m, !menu && m === mode)
   })
-  tab('/', palette.brand, 'menu', commands)
+  tab('/', palette.brand, 'menu', menu)
   return [top, [blank(M), ...tabs]]
 }
 
@@ -322,7 +323,7 @@ export function tabRows({
  * only when something in it matches. A row is the slash, what has been
  * typed (bright) and the rest of the name. The chosen row is the picker's — a band
  * with a `▌` strip — and the strip takes the colour of the mode the command
- * would switch to, or the commands' gold for a setting.
+ * would switch to, or the menu's gold for a setting.
  *
  * At least `rows` tall, so it takes the surface's place exactly; taller when
  * the list needs it, up to `max`, past which the rows scroll to keep the
@@ -368,7 +369,7 @@ export function commandRows({
     const members = items.filter((c) => c.group === group)
     if (members.length === 0) continue
     if (lines.length > 0) lines.push(line([]))
-    // C1 (round 5): the heading in the commands' gold, and a quiet rule on to
+    // C1 (round 5): the heading in the menu's gold, and a quiet rule on to
     // the panel's end, as Save as parts its name from its folders.
     const rule = Math.max(0, W - 8 - group.length - 1)
     lines.push(

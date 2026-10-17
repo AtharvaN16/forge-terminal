@@ -53,7 +53,7 @@ function home(text = '') {
             width={80}
           />
         }
-        keys={homeKeys({ typing, completions: 0, commands: false })}
+        keys={homeKeys({ typing, completions: 0, menu: false })}
       />
     </ThemeProvider>
   )
