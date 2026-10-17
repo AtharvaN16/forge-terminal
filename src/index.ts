@@ -184,6 +184,10 @@ async function main(): Promise<void> {
               spinner ??= startSpinner(process.stderr, 'finding the smallest that fits')
               spinner.update(status)
             },
+            onEncode: (status: string) => {
+              spinner ??= startSpinner(process.stderr, 'encoding')
+              spinner.update(status)
+            },
           }
         : {}),
     })

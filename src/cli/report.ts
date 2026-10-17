@@ -5,6 +5,7 @@ import { FORMATS } from '../core/formats.js'
 import type { ProbeReport } from '../core/probe-report.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
+import { clockOf } from '../core/timecode.js'
 import { formatBytes, percentChange } from '../core/units.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 
@@ -156,9 +157,11 @@ export function reportFormats(): string[] {
  */
 export function reportProbe(probe: ProbeReport, where: Where = {}): string[] {
   const facts = [FORMATS[probe.format].label, formatBytes(probe.bytes)]
+  if (probe.duration !== undefined) facts.push(clockOf(probe.duration))
   if (probe.width !== undefined && probe.height !== undefined) {
     facts.push(`${probe.width}×${probe.height}`)
   }
+  if (probe.fps !== undefined) facts.push(`${probe.fps} fps`)
   if (probe.pages !== undefined)
     facts.push(`${probe.pages} ${probe.pages === 1 ? 'page' : 'pages'}`)
   if (probe.encrypted) facts.push('password-protected')

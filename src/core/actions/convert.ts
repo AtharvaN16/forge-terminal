@@ -1,11 +1,13 @@
+import { resolve } from 'node:path'
 import { rasterises, targetsFor } from '../capabilities.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, formatById } from '../formats.js'
-import { rasterOutputPaths, resolveOutputPath } from '../output-path.js'
+import { rasterOutputPaths, resolveOutputPath, suffixedImagePath } from '../output-path.js'
 import { normalisePages, parseRanges } from '../pages.js'
 import type { ConvertOptions, DocumentInfo, FormatId, FormatSpec, SourceInfo } from '../types.js'
 import { destinationOption } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
+import { mediaOptionsOf } from './media.js'
 
 /**
  * Which pages to rasterise, and the resolution to do it at. Only offered
@@ -131,6 +133,22 @@ function targetSelect(source: SourceInfo): OptionSpec {
  * deep inside resolveOutputPath instead of failing at the boundary with a
  * message that says what went wrong.
  */
+/** A sound target's bitrate, in kbps: 64–320, 128 to start (Opus 96: it needs less). */
+function bitrateSlider(target: FormatId): OptionSpec {
+  return {
+    kind: 'slider',
+    id: 'bitrate',
+    label: 'Quality',
+    min: 64,
+    max: 320,
+    step: 32,
+    default: target === 'opus' ? 96 : 128,
+  }
+}
+
+const isResize = (v: unknown): v is NonNullable<ConvertOptions['resize']> =>
+  typeof v === 'object' && v !== null && ('percent' in v || 'width' in v || 'height' in v)
+
 function requireTarget(values: Record<string, unknown>): FormatSpec {
   const raw = values.target
   const spec = typeof raw === 'string' ? formatById(raw) : undefined
@@ -168,7 +186,11 @@ export const convertAction: Action = {
     }
 
     const spec = FORMATS[target as FormatId]
-    if (spec?.lossy) {
+    if (source.kind === 'media') {
+      // Video: Forge picks the settings. Sound: the bitrate, the number people
+      // know for sound, in kbps (video spec §3.2).
+      if (spec?.media === 'sound' && spec.lossy) specs.push(bitrateSlider(target as FormatId))
+    } else if (spec?.lossy) {
       specs.push({
         kind: 'slider',
         id: 'quality',
@@ -207,6 +229,11 @@ export const convertAction: Action = {
       keepMetadata: values.keepMetadata === true,
     }
     if (spec.lossy && typeof values.quality === 'number') options.quality = values.quality
+    if (source.kind === 'media') {
+      const media = mediaOptionsOf(values)
+      if (media) options.media = media
+      if (isResize(values.resize)) options.resize = values.resize
+    }
 
     const destination = typeof values.destination === 'string' ? values.destination : undefined
 
@@ -226,11 +253,20 @@ export const convertAction: Action = {
       return [{ op: 'convert', sources: [source], outputs, target, options }]
     }
 
-    const output = resolveOutputPath({
+    let output = resolveOutputPath({
       sourcePath: source.path,
       target,
       ...(destination === undefined ? {} : { output: `${destination}/` }),
     })
+    // HEVC is written into an .mp4: an MP4 source would be its own output.
+    if (resolve(output) === resolve(source.path)) {
+      output = suffixedImagePath({
+        sourcePath: source.path,
+        target,
+        suffix: target,
+        ...(destination === undefined ? {} : { output: `${destination}/` }),
+      })
+    }
 
     return [{ op: 'convert', sources: [source], outputs: [output], target, options }]
   },

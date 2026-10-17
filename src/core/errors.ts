@@ -375,10 +375,15 @@ export function targetUnreachable(
   targetBytes: number,
   smallest: number,
 ): ForgeError {
+  // A video's floor is worked out, not searched for: the smallest it gets.
+  const detail =
+    source.kind === 'media'
+      ? `The smallest ${displayName(source.path)} can get is ${formatBytes(smallest)}, which is still over ${formatBytes(targetBytes)}.`
+      : `${displayName(source.path)} is ${formatBytes(smallest)} even at the lowest quality, which is still over ${formatBytes(targetBytes)}.`
   return new ForgeError({
     code: 'target-unreachable',
     title: 'Cannot get that small',
-    detail: `${displayName(source.path)} is ${formatBytes(smallest)} even at the lowest quality, which is still over ${formatBytes(targetBytes)}.`,
+    detail,
     hint: 'Try a larger --max-size, or --to a smaller format.',
     shellHint: 'Try a larger target, or /convert to a smaller format.',
   })

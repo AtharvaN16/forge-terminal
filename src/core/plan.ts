@@ -1,6 +1,7 @@
+import { resolve } from 'node:path'
 import { targetIdsFor } from './capabilities.js'
 import { unsupportedTarget } from './errors.js'
-import { resolveOutputPath } from './output-path.js'
+import { resolveOutputPath, suffixedImagePath } from './output-path.js'
 import type { InputFailure, ResolvedInput } from './resolve.js'
 import type { ConvertOptions, FormatId, Job } from './types.js'
 
@@ -45,12 +46,17 @@ export async function buildPlan(req: PlanRequest): Promise<Plan> {
       continue
     }
 
-    const output = resolveOutputPath({
+    const where = {
       sourcePath: source.path,
       target: req.target,
       output: req.output,
       sourceRoot: req.resolved.roots.get(source.path),
-    })
+    }
+    let output = resolveOutputPath(where)
+    // HEVC is written into an .mp4: an MP4 source would be its own output.
+    if (resolve(output) === resolve(source.path) && req.target !== source.format) {
+      output = suffixedImagePath({ ...where, suffix: req.target })
+    }
 
     jobs.push({
       op: 'convert',

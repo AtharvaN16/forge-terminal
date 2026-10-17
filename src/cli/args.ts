@@ -7,7 +7,8 @@ import type { BoostScale } from '../core/extension-targets.js'
 import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
 import { RESIZE_MAX } from '../core/resize.js'
-import type { ConvertOptions, CropSpec, FormatId, ResizeSpec } from '../core/types.js'
+import { parseCut } from '../core/timecode.js'
+import type { ConvertOptions, CropSpec, FormatId, MediaOptions, ResizeSpec } from '../core/types.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
 import { CONFIG_KEYS, type ConfigIntent, type ConfigKey } from './config-command.js'
@@ -154,6 +155,8 @@ export interface EditIntent {
   target?: FormatId
   output?: string
   options: ConvertOptions
+  /** A video's or sound file's cut, mute, speed…; refused for an image. */
+  media?: MediaOptions
   force: boolean
   recursive: boolean
   concurrency?: number
@@ -290,6 +293,41 @@ function parseTarget(raw: string): FormatId {
     )
   }
   return spec.id
+}
+
+/** A number from a flag, within bounds, or a refusal that names the flag. */
+function bounded(flag: string, raw: unknown, min: number, max: number, example: string): number {
+  const n = Number(String(raw).replace(/k$/i, ''))
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw invalidArguments(
+      `${flag} takes ${min} to ${max}, not ${raw}.`,
+      `For example ${flag} ${example}.`,
+    )
+  }
+  return n
+}
+
+/** --cut, --mute, --speed, --fps, --bitrate and --loudness (video spec §3.8). */
+function parseMediaFlags(opts: Record<string, unknown>): MediaOptions | undefined {
+  const m: MediaOptions = {}
+  if (opts.cut !== undefined) {
+    const cut = parseCut(String(opts.cut))
+    if (!cut) {
+      throw invalidArguments(
+        `--cut takes a start and an end, the end after the start, not ${opts.cut}.`,
+        'For example --cut 0:03.2-0:41, or --cut 0:10- to keep from 0:10 to the end.',
+      )
+    }
+    m.cut = cut.end === undefined ? { start: cut.start } : { start: cut.start, end: cut.end }
+  }
+  if (opts.mute) m.mute = true
+  if (opts.speed !== undefined) m.speed = bounded('--speed', opts.speed, 0.25, 4, '2')
+  if (opts.fps !== undefined) m.fps = bounded('--fps', opts.fps, 1, 120, '30')
+  if (opts.bitrate !== undefined) {
+    m.bitrate = Math.round(bounded('--bitrate', opts.bitrate, 32, 320, '128k'))
+  }
+  if (opts.loudness !== undefined) m.loudness = bounded('--loudness', opts.loudness, -70, -5, '-16')
+  return Object.keys(m).length ? m : undefined
 }
 
 function parseQuality(raw: string): number {
@@ -719,6 +757,12 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     .option('--width <px>', 'resize to this width; the height follows')
     .option('--height <px>', 'resize to this height; the width follows')
     .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
+    .option('--cut <start-end>', 'video or sound: keep from start to end, e.g. 0:03.2-0:41')
+    .option('--mute', 'video: take the sound out')
+    .option('--speed <x>', 'video or sound: play faster or slower, 0.25-4')
+    .option('--fps <n>', 'video: frames per second')
+    .option('--bitrate <kbps>', 'sound: bitrate, e.g. 128k')
+    .option('--loudness <LUFS>', 'sound: even out loudness to this level, e.g. -16')
     .option('--preset <name>', 'run a preset saved from Done, e.g. --preset blog')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
@@ -765,6 +809,13 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
   const inputs = program.args
 
   if (opts.formats) return { kind: 'formats' }
+  const media = parseMediaFlags(opts)
+  if (media !== undefined && opts.trim) {
+    throw invalidArguments(
+      '--trim cuts the empty edges of an image.',
+      'To keep part of a video or sound file, use --cut, for example --cut 0:03-0:41.',
+    )
+  }
 
   if (opts.preset !== undefined) {
     // Everything that says what to do: the preset already does.
@@ -838,13 +889,16 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     ...(opts.width !== undefined ? ['--width'] : []),
     ...(opts.height !== undefined ? ['--height'] : []),
   ]
-  if (opts.trim || opts.crop !== undefined || resizeFlags.length > 0) {
+  const mediaEdit =
+    media !== undefined && !opts.to && opts.quality === undefined && opts.maxSize === undefined
+  if (opts.trim || opts.crop !== undefined || resizeFlags.length > 0 || mediaEdit) {
     if (resizeFlags.length > 1) {
       throw invalidArguments(
         `Use one of --resize, --width and --height — got ${resizeFlags.join(' and ')}.`,
       )
     }
-    const flag = opts.crop !== undefined ? '--crop' : (resizeFlags[0] ?? '--trim')
+    const flag =
+      opts.crop !== undefined ? '--crop' : (resizeFlags[0] ?? (opts.trim ? '--trim' : '--cut'))
     const clash = [
       // Two cuts whose order would surprise.
       ...(opts.crop !== undefined && opts.trim ? ['--trim'] : []),
@@ -895,6 +949,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     }
     if (crop !== undefined) intent.crop = crop
     if (resize !== undefined) intent.resize = resize
+    if (media !== undefined) intent.media = media
     if (opts.to) intent.target = parseTarget(String(opts.to))
     if (opts.output !== undefined) intent.output = String(opts.output)
     if (opts.concurrency !== undefined) {
@@ -1059,6 +1114,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
       keepMetadata: Boolean(opts.keepMetadata),
     }
 
+    if (media !== undefined) compressOptions.media = media
     const compress: CompressIntent = {
       kind: 'compress',
       inputs,
@@ -1116,6 +1172,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     keepMetadata: Boolean(opts.keepMetadata),
   }
   if (opts.quality !== undefined) options.quality = parseQuality(String(opts.quality))
+  if (media !== undefined) options.media = media
 
   // --dpi always has a value (Commander's default is '150'), so this is
   // unconditional — unlike --quality and --pages, which are only ever set

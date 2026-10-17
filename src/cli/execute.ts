@@ -6,6 +6,7 @@ import {
   removeBackgroundAction,
 } from '../core/actions/extension.js'
 import { ACTIONS, compressAction, convertAction, unavailableReason } from '../core/actions/index.js'
+import { planMediaEdit } from '../core/actions/media.js'
 import { planEdit } from '../core/actions/resize.js'
 import { everyNCuts, everyPageCuts } from '../core/actions/split.js'
 import { formatMatrix, rasterises } from '../core/capabilities.js'
@@ -35,12 +36,14 @@ import {
 import { editTargetRefusal } from '../core/resize.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
 import type { RunSummary } from '../core/run.js'
+import { clockOf } from '../core/timecode.js'
 import type {
   ConvertOptions,
   DocumentInfo,
   FormatId,
   ImageInfo,
   Job,
+  MediaInfo,
   SourceInfo,
 } from '../core/types.js'
 import { openPdf } from '../engines/pdfium.js'
@@ -104,6 +107,11 @@ export interface ExecuteOptions {
    * sequence, never an invented percentage (invariant 7).
    */
   onSearch?: (status: string) => void
+  /**
+   * A video's or sound file's encode, where it has got to: "0:14 of 0:38",
+   * from a true total (video spec §3.6). One file at a time only.
+   */
+  onEncode?: (status: string) => void
   /**
    * Render as one JSON document on stdout instead of text (spec §3.2). Under
    * --json, stdout carries exactly that document and stderr carries nothing.
@@ -360,6 +368,12 @@ function reportEvents(opts: ExecuteOptions, batch: boolean): (event: PlanEvent) 
       if (batch) opts.onSearch?.(`${event.completed} of ${event.total} searched`)
       return
     }
+    if (!batch && event.type === 'job:phase' && event.progress.phase === 'time') {
+      const p = event.progress
+      const at = `${clockOf(p.done)} of ${clockOf(p.total)}`
+      opts.onEncode?.(p.pass ? `pass ${p.pass.at} of 2 · ${at}` : at)
+      return
+    }
     if (batch && (event.type === 'job:done' || event.type === 'job:error')) {
       opts.onProgress?.({ completed: event.completed, total: event.total })
     }
@@ -466,6 +480,8 @@ async function runCompress(intent: CompressIntent, opts: ExecuteOptions): Promis
     const [planned] = compressAction.plan([source], {
       mode: intent.maxBytes === undefined ? 'quality' : 'size',
       ...(intent.quality === undefined ? {} : { quality: intent.quality }),
+      // A video's or sound file's --cut, --mute, --bitrate… ride along.
+      ...(intent.options.media ?? {}),
       destination,
     })
     if (planned?.op !== 'convert') continue
@@ -597,10 +613,21 @@ async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunRep
   if (refusal) return nothingRan(intent.kind, [{ path: '', error: refusal }])
   const resolved = await resolveInputs(intent.inputs, { recursive: intent.recursive })
   const images: ImageInfo[] = []
+  const media: MediaInfo[] = []
   const refused: InputFailure[] = []
   for (const source of resolved.sources) {
-    if (source.kind === 'image') images.push(source)
-    else {
+    if (source.kind === 'image' && intent.media === undefined) images.push(source)
+    else if (source.kind === 'media' && !intent.trim) media.push(source)
+    else if (source.kind === 'image') {
+      refused.push({
+        path: source.path,
+        error: unsupportedOperation(
+          'cut',
+          'it works on video and sound, not images',
+          'Try a video or sound file, such as a MOV, MP4 or WAV.',
+        ),
+      })
+    } else {
       refused.push({
         path: source.path,
         error: unsupportedOperation(
@@ -611,7 +638,15 @@ async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunRep
       })
     }
   }
-  const jobs = planEdit(images, {
+  const mediaJobs = planMediaEdit(media, {
+    ...(intent.media === undefined ? {} : { media: intent.media }),
+    ...(intent.crop === undefined ? {} : { crop: intent.crop }),
+    ...(intent.resize === undefined ? {} : { resize: intent.resize }),
+    ...(intent.target === undefined ? {} : { target: intent.target }),
+    ...(intent.output === undefined ? {} : { output: intent.output }),
+    roots: resolved.roots,
+  })
+  const imageJobs = planEdit(images, {
     trim: intent.trim,
     ...(intent.crop === undefined ? {} : { crop: intent.crop }),
     ...(intent.resize === undefined ? {} : { resize: intent.resize }),
@@ -622,6 +657,7 @@ async function runEdit(intent: EditIntent, opts: ExecuteOptions): Promise<RunRep
     keepMetadata: intent.options.keepMetadata,
     ...(intent.options.quality === undefined ? {} : { quality: intent.options.quality }),
   })
+  const jobs = [...imageJobs, ...mediaJobs]
 
   const batch = jobs.length > 1
   if (batch) opts.onProgress?.({ completed: 0, total: jobs.length })

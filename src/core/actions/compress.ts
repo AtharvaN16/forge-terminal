@@ -2,9 +2,13 @@ import { dirname } from 'node:path'
 import { lastSegment } from '../../utils/last-segment.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
-import type { DocumentInfo, ImageInfo, SourceInfo } from '../types.js'
+import type { DocumentInfo, ImageInfo, MediaInfo, SourceInfo } from '../types.js'
 import { destinationOption } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
+import { compressedFormat, mediaOptionsOf } from './media.js'
+
+/** A video, as against a sound file (a sound file's quality is its bitrate). */
+const hasPictureOut = (source: MediaInfo) => FORMATS[source.format].media === 'video'
 
 const soleImage = (sources: SourceInfo[]): ImageInfo | undefined =>
   sources.length === 1 && sources[0]?.kind === 'image' ? sources[0] : undefined
@@ -49,6 +53,8 @@ export const compressAction: Action = {
    * only here may they lose something.
    */
   appliesTo: (sources) => {
+    // Every video and sound file can be made smaller (video spec §3.3).
+    if (sources.length === 1 && sources[0]?.kind === 'media') return true
     const image = soleImage(sources)
     if (image !== undefined) {
       const spec = FORMATS[image.format]
@@ -91,7 +97,18 @@ export const compressAction: Action = {
       },
     ]
 
-    if (values.mode === 'quality') {
+    if (values.mode === 'quality' && source.kind === 'media' && !hasPictureOut(source)) {
+      // Sound: the bitrate, in kbps. 32 is speech at its smallest.
+      specs.push({
+        kind: 'slider',
+        id: 'bitrate',
+        label: 'Quality',
+        min: 32,
+        max: 320,
+        step: 32,
+        default: 96,
+      })
+    } else if (values.mode === 'quality') {
       const points = source.kind === 'image' && FORMATS[source.format].quantisable === true
       specs.push(
         points
@@ -145,14 +162,17 @@ export const compressAction: Action = {
     const stem = (lastSegment(source.path) ?? 'file').replace(/\.[^.]+$/, '')
     const destination =
       typeof values.destination === 'string' ? values.destination : dirname(source.path)
-    const output = `${destination}/${stem}${SUFFIX}${primaryExtension(source.format)}`
+    // Video and sound keep their format, except where it has no smaller setting.
+    const target = source.kind === 'media' ? compressedFormat(source.format) : source.format
+    const output = `${destination}/${stem}${SUFFIX}${primaryExtension(target)}`
+    const media = source.kind === 'media' ? mediaOptionsOf(values) : undefined
 
     return [
       {
         op: 'convert',
         sources: [source],
         // The whole point of the action: the format does not change.
-        target: source.format,
+        target,
         outputs: [output],
         options: {
           background: '#ffffff',
@@ -164,6 +184,7 @@ export const compressAction: Action = {
             : {}),
           // Smaller or nothing, for every format; dithering only when asked.
           compress: { dither: values.dither === true },
+          ...(media ? { media } : {}),
         },
       },
     ]
