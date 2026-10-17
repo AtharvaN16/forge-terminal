@@ -16,6 +16,14 @@ vi.hoisted(() => {
 const ESC = String.fromCharCode(27)
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const DOWN = `${ESC}[B`
+/** Every window on screen is whole: each top edge that opens with ╭ closes with ╮, each bottom with ╯. */
+function expectWhole(frame: string) {
+  for (const line of frame.split('\n')) {
+    const opens = (line.match(/╭/g) ?? []).length
+    expect((line.match(/╮/g) ?? []).length, line).toBe(opens)
+    expect((line.match(/╰/g) ?? []).length, line).toBe((line.match(/╯/g) ?? []).length)
+  }
+}
 const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms))
 const plain = (app: { lastFrame: () => string | undefined }) =>
   (app.lastFrame() ?? '').replace(SGR, '')
@@ -50,7 +58,7 @@ const result: Result = {
   warnings: [],
 }
 
-function mount(o: { taken?: string[]; name?: string } = {}) {
+function mount(o: { taken?: string[]; name?: string; width?: number } = {}) {
   setMotionForTests(false)
   const onSave = vi.fn()
   const onCancel = vi.fn()
@@ -60,7 +68,7 @@ function mount(o: { taken?: string[]; name?: string } = {}) {
         mode="convert"
         trail={{ answers: ['WebP', '80', 'Desktop', 'photo.webp'], current: 'Done' }}
         result={result}
-        width={80}
+        width={o.width ?? 80}
         height={24}
         name={o.name ?? ''}
         taken={o.taken ?? []}
@@ -146,5 +154,13 @@ describe('Save as preset, the window', () => {
     app.stdin.write(ESC)
     await settle(120)
     expect(onCancel).toHaveBeenCalled()
+  })
+
+  it('fits a narrow terminal', async () => {
+    const { app } = mount({ width: 56 })
+    await settle()
+    expectWhole(plain(app))
+    expect(plain(app)).toContain('Save as preset')
+    expect(plain(app)).toContain('Ask each time')
   })
 })

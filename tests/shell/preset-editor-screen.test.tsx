@@ -6,6 +6,7 @@ import type { PresetSteps } from '../../src/core/preset.js'
 import type { Result, SourceInfo } from '../../src/core/types.js'
 import { PresetEditorScreen } from '../../src/shell/components/PresetEditor.js'
 import { setMotionForTests } from '../../src/shell/motion.js'
+import type { OpId } from '../../src/shell/preset-editor.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 
@@ -17,6 +18,14 @@ vi.hoisted(() => {
 const ESC = String.fromCharCode(27)
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const DOWN = `${ESC}[B`
+/** Every window on screen is whole: each top edge that opens with ╭ closes with ╮, each bottom with ╯. */
+function expectWhole(frame: string) {
+  for (const line of frame.split('\n')) {
+    const opens = (line.match(/╭/g) ?? []).length
+    expect((line.match(/╮/g) ?? []).length, line).toBe(opens)
+    expect((line.match(/╰/g) ?? []).length, line).toBe((line.match(/╯/g) ?? []).length)
+  }
+}
 const RIGHT = `${ESC}[C`
 const settle = (ms = 60) => new Promise((r) => setTimeout(r, ms))
 const plain = (app: { lastFrame: () => string | undefined }) =>
@@ -51,7 +60,18 @@ const result: Result = {
   warnings: [],
 }
 
-function mount(o: { onDone?: (s: PresetSteps) => void; onCancel?: () => void } = {}) {
+function mount(
+  o: {
+    onDone?: (s: PresetSteps) => void
+    onCancel?: () => void
+    width?: number
+    /** How long a rerun takes. */
+    slow?: number
+    reasons?: Partial<Record<OpId, string>>
+    missing?: Partial<Record<OpId, number>>
+    onAdd?: (id: OpId) => void
+  } = {},
+) {
   setMotionForTests(false)
   const runs: PresetSteps[] = []
   const app = render(
@@ -60,13 +80,17 @@ function mount(o: { onDone?: (s: PresetSteps) => void; onCancel?: () => void } =
         mode="convert"
         trail={{ answers: ['WebP', '80', 'Desktop', 'photo.webp'], current: 'Done' }}
         result={result}
-        width={80}
+        width={o.width ?? 80}
         height={24}
         targets={['jpeg', 'webp', 'avif', 'png']}
         scales={[2, 3, 4]}
         cutout
+        reasons={o.reasons}
+        missing={o.missing}
+        onAdd={o.onAdd}
         run={async (steps) => {
           runs.push(steps)
+          if (o.slow) await settle(o.slow)
           return { kind: 'ready', output: join(DESKTOP, 'photo.webp'), bytes: 840_000 }
         }}
         onDone={o.onDone ?? (() => {})}
@@ -120,5 +144,77 @@ describe('Continue editing, the window', () => {
     app.stdin.write(ESC)
     await settle(120)
     expect(cancel).toHaveBeenCalled()
+  })
+
+  it('fits a narrow terminal: the window and a row’s own window narrow to it', async () => {
+    const { app } = mount({ width: 56 })
+    await until(app, 'Continue editing')
+    expectWhole(plain(app))
+    expect(plain(app)).toMatch(/○ Remove background/)
+    app.stdin.write(DOWN) // Resize
+    await settle()
+    app.stdin.write(RIGHT)
+    await until(app, '─ Resize ─')
+    expectWhole(plain(app))
+  })
+
+  it('spins while a slow rerun works, saying what it is doing, then shows the file', async () => {
+    const { app } = mount({ slow: 1500 })
+    await until(app, 'Continue editing')
+    app.stdin.write(DOWN) // Resize
+    await settle()
+    app.stdin.write(DOWN) // Trim edges
+    await settle()
+    app.stdin.write(' ')
+    await until(app, 'Trimming')
+    expect(plain(app)).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Trimming/)
+    await until(app, 'now 840 KB')
+    expect(plain(app)).not.toContain('Trimming')
+  })
+
+  it('says nothing for a quick rerun: no spinner flashes up', async () => {
+    const { app } = mount({ slow: 50 })
+    await until(app, 'Continue editing')
+    app.stdin.write(DOWN)
+    await settle()
+    app.stdin.write(DOWN)
+    await settle()
+    const frames: string[] = []
+    const seen = setInterval(() => frames.push(plain(app)), 20)
+    app.stdin.write(' ')
+    await until(app, 'now 840 KB')
+    clearInterval(seen)
+    expect(frames.some((f) => f.includes('Trimming'))).toBe(false)
+  })
+
+  it('dims a row that cannot apply, with its reason, and space does nothing there', async () => {
+    const { app, runs } = mount({ reasons: { trim: 'no empty edges' } })
+    await until(app, 'no empty edges')
+    expect(plain(app)).toMatch(/○ Trim edges {9}no empty edges/)
+    app.stdin.write(DOWN) // Resize
+    await settle()
+    app.stdin.write(DOWN) // Trim edges
+    await settle()
+    expect(plain(app)).toMatch(/↑↓ {2}choose/)
+    expect(plain(app)).not.toMatch(/space {2}select/)
+    app.stdin.write(' ')
+    await settle(400)
+    expect(runs).toHaveLength(0)
+  })
+
+  it('offers a missing extension under its row, and asks the shell to add it on ↵', async () => {
+    const add = vi.fn()
+    const { app } = mount({ missing: { sharpen: 41_000_000 }, onAdd: add })
+    await until(app, 'not added')
+    for (const _ of [1, 2, 3, 4]) {
+      app.stdin.write(DOWN) // Resize, Trim edges, Crop to shape, Sharpen
+      await settle()
+    }
+    app.stdin.write(' ')
+    await until(app, 'add · 41 MB')
+    expect(plain(app)).toMatch(/↵ {2}add/)
+    app.stdin.write('\r')
+    await until(app, 'adding')
+    expect(add).toHaveBeenCalledWith('sharpen')
   })
 })

@@ -1,4 +1,4 @@
-import { CROP_SHAPES } from '../core/crop.js'
+import { CROP_SHAPES, shapesFor } from '../core/crop.js'
 import type { PresetSteps } from '../core/preset.js'
 import type { Aspect, FormatId, ResizeSpec } from '../core/types.js'
 
@@ -27,6 +27,10 @@ export interface EditorRow {
   on: boolean
   /** The row's answer, kept when it is unselected so space brings it back. */
   value?: Value
+  /** Why it cannot apply to this file, said where its answer would be (E2): nothing selects it. */
+  why?: string | undefined
+  /** Its extension is not added: the download's size, offered under the row (E3). */
+  missing?: number | undefined
 }
 
 /** A row's own window: a list to choose from, or a number being typed. */
@@ -37,6 +41,9 @@ export interface Sub {
   typed: string
   /** Resize's box being typed in. */
   side: 'width' | 'height'
+  /** The offer of a missing extension, not a row's answer; `adding` once ↵ asked for it. */
+  add?: boolean
+  adding?: boolean
 }
 
 export interface Editor {
@@ -96,6 +103,49 @@ export function openEditor(o: {
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 
+/**
+ * Why a row cannot apply to this image, in the Edit picker's words: an
+ * animation cannot be trimmed or cropped, a picture with no plain border has
+ * nothing to trim, a 1 × 1 one has no shape to cut. `measure` arrives once
+ * the image has been read; until then only what the probe knows is said.
+ */
+export function reasonsFor(
+  image: { width: number; height: number; frames: number },
+  measure: { trimmed: unknown } | undefined,
+): Partial<Record<OpId, string>> {
+  if (image.frames > 1) return { trim: 'animated', crop: 'animated' }
+  const reasons: Partial<Record<OpId, string>> = {}
+  if (measure?.trimmed === 'nothing') reasons.trim = 'no empty edges'
+  if (shapesFor(image).length === 0) reasons.crop = 'no shape to cut'
+  return reasons
+}
+
+/**
+ * The window with each row's missing extension, by its download's size. A row
+ * whose extension has just been added is selected, and its offer closes.
+ */
+export function withMissing(e: Editor, missing: Partial<Record<OpId, number>>): Editor {
+  const adding = e.sub?.adding ? e.sub.id : undefined
+  const rows = e.rows.map((r): EditorRow => {
+    const bytes = missing[r.id]
+    if (bytes !== undefined) return { ...r, on: false, missing: bytes }
+    if (r.missing === undefined) return r
+    return { ...r, missing: undefined, on: r.id === adding ? true : r.on }
+  })
+  const done = adding !== undefined && missing[adding] === undefined
+  return { ...e, rows, sub: done ? undefined : e.sub }
+}
+
+/** The window with each row's reason, if it has one; a row that cannot apply is never selected. */
+export function withReasons(e: Editor, reasons: Partial<Record<OpId, string>>): Editor {
+  return {
+    ...e,
+    rows: e.rows.map((r) =>
+      reasons[r.id] ? { ...r, on: false, why: reasons[r.id] } : { ...r, why: undefined },
+    ),
+  }
+}
+
 /** The list a row's window offers. */
 function listOf(e: Editor, id: OpId): Value[] {
   if (id === 'convert') return e.targets
@@ -124,6 +174,8 @@ const setRow = (e: Editor, i: number, patch: Partial<EditorRow>): Editor => ({
 
 function subKey(e: Editor, sub: Sub, k: EditorKey): Editor {
   if (k === 'left') return { ...e, sub: undefined }
+  // The offer of a missing extension: ↵ asks for it; the shell adds it.
+  if (sub.add) return k === 'enter' ? { ...e, sub: { ...sub, adding: true } } : e
   if (LISTED.includes(sub.id)) {
     const list = listOf(e, sub.id)
     if (k === 'up' || k === 'down') {
@@ -161,6 +213,10 @@ export function press(e: Editor, k: EditorKey): Editor {
   if (e.sub) return subKey(e, e.sub, k)
   const row = e.rows[e.at]
   if (!row) return e
+  if (row.why && k !== 'up' && k !== 'down') return e
+  if (row.missing !== undefined && (k === 'space' || k === 'right')) {
+    return { ...e, sub: { id: row.id, at: 0, typed: '', side: 'width', add: true } }
+  }
   if (k === 'up' || k === 'down') {
     return { ...e, at: clamp(e.at + (k === 'down' ? 1 : -1), 0, e.rows.length - 1) }
   }
@@ -189,7 +245,7 @@ export function press(e: Editor, k: EditorKey): Editor {
 export function stepsOf(e: Editor): PresetSteps {
   const steps: PresetSteps = {}
   for (const row of e.rows) {
-    if (!row.on) continue
+    if (!row.on || row.why || row.missing !== undefined) continue
     const v = row.value
     if (row.id === 'convert' && typeof v === 'string') steps.to = v
     else if (row.id === 'quality' && typeof v === 'number') steps.quality = v

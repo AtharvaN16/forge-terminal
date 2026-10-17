@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { type Editor, openEditor, press, stepsOf } from '../../src/shell/preset-editor.js'
+import {
+  type Editor,
+  openEditor,
+  press,
+  reasonsFor,
+  stepsOf,
+  withMissing,
+  withReasons,
+} from '../../src/shell/preset-editor.js'
 
 /**
  * Continue editing (W2, mockups/presets-2026-10.html): one window, every
@@ -140,5 +148,43 @@ describe('the Continue editing window', () => {
     expect(stepsOf(e)).toEqual({ to: 'webp', quality: 80, resize: { width: 1920 }, sharpen: true })
     const noConvert = keys(e, 'up', 'up', 'up', 'up', 'up', 'up', 'space')
     expect(stepsOf(noConvert).to).toBeUndefined()
+  })
+
+  it('knows why a row cannot apply: an animation, a photo with no empty edges, a shape it already is', () => {
+    const still = { width: 3024, height: 2016, frames: 1 }
+    expect(reasonsFor({ ...still, frames: 12 }, undefined)).toEqual({
+      trim: 'animated',
+      crop: 'animated',
+    })
+    expect(reasonsFor(still, { trimmed: 'nothing' })).toEqual({ trim: 'no empty edges' })
+    expect(reasonsFor(still, { trimmed: { width: 2980, height: 1990 } })).toEqual({})
+    expect(reasonsFor({ width: 1, height: 1, frames: 1 }, undefined)).toMatchObject({
+      crop: 'no shape to cut',
+    })
+  })
+
+  it('does nothing with a row that cannot apply: space and → are both still', () => {
+    const e = withReasons(keys(open(), 'down', 'down'), { trim: 'no empty edges' }) // Trim edges
+    expect(e.rows[4]).toMatchObject({ id: 'trim', on: false, why: 'no empty edges' })
+    expect(keys(e, 'space').rows[4]?.on).toBe(false)
+    expect(keys(e, 'right').sub).toBeUndefined()
+    expect(stepsOf(keys(e, 'space')).trim).toBeUndefined()
+  })
+
+  it('offers a missing extension under its row: space or → opens the offer, ↵ asks to add it', () => {
+    const e = withMissing(keys(open(), 'down', 'down', 'down', 'down'), { sharpen: 41_000_000 }) // Sharpen
+    expect(e.rows[6]).toMatchObject({ id: 'sharpen', on: false, missing: 41_000_000 })
+    const offer = keys(e, 'space')
+    expect(offer.sub).toMatchObject({ id: 'sharpen', add: true })
+    expect(keys(e, 'right').sub).toMatchObject({ id: 'sharpen', add: true })
+    expect(keys(offer, 'enter').sub).toMatchObject({ id: 'sharpen', add: true, adding: true })
+    expect(stepsOf(keys(offer, 'enter')).sharpen).toBeUndefined()
+  })
+
+  it('selects the row once its extension is in', () => {
+    const e = withMissing(keys(open(), 'down', 'down', 'down', 'down'), { sharpen: 41_000_000 })
+    const added = withMissing(keys(e, 'space', 'enter'), {})
+    expect(added.sub).toBeUndefined()
+    expect(added.rows[6]).toMatchObject({ id: 'sharpen', on: true, missing: undefined })
   })
 })

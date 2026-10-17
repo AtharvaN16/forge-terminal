@@ -1037,6 +1037,7 @@ export function App({
       (doneBar?.mode === 'convert' || doneBar?.mode === 'compress') &&
       clip === null &&
       clipDone === null,
+    tools,
   })
   const doneRecord = useRef<HistoryBlock[] | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
