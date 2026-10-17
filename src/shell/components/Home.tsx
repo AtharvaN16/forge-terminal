@@ -32,7 +32,7 @@ import {
 import type { StagedView, UnderField } from '../stage.js'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
-import { colourProp, commandsPalette, MODE_KEYS, type ShellMode } from '../theme.js'
+import { colourProp, MODE_KEYS, menuPalette, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { folderCardLines } from '../watch-art.js'
 import { middleEllipsis } from '../width.js'
@@ -104,20 +104,20 @@ const MODE_ARROWS = `${MODE_KEYS} ←→`
 export function homeKeys({
   typing,
   completions,
-  commands,
+  menu,
   colour = false,
   staged,
 }: {
   typing: boolean
   completions: number
-  /** The command list is open. */
-  commands: boolean
+  /** The menu is open. */
+  menu: boolean
   /** Colour's home: the three cards to choose between, and nothing to send. */
   colour?: boolean
   /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
   staged?: { count: number; verb: string | null } | undefined
 }): KeySet {
-  if (commands) {
+  if (menu) {
     return {
       main: [
         ['↵', 'run'],
@@ -524,15 +524,13 @@ export function Home({
     })
   const introducing = introAt < INTRO_MS
   useKeys(() => setSkipped(true), { isActive: introducing })
-  const resting = layout.brand
-    ? brandRows({ ...art, commands: commands !== undefined, update })
-    : []
+  const resting = layout.brand ? brandRows({ ...art, menu: commands !== undefined, update }) : []
   const brand = introducing
     ? brandIntro(resting, easeOut(introAt / INTRO_MS) * (width + 8), palette)
     : resting
   const tabsAtRest = tabRows({
     ...art,
-    commands: commands !== undefined,
+    menu: commands !== undefined,
   })
   // The tabs come up out of the background as the band's edge passes them.
   const tabsIn = Math.max(0, Math.min(1, (introAt - INTRO_MS * 0.5) / INTRO_TABS_MS))
@@ -595,8 +593,8 @@ export function Home({
         {!fieldShows ? (
           <Box height={3} />
         ) : commands ? (
-          // While a command is typed the field's marker is the commands' gold.
-          <ThemeProvider palette={commandsPalette(palette)}>{field}</ThemeProvider>
+          // While a command is typed the field's marker is the menu's gold.
+          <ThemeProvider palette={menuPalette(palette)}>{field}</ThemeProvider>
         ) : crossing ? (
           <ThemeProvider palette={fieldPalette}>{fieldNow}</ThemeProvider>
         ) : (

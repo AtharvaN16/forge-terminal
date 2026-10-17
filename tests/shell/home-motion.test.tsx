@@ -54,7 +54,7 @@ function home(mode: ShellMode, staged?: StagedView, intro = false) {
             width={80}
           />
         }
-        keys={homeKeys({ typing: true, completions: 0, commands: false })}
+        keys={homeKeys({ typing: true, completions: 0, menu: false })}
       />
     </ThemeProvider>
   )

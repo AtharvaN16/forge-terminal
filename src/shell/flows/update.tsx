@@ -41,9 +41,9 @@ export const realUpdater: Updater = {
   },
 }
 
-/** The commands' gold, as /extensions: /update is a setting, reached from them. */
+/** The menu's gold, as /extensions: /update is a setting, reached from the menu. */
 export function updateChip(p: Palette): BarChip {
-  return { label: 'update', colour: p.brand, stops: modeGradient(p, 'commands') }
+  return { label: 'update', colour: p.brand, stops: modeGradient(p, 'menu') }
 }
 
 type State =

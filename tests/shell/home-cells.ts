@@ -80,7 +80,7 @@ export function homeRow(frame: FixtureFrame, row: number): Cell[] {
     const tabs = tabRows({
       palette: modePalette(DARK, frame.mode),
       mode: frame.mode,
-      commands: frame.text.startsWith('/') && !frame.text.includes(' '),
+      menu: frame.text.startsWith('/') && !frame.text.includes(' '),
     })
     return runsRow(tabs[row - 5] ?? [])
   }

@@ -460,14 +460,14 @@ export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', '
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
 
 /** A tab on home's tab row: the modes, then "/ menu". */
-export type HomeTab = ShellMode | 'commands'
+export type HomeTab = ShellMode | 'menu'
 
 /**
  * The tab beside `from` on home's tab row: what ← and → go to. They stop at
  * the ends rather than wrap (decided 2026-10-14), so `from` itself there.
  */
 export function tabStep(from: HomeTab, delta: 1 | -1): HomeTab {
-  const tabs: readonly HomeTab[] = [...MODE_ORDER, 'commands']
+  const tabs: readonly HomeTab[] = [...MODE_ORDER, 'menu']
   const at = Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(from) + delta))
   return tabs[at] as HomeTab
 }
@@ -506,15 +506,15 @@ export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: stri
  * Read from fields `modePalette` never moves, so the result is the same
  * whether `p` is the base palette or a mode's.
  *
- * `commands` is the command list's own (K1, round 5): the brand's gold.
+ * `menu` is the menu's own (K1, round 5): the brand's gold.
  */
 const SPECTRUM = ['#f26e69', '#e5a23c', '#ace02c', '#55c7d9', '#6579fd', '#ad95e9'] as const
 
-/** What a gradient is drawn for: a mode, or the command list. */
-export type Scheme = ShellMode | 'commands'
+/** What a gradient is drawn for: a mode, or the menu. */
+export type Scheme = ShellMode | 'menu'
 
-/** The commands' gold, in dark: the brand stepping up to a pale gold. */
-const COMMANDS_DARK = ['#e5a23c', '#f2cf6b'] as const
+/** The menu's gold, in dark: the brand stepping up to a pale gold. */
+const MENU_DARK = ['#e5a23c', '#f2cf6b'] as const
 
 /**
  * Light's bands (L6, mockups/round-5-2026-10.html): dark's hues walked in
@@ -587,7 +587,7 @@ const LIGHT_BAND: Record<ShellMode, readonly string[]> = {
     '#965df8',
   ],
 }
-const LIGHT_COMMANDS = [
+const LIGHT_MENU = [
   '#d99522',
   '#da9822',
   '#da9b23',
@@ -667,7 +667,7 @@ const LIGHT_WASH: Record<ShellMode, readonly string[]> = {
     '#f1edfe',
   ],
 }
-const LIGHT_COMMANDS_WASH = [
+const LIGHT_MENU_WASH = [
   '#feeed9',
   '#feeed8',
   '#feeed7',
@@ -693,8 +693,8 @@ const LIGHT_DOTS: Record<ShellMode, readonly string[]> = {
 }
 
 export function modeGradient(p: Palette, scheme: Scheme): readonly string[] {
-  if (p.name === 'light') return scheme === 'commands' ? LIGHT_COMMANDS : LIGHT_BAND[scheme]
-  if (scheme === 'commands') return p.name === 'dark' ? COMMANDS_DARK : [p.brand]
+  if (p.name === 'light') return scheme === 'menu' ? LIGHT_MENU : LIGHT_BAND[scheme]
+  if (scheme === 'menu') return p.name === 'dark' ? MENU_DARK : [p.brand]
   if (scheme === 'compress') return [p.modeCompress, p.modeConvert]
   if (scheme === 'pdf') return [p.modePdf, p.brand]
   if (scheme === 'colour') return p.name === 'dark' ? SPECTRUM : [p.modeColour, p.violet]
@@ -708,7 +708,7 @@ export function modeGradient(p: Palette, scheme: Scheme): readonly string[] {
  */
 export function modeWash(p: Palette, scheme: Scheme): readonly string[] | undefined {
   if (p.name !== 'light') return undefined
-  return scheme === 'commands' ? LIGHT_COMMANDS_WASH : LIGHT_WASH[scheme]
+  return scheme === 'menu' ? LIGHT_MENU_WASH : LIGHT_WASH[scheme]
 }
 
 /** The drop zone's dots: light's own (L1), the band's everywhere else. */
@@ -717,10 +717,10 @@ export function dotGradient(p: Palette, mode: ShellMode): readonly string[] {
 }
 
 /**
- * The palette while the command list is open: the role colours become the
- * commands' gold, as `modePalette` hands them to a mode.
+ * The palette while the menu is open: the role colours become the
+ * menu's gold, as `modePalette` hands them to a mode.
  */
-export function commandsPalette(p: Palette): Palette {
+export function menuPalette(p: Palette): Palette {
   return { ...p, accent: p.brand, tag: p.brand, label: p.brand }
 }
 
