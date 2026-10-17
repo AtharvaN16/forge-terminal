@@ -119,6 +119,19 @@ describe('the palette', () => {
     await waitFor(() => /\d+%/.test(plain(app.lastFrame())))
     expect(plain(app.lastFrame())).not.toContain('▀')
     expect(plain(app.lastFrame())).toMatch(/#[0-9A-F]{6}/)
+    expect(plain(app.lastFrame())).not.toContain('illustrative')
+  })
+
+  it('says under a photo drawn in half blocks that it is illustrative only', async () => {
+    const dir = await makeTempDir()
+    const { app } = flow({ palette: await makeGradientPng(dir, 'g.png', 64) })
+    await waitFor(() => /\d+%/.test(plain(app.lastFrame())))
+    const frame = plain(app.lastFrame())
+    expect(frame).toContain('▀')
+    expect(frame).toContain('The image preview is for illustrative purposes only;')
+    expect(frame).toContain('display the actual image.')
+    expect(frame.split('\n').length).toBeLessThanOrEqual(24)
+    fits(app.lastFrame())
   })
 })
 

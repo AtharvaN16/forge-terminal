@@ -38,6 +38,7 @@ import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
 import { fieldKey } from '../field-key.js'
 import { trueColour } from '../glyphs.js'
+import { sketchNoteRows } from '../halfblocks.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
@@ -156,11 +157,17 @@ const PHOTO_COLS = 24
  * Rows for the framed photo when the screen is `height` tall: as many as
  * fit, at most `PHOTO_ROWS`; 0 when fewer than `MIN_PHOTO_ROWS` fit. A
  * painted canvas takes a row of the window, so at 80×24 there are 11.
+ * `note`: the rows the note under a photo drawn in half blocks takes.
  */
-function photoRowsFor(height: number): number {
-  const fit = Math.min(PHOTO_ROWS, height - CHROME)
+function photoRowsFor(height: number, note = 0): number {
+  const fit = Math.min(PHOTO_ROWS, height - CHROME - note)
   return fit >= MIN_PHOTO_ROWS ? fit : 0
 }
+
+/** The photo and the list start four cells in; the note under a half-block photo does too. */
+const LEAD = 4
+const sketchNote = (p: ReturnType<typeof useTheme>, width: number): Row[] =>
+  sketchNoteRows(p.dim, LEAD, width)
 
 /**
  * The longer side `photoMap` draws the photo at, in `rows` rows framed: its
@@ -368,7 +375,8 @@ export function ColourFlow({
   const { stdout } = useStdout()
   const protocol = stdout.isTTY && p.selectionBg !== '' ? imageProtocol() : null
   const px = image.current?.pixels
-  const framedRows = photoRowsFor(height)
+  // Without pictures the photo is drawn in half blocks, and says so under it.
+  const framedRows = photoRowsFor(height, protocol === null ? sketchNote(p, width).length : 0)
   const cells =
     screen.kind === 'palette' && px && framedRows > 0 ? photoCells(px, framedRows) : undefined
   const real = protocol !== null && cells !== undefined
@@ -916,7 +924,8 @@ function bodyRows({
   if (p.selectionBg === '') {
     return plainPaletteRows({ palette: p, items, selected: screen.sel })
   }
-  const framedRows = photoRowsFor(height)
+  const note = real ? [] : sketchNote(p, width)
+  const framedRows = photoRowsFor(height, note.length)
   const showPhoto = framedRows > 0
   const column =
     screen.level.length === 0
@@ -937,14 +946,14 @@ function bodyRows({
           selected: screen.sel,
           rows: showPhoto ? framedRows : items.length + 2,
         })
-  if (!showPhoto || !pixels) return column.map((row) => [blank(4), ...row])
+  if (!showPhoto || !pixels) return column.map((row) => [blank(LEAD), ...row])
   const photo = real
     ? (() => {
         const box = photoCells(pixels, framedRows)
         return Array.from({ length: box.rows }, (): Row => [blank(box.cols)])
       })()
     : photoFor(p, screen, groupsAt, pixels, framedRows)
-  return paletteBody(framed(p, photo), column)
+  return [...paletteBody(framed(p, photo), column), ...note]
 }
 
 /** The colour a drill level is inside: its hex, its whole percentage, and its share of the image. */

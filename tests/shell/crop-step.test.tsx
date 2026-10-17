@@ -95,6 +95,18 @@ describe('the crop preview', () => {
     expect(frame()).toContain('600 × 600 · 1:1')
     expect(frame()).toContain('keeps 50 % of the photo')
     expect(frame()).toContain('left 300 px · top 0 px')
+    expect(frame()).not.toContain('illustrative')
+    app.unmount()
+  })
+
+  it('says under a picture drawn in half blocks that it is illustrative only', async () => {
+    const dir = await makeTempDir()
+    const path = join(dir, 'note.png')
+    await photoAt(path)
+    const { app, frame } = step(imageAt(path), 80)
+    await until(() => frame().includes('▀'))
+    expect(frame()).toContain('The image preview is for illustrative purposes only;')
+    expect(frame()).toContain('display the actual image.')
     app.unmount()
   })
 

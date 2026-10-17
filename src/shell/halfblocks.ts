@@ -1,5 +1,7 @@
 import chalk from 'chalk'
 import type { PixelGrid } from '../core/closeup.js'
+import { wrapWords } from './done-art.js'
+import { blank, type Row } from './home-art.js'
 
 /**
  * Pictures in characters, for a terminal that cannot draw images (Apple
@@ -15,6 +17,27 @@ import type { PixelGrid } from '../core/closeup.js'
  */
 
 type RGB = [number, number, number]
+
+/**
+ * Said under every picture drawn in half blocks: a reader seeing blocks
+ * should know the real file is not like that. The user's wording
+ * (2026-10-12), given for enhance's Done, which goes on to name the key that
+ * opens the result; Extract and Crop to shape have no such key, so they say
+ * this alone (2026-10-16).
+ */
+export const SKETCH_ONLY =
+  'The image preview is for illustrative purposes only; the terminal cannot display the actual image.'
+
+/**
+ * The note under a half-block picture whose rows start `lead` cells in, in a
+ * window `width` wide: a gap, then its lines in `fg`, one cell short of the
+ * edge, as enhance's Done wraps its own.
+ */
+export function sketchNoteRows(fg: string, lead: number, width: number): Row[] {
+  const lines = wrapWords(SKETCH_ONLY, Math.max(1, width - lead - 1))
+  // The gap is spaces, not an empty row, which some renderers give no height.
+  return [[blank(lead)], ...lines.map((text): Row => [blank(lead), { text, fg }])]
+}
 
 export interface HalfBlockCell {
   ch: string

@@ -29,6 +29,7 @@ import {
   PICTURE_LEFT,
   PICTURE_PX,
 } from '../crop-art.js'
+import { sketchNoteRows } from '../halfblocks.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { useTheme } from '../ThemeContext.js'
@@ -171,10 +172,15 @@ export function CropStep({
     if (h !== space) setSpace(h)
   })
 
-  const grid = cropPictureSize(size, space - CHROME_ROWS, width)
+  const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
+  // A terminal that draws pictures (Ghostty, iTerm2) is sent the preview as
+  // one; everywhere else it is drawn in half blocks, and says so under it.
+  const { stdout } = useStdout()
+  const protocol = stdout.isTTY && colour ? imageProtocol() : null
+  const note = colour && !protocol ? sketchNoteRows(palette.dim, PICTURE_LEFT, width) : []
+  const grid = cropPictureSize(size, space - CHROME_ROWS - note.length, width)
   const dotsAcross = grid ? { cols: grid.cols, dotRows: grid.rows * 2 } : undefined
   const step = cropStep(size, dotsAcross ?? { cols: FALLBACK_DOTS, dotRows: FALLBACK_DOTS })
-  const colour = chalk.level > 0 && (process.env.NO_COLOR ?? '') === ''
   const view = loaded?.view
   const cols = colour ? (grid?.cols ?? 0) : 0
   const tall = grid?.rows ?? 0
@@ -205,11 +211,9 @@ export function CropStep({
     ],
   )
 
-  // A terminal that draws pictures (Ghostty, iTerm2) is sent the preview as
-  // one, sampled a pixel a dot at PICTURE_PX dots a cell, drawn again on each
-  // move; the rows leave its box blank. Everywhere else, the rows above.
-  const { stdout } = useStdout()
-  const protocol = stdout.isTTY && colour ? imageProtocol() : null
+  // The real picture is sampled a pixel a dot at PICTURE_PX dots a cell,
+  // drawn again on each move; the rows leave its box blank. Everywhere else,
+  // the rows above.
   const fine = useMemo(
     () =>
       view && protocol && cols > 0
@@ -282,6 +286,7 @@ export function CropStep({
   const facts = cropFactsRows({ palette, box, size, label: shape.label })
 
   let rows: Row[]
+  let under: Row[] = []
   if (colour && grid) {
     rows = Array.from({ length: Math.max(grid.rows, facts.length) }, (_, i) =>
       besideRow(
@@ -290,6 +295,7 @@ export function CropStep({
         facts[i],
       ),
     )
+    under = note
   } else {
     // No picture (no colour, or no room for one): where it would be, one
     // line says where the crop sits. Beside the facts where both fit, else
@@ -312,6 +318,10 @@ export function CropStep({
           <Runs key={i} row={row} />
         ))}
       </Box>
+      {under.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+        <Runs key={i} row={row} />
+      ))}
       <HintBar
         width={width}
         pairs={cropKeys({ size, box, changed })}

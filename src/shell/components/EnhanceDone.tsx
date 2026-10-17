@@ -12,7 +12,7 @@ import {
   forgetCloseup,
 } from '../../core/closeup.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
-import { halfBlocks } from '../halfblocks.js'
+import { halfBlocks, SKETCH_ONLY } from '../halfblocks.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { Text } from '../Text.js'
@@ -74,8 +74,7 @@ const CHROME_ROWS = 5
  * reader seeing blocks should know the real file is not like that. No other
  * explainer — the user asked for none, and gave this wording (2026-10-12).
  */
-export const SKETCH_NOTE =
-  'The image preview is for illustrative purposes only; the terminal cannot display the actual image. Press O to see the result.'
+export const SKETCH_NOTE = `${SKETCH_ONLY} Press O to see the result.`
 /** The key the note names, drawn as a key cap where it says it, its letter in enhance's colour. */
 const NOTE_KEY = 'O'
 /** The key as its cap draws it: a cell either side. */
