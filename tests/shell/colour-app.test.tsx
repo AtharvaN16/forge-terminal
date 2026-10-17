@@ -13,7 +13,7 @@ const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
 const lines = (f: string | undefined) => plain(f).split('\n')
 const keyRow = (f: string | undefined) => lines(f).findLast((l) => l.trim() !== '') ?? ''
-const tabRow = (f: string | undefined) => lines(f).find((l) => l.includes('/ commands')) ?? ''
+const tabRow = (f: string | undefined) => lines(f).find((l) => l.includes('/ menu')) ?? ''
 
 async function waitFor(ok: () => boolean, ms = 10_000) {
   const start = Date.now()

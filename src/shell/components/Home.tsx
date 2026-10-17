@@ -181,7 +181,7 @@ export function homeKeys({
       ],
     }
   }
-  // No "/ commands": the tab row says it.
+  // No "/ menu": the tab row says it.
   return {
     main: [['↵', 'send']],
     foot: [
@@ -404,7 +404,7 @@ export function Home({
   /** What sits under the field, given how many entries it has room for. */
   list?: ((rows: number) => ReactNode) | undefined
   /**
-   * The field holds a command: "/ commands" is the active tab and the list
+   * The field holds a command: "/ menu" is the active tab and the list
    * takes the drop surface's place, in place — nothing else moves.
    */
   commands?: (CommandList & { selected: number }) | undefined

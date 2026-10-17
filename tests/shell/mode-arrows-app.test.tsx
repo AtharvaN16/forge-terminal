@@ -6,10 +6,10 @@ import { tabStep } from '../../src/shell/theme.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 /**
- * ←→ on home walk the tab row — the five modes, then "/ commands" — and stop
+ * ←→ on home walk the tab row — the five modes, then "/ menu" — and stop
  * at both ends, while nothing is typed (as 1–5 pick a mode). They pass
  * through colour like any other tab: its cards are chosen with a s d. On the
- * commands tab they only switch while the field holds the bare "/" (decided
+ * menu tab they only switch while the field holds the bare "/" (decided
  * 2026-10-14).
  */
 const ESC = String.fromCharCode(27)

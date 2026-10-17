@@ -1224,7 +1224,7 @@ export function App({
 
   /**
    * ← or → on home: the tab beside `from` on the tab row — the modes, then
-   * "/ commands" — stopping at both ends (decided 2026-10-14). The commands
+   * "/ menu" — stopping at both ends (decided 2026-10-14). The menu
    * tab is the bare "/" in the field, as typing it opens the list. Colour is
    * passed through like any tab: its cards are chosen with a s d.
    */
@@ -1276,7 +1276,7 @@ export function App({
       if (digitMode !== mode) switchMode(digitMode)
       return true
     }
-    // ←→ leave the commands tab for its neighbours on the tab row while
+    // ←→ leave the menu tab for its neighbours on the tab row while
     // nothing is typed after the slash; past that they move the cursor.
     if (
       (key.leftArrow || key.rightArrow) &&
