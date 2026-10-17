@@ -41,6 +41,7 @@ import type {
   ImageInfo,
   Job,
   MediaInfo,
+  MediaOptions,
   Progress,
   ResizeSpec,
   Result,
@@ -291,6 +292,8 @@ interface PendingSizeUnreachable {
    * answer would write at.
    */
   dpi?: number
+  /** A video's: the floor as the size its encode aims at (video spec §3.3). */
+  media?: MediaOptions
 }
 
 /**
@@ -859,6 +862,12 @@ export function App({
    * over. Same reasoning as `Select`'s `indexRef`.
    */
   const searchAbort = useRef<AbortController | undefined>(undefined)
+  /**
+   * A video or sound encode is running, from before ffmpeg's first report:
+   * esc stops it and goes back, rather than landing on a size step that a
+   * convert does not have.
+   */
+  const mediaRun = useRef(false)
 
   /**
    * The target-size field's unit, and whether tab has moved focus onto it.
@@ -1714,7 +1723,7 @@ export function App({
     (_input, key) => {
       if (!key.escape || !searchAbort.current) return
       searchAbort.current.abort()
-      if (timeProgress !== null && mode !== 'edit') {
+      if (mediaRun.current && mode !== 'edit') {
         // A video or sound encode: ffmpeg is killed and its temp file removed.
         // Back to the step that started it, the file still staged.
         searchAbort.current = undefined
@@ -2037,6 +2046,10 @@ export function App({
       return undefined
     }
     return async (target) => {
+      // An animated GIF can become a video too: that is ffmpeg's, never measured here.
+      if (target !== 'gif' && FORMATS[target as FormatId]?.media !== undefined) {
+        throw new Error('a video target is not measured')
+      }
       const [planned] = convertAction.plan([source], {
         target,
         quality: livePrefs.quality,
@@ -3071,6 +3084,7 @@ export function App({
     // A video or sound encode can be stopped all the way through (ffmpeg is
     // killed, nothing is written), so esc stays live past the size search.
     const media = planned.sources[0].kind === 'media'
+    mediaRun.current = media
 
     const outcome = await runPlan([planned], {
       force: opts.force ?? false,
@@ -3090,6 +3104,7 @@ export function App({
     })
     setAttempt(undefined)
     setTimeProgress(null)
+    mediaRun.current = false
     searchAbort.current = undefined
 
     /**
@@ -3117,6 +3132,7 @@ export function App({
         smallest: missed.smallest,
         quality: missed.settings.quality,
         ...(missed.settings.dpi === undefined ? {} : { dpi: missed.settings.dpi }),
+        ...(missed.settings.media === undefined ? {} : { media: missed.settings.media }),
       })
       setStep('size-unreachable')
       return
@@ -3219,6 +3235,7 @@ export function App({
     setStep('converting')
     const controller = new AbortController()
     searchAbort.current = controller
+    setTimeProgress(null)
     try {
       const [job] = act.plan([source], { ...values, output: opts.output ?? destination })
       if (!job) return
@@ -3282,6 +3299,7 @@ export function App({
     } catch (e) {
       failRun(e)
     } finally {
+      setTimeProgress(null)
       if (searchAbort.current === controller) searchAbort.current = undefined
       converting.current = false
       setWork(null)
@@ -3408,6 +3426,25 @@ export function App({
     const bytes = soundBytes(src, target)
     return bytes === undefined ? { status: 'idle' } : { status: 'done', bytes }
   }
+
+  /** A video's frame, once Crop is done with it. Its temp folder goes with it (below). */
+  const dropFrame = () => setCropFrame(undefined)
+
+  // A frame's temp folder goes when the frame is replaced or let go, and with the shell.
+  useEffect(() => {
+    const frame = cropFrame
+    if (!frame) return
+    return () => {
+      void import('node:fs/promises').then(({ rm }) =>
+        rm(dirname(frame.path), { recursive: true, force: true }).catch(() => {}),
+      )
+    }
+  }, [cropFrame])
+  // …and when the video it came from leaves the bench.
+  const benchPath = source?.path
+  useEffect(() => {
+    if (benchPath === undefined) setCropFrame(undefined)
+  }, [benchPath])
 
   /** The crop where the preview left it: on to Save as, the box with its shape. */
   const chooseCrop = (box: CropBox) => {
@@ -3591,7 +3628,7 @@ export function App({
   /** Answers `sizeUnreachable`: take the smallest size the search found, or back off to pick a format instead. */
   const answerSizeUnreachable = (choice: string) => {
     if (!sizeUnreachable) return
-    const { planned, destination, output, opts, quality, dpi } = sizeUnreachable
+    const { planned, destination, output, opts, quality, dpi, media } = sizeUnreachable
     setSizeUnreachable(null)
     if (choice === 'lowest') {
       if (converting.current) return
@@ -3600,6 +3637,7 @@ export function App({
       // A document's smallest came off a resolution rung as well as a quality,
       // so taking that size means taking both.
       if (dpi !== undefined) planned.options.dpi = dpi
+      if (media !== undefined) planned.options.media = media
       setWork({ startedAt: Date.now(), verb: action.verb })
       setStep('converting')
       // Deliberately without `targetBytes`: the search already ran and this is
@@ -4527,7 +4565,10 @@ export function App({
                 initial={cropAt}
                 onChange={setCropAt}
                 onSubmit={chooseCrop}
-                onCancel={() => setStep('edit')}
+                onCancel={() => {
+                  dropFrame()
+                  setStep('edit')
+                }}
                 width={width}
               />
             ) : null}

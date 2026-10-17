@@ -2,7 +2,15 @@ import { randomBytes } from 'node:crypto'
 import { open, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { prepareOutputDir, renameAtomic } from '../core/atomic.js'
-import { conversionFailed, corruptSource, ffmpegMissing, isForgeError } from '../core/errors.js'
+import {
+  cannotCompressMore,
+  conversionFailed,
+  corruptSource,
+  ffmpegMissing,
+  invalidArguments,
+  isForgeError,
+  targetUnreachable,
+} from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import { timeOf } from '../core/timecode.js'
 import type {
@@ -15,6 +23,8 @@ import type {
   SourceInfo,
   Warning,
 } from '../core/types.js'
+import { formatBytes } from '../core/units.js'
+import { displayName } from '../utils/display-path.js'
 import { type Ffmpeg, findFfmpeg, keyframeAtOrBefore, probeMedia, runFfmpeg } from './ffmpeg.js'
 import { type EncodePlan, LOUDNORM_MEASURED, planEncode } from './media-encode.js'
 import { mediaFloor } from './media-size.js'
@@ -70,6 +80,11 @@ function formatOf(sniffed: MediaFormat, facts: MediaFacts | undefined): FormatId
 async function probeAs(path: string, want: 'video' | 'sound'): Promise<MediaInfo> {
   const sniffed = sniffMedia(await head(path))
   if (!sniffed) throw new Error('not video or sound')
+  // Only an ISO box can turn out to be either (a sound-only MP4): anything
+  // else is known from its bytes, and the other engine's to read.
+  if (sniffed !== 'mp4' && sniffed !== 'mov' && FORMATS[sniffed].media !== want) {
+    throw new Error(`not ${want}`)
+  }
   const bytes = (await stat(path)).size
   const tools = await findFfmpeg()
   let facts: MediaFacts | undefined
@@ -154,7 +169,13 @@ async function run(
   const tag = randomBytes(6).toString('hex')
   const temp = join(dirname(output), `.${basename(output)}.${tag}.tmp`)
   const passlog = join(dirname(output), `.forge-pass-${tag}`)
-  const leftovers = [temp, `${passlog}-0.log`, `${passlog}-0.log.mbtree`, `${passlog}-0.log.temp`]
+  const leftovers = [
+    temp,
+    `${passlog}-0.log`,
+    `${passlog}-0.log.temp`,
+    `${passlog}-0.log.mbtree`,
+    `${passlog}-0.log.mbtree.temp`,
+  ]
   const warnings: Warning[] = []
 
   const planFor = (platform: NodeJS.Platform, options = job.options): EncodePlan =>
@@ -169,6 +190,12 @@ async function run(
     })
   let options = job.options
   let plan = planFor(process.platform)
+  if (plan.duration <= 0) {
+    throw invalidArguments(
+      `The cut keeps nothing of ${displayName(source.path)}: it starts at or after its end.`,
+      `It is ${timeOf(facts.duration)} long.`,
+    )
+  }
 
   // A copied cut can only start on a keyframe: start on the one at or before
   // the asked start, keep the asked end, and say where it landed.
@@ -228,6 +255,15 @@ async function run(
       )
       await steps(plan)
     }
+    // A size asked for is a size kept, and compress never writes a bigger
+    // file: missed either way, nothing is written and the reason is said.
+    const made = (await stat(temp)).size
+    if (asked !== undefined && made > asked) {
+      throw targetUnreachable(source, job.options.media?.targetBytes ?? asked, made)
+    }
+    if (job.options.compress !== undefined && made >= source.bytes) {
+      throw cannotCompressMore(source.path, source.bytes, made)
+    }
     await renameAtomic(temp, output)
   } catch (e) {
     await sweep(leftovers)
@@ -237,10 +273,9 @@ async function run(
   await sweep(leftovers.slice(1))
 
   const v = facts.video
-  if (plan.fitted && v && (plan.fitted.width !== v.width || plan.fitted.fps < v.fps)) {
-    const bytes = job.options.media?.targetBytes ?? 0
-    const size =
-      bytes >= 1e6 ? `${Math.round(bytes / 1e5) / 10} MB` : `${Math.round(bytes / 1e3)} KB`
+  // Said only when the picture really changed: evening an odd side is not a change.
+  if (plan.fitted && v && (plan.fitted.width < v.width - 2 || plan.fitted.fps < v.fps)) {
+    const size = formatBytes(job.options.media?.targetBytes ?? 0)
     warnings.push({
       code: 'media-fitted',
       message: `To fit ${size} it is now ${plan.fitted.width}×${plan.fitted.height} at ${plan.fitted.fps} fps.`,

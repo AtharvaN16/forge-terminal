@@ -161,3 +161,57 @@ describe.skipIf(!ffmpegHere)('with ffmpeg', () => {
     await expect(videoEngine.probe(bad)).rejects.toMatchObject({ code: 'corrupt-source' })
   })
 })
+
+describe.skipIf(!ffmpegHere)('review fixes, for real', () => {
+  it('never writes a compressed file bigger than the source', async () => {
+    // Squeezed hard already: at the top quality it could only grow.
+    const clip = await makeClip({ seconds: 2, width: 160, height: 120, crf: 50 })
+    const source = (await videoEngine.probe(clip)) as MediaInfo
+    const j = await job(source, 'mov', { compress: { dither: false }, quality: 100 })
+    await expect(videoEngine.run(j, () => {})).rejects.toMatchObject({
+      code: 'cannot-compress-more',
+    })
+    expect(await readdir(dirname(j.outputs[0]))).toEqual([])
+  })
+
+  it('lands a WebM under its size, or says it cannot', async () => {
+    const clip = await makeClip({ seconds: 3, width: 640, height: 480, ext: 'webm' })
+    const source = (await videoEngine.probe(clip)) as MediaInfo
+    const target = 150_000
+    const j = await job(source, 'webm', {
+      compress: { dither: false },
+      media: { targetBytes: target },
+    })
+    try {
+      const r = await videoEngine.run(j, () => {})
+      expect(r.outputBytes).toBeLessThanOrEqual(target)
+    } catch (e) {
+      expect(e).toMatchObject({ code: 'target-unreachable' })
+      expect(await readdir(dirname(j.outputs[0]))).toEqual([])
+    }
+  }, 60_000)
+
+  it('keeps the sample rate when evening out loudness', async () => {
+    const wav = await makeClip({ soundOnly: true, seconds: 2 })
+    const source = (await soundEngine.probe(wav)) as MediaInfo
+    const j = await job(source, 'wav', { media: { loudness: -16 } })
+    await soundEngine.run(j, () => {})
+    expect((await probeMedia(j.outputs[0])).audio?.sampleRate).toBe(48000)
+  })
+
+  it('trims an OGG', async () => {
+    const ogg = await makeClip({ soundOnly: true, seconds: 3, ext: 'ogg' })
+    const source = (await soundEngine.probe(ogg)) as MediaInfo
+    const j = await job(source, 'ogg', { media: { cut: { start: 0.5, end: 2 } } })
+    await soundEngine.run(j, () => {})
+    expect((await probeMedia(j.outputs[0])).duration).toBeLessThan(2)
+  })
+
+  it('slows a cut down to twice its length', async () => {
+    const clip = await makeClip({ seconds: 4 })
+    const source = (await videoEngine.probe(clip)) as MediaInfo
+    const j = await job(source, 'mp4', { media: { cut: { start: 0, end: 2 }, speed: 0.5 } })
+    await videoEngine.run(j, () => {})
+    expect((await probeMedia(j.outputs[0])).duration).toBeGreaterThan(3.8)
+  }, 60_000)
+})

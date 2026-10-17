@@ -163,3 +163,26 @@ describe('planMediaEdit, for the CLI', () => {
     expect(job?.target).toBe('mp4')
   })
 })
+
+describe('an animated GIF becoming a video', () => {
+  it('asks no quality: Forge picks, as for any video', () => {
+    const gif = {
+      kind: 'image' as const,
+      path: '/a/loop.gif',
+      format: 'gif' as const,
+      bytes: 9_000_000,
+      width: 400,
+      height: 300,
+      hasAlpha: false,
+      frames: 40,
+    }
+    const ids = convertAction
+      .options([gif], { target: 'mp4' }, DEFAULT_PREFERENCES)
+      .map((o) => o.id)
+    expect(ids).not.toContain('quality')
+    // A picture target still asks.
+    expect(
+      convertAction.options([gif], { target: 'webp' }, DEFAULT_PREFERENCES).map((o) => o.id),
+    ).toContain('quality')
+  })
+})

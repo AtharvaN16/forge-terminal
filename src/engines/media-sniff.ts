@@ -36,6 +36,8 @@ const PICTURE_BRANDS = new Set([
   'msf1',
   'avif',
   'avis',
+  // Canon's raw photos.
+  'crx ',
 ])
 const SOUND_BRANDS = new Set(['M4A ', 'M4B ', 'M4P ', 'F4A ', 'F4B '])
 

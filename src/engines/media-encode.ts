@@ -59,6 +59,7 @@ const MUXER: Partial<Record<FormatId, string>> = {
   flac: 'flac',
   wav: 'wav',
   aiff: 'aiff',
+  ogg: 'ogg',
 }
 
 /** The video codecs a container takes as they are. */
@@ -68,6 +69,7 @@ const VIDEO_FITS: Partial<Record<FormatId, readonly string[]>> = {
   mkv: ['h264', 'hevc', 'mpeg4', 'vp8', 'vp9', 'av1'],
   hevc: ['hevc'],
   webm: ['vp8', 'vp9', 'av1'],
+  avi: ['mpeg4', 'h264', 'mjpeg', 'msmpeg4v3'],
 }
 
 /** The sound codecs a container takes as they are. */
@@ -83,6 +85,8 @@ const AUDIO_FITS: Partial<Record<FormatId, readonly string[]>> = {
   flac: ['flac'],
   wav: ['pcm_s16le'],
   aiff: ['pcm_s16be'],
+  ogg: ['vorbis', 'opus', 'flac'],
+  avi: ['mp3', 'ac3', 'aac', 'pcm_s16le'],
 }
 
 /** The sound encoder for a container, and its bitrate when lossy. */
@@ -102,6 +106,8 @@ function audioEncoder(
       return { encoder: 'pcm_s16le' }
     case 'aiff':
       return { encoder: 'pcm_s16be' }
+    case 'ogg':
+      return { encoder: 'libvorbis', kbps: 128 }
     default:
       return { encoder: platform === 'darwin' ? 'aac_at' : 'aac', kbps: 128 }
   }
@@ -109,9 +115,15 @@ function audioEncoder(
 
 const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2)
 const secs = (n: number) => String(Math.round(n * 1000) / 1000)
+/** A start, rounded up: rounded down, it can land before its keyframe and seek one earlier. */
+const secsUp = (n: number) => String(Math.ceil(n * 1000) / 1000)
 
 /** Quality 1–100 as x264's constant rate factor: 100 → 18, 1 → 38. */
 export const crfOf = (quality: number) => Math.round(38 - ((quality - 1) * 20) / 99)
+/** The same for VP9, whose scale runs further: 100 → 20, 1 → 50. */
+const vp9CrfOf = (quality: number) => Math.round(50 - ((quality - 1) * 30) / 99)
+/** And for x265: 100 → 22, 1 → 40. */
+const x265CrfOf = (quality: number) => Math.round(40 - ((quality - 1) * 18) / 99)
 
 /** HDR to normal range, for a format that can't carry it. */
 const TONEMAP =
@@ -194,8 +206,9 @@ export function planEncode(job: EncodeInput): EncodePlan {
     if (fitted) vf.push(`scale=${fitted.width}:${fitted.height}`)
     else if (options.resize) {
       const r = options.resize
-      if ('width' in r) vf.push(`scale=${even(r.width)}:-2`)
-      else if ('height' in r) vf.push(`scale=-2:${even(r.height)}`)
+      // Never bigger than the video is: a side asked over its own is its own.
+      if ('width' in r) vf.push(`scale=trunc(min(${even(r.width)}\\,iw)/2)*2:-2`)
+      else if ('height' in r) vf.push(`scale=-2:trunc(min(${even(r.height)}\\,ih)/2)*2`)
       else vf.push(`scale=trunc(iw*${r.percent / 100}/2)*2:-2`)
     }
     if (speed !== 1) vf.push(`setpts=PTS/${speed}`)
@@ -223,11 +236,22 @@ export function planEncode(job: EncodeInput): EncodePlan {
     if (vf.length) videoArgs.push('-vf', vf.join(','))
     if (gif) videoArgs.push('-c:v', 'gif', '-loop', '0')
     else if (target === 'webm') {
-      videoArgs.push('-c:v', 'libvpx-vp9', '-crf', '33', '-b:v', '0', '-row-mt', '1')
-      videoArgs.push('-deadline', 'good', '-cpu-used', '4')
+      videoArgs.push('-c:v', 'libvpx-vp9', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4')
+      if (videoKbps !== undefined) videoArgs.push('-b:v', `${videoKbps}k`)
+      else {
+        const crf = compress ? vp9CrfOf(options.quality ?? 60) : 33
+        videoArgs.push('-crf', String(crf), '-b:v', '0')
+      }
     } else if (target === 'hevc') {
-      if (darwin && !compress) videoArgs.push('-c:v', 'hevc_videotoolbox', '-q:v', '60')
-      else videoArgs.push('-c:v', 'libx265', '-crf', '26', '-preset', 'fast')
+      if (videoKbps !== undefined) {
+        // x265 is not run in two passes here: one pass at the bitrate, and
+        // the engine's check after it holds the size.
+        videoArgs.push('-c:v', 'libx265', '-preset', 'fast', '-b:v', `${videoKbps}k`)
+      } else if (darwin && !compress) videoArgs.push('-c:v', 'hevc_videotoolbox', '-q:v', '60')
+      else {
+        const crf = compress ? x265CrfOf(options.quality ?? 60) : 26
+        videoArgs.push('-c:v', 'libx265', '-crf', String(crf), '-preset', 'fast')
+      }
       videoArgs.push('-tag:v', 'hvc1', '-pix_fmt', v?.hdr ? 'p010le' : 'yuv420p')
     } else {
       if (videoKbps !== undefined) {
@@ -275,13 +299,17 @@ export function planEncode(job: EncodeInput): EncodePlan {
     if (rate !== undefined && enc.kbps !== undefined) audioArgs.push('-b:a', `${rate}k`)
     if (sizedAudioKbps !== undefined && sizedAudioKbps <= SOUND_FLOOR_KBPS)
       audioArgs.push('-ac', '1')
+    // loudnorm works at 192 kHz and would write it: keep the file's own rate.
+    if (loudness !== undefined && a) audioArgs.push('-ar', String(a.sampleRate))
   }
 
   // ---- around them
   const pre: string[] = []
-  if (start > 0) pre.push('-ss', secs(start))
+  if (start > 0) pre.push('-ss', secsUp(start))
+  // On the input, so it is the source's seconds, before any speed change.
+  if (m.cut) pre.push('-t', secs(span))
   const input = [...pre, '-i', job.input]
-  const cut = m.cut ? ['-t', secs(span)] : []
+  const cut: string[] = []
   const maps = [...(wantVideo ? ['-map', '0:v:0'] : []), ...(wantAudio ? ['-map', '0:a:0'] : [])]
   const meta = options.keepMetadata ? [] : ['-map_metadata', '-1']
   const muxer = MUXER[target] ?? target
@@ -303,9 +331,11 @@ export function planEncode(job: EncodeInput): EncodePlan {
         nul,
       ],
       measures: 'loudness',
+      pass: { at: 1, of: 2 },
     })
   }
-  if (videoKbps !== undefined) {
+  const twoPass = videoKbps !== undefined && target !== 'hevc' && !gif
+  if (twoPass) {
     steps.push({
       args: [
         ...input,
@@ -343,6 +373,8 @@ export function planEncode(job: EncodeInput): EncodePlan {
   } else {
     steps.push({
       args: [...input, ...cut, ...maps, ...videoArgs, ...audioArgs, ...meta, ...fast, ...out],
+      // After loudness was measured: the second of two passes, with its own bar.
+      ...(loudness !== undefined ? { pass: { at: 2 as const, of: 2 as const } } : {}),
     })
   }
 

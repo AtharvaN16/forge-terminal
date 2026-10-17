@@ -190,7 +190,8 @@ export const convertAction: Action = {
       // Video: Forge picks the settings. Sound: the bitrate, the number people
       // know for sound, in kbps (video spec §3.2).
       if (spec?.media === 'sound' && spec.lossy) specs.push(bitrateSlider(target as FormatId))
-    } else if (spec?.lossy) {
+    } else if (spec?.lossy && spec.media === undefined) {
+      // A picture becoming a video (an animated GIF to MP4): Forge picks, as for any video.
       specs.push({
         kind: 'slider',
         id: 'quality',

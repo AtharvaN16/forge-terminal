@@ -34,6 +34,8 @@ export interface ClipSpec {
   rotate?: 90 | 180 | 270
   /** A keyframe every this many seconds (a phone's is about one); one at the start otherwise. */
   keyframes?: number
+  /** x264's constant quality: high (45) for a file already squeezed hard. */
+  crf?: number
 }
 
 /** A test clip made by ffmpeg's own sources: a moving test card and a tone. */
@@ -48,6 +50,7 @@ export async function makeClip(spec: ClipSpec = {}): Promise<string> {
     ext = soundOnly ? 'wav' : 'mov',
     rotate,
     keyframes,
+    crf,
   } = spec
   const out = join(await makeTempDir(), `clip.${ext}`)
   const args = ['-hide_banner', '-loglevel', 'error', '-y']
@@ -58,11 +61,13 @@ export async function makeClip(spec: ClipSpec = {}): Promise<string> {
     if (ext === 'webm') args.push('-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8')
     else args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p')
     if (keyframes) args.push('-g', String(Math.round(keyframes * fps)), '-keyint_min', '1')
+    if (crf !== undefined) args.push('-crf', String(crf))
   }
   if (audio || soundOnly) {
     if (ext === 'webm') args.push('-c:a', 'libopus')
     else if (ext === 'wav') args.push('-c:a', 'pcm_s16le')
     else if (ext === 'mp3') args.push('-c:a', 'libmp3lame')
+    else if (ext === 'ogg') args.push('-c:a', 'libvorbis')
     else args.push('-c:a', 'aac')
   }
   if (!rotate) {

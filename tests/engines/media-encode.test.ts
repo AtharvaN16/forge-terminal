@@ -52,6 +52,8 @@ describe('copying instead of encoding', () => {
     expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'))
     expect(flag(args, '-ss')).toBe('3.2')
     expect(flag(args, '-t')).toBe('37.8')
+    // -t on the input: measured before a speed change, not after it.
+    expect(args.indexOf('-t')).toBeLessThan(args.indexOf('-i'))
   })
 
   it('mutes by copying the picture and dropping the sound', () => {
@@ -124,7 +126,7 @@ describe('encoding', () => {
     const vf = flag(args, '-vf') ?? ''
     expect(vf.indexOf('crop=')).toBeLessThan(vf.indexOf('scale='))
     expect(vf).toContain('crop=1910:1910:514:0')
-    expect(vf).toContain('scale=1080:-2')
+    expect(vf).toContain('min(1080\\,iw)')
   })
 })
 
@@ -183,5 +185,44 @@ describe('the output’s length', () => {
   })
   it('is the whole file by default', () => {
     expect(plan('mp4').duration).toBe(130)
+  })
+})
+
+describe('review fixes', () => {
+  it('fits WebM to a size at a bitrate, in two passes', () => {
+    const p = plan('webm', { compress: { dither: false }, media: { targetBytes: 10_000_000 } })
+    expect(p.steps).toHaveLength(2)
+    const two = p.steps[1]?.args ?? []
+    expect(flag(two, '-c:v')).toBe('libvpx-vp9')
+    expect(flag(two, '-b:v')).toMatch(/^\d+k$/)
+  })
+
+  it('compresses WebM by quality: the quality moves the constant quality', () => {
+    const low = single(plan('webm', { compress: { dither: false }, quality: 10 }))
+    const high = single(plan('webm', { compress: { dither: false }, quality: 90 }))
+    expect(flag(low, '-crf')).not.toBe(flag(high, '-crf'))
+  })
+
+  it('keeps the sample rate when evening out loudness (loudnorm would make it 192 kHz)', () => {
+    const p = plan('wav', { media: { loudness: -16 } }, podcast)
+    expect(flag(p.steps[1]?.args ?? [], '-ar')).toBe('48000')
+  })
+
+  it('writes Vorbis back into an OGG', () => {
+    const ogg: MediaFacts = {
+      duration: 10,
+      audio: { codec: 'vorbis', channels: 2, sampleRate: 44100 },
+    }
+    expect(flag(single(plan('ogg', { media: { cut: { start: 1, end: 5 } } }, ogg)), '-c:a')).toBe(
+      'copy',
+    )
+    expect(flag(plan('ogg', { media: { loudness: -16 } }, ogg).steps[1]?.args ?? [], '-c:a')).toBe(
+      'libvorbis',
+    )
+  })
+
+  it('never makes a video bigger when resizing (a width over its own is its own)', () => {
+    const args = single(plan('mp4', { resize: { width: 4000 } }))
+    expect(flag(args, '-vf')).toContain('min(4000\\,iw)')
   })
 })

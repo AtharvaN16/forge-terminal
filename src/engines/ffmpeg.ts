@@ -231,8 +231,13 @@ export async function runFfmpeg(args: string[], opts: RunOptions = {}): Promise<
     const onAbort = () => child.kill('SIGKILL')
     signal?.addEventListener('abort', onAbort, { once: true })
     child.stdout.setEncoding('utf8')
+    // Whole lines only: a report split across two chunks would read as a smaller number.
+    let partial = ''
     child.stdout.on('data', (chunk: string) => {
-      const s = readProgress(chunk)
+      const text = partial + chunk
+      const end = text.lastIndexOf('\n')
+      partial = text.slice(end + 1)
+      const s = readProgress(text.slice(0, end + 1))
       if (s !== undefined) onTime?.(s)
     })
     child.stderr.setEncoding('utf8')

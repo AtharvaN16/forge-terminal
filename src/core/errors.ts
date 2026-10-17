@@ -933,6 +933,19 @@ export function cannotCompressMore(
   })
 }
 
+/**
+ * Compress to a size the file already fits: re-encoding would only lose
+ * quality for nothing, so nothing is written (video spec §3.3).
+ */
+export function alreadySmallEnough(path: string, bytes: number, target: number): ForgeError {
+  return new ForgeError({
+    code: 'cannot-compress-more',
+    title: 'Already small enough',
+    detail: `${displayName(path)} is ${formatBytes(bytes)}, already under ${formatBytes(target)}, so nothing was written.`,
+    short: 'already under that size',
+  })
+}
+
 export function nothingToTrim(path: string): ForgeError {
   return new ForgeError({
     code: 'nothing-to-trim',

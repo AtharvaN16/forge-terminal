@@ -2,6 +2,7 @@ import { engineForJob } from '../engines/registry.js'
 import type { Engine, Measurer } from '../engines/types.js'
 import { findQuality } from './compress.js'
 import {
+  alreadySmallEnough,
   cannotCompressMore,
   conversionFailed,
   type ForgeError,
@@ -136,9 +137,23 @@ async function searchJob(
   const engine = resolveEngine(job)
   if (engine?.sizeTo) {
     const src = job.sources[0]
-    const aim =
-      job.options.compress !== undefined && src.bytes <= targetBytes ? src.bytes - 1 : targetBytes
+    const squeeze = job.options.compress !== undefined
+    // Already under it: re-encoding would only lose quality for nothing.
+    if (squeeze && src.bytes <= targetBytes) {
+      return {
+        kind: 'failed',
+        failure: { path, error: alreadySmallEnough(path, src.bytes, targetBytes) },
+      }
+    }
+    const aim = targetBytes
     const out = engine.sizeTo(job, aim)
+    // Smaller than its floor already: nothing compress could do would help.
+    if (out && squeeze && out.floor >= src.bytes) {
+      return {
+        kind: 'failed',
+        failure: { path, error: cannotCompressMore(path, src.bytes, out.floor, true) },
+      }
+    }
     if (out) {
       return {
         kind: 'unreachable',
