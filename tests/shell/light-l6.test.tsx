@@ -9,10 +9,10 @@ import {
   commandRows,
   gradientAt,
   HOME_MARGIN,
+  menuHintRow,
   mix,
   type Row,
   surfaceRows,
-  tabRows,
 } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import {
@@ -126,10 +126,11 @@ describe('light mode (L6): the drop zone', () => {
 })
 
 describe('the commands’ own colour: the brand’s gold (K1)', () => {
-  it('draws "/" on its tab in the gold while the list is open', () => {
+  it('draws "/ menu" in the gold while the list is open', () => {
     for (const p of [DARK, LIGHT]) {
-      const row = cells(tabRows({ palette: p, mode: 'convert', menu: true })[1])
-      expect(row.find((c) => c.ch === '/')?.fg).toBe(p.brand)
+      const row = cells(menuHintRow({ palette: p, width: 80, open: true }))
+      expect(row.find((c) => c.ch === '/')?.bg).toBe(p.brand)
+      expect(row.find((c) => c.ch === 'm')?.fg).toBe(p.brand)
     }
   })
 

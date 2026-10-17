@@ -1,6 +1,17 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readdir, readFile, rm, rmdir, stat, statfs, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  rmdir,
+  stat,
+  statfs,
+  writeFile,
+} from 'node:fs/promises'
 import { release } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -355,7 +366,21 @@ export async function installExtension(
 
     try {
       await mkdir(staging, { recursive: true })
-      await extractTar(await gunzipAsync(await readFile(archive)), staging)
+      if (asset.binary === undefined) {
+        await extractTar(await gunzipAsync(await readFile(archive)), staging)
+      } else {
+        // A program downloaded as it is (yt-dlp): Forge writes its manifest.
+        await copyFile(archive, join(staging, asset.binary))
+        await chmod(join(staging, asset.binary), 0o755)
+        const manifest = {
+          id: entry.id,
+          version: asset.version,
+          files: { [asset.binary]: asset.sha256 },
+          entry: asset.binary,
+          kind: 'exec',
+        }
+        await writeFile(join(staging, 'manifest.json'), JSON.stringify(manifest))
+      }
       await verifyStaged(staging, entry, asset.version)
     } catch (cause) {
       if (diskFull(cause)) throw extensionDiskFull(id, 'the disk filled up while unpacking.')

@@ -15,11 +15,11 @@ export const NEW_SUBFOLDER = 'New subfolder'
  * shown as a bare path when it happens to be one of them. The source's own
  * folder is named for that first: on the Desktop, its row is Same location.
  */
-function labelFor(path: string, sourceDir: string): string {
+function labelFor(path: string, sourceDir: string | undefined): string {
   if (path === sourceDir) return SAME_LOCATION
   if (path === knownFolder('Desktop')) return 'Desktop'
   if (path === knownFolder('Downloads')) return 'Downloads'
-  if (path === join(sourceDir, 'converted')) return NEW_SUBFOLDER
+  if (sourceDir !== undefined && path === join(sourceDir, 'converted')) return NEW_SUBFOLDER
   return lastSegment(path) || path
 }
 
@@ -33,9 +33,20 @@ function labelFor(path: string, sourceDir: string): string {
 export function destinationOption(
   source: SourceInfo,
   prefs: Preferences,
+  opts: { subfolder?: boolean } = {},
+): Extract<OptionSpec, { kind: 'path' }> {
+  return destinationAt(dirname(source.path), prefs, opts)
+}
+
+/**
+ * The same list from the source's folder, or with none: a YouTube link has
+ * no folder of its own, so it gets no Same location (or subfolder) row.
+ */
+export function destinationAt(
+  here: string | undefined,
+  prefs: Preferences,
   { subfolder = false }: { subfolder?: boolean } = {},
 ): Extract<OptionSpec, { kind: 'path' }> {
-  const here = dirname(source.path)
   const preferred = expandTilde(prefs.defaultOutput)
   const last = prefs.lastOutput ? expandTilde(prefs.lastOutput) : undefined
   const named = (path: string): PathPreset => ({ label: labelFor(path, here), path })
@@ -50,9 +61,11 @@ export function destinationOption(
     named(preferred),
     ...(last ? [named(last)] : []),
     named(knownFolder('Desktop')),
-    { label: SAME_LOCATION, path: here },
+    ...(here === undefined ? [] : [{ label: SAME_LOCATION, path: here }]),
     named(knownFolder('Downloads')),
-    ...(subfolder ? [{ label: NEW_SUBFOLDER, path: join(here, 'converted') }] : []),
+    ...(subfolder && here !== undefined
+      ? [{ label: NEW_SUBFOLDER, path: join(here, 'converted') }]
+      : []),
   ]
   // Two presets can resolve to the identical folder — e.g. "Same folder" and
   // "Downloads" collide whenever the source file already lives in

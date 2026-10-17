@@ -98,7 +98,7 @@ describe('the staged drop zone, against the mockup (80 × 24)', () => {
       .map((c) => c.ch)
       .join('')
     expect(keys).toMatch(/↵ +convert/)
-    expect(keys).toMatch(/1–5 ←→ +mode/)
+    expect(keys).toMatch(/1–6 ←→ +mode/)
   })
 
   it('three files are a list under their headline', () => {

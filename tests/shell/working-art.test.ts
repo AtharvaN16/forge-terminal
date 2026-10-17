@@ -150,6 +150,18 @@ describe('the page bar, against the decided W5', () => {
     const row = pagesRow({ palette: DARK, mode: 'convert', done: 9, total: 24, unit: 'images' })
     expect(row.at(-1)?.text).toBe('  9 of 24 images')
   })
+
+  it('says how far it is in other words when given them: a length heard, bytes fetched', () => {
+    const row = pagesRow({
+      palette: DARK,
+      mode: 'transcribe',
+      done: 1390,
+      total: 3717,
+      says: '23:10 of 1:01:57',
+    })
+    expect(row.at(-1)?.text).toBe('  23:10 of 1:01:57')
+    expect(row[1]?.text).toBe('█'.repeat(11))
+  })
 })
 
 describe('the bar drifts while working', () => {

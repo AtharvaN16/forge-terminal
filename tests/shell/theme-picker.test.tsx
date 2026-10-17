@@ -98,7 +98,7 @@ describe('esc in the theme picker', () => {
     expect(frame).not.toMatch(/theme ╱{4,}/)
     expect(frame).toContain('▌ /theme')
     // The commands list again, scrolled to keep Theme in view.
-    expect(frame).toContain('/convert')
+    expect(frame).toContain('Settings')
     expect((await loadPreferences()).prefs.theme).toBeUndefined()
   })
 

@@ -58,6 +58,13 @@ export const COMMANDS: Command[] = [
     group: 'modes',
   },
   {
+    name: 'transcribe',
+    description: 'notes and transcripts from video and sound',
+    needsSource: false,
+    mode: 'transcribe',
+    group: 'modes',
+  },
+  {
     name: 'theme',
     description: 'switch between light and dark',
     needsSource: false,

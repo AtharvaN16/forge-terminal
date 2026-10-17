@@ -42,9 +42,12 @@ describe('the home screen in the app', () => {
     expect(frame).toContain('Drop a file here')
     expect(frame).toContain('1 convert')
     expect(fieldLine(frame)).toBe('    › or type a path')
-    // "/ menu" is a tab of its own, so the key row no longer says it.
-    expect(frame.split('\n')[6]).toContain('/ menu')
-    expect(frame.split('\n').at(-1)).not.toContain('menu')
+    // "/ menu" sits right-aligned on the row above the rule, not on the
+    // tab row or the key row (2026-10-17).
+    const lines = frame.split('\n')
+    expect(lines[6]).not.toContain('menu')
+    expect(lines.at(-3)).toMatch(/\/\s+menu\s*$/)
+    expect(lines.at(-1)).not.toContain('menu')
     // The old banner's mode line is gone with it.
     expect(frame).not.toContain('current mode')
   })
@@ -219,7 +222,8 @@ describe('the home screen in the app', () => {
       // The list is a row longer than the panel at 80 × 24, so the scroll
       // bar (S2) ends the line.
       expect(frame).toMatch(/Modes ─+ *[┃│]? *\n.*\n.*▌ \/convert/)
-      expect(frame).toContain('Settings')
+      // Six modes push the settings below the panel: the list says so.
+      expect(frame).toMatch(/↓ \d+ more/)
       expect(fieldLine(frame)).toBe('    › /')
       expect(frame.split('\n').at(-1)).toMatch(/run +esc +back/)
     })

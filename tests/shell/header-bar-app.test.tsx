@@ -30,7 +30,7 @@ async function waitFor(ok: () => boolean, ms = 10_000) {
 /** Format on screen, a target highlighted, and its keys attached. */
 async function atFormat() {
   const dir = await makeTempDir()
-  // A JPEG: it can be compressed as well as converted, so 1–5 have somewhere to go.
+  // A JPEG: it can be compressed as well as converted, so 1–6 have somewhere to go.
   const jpg = await makeJpeg(dir, 'test.jpg')
   const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
   const app = render(<App initialWidth={80} initialHeight={24} prefs={prefs} />)
@@ -66,10 +66,10 @@ describe('the header bar in the flow', () => {
   }, 60_000)
 })
 
-describe('1–5 switch mode on a screen with no text field', () => {
+describe('1–6 switch mode on a screen with no text field', () => {
   it('says so on the key row of Format', async () => {
     const { app } = await atFormat()
-    expect(keyRow(app.lastFrame() ?? '')).toMatch(/1–5 +mode/)
+    expect(keyRow(app.lastFrame() ?? '')).toMatch(/1–6 +mode/)
   })
 
   it('moves the file to compress with 2, and back to convert with 1', async () => {
@@ -79,7 +79,7 @@ describe('1–5 switch mode on a screen with no text field', () => {
     let frame = app.lastFrame() ?? ''
     expect(barLine(frame)).toMatch(/compress ╱+ Method ╱╱$/)
     expect(plain(frame)).toContain('By quality')
-    expect(keyRow(frame)).toMatch(/1–5 +mode/)
+    expect(keyRow(frame)).toMatch(/1–6 +mode/)
 
     app.stdin.write('1')
     await settle(400)
@@ -119,7 +119,7 @@ describe('1–5 switch mode on a screen with no text field', () => {
     const frame = app.lastFrame() ?? ''
     expect(barLine(frame)).toMatch(/^ {2}\S* ?convert/)
     expect(barLine(frame)).toMatch(/Save as ╱╱$/)
-    expect(keyRow(frame)).not.toMatch(/1–5 +mode/)
+    expect(keyRow(frame)).not.toMatch(/1–6 +mode/)
   }, 60_000)
 })
 

@@ -88,7 +88,7 @@ export function gradientAt(i: number, n: number, stops: readonly string[]): stri
 export const blank = (n: number): Run => ({ text: ' '.repeat(Math.max(0, n)) })
 export const width = (row: Row) => row.reduce((n, run) => n + stringWidth(run.text), 0)
 
-/** What the drop surface lists under "Drop a file here", by mode. */
+/** What the drop surface lists under its heading ("Drop a file here"), by mode. */
 export const MODE_KINDS: Record<ShellMode, string> = {
   convert: 'images · HEIC · PDF · Word',
   // Not "video": compress has no video engine, and the line is a promise.
@@ -96,6 +96,12 @@ export const MODE_KINDS: Record<ShellMode, string> = {
   pdf: 'split · merge · rotate',
   colour: 'palette · scale',
   edit: 'images · HEIC',
+  transcribe: 'or paste a YouTube link',
+}
+
+/** The drop surface's heading where a mode asks for more than "a file" (mockups/transcribe-2026-10-round2.html). */
+export const MODE_DROP_TITLES: Partial<Record<ShellMode, string>> = {
+  transcribe: 'Drop a video or sound file',
 }
 
 /**
@@ -263,26 +269,16 @@ export function brandIntro(rows: Row[], front: number, palette: Palette): Row[] 
 }
 
 /**
- * The numbered modes, then "/ menu" (round 5, H2): the active one on a
- * chip of dark grey, a step off the background, its number in its mode's
- * colour; the rest bare words.
+ * The numbered modes (round 5, H2): the active one on a chip of dark grey, a
+ * step off the background, its number in its mode's colour; the rest bare
+ * words. "/ menu" left this row for `menuHintRow` when transcribe took its
+ * slot (2026-10-17).
  * The row above is left blank: a half-cell lip there drew as a hairline seam
- * in terminals that leave a gap between rows. "/ menu" is always there, dim
- * at rest; while the field holds a command it is the active tab, and no mode
- * is. Nothing sits at the row's right: "saves to ~/Desktop" (and colour's
- * "copies to clipboard") was taken out on 2026-10-13 — Save as says where a
- * file goes when it matters.
+ * in terminals that leave a gap between rows. Nothing sits at the row's
+ * right: "saves to ~/Desktop" (and colour's "copies to clipboard") was taken
+ * out on 2026-10-13 — Save as says where a file goes when it matters.
  */
-export function tabRows({
-  palette,
-  mode,
-  menu = false,
-}: {
-  palette: Palette
-  mode: ShellMode
-  /** The menu is open: "/ menu" is the active tab. */
-  menu?: boolean
-}): Row[] {
+export function tabRows({ palette, mode }: { palette: Palette; mode: ShellMode }): Row[] {
   const M = HOME_MARGIN
   const chip = palette.tabChip === '' ? undefined : palette.tabChip
   const top: Row = [blank(M)]
@@ -311,10 +307,39 @@ export function tabRows({
     tabs.push(blank(1))
   }
   MODE_ORDER.forEach((m, i) => {
-    tab(String(i + 1), modeColours(palette, m).fg, m, !menu && m === mode)
+    tab(String(i + 1), modeColours(palette, m).fg, m, m === mode)
   })
-  tab('/', palette.brand, 'menu', menu)
   return [top, [blank(M), ...tabs]]
+}
+
+/**
+ * "/ menu" on the row above the key row's rule, right-aligned so its last
+ * cell is one short of the edge (mockups/transcribe-2026-10-round2.html,
+ * "/ menu"): the slash on a keycap, then the word in dim; in the menu's gold
+ * while the menu is open. Home draws it at rest; the menu popup draws it open.
+ */
+export function menuHintRow({
+  palette,
+  width: columns,
+  open,
+}: {
+  palette: Palette
+  width: number
+  open: boolean
+}): Row {
+  const hint: Row =
+    palette.keycapBg === ''
+      ? [{ text: '[/] menu', fg: open ? palette.brand : palette.border, bold: open }]
+      : open
+        ? [
+            { text: ' / ', fg: palette.ink, bg: palette.brand, bold: true },
+            { text: ' menu', fg: palette.brand, bold: true },
+          ]
+        : [
+            { text: ' / ', fg: palette.fg, bg: palette.keycapBg },
+            { text: ' menu', fg: palette.dim },
+          ]
+  return [blank(columns - 1 - width(hint)), ...hint, blank(1)]
 }
 
 /**

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { trueColour } from '../../src/shell/glyphs.js'
-import { DARK, LIGHT, MODE_ORDER, modeColours, modeGradient } from '../../src/shell/theme.js'
+import {
+  DARK,
+  LIGHT,
+  MODE_KEYS,
+  MODE_MARKERS,
+  MODE_ORDER,
+  modeColours,
+  modeGradient,
+  NEUTRAL,
+} from '../../src/shell/theme.js'
 
 const lin = (v: number) => {
   const c = v / 255
@@ -20,8 +29,8 @@ const contrast = (a: string, b: string) => {
 }
 
 describe('colour is the fifth mode', () => {
-  it('comes last, after edit', () => {
-    expect(MODE_ORDER).toEqual(['convert', 'compress', 'pdf', 'edit', 'colour'])
+  it('comes after edit', () => {
+    expect(MODE_ORDER.slice(0, 5)).toEqual(['convert', 'compress', 'pdf', 'edit', 'colour'])
   })
 
   it('has its own colour and fill', () => {
@@ -39,6 +48,27 @@ describe('colour is the fifth mode', () => {
       '#ad95e9',
     ])
     expect(modeGradient(DARK, 'convert')).toEqual([DARK.modeConvert, DARK.violet])
+  })
+})
+
+describe('transcribe is the sixth mode', () => {
+  it('comes last, after colour, and the digits reach it', () => {
+    expect(MODE_ORDER).toEqual(['convert', 'compress', 'pdf', 'edit', 'colour', 'transcribe'])
+    expect(MODE_KEYS).toBe('1–6')
+  })
+
+  it('is red in dark, a deep red in light, and bright red without colours', () => {
+    expect(modeColours(DARK, 'transcribe')).toEqual({ fg: '#e63946', bg: '#3a1a1d' })
+    expect(contrast(modeColours(LIGHT, 'transcribe').fg, '#ffffff')).toBeGreaterThanOrEqual(6)
+    expect(modeColours(NEUTRAL, 'transcribe').fg).toBe('redBright')
+  })
+
+  it('hatches red to lilac, as convert hatches cyan to violet', () => {
+    expect(modeGradient(DARK, 'transcribe')).toEqual(['#e63946', '#cc8ae2'])
+  })
+
+  it('has a marker of its own', () => {
+    expect(new Set(Object.values(MODE_MARKERS)).size).toBe(MODE_ORDER.length)
   })
 })
 

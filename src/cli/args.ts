@@ -225,7 +225,25 @@ export interface WatchIntent {
   debug: boolean
 }
 
+/**
+ * `forge transcribe <file|link>`: a video or sound file, or a YouTube link,
+ * into a Markdown file (spec 2026-10-17-transcribe-design §4.5).
+ */
+export interface TranscribeIntent {
+  kind: 'transcribe'
+  /** A path or a link, as typed. */
+  input: string
+  /** Summary and notes as well as the transcript (`--to notes`, the default). */
+  notes: boolean
+  /** The spoken language, when it is not the Mac's own: `hi`, `fr-FR`. */
+  language?: string
+  output?: string
+  force: boolean
+  debug: boolean
+}
+
 export type Intent =
+  | TranscribeIntent
   | WatchIntent
   | ClipIntent
   | ConvertIntent
@@ -348,6 +366,9 @@ Other commands:
   forge scale <colour>     50–950 from one colour, with it at 500 (--json, --svg)
   forge clip               compress the copied image and put it back (--to, --quality,
                            --max-size, --save [folder], --undo)
+  forge transcribe <file | link>
+                           a video or sound file, or a YouTube link, into Markdown
+                           (--to notes | transcript, --language <id>, -o <path>, --force)
   forge watch <folder> --to <format>
                            convert the folder, then every file added to it, until ctrl-c
                            (--quality, --dpi, -o <folder>, --new-only, --json)
@@ -434,6 +455,50 @@ function parseClipArgs(argv: string[]): ClipIntent {
     )
   }
   return intent
+}
+
+/** Claimed before Commander, like `watch`, and read by hand the same way. */
+function parseTranscribeArgs(argv: string[]): TranscribeIntent {
+  const rest = argv.slice(1)
+  const inputs: string[] = []
+  const intent: TranscribeIntent = {
+    kind: 'transcribe',
+    input: '',
+    notes: true,
+    force: false,
+    debug: false,
+  }
+  const value = (flag: string, i: number): string => {
+    const v = rest[i + 1]
+    if (v === undefined || v.startsWith('-')) throw invalidArguments(`${flag} needs a value.`)
+    return v
+  }
+  const example = 'Try: forge transcribe talk.mp4'
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i] as string
+    if (a === '--debug') intent.debug = true
+    else if (a === '--force' || a === '-f') intent.force = true
+    else if (a === '--language' || a === '-l') intent.language = value(a, i++)
+    else if (a === '--output' || a === '-o') intent.output = value(a, i++)
+    else if (a === '--to' || a === '-t') {
+      const to = value(a, i++).toLowerCase()
+      if (to !== 'notes' && to !== 'transcript') {
+        throw invalidArguments(
+          `forge transcribe makes notes or a transcript, not ${to}.`,
+          'Try: forge transcribe talk.mp4 --to transcript',
+        )
+      }
+      intent.notes = to === 'notes'
+    } else if (a.startsWith('-')) {
+      throw invalidArguments(`forge transcribe does not take ${a}.`, example)
+    } else inputs.push(a)
+  }
+  const [input, ...more] = inputs
+  if (input === undefined)
+    throw invalidArguments('forge transcribe needs a file or a link.', example)
+  if (more.length > 0)
+    throw invalidArguments('forge transcribe takes one file or link at a time.', example)
+  return { ...intent, input }
 }
 
 /** Claimed before Commander, like `clip`, and read by hand the same way. */
@@ -654,6 +719,7 @@ export function parseArgs(rawArgv: string[]): Intent {
   if (
     argv[0] === 'clip' ||
     argv[0] === 'watch' ||
+    argv[0] === 'transcribe' ||
     argv[0] === 'config' ||
     argv[0] === 'probe' ||
     argv[0] === 'extensions' ||
@@ -680,6 +746,7 @@ function parseSubcommand(argv: string[]): Intent {
   }
   if (argv[0] === 'clip') return parseClipArgs(argv)
   if (argv[0] === 'watch') return parseWatchArgs(argv)
+  if (argv[0] === 'transcribe') return parseTranscribeArgs(argv)
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
   if (argv[0] === 'palette' || argv[0] === 'scale') return parseColourArgs(argv)

@@ -8,7 +8,7 @@
  * terminal draws nothing there either way.
  */
 import { readFileSync } from 'node:fs'
-import { tabRows } from '../../src/shell/home-art.js'
+import { menuHintRow, tabRows } from '../../src/shell/home-art.js'
 import { DARK, MODE_KEYS, modePalette, type ShellMode, VERSION } from '../../src/shell/theme.js'
 
 export interface Cell {
@@ -68,7 +68,7 @@ export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[]
  * - the tab rows (5–6) have more modes than the mockup's three (colour, colour
  *   spec §6.1; edit, mockups/extensions-2026-10.html), so they are held to
  *   `tabRows` itself;
- * - the key row names every mode digit (`MODE_KEYS`, "1–5");
+ * - the key row names every mode digit (`MODE_KEYS`, "1–6");
  * - round 5 (P2): the field sits on a recessed shelf three rows tall, attached
  *   under the drop zone (rows 15–17), its words where the mockup's were; the
  *   list under it starts a row lower;
@@ -77,12 +77,13 @@ export function fixtureRow(frame: FixtureFrame, row: number, width = 80): Cell[]
 export function homeRow(frame: FixtureFrame, row: number): Cell[] {
   if (row === 22) return runsRow([{ text: '─'.repeat(80), fg: DARK.border }])
   if (row === 5 || row === 6) {
-    const tabs = tabRows({
-      palette: modePalette(DARK, frame.mode),
-      mode: frame.mode,
-      menu: frame.text.startsWith('/') && !frame.text.includes(' '),
-    })
+    const tabs = tabRows({ palette: modePalette(DARK, frame.mode), mode: frame.mode })
     return runsRow(tabs[row - 5] ?? [])
+  }
+  // "/ menu" left the tab row for the row above the rule (2026-10-17),
+  // shown while the field is empty.
+  if (row === 21 && frame.text === '') {
+    return runsRow(menuHintRow({ palette: modePalette(DARK, frame.mode), width: 80, open: false }))
   }
   if (row === 15 || row === 17)
     return runsRow([{ text: '  ' }, { text: ' '.repeat(76), bg: DARK.shelf }])

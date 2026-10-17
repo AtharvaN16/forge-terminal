@@ -21,6 +21,7 @@ import {
   emptyDirectory,
   type ForgeError,
   isForgeError,
+  linkUnavailable,
   unexpectedError,
   unsupportedCompress,
   unsupportedPdf,
@@ -32,6 +33,7 @@ import { FORMATS } from '../core/formats.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
+import { readLink } from '../core/transcribe/links.js'
 import type {
   Box as CropBox,
   FormatId,
@@ -46,7 +48,10 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
+import { type FetchedSound, fetchSound } from '../engines/youtube.js'
 import type { ExtensionId } from '../extensions/catalog.js'
+import { assetFor, catalogEntry } from '../extensions/catalog.js'
+import { installed } from '../extensions/paths.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import type { Pasteboard } from '../utils/pasteboard.js'
 import { printable } from '../utils/printable.js'
@@ -103,6 +108,7 @@ import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { usePresetsOnDone } from './flows/presets.js'
+import { TranscribeFlow } from './flows/transcribe.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { WatchFlow } from './flows/watch.js'
 import { useFocusIn } from './focus.js'
@@ -141,6 +147,12 @@ import {
   VERSION,
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
+import {
+  readTranscribeFile,
+  type TranscribeSource,
+  transcribeVerb,
+  transcribeView,
+} from './transcribe-stage.js'
 import { useAfter } from './useAfter.js'
 import { PASTE, useKeys } from './useKeys.js'
 import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
@@ -203,6 +215,8 @@ export type Step =
   | 'preset-save'
   /** A folder in convert mode, converted then watched: `WatchFlow` owns it. */
   | 'watch'
+  /** Transcribe, from Transcribe to on: `TranscribeFlow` owns it. */
+  | 'transcribe'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -920,6 +934,18 @@ export function App({
    */
   const [stage, setStage] = useState<Stage>(emptyStage())
   /**
+   * Transcribe's own stage (spec 2026-10-17-transcribe-design §4.4): a video
+   * or sound file, or a YouTube link on its way to being one. Not `stage`:
+   * no engine reads video, and a link is no file at all.
+   */
+  const [transcribing, setTranscribing] = useState<TranscribeSource | undefined>(undefined)
+  const transcribingRef = useRef<TranscribeSource | undefined>(undefined)
+  transcribingRef.current = transcribing
+  /** A link's one yt-dlp run: the facts, then the sound, fetched while the questions are asked. */
+  const soundFetch = useRef<{ stop: AbortController; sound: Promise<FetchedSound> } | undefined>(
+    undefined,
+  )
+  /**
    * Mirrors `stage` for what a drop does once it has been read: the read is
    * async, and the stage it lands on is the one standing then, not the one
    * the paste's render closed over.
@@ -1049,6 +1075,10 @@ export function App({
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
   /** Where `WatchFlow` is, as the header bar's trail — it owns its own steps. */
   const [watchTrailNow, setWatchTrailNow] = useState<Trail>({ answers: [], current: 'Format' })
+  const [transcribeTrailNow, setTranscribeTrailNow] = useState<Trail>({
+    answers: [],
+    current: 'Transcribe to',
+  })
   /** How the last /pdf run was asked, so a refused save can reopen its Save as. */
   const [pdfAsked, setPdfAsked] = useState<PdfResume | undefined>(undefined)
   /**
@@ -1097,6 +1127,123 @@ export function App({
     setText(field)
     setHomeError(error)
   }, [])
+
+  /** Lets transcribe's stage go: a link's yt-dlp run is stopped and its sound deleted. */
+  const letGoTranscribing = useCallback(() => {
+    const fetching = soundFetch.current
+    soundFetch.current = undefined
+    if (fetching) {
+      fetching.stop.abort()
+      fetching.sound.then(
+        (got) => got.dispose(),
+        () => {},
+      )
+    }
+    setTranscribing(undefined)
+  }, [])
+
+  /** A link's one yt-dlp run, from the facts the card shows to the sound the run reads. */
+  const lookUp = useCallback(
+    (url: string) => {
+      const stop = new AbortController()
+      setTranscribing({ kind: 'link', url, phase: 'looking' })
+      const sound = fetchSound(url, {
+        signal: stop.signal,
+        onEvent: (e) => {
+          if (stop.signal.aborted) return
+          if (e.kind === 'facts')
+            setTranscribing({ kind: 'link', url, phase: 'ready', facts: e.facts })
+          else {
+            setTranscribing((t) =>
+              t?.kind === 'link' && t.phase === 'ready'
+                ? { ...t, fetched: { done: e.done, total: e.total } }
+                : t,
+            )
+          }
+        },
+      })
+      soundFetch.current = { stop, sound }
+      sound.catch((e: unknown) => {
+        if (stop.signal.aborted || soundFetch.current?.sound !== sound) return
+        soundFetch.current = undefined
+        setTranscribing(undefined)
+        refuseOnHome(isForgeError(e) ? e : unexpectedError(e), url)
+      })
+    },
+    [refuseOnHome],
+  )
+
+  /**
+   * A typed path, a dropped file or a pasted link, in transcribe mode: read
+   * here, not by the engines, which have no reader for video.
+   */
+  const stageTranscribing = useCallback(
+    async (raw: string) => {
+      const text = raw.trim()
+      // A submit's own clearing of the field comes after this returns; a
+      // refusal made before it would be cleared with it. Every other refusal
+      // on home comes after a read; this one waits a tick.
+      await Promise.resolve()
+      setHomeError(undefined)
+      const link = readLink(text)
+      if (link?.kind === 'playlist') {
+        refuseOnHome(
+          linkUnavailable('This is a playlist.', undefined, {
+            hint: "Pass one video's link.",
+            shellHint: "Paste one video's link.",
+          }),
+          text,
+        )
+        return
+      }
+      letGoTranscribing()
+      if (link === undefined) {
+        try {
+          setTranscribing(await readTranscribeFile(expandTilde(unescapePath(text))))
+        } catch (e) {
+          refuseOnHome(isForgeError(e) ? e : unexpectedError(e), text)
+        }
+        return
+      }
+      if ((await installed('yt-dlp')) === undefined) {
+        const entry = catalogEntry('yt-dlp')
+        const asset = entry && assetFor(entry)
+        setTranscribing({
+          kind: 'link',
+          url: link.url,
+          phase: 'needs-yt-dlp',
+          bytes: asset?.bytes ?? 0,
+        })
+        return
+      }
+      lookUp(link.url)
+    },
+    [refuseOnHome, letGoTranscribing, lookUp],
+  )
+
+  /** ↵ on a link that needs yt-dlp: installed in place, in real bytes, then looked up. */
+  const installYtDlp = useCallback(
+    async (url: string) => {
+      const stop = new AbortController()
+      installAbort.current = stop
+      setTranscribing({ kind: 'link', url, phase: 'installing', done: 0, total: 1 })
+      try {
+        const { installExtension } = await import('../extensions/manager.js')
+        await installExtension('yt-dlp', {
+          signal: stop.signal,
+          onProgress: (done, total) =>
+            setTranscribing({ kind: 'link', url, phase: 'installing', done, total }),
+        })
+        installAbort.current = undefined
+        lookUp(url)
+      } catch (e) {
+        installAbort.current = undefined
+        setTranscribing(undefined)
+        if (!stop.signal.aborted) refuseOnHome(isForgeError(e) ? e : unexpectedError(e), url)
+      }
+    },
+    [lookUp, refuseOnHome],
+  )
   /**
    * Why the file in hand cannot go where it was sent (compress on a PNG, /pdf
    * on a photo). Live, not history: a block in `<Static>` can never be taken
@@ -1202,11 +1349,13 @@ export function App({
     // Colour starts from its own home, never from a staged file: what is
     // staged is let go, as `/colour` lets it go (see `runCommand`), and a
     // drop still being read is dropped with it.
-    if (next === 'colour') {
+    if (next === 'colour' || next === 'transcribe') {
       requestId.current++
       dropReading.current = 0
       setStage(clearStage())
     }
+    // Transcribe's stage is its own (a video, a link): it goes when the mode does.
+    if (mode === 'transcribe') letGoTranscribing()
     setMode(next)
     setValues({})
   }
@@ -1372,6 +1521,13 @@ export function App({
       // ↵ waits for a drop still being read: acting on the stage as it stood
       // would let the read land mid-wizard and add files the run never sees.
       if (key.return && dropReading.current !== 0) return true
+      const held = transcribingRef.current
+      if (key.return && mode === 'transcribe' && held) {
+        const verb = transcribeVerb(held)
+        if (verb === 'transcribe') setStep('transcribe')
+        else if (verb === 'install' && held.kind === 'link') void installYtDlp(held.url)
+        return true
+      }
       const staged = stageRef.current
       if (key.return && staged.sources.length > 0) {
         const [only] = staged.sources
@@ -1721,6 +1877,11 @@ export function App({
       setHomeError(undefined)
       if (text !== '') {
         setText('')
+        return
+      }
+      if (transcribing) {
+        installAbort.current?.abort()
+        letGoTranscribing()
         return
       }
       if (stage.sources.length === 0 && stage.failures.length === 0) return
@@ -2159,6 +2320,17 @@ export function App({
         return
       }
 
+      // Transcribe holds its own stage (a video, a link): an image staged for
+      // another mode is let go, as for colour.
+      if (command.mode === 'transcribe') {
+        fenceOff()
+        setStage(clearStage())
+        setMode('transcribe')
+        setValues({})
+        setStep('idle')
+        return
+      }
+
       // Colour starts from its own home (Palette or Scale), never from a
       // staged file: what you drop or type belongs to the screen you open
       // (colour spec §6.2). A staged file is let go, as ctrl-n would.
@@ -2394,6 +2566,10 @@ export function App({
   }
 
   const readDrop = (pasted: string) => {
+    if (mode === 'transcribe') {
+      void stageTranscribing(pasted)
+      return
+    }
     const id = ++requestId.current
     dropReading.current = id
     const settled = () => {
@@ -2473,6 +2649,12 @@ export function App({
         openColour({ palette: trimmed })
         return
       }
+      // Transcribe reads its own: a video or sound file, or a YouTube link.
+      if (mode === 'transcribe') {
+        setText('')
+        void stageTranscribing(trimmed)
+        return
+      }
       const id = ++requestId.current
       setText('')
       setHomeError(undefined)
@@ -2512,7 +2694,17 @@ export function App({
       const folderHere = drop.folder !== undefined && mode === 'convert'
       if (nothingStaged && first && drop.sources.length === 1 && !folderHere) proceedWith(first)
     },
-    [showError, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour, hold],
+    [
+      showError,
+      runCommand,
+      landDrop,
+      proceedWith,
+      refuseOnHome,
+      mode,
+      openColour,
+      hold,
+      stageTranscribing,
+    ],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -3821,6 +4013,7 @@ export function App({
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
     if (at === 'watch') return watchTrailNow
+    if (at === 'transcribe') return transcribeTrailNow
     if (at === 'colour') return colourTrailNow
     // Crop to shape ╱ 1:1: the preview is named by the shape it cuts.
     if (at === 'crop' && enhancing) {
@@ -4520,6 +4713,28 @@ export function App({
               />
             ) : null}
 
+            {step === 'transcribe' && transcribing ? (
+              <TranscribeFlow
+                source={transcribing}
+                sound={soundFetch.current?.sound}
+                width={width}
+                prefs={livePrefs}
+                onTrail={setTranscribeTrailNow}
+                onCancel={() => setStep('idle')}
+                onNew={() => {
+                  letGoTranscribing()
+                  setStep('idle')
+                }}
+                onFail={(e) => {
+                  letGoTranscribing()
+                  setStep('idle')
+                  holdFailure(e)
+                }}
+                onMakeDefault={makeDefault}
+                onSaved={rememberSaved}
+              />
+            ) : null}
+
             {step === 'watch' && stage.folder ? (
               <WatchFlow
                 scan={stage.folder}
@@ -4611,7 +4826,15 @@ export function App({
                 update={release}
                 mode={mode}
                 typing={text !== ''}
-                staged={staged ? stagedView(stage, freshRows, mode) : undefined}
+                staged={
+                  mode === 'transcribe'
+                    ? transcribing
+                      ? transcribeView(transcribing)
+                      : undefined
+                    : staged
+                      ? stagedView(stage, freshRows, mode)
+                      : undefined
+                }
                 under={underField(stage, mode)}
                 note={
                   homeError ? (
@@ -4632,7 +4855,15 @@ export function App({
                     value={text}
                     onChange={setText}
                     onSubmit={submitPath}
-                    placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
+                    placeholder={
+                      mode === 'transcribe'
+                        ? transcribing
+                          ? 'or paste another link'
+                          : 'or type a path or link'
+                        : staged
+                          ? 'drop more, or type a path'
+                          : 'or type a path'
+                    }
                     isActive
                     variant="home"
                     width={width}
@@ -4660,9 +4891,14 @@ export function App({
                   completions: completions.length,
                   menu: commands !== undefined,
                   colour: mode === 'colour',
-                  staged: staged
-                    ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
-                    : undefined,
+                  staged:
+                    mode === 'transcribe'
+                      ? transcribing
+                        ? { count: 1, verb: transcribeVerb(transcribing) }
+                        : undefined
+                      : staged
+                        ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
+                        : undefined,
                 })}
               />
             ) : null}

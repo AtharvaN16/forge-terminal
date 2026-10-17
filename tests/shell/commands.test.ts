@@ -47,12 +47,14 @@ describe('listCommands', () => {
       'pdf',
       'colour',
       'edit',
+      'transcribe',
       'theme',
       'extensions',
       'update',
       'about',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
+      'modes',
       'modes',
       'modes',
       'modes',
@@ -79,6 +81,7 @@ describe('listCommands', () => {
         'pdf',
         'colour',
         'edit',
+        'transcribe',
         'theme',
         'extensions',
         'update',
@@ -99,6 +102,7 @@ describe('listCommands', () => {
       'pdf',
       'colour',
       'edit',
+      'transcribe',
       undefined,
       undefined,
       undefined,
@@ -142,6 +146,7 @@ describe('the registry', () => {
       'help',
       'pdf',
       'theme',
+      'transcribe',
       'update',
     ])
   })
