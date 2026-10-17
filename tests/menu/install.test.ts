@@ -46,7 +46,8 @@ describe('installMenu on a Mac', () => {
     const { e } = env('darwin')
     await installMenu(e)
     const launcher = join(e.menuDir, 'run')
-    expect(statSync(launcher).mode & 0o111).not.toBe(0)
+    // Windows has no execute bit to set.
+    if (process.platform !== 'win32') expect(statSync(launcher).mode & 0o111).not.toBe(0)
     expect(readFileSync(launcher, 'utf8')).toContain('menu run "$@"')
     const doc = readFileSync(
       join(

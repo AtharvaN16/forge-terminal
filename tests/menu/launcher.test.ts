@@ -50,7 +50,8 @@ describe('macLauncher', () => {
   })
 })
 
-describe('macLauncher, run for real', () => {
+// Runs the generated script with /bin/sh, which only the Mac has.
+describe.skipIf(process.platform === 'win32')('macLauncher, run for real', () => {
   /** Writes the launcher for a Forge at `forge` and a Node at `node`, with stand-in tools, and runs it. */
   function run(o: { forgeExists: boolean; nodeExists: boolean }) {
     const root = mkdtempSync(join(tmpdir(), 'forge-launch-'))

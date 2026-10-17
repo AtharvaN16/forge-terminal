@@ -17,7 +17,8 @@ function homebrew() {
   return { real, link: join(bin, 'node'), bin, root }
 }
 
-describe('stableNode', () => {
+// Symlinks need admin rights or Developer Mode on Windows; Homebrew's layout is a Mac one.
+describe.skipIf(process.platform === 'win32')('stableNode', () => {
   it('prefers the PATH link to the versioned file, which an upgrade deletes', () => {
     const { real, link, bin } = homebrew()
     expect(stableNode(real, ['/usr/bin', bin].join(delimiter), 'darwin')).toBe(link)
