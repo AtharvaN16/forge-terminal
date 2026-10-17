@@ -2,9 +2,11 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import { updateDenied } from '../../src/core/errors.js'
 import { UpdateFlow, type Updater } from '../../src/shell/flows/update.js'
+import type { ReleaseNote } from '../../src/update/check.js'
 
 const ENTER = String.fromCharCode(13)
 const ESC = String.fromCharCode(27)
+const UP = `${ESC}[A`
 const DOWN = `${ESC}[B`
 const RIGHT = `${ESC}[C`
 const LEFT = `${ESC}[D`
@@ -13,7 +15,19 @@ const until = async (cond: () => boolean) => {
   for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 10))
 }
 
-function fakeUpdater(opts: { latest?: string | undefined; installError?: Error } = {}) {
+const NOTES: ReleaseNote[] = [
+  { title: 'Watch a folder', text: 'Drop a folder on Convert to convert what lands in it.' },
+  { title: 'Smaller GIFs', text: 'Compress shrinks GIFs further.' },
+]
+/** More notes than 80 × 24 has rows for. */
+const LONG: ReleaseNote[] = Array.from({ length: 9 }, (_, i) => ({
+  title: `Change ${i + 1}`,
+  text: `What change ${i + 1} does, in a sentence long enough to wrap onto a second line here.`,
+}))
+
+function fakeUpdater(
+  opts: { latest?: string | undefined; installError?: Error; notes?: ReleaseNote[] } = {},
+) {
   const calls = {
     checks: 0,
     installs: [] as string[],
@@ -40,6 +54,9 @@ function fakeUpdater(opts: { latest?: string | undefined; installError?: Error }
     copy(text) {
       calls.copied.push(text)
     },
+    async whatsNew(v) {
+      return v === '0.2.2' ? (opts.notes ?? NOTES) : []
+    },
   }
   return { updater, calls, release }
 }
@@ -48,6 +65,7 @@ const open = (updater: Updater, extra: { onRestart?: () => void; onClose?: () =>
   render(
     <UpdateFlow
       width={80}
+      height={23}
       current="0.2.1"
       auto
       updater={updater}
@@ -57,20 +75,78 @@ const open = (updater: Updater, extra: { onRestart?: () => void; onClose?: () =>
   )
 const frame = (f: ReturnType<typeof open>) => f.lastFrame() ?? ''
 const lines = (f: ReturnType<typeof open>) => frame(f).split('\n')
+const row = (f: ReturnType<typeof open>, has: string) => lines(f).find((l) => l.includes(has)) ?? ''
 
-describe('UpdateFlow (V4)', () => {
-  it('checks on opening, then offers the new version with “new” beside Forge', async () => {
+describe('UpdateFlow (U4)', () => {
+  it('checks on opening, then offers the new version, ↵ update at the far right of its row', async () => {
     const { updater, calls } = fakeUpdater()
     const f = open(updater)
     await until(() => frame(f).includes('↵ update'))
     expect(calls.checks).toBe(1)
-    const forgeRow = lines(f).find((l) => l.includes('▌ Forge')) ?? ''
-    expect(forgeRow).toMatch(/▌ Forge new/)
-    expect(frame(f)).toContain('Forge 0.2.2')
-    expect(frame(f)).toContain('Your version: 0.2.1')
+    expect(row(f, 'Forge 0.2.2')).toMatch(/Forge 0\.2\.2 +new +↵ update *$/)
+    expect(frame(f)).toContain('Your version 0.2.1')
+    expect(frame(f)).not.toContain('Forge restarts when it is done')
   })
 
-  it('↵ installs with a spinner and no percentage, then offers to restart', async () => {
+  it('shows what is new on a card under a “what’s new” chip: each name beside its sentence', async () => {
+    const { updater } = fakeUpdater()
+    const f = open(updater)
+    await until(() => frame(f).includes('Watch a folder'))
+    expect(row(f, "what's new")).toContain('in 0.2.2')
+    expect(row(f, 'Watch a folder')).toMatch(/Watch a folder +Drop a folder on Convert/)
+    expect(frame(f)).toContain('Smaller GIFs')
+    // In that order: the release, the switch, then the card.
+    const at = (s: string) => lines(f).findIndex((l) => l.includes(s))
+    expect(at('Forge 0.2.2')).toBeLessThan(at('Check automatically'))
+    expect(at('Check automatically')).toBeLessThan(at("what's new"))
+    // Everything fits: no scroll bar, nothing more below.
+    expect(frame(f)).not.toContain('more')
+  })
+
+  it('a long release scrolls a note at a time, says how many are below, and the keys say so', async () => {
+    const { updater } = fakeUpdater({ notes: LONG })
+    const f = open(updater)
+    await until(() => frame(f).includes('Change 1'))
+    expect(frame(f)).toMatch(/↓ \d+ more/)
+    expect(frame(f)).not.toContain('Change 9')
+    await tick()
+    f.stdin.write(DOWN) // Check automatically
+    await tick()
+    f.stdin.write(DOWN) // into the notes
+    await until(() => row(f, '↑↓').includes('scroll'))
+    expect(frame(f)).toContain('Change 1')
+    f.stdin.write(DOWN)
+    await until(() => !frame(f).includes('Change 1 '))
+    expect(frame(f)).toContain('Change 2')
+    for (let i = 0; i < 12; i++) {
+      f.stdin.write(DOWN)
+      await tick()
+    }
+    expect(frame(f)).toContain('Change 9')
+    expect(frame(f)).not.toMatch(/\d+ more/)
+    // Back up to the top, and past it to the switch.
+    for (let i = 0; i < 12; i++) {
+      f.stdin.write(UP)
+      await tick()
+    }
+    expect(frame(f)).toContain('Change 1')
+    expect(row(f, '↑↓')).toContain('choose')
+  })
+
+  it('↓ from Check automatically goes nowhere when every note fits', async () => {
+    const { updater } = fakeUpdater()
+    const f = open(updater)
+    await until(() => frame(f).includes('Watch a folder'))
+    await tick()
+    f.stdin.write(DOWN)
+    await tick()
+    f.stdin.write(DOWN)
+    await tick()
+    expect(row(f, '↑↓')).toContain('choose')
+    expect(row(f, '↑↓')).toContain('on / off')
+  })
+
+  it('↵ installs with a spinner and no percentage, keeps the notes, then offers to restart', async () => {
     const { updater, calls, release } = fakeUpdater()
     const onRestart = vi.fn()
     const f = open(updater, { onRestart })
@@ -80,20 +156,22 @@ describe('UpdateFlow (V4)', () => {
     await until(() => frame(f).includes('Installing 0.2.2'))
     expect(calls.installs).toEqual(['0.2.2'])
     expect(frame(f)).not.toMatch(/\d%/)
+    expect(frame(f)).toContain('Watch a folder')
     release()
     await until(() => frame(f).includes('✓ installed · restart to use it'))
+    expect(row(f, 'Forge 0.2.2')).toMatch(/↵ restart *$/)
     await tick()
     f.stdin.write(ENTER)
     await until(() => onRestart.mock.calls.length > 0)
     expect(onRestart).toHaveBeenCalledOnce()
   })
 
-  it('when this is the latest, says so and ↵ checks again', async () => {
+  it('when this is the latest, says so, shows no card, and ↵ checks again', async () => {
     const { updater, calls } = fakeUpdater({ latest: '0.2.1' })
     const f = open(updater)
     await until(() => frame(f).includes('✓ the latest'))
-    expect(frame(f)).toContain('Forge 0.2.1')
-    expect(lines(f).find((l) => l.includes('▌ Forge'))).toMatch(/▌ Forge ✓/)
+    expect(row(f, 'Forge 0.2.1')).toMatch(/Forge 0\.2\.1 ✓ +↵ check again *$/)
+    expect(frame(f)).not.toContain("what's new")
     await tick()
     f.stdin.write(ENTER)
     await until(() => calls.checks === 2)
@@ -118,8 +196,7 @@ describe('UpdateFlow (V4)', () => {
     expect(calls.copied).toEqual(['sudo npm i -g forge-terminal@0.2.2'])
     // The copy says so beside the pill, then the line goes back to how to use it.
     await until(() => frame(f).includes('✓ copied'))
-    const said = lines(f).find((l) => l.includes('↵ copy')) ?? ''
-    expect(said).toMatch(/↵ copy +✓ copied to the clipboard *$/)
+    expect(row(f, '↵ copy')).toMatch(/↵ copy +✓ copied to the clipboard *$/)
     await until(() => frame(f).includes('run it in any terminal'))
     expect(frame(f)).not.toContain('✓ copied')
   })
@@ -128,28 +205,22 @@ describe('UpdateFlow (V4)', () => {
     const { updater, calls } = fakeUpdater({ latest: undefined })
     const f = open(updater)
     await until(() => frame(f).includes('could not reach npm'))
+    expect(row(f, 'Forge 0.2.1')).toMatch(/↵ try again *$/)
     await tick()
     f.stdin.write(ENTER)
     await until(() => calls.checks === 2)
     expect(calls.checks).toBe(2)
   })
 
-  it('Check automatically is a list row under a gap, ←→ flips its ‹ on ›, and its side is blank', async () => {
+  it('Check automatically: ↓ chooses it, ←→ flips its ‹ on ›, and the release stays in view', async () => {
     const { updater, calls } = fakeUpdater()
     const f = open(updater)
     await until(() => frame(f).includes('↵ update'))
-    const at = lines(f).findIndex((l) => l.includes('▌ Forge'))
-    // The gap is in the list's column; the sheet beside it carries on.
-    expect(
-      lines(f)
-        [at + 1]?.slice(0, 2 + 31)
-        .trim(),
-    ).toBe('')
-    expect(lines(f)[at + 2]).toMatch(/Check automatically.*‹ on ›/)
+    expect(row(f, 'Check automatically')).toMatch(/Check automatically +‹ on ›/)
     await tick()
     f.stdin.write(DOWN)
-    await until(() => frame(f).includes('▌ Check automatically'))
-    expect(frame(f)).not.toContain('Your version')
+    await until(() => row(f, '↑↓').includes('on / off'))
+    expect(frame(f)).toContain('Your version 0.2.1')
     f.stdin.write(RIGHT)
     await until(() => frame(f).includes('‹ off ›'))
     expect(calls.auto).toEqual([false])
