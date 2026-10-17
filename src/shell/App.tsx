@@ -4671,6 +4671,7 @@ export function App({
             {step === 'update' ? (
               <UpdateFlow
                 width={width}
+                height={height}
                 current={VERSION}
                 auto={livePrefs.updateCheck !== false}
                 updater={updater}

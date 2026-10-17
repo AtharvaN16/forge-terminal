@@ -1,7 +1,8 @@
 import { Box } from 'ink'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { isForgeError } from '../../core/errors.js'
+import type { ReleaseNote } from '../../update/check.js'
 import type { BarChip } from '../bar-art.js'
 import { HeaderBar } from '../components/HeaderBar.js'
 import { HintBar } from '../components/HintBar.js'
@@ -12,6 +13,14 @@ import { motionEnabled, useTicker } from '../motion.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeGradient, type Palette } from '../theme.js'
+import {
+  CARD_CHROME,
+  CARD_ROWS,
+  lastNoteStart,
+  noteCard,
+  noteLines,
+  noteStarts,
+} from '../update-art.js'
 import { useKeys } from '../useKeys.js'
 
 /** What /update needs from outside, injectable so tests need no network, npm or disk. */
@@ -22,6 +31,8 @@ export interface Updater {
   /** The automatic check's preference, saved. */
   setAuto(on: boolean): Promise<void>
   copy(text: string): void
+  /** What a release says is new, as the last check heard it: none when unknown. */
+  whatsNew?(version: string): Promise<ReleaseNote[]>
 }
 
 /** Loaded on first use, so the shell's start-up never touches `src/update/`'s install side. */
@@ -38,6 +49,9 @@ export const realUpdater: Updater = {
   },
   copy(text) {
     void import('../clipboard.js').then(({ copy }) => copy(text))
+  },
+  async whatsNew(version) {
+    return (await import('../../update/check.js')).whatsNewFor(version)
   },
 }
 
@@ -56,16 +70,21 @@ type State =
   /** npm refused or failed; `command` is what the person can run themselves. */
   | { kind: 'refused'; latest: string; title: string; reason: string; command: string }
 
-/** /extensions' measurements, four cells wider so "Check automatically" and its pill share a row. */
-const LIST_WIDTH = 31
+/** What ↑↓ has chosen: the release's action, the switch, or the notes (only when they scroll). */
+type Focus = 'action' | 'auto' | 'notes'
+
 const SPIN_MS = 80
 /** The clock appears after this long, as the working screen's does (W5). */
 const CLOCK_AFTER_MS = 3000
 /** How long "✓ copied" stands beside the pill: as long as colour's copy confirmation. */
 const COPIED_MS = 1500
+/** The header bar and the gap under it; the hint bar's gap, rule and keys. */
+const CHROME = 2 + 3
 
 interface UpdateFlowProps {
   width: number
+  /** The rows the screen has: the notes scroll in what the rest leaves. */
+  height: number
   /** The running version. */
   current: string
   /** The automatic check, as the preferences have it now. */
@@ -79,16 +98,19 @@ interface UpdateFlowProps {
 }
 
 /**
- * `/update` (V4, mockups/update-check-2026-10.html): /extensions' split. Two
- * rows — Forge, with a blue "new" beside it when a newer release is out (✓
- * when not), then a gap, then Check automatically with Boost's ‹ on › pill.
- * Forge's sheet says the new version and yours, and ↵ installs it in place:
- * npm reports no progress, so a spinner and, after three seconds, a clock
- * (invariant 7). The command and ↵ copy appear only when npm refuses. The
- * switch's side is left blank: its row says everything.
+ * `/update` (U4, mockups/whatsnew-2026-10.html): one column in three blocks.
+ * The release — Forge and its version, a blue "new" beside it when a newer
+ * one is out (✓ when not), its action at the far right of the row — and
+ * yours under it; then Check automatically with Boost's ‹ on › pill; then,
+ * once a newer release is known, what it says is new on a grey card under a
+ * grey "what's new" chip. ↵ update installs it in place: npm reports no
+ * progress, so a spinner and, after three seconds, a clock (invariant 7).
+ * The command and ↵ copy appear only when npm refuses. ↑↓ goes from the
+ * action to the switch to the notes, when they scroll.
  */
 export function UpdateFlow({
   width,
+  height,
   current,
   auto: autoAtOpen,
   updater = realUpdater,
@@ -98,8 +120,12 @@ export function UpdateFlow({
 }: UpdateFlowProps) {
   const palette = useTheme()
   const [state, setState] = useState<State>({ kind: 'checking' })
-  const [row, setRow] = useState<0 | 1>(0)
+  const [focus, setFocus] = useState<Focus>('action')
   const [auto, setAuto] = useState(autoAtOpen)
+  /** What the newer release says is new, on the card until it is installed and run. */
+  const [notes, setNotes] = useState<ReleaseNote[]>([])
+  /** The card's first line shown: always a note's first. */
+  const [start, setStart] = useState(0)
   /** ↵ copy just put the command on the clipboard: said beside the pill for a moment. */
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -122,7 +148,12 @@ export function UpdateFlow({
     onChecked?.(latest)
     if (latest === undefined) return setState({ kind: 'unreachable' })
     const { isNewer } = await import('../../update/check.js')
-    setState(isNewer(latest, current) ? { kind: 'available', latest } : { kind: 'latest' })
+    const newer = isNewer(latest, current)
+    const said = newer && updater.whatsNew ? await updater.whatsNew(latest).catch(() => []) : []
+    if (!alive.current) return
+    setNotes(said)
+    setStart(0)
+    setState(newer ? { kind: 'available', latest } : { kind: 'latest' })
   }, [updater, current, onChecked])
 
   useEffect(() => {
@@ -154,59 +185,48 @@ export function UpdateFlow({
     void updater.setAuto(on).catch(() => {})
   }
 
-  const busy = state.kind === 'installing'
-  useKeys((_input, key) => {
-    if (busy) return
-    if (key.escape) return onClose()
-    if (key.upArrow) return setRow(0)
-    if (key.downArrow) return setRow(1)
-    if (row === 1) {
-      if (key.leftArrow) flip(true)
-      else if (key.rightArrow) flip(false)
-      return
-    }
-    if (!key.return) return
-    if (state.kind === 'available') void install(state.latest)
-    else if (state.kind === 'installed') onRestart()
-    else if (state.kind === 'refused') {
-      updater.copy(state.command)
-      // A fresh copy restarts the moment, as a second one in colour does.
-      setCopied(false)
-      setTimeout(() => setCopied(true), 0)
-    } else if (state.kind === 'latest' || state.kind === 'unreachable') void check()
-  })
-
-  const spinning = (busy || state.kind === 'checking') && motionEnabled(palette.name)
-  const n = useTicker(spinning, SPIN_MS)
-  const spinner = spinning ? (SPINNER_FRAMES[n % SPINNER_FRAMES.length] ?? '') : '·'
-
   const fg = colourProp(palette.fg)
   const dim = colourProp(palette.dim)
   const gold = colourProp(updateChip(palette).colour)
-  const fresh =
-    state.kind === 'available' || state.kind === 'installing' || state.kind === 'refused'
-  const split = width >= LIST_WIDTH + 3 + 40
-  const paneWidth = Math.max(10, split ? width - HOME_MARGIN - LIST_WIDTH - 2 : width - HOME_MARGIN)
+  const inner = Math.max(20, width - 2 * HOME_MARGIN)
 
-  const pill = (text: string) => (
-    <Text backgroundColor={colourProp(palette.pill)} color={colourProp(palette.ink)} bold>
+  const spinning =
+    (state.kind === 'installing' || state.kind === 'checking') && motionEnabled(palette.name)
+  const n = useTicker(spinning, SPIN_MS)
+  const spinner = spinning ? (SPINNER_FRAMES[n % SPINNER_FRAMES.length] ?? '') : '·'
+
+  const pill = (text: string, on = focus === 'action') => (
+    <Text
+      backgroundColor={colourProp(on ? palette.pill : palette.keycapBg)}
+      color={colourProp(on ? palette.ink : palette.dim)}
+      bold
+    >
       {` ${text} `}
     </Text>
   )
 
-  const band = (on: boolean, left: ReactNode, right: ReactNode = null) => (
-    <Box
-      width={LIST_WIDTH}
-      justifyContent="space-between"
-      {...(on && palette.listBand !== '' ? { backgroundColor: palette.listBand } : {})}
-    >
-      <Text wrap="truncate">
-        {on ? <Text color={gold}>▌ </Text> : '  '}
-        {left}
-      </Text>
-      {right}
-    </Box>
+  const refusalRow = (title: string, reason: string) => (
+    <Runs
+      row={errorLine({
+        palette,
+        title,
+        reason,
+        width: inner,
+        plain: (process.env.NO_COLOR ?? '') !== '',
+      })}
+    />
   )
+
+  const clock = (since: number) => {
+    const s = Math.floor((Date.now() - since) / 1000)
+    return Date.now() - since < CLOCK_AFTER_MS
+      ? ''
+      : ` · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  }
+
+  const fresh =
+    state.kind === 'available' || state.kind === 'installing' || state.kind === 'refused'
+  const shown = 'latest' in state ? state.latest : current
 
   /** "new" beside the name while a newer Forge is out; ✓ once this is the latest. */
   const mark =
@@ -225,140 +245,68 @@ export function UpdateFlow({
       <Text color={colourProp(palette.ok)}> ✓</Text>
     ) : null
 
-  /** Boost's B3 pill: ‹ on ›, the arrow that leads nowhere in the border grey. */
-  const chip = palette.folderChip === '' ? {} : { backgroundColor: palette.folderChip }
-  const arrow = (live: boolean, text: string) => (
-    <Text
-      bold={live}
-      color={colourProp(live && row === 1 ? palette.accent : palette.border)}
-      {...chip}
-    >
-      {text}
-    </Text>
-  )
-  const switchPill = (
-    <Text>
-      {arrow(!auto, ' ‹ ')}
-      <Text bold color={fg} {...chip}>
-        {auto ? 'on' : 'off'}
-      </Text>
-      {arrow(auto, ' › ')}
-    </Text>
-  )
-
-  const list = (
-    <>
-      {band(
-        row === 0,
-        <>
-          <Text bold={row === 0} color={row === 0 ? fg : dim}>
-            Forge
-          </Text>
-          {mark}
-        </>,
-      )}
-      <Text> </Text>
-      {band(
-        row === 1,
-        <Text bold={row === 1} color={row === 1 ? fg : dim}>
-          Check automatically
-        </Text>,
-        switchPill,
-      )}
-    </>
-  )
-
-  const refusalRow = (title: string, reason: string) => (
-    <Runs
-      row={errorLine({
-        palette,
-        title,
-        reason,
-        width: split ? paneWidth - 3 : paneWidth,
-        plain: (process.env.NO_COLOR ?? '') !== '',
-      })}
-    />
-  )
-
-  const clock = (since: number) => {
-    const s = Math.floor((Date.now() - since) / 1000)
-    return Date.now() - since < CLOCK_AFTER_MS
-      ? ''
-      : ` · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-  }
-
-  const sheet = (): ReactNode[] => {
-    if (row === 1) return []
-    const title = (v: string) => (
-      <Text bold color={fg}>
-        {`Forge ${v}`}
-      </Text>
-    )
-    const yours = <Text color={dim}>{`Your version: ${current}`}</Text>
+  /** At the far right of the release's row: what ↵ does, or what is happening. */
+  const action = (): ReactNode => {
     switch (state.kind) {
       case 'checking':
-        return [
-          title(current),
-          <Text key="c">
+        return (
+          <Text>
             <Text color={gold}>{`${spinner} `}</Text>
             <Text color={dim}>checking npm</Text>
-          </Text>,
-        ]
+          </Text>
+        )
       case 'unreachable':
-        return [
-          title(current),
-          refusalRow('Could not check', 'could not reach npm'),
-          '',
-          pill('↵ try again'),
-        ]
+        return pill('↵ try again')
+      case 'latest':
+        return pill('↵ check again')
+      case 'available':
+        return pill('↵ update')
+      case 'installing':
+        return (
+          <Text>
+            <Text color={gold}>{`${spinner} `}</Text>
+            <Text color={fg}>{`Installing ${state.latest}`}</Text>
+            <Text color={dim}>{clock(state.since)}</Text>
+          </Text>
+        )
+      case 'installed':
+        return pill('↵ restart')
+      case 'refused':
+        return null
+    }
+  }
+
+  const yours = <Text color={dim}>{`Your version ${current}`}</Text>
+  /** Under the release's row: yours, or what the check found. */
+  const under = (): ReactNode[] => {
+    switch (state.kind) {
+      case 'checking':
+        return [' ']
+      case 'unreachable':
+        return [refusalRow('Could not check', 'could not reach npm')]
       case 'latest':
         return [
-          title(current),
           <Text key="l">
             <Text color={colourProp(palette.ok)}>✓ the latest</Text>
             <Text color={dim}> · checked just now</Text>
           </Text>,
-          '',
-          pill('↵ check again'),
         ]
       case 'available':
-        return [
-          title(state.latest),
-          yours,
-          '',
-          <Text key="u">
-            {pill('↵ update')}
-            <Text color={dim}>{'  Forge restarts when it is done'}</Text>
-          </Text>,
-        ]
       case 'installing':
-        return [
-          title(state.latest),
-          yours,
-          '',
-          <Text key="i">
-            <Text color={gold}>{`${spinner} `}</Text>
-            <Text color={fg}>{`Installing ${state.latest}`}</Text>
-            <Text color={dim}>{clock(state.since)}</Text>
-          </Text>,
-        ]
+        return [yours]
       case 'installed':
         return [
-          title(state.latest),
           <Text key="d">
             <Text color={colourProp(palette.ok)}>✓ installed</Text>
             <Text color={dim}> · restart to use it</Text>
           </Text>,
-          '',
-          pill('↵ restart'),
         ]
       case 'refused':
         return [
-          title(state.latest),
           yours,
-          '',
+          ' ',
           refusalRow(state.title, state.reason),
-          '',
+          ' ',
           <Text
             key="cmd"
             backgroundColor={palette.fieldBand === '' ? undefined : palette.fieldBand}
@@ -366,7 +314,7 @@ export function UpdateFlow({
           >
             {`  ${state.command}  `}
           </Text>,
-          '',
+          ' ',
           <Text key="copy">
             {pill('↵ copy')}
             {copied ? (
@@ -384,17 +332,101 @@ export function UpdateFlow({
     }
   }
 
+  const top = [
+    <Box key="release" width={inner} justifyContent="space-between">
+      <Text wrap="truncate">
+        <Text bold color={fg}>{`Forge ${shown}`}</Text>
+        {mark}
+      </Text>
+      {action()}
+    </Box>,
+    ...under(),
+  ]
+
+  // The card: the newer release's notes, in whatever rows the rest leaves.
+  const showCard = notes.length > 0 && 'latest' in state
+  const laid = useMemo(
+    () => noteLines({ palette, notes, width: inner - CARD_CHROME }),
+    [palette, notes, inner],
+  )
+  const room = Math.max(3, height - CHROME - top.length - 3 - CARD_ROWS)
+  const scrolls = showCard && laid.rows.length > room
+  const last = lastNoteStart(laid.items, room)
+  const starts = noteStarts(laid.items).filter((k) => k <= last)
+
+  const busy = state.kind === 'installing'
+  useKeys((_input, key) => {
+    if (busy) return
+    if (key.escape) return onClose()
+    if (key.upArrow) {
+      if (focus === 'notes') {
+        const before = starts.filter((k) => k < start).at(-1)
+        if (before === undefined) setFocus('auto')
+        else setStart(before)
+      } else setFocus('action')
+      return
+    }
+    if (key.downArrow) {
+      if (focus === 'action') setFocus('auto')
+      else if (focus === 'auto' && scrolls) setFocus('notes')
+      else if (focus === 'notes') setStart(starts.find((k) => k > start) ?? start)
+      return
+    }
+    if (focus === 'auto') {
+      if (key.leftArrow) flip(true)
+      else if (key.rightArrow) flip(false)
+      return
+    }
+    if (focus !== 'action' || !key.return) return
+    if (state.kind === 'available') void install(state.latest)
+    else if (state.kind === 'installed') onRestart()
+    else if (state.kind === 'refused') {
+      updater.copy(state.command)
+      // A fresh copy restarts the moment, as a second one in colour does.
+      setCopied(false)
+      setTimeout(() => setCopied(true), 0)
+    } else if (state.kind === 'latest' || state.kind === 'unreachable') void check()
+  })
+
+  /** Boost's B3 pill: ‹ on ›, the arrow that leads nowhere in the border grey. */
+  const chip = palette.folderChip === '' ? {} : { backgroundColor: palette.folderChip }
+  const arrow = (live: boolean, text: string) => (
+    <Text
+      bold={live}
+      color={colourProp(live && focus === 'auto' ? palette.accent : palette.border)}
+      {...chip}
+    >
+      {text}
+    </Text>
+  )
+  const onAuto = focus === 'auto'
+  const switchRow = (
+    <Text>
+      <Text bold={onAuto} color={onAuto ? fg : dim}>
+        Check automatically
+      </Text>
+      {'   '}
+      {arrow(!auto, ' ‹ ')}
+      <Text bold color={fg} {...chip}>
+        {auto ? 'on' : 'off'}
+      </Text>
+      {arrow(auto, ' › ')}
+    </Text>
+  )
+
   const keys = (): { main: Array<[string, string]>; foot: Array<[string, string]> } => {
     const quit: [string, string] = ['ctrl-c', 'quit']
     if (busy) return { main: [], foot: [quit] }
+    const foot: Array<[string, string]> = [['esc', 'home'], quit]
+    if (focus === 'notes') return { main: [['↑↓', 'scroll']], foot }
     const main: Array<[string, string]> = [['↑↓', 'choose']]
-    if (row === 1) main.push(['←→', 'on / off'])
+    if (focus === 'auto') main.push(['←→', 'on / off'])
     else if (state.kind === 'available') main.push(['↵', 'update'])
     else if (state.kind === 'installed') main.push(['↵', 'restart'])
     else if (state.kind === 'refused') main.push(['↵', 'copy'])
     else if (state.kind === 'latest') main.push(['↵', 'check again'])
     else if (state.kind === 'unreachable') main.push(['↵', 'try again'])
-    return { main, foot: [['esc', 'home'], quit] }
+    return { main, foot }
   }
 
   const trail =
@@ -402,7 +434,6 @@ export function UpdateFlow({
       ? { answers: ['Update'], current: 'Installing' }
       : { answers: [], current: 'Update' }
   const k = keys()
-  const rows = sheet()
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -415,37 +446,36 @@ export function UpdateFlow({
           drift={busy}
         />
       </Box>
-      <Box flexDirection={split ? 'row' : 'column'} paddingLeft={HOME_MARGIN}>
-        <Box flexDirection="column" width={LIST_WIDTH} flexShrink={0}>
-          {list}
-        </Box>
-        {split ? null : <Text> </Text>}
-        <Box
-          flexDirection="column"
-          width={paneWidth}
-          minHeight={4}
-          {...(split
-            ? {
-                marginLeft: 1,
-                paddingLeft: 2,
-                borderStyle: 'single' as const,
-                borderTop: false,
-                borderBottom: false,
-                borderRight: false,
-                borderLeftColor: colourProp(palette.faint) ?? 'gray',
-              }
-            : {})}
-        >
-          {rows.map((r, i) =>
-            typeof r === 'string' ? (
-              // biome-ignore lint/suspicious/noArrayIndexKey: the sheet's rows are positional
-              <Text key={i}>{r || ' '}</Text>
-            ) : (
-              // biome-ignore lint/suspicious/noArrayIndexKey: the sheet's rows are positional
-              <Box key={i}>{r}</Box>
-            ),
-          )}
-        </Box>
+      <Box flexDirection="column" paddingLeft={HOME_MARGIN}>
+        {top.map((r, i) =>
+          typeof r === 'string' ? (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the release block's rows are positional
+            <Text key={i}>{r}</Text>
+          ) : (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the release block's rows are positional
+            <Box key={i}>{r}</Box>
+          ),
+        )}
+        <Text> </Text>
+        {switchRow}
+        {showCard ? (
+          <>
+            <Text> </Text>
+            {noteCard({
+              palette,
+              version: shown,
+              laid,
+              width: inner,
+              start,
+              // A short release's card is as tall as its notes.
+              room: scrolls ? room : laid.rows.length,
+              lit: focus === 'notes',
+            }).map((row, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the card's rows are positional
+              <Runs key={i} row={row} />
+            ))}
+          </>
+        ) : null}
       </Box>
       <HintBar width={width} pairs={k.main} foot={k.foot} />
     </Box>
