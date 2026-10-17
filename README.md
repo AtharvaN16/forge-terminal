@@ -276,6 +276,31 @@ forge clip --undo            # put the last original back
 
 Agents get the same as the MCP tool `forge_clip`.
 
+## Watch a folder
+
+Drop a folder on home in convert mode: it is one card, **FOLDER – its name**.
+↵ asks what to convert to, as for a file, then converts every file in it and
+keeps watching: any file you add afterwards is converted too, a row each,
+until you press ↵. A folder holding several kinds of file (images, PDFs, …)
+asks once per kind; ↵ on a kind opens a window to change its answer.
+
+Files are read by their content once they stop changing, so a screenshot or a
+download is never read half-written. Forge never picks up its own output, and
+dropping the same folder again leaves what it already converted alone.
+
+From the command line:
+
+```bash
+forge watch ./images --to webp            # convert what is there, then each new file
+forge watch ./images --to webp -q 70      # at a quality
+forge watch ./scans --to png --dpi 300    # PDFs, a page each
+forge watch ./images --to webp -o ./dist  # into another folder
+forge watch ./images --to webp --new-only # only what lands from now on
+forge watch ./images --to webp --json     # one JSON document per line, per event
+```
+
+ctrl-c stops it and prints the totals.
+
 ## Resize and trim edges
 
 Both need nothing extra, keep the file's own format unless `--to` says otherwise,

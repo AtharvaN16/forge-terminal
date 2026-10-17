@@ -145,6 +145,11 @@ describe('the page bar, against the decided W5', () => {
     const row = runsRow(pagesRow({ palette: LIGHT, mode: 'pdf', done: 0, total: 4 }))
     expect(row[3]).toMatchObject({ ch: '█', fg: LIGHT.track })
   })
+
+  it('counts files, a folder’s, in their own word', () => {
+    const row = pagesRow({ palette: DARK, mode: 'convert', done: 9, total: 24, unit: 'images' })
+    expect(row.at(-1)?.text).toBe('  9 of 24 images')
+  })
 })
 
 describe('the bar drifts while working', () => {

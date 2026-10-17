@@ -709,6 +709,28 @@ export function stagedCardRows({
   return dotted({ width: columns, rows, palette, mode, lines: card, pad: 1, scale: 0.42, ring })
 }
 
+/**
+ * A dropped folder's card (`watch-art`'s `folderCardLines`) laid on the dots
+ * exactly as a file's is: the same step back, the same ring when it lands.
+ */
+export function folderCardOnDots({
+  width: columns,
+  rows,
+  palette,
+  mode,
+  card,
+  ring,
+}: {
+  width: number
+  rows: number
+  palette: Palette
+  mode: ShellMode
+  card: Row[]
+  ring?: number | undefined
+}): Row[] {
+  return dotted({ width: columns, rows, palette, mode, lines: card, pad: 1, scale: 0.42, ring })
+}
+
 /** Where a list's rows start, how far a name goes before it is cut, and the two columns' widths. */
 const LIST_INDENT = '    '
 const NAME_CLIP = 36

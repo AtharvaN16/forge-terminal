@@ -109,6 +109,22 @@ async function main(): Promise<void> {
       return
     }
 
+    // `forge watch` runs until ctrl-c, a line per file as it lands, so it
+    // prints as it goes rather than returning one result to print. ctrl-c
+    // is how it ends, not an interruption: it finishes what is being
+    // converted, says the totals, and exits 0 (1 if anything failed).
+    if (intent.kind === 'watch') {
+      const { runWatch } = await import('./cli/watch-command.js')
+      const stop = new AbortController()
+      process.once('SIGINT', () => stop.abort())
+      process.exitCode = await runWatch(intent, {
+        out: (line) => process.stdout.write(`${line}\n`),
+        json,
+        signal: stop.signal,
+      })
+      return
+    }
+
     // Only now, with real work to do, is the engine layer loaded.
     const { execute } = await import('./cli/execute.js')
 

@@ -99,6 +99,7 @@ export function pagesRow({
   done,
   total,
   plain = palette.track === '',
+  unit,
 }: {
   palette: Palette
   mode: ShellMode
@@ -106,6 +107,8 @@ export function pagesRow({
   total: number
   /** No colours will show (NO_COLOR): the rest of the bar must differ in shape. */
   plain?: boolean
+  /** What is counted when it is not pages: a folder's files, "9 of 24 images". */
+  unit?: string | undefined
 }): Row {
   const k = total > 0 ? Math.round((Math.max(0, Math.min(done, total)) / total) * PAGE_BAR) : 0
   const rest = plain ? '░' : '█'
@@ -113,7 +116,10 @@ export function pagesRow({
     blank(COUNT_LEAD),
     { text: '█'.repeat(k), fg: modeColours(palette, mode).fg },
     { text: rest.repeat(PAGE_BAR - k), fg: palette.track },
-    { text: `  page ${done} of ${total}`, fg: palette.dim },
+    {
+      text: unit === undefined ? `  page ${done} of ${total}` : `  ${done} of ${total} ${unit}`,
+      fg: palette.dim,
+    },
   ].filter((r) => r.text !== '')
 }
 

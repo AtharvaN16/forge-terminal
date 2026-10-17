@@ -1,13 +1,26 @@
+import type { FolderScan } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
 import type { InputFailure } from '../core/resolve.js'
 import type { SourceInfo } from '../core/types.js'
 import { formatBytes } from '../core/units.js'
 import { displayName } from '../utils/display-path.js'
 import type { ShellMode } from './theme.js'
+import { folderFacts } from './watch-art.js'
 
 export interface Stage {
   sources: SourceInfo[]
   failures: InputFailure[]
+  /**
+   * A dropped folder, read whole (`scanFolder`): in convert mode it is one
+   * thing on home — the folder's card — and ↵ converts it, then watches it.
+   * Gone as soon as anything else joins the stage.
+   */
+  folder?: FolderScan
+}
+
+/** A folder dropped onto an empty home: its files, and the folder itself. */
+export function folderStage(scan: FolderScan): Stage {
+  return { sources: scan.sources, failures: scan.failures, folder: scan }
 }
 
 export function emptyStage(): Stage {
@@ -67,6 +80,8 @@ export interface StagedView {
   total: string
   /** How many of the last `files` arrived in the latest drop and wear the band; 0 for none. */
   fresh: number
+  /** A folder, in convert mode: drawn as the folder's card, its name in the edge. */
+  folder?: { name: string; lines: string[] }
 }
 
 const allPdf = (sources: SourceInfo[]) => sources.every((s) => s.format === 'pdf')
@@ -91,8 +106,8 @@ export function cardFacts(source: SourceInfo): string {
   ).join(' · ')
 }
 
-export function stagedView(stage: Stage, fresh: number): StagedView {
-  const { sources } = stage
+export function stagedView(stage: Stage, fresh: number, mode?: ShellMode): StagedView {
+  const { sources, folder } = stage
   const noun = sources.every((s) => s.kind === 'image')
     ? 'images'
     : allPdf(sources)
@@ -108,6 +123,18 @@ export function stagedView(stage: Stage, fresh: number): StagedView {
     headline: `${sources.length} ${noun}`,
     total: formatBytes(sources.reduce((n, s) => n + s.bytes, 0)),
     fresh: Math.max(0, Math.min(fresh, sources.length)),
+    ...(folder && mode === 'convert'
+      ? {
+          folder: {
+            name: displayName(folder.dir),
+            lines: folderFacts({
+              kinds: folder.kinds,
+              bytes: folder.bytes,
+              files: folder.paths.length,
+            }),
+          },
+        }
+      : {}),
   }
 }
 
@@ -132,6 +159,7 @@ export function underField(stage: Stage, mode: ShellMode): UnderField | undefine
     }
   }
   if (stage.sources.length < 2 || stagedVerb(stage, mode) !== null) return undefined
+  if (stage.folder && mode === 'convert') return undefined
   return {
     kind: 'note',
     text: `→ converting several files at once is coming${allPdf(stage.sources) ? ' · /pdf merges them' : ''}`,
@@ -144,6 +172,8 @@ export function underField(stage: Stage, mode: ShellMode): UnderField | undefine
  * several otherwise — until batch conversion exists.
  */
 export function stagedVerb(stage: Stage, mode: ShellMode): string | null {
+  // A folder in convert mode is one thing: converted, then watched.
+  if (stage.folder && mode === 'convert') return 'convert'
   if (stage.sources.length === 1) return mode
   if (mode === 'pdf' && stage.sources.length > 1 && allPdf(stage.sources)) return 'pdf'
   return null
