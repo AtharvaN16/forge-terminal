@@ -5,9 +5,11 @@ import {
   ffmpegCandidates,
   findFfmpeg,
   forceFfmpegForTests,
+  frameAt,
   probeMedia,
   readProgress,
   runFfmpeg,
+  soundLevels,
 } from '../../src/engines/ffmpeg.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 import { ffmpegHere, makeClip } from '../helpers/media.js'
@@ -90,5 +92,27 @@ describe.skipIf(!ffmpegHere)('with ffmpeg', () => {
     await expect(runFfmpeg(['-i', '/no/such/file.mov', '-y', out], {})).rejects.toThrow(
       /No such file/,
     )
+  })
+})
+
+describe.skipIf(!ffmpegHere)('levels and frames', () => {
+  it('reads the sound’s loudness, one level per column', async () => {
+    const clip = await makeClip({ seconds: 2 })
+    const levels = await soundLevels(clip, 2, 40)
+    expect(levels).toHaveLength(40)
+    expect(Math.max(...(levels ?? []))).toBeCloseTo(1)
+    expect(Math.min(...(levels ?? []))).toBeGreaterThan(0.5)
+  })
+
+  it('says null for a video with no sound', async () => {
+    const clip = await makeClip({ seconds: 1, audio: false })
+    expect(await soundLevels(clip, 1, 40)).toBeNull()
+  })
+
+  it('writes one frame as a PNG', async () => {
+    const clip = await makeClip({ seconds: 2, width: 320, height: 240 })
+    const out = join(await makeTempDir(), 'frame.png')
+    await frameAt(clip, 1, out)
+    expect(existsSync(out)).toBe(true)
   })
 })

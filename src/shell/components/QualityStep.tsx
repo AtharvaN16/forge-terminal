@@ -44,6 +44,7 @@ export function QualityStep({
   noBigger = false,
   dither,
   modeKeys = true,
+  unit = '',
 }: {
   mode: ShellMode
   /** What the quality is for, at the title's right: the format, or the file. */
@@ -66,6 +67,8 @@ export function QualityStep({
   dither?: { on: boolean; onToggle: () => void } | undefined
   /** The mode digits work here; not in a folder's flow, which a mode cannot take over. */
   modeKeys?: boolean
+  /** After the value on the thumb: ` kbps` for sound. */
+  unit?: string
 }) {
   const palette = useTheme()
   const blocked = noBigger && size.status === 'done' && size.bytes >= sourceBytes
@@ -110,6 +113,7 @@ export function QualityStep({
             max,
             width: band,
             plain,
+            unit,
             marks,
             warn: points && value === min,
           })}

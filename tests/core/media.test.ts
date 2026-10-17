@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { hasPicture, hasSound, mediaFacts } from '../../src/core/media.js'
+import {
+  compressFloor,
+  hasPicture,
+  hasSound,
+  mediaFacts,
+  sizeUnitsFor,
+} from '../../src/core/media.js'
 import type { MediaInfo } from '../../src/core/types.js'
 
 const recording: MediaInfo = {
@@ -65,5 +71,25 @@ describe('hasPicture and hasSound', () => {
   it('go by the format before ffmpeg has read the file', () => {
     expect(hasPicture({ ...recording, facts: undefined })).toBe(true)
     expect(hasSound({ ...podcast, facts: undefined })).toBe(true)
+  })
+})
+
+describe('the size field’s units', () => {
+  it('offers MB alone for a 2:10 recording: it cannot get under 1 MB, and is not 1 GB', () => {
+    expect(sizeUnitsFor(recording)).toEqual(['mb'])
+    expect((compressFloor(recording) ?? 0) / 1e6).toBeGreaterThan(1)
+  })
+
+  it('offers KB too for a clip short enough to get under 1 MB', () => {
+    const clip: MediaInfo = {
+      ...recording,
+      bytes: 9_800_000,
+      facts: { ...(recording.facts as NonNullable<MediaInfo['facts']>), duration: 6 },
+    }
+    expect(sizeUnitsFor(clip)).toEqual(['kb', 'mb'])
+  })
+
+  it('offers GB for a file over 1 GB', () => {
+    expect(sizeUnitsFor({ ...recording, bytes: 4e9 })).toEqual(['mb', 'gb'])
   })
 })

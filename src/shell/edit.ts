@@ -1,5 +1,6 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
+import { mediaEditAction } from '../core/actions/media.js'
 import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
 import { type CropShape, largestBox, shapesFor } from '../core/crop.js'
 import {
@@ -8,8 +9,10 @@ import {
   boostOverLimit,
   boostScales,
 } from '../core/extension-targets.js'
+import { FORMATS } from '../core/formats.js'
+import { hasPicture } from '../core/media.js'
 import { keptFormat } from '../core/resize.js'
-import type { FormatId, ImageInfo } from '../core/types.js'
+import type { FormatId, ImageInfo, MediaInfo } from '../core/types.js'
 import type { ImageMeasure } from '../engines/image.js'
 import { type ExtensionId, offeredHere } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
@@ -24,7 +27,17 @@ import type { ExtensionStatus } from '../extensions/manager.js'
  * are and say for an image, nothing drawn.
  */
 
-export type EditToolId = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize' | 'crop'
+export type EditToolId =
+  | 'sharpen'
+  | 'boost'
+  | 'cutout'
+  | 'trim'
+  | 'resize'
+  | 'crop'
+  // Video and sound (video spec §3.4).
+  | 'cut'
+  | 'mute'
+  | 'loudness'
 
 /** The row the picker leaves a blank row after (E3): the AI tools above it, the plain ones below. */
 export const GAP_AFTER: EditToolId = 'cutout'
@@ -58,6 +71,8 @@ export interface EditRow {
   tooLarge?: string
   /** Working's verb (W5). */
   verb: string
+  /** The picker leaves a blank row after this one (E3); else after the last extension row. */
+  gapAfter?: true
 }
 
 export { keptFormat }
@@ -187,6 +202,82 @@ export function editRows(
 }
 
 /**
+ * A video's or sound file's rows (video spec §3.4): Trim and Mute, a blank
+ * row, then Resize and Crop to shape for a video; Trim and Even out loudness
+ * for sound. Each keeps the format and runs through `mediaEditAction`.
+ */
+export function mediaEditRows(source: MediaInfo): EditRow[] {
+  const target = source.format
+  const v = source.facts?.video
+  const sound = source.facts ? source.facts.audio !== undefined : true
+  const trim: EditRow = {
+    id: 'cut',
+    label: 'Trim',
+    target,
+    detail: { dim: '', bold: '' },
+    pane: {
+      short: 'Cuts off the start and the end.',
+      long: 'Copied, not re-encoded, so it takes seconds.',
+    },
+    verb: 'Trimming',
+  }
+  if (!hasPicture(source)) {
+    return [
+      trim,
+      {
+        id: 'loudness',
+        label: 'Even out loudness',
+        target,
+        detail: { dim: '', bold: '' },
+        pane: { short: 'Brings the sound to one steady level.', long: 'The level podcasts use.' },
+        verb: 'Evening out loudness',
+      },
+    ]
+  }
+  const rows: EditRow[] = [trim]
+  if (sound) {
+    rows.push({
+      id: 'mute',
+      label: 'Mute',
+      target,
+      detail: { dim: '', bold: '' },
+      pane: { short: 'Takes the sound out.', long: 'The picture is copied as it is.' },
+      verb: 'Muting',
+    })
+  }
+  rows[rows.length - 1] = { ...(rows[rows.length - 1] as EditRow), gapAfter: true }
+  rows.push({
+    id: 'resize',
+    label: 'Resize',
+    target,
+    detail: { dim: 'you choose the size next', bold: '' },
+    pane: { short: 'Makes the picture smaller.', long: 'The shape is kept.' },
+    verb: 'Resizing',
+  })
+  const size = v ? { width: v.width, height: v.height } : undefined
+  const shapes = size
+    ? shapesFor(size).map((shape) => {
+        const box = largestBox(size, shape)
+        return { shape, detail: { dim: 'becomes ', bold: dims(box.width, box.height) } }
+      })
+    : []
+  rows.push({
+    id: 'crop',
+    label: 'Crop to shape',
+    shapes,
+    target,
+    detail: shapes[0]?.detail ?? { dim: '', bold: '' },
+    pane: {
+      short: 'Changes the shape.',
+      long: 'Cuts the picture to a new shape. You see the crop next and can move it.',
+    },
+    ...(shapes.length === 0 ? { tooLarge: 'no shape to cut' } : {}),
+    verb: 'Cropping',
+  })
+  return rows
+}
+
+/**
  * Crop to shape's row (spec 2026-10-13 §2.1): the shapes the photo does not
  * already have, each with the largest box it cuts — nothing is scaled, so
  * that is the size written. Dimmed for an animation, as Trim is, and when no
@@ -269,16 +360,18 @@ export function detailAt(row: EditRow, step?: number | string): Detail {
 }
 
 /** The action a row runs through: the same plan-and-run path as the CLI. */
-export const actionForRow = (row: Pick<EditRow, 'id' | 'extension'>): Action =>
-  row.id === 'trim'
-    ? trimAction
-    : row.id === 'resize'
-      ? resizeAction
-      : row.id === 'crop'
-        ? cropAction
-        : row.extension === 'boost'
-          ? boostAction
-          : removeBackgroundAction
+export const actionForRow = (row: Pick<EditRow, 'id' | 'extension' | 'target'>): Action =>
+  FORMATS[row.target].media !== undefined && row.target !== 'gif'
+    ? mediaEditAction
+    : row.id === 'trim'
+      ? trimAction
+      : row.id === 'resize'
+        ? resizeAction
+        : row.id === 'crop'
+          ? cropAction
+          : row.extension === 'boost'
+            ? boostAction
+            : removeBackgroundAction
 
 /**
  * The answers Save as and the run plan with, for a row at `step` on its pill:

@@ -12,6 +12,7 @@ import {
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
+import { mediaEditAction } from '../core/actions/media.js'
 import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
 import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
 import { parseColour } from '../core/colour/parse.js'
@@ -20,6 +21,7 @@ import { describeResult } from '../core/describe.js'
 import {
   emptyDirectory,
   type ForgeError,
+  ffmpegMissing,
   isForgeError,
   unexpectedError,
   unsupportedCompress,
@@ -29,13 +31,16 @@ import { runPlan } from '../core/execute-jobs.js'
 import { boostScales } from '../core/extension-targets.js'
 import { type FolderScan, scanFolder } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
+import { compressFloor, hasPicture, sizeUnitsFor, soundBytes } from '../core/media.js'
 import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import type {
   Box as CropBox,
   FormatId,
+  ImageInfo,
   Job,
+  MediaInfo,
   Progress,
   ResizeSpec,
   Result,
@@ -70,6 +75,8 @@ import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Suggestions } from './components/Home.js'
+import { type Cut, LengthStep } from './components/LengthStep.js'
+import { MediaFormatPicker } from './components/MediaFormatPicker.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -91,6 +98,7 @@ import {
   type EditTools,
   editRow,
   editRows,
+  mediaEditRows,
   realTools,
   rowValues,
   shapeOf,
@@ -143,7 +151,7 @@ import {
 import { answerFor, type Question, trailFor } from './trail.js'
 import { useAfter } from './useAfter.js'
 import { PASTE, useKeys } from './useKeys.js'
-import { type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
+import { type MeasuredSize, type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
 import { useMouseRouting } from './useMouseRouting.js'
 import { useTerminalBackground } from './useTerminalBackground.js'
 import { bandFor, CARD_WIDTH } from './width.js'
@@ -170,6 +178,10 @@ export type Step =
   | 'exact-size'
   /** Edit's Crop to shape: the preview, where the crop is moved and zoomed (P3). */
   | 'crop'
+  /** Video and sound: Trim's screen, and GIF's which part (video spec §3.4, §3.5). */
+  | 'length'
+  /** Sound: the bitrate, in kbps, as convert's and compress's quality. */
+  | 'bitrate'
   /** Compress: by quality, or to a target size. */
   | 'mode'
   /** Compress: the target-size field. */
@@ -819,6 +831,8 @@ export function App({
    * back finds it there. A row chosen afresh starts on the guess again.
    */
   const [cropAt, setCropAt] = useState<CropAt | undefined>(undefined)
+  /** A video's frame, as a picture: Crop to shape's preview of a video (video spec §3.4). */
+  const [cropFrame, setCropFrame] = useState<ImageInfo | undefined>(undefined)
   /**
    * What everything below is drawn in: the base palette with its role
    * colours handed to the current mode (`modePalette`), so a screen tells
@@ -981,6 +995,14 @@ export function App({
    * this used to be, so none of that logic has to change.
    */
   const source: SourceInfo | null = stage.sources[0] ?? null
+  /** The units a target size is offered in: a video's or sound file's own (B never). */
+  const unitsHere: readonly SizeUnit[] =
+    source?.kind === 'media' ? sizeUnitsFor(source) : SIZE_UNIT_IDS
+  /** The smallest a video or sound file can be compressed to: a typed size under it is refused. */
+  const floorHere = source?.kind === 'media' ? compressFloor(source) : undefined
+  /** Done after editing a video or sound file: c takes the result on to compress. */
+  const compressNextFor = (r: Result | null) =>
+    mode === 'edit' && r?.job.sources[0]?.kind === 'media'
   /**
    * Whether converting or compressing right now would silently act on only
    * the first of several staged files. Batch convert/compress is deferred —
@@ -1017,12 +1039,17 @@ export function App({
   const [values, setValues] = useState<Record<string, unknown>>({})
   /** Edit's chosen row, once one is: what Save as names and the run does. */
   const enhancing: EditRow | undefined =
-    mode === 'edit' && source?.kind === 'image' ? editRow(source, values.tool) : undefined
+    mode === 'edit' && source?.kind === 'image'
+      ? editRow(source, values.tool)
+      : mode === 'edit' && source?.kind === 'media'
+        ? mediaEditRows(source).find((r) => r.id === values.tool)
+        : undefined
   /** Crop to shape's shape, from the row's pill: what its preview cuts. */
   const cropShape = shapeOf(enhancing, values.shape)
   /** What Save as names and runs for: the row's extension action in edit. */
   const currentAction = enhancing ? actionForRow(enhancing) : action
   const [lastResult, setLastResult] = useState<Result | null>(null)
+  const compressNext = compressNextFor(lastResult)
   /**
    * Done's header bar while Done is on screen (K3·a). Done fills the screen
    * live, so the run goes into the scrollback — its bar, then its record —
@@ -1666,8 +1693,8 @@ export function App({
       const delta = key.rightArrow ? 1 : key.leftArrow ? -1 : 0
       if (delta === 0) return
       setSizeUnit((current) => {
-        const next = SIZE_UNIT_IDS.indexOf(current) + delta
-        return SIZE_UNIT_IDS[Math.min(SIZE_UNIT_IDS.length - 1, Math.max(0, next))] ?? current
+        const next = unitsHere.indexOf(current) + delta
+        return unitsHere[Math.min(unitsHere.length - 1, Math.max(0, next))] ?? current
       })
     },
     { isActive: step === 'size' },
@@ -1942,6 +1969,20 @@ export function App({
       if (input === 's') {
         pressDone('s')
         revealLastResult()
+      }
+      // After an edit of a video or sound file: on to compress, the result
+      // the file now (video spec §2 — two jobs are two runs).
+      if (input === 'c' && !suggestion && compressNext && lastResult?.job.outputs[0]) {
+        pressDone('c')
+        recordDone()
+        probe(lastResult.job.outputs[0]).then((info) => {
+          setMode('compress')
+          setValues({})
+          setLastResult(null)
+          setStage(addToStage(emptyStage(), [info], []))
+          setStep('mode')
+        }, showError)
+        return
       }
       // Acts on the measured suggestion: re-enters convert with that target
       // already chosen, so the offer is one keystroke from being taken.
@@ -2299,6 +2340,14 @@ export function App({
       // `/compress` before dropping a file means the file lands in the
       // compress flow, and compressing something lossless is refused here
       // rather than after the user has answered three more questions about it.
+      // A video or sound file ffmpeg has not read: nothing but convert's
+      // picker can be shown for it, and that says how to get ffmpeg.
+      if (info.kind === 'media' && !info.facts && mode !== 'convert') {
+        refuseFile(ffmpegMissing(info.path), info.path)
+        setMode('convert')
+        setStep('target')
+        return
+      }
       if (mode === 'compress') {
         if (!compressAction.appliesTo([info])) {
           refuseFile(unsupportedCompress(info), info.path)
@@ -2329,7 +2378,7 @@ export function App({
       // Edit takes images; anything else falls back to convert, as a
       // file compress cannot take does.
       if (mode === 'edit') {
-        if (info.kind !== 'image') {
+        if (info.kind !== 'image' && info.kind !== 'media') {
           hold({ kind: 'note', id: nextId(), text: editRefusal(info) })
           setMode('convert')
           setStep(hasConvertTarget(info) ? 'target' : 'idle')
@@ -2581,8 +2630,20 @@ export function App({
   }
 
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
+    if (currentSource.kind === 'media' && !currentSource.facts) {
+      refuseFile(ffmpegMissing(currentSource.path), currentSource.path)
+      return
+    }
     setValues((v) => ({ ...v, target }))
     const next = action.options([currentSource], { target }, livePrefs)
+    if (currentSource.kind === 'media' && target === 'gif') {
+      setStep('length')
+      return
+    }
+    if (next.some((s) => s.id === 'bitrate')) {
+      setStep('bitrate')
+      return
+    }
     // `action.options()` only includes a pages spec when the chosen target
     // actually rasterises the source (jpeg/png via pdfium) — a pdf/docx/doc
     // target skips straight to quality or destination, having no pages or
@@ -2851,7 +2912,23 @@ export function App({
   const destinationBack = () => {
     setText('')
     if (mode === 'edit') {
-      setStep(values.tool === 'resize' ? 'resize' : values.tool === 'crop' ? 'crop' : 'edit')
+      setStep(
+        values.tool === 'resize'
+          ? 'resize'
+          : values.tool === 'crop'
+            ? 'crop'
+            : values.tool === 'cut'
+              ? 'length'
+              : 'edit',
+      )
+      return
+    }
+    if (source?.kind === 'media' && values.target === 'gif') {
+      setStep('length')
+      return
+    }
+    if (specFor('bitrate')) {
+      setStep('bitrate')
       return
     }
     if (specFor('quality')) {
@@ -2881,6 +2958,8 @@ export function App({
       setSizeError(`${raw.trim() || 'that'} is not a size. Try 500kb or 2mb.`)
       return
     }
+    // Under what this video can get: said under the field already, nothing to confirm.
+    if (floorHere !== undefined && bytes < floorHere) return
     setSizeError(undefined)
     setValues((v) => ({ ...v, size: raw, targetBytes: bytes }))
     setText('')
@@ -3272,6 +3351,22 @@ export function App({
     if (!source) return
     const vals = rowValues(row, step)
     setValues(vals)
+    if (row.id === 'cut') {
+      setStep('length')
+      return
+    }
+    if (row.id === 'crop' && source.kind === 'media') {
+      if (!shapeOf(row, vals.shape)) return
+      void frameFor(source).then(
+        (frame) => {
+          setCropFrame(frame)
+          setCropAt(undefined)
+          setStep('crop')
+        },
+        (e) => showError(e),
+      )
+      return
+    }
     if (row.id === 'crop') {
       // No shape to cut (the row is dimmed then): never a preview with nothing to show.
       if (!shapeOf(row, vals.shape)) return
@@ -3281,11 +3376,37 @@ export function App({
     }
     if (row.id === 'resize') {
       // An oversized source opens at its own limit, never past it (spec §2.3).
+      // A video is never made bigger: its slider stops at 100 %.
       setResizePercent(source.kind === 'image' ? Math.min(100, largestPercent(source)) : 100)
       setStep('resize')
       return
     }
     openSaveAs({ values: vals, action: actionForRow(row) })
+  }
+
+  /**
+   * The middle frame of a video, written as a PNG beside nothing (a temp
+   * folder) and probed as a picture: Crop to shape's preview cuts it as it
+   * cuts a photo, and the box is in the video's own upright pixels.
+   */
+  const frameFor = async (video: MediaInfo): Promise<ImageInfo> => {
+    const [{ frameAt }, { mkdtemp }, { tmpdir }, { join }] = await Promise.all([
+      import('../engines/ffmpeg.js'),
+      import('node:fs/promises'),
+      import('node:os'),
+      import('node:path'),
+    ])
+    const out = join(await mkdtemp(join(tmpdir(), 'forge-frame-')), 'frame.png')
+    await frameAt(video.path, (video.facts?.duration ?? 0) / 2, out)
+    const info = await probe(out)
+    if (info.kind !== 'image') throw new Error('the frame did not read as a picture')
+    return info
+  }
+
+  /** A sound format's size, said beside it: arithmetic, so there at once. */
+  const soundSize = (src: MediaInfo, target: FormatId): MeasuredSize => {
+    const bytes = soundBytes(src, target)
+    return bytes === undefined ? { status: 'idle' } : { status: 'done', bytes }
   }
 
   /** The crop where the preview left it: on to Save as, the box with its shape. */
@@ -3294,14 +3415,14 @@ export function App({
     const { w, h } = cropShape
     const vals = { ...values, tool: 'crop', crop: { aspect: { w, h }, box } }
     setValues(vals)
-    openSaveAs({ values: vals, action: cropAction })
+    openSaveAs({ values: vals, action: source?.kind === 'media' ? mediaEditAction : cropAction })
   }
 
   /** Resize's size, from the slider or the exact pair: on to Save as. */
   const chooseResize = (resize: ResizeSpec) => {
     const vals = { ...values, tool: 'resize', resize }
     setValues(vals)
-    openSaveAs({ values: vals, action: resizeAction })
+    openSaveAs({ values: vals, action: source?.kind === 'media' ? mediaEditAction : resizeAction })
   }
 
   /**
@@ -3999,7 +4120,11 @@ export function App({
                   initialValue={modeSpec.default}
                   onSubmit={(chosen) => {
                     setValues((v) => ({ ...v, mode: chosen }))
-                    setStep(chosen === 'size' ? 'size' : 'quality')
+                    if (chosen === 'size' && !unitsHere.includes(sizeUnit)) {
+                      setSizeUnit(unitsHere.includes('mb') ? 'mb' : (unitsHere[0] ?? 'kb'))
+                    }
+                    const sound = source.kind === 'media' && !hasPicture(source)
+                    setStep(chosen === 'size' ? 'size' : sound ? 'bitrate' : 'quality')
                   }}
                   onCancel={clearSource}
                   showHints={band !== 'compact'}
@@ -4033,9 +4158,22 @@ export function App({
                   onSubmit={submitSize}
                   placeholder={sizeSpec.placeholder}
                   unit={sizeUnit}
+                  units={unitsHere}
                   unitFocused={unitFocused}
                   width={width}
                 />
+                {/* A video's floor, as compress already says it (SizeAside):
+                  the size in bold, then the words in plain orange. */}
+                {floorHere !== undefined &&
+                (parseSize(sizeWithUnit(text)) ?? Number.POSITIVE_INFINITY) < floorHere ? (
+                  <Text>
+                    {'   '}
+                    <Text bold color={colourProp(palette.fg)}>
+                      {formatBytes(floorHere)}
+                    </Text>
+                    <Text color={colourProp(palette.larger)}>{'  cannot compress more'}</Text>
+                  </Text>
+                ) : null}
                 {/* Said only when what was typed is not a size at all; what it
                   is, when it is one, the field already shows. */}
                 {text.trim() !== '' && describeSize(sizeWithUnit(text)) === undefined ? (
@@ -4057,7 +4195,10 @@ export function App({
                   width={width}
                   pairs={[
                     ['↵', 'confirm'],
-                    ['tab', unitFocused ? 'amount' : 'unit'],
+                    // One unit leaves nothing for tab to switch to.
+                    ...(unitsHere.length > 1
+                      ? ([['tab', unitFocused ? 'amount' : 'unit']] as Array<[string, string]>)
+                      : []),
                     ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
                     ['esc', 'back'],
                   ]}
@@ -4065,7 +4206,33 @@ export function App({
               </Box>
             ) : null}
 
-            {step === 'target' && source && targetSpec?.kind === 'select' ? (
+            {step === 'target' &&
+            source?.kind === 'media' &&
+            hasPicture(source) &&
+            targetSpec?.kind === 'select' ? (
+              <MediaFormatPicker
+                mode={mode}
+                targets={targetSpec.choices.map((c) => c.value as FormatId)}
+                initial={
+                  typeof values.target === 'string' ? (values.target as FormatId) : undefined
+                }
+                missing={
+                  source.facts
+                    ? undefined
+                    : process.platform === 'win32'
+                      ? 'winget install ffmpeg'
+                      : 'brew install ffmpeg'
+                }
+                onSubmit={(target) => chooseTarget(source, target)}
+                onCancel={clearSource}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'target' &&
+            source &&
+            !(source.kind === 'media' && hasPicture(source)) &&
+            targetSpec?.kind === 'select' ? (
               <Box flexDirection="column" flexGrow={1}>
                 <Box marginBottom={1}>
                   <StepTitle mode={mode} title="Convert to" width={width} />
@@ -4076,7 +4243,15 @@ export function App({
                   onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
                   speak={(item, budget) =>
                     item.value === GOTO_PDF ? null : (
-                      <SizeAside size={targetSize} sourceBytes={source.bytes} budget={budget} />
+                      <SizeAside
+                        size={
+                          source.kind === 'media'
+                            ? soundSize(source, item.value as FormatId)
+                            : targetSize
+                        }
+                        sourceBytes={source.bytes}
+                        budget={budget}
+                      />
                     )
                   }
                   onSubmit={(target) => {
@@ -4191,6 +4366,61 @@ export function App({
               </Box>
             ) : null}
 
+            {step === 'bitrate' && source?.kind === 'media' && specFor('bitrate')?.kind === 'slider'
+              ? (() => {
+                  const spec = specFor('bitrate')
+                  if (spec?.kind !== 'slider') return null
+                  const kbps = typeof values.bitrate === 'number' ? values.bitrate : spec.default
+                  const duration = source.facts?.duration ?? 0
+                  return (
+                    <Box flexDirection="column" flexGrow={1}>
+                      <QualityStep
+                        mode={mode}
+                        aside={
+                          mode === 'compress'
+                            ? displayName(source.path)
+                            : typeof values.target === 'string'
+                              ? FORMATS[values.target as FormatId].label
+                              : undefined
+                        }
+                        min={spec.min}
+                        max={spec.max}
+                        step={spec.step}
+                        value={kbps}
+                        unit=" kbps"
+                        onChange={(b) => setValues((v) => ({ ...v, bitrate: b }))}
+                        onSubmit={(b) => openSaveAs({ values: { ...values, bitrate: b } })}
+                        onCancel={() => setStep(mode === 'compress' ? 'mode' : 'target')}
+                        // For sound the size is arithmetic: bitrate × length.
+                        size={{ status: 'done', bytes: Math.round((kbps * 1000 * duration) / 8) }}
+                        sourceBytes={source.bytes}
+                        width={width}
+                        noBigger={mode === 'compress'}
+                      />
+                    </Box>
+                  )
+                })()
+              : null}
+
+            {step === 'length' && source?.kind === 'media' && source.facts ? (
+              <LengthStep
+                source={source}
+                title={mode === 'edit' ? 'Trim' : 'GIF'}
+                gif={mode !== 'edit'}
+                initial={values.cut as Cut | undefined}
+                onSubmit={(cut) => {
+                  const vals = { ...values, cut }
+                  setValues(vals)
+                  openSaveAs({
+                    values: vals,
+                    action: mode === 'edit' ? mediaEditAction : convertAction,
+                  })
+                }}
+                onCancel={() => setStep(mode === 'edit' ? 'edit' : 'target')}
+                width={width}
+              />
+            ) : null}
+
             {step === 'quality' && source && qualitySpec?.kind === 'slider' ? (
               <Box flexDirection="column" flexGrow={1}>
                 <QualityStep
@@ -4234,6 +4464,20 @@ export function App({
               </Box>
             ) : null}
 
+            {step === 'edit' && source?.kind === 'media' ? (
+              <EditPicker
+                format={FORMATS[source.format].label}
+                rows={mediaEditRows(source)}
+                tools={{}}
+                checking={false}
+                chosen={{ tool: values.tool, step: values.shape }}
+                width={width}
+                onChoose={chooseEdit}
+                onStop={() => {}}
+                onCancel={clearSource}
+              />
+            ) : null}
+
             {step === 'edit' && source?.kind === 'image' && toolStates ? (
               <EditPicker
                 format={FORMATS[source.format].label}
@@ -4255,6 +4499,36 @@ export function App({
                 }}
                 onStop={stopInstall}
                 onCancel={clearSource}
+              />
+            ) : null}
+
+            {step === 'resize' && source?.kind === 'media' && source.facts?.video ? (
+              <ResizeStep
+                mode={mode}
+                aside={`${displayName(source.path)} · ${source.facts.video.width} × ${source.facts.video.height}`}
+                from={source.facts.video}
+                percent={resizePercent}
+                // Never bigger than the video is.
+                max={100}
+                onChange={setResizePercent}
+                onSubmit={(percent) => chooseResize({ percent })}
+                onExact={() => setStep('exact-size')}
+                onCancel={() => setStep('edit')}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'crop' && source?.kind === 'media' && cropFrame && cropShape ? (
+              <CropStep
+                key={`${source.path}\u0000${cropShape.label}`}
+                mode={mode}
+                source={cropFrame}
+                shape={cropShape}
+                initial={cropAt}
+                onChange={setCropAt}
+                onSubmit={chooseCrop}
+                onCancel={() => setStep('edit')}
+                width={width}
               />
             ) : null}
 
@@ -4284,6 +4558,18 @@ export function App({
                 onSubmit={chooseCrop}
                 // Back to the list, the shape still on the pill.
                 onCancel={() => setStep('edit')}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'exact-size' && source?.kind === 'media' && source.facts?.video ? (
+              <ExactSizeStep
+                mode={mode}
+                aside={`${displayName(source.path)} · ${source.facts.video.width} × ${source.facts.video.height}`}
+                from={source.facts.video}
+                percent={resizePercent}
+                onSubmit={chooseResize}
+                onCancel={() => setStep('resize')}
                 width={width}
               />
             ) : null}
@@ -4423,7 +4709,11 @@ export function App({
               on the key row do the same, and the design has no row for them. */}
             {/* Edit's Done (X5): the header bar, the quiet line and the
               picture before and after (`EditDone`), then the keys. */}
-            {step === 'result' && lastResult && doneBar && doneBar.mode === 'edit' ? (
+            {step === 'result' &&
+            lastResult &&
+            doneBar &&
+            doneBar.mode === 'edit' &&
+            !compressNext ? (
               <Box flexDirection="column" flexGrow={1}>
                 <Box marginBottom={1}>
                   <HeaderBar mode="edit" trail={doneBar.trail} width={width} />
@@ -4475,7 +4765,10 @@ export function App({
               </Box>
             ) : null}
 
-            {step === 'result' && lastResult && doneBar && doneBar.mode !== 'edit' ? (
+            {step === 'result' &&
+            lastResult &&
+            doneBar &&
+            (doneBar.mode !== 'edit' || compressNext) ? (
               <DoneScreen
                 mode={doneBar.mode}
                 trail={doneBar.trail}
@@ -4494,8 +4787,20 @@ export function App({
                       ]
                     : []),
                 ]}
-                again={doneBar.mode === 'compress' ? 'compress again' : 'convert another'}
-                offer={suggestion ? FORMATS[suggestion.target].label : undefined}
+                again={
+                  doneBar.mode === 'compress'
+                    ? 'compress again'
+                    : doneBar.mode === 'edit'
+                      ? 'edit another'
+                      : 'convert another'
+                }
+                offer={
+                  suggestion
+                    ? FORMATS[suggestion.target].label
+                    : compressNext
+                      ? 'compress it'
+                      : undefined
+                }
                 reveal={revealLabel()}
                 width={width}
                 height={height}

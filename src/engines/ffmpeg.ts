@@ -114,6 +114,76 @@ export async function keyframeAtOrBefore(
   return times.length ? Math.max(...times) : undefined
 }
 
+/** Samples a second the levels are read at: enough for a peak per column, little to decode. */
+const LEVEL_RATE = 4000
+
+/**
+ * The sound's loudness across the file, one level (0–1, the loudest 1) per
+ * column, for Trim's peaks. Null when there is no sound. Decodes the sound
+ * alone, mono and slow, streamed: an hour is a few seconds' work.
+ */
+export async function soundLevels(
+  path: string,
+  duration: number,
+  columns: number,
+  opts: { signal?: AbortSignal; tools?: Ffmpeg } = {},
+): Promise<number[] | null> {
+  const t = opts.tools ?? (await findFfmpeg())
+  if (!t) return null
+  const total = Math.max(1, Math.round(duration * LEVEL_RATE))
+  const per = Math.max(1, Math.ceil(total / columns))
+  const peaks = new Array<number>(columns).fill(0)
+  let n = 0
+  let carry: Buffer = Buffer.alloc(0)
+  const ok = await new Promise<boolean>((resolve, reject) => {
+    const child = spawn(
+      t.ffmpeg,
+      [
+        ...['-hide_banner', '-nostdin', '-loglevel', 'error', '-i', path],
+        ...['-map', '0:a:0', '-ac', '1', '-ar', String(LEVEL_RATE), '-f', 's16le', '-'],
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    const onAbort = () => child.kill('SIGKILL')
+    opts.signal?.addEventListener('abort', onAbort, { once: true })
+    child.stdout.on('data', (chunk: Buffer) => {
+      const b = carry.length ? Buffer.concat([carry, chunk]) : chunk
+      const whole = b.length - (b.length % 2)
+      for (let i = 0; i < whole; i += 2) {
+        const v = Math.abs(b.readInt16LE(i))
+        const col = Math.min(columns - 1, Math.floor(n / per))
+        if (v > (peaks[col] ?? 0)) peaks[col] = v
+        n++
+      }
+      carry = b.subarray(whole)
+    })
+    child.stderr.resume()
+    child.on('error', reject)
+    child.on('close', (code) => {
+      opts.signal?.removeEventListener('abort', onAbort)
+      if (opts.signal?.aborted) reject(opts.signal.reason ?? new Error('aborted'))
+      // No sound stream to map: ffmpeg refuses, which is the answer.
+      else resolve(code === 0 && n > 0)
+    })
+  })
+  if (!ok) return null
+  const loudest = Math.max(1, ...peaks)
+  // A square root, as the ear hears: quiet speech still shows.
+  return peaks.map((v) => Math.sqrt(v / loudest))
+}
+
+/** One frame at `seconds`, upright, written to `out` as a PNG: Crop to shape's preview. */
+export async function frameAt(
+  path: string,
+  seconds: number,
+  out: string,
+  tools?: Ffmpeg,
+): Promise<void> {
+  await runFfmpeg(['-ss', String(Math.max(0, seconds)), '-i', path, '-frames:v', '1', '-y', out], {
+    tools,
+  })
+}
+
 /** The seconds encoded, from the last `out_time_us=` in a chunk of ffmpeg's `-progress` lines. */
 export function readProgress(chunk: string): number | undefined {
   let last: number | undefined

@@ -32,6 +32,8 @@ export interface ClipSpec {
   ext?: string
   /** Display-matrix rotation to tag a video with, as a phone does. */
   rotate?: 90 | 180 | 270
+  /** A keyframe every this many seconds (a phone's is about one); one at the start otherwise. */
+  keyframes?: number
 }
 
 /** A test clip made by ffmpeg's own sources: a moving test card and a tone. */
@@ -45,6 +47,7 @@ export async function makeClip(spec: ClipSpec = {}): Promise<string> {
     soundOnly = false,
     ext = soundOnly ? 'wav' : 'mov',
     rotate,
+    keyframes,
   } = spec
   const out = join(await makeTempDir(), `clip.${ext}`)
   const args = ['-hide_banner', '-loglevel', 'error', '-y']
@@ -54,6 +57,7 @@ export async function makeClip(spec: ClipSpec = {}): Promise<string> {
   if (!soundOnly) {
     if (ext === 'webm') args.push('-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8')
     else args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p')
+    if (keyframes) args.push('-g', String(Math.round(keyframes * fps)), '-keyint_min', '1')
   }
   if (audio || soundOnly) {
     if (ext === 'webm') args.push('-c:a', 'libopus')

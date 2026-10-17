@@ -19,6 +19,8 @@ const LONG_SIDES = [1920, 1280, 854] as const
 const FRAME_RATES = [30, 24] as const
 const BOTTOM_FPS = 15
 const AUDIO_KBPS = 64
+/** Speech at its smallest: a sound file's floor, and a video's sound at the bottom rung. */
+const SOUND_FLOOR_KBPS = 32
 const BOTTOM_AUDIO_KBPS = 32
 
 export interface SizeSource {
@@ -95,4 +97,26 @@ export function planSize(src: SizeSource & { targetBytes: number }): SizePlan {
     if (video >= needs(r)) return { ...r, videoKbps: Math.floor(video) }
   }
   return { floor: floorBytes(src) }
+}
+
+/** The smallest a video or sound file can be compressed to, from its facts (video spec §3.3). */
+export function mediaFloor(
+  facts: {
+    duration: number
+    video?: { width: number; height: number; fps: number } | undefined
+    audio?: unknown
+  },
+  opts: { soundOnly?: boolean; mute?: boolean } = {},
+): number {
+  const audio = facts.audio !== undefined && opts.mute !== true
+  if (facts.video && !opts.soundOnly) {
+    return floorBytes({
+      duration: facts.duration,
+      width: facts.video.width,
+      height: facts.video.height,
+      fps: facts.video.fps,
+      hasAudio: audio,
+    })
+  }
+  return Math.ceil(((SOUND_FLOOR_KBPS * 1000) / 8 / OVERHEAD) * facts.duration)
 }

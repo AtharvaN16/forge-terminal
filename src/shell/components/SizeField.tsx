@@ -23,6 +23,7 @@ export function SizeField({
   onSubmit,
   placeholder,
   unit,
+  units: offered = SIZE_UNIT_IDS,
   unitFocused,
   width,
 }: {
@@ -31,6 +32,8 @@ export function SizeField({
   onSubmit: (value: string) => void
   placeholder: string
   unit: SizeUnit
+  /** The units offered: a video's or sound file's own (B never); all of them otherwise. */
+  units?: readonly SizeUnit[]
   unitFocused: boolean
   width: number
 }) {
@@ -39,7 +42,7 @@ export function SizeField({
   const plain = noColour || palette.selectionBg === ''
   const units = (
     <Text>
-      {SIZE_UNIT_IDS.map((id) => {
+      {offered.map((id) => {
         const chosen = id === unit
         const label = LABELS[id]
         if (!chosen) {

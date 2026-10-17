@@ -17,7 +17,7 @@ import type {
 } from '../core/types.js'
 import { type Ffmpeg, findFfmpeg, keyframeAtOrBefore, probeMedia, runFfmpeg } from './ffmpeg.js'
 import { type EncodePlan, LOUDNORM_MEASURED, planEncode } from './media-encode.js'
-import { floorBytes } from './media-size.js'
+import { mediaFloor } from './media-size.js'
 import { type MediaFormat, SNIFF_BYTES, sniffMedia } from './media-sniff.js'
 import type { Engine } from './types.js'
 
@@ -109,20 +109,14 @@ function sizeTo(job: Job, targetBytes: number): { floor: number } | undefined {
   const source = job.sources[0]
   const facts = source.kind === 'media' ? source.facts : undefined
   if (!facts) return undefined
-  const duration = outputSeconds(job, facts.duration)
-  const soundOut = FORMATS[job.target].media === 'sound'
   const m = job.options.media ?? {}
-  const audio = facts.audio !== undefined && !m.mute && job.target !== 'gif'
-  const floor =
-    facts.video && !soundOut
-      ? floorBytes({
-          duration,
-          width: facts.video.width,
-          height: facts.video.height,
-          fps: facts.video.fps,
-          hasAudio: audio,
-        })
-      : Math.ceil(((32 * 1000) / 8 / 0.98) * duration)
+  const floor = mediaFloor(
+    { ...facts, duration: outputSeconds(job, facts.duration) },
+    {
+      soundOnly: FORMATS[job.target].media === 'sound',
+      mute: m.mute === true || job.target === 'gif',
+    },
+  )
   return targetBytes < floor ? { floor } : undefined
 }
 

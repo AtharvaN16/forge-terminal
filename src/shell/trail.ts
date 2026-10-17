@@ -29,6 +29,10 @@ const SCREENS: Record<string, { at: number; name?: string }> = {
   size: { at: 4, name: 'Size' },
   // Edit's Resize: the size, after the row's name.
   resize: { at: 4, name: 'Size' },
+  // Trim's screen, and GIF's which part (video spec §3.4, §3.5).
+  length: { at: 4, name: 'Length' },
+  // A sound file's quality: its bitrate.
+  bitrate: { at: 5, name: 'Quality' },
   quality: { at: 5, name: 'Quality' },
   // The folder and the name, asked as one question (P1).
   'save-as': { at: 6, name: 'Save as' },

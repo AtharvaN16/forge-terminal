@@ -92,9 +92,9 @@ export function EditPicker({
     row.extension ? tools[row.extension] : READY
   // Windows has no Remove background row (Apple Vision); the blank row then
   // follows the last AI row there is, so it still splits AI from built-in.
-  const gapAfter = rows.some((r) => r.id === GAP_AFTER)
-    ? GAP_AFTER
-    : rows.filter((r) => r.extension).at(-1)?.id
+  const gapAfter =
+    rows.find((r) => r.gapAfter)?.id ??
+    (rows.some((r) => r.id === GAP_AFTER) ? GAP_AFTER : rows.filter((r) => r.extension).at(-1)?.id)
   const items: Choice[] = rows.flatMap((r): Choice[] => {
     const state = stateOf(r)
     const reason = r.tooLarge ?? (state?.kind === 'unsupported' ? state.reason : undefined)

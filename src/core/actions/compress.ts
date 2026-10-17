@@ -90,7 +90,10 @@ export const compressAction: Action = {
         id: 'mode',
         label: `Compress ${lastSegment(source.path) ?? 'this file'}`,
         choices: [
-          { value: 'quality', label: 'By quality', hint: 'pick a level, see the result' },
+          // A video cannot be shown at each level, so it is not promised.
+          source.kind === 'media'
+            ? { value: 'quality', label: 'By quality' }
+            : { value: 'quality', label: 'By quality', hint: 'pick a level, see the result' },
           { value: 'size', label: 'To a target size', hint: 'smallest quality that fits' },
         ],
         default: 'quality',
