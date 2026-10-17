@@ -67,6 +67,51 @@ describe('the shell, opened from the right-click menu', () => {
     expect(frame).toMatch(/↵\s+pdf/)
   })
 
+  it('Compress on several files: staged, and says it cannot do several at once yet', async () => {
+    const { dir, file } = await jpeg()
+    const second = join(dir, 'second.jpg')
+    await sharp(file).toFile(second)
+    const { frames } = render(
+      <App
+        initialWidth={100}
+        prefs={prefs(dir)}
+        opened={{ paths: [file, second], mode: 'compress', advance: true }}
+      />,
+    )
+    await settle()
+    expect(frames.join('\n')).toContain("isn't supported yet")
+  })
+
+  it('Compress on a folder: says the same, rather than sitting there', async () => {
+    const { dir } = await jpeg()
+    await sharp(join(dir, 'photo.jpg')).toFile(join(dir, 'second.jpg'))
+    const { frames } = render(
+      <App
+        initialWidth={100}
+        prefs={prefs(dir)}
+        opened={{ paths: [dir], mode: 'compress', advance: true }}
+      />,
+    )
+    await settle()
+    expect(frames.join('\n')).toContain("isn't supported yet")
+  })
+
+  it('does not step in later, on a drop, when the opened files could not be read', async () => {
+    const dir = await makeTempDir()
+    const { lastFrame, stdin } = render(
+      <App
+        initialWidth={100}
+        prefs={prefs(dir)}
+        opened={{ paths: [join(dir, 'gone.jpg')], mode: 'compress', advance: true }}
+      />,
+    )
+    await settle()
+    const { file } = await jpeg()
+    stdin.write(file)
+    await settle()
+    expect(lastFrame() ?? '').not.toContain('By quality')
+  })
+
   it('waits for the first-run theme question before taking the first step', async () => {
     const { dir, file } = await jpeg()
     const { lastFrame } = render(

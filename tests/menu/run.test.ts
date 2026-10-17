@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { type RunDeps, runMenuAction, sharpenSummary, terminalCommand } from '../../src/menu/run.js'
+import {
+  freeSharpName,
+  type RunDeps,
+  runMenuAction,
+  sharpenSummary,
+  terminalCommand,
+} from '../../src/menu/run.js'
 
 const ARGV = [
   '/usr/local/bin/node',
@@ -20,6 +26,12 @@ describe('terminalCommand', () => {
     )
   })
 
+  it('uses the window Terminal opens on launch, rather than a second one', () => {
+    const script = terminalCommand('Apple_Terminal', ARGV, 'darwin')[1].join(' ')
+    expect(script).toContain('if application "Terminal" is running then')
+    expect(script).toContain('do script (item 1 of argv) in window 1')
+  })
+
   it('falls back to Terminal for a terminal it does not know', () => {
     expect(terminalCommand('vscode', ARGV, 'darwin')[1].join(' ')).toContain('"Terminal"')
     expect(terminalCommand(undefined, ARGV, 'darwin')[1].join(' ')).toContain('"Terminal"')
@@ -38,10 +50,12 @@ describe('terminalCommand', () => {
     ])
   })
 
-  it('opens a new Windows Terminal window, else Node in a console of its own', () => {
+  it('opens a new Windows Terminal window, else a console window of its own', () => {
     expect(terminalCommand('wt', ARGV, 'win32')).toEqual(['wt.exe', ['-w', 'new', ...ARGV]])
-    // launched detached, which on Windows gives the process its own console window
-    expect(terminalCommand(undefined, ARGV, 'win32')).toEqual([ARGV[0], ARGV.slice(1)])
+    // A detached process gets no console at all (DETACHED_PROCESS), and the
+    // menu's own runs under a hidden one: conhost opens a visible window.
+    expect(terminalCommand(undefined, ARGV, 'win32')).toEqual(['conhost.exe', ARGV])
+    expect(terminalCommand('console', ARGV, 'win32')).toEqual(['conhost.exe', ARGV])
   })
 })
 
@@ -96,6 +110,19 @@ function deps(over: Partial<RunDeps> = {}) {
   }
   return { d, log }
 }
+
+describe('freeSharpName', () => {
+  it('is photo-sharp.png beside the original, or the next free (n) when that is taken', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const d = mkdtempSync(join(tmpdir(), 'forge-sharp-'))
+    const photo = join(d, 'photo.jpg')
+    expect(freeSharpName(photo)).toBe(join(d, 'photo-sharp.png'))
+    writeFileSync(join(d, 'photo-sharp.png'), '')
+    expect(freeSharpName(photo)).toBe(join(d, 'photo-sharp (1).png'))
+  })
+})
 
 describe('runMenuAction', () => {
   it('opens Forge in a terminal for compress, with the files', async () => {

@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import sharp from 'sharp'
 import { icoFrom, renderIcon } from './icon.js'
 import { type MenuPaint, menuItems } from './items.js'
 import { macLauncher, windowsLauncher } from './launcher.js'
@@ -21,6 +20,12 @@ export interface MenuEnv {
   node: string
   execArgv: string[]
   forge: string
+  /**
+   * XDG_CONFIG_HOME as the user's shell had it. A menu item is started by
+   * Finder or Explorer, which never read the shell's profile, so without it
+   * the item would look for extensions and settings in the wrong folder.
+   */
+  xdgConfigHome?: string
   /** Forge's version, recorded so a newer one sets the menu up again. */
   version: string
   /** Whether Boost is installed, which Sharpen needs. */
@@ -35,7 +40,16 @@ export interface MenuState {
   forge: string
   node: string
   execArgv: string[]
+  xdgConfigHome?: string
 }
+
+/** True when `state` was written for this Forge, Node and config folder: nothing to redo. */
+export const stateMatches = (state: MenuState, e: MenuEnv) =>
+  state.version === e.version &&
+  state.forge === e.forge &&
+  state.node === e.node &&
+  state.execArgv.join('\0') === e.execArgv.join('\0') &&
+  state.xdgConfigHome === e.xdgConfigHome
 
 const PBS = '/System/Library/CoreServices/pbs'
 const stateFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'state.json')
@@ -76,6 +90,9 @@ export async function installMenu(e: MenuEnv): Promise<void> {
     chmodSync(launcher, 0o755)
     for (const bundle of allBundles(e)) rmSync(bundle, { recursive: true, force: true })
     const tiffs = new Map<MenuPaint, Buffer>()
+    // Loaded here, not at the top: `forge uninstall` imports this module, and
+    // on Windows a loaded sharp holds its DLL open against npm deleting it.
+    const { default: sharp } = await import('sharp')
     for (const item of items) {
       if (!tiffs.has(item.paint))
         tiffs.set(
@@ -110,6 +127,7 @@ export async function installMenu(e: MenuEnv): Promise<void> {
     forge: e.forge,
     node: e.node,
     execArgv: e.execArgv,
+    ...(e.xdgConfigHome === undefined ? {} : { xdgConfigHome: e.xdgConfigHome }),
   }
   write(stateFile(e), JSON.stringify(state))
 }
@@ -142,7 +160,3 @@ export const runProgram = (cmd: string, args: string[]) =>
       err ? reject(err) : resolve(),
     )
   })
-
-/** Whether there is anything at the launcher's path, for a menu set up but since deleted by hand. */
-export const launcherExists = (e: Pick<MenuEnv, 'menuDir' | 'platform'>) =>
-  existsSync(join(e.menuDir, e.platform === 'win32' ? 'run.mjs' : 'run'))

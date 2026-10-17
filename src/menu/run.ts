@@ -1,4 +1,5 @@
-import { basename } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
+import { uniqueOutputPath } from '../core/output-path.js'
 import type { MenuAction } from './items.js'
 import { shellQuote } from './mac.js'
 
@@ -36,7 +37,9 @@ export function terminalCommand(
 ): [string, string[]] {
   if (platform === 'win32') {
     if (terminal === 'wt') return ['wt.exe', ['-w', 'new', ...argv]]
-    return [argv[0] as string, argv.slice(1)]
+    // Not Node itself, detached: that gets no console at all (DETACHED_PROCESS),
+    // and the menu's own process runs under a hidden one. conhost opens a window.
+    return ['conhost.exe', argv]
   }
   if (terminal === 'ghostty') return ['/usr/bin/open', ['-na', 'Ghostty', '--args', '-e', ...argv]]
   // `exec`, so quitting Forge ends the shell too and the window can close.
@@ -50,14 +53,30 @@ export function terminalCommand(
           'activate',
           'end tell',
         ]
-      : [
+      : // Launching Terminal opens a window of its own; `do script` alone would
+        // open a second one beside it, so a cold start uses that first window.
+        [
+          'if application "Terminal" is running then',
           'tell application "Terminal" to do script (item 1 of argv)',
+          'else',
+          'tell application "Terminal" to do script (item 1 of argv) in window 1',
+          'end if',
           'tell application "Terminal" to activate',
         ]
   return [
     '/usr/bin/osascript',
     [...['on run argv', ...script, 'end run'].flatMap((l) => ['-e', l]), line],
   ]
+}
+
+/**
+ * Where Sharpen writes, beside the original: `photo-sharp.png` as the CLI
+ * names it, or `photo-sharp (1).png` when that is taken. A menu click has no
+ * one to ask Replace or Keep both, so it keeps both, as decided.
+ */
+export function freeSharpName(source: string): string {
+  const stem = basename(source, extname(source))
+  return uniqueOutputPath(join(dirname(source), `${stem}-sharp.png`))
 }
 
 /** The notification for a Sharpen run: what it made, or what went wrong. */

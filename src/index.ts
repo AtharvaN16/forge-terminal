@@ -148,6 +148,14 @@ async function main(): Promise<void> {
       return
     }
 
+    // Before the engine layer: npm is about to delete Forge, and on Windows a
+    // loaded sharp would hold its DLL open against that (tests/menu/lazy-sharp).
+    if (intent.kind === 'uninstall') {
+      const { runUninstall } = await import('./menu/entry.js')
+      process.exitCode = await runUninstall(VERSION, (line) => process.stdout.write(`${line}\n`))
+      return
+    }
+
     // Only now, with real work to do, is the engine layer loaded.
     const { execute } = await import('./cli/execute.js')
 

@@ -356,7 +356,8 @@ Other commands:
   forge config [list | path | set <setting> <value>]
   forge extensions [add | remove <id>]   optional extras, such as boost and remove-background
   forge update             install a newer Forge, if there is one
-  forge mcp                run as a local MCP server over stdio, for AI agents`
+  forge uninstall          take Forge out of the right-click menu, then remove it
+  forge mcp               run as a local MCP server over stdio, for AI agents`
 
 function parseMaxSize(raw: unknown): number {
   const bytes = parseSize(String(raw))

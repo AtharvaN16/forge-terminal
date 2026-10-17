@@ -80,6 +80,11 @@ describe('registryScript', () => {
     expect(ps).toContain(`-Name '(default)' -Value 'cmd "%1"'`)
   })
 
+  it('doubles the curly quotes PowerShell also ends a string at, as in D’Angelo', () => {
+    const ps = registryScript([{ key: `${C}\\X`, values: { Icon: 'C:\\Users\\D’Angelo\\m.ico' } }])
+    expect(ps).toContain(`-Value 'C:\\Users\\D’’Angelo\\m.ico'`)
+  })
+
   it('clears the old keys first, so an item that went (Sharpen) does not linger', () => {
     const ps = registryScript([])
     for (const r of registryRoots())

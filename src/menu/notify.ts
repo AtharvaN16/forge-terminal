@@ -18,8 +18,13 @@ import { execFile } from 'node:child_process'
 export const AUMID = 'ForgeTerminal.Forge'
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-/** A PowerShell single-quoted string's contents: a quote is written twice. */
-const ps = (s: string) => s.replace(/'/g, "''")
+/**
+ * A PowerShell single-quoted string's contents: a quote is written twice.
+ * PowerShell takes the curly ones (‘ ’ ‚ ‛) as quotes too, so a name like
+ * D’Angelo would otherwise end the string early.
+ */
+export const psEscape = (s: string) => s.replace(/['‘’‚‛]/g, '$&$&')
+const ps = psEscape
 
 /** The PowerShell that shows a two-line toast: `title` in bold, `body` under it. */
 export function toastScript(title: string, body: string): string {

@@ -13,6 +13,8 @@ import { toastScript } from './notify.js'
 
 const GONE_TITLE = 'Forge was uninstalled'
 const GONE_BODY = 'Its menu items are removed.'
+const NO_NODE_TITLE = 'Forge could not start'
+const NO_NODE_BODY = 'Run forge in a terminal once to set its menu up again.'
 
 interface Common {
   /** Node, as `process.execPath`. */
@@ -25,19 +27,46 @@ interface Common {
   menuDir: string
 }
 
-/** The Mac launcher, a POSIX shell script the Quick Actions call with the action and files. */
-export function macLauncher(o: Common & { bundles: string[] }): string {
+/**
+ * The Mac launcher, a POSIX shell script the Quick Actions call with the
+ * action and files.
+ *
+ * Only Forge's own script being gone means it was uninstalled. Node can move
+ * under a Forge that is still there (a Node upgrade that the stable path in
+ * node-path.ts did not survive); then the menu is kept, and the next `forge`
+ * writes the launcher again.
+ */
+export function macLauncher(
+  o: Common & {
+    bundles: string[]
+    /** Config folder override to carry into the run, as the user's shell had it. */
+    xdgConfigHome?: string
+    /** Stand-ins for tests: the notifier and Finder's service refresher. */
+    tools?: { osascript: string; pbs: string }
+  },
+): string {
+  const { osascript, pbs } = o.tools ?? {
+    osascript: '/usr/bin/osascript',
+    pbs: '/System/Library/CoreServices/pbs',
+  }
   const run = [o.node, ...o.execArgv, o.forge].map(shellQuote).join(' ')
+  const say = (title: string, body: string) =>
+    `${shellQuote(osascript)} -e 'display notification "${body}" with title "${title}"'`
   return `#!/bin/sh
 # Forge's right-click menu. Rewritten by Forge whenever it sets the menu up.
-if [ -f ${shellQuote(o.forge)} ] && [ -x ${shellQuote(o.node)} ]; then
-  exec ${run} menu run "$@"
+if [ ! -f ${shellQuote(o.forge)} ]; then
+  # Forge is gone: take its menu with it, and say so once.
+${o.bundles.map((b) => `  rm -rf ${shellQuote(b)}`).join('\n')}
+  rm -rf ${shellQuote(o.menuDir)}
+  ${shellQuote(pbs)} -update
+  ${say(GONE_TITLE, GONE_BODY)}
+  exit 0
 fi
-# Forge is gone: take its menu with it, and say so once.
-${o.bundles.map((b) => `rm -rf ${shellQuote(b)}`).join('\n')}
-rm -rf ${shellQuote(o.menuDir)}
-/System/Library/CoreServices/pbs -update
-/usr/bin/osascript -e 'display notification "${GONE_BODY}" with title "${GONE_TITLE}"'
+if [ ! -x ${shellQuote(o.node)} ]; then
+  ${say(NO_NODE_TITLE, NO_NODE_BODY)}
+  exit 1
+fi
+${o.xdgConfigHome === undefined ? '' : `export XDG_CONFIG_HOME=${shellQuote(o.xdgConfigHome)}\n`}exec ${run} menu run "$@"
 `
 }
 
@@ -46,7 +75,8 @@ rm -rf ${shellQuote(o.menuDir)}
  * console. Node rather than a batch file: a batch file opens a console
  * window, and Sharpen is meant to run with none.
  */
-export function windowsLauncher(o: Common & { keys: string[] }): string {
+export function windowsLauncher(o: Common & { keys: string[]; xdgConfigHome?: string }): string {
+  const env = o.xdgConfigHome === undefined ? {} : { XDG_CONFIG_HOME: o.xdgConfigHome }
   return `// Forge's right-click menu. Rewritten by Forge whenever it sets the menu up.
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, rmSync } from 'node:fs'
@@ -55,11 +85,13 @@ const FORGE = ${JSON.stringify(o.forge)}
 const ARGS = ${JSON.stringify(o.execArgv)}
 const MENU = ${JSON.stringify(o.menuDir)}
 const KEYS = ${JSON.stringify(o.keys)}
+const ENV = ${JSON.stringify(env)}
 
 if (existsSync(FORGE)) {
   const child = spawn(process.execPath, [...ARGS, FORGE, 'menu', 'run', ...process.argv.slice(2)], {
     stdio: 'inherit',
     windowsHide: true,
+    env: { ...process.env, ...ENV },
   })
   child.on('exit', (code) => process.exit(code ?? 0))
 } else {

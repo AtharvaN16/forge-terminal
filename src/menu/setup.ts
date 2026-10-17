@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { installMenu, type MenuEnv, readState } from './install.js'
+import { installMenu, type MenuEnv, readState, stateMatches } from './install.js'
 
 /**
  * Setting the menu up as the shell starts. Decided: the menu is the same for
@@ -15,8 +15,7 @@ import { installMenu, type MenuEnv, readState } from './install.js'
 export async function ensureMenu(e: MenuEnv, o: { global: boolean }): Promise<string | undefined> {
   if (!o.global || (e.platform !== 'darwin' && e.platform !== 'win32')) return undefined
   const state = readState(e)
-  if (state !== undefined && state.version === e.version && state.forge === e.forge)
-    return undefined
+  if (state !== undefined && stateMatches(state, e)) return undefined
   await installMenu(e)
   if (state !== undefined) return undefined
   return e.platform === 'darwin'
@@ -33,10 +32,12 @@ export async function ensureMenu(e: MenuEnv, o: { global: boolean }): Promise<st
 export async function resync(e: MenuEnv): Promise<void> {
   const state = readState(e)
   if (state === undefined) return
-  await installMenu({ ...e, ...state })
+  const { xdgConfigHome: _current, ...rest } = e
+  await installMenu({ ...rest, ...state })
 }
 
 const terminalFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'terminal')
+const MAC_TERMINALS = new Set(['Apple_Terminal', 'iTerm.app', 'ghostty'])
 
 /**
  * Keeps the terminal Forge is running in, so a menu item that opens Forge
@@ -45,7 +46,16 @@ const terminalFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'terminal'
  * last one known.
  */
 export function rememberTerminal(e: Pick<MenuEnv, 'menuDir' | 'platform'>, env: NodeJS.ProcessEnv) {
-  const terminal = e.platform === 'win32' ? (env.WT_SESSION ? 'wt' : undefined) : env.TERM_PROGRAM
+  // Only terminals the menu knows how to open (run.ts): one inside VS Code or
+  // tmux says nothing useful about where to open a window.
+  const terminal =
+    e.platform === 'win32'
+      ? env.WT_SESSION
+        ? 'wt'
+        : 'console'
+      : MAC_TERMINALS.has(env.TERM_PROGRAM ?? '')
+        ? env.TERM_PROGRAM
+        : undefined
   if (!terminal) return
   try {
     mkdirSync(e.menuDir, { recursive: true })

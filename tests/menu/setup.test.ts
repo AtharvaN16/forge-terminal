@@ -59,6 +59,22 @@ describe('ensureMenu', () => {
     expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).toContain(moved)
   })
 
+  it('sets it up again when Node has moved, so the launcher can still start Forge', async () => {
+    const e = env()
+    await ensureMenu(e, { global: true })
+    await ensureMenu({ ...e, node: '/opt/homebrew/bin/node' }, { global: true })
+    expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).toContain("'/opt/homebrew/bin/node'")
+  })
+
+  it('sets it up again when the config folder override changes', async () => {
+    const e = env()
+    await ensureMenu(e, { global: true })
+    await ensureMenu({ ...e, xdgConfigHome: '/Users/me/cfg' }, { global: true })
+    expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).toContain(
+      "XDG_CONFIG_HOME='/Users/me/cfg'",
+    )
+  })
+
   it('leaves the menu alone for a Forge not installed with npm -g, such as a source checkout', async () => {
     const e = env()
     expect(await ensureMenu(e, { global: false })).toBeUndefined()
@@ -112,6 +128,20 @@ describe('rememberTerminal', () => {
     const e = env({ platform: 'win32' })
     rememberTerminal(e, { WT_SESSION: 'abc' })
     expect(rememberedTerminal(e)).toBe('wt')
+  })
+
+  it('ignores a terminal it cannot open, such as VS Code’s, keeping the last one it can', () => {
+    const e = env()
+    rememberTerminal(e, { TERM_PROGRAM: 'ghostty' })
+    rememberTerminal(e, { TERM_PROGRAM: 'vscode' })
+    expect(rememberedTerminal(e)).toBe('ghostty')
+  })
+
+  it('goes back to a console on Windows once Forge is run outside Windows Terminal', () => {
+    const e = env({ platform: 'win32' })
+    rememberTerminal(e, { WT_SESSION: 'abc' })
+    rememberTerminal(e, {})
+    expect(rememberedTerminal(e)).toBe('console')
   })
 
   it('keeps the last one known when run somewhere that does not say', () => {

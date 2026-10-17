@@ -19,6 +19,11 @@ describe('notifyCommand', () => {
     expect(script).toContain('ToastText02')
   })
 
+  it('doubles a curly quote in a file name, which PowerShell also reads as a quote', () => {
+    const [, args] = notifyCommand('John’s photo.png', 'Sharpened', 'win32')
+    expect(args.at(-1)).toContain('John’’s photo.png')
+  })
+
   it('escapes the text for the toast’s XML and PowerShell’s quotes', () => {
     const [, args] = notifyCommand("Tom's <photo> & co.png", 'Sharpened', 'win32')
     const script = args[args.length - 1] as string

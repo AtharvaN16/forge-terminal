@@ -1,4 +1,3 @@
-import sharp from 'sharp'
 import type { MenuPaint } from './items.js'
 
 /**
@@ -47,8 +46,9 @@ export function logoSvg(paint: MenuPaint, size: number): string {
   return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="w" gradientUnits="userSpaceOnUse" x1="34" y1="0" x2="62" y2="0"><stop offset="0" stop-color="${TEAL}"/><stop offset="1" stop-color="${VIOLET}"/></linearGradient><clipPath id="c"><rect width="64" height="64" rx="14"/></clipPath><clipPath id="i"><rect x="1.5" y="1.5" width="61" height="61" rx="12.5"/></clipPath></defs><g clip-path="url(#c)"><rect width="64" height="64" fill="#1e1e1e"/><g clip-path="url(#i)" stroke="${stroke}" stroke-width="${small ? 3.6 : 2.4}">${lines}</g>${pixelF(16, 12, 8, '#e7e7e7')}</g><rect x=".75" y=".75" width="62.5" height="62.5" rx="13.5" fill="none" stroke="#3a3a3a" stroke-width="1.5"/></svg>`
 }
 
-/** The logo as a PNG of `size` × `size`. */
-export function renderIcon(paint: MenuPaint, size: number): Promise<Buffer> {
+/** The logo as a PNG of `size` × `size`. Sharp is loaded only here (see install.ts). */
+export async function renderIcon(paint: MenuPaint, size: number): Promise<Buffer> {
+  const { default: sharp } = await import('sharp')
   return sharp(Buffer.from(logoSvg(paint, size)))
     .png()
     .toBuffer()

@@ -9,8 +9,9 @@ import { installedGlobally, npmBeside, npmCliBeside, runningScript } from '../up
 import type { MenuCommand } from './command.js'
 import { gather } from './gather.js'
 import { installMenu, type MenuEnv, removeMenu, runProgram } from './install.js'
+import { stableNode } from './node-path.js'
 import { notify } from './notify.js'
-import { runMenuAction, type SharpenResult } from './run.js'
+import { freeSharpName, runMenuAction, type SharpenResult } from './run.js'
 import { ensureMenu, rememberedTerminal, rememberTerminal, resync } from './setup.js'
 import { uninstallForge } from './uninstall.js'
 
@@ -28,9 +29,10 @@ export async function realMenuEnv(version: string): Promise<MenuEnv> {
     platform: process.platform,
     home: homedir(),
     menuDir: menuDir(),
-    node: process.execPath,
+    node: stableNode(process.execPath, process.env.PATH),
     execArgv: process.execArgv,
     forge: runningScript(process.argv[1]) ?? '',
+    ...(process.env.XDG_CONFIG_HOME ? { xdgConfigHome: process.env.XDG_CONFIG_HOME } : {}),
     version,
     sharpen: (await installed('boost')) !== undefined,
     run: runProgram,
@@ -61,7 +63,7 @@ export async function resyncMenu(): Promise<void> {
 async function sharpenFile(path: string): Promise<SharpenResult> {
   const { parseArgs } = await import('../cli/args.js')
   const { runIntent } = await import('../cli/execute.js')
-  const intent = parseArgs([path, '--sharpen'])
+  const intent = parseArgs([path, '--sharpen', '--output', freeSharpName(path)])
   const report = await runIntent(intent as Parameters<typeof runIntent>[0])
   const output = report.results[0]?.job.outputs[0]
   if (output !== undefined) return { output }
@@ -69,7 +71,7 @@ async function sharpenFile(path: string): Promise<SharpenResult> {
   return { error: isForgeError(failure) ? failure.detail : 'It could not be sharpened.' }
 }
 
-/** Starts a program and lets it outlive this one. On Windows a detached Node gets a console of its own. */
+/** Starts a program and lets it outlive this one: a terminal window, which stays once this process exits. */
 const launch = (cmd: string, args: string[]) =>
   new Promise<void>((resolve) => {
     const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })

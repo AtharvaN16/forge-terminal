@@ -127,8 +127,8 @@ Forge's logo with the slashes in its mode's colour.
 
 On a Mac the items are under **Quick Actions**, and Finder's own
 **Customize…** at the bottom of that menu hides any you do not want. On
-Windows 11 they are in a **Forge** submenu under **Show more options** (or
-shift + right-click). They are set up only for a Forge installed with
+Windows 11 they are under **Show more options** (or shift + right-click): an
+image's and a folder's in a **Forge** submenu, a PDF's one item on its own. They are set up only for a Forge installed with
 `npm install -g`; from a source checkout, `forge menu install` sets them up
 by hand and `forge menu remove` takes them out.
 

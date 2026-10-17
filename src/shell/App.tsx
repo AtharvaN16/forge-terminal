@@ -2422,12 +2422,19 @@ export function App({
   useEffect(() => {
     if (!opened || opened.paths.length === 0 || openedLanded.current || step === 'theme') return
     openedLanded.current = true
-    void resolvePaths(opened.paths).then(landDrop)
+    void resolvePaths(opened.paths).then((drop) => {
+      // Nothing readable: no step to take, now or on a later drop.
+      if (drop.sources.length === 0) openedAdvance.current = false
+      landDrop(drop)
+    })
   }, [opened, step, landDrop])
   useEffect(() => {
     if (!openedAdvance.current || step !== 'idle' || stage.sources.length === 0) return
     openedAdvance.current = false
-    enterStaged(stage)
+    // A folder converts by watching; several files, or a folder to compress,
+    // the shell cannot do yet, and says so rather than sitting on home.
+    if (stage.sources.length === 1 || (stage.folder && mode === 'convert')) enterStaged(stage)
+    else refuseBatch()
   })
 
   /**

@@ -1,5 +1,5 @@
 import type { MenuItem, MenuKind } from './items.js'
-import { AUMID } from './notify.js'
+import { AUMID, psEscape } from './notify.js'
 
 /**
  * Explorer's right-click menu is registry keys, written under the current
@@ -70,7 +70,7 @@ export function registryPlan(o: {
   ]
 }
 
-const ps = (s: string) => `'${s.replace(/'/g, "''")}'`
+const ps = (s: string) => `'${psEscape(s)}'`
 /** A key as PowerShell's registry provider takes it: the hive spelled out. */
 const provider = (key: string) => ps(`Registry::${key.replace(/^HKCU\\/, 'HKEY_CURRENT_USER\\')}`)
 
