@@ -100,6 +100,7 @@ import { fieldKey } from './field-key.js'
 import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
+import { usePresetsOnDone } from './flows/presets.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { useFocusIn } from './focus.js'
 import { HOME_MARGIN, type Row } from './home-art.js'
@@ -192,6 +193,10 @@ export type Step =
   | 'pdf-blocked'
   /** Colour mode's palette or scale: `ColourFlow` owns the conversation. */
   | 'colour'
+  /** Done's → : Continue editing, one window over Done (presets, W2). */
+  | 'preset-edit'
+  /** Done's p : Save as preset, over Done. */
+  | 'preset-save'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -1001,6 +1006,25 @@ export function App({
    * `recordDone` pushes them.
    */
   const [doneBar, setDoneBar] = useState<{ mode: ShellMode; trail: Trail } | null>(null)
+  // Presets on Done: p saves what was done, → continues editing it (round 9).
+  const presets = usePresetsOnDone({
+    result: lastResult,
+    setResult: setLastResult,
+    mode: doneBar?.mode ?? 'convert',
+    trail: doneBar?.trail ?? { answers: [], current: 'Done' },
+    width,
+    height,
+    open: step === 'preset-edit' ? 'edit' : step === 'preset-save' ? 'save' : null,
+    setOpen: (open) =>
+      setStep(open === 'edit' ? 'preset-edit' : open === 'save' ? 'preset-save' : 'result'),
+    prefs: livePrefs,
+    setPrefs: setLivePrefs,
+    save: savePreferences,
+    enabled:
+      (doneBar?.mode === 'convert' || doneBar?.mode === 'compress') &&
+      clip === null &&
+      clipDone === null,
+  })
   const doneRecord = useRef<HistoryBlock[] | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   /** Save as's folder and proposed name, while it is open — see `SaveAsState`. */
@@ -1093,6 +1117,8 @@ export function App({
    * (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md).
    */
   const onHome = step === 'idle'
+  /** Done, or one of its windows over it: the run it shows is still on screen. */
+  const atDone = step === 'result' || step === 'preset-edit' || step === 'preset-save'
   /** The launch plays on the session's first home only (M8b): leaving it, it is over. */
   const firstHome = useRef(true)
   if (!onHome) firstHome.current = false
@@ -1379,8 +1405,8 @@ export function App({
   }, [push])
   // Whatever way Done is left, the run it showed is not lost from the scrollback.
   useEffect(() => {
-    if (step !== 'result' && doneRecord.current) recordDone()
-  }, [step, recordDone])
+    if (!atDone && doneRecord.current) recordDone()
+  }, [atDone, recordDone])
 
   /**
    * What the shell just said — a failed run (E5), a refusal, a note — held
@@ -1845,7 +1871,9 @@ export function App({
   useKeys(
     (input, key) => {
       if (!lastResult) return
+      if (presets.key(input, key)) return
       if (key.return) {
+        presets.reset()
         recordDone()
         // A dashed rule and a blank line either side, so a long session reads
         // as a sequence of separate operations rather than one wall of text.
@@ -3854,7 +3882,7 @@ export function App({
             trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
             the settings (/extensions, /update, /about), which are no mode and
             each draw their own chip. */}
-            {working && !onHome && step !== 'result' && !SETTINGS_STEPS.has(step) ? (
+            {working && !onHome && !atDone && !SETTINGS_STEPS.has(step) ? (
               <Box marginBottom={1}>
                 <HeaderBar
                   mode={mode}
@@ -3868,7 +3896,7 @@ export function App({
             {/* The staged list, shown live rather than committed to scrollback,
             for as long as it is still something the user can take back.
             Not on home: its drop panel holds the stage there. */}
-            {stage.sources.length > 0 && step !== 'theme' && step !== 'result' && !onHome ? (
+            {stage.sources.length > 0 && step !== 'theme' && !atDone && !onHome ? (
               <Box marginBottom={1}>
                 <StagedFiles stage={stage} width={width} dim={running && workShown} />
               </Box>
@@ -4399,11 +4427,17 @@ export function App({
                 width={width}
                 height={height}
                 pressed={donePressed}
+                preset={presets.done}
+                chain={presets.chain}
                 {...clipDoneProps(
                   doneBar.mode === 'compress' ? 'compress again' : 'convert another',
                 )}
               />
             ) : null}
+
+            {(step === 'preset-edit' || step === 'preset-save') && presets.screen
+              ? presets.screen
+              : null}
 
             {step === 'update' ? (
               <UpdateFlow

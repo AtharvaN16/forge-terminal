@@ -296,6 +296,8 @@ export function windowOver(
     columns: number
     top: number
     scroll?: { at: number; of: number } | undefined
+    /** Where its left edge goes; centred when absent. A row's own window opens under its row. */
+    left?: number | undefined
   },
 ): Row[] {
   const canvas = lc(p.canvas)
@@ -311,7 +313,7 @@ export function windowOver(
       })),
   )
   const W = win.width
-  const left = Math.max(0, Math.floor((win.columns - W) / 2))
+  const left = win.left ?? Math.max(0, Math.floor((win.columns - W) / 2))
   const fill = p.selectionBg === '' ? undefined : lc(p.selectionBg)
   const edge = lc(p.border)
   const inner = W - 2

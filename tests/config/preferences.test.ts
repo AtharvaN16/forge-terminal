@@ -167,3 +167,26 @@ describe('updateCheck', () => {
     expect(bad.warning).toContain('updateCheck')
   })
 })
+
+describe('presets', () => {
+  const blog = { name: 'blog', steps: { to: 'webp' as const, quality: 80 }, saveTo: '~/Desktop' }
+
+  it('round-trips through the file', async () => {
+    await savePreferences({ presets: [blog] })
+    expect((await loadPreferences()).prefs.presets).toEqual([blog])
+  })
+
+  it('keeps the presets that are fine and says which key had a bad one', async () => {
+    await write(JSON.stringify({ presets: [blog, { name: 'my blog', steps: {}, saveTo: 'ask' }] }))
+    const { prefs, warning } = await loadPreferences()
+    expect(prefs.presets).toEqual([blog])
+    expect(warning).toContain('presets')
+  })
+
+  it('rejects presets that are not a list', async () => {
+    await write(JSON.stringify({ presets: { blog } }))
+    const { prefs, warning } = await loadPreferences()
+    expect(prefs.presets).toBeUndefined()
+    expect(warning).toContain('presets')
+  })
+})

@@ -5,7 +5,7 @@ import type { Result } from '../../core/types.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
-import type { Row } from '../home-art.js'
+import { blank, type Row, type Run, width as widthOf } from '../home-art.js'
 import { easeOut, motionEnabled, useTween } from '../motion.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -76,6 +76,26 @@ function Body({ rows }: { rows: Row[] }) {
   )
 }
 
+/** What sits beside the formats' chip, for a result a preset can be made from. */
+export interface DonePreset {
+  /** `key`: p save as preset. `saved`: the confirmation. `update`: p update, once it changed. */
+  save: 'key' | 'saved' | 'update'
+  /** The preset saved this session, for `saved` and `update`. */
+  name?: string | undefined
+}
+
+/** A key drawn as the key row draws it, for a hint that sits in the body: the cap on the key grey, the words dim. */
+function keyHint(palette: ReturnType<typeof useTheme>, key: string, words: string): Run[] {
+  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
+  const capped = palette.keycapBg !== '' && !noColour
+  return [
+    capped
+      ? { text: ` ${key} `, fg: palette.fg, bg: palette.keycapBg, bold: true }
+      : { text: `[${key}]`, fg: palette.fg, bold: true },
+    { text: ` ${words}`, fg: palette.dim },
+  ]
+}
+
 export function DoneScreen({
   mode,
   trail,
@@ -90,6 +110,8 @@ export function DoneScreen({
   afterName,
   keys: ownKeys,
   block,
+  preset,
+  chain,
 }: {
   mode: ShellMode
   /** The run's answers, ending in "Done". */
@@ -101,6 +123,13 @@ export function DoneScreen({
   keys?: Array<[string, string]> | undefined
   /** Rows shown where the offers go, in their place: E3's tinted panel. */
   block?: Row[] | undefined
+  /**
+   * A result a preset can be made from (presets, round 9): p save as preset
+   * beside the chip, → continue editing at the bottom right above the rule.
+   */
+  preset?: DonePreset | undefined
+  /** What was done, once Continue editing changed it: the chip says every step. */
+  chain?: string[] | undefined
   /** Offers to show at the foot (`✧` sentences), in order. */
   offers: string[]
   /** What ↵ does: "convert another", "compress again". */
@@ -129,6 +158,28 @@ export function DoneScreen({
   const facts = doneFacts(result, mode)
   if (afterName !== undefined) facts.after.name = afterName
   const body = doneBody({ palette, facts, width, draw })
+  if (chain && chain.length > 1) {
+    const chip = body[0]?.[1]
+    if (chip) body[0] = [body[0]?.[0] ?? blank(0), { ...chip, text: ` ${chain.join(' → ')} ` }]
+  }
+  if (preset) {
+    const aside: Run[] =
+      preset.save === 'saved'
+        ? [
+            blank(2),
+            { text: '✓ saved as ', fg: palette.ok },
+            { text: preset.name ?? '', fg: palette.ok, bold: true },
+          ]
+        : [
+            blank(1),
+            ...keyHint(
+              palette,
+              'p',
+              preset.save === 'update' ? `update ${preset.name ?? ''}` : 'save as preset',
+            ),
+          ]
+    body[0] = [...(body[0] ?? []), ...aside]
+  }
   const notes =
     block ??
     doneNotes({
@@ -171,7 +222,14 @@ export function DoneScreen({
           ))}
         </>
       ) : null}
-      <Blank rows={bottom} />
+      {preset && bottom > 0 ? (
+        <>
+          <Blank rows={bottom - 1} />
+          <Runs row={continueHint(palette, width)} />
+        </>
+      ) : (
+        <Blank rows={bottom} />
+      )}
       {full ? (
         <Box marginTop={1} flexShrink={0}>
           <Notices notices={notices} width={width} />
@@ -188,6 +246,12 @@ export function DoneScreen({
       />
     </Box>
   )
+}
+
+/** `→ continue editing`, ending where the key row's footnote ends. */
+function continueHint(palette: ReturnType<typeof useTheme>, width: number): Row {
+  const hint = keyHint(palette, '→', 'continue editing')
+  return [blank(Math.max(0, width - 1 - widthOf(hint))), ...hint]
 }
 
 /**

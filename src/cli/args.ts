@@ -128,6 +128,21 @@ export interface ExtensionOpIntent {
  * unless `--to` says otherwise (resize-and-trim spec §3.4, crop spec §3.3). The work is options on an ordinary convert job
  * (`planEdit`); the intent is its own `kind` because there may be no target.
  */
+/**
+ * `--preset name`: run a preset saved from Done (mockups/presets-2026-10.html)
+ * on each input. The preset says what to do and where to save; `--output`
+ * and `--force` are the only things that change it.
+ */
+export interface PresetIntent {
+  kind: 'preset'
+  inputs: string[]
+  name: string
+  output?: string
+  force: boolean
+  recursive: boolean
+  debug: boolean
+}
+
 export interface EditIntent {
   kind: 'edit'
   inputs: string[]
@@ -198,6 +213,7 @@ export type Intent =
   | PageOpIntent
   | ExtensionOpIntent
   | EditIntent
+  | PresetIntent
   | ProbeIntent
   | ExtensionsIntent
   | PaletteIntent
@@ -614,6 +630,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     .option('--width <px>', 'resize to this width; the height follows')
     .option('--height <px>', 'resize to this height; the width follows')
     .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
+    .option('--preset <name>', 'run a preset saved from Done, e.g. --preset blog')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
     .option('--password-stdin', "read an encrypted PDF's password from stdin")
@@ -659,6 +676,46 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
   const inputs = program.args
 
   if (opts.formats) return { kind: 'formats' }
+
+  if (opts.preset !== undefined) {
+    // Everything that says what to do: the preset already does.
+    const doing = [
+      ['to', '--to'],
+      ['quality', '--quality'],
+      ['maxSize', '--max-size'],
+      ['merge', '--merge'],
+      ['split', '--split'],
+      ['extract', '--extract'],
+      ['delete', '--delete'],
+      ['rotate', '--rotate'],
+      ['sharpen', '--sharpen'],
+      ['trim', '--trim'],
+      ['crop', '--crop'],
+      ['resize', '--resize'],
+      ['width', '--width'],
+      ['height', '--height'],
+      ['removeBg', '--remove-bg'],
+      ['pages', '--pages'],
+    ]
+      .filter(([key]) => opts[key as string] !== undefined && opts[key as string] !== false)
+      .map(([, flag]) => flag as string)
+    if (boost !== undefined) doing.push('--boost')
+    if (doing.length > 0) {
+      throw invalidArguments(
+        `--preset already says what to do — leave out ${doing.join(' and ')}.`,
+        'Run the preset alone, or change it from Done with → continue editing.',
+      )
+    }
+    return {
+      kind: 'preset',
+      inputs,
+      name: String(opts.preset),
+      ...(opts.output === undefined ? {} : { output: String(opts.output) }),
+      force: opts.force === true,
+      recursive: opts.recursive === true,
+      debug: opts.debug === true,
+    }
+  }
 
   // Checked ahead of every other branch below: --pages only means something
   // once a target is known, and none of the later branches (page ops, the

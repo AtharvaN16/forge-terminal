@@ -99,7 +99,7 @@ describe('result block', () => {
     expect(frame).toContain('✓ diagram.webp')
     // B6a: the formats say what it was; "was" and "now" say which size is which.
     expect(frame).toMatch(/^ {3}PNG → WebP$/m)
-    expect(frame).toMatch(/now 115 KB +was 348 KB$/m)
+    expect(frame).toMatch(/now {2}115 KB +was {2}348 KB\s*$/m)
   })
 
   it('states the saving in words', () => {
@@ -132,7 +132,7 @@ describe('result block, as Done leaves it in the scrollback', () => {
     const lines = frameOf(<HistoryEntry block={block} width={100} />).split('\n')
     const bar = lines.findIndex((l) => l.includes('✓ diagram.gif'))
     expect(lines[bar]).toMatch(/\d+(\.\d)?% smaller$/)
-    expect(lines[bar + 3]).toMatch(/^ {3}now 133 KB +was 348 KB$/)
+    expect(lines[bar + 3]).toMatch(/^ {3}now {2}133 KB +was {2}348 KB\s*$/)
   })
 
   it('keeps a warning in the record, under the folder', () => {

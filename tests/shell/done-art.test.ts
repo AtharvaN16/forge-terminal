@@ -87,18 +87,22 @@ describe('the Done body (B6a)', () => {
     expect(rows).toHaveLength(6)
     expect(text(rows[ROW.chip])).toBe('   PNG → JPEG ')
     expect(text(rows[ROW.gap])).toBe('')
-    expect(text(rows[ROW.sizes])).toMatch(/^ {3}now 74\.6 KB +was 122 KB$/)
+    expect(text(rows[ROW.sizes])).toMatch(/^ {3}now {2}74\.6 KB +was {2}122 KB $/)
     expect(width(rows[ROW.sizes] ?? [])).toBe(78)
   })
 
-  it('encloses the new size in the grey of the bar’s shared part, a cell either side', () => {
+  it('draws each size as a badge (N6): the word on the key grey, the new size on a green tint', () => {
     const row = cells(doneBody({ palette: P, facts: cv, width: 80 })[ROW.sizes])
-    const chip = row.slice(2, 2 + ' now 74.6 KB '.length)
-    expect(chip.map((c) => c.ch).join('')).toBe(' now 74.6 KB ')
-    expect(chip.every((c) => c.bg === DARK.panelBand)).toBe(true)
+    const word = row.slice(2, 7)
+    expect(word.map((c) => c.ch).join('')).toBe(' now ')
+    expect(word.every((c) => c.bg === DARK.keycapBg)).toBe(true)
+    const size = row.slice(7, 7 + ' 74.6 KB '.length)
+    expect(size.map((c) => c.ch).join('')).toBe(' 74.6 KB ')
+    expect(size.every((c) => c.bg === mix(DARK.ok, DARK.canvas, 0.8))).toBe(true)
+    expect(size[1]).toMatchObject({ fg: DARK.ok, bold: true })
     expect(row[1]?.bg).toBeUndefined()
-    // The old size stays bare.
-    expect(row.at(-1)).toMatchObject({ ch: 'B', bg: undefined })
+    // The old size: the same shape, quieter — the word on the key grey, the size on the bar's grey.
+    expect(row.at(-2)).toMatchObject({ ch: 'B', fg: DARK.dim, bg: DARK.panelBand })
   })
 
   it('draws the formats on a chip of the mode’s tint, in its colour', () => {
@@ -195,12 +199,14 @@ describe('the Done body (B6a)', () => {
 
   it('puts the smaller size on the left: was then now for a file that grew', () => {
     const sizes = doneBody({ palette: P, facts: gif, width: 80 })[ROW.sizes]
-    expect(text(sizes)).toMatch(/^ {2}was 1\.1 MB +now 1\.6 MB $/)
+    expect(text(sizes)).toMatch(/^ {3}was {2}1\.1 MB +now {2}1\.6 MB $/)
     expect(width(sizes ?? [])).toBe(78)
     const row = cells(sizes)
-    expect(row.at(-2)).toMatchObject({ ch: 'B', fg: DARK.fg, bold: true, bg: DARK.panelBand })
-    expect(row.at(-1)).toMatchObject({ ch: ' ', bg: DARK.panelBand })
-    expect(row[6]).toMatchObject({ ch: '1', fg: DARK.dim, bold: false })
+    // The new size on an orange tint: the file grew.
+    const tint = mix(DARK.larger, DARK.canvas, 0.8)
+    expect(row.at(-2)).toMatchObject({ ch: 'B', fg: DARK.larger, bold: true, bg: tint })
+    expect(row.at(-1)).toMatchObject({ ch: ' ', bg: tint })
+    expect(row[8]).toMatchObject({ ch: '1', fg: DARK.dim, bold: false })
   })
 
   it('gives a narrow bar to the name first: the change shortens, then goes', () => {

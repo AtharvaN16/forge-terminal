@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { type Preset, parsePreset } from '../core/preset.js'
 import { knownFolder } from '../utils/known-folders.js'
 import { configBase } from './config-base.js'
 
@@ -18,6 +19,8 @@ export interface Preferences {
   updateCheck?: boolean
   /** The folder the last file was saved to: Save as lists it after the default. */
   lastOutput?: string
+  /** Saved from Done's Save as preset; run with `--preset name`. */
+  presets?: Preset[]
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -87,6 +90,17 @@ function validate(raw: Record<string, unknown>): { prefs: Preferences; rejected:
       prefs.lastOutput = raw.lastOutput
     } else {
       rejected.push('lastOutput')
+    }
+  }
+
+  if (raw.presets !== undefined) {
+    // One bad preset costs only itself; the key is still reported once.
+    if (Array.isArray(raw.presets)) {
+      const presets = raw.presets.map(parsePreset)
+      prefs.presets = presets.filter((p): p is Preset => p !== undefined)
+      if (prefs.presets.length < presets.length) rejected.push('presets')
+    } else {
+      rejected.push('presets')
     }
   }
 

@@ -1,7 +1,7 @@
 import stringWidth from 'string-width'
 import { formatBytes, percentChange } from '../core/units.js'
 import { blank, HOME_MARGIN, mix, type Row, type Run, width } from './home-art.js'
-import { colourProp, modeColours, type Palette, type ShellMode, SYMBOLS } from './theme.js'
+import { modeColours, type Palette, type ShellMode, SYMBOLS } from './theme.js'
 import { middleEllipsis } from './width.js'
 
 /**
@@ -238,18 +238,22 @@ export function doneBody({
   }
   const row = (cells: Cell[]): Row => [blank(M), ...runsOf(cells)]
 
-  // Under the bar: the smaller size on the left, the larger on the right. The
-  // new size sits on a chip of the bar's grey, a cell either side, so it
-  // reads as the answer; the old one is bare.
-  const shelf = colourProp(palette.panelBand)
+  // Under the bar: the smaller size on the left, the larger on the right,
+  // each a badge (N6, mockups/presets-2026-10.html): the word on the key
+  // grey, then the size. The new size is on a tint of what happened — green
+  // for smaller, orange for larger — so it reads as the answer; the old one
+  // sits on the bar's grey.
+  const key = fillOf(palette.keycapBg)
+  const shelf = fillOf(palette.panelBand)
+  const ink = same ? palette.fg : outcome
+  const tint = palette.canvas && !same ? fillOf(mix(ink, palette.canvas, 0.8)) : shelf
   const now: Run[] = [
-    { text: ' now ', fg: palette.border, bg: shelf },
-    { text: formatBytes(after.bytes), fg: palette.fg, bold: true, bg: shelf },
-    { text: ' ', bg: shelf },
+    { text: ' now ', fg: palette.dim, bg: key },
+    { text: ` ${formatBytes(after.bytes)} `, fg: ink, bold: true, bg: tint },
   ]
   const was: Run[] = [
-    { text: 'was ', fg: palette.border },
-    { text: formatBytes(before.bytes), fg: palette.dim },
+    { text: ' was ', fg: palette.border, bg: key },
+    { text: ` ${formatBytes(before.bytes)} `, fg: palette.dim, bg: shelf },
   ]
   const [left, right] = bars.grew ? [was, now] : [now, was]
   const gap = Math.max(1, block - width(left) - width(right))

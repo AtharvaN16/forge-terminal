@@ -53,6 +53,7 @@ import type {
   ExtensionOpIntent,
   Intent,
   PageOpIntent,
+  PresetIntent,
 } from './args.js'
 import type { ConfigIntent } from './config-command.js'
 import {
@@ -129,6 +130,7 @@ export type RunnableIntent =
   | PageOpIntent
   | ExtensionOpIntent
   | EditIntent
+  | PresetIntent
 
 /**
  * What a run did, as data. `renderRun` turns it into text or JSON, and
@@ -726,6 +728,11 @@ export async function runIntent(
     if (intent.kind === 'pageop') return await runPageOp(intent)
     if (intent.kind === 'extension-op') return await runExtensionOp(intent, opts)
     if (intent.kind === 'edit') return await runEdit(intent, opts)
+    if (intent.kind === 'preset') {
+      // Lazy: only a preset run needs the config layer and the preset runner.
+      const { runPresetCommand } = await import('./preset-command.js')
+      return await runPresetCommand(intent)
+    }
     if (intent.kind === 'compress') return await runCompress(intent, opts)
     return await runConvert(intent, opts)
   } catch (e) {
