@@ -340,6 +340,6 @@ describe('the commands are discoverable', () => {
   it('home names them as a tab of their own', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     const frame = render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? ''
-    expect(frame).toContain('/ commands')
+    expect(frame).toContain('/ menu')
   })
 })

@@ -86,9 +86,9 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
 describe('the mode tabs (mockup tab 2, D2)', () => {
   const rowText = (rows: { text: string }[][], i: number) =>
     rows[i]?.map((run) => run.text).join('') ?? ''
-  const TABS = ' 1 convert   2 compress   3 pdf   4 edit   5 colour   / commands  '
+  const TABS = ' 1 convert   2 compress   3 pdf   4 edit   5 colour   / menu  '
 
-  it('has five modes and the commands tab, and nothing at the row’s right', () => {
+  it('has five modes and the menu tab, and nothing at the row’s right', () => {
     const rows = tabRows({ palette: modePalette(DARK, 'convert'), mode: 'convert' })
     // No "saves to ~/Desktop": the owner took it out (2026-10-13).
     expect(rowText(rows, 1)).toBe(`  ${TABS}`)

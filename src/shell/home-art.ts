@@ -262,11 +262,11 @@ export function brandIntro(rows: Row[], front: number, palette: Palette): Row[] 
 }
 
 /**
- * The numbered modes, then "/ commands" (round 5, H2): the active one on a
+ * The numbered modes, then "/ menu" (round 5, H2): the active one on a
  * chip of dark grey, a step off the background, its number in its mode's
  * colour; the rest bare words.
  * The row above is left blank: a half-cell lip there drew as a hairline seam
- * in terminals that leave a gap between rows. "/ commands" is always there, dim
+ * in terminals that leave a gap between rows. "/ menu" is always there, dim
  * at rest; while the field holds a command it is the active tab, and no mode
  * is. Nothing sits at the row's right: "saves to ~/Desktop" (and colour's
  * "copies to clipboard") was taken out on 2026-10-13 — Save as says where a
@@ -279,7 +279,7 @@ export function tabRows({
 }: {
   palette: Palette
   mode: ShellMode
-  /** The command list is open: "/ commands" is the active tab. */
+  /** The command list is open: "/ menu" is the active tab. */
   commands?: boolean
 }): Row[] {
   const M = HOME_MARGIN
@@ -312,7 +312,7 @@ export function tabRows({
   MODE_ORDER.forEach((m, i) => {
     tab(String(i + 1), modeColours(palette, m).fg, m, !commands && m === mode)
   })
-  tab('/', palette.brand, 'commands', commands)
+  tab('/', palette.brand, 'menu', commands)
   return [top, [blank(M), ...tabs]]
 }
 
