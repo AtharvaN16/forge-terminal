@@ -1344,9 +1344,13 @@ export function App({
   const onHome = step === 'idle'
   /** Done, or one of its windows over it: the run it shows is still on screen. */
   const atDone = step === 'result' || step === 'preset-edit' || step === 'preset-save'
-  /** The launch plays on the session's first home only (M8b): leaving it, it is over. */
+  /**
+   * The launch plays on the session's first home only (M8b): leaving it, it
+   * is over. The / menu counts as leaving: home is drawn afresh when it
+   * closes, and must not draw itself in again (2026-10-18).
+   */
   const firstHome = useRef(true)
-  if (!onHome) firstHome.current = false
+  if (!onHome || (commandList?.items.length ?? 0) > 0) firstHome.current = false
   /** Something is staged: home draws it, and the field asks for more. */
   const staged = stage.sources.length > 0
   /** The rows the latest drop added, for their band — none while motion is off. */

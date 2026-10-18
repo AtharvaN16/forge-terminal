@@ -1,8 +1,9 @@
 import { render } from 'ink-testing-library'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import type { RightClickSystem } from '../../src/shell/flows/right-click.js'
+import { setMotionForTests } from '../../src/shell/motion.js'
 import { unpaint } from '../helpers/unpaint.js'
 
 const ENTER = '\r'
@@ -39,6 +40,8 @@ function app() {
 }
 
 describe('the / menu, as a popup', () => {
+  afterEach(() => setMotionForTests(undefined))
+
   it('opens over home on /: the box, the settings above the modes, its own field at the foot', async () => {
     const a = app()
     await settle()
@@ -117,6 +120,25 @@ describe('the / menu, as a popup', () => {
     expect(f).toContain('or type a path')
     expect(f).toContain('images · PDF')
     expect(f).not.toContain('HEIC')
+  })
+
+  it('does not play home’s launch again when it closes (2026-10-18)', async () => {
+    setMotionForTests(true)
+    const a = app()
+    const band = () => a.frame().split('\n').slice(1, 7).join('\n')
+    await settle(1300)
+    const still = band()
+    expect(still).toContain('╱')
+    a.stdin.write('/')
+    await settle()
+    a.stdin.write('/')
+    await settle(60)
+    expect(band()).toBe(still)
+    a.stdin.write('/')
+    await settle()
+    a.stdin.write(ESC)
+    await settle(60)
+    expect(band()).toBe(still)
   })
 
   it('closes on a / typed after part of a name too', async () => {
