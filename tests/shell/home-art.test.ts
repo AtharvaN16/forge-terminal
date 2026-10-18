@@ -3,6 +3,7 @@ import { contrast } from '../../src/core/colour/contrast.js'
 import { parseHex, type Rgb, rgbToOklab, toLch } from '../../src/core/colour/space.js'
 import {
   brandRows,
+  menuHintRow,
   oppositeColour,
   stagedListRows,
   surfaceRows,
@@ -86,9 +87,9 @@ describe('the brand band (mockup tab 3, T4 + V2)', () => {
 describe('the mode tabs (mockup tab 2, D2)', () => {
   const rowText = (rows: { text: string }[][], i: number) =>
     rows[i]?.map((run) => run.text).join('') ?? ''
-  const TABS = ' 1 convert   2 compress   3 pdf   4 edit   5 colour   / menu  '
+  const TABS = ' 1 convert   2 compress   3 pdf   4 edit   5 colour   6 transcribe  '
 
-  it('has five modes and the menu tab, and nothing at the row’s right', () => {
+  it('has the six modes, no menu tab, and nothing at the row’s right', () => {
     const rows = tabRows({ palette: modePalette(DARK, 'convert'), mode: 'convert' })
     // No "saves to ~/Desktop": the owner took it out (2026-10-13).
     expect(rowText(rows, 1)).toBe(`  ${TABS}`)
@@ -112,6 +113,32 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
     })
     expect(rows[1]?.find((run) => run.text === 'edit')?.bold).toBe(true)
     expect(rows[1]?.find((run) => run.text === '4')?.fg).toBe(DARK.modeEdit)
+  })
+})
+
+describe('the "/ menu" hint (mockups/transcribe-2026-10-round2.html, "/ menu")', () => {
+  const text = (row: { text: string }[]) => row.map((run) => run.text).join('')
+
+  it('sits right-aligned, its last cell one short of the edge, the slash on a keycap', () => {
+    const row = menuHintRow({ palette: modePalette(DARK, 'convert'), width: 80, open: false })
+    expect(text(row)).toBe(`${' '.repeat(71)} /  menu `)
+    expect(text(row)).toHaveLength(80)
+    expect(row.find((run) => run.text === ' / ')).toMatchObject({ fg: DARK.fg, bg: DARK.keycapBg })
+    expect(row.find((run) => run.text === ' menu')).toMatchObject({ fg: DARK.dim })
+  })
+
+  it('turns the menu’s gold while the menu is open', () => {
+    const row = menuHintRow({ palette: modePalette(DARK, 'transcribe'), width: 80, open: true })
+    expect(row.find((run) => run.text === ' / ')).toMatchObject({
+      fg: DARK.ink,
+      bg: DARK.brand,
+      bold: true,
+    })
+    expect(row.find((run) => run.text === ' menu')).toMatchObject({ fg: DARK.brand, bold: true })
+  })
+
+  it('keeps to the width it is given', () => {
+    expect(text(menuHintRow({ palette: DARK, width: 40, open: false }))).toHaveLength(40)
   })
 })
 

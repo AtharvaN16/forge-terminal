@@ -2,7 +2,7 @@
  * Forge's version, everywhere it is shown: the shell, --version and --json.
  * Must match package.json (tests/cli/args.test.ts).
  */
-export const VERSION = '0.3.9'
+export const VERSION = '0.4.0'
 
 /**
  * Symbols are paired with words at every call site so meaning survives a
@@ -122,6 +122,9 @@ export interface Palette {
   /** Mode header colour for edit (Sharpen, Boost resolution, Remove background). */
   modeEdit: string
   modeEditBg: string
+  /** Mode header colour for transcribe (notes and transcripts from video and sound). */
+  modeTranscribe: string
+  modeTranscribeBg: string
   /** Resting frame colour. */
   border: string
   /** Fill behind the selected row. Empty means "draw no band". */
@@ -257,6 +260,9 @@ export const DARK: Palette = {
   modeColourBg: '#3a1e2b',
   modeEdit: '#b39ae8',
   modeEditBg: '#2a2238',
+  // Of the reds tried, the furthest (OKLab) from pdf's orange-red and from fail.
+  modeTranscribe: '#e63946',
+  modeTranscribeBg: '#3a1a1d',
   // 4.2:1 on #1e1e1e: dim labels, hints and frames. Above the 3:1 a boundary
   // needs, and still a clear step below `dim`.
   border: '#808080',
@@ -342,6 +348,9 @@ export const LIGHT: Palette = {
   // Dark's chroma (0.114): round 5's violet was the most vivid colour in light.
   modeEdit: '#64569f',
   modeEditBg: '#f0ebfa',
+  // As deep as light's other modes (about 6.2:1 on white).
+  modeTranscribe: '#c0102c',
+  modeTranscribeBg: '#fef0ef',
   // 4.54:1 on white (dark: 4.22:1 on its canvas) — the hint row's tail and
   // the quiet tab numbers are words. 3.09:1 on fieldBand (dark: 2.75:1).
   border: '#767676',
@@ -422,6 +431,9 @@ export const NEUTRAL: Palette = {
   modeColourBg: '',
   modeEdit: 'magenta',
   modeEditBg: '',
+  // pdf has 'red'.
+  modeTranscribe: 'redBright',
+  modeTranscribeBg: '',
   border: 'gray',
   selectionBg: '',
   band: '',
@@ -451,12 +463,19 @@ export const NEUTRAL: Palette = {
   newTag: '',
 }
 
-export type ShellMode = 'convert' | 'compress' | 'pdf' | 'colour' | 'edit'
+export type ShellMode = 'convert' | 'compress' | 'pdf' | 'colour' | 'edit' | 'transcribe'
 
 /** The modes in the order they are numbered on the home screen: 1, 2, 3, … */
-export const MODE_ORDER: readonly ShellMode[] = ['convert', 'compress', 'pdf', 'edit', 'colour']
+export const MODE_ORDER: readonly ShellMode[] = [
+  'convert',
+  'compress',
+  'pdf',
+  'edit',
+  'colour',
+  'transcribe',
+]
 
-/** The digits that pick a mode, as the key rows say them: "1–5". */
+/** The digits that pick a mode, as the key rows say them: "1–6". */
 export const MODE_KEYS = `1–${MODE_ORDER.length}`
 
 /** A tab on home's tab row: the modes, then "/ menu". */
@@ -465,10 +484,12 @@ export type HomeTab = ShellMode | 'menu'
 /**
  * The tab beside `from` on home's tab row: what ← and → go to. They stop at
  * the ends rather than wrap (decided 2026-10-14), so `from` itself there.
+ * The menu is not on the row (2026-10-17): from it, ← goes to the last mode.
  */
 export function tabStep(from: HomeTab, delta: 1 | -1): HomeTab {
-  const tabs: readonly HomeTab[] = [...MODE_ORDER, 'menu']
-  const at = Math.max(0, Math.min(tabs.length - 1, tabs.indexOf(from) + delta))
+  const tabs: readonly HomeTab[] = MODE_ORDER
+  const from_ = from === 'menu' ? tabs.length : tabs.indexOf(from)
+  const at = Math.max(0, Math.min(tabs.length - 1, from_ + delta))
   return tabs[at] as HomeTab
 }
 
@@ -484,10 +505,13 @@ export const MODE_MARKERS: Record<ShellMode, string> = {
   pdf: '▣',
   colour: '◐',
   edit: '✦',
+  transcribe: '¶',
 }
 
 /** Edit's hatching runs violet to a deeper violet (mockups/extensions-2026-10.html). */
 const EDIT_END = '#7d6ad0'
+/** Transcribe's runs red to lilac: convert's cyan-to-violet, mirrored (mockups/transcribe-2026-10-round2.html). */
+const TRANSCRIBE_END = '#cc8ae2'
 
 /** A mode's own colour and the fill drawn behind it. */
 export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: string } {
@@ -495,6 +519,7 @@ export function modeColours(p: Palette, mode: ShellMode): { fg: string; bg: stri
   if (mode === 'pdf') return { fg: p.modePdf, bg: p.modePdfBg }
   if (mode === 'colour') return { fg: p.modeColour, bg: p.modeColourBg }
   if (mode === 'edit') return { fg: p.modeEdit, bg: p.modeEditBg }
+  if (mode === 'transcribe') return { fg: p.modeTranscribe, bg: p.modeTranscribeBg }
   return { fg: p.modeConvert, bg: p.modeConvertBg }
 }
 
@@ -568,6 +593,18 @@ const LIGHT_BAND: Record<ShellMode, readonly string[]> = {
     '#8d64f8',
     '#8a65f8',
     '#8867f8',
+  ],
+  // Red to lilac, by the same walk (OKLCH 0.62, as much chroma as sRGB holds).
+  transcribe: [
+    '#f3233e',
+    '#f12259',
+    '#ee2270',
+    '#ea2186',
+    '#e6219b',
+    '#e121b0',
+    '#da22c6',
+    '#d122dc',
+    '#c723f2',
   ],
   colour: [
     '#f42335',
@@ -649,6 +686,17 @@ const LIGHT_WASH: Record<ShellMode, readonly string[]> = {
     '#f0eefe',
     '#efeefe',
   ],
+  transcribe: [
+    '#feebea',
+    '#feebec',
+    '#feebee',
+    '#feeaf0',
+    '#feeaf2',
+    '#feeaf5',
+    '#fee9f9',
+    '#fde9fd',
+    '#f9eafe',
+  ],
   colour: [
     '#feebe9',
     '#feece5',
@@ -689,6 +737,7 @@ const LIGHT_DOTS: Record<ShellMode, readonly string[]> = {
   compress: ['#2b8748', '#138291'],
   pdf: ['#d54322', '#a06c10'],
   edit: ['#8567bc', '#7b67cd'],
+  transcribe: ['#df3140', '#9c5cb1'],
   colour: ['#cb4b49', '#a06c10', '#618110', '#138291', '#5869ec', '#8268bd'],
 }
 
@@ -699,6 +748,8 @@ export function modeGradient(p: Palette, scheme: Scheme): readonly string[] {
   if (scheme === 'pdf') return [p.modePdf, p.brand]
   if (scheme === 'colour') return p.name === 'dark' ? SPECTRUM : [p.modeColour, p.violet]
   if (scheme === 'edit') return [p.modeEdit, p.name === 'dark' ? EDIT_END : p.violet]
+  if (scheme === 'transcribe')
+    return [p.modeTranscribe, p.name === 'dark' ? TRANSCRIBE_END : p.violet]
   return [p.modeConvert, p.violet]
 }
 

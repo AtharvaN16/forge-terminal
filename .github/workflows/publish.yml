@@ -76,7 +76,11 @@ jobs:
       # GitHub's Macs are slow enough that some fail every time (v0.2.1's
       # first run). Run the whole suite locally before tagging; bring
       # tests/shell back here once it is reliable on a runner.
+      # The transcribe helper is Swift, built here (macos-26 has the SDK it
+      # needs); a release without it would ship transcribe broken.
       - run: npm run build
+        env:
+          FORGE_REQUIRE_HELPERS: '1'
       - run: npm run typecheck
       - run: npm run lint
       - run: npx vitest run --retry=2 --exclude 'tests/shell/**'

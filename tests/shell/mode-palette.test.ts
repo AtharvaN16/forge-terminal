@@ -50,12 +50,17 @@ describe('modePalette', () => {
     expect(modeColours(DARK, 'pdf')).toEqual({ fg: DARK.modePdf, bg: DARK.modePdfBg })
     expect(modeColours(DARK, 'colour')).toEqual({ fg: DARK.modeColour, bg: DARK.modeColourBg })
     expect(modeColours(DARK, 'edit')).toEqual({ fg: DARK.modeEdit, bg: DARK.modeEditBg })
+    expect(modeColours(DARK, 'transcribe')).toEqual({
+      fg: DARK.modeTranscribe,
+      bg: DARK.modeTranscribeBg,
+    })
     expect(MODE_MARKERS).toEqual({
       convert: '↔',
       compress: '↓',
       pdf: '▣',
       colour: '◐',
       edit: '✦',
+      transcribe: '¶',
     })
   })
 

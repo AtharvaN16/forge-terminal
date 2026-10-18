@@ -30,7 +30,7 @@ afterEach(async () => {
 
 describe('the Mac catalogue, as published', () => {
   it('offers boost and remove-background on Apple Silicon with the released archives', async () => {
-    const list = await listExtensions('darwin', 'arm64')
+    const list = (await listExtensions('darwin', 'arm64')).filter((s) => s.entry.id !== 'yt-dlp')
     expect(list.map((s) => s.entry.id)).toEqual(['boost', 'remove-background'])
     expect(list.every((s) => s.supported)).toBe(true)
     const [boost, cutout] = list.map((s) => assetFor(s.entry, 'darwin', 'arm64'))
@@ -45,6 +45,19 @@ describe('the Mac catalogue, as published', () => {
       url: `${RELEASES}/ext-remove-background-v1.0.0/forge-ext-remove-background-1.0.0-universal.tar.gz`,
       bytes: 32489,
       sha256: '9f6e055c0ce25f7504e10c7871e506a813bc75d6536396a675a8c075c4eb4686',
+    })
+  })
+
+  it("lists yt-dlp as upstream's own pinned release, for macOS 26 and later", async () => {
+    const yt = (await listExtensions('darwin', 'arm64')).find((s) => s.entry.id === 'yt-dlp')
+    // This file pins macOS 15.
+    expect(yt).toMatchObject({ supported: false, reason: 'needs macOS 26 or later' })
+    expect(yt && assetFor(yt.entry, 'darwin', 'arm64')).toEqual({
+      version: '2026.08.19',
+      url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos',
+      bytes: 37146048,
+      sha256: '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202',
+      binary: 'yt-dlp',
     })
   })
 

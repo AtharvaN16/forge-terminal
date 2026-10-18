@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
-import { destinationOption } from '../../src/core/actions/destination.js'
+import { destinationAt, destinationOption } from '../../src/core/actions/destination.js'
 import type { DocumentInfo } from '../../src/core/types.js'
 
 const source: DocumentInfo = {
@@ -68,5 +68,20 @@ describe('destinationOption', () => {
       label: 'New subfolder',
       path: join('/work/scans/converted'),
     })
+  })
+})
+
+describe('destinationAt', () => {
+  it('lists no Same location for a source with no folder of its own (a YouTube link)', () => {
+    const spec = destinationAt(undefined, { ...DEFAULT_PREFERENCES, defaultOutput: '/work/out' })
+    expect(spec.presets.map((p) => p.label)).toEqual(['out', 'Desktop', 'Downloads'])
+    expect(spec.default).toBe('/work/out')
+  })
+
+  it('is what destinationOption lists, given the source’s folder', () => {
+    const prefs = { ...DEFAULT_PREFERENCES, defaultOutput: '/work/out' }
+    expect(destinationAt('/work/in', prefs)).toEqual(
+      destinationOption({ ...source, path: '/work/in/report.pdf' }, prefs),
+    )
   })
 })

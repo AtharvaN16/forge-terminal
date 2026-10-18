@@ -68,7 +68,7 @@ function expectStep(step: Step, skip: number[] = []) {
 describe('commands as a fourth tab of home (N6), against the decided mockup', () => {
   const [rest, , , after] = STEPS as [Step, Step, Step, Step]
 
-  // Row 23, the key row, says "1–5 ←→ mode" since ←→ step through the modes
+  // Row 23, the key row, says "1–6 ←→ mode" since ←→ step through the modes
   // (2026-10-13), after this mockup; mode-arrows-app.test.tsx holds it.
   it('1 · home: "/ menu" waits, dim, after the modes', () => expectStep(rest, [23]))
   // Row 11 is compress's kinds line, which leaves out the mockup's "video":

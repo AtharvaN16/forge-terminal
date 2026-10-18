@@ -9,7 +9,9 @@ import {
   folderCardOnDots,
   HOME_MARGIN,
   INTRO_MS,
+  MODE_DROP_TITLES,
   MODE_KINDS,
+  menuHintRow,
   type Row,
   stagedCardRows,
   stagedListRows,
@@ -432,6 +434,7 @@ export function Home({
                   rows: layout.surface,
                   typing,
                   kinds: MODE_KINDS[mode],
+                  ...(MODE_DROP_TITLES[mode] ? { title: MODE_DROP_TITLES[mode] } : {}),
                   ripple,
                 })
       : []
@@ -466,14 +469,11 @@ export function Home({
     })
   const introducing = introAt < INTRO_MS
   useKeys(() => setSkipped(true), { isActive: introducing })
-  const resting = layout.brand ? brandRows({ ...art, menu: false, update }) : []
+  const resting = layout.brand ? brandRows({ ...art, update }) : []
   const brand = introducing
     ? brandIntro(resting, easeOut(introAt / INTRO_MS) * (width + 8), palette)
     : resting
-  const tabsAtRest = tabRows({
-    ...art,
-    menu: false,
-  })
+  const tabsAtRest = tabRows(art)
   // The tabs come up out of the background as the band's edge passes them.
   const tabsIn = Math.max(0, Math.min(1, (introAt - INTRO_MS * 0.5) / INTRO_TABS_MS))
   const tabs = introducing
@@ -555,6 +555,9 @@ export function Home({
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
         {note ? null : list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
+      {/* "/ menu" while the field is empty. Typing — a path or a command —
+          the list below the field needs the row, and / is already in use. */}
+      {typing ? null : <Runs row={menuHintRow({ palette, width, open: false })} />}
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
       <KeyRow {...keys} width={width} />

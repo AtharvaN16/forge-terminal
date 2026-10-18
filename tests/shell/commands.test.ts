@@ -52,6 +52,7 @@ describe('listCommands', () => {
       'pdf',
       'edit',
       'colour',
+      'transcribe',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
       'settings',
@@ -59,6 +60,7 @@ describe('listCommands', () => {
       'settings',
       'settings',
       'settings',
+      'modes',
       'modes',
       'modes',
       'modes',
@@ -86,6 +88,7 @@ describe('listCommands', () => {
         'pdf',
         'edit',
         'colour',
+        'transcribe',
       ])
       expect(listCommands(typed).query).toBe('')
     }
@@ -107,6 +110,7 @@ describe('listCommands', () => {
       'pdf',
       'edit',
       'colour',
+      'transcribe',
     ])
   })
 })
@@ -147,6 +151,7 @@ describe('the registry', () => {
       'pdf',
       'right-click',
       'theme',
+      'transcribe',
       'update',
     ])
   })

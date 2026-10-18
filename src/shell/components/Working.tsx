@@ -29,6 +29,7 @@ export function Working({
   startedAt,
   search,
   pages,
+  progress,
   stoppable = false,
   unit,
   savedAsItGoes = false,
@@ -43,6 +44,8 @@ export function Working({
   search?: { n: number; of: number } | undefined
   /** Pages done of a known total, for an operation that reports them. */
   pages?: { done: number; total: number } | undefined
+  /** A true amount of a known total that is not whole things, and how to say it: "23:10 of 1:01:57". */
+  progress?: { done: number; total: number; says: string } | undefined
   /** esc stops this job (an extension's child is killed; nothing is written). */
   stoppable?: boolean | undefined
   /** What `pages` counts when it is not pages: a folder's files ("images"). */
@@ -60,17 +63,19 @@ export function Working({
 
   const count: Row | undefined = search
     ? triesRow({ palette, mode, n: search.n, of: search.of })
-    : pages
-      ? pagesRow({
-          palette,
-          mode,
-          done: pages.done,
-          total: pages.total,
-          unit,
-          // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
-          plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
-        })
-      : undefined
+    : progress
+      ? pagesRow({ palette, mode, ...progress })
+      : pages
+        ? pagesRow({
+            palette,
+            mode,
+            done: pages.done,
+            total: pages.total,
+            unit,
+            // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
+            plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
+          })
+        : undefined
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Runs row={workLine({ palette, mode, spinner, label, clock, width })} />

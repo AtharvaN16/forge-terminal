@@ -1,7 +1,7 @@
 import { Box } from 'ink'
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import type { BarChip, Trail } from '../bar-art.js'
-import { blank, type Row } from '../home-art.js'
+import { menuHintRow } from '../home-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeGradient, type Palette } from '../theme.js'
@@ -63,16 +63,6 @@ export function ScreenKeys({
   }, [report, said])
   if (report) return null
   return <HintBar width={width} pairs={pairs} foot={foot} />
-}
-
-/** "/ menu" while the menu is open: the keycap filled gold with the slash in ink, the word gold. */
-function openHint(p: Palette, width: number): Row {
-  const parts: Row = [
-    { text: ' / ', fg: p.ink, bg: p.brand, bold: true },
-    { text: ' menu', fg: p.brand, bold: true },
-  ]
-  const used = parts.reduce((n, r) => n + r.text.length, 0)
-  return [blank(Math.max(0, width - 2 - used)), ...parts]
 }
 
 /** Rows the popup takes above the hint, the key row's gap, its rule and its keys. */
@@ -137,7 +127,7 @@ export function MenuPopup({
         width={width}
         pairs={shown.pairs}
         foot={shown.foot}
-        hint={<Runs row={openHint(palette, width)} />}
+        hint={<Runs row={menuHintRow({ palette, width, open: true })} />}
       />
     </Box>
   )

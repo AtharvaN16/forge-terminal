@@ -110,6 +110,6 @@ describe('Quality', () => {
     const { app } = await atQuality()
     const keys = keyRow(app.lastFrame())
     expect(keys).toMatch(/^ +←→ +adjust +↵ +confirm/)
-    expect(keys).toMatch(/1–5 mode · esc back · ctrl-c quit$/)
+    expect(keys).toMatch(/1–6 mode · esc back · ctrl-c quit$/)
   })
 })

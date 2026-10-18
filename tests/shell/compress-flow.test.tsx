@@ -337,9 +337,9 @@ describe('knowing which mode you are in', () => {
 })
 
 describe('the commands are discoverable', () => {
-  it('home names them as a tab of their own', () => {
+  it('home shows "/ menu" above the key row', () => {
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
     const frame = render(<App initialWidth={100} prefs={prefs} />).lastFrame() ?? ''
-    expect(frame).toContain('/ menu')
+    expect(frame).toMatch(/\/\s+menu/)
   })
 })

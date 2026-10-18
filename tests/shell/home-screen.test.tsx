@@ -73,7 +73,7 @@ describe('the home screen, against the decided mockup (80 × 24)', () => {
     FixtureFrame,
   ]
 
-  // The key row says "1–5 ←→ mode" since ←→ step through the modes
+  // The key row says "1–6 ←→ mode" since ←→ step through the modes
   // (2026-10-13), after these mockups; mode-arrows-app.test.tsx holds it.
   const KEY_ROW = 23
 
