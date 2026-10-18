@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { App } from '../../src/shell/App.js'
-import { makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
+import { makeCorruptFile, makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const ENTER = String.fromCharCode(13)
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -61,4 +61,45 @@ describe('a single dropped path with one unescaped space', () => {
     expect(frame).toContain('a.pdf')
     expect(frame).toContain('b.pdf')
   })
+
+  // A macOS recording or screenshot has a narrow no-break space (U+202F)
+  // before "PM", which Terminal.app pastes bare (confirmed on a real drop).
+  it.skipIf(process.platform === 'win32')(
+    "reports a real file it can't read as itself, not as fragments that could not be found",
+    async () => {
+      const dir = await makeTempDir()
+      const name = 'ScreenRecording_10-01-2026 12-53-26\u202fPM_1.mov'
+      const path = await makeCorruptFile(dir, name)
+      const pastedRaw = path.replace(name, name.replaceAll(' ', '\\ '))
+
+      const { stdin, lastFrame } = render(<App initialWidth={80} />)
+      stdin.write(pastedRaw)
+      await settle()
+      stdin.write(ENTER)
+      await settle(400)
+
+      const frame = lastFrame() ?? ''
+      expect(frame).not.toContain('could not be found')
+      expect(frame).toContain('PM_1.mov')
+    },
+  )
+
+  // WezTerm escapes only spaces, so a real backslash in a name comes bare.
+  it.skipIf(process.platform === 'win32')(
+    'finds a name with a backslash in it that the terminal left unescaped',
+    async () => {
+      const dir = await makeTempDir()
+      const path = await makePng(dir, 'before\\after.png')
+
+      const { stdin, lastFrame } = render(<App initialWidth={80} />)
+      stdin.write(path)
+      await settle()
+      stdin.write(ENTER)
+      await settle(400)
+
+      const frame = lastFrame() ?? ''
+      expect(frame).toContain('PNG')
+      expect(frame).not.toContain('could not be found')
+    },
+  )
 })

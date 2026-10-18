@@ -2,6 +2,7 @@ import { dirname } from 'node:path'
 import { lastSegment } from '../../utils/last-segment.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
+import { fitName } from '../output-path.js'
 import type { DocumentInfo, ImageInfo, MediaInfo, SourceInfo } from '../types.js'
 import { destinationOption } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
@@ -167,7 +168,7 @@ export const compressAction: Action = {
       typeof values.destination === 'string' ? values.destination : dirname(source.path)
     // Video and sound keep their format, except where it has no smaller setting.
     const target = source.kind === 'media' ? compressedFormat(source.format) : source.format
-    const output = `${destination}/${stem}${SUFFIX}${primaryExtension(target)}`
+    const output = `${destination}/${fitName(stem, `${SUFFIX}${primaryExtension(target)}`)}`
     const media = source.kind === 'media' ? mediaOptionsOf(values) : undefined
 
     return [

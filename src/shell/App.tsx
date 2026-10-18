@@ -54,9 +54,15 @@ import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { displayName, displayPath } from '../utils/display-path.js'
+import { lastSegment } from '../utils/last-segment.js'
 import type { Pasteboard } from '../utils/pasteboard.js'
 import { printable } from '../utils/printable.js'
-import { splitPastedPaths, startsLikePath, unescapePath } from '../utils/unescape-path.js'
+import {
+  splitPastedPaths,
+  startsLikePath,
+  trimPasted,
+  unescapePath,
+} from '../utils/unescape-path.js'
 import type { Trail } from './bar-art.js'
 import type { HistoryBlock } from './blocks.js'
 import { HistoryEntry } from './blocks.js'
@@ -563,6 +569,10 @@ const resolution = (sources: SourceInfo[], failures: InputFailure[]): DropResolu
  * way; two real paths joined by a space essentially never match anything on
  * disk as one string, so a genuine multi-file drop still falls through.
  *
+ * Split only when the whole names nothing on disk: a file that is there but
+ * can't be read (a format Forge doesn't know) is reported as itself, not as
+ * the fragments a split would make of its name.
+ *
  * Then split with `splitPastedPaths`, on the raw text: a real OS drag of
  * several files pastes every escaped path on one line, space-separated, and
  * unescaping first would leave nothing able to tell an escaped space inside a
@@ -574,16 +584,30 @@ const resolution = (sources: SourceInfo[], failures: InputFailure[]): DropResolu
  * "Not a file", UX audit #11).
  */
 async function resolveDrop(text: string): Promise<DropResolution> {
-  const trimmed = text.trim()
-  const whole = unescapePath(trimmed)
-  let wholeError: unknown
+  const trimmed = trimPasted(text)
+  let path = unescapePath(trimmed)
+  let error: unknown
   try {
-    return resolution([await probe(whole)], [])
+    return resolution([await probe(path)], [])
   } catch (e) {
-    wholeError = e
+    error = e
+  }
+  const namesNothing = (e: unknown) => isForgeError(e) && NOTHING_THERE.has(e.code)
+
+  // The text as it is, for a name with a real backslash in it that a terminal
+  // left unescaped (WezTerm escapes only spaces), or one typed by hand.
+  if (namesNothing(error) && trimmed !== path) {
+    try {
+      return resolution([await probe(trimmed)], [])
+    } catch (e) {
+      if (!namesNothing(e)) {
+        path = trimmed
+        error = e
+      }
+    }
   }
 
-  const paths = splitPastedPaths(trimmed)
+  const paths = namesNothing(error) ? splitPastedPaths(trimmed) : []
   if (paths.length > 1) {
     const sources: SourceInfo[] = []
     const failures: InputFailure[] = []
@@ -597,22 +621,22 @@ async function resolveDrop(text: string): Promise<DropResolution> {
     return resolution(sources, failures)
   }
 
-  if (isForgeError(wholeError) && wholeError.code === 'not-a-file') {
-    const isDirectory = await stat(whole).then(
+  if (isForgeError(error) && error.code === 'not-a-file') {
+    const isDirectory = await stat(path).then(
       (s) => s.isDirectory(),
       () => false,
     )
     if (isDirectory) {
       // Read whole and by content (`scanFolder`): every file, each kind
       // counted, so a folder can be one thing on home — and watched.
-      const scan = await scanFolder(whole)
+      const scan = await scanFolder(path)
       if (scan.sources.length === 0) {
-        return resolution([], [...scan.failures, { path: whole, error: emptyDirectory(whole) }])
+        return resolution([], [...scan.failures, { path, error: emptyDirectory(path) }])
       }
       return { ...resolution(scan.sources, scan.failures), folder: scan }
     }
   }
-  return { ...resolution([], [asFailure(whole, wholeError)]), single: true }
+  return { ...resolution([], [asFailure(path, error)]), single: true }
 }
 
 /**
@@ -2765,7 +2789,7 @@ export function App({
     vals: Record<string, unknown>,
     folder: string,
     act: Action = currentAction,
-  ): Pick<SaveAsState, 'stem' | 'ext' | 'fixedName'> => {
+  ): Pick<SaveAsState, 'stem' | 'ext' | 'fixedName'> & { realStem: string } => {
     const planned = isExtensionAction(act)
       ? act.plan([src], { ...vals, output: folder })[0]
       : act.plan([src], { ...vals, destination: folder })[0]
@@ -2775,11 +2799,20 @@ export function App({
       return {
         stem: '',
         ext: '',
+        realStem: '',
         fixedName: outputs.length > 1 ? `${first} … ${outputs.length} files` : first,
       }
     }
+    // `first` is for showing (a control or bidi character shows as `?`); the
+    // file is saved under the real name, `realStem`, unless one is typed.
+    const real = lastSegment(outputs[0] ?? src.path) ?? first
     const dot = first.lastIndexOf('.')
-    return dot > 0 ? { stem: first.slice(0, dot), ext: first.slice(dot) } : { stem: first, ext: '' }
+    const ext = dot > 0 ? first.slice(dot) : ''
+    return {
+      stem: dot > 0 ? first.slice(0, dot) : first,
+      ext,
+      realStem: real.slice(0, real.length - ext.length),
+    }
   }
 
   /**
@@ -2910,7 +2943,8 @@ export function App({
       confirmDocumentConversion(destination)
       return
     }
-    const stem = safeStem(typed) || proposal.stem
+    const kept = typed.trim() === '' || typed.trim() === proposal.stem
+    const stem = (kept ? '' : safeStem(typed, process.platform, proposal.ext)) || proposal.realStem
     setSaving((s) => (s ? { ...s, given: typed } : s))
     setText('')
     setSavedAs(`${stem}${proposal.ext}`)

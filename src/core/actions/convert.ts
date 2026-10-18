@@ -1,8 +1,12 @@
-import { resolve } from 'node:path'
 import { rasterises, targetsFor } from '../capabilities.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, formatById } from '../formats.js'
-import { rasterOutputPaths, resolveOutputPath, suffixedImagePath } from '../output-path.js'
+import {
+  rasterOutputPaths,
+  resolveOutputPath,
+  sameFile,
+  suffixedImagePath,
+} from '../output-path.js'
 import { normalisePages, parseRanges } from '../pages.js'
 import type { ConvertOptions, DocumentInfo, FormatId, FormatSpec, SourceInfo } from '../types.js'
 import { destinationOption } from './destination.js'
@@ -260,7 +264,7 @@ export const convertAction: Action = {
       ...(destination === undefined ? {} : { output: `${destination}/` }),
     })
     // HEVC is written into an .mp4: an MP4 source would be its own output.
-    if (resolve(output) === resolve(source.path)) {
+    if (sameFile(output, source.path)) {
       output = suffixedImagePath({
         sourcePath: source.path,
         target,

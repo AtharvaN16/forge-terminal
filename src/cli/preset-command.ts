@@ -1,7 +1,6 @@
-import { resolve } from 'node:path'
 import { expandTilde, loadPreferences } from '../config/preferences.js'
 import { invalidArguments, unsupportedOperation } from '../core/errors.js'
-import { resolveOutputPath, uniqueOutputPath } from '../core/output-path.js'
+import { resolveOutputPath, sameFile, uniqueOutputPath } from '../core/output-path.js'
 import { passesFor } from '../core/preset.js'
 import { runPreset } from '../core/preset-run.js'
 import { type InputFailure, resolveInputs } from '../core/resolve.js'
@@ -59,7 +58,7 @@ export async function runPresetCommand(intent: PresetIntent): Promise<RunReport>
       ...(folder === undefined ? {} : { output: folder }),
       ...(resolved.roots.get(source.path) ? { sourceRoot: resolved.roots.get(source.path) } : {}),
     })
-    if (resolve(output) === resolve(source.path)) output = uniqueOutputPath(output)
+    if (sameFile(output, source.path)) output = uniqueOutputPath(output)
     const outcome = await runPreset(source, passes, output, { force: intent.force })
     if (outcome.kind === 'done') {
       results.push(outcome.result)

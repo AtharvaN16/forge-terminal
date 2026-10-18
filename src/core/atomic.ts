@@ -1,8 +1,21 @@
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 import { classifyWriteError, outputInvalid, outputPermissionDenied } from './errors.js'
+import { fitName } from './output-path.js'
+
+/**
+ * Where a write goes before it is renamed onto `output`: beside it (a rename
+ * across volumes is a copy), hidden, so a watched folder skips it, and ending
+ * in `output`'s own extension, which Sharp reads the format from. The name is
+ * cut to fit the folder: `output` itself may already be as long as a name can
+ * be.
+ */
+export function tempBeside(output: string, tag = randomBytes(6).toString('hex')): string {
+  const ext = extname(output)
+  return join(dirname(output), fitName(`.forge-${tag}-${basename(output, ext)}`, ext))
+}
 
 /**
  * Makes sure the folder `output` will be written into exists and is writable,
@@ -87,7 +100,7 @@ export async function renameAtomic(
 export async function writeAtomic(path: string, bytes: Uint8Array): Promise<number> {
   await prepareOutputDir(path)
 
-  const temp = `${path}.${randomBytes(6).toString('hex')}.tmp`
+  const temp = tempBeside(path)
   try {
     await writeFile(temp, bytes)
     await renameAtomic(temp, path)

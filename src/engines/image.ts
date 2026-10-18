@@ -1,9 +1,8 @@
-import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { access, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
-import { prepareOutputDir, renameAtomic } from '../core/atomic.js'
+import { prepareOutputDir, renameAtomic, tempBeside } from '../core/atomic.js'
 import { type Aspect, aspectLabel, type Box, largestBox, type Thumb } from '../core/crop.js'
 import {
   animatedCrop,
@@ -278,10 +277,10 @@ const keepsFrames = (source: SourceInfo, target: FormatId): boolean =>
  * is safe because the original is only replaced once the new file is complete.
  */
 export async function writeAtomic(bytes: Buffer, output: string): Promise<number> {
-  const dir = dirname(output)
+  const _dir = dirname(output)
   await prepareOutputDir(output)
 
-  const temp = join(dir, `.forge-tmp-${randomBytes(6).toString('hex')}-${basename(output)}`)
+  const temp = tempBeside(output)
   try {
     await writeFile(temp, bytes)
     await renameAtomic(temp, output)

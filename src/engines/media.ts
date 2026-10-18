@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { open, rm, stat } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { prepareOutputDir, renameAtomic } from '../core/atomic.js'
+import { dirname, join } from 'node:path'
+import { prepareOutputDir, renameAtomic, tempBeside } from '../core/atomic.js'
 import {
   cannotCompressMore,
   conversionFailed,
@@ -174,7 +174,7 @@ async function run(
   await prepareOutputDir(output)
 
   const tag = randomBytes(6).toString('hex')
-  const temp = join(dirname(output), `.${basename(output)}.${tag}.tmp`)
+  const temp = tempBeside(output, tag)
   const passlog = join(dirname(output), `.forge-pass-${tag}`)
   const leftovers = [
     temp,

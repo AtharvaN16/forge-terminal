@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
-import { extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 import { probe } from '../engines/registry.js'
 import { convertAction } from './actions/convert.js'
 import { targetIdsFor } from './capabilities.js'
 import { isForgeError } from './errors.js'
 import { FORMATS } from './formats.js'
+import { fitName } from './output-path.js'
 import type { InputFailure } from './resolve.js'
 import type { FormatId, Job, SourceInfo } from './types.js'
 
@@ -274,9 +275,9 @@ export function planFolderFile(
 function keepBoth(o: string, claimed: Set<string>): string {
   if (!claimed.has(o)) return o
   const ext = extname(o)
-  const stem = o.slice(0, o.length - ext.length)
+  const stem = basename(o, ext)
   for (let n = 1; ; n++) {
-    const candidate = `${stem} (${n})${ext}`
+    const candidate = join(dirname(o), fitName(stem, ` (${n})${ext}`))
     if (!claimed.has(candidate) && !existsSync(candidate)) return candidate
   }
 }

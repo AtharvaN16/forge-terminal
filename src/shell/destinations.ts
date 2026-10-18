@@ -2,6 +2,8 @@ import { statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { expandTilde } from '../config/preferences.js'
 import type { Choice, PathPreset } from '../core/actions/index.js'
+import { FORMATS } from '../core/formats.js'
+import { fitName } from '../core/output-path.js'
 import { displayName } from '../utils/display-path.js'
 import { unescapePath } from '../utils/unescape-path.js'
 
@@ -25,14 +27,49 @@ const PATHLIKE_WIN32 = /^(?:[~/.\\]|[A-Za-z]:[\\/])/
 const pathLike = (query: string, platform: NodeJS.Platform) =>
   (platform === 'win32' ? PATHLIKE_WIN32 : PATHLIKE).test(query)
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: removing them is the point
+const CONTROL = /[\u0000-\u001f\u007f]/g
+
+/** Windows' device names, which can't name a file whatever the extension. */
+const DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/i
+
 /**
  * Save as's typed name, made a file name: trimmed, and a `/` becomes `-`
  * (it would name a folder). On Windows the same goes for `\` (a folder too),
  * `:` (an alternate data stream) and `* ? " < > |` (refused outright).
+ *
+ * Given the extension Forge adds (`ext`), a name typed with it (or a sibling,
+ * `.jpeg` for `.jpg`) loses it, so `holiday.jpg` isn't saved as
+ * `holiday.jpg.jpg`; and a name too long for the folder is cut to fit.
+ * Control characters, which a paste can carry, go. On Windows, trailing dots
+ * and spaces, which it drops without a word, go too, and a device name
+ * (`CON`, `NUL`) gets a `-`.
  */
-export function safeStem(typed: string, platform: NodeJS.Platform = process.platform): string {
-  const stem = typed.trim().replace(/\//g, '-')
-  return platform === 'win32' ? stem.replace(/[\\:*?"<>|]/g, '-') : stem
+export function safeStem(
+  typed: string,
+  platform: NodeJS.Platform = process.platform,
+  ext = '',
+): string {
+  let stem = typed.replace(CONTROL, '').trim().replace(/\//g, '-')
+  const lower = stem.toLowerCase()
+  const typedExt = siblingExtensions(ext).find((e) => lower.endsWith(e) && lower.length > e.length)
+  if (typedExt) stem = stem.slice(0, -typedExt.length)
+  if (stem === '.' || stem === '..') return ''
+  if (platform === 'win32') {
+    stem = stem.replace(/[\\:*?"<>|]/g, '-').replace(/[. ]+$/, '')
+    if (DEVICE.test(stem)) stem = `${stem}-`
+  }
+  if (!stem) return ''
+  const fitted = fitName(stem, ext, platform)
+  return fitted.slice(0, fitted.length - ext.length)
+}
+
+/** `ext` and the other extensions of the format(s) that write it, lower case. */
+function siblingExtensions(ext: string): string[] {
+  if (!ext) return []
+  const e = ext.toLowerCase()
+  const formats = Object.values(FORMATS).filter((f) => f.extensions.includes(e))
+  return [...new Set([e, ...formats.flatMap((f) => f.extensions)])]
 }
 
 /** True when `text` names a place rather than filtering the list. */

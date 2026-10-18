@@ -29,9 +29,9 @@ const prefsFor = (dir: string) => ({
 })
 
 /** A PNG converting to JPEG, at Save as: drop, JPEG, the quality as it opens. */
-async function atSaveAs() {
+async function atSaveAs(name = 'test.png') {
   const dir = await makeTempDir()
-  const file = await makeGradientPng(dir, 'test.png', 64)
+  const file = await makeGradientPng(dir, name, 64)
   const app = render(<App initialWidth={80} initialHeight={24} prefs={prefsFor(dir)} />)
   await settle()
   app.stdin.write(file)
@@ -204,4 +204,42 @@ describe('Save as, a document rasterised to many files', () => {
     await waitFor(() => existsSync(join(dir, 'doc-2.jpg')))
     expect((await readdir(dir)).sort()).toEqual(['doc-1.jpg', 'doc-2.jpg', 'doc.pdf'])
   }, 30_000)
+})
+
+describe('Save as, with names that are easy to break', () => {
+  it('keeps a name with a character it shows as ?, rather than saving the ?', async () => {
+    // U+202E reverses the text after it, so it is shown as "?" (printable).
+    const { app, dir } = await atSaveAs('a\u202eb.png')
+    app.stdin.write(ENTER)
+    await waitFor(() => existsSync(join(dir, 'a\u202eb.jpg')))
+    expect((await readdir(dir)).sort()).toEqual(['a\u202eb.jpg', 'a\u202eb.png'])
+  }, 20_000)
+
+  it('does not add the extension twice when it is typed', async () => {
+    const { app, dir } = await atSaveAs()
+    app.stdin.write(ESC) // clears the name
+    await settle()
+    app.stdin.write('holiday.jpg')
+    await settle()
+    app.stdin.write(ENTER)
+    await waitFor(() => existsSync(join(dir, 'holiday.jpg')))
+    expect((await readdir(dir)).sort()).toEqual(['holiday.jpg', 'test.png'])
+  }, 20_000)
+
+  it('cuts a name too long for the folder, keeping the extension', async () => {
+    const { app, dir } = await atSaveAs()
+    app.stdin.write(ESC)
+    await settle()
+    app.stdin.write('x'.repeat(300))
+    await settle()
+    app.stdin.write(ENTER)
+    const want = `${'x'.repeat(251)}.jpg`
+    await waitFor(() => existsSync(join(dir, want)))
+    console.log(
+      'DBG',
+      (await readdir(dir)).map((n) => n.length),
+      plain(app.lastFrame()).slice(-900),
+    )
+    expect(existsSync(join(dir, want))).toBe(true)
+  }, 20_000)
 })

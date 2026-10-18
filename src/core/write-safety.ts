@@ -7,6 +7,7 @@ import {
   outputIsInput,
   selfCollision,
 } from './errors.js'
+import { sameFile } from './output-path.js'
 import type { InputFailure } from './resolve.js'
 import type { Job } from './types.js'
 
@@ -76,13 +77,12 @@ function firstUnsafeOutput(
   const selfCollision = firstSelfCollision(job)
   if (selfCollision) return selfCollision
 
-  const sourcePaths = new Set(job.sources.map((s) => resolve(s.path)))
   const reportPath = job.sources[0]?.path ?? job.outputs[0] ?? ''
 
   for (const output of job.outputs) {
     const key = resolve(output)
 
-    if (sourcePaths.has(key) && !force) {
+    if (job.sources.some((s) => sameFile(s.path, key)) && !force) {
       return { output, error: outputIsInput(output, job.op) }
     }
 

@@ -23,11 +23,55 @@ export function looksLikeDirectory(p: string): boolean {
   return extname(p) === ''
 }
 
+/**
+ * The longest name a folder takes: 255 UTF-16 units on a Mac (APFS) and on
+ * Windows (NTFS), 255 bytes on Linux. A source near the limit would otherwise
+ * fail to write as soon as `-compressed` or ` (1)` is added to its name.
+ */
+const NAME_LIMIT = 255
+
+function nameLength(name: string, platform: NodeJS.Platform): number {
+  return platform === 'darwin' || platform === 'win32' ? name.length : Buffer.byteLength(name)
+}
+
+/** `stem` + `tail`, the stem cut short (whole characters) when the name would not fit. */
+export function fitName(
+  stem: string,
+  tail: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (nameLength(stem + tail, platform) <= NAME_LIMIT) return stem + tail
+  let kept = ''
+  for (const ch of stem) {
+    if (nameLength(kept + ch + tail, platform) > NAME_LIMIT) break
+    kept += ch
+  }
+  return kept + tail
+}
+
+/**
+ * True when `a` and `b` are one file: one path, or two that the disk resolves
+ * to the same file. A Mac's disk ignores case, so `clip.MP4` (as an iPhone
+ * names it) is `clip.mp4`, which HEVC would be written to; a hard link is
+ * another name for the same file too. Paths that don't exist yet are compared
+ * as paths.
+ */
+export function sameFile(a: string, b: string): boolean {
+  if (resolve(a) === resolve(b)) return true
+  try {
+    const x = statSync(a)
+    const y = statSync(b)
+    return x.dev === y.dev && x.ino === y.ino
+  } catch {
+    return false
+  }
+}
+
 function swapExtension(path: string, target: FormatId): string {
   const name = basename(path)
   const ext = extname(name)
   const stem = ext ? name.slice(0, -ext.length) : name
-  return stem + primaryExtension(target)
+  return fitName(stem, primaryExtension(target))
 }
 
 /**
@@ -78,7 +122,7 @@ export function suffixedImagePath(req: OutputRequest & { suffix: string }): stri
   const base = resolveOutputPath(req)
   if (req.output && !looksLikeDirectory(req.output)) return base
   const ext = extname(base)
-  return join(resolve(base, '..'), `${basename(base, ext)}-${req.suffix}${ext}`)
+  return join(resolve(base, '..'), fitName(basename(base, ext), `-${req.suffix}${ext}`))
 }
 
 /**
@@ -102,7 +146,7 @@ export function uniqueOutputPath(path: string): string {
   const stem = ext ? name.slice(0, -ext.length) : name
 
   for (let n = 1; n < 10_000; n++) {
-    const candidate = join(dir, `${stem} (${n})${ext}`)
+    const candidate = join(dir, fitName(stem, ` (${n})${ext}`))
     if (!existsSync(candidate)) return candidate
   }
   // Unreachable short of 10,000 copies of one file in one folder. Throwing
@@ -120,7 +164,7 @@ function stemAndExt(path: string): { dir: string; stem: string; ext: string } {
 /** `report.pdf` + `trimmed` → `report-trimmed.pdf`, beside the source. */
 export function suffixedOutputPath(sourcePath: string, suffix: string): string {
   const { dir, stem, ext } = stemAndExt(resolve(sourcePath))
-  return join(dir, `${stem}-${suffix}${ext}`)
+  return join(dir, fitName(stem, `-${suffix}${ext}`))
 }
 
 /**
@@ -133,7 +177,7 @@ export function splitOutputPaths(sourcePath: string, count: number): string[] {
   const { dir, stem, ext } = stemAndExt(resolve(sourcePath))
   const width = String(count).length
   return Array.from({ length: count }, (_, i) =>
-    join(dir, `${stem}-${String(i + 1).padStart(width, '0')}${ext}`),
+    join(dir, fitName(stem, `-${String(i + 1).padStart(width, '0')}${ext}`)),
   )
 }
 
@@ -175,7 +219,9 @@ export function rasterOutputPaths(
     : resolve(sourcePath, '..')
   const ext = primaryExtension(target)
   const width = String(Math.max(1, ...pages.map((p) => p + 1))).length
-  const names = pages.map((p) => join(dir, `${stem}-${String(p + 1).padStart(width, '0')}${ext}`))
+  const names = pages.map((p) =>
+    join(dir, fitName(stem, `-${String(p + 1).padStart(width, '0')}${ext}`)),
+  )
   const [first, ...rest] = names
   if (first === undefined) {
     throw new Error('rasterOutputPaths requires at least one selected page')
@@ -197,7 +243,7 @@ export function extractOutputPaths(
 ): string[] {
   if (!separate) return [suffixedOutputPath(sourcePath, 'extract')]
   const { dir, stem, ext } = stemAndExt(resolve(sourcePath))
-  return pages.map((p) => join(dir, `${stem}-p${p + 1}${ext}`))
+  return pages.map((p) => join(dir, fitName(stem, `-p${p + 1}${ext}`)))
 }
 
 /**
@@ -213,7 +259,7 @@ export function mergeOutputPath(sourcePaths: string[]): string {
   const dirs = new Set(sourcePaths.map((p) => resolve(p, '..')))
   if (dirs.size === 1) {
     const dir = resolve(first, '..')
-    return join(dir, `${basename(dir)}-merged.pdf`)
+    return join(dir, fitName(basename(dir), '-merged.pdf'))
   }
   return suffixedOutputPath(first, 'merged')
 }

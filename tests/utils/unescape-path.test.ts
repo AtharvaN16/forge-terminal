@@ -67,6 +67,29 @@ describe('unescapePath on darwin', () => {
   it('trims surrounding whitespace, which terminals add', () => {
     expect(onMac('  /Users/me/a.jpg  ')).toBe('/Users/me/a.jpg')
   })
+
+  it('keeps an escaped space that ends a name, but not the one a terminal adds', () => {
+    expect(onMac('/a/name\\  ')).toBe('/a/name ')
+    expect(onMac('/a/name\\\\ ')).toBe('/a/name\\')
+  })
+
+  it("reads single quotes as sh does: a quote in the name comes as '\\''", () => {
+    expect(onMac("'/a/it'\\''s here.png'")).toBe("/a/it's here.png")
+  })
+
+  it('reads double quotes as sh does: \\ escapes only $ ` " and \\', () => {
+    expect(onMac('"/a/say \\"hi\\" \\$5 \\`x\\` a\\\\b \\n.png"')).toBe(
+      '/a/say "hi" $5 `x` a\\b \\n.png',
+    )
+  })
+
+  it('strips a pair of quotes round a name with an unescaped quote in it', () => {
+    expect(onMac("'/a/it's.png'")).toBe("/a/it's.png")
+  })
+
+  it('leaves a quote typed bare in the middle of a name', () => {
+    expect(onMac('/a/say "hi".png')).toBe('/a/say "hi".png')
+  })
 })
 
 describe('splitPastedPaths on darwin', () => {
@@ -89,6 +112,17 @@ describe('splitPastedPaths on darwin', () => {
       '/a/one.jpg',
       '/a/My two.jpg',
     ])
+  })
+
+  it('does not split on a no-break space, which is part of a name, never a separator', () => {
+    // macOS puts U+202F before "PM" in a screenshot's or recording's name.
+    expect(split('/a/Rec\\ 12-53-26\u202fPM.mov')).toEqual(['/a/Rec 12-53-26\u202fPM.mov'])
+    expect(split('/a/one\u00a0two.jpg')).toEqual(['/a/one\u00a0two.jpg'])
+  })
+
+  it('does not split on a quote escaped inside double quotes', () => {
+    expect(split('"/a/say \\"hi\\".png" /a/two.jpg')).toEqual(['/a/say "hi".png', '/a/two.jpg'])
+    expect(split("'/a/it'\\''s.png' /a/two.jpg")).toEqual(["/a/it's.png", '/a/two.jpg'])
   })
 
   it('returns one path for one path', () => {
