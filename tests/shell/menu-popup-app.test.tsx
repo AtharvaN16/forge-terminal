@@ -101,6 +101,37 @@ describe('the / menu, as a popup', () => {
     expect(a.frame()).not.toMatch(/╭─+╮/)
   })
 
+  it('closes on a second /, leaving home’s field empty and the mode as it was (2026-10-18)', async () => {
+    const a = app()
+    await settle()
+    a.stdin.write('2')
+    await settle()
+    a.stdin.write('/')
+    await settle()
+    expect(a.frame()).toMatch(/╭─+╮/)
+    a.stdin.write('/')
+    await settle()
+    const f = a.frame()
+    expect(f).not.toMatch(/╭─+╮/)
+    expect(f).not.toContain('//')
+    expect(f).toContain('or type a path')
+    expect(f).toContain('images · PDF')
+    expect(f).not.toContain('HEIC')
+  })
+
+  it('closes on a / typed after part of a name too', async () => {
+    const a = app()
+    await settle()
+    a.stdin.write('/co')
+    await settle()
+    a.stdin.write('/')
+    await settle()
+    const f = a.frame()
+    expect(f).not.toMatch(/╭─+╮/)
+    expect(f).not.toContain('/co')
+    expect(f).toContain('or type a path')
+  })
+
   it('switches home to a mode chosen from the list, and closes', async () => {
     const a = app()
     await settle()

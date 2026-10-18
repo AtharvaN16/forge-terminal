@@ -6,7 +6,8 @@ import { modeColours, type Palette } from './theme.js'
  * The / menu's list (decided 2026-10-17, mockups/transcribe-2026-10-round2.html,
  * "/ menu" 1–7): the settings, then the modes, each group under a gold heading
  * with a faint rule to the edge and a blank row under it. Each command's name
- * sits in its own column, what it does after it. The chosen row is a band
+ * sits in its own column, and the chosen one says what it does after it
+ * (2026-10-18: only the chosen one). The chosen row is a band
  * across the width with a ▌ strip, the mode's colour for a mode and the
  * menu's gold for a setting. Everything fits; nothing scrolls.
  */
@@ -73,11 +74,18 @@ function listRows(
         { text: `/${o.query}`, fg: p.fg, bold: true },
         { text: c.name.slice(o.query.length), fg: chosen ? p.fg : p.dim, bold: chosen },
       ]
-      const row: Row = [
-        ...pad([{ text: chosen ? '▌' : ' ', fg: strip }, blank(1), ...name], MENU_NAME_COLUMN),
-        { text: what, fg: chosen ? p.dim : p.border },
-      ]
-      out.push(chosen ? pad(row, w).map((r) => ({ ...r, bg: p.panelBand })) : row)
+      // Only the chosen row says what it does (2026-10-18).
+      out.push(
+        chosen
+          ? pad(
+              [
+                ...pad([{ text: '▌', fg: strip }, blank(1), ...name], MENU_NAME_COLUMN),
+                { text: what, fg: p.dim },
+              ],
+              w,
+            ).map((r) => ({ ...r, bg: p.panelBand }))
+          : [blank(2), ...name],
+      )
     }
   }
   if (o.items.length === 0)

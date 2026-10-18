@@ -1468,6 +1468,13 @@ export function App({
    */
   const commandKey = (input: string, key: Key): boolean => {
     if (!commands) return false
+    // A second / closes the menu as the first opened it, the field empty
+    // again (2026-10-18). No command has a slash in its name, and a path
+    // whose first folder some name starts with is no path anyone types.
+    if (input === '/' && !key.ctrl && !key.meta && !key.super && commands.items.length > 0) {
+      setText('')
+      return true
+    }
     // A mode digit right after the slash is the tab row's, not a search: no
     // command name starts with a digit, so it could only match nothing.
     const digitMode = modeForKey(input)

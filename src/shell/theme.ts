@@ -471,8 +471,8 @@ export const MODE_ORDER: readonly ShellMode[] = [
   'compress',
   'pdf',
   'edit',
-  'colour',
   'transcribe',
+  'colour',
 ]
 
 /** The digits that pick a mode, as the key rows say them: "1–6". */

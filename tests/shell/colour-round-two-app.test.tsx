@@ -31,7 +31,7 @@ async function colourHome(height = 24) {
     />,
   )
   await settle()
-  app.stdin.write('5')
+  app.stdin.write('6')
   await waitFor(() => plain(app.lastFrame()).includes('build a palette'))
   await settle()
   return app

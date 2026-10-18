@@ -26,12 +26,21 @@ describe('menuListRows', () => {
     expect(width(heading)).toBe(W)
   })
 
-  it('lists the settings above the modes, each name in its column and what it does after', () => {
+  it('lists the settings above the modes, the chosen one saying what it does after its name', () => {
     const out = rows().map(text)
-    const at = (name: string) => out.findIndex((l) => l.includes(`/${name} `))
+    const at = (name: string) => out.findIndex((l) => l.includes(`/${name}`))
     expect(at('about')).toBeLessThan(at('convert'))
     const theme = out[at('theme')] ?? ''
-    expect(theme.indexOf('switch between light and dark')).toBe(MENU_NAME_COLUMN)
+    expect(theme.indexOf('switch between light and dark themes')).toBe(MENU_NAME_COLUMN)
+  })
+
+  it('says what a command does only on the chosen row (2026-10-18)', () => {
+    const list = listCommands('')
+    const at = list.items.findIndex((c) => c.name === 'compress')
+    const out = menuListRows({ palette: DARK, width: W, ...list, selected: at }).map(text)
+    expect(out.find((l) => l.includes('/compress'))).toContain('reduce file size')
+    expect(out.find((l) => l.includes('/theme'))?.trimEnd()).toBe('  /theme')
+    expect(out.join('\n')).not.toContain('switch between')
   })
 
   it('bands the chosen row across the width, with a strip in gold for a setting', () => {
@@ -50,11 +59,10 @@ describe('menuListRows', () => {
     expect(row[0]).toMatchObject({ text: '▌', fg: DARK.modeCompress })
   })
 
-  it('draws an unchosen name dim and its description in border grey, the chosen one brighter', () => {
+  it('draws an unchosen name dim, and the chosen row’s description dim too', () => {
     const out = rows('', 0)
     const ext = out.find((r) => text(r).includes('/extensions')) as Row
     expect(ext.find((r) => r.text === 'extensions')?.fg).toBe(DARK.dim)
-    expect(ext.find((r) => r.text.startsWith('install'))?.fg).toBe(DARK.border)
     const theme = out.find((r) => text(r).includes('/theme')) as Row
     expect(theme.find((r) => r.text.startsWith('switch'))?.fg).toBe(DARK.dim)
   })

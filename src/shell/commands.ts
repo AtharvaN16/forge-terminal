@@ -3,7 +3,7 @@ import { MODE_ORDER, type ShellMode } from './theme.js'
 export interface Command {
   /** Without the leading slash. */
   name: string
-  /** Shown beside the name in the list. */
+  /** Shown beside the name in the list, on the chosen row only. */
   description: string
   /** Whether the command needs a staged file to mean anything. */
   needsSource: boolean
@@ -11,6 +11,16 @@ export interface Command {
   mode?: ShellMode
   /** Which heading it sits under in the list. `undefined`: not listed at all. */
   group?: 'modes' | 'settings'
+}
+
+/**
+ * What /right-click says it manages: Quick Actions in Finder, a "Forge ›"
+ * submenu in File Explorer.
+ */
+export function rightClickDescription(platform: NodeJS.Platform): string {
+  return platform === 'win32'
+    ? 'manage Forge right-click actions'
+    : 'manage Forge mac quick actions'
 }
 
 /**
@@ -24,80 +34,80 @@ export interface Command {
 export const COMMANDS: Command[] = [
   {
     name: 'convert',
-    description: "change a file's format",
+    description: 'convert files between formats',
     needsSource: true,
     mode: 'convert',
     group: 'modes',
   },
   {
     name: 'compress',
-    description: 'make a file smaller',
+    description: 'reduce file size',
     needsSource: true,
     mode: 'compress',
     group: 'modes',
   },
   {
     name: 'pdf',
-    description: 'page operations on a PDF',
+    description: 'merge, split, and edit PDFs',
     needsSource: true,
     mode: 'pdf',
     group: 'modes',
   },
   {
     name: 'colour',
-    description: 'palettes from images, scales from a colour',
+    description: 'extract palettes and generate colour scales',
     needsSource: false,
     mode: 'colour',
     group: 'modes',
   },
   {
     name: 'edit',
-    description: 'sharpen, boost resolution, remove background, resize, trim, crop',
+    description: 'enhance, resize, and edit images',
     needsSource: true,
     mode: 'edit',
     group: 'modes',
   },
   {
     name: 'transcribe',
-    description: 'notes and transcripts from video and sound',
+    description: 'transcribe audio and video',
     needsSource: false,
     mode: 'transcribe',
     group: 'modes',
   },
   {
     name: 'theme',
-    description: 'switch between light and dark',
+    description: 'switch between light and dark themes',
     needsSource: false,
     group: 'settings',
   },
   {
     name: 'extensions',
-    description: 'install and remove the AI tools',
+    description: 'manage installed AI tools',
     needsSource: false,
     group: 'settings',
   },
   {
     name: 'right-click',
-    description: 'Forge in the right-click menu',
+    description: rightClickDescription(process.platform),
     needsSource: false,
     group: 'settings',
   },
   {
     name: 'update',
-    description: 'check for a new version',
+    description: 'check for updates',
     needsSource: false,
     group: 'settings',
   },
   {
     name: 'about',
-    description: 'who made Forge, and what it is built on',
+    description: 'version, credits, and dependencies',
     needsSource: false,
     group: 'settings',
   },
   // Not a row: the American spelling, so it works when typed.
   {
     name: 'color',
-    description: 'palettes from images, scales from a colour',
+    description: 'extract palettes and generate colour scales',
     needsSource: false,
     mode: 'colour',
   },

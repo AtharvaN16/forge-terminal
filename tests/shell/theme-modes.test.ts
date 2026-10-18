@@ -28,9 +28,9 @@ const contrast = (a: string, b: string) => {
   return (x + 0.05) / (y + 0.05)
 }
 
-describe('colour is the fifth mode', () => {
-  it('comes after edit', () => {
-    expect(MODE_ORDER.slice(0, 5)).toEqual(['convert', 'compress', 'pdf', 'edit', 'colour'])
+describe('colour is the sixth mode', () => {
+  it('comes last, after transcribe', () => {
+    expect(MODE_ORDER.at(-1)).toBe('colour')
   })
 
   it('has its own colour and fill', () => {
@@ -51,9 +51,9 @@ describe('colour is the fifth mode', () => {
   })
 })
 
-describe('transcribe is the sixth mode', () => {
-  it('comes last, after colour, and the digits reach it', () => {
-    expect(MODE_ORDER).toEqual(['convert', 'compress', 'pdf', 'edit', 'colour', 'transcribe'])
+describe('transcribe is the fifth mode', () => {
+  it('comes after edit, before colour (2026-10-18), and the digits reach it', () => {
+    expect(MODE_ORDER).toEqual(['convert', 'compress', 'pdf', 'edit', 'transcribe', 'colour'])
     expect(MODE_KEYS).toBe('1–6')
   })
 

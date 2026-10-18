@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { COMMANDS, isCommandBuffer, listCommands, parseCommand } from '../../src/shell/commands.js'
+import {
+  COMMANDS,
+  isCommandBuffer,
+  listCommands,
+  parseCommand,
+  rightClickDescription,
+} from '../../src/shell/commands.js'
 
 describe('isCommandBuffer', () => {
   it('is true only for a buffer that opens with a slash', () => {
@@ -51,8 +57,8 @@ describe('listCommands', () => {
       'compress',
       'pdf',
       'edit',
-      'colour',
       'transcribe',
+      'colour',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
       'settings',
@@ -87,8 +93,8 @@ describe('listCommands', () => {
         'compress',
         'pdf',
         'edit',
-        'colour',
         'transcribe',
+        'colour',
       ])
       expect(listCommands(typed).query).toBe('')
     }
@@ -109,8 +115,8 @@ describe('listCommands', () => {
       'compress',
       'pdf',
       'edit',
-      'colour',
       'transcribe',
+      'colour',
     ])
   })
 })
@@ -138,6 +144,26 @@ describe('parseCommand', () => {
 })
 
 describe('the registry', () => {
+  it('says what each command does (2026-10-18)', () => {
+    const said = (name: string) => COMMANDS.find((c) => c.name === name)?.description
+    expect(said('theme')).toBe('switch between light and dark themes')
+    expect(said('extensions')).toBe('manage installed AI tools')
+    expect(said('update')).toBe('check for updates')
+    expect(said('about')).toBe('version, credits, and dependencies')
+    expect(said('convert')).toBe('convert files between formats')
+    expect(said('compress')).toBe('reduce file size')
+    expect(said('pdf')).toBe('merge, split, and edit PDFs')
+    expect(said('edit')).toBe('enhance, resize, and edit images')
+    expect(said('transcribe')).toBe('transcribe audio and video')
+    expect(said('colour')).toBe('extract palettes and generate colour scales')
+    expect(said('color')).toBe(said('colour'))
+  })
+
+  it('names the right-click menu as each system does', () => {
+    expect(rightClickDescription('darwin')).toBe('manage Forge mac quick actions')
+    expect(rightClickDescription('win32')).toBe('manage Forge right-click actions')
+  })
+
   it('carries every command the shell can run', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
       'about',

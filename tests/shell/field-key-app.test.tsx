@@ -46,7 +46,7 @@ async function onScale() {
     />,
   )
   await settle()
-  app.stdin.write('5')
+  app.stdin.write('6')
   await waitFor(() => plain(app.lastFrame()).includes('build a palette'))
   app.stdin.write('s')
   await waitFor(() => plain(app.lastFrame()).includes('type a hex'))

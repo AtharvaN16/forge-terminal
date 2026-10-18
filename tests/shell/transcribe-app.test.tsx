@@ -84,9 +84,9 @@ async function setUp(notes: 'available' | 'off' = 'available') {
 const frame = (app: ReturnType<typeof render>) => plain(app.lastFrame())
 
 describe('transcribe on home', () => {
-  it('6 makes transcribe the mode, asking for a video or sound file, or a link', async () => {
+  it('5 makes transcribe the mode, asking for a video or sound file, or a link', async () => {
     const { app } = await setUp()
-    app.stdin.write('6')
+    app.stdin.write('5')
     await until(() => frame(app).includes('Drop a video or sound file'))
     expect(frame(app)).toContain('or paste a YouTube link')
     expect(frame(app)).toContain('or type a path or link')
@@ -102,7 +102,7 @@ describe('transcribe on home', () => {
 
   it('a dropped video waits as its card: its length and size', async () => {
     const { app, input } = await setUp()
-    app.stdin.write('6')
+    app.stdin.write('5')
     await until(() => frame(app).includes('Drop a video or sound file'))
     // A whole path at once is a drop: read, no ↵ needed.
     app.stdin.write(input)
@@ -114,7 +114,7 @@ describe('transcribe on home', () => {
   it('a picture is refused under the field, by its content', async () => {
     const { app } = await setUp()
     const png = await makePng(await makeTempDir(), 'still.mp4')
-    app.stdin.write('6')
+    app.stdin.write('5')
     await until(() => frame(app).includes('Drop a video or sound file'))
     app.stdin.write(png)
     await settle()
@@ -127,7 +127,7 @@ describe('transcribe on home', () => {
     await fakeYtDlp({
       facts: { title: 'Me at the zoo', uploader: 'jawed', duration: 19, is_live: false },
     })
-    app.stdin.write('6')
+    app.stdin.write('5')
     await until(() => frame(app).includes('Drop a video or sound file'))
     app.stdin.write('https://youtu.be/jNQXAC9IVRw')
     await settle()
@@ -139,7 +139,7 @@ describe('transcribe on home', () => {
 
   it('a playlist is refused under the field', async () => {
     const { app } = await setUp()
-    app.stdin.write('6')
+    app.stdin.write('5')
     await until(() => frame(app).includes('Drop a video or sound file'))
     app.stdin.write('https://www.youtube.com/playlist?list=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs')
     await settle()
@@ -153,7 +153,7 @@ describe('transcribe, from ↵ to Done', () => {
 
   async function staged(notes: 'available' | 'off' = 'available') {
     const s = await setUp(notes)
-    s.app.stdin.write('6')
+    s.app.stdin.write('5')
     await until(() => frame(s.app).includes('Drop a video or sound file'))
     s.app.stdin.write(s.input)
     await until(() => frame(s.app).includes('1:01:57'))
