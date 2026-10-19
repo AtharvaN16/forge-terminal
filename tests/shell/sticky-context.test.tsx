@@ -68,8 +68,9 @@ describe('the command list with a file waiting', () => {
     const { stdin, lastFrame } = await stagePdfAtIdle()
     stdin.write('/')
     await settle()
-    stdin.write(DOWN)
-    stdin.write(DOWN)
+    // Past the five settings, then convert and compress (2026-10-17: the
+    // settings come first).
+    for (let i = 0; i < 7; i++) stdin.write(DOWN)
     await settle()
     expect(lastFrame() ?? '').toContain('▌ /pdf')
     stdin.write(ENTER)

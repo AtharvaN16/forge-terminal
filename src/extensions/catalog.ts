@@ -2,7 +2,7 @@
  * The catalogue of optional extensions, compiled into Forge (spec §4.2).
  * Forge never downloads a catalogue and never runs anything not listed here.
  */
-export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video'
+export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
 export type PlatformKey = `${'darwin' | 'win32'}-${'arm64' | 'x64' | 'universal'}`
@@ -13,6 +13,12 @@ export interface CatalogAsset {
   url: string
   bytes: number
   sha256: string
+  /**
+   * The download is the program itself, not a Forge archive, and installs
+   * under this name: yt-dlp's own release, pinned by its sha256 like any
+   * other asset.
+   */
+  binary?: string
 }
 
 export interface CatalogEntry {
@@ -104,6 +110,27 @@ export const CATALOG: readonly CatalogEntry[] = [
     assets: {},
     licence:
       'FFmpeg (GPL-2.0-or-later) with x264 (GPL-2.0), LAME (LGPL-2.0), Opus and libvpx (BSD), zimg (WTFPL)',
+  },
+  {
+    // Transcribe's YouTube links (spec 2026-10-17-transcribe-design §3): the
+    // upstream single-file build, pinned like every asset. It runs on the
+    // Node Forge runs on; between Forge releases it updates itself
+    // (`yt-dlp --update`, which checks its own signatures) when YouTube
+    // breaks it.
+    id: 'yt-dlp',
+    title: 'YouTube links',
+    summary: 'Transcribe YouTube videos: yt-dlp fetches their sound',
+    minMacos: 26,
+    assets: {
+      'darwin-universal': {
+        version: '2026.08.19',
+        url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos',
+        bytes: 37146048,
+        sha256: '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202',
+        binary: 'yt-dlp',
+      },
+    },
+    licence: 'yt-dlp (Unlicense); its bundled Python and libraries under their own licences',
   },
 ]
 

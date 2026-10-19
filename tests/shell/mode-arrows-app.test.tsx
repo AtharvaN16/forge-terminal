@@ -6,11 +6,10 @@ import { tabStep } from '../../src/shell/theme.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
 /**
- * ←→ on home walk the tab row — the five modes, then "/ menu" — and stop
- * at both ends, while nothing is typed (as 1–5 pick a mode). They pass
- * through colour like any other tab: its cards are chosen with a s d. On the
- * menu tab they only switch while the field holds the bare "/" (decided
- * 2026-10-14).
+ * ←→ on home walk the tab row — the six modes — and stop at both ends,
+ * while nothing is typed (as 1–6 pick a mode). They pass through colour like
+ * any other tab: its cards are chosen with a s d. "/ menu" left the tab row
+ * when transcribe took its slot (2026-10-17): / opens it, the arrows do not.
  */
 const ESC = String.fromCharCode(27)
 const LEFT = `${ESC}[D`
@@ -36,6 +35,7 @@ const on = {
   // edit's line is the start of convert's, so convert's tail must be gone.
   edit: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
   colour: (f: string) => f.includes('extract colours'),
+  transcribe: (f: string) => f.includes('or paste a YouTube link'),
   menu: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
 }
 const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))
@@ -54,12 +54,11 @@ async function home() {
 }
 
 describe('tabStep', () => {
-  it('walks the modes, then the menu, and stops at both ends', () => {
+  it('walks the modes and stops at both ends', () => {
     expect(tabStep('convert', 1)).toBe('compress')
-    expect(tabStep('colour', 1)).toBe('menu')
-    expect(tabStep('menu', 1)).toBe('menu')
+    expect(tabStep('transcribe', 1)).toBe('colour')
+    expect(tabStep('colour', 1)).toBe('colour')
     expect(tabStep('convert', -1)).toBe('convert')
-    expect(tabStep('menu', -1)).toBe('colour')
   })
 })
 
@@ -79,22 +78,23 @@ describe('←→ on home', () => {
     expect(on.convert(frame(app))).toBe(true)
   }, 20_000)
 
-  it('passes straight through colour, and stops at the menu', async () => {
+  it('passes straight through transcribe, and stops at colour', async () => {
     const app = await home()
     app.stdin.write('4')
     await reach(app, 'edit')
     await settle()
     app.stdin.write(RIGHT)
-    await reach(app, 'colour')
+    await reach(app, 'transcribe')
     await settle()
     app.stdin.write(RIGHT)
-    await reach(app, 'menu')
+    await reach(app, 'colour')
     await settle()
     app.stdin.write(RIGHT)
     await settle(300)
-    expect(on.menu(frame(app))).toBe(true)
+    expect(on.colour(frame(app))).toBe(true)
+    expect(on.menu(frame(app))).toBe(false)
     app.stdin.write(LEFT)
-    await reach(app, 'colour')
+    await reach(app, 'transcribe')
     await settle()
     app.stdin.write(LEFT)
     await reach(app, 'edit')
@@ -118,6 +118,6 @@ describe('←→ on home', () => {
 
   it('says so on the key row', async () => {
     const app = await home()
-    expect(frame(app).split('\n').at(-1)).toMatch(/1–5 ←→ +mode/)
+    expect(frame(app).split('\n').at(-1)).toMatch(/1–6 ←→ +mode/)
   }, 20_000)
 })

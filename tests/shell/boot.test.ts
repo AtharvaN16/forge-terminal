@@ -42,6 +42,15 @@ function harness(
 }
 
 describe('bootShell', () => {
+  it('hands on what the right-click menu opened it with, and its first-run note', async () => {
+    const { deps, started } = harness(themed)
+    const menuNote = async () => 'Added Forge to Finder’s Quick Actions'
+    const opened = { paths: ['/a.png'], mode: 'compress' as const, advance: true }
+    await bootShell(deps, { opened, menuNote })
+    expect(started[0]?.opened).toEqual(opened)
+    expect(started[0]?.menuNote).toBe(menuNote)
+  })
+
   it('reads the prefs while the shell loads, and launches once both are in', async () => {
     const { deps, events } = harness(themed, { prefsMs: 10, loadMs: 30 })
     await bootShell(deps)

@@ -2,7 +2,15 @@ import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Box, type DOMElement, type Key, Static, useApp, useStdout } from 'ink'
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   DEFAULT_PREFERENCES,
   expandTilde,
@@ -23,6 +31,7 @@ import {
   type ForgeError,
   ffmpegMissing,
   isForgeError,
+  linkUnavailable,
   unexpectedError,
   unsupportedCompress,
   unsupportedPdf,
@@ -35,6 +44,7 @@ import { compressFloor, hasPicture, sizeUnitsFor, soundBytes } from '../core/med
 import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
+import { readLink } from '../core/transcribe/links.js'
 import type {
   Box as CropBox,
   FormatId,
@@ -52,7 +62,11 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
+import { type FetchedSound, fetchSound } from '../engines/youtube.js'
 import type { ExtensionId } from '../extensions/catalog.js'
+import { assetFor, catalogEntry } from '../extensions/catalog.js'
+import { installed } from '../extensions/paths.js'
+import type { Opened } from '../menu/command.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { lastSegment } from '../utils/last-segment.js'
 import type { Pasteboard } from '../utils/pasteboard.js'
@@ -82,9 +96,10 @@ import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { FfmpegStep } from './components/FfmpegStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
-import { Home, homeKeys, Suggestions } from './components/Home.js'
+import { Home, homeKeys, Runs, Suggestions } from './components/Home.js'
 import { type Cut, LengthStep } from './components/LengthStep.js'
 import { MediaFormatPicker } from './components/MediaFormatPicker.js'
+import { MenuPopup } from './components/MenuPopup.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -119,10 +134,13 @@ import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { usePresetsOnDone } from './flows/presets.js'
+import { RightClickFlow, type RightClickSystem, realRightClick } from './flows/right-click.js'
+import { TranscribeFlow } from './flows/transcribe.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { WatchFlow } from './flows/watch.js'
 import { useFocusIn } from './focus.js'
 import { HOME_MARGIN, type Row } from './home-art.js'
+import { menuListRows } from './menu-art.js'
 import { motionEnabled } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
@@ -146,6 +164,7 @@ import {
   colourProp,
   type HomeTab,
   MODE_KEYS,
+  menuPalette,
   modeColours,
   modeForKey,
   modePalette,
@@ -157,6 +176,12 @@ import {
   VERSION,
 } from './theme.js'
 import { answerFor, type Question, trailFor } from './trail.js'
+import {
+  readTranscribeFile,
+  type TranscribeSource,
+  transcribeVerb,
+  transcribeView,
+} from './transcribe-stage.js'
 import { useAfter } from './useAfter.js'
 import { PASTE, useKeys } from './useKeys.js'
 import { type MeasuredSize, type MeasureFn, useMeasuredSize } from './useMeasuredSize.js'
@@ -177,6 +202,7 @@ export type Step =
   /** `/extensions`: install and remove the AI tools. */
   | 'extensions'
   | 'update'
+  | 'right-click'
   | 'about'
   /** Edit's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'edit'
@@ -225,6 +251,8 @@ export type Step =
   | 'preset-save'
   /** A folder in convert mode, converted then watched: `WatchFlow` owns it. */
   | 'watch'
+  /** Transcribe, from Transcribe to on: `TranscribeFlow` owns it. */
+  | 'transcribe'
 
 /**
  * Save as while it is open: the folder chosen, and the name the action
@@ -640,6 +668,37 @@ async function resolveDrop(text: string): Promise<DropResolution> {
 }
 
 /**
+ * Reads the files the right-click menu opened Forge with. Unlike a drop these
+ * are exact paths, one per argument, so they are never unescaped or split: a
+ * Windows path is all backslashes. One folder is read as a dropped folder is.
+ */
+async function resolvePaths(paths: string[]): Promise<DropResolution> {
+  const [only] = paths
+  if (only !== undefined && paths.length === 1) {
+    const isDirectory = await stat(only).then(
+      (s) => s.isDirectory(),
+      () => false,
+    )
+    if (isDirectory) {
+      const scan = await scanFolder(only)
+      if (scan.sources.length === 0)
+        return resolution([], [...scan.failures, { path: only, error: emptyDirectory(only) }])
+      return { ...resolution(scan.sources, scan.failures), folder: scan }
+    }
+  }
+  const sources: SourceInfo[] = []
+  const failures: InputFailure[] = []
+  for (const path of paths) {
+    try {
+      sources.push(await probe(path))
+    } catch (e) {
+      failures.push(asFailure(path, e))
+    }
+  }
+  return resolution(sources, failures)
+}
+
+/**
  * What became of a copied image's result: on the clipboard; saved to the
  * default folder because something else was copied meanwhile (E3); or left
  * aside because a compression came out larger, which is never put back.
@@ -653,7 +712,12 @@ type ClipDone =
 const PASTE_HINT = { key: '⌘V', words: 'to paste from clipboard' } as const
 
 /** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
-const SETTINGS_STEPS: ReadonlySet<string> = new Set(['extensions', 'update', 'about'])
+const SETTINGS_STEPS: ReadonlySet<string> = new Set([
+  'extensions',
+  'right-click',
+  'update',
+  'about',
+])
 
 export function App({
   initialWidth,
@@ -663,9 +727,12 @@ export function App({
   tools = realTools,
   updater = realUpdater,
   about = realAbout,
+  rightClick = realRightClick,
   latestRelease,
   pasteboard = null,
   clipRoot,
+  opened,
+  menuNote,
 }: {
   initialWidth?: number
   initialHeight?: number
@@ -677,6 +744,8 @@ export function App({
   updater?: Updater
   /** What /about opens links and reads credits with; tests pass a fake. */
   about?: AboutSystem
+  /** What /right-click switches the menu with; tests pass a fake. */
+  rightClick?: RightClickSystem
   /**
    * A newer Forge for home's band, found in the background at start-up.
    * Default: the once-a-day check (src/update/check.ts). Tests pass a fake.
@@ -689,6 +758,13 @@ export function App({
   pasteboard?: Pasteboard | null
   /** Where a copied image and its result are kept; the system temp folder by default. */
   clipRoot?: string
+  /**
+   * Opened from the right-click menu (`forge menu open`): files to stage, the
+   * mode to stage them in, and whether to take the first step as ↵ would.
+   */
+  opened?: Opened
+  /** Sets the right-click menu up; resolves to a note to show the first time. Tests pass a fake. */
+  menuNote?: () => Promise<string | undefined>
 }) {
   const { stdout } = useStdout()
   const [measured, setMeasured] = useState(initialWidth ?? stdout?.columns ?? 80)
@@ -836,7 +912,7 @@ export function App({
    * than one action — `actionsFor` has existed since 0.1 and never been
    * called, because until now there was nothing to choose between.
    */
-  const [mode, setMode] = useState<ShellMode>('convert')
+  const [mode, setMode] = useState<ShellMode>(opened?.mode ?? 'convert')
   /**
    * Edit's tools as this Mac has them — installed, not, or installing with
    * the real bytes so far — read when its picker opens. `checking` once every
@@ -981,6 +1057,18 @@ export function App({
    */
   const [stage, setStage] = useState<Stage>(emptyStage())
   /**
+   * Transcribe's own stage (spec 2026-10-17-transcribe-design §4.4): a video
+   * or sound file, or a YouTube link on its way to being one. Not `stage`:
+   * no engine reads video, and a link is no file at all.
+   */
+  const [transcribing, setTranscribing] = useState<TranscribeSource | undefined>(undefined)
+  const transcribingRef = useRef<TranscribeSource | undefined>(undefined)
+  transcribingRef.current = transcribing
+  /** A link's one yt-dlp run: the facts, then the sound, fetched while the questions are asked. */
+  const soundFetch = useRef<{ stop: AbortController; sound: Promise<FetchedSound> } | undefined>(
+    undefined,
+  )
+  /**
    * Mirrors `stage` for what a drop does once it has been read: the read is
    * async, and the stage it lands on is the one standing then, not the one
    * the paste's render closed over.
@@ -1123,6 +1211,10 @@ export function App({
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
   /** Where `WatchFlow` is, as the header bar's trail — it owns its own steps. */
   const [watchTrailNow, setWatchTrailNow] = useState<Trail>({ answers: [], current: 'Format' })
+  const [transcribeTrailNow, setTranscribeTrailNow] = useState<Trail>({
+    answers: [],
+    current: 'Transcribe to',
+  })
   /** How the last /pdf run was asked, so a refused save can reopen its Save as. */
   const [pdfAsked, setPdfAsked] = useState<PdfResume | undefined>(undefined)
   /**
@@ -1171,6 +1263,123 @@ export function App({
     setText(field)
     setHomeError(error)
   }, [])
+
+  /** Lets transcribe's stage go: a link's yt-dlp run is stopped and its sound deleted. */
+  const letGoTranscribing = useCallback(() => {
+    const fetching = soundFetch.current
+    soundFetch.current = undefined
+    if (fetching) {
+      fetching.stop.abort()
+      fetching.sound.then(
+        (got) => got.dispose(),
+        () => {},
+      )
+    }
+    setTranscribing(undefined)
+  }, [])
+
+  /** A link's one yt-dlp run, from the facts the card shows to the sound the run reads. */
+  const lookUp = useCallback(
+    (url: string) => {
+      const stop = new AbortController()
+      setTranscribing({ kind: 'link', url, phase: 'looking' })
+      const sound = fetchSound(url, {
+        signal: stop.signal,
+        onEvent: (e) => {
+          if (stop.signal.aborted) return
+          if (e.kind === 'facts')
+            setTranscribing({ kind: 'link', url, phase: 'ready', facts: e.facts })
+          else {
+            setTranscribing((t) =>
+              t?.kind === 'link' && t.phase === 'ready'
+                ? { ...t, fetched: { done: e.done, total: e.total } }
+                : t,
+            )
+          }
+        },
+      })
+      soundFetch.current = { stop, sound }
+      sound.catch((e: unknown) => {
+        if (stop.signal.aborted || soundFetch.current?.sound !== sound) return
+        soundFetch.current = undefined
+        setTranscribing(undefined)
+        refuseOnHome(isForgeError(e) ? e : unexpectedError(e), url)
+      })
+    },
+    [refuseOnHome],
+  )
+
+  /**
+   * A typed path, a dropped file or a pasted link, in transcribe mode: read
+   * here, not by the engines, which have no reader for video.
+   */
+  const stageTranscribing = useCallback(
+    async (raw: string) => {
+      const text = raw.trim()
+      // A submit's own clearing of the field comes after this returns; a
+      // refusal made before it would be cleared with it. Every other refusal
+      // on home comes after a read; this one waits a tick.
+      await Promise.resolve()
+      setHomeError(undefined)
+      const link = readLink(text)
+      if (link?.kind === 'playlist') {
+        refuseOnHome(
+          linkUnavailable('This is a playlist.', undefined, {
+            hint: "Pass one video's link.",
+            shellHint: "Paste one video's link.",
+          }),
+          text,
+        )
+        return
+      }
+      letGoTranscribing()
+      if (link === undefined) {
+        try {
+          setTranscribing(await readTranscribeFile(expandTilde(unescapePath(text))))
+        } catch (e) {
+          refuseOnHome(isForgeError(e) ? e : unexpectedError(e), text)
+        }
+        return
+      }
+      if ((await installed('yt-dlp')) === undefined) {
+        const entry = catalogEntry('yt-dlp')
+        const asset = entry && assetFor(entry)
+        setTranscribing({
+          kind: 'link',
+          url: link.url,
+          phase: 'needs-yt-dlp',
+          bytes: asset?.bytes ?? 0,
+        })
+        return
+      }
+      lookUp(link.url)
+    },
+    [refuseOnHome, letGoTranscribing, lookUp],
+  )
+
+  /** ↵ on a link that needs yt-dlp: installed in place, in real bytes, then looked up. */
+  const installYtDlp = useCallback(
+    async (url: string) => {
+      const stop = new AbortController()
+      installAbort.current = stop
+      setTranscribing({ kind: 'link', url, phase: 'installing', done: 0, total: 1 })
+      try {
+        const { installExtension } = await import('../extensions/manager.js')
+        await installExtension('yt-dlp', {
+          signal: stop.signal,
+          onProgress: (done, total) =>
+            setTranscribing({ kind: 'link', url, phase: 'installing', done, total }),
+        })
+        installAbort.current = undefined
+        lookUp(url)
+      } catch (e) {
+        installAbort.current = undefined
+        setTranscribing(undefined)
+        if (!stop.signal.aborted) refuseOnHome(isForgeError(e) ? e : unexpectedError(e), url)
+      }
+    },
+    [lookUp, refuseOnHome],
+  )
   /**
    * Why the file in hand cannot go where it was sent (compress on a PNG, /pdf
    * on a photo). Live, not history: a block in `<Static>` can never be taken
@@ -1209,9 +1418,13 @@ export function App({
   const onHome = step === 'idle'
   /** Done, or one of its windows over it: the run it shows is still on screen. */
   const atDone = step === 'result' || step === 'preset-edit' || step === 'preset-save'
-  /** The launch plays on the session's first home only (M8b): leaving it, it is over. */
+  /**
+   * The launch plays on the session's first home only (M8b): leaving it, it
+   * is over. The / menu counts as leaving: home is drawn afresh when it
+   * closes, and must not draw itself in again (2026-10-18).
+   */
   const firstHome = useRef(true)
-  if (!onHome) firstHome.current = false
+  if (!onHome || (commandList?.items.length ?? 0) > 0) firstHome.current = false
   /** Something is staged: home draws it, and the field asks for more. */
   const staged = stage.sources.length > 0
   /** The rows the latest drop added, for their band — none while motion is off. */
@@ -1276,11 +1489,13 @@ export function App({
     // Colour starts from its own home, never from a staged file: what is
     // staged is let go, as `/colour` lets it go (see `runCommand`), and a
     // drop still being read is dropped with it.
-    if (next === 'colour') {
+    if (next === 'colour' || next === 'transcribe') {
       requestId.current++
       dropReading.current = 0
       setStage(clearStage())
     }
+    // Transcribe's stage is its own (a video, a link): it goes when the mode does.
+    if (mode === 'transcribe') letGoTranscribing()
     setMode(next)
     setValues({})
   }
@@ -1331,6 +1546,13 @@ export function App({
    */
   const commandKey = (input: string, key: Key): boolean => {
     if (!commands) return false
+    // A second / closes the menu as the first opened it, the field empty
+    // again (2026-10-18). No command has a slash in its name, and a path
+    // whose first folder some name starts with is no path anyone types.
+    if (input === '/' && !key.ctrl && !key.meta && !key.super && commands.items.length > 0) {
+      setText('')
+      return true
+    }
     // A mode digit right after the slash is the tab row's, not a search: no
     // command name starts with a digit, so it could only match nothing.
     const digitMode = modeForKey(input)
@@ -1446,12 +1668,16 @@ export function App({
       // ↵ waits for a drop still being read: acting on the stage as it stood
       // would let the read land mid-wizard and add files the run never sees.
       if (key.return && dropReading.current !== 0) return true
+      const held = transcribingRef.current
+      if (key.return && mode === 'transcribe' && held) {
+        const verb = transcribeVerb(held)
+        if (verb === 'transcribe') setStep('transcribe')
+        else if (verb === 'install' && held.kind === 'link') void installYtDlp(held.url)
+        return true
+      }
       const staged = stageRef.current
       if (key.return && staged.sources.length > 0) {
-        const [only] = staged.sources
-        if (staged.folder && mode === 'convert') setStep('watch')
-        else if (only && staged.sources.length === 1) proceedWith(only)
-        else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
+        enterStaged(staged)
         return true
       }
       const next = modeForKey(input)
@@ -1604,6 +1830,24 @@ export function App({
     warned.current = true
     hold({ kind: 'note', id: nextId(), text: `${SYMBOLS.warn} ${configWarning}` })
   }, [configWarning, hold])
+
+  /**
+   * The right-click menu is set up in the background as the shell starts;
+   * the first time, it says so here, once. Nothing is said when it was
+   * already there, or when setting it up failed: the shell is not the place
+   * to report on Finder.
+   */
+  const menuNoted = useRef(false)
+  useEffect(() => {
+    if (menuNoted.current || !menuNote) return
+    menuNoted.current = true
+    menuNote().then(
+      (text) => {
+        if (text) hold({ kind: 'note', id: nextId(), text })
+      },
+      () => {},
+    )
+  }, [menuNote, hold])
 
   /**
    * The one way anything in this file reports a failure. Whatever was thrown
@@ -1803,6 +2047,11 @@ export function App({
       setHomeError(undefined)
       if (text !== '') {
         setText('')
+        return
+      }
+      if (transcribing) {
+        installAbort.current?.abort()
+        letGoTranscribing()
         return
       }
       if (stage.sources.length === 0 && stage.failures.length === 0) return
@@ -2226,6 +2475,11 @@ export function App({
         return
       }
 
+      if (command.name === 'right-click') {
+        setStep('right-click')
+        return
+      }
+
       if (command.name === 'about') {
         setStep('about')
         return
@@ -2256,6 +2510,17 @@ export function App({
           id: nextId(),
           text: COMMANDS.map((c) => `  /${c.name.padEnd(10)} ${c.description}`).join('\n'),
         })
+        return
+      }
+
+      // Transcribe holds its own stage (a video, a link): an image staged for
+      // another mode is let go, as for colour.
+      if (command.mode === 'transcribe') {
+        fenceOff()
+        setStage(clearStage())
+        setMode('transcribe')
+        setValues({})
+        setStep('idle')
         return
       }
 
@@ -2455,6 +2720,39 @@ export function App({
     setFresh({ count: added, at: Date.now() })
   }, [])
 
+  /** ↵ on a staged home: the first step for what is staged, in the current mode. */
+  const enterStaged = (staged: Stage) => {
+    const [only] = staged.sources
+    if (staged.folder && mode === 'convert') setStep('watch')
+    else if (only && staged.sources.length === 1) proceedWith(only)
+    else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
+  }
+
+  /**
+   * Opened from the right-click menu: the files land as a drop would, once
+   * the first-run theme question (if any) is out of the way. Convert and
+   * Compress then take the first step for you; Open in Forge waits on home.
+   */
+  const openedLanded = useRef(false)
+  const openedAdvance = useRef(opened?.advance === true)
+  useEffect(() => {
+    if (!opened || opened.paths.length === 0 || openedLanded.current || step === 'theme') return
+    openedLanded.current = true
+    void resolvePaths(opened.paths).then((drop) => {
+      // Nothing readable: no step to take, now or on a later drop.
+      if (drop.sources.length === 0) openedAdvance.current = false
+      landDrop(drop)
+    })
+  }, [opened, step, landDrop])
+  useEffect(() => {
+    if (!openedAdvance.current || step !== 'idle' || stage.sources.length === 0) return
+    openedAdvance.current = false
+    // A folder converts by watching; several files, or a folder to compress,
+    // the shell cannot do yet, and says so rather than sitting on home.
+    if (stage.sources.length === 1 || (stage.folder && mode === 'convert')) enterStaged(stage)
+    else refuseBatch()
+  })
+
   /**
    * Reads a paste into the empty home field the moment it lands — a drop
    * (docs/superpowers/specs/2026-10-11-forge-drop-zone-design.md). A terminal
@@ -2500,6 +2798,10 @@ export function App({
   }
 
   const readDrop = (pasted: string) => {
+    if (mode === 'transcribe') {
+      void stageTranscribing(pasted)
+      return
+    }
     const id = ++requestId.current
     dropReading.current = id
     const settled = () => {
@@ -2579,6 +2881,12 @@ export function App({
         openColour({ palette: trimmed })
         return
       }
+      // Transcribe reads its own: a video or sound file, or a YouTube link.
+      if (mode === 'transcribe') {
+        setText('')
+        void stageTranscribing(trimmed)
+        return
+      }
       const id = ++requestId.current
       setText('')
       setHomeError(undefined)
@@ -2618,7 +2926,17 @@ export function App({
       const folderHere = drop.folder !== undefined && mode === 'convert'
       if (nothingStaged && first && drop.sources.length === 1 && !folderHere) proceedWith(first)
     },
-    [showError, runCommand, landDrop, proceedWith, refuseOnHome, mode, openColour, hold],
+    [
+      showError,
+      runCommand,
+      landDrop,
+      proceedWith,
+      refuseOnHome,
+      mode,
+      openColour,
+      hold,
+      stageTranscribing,
+    ],
   )
 
   // Takes `currentSource` as a parameter, rather than closing over `source`
@@ -4115,6 +4433,7 @@ export function App({
     const at = running && !workShown ? lastQuestion.current : step
     if (at === 'pdf') return pdfTrailNow
     if (at === 'watch') return watchTrailNow
+    if (at === 'transcribe') return transcribeTrailNow
     if (at === 'colour') return colourTrailNow
     // Crop to shape ╱ 1:1: the preview is named by the shape it cuts.
     if (at === 'crop' && enhancing) {
@@ -4166,6 +4485,57 @@ export function App({
   const homeNotices = onHome && !homeError ? liveNotices : NO_NOTICES
   const keyNotices = onHome ? NO_NOTICES : liveNotices
 
+  /**
+   * The / menu (decided 2026-10-17): a popup over home while what is typed is
+   * a command some row matches; once nothing matches it is a path again, in
+   * home's own field. A setting chosen from it opens inside it.
+   */
+  const menuOpen = commands !== undefined && commands.items.length > 0
+  /** The popup's inside: one column in from each side, the border and a column of padding. */
+  const menuInner = Math.max(20, width - 6)
+  /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
+  const menuBody = Math.max(6, height - 3 - 6)
+  const homeField = (w: number) => (
+    <Prompt
+      value={text}
+      onChange={setText}
+      onSubmit={submitPath}
+      placeholder={
+        mode === 'transcribe'
+          ? transcribing
+            ? 'or paste another link'
+            : 'or type a path or link'
+          : staged
+            ? 'drop more, or type a path'
+            : 'or type a path'
+      }
+      isActive
+      variant="home"
+      width={w}
+      rawOnSubmit
+      intercept={homeKey}
+      hint={pasteHint}
+    />
+  )
+  const inMenu = (title: string, name: string, node: ReactNode) => (
+    <MenuPopup
+      width={width}
+      height={height}
+      title={title}
+      body={node}
+      field={
+        <Text>
+          {'    '}
+          <Text color={colourProp(palette.brand)} bold>
+            {'›'}
+          </Text>
+          <Text color={colourProp(palette.dim)}>{` /${name}`}</Text>
+        </Text>
+      }
+      keys={{ pairs: [], foot: [] }}
+    />
+  )
+
   return (
     <ThemeProvider palette={palette}>
       <NoticesContext.Provider value={keyNotices}>
@@ -4185,11 +4555,20 @@ export function App({
               when that happens. */}
             <MouseRouter rootRef={rootRef} revision={history.length} />
             {step === 'theme' ? (
-              <ThemePicker
-                width={width}
-                onChoose={chooseTheme}
-                {...(theme ? { onCancel: () => backToCommands('theme') } : {})}
-              />
+              // Reopened from the menu it sits in the popup; on first run it stands alone.
+              theme ? (
+                inMenu(
+                  'Theme',
+                  'theme',
+                  <ThemePicker
+                    width={menuInner}
+                    onChoose={chooseTheme}
+                    onCancel={() => backToCommands('theme')}
+                  />,
+                )
+              ) : (
+                <ThemePicker width={width} onChoose={chooseTheme} />
+              )
             ) : null}
 
             {/* Where a history block would sit — above the flow it explains —
@@ -4972,38 +5351,63 @@ export function App({
               ? presets.screen
               : null}
 
-            {step === 'update' ? (
-              <UpdateFlow
-                width={width}
-                current={VERSION}
-                auto={livePrefs.updateCheck !== false}
-                updater={updater}
-                onClose={() => backToCommands('update')}
-                onChecked={(latest) => void keepRelease(latest)}
-                onRestart={() => {
-                  requestRestart()
-                  exit()
-                }}
-              />
-            ) : null}
+            {step === 'update'
+              ? inMenu(
+                  'Update',
+                  'update',
+                  <UpdateFlow
+                    width={menuInner}
+                    height={menuBody}
+                    current={VERSION}
+                    auto={livePrefs.updateCheck !== false}
+                    updater={updater}
+                    onClose={() => backToCommands('update')}
+                    onChecked={(latest) => void keepRelease(latest)}
+                    onRestart={() => {
+                      requestRestart()
+                      exit()
+                    }}
+                  />,
+                )
+              : null}
 
-            {step === 'about' ? (
-              <AboutFlow
-                width={width}
-                height={height}
-                version={VERSION}
-                system={about}
-                onClose={() => backToCommands('about')}
-              />
-            ) : null}
+            {step === 'right-click'
+              ? inMenu(
+                  'Right-click',
+                  'right-click',
+                  <RightClickFlow
+                    width={menuInner}
+                    system={rightClick}
+                    onClose={() => backToCommands('right-click')}
+                  />,
+                )
+              : null}
 
-            {step === 'extensions' ? (
-              <ExtensionsFlow
-                width={width}
-                onError={(error) => hold({ kind: 'error', id: nextId(), error })}
-                onClose={() => backToCommands('extensions')}
-              />
-            ) : null}
+            {step === 'about'
+              ? inMenu(
+                  'About',
+                  'about',
+                  <AboutFlow
+                    width={menuInner}
+                    height={menuBody}
+                    version={VERSION}
+                    system={about}
+                    onClose={() => backToCommands('about')}
+                  />,
+                )
+              : null}
+
+            {step === 'extensions'
+              ? inMenu(
+                  'Extensions',
+                  'extensions',
+                  <ExtensionsFlow
+                    width={menuInner}
+                    onError={(error) => hold({ kind: 'error', id: nextId(), error })}
+                    onClose={() => backToCommands('extensions')}
+                  />,
+                )
+              : null}
 
             {step === 'colour' ? (
               <ColourFlow
@@ -5014,6 +5418,28 @@ export function App({
                 onTrail={setColourTrailNow}
                 steps={colourSteps}
                 onSteps={setColourSteps}
+              />
+            ) : null}
+
+            {step === 'transcribe' && transcribing ? (
+              <TranscribeFlow
+                source={transcribing}
+                sound={soundFetch.current?.sound}
+                width={width}
+                prefs={livePrefs}
+                onTrail={setTranscribeTrailNow}
+                onCancel={() => setStep('idle')}
+                onNew={() => {
+                  letGoTranscribing()
+                  setStep('idle')
+                }}
+                onFail={(e) => {
+                  letGoTranscribing()
+                  setStep('idle')
+                  holdFailure(e)
+                }}
+                onMakeDefault={makeDefault}
+                onSaved={rememberSaved}
               />
             ) : null}
 
@@ -5100,7 +5526,35 @@ export function App({
               )
             ) : null}
 
-            {onHome ? (
+            {onHome && menuOpen && commands ? (
+              <MenuPopup
+                width={width}
+                height={height}
+                body={
+                  <Box flexDirection="column">
+                    {menuListRows({ palette, width: menuInner, rows: menuBody, ...commands }).map(
+                      (row, i) =>
+                        // biome-ignore lint/suspicious/noArrayIndexKey: the list's rows are positional
+                        row.length === 0 ? <Text key={i}> </Text> : <Runs key={i} row={row} />,
+                    )}
+                  </Box>
+                }
+                field={
+                  <ThemeProvider palette={{ ...menuPalette(palette), shelf: '' }}>
+                    {homeField(menuInner)}
+                  </ThemeProvider>
+                }
+                keys={{
+                  pairs: [
+                    ['↑↓', 'choose'],
+                    ['↵', 'open'],
+                  ],
+                  foot: [['esc', 'close']],
+                }}
+              />
+            ) : null}
+
+            {onHome && !menuOpen ? (
               <Home
                 width={width}
                 height={height}
@@ -5108,7 +5562,15 @@ export function App({
                 update={release}
                 mode={mode}
                 typing={text !== ''}
-                staged={staged ? stagedView(stage, freshRows, mode) : undefined}
+                staged={
+                  mode === 'transcribe'
+                    ? transcribing
+                      ? transcribeView(transcribing)
+                      : undefined
+                    : staged
+                      ? stagedView(stage, freshRows, mode)
+                      : undefined
+                }
                 under={underField(stage, mode)}
                 note={
                   homeError ? (
@@ -5124,21 +5586,7 @@ export function App({
                 noteRows={
                   homeNotices.length > 0 ? noticeRows(homeNotices, width, palette) : undefined
                 }
-                field={
-                  <Prompt
-                    value={text}
-                    onChange={setText}
-                    onSubmit={submitPath}
-                    placeholder={staged ? 'drop more, or type a path' : 'or type a path'}
-                    isActive
-                    variant="home"
-                    width={width}
-                    rawOnSubmit
-                    intercept={homeKey}
-                    hint={pasteHint}
-                  />
-                }
-                commands={commands}
+                field={homeField(width)}
                 list={
                   completions.length > 0
                     ? (rows) => (
@@ -5155,11 +5603,15 @@ export function App({
                 keys={homeKeys({
                   typing: text !== '',
                   completions: completions.length,
-                  menu: commands !== undefined,
                   colour: mode === 'colour',
-                  staged: staged
-                    ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
-                    : undefined,
+                  staged:
+                    mode === 'transcribe'
+                      ? transcribing
+                        ? { count: 1, verb: transcribeVerb(transcribing) }
+                        : undefined
+                      : staged
+                        ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
+                        : undefined,
                 })}
               />
             ) : null}

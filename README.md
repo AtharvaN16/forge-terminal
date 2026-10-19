@@ -43,7 +43,7 @@ That puts `forge` on your `PATH`, so it works from any directory. Verify:
 
 ```bash
 forge --version
-# 0.3.9
+# 0.4.0
 
 forge photo.jpg --to webp
 ```
@@ -90,11 +90,47 @@ legacy binary already claims that name and Homebrew still installs it.)
 
 ```bash
 npm update -g forge-terminal      # update
-npm uninstall -g forge-terminal   # remove
+forge uninstall                   # remove
 ```
+
+`forge uninstall` takes Forge's [right-click menu](#right-click-menu) out
+first, then runs `npm uninstall -g forge-terminal` itself. npm runs nothing
+when a package is removed, so `npm uninstall -g` on its own leaves the menu
+items behind; the first click on one of those finds Forge gone, removes them
+all, and says so.
 
 From source, `git pull && npm install && npm run build` updates and
 `npm unlink -g forge-terminal` removes.
+
+## Right-click menu
+
+On a Mac and on Windows, Forge adds itself to the right-click menu the first
+time you run `forge`, and says so once:
+
+| Right-click | Items |
+| --- | --- |
+| an image | Open Forge · Convert in Forge · Compress in Forge · Sharpen in Forge |
+| a folder | Open Forge · Convert in Forge · Compress in Forge |
+| a PDF | Open in Forge |
+
+- **Open Forge** opens Forge in a terminal window, nothing staged.
+- **Convert in Forge** and **Compress in Forge** open it with the file staged
+  and that mode's first question already asked.
+- **Open in Forge** opens a PDF staged in PDF mode.
+- **Sharpen in Forge** runs with no window, says how it went in a
+  notification, and selects the new file. It is there once the Boost
+  extension is installed (`forge extensions add boost`).
+
+Forge opens in the terminal you last ran it in: Terminal, iTerm or Ghostty on
+a Mac; Windows Terminal, or a console window, on Windows. Each item's icon is
+Forge's logo with the slashes in its mode's colour.
+
+On a Mac the items are under **Quick Actions**, and Finder's own
+**Customize…** at the bottom of that menu hides any you do not want. On
+Windows 11 they are under **Show more options** (or shift + right-click): an
+image's and a folder's in a **Forge** submenu, a PDF's one item on its own. They are set up only for a Forge installed with
+`npm install -g`; from a source checkout, `forge menu install` sets them up
+by hand and `forge menu remove` takes them out.
 
 ## Configuration
 
@@ -993,7 +1029,7 @@ photo.png · PNG · 122 KB · 2756×774
 With `--json`:
 
 ```json
-{"forge":"0.3.9","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+{"forge":"0.4.0","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
 ```
 
 `targets` and `actions` come from the engines' own capabilities, so they are
@@ -1019,7 +1055,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 ```jsonc
 {
-  "forge": "0.3.9",
+  "forge": "0.4.0",
   "ok": false,
   "results": [
     {

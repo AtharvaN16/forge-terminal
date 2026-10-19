@@ -11,9 +11,8 @@ import {
   scrolledLines,
 } from '../about-art.js'
 import type { BarChip } from '../bar-art.js'
-import { HeaderBar } from '../components/HeaderBar.js'
-import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
+import { ScreenBar, ScreenKeys } from '../components/MenuPopup.js'
 import { blank } from '../home-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -122,14 +121,11 @@ export function AboutFlow({ width, height, version, system = realAbout, onClose 
 
   return (
     <Box flexDirection="column" flexGrow={1} minHeight={height}>
-      <Box marginBottom={1}>
-        <HeaderBar
-          mode="convert"
-          chip={aboutChip(palette)}
-          trail={{ answers: [], lead: 'by', current: 'Atharva Nayak' }}
-          width={width}
-        />
-      </Box>
+      <ScreenBar
+        chip={aboutChip(palette)}
+        trail={{ answers: [], lead: 'by', current: 'Atharva Nayak' }}
+        width={width}
+      />
       {aboutTabRows({ palette, width, at: tab }).map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: the tab bar's two rows are positional
         <Runs key={i} row={row} />
@@ -161,7 +157,7 @@ export function AboutFlow({ width, height, version, system = realAbout, onClose 
           ),
         )
       )}
-      <HintBar width={width} pairs={keys} foot={[['esc', 'back']]} />
+      <ScreenKeys width={width} pairs={keys} foot={[['esc', 'back']]} />
     </Box>
   )
 }

@@ -101,6 +101,7 @@ export function pagesRow({
   total,
   plain = palette.track === '',
   unit,
+  says,
 }: {
   palette: Palette
   mode: ShellMode
@@ -110,6 +111,8 @@ export function pagesRow({
   plain?: boolean
   /** What is counted when it is not pages: a folder's files, "9 of 24 images". */
   unit?: string | undefined
+  /** The count in other words, when it is not whole things: "23:10 of 1:01:57", "18.2 of 59.6 MB". */
+  says?: string | undefined
 }): Row {
   const k = total > 0 ? Math.round((Math.max(0, Math.min(done, total)) / total) * PAGE_BAR) : 0
   const rest = plain ? '░' : '█'
@@ -118,7 +121,12 @@ export function pagesRow({
     { text: '█'.repeat(k), fg: modeColours(palette, mode).fg },
     { text: rest.repeat(PAGE_BAR - k), fg: palette.track },
     {
-      text: unit === undefined ? `  page ${done} of ${total}` : `  ${done} of ${total} ${unit}`,
+      text:
+        says !== undefined
+          ? `  ${says}`
+          : unit === undefined
+            ? `  page ${done} of ${total}`
+            : `  ${done} of ${total} ${unit}`,
       fg: palette.dim,
     },
   ].filter((r) => r.text !== '')

@@ -1,6 +1,17 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readdir, readFile, rm, rmdir, stat, statfs, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  rmdir,
+  stat,
+  statfs,
+  writeFile,
+} from 'node:fs/promises'
 import { release } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -261,7 +272,7 @@ class TooLarge extends Error {}
  * extensions root and is removed on any outcome, so a failure at any step
  * leaves the previous install untouched and nothing partial behind.
  */
-export async function installExtension(
+async function installOnly(
   id: string,
   opts: {
     onProgress?: (done: number, total: number) => void
@@ -355,7 +366,21 @@ export async function installExtension(
 
     try {
       await mkdir(staging, { recursive: true })
-      await extractTar(await gunzipAsync(await readFile(archive)), staging)
+      if (asset.binary === undefined) {
+        await extractTar(await gunzipAsync(await readFile(archive)), staging)
+      } else {
+        // A program downloaded as it is (yt-dlp): Forge writes its manifest.
+        await copyFile(archive, join(staging, asset.binary))
+        await chmod(join(staging, asset.binary), 0o755)
+        const manifest = {
+          id: entry.id,
+          version: asset.version,
+          files: { [asset.binary]: asset.sha256 },
+          entry: asset.binary,
+          kind: 'exec',
+        }
+        await writeFile(join(staging, 'manifest.json'), JSON.stringify(manifest))
+      }
       await verifyStaged(staging, entry, asset.version)
     } catch (cause) {
       if (diskFull(cause)) throw extensionDiskFull(id, 'the disk filled up while unpacking.')
@@ -393,7 +418,7 @@ export async function installExtension(
  * (in any forge) holds the tool's lock, and holds it itself while deleting,
  * so no job can start on a half-deleted model.
  */
-export async function removeExtension(
+async function removeOnly(
   id: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
@@ -415,6 +440,35 @@ export async function removeExtension(
     },
     { waitMs: 0, action: 'remove', what: `${entry.title} is being removed` },
   )
+}
+
+/**
+ * Boost is what Sharpen runs on, so adding or removing it puts Sharpen in
+ * Forge into the right-click menu or takes it out (src/menu/). Never fails
+ * the install or removal itself.
+ */
+async function afterChange(id: string) {
+  if (id !== 'boost') return
+  const { resyncMenu } = await import('../menu/entry.js')
+  await resyncMenu()
+}
+
+export async function installExtension(
+  id: string,
+  opts: Parameters<typeof installOnly>[1] = {},
+): Promise<Installed> {
+  const done = await installOnly(id, opts)
+  await afterChange(id)
+  return done
+}
+
+export async function removeExtension(
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<boolean> {
+  const removed = await removeOnly(id, platform)
+  await afterChange(id)
+  return removed
 }
 
 export type { ExtensionId }

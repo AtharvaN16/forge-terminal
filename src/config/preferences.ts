@@ -17,6 +17,12 @@ export interface Preferences {
   quality: number
   /** The once-a-day check for a newer Forge. Absent means on (src/update/check.ts). */
   updateCheck?: boolean
+  /**
+   * Forge in Finder's Quick Actions / Explorer's right-click menu. Absent
+   * means on (src/menu/setup.ts); false is /right-click switched off, and
+   * Forge then leaves the menu out on every start until it is switched on.
+   */
+  rightClickMenu?: boolean
   /** The folder the last file was saved to: Save as lists it after the default. */
   lastOutput?: string
   /** Saved from Done's Save as preset; run with `--preset name`. */
@@ -83,6 +89,11 @@ function validate(raw: Record<string, unknown>): { prefs: Preferences; rejected:
   if (raw.updateCheck !== undefined) {
     if (typeof raw.updateCheck === 'boolean') prefs.updateCheck = raw.updateCheck
     else rejected.push('updateCheck')
+  }
+
+  if (raw.rightClickMenu !== undefined) {
+    if (typeof raw.rightClickMenu === 'boolean') prefs.rightClickMenu = raw.rightClickMenu
+    else rejected.push('rightClickMenu')
   }
 
   if (raw.lastOutput !== undefined) {

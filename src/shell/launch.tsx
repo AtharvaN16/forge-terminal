@@ -1,5 +1,6 @@
 import { render } from 'ink'
 import type { Preferences } from '../config/preferences.js'
+import type { Opened } from '../menu/command.js'
 import { clipboardSupported, macPasteboard } from '../utils/pasteboard.js'
 import { App } from './App.js'
 import { ThemeProvider } from './ThemeContext.js'
@@ -11,6 +12,10 @@ export interface ShellStart {
   palette: Palette
   /** A config file that could not be read, phrased for the shell's history. */
   warning?: string
+  /** Opened from the right-click menu: what to stage, in which mode. */
+  opened?: Opened
+  /** Sets the right-click menu up in the background; its first-run note. */
+  menuNote?: () => Promise<string | undefined>
 }
 
 /**
@@ -27,13 +32,15 @@ export interface ShellStart {
  * rather than after.
  */
 export async function launchShell(start: ShellStart): Promise<void> {
-  const { prefs, palette, warning } = start
+  const { prefs, palette, warning, opened, menuNote } = start
   const instance = render(
     <ThemeProvider palette={palette}>
       <App
         prefs={prefs}
         pasteboard={clipboardSupported() ? macPasteboard() : null}
         {...(warning === undefined ? {} : { configWarning: warning })}
+        {...(opened === undefined ? {} : { opened })}
+        {...(menuNote === undefined ? {} : { menuNote })}
       />
     </ThemeProvider>,
     {

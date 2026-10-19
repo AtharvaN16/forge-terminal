@@ -852,6 +852,12 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         stderr: [],
       }
     }
+    if (intent.kind === 'uninstall') {
+      const { runUninstall } = await import('../menu/entry.js')
+      const stdout: string[] = []
+      const exitCode = await runUninstall(VERSION, (line) => stdout.push(line))
+      return { exitCode, stdout, stderr: [] }
+    }
     if (intent.kind === 'extensions') {
       const { runExtensions } = await import('./extensions-command.js')
       const result = await runExtensions(intent, { onDownload: opts.onDownload })
@@ -891,6 +897,16 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       const { runPalette, runScale } = await import('./colour.js')
       const o = { json, colour: opts.colour ?? false }
       return intent.kind === 'palette' ? await runPalette(intent, o) : await runScale(intent, o)
+    }
+    if (intent.kind === 'transcribe') {
+      const { runTranscribeCommand } = await import('./transcribe-command.js')
+      const stdout: string[] = []
+      const stderr: string[] = []
+      const exitCode = await runTranscribeCommand(intent, {
+        out: (line) => stdout.push(line),
+        err: (line) => stderr.push(line),
+      })
+      return { exitCode, stdout, stderr }
     }
     if (intent.kind === 'shell') return { exitCode: 0, stdout: [], stderr: [] }
     // It runs until ctrl-c and prints as it goes; src/index.ts starts it itself.

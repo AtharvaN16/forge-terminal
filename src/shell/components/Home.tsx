@@ -2,16 +2,16 @@ import { Box } from 'ink'
 import { cloneElement, isValidElement, type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { COLOUR_CARD_KEYS, COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
-import type { CommandList } from '../commands.js'
 import {
   brandIntro,
   brandRows,
-  commandRows,
   DROP_RING_MS,
   folderCardOnDots,
   HOME_MARGIN,
   INTRO_MS,
+  MODE_DROP_TITLES,
   MODE_KINDS,
+  menuHintRow,
   type Row,
   stagedCardRows,
   stagedListRows,
@@ -32,7 +32,7 @@ import {
 import type { StagedView, UnderField } from '../stage.js'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
-import { colourProp, MODE_KEYS, menuPalette, type ShellMode } from '../theme.js'
+import { colourProp, MODE_KEYS, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { folderCardLines } from '../watch-art.js'
 import { middleEllipsis } from '../width.js'
@@ -104,32 +104,16 @@ const MODE_ARROWS = `${MODE_KEYS} ←→`
 export function homeKeys({
   typing,
   completions,
-  menu,
   colour = false,
   staged,
 }: {
   typing: boolean
   completions: number
-  /** The menu is open. */
-  menu: boolean
   /** Colour's home: the three cards to choose between, and nothing to send. */
   colour?: boolean
   /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
   staged?: { count: number; verb: string | null } | undefined
 }): KeySet {
-  if (menu) {
-    return {
-      main: [
-        ['↵', 'run'],
-        ['esc', 'back'],
-      ],
-      foot: [
-        ['↑↓', 'choose'],
-        ['type', 'filter'],
-        ['ctrl-c', 'quit'],
-      ],
-    }
-  }
   if (typing && completions > 0) {
     return {
       main: [
@@ -215,31 +199,6 @@ export function Runs({ row }: { row: Row }) {
 }
 
 const Gap = () => <Box height={1} flexShrink={0} />
-
-/**
- * The command list where there is no drop surface to swap it into — under
- * the field while a file waits — drawn the same way as on home's panel, on
- * the terminal's own background.
- */
-export function CommandMenu({
-  width,
-  commands,
-}: {
-  width: number
-  commands: CommandList & { selected: number }
-}) {
-  const palette = useTheme()
-  const rows = commandRows({ width, palette, ...commands, rows: 0, max: 12, panel: false })
-  return (
-    <Box flexDirection="column" flexShrink={0} marginBottom={1}>
-      {/* Without the blank rows that pad it on the panel: the field above has its own margin. */}
-      {rows.slice(1, -1).map((row, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional rows
-        <Runs key={i} row={row} />
-      ))}
-    </Box>
-  )
-}
 
 /**
  * Keys as caps on the left — what this screen is for — and everything else as
@@ -384,7 +343,6 @@ export function Home({
   typing,
   field,
   list,
-  commands,
   staged,
   under,
   note,
@@ -403,11 +361,6 @@ export function Home({
   field: ReactNode
   /** What sits under the field, given how many entries it has room for. */
   list?: ((rows: number) => ReactNode) | undefined
-  /**
-   * The field holds a command: "/ menu" is the active tab and the list
-   * takes the drop surface's place, in place — nothing else moves.
-   */
-  commands?: (CommandList & { selected: number }) | undefined
   /** What is staged: one file draws the card on the surface, several the list. */
   staged?: StagedView | undefined
   /** The row under the field while something is staged: the red left-out line, or a note. */
@@ -437,7 +390,7 @@ export function Home({
   // The drop surface ripples (M1) only while it is all that is on the panel
   // and nothing is typed; anything else holds it still, and it starts again
   // from empty when the panel is bare once more.
-  const bare = !commands && !staged && !typing && mode !== 'colour' && layout.surface > 0
+  const bare = !staged && !typing && mode !== 'colour' && layout.surface > 0
   const ripple = useElapsed(bare && motionEnabled(palette.name))
   // A file that has just landed runs one ring through the card's dots (M2a).
   const landed = staged?.folder
@@ -449,17 +402,8 @@ export function Home({
       : null
   const ringAt = useTween(landed, DROP_RING_MS, { enabled: motionEnabled(palette.name) })
   const ring = landed !== null && ringAt < 1 ? ringAt : undefined
-  const panel = commands
-    ? commandRows({
-        ...art,
-        ...commands,
-        rows: layout.surface,
-        // What the list below the field would have had is free while it is
-        // open — less its last row, which the rule takes (see below). Past
-        // that the list scrolls rather than pushing the rule off the screen.
-        max: layout.surface + layout.list - 1,
-      })
-    : layout.surface > 0
+  const panel =
+    layout.surface > 0
       ? mode === 'colour' && !typing
         ? choiceCards({
             width,
@@ -490,6 +434,7 @@ export function Home({
                   rows: layout.surface,
                   typing,
                   kinds: MODE_KINDS[mode],
+                  ...(MODE_DROP_TITLES[mode] ? { title: MODE_DROP_TITLES[mode] } : {}),
                   ripple,
                 })
       : []
@@ -524,14 +469,11 @@ export function Home({
     })
   const introducing = introAt < INTRO_MS
   useKeys(() => setSkipped(true), { isActive: introducing })
-  const resting = layout.brand ? brandRows({ ...art, menu: commands !== undefined, update }) : []
+  const resting = layout.brand ? brandRows({ ...art, update }) : []
   const brand = introducing
     ? brandIntro(resting, easeOut(introAt / INTRO_MS) * (width + 8), palette)
     : resting
-  const tabsAtRest = tabRows({
-    ...art,
-    menu: commands !== undefined,
-  })
+  const tabsAtRest = tabRows(art)
   // The tabs come up out of the background as the band's edge passes them.
   const tabsIn = Math.max(0, Math.min(1, (introAt - INTRO_MS * 0.5) / INTRO_TABS_MS))
   const tabs = introducing
@@ -592,9 +534,6 @@ export function Home({
       <Box flexShrink={0}>
         {!fieldShows ? (
           <Box height={3} />
-        ) : commands ? (
-          // While a command is typed the field's marker is the menu's gold.
-          <ThemeProvider palette={menuPalette(palette)}>{field}</ThemeProvider>
         ) : crossing ? (
           <ThemeProvider palette={fieldPalette}>{fieldNow}</ThemeProvider>
         ) : (
@@ -616,6 +555,9 @@ export function Home({
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
         {note ? null : list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
+      {/* "/ menu" while the field is empty. Typing — a path or a command —
+          the list below the field needs the row, and / is already in use. */}
+      {typing ? null : <Runs row={menuHintRow({ palette, width, open: false })} />}
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
       <KeyRow {...keys} width={width} />

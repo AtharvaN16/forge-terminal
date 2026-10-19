@@ -42,9 +42,12 @@ describe('the home screen in the app', () => {
     expect(frame).toContain('Drop a file here')
     expect(frame).toContain('1 convert')
     expect(fieldLine(frame)).toBe('    › or type a path')
-    // "/ menu" is a tab of its own, so the key row no longer says it.
-    expect(frame.split('\n')[6]).toContain('/ menu')
-    expect(frame.split('\n').at(-1)).not.toContain('menu')
+    // "/ menu" sits right-aligned on the row above the rule, not on the
+    // tab row or the key row (2026-10-17).
+    const lines = frame.split('\n')
+    expect(lines[6]).not.toContain('menu')
+    expect(lines.at(-3)).toMatch(/\/\s+menu\s*$/)
+    expect(lines.at(-1)).not.toContain('menu')
     // The old banner's mode line is gone with it.
     expect(frame).not.toContain('current mode')
   })
@@ -192,37 +195,22 @@ describe('the home screen in the app', () => {
     expect(frame).toContain('split · merge · rotate')
   })
 
-  it('opens the command palette in place of the completions', async () => {
+  it('opens the / menu over home in place of the completions', async () => {
     const app = home(await makeTempDir())
     await settle()
     app.stdin.write('/comp')
     await settle()
     const frame = plain(app.lastFrame())
-    expect(frame).toContain('compress')
+    expect(frame).toContain('╭')
+    expect(frame).toContain('/compress')
     // The window's 24 rows, less the canvas's blank row on top.
     expect(frame.split('\n')).toHaveLength(23)
-    expect(frame.split('\n').at(-1)).toContain('run')
+    expect(frame.split('\n').at(-1)).toMatch(/open +.*esc +close/)
   })
 
   describe('commands, as the fourth tab (N6)', () => {
     const BACKSPACE = String.fromCharCode(127)
     const ENTER = '\r'
-
-    it('swaps the dots for the list in place when / is typed', async () => {
-      const app = home(await makeTempDir())
-      await settle()
-      app.stdin.write('/')
-      await settle()
-      const frame = plain(app.lastFrame())
-      expect(frame).not.toContain('Drop a file here')
-      expect(frame).toContain('█▀▀▀ █▀▀█')
-      // The list is a row longer than the panel at 80 × 24, so the scroll
-      // bar (S2) ends the line.
-      expect(frame).toMatch(/Modes ─+ *[┃│]? *\n.*\n.*▌ \/convert/)
-      expect(frame).toContain('Settings')
-      expect(fieldLine(frame)).toBe('    › /')
-      expect(frame.split('\n').at(-1)).toMatch(/run +esc +back/)
-    })
 
     it('runs the chosen mode as its number key would: tab, dots and an empty field', async () => {
       const app = home(await makeTempDir())
@@ -266,7 +254,10 @@ describe('the home screen in the app', () => {
       await settle()
       app.stdin.write('/Users')
       await settle()
-      expect(plain(app.lastFrame())).toContain('no command matches /Users')
+      // Nothing is called that, so the menu closes and the text is home's
+      // again (2026-10-17).
+      expect(plain(app.lastFrame())).not.toContain('╭')
+      expect(fieldLine(plain(app.lastFrame()))).toContain('/Users')
       app.stdin.write('/')
       await settle()
       const frame = plain(app.lastFrame())

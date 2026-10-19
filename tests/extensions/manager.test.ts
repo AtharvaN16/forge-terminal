@@ -140,6 +140,26 @@ function entryFor(
   }
 }
 
+/** yt-dlp as the catalogue lists it: the program itself, not an archive. */
+function ytDlp(bin: Buffer, sha256 = sha(bin)): CatalogEntry {
+  return {
+    id: 'yt-dlp',
+    title: 'YouTube links',
+    summary: 's',
+    minMacos: 14,
+    assets: {
+      'darwin-universal': {
+        version: '2026.08.19',
+        url: `${base}/yt-dlp_macos`,
+        bytes: bin.length,
+        sha256,
+        binary: 'yt-dlp',
+      },
+    },
+    licence: 'l',
+  }
+}
+
 let config: string
 const savedXdg = process.env.XDG_CONFIG_HOME
 beforeEach(async () => {
@@ -177,6 +197,32 @@ async function codeOf(p: Promise<unknown>): Promise<string> {
 // --- install --------------------------------------------------------------
 
 describe('installing an extension', () => {
+  it('installs a single-program download as it is, runnable, with a manifest of its own', async () => {
+    const bin = Buffer.from('#!/bin/sh\necho yt\n')
+    routes.set('/yt-dlp_macos', bin)
+    h.catalog = [ytDlp(bin)]
+    const ext = await installExtension('yt-dlp')
+    expect(ext.kind).toBe('exec')
+    expect(ext.entry.endsWith(`${sep}yt-dlp`)).toBe(true)
+    if (REAL_PLATFORM !== 'win32') expect((await stat(ext.entry)).mode & 0o111).not.toBe(0)
+    expect(await readFile(ext.entry)).toEqual(bin)
+    expect(await leftovers()).toEqual([
+      'yt-dlp',
+      'yt-dlp/2026.08.19',
+      'yt-dlp/2026.08.19/manifest.json',
+      'yt-dlp/2026.08.19/yt-dlp',
+      'yt-dlp/current',
+    ])
+  })
+
+  it('refuses a single-program download that does not match its checksum', async () => {
+    const bin = Buffer.from('#!/bin/sh\necho yt\n')
+    routes.set('/yt-dlp_macos', bin)
+    h.catalog = [ytDlp(bin, sha(Buffer.from('other')))]
+    expect(await codeOf(installExtension('yt-dlp'))).toBe('extension-corrupt')
+    expect(await leftovers()).toEqual([])
+  })
+
   it('downloads, verifies and installs a runnable payload, reporting real bytes', async () => {
     const archive = payload('1.0.0')
     h.catalog = [entryFor('1.0.0', archive, '/v1.tgz')]

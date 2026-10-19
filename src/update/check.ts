@@ -5,10 +5,10 @@ import { configPath } from '../config/preferences.js'
 
 /**
  * Is there a newer Forge? (update spec). One small request to the npm
- * registry — the latest version number of forge-terminal and nothing else —
- * at most once a day, remembered beside the config file. Nothing here prints
- * and nothing here throws for want of a network: an offline Mac simply has no
- * news.
+ * registry — the latest version number of forge-terminal, and the notes its
+ * package.json gives on what is new — at most once a day, remembered beside
+ * the config file. Nothing here prints and nothing here throws for want of a
+ * network: an offline Mac simply has no news.
  */
 export const REGISTRY_URL = 'https://registry.npmjs.org/forge-terminal/latest'
 export const CHECK_EVERY_MS = 24 * 60 * 60 * 1000
@@ -55,6 +55,45 @@ export interface UpdateCache {
   latest?: string
   /** When the note after a command was last printed: once a day at most. */
   notifiedAt?: number
+  /** What `latest` says is new: package.json's `whatsNew`, for /update's card. */
+  whatsNew?: ReleaseNote[]
+}
+
+/** One change a release makes: a short name, and a sentence on what it does and how to reach it. */
+export interface ReleaseNote {
+  title: string
+  text: string
+}
+
+/** The most notes kept, and how long a name and a sentence may be. Longer is cut. */
+export const MAX_NOTES = 20
+/** /update's name column. */
+export const NOTE_TITLE = 22
+export const NOTE_TEXT = 200
+
+/** Not a C0 or C1 control: no escape sequence or bell reaches the terminal. */
+function printable(c: string): boolean {
+  const n = c.codePointAt(0) ?? 0
+  return n >= 0x20 && (n < 0x7f || n > 0x9f)
+}
+
+/** Plain text, trimmed and cut to `max`: what the registry sends is not trusted to the terminal. */
+const clean = (v: unknown, max: number) =>
+  typeof v === 'string' ? [...v].filter(printable).join('').trim().slice(0, max) : ''
+
+function cleanNotes(raw: unknown): ReleaseNote[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const notes = raw
+    .map((n): ReleaseNote => {
+      const { title, text } = (typeof n === 'object' && n !== null ? n : {}) as Record<
+        string,
+        unknown
+      >
+      return { title: clean(title, NOTE_TITLE), text: clean(text, NOTE_TEXT) }
+    })
+    .filter((n) => n.title !== '' && n.text !== '')
+    .slice(0, MAX_NOTES)
+  return notes.length > 0 ? notes : undefined
 }
 
 export function cachePath(): string {
@@ -66,12 +105,15 @@ export async function readCache(): Promise<UpdateCache | undefined> {
   try {
     const raw: unknown = JSON.parse(await readFile(cachePath(), 'utf8'))
     if (typeof raw !== 'object' || raw === null) return undefined
-    const { checkedAt, latest, notifiedAt } = raw as Record<string, unknown>
+    const { checkedAt, latest, notifiedAt, whatsNew } = raw as Record<string, unknown>
     if (typeof checkedAt !== 'number') return undefined
+    const known = typeof latest === 'string' && parts(latest) !== undefined
+    const notes = known ? cleanNotes(whatsNew) : undefined
     return {
       checkedAt,
-      ...(typeof latest === 'string' && parts(latest) ? { latest } : {}),
+      ...(known ? { latest: latest as string } : {}),
       ...(typeof notifiedAt === 'number' ? { notifiedAt } : {}),
+      ...(notes ? { whatsNew: notes } : {}),
     }
   } catch {
     return undefined
@@ -104,8 +146,17 @@ export interface FetchOpts {
   timeoutMs?: number
 }
 
+interface Release {
+  version: string
+  whatsNew?: ReleaseNote[]
+}
+
 /** The registry's latest release, or undefined if it could not be had in time. */
 export async function fetchLatest(opts: FetchOpts = {}): Promise<string | undefined> {
+  return (await fetchRelease(opts))?.version
+}
+
+async function fetchRelease(opts: FetchOpts): Promise<Release | undefined> {
   const fetcher = opts.fetchImpl ?? fetch
   const timeout = AbortSignal.timeout(opts.timeoutMs ?? TIMEOUT_MS)
   const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout
@@ -113,8 +164,10 @@ export async function fetchLatest(opts: FetchOpts = {}): Promise<string | undefi
     const res = await fetcher(REGISTRY_URL, { signal, headers: { accept: 'application/json' } })
     if (!res.ok) return undefined
     const body: unknown = await res.json()
-    const version = (body as { version?: unknown } | null)?.version
-    return typeof version === 'string' && parts(version) ? version : undefined
+    const { version, whatsNew } = (body ?? {}) as { version?: unknown; whatsNew?: unknown }
+    if (typeof version !== 'string' || !parts(version)) return undefined
+    const notes = cleanNotes(whatsNew)
+    return notes ? { version, whatsNew: notes } : { version }
   } catch {
     return undefined
   }
@@ -128,15 +181,25 @@ export async function fetchLatest(opts: FetchOpts = {}): Promise<string | undefi
 export async function checkNow(
   opts: FetchOpts & { now?: number } = {},
 ): Promise<string | undefined> {
-  const latest = await fetchLatest(opts)
+  const release = await fetchRelease(opts)
   const before = await readCache()
+  // Offline, the last release heard of is kept, and its notes with it.
+  const heard = release ?? (before?.latest !== undefined ? before : undefined)
+  const latest = release?.version ?? before?.latest
   const next: UpdateCache = {
     checkedAt: opts.now ?? Date.now(),
-    ...((latest ?? before?.latest) !== undefined ? { latest: latest ?? before?.latest } : {}),
+    ...(latest !== undefined ? { latest } : {}),
     ...(before?.notifiedAt !== undefined ? { notifiedAt: before.notifiedAt } : {}),
+    ...(heard?.whatsNew !== undefined ? { whatsNew: heard.whatsNew } : {}),
   }
   await writeCache(next).catch(() => {})
-  return latest
+  return release?.version
+}
+
+/** From the cache alone: what `version` says is new, if it is the release last heard of. */
+export async function whatsNewFor(version: string): Promise<ReleaseNote[]> {
+  const cache = await readCache()
+  return cache?.latest === version ? (cache.whatsNew ?? []) : []
 }
 
 /** From the cache alone, no network: the newer release to offer, if there is one. */

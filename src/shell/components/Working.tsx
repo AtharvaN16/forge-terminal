@@ -30,6 +30,7 @@ export function Working({
   search,
   pages,
   time,
+  progress,
   stoppable = false,
   unit,
   savedAsItGoes = false,
@@ -46,6 +47,8 @@ export function Working({
   pages?: { done: number; total: number } | undefined
   /** A video's or sound file's seconds encoded of its true total, and when this pass began. */
   time?: { done: number; total: number; since: number } | undefined
+  /** A true amount of a known total that is not whole things, and how to say it: "23:10 of 1:01:57". */
+  progress?: { done: number; total: number; says: string } | undefined
   /** esc stops this job (an extension's child is killed; nothing is written). */
   stoppable?: boolean | undefined
   /** What `pages` counts when it is not pages: a folder's files ("images"). */
@@ -63,26 +66,28 @@ export function Working({
 
   const count: Row | undefined = search
     ? triesRow({ palette, mode, n: search.n, of: search.of })
-    : pages
-      ? pagesRow({
-          palette,
-          mode,
-          done: pages.done,
-          total: pages.total,
-          unit,
-          // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
-          plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
-        })
-      : time
-        ? timeRow({
+    : progress
+      ? pagesRow({ palette, mode, ...progress })
+      : pages
+        ? pagesRow({
             palette,
             mode,
-            done: time.done,
-            total: time.total,
-            elapsedMs: Date.now() - time.since,
+            done: pages.done,
+            total: pages.total,
+            unit,
+            // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
             plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
           })
-        : undefined
+        : time
+          ? timeRow({
+              palette,
+              mode,
+              done: time.done,
+              total: time.total,
+              elapsedMs: Date.now() - time.since,
+              plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
+            })
+          : undefined
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Runs row={workLine({ palette, mode, spinner, label, clock, width })} />

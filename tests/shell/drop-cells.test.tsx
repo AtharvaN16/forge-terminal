@@ -69,7 +69,6 @@ function screen(staged: StagedView, under?: UnderField, verb: string | null = 'c
         keys={homeKeys({
           typing: false,
           completions: 0,
-          menu: false,
           staged: { count: staged.files.length, verb },
         })}
       />
@@ -98,7 +97,7 @@ describe('the staged drop zone, against the mockup (80 × 24)', () => {
       .map((c) => c.ch)
       .join('')
     expect(keys).toMatch(/↵ +convert/)
-    expect(keys).toMatch(/1–5 ←→ +mode/)
+    expect(keys).toMatch(/1–6 ←→ +mode/)
   })
 
   it('three files are a list under their headline', () => {

@@ -16,7 +16,8 @@
  *
  *   node scripts/build.mjs [--outdir dist] [--metafile]
  */
-import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { build } from 'esbuild'
@@ -79,6 +80,44 @@ const result = await build({
 
 writeFileSync(join(outdir, 'third-party-licenses.txt'), licences(result.metafile))
 if (values.metafile) writeFileSync(join(outdir, 'meta.json'), JSON.stringify(result.metafile))
+buildTranscribeHelper()
+
+/**
+ * The transcribe helper (spec 2026-10-17-transcribe-design §4.1): Swift,
+ * Apple silicon, macOS 26 and later. Built where swiftc and a macOS 26 SDK
+ * are; skipped with one line everywhere else (Windows, the macos-14 test
+ * runners), where transcribe is simply not offered. The publish job sets
+ * FORGE_REQUIRE_HELPERS=1 so a release cannot ship without it.
+ */
+function buildTranscribeHelper() {
+  const required = process.env.FORGE_REQUIRE_HELPERS === '1'
+  if (process.platform !== 'darwin') {
+    if (required)
+      throw new Error('FORGE_REQUIRE_HELPERS: the transcribe helper builds only on macOS')
+    return
+  }
+  const out = join(outdir, 'helpers', 'forge-transcribe')
+  mkdirSync(join(outdir, 'helpers'), { recursive: true })
+  try {
+    execFileSync(
+      'xcrun',
+      [
+        'swiftc',
+        '-O',
+        '-parse-as-library',
+        '-target',
+        'arm64-apple-macos26.0',
+        join(ROOT, 'helpers/transcribe/forge-transcribe.swift'),
+        '-o',
+        out,
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    )
+  } catch (e) {
+    if (required) throw e
+    console.log('transcribe helper skipped: needs swiftc and a macOS 26 SDK')
+  }
+}
 
 /** One section per package the bundle inlines: name, version, licence, and its licence text. */
 function licences(metafile) {

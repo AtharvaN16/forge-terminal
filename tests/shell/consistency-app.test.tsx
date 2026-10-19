@@ -59,7 +59,7 @@ describe('Convert, with the decided parts', () => {
     app.stdin.write(ENTER)
     await until(app, 'Convert to')
     expect(plain(app.lastFrame())).toMatch(/^ Convert to$/m)
-    expect(keyRow(app)).toMatch(/1–5 mode · esc remove file · ctrl-c quit$/)
+    expect(keyRow(app)).toMatch(/1–6 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 
   it('Pages and Resolution: titled, the file at their right; 150 dpi tagged as the default', async () => {
@@ -71,7 +71,7 @@ describe('Convert, with the decided parts', () => {
     app.stdin.write(ENTER)
     await until(app, /^ Pages /m)
     expect(plain(app.lastFrame())).toMatch(/^ Pages +report\.pdf · 3 pages$/m)
-    expect(keyRow(app)).toMatch(/1–5 mode · esc back · ctrl-c quit$/)
+    expect(keyRow(app)).toMatch(/1–6 mode · esc back · ctrl-c quit$/)
     app.stdin.write(ENTER)
     await until(app, /^ Resolution /m)
     const out = app.lastFrame() ?? ''
@@ -99,7 +99,7 @@ describe('Compress, with the decided parts', () => {
   it('Method: the step’s own name, the file at its right, esc says it removes the file', async () => {
     const app = await compress()
     expect(plain(app.lastFrame())).toMatch(/^ Method +photo\.jpg$/m)
-    expect(keyRow(app)).toMatch(/1–5 mode · esc remove file · ctrl-c quit$/)
+    expect(keyRow(app)).toMatch(/1–6 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 
   it('Target size: the unit inside the filled field, no row of its own and no echo below', async () => {

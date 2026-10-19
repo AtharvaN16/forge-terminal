@@ -85,7 +85,7 @@ export interface DonePreset {
 }
 
 /** A key drawn as the key row draws it, for a hint that sits in the body: the cap on the key grey, the words dim. */
-function keyHint(palette: ReturnType<typeof useTheme>, key: string, words: string): Run[] {
+export function keyHint(palette: ReturnType<typeof useTheme>, key: string, words: string): Run[] {
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
   const capped = palette.keycapBg !== '' && !noColour
   return [

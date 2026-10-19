@@ -26,7 +26,10 @@ const DEFAULTS: BootDeps = {
   loadShell: () => import('./launch.js'),
 }
 
-export async function bootShell(deps: BootDeps = DEFAULTS): Promise<void> {
+/** What the right-click menu adds to a start: files to open with, and its first-run note. */
+export type BootExtras = Pick<ShellStart, 'opened' | 'menuNote'>
+
+export async function bootShell(deps: BootDeps = DEFAULTS, extras: BootExtras = {}): Promise<void> {
   // Both started at once: neither needs the other until launch.
   const shell = deps.loadShell()
   // Observed now, awaited below, so a rejection while the prefs are still
@@ -35,5 +38,5 @@ export async function bootShell(deps: BootDeps = DEFAULTS): Promise<void> {
   const { prefs, warning } = await deps.loadPreferences()
   const palette = paletteFor(prefs.theme)
   const { launchShell } = await shell
-  await launchShell({ prefs, palette, ...(warning === undefined ? {} : { warning }) })
+  await launchShell({ prefs, palette, ...(warning === undefined ? {} : { warning }), ...extras })
 }

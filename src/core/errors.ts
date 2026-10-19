@@ -54,6 +54,10 @@ export type ErrorCode =
   | 'nothing-to-undo'
   | 'cannot-compress-more'
   | 'ffmpeg-missing'
+  | 'no-sound'
+  | 'language-unsupported'
+  | 'transcribe-unavailable'
+  | 'link-unavailable'
   | 'unexpected'
 
 /** Lives beside `Warning` in types.ts; re-exported so both stable vocabularies import from here (spec §3.2). */
@@ -1011,6 +1015,59 @@ export function conversionFailed(path: string, cause: unknown): ForgeError {
     // The shell has no --debug of its own; the command line does.
     shellHint: 'Run the same conversion with forge --debug from the command line to see why.',
     cause,
+  })
+}
+
+/** Transcribe (spec 2026-10-17-transcribe-design): a video or sound file with nothing to hear. */
+export function noSound(path: string): ForgeError {
+  return new ForgeError({
+    code: 'no-sound',
+    title: 'Nothing to transcribe',
+    detail: `${displayName(path)} has no sound.`,
+  })
+}
+
+/** A file Apple's speech recogniser cannot open (MKV and WebM, until transcribe can use ffmpeg). */
+export function untranscribable(path: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-source',
+    title: 'Cannot transcribe this file',
+    detail: `${displayName(path)} cannot be read by Apple's speech recogniser.`,
+    hint: 'MP4, MOV, M4A, MP3, WAV and AIFF files can be transcribed.',
+  })
+}
+
+/** The recogniser has no model for the language asked for. */
+export function languageUnsupported(language: string): ForgeError {
+  return new ForgeError({
+    code: 'language-unsupported',
+    title: 'Language not supported',
+    detail: `Apple's speech recogniser does not support ${language}.`,
+    hint: 'Pass another with --language, for example --language en-US.',
+  })
+}
+
+/** A YouTube link Forge cannot transcribe: private, gone, a playlist, live. `detail` says which. */
+export function linkUnavailable(
+  detail: string,
+  cause?: unknown,
+  advice: { hint?: string; shellHint?: string } = {},
+): ForgeError {
+  return new ForgeError({
+    code: 'link-unavailable',
+    title: 'Cannot transcribe this link',
+    detail,
+    ...advice,
+    ...(cause === undefined ? {} : { cause }),
+  })
+}
+
+/** No helper, an Intel Mac or a macOS before 26: transcribe is not there. */
+export function transcribeUnavailable(reason: string): ForgeError {
+  return new ForgeError({
+    code: 'transcribe-unavailable',
+    title: 'Transcribe is not available',
+    detail: reason,
   })
 }
 

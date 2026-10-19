@@ -168,6 +168,21 @@ describe('updateCheck', () => {
   })
 })
 
+describe('rightClickMenu', () => {
+  it('is read from the file, and a value that is not true or false is rejected', async () => {
+    const { savePreferences, loadPreferences: load } = await import(
+      '../../src/config/preferences.js'
+    )
+    await savePreferences({ rightClickMenu: false })
+    expect((await load()).prefs.rightClickMenu).toBe(false)
+    const { configPath } = await import('../../src/config/preferences.js')
+    await writeFile(configPath(), JSON.stringify({ rightClickMenu: 'off' }))
+    const bad = await load()
+    expect(bad.prefs.rightClickMenu).toBeUndefined()
+    expect(bad.warning).toContain('rightClickMenu')
+  })
+})
+
 describe('presets', () => {
   const blog = { name: 'blog', steps: { to: 'webp' as const, quality: 80 }, saveTo: '~/Desktop' }
 

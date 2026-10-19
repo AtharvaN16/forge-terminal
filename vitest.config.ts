@@ -18,6 +18,12 @@ export default defineConfig({
        * the update tests pass their own environment and fakes.
        */
       FORGE_NO_UPDATE_CHECK: '1',
+      /**
+       * Nor touch the real right-click menu: Finder's Quick Actions in
+       * ~/Library/Services, Explorer's keys in the registry. The menu tests
+       * pass their own temp folders and a recording `run` (src/menu/).
+       */
+      FORGE_NO_MENU: '1',
     },
     /**
      * Capped well below the machine's core count on purpose.

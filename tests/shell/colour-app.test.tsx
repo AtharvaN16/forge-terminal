@@ -13,7 +13,7 @@ const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
 const lines = (f: string | undefined) => plain(f).split('\n')
 const keyRow = (f: string | undefined) => lines(f).findLast((l) => l.trim() !== '') ?? ''
-const tabRow = (f: string | undefined) => lines(f).find((l) => l.includes('/ menu')) ?? ''
+const tabRow = (f: string | undefined) => lines(f).find((l) => l.includes('1 convert')) ?? ''
 
 async function waitFor(ok: () => boolean, ms = 10_000) {
   const start = Date.now()
@@ -36,7 +36,7 @@ async function home(width = 80) {
 
 async function colourHome() {
   const h = await home()
-  h.app.stdin.write('5')
+  h.app.stdin.write('6')
   await waitFor(() => plain(h.app.lastFrame()).includes('extract colours'))
   await settle()
   return h
@@ -225,7 +225,7 @@ describe("colour's home and screens", () => {
     const png = await makeGradientPng(dir, 'g.png', 48)
     app.stdin.write(png)
     await waitFor(() => plain(app.lastFrame()).includes('drop more'))
-    app.stdin.write('5')
+    app.stdin.write('6')
     await waitFor(() => plain(app.lastFrame()).includes('extract colours'))
     await settle()
     expect(plain(app.lastFrame())).not.toContain('g.png')
@@ -243,27 +243,27 @@ describe("colour's home and screens", () => {
   }, 20_000)
 })
 
-describe('colour, the fifth mode', () => {
-  it('5 on home makes colour the mode', async () => {
+describe('colour, the sixth mode', () => {
+  it('6 on home makes colour the mode', async () => {
     const { app } = await home(96)
-    expect(tabRow(app.lastFrame())).toContain('5 colour')
-    expect(keyRow(app.lastFrame())).toMatch(/1–5 ←→ +mode/)
-    app.stdin.write('5')
+    expect(tabRow(app.lastFrame())).toContain('6 colour')
+    expect(keyRow(app.lastFrame())).toMatch(/1–6 ←→ +mode/)
+    app.stdin.write('6')
     await waitFor(() => plain(app.lastFrame()).includes('extract colours'))
     expect(plain(app.lastFrame())).toContain('extract colours')
     // The tab row says nothing of where results go (2026-10-13).
     expect(tabRow(app.lastFrame())).not.toContain('clipboard')
   }, 20_000)
 
-  it('5 on a picker switches to colour, and ctrl-n goes back to convert', async () => {
+  it('6 on a picker switches to colour, and ctrl-n goes back to convert', async () => {
     const { app, dir } = await home(96)
     app.stdin.write(await makeGradientPng(dir, 'a.png', 32))
     await settle()
     app.stdin.write(ENTER)
     await waitFor(() => plain(app.lastFrame()).includes('Convert PNG to'))
     await settle(300) // the picker's keys attach after its first frame
-    expect(keyRow(app.lastFrame())).toMatch(/1–5 +mode/)
-    app.stdin.write('5')
+    expect(keyRow(app.lastFrame())).toMatch(/1–6 +mode/)
+    app.stdin.write('6')
     await waitFor(() => plain(app.lastFrame()).includes('extract colours'))
     expect(plain(app.lastFrame())).toContain('extract colours')
     app.stdin.write(CTRL_N)

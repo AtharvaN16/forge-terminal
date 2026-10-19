@@ -88,16 +88,16 @@ describe('esc in the theme picker', () => {
     await settle()
     stdin.write(ENTER)
     await settle(300)
-    // Reopened, the picker is a setting: the settings' bar, named, in place of its title.
-    expect(lastFrame() ?? '').toMatch(/theme ╱{4,}/)
+    // Reopened, the picker is a setting inside the / menu's popup: its bar, named Theme.
+    expect(lastFrame() ?? '').toMatch(/menu ╱{4,}.*Theme/)
     expect(lastFrame() ?? '').not.toContain('Select theme')
     expect(lastFrame() ?? '').toMatch(/esc +back/)
     stdin.write(ESC)
     await settle(300)
     const frame = lastFrame() ?? ''
-    expect(frame).not.toMatch(/theme ╱{4,}/)
+    expect(frame).not.toMatch(/Theme ╱/)
     expect(frame).toContain('▌ /theme')
-    // The commands list again, scrolled to keep Theme in view.
+    // The menu's list again, Theme still chosen.
     expect(frame).toContain('/convert')
     expect((await loadPreferences()).prefs.theme).toBeUndefined()
   })
