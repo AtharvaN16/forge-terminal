@@ -69,6 +69,28 @@ describe('installMenu on a Mac', () => {
     expect(calls).toContainEqual(['/System/Library/CoreServices/pbs', ['-update']])
   })
 
+  it('switches every item on for the right-click menu before telling Finder', async () => {
+    const { e, calls } = env('darwin')
+    await installMenu(e)
+    const status = calls.findIndex(([cmd]) => cmd === '/usr/bin/osascript')
+    const [, args] = calls[status] ?? ['', []]
+    expect(args).toContain('pbs')
+    for (const label of ['Open Forge', 'Convert in Forge', 'Sharpen in Forge', 'Open in Forge'])
+      expect(
+        args.some((a) => a.startsWith('+') && a.includes(` - ${label} - runWorkflowAsService`)),
+      ).toBe(true)
+    expect(status).toBeLessThan(calls.findIndex(([cmd]) => cmd.endsWith('/pbs')))
+  })
+
+  it('switches Sharpen off when Boost has gone', async () => {
+    const { e, calls } = env('darwin', { sharpen: false })
+    await installMenu(e)
+    const [, args] = calls.find(([cmd]) => cmd === '/usr/bin/osascript') ?? ['', []]
+    expect(args).toContain(
+      '-com.forge-terminal.menu.sharpen - Sharpen in Forge - runWorkflowAsService',
+    )
+  })
+
   it('takes Sharpen out when Boost has gone since the last install', async () => {
     const { e, services } = env('darwin')
     await installMenu(e)
@@ -97,6 +119,15 @@ describe('installMenu on a Mac', () => {
     expect(existsSync(e.menuDir)).toBe(false)
     expect(isInstalled(e)).toBe(false)
     expect(calls.at(-1)).toEqual(['/System/Library/CoreServices/pbs', ['-update']])
+  })
+
+  it('switches every Forge item off in the services settings', async () => {
+    const { e, calls } = env('darwin')
+    await removeMenu(e)
+    const [, args] = calls.find(([cmd]) => cmd === '/usr/bin/osascript') ?? ['', []]
+    const keys = args.filter((a) => a.includes('runWorkflowAsService'))
+    expect(keys).toHaveLength(5)
+    expect(keys.every((k) => k.startsWith('-com.forge-terminal.menu.'))).toBe(true)
   })
 })
 

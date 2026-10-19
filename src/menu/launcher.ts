@@ -1,4 +1,4 @@
-import { shellQuote } from './mac.js'
+import { servicesStatus, shellQuote } from './mac.js'
 import { toastScript } from './notify.js'
 
 /**
@@ -39,6 +39,8 @@ interface Common {
 export function macLauncher(
   o: Common & {
     bundles: string[]
+    /** Every Forge service key, switched off in the services settings with the bundles. */
+    services: string[]
     /** Config folder override to carry into the run, as the user's shell had it. */
     xdgConfigHome?: string
     /** Stand-ins for tests: the notifier and Finder's service refresher. */
@@ -50,6 +52,8 @@ export function macLauncher(
     pbs: '/System/Library/CoreServices/pbs',
   }
   const run = [o.node, ...o.execArgv, o.forge].map(shellQuote).join(' ')
+  const [cmd, args] = servicesStatus({ on: [], off: o.services, osascript })
+  const switchOff = [cmd, ...args].map(shellQuote).join(' ')
   const say = (title: string, body: string) =>
     `${shellQuote(osascript)} -e 'display notification "${body}" with title "${title}"'`
   return `#!/bin/sh
@@ -58,6 +62,7 @@ if [ ! -f ${shellQuote(o.forge)} ]; then
   # Forge is gone: take its menu with it, and say so once.
 ${o.bundles.map((b) => `  rm -rf ${shellQuote(b)}`).join('\n')}
   rm -rf ${shellQuote(o.menuDir)}
+  ${switchOff}
   ${shellQuote(pbs)} -update
   ${say(GONE_TITLE, GONE_BODY)}
   exit 0

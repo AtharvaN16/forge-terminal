@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { icoFrom, renderIcon } from './icon.js'
 import { type MenuPaint, menuItems } from './items.js'
 import { macLauncher, windowsLauncher } from './launcher.js'
-import { ICON_NAME, workflowFiles } from './mac.js'
+import { ICON_NAME, serviceKey, servicesStatus, workflowFiles } from './mac.js'
 import { icoName, registryPlan, registryRoots, registryScript } from './windows.js'
 
 /**
@@ -59,6 +59,9 @@ const servicesDir = (e: Pick<MenuEnv, 'home'>) => join(e.home, 'Library', 'Servi
 const allBundles = (e: Pick<MenuEnv, 'home'>) =>
   menuItems({ sharpen: true }).map((i) => join(servicesDir(e), `${i.label}.workflow`))
 
+/** Every service Forge has ever named, for the services settings. */
+const allServices = () => menuItems({ sharpen: true }).map(serviceKey)
+
 /** What install last recorded, or undefined when the menu is not set up. */
 export function readState(e: Pick<MenuEnv, 'menuDir'>): MenuState | undefined {
   try {
@@ -86,7 +89,7 @@ export async function installMenu(e: MenuEnv): Promise<void> {
   mkdirSync(e.menuDir, { recursive: true })
   if (e.platform === 'darwin') {
     const launcher = join(e.menuDir, 'run')
-    write(launcher, macLauncher({ ...e, bundles: allBundles(e) }))
+    write(launcher, macLauncher({ ...e, bundles: allBundles(e), services: allServices() }))
     chmodSync(launcher, 0o755)
     for (const bundle of allBundles(e)) rmSync(bundle, { recursive: true, force: true })
     const tiffs = new Map<MenuPaint, Buffer>()
@@ -109,6 +112,9 @@ export async function installMenu(e: MenuEnv): Promise<void> {
         tiffs.get(item.paint) as Buffer,
       )
     }
+    // Without this the items reach only the Services menu, not the right-click menu.
+    const on = items.map(serviceKey)
+    await e.run(...servicesStatus({ on, off: allServices().filter((k) => !on.includes(k)) }))
     await e.run(PBS, ['-update'])
   } else {
     write(join(e.menuDir, 'run.mjs'), windowsLauncher({ ...e, keys: registryRoots() }))
@@ -137,6 +143,7 @@ export async function removeMenu(e: MenuEnv): Promise<void> {
   if (e.platform === 'darwin') {
     for (const bundle of allBundles(e)) rmSync(bundle, { recursive: true, force: true })
     rmSync(e.menuDir, { recursive: true, force: true })
+    await e.run(...servicesStatus({ on: [], off: allServices() }))
     await e.run(PBS, ['-update'])
   } else if (e.platform === 'win32') {
     rmSync(e.menuDir, { recursive: true, force: true })

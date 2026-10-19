@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { afterEach, describe, expect, it } from 'vitest'
 import { menuItems } from '../../src/menu/items.js'
-import { workflowFiles } from '../../src/menu/mac.js'
+import { serviceKey, servicesStatus, workflowFiles } from '../../src/menu/mac.js'
 
 const item = (action: string) => {
   const found = menuItems({ sharpen: true }).find((i) => i.action === action)
@@ -62,5 +63,57 @@ describe('workflowFiles', () => {
     const files = workflowFiles(item('compress'), LAUNCHER).files
     expect(files['Contents/Info.plist']).toContain('<key>NSIconName</key>')
     expect(Object.keys(files)).toContain('Contents/Resources/document.wflow')
+  })
+})
+
+describe('serviceKey', () => {
+  it('names the service as the services settings key it: bundle ID, menu name, message', () => {
+    const info = workflowFiles(item('open-pdf'), LAUNCHER).files['Contents/Info.plist'] as string
+    expect(info).toContain('<string>com.forge-terminal.menu.open-pdf</string>')
+    expect(serviceKey(item('open-pdf'))).toBe(
+      'com.forge-terminal.menu.open-pdf - Open in Forge - runWorkflowAsService',
+    )
+  })
+})
+
+// Runs the real script against a scratch preferences domain, never Finder's own.
+describe.runIf(process.platform === 'darwin')('servicesStatus, run for real', () => {
+  const domain = `com.forge-terminal.test.services.${process.pid}`
+  afterEach(() => {
+    spawnSync('defaults', ['delete', domain])
+  })
+  const apply = (o: { on: string[]; off: string[] }) => {
+    const [cmd, args] = servicesStatus({ ...o, domain })
+    expect(spawnSync(cmd, args).status).toBe(0)
+  }
+  const read = () => {
+    const xml = spawnSync('defaults', ['export', domain, '-'], { encoding: 'utf8' }).stdout
+    const json = spawnSync('plutil', ['-convert', 'json', '-o', '-', '-'], {
+      input: xml,
+      encoding: 'utf8',
+    }).stdout
+    return JSON.parse(json) as { NSServicesStatus?: Record<string, unknown>; Other?: string }
+  }
+  const ON = {
+    presentation_modes: {
+      ContextMenu: true,
+      FinderPreview: true,
+      ServicesMenu: true,
+      TouchBar: true,
+    },
+  }
+
+  it('switches a service on for the right-click menu, with booleans as Automator writes them', () => {
+    apply({ on: ['a.b - Open in Forge - runWorkflowAsService'], off: [] })
+    expect(read().NSServicesStatus?.['a.b - Open in Forge - runWorkflowAsService']).toEqual(ON)
+  })
+
+  it('switches a service off and keeps every other entry and setting', () => {
+    spawnSync('defaults', ['write', domain, 'Other', '-string', 'keep'])
+    apply({ on: ['a - One - runWorkflowAsService', "b - Mike's - runWorkflowAsService"], off: [] })
+    apply({ on: [], off: ['a - One - runWorkflowAsService'] })
+    const after = read()
+    expect(after.Other).toBe('keep')
+    expect(Object.keys(after.NSServicesStatus ?? {})).toEqual(["b - Mike's - runWorkflowAsService"])
   })
 })

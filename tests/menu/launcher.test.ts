@@ -14,6 +14,7 @@ const MAC = {
     '/Users/me/Library/Services/Open Forge.workflow',
     '/Users/me/Library/Services/Convert in Forge.workflow',
   ],
+  services: ['com.forge-terminal.menu.open - Open Forge - runWorkflowAsService'],
 }
 
 describe('macLauncher', () => {
@@ -44,6 +45,8 @@ describe('macLauncher', () => {
     expect(gone).toContain(`rm -rf '/Users/me/Library/Services/Convert in Forge.workflow'`)
     expect(gone).toContain(`rm -rf '/Users/me/.config/forge/menu'`)
     expect(gone).toContain(`'/System/Library/CoreServices/pbs' -update`)
+    expect(gone).toContain(`'-com.forge-terminal.menu.open - Open Forge - runWorkflowAsService'`)
+    expect(gone.indexOf('-com.forge-terminal.menu.open')).toBeLessThan(gone.indexOf("pbs' -update"))
     expect(gone).toContain(
       `display notification "Its menu items are removed." with title "Forge was uninstalled"`,
     )
@@ -79,6 +82,7 @@ describe.skipIf(process.platform === 'win32')('macLauncher, run for real', () =>
         forge,
         menuDir,
         bundles: [bundle],
+        services: ['com.forge-terminal.menu.open - Open Forge - runWorkflowAsService'],
         tools: { osascript: say, pbs: '/usr/bin/true' },
       }),
     )
@@ -99,6 +103,7 @@ describe.skipIf(process.platform === 'win32')('macLauncher, run for real', () =>
     const r = run({ forgeExists: false, nodeExists: true })
     expect([r.bundleLeft, r.menuLeft]).toEqual([false, false])
     expect(r.said).toContain('Forge was uninstalled')
+    expect(r.said).toContain('-com.forge-terminal.menu.open - Open Forge - runWorkflowAsService')
   })
 
   it('keeps the menu when only Node has moved, and says how to set it up again', () => {
