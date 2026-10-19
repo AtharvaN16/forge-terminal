@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName, PDFNumber, PDFRawStream, type PDFRef } from 'pdf-lib'
+import { PDFArray, PDFDocument, PDFName, PDFNumber, PDFRawStream, type PDFRef } from 'pdf-lib'
 import sharp from 'sharp'
 
 /**
@@ -26,13 +26,95 @@ import sharp from 'sharp'
  * `/DCTDecode` is a JPEG stream stored verbatim, so Sharp can decode it
  * straight out of the PDF and re-encode it.
  *
+ * It may sit behind a text-safe layer — `[/ASCII85Decode /DCTDecode]` is how
+ * some exporters write a whole brochure — and those are undone first. A chain
+ * with anything else in front of the JPEG is left alone.
+ *
  * `/FlateDecode` is raw pixel data under zlib. Reconstructing an image from
  * it means handling colour space (DeviceRGB, DeviceGray, ICCBased, indexed
  * palettes), bits-per-component and decode arrays — getting any of those
  * wrong writes a corrupt page that still opens, which is worse than declining.
  * Those images are left exactly as they are and counted as skipped.
  */
-const RECOMPRESSABLE = '/DCTDecode'
+const JPEG = new Set(['/DCTDecode', '/DCT'])
+const ASCII85 = new Set(['/ASCII85Decode', '/A85'])
+const ASCII_HEX = new Set(['/ASCIIHexDecode', '/AHx'])
+
+/** The filters an image stream is stored under, outermost first. */
+function filterChain(stream: PDFRawStream): string[] {
+  const filter = stream.dict.get(PDFName.of('Filter'))
+  if (filter instanceof PDFArray) return filter.asArray().map(String)
+  return filter === undefined ? [] : [String(filter)]
+}
+
+/** Whether the stream is a JPEG, possibly wrapped in ASCII85 or hex text. */
+function isJpegChain(chain: string[]): boolean {
+  const last = chain[chain.length - 1]
+  if (last === undefined || !JPEG.has(last)) return false
+  return chain.slice(0, -1).every((f) => ASCII85.has(f) || ASCII_HEX.has(f))
+}
+
+/**
+ * Whether Sharp's output can stand in for this image's pixels.
+ *
+ * It writes a 3-channel RGB JPEG, or a 1-channel one from a greyscale source.
+ * An image declared as CMYK, indexed, Separation or DeviceN would then hold
+ * the wrong number of channels for its colour space — a page that opens but
+ * renders scrambled, with nothing to say so. A `/Decode` array inverts or
+ * remaps channels, which a re-encode would bake in a second time.
+ */
+function keepsColourUnderSharp(doc: PDFDocument, stream: PDFRawStream): boolean {
+  if (stream.dict.has(PDFName.of('Decode'))) return false
+  const space = stream.dict.get(PDFName.of('ColorSpace'))
+  if (space instanceof PDFName) return ['/DeviceGray', '/DeviceRGB'].includes(String(space))
+  if (space instanceof PDFArray && String(space.get(0)) === '/ICCBased') {
+    const profile = doc.context.lookup(space.get(1))
+    const channels = profile instanceof PDFRawStream ? numberEntry(profile, 'N') : undefined
+    return channels === 1 || channels === 3
+  }
+  return false
+}
+
+function decodeAscii85(text: Buffer): Buffer {
+  const out: number[] = []
+  const group: number[] = []
+  const flush = (keep: number) => {
+    let n = 0
+    for (let i = 0; i < 5; i++) n = n * 85 + (group[i] ?? 84)
+    for (let i = 0; i < keep; i++) out.push(Math.floor(n / 256 ** (3 - i)) % 256)
+    group.length = 0
+  }
+  let i = text.toString('latin1').startsWith('<~') ? 2 : 0
+  for (; i < text.length; i++) {
+    const c = text[i] as number
+    if (c === 0x7e) break // "~>"
+    if (c <= 0x20) continue
+    if (c === 0x7a && group.length === 0) {
+      out.push(0, 0, 0, 0)
+      continue
+    }
+    group.push(c - 33)
+    if (group.length === 5) flush(4)
+  }
+  if (group.length > 1) {
+    const keep = group.length - 1
+    flush(keep)
+  }
+  return Buffer.from(out)
+}
+
+function decodeAsciiHex(text: Buffer): Buffer {
+  const hex = text.toString('latin1').split('>')[0]?.replace(/\s+/g, '') ?? ''
+  return Buffer.from(hex.length % 2 === 1 ? `${hex}0` : hex, 'hex')
+}
+
+/** The JPEG bytes inside the stream, with any ASCII layers undone. */
+function jpegBytes(stream: PDFRawStream, chain: string[]): Buffer {
+  let data: Buffer = Buffer.from(stream.contents)
+  for (const f of chain.slice(0, -1))
+    data = ASCII85.has(f) ? decodeAscii85(data) : decodeAsciiHex(data)
+  return data
+}
 
 export interface PdfImageSurvey {
   /** Images this module can re-encode. */
@@ -70,7 +152,9 @@ export interface PdfCompressResult {
 interface ImageRef {
   ref: PDFRef
   stream: PDFRawStream
-  filter: string
+  chain: string[]
+  /** A JPEG this module can re-encode without changing its colour. */
+  recompressible: boolean
   /**
    * How wide the image is drawn on its page, in points. `undefined` when the
    * image could not be tied to a page — a rare shape this declines to guess
@@ -106,10 +190,12 @@ function imageRefs(doc: PDFDocument): ImageRef[] {
     if (!(obj instanceof PDFRawStream)) continue
     if (obj.dict.get(PDFName.of('Subtype'))?.toString() !== '/Image') continue
     const width = drawnWidth.get(String(ref))
+    const chain = filterChain(obj)
     out.push({
       ref,
       stream: obj,
-      filter: String(obj.dict.get(PDFName.of('Filter'))),
+      chain,
+      recompressible: isJpegChain(chain) && keepsColourUnderSharp(doc, obj),
       ...(width === undefined ? {} : { drawnWidthPt: width }),
     })
   }
@@ -147,7 +233,7 @@ export function surveyDocument(doc: PDFDocument): PdfImageSurvey {
   let skipped = 0
   let maxDpi: number | undefined
   for (const image of imageRefs(doc)) {
-    if (image.filter !== RECOMPRESSABLE) {
+    if (!image.recompressible) {
       skipped++
       continue
     }
@@ -196,12 +282,12 @@ export async function compressPdf(
   let fromDpi: number | undefined
   let toDpi: number | undefined
 
-  for (const { ref, stream, filter, drawnWidthPt } of imageRefs(doc)) {
-    if (filter !== RECOMPRESSABLE) {
+  for (const { ref, stream, chain, recompressible, drawnWidthPt } of imageRefs(doc)) {
+    if (!recompressible) {
       skipped++
       continue
     }
-    const source = Buffer.from(stream.contents)
+    const source = jpegBytes(stream, chain)
     const pixelWidth = numberEntry(stream, 'Width')
 
     // Only downsample when the resolution is both known and above the cap.
@@ -246,6 +332,9 @@ export async function compressPdf(
     // ColorSpace and BitsPerComponent exactly as they were; only the pixel
     // data, its length, and — when resized — the dimensions change.
     stream.dict.set(PDFName.of('Length'), doc.context.obj(encoded.byteLength))
+    // The new bytes are a bare JPEG, so any text layer in front of it goes.
+    stream.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'))
+    stream.dict.delete(PDFName.of('DecodeParms'))
     if (targetPixels !== undefined && encodedWidth !== undefined && encodedHeight !== undefined) {
       stream.dict.set(PDFName.of('Width'), doc.context.obj(encodedWidth))
       stream.dict.set(PDFName.of('Height'), doc.context.obj(encodedHeight))

@@ -1,9 +1,61 @@
 import { readFile } from 'node:fs/promises'
-import { PDFDocument, PDFName, PDFNumber, PDFRawStream } from 'pdf-lib'
+import {
+  concatTransformationMatrix,
+  drawObject,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRawStream,
+  popGraphicsState,
+  pushGraphicsState,
+} from 'pdf-lib'
+import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
 import { compressPdf, surveyPdfImages } from '../../src/core/pdf-compress.js'
 import { probe } from '../../src/engines/registry.js'
 import { makePdf, makeScannedPdf, makeTempDir } from '../helpers/fixtures.js'
+
+/** ASCII85, written out here so the decoder under test is not checking itself. */
+function ascii85(data: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < data.length; i += 4) {
+    const chunk = data.subarray(i, i + 4)
+    let n = 0
+    for (let j = 0; j < 4; j++) n = n * 256 + (chunk[j] ?? 0)
+    if (chunk.length === 4 && n === 0) {
+      out += 'z'
+      continue
+    }
+    const digits: string[] = []
+    for (let j = 0; j < 5; j++) {
+      digits.unshift(String.fromCharCode((n % 85) + 33))
+      n = Math.floor(n / 85)
+    }
+    out += digits.slice(0, chunk.length + 1).join('')
+  }
+  return `${out}~>`
+}
+
+/**
+ * Re-stores every image's data behind ASCII85, as `[/ASCII85Decode <filter>]`.
+ * That is how some exporters write a brochure, and it is what made a PDF that
+ * was mostly JPEG read as "not a kind Forge can re-encode".
+ */
+async function behindAscii85(path: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(await readFile(path))
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue
+    if (obj.dict.get(PDFName.of('Subtype'))?.toString() !== '/Image') continue
+    const text = Buffer.from(ascii85(obj.contents), 'latin1')
+    const dict = obj.dict.clone()
+    const inner = obj.dict.get(PDFName.of('Filter'))
+    if (inner === undefined) continue
+    dict.set(PDFName.of('Filter'), doc.context.obj([PDFName.of('ASCII85Decode'), inner]))
+    dict.set(PDFName.of('Length'), doc.context.obj(text.byteLength))
+    doc.context.assign(ref, PDFRawStream.of(dict, text))
+  }
+  return doc.save()
+}
 
 /** The PDF filter each image object is stored under, in document order. */
 async function filtersIn(path: string): Promise<string[]> {
@@ -66,6 +118,102 @@ describe('surveying what can be compressed', () => {
     const survey = await surveyPdfImages(bytes)
     expect(survey.compressible).toBe(0)
     expect(survey.skipped).toBe(0)
+  })
+})
+
+/** A one-page PDF holding `jpeg` as a /DCTDecode image declared as `colourSpace`. */
+async function pdfWithJpeg(
+  jpeg: Buffer,
+  colourSpace: string,
+  extra: Record<string, unknown> = {},
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const page = doc.addPage([600, 400])
+  const dict = doc.context.obj({
+    Type: 'XObject',
+    Subtype: 'Image',
+    Width: 600,
+    Height: 400,
+    ColorSpace: colourSpace,
+    BitsPerComponent: 8,
+    Filter: 'DCTDecode',
+    Length: jpeg.length,
+    ...extra,
+  })
+  const ref = doc.context.register(PDFRawStream.of(dict as never, jpeg))
+  page.node.setXObject(PDFName.of('Im0'), ref)
+  page.pushOperators(
+    pushGraphicsState(),
+    concatTransformationMatrix(600, 0, 0, 400, 0, 0),
+    drawObject('Im0'),
+    popGraphicsState(),
+  )
+  return doc.save()
+}
+
+/** Noise, so the JPEG is big enough for re-encoding to shrink it. */
+const noise = () => {
+  const raw = Buffer.alloc(600 * 400 * 3)
+  for (let i = 0; i < raw.length; i++) raw[i] = Math.floor(Math.random() * 256)
+  return sharp(raw, { raw: { width: 600, height: 400, channels: 3 } })
+}
+
+describe('JPEGs whose colour Sharp would change', () => {
+  // Sharp writes a 3-channel RGB JPEG. Declared as anything else, the page
+  // renders scrambled — silently, with no error to catch.
+  it('leaves a CMYK JPEG alone and counts it as skipped', async () => {
+    const original = await pdfWithJpeg(
+      await noise().toColourspace('cmyk').jpeg({ quality: 90 }).toBuffer(),
+      'DeviceCMYK',
+    )
+    expect(await surveyPdfImages(original)).toMatchObject({ compressible: 0, skipped: 1 })
+    const out = await compressPdf(original, { quality: 30 })
+    expect(out).toMatchObject({ recompressed: 0, skipped: 1 })
+  })
+
+  it('leaves a JPEG with a /Decode array alone', async () => {
+    const original = await pdfWithJpeg(
+      await noise().jpeg({ quality: 90 }).toBuffer(),
+      'DeviceRGB',
+      { Decode: [1, 0, 1, 0, 1, 0] },
+    )
+    expect(await surveyPdfImages(original)).toMatchObject({ compressible: 0, skipped: 1 })
+  })
+
+  it('still compresses a greyscale JPEG', async () => {
+    const original = await pdfWithJpeg(
+      await noise().greyscale().jpeg({ quality: 90 }).toBuffer(),
+      'DeviceGray',
+    )
+    expect(await surveyPdfImages(original)).toMatchObject({ compressible: 1, skipped: 0 })
+    expect((await compressPdf(original, { quality: 30 })).recompressed).toBe(1)
+  })
+})
+
+describe('a JPEG stored behind ASCII85', () => {
+  it('counts as compressible, not skipped', async () => {
+    const dir = await makeTempDir()
+    const bytes = await behindAscii85(await makeScannedPdf(dir, 'scan.pdf'))
+    expect(await surveyPdfImages(bytes)).toMatchObject({ compressible: 1, skipped: 0 })
+  })
+
+  it('is re-encoded, and comes out as a plain JPEG stream', async () => {
+    const dir = await makeTempDir()
+    const original = await behindAscii85(await makeScannedPdf(dir, 'scan.pdf', { pages: 2 }))
+    const out = await compressPdf(original, { quality: 30 })
+    expect(out.recompressed).toBe(1)
+    expect(out.skipped).toBe(0)
+    expect(out.bytes.byteLength).toBeLessThan(original.byteLength * 0.6)
+
+    const doc = await PDFDocument.load(out.bytes)
+    const filters = [...doc.context.enumerateIndirectObjects()]
+      .map(([, o]) => o)
+      .filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .filter((o) => o.dict.get(PDFName.of('Subtype'))?.toString() === '/Image')
+      .map((o) => String(o.dict.get(PDFName.of('Filter'))))
+    // Written as DCT alone: leaving ASCII85 in the chain would mean the new
+    // bytes were not ASCII85 and the page would not decode.
+    expect(filters).toEqual(['/DCTDecode'])
   })
 })
 
