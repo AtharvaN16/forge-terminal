@@ -1,6 +1,6 @@
 {
   "name": "forge-terminal",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "A terminal-native file converter for macOS and Windows",
   "whatsNew": [
     {
@@ -14,6 +14,10 @@
     {
       "title": "Tidier screens",
       "text": "Every screen now lines up with the edges of home, and the / menu scrolls when the window is short."
+    },
+    {
+      "title": "A taller update card",
+      "text": "On /update, the what's new card now fills the room it has, so you see more of a release before you scroll."
     }
   ],
   "keywords": [
