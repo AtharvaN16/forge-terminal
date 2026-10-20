@@ -5,7 +5,7 @@ import { isForgeError } from '../../core/errors.js'
 import type { ReleaseNote } from '../../update/check.js'
 import type { BarChip } from '../bar-art.js'
 import { Runs } from '../components/Home.js'
-import { ScreenBar, ScreenKeys } from '../components/MenuPopup.js'
+import { ScreenBar, ScreenKeys, useInMenu } from '../components/MenuPopup.js'
 import { errorLine } from '../error-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
@@ -77,7 +77,11 @@ const SPIN_MS = 80
 const CLOCK_AFTER_MS = 3000
 /** How long "✓ copied" stands beside the pill: as long as colour's copy confirmation. */
 const COPIED_MS = 1500
-/** The header bar and the gap under it; the hint bar's gap, rule and keys. */
+/**
+ * The header bar and the gap under it; the hint bar's gap, rule and keys.
+ * Inside the / menu's popup the popup draws all of them, so the body has them
+ * to spare.
+ */
 const CHROME = 2 + 3
 
 interface UpdateFlowProps {
@@ -118,6 +122,7 @@ export function UpdateFlow({
   onChecked,
 }: UpdateFlowProps) {
   const palette = useTheme()
+  const inMenu = useInMenu()
   const [state, setState] = useState<State>({ kind: 'checking' })
   const [focus, setFocus] = useState<Focus>('action')
   const [auto, setAuto] = useState(autoAtOpen)
@@ -348,7 +353,7 @@ export function UpdateFlow({
     () => noteLines({ palette, notes, width: inner - CARD_CHROME }),
     [palette, notes, inner],
   )
-  const room = Math.max(3, height - CHROME - top.length - 3 - CARD_ROWS)
+  const room = Math.max(3, height - (inMenu ? 0 : CHROME) - top.length - 3 - CARD_ROWS)
   const scrolls = showCard && laid.rows.length > room
   const last = lastNoteStart(laid.items, room)
   const starts = noteStarts(laid.items).filter((k) => k <= last)

@@ -82,3 +82,38 @@ describe('/update in the shell', () => {
     app.unmount()
   })
 })
+
+describe('/update’s notes card in the popup', () => {
+  const NOTES = Array.from({ length: 6 }, (_, i) => ({
+    title: `Change ${i + 1}`,
+    text: `What change ${i + 1} does, in a sentence long enough to wrap onto a second line here.`,
+  }))
+  const frameAt = async (height: number) => {
+    const app = render(
+      <App
+        initialWidth={80}
+        initialHeight={height}
+        prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark' }}
+        updater={{ ...updater, whatsNew: async () => NOTES }}
+        latestRelease={async () => '9.9.9'}
+      />,
+    )
+    await settle(400)
+    app.stdin.write('/update')
+    await settle()
+    app.stdin.write(ENTER)
+    await until(() => (app.lastFrame() ?? '').includes('Change 1'))
+    const lines = (app.lastFrame() ?? '').split('\n')
+    app.unmount()
+    return lines
+  }
+
+  it('takes every row the popup has, down to the blank row above the field', async () => {
+    const lines = await frameAt(24)
+    const more = lines.findIndex((l) => /↓ \d+ more/.test(l))
+    const field = lines.findIndex((l) => l.includes('› /update'))
+    expect(more).toBeGreaterThan(0)
+    // The "more" row, then the popup's blank row, then its field: nothing idle.
+    expect(field - more).toBeLessThanOrEqual(3)
+  })
+})
