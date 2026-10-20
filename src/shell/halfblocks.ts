@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import type { PixelGrid } from '../core/closeup.js'
 import { wrapWords } from './done-art.js'
-import { blank, type Row } from './home-art.js'
+import { blank, HOME_MARGIN, type Row } from './home-art.js'
 
 /**
  * Pictures in characters, for a terminal that cannot draw images (Apple
@@ -34,7 +34,8 @@ export const SKETCH_ONLY =
  * edge, as edit's Done wraps its own.
  */
 export function sketchNoteRows(fg: string, lead: number, width: number): Row[] {
-  const lines = wrapWords(SKETCH_ONLY, Math.max(1, width - lead - 1))
+  // The note ends on the right margin (2026-10-20).
+  const lines = wrapWords(SKETCH_ONLY, Math.max(1, width - lead - HOME_MARGIN))
   // The gap is spaces, not an empty row, which some renderers give no height.
   return [[blank(lead)], ...lines.map((text): Row => [blank(lead), { text, fg }])]
 }

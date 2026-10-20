@@ -16,10 +16,10 @@ const PHOTO = { width: 4032, height: 3024 }
 describe('Resize’s slider (H3)', () => {
   it('centres 100 %, says which way is which, and offers # on the band’s row', () => {
     const [band, ends] = resizeSliderRows({ palette: DARK, percent: 100 })
-    expect(text(band).indexOf(' 100% ')).toBe(1 + Math.round((48 - 6) / 2))
+    expect(text(band).indexOf(' 100% ')).toBe(2 + Math.round((48 - 6) / 2))
     expect(text(ends).trim()).toMatch(/^smaller +same size +larger$/)
     const centre = text(ends).indexOf('same size') + 'same size'.length / 2
-    expect(Math.abs(centre - (1 + 48 / 2))).toBeLessThanOrEqual(1)
+    expect(Math.abs(centre - (2 + 48 / 2))).toBeLessThanOrEqual(1)
     expect(text(band)).toMatch(/ # {2}type an exact size$/)
   })
 

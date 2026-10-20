@@ -36,18 +36,19 @@ async function atSaveAs(name = 'test.png') {
   await settle()
   app.stdin.write(file)
   await settle()
-  // Each step waits for its title, then a beat: its key handler attaches just after.
+  // Each step waits for its title (on the app's margin since 2026-10-20), then a
+  // beat: its key handler attaches just after.
   const reach = async (title: string) => {
     await waitFor(() => lines(app.lastFrame()).includes(title))
     await settle()
   }
   app.stdin.write(ENTER)
-  await reach(' Convert to')
+  await reach('  Convert to')
   app.stdin.write(ENTER) // JPEG, the first target for a PNG
-  await waitFor(() => /^ Quality/m.test(plain(app.lastFrame())))
+  await waitFor(() => /^ {2}Quality/m.test(plain(app.lastFrame())))
   await settle()
   app.stdin.write(ENTER) // the quality as it opens
-  await reach(' Save as')
+  await reach('  Save as')
   return { app, dir }
 }
 
@@ -55,7 +56,7 @@ describe('Save as, in the flow', () => {
   it('follows Quality: its title, the bar saying where you are, the name and the folders', async () => {
     const { app } = await atSaveAs()
     const out = lines(app.lastFrame())
-    expect(out).toContain(' Save as')
+    expect(out).toContain('  Save as')
     expect(out.find((l) => l.includes('convert ╱'))).toMatch(/ JPEG ╱ 80 ╱ Save as ╱╱ *$/)
     // The default output is the file's own folder here.
     expect(plain(app.lastFrame())).toMatch(/name +test +\.jpg/)
@@ -105,13 +106,13 @@ describe('Save as, in the flow', () => {
     app.stdin.write(file)
     await settle()
     app.stdin.write(ENTER)
-    await waitFor(() => lines(app.lastFrame()).includes(' Convert to'))
+    await waitFor(() => lines(app.lastFrame()).includes('  Convert to'))
     await settle()
     app.stdin.write(ENTER)
-    await waitFor(() => /^ Quality/m.test(plain(app.lastFrame())))
+    await waitFor(() => /^ {2}Quality/m.test(plain(app.lastFrame())))
     await settle()
     app.stdin.write(ENTER)
-    await waitFor(() => lines(app.lastFrame()).includes(' Save as'))
+    await waitFor(() => lines(app.lastFrame()).includes('  Save as'))
     expect(plain(app.lastFrame())).toMatch(/projects +last saved$/m)
   }, 20_000)
 
@@ -152,10 +153,10 @@ describe('Save as, in the flow', () => {
     const { app } = await atSaveAs()
     app.stdin.write(ESC) // clears the name
     await settle()
-    expect(plain(app.lastFrame())).toContain(' Save as')
+    expect(plain(app.lastFrame())).toContain('  Save as')
     app.stdin.write(ESC)
     await settle()
-    expect(plain(app.lastFrame())).toMatch(/^ Quality +JPEG$/m)
+    expect(plain(app.lastFrame())).toMatch(/^ {2}Quality +JPEG$/m)
   }, 20_000)
 
   it('returns to Save as when the existing file question is cancelled', async () => {
@@ -170,7 +171,7 @@ describe('Save as, in the flow', () => {
     app.stdin.write(ENTER) // Cancel
     await settle()
     const out = plain(app.lastFrame())
-    expect(out).toContain(' Save as')
+    expect(out).toContain('  Save as')
     // The name as it was, the folder still chosen, esc back to Quality.
     expect(out).toMatch(/name +test +\.jpg/)
     expect(out).toMatch(/▌ Same location/)

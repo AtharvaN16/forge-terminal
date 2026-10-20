@@ -9,6 +9,7 @@ import { displayName } from '../../utils/display-path.js'
 import { useClickTarget } from '../ClickTargets.js'
 import { completePath, isFolderCompletion } from '../complete.js'
 import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
+import { HOME_MARGIN } from '../home-art.js'
 import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import {
@@ -140,7 +141,8 @@ export function SaveAs({
   const palette = useTheme()
   const noColour = (process.env.NO_COLOR ?? '') !== ''
   const plain = noColour || palette.selectionBg === ''
-  const fieldWidth = Math.max(24, Math.min(FIELD_WIDTH, width - 4))
+  // The block on home's margins (2026-10-20): margin to margin at most.
+  const fieldWidth = Math.max(24, Math.min(FIELD_WIDTH, width - 2 * HOME_MARGIN))
   const showPath = bandFor(width) !== 'compact'
 
   /**
@@ -470,7 +472,7 @@ export function SaveAs({
   return (
     <Box flexDirection="column" flexGrow={1}>
       <StepTitle mode={mode} title="Save as" aside={aside} width={width} />
-      <Box marginTop={2} flexDirection="column">
+      <Box marginTop={2} marginLeft={HOME_MARGIN} flexDirection="column">
         {blank}
         {fixedName !== undefined ? (
           <Runs row={filesRow({ palette, width: fieldWidth, names: fixedName, plain })} />
@@ -562,16 +564,18 @@ export function SaveAs({
         </FolderTarget>
         {blank}
       </Box>
-      <UnderKeys
-        pairs={
-          making !== null
-            ? [['esc', making.name === '' ? 'close' : 'clear']]
-            : !onPath && canMake(at)
-              ? [['/', 'new folder']]
-              : []
-        }
-        end={tagEnd(fieldWidth)}
-      />
+      <Box marginLeft={HOME_MARGIN}>
+        <UnderKeys
+          pairs={
+            making !== null
+              ? [['esc', making.name === '' ? 'close' : 'clear']]
+              : !onPath && canMake(at)
+                ? [['/', 'new folder']]
+                : []
+          }
+          end={tagEnd(fieldWidth)}
+        />
+      </Box>
       <HintBar width={width} pairs={keys} foot={foot} />
     </Box>
   )

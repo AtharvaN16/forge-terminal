@@ -44,7 +44,7 @@ describe('Name taken (L1)', () => {
     const { app } = mount()
     const out = app.lastFrame() ?? ''
     expect(plain(out).split('\n')[0]).toMatch(
-      /^ test\.jpg already exists +68\.2 KB · yesterday, 18:42$/,
+      /^ {2}test\.jpg already exists +68\.2 KB · yesterday, 18:42$/,
     )
     expect(out).toContain(fgOf(DARK.modeConvert))
   })
@@ -93,7 +93,7 @@ describe('Name taken (L1)', () => {
 
   it('names several files at once when more than one is taken', () => {
     const { app } = mount({ name: '3 files', existing: undefined, keepBoth: 'report-1 (1).pdf …' })
-    expect(plain(app.lastFrame()).split('\n')[0]).toMatch(/^ 3 files already exist$/)
+    expect(plain(app.lastFrame()).split('\n')[0]).toMatch(/^ {2}3 files already exist$/)
   })
 
   it('keeps “already exists” when the name is long and the terminal narrow, cutting the name instead', () => {

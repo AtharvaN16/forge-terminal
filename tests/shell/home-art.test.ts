@@ -122,9 +122,10 @@ describe('the mode tabs (mockup tab 2, D2)', () => {
 describe('the "/ menu" hint (mockups/transcribe-2026-10-round2.html, "/ menu")', () => {
   const text = (row: { text: string }[]) => row.map((run) => run.text).join('')
 
-  it('sits right-aligned, its last cell one short of the edge, the slash on a keycap', () => {
+  it('sits right-aligned on the app’s margin, its last cell two short of the edge, the slash on a keycap', () => {
+    // Moved onto the app's margins 2026-10-20 (was one short of the edge).
     const row = menuHintRow({ palette: modePalette(DARK, 'convert'), width: 80, open: false })
-    expect(text(row)).toBe(`${' '.repeat(71)} /  menu `)
+    expect(text(row)).toBe(`${' '.repeat(70)} /  menu  `)
     expect(text(row)).toHaveLength(80)
     expect(row.find((run) => run.text === ' / ')).toMatchObject({ fg: DARK.fg, bg: DARK.keycapBg })
     expect(row.find((run) => run.text === ' menu')).toMatchObject({ fg: DARK.dim })

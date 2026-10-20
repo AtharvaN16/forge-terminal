@@ -4641,7 +4641,7 @@ export function App({
    */
   const menuOpen = commands !== undefined
   /** The popup's inside: one column in from each side, the border and a column of padding. */
-  const menuInner = Math.max(20, width - 6)
+  const menuInner = Math.max(20, width - 2 * HOME_MARGIN - 4)
   /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
   const menuBody = Math.max(6, height - 3 - 6)
   const homeField = (w: number, row = false) => (
@@ -4761,8 +4761,12 @@ export function App({
             !atDone &&
             step !== 'watch' &&
             !onHome ? (
-              <Box marginBottom={1}>
-                <StagedFiles stage={stage} width={width} dim={running && workShown} />
+              <Box marginBottom={1} marginLeft={HOME_MARGIN}>
+                <StagedFiles
+                  stage={stage}
+                  width={width - 2 * HOME_MARGIN}
+                  dim={running && workShown}
+                />
               </Box>
             ) : null}
             <Static key={staticGeneration} items={history}>
@@ -4840,7 +4844,7 @@ export function App({
                 {floorHere !== undefined &&
                 (parseSize(sizeWithUnit(text)) ?? Number.POSITIVE_INFINITY) < floorHere ? (
                   <Text>
-                    {'   '}
+                    {' '.repeat(HOME_MARGIN)}
                     <Text bold color={colourProp(palette.fg)}>
                       {formatBytes(floorHere)}
                     </Text>

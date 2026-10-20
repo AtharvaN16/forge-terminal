@@ -4,6 +4,7 @@ import stringWidth from 'string-width'
 import { formatBytes } from '../../core/units.js'
 import { describeAge } from '../age.js'
 import { useClickTarget } from '../ClickTargets.js'
+import { HOME_MARGIN } from '../home-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeColours, type ShellMode, SYMBOLS } from '../theme.js'
@@ -73,12 +74,14 @@ export function NameTaken({
   const verb = several ? ' already exist' : ' already exists'
   // The name gives way, from its middle, before the words that say what is
   // wrong do: the title is one row and is cut at its end otherwise.
-  const titleRoom = Math.min(width, 1 + TITLE_WIDTH) - 1 - verb.length
+  // The title starts on the margin, as titleRow draws it (2026-10-20).
+  const titleRoom =
+    Math.min(width - HOME_MARGIN, HOME_MARGIN + TITLE_WIDTH) - HOME_MARGIN - verb.length
   const title = `${middleEllipsis(name, Math.max(4, titleRoom))}${verb}`
   const aside = existing
     ? `${formatBytes(existing.bytes)} · ${describeAge(existing.modified, now)}`
     : undefined
-  const bandWidth = Math.min(width, CARD_WIDTH)
+  const bandWidth = Math.min(width - 2 * HOME_MARGIN, CARD_WIDTH)
   const noColour = (process.env.NO_COLOR ?? '') !== ''
   const band = noColour || palette.listBand === '' ? undefined : palette.listBand
   const accent = modeColours(palette, mode).fg
@@ -104,13 +107,14 @@ export function NameTaken({
       // say what Keep both does, so they always show.
       const mark = keepBoth.slice(at, close + 1)
       const tail = keepBoth.slice(close + 1)
-      const stem = middleEllipsis(
-        keepBoth.slice(0, at),
-        Math.max(1, room - lead.length - stringWidth(mark) - stringWidth(tail)),
-      )
+      // Where the row is too narrow for the words and the name, the words go:
+      // the name with its (1) is the answer.
+      const fixed = stringWidth(mark) + stringWidth(tail)
+      const said = room - lead.length - fixed >= 4 ? lead : ''
+      const stem = middleEllipsis(keepBoth.slice(0, at), Math.max(1, room - said.length - fixed))
       return (
         <Text color={colourProp(palette.dim)}>
-          {lead}
+          {said}
           <Text color={colourProp(palette.fg)}>{stem}</Text>
           <Text bold color={colourProp(accent)}>
             {mark}
@@ -154,7 +158,11 @@ export function NameTaken({
             onClick={() => onSubmit(choice)}
             onHover={() => choose(i)}
           >
-            <Box width={bandWidth} {...(selected && band ? { backgroundColor: band } : {})}>
+            <Box
+              width={bandWidth}
+              marginLeft={HOME_MARGIN}
+              {...(selected && band ? { backgroundColor: band } : {})}
+            >
               <Text color={colourProp(accent)}>{selected ? `${SYMBOLS.strip} ` : '  '}</Text>
               <Text bold={selected} color={colourProp(selected ? palette.fg : palette.dim)}>
                 {label.padEnd(NAME_COLUMN)}

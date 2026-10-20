@@ -109,12 +109,12 @@ describe('a running split names itself correctly, not as rendering', () => {
     // The positive assertion the label itself needs: the split's own verb
     // and file actually rendered (W5's "Splitting report.pdf"), on the line
     // and at the end of the bar, not a blank or unrelated frame.
-    expect(midFrame).toMatch(/^ {3}Splitting doc\.pdf/m)
+    expect(midFrame).toMatch(/^ {4}Splitting doc\.pdf/m)
     expect(midFrame).toMatch(/Splitting ╱╱$/m)
     // The bug this pins: split must never claim to be converting pages.
     expect(midFrame).not.toMatch(/Converting|RENDERING/)
     // A solid bar, a full cell tall: it fills, and has no knob to drag.
-    expect(midFrame).toMatch(/^ {3}█{30} {2}page \d+ of 300$/m)
+    expect(midFrame).toMatch(/^ {4}█{30} {2}page \d+ of 300$/m)
     expect(midFrame).not.toContain('●')
 
     const finalFrame = await waitFor(

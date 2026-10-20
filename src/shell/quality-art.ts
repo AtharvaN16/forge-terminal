@@ -1,5 +1,5 @@
 import stringWidth from 'string-width'
-import { blank, type Row } from './home-art.js'
+import { blank, HOME_MARGIN, type Row } from './home-art.js'
 import { modeColours, type Palette, type ShellMode } from './theme.js'
 
 /**
@@ -9,7 +9,7 @@ import { modeColours, type Palette, type ShellMode } from './theme.js'
  * and the title carry the mode. Rows start one cell in from the card's edge,
  * as the kit draws them.
  */
-const LEAD = 1
+const LEAD = HOME_MARGIN
 /** The band's width, thumb included. */
 export const SLIDER_WIDTH = 48
 /** The title row's width from `LEAD`, the same as Working's line. */

@@ -180,7 +180,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     // not the finished result either (asserted below).
     const midFrame = await waitFor(lastFrame, (f) => /page \d+ of 10/.test(f))
     // Working (W5): the operation's verb and the file, then a solid bar of pages.
-    expect(plain(midFrame)).toMatch(/^ {3}Converting doc\.pdf/m)
+    expect(plain(midFrame)).toMatch(/^ {4}Converting doc\.pdf/m)
     expect(midFrame).toMatch(/page \d+ of 10/)
     // A page count under the total this document actually has: proof the
     // frame was caught mid-run, not read after everything had already
@@ -248,7 +248,7 @@ describe('the shell — page and resolution steps, live progress', () => {
     for (const frame of frames) {
       expect(frame).not.toMatch(/page \d+ of \d+/)
       // Working's page bar: 30 cells, then the count. (Done's card has bars of its own.)
-      expect(frame).not.toMatch(/^ {3}[█░]{30}/m)
+      expect(frame).not.toMatch(/^ {4}[█░]{30}/m)
     }
 
     expect(lastFrame() ?? '').toContain('convert another')

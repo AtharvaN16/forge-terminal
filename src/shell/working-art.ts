@@ -3,7 +3,7 @@ import { FORMATS } from '../core/formats.js'
 import { clockOf } from '../core/timecode.js'
 import type { Job, Phase } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
-import { blank, clip, type Row, type Run } from './home-art.js'
+import { blank, clip, HOME_MARGIN, type Row, type Run } from './home-art.js'
 import { modeColours, type Palette, type ShellMode } from './theme.js'
 
 /**
@@ -15,11 +15,11 @@ import { modeColours, type Palette, type ShellMode } from './theme.js'
  *
  * The rows start one cell in from the card's edge, as the kit draws them.
  */
-const LEAD = 1
+const LEAD = HOME_MARGIN
 /** The line's width from `LEAD`: its right end, where the clock sits, is the title's. */
 export const LINE_WIDTH = 64
 /** The count rows sit two cells further in than the line. */
-const COUNT_LEAD = 3
+const COUNT_LEAD = HOME_MARGIN + 2
 /** The page bar's width, a full cell tall. */
 export const PAGE_BAR = 30
 /** The clock appears once a job has run this long (W5: only a long job shows it). */

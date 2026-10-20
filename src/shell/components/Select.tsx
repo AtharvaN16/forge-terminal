@@ -3,6 +3,7 @@ import { type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { Choice } from '../../core/actions/index.js'
 import { useClickTarget } from '../ClickTargets.js'
+import { HOME_MARGIN } from '../home-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
@@ -197,7 +198,8 @@ export function Select({
   const tagged = !noColour && palette.defaultTagBg !== ''
 
   return (
-    <Box flexDirection="column">
+    // The marker sits on the margin (2026-10-20: home's margins are the app's).
+    <Box flexDirection="column" marginLeft={HOME_MARGIN}>
       {items.map((item, i) => {
         // A disabled row is never the live selection, even if `index`
         // somehow pointed at one (it shouldn't — `move` and the initial

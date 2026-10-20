@@ -57,7 +57,8 @@ describe('a default, in a list', () => {
   it('is P1’s tinted tag at the far end of its row, with no star', () => {
     const out = frame(<Select width={52} items={items} onSubmit={() => {}} />)
     const row = out.split('\n')[1] ?? ''
-    expect(plain(row)).toMatch(/^ {2}150 dpi +default \s*$/)
+    // The list starts on the app's margin (2026-10-20): the marker's column is col 2.
+    expect(plain(row)).toMatch(/^ {4}150 dpi +default \s*$/)
     expect(row).toContain(bgOf(DARK.defaultTagBg))
     expect(row).toContain(fgOf(DARK.defaultTag))
     expect(out).not.toContain('★')
@@ -76,7 +77,8 @@ describe('StepTitle', () => {
     const out = frame(
       <StepTitle mode="convert" title="Pages" aside="report.pdf · 3 pages" width={80} />,
     )
-    expect(plain(out)).toMatch(/^ Pages +report\.pdf · 3 pages$/)
+    // On the app's margin (2026-10-20): the title starts at column 2.
+    expect(plain(out)).toMatch(/^ {2}Pages +report\.pdf · 3 pages$/)
     expect(out).toContain(fgOf(DARK.modeConvert))
     expect(out).toContain(`${ESC}[1m`)
   })
@@ -85,9 +87,11 @@ describe('StepTitle', () => {
 describe('HintBar, always F1', () => {
   const keys = (out: string) => plain(out).split('\n').at(-1) ?? ''
 
-  it('keeps the divider across the terminal above the keys', () => {
+  it('keeps the divider above the keys, margin to margin, as home’s band runs', () => {
     const out = plain(frame(<HintBar width={60} pairs={[['↵', 'confirm']]} />))
-    expect(out.split('\n')).toContain('─'.repeat(60))
+    expect(out.split('\n')).toContain(
+      `${' '.repeat(HOME_MARGIN)}${'─'.repeat(60 - 2 * HOME_MARGIN)}`,
+    )
   })
 
   it('moves mode, esc and quit to the quiet footnote, and adds quit where it was left out', () => {
@@ -149,7 +153,11 @@ describe('the filled field', () => {
       [50, 46],
     ] as const) {
       const rows = field(width)
-      for (const row of rows) expect(stringWidth(row)).toBe(want)
+      // It starts on the app's margin (2026-10-20), two columns in.
+      for (const row of rows) {
+        expect(row.slice(0, HOME_MARGIN)).toBe(' '.repeat(HOME_MARGIN))
+        expect(stringWidth(row)).toBe(HOME_MARGIN + want)
+      }
     }
   })
 })

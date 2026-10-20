@@ -300,7 +300,7 @@ describe('/pdf refuses to overwrite without asking', () => {
 
     const frame = unpaint((lastFrame() ?? '').replace(SGR, ''))
     expect(frame).not.toContain('choose an operation')
-    expect(frame).toMatch(/^ Save as +Rotate 90°$/m)
+    expect(frame).toMatch(/^ {2}Save as +Rotate 90°$/m)
     // Back on Save as, the name as it was given and the folders there to change.
     expect(frame).toMatch(/name +doc-rotated +\.pdf/)
     expect(frame).toMatch(/esc back · ctrl-c quit/)

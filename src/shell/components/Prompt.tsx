@@ -6,6 +6,7 @@ import { useClickTarget } from '../ClickTargets.js'
 import { copy, paste } from '../clipboard.js'
 import { positionInFrame } from '../frame-geometry.js'
 import type { Row } from '../home-art.js'
+import { HOME_MARGIN } from '../home-art.js'
 import { isStrayEscapeSequence, offsetForColumn } from '../mouse.js'
 import { FIELD_WIDTH } from '../save-as-art.js'
 import { Text } from '../Text.js'
@@ -976,7 +977,8 @@ export function Prompt({
    * columns, four short of a narrower terminal — never the terminal's, which
    * at 120 columns left a field wider than everything around it.
    */
-  const boxWidth = variant === 'field' ? Math.max(20, Math.min(FIELD_WIDTH, width - 4)) : width
+  const boxWidth =
+    variant === 'field' ? Math.max(20, Math.min(FIELD_WIDTH, width - 2 * HOME_MARGIN)) : width
   return (
     <Box
       flexDirection="column"
@@ -986,6 +988,7 @@ export function Prompt({
       paddingY={1}
       marginTop={variant === 'field' ? 2 : 1}
       marginBottom={variant === 'field' ? 2 : 1}
+      marginLeft={variant === 'field' ? HOME_MARGIN : 0}
     >
       <Box ref={lineRef}>
         <Text wrap="wrap">

@@ -1,9 +1,7 @@
 import { Box, type DOMElement, measureElement } from 'ink'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp } from '../theme.js'
-import { KeyRow } from './Home.js'
+import { KeyRow, KeyRule } from './Home.js'
 import { type Notice, NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
 
 /**
@@ -94,7 +92,7 @@ export function HintBar({
       ) : null}
       <Box width={width} marginTop={line || hint ? 0 : 1} flexDirection="column" flexShrink={0}>
         {line ? <NoticeLine notices={notices} width={width} /> : hint}
-        <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
+        <KeyRule width={width} />
         <KeyRow main={main} foot={[...extra, ...footed]} width={width} off={off} />
       </Box>
     </>

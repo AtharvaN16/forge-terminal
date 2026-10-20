@@ -213,9 +213,9 @@ export function describeRow(actual: Cell[], expected: Cell[]): string {
 }
 
 /**
- * A mockup row moved `n` cells left. The kit draws step screens two cells in,
- * under the bar's chip; the app draws them flush left, so a step's rows are
- * held to the mockup's at the same distance from the file card.
+ * A mockup row moved `n` cells left. The kit drew some step rows a cell or
+ * two further in than the app now draws them: since 2026-10-20 every row
+ * starts on the app's margin (home's), so callers pass the difference.
  */
 export function shifted(cells: Cell[], n = 2, width = 80): Cell[] {
   return pad(cells.slice(n), width)

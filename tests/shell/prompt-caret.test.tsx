@@ -134,7 +134,8 @@ describe('hint bar', () => {
     const { lastFrame } = await toRename()
     const rules = plain(lastFrame())
       .split('\n')
-      .filter((l) => /^─{76}$/.test(l))
+      // The rule sits on the app's margin (2026-10-20): two blanks, then 76 − 4.
+      .filter((l) => /^ {2}─{72}$/.test(l))
     expect(rules.length).toBe(1)
   })
 })

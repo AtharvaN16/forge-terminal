@@ -86,7 +86,7 @@ describe('Working', () => {
 
     const frame = working[0]?.frame ?? ''
     expect(barLine(frame)).toMatch(/ noise\.avif ╱ Converting ╱╱$/)
-    expect(frame).toMatch(/^ {3}Encoding AVIF/m)
+    expect(frame).toMatch(/^ {4}Encoding AVIF/m)
     // Nothing invented: no percentage, no list of phases.
     expect(frame).not.toMatch(/\d+%/)
     expect(frame).not.toMatch(/reading.*decoding/i)
@@ -131,8 +131,8 @@ describe('Working, finding a size', () => {
 
   it('shows a dot per try and offers esc, with no "try n" text', async () => {
     const { frame } = await searching()
-    expect(frame).toMatch(/^ {3}Finding the right quality/m)
-    expect(frame).toMatch(/^ {3}(● )*(○ )*[●○]$/m)
+    expect(frame).toMatch(/^ {4}Finding the right quality/m)
+    expect(frame).toMatch(/^ {4}(● )*(○ )*[●○]$/m)
     expect(frame).toMatch(/●/)
     expect(frame).not.toMatch(/try \d|attempt/)
     const keys = frame.split('\n').findLast((l) => l.trim() !== '') ?? ''

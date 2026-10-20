@@ -65,7 +65,10 @@ export function SavedTo({ output, width }: { output: string; width: number }) {
   const palette = useTheme()
   const folder = dirname(output)
   const prefix = '  saved to '
-  const shown = middleEllipsis(displayPath(folder), Math.max(8, width - prefix.length))
+  const shown = middleEllipsis(
+    displayPath(folder),
+    Math.max(8, width - prefix.length - HOME_MARGIN),
+  )
   return (
     <Text>
       <Text color={colourProp(palette.dim)}>{prefix}</Text>
@@ -104,8 +107,8 @@ export function HistoryEntry({ block, width }: { block: HistoryBlock; width: num
 
   if (block.kind === 'file') {
     return (
-      <Box marginBottom={1}>
-        <FileCard source={block.source} width={width} />
+      <Box marginBottom={1} marginLeft={HOME_MARGIN}>
+        <FileCard source={block.source} width={width - 2 * HOME_MARGIN} />
       </Box>
     )
   }

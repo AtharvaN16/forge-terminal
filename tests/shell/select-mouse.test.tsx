@@ -3,6 +3,7 @@ import { act } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { ClickTargetProvider, useClickTargetRegistry } from '../../src/shell/ClickTargets.js'
 import { Select } from '../../src/shell/components/Select.js'
+import { HOME_MARGIN } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { paletteFor, SYMBOLS } from '../../src/shell/theme.js'
 
@@ -49,11 +50,13 @@ function mount() {
 }
 
 describe('Select mouse support', () => {
+  // Rows start on the app's margin (2026-10-20), so a click on one lands at
+  // HOME_MARGIN + 1, where the marker's column now is.
   it('submits the row that was clicked — the same path Enter takes', () => {
     const h = mount()
-    const target = h.registry.hitTest({ row: 1, col: 1 })
+    const target = h.registry.hitTest({ row: 1, col: HOME_MARGIN + 1 })
     expect(target).not.toBeNull()
-    target?.onClick({ row: 0, col: 1 })
+    target?.onClick({ row: 0, col: HOME_MARGIN + 1 })
     expect(h.onSubmit).toHaveBeenCalledWith('second')
     h.app.unmount()
   })
@@ -61,14 +64,14 @@ describe('Select mouse support', () => {
   it('registers no target for a disabled row', () => {
     const h = mount()
     // Row 2 is the disabled 'Third'; arrow keys skip it, so a click must too.
-    const target = h.registry.hitTest({ row: 2, col: 1 })
+    const target = h.registry.hitTest({ row: 2, col: HOME_MARGIN + 1 })
     expect(target).toBeNull()
     h.app.unmount()
   })
 
   it('moves the highlight on hover', async () => {
     const h = mount()
-    const second = h.registry.hitTest({ row: 1, col: 1 })
+    const second = h.registry.hitTest({ row: 1, col: HOME_MARGIN + 1 })
     // Ink only commits React state updates on its own render path — invoking
     // the callback directly and reading lastFrame() synchronously would see
     // stale output, so the update must be flushed inside act().
@@ -84,11 +87,11 @@ describe('Select mouse support', () => {
 
   it('submits the hovered row when it is clicked', async () => {
     const h = mount()
-    const second = h.registry.hitTest({ row: 1, col: 1 })
+    const second = h.registry.hitTest({ row: 1, col: HOME_MARGIN + 1 })
     await act(async () => {
       second?.onHover?.(true)
     })
-    second?.onClick({ row: 0, col: 1 })
+    second?.onClick({ row: 0, col: HOME_MARGIN + 1 })
     expect(h.onSubmit).toHaveBeenCalledWith('second')
     h.app.unmount()
   })

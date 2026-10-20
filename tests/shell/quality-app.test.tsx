@@ -17,10 +17,14 @@ const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
 const lines = (f: string | undefined) => plain(f).split('\n')
 const keyRow = (f: string | undefined) => lines(f).findLast((l) => l.trim() !== '') ?? ''
-const sizeLine = (f: string | undefined) =>
-  lines(f).find(
-    (l) => /^ (?! ).*(smaller|larger|about the same|measuring)/.test(l) && !l.includes('sharper'),
-  ) ?? ''
+/** The size line of an already plain frame (plain twice would strip the margin again). */
+const sizeLine = (frame: string) =>
+  frame
+    .split('\n')
+    .find(
+      (l) =>
+        /^ {2}(?! ).*(smaller|larger|about the same|measuring)/.test(l) && !l.includes('sharper'),
+    ) ?? ''
 
 async function waitFor(lastFrame: () => string | undefined, ok: (f: string) => boolean) {
   const start = Date.now()
@@ -64,9 +68,9 @@ describe('Quality', () => {
   it('titles the question and says what it is for, then the slider at the preference', async () => {
     const { app } = await atQuality()
     const frame = plain(app.lastFrame())
-    expect(frame).toMatch(/^ Quality {40,}JPEG$/m)
+    expect(frame).toMatch(/^ {2}Quality {40,}JPEG$/m)
     expect(frame).toMatch(/^ +80$/m)
-    expect(frame).toMatch(/^ smaller {34}sharper$/m)
+    expect(frame).toMatch(/^ {2}smaller {34}sharper$/m)
   })
 
   it('shows the measured size of the value it rests on, as an encode really made it', async () => {
@@ -76,7 +80,7 @@ describe('Quality', () => {
     )
     const expected = await realSize(file, 80)
     expect(sizeLine(frame)).toMatch(
-      new RegExp(`^ ${expected.replace('.', '\\.')}  (\\d+% (smaller|larger)|about the same)`),
+      new RegExp(`^ {2}${expected.replace('.', '\\.')}  (\\d+% (smaller|larger)|about the same)`),
     )
   })
 
@@ -86,7 +90,7 @@ describe('Quality', () => {
     app.stdin.write(LEFT)
     await settle(60)
     expect(plain(app.lastFrame())).toMatch(/^ +75$/m)
-    expect(sizeLine(app.lastFrame())).toMatch(/measuring/)
+    expect(sizeLine(plain(app.lastFrame()))).toMatch(/measuring/)
     const frame = await waitFor(app.lastFrame, (f) =>
       /smaller|larger|about the same/.test(sizeLine(f)),
     )
@@ -103,7 +107,7 @@ describe('Quality', () => {
     )
     app.stdin.write(RIGHT)
     await settle(40)
-    expect(sizeLine(app.lastFrame())).toContain(await realSize(file, 80))
+    expect(sizeLine(plain(app.lastFrame()))).toContain(await realSize(file, 80))
   })
 
   it('keys: ←→ adjust and ↵ confirm, with mode, back and quit in the footnote', async () => {

@@ -5,7 +5,14 @@ import { Prompt } from '../../src/shell/components/Prompt.js'
 import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette, type ShellMode } from '../../src/shell/theme.js'
-import { ansiRow, describeHomeRow, type FixtureFrame, homeRow, MOCKUP } from './home-cells.js'
+import {
+  ansiRow,
+  describeHomeRow,
+  type FixtureFrame,
+  homeRow,
+  MOCKUP,
+  runsRow,
+} from './home-cells.js'
 
 vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
@@ -56,13 +63,19 @@ function screen({
   )
 }
 
+// The rule above the keys sits on the app's margins since 2026-10-20: two
+// columns in from each side, where the mockup drew it the full width.
+const RULE = 22
+const rule = () => runsRow([{ text: '  ' }, { text: '─'.repeat(76), fg: DARK.border }])
+
 function expectFrame(frame: FixtureFrame, skip: number[] = []) {
   const lines = (screen(frame).lastFrame() ?? '').split('\n')
   expect(lines).toHaveLength(24)
   for (let row = 0; row < 24; row++) {
     if (skip.includes(row)) continue
     const actual = ansiRow(lines[row] ?? '')
-    expect(describeHomeRow(actual, homeRow(frame, row)), `${frame.label}, row ${row}`).toBe('equal')
+    const expected = row === RULE ? rule() : homeRow(frame, row)
+    expect(describeHomeRow(actual, expected), `${frame.label}, row ${row}`).toBe('equal')
   }
 }
 
@@ -90,6 +103,8 @@ describe('the home screen, against the decided mockup (80 × 24)', () => {
     expectFrame(empty, [...KINDS, KEY_ROW])
     expect(words(empty, 10)).toContain('↓  Drop a file here')
     expect(words(empty, 11)).toContain(MODE_KINDS.convert)
+    // "/ menu" ends on the app's right margin, two columns short (2026-10-20).
+    expect(words(empty, 21)).toBe(`${' '.repeat(70)} /  menu  `)
   })
 
   it('typing a path', () => {

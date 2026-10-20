@@ -7,6 +7,7 @@ import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette } from '../../src/shell/theme.js'
 import {
   ansiRow,
+  type Cell,
   describeRow,
   type FixtureFrame,
   fixtureRow,
@@ -27,7 +28,11 @@ const W5 = loadFixture('working-mockup.json') as Array<FixtureFrame & { t: numbe
 const G1 = loadFixture('quality-mockup.json') as Array<FixtureFrame & { q: number }>
 const lines = (f: string | undefined) => (f ?? '').split('\n')
 
-describe('Working through Ink, against W5', () => {
+// The kit draws step rows three cells in; the app draws them on its margin
+// (two cells in, 2026-10-20), so each mockup row is held one cell to the left.
+const onMargin = (cells: Cell[]) => shifted(cells, 1)
+
+describe('Working through Ink, against W5, on the app’s margin (2026-10-20)', () => {
   it('draws the line as the mockup does, four seconds in', () => {
     setMotionForTests(true)
     // The clock and the spinner both read the time: frozen, the line is the
@@ -39,7 +44,7 @@ describe('Working through Ink, against W5', () => {
         <Working mode="convert" label="Encoding AVIF" startedAt={Date.now() - 4000} width={80} />
       </ThemeProvider>,
     )
-    expect(describeRow(ansiRow(lines(lastFrame())[0] ?? ''), shifted(fixtureRow(frame, 7)))).toBe(
+    expect(describeRow(ansiRow(lines(lastFrame())[0] ?? ''), onMargin(fixtureRow(frame, 7)))).toBe(
       'equal',
     )
   })
@@ -58,13 +63,13 @@ describe('Working through Ink, against W5', () => {
         />
       </ThemeProvider>,
     )
-    expect(describeRow(ansiRow(lines(lastFrame())[2] ?? ''), shifted(fixtureRow(frame, 9)))).toBe(
+    expect(describeRow(ansiRow(lines(lastFrame())[2] ?? ''), onMargin(fixtureRow(frame, 9)))).toBe(
       'equal',
     )
   })
 })
 
-describe('Quality through Ink, against G1', () => {
+describe('Quality through Ink, against G1, on the app’s margin (2026-10-20)', () => {
   for (const q of [80, 35, 100]) {
     it(`draws the title, the slider at ${q} and its ends as the mockup does`, () => {
       const frame = G1.find((f) => f.q === q) as FixtureFrame
@@ -87,9 +92,9 @@ describe('Quality through Ink, against G1', () => {
         </ThemeProvider>,
       )
       const drawn = lines(lastFrame())
-      expect(describeRow(ansiRow(drawn[0] ?? ''), shifted(fixtureRow(frame, 0)))).toBe('equal')
-      expect(describeRow(ansiRow(drawn[2] ?? ''), shifted(fixtureRow(frame, 1)))).toBe('equal')
-      expect(describeRow(ansiRow(drawn[3] ?? ''), shifted(fixtureRow(frame, 2)))).toBe('equal')
+      expect(describeRow(ansiRow(drawn[0] ?? ''), onMargin(fixtureRow(frame, 0)))).toBe('equal')
+      expect(describeRow(ansiRow(drawn[2] ?? ''), onMargin(fixtureRow(frame, 1)))).toBe('equal')
+      expect(describeRow(ansiRow(drawn[3] ?? ''), onMargin(fixtureRow(frame, 2)))).toBe('equal')
     })
   }
 })

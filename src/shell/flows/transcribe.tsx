@@ -35,7 +35,7 @@ import { pillWidth, StepPill } from '../components/StepPill.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
 import { doneNotes } from '../done-art.js'
-import { blank, mix, type Row, width as widthOf } from '../home-art.js'
+import { blank, HOME_MARGIN, mix, type Row, width as widthOf } from '../home-art.js'
 import { openPath, revealPath } from '../reveal.js'
 import { useTheme } from '../ThemeContext.js'
 import type { Palette } from '../theme.js'
@@ -278,7 +278,7 @@ export function TranscribeFlow({
         <Box flexGrow={1}>
           <Select
             items={WANTS}
-            width={width}
+            width={width - 2 * HOME_MARGIN}
             initialValue={want}
             onHighlight={setCursor}
             pill={(item) =>

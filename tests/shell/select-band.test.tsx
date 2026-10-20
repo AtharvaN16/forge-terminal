@@ -2,6 +2,7 @@ import { render } from 'ink-testing-library'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { Select } from '../../src/shell/components/Select.js'
+import { HOME_MARGIN } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, NEUTRAL } from '../../src/shell/theme.js'
 
@@ -25,10 +26,11 @@ describe('Select rows', () => {
     expect(row.trimStart().startsWith('PNG')).toBe(true)
   })
 
-  it('never draws a row wider than the width it was given', () => {
+  it('never draws a row wider than the width it was given, past the margin it starts on', () => {
+    // Rows start on the app's margin (2026-10-20); the band itself is `width` wide.
     for (const w of [20, 30, 40, 80]) {
       const frame = frameOf(<Select width={w} items={items} onSubmit={() => {}} />)
-      for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(w)
+      for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(HOME_MARGIN + w)
     }
   })
 
@@ -108,7 +110,8 @@ describe('the picker (spec 2026-10-11 picker §1)', () => {
     )
     const row = frame.split('\n').find((l) => l.includes('74.6 KB')) ?? ''
     expect(row.trimEnd().endsWith('74.6 KB')).toBe(true)
-    expect(row.trimEnd().length).toBe(48)
+    // The band starts on the app's margin (2026-10-20).
+    expect(row.trimEnd().length).toBe(HOME_MARGIN + 48)
   })
 
   it('puts a badge at the far end of its row, whether or not it is highlighted', () => {
@@ -122,7 +125,8 @@ describe('the picker (spec 2026-10-11 picker §1)', () => {
     expect(row.trimEnd().endsWith(' default')).toBe(true)
     expect(row).not.toContain('★')
     // Without colour the tag's own last cell and the inset are blanks, which Ink trims.
-    expect(row.length).toBe(38)
+    // The band starts on the app's margin (2026-10-20).
+    expect(row.length).toBe(HOME_MARGIN + 38)
   })
 
   it('shows every hint when the list is found by its hints', () => {
@@ -138,6 +142,7 @@ describe('the picker (spec 2026-10-11 picker §1)', () => {
           <Select width={40} items={formats} onSubmit={() => {}} />
         </ThemeProvider>,
       ).lastFrame() ?? ''
-    expect(frame.split('\n')[0]?.startsWith('▌ WebP')).toBe(true)
+    // On the app's margin (2026-10-20).
+    expect(frame.split('\n')[0]?.startsWith(`${' '.repeat(HOME_MARGIN)}▌ WebP`)).toBe(true)
   })
 })

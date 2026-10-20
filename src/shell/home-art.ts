@@ -411,14 +411,15 @@ export function menuHintRow({
           { text: ' esc ', fg: palette.fg, bg: palette.keycapBg },
           { text: ' clear', fg: palette.dim },
         ]
+  // Both ends on the margins, as the key row under them (2026-10-20).
   const left: Row = esc
-  const lead = left.length > 0 ? HOME_MARGIN + 1 : 0
+  const lead = left.length > 0 ? HOME_MARGIN : 0
   if (hint.length === 0) return left.length > 0 ? [blank(lead), ...left] : []
   return [
     ...(left.length > 0 ? [blank(lead), ...left] : []),
-    blank(columns - 1 - width(hint) - lead - width(left)),
+    blank(columns - HOME_MARGIN - width(hint) - lead - width(left)),
     ...hint,
-    blank(1),
+    blank(HOME_MARGIN),
   ]
 }
 

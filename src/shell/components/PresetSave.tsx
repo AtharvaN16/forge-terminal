@@ -27,13 +27,12 @@ import {
   ruleRow,
   underlineRow,
 } from '../save-as-art.js'
-import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, type ShellMode } from '../theme.js'
+import type { ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { bandFor } from '../width.js'
 import { HeaderBar } from './HeaderBar.js'
-import { KeyRow, Runs } from './Home.js'
+import { KeyRow, KeyRule, Runs } from './Home.js'
 import { doneUnder } from './PresetEditor.js'
 
 /** A place a preset can save to: a folder (`~` unexpanded), `same`, or `ask`. */
@@ -449,7 +448,7 @@ export function PresetSaveScreen({
         // biome-ignore lint/suspicious/noArrayIndexKey: the rows are positional
         <Runs key={i} row={row.length === 0 ? [blank(1)] : row} />
       ))}
-      <Text color={colourProp(p.border)}>{'─'.repeat(width)}</Text>
+      <KeyRule width={width} />
       <KeyRow main={keys} foot={foot} width={width} />
     </Box>
   )

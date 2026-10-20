@@ -1,5 +1,6 @@
 import { Box } from 'ink'
 import type { ReactNode } from 'react'
+import { HOME_MARGIN } from '../home-art.js'
 import { FIELD_WIDTH, fieldBlank } from '../save-as-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -36,11 +37,11 @@ export function FilledField({
   const palette = useTheme()
   const noColour = (process.env.NO_COLOR ?? '') !== ''
   const plain = noColour || palette.selectionBg === ''
-  const fieldWidth = Math.max(24, Math.min(FIELD_WIDTH, width - 4))
+  const fieldWidth = Math.max(24, Math.min(FIELD_WIDTH, width - 2 * HOME_MARGIN))
   const fill = plain ? undefined : palette.selectionBg
   const pad = plain ? null : <Runs row={fieldBlank({ palette, width: fieldWidth })} />
   return (
-    <Box marginTop={2} flexDirection="column">
+    <Box marginTop={2} marginLeft={HOME_MARGIN} flexDirection="column">
       {pad}
       <Box width={fieldWidth} {...(fill ? { backgroundColor: fill } : {})}>
         <Text> </Text>

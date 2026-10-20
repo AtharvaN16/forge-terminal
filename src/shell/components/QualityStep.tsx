@@ -121,8 +121,13 @@ export function QualityStep({
         />
         <Runs row={endsRow({ palette, width: band })} />
       </Box>
-      <Box marginTop={1} marginLeft={1} height={1}>
-        <SizeAside size={size} sourceBytes={sourceBytes} budget={width - 1} noBigger={noBigger} />
+      <Box marginTop={1} marginLeft={HOME_MARGIN} height={1}>
+        <SizeAside
+          size={size}
+          sourceBytes={sourceBytes}
+          budget={width - 2 * HOME_MARGIN}
+          noBigger={noBigger}
+        />
       </Box>
       <HintBar
         width={width}

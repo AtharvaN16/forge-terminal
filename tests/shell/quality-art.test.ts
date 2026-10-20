@@ -15,17 +15,21 @@ type QualityFrame = FixtureFrame & { q: number }
 const G1 = loadFixture('quality-mockup.json') as QualityFrame[]
 const text = (cells: Cell[]) => cells.map((c) => c.ch).join('')
 
-describe('the quality slider, against the decided G1', () => {
+// The kit draws step rows three cells in; the app draws them on its margin
+// (two cells in, 2026-10-20), so each mockup row is held one cell to the left.
+const onMargin = (cells: Cell[]) => shifted(cells, 1)
+
+describe('the quality slider, against the decided G1, on the app’s margin (2026-10-20)', () => {
   for (const frame of G1) {
     it(`at ${frame.q}`, () => {
       const row = sliderRow({ palette: DARK, value: frame.q, min: 1, max: 100 })
-      expect(describeRow(runsRow(row), shifted(fixtureRow(frame, 1)))).toBe('equal')
+      expect(describeRow(runsRow(row), onMargin(fixtureRow(frame, 1)))).toBe('equal')
     })
   }
 
   it('says which end is which under the band', () => {
     const frame = G1[0] as QualityFrame
-    expect(describeRow(runsRow(endsRow({ palette: DARK })), shifted(fixtureRow(frame, 2)))).toBe(
+    expect(describeRow(runsRow(endsRow({ palette: DARK })), onMargin(fixtureRow(frame, 2)))).toBe(
       'equal',
     )
   })
@@ -33,7 +37,7 @@ describe('the quality slider, against the decided G1', () => {
   it('titles the question in the mode’s colour, with what it is for at the right', () => {
     const frame = G1[0] as QualityFrame
     const row = titleRow({ palette: DARK, mode: 'convert', title: 'Quality', aside: 'JPEG' })
-    expect(describeRow(runsRow(row), shifted(fixtureRow(frame, 0)))).toBe('equal')
+    expect(describeRow(runsRow(row), onMargin(fixtureRow(frame, 0)))).toBe('equal')
   })
 
   it('carries no mode colour in the slider', () => {
@@ -49,28 +53,29 @@ describe('the quality slider, against the decided G1', () => {
 
   it('draws in the theme’s slider colours, in light too', () => {
     const cells = runsRow(sliderRow({ palette: LIGHT, value: 50, min: 1, max: 100 }))
-    expect(cells[1]?.bg).toBe(LIGHT.trackFill)
+    expect(cells[2]?.bg).toBe(LIGHT.trackFill)
     expect(cells.find((c) => c.ch === '5')).toMatchObject({
       fg: LIGHT.ink,
       bg: LIGHT.thumb,
       b: true,
     })
-    expect(cells[48]?.bg).toBe(LIGHT.track)
+    expect(cells[49]?.bg).toBe(LIGHT.track)
   })
 
-  it('is 48 cells wide from column 2 at every value', () => {
+  it('is 48 cells wide from column 3 (the margin) at every value', () => {
     for (let q = 1; q <= 100; q++) {
       const cells = runsRow(sliderRow({ palette: DARK, value: q, min: 1, max: 100 }))
-      expect(cells.slice(1, 49).every((c) => c.bg !== null)).toBe(true)
-      expect(cells[49]?.bg).toBeNull()
+      expect(cells.slice(0, 2).every((c) => c.bg === null)).toBe(true)
+      expect(cells.slice(2, 50).every((c) => c.bg !== null)).toBe(true)
+      expect(cells[50]?.bg).toBeNull()
     }
   })
 
   it('without fills (NO_COLOR, first run), still shows where the value is by shape', () => {
     const plain = { ...DARK, trackFill: '', track: '', thumb: '' }
     const row = text(runsRow(sliderRow({ palette: plain, value: 80, min: 1, max: 100 })))
-    expect(row).toMatch(/^ ━+ 80 ─+ *$/)
-    expect(row.trimEnd()).toHaveLength(49)
+    expect(row).toMatch(/^ {2}━+ 80 ─+ *$/)
+    expect(row.trimEnd()).toHaveLength(50)
   })
 })
 
@@ -82,17 +87,18 @@ describe('the three-point slider (A3·a, W1)', () => {
 
   it('marks the other points with a dot in the middle of where their thumb would be', () => {
     const cells = at(65)
-    expect(text(cells).trimEnd()).toBe(`   •${' '.repeat(19)} 65 ${' '.repeat(20)}•`)
+    expect(text(cells).trimEnd()).toBe(`    •${' '.repeat(19)} 65 ${' '.repeat(20)}•`)
     // Before the thumb a dot sits on the fill, after it on the track.
-    expect(cells[3]).toMatchObject({ fg: DARK.track, bg: DARK.trackFill })
-    expect(cells[47]).toMatchObject({ fg: DARK.trackFill, bg: DARK.track })
+    expect(cells[4]).toMatchObject({ fg: DARK.track, bg: DARK.trackFill })
+    expect(cells[48]).toMatchObject({ fg: DARK.trackFill, bg: DARK.track })
   })
 
   it('keeps the band 48 cells wide at every point', () => {
     for (const value of [30, 65, 100]) {
       const cells = at(value)
-      expect(cells.slice(1, 49).every((c) => c.bg !== null)).toBe(true)
-      expect(cells[49]?.bg).toBeNull()
+      expect(cells.slice(0, 2).every((c) => c.bg === null)).toBe(true)
+      expect(cells.slice(2, 50).every((c) => c.bg !== null)).toBe(true)
+      expect(cells[50]?.bg).toBeNull()
     }
   })
 
@@ -103,7 +109,7 @@ describe('the three-point slider (A3·a, W1)', () => {
       bg: DARK.larger,
       b: true,
     })
-    const rest = cells.slice(5, 49)
+    const rest = cells.slice(6, 50)
     expect(rest.every((c) => c.bg === DARK.defaultTagBg)).toBe(true)
     expect(rest.filter((c) => c.ch === '•').every((c) => c.fg === DARK.defaultTag)).toBe(true)
     expect(text(cells).trim()).toBe(`30${' '.repeat(21)}•${' '.repeat(21)}•`)
@@ -114,6 +120,6 @@ describe('the three-point slider (A3·a, W1)', () => {
     const row = text(
       runsRow(sliderRow({ palette: plain, value: 65, min: 30, max: 100, marks: [30, 65, 100] })),
     )
-    expect(row).toMatch(/^ ━━•━+ 65 ─+•─ *$/)
+    expect(row).toMatch(/^ {2}━━•━+ 65 ─+•─ *$/)
   })
 })

@@ -416,7 +416,7 @@ describe('/pdf ends on Save as', () => {
   it('asks Save as for rotate: the job at the title’s right, the name editable, ↵ runs it', async () => {
     const { stdin, lastFrame, onDone } = await rotateToSaveAs()
     const out = plain(lastFrame())
-    expect(out).toMatch(/^ Save as +Rotate 90°$/m)
+    expect(out).toMatch(/^ {2}Save as +Rotate 90°$/m)
     expect(out).toMatch(/name +report-rotated +\.pdf/)
     expect(out).toMatch(/▌ Desktop/)
     stdin.write('X')
@@ -490,7 +490,7 @@ describe('/pdf, drawn with the decided parts', () => {
   it('titles the hub, the file at its right; the list no wider than the card; esc back', () => {
     const { lastFrame } = mount([doc('/docs/r.pdf', 7)])
     const out = plain(lastFrame())
-    expect(out).toMatch(/^ Choose an operation +r\.pdf · 7 pages$/m)
+    expect(out).toMatch(/^ {2}Choose an operation +r\.pdf · 7 pages$/m)
     const row = out.split('\n').find((l) => l.includes('▌')) ?? ''
     expect(row.length).toBeLessThanOrEqual(52)
     expect(keyRow(lastFrame())).toMatch(/esc back · ctrl-c quit$/)
@@ -500,11 +500,11 @@ describe('/pdf, drawn with the decided parts', () => {
     const split = mount([doc('/docs/r.pdf', 7)])
     split.stdin.write(ENTER)
     await settle()
-    expect(plain(split.lastFrame())).toMatch(/^ How to split +7 pages$/m)
+    expect(plain(split.lastFrame())).toMatch(/^ {2}How to split +7 pages$/m)
     const rotate = mount([doc('/docs/r.pdf', 7)])
     rotate.stdin.write(DOWN + DOWN + DOWN + DOWN + ENTER)
     await settle()
-    expect(plain(rotate.lastFrame())).toMatch(/^ Turn +7 pages$/m)
+    expect(plain(rotate.lastFrame())).toMatch(/^ {2}Turn +7 pages$/m)
   })
 
   it('asks “Pages per file” in the filled field, which says what the number makes', async () => {
@@ -516,7 +516,7 @@ describe('/pdf, drawn with the decided parts', () => {
     stdin.write('2')
     await settle()
     const out = plain(lastFrame())
-    expect(out).toMatch(/^ Pages per file +7 pages$/m)
+    expect(out).toMatch(/^ {2}Pages per file +7 pages$/m)
     expect(out).toMatch(/› 2 +pages each → 4 files/)
     expect(keyRow(lastFrame())).toMatch(/esc back · ctrl-c quit$/)
   })
@@ -525,7 +525,7 @@ describe('/pdf, drawn with the decided parts', () => {
     const { stdin, lastFrame } = mount([doc('/docs/r.pdf', 7)])
     stdin.write(DOWN + ENTER) // Extract
     await settle()
-    expect(plain(lastFrame())).toMatch(/^ Pages +r\.pdf · 7 pages$/m)
+    expect(plain(lastFrame())).toMatch(/^ {2}Pages +r\.pdf · 7 pages$/m)
     // Keys on the margin leave this long row a column short at 80, so the
     // footnote gives up "ctrl-c quit" first, as a narrow row always does.
     expect(keyRow(lastFrame())).toMatch(/r type ranges · esc back$/)
@@ -536,7 +536,7 @@ describe('/pdf, drawn with the decided parts', () => {
     stdin.write(ENTER) // Merge
     await settle()
     const out = plain(lastFrame())
-    expect(out).toMatch(/^ Order the files +2 files · 14 pages$/m)
+    expect(out).toMatch(/^ {2}Order the files +2 files · 14 pages$/m)
     expect(out).toMatch(/▌ +1 +a\.pdf/)
     expect(out).not.toContain('❯')
     expect(keyRow(lastFrame())).toMatch(
@@ -589,9 +589,9 @@ describe('merge’s title counts what is in the list', () => {
     ])
     stdin.write(ENTER) // Merge
     await settle()
-    expect(plain(lastFrame())).toMatch(/^ Order the files +3 files · 9 pages$/m)
+    expect(plain(lastFrame())).toMatch(/^ {2}Order the files +3 files · 9 pages$/m)
     stdin.write('x') // remove a.pdf
     await settle()
-    expect(plain(lastFrame())).toMatch(/^ Order the files +2 files · 7 pages$/m)
+    expect(plain(lastFrame())).toMatch(/^ {2}Order the files +2 files · 7 pages$/m)
   })
 })

@@ -116,10 +116,11 @@ describe('the theme picker (round 5)', () => {
     const lines = (render(<ThemePicker width={80} onChoose={() => {}} />).lastFrame() ?? '')
       .split('\n')
       .map((l) => l.trimEnd())
-    expect(lines[0]).toBe('Select theme')
+    // On home's margins (2026-10-20): the title and the list start at column 2.
+    expect(lines[0]).toBe('  Select theme')
     expect(lines[1]).toBe('')
-    expect(lines[2]).toMatch(/^ {2}Light$/)
-    expect(lines[3]).toMatch(/^▌ Dark$/)
+    expect(lines[2]).toMatch(/^ {4}Light$/)
+    expect(lines[3]).toMatch(/^ {2}▌ Dark$/)
     const all = lines.join('\n')
     expect(all).not.toContain('background')
     expect(all).not.toContain('suits')
@@ -130,7 +131,8 @@ describe('the theme picker (round 5)', () => {
     const lines = (render(<ThemePicker width={60} onChoose={() => {}} />).lastFrame() ?? '').split(
       '\n',
     )
-    const rule = lines.indexOf('─'.repeat(60))
+    // The rule sits on the app's margins (2026-10-20): two columns in, two short.
+    const rule = lines.indexOf(`  ${'─'.repeat(56)}`)
     expect(rule).toBeGreaterThan(3)
     expect(lines[rule + 1]).toMatch(/↑↓.*choose.*↵.*confirm/)
   })

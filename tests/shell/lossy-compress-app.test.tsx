@@ -120,7 +120,7 @@ describe('cannot compress more (E3)', () => {
     app.stdin.write(ENTER)
     await settle(400)
     expect(plain(app.lastFrame())).toContain('cannot compress more')
-    expect(plain(app.lastFrame())).toMatch(/^ Quality/m)
+    expect(plain(app.lastFrame())).toMatch(/^ {2}Quality/m)
     expect((await readdir(dir)).filter((f) => f.includes('-small'))).toEqual([])
   }, 30_000)
 })

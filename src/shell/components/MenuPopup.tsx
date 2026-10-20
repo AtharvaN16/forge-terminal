@@ -1,7 +1,7 @@
 import { Box } from 'ink'
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import type { BarChip, Trail } from '../bar-art.js'
-import { menuHintRow } from '../home-art.js'
+import { HOME_MARGIN, menuHintRow } from '../home-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeGradient, type Palette } from '../theme.js'
@@ -111,7 +111,8 @@ export function MenuPopup({
     [title],
   )
   const shown = title && given?.title === title ? given.keys : keys
-  const inner = Math.max(20, width - 6)
+  // The box on home's margins (2026-10-20); inside it, its border and a column of padding each side.
+  const inner = Math.max(20, width - 2 * HOME_MARGIN - 4)
   const boxHeight = Math.max(8, height - BELOW)
   const fill = palette.selectionBg || undefined
   const edgeProps = fill
@@ -126,8 +127,8 @@ export function MenuPopup({
   return (
     <Box flexDirection="column" width={width} minHeight={height}>
       <Box
-        marginLeft={1}
-        width={width - 2}
+        marginLeft={HOME_MARGIN}
+        width={width - 2 * HOME_MARGIN}
         height={block ? boxHeight - 3 : boxHeight}
         {...edgeProps}
         {...(block ? { borderBottom: false } : {})}
@@ -150,8 +151,8 @@ export function MenuPopup({
       </Box>
       {block ? (
         <Box
-          marginLeft={1}
-          width={width - 2}
+          marginLeft={HOME_MARGIN}
+          width={width - 2 * HOME_MARGIN}
           backgroundColor={shelf}
           paddingY={1}
           paddingLeft={2}

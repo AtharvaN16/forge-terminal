@@ -69,7 +69,8 @@ describe('keycap hints', () => {
 
   it('draws a rule the full width above the hint bar', () => {
     const rows = frame(<HintBar width={60} pairs={pairs} />).split('\n')
-    const rule = rows.indexOf('─'.repeat(60))
+    // On the app's margins (2026-10-20): two columns in, ending two short.
+    const rule = rows.indexOf(`  ${'─'.repeat(56)}`)
     expect(rule).toBeGreaterThan(-1)
     expect(rows[rule + 1]).toContain('confirm')
   })

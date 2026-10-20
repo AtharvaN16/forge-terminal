@@ -97,11 +97,12 @@ describe('Save as (V10c): the block', () => {
   it('titles the question, then the name filled and underlined, a rule, and the folders', () => {
     const f = render(<Harness />).lastFrame()
     const out = lines(plain(f))
-    expect(out[0]).toMatch(/^ Save as$/)
+    // Title and block start on the app's margin (2026-10-20).
+    expect(out[0]).toMatch(/^ {2}Save as$/)
     const rows = field(f)
-    expect(rows[0]).toMatch(/^ {3}name {5}header +\.jpg *$/)
-    expect(rows[1]).toMatch(/^ {11}▔{26} *$/)
-    expect(rows[2]).toMatch(/^ {3}─+ *$/)
+    expect(rows[0]).toMatch(/^ {5}name {5}header +\.jpg *$/)
+    expect(rows[1]).toMatch(/^ {13}▔{26} *$/)
+    expect(rows[2]).toMatch(/^ {5}─+ *$/)
     // The folder it will save to is highlighted, with its path; the rest are names.
     expect(plain(f)).toMatch(new RegExp(`▌ Desktop +${tilde('Desktop')} +default`))
     expect(plain(f)).not.toContain(join('~', 'Pictures'))
@@ -137,7 +138,7 @@ describe('Save as (V10c): the block', () => {
 
   it('says what the job will do at the title’s right, quietly', () => {
     const out = plain(render(<Harness aside="Rotate 90°" />).lastFrame())
-    expect(out.split('\n')[0]).toMatch(/^ Save as +Rotate 90°$/)
+    expect(out.split('\n')[0]).toMatch(/^ {2}Save as +Rotate 90°$/)
   })
 })
 
@@ -174,7 +175,8 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     ).lastFrame()
     const rows = lines(plain(f))
     expect(under(f)).toMatch(/ \/ new folder$/)
-    const ruleAt = rows.findLastIndex((l) => /^─+$/.test(l))
+    // The key row's rule, on the app's margin (2026-10-20).
+    const ruleAt = rows.findLastIndex((l) => /^ {2}─+$/.test(l))
     expect(rows[ruleAt - 1]?.trim()).toBe('')
   })
 

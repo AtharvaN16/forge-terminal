@@ -35,12 +35,16 @@ export function ThemePicker({
   return (
     <ThemeProvider palette={current.name === 'neutral' ? NEUTRAL : menuPalette(current)}>
       <Box flexDirection="column" flexGrow={1}>
-        {inMenu ? null : onCancel ? <ThemeBar width={width} /> : <Text bold>Select theme</Text>}
+        {inMenu ? null : onCancel ? (
+          <ThemeBar width={width} />
+        ) : (
+          <Text bold>{`${' '.repeat(HOME_MARGIN)}Select theme`}</Text>
+        )}
         {inMenu ? null : <Text> </Text>}
-        {/* Reopened, the rows' band runs exactly as far as the settings' bar above it: the margin in from each edge. */}
-        <Box marginLeft={onCancel ? HOME_MARGIN : 0}>
+        {/* The rows' band on the margins, as far as the bar above it runs (Select indents itself). */}
+        <Box>
           <Select
-            width={onCancel ? width - HOME_MARGIN * 2 : width}
+            width={width - HOME_MARGIN * 2}
             items={[
               { value: 'light', label: 'Light' },
               { value: 'dark', label: 'Dark' },

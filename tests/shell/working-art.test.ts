@@ -29,8 +29,11 @@ const at = (label: string) => {
 }
 /** The mockup's spinner: one frame every 80 ms since the page opened. */
 const spinAt = (t: number) => SPINNER_FRAMES[Math.floor(t * 12.5) % SPINNER_FRAMES.length]
-/** The row under the card, two cells further left than the kit draws it (see `shifted`). */
-const under = (frame: WorkFrame, row: number) => shifted(fixtureRow(frame, row))
+/**
+ * The row under the card, one cell further left than the kit draws it (see
+ * `shifted`): rows now start on the app's margin, two cells in (2026-10-20).
+ */
+const under = (frame: WorkFrame, row: number) => shifted(fixtureRow(frame, row), 1)
 
 describe('the working line, against the decided W5', () => {
   it('says the phase in bold after the spinner, and no clock before 3 s', () => {
@@ -73,7 +76,7 @@ describe('the working line, against the decided W5', () => {
         .map((c) => c.ch)
         .join('')
         .trimEnd(),
-    ).toBe('   Encoding AVIF')
+    ).toBe('    Encoding AVIF')
   })
 
   it('fits a narrow terminal: the clock stays, the label gives way', () => {
@@ -150,7 +153,7 @@ describe('the page bar, against the decided W5', () => {
 
   it('draws the rest of the track in the theme’s track colour, in light too', () => {
     const row = runsRow(pagesRow({ palette: LIGHT, mode: 'pdf', done: 0, total: 4 }))
-    expect(row[3]).toMatchObject({ ch: '█', fg: LIGHT.track })
+    expect(row[4]).toMatchObject({ ch: '█', fg: LIGHT.track })
   })
 
   it('counts files, a folder’s, in their own word', () => {

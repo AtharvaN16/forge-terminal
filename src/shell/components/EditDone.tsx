@@ -176,7 +176,7 @@ export function EditDone({
   // The line keeps the name whole; the folder gives way (middle-shortened),
   // and goes when there is no room for it at all.
   const said = `${SYMBOLS.ok} ${placed ?? name}`
-  const room = width - 1 - (M + 1) - stringWidth(said) - 2 - 'in '.length
+  const room = width - M - (M + 1) - stringWidth(said) - 2 - 'in '.length
   const folder =
     placed === undefined && room >= 8 ? middleEllipsis(folderOf(savedTo, after), room) : ''
   const grids = useMemo(
@@ -211,7 +211,7 @@ export function EditDone({
 
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
-      <Box paddingLeft={M + 1} width={width - 1} flexShrink={0}>
+      <Box paddingLeft={M + 1} width={width - M} flexShrink={0}>
         <Box flexGrow={1} flexShrink={1}>
           <Text wrap="truncate">
             <Text color={colourProp(palette.ok)} bold>

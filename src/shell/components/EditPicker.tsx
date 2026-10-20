@@ -5,6 +5,7 @@ import type { Choice } from '../../core/actions/index.js'
 import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
 import { detailAt, type EditRow, GAP_AFTER, pillOf, type ToolState } from '../edit.js'
+import { HOME_MARGIN } from '../home-art.js'
 import { titleRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -165,8 +166,12 @@ export function EditPicker({
     ...rows.flatMap((r) => pillOf(r)?.steps.map((s) => pillWidth(s.label)) ?? []),
   )
   const least = 2 + labels + 2 + pills + 2
+  // The list starts on the margin (Select indents itself) and the pane ends on
+  // the other one (2026-10-20).
+  // The pane gives the margins up, not the list: a dimmed row's reason is
+  // said in full with its space before the line.
   const left = Math.max(least, Math.min(2 + labels + 2 + reasons + 1, width - 3 - PANE_MIN))
-  const paneWidth = Math.max(1, width - left - 3)
+  const paneWidth = Math.max(1, width - left - 3 - 2 * HOME_MARGIN)
 
   const dim = colourProp(palette.dim)
   const fg = colourProp(palette.fg)
@@ -249,7 +254,7 @@ export function EditPicker({
         />
       </Box>
       <Box>
-        <Box width={left} flexShrink={0}>
+        <Box width={left + HOME_MARGIN} flexShrink={0}>
           <Select
             width={left}
             items={items}

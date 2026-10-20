@@ -51,6 +51,8 @@ async function shell() {
   return { app, dir }
 }
 
+// Step titles start on the app's margin, column 2, since 2026-10-20 (home's
+// margins are every screen's).
 describe('Convert, with the decided parts', () => {
   it('Format: "Convert to" in the mode’s colour, nothing at its right, F1 keys', async () => {
     const { app, dir } = await shell()
@@ -58,7 +60,7 @@ describe('Convert, with the decided parts', () => {
     await settle()
     app.stdin.write(ENTER)
     await until(app, 'Convert to')
-    expect(plain(app.lastFrame())).toMatch(/^ Convert to$/m)
+    expect(plain(app.lastFrame())).toMatch(/^ {2}Convert to$/m)
     expect(keyRow(app)).toMatch(/1–6 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 
@@ -69,13 +71,13 @@ describe('Convert, with the decided parts', () => {
     app.stdin.write(ENTER)
     await until(app, 'Convert to')
     app.stdin.write(ENTER)
-    await until(app, /^ Pages /m)
-    expect(plain(app.lastFrame())).toMatch(/^ Pages +report\.pdf · 3 pages$/m)
+    await until(app, /^ {2}Pages /m)
+    expect(plain(app.lastFrame())).toMatch(/^ {2}Pages +report\.pdf · 3 pages$/m)
     expect(keyRow(app)).toMatch(/1–6 mode · esc back · ctrl-c quit$/)
     app.stdin.write(ENTER)
-    await until(app, /^ Resolution /m)
+    await until(app, /^ {2}Resolution /m)
     const out = app.lastFrame() ?? ''
-    expect(plain(out)).toMatch(/^ Resolution +report\.pdf$/m)
+    expect(plain(out)).toMatch(/^ {2}Resolution +report\.pdf$/m)
     const row = out.split('\n').find((l) => plain(l).includes('150 dpi')) ?? ''
     expect(plain(row)).toMatch(/150 dpi +default/)
     expect(row).toContain(bgOf(DARK.defaultTagBg))
@@ -98,18 +100,18 @@ describe('Compress, with the decided parts', () => {
 
   it('Method: the step’s own name, the file at its right, esc says it removes the file', async () => {
     const app = await compress()
-    expect(plain(app.lastFrame())).toMatch(/^ Method +photo\.jpg$/m)
+    expect(plain(app.lastFrame())).toMatch(/^ {2}Method +photo\.jpg$/m)
     expect(keyRow(app)).toMatch(/1–6 mode · esc remove file · ctrl-c quit$/)
   }, 30_000)
 
   it('Target size: the unit inside the filled field, no row of its own and no echo below', async () => {
     const app = await compress()
     app.stdin.write(DOWN + ENTER)
-    await until(app, /^ Target size /m)
+    await until(app, /^ {2}Target size /m)
     app.stdin.write('500')
     await settle(200)
     const out = plain(app.lastFrame())
-    expect(out).toMatch(/^ Target size +photo\.jpg · \d/m)
+    expect(out).toMatch(/^ {2}Target size +photo\.jpg · \d/m)
     expect(out).toMatch(/› 500 +B {2,}KB {2,}MB {2,}GB/)
     expect(out).not.toMatch(/→ 500 KB/)
     expect(keyRow(app)).toMatch(/esc back · ctrl-c quit$/)
@@ -118,7 +120,7 @@ describe('Compress, with the decided parts', () => {
   it('Can’t get that small: the sentence as the title, what each answer does, esc cancel', async () => {
     const app = await compress()
     app.stdin.write(DOWN + ENTER)
-    await until(app, /^ Target size /m)
+    await until(app, /^ {2}Target size /m)
     app.stdin.write('1b')
     await settle(200)
     app.stdin.write(ENTER)
@@ -126,7 +128,7 @@ describe('Compress, with the decided parts', () => {
     app.stdin.write(ENTER)
     await until(app, 'Try a different target size', 30_000)
     const out = plain(app.lastFrame())
-    expect(out).toMatch(/^ photo\.jpg can't get below \d+ B +asked for 1 B$/m)
+    expect(out).toMatch(/^ {2}photo\.jpg can't get below \d+ B +asked for 1 B$/m)
     expect(out).toMatch(/▌ Use \d+ B anyway +saves it at \d+ B/)
     expect(keyRow(app)).toMatch(/esc cancel · ctrl-c quit$/)
     // The trail ends at the size: the folder and name came after it.
@@ -160,11 +162,11 @@ describe('Name taken (L1), everywhere', () => {
     app.stdin.write(ENTER)
     await until(app, 'sharper')
     app.stdin.write(ENTER)
-    await until(app, /^ Save as/m)
+    await until(app, /^ {2}Save as/m)
     app.stdin.write(ENTER)
     await until(app, 'already exists')
     const out = plain(app.lastFrame())
-    expect(out).toMatch(/^ test\.jpg already exists +[\d.]+ (B|KB) · today, \d\d:\d\d$/m)
+    expect(out).toMatch(/^ {2}test\.jpg already exists +[\d.]+ (B|KB) · today, \d\d:\d\d$/m)
     expect(out).toMatch(/▌ Keep both +saves yours as test \(1\)\.jpg/)
     expect(out.split('\n')[0]).toMatch(/Name taken ╱╱ *$/)
     app.stdin.write(ENTER)
@@ -194,7 +196,7 @@ describe('Name taken (L1), everywhere', () => {
     app.stdin.write(ENTER)
     await until(app, 'already exists')
     const out = plain(app.lastFrame())
-    expect(out).toMatch(/^ report-rotated\.pdf already exists +[\d.]+ (B|KB) · today/m)
+    expect(out).toMatch(/^ {2}report-rotated\.pdf already exists +[\d.]+ (B|KB) · today/m)
     // The trail says what Save as was told, as convert's does: the folder, then the name.
     expect(out.split('\n')[0]).toMatch(
       /90° right ╱ Desktop ╱ report-rotated\.pdf ╱ Name taken ╱╱ *$/,

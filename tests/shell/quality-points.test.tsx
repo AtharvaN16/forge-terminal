@@ -67,7 +67,7 @@ describe('the dither note (N4)', () => {
     expect(plain(rows[note])).toBe(`   d  ${OFF}`)
     // A blank row, the rule, then the keys, whose first cap starts in the same column.
     expect(plain(rows[note + 1]).trim()).toBe('')
-    expect(plain(rows[note + 2])).toMatch(/^─+$/)
+    expect(plain(rows[note + 2])).toBe(`  ${'─'.repeat(76)}`)
     expect(plain(rows[note + 3]).indexOf('←→')).toBe(plain(rows[note]).indexOf('d'))
     expect(rows[note]).toContain(`48;2;${rgb(DARK.keycapBg)}`)
   })

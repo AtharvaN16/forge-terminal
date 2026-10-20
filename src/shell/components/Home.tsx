@@ -216,6 +216,20 @@ const Gap = () => <Box height={1} flexShrink={0} />
  * footnote items from its right end; the caps never shrink and the row never
  * wraps.
  */
+/**
+ * The rule over a key row: margin to margin, the width home's band and drop
+ * zone run (2026-10-20 — the home screen's margins are the app's).
+ */
+export function KeyRule({ width }: { width: number }) {
+  const palette = useTheme()
+  return (
+    <Text color={colourProp(palette.border)}>
+      {' '.repeat(HOME_MARGIN)}
+      {'─'.repeat(Math.max(0, width - 2 * HOME_MARGIN))}
+    </Text>
+  )
+}
+
 export function KeyRow({
   main,
   foot,
@@ -642,7 +656,7 @@ export function Home({
         />
       )}
       {/* The rule takes the list's last row, so the layout is unchanged. */}
-      <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
+      <KeyRule width={width} />
       <KeyRow {...keys} width={width} note={typing ? undefined : MODE_NOTES[mode]} />
     </Box>
   )

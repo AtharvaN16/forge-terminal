@@ -5,6 +5,7 @@ import { render } from 'ink-testing-library'
 import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
 import { App, PAINT_INSET } from '../../src/shell/App.js'
+import { HOME_MARGIN } from '../../src/shell/home-art.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 import { TSX_CLI } from '../helpers/run-forge.js'
 
@@ -170,8 +171,9 @@ describe('dividers', () => {
     for (const w of [60, 80, 100]) {
       const frame = render(<App initialWidth={w} />).lastFrame() ?? ''
       const rule = frame.split('\n').find((l) => /^─+$/.test(l.trim()))
-      // The window's width, less the canvas's painted margin each side.
-      if (rule) expect(rule.trim().length).toBe(w - 2 * PAINT_INSET)
+      // The window's width, less the canvas's painted margin and the app's
+      // own margin (2026-10-20) each side.
+      if (rule) expect(rule.trim().length).toBe(w - 2 * PAINT_INSET - 2 * HOME_MARGIN)
     }
   })
 })

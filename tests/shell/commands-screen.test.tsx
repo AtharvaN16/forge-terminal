@@ -4,7 +4,14 @@ import { Home, homeKeys } from '../../src/shell/components/Home.js'
 import { Prompt } from '../../src/shell/components/Prompt.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette, type ShellMode } from '../../src/shell/theme.js'
-import { ansiRow, describeHomeRow, type FixtureFrame, homeRow, loadFixture } from './home-cells.js'
+import {
+  ansiRow,
+  describeHomeRow,
+  type FixtureFrame,
+  homeRow,
+  loadFixture,
+  runsRow,
+} from './home-cells.js'
 
 vi.hoisted(() => {
   process.env.FORCE_COLOR = '3'
@@ -55,13 +62,19 @@ function screen({
   )
 }
 
+// The rule above the keys sits on the app's margins since 2026-10-20: two
+// columns in from each side, where the mockup drew it the full width.
+const RULE = 22
+const rule = () => runsRow([{ text: '  ' }, { text: '─'.repeat(76), fg: DARK.border }])
+
 function expectStep(step: Step, skip: number[] = []) {
   const lines = (screen(step).lastFrame() ?? '').split('\n')
   expect(lines).toHaveLength(24)
   for (let row = 0; row < 24; row++) {
     if (skip.includes(row)) continue
     const got = ansiRow(lines[row] ?? '')
-    expect(describeHomeRow(got, homeRow(step, row)), `${step.label}, row ${row}`).toBe('equal')
+    const expected = row === RULE ? rule() : homeRow(step, row)
+    expect(describeHomeRow(got, expected), `${step.label}, row ${row}`).toBe('equal')
   }
 }
 
@@ -73,7 +86,12 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
   // Rows 10 and 11 are the drop zone's heading and kinds line, which name the
   // formats themselves since 2026-10-18; the longer line clears more dots
   // (see home-screen.test.tsx).
-  it('1 · home: "/ menu" waits, dim, after the modes', () => expectStep(rest, [10, 11, 23]))
+  it('1 · home: "/ menu" waits, dim, after the modes', () => {
+    expectStep(rest, [10, 11, 23])
+    // On the app's right margin since 2026-10-20, two columns short of the edge.
+    const row = ansiRow((screen(rest).lastFrame() ?? '').split('\n')[21] ?? '')
+    expect(row.map((c) => c.ch).join('')).toBe(`${' '.repeat(70)} /  menu  `)
+  })
   it('4 · pressed ↵ on /compress: compress, with the dots back', () =>
     expectStep(after, [10, 11, 23]))
 })

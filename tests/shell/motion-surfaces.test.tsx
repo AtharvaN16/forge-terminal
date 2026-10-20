@@ -46,23 +46,23 @@ describe('Working', () => {
     const app = render(working())
     await flush()
     const first = line(app.lastFrame())
-    expect(first).toMatch(/^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Encoding AVIF$/)
+    expect(first).toMatch(/^ {2}[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Encoding AVIF$/)
     await advance(160)
     expect(line(app.lastFrame())).not.toBe(first)
     await advance(2700)
     expect(line(app.lastFrame())).toMatch(/AVIF$/)
     await advance(400)
-    expect(line(app.lastFrame())).toMatch(/^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Encoding AVIF {2,}3\.3s$/)
-    expect(line(app.lastFrame())).toHaveLength(65)
+    expect(line(app.lastFrame())).toMatch(/^ {2}[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Encoding AVIF {2,}3\.3s$/)
+    expect(line(app.lastFrame())).toHaveLength(66)
   })
 
   it('with motion off, has no spinner, but the clock still tells the truth', async () => {
     setMotionForTests(false)
     const app = render(working())
     await flush()
-    expect(line(app.lastFrame())).toBe('   Encoding AVIF')
+    expect(line(app.lastFrame())).toBe('    Encoding AVIF')
     await advance(4000)
-    expect(line(app.lastFrame())).toMatch(/^ {3}Encoding AVIF {2,}4\.0s$/)
+    expect(line(app.lastFrame())).toMatch(/^ {4}Encoding AVIF {2,}4\.0s$/)
   })
 
   it('offers esc only for the size search', async () => {
@@ -76,7 +76,7 @@ describe('Working', () => {
     const search = render(working({ label: 'Finding the right quality', search: { n: 2, of: 8 } }))
     await flush()
     expect(keys(search.lastFrame())).toMatch(/^ {3}esc {2}stop {10,}ctrl-c quit$/)
-    expect(plain(search.lastFrame())).toContain('   ● ● ○ ○ ○ ○ ○ ○')
+    expect(plain(search.lastFrame())).toContain('\n    ● ● ○ ○ ○ ○ ○ ○')
   })
 })
 
