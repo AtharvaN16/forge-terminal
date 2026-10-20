@@ -1,5 +1,6 @@
 import stringWidth from 'string-width'
 import type { CliItem, CliTab } from '../core/cli-reference.js'
+import { fieldKey } from './field-key.js'
 import { blank, clip, HOME_MARGIN, type Row, type Run, width as runsWidth } from './home-art.js'
 import type { Palette } from './theme.js'
 
@@ -114,7 +115,8 @@ export function cliListRows({
 
 /**
  * The chosen row's example on a shelf like the home field's, a blank row
- * clear of the list. `copied` puts the confirmation at the shelf's far end.
+ * clear of the list. Its far end says what ↵ does, as a field's key hint does,
+ * and gives way to the confirmation once something is copied.
  */
 export function cliExampleRows({
   palette: p,
@@ -125,16 +127,15 @@ export function cliExampleRows({
   palette: Palette
   width: number
   item: CliItem
-  copied: boolean
+  copied: '' | 'one' | 'all'
 }): Row[] {
   const bg = p.shelf === '' ? p.keycapBg : p.shelf
   const inner = columns - HOME_MARGIN * 2
   const left: Row = [blank(2), run('$ ', p.brand, bg, true), run(item.ex, p.fg, bg)]
-  const done = copied ? '✓ copied' : ''
-  const gap = Math.max(1, inner - runsWidth(left) - stringWidth(done) - 2)
-  const shelf: Row = onBand(
-    pad([...left, blank(gap), ...(copied ? [run(done, p.ok, bg, true)] : [])], inner, bg),
-    bg,
-  )
+  const end: Row = copied
+    ? [run(copied === 'all' ? '✓ copied all' : '✓ copied', p.ok, bg, true)]
+    : fieldKey({ palette: p, key: '↵', words: 'copy', colour: p.border, ink: p.canvas })
+  const gap = Math.max(1, inner - runsWidth(left) - runsWidth(end) - 2)
+  const shelf: Row = onBand(pad([...left, blank(gap), ...end], inner, bg), bg)
   return [[], [blank(HOME_MARGIN), ...shelf]]
 }

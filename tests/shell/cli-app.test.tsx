@@ -78,7 +78,7 @@ describe('/cli in the menu', () => {
     app.stdin.write('/cli')
     await settle()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('copy example'))
+    await until(() => frame(app).includes('copy all'))
     app.stdin.write(ENTER)
     await until(() => copied.length > 0)
     expect(copied[0]).toMatch(/^forge /)

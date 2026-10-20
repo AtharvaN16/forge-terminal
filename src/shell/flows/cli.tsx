@@ -1,6 +1,6 @@
 import { Box } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CLI_TABS } from '../../core/cli-reference.js'
+import { CLI_TABS, cliReferenceText } from '../../core/cli-reference.js'
 import type { BarChip } from '../bar-art.js'
 import { cliExampleRows, cliListRows, cliTabRows } from '../cli-art.js'
 import { Runs } from '../components/Home.js'
@@ -46,8 +46,8 @@ interface CliFlowProps {
 /**
  * `/cli` (mockups/cli-2026-10.html, decided 2026-10-19): every flag and
  * subcommand, a tab each category (option C). ↑↓ choose a row, ←→ change
- * category, ↵ copy the chosen row's example, which is on a shelf under the
- * list.
+ * category, ↵ copy the chosen row's example (its hint is on the shelf under
+ * the list), c copy the whole reference, a section a category.
  */
 export function CliFlow({ width, height, system = realCli, onClose }: CliFlowProps) {
   const palette = useTheme()
@@ -55,11 +55,12 @@ export function CliFlow({ width, height, system = realCli, onClose }: CliFlowPro
   // Keys can arrive faster than React renders (a held arrow): each reads the latest position here.
   const position = useRef(at)
   const [copiedBy, setCopiedBy] = useState(0)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'' | 'one' | 'all'>('')
+  const copiedKind = useRef<'one' | 'all'>('one')
   useEffect(() => {
     if (copiedBy === 0) return
-    setCopied(true)
-    const id = setTimeout(() => setCopied(false), COPIED_MS)
+    setCopied(copiedKind.current)
+    const id = setTimeout(() => setCopied(''), COPIED_MS)
     return () => clearTimeout(id)
   }, [copiedBy])
 
@@ -69,7 +70,7 @@ export function CliFlow({ width, height, system = realCli, onClose }: CliFlowPro
   const moveTo = (next: typeof at) => {
     position.current = next
     setPosition(next)
-    setCopied(false)
+    setCopied('')
   }
   /** The chosen row moved to `row`, the window scrolled just far enough to keep it in view. */
   const choose = (row: number) => {
@@ -80,7 +81,7 @@ export function CliFlow({ width, height, system = realCli, onClose }: CliFlowPro
     moveTo({ ...here, row: to, start })
   }
 
-  useKeys((_input, key) => {
+  useKeys((input, key) => {
     const here = position.current
     if (key.escape) return onClose()
     if (key.upArrow) return choose(here.row - 1)
@@ -94,7 +95,14 @@ export function CliFlow({ width, height, system = realCli, onClose }: CliFlowPro
       const item = CLI_TABS[here.tab]?.items[here.row]
       if (!item) return
       system.copy(item.ex)
+      copiedKind.current = 'one'
       // A fresh copy restarts the moment, as /update's does.
+      setCopiedBy((n) => n + 1)
+      return
+    }
+    if (input === 'c') {
+      system.copy(cliReferenceText())
+      copiedKind.current = 'all'
       setCopiedBy((n) => n + 1)
     }
   })
@@ -129,7 +137,7 @@ export function CliFlow({ width, height, system = realCli, onClose }: CliFlowPro
         pairs={[
           ['↑↓', 'choose'],
           ['←→', 'category'],
-          ['↵', 'copy example'],
+          ['c', 'copy all'],
         ]}
         foot={[['esc', 'back']]}
       />

@@ -6,7 +6,8 @@ import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
 import { blank, HOME_MARGIN, type Row, type Run, width as widthOf } from '../home-art.js'
-import { easeOut, motionEnabled, useTween } from '../motion.js'
+import { easeOut, motionEnabled, PRESS_MS, useTween } from '../motion.js'
+import { keyIsDown } from '../pressed-key.js'
 import { useTheme } from '../ThemeContext.js'
 import type { ShellMode } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
@@ -58,8 +59,6 @@ const BAR_MS = 520
 const LABEL_FROM = 480
 const LABEL_MS = 140
 const DRAW_MS = LABEL_FROM + LABEL_MS
-/** How long a pressed key's cap stays inverted (M6b). */
-const PRESS_MS = 130
 
 const Blank = ({ rows = 1 }: { rows?: number }) =>
   rows > 0 ? <Box height={rows} flexShrink={0} /> : null
@@ -90,7 +89,12 @@ export function keyHint(palette: ReturnType<typeof useTheme>, key: string, words
   const capped = palette.keycapBg !== '' && !noColour
   return [
     capped
-      ? { text: ` ${key} `, fg: palette.fg, bg: palette.keycapBg, bold: true }
+      ? {
+          text: ` ${key} `,
+          fg: keyIsDown(key) ? palette.brand : palette.fg,
+          bg: palette.keycapBg,
+          bold: true,
+        }
       : { text: `[${key}]`, fg: palette.fg, bold: true },
     { text: ` ${words}`, fg: palette.dim },
   ]

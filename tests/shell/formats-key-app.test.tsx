@@ -1,10 +1,16 @@
 import { render } from 'ink-testing-library'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { MODE_FORMATS, MODE_KINDS } from '../../src/shell/home-art.js'
+import { DARK } from '../../src/shell/theme.js'
 import { makePng, makeTempDir } from '../helpers/fixtures.js'
 import { unpaint } from '../helpers/unpaint.js'
+import { ansiRow } from './home-cells.js'
+
+vi.hoisted(() => {
+  process.env.FORCE_COLOR = '3'
+})
 
 const ESC = String.fromCharCode(27)
 const TAB = '\t'
@@ -43,7 +49,7 @@ describe('Tab on home', () => {
     app.stdin.write(TAB)
     await settle()
     const frame = plain(app.lastFrame())
-    expect(frame).toContain('Supported formats')
+    expect(frame).toContain('FLAC')
     expect(frame).not.toContain('Drop a file here')
     for (const [kind, formats] of MODE_FORMATS.convert ?? []) {
       expect(frame).toContain(kind)
@@ -64,11 +70,11 @@ describe('Tab on home', () => {
       await settle()
       app.stdin.write(TAB)
       await settle()
-      expect(plain(app.lastFrame())).toContain('Supported formats')
+      expect(plain(app.lastFrame())).toContain('FLAC')
       app.stdin.write(key)
       await settle()
       const frame = plain(app.lastFrame())
-      expect(frame).not.toContain('Supported formats')
+      expect(frame).not.toContain('FLAC')
       expect(frame).toContain('Drop a file here')
       app.unmount()
     }
@@ -82,7 +88,7 @@ describe('Tab on home', () => {
     app.stdin.write('2')
     await settle()
     const frame = plain(app.lastFrame())
-    expect(frame).not.toContain('Supported formats')
+    expect(frame).not.toContain('FLAC')
     expect(frame).toContain(MODE_KINDS.compress)
   })
 
@@ -94,7 +100,7 @@ describe('Tab on home', () => {
     app.stdin.write(TAB)
     await settle()
     let frame = plain(app.lastFrame())
-    expect(frame).toContain('Supported formats')
+    expect(frame).toContain('FLAC')
     expect(frame).toContain('JPEG · PNG · WebP · AVIF · GIF')
     expect(frame).toContain('MKV')
     expect(frame).toContain('FLAC')
@@ -127,7 +133,7 @@ describe('Tab on home', () => {
     app.stdin.write(TAB)
     await settle()
     expect(field(plain(app.lastFrame()))).toContain('› a')
-    expect(plain(app.lastFrame())).not.toContain('Supported formats')
+    expect(plain(app.lastFrame())).not.toContain('FLAC')
 
     const pdf = home(await makeTempDir())
     await settle()
@@ -136,7 +142,7 @@ describe('Tab on home', () => {
     pdf.stdin.write(TAB)
     await settle()
     expect(plain(pdf.lastFrame())).toContain('split · merge · rotate')
-    expect(plain(pdf.lastFrame())).not.toContain('Supported formats')
+    expect(plain(pdf.lastFrame())).not.toContain('FLAC')
   })
 
   it('is not ?: that is shift-/ and the menu’s', async () => {
@@ -144,7 +150,7 @@ describe('Tab on home', () => {
     await settle()
     app.stdin.write('?')
     await settle()
-    expect(plain(app.lastFrame())).not.toContain('Supported formats')
+    expect(plain(app.lastFrame())).not.toContain('FLAC')
   })
 
   it('leaves a staged file alone', async () => {
@@ -157,7 +163,7 @@ describe('Tab on home', () => {
     app.stdin.write(TAB)
     await settle()
     const frame = plain(app.lastFrame())
-    expect(frame).not.toContain('Supported formats')
+    expect(frame).not.toContain('FLAC')
     expect(frame).toContain('a.png')
   })
 })
@@ -221,5 +227,38 @@ describe('the key row and the row above its rule', () => {
     app.stdin.write(ESC)
     await settle()
     expect(rows(plain(app.lastFrame())).hint).not.toContain('esc')
+  })
+})
+
+/**
+ * While Tab holds the formats open its key is lit in the mode's colour and
+ * nothing else on the row changes (2026-10-20, B on mockups/key-state-2026-10-round3.html).
+ */
+describe('Tab held on', () => {
+  const lit = (frame: string | undefined) => {
+    const last = (frame ?? '').split('\n').findLast((l) => plain(l).trim() !== '') ?? ''
+    const cells = ansiRow(last, Math.max(80, [...plain(last)].length))
+    const text = cells.map((c) => c.ch).join('')
+    const at = text.indexOf('tab supported formats')
+    return { tab: cells[at], words: cells[at + 4], mode: cells[text.indexOf('mode')] }
+  }
+
+  it('turns the key orange, its words and the other keys as they were', async () => {
+    const app = home(await makeTempDir())
+    await settle()
+    const before = lit(app.lastFrame())
+    app.stdin.write(TAB)
+    await settle()
+    const after = lit(app.lastFrame())
+    const colour = DARK.brand
+    expect(after.tab).toMatchObject({ ch: 't', fg: colour, b: true })
+    expect(before.tab?.fg).not.toBe(colour)
+    expect(after.words).toEqual(before.words)
+    expect(after.mode).toEqual(before.mode)
+    // The next key puts it back.
+    app.stdin.write(ESC)
+    await settle()
+    expect(lit(app.lastFrame()).tab).toEqual(before.tab)
+    app.unmount()
   })
 })

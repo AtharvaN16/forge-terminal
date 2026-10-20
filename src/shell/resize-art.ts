@@ -8,6 +8,7 @@ import {
   sizeOverLimit,
 } from '../core/resize.js'
 import { blank, type Row, type Run, width as widthOf } from './home-art.js'
+import { keyIsDown } from './pressed-key.js'
 import { endsRow, SLIDER_WIDTH, sliderRow } from './quality-art.js'
 import { modeColours, type Palette, type ShellMode } from './theme.js'
 
@@ -38,7 +39,7 @@ const grouped = (n: number) => n.toLocaleString('en-US')
 
 /** The `#` key cap, as the key row draws one. */
 const keycap = (palette: Palette, k: string): Run =>
-  run(` ${k} `, palette.fg, palette.keycapBg, true)
+  run(` ${k} `, keyIsDown(k) ? palette.brand : palette.fg, palette.keycapBg, true)
 
 /**
  * The band at `percent` with `#  type an exact size` beside it (H3), and

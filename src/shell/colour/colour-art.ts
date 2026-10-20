@@ -7,6 +7,7 @@ import { OUTSIDE, TRANSPARENT } from '../../core/colour/palette.js'
 import { type StepSpec, scale, stepsOf } from '../../core/colour/scale.js'
 import { parseHex, type Rgb, toHex } from '../../core/colour/space.js'
 import { blank, mix, type Row, type Run, surfaceRows, width } from '../home-art.js'
+import { keyIsDown } from '../pressed-key.js'
 import type { Palette } from '../theme.js'
 
 /**
@@ -491,8 +492,8 @@ export function withKeys(p: Palette, row: Row, pairs: [string, string][], w: num
     if (i) tail.push(blank(2))
     tail.push(
       p.keycapBg === ''
-        ? { text: `[${k}]`, fg: p.fg, bold: true }
-        : { text: ` ${k} `, fg: p.fg, bg: p.keycapBg, bold: true },
+        ? { text: `[${k}]`, fg: keyIsDown(k) ? p.brand : p.fg, bold: true }
+        : { text: ` ${k} `, fg: keyIsDown(k) ? p.brand : p.fg, bg: p.keycapBg, bold: true },
       ink(` ${word}`, p.dim),
     )
   })

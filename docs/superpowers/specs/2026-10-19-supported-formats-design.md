@@ -14,10 +14,12 @@ Mockups: `mockups/kinds-2026-10.html` (script `scripts/kinds-mockup.ts`).
   had not caught up.
 - **Tab lists the formats (Q2).** On a bare home (nothing staged, field empty)
   in convert, compress or edit, Tab swaps the drop surface's dots for a plain
-  surface: "Supported formats" in the mode's colour, a rule, a line a kind
-  (`MODE_FORMATS`, `formatRows`). Past the surface's rows the first lines stay
+  surface: a line a kind (`MODE_FORMATS`, `formatRows`), one blank row above and
+  the rest bare. No title, no rule (user, 2026-10-20, option B on
+  `mockups/formats-spacing-2026-10-screens.html`: the key row's "tab supported
+  formats" already names what Tab shows). Past the surface's rows the first lines stay
   and a thin bar plus "↓ n more" say there are more, as the commands list does.
-  A short surface gives up its top blank, then its rule, to keep lines.
+  A short surface gives up its top blank to keep lines.
 - **Not `?`.** It is shift-/ and some terminals send it as a `/` with shift held, which opens the menu (user, 2026-10-19). Tab does nothing on an empty field otherwise.
 - **Until the next key, not "while held".** A terminal never reports that a
   letter key came up (the kitty protocol does so only for keys sent as escape

@@ -12,7 +12,7 @@ export interface CliItem {
   name: string
   /** What it does, one short line. */
   does: string
-  /** One real use of it, copied by ↵. */
+  /** One real use of it, copied by ↵ (or with the rest by c). */
   ex: string
 }
 
@@ -254,3 +254,17 @@ export const CLI_TABS: CliTab[] = [
     ],
   },
 ]
+
+/**
+ * The whole reference as plain text, a section a category, for someone who
+ * wants every command in one paste: the flag and what it does, then its
+ * example under it.
+ */
+export function cliReferenceText(tabs: readonly CliTab[] = CLI_TABS): string {
+  return tabs
+    .map((tab) => {
+      const rows = tab.items.map((item) => `${item.name}\n  ${item.does}\n  $ ${item.ex}`)
+      return `${tab.name}\n${'─'.repeat(tab.name.length)}\n\n${rows.join('\n\n')}`
+    })
+    .join('\n\n\n')
+}

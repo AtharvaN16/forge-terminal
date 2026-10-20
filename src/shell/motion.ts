@@ -13,6 +13,9 @@ import { colourEnabled } from './theme.js'
 /** About 30 redraws a second: smooth to the eye, cheap for Ink. */
 export const FRAME_MS = 33
 
+/** How long a pressed key stays down (M6b): the Done keys, and the home key row's mode keys. */
+export const PRESS_MS = 130
+
 let forced: boolean | undefined
 
 /** Tests only: force motion on or off regardless of the terminal. `undefined` restores detection. */

@@ -1,5 +1,6 @@
 import { clockOf, stepLabel, timeOf } from '../core/timecode.js'
 import { blank, mix, type Row, type Run, width as widthOf } from './home-art.js'
+import { keyIsDown } from './pressed-key.js'
 import type { Palette } from './theme.js'
 
 /**
@@ -197,7 +198,9 @@ export function fieldsRow({
     blank(4),
     ...field('end', end, moves(active, 'end')),
   ]
-  const tab: Run = { text: ' tab ', fg: palette.dim, bg: palette.keycapBg }
+  const tab: Run = keyIsDown('tab')
+    ? { text: ' tab ', fg: palette.brand, bg: palette.keycapBg, bold: true }
+    : { text: ' tab ', fg: palette.dim, bg: palette.keycapBg }
   return [...left, blank(Math.max(1, width - widthOf(left) - 5)), tab]
 }
 

@@ -146,6 +146,7 @@ import { HOME_MARGIN, MODE_FORMATS, type Row } from './home-art.js'
 import { menuListRows } from './menu-art.js'
 import { motionEnabled, useTicker } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
+import { keyIsDown, usePressedKeys } from './pressed-key.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { largestPercent } from './resize-art.js'
 import { requestRestart } from './restart.js'
@@ -983,6 +984,8 @@ export function App({
    * mode fills as they are, and the banner reads `brand`, which never moves.
    */
   const palette = modePalette(basePalette, mode)
+  // Every key hint answers a press for a moment (see pressed-key.ts).
+  usePressedKeys(motionEnabled(palette.name))
   const action = mode === 'compress' ? compressAction : convertAction
   /** Where the target-size search has got to, for an honest counter. */
   /**
@@ -1506,8 +1509,15 @@ export function App({
    */
   const enterCap: Row =
     (process.env.NO_COLOR ?? '') !== '' || palette.keycapBg === ''
-      ? [{ text: '[enter]', fg: palette.border }]
-      : [{ text: ' enter ', fg: palette.fg, bg: palette.keycapBg, bold: true }]
+      ? [{ text: '[enter]', fg: keyIsDown('enter') ? palette.fg : palette.border }]
+      : [
+          {
+            text: ' enter ',
+            fg: keyIsDown('enter') ? palette.brand : palette.fg,
+            bg: palette.keycapBg,
+            bold: true,
+          },
+        ]
   const sendHint: Row | undefined =
     onHome && text !== '' && !isCommandBuffer(text) ? enterCap : undefined
   const stagedVerbNow =

@@ -1,4 +1,5 @@
 import type { Row } from './home-art.js'
+import { keyIsDown } from './pressed-key.js'
 import type { Palette } from './theme.js'
 
 /**
@@ -26,9 +27,12 @@ export function fieldKey({
   ink?: string
   plain?: boolean
 }): Row {
-  if (plain || colour === '') return [{ text: `[${key}] ${words}`, fg: palette.border }]
+  if (plain || colour === '')
+    return [{ text: `[${key}] ${words}`, fg: keyIsDown(key) ? palette.fg : palette.border }]
+  // Pressed, the chip goes white for a moment.
+  const down = keyIsDown(key)
   return [
-    { text: ` ${key} `, fg: ink, bg: colour, bold: true },
+    { text: ` ${key} `, fg: ink, bg: down ? palette.fg : colour, bold: true },
     { text: ` ${words}`, fg: colour },
   ]
 }

@@ -13,6 +13,7 @@ import {
 import { FORMATS } from '../core/formats.js'
 import type { FormatId } from '../core/types.js'
 import type { Command } from './commands.js'
+import { keyIsDown } from './pressed-key.js'
 import type { StagedFile, StagedView, UnderField } from './stage.js'
 import {
   dotGradient,
@@ -406,9 +407,17 @@ export function menuHintRow({
   const esc: Row = !clear
     ? []
     : palette.keycapBg === ''
-      ? [{ text: '[esc] clear', fg: palette.border }]
+      ? [
+          {
+            text: '[esc] clear',
+            fg: keyIsDown('esc') ? palette.fg : palette.border,
+            bold: keyIsDown('esc'),
+          },
+        ]
       : [
-          { text: ' esc ', fg: palette.fg, bg: palette.keycapBg },
+          keyIsDown('esc')
+            ? { text: ' esc ', fg: palette.brand, bg: palette.keycapBg, bold: true }
+            : { text: ' esc ', fg: palette.fg, bg: palette.keycapBg },
           { text: ' clear', fg: palette.dim },
         ]
   // Both ends on the margins, as the key row under them (2026-10-20).
@@ -766,22 +775,21 @@ export function surfaceRows({
 
 /**
  * The supported formats, drawn on the drop surface's fill in place of its
- * dots, as the commands are (mockups/kinds-2026-10.html, Q2): a title in the
- * mode's colour, a rule, then a line a kind. Past the rows it has, the first
- * lines stay and a thin bar and "↓ n more" on the last row say there are more,
- * as the commands list does.
+ * dots, as the commands are (mockups/kinds-2026-10.html, Q2): a line a kind,
+ * a blank row above and the rest of the surface left bare, with no title and
+ * no rule (mockups/formats-spacing-2026-10-screens.html, B: the key row says
+ * what Tab shows). Past the rows it has, the first lines stay and a thin bar
+ * and "↓ n more" on the last row say there are more, as the commands list does.
  */
 export function formatRows({
   width: columns,
   rows: h,
   palette,
-  mode,
   kinds,
 }: {
   width: number
   rows: number
   palette: Palette
-  mode: ShellMode
   kinds: FormatKinds
 }): Row[] {
   const M = HOME_MARGIN
@@ -794,16 +802,8 @@ export function formatRows({
     return [blank(M), ...row, { text: ' '.repeat(Math.max(0, W - width(row))), bg: fill }]
   }
 
-  // A short surface gives up its top blank, then its rule, to keep lines.
-  const top = h >= 7 ? 1 : 0
-  const rule = h >= 6
-  const head: Row[] = [
-    ...(top ? [line([])] : []),
-    line([blank(x), { text: 'Supported formats', fg: modeColours(palette, mode).fg, bold: true }]),
-    ...(rule
-      ? [line([blank(x), { text: '─'.repeat(Math.max(0, W - x * 2)), fg: palette.border }])]
-      : []),
-  ]
+  // A short surface gives up its top blank to keep lines.
+  const head: Row[] = h >= 5 ? [line([])] : []
   const entries: Row[] = kinds.flatMap(([kind, formats]) =>
     wrapFormats(formats, Math.max(8, W - x * 2 - lead - 2)).map((text, i) =>
       line([

@@ -186,13 +186,13 @@ describe('a pressed key answers at once (M6b)', () => {
   })
   const cv = SAMPLES.cv as Sample
   const keys = (frame: string) => frame.split('\n')[23] ?? ''
-  /** The SGR fill of a hex colour, as Ink writes it in truecolor. */
-  const fill = (hex: string) =>
-    new RegExp(
-      `48;2;${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')}m(?:${SGR.source})* o `,
-    )
+  const rgb = (hex: string) =>
+    [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')
+  /** The `o` key as Ink writes it in truecolor: the fill under it, and the colour it is drawn in. */
+  const key = (fill: string, ink: string) =>
+    new RegExp(`48;2;${rgb(fill)}m(?:${SGR.source})*\\x1b\\[38;2;${rgb(ink)}m o `)
 
-  it('turns the keycap white for a moment, then puts it back', async () => {
+  it('lights the key orange for a moment, then puts it back (B)', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
     setMotionForTests(true)
     const result = resultOf(cv)
@@ -200,10 +200,13 @@ describe('a pressed key answers at once (M6b)', () => {
     vi.advanceTimersByTime(1000)
     await flush()
     const rest = keys(app.lastFrame() ?? '')
-    expect(rest).toMatch(fill(DARK.keycapBg))
+    expect(rest).toMatch(new RegExp(`48;2;${rgb(DARK.keycapBg)}m(?:${SGR.source})* o `))
+    expect(rest).not.toMatch(key(DARK.keycapBg, DARK.brand))
     app.rerender(doneScreen(cv, { result, pressed: { key: 'o', n: 1 } }))
     await flush()
-    expect(keys(app.lastFrame() ?? '')).toMatch(fill(DARK.fg))
+    // The cap keeps its grey; only the key changes, and the words beside it stay.
+    expect(keys(app.lastFrame() ?? '')).toMatch(key(DARK.keycapBg, DARK.brand))
+    expect(keys(app.lastFrame() ?? '')).toContain(` open`)
     vi.advanceTimersByTime(200)
     await flush()
     expect(keys(app.lastFrame() ?? '')).toBe(rest)

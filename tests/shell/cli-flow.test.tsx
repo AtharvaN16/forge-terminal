@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
-import { CLI_TABS } from '../../src/core/cli-reference.js'
+import { CLI_TABS, cliReferenceText } from '../../src/core/cli-reference.js'
 import { CliFlow, type CliSystem } from '../../src/shell/flows/cli.js'
 
 const ENTER = String.fromCharCode(13)
@@ -127,12 +127,30 @@ describe('CliFlow', () => {
     f.unmount()
   })
 
-  it('names its keys', async () => {
+  it('c copies the whole reference, a section a category, and says so', async () => {
+    const { system, copied } = fakeSystem()
+    const f = open(system)
+    await until(() => frame(f).includes('$ forge'))
+    f.stdin.write('c')
+    await until(() => copied.length > 0)
+    expect(copied).toEqual([cliReferenceText()])
+    for (const tab of CLI_TABS)
+      expect(copied[0]).toContain(`${tab.name}\n${'─'.repeat(tab.name.length)}`)
+    await until(() => frame(f).includes('copied all'))
+    expect(frame(f)).toContain('✓ copied all')
+    f.unmount()
+  })
+
+  it('puts ↵ copy on the example’s row, and c copy all in the key row', async () => {
     const f = open(fakeSystem().system)
-    await until(() => frame(f).includes('copy example'))
-    expect(frame(f)).toMatch(/↑↓.*choose/)
-    expect(frame(f)).toMatch(/←→.*category/)
-    expect(frame(f)).toMatch(/↵.*copy example/)
+    await until(() => frame(f).includes('copy all'))
+    const lines = frame(f).split('\n')
+    expect(lines.find((l) => l.includes('$ forge'))).toMatch(/↵\s+copy/)
+    const keys = lines.filter((l) => l.includes('choose')).join('')
+    expect(keys).toMatch(/↑↓.*choose/)
+    expect(keys).toMatch(/←→.*category/)
+    expect(keys).toMatch(/c.*copy all/)
+    expect(keys).not.toContain('copy example')
     f.unmount()
   })
 

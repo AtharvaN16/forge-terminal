@@ -37,6 +37,7 @@ import {
   useElapsed,
   useTween,
 } from '../motion.js'
+import { keyIsDown } from '../pressed-key.js'
 import type { StagedView, UnderField } from '../stage.js'
 import { Text } from '../Text.js'
 import { ThemeProvider, useTheme } from '../ThemeContext.js'
@@ -236,6 +237,7 @@ export function KeyRow({
   width,
   lead = HOME_MARGIN,
   pressed,
+  on = [],
   off = [],
   note,
 }: KeySet & {
@@ -247,8 +249,14 @@ export function KeyRow({
    * above starts on (2026-10-19; it was a cell in, which nothing called for).
    */
   lead?: number
-  /** A key just pressed, drawn inverted for a moment so the press shows (M6b). */
+  /** A key just pressed, drawn down for a moment so the press shows (M6b). */
   pressed?: string | undefined
+  /**
+   * Keys held down while what they opened is showing: Tab, while the supported
+   * formats are listed. Drawn as a pressed key is — one look for both
+   * (2026-10-20, B): the key alone in the brand's orange, its words as they were.
+   */
+  on?: readonly string[]
   /** Keys that do nothing right now, greyed: Quality's ↵ where nothing would be written (E3). */
   off?: readonly string[]
 }) {
@@ -256,6 +264,8 @@ export function KeyRow({
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
   const capped = palette.keycapBg !== '' && !noColour
   const cap = (key: string) => (capped ? ` ${key} ` : `[${key}]`)
+  const isDown = (key: string) =>
+    !off.includes(key) && (key === pressed || on.includes(key) || keyIsDown(key))
 
   const left = main.reduce(
     (n, [key, word], i) => n + (i ? 2 : 0) + stringWidth(cap(key)) + 1 + stringWidth(word),
@@ -287,20 +297,18 @@ export function KeyRow({
           <Text key={key}>
             {i ? '  ' : ''}
             <Text
-              backgroundColor={
-                capped ? (key === pressed ? palette.fg : palette.keycapBg) : undefined
-              }
+              backgroundColor={capped ? palette.keycapBg : undefined}
               color={colourProp(
-                key === pressed ? palette.canvas : off.includes(key) ? palette.border : palette.fg,
+                isDown(key) ? palette.brand : off.includes(key) ? palette.border : palette.fg,
               )}
-              bold={!off.includes(key)}
+              bold={!off.includes(key) || isDown(key)}
+              // No fill to colour: without colour the key is reversed instead.
+              inverse={!capped && isDown(key)}
             >
               {cap(key)}
             </Text>
             <Text
-              color={colourProp(
-                key === pressed ? palette.fg : off.includes(key) ? palette.border : palette.dim,
-              )}
+              color={colourProp(off.includes(key) ? palette.border : palette.dim)}
             >{` ${word}`}</Text>
           </Text>
         ))}
@@ -313,7 +321,13 @@ export function KeyRow({
         {shown.map(([key, word], i) => (
           <Text key={`${key}${word}`}>
             {i ? <Text color={colourProp(palette.border)}>{' · '}</Text> : null}
-            <Text color={colourProp(word ? palette.fg : palette.border)}>{key}</Text>
+            <Text
+              color={colourProp(isDown(key) ? palette.brand : word ? palette.fg : palette.border)}
+              bold={isDown(key)}
+              inverse={!capped && isDown(key)}
+            >
+              {key}
+            </Text>
             {word ? <Text color={colourProp(palette.border)}>{` ${word}`}</Text> : null}
           </Text>
         ))}
@@ -657,7 +671,12 @@ export function Home({
       )}
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <KeyRule width={width} />
-      <KeyRow {...keys} width={width} note={typing ? undefined : MODE_NOTES[mode]} />
+      <KeyRow
+        {...keys}
+        width={width}
+        on={formats ? ['tab'] : []}
+        note={typing ? undefined : MODE_NOTES[mode]}
+      />
     </Box>
   )
 }

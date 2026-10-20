@@ -1,4 +1,5 @@
 import { type Key, useInput, usePaste } from 'ink'
+import { announceKey } from './pressed-key.js'
 
 /**
  * `useInput`, minus key *releases*.
@@ -27,6 +28,7 @@ export function useKeys(
   useInput(
     (input, key) => {
       if (key.eventType === 'release') return
+      announceKey(input, key)
       handler(input, key)
     },
     { isActive },

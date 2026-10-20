@@ -294,14 +294,16 @@ describe('formatRows', () => {
   const p = modePalette(DARK, 'convert')
   const art = { width: 80, palette: p, mode: 'convert' as const }
 
-  it('fills the surface exactly: a title, a rule, a line a kind, every row as wide as the surface', () => {
+  it('fills the surface exactly: a blank row, a line a kind, every row as wide as the surface', () => {
     const rows = formatRows({ ...art, rows: 8, kinds: MODE_FORMATS.convert ?? [] })
     expect(rows).toHaveLength(8)
     for (const r of rows) expect(width(r)).toBe(78)
     const lines = text(rows)
-    expect(lines[1]).toContain('Supported formats')
-    expect(lines[2]).toContain('──────')
-    expect(lines[3]).toMatch(/Images +JPEG · PNG · WebP · AVIF · HEIC · GIF · TIFF/)
+    expect(lines[0]?.trim()).toBe('')
+    expect(lines[1]).toMatch(/Images +JPEG · PNG · WebP · AVIF · HEIC · GIF · TIFF/)
+    // No title, no rule (mockups/formats-spacing-2026-10-screens.html, B).
+    expect(lines.join('\n')).not.toContain('Supported formats')
+    expect(lines.join('\n')).not.toContain('──')
     expect(lines.join('\n')).not.toContain('↓')
   })
 
@@ -321,12 +323,12 @@ describe('formatRows', () => {
     const rows = formatRows({ ...art, rows: 8, kinds: many })
     const lines = text(rows)
     expect(rows).toHaveLength(8)
-    // Title and rule, four lines, then the note on the last row.
-    expect(lines[3]).toContain('Kind0')
-    expect(lines[6]).toContain('Kind3')
-    expect(lines[6]).not.toContain('Kind4')
-    expect(lines[7]).toContain('↓ 5 more')
-    expect(lines.slice(3, 7).every((l) => /[┃│]$/.test(l))).toBe(true)
+    // A blank row, six lines, then the note on the last row.
+    expect(lines[1]).toContain('Kind0')
+    expect(lines[6]).toContain('Kind5')
+    expect(lines[6]).not.toContain('Kind6')
+    expect(lines[7]).toContain('↓ 3 more')
+    expect(lines.slice(1, 7).every((l) => /[┃│]$/.test(l))).toBe(true)
   })
 
   it('breaks a line longer than the surface under itself, the kind not repeated', () => {
@@ -334,18 +336,20 @@ describe('formatRows', () => {
       ['Archives', Array.from({ length: 30 }, (_, i) => `F${i}`).join(' · ')],
     ]
     const lines = text(formatRows({ ...art, rows: 8, kinds: long }))
-    expect(lines[3]).toContain('Archives')
-    expect(lines[3]).toMatch(/ ·\s*$/)
-    expect(lines[4]).not.toContain('Archives')
-    expect(lines[4]).toMatch(/F\d+/)
+    expect(lines[1]).toContain('Archives')
+    expect(lines[1]).toMatch(/ ·\s*$/)
+    expect(lines[2]).not.toContain('Archives')
+    expect(lines[2]).toMatch(/F\d+/)
   })
 
-  it('a short surface gives up its top blank, then its rule, to keep lines', () => {
+  it('a short surface gives up its top blank to keep lines', () => {
     const four = text(formatRows({ ...art, rows: 4, kinds: MODE_FORMATS.convert ?? [] }))
-    expect(four[0]).toContain('Supported formats')
-    expect(four[1]).not.toContain('──')
-    expect(four.join('\n')).toContain('↓')
+    expect(four[0]).toContain('Images')
     expect(four).toHaveLength(4)
+    expect(four.join('\n')).not.toContain('↓')
+    const three = text(formatRows({ ...art, rows: 3, kinds: MODE_FORMATS.convert ?? [] }))
+    expect(three.join('\n')).toContain('↓ 2 more')
+    expect(three).toHaveLength(3)
   })
 
   it('lists convert’s formats from the format table: no HEVC (never a source), Word once', () => {

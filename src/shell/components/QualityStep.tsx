@@ -1,6 +1,7 @@
 import { Box } from 'ink'
 import { useRef } from 'react'
 import { HOME_MARGIN } from '../home-art.js'
+import { keyIsDown } from '../pressed-key.js'
 import { endsRow, SLIDER_WIDTH, sliderRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -158,7 +159,9 @@ function DitherNote({ mode, on, plain }: { mode: ShellMode; on: boolean; plain: 
       {' '.repeat(HOME_MARGIN)}
       <Text
         backgroundColor={plain ? undefined : palette.keycapBg}
-        color={colourProp(on ? modeColours(palette, mode).fg : palette.fg)}
+        color={colourProp(
+          keyIsDown('d') ? palette.brand : on ? modeColours(palette, mode).fg : palette.fg,
+        )}
         bold
       >
         {plain ? '[d]' : ' d '}
