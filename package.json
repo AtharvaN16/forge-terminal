@@ -1,23 +1,19 @@
 {
   "name": "forge-terminal",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "A terminal-native file converter for macOS and Windows",
   "whatsNew": [
     {
-      "title": "A new Done screen",
-      "text": "When a file is done, one bar shows it as it was and as it is now, with how much you saved just above it."
+      "title": "Keys light up",
+      "text": "Press a key and its hint on screen turns orange for a moment. Tab stays lit while the supported formats are showing."
     },
     {
-      "title": "Presets save anywhere",
-      "text": "Save as preset now offers the same folders as Save as: Desktop, Downloads, the same folder as the file, or one you search for."
+      "title": "A calmer formats list",
+      "text": "The supported formats list has lost its title and rule, so it has more room to breathe."
     },
     {
-      "title": "Tidier screens",
-      "text": "Every screen now lines up with the edges of home, and the / menu scrolls when the window is short."
-    },
-    {
-      "title": "A taller update card",
-      "text": "On /update, the what's new card now fills the room it has, so you see more of a release before you scroll."
+      "title": "Copy all commands",
+      "text": "On /cli, press c to copy the whole command reference in one go."
     }
   ],
   "keywords": [
