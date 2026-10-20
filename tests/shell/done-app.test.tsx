@@ -57,13 +57,14 @@ describe('Done, in the flow', () => {
       /^ {3}↵ {2}convert another {3}o {2}open {3}s {2}show in \S+ +ctrl-c quit$/,
     )
     const all = plain(app.lastFrame())
-    // Round 24: the strip with the formats and the change, one bar with the
+    // Round 25: the strip with the formats and the change, one bar with the
     // new file's name, the sizes stacked, p and → at the foot.
     expect(all).toMatch(/^ {3}PNG → JPEG +.*(\d+(\.\d)?% (smaller|larger)|same size) ?$/m)
     expect(all).toContain('✓ test.jpg')
     expect(all).toMatch(/^ {2}(now|was) +(now|was) ?$/m)
-    expect(all).toMatch(/^ {2}p save as preset +→ {2}continue editing ?$/m)
-    expect(out[21]).toBe('─'.repeat(76))
+    expect(all).toMatch(/^ {2}p save as preset +continue editing → ?$/m)
+    // The rule sits on the app's margins (2026-10-20): two columns in, two short.
+    expect(out[21]).toBe(`  ${'─'.repeat(72)}`)
     // Not today's receipt.
     expect(all).not.toContain('✓ DONE')
     expect(all).not.toContain('saved to')

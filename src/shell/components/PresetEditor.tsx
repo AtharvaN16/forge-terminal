@@ -21,13 +21,12 @@ import {
   withReasons,
 } from '../preset-editor.js'
 import { editorLines, OP_NAMES, subLines } from '../preset-editor-art.js'
-import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, type ShellMode } from '../theme.js'
+import type { ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { doneFacts } from './Done.js'
 import { HeaderBar } from './HeaderBar.js'
-import { KeyRow, Runs } from './Home.js'
+import { KeyRow, KeyRule, Runs } from './Home.js'
 
 /**
  * Done's rows between the header and the rule, as a window covers them: the
@@ -41,7 +40,11 @@ export function doneUnder(
   height: number,
 ): Row[] {
   const area = height - 3
-  const body = doneBody({ palette, facts: doneFacts(result, mode), width })
+  const facts = doneFacts(result, mode)
+  // Compact where Done is: a screen too short for the body and the preset's foot.
+  const roomy = doneBody({ palette, facts, width })
+  const body =
+    4 + roomy.length + 1 > height ? doneBody({ palette, facts, width, compact: true }) : roomy
   const { top } = doneLayout({ height, body: body.length, notes: 0 })
   const under: Row[] = [[], ...Array.from({ length: top }, (): Row => []), ...body]
   while (under.length < area) under.push([])
@@ -353,7 +356,7 @@ export function PresetEditorScreen({
           <Runs key={i} row={row} />
         ),
       )}
-      <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
+      <KeyRule width={width} />
       <KeyRow main={keys} foot={[['esc', sub ? 'back' : 'cancel']]} width={width} />
     </Box>
   )

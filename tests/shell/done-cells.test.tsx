@@ -128,9 +128,9 @@ describe('Done through Ink (B6a)', () => {
 
     it(`puts ${key}'s keys on the last row, under a rule`, () => {
       const lines = screen(s).split('\n')
-      expect(
-        describeRow(ansiRow(lines[22] ?? ''), runsRow([{ text: '─'.repeat(80), fg: DARK.border }])),
-      ).toBe('equal')
+      // The rule sits on the app's margins (2026-10-20): two columns in, two short.
+      const rule = runsRow([{ text: '  ' }, { text: '─'.repeat(76), fg: DARK.border }])
+      expect(describeRow(ansiRow(lines[22] ?? ''), rule)).toBe('equal')
       expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {3}↵ /)
     })
   }
@@ -151,10 +151,10 @@ describe('the bar draws itself once (M5a)', () => {
   })
   const cv = SAMPLES.cv as Sample
   /** The strip's row, where the change is written, and the bar's middle row, the name's. */
-  const top = 2 + doneLayout({ height: 24, body: 11, notes: 0 }).top
+  const top = 2 + doneLayout({ height: 24, body: 13, notes: 0 }).top
   const line = (frame: string, i: number) => (frame.split('\n')[top + i] ?? '').replace(SGR, '')
   const strip = (frame: string) => line(frame, 1)
-  const mid = (frame: string) => line(frame, 5)
+  const mid = (frame: string) => line(frame, 6)
 
   it('opens with the band at the old length and the change unwritten, then rests', async () => {
     setMotionForTests(false)

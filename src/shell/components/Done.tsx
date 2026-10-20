@@ -7,11 +7,10 @@ import type { Trail } from '../bar-art.js'
 import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
 import { blank, HOME_MARGIN, type Row, type Run, width as widthOf } from '../home-art.js'
 import { easeOut, motionEnabled, useTween } from '../motion.js'
-import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, type ShellMode } from '../theme.js'
+import type { ShellMode } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
-import { KeyRow, Runs } from './Home.js'
+import { KeyRow, KeyRule, Runs } from './Home.js'
 import { NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
 
 /**
@@ -169,9 +168,9 @@ export function DoneScreen({
     })
   // What the shell just said (a failed open) sits on the keys, with a blank
   // row above, out of the blank rows Done has; one line where they are fewer.
-  // The preset's foot takes a row of them at least (its frame without the
-  // half rows). When the notice would not fit, the body steps back first —
-  // a three-row bar, no half rows — so the notice can say all it has to.
+  // The preset's foot takes a row of them. When the notice would not fit, the
+  // body steps back first — a three-row bar — so the notice can say all it
+  // has to.
   const notices = useNotices()
   const fullRows = notices.length > 0 ? noticeRows(notices, width, palette) + 1 : 0
   const footRows = preset ? 1 : 0
@@ -179,9 +178,13 @@ export function DoneScreen({
     const bare = doneLayout({ height, body: rows, notes: notes.length })
     return bare.top + bare.bottom - footRows + (notes.length > 0 ? bare.between - 1 : 0)
   }
+  // The body steps back on a screen too short for it with its notes and the
+  // preset's foot, too: nothing is ever pushed off the keys.
+  const fits = (rows: number) =>
+    4 + rows + (notes.length > 0 ? notes.length + 1 : 0) + footRows <= height
   const roomy = doneBody({ palette, facts, width, draw, chain })
   const body =
-    fullRows > 0 && spareFor(roomy.length) < fullRows
+    !fits(roomy.length) || (fullRows > 0 && spareFor(roomy.length) < fullRows)
       ? doneBody({ palette, facts, width, draw, chain, compact: true })
       : roomy
   const full = fullRows > 0 && spareFor(body.length) >= fullRows
@@ -191,6 +194,8 @@ export function DoneScreen({
     body: body.length,
     notes: notes.length,
   })
+  // A row between the preset's foot and the rule, where there is one to spare.
+  const gap = bottom >= 2 ? 1 : 0
   const keys: Array<[string, string]> = ownKeys ?? [
     ['↵', again],
     ...(offer ? ([['c', offer]] as Array<[string, string]>) : []),
@@ -214,11 +219,9 @@ export function DoneScreen({
       ) : null}
       {preset && bottom > 0 ? (
         <>
-          <Blank rows={bottom - presetRows(bottom)} />
-          {presetFoot(palette, preset, width, presetRows(bottom)).map((row, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: the rows are positional
-            <Runs key={i} row={row} />
-          ))}
+          <Blank rows={bottom - 1 - gap} />
+          <Runs row={presetFoot(palette, preset, width)} />
+          <Blank rows={gap} />
         </>
       ) : (
         <Blank rows={bottom} />
@@ -230,7 +233,7 @@ export function DoneScreen({
       ) : noticed > 0 ? (
         <NoticeLine notices={notices} width={width} />
       ) : null}
-      <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
+      <KeyRule width={width} />
       <KeyRow
         main={keys}
         foot={[['ctrl-c', 'quit']]}
@@ -241,22 +244,13 @@ export function DoneScreen({
   )
 }
 
-/** The frame's half rows above and below it fit when there are three rows for it. */
-const presetRows = (bottom: number) => (bottom >= 3 ? 3 : 1)
-
 /**
- * The foot of a result a preset can be made from (round 24, K26): p save as
+ * The foot of a result a preset can be made from (round 25): p save as
  * preset quiet at the bottom left — p in the dim grey, its words quieter —
- * and → continue editing on a small frame in the shelf grey at the bottom
- * right, the → on a key cap, ending on the block's edge. The frame has half
- * a row of its grey above and below when `rows` is 3, none when it is 1.
+ * and continue editing → in the same two greys at the bottom right, ending
+ * on the block's edge. One row.
  */
-function presetFoot(
-  palette: ReturnType<typeof useTheme>,
-  preset: DonePreset,
-  width: number,
-  rows: number,
-): Row[] {
+function presetFoot(palette: ReturnType<typeof useTheme>, preset: DonePreset, width: number): Row {
   const left: Run[] =
     preset.save === 'saved'
       ? [
@@ -270,30 +264,15 @@ function presetFoot(
             fg: palette.border,
           },
         ]
-  const shelf = palette.shelf === '' ? undefined : palette.shelf
-  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
-  const cap: Run =
-    palette.keycapBg !== '' && !noColour
-      ? { text: ' → ', fg: palette.fg, bg: palette.keycapBg, bold: true }
-      : { text: '[→]', fg: palette.fg, bold: true, bg: shelf }
-  const frame: Run[] = [
-    { text: ' ', bg: shelf },
-    cap,
-    { text: ' continue editing', fg: palette.fg, bg: shelf },
-    { text: ' ', bg: shelf },
+  // Quiet like p (round 25): the words in the border grey, → after them in
+  // the dim grey, bold — no frame, no key cap.
+  const onward: Run[] = [
+    { text: 'continue editing ', fg: palette.border },
+    { text: '→', fg: palette.dim, bold: true },
   ]
   const end = width - HOME_MARGIN
-  const at = Math.max(HOME_MARGIN + widthOf(left) + 1, end - widthOf(frame))
-  const middle: Row = [
-    blank(HOME_MARGIN),
-    ...left,
-    blank(at - HOME_MARGIN - widthOf(left)),
-    ...frame,
-  ]
-  if (rows < 3) return [middle]
-  const half = (ch: string): Row =>
-    shelf ? [blank(at), { text: ch.repeat(widthOf(frame)), fg: shelf }] : []
-  return [half('▄'), middle, half('▀')]
+  const at = Math.max(HOME_MARGIN + widthOf(left) + 1, end - widthOf(onward))
+  return [blank(HOME_MARGIN), ...left, blank(at - HOME_MARGIN - widthOf(left)), ...onward]
 }
 
 /**

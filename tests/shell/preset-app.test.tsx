@@ -52,7 +52,7 @@ describe('presets, from Done', () => {
   it('offers p save as preset and → continue editing on Done', async () => {
     const { app } = await atDone()
     const all = plain(app.lastFrame())
-    expect(all).toMatch(/^ {2}p save as preset +→ {2}continue editing ?$/m)
+    expect(all).toMatch(/^ {2}p save as preset +continue editing → ?$/m)
     expect(all).not.toMatch(/PNG → JPEG +p/)
   }, 30_000)
 

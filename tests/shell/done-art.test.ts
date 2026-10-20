@@ -34,17 +34,17 @@ const gif: DoneFacts = {
   after: { format: 'PNG', name: 'party.png', bytes: 1_600_000 },
 }
 
-/** Rows of the body, by what they are: the strip (three), the bar (five), a gap, the sizes (two). */
+/** Rows of the body, by what they are: the strip (three), the bar (seven), a gap, the sizes (two). */
 const ROW = {
   stripTop: 0,
   strip: 1,
   stripBottom: 2,
   barTop: 3,
-  mid: 5,
-  barBottom: 7,
-  gap: 8,
-  words: 9,
-  sizes: 10,
+  mid: 6,
+  barBottom: 9,
+  gap: 10,
+  words: 11,
+  sizes: 12,
 }
 
 describe('receiptBars', () => {
@@ -94,7 +94,7 @@ describe('changePhrase', () => {
 describe('the Done body (round 24)', () => {
   it('reads top to bottom: the strip, the bar, a blank row, then the sizes stacked', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80 })
-    expect(rows).toHaveLength(11)
+    expect(rows).toHaveLength(13)
     expect(text(rows[ROW.strip])).toMatch(/^ {2} PNG → JPEG +47\.4 KB saved · 38\.9% smaller $/)
     expect(text(rows[ROW.gap])).toBe('')
     expect(text(rows[ROW.words])).toMatch(/^ {2}now +was$/)
@@ -102,19 +102,17 @@ describe('the Done body (round 24)', () => {
     for (const r of [ROW.strip, ROW.words, ROW.sizes]) expect(width(rows[r] ?? [])).toBe(78)
   })
 
-  it('draws the strip on the shelf grey, with half a row of it above and below', () => {
+  it('draws the strip in the selection grey, a whole row of it above and below the words', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80 })
     const strip = cells(rows[ROW.strip])
     expect(strip).toHaveLength(78)
     expect(strip.slice(0, 2).every((c) => c.bg === undefined)).toBe(true)
-    expect(strip.slice(2).every((c) => c.bg === DARK.shelf)).toBe(true)
-    for (const [r, ch] of [
-      [ROW.stripTop, '▄'],
-      [ROW.stripBottom, '▀'],
-    ] as const) {
-      const half = cells(rows[r])
-      expect(half).toHaveLength(78)
-      for (const c of half.slice(2)) expect(c).toMatchObject({ ch, fg: DARK.shelf, bg: undefined })
+    expect(strip.slice(2).every((c) => c.bg === DARK.selectionBg)).toBe(true)
+    // Whole rows of the grey, spaces on a fill: ▄ ▀ leave seams in Apple Terminal.
+    for (const r of [ROW.stripTop, ROW.stripBottom]) {
+      const pad = cells(rows[r])
+      expect(pad).toHaveLength(78)
+      for (const c of pad.slice(2)) expect(c).toMatchObject({ ch: ' ', bg: DARK.selectionBg })
     }
   })
 
@@ -124,7 +122,7 @@ describe('the Done body (round 24)', () => {
     expect(strip[7]).toMatchObject({ ch: '→', fg: DARK.border })
     expect(strip[9]).toMatchObject({ ch: 'J', fg: DARK.fg, bold: true })
     const at = 78 - ' 47.4 KB saved · 38.9% smaller '.length + 1
-    expect(strip[at]).toMatchObject({ ch: '4', fg: DARK.ok, bold: true, bg: DARK.shelf })
+    expect(strip[at]).toMatchObject({ ch: '4', fg: DARK.ok, bold: true, bg: DARK.selectionBg })
   })
 
   it('says the format once when it did not change, white and bold', () => {
@@ -143,10 +141,11 @@ describe('the Done body (round 24)', () => {
     expect(strip[16]).toMatchObject({ ch: 'W', fg: DARK.fg, bold: true })
   })
 
-  it('is a bar five rows tall as long as the larger file: the new file on the mode’s band, the rest hatched grey', () => {
+  it('is a bar seven rows tall as long as the larger file: the new file on the mode’s band, the rest hatched grey', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80 })
     const band = mix(DARK.modeConvert, DARK.canvas, 0.5)
-    const hatch = mix(DARK.border, DARK.canvas, 0.55)
+    // The hatching is the strip's grey (H1).
+    const hatch = DARK.selectionBg
     // 76 cells for 122 KB; 74.6 KB is round(76 × 74.6 / 122) = 46.
     for (const r of [ROW.barTop, ROW.barTop + 1, ROW.barBottom - 1, ROW.barBottom]) {
       const row = cells(rows[r])
@@ -218,7 +217,7 @@ describe('the Done body (round 24)', () => {
     expect(cells(rows[ROW.strip]).at(-2)).toMatchObject({
       fg: DARK.larger,
       bold: true,
-      bg: DARK.shelf,
+      bg: DARK.selectionBg,
     })
   })
 
@@ -256,10 +255,10 @@ describe('the Done body (round 24)', () => {
 
   it('names the folder under the sizes when asked to, for the scrollback', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80, folder: '~/d/nonexistent/out' })
-    expect(rows).toHaveLength(13)
-    expect(text(rows[11])).toBe('')
-    expect(text(rows[12])).toBe('   in ~/d/nonexistent/out')
-    expect(doneBody({ palette: P, facts: cv, width: 80 })).toHaveLength(11)
+    expect(rows).toHaveLength(15)
+    expect(text(rows[13])).toBe('')
+    expect(text(rows[14])).toBe('   in ~/d/nonexistent/out')
+    expect(doneBody({ palette: P, facts: cv, width: 80 })).toHaveLength(13)
   })
 
   it('draws the same size as one full band, saying so quietly', () => {
@@ -302,9 +301,6 @@ describe('the Done body (round 24)', () => {
     expect(text(rows[ROW.mid])).toContain('✓ party.png')
     // Without a fill to draw the growth in, it is drawn in shade.
     expect(text(rows[ROW.barTop])).toMatch(/▒+$/)
-    // No shelf to draw half rows in: they are blank.
-    expect(text(rows[ROW.stripTop])).toBe('')
-    expect(text(rows[ROW.stripBottom])).toBe('')
   })
 })
 
@@ -391,7 +387,7 @@ describe('the Done bar drawing itself once (M5a)', () => {
     expect(text(at(cv, 1, 0)[ROW.strip])).not.toContain('smaller')
     // Fading in, the change comes up out of the strip's grey.
     const fading = cells(at(cv, 1, 0.5)[ROW.strip]).at(-2)
-    expect(fading?.fg).toBe(mix(DARK.shelf, DARK.ok, 0.5))
+    expect(fading?.fg).toBe(mix(DARK.selectionBg, DARK.ok, 0.5))
   })
 
   it('is the resting bar once both are done', () => {

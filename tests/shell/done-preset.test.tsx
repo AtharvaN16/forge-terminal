@@ -74,25 +74,29 @@ describe('Done, with presets', () => {
     expect(strip).not.toContain('preset')
   })
 
-  it('puts p save as preset at the bottom left and → continue editing framed at the bottom right', () => {
+  it('puts p save as preset at the bottom left and → continue editing at the bottom right', () => {
     const all = lines({ save: 'key' })
     expect(all).toHaveLength(24)
-    expect(all[20]?.trimEnd()).toMatch(/^ {2}p save as preset +→ {2}continue editing$/)
-    // The frame ends on the block's edge, two cells from the window's.
-    expect(all[20]?.trimEnd().length).toBe(77)
-    expect(all[19]?.trimEnd()).toMatch(/^ +▄{22}$/)
-    expect(all[19]?.trimEnd().length).toBe(78)
-    expect(all[21]?.trimEnd()).toMatch(/^ +▀{22}$/)
-    expect(all[22]).toMatch(/^─+$/)
+    expect(all[20]?.trimEnd()).toMatch(/^ {2}p save as preset +continue editing →$/)
+    // → ends on the block's edge, two cells from the window's.
+    expect(all[20]?.trimEnd().length).toBe(78)
+    // One row: nothing above it, and never ▄ ▀ (seams in Apple Terminal).
+    expect(all[19]?.trim()).toBe('')
+    // A blank row between it and the rule.
+    expect(all[21]?.trim()).toBe('')
+    expect(all.join('')).not.toMatch(/[▄▀]/)
+    // The rule sits on the app's margins (2026-10-20): two columns in, two short.
+    expect(all[22]).toBe(`  ${'─'.repeat(76)}`)
     expect(all[23]).toMatch(/^ {3}↵ {2}convert another/)
   })
 
-  it('keeps p quiet and gives the frame the shelf grey, → on a key cap', () => {
+  it('draws continue editing → as quiet as p: the words in the border grey, → dim, no fill', () => {
     const row = frame({ save: 'key' }).split('\n')[20] ?? ''
     expect(row).toMatch(new RegExp(`${sgr(38, DARK.dim)}p`))
     expect(row).toMatch(new RegExp(`${sgr(38, DARK.border)} save as preset`))
-    expect(row).toContain(sgr(48, DARK.shelf))
-    expect(row).toMatch(new RegExp(`${sgr(48, DARK.keycapBg)}.* → `))
+    expect(row).toMatch(new RegExp(`${sgr(38, DARK.border)}continue editing `))
+    expect(row).toMatch(new RegExp(`${sgr(38, DARK.dim)}→`))
+    expect(row).not.toContain('48;2;')
   })
 
   it('says it was saved, where p was', () => {
@@ -103,12 +107,11 @@ describe('Done, with presets', () => {
     expect(lines({ save: 'update', name: 'blog' })[20]).toMatch(/^ {2}p update blog +/)
   })
 
-  it('draws the frame one row tall on a screen too short for its half rows', () => {
+  it('steps the body back on a short screen, so the foot and its blank row still fit', () => {
     const all = lines({ save: 'key' }, 17)
     expect(all).toHaveLength(17)
-    expect(all[14]?.trimEnd()).toMatch(/p save as preset +→ {2}continue editing$/)
-    // No row holds the frame's half rows alone (the strip's own are the block's width).
-    for (const l of all) expect(l.trimEnd()).not.toMatch(/^ +[▄▀]{22}$/)
+    expect(all[13]?.trimEnd()).toMatch(/p save as preset +continue editing →$/)
+    expect(all[14]?.trim()).toBe('')
   })
 
   it('draws neither where presets do not apply', () => {

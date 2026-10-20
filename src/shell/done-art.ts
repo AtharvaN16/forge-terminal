@@ -5,15 +5,16 @@ import { modeColours, type Palette, type ShellMode, SYMBOLS } from './theme.js'
 import { middleEllipsis } from './width.js'
 
 /**
- * Done (round 24, mockups/done-2026-10-round18.html): the file as it was and
- * as it is, as one bar five rows tall and as long as the larger of the two.
- * The part both share is the band, in the mode's colour, the new file's name
- * on it; what a smaller file shed is grey hatching, and what a larger one
- * grew by is a fill. Above the bar and touching it, a strip on the shelf
- * grey, padded by half a row above and below: the formats at its left
- * ("PNG → WebP", the new one leading), the change at its right. Under the
- * bar, after a blank row, the two sizes, each word over its size, the
- * smaller file on the left.
+ * Done (round 25, H1, mockups/done-2026-10-round19.html): the file as it was
+ * and as it is, as one bar seven rows tall and as long as the larger of the
+ * two. The part both share is the band, in the mode's colour, the new file's
+ * name on it; what a smaller file shed is hatching in the strip's grey, and
+ * what a larger one grew by is a fill. Above the bar and touching it, a strip
+ * in the selection grey, three rows — the words on the middle one, whole
+ * rows of the grey above and below (never ▄ ▀, which Apple Terminal seams):
+ * the formats at its left ("PNG → WebP", the new one leading), the change at
+ * its right. Under the bar, after a blank row, the two sizes, each word over
+ * its size, the smaller file on the left.
  *
  * Every number is measured — the file has been written — so the bar is a
  * picture of two real sizes, never progress (invariant 7). A file too small
@@ -148,13 +149,13 @@ function changeLabels(from: number, to: number): string[] {
 }
 
 /** How tall the bar is; three rows when the screen needs the room. */
-const BAR_ROWS = 5
+const BAR_ROWS = 7
 const COMPACT_BAR_ROWS = 3
 
 /**
- * The body, top to bottom: the strip (half a row, the formats and the
- * change, half a row), the bar (five rows), a blank row, and the two sizes,
- * each word over its size.
+ * The body, top to bottom: the strip (three rows, the formats and the
+ * change on the middle one), the bar (seven rows), a blank row, and the two
+ * sizes, each word over its size.
  */
 export function doneBody({
   palette,
@@ -188,9 +189,9 @@ export function doneBody({
    */
   chain?: readonly string[] | undefined
   /**
-   * Room is short (an error panel needs it): the bar three rows tall, the
-   * strip without its half rows and no blank row under the bar — six rows,
-   * as many as the old design, the same picture.
+   * Room is short (an error panel needs it): the strip one row, the bar
+   * three rows tall and no blank row under the bar — six rows, the same
+   * picture.
    */
   compact?: boolean | undefined
 }): Row[] {
@@ -207,12 +208,14 @@ export function doneBody({
     palette.panelBand === '' || palette.canvas === ''
       ? undefined
       : mix(modeColours(palette, facts.mode).fg, palette.canvas, 0.5)
-  const hatchFg = palette.canvas ? mix(palette.border, palette.canvas, 0.55) : palette.border
-  const shelf = fillOf(palette.shelf)
+  // The strip and the hatching share one grey (H1); a palette without fills
+  // draws no strip and hatches in its border grey.
+  const tone = fillOf(palette.selectionBg)
+  const hatchFg = tone ?? palette.border
 
-  // The strip: the formats from its left, the change flush to its right,
-  // on the shelf grey, with half a row of it above and below. The formats
-  // are quiet up to the last, which leads.
+  // The strip: the formats from its left, the change flush to its right, on
+  // the strip's grey with a whole row of it above and below. The formats are
+  // quiet up to the last, which leads.
   const steps =
     chain && chain.length > 1
       ? chain
@@ -225,7 +228,7 @@ export function doneBody({
     if (i > 0) formats.push({ text: ' → ', fg: palette.border })
     formats.push({ text: step, fg: last ? palette.fg : palette.dim, bold: last })
   })
-  const strip: Cell[] = Array.from({ length: block }, (): Cell => ({ ch: ' ', bg: shelf }))
+  const strip: Cell[] = Array.from({ length: block }, (): Cell => ({ ch: ' ', bg: tone }))
   writeOver(strip, 0, formats)
   // A narrow strip keeps the formats first: the change shortens, then goes.
   const label = changeLabels(before.bytes, after.bytes).find(
@@ -238,13 +241,11 @@ export function doneBody({
     writeOver(strip, block - stringWidth(label) - 2, [
       {
         text: ` ${label} `,
-        fg: fade < 1 ? mix(palette.shelf || palette.canvas, ink, fade) : ink,
+        fg: fade < 1 ? mix(palette.selectionBg || palette.canvas, ink, fade) : ink,
         bold: !same,
       },
     ])
   }
-  const half = (ch: string): Row =>
-    palette.shelf === '' ? [] : [blank(M), { text: ch.repeat(block), fg: palette.shelf }]
 
   // The bar's cells: the shared part on the band, then the change. What a
   // file shed is hatching on the background; growth is a fill, or shade
@@ -288,8 +289,9 @@ export function doneBody({
   const [left, right] = bars.grew ? [was, now] : [now, was]
   const ends = (a: Run, b: Run): Row => [blank(M), a, blank(Math.max(1, block - width([a, b]))), b]
 
+  const pad: Row = tone ? [blank(M), { text: ' '.repeat(block), bg: tone }] : []
   const body = [
-    ...(compact ? [row(strip)] : [half('▄'), row(strip), half('▀')]),
+    ...(compact ? [row(strip)] : [pad, row(strip), pad]),
     ...barRows,
     ...(compact ? [] : [[]]),
     ends(left.word, right.word),
@@ -333,8 +335,9 @@ export function doneNotes({
 
 /**
  * The blank rows around the body, for a screen `height` rows tall: the bar
- * and a blank row above, the keys on the last row under their rule. The body sits a row
- * above the middle of the space between them; the notes end four rows above
+ * and a blank row above, the keys on the last row under their rule. The body
+ * sits a little above the middle of the space between them, a blank row
+ * more under it than over it (H1); the notes end four rows above
  * the keys, with at least a row between them and the body. Blank rows above
  * the body go first when the screen is short; it never cuts the body.
  */
@@ -348,7 +351,7 @@ export function doneLayout({
   notes: number
 }): { top: number; between: number; bottom: number } {
   const space = height - 6
-  const centred = Math.max(0, Math.floor((space - body) / 2) - 1)
+  const centred = Math.max(0, Math.floor((space - body - 1) / 2))
   const fixed = 4 + body
   if (notes === 0) {
     const top = Math.min(centred, Math.max(0, height - fixed))
