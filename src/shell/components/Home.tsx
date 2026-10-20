@@ -223,8 +223,11 @@ export function KeyRow({
   lead = HOME_MARGIN + 1,
   pressed,
   off = [],
+  note,
 }: KeySet & {
   width: number
+  /** A mode's standing caveat, in the app's orange (`larger`) at the row's left edge after the keys; dropped where it does not fit. */
+  note?: string | undefined
   /** Where the first key starts: one cell in from the content above it. */
   lead?: number
   /** A key just pressed, drawn inverted for a moment so the press shows (M6b). */
@@ -243,9 +246,16 @@ export function KeyRow({
   )
   let shown = [...foot]
   // A footnote item with no word is a sentence on its own ("nothing is saved until it is done").
-  const note = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
-  while (shown.length > 0 && left + 3 + stringWidth(note()) + 1 > width) shown = shown.slice(0, -1)
-  const gap = Math.max(1, width - left - stringWidth(note()) - 1)
+  const footText = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
+  // The note only where the whole footnote still fits beside it.
+  const noteWidth = note ? (main.length > 0 ? 2 : 0) + stringWidth(note) : 0
+  const said = note !== undefined && left + noteWidth + 1 + stringWidth(footText()) + 1 <= width
+  while (
+    shown.length > 0 &&
+    left + (said ? noteWidth + 1 : 3) + stringWidth(footText()) + 1 > width
+  )
+    shown = shown.slice(0, -1)
+  const gap = Math.max(1, width - left - (said ? noteWidth : 0) - stringWidth(footText()) - 1)
 
   return (
     <Box flexShrink={0}>
@@ -272,6 +282,9 @@ export function KeyRow({
             >{` ${word}`}</Text>
           </Text>
         ))}
+        {said ? (
+          <Text color={colourProp(palette.larger)}>{`${main.length > 0 ? '  ' : ''}${note}`}</Text>
+        ) : null}
         {' '.repeat(gap)}
         {/* The footnote's keys bright, what they do faded (2026-10-19); an item
             with no word is a sentence, faded whole. */}
@@ -617,13 +630,12 @@ export function Home({
             width,
             open: false,
             clear: staged !== undefined,
-            note: MODE_NOTES[mode],
           })}
         />
       )}
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
-      <KeyRow {...keys} width={width} />
+      <KeyRow {...keys} width={width} note={typing ? undefined : MODE_NOTES[mode]} />
     </Box>
   )
 }

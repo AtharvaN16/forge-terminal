@@ -1,5 +1,6 @@
+import { scrolledLines } from './about-art.js'
 import type { Command } from './commands.js'
-import { blank, type Row, type Run, width as runsWidth } from './home-art.js'
+import { blank, HOME_MARGIN, type Row, type Run, width as runsWidth } from './home-art.js'
 import { modeColours, type Palette } from './theme.js'
 
 /**
@@ -9,7 +10,7 @@ import { modeColours, type Palette } from './theme.js'
  * sits in its own column, and the chosen one says what it does after it
  * (2026-10-18: only the chosen one). The chosen row is a band
  * across the width with a ▌ strip, the mode's colour for a mode and the
- * menu's gold for a setting. Everything fits; nothing scrolls.
+ * menu's gold for a setting. A window too short for all of it scrolls.
  */
 
 /** Where each row's description starts: the strip, a space, the name, and room. */
@@ -30,26 +31,34 @@ export function menuListRows(o: {
   typed: string
   selected: number
   /**
-   * The rows there are for it. Short of them, the list tightens rather than
-   * scrolling or being cut: first the blank under each heading goes, then the
-   * one between the groups (a window kept a row short by its painted margin,
-   * or a sixth mode).
+   * The rows there are for it. Short of them, the list scrolls with the chosen
+   * row kept in view, a bar on its right and "↓ n more" under it, as About's
+   * does; the gaps under the headings and between the groups stay.
    */
   rows?: number
 }): Row[] {
-  const draw = (underHeading: boolean, between: boolean) => listRows(o, underHeading, between)
-  const full = draw(true, true)
+  const full = listRows(o, o.width)
   if (o.rows === undefined || full.length <= o.rows) return full
-  const tighter = draw(false, true)
-  return tighter.length <= o.rows ? tighter : draw(false, false)
+  // The bar takes the last column and the note a row; the list is drawn two
+  // columns narrower so the chosen band is not clipped.
+  const room = Math.max(1, o.rows - 1)
+  const lines = listRows(o, o.width - 2)
+  const chosen = Math.max(
+    0,
+    lines.findIndex((r) => r[0]?.text === '▌'),
+  )
+  const start = Math.min(Math.max(0, chosen - Math.floor(room / 2)), lines.length - room)
+  return scrolledLines({
+    palette: o.palette,
+    width: o.width + HOME_MARGIN,
+    lines,
+    start,
+    room,
+  })
 }
 
-function listRows(
-  o: Parameters<typeof menuListRows>[0],
-  underHeading: boolean,
-  between: boolean,
-): Row[] {
-  const { palette: p, width: w } = o
+function listRows(o: Parameters<typeof menuListRows>[0], w: number): Row[] {
+  const { palette: p } = o
   const out: Row[] = []
   const groups = [
     ['Settings', o.items.filter((c) => c.group === 'settings')],
@@ -57,13 +66,13 @@ function listRows(
   ] as const
   for (const [label, members] of groups) {
     if (members.length === 0) continue
-    if (out.length > 0 && between) out.push([])
+    if (out.length > 0) out.push([])
     out.push([
       blank(2),
       { text: label, fg: p.brand, bold: true },
       { text: ` ${'─'.repeat(Math.max(0, w - 3 - label.length))}`, fg: p.faint },
     ])
-    if (underHeading) out.push([])
+    out.push([])
     for (const c of members) {
       const chosen = o.items.indexOf(c) === o.selected
       const strip = c.mode ? modeColours(p, c.mode).fg : p.brand

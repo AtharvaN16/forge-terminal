@@ -84,21 +84,22 @@ describe('menuListRows', () => {
     expect(row.find((r) => r.text === '/ex')).toMatchObject({ fg: DARK.fg, bold: true })
   })
 
-  it('fits the rows it is given: first without the blank under each heading, then without the one between', () => {
+  it('scrolls rather than dropping its gaps when the rows are short', () => {
     const full = rows()
     const list = listCommands('')
-    const draw = (n: number) =>
-      menuListRows({ palette: DARK, width: W, ...list, selected: 0, rows: n })
+    const draw = (n: number, selected = 0) =>
+      menuListRows({ palette: DARK, width: W, ...list, selected, rows: n }).map(text)
     expect(draw(full.length)).toHaveLength(full.length)
-    const tighter = draw(full.length - 1).map(text)
-    expect(tighter.length).toBeLessThanOrEqual(full.length - 1)
-    // no blank under a heading, a blank still between the groups
-    expect(tighter[1]).toContain('/theme')
-    expect(tighter[tighter.findIndex((l) => l.startsWith('  Modes')) - 1]).toBe('')
-    const tightest = draw(full.length - 3).map(text)
-    expect(tightest.some((l) => l === '')).toBe(false)
-    // every command is still there
-    for (const c of list.items) expect(tightest.join('\n')).toContain(`/${c.name}`)
+    const short = draw(full.length - 3)
+    expect(short).toHaveLength(full.length - 3)
+    expect(short.at(-1)).toMatch(/↓ \d+ more/)
+    // the blank under the first heading is still there
+    expect(short[1]?.replace(/[┃│]/g, '').trim()).toBe('')
+    expect(short.join('\n')).toContain('┃')
+    // the chosen command is always in view, last one too
+    const last = list.items.length - 1
+    expect(draw(full.length - 3, last).join('\n')).toContain(`/${list.items[last]?.name}`)
+    expect(draw(full.length - 3, last).at(-1)).toBe('')
   })
 
   it('says so when nothing matches', () => {

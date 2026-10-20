@@ -5,7 +5,6 @@ import {
   brandRows,
   type FormatKinds,
   formatRows,
-  HOME_MARGIN,
   MODE_FORMATS,
   menuHintRow,
   oppositeColour,
@@ -143,18 +142,6 @@ describe('the "/ menu" hint (mockups/transcribe-2026-10-round2.html, "/ menu")',
 
   it('keeps to the width it is given', () => {
     expect(text(menuHintRow({ palette: DARK, width: 40, open: false }))).toHaveLength(40)
-  })
-
-  it('says a mode’s note at the left end, dim, and drops it where it does not fit', () => {
-    const note = 'Currently only English transcription supported'
-    const row = menuHintRow({ palette: DARK, width: 80, open: false, note })
-    expect(text(row)).toHaveLength(80)
-    expect(text(row).startsWith(`${' '.repeat(HOME_MARGIN + 1)}${note}`)).toBe(true)
-    expect(text(row).endsWith(' /  menu ')).toBe(true)
-    expect(row.find((run) => run.text === note)).toMatchObject({ fg: DARK.dim })
-    const narrow = menuHintRow({ palette: DARK, width: 50, open: false, note })
-    expect(text(narrow)).toHaveLength(50)
-    expect(text(narrow)).not.toContain('English')
   })
 })
 

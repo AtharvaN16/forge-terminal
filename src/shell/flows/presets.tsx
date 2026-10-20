@@ -16,7 +16,7 @@ import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { Trail } from '../bar-art.js'
 import type { DonePreset } from '../components/Done.js'
 import { PresetEditorScreen, type PresetPreview } from '../components/PresetEditor.js'
-import { type PresetFolder, PresetSaveScreen } from '../components/PresetSave.js'
+import { PresetSaveScreen, presetFolders } from '../components/PresetSave.js'
 import { type Editor, type OpId, reasonsFor } from '../preset-editor.js'
 import { valueText } from '../preset-editor-art.js'
 import type { ShellMode } from '../theme.js'
@@ -276,21 +276,6 @@ export function usePresetsOnDone(o: {
     } else {
       const presets = o.prefs.presets ?? []
       const updating = saved?.changed ? saved.name : undefined
-      const folders: PresetFolder[] = [
-        ...(o.prefs.defaultOutput === '~/Desktop'
-          ? []
-          : [
-              {
-                label: basename(o.prefs.defaultOutput),
-                value: o.prefs.defaultOutput,
-                path: o.prefs.defaultOutput,
-              },
-            ]),
-        { label: 'Desktop', value: '~/Desktop', path: '~/Desktop' },
-        { label: 'Same location', value: 'same' },
-        { label: 'Downloads', value: '~/Downloads', path: '~/Downloads' },
-        { label: 'Ask each time', value: 'ask' },
-      ]
       screen = (
         <PresetSaveScreen
           mode={o.mode}
@@ -300,9 +285,13 @@ export function usePresetsOnDone(o: {
           height={o.height}
           name={updating ?? ''}
           taken={presets.map((p) => p.name).filter((n) => n !== updating)}
-          folders={folders}
+          folders={presetFolders(o.prefs.defaultOutput)}
           defaultValue={o.prefs.defaultOutput}
           onCancel={() => o.setOpen(null)}
+          onMakeDefault={(path) => {
+            o.setPrefs((p) => ({ ...p, defaultOutput: path }))
+            void o.save({ defaultOutput: path })
+          }}
           onSave={({ name, saveTo }) => {
             const preset: Preset = { name, steps: steps ?? stepsOfResult(result), saveTo }
             const next = [...presets.filter((p) => p.name !== name), preset]

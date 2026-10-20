@@ -25,6 +25,16 @@ export const NAME_WIDTH = 26
 const LABEL_WIDTH = 8
 /** Where a row's words start: the edge, two cells, the label. */
 export const CONTENT_AT = 1 + 2 + LABEL_WIDTH
+/**
+ * The labels' column: how wide, and the folders' label, a line a row from
+ * the first. Save as's is "to", eight wide; Save as preset's says more, kept
+ * narrow over two lines so it reads as a label, not as one of the folders.
+ */
+export interface Labels {
+  width: number
+  to: string[]
+}
+const SAVE_AS_LABELS: Labels = { width: LABEL_WIDTH, to: ['to'] }
 /** A folder's name is padded to this on the highlighted row, so the paths line up. */
 const NAME_COLUMN = 16
 /** The tag on the default folder. */
@@ -108,8 +118,8 @@ export function fieldRow({
 }
 
 /** A label for the labels' column, or the column's blank. */
-export const label = (palette: Palette, text = ''): Run => ({
-  text: text.padEnd(LABEL_WIDTH),
+export const label = (palette: Palette, text = '', width = LABEL_WIDTH): Run => ({
+  text: text.padEnd(width),
   fg: palette.border,
 })
 
@@ -118,16 +128,24 @@ export function underlineRow({
   palette,
   width,
   plain = false,
+  labels = SAVE_AS_LABELS,
+  text = '',
 }: {
   palette: Palette
   width: number
   plain?: boolean
+  labels?: Labels
+  /** The name's label, when it runs to a second line. */
+  text?: string
 }): Row {
   return fieldRow({
     palette,
     width,
     plain,
-    runs: [label(palette), { text: '▔'.repeat(NAME_WIDTH), fg: palette.accent }],
+    runs: [
+      label(palette, text, labels.width),
+      { text: '▔'.repeat(NAME_WIDTH), fg: palette.accent },
+    ],
   })
 }
 
@@ -171,12 +189,15 @@ export function filesRow({
 }
 
 /** How wide the list is, after the labels' column, with a cell to spare at the end. */
-const listWidth = (width: number) => Math.max(0, width - CONTENT_AT - 1)
+const listWidth = (width: number, labels = SAVE_AS_LABELS) =>
+  Math.max(0, width - 1 - 2 - labels.width - 1)
 /** The column a row's tag ("default", "last saved") ends at: a cell short of the list's band. */
-export const tagEnd = (width: number) => CONTENT_AT + listWidth(width) - 1
+export const tagEnd = (width: number, labels = SAVE_AS_LABELS) =>
+  1 + 2 + labels.width + listWidth(width, labels) - 1
 
 /**
- * A list row, `first` carrying the "to" label: `body` on `band` the list's
+ * A list row, `first` carrying the "to" label — or, given `line`, its row's
+ * line of a label that runs over more than one: `body` on `band` the list's
  * width, `right` at its far end with a cell after it, where the default's
  * tag sits.
  */
@@ -188,6 +209,8 @@ function listRow({
   right = [],
   band,
   plain,
+  labels,
+  line,
 }: {
   palette: Palette
   width: number
@@ -196,8 +219,10 @@ function listRow({
   right?: Row
   band: string | undefined
   plain: boolean
+  labels: Labels
+  line?: number | undefined
 }): Row {
-  const w = listWidth(width)
+  const w = listWidth(width, labels)
   const tail = right.length ? [...right, { text: ' ', bg: band }] : []
   const used = tail.reduce((n, r) => n + stringWidth(r.text), 0)
   const banded = (r: Row) => r.map((x) => (x.bg ? x : { ...x, bg: band }))
@@ -206,7 +231,7 @@ function listRow({
     width,
     plain,
     runs: [
-      label(palette, first ? 'to' : ''),
+      label(palette, labels.to[first ? 0 : (line ?? -1)] ?? '', labels.width),
       ...padTo(banded(body), Math.max(0, w - used), band),
       ...banded(tail),
     ],
@@ -228,6 +253,9 @@ export interface FolderRowSpec {
   /** False in the compact band: names only. */
   showPath?: boolean
   plain?: boolean
+  labels?: Labels
+  /** Its row's place in the list, for a label over more than one line. */
+  line?: number
 }
 
 /**
@@ -246,6 +274,8 @@ export function folderRow({
   isLast = false,
   showPath = true,
   plain = false,
+  labels = SAVE_AS_LABELS,
+  line,
 }: FolderRowSpec): Row {
   const fill = fillOf(palette, plain)
   const bare = fill === undefined
@@ -255,7 +285,8 @@ export function folderRow({
     : isLast
       ? [{ text: LAST_WORD, fg: palette.border }]
       : []
-  const room = listWidth(width) - 2 - (tag.length ? stringWidth(tag[0]?.text ?? '') + 1 : 0) - 1
+  const room =
+    listWidth(width, labels) - 2 - (tag.length ? stringWidth(tag[0]?.text ?? '') + 1 : 0) - 1
   const shown = middleEllipsis(name, Math.max(1, Math.min(room, NAME_COLUMN * 3)))
   const body: Row = selected
     ? [
@@ -275,7 +306,7 @@ export function folderRow({
           : []),
       ]
     : [{ text: '  ' }, { text: shown, fg: palette.dim }]
-  return listRow({ palette, width, first, body, right: tag, band, plain })
+  return listRow({ palette, width, first, body, right: tag, band, plain, labels, line })
 }
 
 /**
@@ -291,19 +322,26 @@ export function newFolderRow({
   name,
   isNew,
   plain = false,
+  labels = SAVE_AS_LABELS,
+  line,
 }: {
   palette: Palette
   width: number
   name: string
   isNew: boolean
   plain?: boolean
+  labels?: Labels
+  line?: number
 }): Row {
   const fill = fillOf(palette, plain)
   const bare = fill === undefined
   const band = bare ? undefined : palette.fieldBand
   const caret: Run = bare ? { text: '▏', fg: palette.fg } : { text: ' ', bg: palette.fg }
   const right: Row = isNew ? [{ text: NEW_WORD, fg: palette.border }] : []
-  const room = Math.max(1, listWidth(width) - 2 - 2 - 1 - (isNew ? NEW_WORD.length + 1 : 0) - 1)
+  const room = Math.max(
+    1,
+    listWidth(width, labels) - 2 - 2 - 1 - (isNew ? NEW_WORD.length + 1 : 0) - 1,
+  )
   // A long name keeps its end, where the typing is.
   const shown =
     stringWidth(name) > room
@@ -317,6 +355,8 @@ export function newFolderRow({
     first: false,
     band,
     plain,
+    labels,
+    line,
     right,
     body: [
       { text: '  ' },
@@ -358,6 +398,8 @@ export function pathRow({
   first = false,
   showPath = true,
   plain = false,
+  labels = SAVE_AS_LABELS,
+  at,
 }: {
   palette: Palette
   width: number
@@ -365,6 +407,9 @@ export function pathRow({
   first?: boolean
   showPath?: boolean
   plain?: boolean
+  labels?: Labels
+  /** Its row's place in the list, for a label over more than one line. */
+  at?: number
 }): Row {
   const fill = fillOf(palette, plain)
   // Without fills — NO_COLOR, or a palette with none — the caret is a glyph.
@@ -373,7 +418,7 @@ export function pathRow({
   const band = bare ? undefined : highlighted ? palette.fieldBand : fill
   const caret: Run = bare ? { text: '▏', fg: palette.fg } : { text: ' ', bg: palette.fg }
   const strip: Row = highlighted ? [{ text: '▌', fg: palette.fg }, { text: ' ' }] : [{ text: '  ' }]
-  const listRoom = listWidth(width) - 2
+  const listRoom = listWidth(width, labels) - 2
 
   if (line.kind === 'rest' || line.kind === 'empty') {
     // Highlighted with nothing typed, the caret sits on the invitation's first letter.
@@ -389,6 +434,8 @@ export function pathRow({
       first,
       band,
       plain,
+      labels,
+      line: at,
       body: [
         ...strip,
         ...words,
@@ -406,6 +453,8 @@ export function pathRow({
       first,
       band,
       plain,
+      labels,
+      line: at,
       body: [
         ...strip,
         { text: name.padEnd(NAME_COLUMN + 4), fg: palette.fg, bold: true },
@@ -437,6 +486,8 @@ export function pathRow({
     first,
     band,
     plain,
+    labels,
+    line: at,
     right,
     body: [
       ...strip,

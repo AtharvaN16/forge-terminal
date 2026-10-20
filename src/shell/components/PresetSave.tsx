@@ -1,17 +1,27 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { Box } from 'ink'
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { expandTilde } from '../../config/preferences.js'
 import type { Result } from '../../core/types.js'
+import { displayName, displayPath } from '../../utils/display-path.js'
+import { lastSegment } from '../../utils/last-segment.js'
 import type { Trail } from '../bar-art.js'
 import { windowOver } from '../colour/system-art.js'
+import { completePath, isFolderCompletion } from '../complete.js'
+import { destinationRows, isPathQuery } from '../destinations.js'
 import { blank, type Row } from '../home-art.js'
+import { isStrayEscapeSequence } from '../mouse.js'
 import {
   edgeColour,
   fieldBlank,
   fieldRow,
   folderRow,
+  type Labels,
   label,
   NAME_WIDTH,
   newFolderRow,
+  type PathLine,
   padTo,
   pathRow,
   ruleRow,
@@ -21,6 +31,7 @@ import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
+import { bandFor } from '../width.js'
 import { HeaderBar } from './HeaderBar.js'
 import { KeyRow, Runs } from './Home.js'
 import { doneUnder } from './PresetEditor.js'
@@ -36,11 +47,74 @@ export interface PresetFolder {
 const WINDOW_WIDTH = 68
 
 /**
+ * "preset name", "save files to": each no wider than eight, run over two
+ * lines, with room after — so a label never reads as one of the folders.
+ */
+const LABELS: Labels = { width: 10, to: ['save', 'files to'] }
+const NAME_LABEL = ['preset', 'name']
+
+/** The folder `value` names, made absolute: what two rows are compared by. */
+const folderOf = (value: string) => resolve(expandTilde(value))
+
+/** Named the way Save as names a folder: Desktop and Downloads by name, the rest by their last part. */
+function folderLabel(value: string): string {
+  const at = folderOf(value)
+  if (at === folderOf('~/Desktop')) return 'Desktop'
+  if (at === folderOf('~/Downloads')) return 'Downloads'
+  return lastSegment(at) || at
+}
+
+/**
+ * The places Save as preset lists: the default first, then Desktop, Same
+ * location, Downloads and Ask each time — the default's own folder listed
+ * once, however it is written (`~/Desktop` or `/Users/…/Desktop`), as Save
+ * as lists it once.
+ */
+export function presetFolders(defaultOutput: string): PresetFolder[] {
+  const named = (value: string): PresetFolder => ({
+    label: folderLabel(value),
+    value,
+    path: displayPath(folderOf(value)),
+  })
+  const seen = new Set<string>()
+  return [
+    named(defaultOutput),
+    named('~/Desktop'),
+    { label: 'Same location', value: 'same' },
+    named('~/Downloads'),
+    { label: 'Ask each time', value: 'ask' },
+  ].filter((f) => {
+    if (f.path === undefined) return true
+    const at = folderOf(f.value)
+    if (seen.has(at)) return false
+    seen.add(at)
+    return true
+  })
+}
+
+/**
+ * Where the highlight is: a folder, by the folder it names — so it stays put
+ * when the list reorders (making a folder the default moves it to the top) —
+ * or the path row.
+ */
+const PATH_ROW = Symbol('path row')
+type At = string | typeof PATH_ROW
+/** What a row is known by: the folder it names, or `same` / `ask`. */
+const keyOf = (f: PresetFolder) => (f.path === undefined ? f.value : folderOf(f.value))
+
+/** A path the way it is shown: `~/Desktop`. */
+const display = (path: string) => displayPath(folderOf(path))
+
+/**
  * Save as preset (round 9): the centred window over Done, holding Save as's
  * own block — the name on the mode's tint, underlined, a rule, the folders
  * with the default tagged, the path row. ↑↓ move the folders while the name
  * keeps the caret, `/` names a new folder inside the highlighted one, as in
- * Save as. Its coloured edge is left out: the window's frame is the edge.
+ * Save as, and tab makes the highlighted folder the default, as there too.
+ * ↓ past the last folder reaches the path row, as in Save as:
+ * typing there names a place — tab taking the rest of a matching folder — or
+ * narrows the folders by name, and a drop anywhere lands on it. Its coloured
+ * edge is left out: the window's frame is the edge.
  */
 export function PresetSaveScreen({
   mode,
@@ -53,6 +127,7 @@ export function PresetSaveScreen({
   folders,
   defaultValue,
   onSave,
+  onMakeDefault,
   onCancel,
 }: {
   mode: ShellMode
@@ -67,48 +142,198 @@ export function PresetSaveScreen({
   folders: PresetFolder[]
   defaultValue: string
   onSave: (preset: { name: string; saveTo: string }) => void
+  /** tab on a highlighted folder that is not already the default: its absolute path. */
+  onMakeDefault: (path: string) => void
   onCancel: () => void
 }) {
   const palette = useTheme()
   const [name, setName] = useState(initialName)
-  const [at, setAt] = useState(0)
   const [making, setMaking] = useState<string | null>(null)
   const isTaken = taken.includes(name)
-  const folder = folders[at]
+
+  /**
+   * What is on the path row. Keys are read in one tick, before React
+   * re-renders — a dropped path and the ↵ behind it can land together — so
+   * the handlers read `pathRef`; `path` draws. `dropped`: it came in one piece.
+   */
+  const [path, setPathState] = useState('')
+  const pathRef = useRef('')
+  const [dropped, setDropped] = useState(false)
+  const setPath = (next: string, drop = false) => {
+    pathRef.current = next
+    setPathState(next)
+    setDropped(drop)
+  }
+  const isPath = isPathQuery(path)
+  // Text that is not a path narrows the folders by name.
+  const filter = path !== '' && !isPath ? path.toLowerCase() : ''
+  const shown = filter ? folders.filter((f) => f.label.toLowerCase().includes(filter)) : folders
+  const place = useMemo(
+    () => (isPath ? destinationRows(path, [], '', display)[0] : undefined),
+    [isPath, path],
+  )
+  const placeMissing = useMemo(
+    () => (place ? !existsSync(expandTilde(place.value)) : false),
+    [place],
+  )
+
+  const [at, setAt] = useState<At>(() => (folders[0] ? keyOf(folders[0]) : PATH_ROW))
+  const atRef = useRef<At>(at)
+  atRef.current = at
+  const go = (next: At) => {
+    atRef.current = next
+    setAt(next)
+  }
+  const onPath = at === PATH_ROW
+  const index = shown.findIndex((f) => keyOf(f) === at)
+  const folder = shown[index]
+  const isDefault = (f: PresetFolder) =>
+    f.path !== undefined && folderOf(f.value) === folderOf(defaultValue)
+
+  /** ↑↓: through the folders, then onto the path row; stopping at the ends. */
+  const move = (delta: number) => {
+    const from = atRef.current
+    if (from === PATH_ROW) {
+      if (delta > 0) return
+      // A filter belongs to the path row; leaving it lets the list go.
+      const narrowed = pathRef.current !== '' && !isPathQuery(pathRef.current)
+      if (narrowed) setPath('')
+      const last = (narrowed ? folders : shown).at(-1)
+      if (last) go(keyOf(last))
+      return
+    }
+    const i = shown.findIndex((f) => keyOf(f) === from)
+    const next = i === -1 ? (delta > 0 ? 0 : -1) : i + delta
+    if (next < 0) return
+    const to = shown[next]
+    go(to ? keyOf(to) : PATH_ROW)
+  }
+
+  /** The rest of a folder matching a typed path, for tab; none for a drop. */
+  const [ghost, setGhost] = useState('')
+  useEffect(() => {
+    setGhost('')
+    if (!onPath || !isPath || dropped) return
+    let live = true
+    void completePath(path).then((found) => {
+      if (!live || pathRef.current !== path) return
+      const next = found.find(
+        (c) => isFolderCompletion(c.insert) && c.insert.startsWith(path) && c.insert !== path,
+      )
+      setGhost(next ? next.insert.slice(path.length) : '')
+    })
+    return () => {
+      live = false
+    }
+  }, [onPath, isPath, dropped, path])
+
+  const save = (saveTo: string) => {
+    if (name !== '' && !isTaken) onSave({ name, saveTo })
+  }
+  /** ↵ on the path row: the place typed — a dropped file's folder — or the first folder it narrows to. */
+  const savePath = (text: string) => {
+    if (isPathQuery(text)) {
+      const row = destinationRows(text, [], '', display)[0]
+      if (row) save(folderOf(row.value))
+      return
+    }
+    const hit = folders.find((f) => f.label.toLowerCase().includes(text.toLowerCase()))
+    if (text !== '' && hit) save(hit.value)
+  }
+
+  /**
+   * Text that arrived in one piece is a drop. Ink does not split a chunk that
+   * holds both text and a line ending: a dropped path and the terminal's own
+   * Enter land as one event, and the path saves.
+   */
+  const take = (input: string) => {
+    const breakAt = input.search(/[\r\n]/)
+    const text = breakAt === -1 ? input : input.slice(0, breakAt)
+    const next = pathRef.current + text
+    setPath(next, text.length > 1)
+    go(PATH_ROW)
+    if (breakAt !== -1) savePath(next)
+  }
 
   useKeys((input, k) => {
+    if (isStrayEscapeSequence(input)) return
     if (making !== null) {
       if (k.escape) setMaking(null)
       else if (k.return && making.trim() !== '' && folder) {
-        onSave({ name, saveTo: `${folder.value}/${making.trim()}` })
+        save(`${folder.value}/${making.trim()}`)
       } else if (k.backspace || k.delete) setMaking(making.slice(0, -1))
       else if (/^[A-Za-z0-9 _.-]$/.test(input)) setMaking(making + input)
       return
     }
-    if (k.escape) onCancel()
-    else if (k.return) {
-      if (name !== '' && !isTaken && folder) onSave({ name, saveTo: folder.value })
-    } else if (k.upArrow) setAt((a) => Math.max(0, a - 1))
-    else if (k.downArrow) setAt((a) => Math.min(folders.length - 1, a + 1))
-    else if (k.backspace || k.delete) setName((n) => n.slice(0, -1))
+    const here = atRef.current
+    if (k.return) {
+      if (here === PATH_ROW) savePath(pathRef.current)
+      else if (folder) save(folder.value)
+    } else if (k.escape) {
+      if (here === PATH_ROW && pathRef.current !== '') setPath('')
+      else if (here === PATH_ROW) move(-1)
+      else onCancel()
+    } else if (k.upArrow || k.downArrow) move(k.downArrow ? 1 : -1)
+    else if (k.tab) {
+      if (here === PATH_ROW && ghost) setPath(pathRef.current + ghost)
+      else if (folder?.path && !isDefault(folder)) onMakeDefault(folderOf(folder.value))
+    } else if (k.backspace || k.delete) {
+      if (here === PATH_ROW) setPath(pathRef.current.slice(0, -1))
+      else setName((n) => n.slice(0, -1))
+    } else if (k.ctrl || k.meta || !input) return
+    else if (here === PATH_ROW) take(input)
+    // A drop: a path arriving in one piece goes to the path row.
+    else if (input.length > 1 && isPathQuery(input.split(/[\r\n]/)[0] ?? '')) take(input)
     else if (input === '/' && folder?.path) setMaking('')
     else if (/^[A-Za-z0-9-]$/.test(input) && !(name === '' && input === '-')) {
       setName((n) => (n.length < NAME_WIDTH - 2 ? n + input : n))
     }
   })
 
+  const line: PathLine = (() => {
+    if (path === '') return onPath ? { kind: 'empty' } : { kind: 'rest' }
+    if (place && dropped && !placeMissing) {
+      return {
+        kind: 'place',
+        label:
+          place.label === 'Use this folder' ? displayName(place.value) || place.value : place.label,
+        path: display(place.value),
+        highlighted: onPath,
+      }
+    }
+    return {
+      kind: 'typing',
+      text: path,
+      ghost: onPath ? ghost : '',
+      note: filter
+        ? shown.length === 0
+          ? 'nomatch'
+          : undefined
+        : onPath && ghost
+          ? 'complete'
+          : placeMissing
+            ? 'new'
+            : undefined,
+      highlighted: onPath,
+    }
+  })()
+
   const p = palette
   // As wide as Continue editing's, narrower in a narrow terminal.
   const W = Math.min(WINDOW_WIDTH, width - 4)
   const fw = W - 2
-  const caret = making === null ? [{ text: ' ', bg: p.fg }] : []
+  // As Save as: names only in a compact terminal.
+  const showPath = bandFor(width) !== 'compact'
+  // A row's line of the list, counting the new folder's row while it is open.
+  const lineOf = (i: number) => i + (making !== null && index !== -1 && index < i ? 1 : 0)
+  const caret = making === null && !onPath ? [{ text: ' ', bg: p.fg }] : []
   const lines: Row[] = [
     fieldBlank({ palette: p, width: fw }),
     fieldRow({
       palette: p,
       width: fw,
       runs: [
-        label(p, 'name'),
+        label(p, NAME_LABEL[0], LABELS.width),
         ...padTo([{ text: ` ${name}`, fg: p.fg, bg: p.band }, ...caret], NAME_WIDTH, p.band),
       ],
     }),
@@ -116,16 +341,19 @@ export function PresetSaveScreen({
       ? fieldRow({
           palette: p,
           width: fw,
-          runs: [label(p), { text: '▔'.repeat(NAME_WIDTH), fg: p.fail }],
+          runs: [
+            label(p, NAME_LABEL[1], LABELS.width),
+            { text: '▔'.repeat(NAME_WIDTH), fg: p.fail },
+          ],
         })
-      : underlineRow({ palette: p, width: fw }),
+      : underlineRow({ palette: p, width: fw, labels: LABELS, text: NAME_LABEL[1] }),
     ...(isTaken
       ? [
           fieldRow({
             palette: p,
             width: fw,
             runs: [
-              label(p),
+              label(p, '', LABELS.width),
               { text: name, fg: p.fail, bold: true },
               { text: ' is taken', fg: p.fail },
             ],
@@ -134,21 +362,41 @@ export function PresetSaveScreen({
       : []),
     ruleRow({ palette: p, width: fw }),
     fieldBlank({ palette: p, width: fw }),
-    ...folders.flatMap((f, i) => [
+    ...shown.flatMap((f, i) => [
       folderRow({
+        line: lineOf(i),
         palette: p,
         width: fw,
         first: i === 0,
         label: f.label,
         path: f.path ?? '',
-        selected: i === at && making === null,
-        isDefault: f.value === defaultValue,
+        selected: i === index && making === null,
+        isDefault: isDefault(f),
+        showPath,
+        labels: LABELS,
       }),
-      ...(making !== null && i === at
-        ? [newFolderRow({ palette: p, width: fw, name: making, isNew: true })]
+      ...(making !== null && i === index
+        ? [
+            newFolderRow({
+              palette: p,
+              width: fw,
+              name: making,
+              isNew: true,
+              labels: LABELS,
+              line: i + 1,
+            }),
+          ]
         : []),
     ]),
-    pathRow({ palette: p, width: fw, line: { kind: 'rest' } }),
+    pathRow({
+      palette: p,
+      width: fw,
+      line,
+      first: shown.length === 0,
+      showPath,
+      labels: LABELS,
+      at: lineOf(shown.length),
+    }),
     fieldBlank({ palette: p, width: fw }),
   ]
   // Save as's block without its coloured edge: the window's frame is the edge here.
@@ -167,11 +415,33 @@ export function PresetSaveScreen({
   const keys: Array<[string, string]> =
     making !== null
       ? [['↵', 'create and save']]
-      : [
-          ['↵', 'save'],
-          ['↑↓', 'folder'],
-          ['/', 'new folder'],
-        ]
+      : !onPath
+        ? [
+            ['↵', 'save'],
+            ['↑↓', 'folder'],
+            // As Save as: on a folder, not on Same location or Ask each time.
+            ...(folder?.path
+              ? ([
+                  ['tab', 'make default'],
+                  ['/', 'new folder'],
+                ] as Array<[string, string]>)
+              : []),
+          ]
+        : path === '' || (filter && shown.length === 0)
+          ? [['↑', 'folders']]
+          : placeMissing && !filter
+            ? [
+                ['↵', 'create and save'],
+                ['↑', 'folders'],
+              ]
+            : [
+                ['↵', 'save here'],
+                ...(ghost ? [['tab', 'complete'] as [string, string]] : []),
+                ['↑', 'folders'],
+              ]
+  const foot: Array<[string, string]> = [
+    ['esc', !onPath ? 'cancel' : path !== '' ? 'clear path' : 'back'],
+  ]
   return (
     <Box flexDirection="column" width={width} height={height}>
       <HeaderBar mode={mode} trail={trail} width={width} />
@@ -180,7 +450,7 @@ export function PresetSaveScreen({
         <Runs key={i} row={row.length === 0 ? [blank(1)] : row} />
       ))}
       <Text color={colourProp(p.border)}>{'─'.repeat(width)}</Text>
-      <KeyRow main={keys} foot={[['esc', 'cancel']]} width={width} />
+      <KeyRow main={keys} foot={foot} width={width} />
     </Box>
   )
 }

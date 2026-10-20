@@ -156,7 +156,7 @@ export const MODE_DROP_TITLES: Partial<Record<ShellMode, string>> = {
   transcribe: 'Drop a video or audio file',
 }
 
-/** What a mode cannot do yet, said on home's "/ menu" row at its left end (`menuHintRow`). */
+/** What a mode cannot do yet, said on home's key row at its left end (`KeyRow`'s `note`). */
 export const MODE_NOTES: Partial<Record<ShellMode, string>> = {
   transcribe: 'Currently only English transcription supported',
 }
@@ -374,8 +374,6 @@ export function tabRows({ palette, mode }: { palette: Palette; mode: ShellMode }
  * cell is one short of the edge (mockups/transcribe-2026-10-round2.html,
  * "/ menu"): the slash on a keycap, then the word in dim; in the menu's gold
  * while the menu is open. Home draws it at rest; the menu popup draws it open.
- * A mode's standing caveat (transcribe's English only, 2026-10-19) sits at
- * the row's left end, dim, and goes first when the row is too narrow.
  */
 export function menuHintRow({
   palette,
@@ -383,7 +381,6 @@ export function menuHintRow({
   open,
   clear = false,
   menu = true,
-  note,
 }: {
   palette: Palette
   width: number
@@ -392,8 +389,6 @@ export function menuHintRow({
   clear?: boolean
   /** "/ menu" at the right; off while a path is being typed. */
   menu?: boolean
-  /** A dim sentence at the row's left, after "esc clear" if that is there. */
-  note?: string | undefined
 }): Row {
   const hint: Row = !menu
     ? []
@@ -416,13 +411,7 @@ export function menuHintRow({
           { text: ' esc ', fg: palette.fg, bg: palette.keycapBg },
           { text: ' clear', fg: palette.dim },
         ]
-  const said: Row = note
-    ? [...(esc.length > 0 ? [blank(3)] : []), { text: note, fg: palette.dim }]
-    : []
-  // The note only where it fits with a column to spare before "/ menu".
-  const fits = (left: Row) =>
-    HOME_MARGIN + 1 + width(left) + (hint.length > 0 ? 1 + width(hint) + 1 : 0) <= columns
-  const left: Row = said.length > 0 && fits([...esc, ...said]) ? [...esc, ...said] : esc
+  const left: Row = esc
   const lead = left.length > 0 ? HOME_MARGIN + 1 : 0
   if (hint.length === 0) return left.length > 0 ? [blank(lead), ...left] : []
   return [
