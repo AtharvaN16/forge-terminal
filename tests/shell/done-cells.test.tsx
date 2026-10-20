@@ -131,7 +131,7 @@ describe('Done through Ink (B6a)', () => {
       expect(
         describeRow(ansiRow(lines[22] ?? ''), runsRow([{ text: '─'.repeat(80), fg: DARK.border }])),
       ).toBe('equal')
-      expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {4}↵ /)
+      expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {3}↵ /)
     })
   }
 

@@ -91,7 +91,7 @@ describe('transcribe on home', () => {
     expect(frame(app)).toContain('or paste a YouTube link')
     expect(frame(app)).toContain('OR search or enter a file path…')
     expect(frame(app)).not.toContain('(English only)')
-    expect(frame(app)).toContain('Currently only English transcription supported')
+    expect(frame(app)).toContain('Currently only English is supported')
   }, 30_000)
 
   it('/transcribe opens it too', async () => {

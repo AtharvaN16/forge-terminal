@@ -6,6 +6,7 @@ import { HintBar } from '../../src/shell/components/HintBar.js'
 import { Prompt } from '../../src/shell/components/Prompt.js'
 import { Select } from '../../src/shell/components/Select.js'
 import { StepTitle } from '../../src/shell/components/StepTitle.js'
+import { HOME_MARGIN } from '../../src/shell/home-art.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK, modePalette, type Palette } from '../../src/shell/theme.js'
 
@@ -102,8 +103,17 @@ describe('HintBar, always F1', () => {
       />,
     )
     expect(keys(out)).toMatch(
-      /^ {2}↑↓ {2}choose {3}↵ {2}confirm +1–4 mode · esc back · ctrl-c quit$/,
+      /^ {3}↑↓ {2}choose {3}↵ {2}confirm +1–4 mode · esc back · ctrl-c quit$/,
     )
+  })
+
+  it('lines the keys up with the content: the first cap on the margin, the footnote ending on it', () => {
+    const out = frame(<HintBar width={80} pairs={[['↵', 'confirm']]} />)
+    const row = keys(out)
+    // The cap's fill starts on the margin (column 2); its key a cell in.
+    expect(row.indexOf('↵')).toBe(HOME_MARGIN + 1)
+    // The footnote's last letter is on the block's last column, 77.
+    expect(row.trimEnd().length).toBe(80 - HOME_MARGIN)
   })
 
   it('says quit, never "close app"', () => {

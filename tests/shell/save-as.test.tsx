@@ -118,7 +118,7 @@ describe('Save as (V10c): the block', () => {
 
   it('offers save, folder and make default, with back and quit as the footnote', () => {
     expect(keyRow(render(<Harness />).lastFrame())).toMatch(
-      /^ {2}↵ {2}save {3}↑↓ {2}folder {3}tab {2}make default +esc back · ctrl-c quit$/,
+      /^ {3}↵ {2}save {3}↑↓ {2}folder {3}tab {2}make default +esc back · ctrl-c quit$/,
     )
   })
 
@@ -335,7 +335,7 @@ describe('Save as (V10c): the path row', () => {
     const { stdin, lastFrame } = render(<Harness />)
     await toPathRow(stdin)
     expect(plain(lastFrame())).toMatch(/▌ Type the path here/)
-    expect(keyRow(lastFrame())).toMatch(/^ {2}↑ {2}folders +esc back · ctrl-c quit$/)
+    expect(keyRow(lastFrame())).toMatch(/^ {3}↑ {2}folders +esc back · ctrl-c quit$/)
     stdin.write(UP)
     await settle()
     expect(keyRow(lastFrame())).toMatch(/tab {2}make default/)

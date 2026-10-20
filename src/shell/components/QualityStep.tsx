@@ -1,5 +1,6 @@
 import { Box } from 'ink'
 import { useRef } from 'react'
+import { HOME_MARGIN } from '../home-art.js'
 import { endsRow, SLIDER_WIDTH, sliderRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -149,7 +150,7 @@ function DitherNote({ mode, on, plain }: { mode: ShellMode; on: boolean; plain: 
   const palette = useTheme()
   return (
     <Text wrap="truncate">
-      {' '}
+      {' '.repeat(HOME_MARGIN)}
       <Text
         backgroundColor={plain ? undefined : palette.keycapBg}
         color={colourProp(on ? modeColours(palette, mode).fg : palette.fg)}

@@ -54,7 +54,7 @@ describe('Done, in the flow', () => {
     expect(out).toHaveLength(23)
     expect(out[0]).toMatch(/JPEG ╱ 80 ╱ .+ ╱ test\.jpg ╱ Done ╱╱ *$/)
     expect(out[22]).toMatch(
-      /^ {4}↵ {2}convert another {3}o {2}open {3}s {2}show in \S+ +ctrl-c quit$/,
+      /^ {3}↵ {2}convert another {3}o {2}open {3}s {2}show in \S+ +ctrl-c quit$/,
     )
     const all = plain(app.lastFrame())
     // Round 24: the strip with the formats and the change, one bar with the

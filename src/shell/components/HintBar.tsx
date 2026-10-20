@@ -95,7 +95,7 @@ export function HintBar({
       <Box width={width} marginTop={line || hint ? 0 : 1} flexDirection="column" flexShrink={0}>
         {line ? <NoticeLine notices={notices} width={width} /> : hint}
         <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
-        <KeyRow main={main} foot={[...extra, ...footed]} width={width} lead={1} off={off} />
+        <KeyRow main={main} foot={[...extra, ...footed]} width={width} off={off} />
       </Box>
     </>
   )

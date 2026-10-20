@@ -158,7 +158,7 @@ export const MODE_DROP_TITLES: Partial<Record<ShellMode, string>> = {
 
 /** What a mode cannot do yet, said on home's "/ menu" row at its left end (`menuHintRow`). */
 export const MODE_NOTES: Partial<Record<ShellMode, string>> = {
-  transcribe: 'Currently only English transcription supported',
+  transcribe: 'Currently only English is supported',
 }
 
 /**

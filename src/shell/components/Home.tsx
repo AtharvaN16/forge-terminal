@@ -220,12 +220,15 @@ export function KeyRow({
   main,
   foot,
   width,
-  lead = HOME_MARGIN + 1,
+  lead = HOME_MARGIN,
   pressed,
   off = [],
 }: KeySet & {
   width: number
-  /** Where the first key starts: one cell in from the content above it. */
+  /**
+   * Where the first key's cap starts: on the margin, the column the content
+   * above starts on (2026-10-19; it was a cell in, which nothing called for).
+   */
   lead?: number
   /** A key just pressed, drawn inverted for a moment so the press shows (M6b). */
   pressed?: string | undefined
@@ -244,8 +247,10 @@ export function KeyRow({
   let shown = [...foot]
   // A footnote item with no word is a sentence on its own ("nothing is saved until it is done").
   const note = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
-  while (shown.length > 0 && left + 3 + stringWidth(note()) + 1 > width) shown = shown.slice(0, -1)
-  const gap = Math.max(1, width - left - stringWidth(note()) - 1)
+  // The footnote ends on the margin too, the block's last column.
+  while (shown.length > 0 && left + 3 + stringWidth(note()) + HOME_MARGIN > width)
+    shown = shown.slice(0, -1)
+  const gap = Math.max(1, width - left - stringWidth(note()) - HOME_MARGIN)
 
   return (
     <Box flexShrink={0}>

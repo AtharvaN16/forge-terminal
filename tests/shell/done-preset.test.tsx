@@ -84,7 +84,7 @@ describe('Done, with presets', () => {
     expect(all[19]?.trimEnd().length).toBe(78)
     expect(all[21]?.trimEnd()).toMatch(/^ +▀{22}$/)
     expect(all[22]).toMatch(/^─+$/)
-    expect(all[23]).toMatch(/^ {4}↵ {2}convert another/)
+    expect(all[23]).toMatch(/^ {3}↵ {2}convert another/)
   })
 
   it('keeps p quiet and gives the frame the shelf grey, → on a key cap', () => {
