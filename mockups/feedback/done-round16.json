@@ -1,0 +1,14 @@
+{
+  "page": "done-round16",
+  "verdicts": {
+    "K17": "love",
+    "K18": "dislike",
+    "K19": "potential",
+    "K21": "dislike"
+  },
+  "notes": {
+    "K19": "move arrow to the right of the text"
+  },
+  "moreConcepts": false,
+  "savedAt": "2026-10-20T03:26:44.727Z"
+}

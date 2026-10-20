@@ -1,0 +1,32 @@
+{
+  "page": "done-round9",
+  "verdicts": {
+    "C2": "dislike",
+    "C1": "potential",
+    "C3": "hate",
+    "C4": "hate",
+    "C5": "hate",
+    "C6": "hate",
+    "T5": "like",
+    "T4": "potential",
+    "T6": "potential",
+    "T3": "dislike",
+    "T2": "like",
+    "T1": "like",
+    "B1": "like",
+    "B5": "potential",
+    "B4": "potential",
+    "B3": "hate",
+    "B2": "hate",
+    "S4": "potential",
+    "S5": "potential",
+    "S3": "dislike",
+    "S2": "dislike",
+    "S1": "dislike"
+  },
+  "notes": {
+    "B4": "Can you show me the concept in theme color (blue) for hatching or both hatching and the bar"
+  },
+  "moreConcepts": false,
+  "savedAt": "2026-10-20T02:48:18.327Z"
+}

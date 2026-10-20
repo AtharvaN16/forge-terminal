@@ -1,0 +1,31 @@
+{
+  "page": "done-round10",
+  "verdicts": {
+    "B10": "love",
+    "B9": "potential",
+    "B8": "dislike",
+    "B7": "dislike",
+    "B6": "dislike",
+    "B5": "potential",
+    "B4": "dislike",
+    "B1": "dislike",
+    "S8": "dislike",
+    "S7": "hate",
+    "S6": "dislike",
+    "S5": "potential",
+    "S4": "potential",
+    "T5": "love",
+    "T2": "like",
+    "T1": "like",
+    "T4": "dislike",
+    "T6": "dislike",
+    "T7": "dislike",
+    "T8": "dislike",
+    "T9": "dislike"
+  },
+  "notes": {
+    "B9": "I like the gradient but not on the hatching maybe some other elements"
+  },
+  "moreConcepts": false,
+  "savedAt": "2026-10-20T02:57:02.012Z"
+}

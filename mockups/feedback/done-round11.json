@@ -1,0 +1,19 @@
+{
+  "page": "done-round11",
+  "verdicts": {
+    "S10": "dislike",
+    "S9": "love",
+    "S5": "like",
+    "S4": "dislike",
+    "G3": "dislike",
+    "G2": "dislike",
+    "G1": "dislike",
+    "B11": "dislike",
+    "B12": "dislike",
+    "B13": "love",
+    "T5": "love"
+  },
+  "notes": {},
+  "moreConcepts": false,
+  "savedAt": "2026-10-20T03:02:23.925Z"
+}

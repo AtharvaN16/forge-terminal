@@ -1,0 +1,17 @@
+{
+  "page": "done-round6",
+  "verdicts": {
+    "1": "potential",
+    "2": "potential",
+    "3": "dislike",
+    "4": "hate",
+    "5": "hate",
+    "6": "dislike",
+    "7": "potential",
+    "8": "hate",
+    "9": "hate",
+    "10": "potential"
+  },
+  "moreConcepts": false,
+  "savedAt": "2026-10-20T02:34:06.895Z"
+}

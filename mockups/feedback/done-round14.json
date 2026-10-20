@@ -1,0 +1,19 @@
+{
+  "page": "done-round14",
+  "verdicts": {
+    "K16": "potential",
+    "K15": "potential",
+    "K14": "dislike",
+    "K13": "dislike",
+    "K12": "dislike",
+    "G3": "hate",
+    "G2": "hate",
+    "G1": "love"
+  },
+  "notes": {
+    "K15": "I like that save as preset has been deemphasized and continue editing in its own frame looks good, but the blue button gives it too much emphasis, and I don't want people to mistake it as the primary CTA.",
+    "K14": "The bottom area looks too crowded."
+  },
+  "moreConcepts": false,
+  "savedAt": "2026-10-20T03:20:30.642Z"
+}
