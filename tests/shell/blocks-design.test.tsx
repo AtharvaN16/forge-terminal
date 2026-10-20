@@ -97,9 +97,10 @@ describe('result block', () => {
   it('carries symbol and word, not colour alone', () => {
     const frame = frameOf(<HistoryEntry block={{ kind: 'result', id: 'r1', result }} width={80} />)
     expect(frame).toContain('✓ diagram.webp')
-    // B6a: the formats say what it was; "was" and "now" say which size is which.
-    expect(frame).toMatch(/^ {3}PNG → WebP$/m)
-    expect(frame).toMatch(/now {2}115 KB +was {2}348 KB\s*$/m)
+    // Round 24: the formats say what it was; "was" and "now" say which size is which.
+    expect(frame).toMatch(/^ {3}PNG → WebP +.*smaller\s*$/m)
+    expect(frame).toMatch(/^ {2}now +was\s*$/m)
+    expect(frame).toMatch(/^ {2}115 KB +348 KB\s*$/m)
   })
 
   it('states the saving in words', () => {
@@ -128,11 +129,15 @@ describe('result block, as Done leaves it in the scrollback', () => {
   }
   const block = { kind: 'result' as const, id: 'r2', result }
 
-  it('draws one bar with the change in it, the sizes two rows under it', () => {
-    const lines = frameOf(<HistoryEntry block={block} width={100} />).split('\n')
+  it('keeps the compact picture: the strip, a three-row bar, the sizes right under it', () => {
+    const frame = frameOf(<HistoryEntry block={block} width={100} />)
+    const lines = frame.split('\n')
     const bar = lines.findIndex((l) => l.includes('✓ diagram.gif'))
-    expect(lines[bar]).toMatch(/\d+(\.\d)?% smaller$/)
-    expect(lines[bar + 3]).toMatch(/^ {3}now {2}133 KB +was {2}348 KB\s*$/)
+    // The strip over the bar's top row, the change at its end; no half rows.
+    expect(lines[bar - 2]).toMatch(/\d+(\.\d)?% smaller\s*$/)
+    expect(frame).not.toMatch(/[▄▀]/)
+    expect(lines[bar + 2]).toMatch(/^ {2}now +was\s*$/)
+    expect(lines[bar + 3]).toMatch(/^ {2}133 KB +348 KB\s*$/)
   })
 
   it('keeps a warning in the record, under the folder', () => {

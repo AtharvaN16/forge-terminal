@@ -16,7 +16,7 @@ vi.hoisted(() => {
 })
 
 /**
- * Done (B6a) through Ink, cell for cell: the screen draws exactly the rows
+ * Done (round 24) through Ink, cell for cell: the screen draws exactly the rows
  * `doneBody` makes (held to the decision in done-art.test.ts), where
  * `doneLayout` puts them, under the bar and over the rule and keys.
  */
@@ -131,7 +131,7 @@ describe('Done through Ink (B6a)', () => {
       expect(
         describeRow(ansiRow(lines[22] ?? ''), runsRow([{ text: '─'.repeat(80), fg: DARK.border }])),
       ).toBe('equal')
-      expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {4}↵ /)
+      expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {3}↵ /)
     })
   }
 
@@ -150,9 +150,11 @@ describe('the bar draws itself once (M5a)', () => {
     setMotionForTests(undefined)
   })
   const cv = SAMPLES.cv as Sample
-  /** The bar's middle row: the name, and the change once it is written. */
-  const at = 2 + doneLayout({ height: 24, body: 6, notes: 0 }).top + 2
-  const mid = (frame: string) => (frame.split('\n')[at] ?? '').replace(SGR, '')
+  /** The strip's row, where the change is written, and the bar's middle row, the name's. */
+  const top = 2 + doneLayout({ height: 24, body: 11, notes: 0 }).top
+  const line = (frame: string, i: number) => (frame.split('\n')[top + i] ?? '').replace(SGR, '')
+  const strip = (frame: string) => line(frame, 1)
+  const mid = (frame: string) => line(frame, 5)
 
   it('opens with the band at the old length and the change unwritten, then rests', async () => {
     setMotionForTests(false)
@@ -162,7 +164,7 @@ describe('the bar draws itself once (M5a)', () => {
     const app = screenApp(cv)
     await flush()
     expect(mid(app.lastFrame() ?? '')).toContain('✓ test.jpg')
-    expect(mid(app.lastFrame() ?? '')).not.toContain('smaller')
+    expect(strip(app.lastFrame() ?? '')).not.toContain('smaller')
     vi.advanceTimersByTime(800)
     await flush()
     expect(app.lastFrame()).toBe(rest)
@@ -170,7 +172,7 @@ describe('the bar draws itself once (M5a)', () => {
 
   it('is at rest from the first frame with motion off', () => {
     setMotionForTests(false)
-    expect(mid(screen(cv))).toContain('47.4 KB saved · 38.9% smaller')
+    expect(strip(screen(cv))).toContain('47.4 KB saved · 38.9% smaller')
   })
 })
 

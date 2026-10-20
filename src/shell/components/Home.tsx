@@ -220,7 +220,7 @@ export function KeyRow({
   main,
   foot,
   width,
-  lead = HOME_MARGIN + 1,
+  lead = HOME_MARGIN,
   pressed,
   off = [],
   note,
@@ -228,7 +228,10 @@ export function KeyRow({
   width: number
   /** A mode's standing caveat, in the app's orange (`larger`) at the row's left edge after the keys; dropped where it does not fit. */
   note?: string | undefined
-  /** Where the first key starts: one cell in from the content above it. */
+  /**
+   * Where the first key's cap starts: on the margin, the column the content
+   * above starts on (2026-10-19; it was a cell in, which nothing called for).
+   */
   lead?: number
   /** A key just pressed, drawn inverted for a moment so the press shows (M6b). */
   pressed?: string | undefined
@@ -247,15 +250,20 @@ export function KeyRow({
   let shown = [...foot]
   // A footnote item with no word is a sentence on its own ("nothing is saved until it is done").
   const footText = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
-  // The note only where the whole footnote still fits beside it.
+  // The note only where the whole footnote still fits beside it. The
+  // footnote ends on the margin, the block's last column.
   const noteWidth = note ? (main.length > 0 ? 2 : 0) + stringWidth(note) : 0
-  const said = note !== undefined && left + noteWidth + 1 + stringWidth(footText()) + 1 <= width
+  const said =
+    note !== undefined && left + noteWidth + 1 + stringWidth(footText()) + HOME_MARGIN <= width
   while (
     shown.length > 0 &&
-    left + (said ? noteWidth + 1 : 3) + stringWidth(footText()) + 1 > width
+    left + (said ? noteWidth + 1 : 3) + stringWidth(footText()) + HOME_MARGIN > width
   )
     shown = shown.slice(0, -1)
-  const gap = Math.max(1, width - left - (said ? noteWidth : 0) - stringWidth(footText()) - 1)
+  const gap = Math.max(
+    1,
+    width - left - (said ? noteWidth : 0) - stringWidth(footText()) - HOME_MARGIN,
+  )
 
   return (
     <Box flexShrink={0}>

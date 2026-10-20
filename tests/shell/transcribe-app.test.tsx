@@ -93,9 +93,7 @@ describe('transcribe on home', () => {
     expect(frame(app)).not.toContain('(English only)')
     // on the key row, at its left edge, not above it beside "/ menu"
     const lines = frame(app).split('\n')
-    expect(lines.at(-1)).toMatch(
-      /^\s{1,6}Currently only English transcription supported\s+1–6 ←→ mode/,
-    )
+    expect(lines.at(-1)).toMatch(/^\s{1,6}Currently only English is supported\s+1–6 ←→ mode/)
     expect(lines.filter((l) => l.includes('English'))).toHaveLength(1)
   }, 30_000)
 

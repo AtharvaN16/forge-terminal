@@ -64,7 +64,7 @@ describe('the dither note (N4)', () => {
     await settle()
     const rows = lines(app.lastFrame())
     const note = rows.findIndex((r) => plain(r).includes(OFF))
-    expect(plain(rows[note])).toBe(`  d  ${OFF}`)
+    expect(plain(rows[note])).toBe(`   d  ${OFF}`)
     // A blank row, the rule, then the keys, whose first cap starts in the same column.
     expect(plain(rows[note + 1]).trim()).toBe('')
     expect(plain(rows[note + 2])).toMatch(/^─+$/)
@@ -76,7 +76,7 @@ describe('the dither note (N4)', () => {
     const app = step({ dither: { on: true, onToggle: () => {} } })
     await settle()
     const row = lines(app.lastFrame()).find((r) => plain(r).includes('Dithering on')) ?? ''
-    expect(plain(row)).toBe('  d  Dithering on')
+    expect(plain(row)).toBe('   d  Dithering on')
     expect(row).toContain(`38;2;${rgb(modeColours(DARK, 'compress').fg)}`)
   })
 

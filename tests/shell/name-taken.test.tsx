@@ -88,7 +88,7 @@ describe('Name taken (L1)', () => {
   it('keeps F1 keys, with esc cancel in the footnote', () => {
     const { app } = mount()
     const keys = plain(app.lastFrame()).trimEnd().split('\n').at(-1) ?? ''
-    expect(keys).toMatch(/^ {2}↑↓ {2}choose {3}↵ {2}confirm +esc cancel · ctrl-c quit$/)
+    expect(keys).toMatch(/^ {3}↑↓ {2}choose {3}↵ {2}confirm +esc cancel · ctrl-c quit$/)
   })
 
   it('names several files at once when more than one is taken', () => {

@@ -75,7 +75,7 @@ describe('Working', () => {
     )
     const search = render(working({ label: 'Finding the right quality', search: { n: 2, of: 8 } }))
     await flush()
-    expect(keys(search.lastFrame())).toMatch(/^ {2}esc {2}stop {10,}ctrl-c quit$/)
+    expect(keys(search.lastFrame())).toMatch(/^ {3}esc {2}stop {10,}ctrl-c quit$/)
     expect(plain(search.lastFrame())).toContain('   ● ● ○ ○ ○ ○ ○ ○')
   })
 })

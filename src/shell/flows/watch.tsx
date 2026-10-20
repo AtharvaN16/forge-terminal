@@ -785,6 +785,8 @@ function Watching({
       ? doneBody({
           palette,
           width,
+          // The compact picture: six rows, which the list's room below counts on.
+          compact: true,
           facts: {
             mode,
             before: {

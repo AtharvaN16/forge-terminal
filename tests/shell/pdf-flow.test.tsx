@@ -526,7 +526,9 @@ describe('/pdf, drawn with the decided parts', () => {
     stdin.write(DOWN + ENTER) // Extract
     await settle()
     expect(plain(lastFrame())).toMatch(/^ Pages +r\.pdf · 7 pages$/m)
-    expect(keyRow(lastFrame())).toMatch(/esc back · ctrl-c quit$/)
+    // Keys on the margin leave this long row a column short at 80, so the
+    // footnote gives up "ctrl-c quit" first, as a narrow row always does.
+    expect(keyRow(lastFrame())).toMatch(/r type ranges · esc back$/)
   })
 
   it('orders a merge on the picker’s band, “choose” not “select”, sort and remove quiet', async () => {

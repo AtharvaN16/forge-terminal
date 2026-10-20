@@ -5,12 +5,15 @@ import { modeColours, type Palette, type ShellMode, SYMBOLS } from './theme.js'
 import { middleEllipsis } from './width.js'
 
 /**
- * Done (B6a, mockups/round-5-2026-10.html): the file as it was and as it is,
- * as one bar as long as the larger of the two. The part both share is on the
- * band, the new file's name on it; what a smaller file shed is hatching, and
- * what a larger one grew by is a fill, with the change written inside it.
- * Under the bar, after a blank row, the two sizes: the smaller on the left.
- * A chip above it says the formats, "PNG → JPEG".
+ * Done (round 24, mockups/done-2026-10-round18.html): the file as it was and
+ * as it is, as one bar five rows tall and as long as the larger of the two.
+ * The part both share is the band, in the mode's colour, the new file's name
+ * on it; what a smaller file shed is grey hatching, and what a larger one
+ * grew by is a fill. Above the bar and touching it, a strip on the shelf
+ * grey, padded by half a row above and below: the formats at its left
+ * ("PNG → WebP", the new one leading), the change at its right. Under the
+ * bar, after a blank row, the two sizes, each word over its size, the
+ * smaller file on the left.
  *
  * Every number is measured — the file has been written — so the bar is a
  * picture of two real sizes, never progress (invariant 7). A file too small
@@ -22,8 +25,6 @@ import { middleEllipsis } from './width.js'
 const M = HOME_MARGIN
 /** Where the notes start: one cell in from the bar. */
 const LEAD = M + 1
-/** The least of a long name the bar keeps before it gives up the change. */
-const NAME_MIN = 20
 
 /** What the Done screen says about one written file. */
 export interface DoneFacts {
@@ -146,9 +147,14 @@ function changeLabels(from: number, to: number): string[] {
   return [to > from ? `+${diff} · ${phrase}` : `${diff} saved · ${phrase}`, phrase]
 }
 
+/** How tall the bar is; three rows when the screen needs the room. */
+const BAR_ROWS = 5
+const COMPACT_BAR_ROWS = 3
+
 /**
- * The body, top to bottom: the formats' chip, the bar (three rows), a blank
- * row, and the two sizes.
+ * The body, top to bottom: the strip (half a row, the formats and the
+ * change, half a row), the bar (five rows), a blank row, and the two sizes,
+ * each word over its size.
  */
 export function doneBody({
   palette,
@@ -156,6 +162,8 @@ export function doneBody({
   width: columns,
   folder,
   draw,
+  chain,
+  compact = false,
 }: {
   palette: Palette
   facts: DoneFacts
@@ -174,23 +182,69 @@ export function doneBody({
    * once the screen is gone); the live screen's header already says it.
    */
   folder?: string | undefined
+  /**
+   * Every format the file has been, once Continue editing changed it
+   * ("PNG", "JPEG", "WebP"): the strip says each step, the last one leading.
+   */
+  chain?: readonly string[] | undefined
+  /**
+   * Room is short (an error panel needs it): the bar three rows tall, the
+   * strip without its half rows and no blank row under the bar — six rows,
+   * as many as the old design, the same picture.
+   */
+  compact?: boolean | undefined
 }): Row[] {
   const block = Math.max(1, columns - 2 * M)
   const { before, after } = facts
   const bars = receiptBars(before.bytes, after.bytes, block)
   const shared = Math.min(bars.before, bars.after)
-  const mode = modeColours(palette, facts.mode)
-  const band = fillOf(palette.panelBand)
   const same = before.bytes === after.bytes
   const outcome = bars.grew ? palette.larger : palette.ok
+  // The band is the new file, in the mode's colour stepped halfway back to
+  // the background; the shed part is hatched in a quiet grey. A palette
+  // without fills (NO_COLOR) draws no band and hatches in its border grey.
+  const band =
+    palette.panelBand === '' || palette.canvas === ''
+      ? undefined
+      : mix(modeColours(palette, facts.mode).fg, palette.canvas, 0.5)
+  const hatchFg = palette.canvas ? mix(palette.border, palette.canvas, 0.55) : palette.border
+  const shelf = fillOf(palette.shelf)
 
-  // The chip: the formats, said once when they are the same.
-  const formats =
-    before.format === after.format ? before.format : `${before.format} → ${after.format}`
-  const chip: Row = [
-    blank(M),
-    { text: ` ${formats} `, fg: mode.fg, bg: fillOf(mode.bg), bold: true },
-  ]
+  // The strip: the formats from its left, the change flush to its right,
+  // on the shelf grey, with half a row of it above and below. The formats
+  // are quiet up to the last, which leads.
+  const steps =
+    chain && chain.length > 1
+      ? chain
+      : before.format === after.format
+        ? [after.format]
+        : [before.format, after.format]
+  const formats: Run[] = [{ text: ' ' }]
+  steps.forEach((step, i) => {
+    const last = i === steps.length - 1
+    if (i > 0) formats.push({ text: ' → ', fg: palette.border })
+    formats.push({ text: step, fg: last ? palette.fg : palette.dim, bold: last })
+  })
+  const strip: Cell[] = Array.from({ length: block }, (): Cell => ({ ch: ' ', bg: shelf }))
+  writeOver(strip, 0, formats)
+  // A narrow strip keeps the formats first: the change shortens, then goes.
+  const label = changeLabels(before.bytes, after.bytes).find(
+    (l) => block - width(formats) - (stringWidth(l) + 2) >= 1,
+  )
+  const fade = draw?.label ?? 1
+  if (label !== undefined && fade > 0) {
+    // Fading in, the words come up out of the strip's grey.
+    const ink = same ? palette.dim : outcome
+    writeOver(strip, block - stringWidth(label) - 2, [
+      {
+        text: ` ${label} `,
+        fg: fade < 1 ? mix(palette.shelf || palette.canvas, ink, fade) : ink,
+        bold: !same,
+      },
+    ])
+  }
+  const half = (ch: string): Row =>
+    palette.shelf === '' ? [] : [blank(M), { text: ch.repeat(block), fg: palette.shelf }]
 
   // The bar's cells: the shared part on the band, then the change. What a
   // file shed is hatching on the background; growth is a fill, or shade
@@ -204,62 +258,43 @@ export function doneBody({
   const cellsOf = (): Cell[] =>
     Array.from({ length: block }, (_, i): Cell => {
       if (i < bandNow) return { ch: ' ', bg: band }
-      if (!bars.grew) return { ch: '╱', fg: palette.shedHatch }
+      if (!bars.grew) return { ch: '╱', fg: hatchFg }
       return i < shared + grownNow ? { ...growth } : { ch: ' ' }
     })
-
-  // The middle row: the new file's name from the left, the change flush to
-  // the bar's end, each knocked out of the hatching with a cell to spare. A
-  // narrow bar keeps the name readable first — whole, or at least NAME_MIN
-  // columns of it — so the change shortens, then goes.
-  const keep = Math.min(stringWidth(after.name), NAME_MIN)
-  const label = changeLabels(before.bytes, after.bytes).find(
-    (l) => block - stringWidth(l) - 1 - 5 >= keep,
-  )
-  const labelAt = label === undefined ? block : block - stringWidth(label) - 1
-  const name = middleEllipsis(after.name, Math.max(1, labelAt - 5))
+  // The middle row names the new file from the left, knocked out of the
+  // hatching with a cell to spare.
   const mid = cellsOf()
   writeOver(mid, 0, [
     { text: ' ' },
     { text: `${SYMBOLS.ok} `, fg: palette.ok, bold: true },
-    { text: `${name} `, fg: palette.fg, bold: true },
+    { text: `${middleEllipsis(after.name, Math.max(1, block - 5))} `, fg: palette.fg, bold: true },
   ])
-  const fade = draw?.label ?? 1
-  if (label !== undefined && fade > 0) {
-    // Fading in, the words come up out of what they sit on.
-    const under = bars.grew ? palette.grownFill || palette.canvas : palette.canvas
-    const ink = same ? palette.dim : outcome
-    writeOver(mid, labelAt, [
-      { text: ' ' },
-      { text: label, fg: fade < 1 ? mix(under, ink, fade) : ink, bold: !same },
-    ])
-    // The same size has no change to sit in: the label keeps a cell from the end.
-    if (same) mid.push(...mid.splice(labelAt, 1))
-  }
   const row = (cells: Cell[]): Row => [blank(M), ...runsOf(cells)]
+  const tall = compact ? COMPACT_BAR_ROWS : BAR_ROWS
+  const barRows = Array.from({ length: tall }, (_, r) =>
+    r === tall >> 1 ? row(mid) : row(cellsOf()),
+  )
 
-  // Under the bar: the smaller size on the left, the larger on the right,
-  // each a badge (N6, mockups/presets-2026-10.html): the word on the key
-  // grey, then the size. The new size is on a tint of what happened — green
-  // for smaller, orange for larger — so it reads as the answer; the old one
-  // sits on the bar's grey.
-  const key = fillOf(palette.keycapBg)
-  const shelf = fillOf(palette.panelBand)
-  const ink = same ? palette.fg : outcome
-  const tint = palette.canvas && !same ? fillOf(mix(ink, palette.canvas, 0.8)) : shelf
-  const now: Run[] = [
-    { text: ' now ', fg: palette.dim, bg: key },
-    { text: ` ${formatBytes(after.bytes)} `, fg: ink, bold: true, bg: tint },
-  ]
-  const was: Run[] = [
-    { text: ' was ', fg: palette.border, bg: key },
-    { text: ` ${formatBytes(before.bytes)} `, fg: palette.dim, bg: shelf },
-  ]
+  // Under the bar: each word quiet over its size, the smaller file on the
+  // left. The new size takes the outcome's colour.
+  const now = {
+    word: { text: 'now', fg: palette.dim },
+    size: { text: formatBytes(after.bytes), fg: same ? palette.fg : outcome, bold: true },
+  }
+  const was = {
+    word: { text: 'was', fg: palette.border },
+    size: { text: formatBytes(before.bytes), fg: palette.fg, bold: true },
+  }
   const [left, right] = bars.grew ? [was, now] : [now, was]
-  const gap = Math.max(1, block - width(left) - width(right))
-  const sizes: Row = [blank(M), ...left, blank(gap), ...right]
+  const ends = (a: Run, b: Run): Row => [blank(M), a, blank(Math.max(1, block - width([a, b]))), b]
 
-  const body = [chip, row(cellsOf()), row(mid), row(cellsOf()), [], sizes]
+  const body = [
+    ...(compact ? [row(strip)] : [half('▄'), row(strip), half('▀')]),
+    ...barRows,
+    ...(compact ? [] : [[]]),
+    ends(left.word, right.word),
+    ends(left.size, right.size),
+  ]
   if (folder === undefined) return body
   const where: Row = [
     blank(LEAD),
