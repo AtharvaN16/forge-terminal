@@ -1,27 +1,19 @@
 {
   "name": "forge-terminal",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "A terminal-native file converter for macOS and Windows",
   "whatsNew": [
     {
-      "title": "Video and audio",
-      "text": "Convert, compress and edit video and audio files. The first time, Forge installs its own ffmpeg for you, in place."
+      "title": "A new Done screen",
+      "text": "When a file is done, one bar shows it as it was and as it is now, with how much you saved just above it."
     },
     {
-      "title": "Find a file by name",
-      "text": "Type part of a name and Forge finds the file on your Mac, newest first. macOS asks once to allow it."
+      "title": "Presets save anywhere",
+      "text": "Save as preset now offers the same folders as Save as: Desktop, Downloads, the same folder as the file, or one you search for."
     },
     {
-      "title": "Supported formats",
-      "text": "On home, press Tab to see which files each mode takes."
-    },
-    {
-      "title": "Right-click in Finder",
-      "text": "Right-click a file in Finder or Explorer to open it in Forge. Switch it off any time with /right-click."
-    },
-    {
-      "title": "/ menu, as a popup",
-      "text": "Type / for a menu that opens over home: the modes, and the settings, each a keystroke away."
+      "title": "Tidier screens",
+      "text": "Every screen now lines up with the edges of home, and the / menu scrolls when the window is short."
     }
   ],
   "keywords": [
