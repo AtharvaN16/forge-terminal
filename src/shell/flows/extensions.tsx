@@ -86,7 +86,7 @@ const SHEETS: Record<
   },
   // ffmpeg, for a Mac without Homebrew's: what lets video and sound open at all.
   video: {
-    name: 'Video and sound',
+    name: 'Video and audio',
     gives: 'Converts, compresses and trims video and sound',
     again: 'A video or sound file will offer to download it again.',
     parts: [

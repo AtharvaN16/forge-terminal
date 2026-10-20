@@ -147,7 +147,7 @@ describe.skipIf(!ffmpegHere)('without ffmpeg', () => {
       expect(frame()).toContain('video · ')
       app.stdin.write(ENTER)
       await until(() => frame().includes('needs ffmpeg'))
-      expect(frame()).toContain('Video and sound')
+      expect(frame()).toContain('Video and audio')
       expect(frame()).toContain('look again')
       // Installed in another window: ↵ finds it, and compress goes on.
       forceFfmpegForTests(real ?? null)

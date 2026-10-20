@@ -47,7 +47,7 @@ describe('the same file under a name spelt differently', () => {
       sources: [image(source)],
       outputs: [join(dir, 'photo.png')],
       target: 'png',
-      options: {},
+      options: { background: '#ffffff', keepMetadata: false },
     }
     const { jobs, failures } = checkWriteSafety([job], { force: false })
     expect(jobs).toEqual([])

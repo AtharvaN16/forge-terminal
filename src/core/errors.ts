@@ -999,8 +999,8 @@ export function ffmpegMissing(
   const how = downloadable ? `forge extensions add video (or ${own})` : own
   return new ForgeError({
     code: 'ffmpeg-missing',
-    title: 'Video and sound need ffmpeg',
-    detail: `${displayName(path)} is a video or sound file, and ffmpeg is not on this computer.`,
+    title: 'Video and audio need ffmpeg',
+    detail: `${displayName(path)} is a video or audio file, and ffmpeg is not on this computer.`,
     short: 'ffmpeg is not on this computer',
     hint: `Install it with ${how}, then run Forge again.`,
   })

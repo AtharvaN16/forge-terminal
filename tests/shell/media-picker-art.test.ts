@@ -13,10 +13,10 @@ const targets = ['mp4', 'hevc', 'webm', 'gif', 'mp3', 'm4a', 'wav'] as const
 const text = (row: { text: string }[]) => row.map((r) => r.text).join('')
 
 describe('the video picker', () => {
-  it('groups the targets into video and sound only, by what each holds', () => {
+  it('groups the targets into video and audio only, by what each holds', () => {
     expect(mediaBoxes([...targets])).toEqual([
       { name: 'video', ids: ['mp4', 'hevc', 'webm', 'gif'] },
-      { name: 'sound only', ids: ['mp3', 'm4a', 'wav'] },
+      { name: 'audio only', ids: ['mp3', 'm4a', 'wav'] },
     ])
   })
 
@@ -34,8 +34,8 @@ describe('the video picker', () => {
     expect(rows).toHaveLength(6)
     expect(rows.every((r) => width(r) === 76)).toBe(true)
     expect(text(rows[0] ?? [])).toContain('video')
-    expect(text(rows[0] ?? [])).toContain('sound only')
-    const edge = rows[0]?.find((r) => r.text.includes('sound only'))
+    expect(text(rows[0] ?? [])).toContain('audio only')
+    const edge = rows[0]?.find((r) => r.text.includes('audio only'))
     expect(edge?.fg).toBe(p.accent)
     expect(text(rows[1] ?? [])).toContain('▌ MP3')
   })

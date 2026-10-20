@@ -1,7 +1,7 @@
 /**
  * Transcribe from ↵ on home to Done (spec 2026-10-17-transcribe-design §4.4,
- * mockups/transcribe-2026-10-round2.html): Transcribe to (Notes or Only
- * transcript; skipped when Apple Intelligence is off), Save as, Working
+ * mockups/transcribe-2026-10-round2.html): Transcribe to (All, Notes
+ * or Transcript; skipped when Apple Intelligence is off), Save as, Working
  * (the sound still downloading, then what has been heard, then a dot per
  * part), and Done. App draws the header bar from `onTrail`.
  */
@@ -14,6 +14,7 @@ import { destinationAt } from '../../core/actions/destination.js'
 import { writeAtomic } from '../../core/atomic.js'
 import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
 import { uniqueOutputPath } from '../../core/output-path.js'
+import { DEFAULT_DETAIL, DETAILS, type Detail, detailLabel } from '../../core/transcribe/detail.js'
 import {
   clock,
   fileStem,
@@ -30,6 +31,7 @@ import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
 import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
+import { pillWidth, StepPill } from '../components/StepPill.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
 import { doneNotes } from '../done-art.js'
@@ -59,12 +61,13 @@ export interface TranscribeFlowProps {
   onSaved?: ((folder: string) => void) | undefined
 }
 
-type Want = 'notes' | 'transcript'
+type Want = 'all' | 'notes' | 'transcript'
 const WANTS = [
-  { value: 'notes', label: 'Notes', hint: 'summary, notes and transcript · .md' },
-  { value: 'transcript', label: 'Only transcript', hint: '.md' },
+  { value: 'all', label: 'All', hint: 'summary, notes and transcript · .md' },
+  { value: 'notes', label: 'Notes', hint: 'summary and notes · .md' },
+  { value: 'transcript', label: 'Transcript', hint: '.md' },
 ]
-const label = (want: Want) => (want === 'notes' ? 'Notes' : 'Only transcript')
+const label = (want: Want) => WANTS.find((w) => w.value === want)?.label ?? ''
 
 type Work =
   | { phase: 'download'; at: number }
@@ -117,7 +120,10 @@ export function TranscribeFlow({
   const palette = useTheme()
   const [step, setStep] = useState<'checking' | 'choose' | 'save' | 'working' | 'done'>('checking')
   const [notesOn, setNotesOn] = useState(false)
-  const [want, setWant] = useState<Want>('notes')
+  const [want, setWant] = useState<Want>('all')
+  // Detail is the pill on All and Notes; the row under the cursor decides whether it shows.
+  const [detail, setDetail] = useState<Detail>(DEFAULT_DETAIL)
+  const [cursor, setCursor] = useState(0)
   const here = source.kind === 'file' ? dirname(source.path) : undefined
   const destination = useMemo(() => destinationAt(here, prefs), [here, prefs])
   const [folder, setFolder] = useState(() => expandTilde(prefs.defaultOutput))
@@ -149,7 +155,7 @@ export function TranscribeFlow({
         if (!live) return
         const on = status?.notes === 'available'
         setNotesOn(on)
-        setWant(on ? 'notes' : 'transcript')
+        setWant(on ? 'all' : 'transcript')
         setStep(on ? 'choose' : 'save')
       },
       (e: unknown) => {
@@ -194,7 +200,8 @@ export function TranscribeFlow({
       setWork({ phase: 'heard', at, seconds: 0, of: seconds })
       onTrail({ answers: trail, current: 'Transcribing' })
       const result = await runTranscribe(path, {
-        notes: want === 'notes',
+        notes: want !== 'transcript',
+        detail,
         signal: ctrl.signal,
         onEvent: (e) => {
           if (e.kind === 'model') setWork({ phase: 'model', at, fraction: e.fraction })
@@ -205,7 +212,7 @@ export function TranscribeFlow({
           }
         },
       })
-      const md = transcriptMarkdown(result, origin)
+      const md = transcriptMarkdown(result, origin, { transcript: want !== 'notes' })
       await writeAtomic(output, Buffer.from(md, 'utf8'))
       onSaved?.(to)
       setDone({ output, md, ...(result.notes ? { parts: result.notes.parts } : {}) })
@@ -225,6 +232,19 @@ export function TranscribeFlow({
       onCancel()
     },
     { isActive: step === 'working' },
+  )
+
+  // ←→ on All or Notes: how much the notes say.
+  const pilled = WANTS[cursor]?.value !== 'transcript'
+  useKeys(
+    (_input, key) => {
+      if (!pilled) return
+      const i = DETAILS.indexOf(detail)
+      const next = key.leftArrow ? i - 1 : key.rightArrow ? i + 1 : i
+      const to = DETAILS[Math.max(0, Math.min(DETAILS.length - 1, next))]
+      if (to) setDetail(to)
+    },
+    { isActive: step === 'choose' },
   )
 
   // Done's keys: ↵ new, o open, s finder, c copy.
@@ -260,6 +280,17 @@ export function TranscribeFlow({
             items={WANTS}
             width={width}
             initialValue={want}
+            onHighlight={setCursor}
+            pill={(item) =>
+              item.value === 'transcript'
+                ? null
+                : {
+                    node: (
+                      <StepPill labels={DETAILS.map(detailLabel)} at={DETAILS.indexOf(detail)} />
+                    ),
+                    width: pillWidth(detailLabel('standard')),
+                  }
+            }
             onSubmit={(v) => {
               setWant(v as Want)
               setStep('save')
@@ -271,6 +302,7 @@ export function TranscribeFlow({
           width={width}
           pairs={[
             ['↑↓', 'choose'],
+            ...(pilled ? ([['←→', 'detail']] as Array<[string, string]>) : []),
             ['↵', 'confirm'],
           ]}
           foot={[

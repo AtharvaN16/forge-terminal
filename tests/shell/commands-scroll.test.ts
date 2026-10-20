@@ -39,7 +39,7 @@ describe('the commands list says when it scrolls', () => {
     expect(bar[0]).toBe('┃')
     expect(bar.at(-1)).toBe('│')
     // Lines, not commands, below the panel at 80 × 24: the settings are cut off.
-    expect(text(out.at(-1) as Row)).toContain('↓ 6 more')
+    expect(text(out.at(-1) as Row)).toContain('↓ 7 more')
     // The bar takes a fill cell: no row is wider than an unbarred one.
     for (const r of out) expect(width(r)).toBe(80 - HOME_MARGIN)
   })

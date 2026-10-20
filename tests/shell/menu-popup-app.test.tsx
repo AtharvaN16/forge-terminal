@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import type { RightClickSystem } from '../../src/shell/flows/right-click.js'
+import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { setMotionForTests } from '../../src/shell/motion.js'
 import { unpaint } from '../helpers/unpaint.js'
 
@@ -19,6 +20,9 @@ const rightClick: RightClickSystem = {
   copy: () => {},
 }
 
+/** The menu's box, by its bar: the chip, then the hatching. */
+const POPUP = /menu ╱╱/
+
 function app() {
   const a = render(
     <App
@@ -29,11 +33,15 @@ function app() {
     />,
   )
   const frame = () => plain(a.lastFrame())
-  /** The frame's rows, from the box's top edge: 0 is ╭, then the bar, … */
+  /**
+   * The frame's rows, from the box's top edge: 0 is its empty top ring, then
+   * the bar, … The box has no line (2026-10-19, M1), so its edges are found by
+   * what is inside: the bar's chip and hatching, the field's "› /".
+   */
   const box = () => {
     const lines = frame().split('\n')
-    const top = lines.findIndex((l) => l.includes('╭'))
-    const bottom = lines.findIndex((l) => l.includes('╰'))
+    const top = lines.findIndex((l) => POPUP.test(l)) - 1
+    const bottom = lines.findIndex((l) => /› \//.test(l)) + 1
     return { lines, top, bottom, last: lines.at(-1) ?? '' }
   }
   return { ...a, frame, box }
@@ -101,7 +109,7 @@ describe('the / menu, as a popup', () => {
     a.stdin.write(ESC)
     await settle()
     expect(a.frame()).toContain('Drop a file here')
-    expect(a.frame()).not.toMatch(/╭─+╮/)
+    expect(a.frame()).not.toMatch(POPUP)
   })
 
   it('closes on a second /, leaving home’s field empty and the mode as it was (2026-10-18)', async () => {
@@ -111,15 +119,14 @@ describe('the / menu, as a popup', () => {
     await settle()
     a.stdin.write('/')
     await settle()
-    expect(a.frame()).toMatch(/╭─+╮/)
+    expect(a.frame()).toMatch(POPUP)
     a.stdin.write('/')
     await settle()
     const f = a.frame()
-    expect(f).not.toMatch(/╭─+╮/)
+    expect(f).not.toMatch(POPUP)
     expect(f).not.toContain('//')
-    expect(f).toContain('or type a path')
-    expect(f).toContain('images · PDF')
-    expect(f).not.toContain('HEIC')
+    expect(f).toContain('OR search or enter a file path…')
+    expect(f).toContain(MODE_KINDS.compress)
   })
 
   it('does not play home’s launch again when it closes (2026-10-18)', async () => {
@@ -149,9 +156,9 @@ describe('the / menu, as a popup', () => {
     a.stdin.write('/')
     await settle()
     const f = a.frame()
-    expect(f).not.toMatch(/╭─+╮/)
+    expect(f).not.toMatch(POPUP)
     expect(f).not.toContain('/co')
-    expect(f).toContain('or type a path')
+    expect(f).toContain('OR search or enter a file path…')
   })
 
   it('switches home to a mode chosen from the list, and closes', async () => {
@@ -161,7 +168,7 @@ describe('the / menu, as a popup', () => {
     await settle()
     a.stdin.write(ENTER)
     await settle()
-    expect(a.frame()).not.toMatch(/╭─+╮/)
+    expect(a.frame()).not.toMatch(POPUP)
     expect(a.frame()).toMatch(/2 compress/)
   })
 
@@ -179,14 +186,43 @@ describe('the / menu, as a popup', () => {
     expect(b.lines[b.top + 1]).toContain('Extensions')
   })
 
-  it('gives a path back to home’s field once what is typed matches no command', async () => {
+  it('stays open when nothing matches, saying so, until a second slash makes it a path (2026-10-19)', async () => {
     const a = app()
     await settle()
-    a.stdin.write('/Us')
+    a.stdin.write('/s')
     await settle()
-    const f = a.frame()
-    expect(f).not.toMatch(/╭─+╮/)
-    expect(f).toContain('/Us')
+    let f = a.frame()
+    expect(f).toMatch(POPUP)
+    expect(f).toContain('no command matches /s')
+    a.stdin.write('/')
+    await settle()
+    f = a.frame()
+    expect(f).not.toMatch(POPUP)
+    expect(f).toContain('/s/')
     expect(f).toContain('Drop a file here')
+  })
+
+  it('sends a name no command has on as a path with ↵, when there is something there', async () => {
+    const a = app()
+    await settle()
+    a.stdin.write('/tmp')
+    await settle()
+    expect(a.frame()).toContain('no command matches /tmp')
+    a.stdin.write(ENTER)
+    await settle(400)
+    const f = a.frame()
+    expect(f).not.toMatch(POPUP)
+    expect(f).not.toContain('no command matches')
+  })
+
+  it('draws its field as one row, the marker in the list’s column (F1)', async () => {
+    const a = app()
+    await settle()
+    a.stdin.write('/')
+    await settle()
+    const lines = a.frame().split('\n')
+    const field = lines.find((l) => /› \//.test(l)) ?? ''
+    const listed = lines.find((l) => l.includes('/convert')) ?? ''
+    expect(field.indexOf('›')).toBe(listed.indexOf('/convert'))
   })
 })

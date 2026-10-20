@@ -138,7 +138,7 @@ describe('edit, for video and sound', () => {
     expect(job.outputs[0]).toBe('/pod/episode-levelled.wav')
   })
 
-  it('applies to one video or sound file only', () => {
+  it('applies to one video or audio file only', () => {
     expect(mediaEditAction.appliesTo([recording])).toBe(true)
     expect(mediaEditAction.appliesTo([recording, podcast])).toBe(false)
   })

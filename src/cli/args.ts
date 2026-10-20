@@ -8,6 +8,7 @@ import { removeBackgroundTargetRefusal } from '../core/extension-targets.js'
 import { formatById } from '../core/formats.js'
 import { RESIZE_MAX } from '../core/resize.js'
 import { parseCut } from '../core/timecode.js'
+import { DEFAULT_DETAIL, DETAILS, type Detail } from '../core/transcribe/detail.js'
 import type { ConvertOptions, CropSpec, FormatId, MediaOptions, ResizeSpec } from '../core/types.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
@@ -229,15 +230,19 @@ export interface WatchIntent {
 }
 
 /**
- * `forge transcribe <file|link>`: a video or sound file, or a YouTube link,
+ * `forge transcribe <file|link>`: a video or audio file, or a YouTube link,
  * into a Markdown file (spec 2026-10-17-transcribe-design §4.5).
  */
 export interface TranscribeIntent {
   kind: 'transcribe'
   /** A path or a link, as typed. */
   input: string
-  /** Summary and notes as well as the transcript (`--to notes`, the default). */
+  /** Summary and notes (`--to all`, the default, and `--to notes`). */
   notes: boolean
+  /** The transcript itself: false for `--to notes`, the notes alone. */
+  transcript: boolean
+  /** How much the notes say (`--detail`); no effect on a transcript alone. */
+  detail: Detail
   /** The spoken language, when it is not the Mac's own: `hi`, `fr-FR`. */
   language?: string
   output?: string
@@ -407,8 +412,9 @@ Other commands:
   forge clip               compress the copied image and put it back (--to, --quality,
                            --max-size, --save [folder], --undo)
   forge transcribe <file | link>
-                           a video or sound file, or a YouTube link, into Markdown
-                           (--to notes | transcript, --language <id>, -o <path>, --force)
+                           a video or audio file, or a YouTube link, into Markdown
+                           (--to all | notes | transcript, --detail brief | standard | detailed,
+                           --language <id>, -o <path>, --force)
   forge watch <folder> --to <format>
                            convert the folder, then every file added to it, until ctrl-c
                            (--quality, --dpi, -o <folder>, --new-only, --json)
@@ -506,6 +512,8 @@ function parseTranscribeArgs(argv: string[]): TranscribeIntent {
     kind: 'transcribe',
     input: '',
     notes: true,
+    transcript: true,
+    detail: DEFAULT_DETAIL,
     force: false,
     debug: false,
   }
@@ -521,15 +529,25 @@ function parseTranscribeArgs(argv: string[]): TranscribeIntent {
     else if (a === '--force' || a === '-f') intent.force = true
     else if (a === '--language' || a === '-l') intent.language = value(a, i++)
     else if (a === '--output' || a === '-o') intent.output = value(a, i++)
-    else if (a === '--to' || a === '-t') {
-      const to = value(a, i++).toLowerCase()
-      if (to !== 'notes' && to !== 'transcript') {
+    else if (a === '--detail') {
+      const detail = value(a, i++).toLowerCase()
+      if (!(DETAILS as readonly string[]).includes(detail)) {
         throw invalidArguments(
-          `forge transcribe makes notes or a transcript, not ${to}.`,
+          `forge transcribe writes notes in brief, standard or detailed, not ${detail}.`,
+          'Try: forge transcribe talk.mp4 --detail brief',
+        )
+      }
+      intent.detail = detail as Detail
+    } else if (a === '--to' || a === '-t') {
+      const to = value(a, i++).toLowerCase()
+      if (to !== 'all' && to !== 'notes' && to !== 'transcript') {
+        throw invalidArguments(
+          `forge transcribe makes all, notes or a transcript, not ${to}.`,
           'Try: forge transcribe talk.mp4 --to transcript',
         )
       }
-      intent.notes = to === 'notes'
+      intent.notes = to !== 'transcript'
+      intent.transcript = to !== 'notes'
     } else if (a.startsWith('-')) {
       throw invalidArguments(`forge transcribe does not take ${a}.`, example)
     } else inputs.push(a)
@@ -838,12 +856,12 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     .option('--width <px>', 'resize to this width; the height follows')
     .option('--height <px>', 'resize to this height; the width follows')
     .option('--remove-bg', 'cut out the subject; needs the remove-background extension')
-    .option('--cut <start-end>', 'video or sound: keep from start to end, e.g. 0:03.2-0:41')
+    .option('--cut <start-end>', 'video or audio: keep from start to end, e.g. 0:03.2-0:41')
     .option('--mute', 'video: take the sound out')
-    .option('--speed <x>', 'video or sound: play faster or slower, 0.25-4')
+    .option('--speed <x>', 'video or audio: play faster or slower, 0.25-4')
     .option('--fps <n>', 'video: frames per second')
-    .option('--bitrate <kbps>', 'sound: bitrate, e.g. 128k')
-    .option('--loudness <LUFS>', 'sound: even out loudness to this level, e.g. -16')
+    .option('--bitrate <kbps>', 'audio: bitrate, e.g. 128k')
+    .option('--loudness <LUFS>', 'audio: even out loudness to this level, e.g. -16')
     .option('--preset <name>', 'run a preset saved from Done, e.g. --preset blog')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')
@@ -894,7 +912,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
   if (media !== undefined && opts.trim) {
     throw invalidArguments(
       '--trim cuts the empty edges of an image.',
-      'To keep part of a video or sound file, use --cut, for example --cut 0:03-0:41.',
+      'To keep part of a video or audio file, use --cut, for example --cut 0:03-0:41.',
     )
   }
 

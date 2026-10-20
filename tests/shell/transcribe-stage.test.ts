@@ -29,6 +29,16 @@ describe('the card home shows for transcribe', () => {
     })
   })
 
+  it('a link being looked up pulses three dots, one to three cells wide, while time passes', () => {
+    const facts = (tick: number) =>
+      transcribeCard({ kind: 'link', url: URL, phase: 'looking' }, tick).facts
+    expect(facts(0)).toBe('Looking up the link ·  ')
+    expect(facts(1)).toBe('Looking up the link ·· ')
+    expect(facts(2)).toBe('Looking up the link ···')
+    expect(facts(3)).toBe('Looking up the link ·· ')
+    expect(facts(4)).toBe(facts(0))
+  })
+
   it('a link that needs yt-dlp first, with its real download size', () => {
     expect(
       transcribeCard({ kind: 'link', url: URL, phase: 'needs-yt-dlp', bytes: 37146048 }).facts,

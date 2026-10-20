@@ -133,8 +133,16 @@ interface PromptProps {
    * cells short of its edge (`fieldKey`) — ⌘V while a picture is copied.
    */
   hint?: Row | undefined
+  /** `home` only: a key hint at the far end once something is typed — "enter send" (2026-10-19). */
+  typedHint?: Row | undefined
   /** `inline` only: false draws no `› ` before the value (Save as's name box). */
   marker?: boolean
+  /**
+   * `home` only: one recessed row the field's width, the marker two columns
+   * in — the / menu's own field, lined up with its list (2026-10-19, F1) —
+   * rather than home's three-row shelf.
+   */
+  row?: boolean
   /** The value's colour, when not the usual text colour: red for wrong input in colour's box. */
   valueColour?: string
   /**
@@ -235,7 +243,9 @@ export function Prompt({
   suffix = '',
   after: trailing,
   hint,
+  typedHint,
   marker = true,
+  row = false,
   valueColour,
 }: PromptProps) {
   const palette = useTheme()
@@ -704,7 +714,7 @@ export function Prompt({
    */
   const markerWidth =
     variant === 'home'
-      ? shelf
+      ? shelf || row
         ? 4
         : 6
       : variant === 'plain'
@@ -880,12 +890,20 @@ export function Prompt({
         )}
       </Text>
     )
-    const far =
-      hint && !value && !span ? (
-        <Box flexShrink={0} marginRight={2}>
-          <Runs row={hint} />
+    const shownHint = !value && !span ? hint : value ? typedHint : undefined
+    const far = shownHint ? (
+      <Box flexShrink={0} marginRight={2}>
+        <Runs row={shownHint} />
+      </Box>
+    ) : null
+    if (row) {
+      return (
+        <Box ref={lineRef} width={width} {...(shelf ? { backgroundColor: shelf } : {})}>
+          <Box flexGrow={1}>{words('  ')}</Box>
+          {far}
         </Box>
-      ) : null
+      )
+    }
     if (!shelf) {
       return (
         <Box ref={lineRef} width={width}>

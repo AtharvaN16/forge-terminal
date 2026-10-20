@@ -57,6 +57,8 @@ const intent = (input: string, more: Partial<TranscribeIntent> = {}): Transcribe
   kind: 'transcribe',
   input,
   notes: true,
+  transcript: true,
+  detail: 'standard',
   force: false,
   debug: false,
   ...more,
@@ -95,6 +97,29 @@ describe('forge transcribe <file>', () => {
     expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
     expect(await argv(fake.dir)).toEqual(['run', input])
     expect(await readFile(join(dir, 'talk.md'), 'utf8')).not.toContain('## Notes')
+  })
+
+  it('writes the notes without the transcript with --to notes', async () => {
+    const { dir, input } = await setUp()
+    const { code } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(0)
+    const md = await readFile(join(dir, 'talk.md'), 'utf8')
+    expect(md).toContain('## Notes')
+    expect(md).not.toContain('## Transcript')
+  })
+
+  it('refuses --to notes, writing nothing, when Apple Intelligence is off', async () => {
+    const { dir, input } = await setUp('off')
+    const { code, err } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('Apple Intelligence')
+    expect(existsSync(join(dir, 'talk.md'))).toBe(false)
+  })
+
+  it('passes --detail on to the helper, and says nothing for standard', async () => {
+    const { fake, input } = await setUp()
+    await run(intent(input, { detail: 'brief' }))
+    expect(await argv(fake.dir)).toEqual(['run', input, '--notes', '--detail', 'brief'])
   })
 
   it('asks for no notes with --to transcript', async () => {
@@ -165,7 +190,7 @@ describe('forge transcribe <link>', () => {
     expect(md.split('\n').slice(0, 3)).toEqual([
       '# Me at the zoo: part 1/2',
       '',
-      'https://www.youtube.com/watch?v=jNQXAC9IVRw · 1:15',
+      '<https://www.youtube.com/watch?v=jNQXAC9IVRw>',
     ])
   })
 

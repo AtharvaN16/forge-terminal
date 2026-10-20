@@ -45,8 +45,14 @@ export async function readTranscribeFile(path: string): Promise<TranscribeSource
   return { kind: 'file', path, seconds, bytes: info.size }
 }
 
-/** The card's lines. The file's tag is its extension: a label only, the file was read by content. */
-export function transcribeCard(src: TranscribeSource): StagedFile {
+/** Three dots that fill and empty: ·, ··, ···, ··. Held to three cells so the line does not shift. */
+const pulse = (tick: number) => '·'.repeat([1, 2, 3, 2][tick % 4] as number).padEnd(3)
+
+/**
+ * The card's lines. The file's tag is its extension: a label only, the file was read by content.
+ * `tick` animates the wait while a link is looked up; without it (motion off) the line is still.
+ */
+export function transcribeCard(src: TranscribeSource, tick?: number): StagedFile {
   if (src.kind === 'file') {
     const tag = extname(src.path).slice(1).toUpperCase() || 'FILE'
     const size = formatBytes(src.bytes)
@@ -58,7 +64,12 @@ export function transcribeCard(src: TranscribeSource): StagedFile {
     size: '',
     facts,
   })
-  if (src.phase === 'looking') return card(src.url, 'Looking up the link')
+  if (src.phase === 'looking') {
+    return card(
+      src.url,
+      tick === undefined ? 'Looking up the link' : `Looking up the link ${pulse(tick)}`,
+    )
+  }
   if (src.phase === 'needs-yt-dlp') {
     return card(
       src.url,
@@ -72,8 +83,8 @@ export function transcribeCard(src: TranscribeSource): StagedFile {
   return card(src.facts.title, `${src.facts.uploader} · ${clock(src.facts.seconds)}`)
 }
 
-export function transcribeView(src: TranscribeSource): StagedView {
-  const file = transcribeCard(src)
+export function transcribeView(src: TranscribeSource, tick?: number): StagedView {
+  const file = transcribeCard(src, tick)
   return { files: [file], headline: file.name, total: file.size, fresh: 0 }
 }
 

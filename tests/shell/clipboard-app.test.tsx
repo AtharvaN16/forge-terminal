@@ -69,7 +69,7 @@ describe('the hint on home', () => {
     const { app } = await open(await holdingJpeg())
     await waitFor(() => plain(app.lastFrame()).includes(HINT))
     const line = (app.lastFrame() ?? '').split('\n').find((l) => plain(l).includes(HINT)) ?? ''
-    expect(plain(line)).toContain('› or type a path')
+    expect(plain(line)).toContain('› OR search or enter a file path…')
     const cells = ansiRow(line)
     const at = cells
       .map((c) => c.ch)
@@ -89,7 +89,7 @@ describe('the hint on home', () => {
     clip.copyText()
     const { app } = await open(clip)
     await settle(400)
-    expect(plain(app.lastFrame())).toContain('or type a path')
+    expect(plain(app.lastFrame())).toContain('OR search or enter a file path…')
     expect(plain(app.lastFrame())).not.toContain('paste from clipboard')
   })
 
@@ -111,7 +111,7 @@ describe('the hint on home', () => {
     await waitFor(() => plain(app.lastFrame()).includes(HINT))
     expect(plain(app.lastFrame())).toContain(HINT)
     // The focus report itself is never typed into the field.
-    expect(plain(app.lastFrame())).toContain('› or type a path')
+    expect(plain(app.lastFrame())).toContain('› OR search or enter a file path…')
   })
 })
 

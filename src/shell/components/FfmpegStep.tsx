@@ -77,7 +77,7 @@ export function FfmpegStep({
   const name: Row = [
     { text: '▌', fg: palette.accent },
     blank(1),
-    { text: 'Video and sound', fg: palette.fg, bold: true },
+    { text: 'Video and audio', fg: palette.fg, bold: true },
   ]
   const band = Math.max(40, width - 2)
   const row: Row = [...name, blank(Math.max(2, 36 - widthOf(name))), ...detail]

@@ -1,5 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Box, type DOMElement, type Key, Static, useApp, useStdout } from 'ink'
 import {
@@ -96,7 +97,7 @@ import { ExactSizeStep } from './components/ExactSizeStep.js'
 import { FfmpegStep } from './components/FfmpegStep.js'
 import { HeaderBar, isWorking } from './components/HeaderBar.js'
 import { HintBar } from './components/HintBar.js'
-import { Home, homeKeys, Runs, Suggestions } from './components/Home.js'
+import { Home, homeKeys, Runs } from './components/Home.js'
 import { type Cut, LengthStep } from './components/LengthStep.js'
 import { MediaFormatPicker } from './components/MediaFormatPicker.js'
 import { MenuPopup } from './components/MenuPopup.js'
@@ -130,7 +131,9 @@ import {
 } from './edit.js'
 import { notePanel } from './error-art.js'
 import { fieldKey } from './field-key.js'
+import { findByName, isNameQuery, tilde } from './find-files.js'
 import { AboutFlow, type AboutSystem, realAbout } from './flows/about.js'
+import { CliFlow, type CliSystem, realCli } from './flows/cli.js'
 import { ExtensionsFlow } from './flows/extensions.js'
 import { HUB_ACTIONS, PdfFlow, type PdfResume } from './flows/pdf.js'
 import { usePresetsOnDone } from './flows/presets.js'
@@ -139,9 +142,9 @@ import { TranscribeFlow } from './flows/transcribe.js'
 import { realUpdater, UpdateFlow, type Updater } from './flows/update.js'
 import { WatchFlow } from './flows/watch.js'
 import { useFocusIn } from './focus.js'
-import { HOME_MARGIN, type Row } from './home-art.js'
+import { HOME_MARGIN, MODE_FORMATS, type Row } from './home-art.js'
 import { menuListRows } from './menu-art.js'
-import { motionEnabled } from './motion.js'
+import { motionEnabled, useTicker } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { largestPercent } from './resize-art.js'
@@ -203,6 +206,8 @@ export type Step =
   | 'extensions'
   | 'update'
   | 'right-click'
+  /** `/cli`: the flags and subcommands, by category. */
+  | 'cli'
   | 'about'
   /** Edit's picker: Sharpen, Boost resolution (2× / 4× on the row), Remove background. */
   | 'edit'
@@ -709,12 +714,41 @@ type ClipDone =
   | { status: 'larger' }
 
 /** The ⌘V hint, and the key it names: what a terminal sends as an empty paste. */
+
+/**
+ * A completion as the drop area lists it (S2): the name, and the folder it is
+ * in. A path's completion says only its whole path, so the folder is read off
+ * it — the folder Forge was started in where the path had none.
+ */
+function suggestionItem(c: Completion): { name: string; where: string } {
+  if (c.where !== undefined) return { name: c.label, where: c.where }
+  const bare = c.label.replace(/[\\/]$/, '')
+  const cut = Math.max(bare.lastIndexOf('/'), bare.lastIndexOf('\\'))
+  return {
+    name: c.label.slice(cut + 1),
+    where: cut < 0 ? tilde(process.cwd(), homedir()) : bare.slice(0, cut) || '/',
+  }
+}
+
+/** What the first name typed asks (2026-10-19, P2), in the user's words. */
+const SEARCH_ASK = {
+  title: 'Search your Mac for files by name?',
+  body: 'macOS will ask for permission to access your files. You can review or change these permissions anytime in System Settings.',
+} as const
+
+/** The least time "Searching your Mac" shows, so a fast search does not flash it. */
+const SEARCH_SHOWN_MS = 300
+
+/** How long typing rests before a name is looked for: one search per pause, not per key. */
+const NAME_WAIT_MS = 120
+
 const PASTE_HINT = { key: '⌘V', words: 'to paste from clipboard' } as const
 
 /** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
 const SETTINGS_STEPS: ReadonlySet<string> = new Set([
   'extensions',
   'right-click',
+  'cli',
   'update',
   'about',
 ])
@@ -727,6 +761,7 @@ export function App({
   tools = realTools,
   updater = realUpdater,
   about = realAbout,
+  cli = realCli,
   rightClick = realRightClick,
   latestRelease,
   pasteboard = null,
@@ -744,6 +779,8 @@ export function App({
   updater?: Updater
   /** What /about opens links and reads credits with; tests pass a fake. */
   about?: AboutSystem
+  /** What /cli copies an example with; tests pass a fake. */
+  cli?: CliSystem
   /** What /right-click switches the menu with; tests pass a fake. */
   rightClick?: RightClickSystem
   /**
@@ -1429,6 +1466,9 @@ export function App({
   const staged = stage.sources.length > 0
   /** The rows the latest drop added, for their band — none while motion is off. */
   const freshRows = motionEnabled(palette.name) ? fresh.count : 0
+  // The pulsing dots while a link is looked up.
+  const lookingUp = transcribing?.kind === 'link' && transcribing.phase === 'looking'
+  const lookTick = useTicker(lookingUp && motionEnabled(palette.name), 350)
 
   /**
    * Looks at the clipboard for home's ⌘V hint: on opening, each time home
@@ -1458,30 +1498,112 @@ export function App({
         })
       : undefined
 
+  /**
+   * The enter key alone at the field's far end, on the key row's grey cap,
+   * while there is something for it to do (2026-10-19): a path or name typed,
+   * or a file staged that ↵ would act on. An empty home shows nothing. Not
+   * for a command, whose menu says ↵ open, nor while the drop area asks.
+   */
+  const enterCap: Row =
+    (process.env.NO_COLOR ?? '') !== '' || palette.keycapBg === ''
+      ? [{ text: '[enter]', fg: palette.border }]
+      : [{ text: ' enter ', fg: palette.fg, bg: palette.keycapBg, bold: true }]
+  const sendHint: Row | undefined =
+    onHome && text !== '' && !isCommandBuffer(text) ? enterCap : undefined
+  const stagedVerbNow =
+    mode === 'transcribe'
+      ? transcribing
+        ? transcribeVerb(transcribing)
+        : null
+      : staged
+        ? stagedVerb(stage, mode)
+        : null
+  const emptyHint: Row | undefined = onHome && stagedVerbNow ? enterCap : pasteHint
+
+  /**
+   * Tab lists the supported formats on the drop surface until the next key
+   * (mockups/kinds-2026-10.html, Q2): on a bare home, the field empty, in a
+   * mode that has a list (Tab does nothing on an empty field otherwise). The
+   * key row says so; the field does not (2026-10-19). Not ?: it is shift-/,
+   * and some terminals send it as a / with shift held, which opens the menu. Meant
+   * first as "while held", but a terminal never
+   * says a letter key came up — the kitty protocol reports releases only for
+   * keys sent as escape codes, which the shell does not ask for — and auto-
+   * repeat cannot be told from typing.
+   */
+  const [formatsOpen, setFormatsOpen] = useState(false)
+  const formatsHere = onHome && !staged && text === '' && MODE_FORMATS[mode] !== undefined
+  useEffect(() => {
+    if (!formatsHere) setFormatsOpen(false)
+  }, [formatsHere])
   /** Path completions for the home field, and which one Tab would take. */
   const [completions, setCompletions] = useState<Completion[]>([])
   const [chosen, setChosen] = useState(0)
+  /**
+   * The text the last search answered. Until it is the text in the field, a
+   * name is being looked for and the drop area says so (L1) — from the
+   * keystroke on, fast searches too (2026-10-19), and for at least
+   * `SEARCH_SHOWN_MS`, so a search that answers in a blink does not flash it.
+   */
+  const [answered, setAnswered] = useState<string | null>(null)
+
+  /**
+   * Searching the Mac by name asks first, once (2026-10-19, P2): macOS will
+   * then ask for each guarded folder, and the answer is kept. "Not now" holds
+   * for the session: names are then walked from the folder Forge was started
+   * in, as before. Off a Mac nothing guards the folders, so nothing asks.
+   */
+  const [searchMac, setSearchMac] = useState(
+    prefs.searchMac === true || process.platform !== 'darwin',
+  )
+  const [searchNotNow, setSearchNotNow] = useState(false)
+  const nameSearch = isNameQuery(text) && searchMac
+  const askingSearch = onHome && isNameQuery(text) && !searchMac && !searchNotNow
 
   useEffect(() => {
-    if (!onHome || text.trim() === '' || isCommandBuffer(text)) {
+    if (!onHome || text.trim() === '' || isCommandBuffer(text) || askingSearch) {
       setCompletions((c) => (c.length === 0 ? c : []))
       return
     }
     let live = true
-    completePath(text).then(
-      (found) => {
-        if (!live || textRef.current !== text) return
-        setCompletions(found)
-        setChosen(0)
-      },
-      () => {
-        if (live) setCompletions([])
-      },
-    )
+    // A name is looked for across the Mac (`findByName`), a moment after the
+    // typing stops, and a newer keystroke stops the search it makes stale; a
+    // path is walked folder by folder at once, as before.
+    const stop = new AbortController()
+    let held: ReturnType<typeof setTimeout> | undefined
+    // A name shows the searching line from the keystroke itself (see
+    // `searching` below), not after the pause before the search runs: the
+    // drop area never sits faded in between.
+    const since = Date.now()
+    const look = () => {
+      // The answer waits out the rest of the line's least time on screen.
+      const land = (found: Completion[]) => {
+        const show = () => {
+          if (!live || textRef.current !== text) return
+          setAnswered(text)
+          setCompletions(found)
+          setChosen(0)
+        }
+        const rest = nameSearch ? SEARCH_SHOWN_MS - (Date.now() - since) : 0
+        if (rest > 0) held = setTimeout(show, rest)
+        else show()
+      }
+      return (nameSearch ? findByName(text, { signal: stop.signal }) : completePath(text)).then(
+        land,
+        () => {
+          if (live) land([])
+        },
+      )
+    }
+    const wait = nameSearch ? setTimeout(look, NAME_WAIT_MS) : undefined
+    if (!wait) void look()
     return () => {
       live = false
+      if (wait) clearTimeout(wait)
+      if (held) clearTimeout(held)
+      stop.abort()
     }
-  }, [onHome, text])
+  }, [onHome, text, nameSearch, askingSearch])
 
   /** Same as `/convert`, `/compress` or `/pdf` with nothing staged. */
   const switchMode = (next: ShellMode) => {
@@ -1542,7 +1664,8 @@ export function App({
   /**
    * Keys the command list takes before the field sees them, while it is
    * open: ↑↓ choose a row and ↵ runs it. ↵ with nothing listed falls through
-   * to the field, which reports that no command matches.
+   * to the field: a path if there is something there, else a note that no
+   * command matches.
    */
   const commandKey = (input: string, key: Key): boolean => {
     if (!commands) return false
@@ -1614,6 +1737,20 @@ export function App({
   const homeKey = (input: string, key: Key, value: string): boolean => {
     if (pasteboard && ((key === PASTE && input === '') || (key.ctrl && input === 'v'))) {
       pasteClipboard()
+      return true
+    }
+    if (askingSearch && (key.return || key.escape)) {
+      if (key.return) {
+        setSearchMac(true)
+        savePreferences({ searchMac: true }).catch(() => {})
+      } else setSearchNotNow(true)
+      return true
+    }
+    if (formatsOpen) {
+      setFormatsOpen(false)
+      if (key.tab || key.escape) return true
+    } else if (formatsHere && value === '' && key.tab && !key.ctrl && !key.meta) {
+      setFormatsOpen(true)
       return true
     }
     const piece = dropPiece.current
@@ -2044,6 +2181,8 @@ export function App({
   useKeys(
     (_input, key) => {
       if (!key.escape) return
+      // Asking whether to search the Mac, esc is "not now", and the name stays.
+      if (askingSearch) return
       setHomeError(undefined)
       if (text !== '') {
         setText('')
@@ -2480,6 +2619,11 @@ export function App({
         return
       }
 
+      if (command.name === 'cli') {
+        setStep('cli')
+        return
+      }
+
       if (command.name === 'about') {
         setStep('about')
         return
@@ -2861,8 +3005,11 @@ export function App({
        * `/compress` is looked up as a file and reported missing — which is
        * exactly what happened before this branch existed.
        */
-      if (isCommandBuffer(trimmed)) {
-        const command = parseCommand(trimmed)
+      // A name no command has is a path after all if there is something
+      // there ("/tmp", typed whole and ↵): the menu stayed open on it, saying
+      // no command matches (2026-10-19), and ↵ sends it on as a path.
+      const command = isCommandBuffer(trimmed) ? parseCommand(trimmed) : undefined
+      if (isCommandBuffer(trimmed) && (command || !existsSync(trimmed))) {
         setText('')
         if (command) {
           runCommand(command)
@@ -3048,7 +3195,7 @@ export function App({
    * them the session.
    */
   /**
-   * Back from a setting (/theme, /extensions, /update, /about) to where settings live: the
+   * Back from a setting (/theme, /extensions, /update, /cli, /about) to where settings live: the
    * command list, the setting just left still highlighted.
    */
   const backToCommands = (name: string) => {
@@ -4487,15 +4634,17 @@ export function App({
 
   /**
    * The / menu (decided 2026-10-17): a popup over home while what is typed is
-   * a command some row matches; once nothing matches it is a path again, in
-   * home's own field. A setting chosen from it opens inside it.
+   * a command — a slash and a word. It stays open when no command matches,
+   * saying so (2026-10-19: "/s" closing it read as broken); a second slash, a
+   * space, or ↵ on something that is there makes it a path, in home's own
+   * field. A setting chosen from it opens inside it.
    */
-  const menuOpen = commands !== undefined && commands.items.length > 0
+  const menuOpen = commands !== undefined
   /** The popup's inside: one column in from each side, the border and a column of padding. */
   const menuInner = Math.max(20, width - 6)
   /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
   const menuBody = Math.max(6, height - 3 - 6)
-  const homeField = (w: number) => (
+  const homeField = (w: number, row = false) => (
     <Prompt
       value={text}
       onChange={setText}
@@ -4504,17 +4653,19 @@ export function App({
         mode === 'transcribe'
           ? transcribing
             ? 'or paste another link'
-            : 'or type a path or link'
+            : 'OR search or enter a file path…'
           : staged
             ? 'drop more, or type a path'
-            : 'or type a path'
+            : 'OR search or enter a file path…'
       }
       isActive
       variant="home"
       width={w}
       rawOnSubmit
       intercept={homeKey}
-      hint={pasteHint}
+      hint={emptyHint}
+      typedHint={askingSearch ? undefined : sendHint}
+      row={row}
     />
   )
   const inMenu = (title: string, name: string, node: ReactNode) => (
@@ -4524,13 +4675,17 @@ export function App({
       title={title}
       body={node}
       field={
-        <Text>
-          {'    '}
-          <Text color={colourProp(palette.brand)} bold>
-            {'›'}
+        // The menu's own field, as its list draws it (F1): one recessed row,
+        // the marker in the list's column.
+        <Box width={menuInner} {...(palette.shelf ? { backgroundColor: palette.shelf } : {})}>
+          <Text>
+            {'  '}
+            <Text color={colourProp(palette.brand)} bold>
+              {'›'}
+            </Text>
+            <Text color={colourProp(palette.dim)}>{` /${name}`}</Text>
           </Text>
-          <Text color={colourProp(palette.dim)}>{` /${name}`}</Text>
-        </Text>
+        </Box>
       }
       keys={{ pairs: [], foot: [] }}
     />
@@ -4585,7 +4740,7 @@ export function App({
             {/* The header bar: which mode, and the trail of answers so far —
             on every screen after home. Not on Done, which draws its own, the
             trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
-            the settings (/extensions, /update, /about), which are no mode and
+            the settings (/extensions, /update, /cli, /about), which are no mode and
             each draw their own chip. */}
             {working && !onHome && !atDone && !SETTINGS_STEPS.has(step) ? (
               <Box marginBottom={1}>
@@ -5383,6 +5538,19 @@ export function App({
                 )
               : null}
 
+            {step === 'cli'
+              ? inMenu(
+                  'CLI',
+                  'cli',
+                  <CliFlow
+                    width={menuInner}
+                    height={menuBody}
+                    system={cli}
+                    onClose={() => backToCommands('cli')}
+                  />,
+                )
+              : null}
+
             {step === 'about'
               ? inMenu(
                   'About',
@@ -5540,8 +5708,8 @@ export function App({
                   </Box>
                 }
                 field={
-                  <ThemeProvider palette={{ ...menuPalette(palette), shelf: '' }}>
-                    {homeField(menuInner)}
+                  <ThemeProvider palette={menuPalette(palette)}>
+                    {homeField(menuInner, true)}
                   </ThemeProvider>
                 }
                 keys={{
@@ -5560,12 +5728,18 @@ export function App({
                 height={height}
                 intro={firstHome.current}
                 update={release}
+                formats={formatsOpen}
+                ask={askingSearch ? SEARCH_ASK : undefined}
+                searching={onHome && nameSearch && !askingSearch && answered !== text}
                 mode={mode}
                 typing={text !== ''}
                 staged={
                   mode === 'transcribe'
                     ? transcribing
-                      ? transcribeView(transcribing)
+                      ? transcribeView(
+                          transcribing,
+                          lookingUp && motionEnabled(palette.name) ? lookTick : undefined,
+                        )
                       : undefined
                     : staged
                       ? stagedView(stage, freshRows, mode)
@@ -5587,16 +5761,9 @@ export function App({
                   homeNotices.length > 0 ? noticeRows(homeNotices, width, palette) : undefined
                 }
                 field={homeField(width)}
-                list={
+                suggest={
                   completions.length > 0
-                    ? (rows) => (
-                        <Suggestions
-                          items={completions.map((c) => c.label)}
-                          selected={chosen}
-                          width={width}
-                          rows={rows}
-                        />
-                      )
+                    ? { items: completions.map(suggestionItem), selected: chosen }
                     : undefined
                 }
                 colourChoice={colourChoice}
@@ -5604,6 +5771,8 @@ export function App({
                   typing: text !== '',
                   completions: completions.length,
                   colour: mode === 'colour',
+                  formats: formatsHere,
+                  asking: askingSearch,
                   staged:
                     mode === 'transcribe'
                       ? transcribing

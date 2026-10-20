@@ -1,20 +1,28 @@
 import { Box } from 'ink'
 import { cloneElement, isValidElement, type ReactNode, useRef, useState } from 'react'
 import stringWidth from 'string-width'
+import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { COLOUR_CARD_KEYS, COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
 import {
+  askRows,
   brandIntro,
   brandRows,
   DROP_RING_MS,
   folderCardOnDots,
+  formatRows,
   HOME_MARGIN,
   INTRO_MS,
   MODE_DROP_TITLES,
+  MODE_FORMATS,
   MODE_KINDS,
+  MODE_NOTES,
   menuHintRow,
   type Row,
+  type SuggestionItem,
+  searchingRows,
   stagedCardRows,
   stagedListRows,
+  suggestionRows,
   surfaceRows,
   tabRows,
   underRow,
@@ -106,6 +114,8 @@ export function homeKeys({
   completions,
   colour = false,
   staged,
+  formats = false,
+  asking = false,
 }: {
   typing: boolean
   completions: number
@@ -113,27 +123,39 @@ export function homeKeys({
   colour?: boolean
   /** Files are staged: how many, and ↵'s word for them (`stagedVerb`); null when ↵ does nothing. */
   staged?: { count: number; verb: string | null } | undefined
+  /** Tab lists the supported formats here: a bare home in a mode that has a list. */
+  formats?: boolean
+  /** The drop area asks whether to search the Mac by name: ↵ yes, esc not now. */
+  asking?: boolean
 }): KeySet {
+  if (asking) {
+    return {
+      main: [
+        ['↵', 'search'],
+        ['esc', 'not now'],
+      ],
+      foot: [['ctrl-c', 'quit']],
+    }
+  }
+  // ↵ is said in the field, "enter send", once something is typed (2026-10-19);
+  // an empty field has nothing to send. Typing, esc clear is a key here; with something
+  // staged it is on the row above, beside "/ menu" (`menuHintRow`).
   if (typing && completions > 0) {
     return {
       main: [
-        ['↵', 'send'],
+        ['esc', 'clear'],
         ['tab', 'complete'],
       ],
       foot: [
         ['↑↓', 'choose'],
-        ['esc', 'clear'],
         ['ctrl-c', 'quit'],
       ],
     }
   }
   if (typing) {
     return {
-      main: [['↵', 'send']],
-      foot: [
-        ['esc', 'clear'],
-        ['ctrl-c', 'quit'],
-      ],
+      main: [['esc', 'clear']],
+      foot: [['ctrl-c', 'quit']],
     }
   }
   if (colour) {
@@ -141,25 +163,14 @@ export function homeKeys({
       main: [[COLOUR_CARD_KEYS.join(' ').toUpperCase(), 'open']],
       foot: [
         [MODE_ARROWS, 'mode'],
-        ['ctrl-n', 'new'],
         ['ctrl-c', 'quit'],
       ],
     }
   }
   if (staged && staged.count > 0) {
-    if (staged.verb === null) {
-      return {
-        main: [['esc', 'clear']],
-        foot: [
-          [MODE_ARROWS, 'mode'],
-          ['ctrl-c', 'quit'],
-        ],
-      }
-    }
     return {
-      main: [['↵', staged.verb]],
+      main: staged.verb === null ? [] : [['↵', staged.verb]],
       foot: [
-        ['esc', 'clear'],
         [MODE_ARROWS, 'mode'],
         ['ctrl-c', 'quit'],
       ],
@@ -167,11 +178,10 @@ export function homeKeys({
   }
   // No "/ menu": the tab row says it.
   return {
-    main: [['↵', 'send']],
+    main: [],
     foot: [
+      ...(formats ? [['tab', 'supported formats'] as Pair] : []),
       [MODE_ARROWS, 'mode'],
-      ['esc', 'clear'],
-      ['ctrl-n', 'new'],
       ['ctrl-c', 'quit'],
     ],
   }
@@ -263,7 +273,15 @@ export function KeyRow({
           </Text>
         ))}
         {' '.repeat(gap)}
-        <Text color={colourProp(palette.border)}>{note()}</Text>
+        {/* The footnote's keys bright, what they do faded (2026-10-19); an item
+            with no word is a sentence, faded whole. */}
+        {shown.map(([key, word], i) => (
+          <Text key={`${key}${word}`}>
+            {i ? <Text color={colourProp(palette.border)}>{' · '}</Text> : null}
+            <Text color={colourProp(word ? palette.fg : palette.border)}>{key}</Text>
+            {word ? <Text color={colourProp(palette.border)}>{` ${word}`}</Text> : null}
+          </Text>
+        ))}
       </Text>
     </Box>
   )
@@ -351,6 +369,10 @@ export function Home({
   colourChoice = 0,
   intro = false,
   update,
+  formats = false,
+  suggest,
+  ask,
+  searching = false,
 }: {
   width: number
   height: number
@@ -383,6 +405,14 @@ export function Home({
   intro?: boolean
   /** A newer Forge (N1): the band's baseline says "/update is available ·" before the version. */
   update?: string | undefined
+  /** ? is held: the drop surface lists the supported formats in place of its dots. */
+  formats?: boolean
+  /** What the field suggests while something is typed: listed on the drop surface (S2). */
+  suggest?: { items: readonly SuggestionItem[]; selected: number } | undefined
+  /** A question on the drop surface while a name is typed: whether to search the Mac (P2). */
+  ask?: { title: string; body: string } | undefined
+  /** A name is being looked for: the drop surface says so (L1). */
+  searching?: boolean
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height, noteRows)
@@ -390,8 +420,10 @@ export function Home({
   // The drop surface ripples (M1) only while it is all that is on the panel
   // and nothing is typed; anything else holds it still, and it starts again
   // from empty when the panel is bare once more.
-  const bare = !staged && !typing && mode !== 'colour' && layout.surface > 0
+  const bare = !staged && !typing && !formats && mode !== 'colour' && layout.surface > 0
   const ripple = useElapsed(bare && motionEnabled(palette.name))
+  // The searching line's spinner turns while it shows; still where motion is off.
+  const spun = useElapsed(typing && searching && motionEnabled(palette.name), 80)
   // A file that has just landed runs one ring through the card's dots (M2a).
   const landed = staged?.folder
     ? staged.fresh > 0
@@ -425,18 +457,37 @@ export function Home({
                 width: width - 2 * HOME_MARGIN - 6,
               }),
             })
-          : staged && staged.files.length === 1 && staged.files[0]
-            ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
-            : staged && staged.files.length > 1
-              ? stagedListRows({ ...art, rows: layout.surface, view: staged })
-              : surfaceRows({
+          : typing && ask
+            ? askRows({ width, palette, rows: layout.surface, ...ask })
+            : typing && searching
+              ? searchingRows({
                   ...art,
                   rows: layout.surface,
-                  typing,
-                  kinds: MODE_KINDS[mode],
-                  ...(MODE_DROP_TITLES[mode] ? { title: MODE_DROP_TITLES[mode] } : {}),
-                  ripple,
+                  glyph:
+                    SPINNER_FRAMES[Math.floor((spun ?? 0) / 80) % SPINNER_FRAMES.length] ?? '⠋',
                 })
+              : typing && suggest && suggest.items.length > 0
+                ? suggestionRows({ ...art, rows: layout.surface, ...suggest })
+                : formats && !staged && MODE_FORMATS[mode]
+                  ? formatRows({
+                      ...art,
+                      rows: layout.surface,
+                      kinds: MODE_FORMATS[mode] ?? [],
+                    })
+                  : staged && staged.files.length === 1 && staged.files[0]
+                    ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
+                    : staged && staged.files.length > 1
+                      ? stagedListRows({ ...art, rows: layout.surface, view: staged })
+                      : surfaceRows({
+                          ...art,
+                          rows: layout.surface,
+                          // Never faded for typing (2026-10-19): the drop area
+                          // keeps its strength whatever is in the field.
+                          typing: false,
+                          kinds: MODE_KINDS[mode],
+                          ...(MODE_DROP_TITLES[mode] ? { title: MODE_DROP_TITLES[mode] } : {}),
+                          ripple,
+                        })
       : []
 
   // The row under the field. With no room for a panel the staged headline
@@ -555,9 +606,21 @@ export function Home({
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
         {note ? null : list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
-      {/* "/ menu" while the field is empty. Typing — a path or a command —
-          the list below the field needs the row, and / is already in use. */}
-      {typing ? null : <Runs row={menuHintRow({ palette, width, open: false })} />}
+      {/* "/ menu" at the right while the field is empty, and "esc clear" at
+          the left while something is staged. Typing — a path or a command —
+          the list below the field needs the row, and esc clear is on the key
+          row beside ↵ send. */}
+      {typing ? null : (
+        <Runs
+          row={menuHintRow({
+            palette,
+            width,
+            open: false,
+            clear: staged !== undefined,
+            note: MODE_NOTES[mode],
+          })}
+        />
+      )}
       {/* The rule takes the list's last row, so the layout is unchanged. */}
       <Text color={colourProp(palette.border)}>{'─'.repeat(width)}</Text>
       <KeyRow {...keys} width={width} />

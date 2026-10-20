@@ -2,6 +2,7 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
+import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { tabStep } from '../../src/shell/theme.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
@@ -30,10 +31,11 @@ type Rendered = ReturnType<typeof render>
 const frame = (app: Rendered) => plain(app.lastFrame())
 /** Which tab the screen is on, told apart by what each one says. */
 const on = {
-  convert: (f: string) => f.includes('images · HEIC · PDF · Word') && !f.includes('Modes ─'),
-  compress: (f: string) => f.includes('images · PDF') && !f.includes('HEIC'),
-  // edit's line is the start of convert's, so convert's tail must be gone.
-  edit: (f: string) => f.includes('images · HEIC') && !f.includes('Word'),
+  convert: (f: string) => f.includes(MODE_KINDS.convert) && !f.includes('Modes ─'),
+  compress: (f: string) => f.includes(MODE_KINDS.compress),
+  // edit's line is the start of compress's and convert's, so their tails must be gone.
+  edit: (f: string) =>
+    f.includes(MODE_KINDS.edit) && !f.includes('Audio ·') && !f.includes('Modes ─'),
   colour: (f: string) => f.includes('extract colours'),
   transcribe: (f: string) => f.includes('or paste a YouTube link'),
   menu: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
@@ -102,7 +104,8 @@ describe('←→ on home', () => {
 
   it('moves the cursor instead once something is typed, on a mode or on the menu', async () => {
     const app = await home()
-    app.stdin.write('ab')
+    // A path, not a name: a name would ask first whether to search the Mac.
+    app.stdin.write('.ab')
     await settle()
     app.stdin.write(RIGHT)
     await settle(300)

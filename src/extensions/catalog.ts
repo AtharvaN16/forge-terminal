@@ -104,8 +104,8 @@ export const CATALOG: readonly CatalogEntry[] = [
     // GPL asks. No asset until it is published: until then nothing offers it,
     // and Forge says how to get ffmpeg instead.
     id: 'video',
-    title: 'Video and sound',
-    summary: 'Convert, compress and trim video and sound (ffmpeg)',
+    title: 'Video and audio',
+    summary: 'Convert, compress and trim video and audio (ffmpeg)',
     minMacos: 13,
     assets: {},
     licence:

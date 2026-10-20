@@ -11,6 +11,8 @@ export interface Completion {
   label: string
   /** What Tab puts in the field: escaped the way a Finder drop is, so it is sent whole. */
   insert: string
+  /** The folder it is in, as shown at the row's far end; left out, it is read off `label`. */
+  where?: string
 }
 
 /** More than this and the list is a directory listing, not a suggestion. */

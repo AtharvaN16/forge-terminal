@@ -106,7 +106,7 @@ describe('a run that fails and goes home', () => {
       expect(live()).toContain('ctrl-c quit')
       const at = (re: RegExp) => lines.findIndex((l) => re.test(l))
       expect(at(/Drop a file here/)).toBeGreaterThan(-1)
-      expect(at(/^\s+failed\s*$/)).toBeGreaterThan(at(/or type a path/))
+      expect(at(/^\s+failed\s*$/)).toBeGreaterThan(at(/OR search or enter a file path…/))
       expect(at(/^\s+failed\s*$/)).toBeGreaterThan(at(/Drop a file here/))
       // Once, not live and in the scrollback both.
       expect(frame().match(/No subject found/g)).toHaveLength(1)

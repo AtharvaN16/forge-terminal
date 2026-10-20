@@ -20,9 +20,9 @@ transcript, Apple's on-device model writes the notes.
 - Input: a dropped file, a typed path, or a YouTube link.
 - Mac only (macOS 26 or later). Windows only if it gains equivalent built-in
   tools.
-- Output is Markdown. **Notes** (summary, notes per part, transcript) or
-  **Only transcript**. No subtitles.
-- The file carries one line under the summary:
+- Output is Markdown. **All** (summary, notes per part, transcript),
+  **Notes** (the same without the transcript) or **Transcript** (renamed 2026-10-19). No subtitles.
+- The file ends with one line (moved from under the summary, 2026-10-19):
   *Summary and notes by Apple Intelligence. They may contain mistakes.*
 - YouTube links stay, through yt-dlp as an add-on, after the terms-of-service
   risk was explained.
@@ -34,7 +34,13 @@ transcript, Apple's on-device model writes the notes.
 - **The language is the Mac's own**; another is `--language` on the CLI. Apple's
   public Speech API cannot detect the spoken language, and a step would cost
   everyone a ↵ to serve a few.
-- **Transcribe to** is a plain list, Notes / Only transcript. With Apple
+- **Detail** (added 2026-10-19): on All and Notes the highlighted row carries a
+  pill at its far end, Brief / Standard / Detailed, stepped with ←→ (CLI
+  `--detail`). Brief: 3 points per part, a 1–2 sentence summary. Standard: what
+  was measured. Detailed: parts at 30% of the window instead of 55%, up to 8
+  points of 1–2 sentences, a paragraph summary (about twice the model calls).
+  Not remembered between runs.
+- **Transcribe to** is a plain list, All / Notes / Transcript. With Apple
   Intelligence off there is nothing to choose, so the step is skipped.
 - **Notes are written part by part** (≈ 14 min of talk each on a 4 096-token
   window), each in a fresh session with fixed (greedy) sampling; the headings
@@ -94,11 +100,12 @@ Every line on stdout is one JSON object.
   `youtu.be/`, `shorts/`, `live/`, `m.` and `music.` hosts); tell a playlist
   from a video.
 - `src/core/transcribe/markdown.ts` — the file from the helper's result:
-  title, source line (link or file, and length), summary, disclaimer,
+  title, source line (a link as a clickable `<url>`, or the file's name; no length), summary,
   `## Notes` (one `###` per part with its start time and points),
   `## Transcript` (the same headings, paragraphs broken at pauses of > 1 s once
   they have 60 words, or at 140 words, each led by its time in bold).
-  Only transcript: title, source line, paragraphs, no headings.
+  The disclaimer is the last line. Notes: the same, ending after `## Notes` (CLI `--to notes`; refused when
+  Apple Intelligence is off). Transcript: title, source line, paragraphs, no headings.
 
 ### 4.3 Engines
 
@@ -122,7 +129,7 @@ Every line on stdout is one JSON object.
 
 ### 4.5 CLI
 
-`forge transcribe <file|link> [--to notes|transcript] [--language <id>] [-o <path>]`.
+`forge transcribe <file|link> [--to all|notes|transcript] [--language <id>] [-o <path>]`.
 Prints the same `✓ name` line as convert; refusals as the other commands do.
 
 ## 5. Out of scope

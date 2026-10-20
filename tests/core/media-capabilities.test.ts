@@ -24,7 +24,7 @@ const podcast: MediaInfo = {
 }
 
 describe('what a video can become', () => {
-  it('offers the video formats, then sound only, and its own (for compress)', () => {
+  it('offers the video formats, then audio only, and its own (for compress)', () => {
     expect(targetIdsFor(recording())).toEqual([
       'mp4',
       'mov',

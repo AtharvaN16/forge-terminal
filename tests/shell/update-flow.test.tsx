@@ -229,6 +229,23 @@ describe('UpdateFlow (U4)', () => {
     expect(calls.auto).toEqual([false, true])
   })
 
+  it('once installed, esc does not go home: the old Forge’s files are gone, so ↵ restart or quit', async () => {
+    const { updater, release } = fakeUpdater()
+    const onClose = vi.fn()
+    const f = open(updater, { onClose })
+    await until(() => frame(f).includes('↵ update'))
+    await tick()
+    f.stdin.write(ENTER)
+    await until(() => frame(f).includes('Installing 0.2.2'))
+    release()
+    await until(() => frame(f).includes('✓ installed · restart to use it'))
+    await tick()
+    f.stdin.write(ESC)
+    await tick()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(frame(f)).not.toMatch(/esc +home/)
+  })
+
   it('esc goes home', async () => {
     const onClose = vi.fn()
     const f = open(fakeUpdater().updater, { onClose })

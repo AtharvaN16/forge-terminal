@@ -132,7 +132,7 @@ export const mediaEditAction: Action = {
   verb: 'Editing',
   hint: 'trim, mute, resize, crop',
   appliesTo: (sources) => soleMedia(sources) !== undefined,
-  unavailable: () => 'one video or sound file',
+  unavailable: () => 'one video or audio file',
   // The shell asks its own questions (the Length step, the crop frame).
   options: (): OptionSpec[] => [],
   plan(sources, values): Job[] {

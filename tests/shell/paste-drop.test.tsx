@@ -24,7 +24,9 @@ function home(dir: string) {
 }
 
 /** The line the field is drawn on. */
-const fieldLine = (frame: string) => frame.split('\n').find((l) => l.startsWith('    › ')) ?? ''
+/** The field's row, less the key hint at its far end ("enter", 2026-10-19). */
+const fieldLine = (frame: string) =>
+  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +enter *$/, '')
 
 /** The field lines drawn from frame `from` on that show anything but a placeholder. */
 const typedSince = (frames: string[], from: number) =>

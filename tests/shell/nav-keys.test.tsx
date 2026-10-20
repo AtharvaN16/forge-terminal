@@ -134,8 +134,9 @@ describe('esc at the idle prompt', () => {
     app.stdin.write(ESC)
     await settle(300) // back to idle, a.pdf still staged
 
-    // Type something that is not a command.
-    app.stdin.write('some stray text')
+    // Type something that is not a command — nor a name, which would ask
+    // first whether to search the Mac, esc then being "not now".
+    app.stdin.write('./some stray text')
     await settle()
     expect(app.lastFrame() ?? '').toContain('some stray text')
 

@@ -13,6 +13,7 @@ import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
 import { Select } from './Select.js'
+import { pillWidth, StepPill } from './StepPill.js'
 
 /** E3's blank row: never a place the cursor rests. */
 const GAP = '__gap__'
@@ -21,9 +22,6 @@ const READY: ToolState = { kind: 'ready' }
 
 /** The install byte band's width, a cell tall (G1's look for a real count). */
 const BYTE_BAND = 12
-
-/** A pill at the end of a band (Boost's scale, Crop's shape): ` ‹ ` the step ` › `. */
-const pillWidth = (label: string) => stringWidth(` ‹ ${label} › `)
 
 /** The narrowest the pane gets before its words wrap a line each. */
 const PANE_MIN = 30
@@ -178,22 +176,7 @@ export function EditPicker({
     const row = rows.find((r) => r.id === item.value)
     const own = row ? pillOf(row) : undefined
     if (!row || !own || own.steps.length === 0 || stateOf(row)?.kind !== 'ready') return null
-    const i = Math.max(0, Math.min(placed[row.id] ?? 0, own.steps.length - 1))
-    const chip = palette.folderChip === '' ? {} : { backgroundColor: palette.folderChip }
-    const arrow = (live: boolean, text: string) => (
-      <Text bold={live} color={colourProp(live ? palette.accent : palette.border)} {...chip}>
-        {text}
-      </Text>
-    )
-    return (
-      <Text>
-        {arrow(i > 0, ' ‹ ')}
-        <Text bold color={fg} {...chip}>
-          {own.steps[i]?.label}
-        </Text>
-        {arrow(i < own.steps.length - 1, ' › ')}
-      </Text>
-    )
+    return <StepPill labels={own.steps.map((s) => s.label)} at={placed[row.id] ?? 0} />
   }
 
   /** The pane's last line: what you get, or where the tool's install stands. */

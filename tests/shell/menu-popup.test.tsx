@@ -4,10 +4,16 @@ import { MenuPopup, ScreenBar, ScreenKeys } from '../../src/shell/components/Men
 import { Text } from '../../src/shell/Text.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
 import { DARK } from '../../src/shell/theme.js'
-import { unpaint } from '../helpers/unpaint.js'
 
 const settle = (ms = 50) => new Promise((r) => setTimeout(r, ms))
-const plain = (s: string | undefined) => unpaint(s ?? '')
+const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+/** Plain rows, none dropped: the box's empty top ring is a row of its own (it has no line, M1). */
+const plain = (s: string | undefined) =>
+  (s ?? '')
+    .replace(SGR, '')
+    .split('\n')
+    .map((l) => l.trimEnd())
+    .join('\n')
 
 function popup(body: React.ReactNode, o: { title?: string } = {}) {
   return render(
@@ -36,8 +42,10 @@ describe('MenuPopup', () => {
     await settle()
     const lines = plain(lastFrame()).split('\n')
     expect(lines).toHaveLength(24)
-    expect(lines[0]).toMatch(/^ ╭─+╮ ?$/)
-    expect(lines[20]).toMatch(/^ ╰─+╯ ?$/)
+    // No line round it (2026-10-19, M1): its top and bottom rings are blank rows.
+    expect(lines[0]).toBe('')
+    expect(lines[20]).toBe('')
+    expect(lines.join('')).not.toMatch(/[╭╮╰╯│]/)
     expect(lines[21]).toMatch(/\/ +menu\s*$/)
     expect(lines[23]).toMatch(/↑↓\s+choose/)
     expect(lines[23]).toContain('esc close')

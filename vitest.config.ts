@@ -24,6 +24,12 @@ export default defineConfig({
        * pass their own temp folders and a recording `run` (src/menu/).
        */
       FORGE_NO_MENU: '1',
+      /**
+       * Nor search the real Mac by name (Spotlight, ~/Desktop, ~/Downloads):
+       * what it finds differs from machine to machine. The search's own tests
+       * pass a temp home and ask for it (src/shell/find-files.ts).
+       */
+      FORGE_NO_FIND: '1',
     },
     /**
      * Capped well below the machine's core count on purpose.

@@ -4,6 +4,7 @@ import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
+import { MODE_KINDS } from '../../src/shell/home-art.js'
 import { makePng, makeTempDir } from '../helpers/fixtures.js'
 import { unpaint } from '../helpers/unpaint.js'
 
@@ -26,11 +27,13 @@ function home(dir: string) {
   )
 }
 
-/** The completion row with the ▌ strip, or '' when none is chosen. */
-const chosenLine = (frame: string) => frame.split('\n').find((l) => l.includes('▌ ')) ?? ''
-
 /** The line the field is drawn on. */
-const fieldLine = (frame: string) => frame.split('\n').find((l) => l.startsWith('    › ')) ?? ''
+/** The / menu's box, by its bar: the menu's chip, then the hatching (the box has no line). */
+const POPUP = /menu ╱╱/
+
+/** The field's row, less the tab cap at its far end (see `formats-key-app.test.tsx`). */
+const fieldLine = (frame: string) =>
+  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +(?:tab|enter) *$/, '')
 
 describe('the home screen in the app', () => {
   it('is what an empty prompt shows, filling the terminal', async () => {
@@ -41,7 +44,7 @@ describe('the home screen in the app', () => {
     expect(frame.split('\n')).toHaveLength(23)
     expect(frame).toContain('Drop a file here')
     expect(frame).toContain('1 convert')
-    expect(fieldLine(frame)).toBe('    › or type a path')
+    expect(fieldLine(frame)).toBe('    › OR search or enter a file path…')
     // "/ menu" sits right-aligned on the row above the rule, not on the
     // tab row or the key row (2026-10-17).
     const lines = frame.split('\n')
@@ -58,8 +61,8 @@ describe('the home screen in the app', () => {
     app.stdin.write('2')
     await settle()
     let frame = plain(app.lastFrame())
-    expect(frame).toContain('images · PDF')
-    expect(fieldLine(frame)).toBe('    › or type a path')
+    expect(frame).toContain(MODE_KINDS.compress)
+    expect(fieldLine(frame)).toBe('    › OR search or enter a file path…')
 
     app.stdin.write('3')
     await settle()
@@ -68,7 +71,7 @@ describe('the home screen in the app', () => {
 
     app.stdin.write('1')
     await settle()
-    expect(plain(app.lastFrame())).toContain('images · HEIC · PDF · Word')
+    expect(plain(app.lastFrame())).toContain(MODE_KINDS.convert)
   })
 
   it('types digits once there is text in the field', async () => {
@@ -94,14 +97,15 @@ describe('the home screen in the app', () => {
     let frame = plain(app.lastFrame())
     // The folder is a long temp path, shortened in the middle; the names are
     // what tell the rows apart.
-    expect(chosenLine(frame)).toMatch(/alpha\.png\s*$/)
+    // Listed on the drop area (S2, 2026-10-19): the name, and its folder at the far end.
+    expect(frame).toMatch(/alpha\.png +\S.*\S\s*$/m)
+    expect(frame).not.toContain('Drop a file here')
     expect(frame).toMatch(/beta\.png/)
     expect(frame).not.toContain('notes.txt')
     expect(frame.split('\n').at(-1)).toMatch(/tab +complete/)
 
     app.stdin.write(DOWN)
     await settle()
-    expect(chosenLine(plain(app.lastFrame()))).toMatch(/beta\.png\s*$/)
     app.stdin.write(UP)
     await settle()
     app.stdin.write(DOWN)
@@ -114,7 +118,7 @@ describe('the home screen in the app', () => {
     expect(
       frame
         .split('\n')
-        .map((l) => l.trim())
+        .map((l) => l.replace(/ +enter *$/, '').trim())
         .join(''),
     ).toContain(`${dir}/beta.png`)
   })
@@ -138,16 +142,14 @@ describe('the home screen in the app', () => {
     expect(lines.join('\n')).not.toContain('Check the filename')
 
     // The path stays in the field, to be corrected.
-    expect(lines[at]?.trimEnd()).toBe('    › /definitely/not/here.jpg')
+    expect(lines[at]?.replace(/ +enter *$/, '').trimEnd()).toBe('    › /definitely/not/here.jpg')
 
     // The next keystroke clears the row, and the completions come back to the list.
     app.stdin.write('x')
     await settle()
     lines = plain(app.lastFrame()).split('\n')
     expect(lines.join('\n')).not.toContain('File not found')
-    expect(lines.find((l) => l.startsWith('    › '))?.trimEnd()).toBe(
-      '    › /definitely/not/here.jpgx',
-    )
+    expect(fieldLine(lines.join('\n')).trimEnd()).toBe('    › /definitely/not/here.jpgx')
   }, 20_000)
 
   describe('a refusal row on home, with the field empty (a dropped file)', () => {
@@ -191,7 +193,7 @@ describe('the home screen in the app', () => {
     app.stdin.write('3')
     await settle()
     const frame = plain(app.lastFrame())
-    expect(fieldLine(frame)).toBe('    › or type a path')
+    expect(fieldLine(frame)).toBe('    › OR search or enter a file path…')
     expect(frame).toContain('split · merge · rotate')
   })
 
@@ -201,7 +203,7 @@ describe('the home screen in the app', () => {
     app.stdin.write('/comp')
     await settle()
     const frame = plain(app.lastFrame())
-    expect(frame).toContain('╭')
+    expect(frame).toMatch(POPUP)
     expect(frame).toContain('/compress')
     // The window's 24 rows, less the canvas's blank row on top.
     expect(frame.split('\n')).toHaveLength(23)
@@ -224,8 +226,8 @@ describe('the home screen in the app', () => {
       await settle()
       const frame = plain(app.lastFrame())
       expect(frame).toContain('Drop a file here')
-      expect(frame).toContain('images · PDF')
-      expect(fieldLine(frame)).toBe('    › or type a path')
+      expect(frame).toContain(MODE_KINDS.compress)
+      expect(fieldLine(frame)).toBe('    › OR search or enter a file path…')
     })
 
     it('puts the mode tab and the dots back on esc, or when the slash is deleted', async () => {
@@ -246,7 +248,7 @@ describe('the home screen in the app', () => {
       await settle()
       const frame = plain(app.lastFrame())
       expect(frame).toContain('Drop a file here')
-      expect(frame).toContain('images · HEIC · PDF · Word')
+      expect(frame).toContain(MODE_KINDS.convert)
     })
 
     it('stops being a command once an absolute path has a second slash', async () => {
@@ -254,14 +256,15 @@ describe('the home screen in the app', () => {
       await settle()
       app.stdin.write('/Users')
       await settle()
-      // Nothing is called that, so the menu closes and the text is home's
-      // again (2026-10-17).
-      expect(plain(app.lastFrame())).not.toContain('╭')
-      expect(fieldLine(plain(app.lastFrame()))).toContain('/Users')
+      // Nothing is called that: the menu stays open and says so (2026-10-19),
+      // until the second slash makes it a path.
+      expect(plain(app.lastFrame())).toMatch(POPUP)
+      expect(plain(app.lastFrame())).toContain('no command matches /Users')
       app.stdin.write('/')
       await settle()
       const frame = plain(app.lastFrame())
-      expect(frame).toContain('Drop a file here')
+      // A path now: its folder's contents are suggested on the drop area.
+      expect(frame).not.toMatch(POPUP)
       expect(frame).not.toContain('no command matches')
     })
   })

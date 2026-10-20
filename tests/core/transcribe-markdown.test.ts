@@ -80,11 +80,9 @@ describe('transcriptMarkdown', () => {
       [
         '# Tea talk',
         '',
-        'https://www.youtube.com/watch?v=jNQXAC9IVRw · 1:15',
+        '<https://www.youtube.com/watch?v=jNQXAC9IVRw>',
         '',
         'A short talk about tea.',
-        '',
-        `_${DISCLAIMER}_`,
         '',
         '## Notes',
         '',
@@ -107,8 +105,30 @@ describe('transcriptMarkdown', () => {
         '',
         '**1:10** Now, milk.',
         '',
+        `_${DISCLAIMER}_`,
+        '',
       ].join('\n'),
     )
+  })
+
+  it('leaves the transcript out when only the notes are wanted', () => {
+    const md = transcriptMarkdown(
+      {
+        seconds: 75,
+        segments,
+        notes: {
+          summary: 'A short talk.',
+          parts: [{ start: 0, heading: 'Welcome', points: ['Hi.'], refused: false }],
+        },
+      },
+      { title: 'Tea talk', from: 'tea.m4a' },
+      { transcript: false },
+    )
+    expect(md).toContain('## Notes\n\n### Welcome · 0:00\n\n- Hi.')
+    expect(md).not.toContain('## Transcript')
+    expect(md).not.toContain('**0:00**')
+    expect(md.trimEnd().endsWith(`_${DISCLAIMER}_`)).toBe(true)
+    expect(md).toContain('tea.m4a')
   })
 
   it('names a refused part by its number and gives it no notes', () => {
@@ -138,7 +158,7 @@ describe('transcriptMarkdown', () => {
       [
         '# Tea talk',
         '',
-        'tea.m4a · 1:15',
+        'tea.m4a',
         '',
         '**0:00** Hello and welcome. Today is about tea.',
         '',

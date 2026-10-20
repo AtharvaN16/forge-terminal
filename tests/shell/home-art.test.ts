@@ -3,6 +3,10 @@ import { contrast } from '../../src/core/colour/contrast.js'
 import { parseHex, type Rgb, rgbToOklab, toLch } from '../../src/core/colour/space.js'
 import {
   brandRows,
+  type FormatKinds,
+  formatRows,
+  HOME_MARGIN,
+  MODE_FORMATS,
   menuHintRow,
   oppositeColour,
   stagedListRows,
@@ -139,6 +143,18 @@ describe('the "/ menu" hint (mockups/transcribe-2026-10-round2.html, "/ menu")',
 
   it('keeps to the width it is given', () => {
     expect(text(menuHintRow({ palette: DARK, width: 40, open: false }))).toHaveLength(40)
+  })
+
+  it('says a mode’s note at the left end, dim, and drops it where it does not fit', () => {
+    const note = 'Currently only English transcription supported'
+    const row = menuHintRow({ palette: DARK, width: 80, open: false, note })
+    expect(text(row)).toHaveLength(80)
+    expect(text(row).startsWith(`${' '.repeat(HOME_MARGIN + 1)}${note}`)).toBe(true)
+    expect(text(row).endsWith(' /  menu ')).toBe(true)
+    expect(row.find((run) => run.text === note)).toMatchObject({ fg: DARK.dim })
+    const narrow = menuHintRow({ palette: DARK, width: 50, open: false, note })
+    expect(text(narrow)).toHaveLength(50)
+    expect(text(narrow)).not.toContain('English')
   })
 })
 
@@ -281,5 +297,75 @@ describe('oppositeColour', () => {
         )
       }
     }
+  })
+})
+
+describe('formatRows', () => {
+  const text = (rows: ReturnType<typeof formatRows>) =>
+    rows.map((r) => r.map((run) => run.text).join(''))
+  const p = modePalette(DARK, 'convert')
+  const art = { width: 80, palette: p, mode: 'convert' as const }
+
+  it('fills the surface exactly: a title, a rule, a line a kind, every row as wide as the surface', () => {
+    const rows = formatRows({ ...art, rows: 8, kinds: MODE_FORMATS.convert ?? [] })
+    expect(rows).toHaveLength(8)
+    for (const r of rows) expect(width(r)).toBe(78)
+    const lines = text(rows)
+    expect(lines[1]).toContain('Supported formats')
+    expect(lines[2]).toContain('──────')
+    expect(lines[3]).toMatch(/Images +JPEG · PNG · WebP · AVIF · HEIC · GIF · TIFF/)
+    expect(lines.join('\n')).not.toContain('↓')
+  })
+
+  it('draws on the surface’s fill, with no dots', () => {
+    const rows = formatRows({ ...art, rows: 8, kinds: MODE_FORMATS.convert ?? [] })
+    for (const r of rows.flat()) {
+      expect(r.text).not.toContain('·'.repeat(2))
+      if (r.text.trim() === '') expect(r.bg ?? p.selectionBg).toBe(p.selectionBg)
+    }
+  })
+
+  it('past its rows keeps the first lines and says how many are left, with a bar', () => {
+    const many: FormatKinds = Array.from(
+      { length: 9 },
+      (_, i) => [`Kind${i}`, 'AAA · BBB'] as const,
+    )
+    const rows = formatRows({ ...art, rows: 8, kinds: many })
+    const lines = text(rows)
+    expect(rows).toHaveLength(8)
+    // Title and rule, four lines, then the note on the last row.
+    expect(lines[3]).toContain('Kind0')
+    expect(lines[6]).toContain('Kind3')
+    expect(lines[6]).not.toContain('Kind4')
+    expect(lines[7]).toContain('↓ 5 more')
+    expect(lines.slice(3, 7).every((l) => /[┃│]$/.test(l))).toBe(true)
+  })
+
+  it('breaks a line longer than the surface under itself, the kind not repeated', () => {
+    const long: FormatKinds = [
+      ['Archives', Array.from({ length: 30 }, (_, i) => `F${i}`).join(' · ')],
+    ]
+    const lines = text(formatRows({ ...art, rows: 8, kinds: long }))
+    expect(lines[3]).toContain('Archives')
+    expect(lines[3]).toMatch(/ ·\s*$/)
+    expect(lines[4]).not.toContain('Archives')
+    expect(lines[4]).toMatch(/F\d+/)
+  })
+
+  it('a short surface gives up its top blank, then its rule, to keep lines', () => {
+    const four = text(formatRows({ ...art, rows: 4, kinds: MODE_FORMATS.convert ?? [] }))
+    expect(four[0]).toContain('Supported formats')
+    expect(four[1]).not.toContain('──')
+    expect(four.join('\n')).toContain('↓')
+    expect(four).toHaveLength(4)
+  })
+
+  it('lists convert’s formats from the format table: no HEVC (never a source), Word once', () => {
+    const all = (MODE_FORMATS.convert ?? []).map(([, f]) => f).join(' · ')
+    expect(all).toContain('MKV')
+    expect(all).not.toContain('HEVC')
+    expect(all.match(/Word/g)).toHaveLength(1)
+    // Compress takes no HEIC or TIFF: nothing writes HEIC, TIFF has no quality dial.
+    expect((MODE_FORMATS.compress ?? []).map(([, f]) => f).join(' ')).not.toMatch(/HEIC|TIFF/)
   })
 })

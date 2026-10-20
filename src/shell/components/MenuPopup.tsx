@@ -12,9 +12,10 @@ import { Runs } from './Home.js'
 /**
  * The / menu as a popup (decided 2026-10-17, mockups/transcribe-2026-10-round2.html,
  * "/ menu" 1–7). Typing / on home opens a box over the screen, one column in
- * from each side, rounded and edged in the menu's gold: the hatched bar with
+ * from each side, with no line round it, only its fill: the hatched bar with
  * the menu's chip (and, inside a setting, its name), a blank row, the list or
- * the setting, a blank row, and the popup's own field at the foot. Under the
+ * the setting, a blank row, and the popup's own field at the foot: home's
+ * filled field, closing the box (F). Under the
  * box, the "/ menu" hint lit gold, then the key row for whatever is showing.
  *
  * A setting opened from the list is drawn inside the box, its own content
@@ -65,6 +66,22 @@ export function ScreenKeys({
   return <HintBar width={width} pairs={pairs} foot={foot} />
 }
 
+/**
+ * The box's edge (mockups/kinds-2026-10.html, M1): no line, the ring is the
+ * fill alone, the same footprint. Where there is no fill to show the box by
+ * (no colour), the rounded line stays.
+ */
+const NO_LINE = {
+  topLeft: ' ',
+  top: ' ',
+  topRight: ' ',
+  left: ' ',
+  bottomLeft: ' ',
+  bottom: ' ',
+  bottomRight: ' ',
+  right: ' ',
+}
+
 /** Rows the popup takes above the hint, the key row's gap, its rule and its keys. */
 const BELOW = 3
 
@@ -97,15 +114,23 @@ export function MenuPopup({
   const inner = Math.max(20, width - 6)
   const boxHeight = Math.max(8, height - BELOW)
   const fill = palette.selectionBg || undefined
-  const edge = colourProp(palette.brand) ?? 'yellow'
+  const edgeProps = fill
+    ? ({ borderStyle: NO_LINE, borderBackgroundColor: colourProp(fill) } as const)
+    : ({ borderStyle: 'round' } as const)
+  // F (mockups/menu-field-2026-10.html, 2026-10-19): the field is home's
+  // own — a filled block three rows tall, edge to edge of the box and closing
+  // it at the bottom, the marker in the list's column. Without a fill to show
+  // the block by, it stays a line inside the box, as before.
+  const shelf = palette.shelf || undefined
+  const block = fill !== undefined && shelf !== undefined
   return (
     <Box flexDirection="column" width={width} minHeight={height}>
       <Box
         marginLeft={1}
         width={width - 2}
-        height={boxHeight}
-        borderStyle="round"
-        borderColor={edge}
+        height={block ? boxHeight - 3 : boxHeight}
+        {...edgeProps}
+        {...(block ? { borderBottom: false } : {})}
         flexDirection="column"
         paddingX={1}
         {...(fill ? { backgroundColor: fill } : {})}
@@ -121,8 +146,20 @@ export function MenuPopup({
           <InMenu.Provider value={provided}>{body}</InMenu.Provider>
         </Box>
         <Text> </Text>
-        {field}
+        {block ? null : field}
       </Box>
+      {block ? (
+        <Box
+          marginLeft={1}
+          width={width - 2}
+          backgroundColor={shelf}
+          paddingY={1}
+          paddingLeft={2}
+          flexShrink={0}
+        >
+          {field}
+        </Box>
+      ) : null}
       <HintBar
         width={width}
         pairs={shown.pairs}

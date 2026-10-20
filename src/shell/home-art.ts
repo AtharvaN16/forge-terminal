@@ -10,6 +10,8 @@ import {
   toHex,
   toLch,
 } from '../core/colour/space.js'
+import { FORMATS } from '../core/formats.js'
+import type { FormatId } from '../core/types.js'
 import type { Command } from './commands.js'
 import type { StagedFile, StagedView, UnderField } from './stage.js'
 import {
@@ -90,18 +92,73 @@ export const width = (row: Row) => row.reduce((n, run) => n + stringWidth(run.te
 
 /** What the drop surface lists under its heading ("Drop a file here"), by mode. */
 export const MODE_KINDS: Record<ShellMode, string> = {
-  convert: 'images · HEIC · PDF · Word',
-  // Not "video": compress has no video engine, and the line is a promise.
-  compress: 'images · PDF',
-  pdf: 'split · merge · rotate',
+  // Kinds, not formats (mockups/kinds-2026-10.html): holding ? names the formats.
+  convert: 'Images · Video · Audio · Documents',
+  compress: 'Images · Video · Audio · PDF',
+  pdf: 'split · merge · rotate · extract · delete',
   colour: 'palette · scale',
-  edit: 'images · HEIC',
+  edit: 'Images · Video · Audio',
   transcribe: 'or paste a YouTube link',
+}
+
+/** The kinds a mode lists, each with the formats it takes: `[kind, 'JPEG · PNG · …']`. */
+export type FormatKinds = readonly (readonly [kind: string, formats: string])[]
+
+const labels = (ids: readonly FormatId[]) => ids.map((id) => FORMATS[id].label).join(' · ')
+const IMAGE_IDS = ['jpeg', 'png', 'webp', 'avif', 'heic', 'gif', 'tiff'] as const
+// `hevc` is a codec written into an .mp4, never a source (video spec §2).
+const VIDEO_IDS = ['mp4', 'mov', 'webm', 'mkv', 'avi'] as const
+const SOUND_IDS = ['mp3', 'm4a', 'opus', 'flac', 'aiff', 'wav', 'ogg'] as const
+
+/**
+ * What holding ? shows on the drop surface, by mode; a mode with no entry has
+ * nothing to list (pdf, colour and transcribe say what they do on the line
+ * itself). Not a list of output formats — those come from `targetsFor` — only
+ * what a drop is understood as.
+ */
+export const MODE_FORMATS: Partial<Record<ShellMode, FormatKinds>> = {
+  convert: [
+    ['Images', labels(IMAGE_IDS)],
+    ['Video', labels(VIDEO_IDS)],
+    ['Audio', labels(SOUND_IDS)],
+    ['Documents', 'PDF · Word'],
+  ],
+  compress: [
+    ['Images', labels(['jpeg', 'png', 'webp', 'avif', 'gif'])],
+    ['Video', labels(VIDEO_IDS)],
+    ['Audio', labels(SOUND_IDS)],
+    ['PDF', 'PDF'],
+  ],
+  edit: [
+    ['Images', labels(IMAGE_IDS)],
+    ['Video', labels(VIDEO_IDS)],
+    ['Audio', labels(SOUND_IDS)],
+  ],
+}
+
+/** `list` broken at its separators into lines of at most `max` columns. */
+function wrapFormats(list: string, max: number): string[] {
+  const out: string[] = []
+  let line = ''
+  for (const part of list.split(' · ')) {
+    const next = line ? `${line} · ${part}` : part
+    if (stringWidth(next) > max && line) {
+      out.push(`${line} ·`)
+      line = part
+    } else line = next
+  }
+  if (line) out.push(line)
+  return out
 }
 
 /** The drop surface's heading where a mode asks for more than "a file" (mockups/transcribe-2026-10-round2.html). */
 export const MODE_DROP_TITLES: Partial<Record<ShellMode, string>> = {
-  transcribe: 'Drop a video or sound file',
+  transcribe: 'Drop a video or audio file',
+}
+
+/** What a mode cannot do yet, said on home's "/ menu" row at its left end (`menuHintRow`). */
+export const MODE_NOTES: Partial<Record<ShellMode, string>> = {
+  transcribe: 'Currently only English transcription supported',
 }
 
 /**
@@ -317,18 +374,30 @@ export function tabRows({ palette, mode }: { palette: Palette; mode: ShellMode }
  * cell is one short of the edge (mockups/transcribe-2026-10-round2.html,
  * "/ menu"): the slash on a keycap, then the word in dim; in the menu's gold
  * while the menu is open. Home draws it at rest; the menu popup draws it open.
+ * A mode's standing caveat (transcribe's English only, 2026-10-19) sits at
+ * the row's left end, dim, and goes first when the row is too narrow.
  */
 export function menuHintRow({
   palette,
   width: columns,
   open,
+  clear = false,
+  menu = true,
+  note,
 }: {
   palette: Palette
   width: number
   open: boolean
+  /** "esc clear" at the row's left, lined up with the key row's first key: only while something is staged. */
+  clear?: boolean
+  /** "/ menu" at the right; off while a path is being typed. */
+  menu?: boolean
+  /** A dim sentence at the row's left, after "esc clear" if that is there. */
+  note?: string | undefined
 }): Row {
-  const hint: Row =
-    palette.keycapBg === ''
+  const hint: Row = !menu
+    ? []
+    : palette.keycapBg === ''
       ? [{ text: '[/] menu', fg: open ? palette.brand : palette.border, bold: open }]
       : open
         ? [
@@ -339,7 +408,29 @@ export function menuHintRow({
             { text: ' / ', fg: palette.fg, bg: palette.keycapBg },
             { text: ' menu', fg: palette.dim },
           ]
-  return [blank(columns - 1 - width(hint)), ...hint, blank(1)]
+  const esc: Row = !clear
+    ? []
+    : palette.keycapBg === ''
+      ? [{ text: '[esc] clear', fg: palette.border }]
+      : [
+          { text: ' esc ', fg: palette.fg, bg: palette.keycapBg },
+          { text: ' clear', fg: palette.dim },
+        ]
+  const said: Row = note
+    ? [...(esc.length > 0 ? [blank(3)] : []), { text: note, fg: palette.dim }]
+    : []
+  // The note only where it fits with a column to spare before "/ menu".
+  const fits = (left: Row) =>
+    HOME_MARGIN + 1 + width(left) + (hint.length > 0 ? 1 + width(hint) + 1 : 0) <= columns
+  const left: Row = said.length > 0 && fits([...esc, ...said]) ? [...esc, ...said] : esc
+  const lead = left.length > 0 ? HOME_MARGIN + 1 : 0
+  if (hint.length === 0) return left.length > 0 ? [blank(lead), ...left] : []
+  return [
+    ...(left.length > 0 ? [blank(lead), ...left] : []),
+    blank(columns - 1 - width(hint) - lead - width(left)),
+    ...hint,
+    blank(1),
+  ]
 }
 
 /**
@@ -680,6 +771,223 @@ export function surfaceRows({
     pad: 4,
     dim: typing ? 0.45 : 1,
     ripple,
+  })
+}
+
+/**
+ * The supported formats, drawn on the drop surface's fill in place of its
+ * dots, as the commands are (mockups/kinds-2026-10.html, Q2): a title in the
+ * mode's colour, a rule, then a line a kind. Past the rows it has, the first
+ * lines stay and a thin bar and "↓ n more" on the last row say there are more,
+ * as the commands list does.
+ */
+export function formatRows({
+  width: columns,
+  rows: h,
+  palette,
+  mode,
+  kinds,
+}: {
+  width: number
+  rows: number
+  palette: Palette
+  mode: ShellMode
+  kinds: FormatKinds
+}): Row[] {
+  const M = HOME_MARGIN
+  const W = columns - M * 2
+  const fill = palette.selectionBg
+  const x = 3
+  const lead = Math.max(0, ...kinds.map(([kind]) => stringWidth(kind))) + 3
+  const line = (runs: Run[]): Row => {
+    const row = runs.map((run) => ({ ...run, bg: run.bg ?? fill }))
+    return [blank(M), ...row, { text: ' '.repeat(Math.max(0, W - width(row))), bg: fill }]
+  }
+
+  // A short surface gives up its top blank, then its rule, to keep lines.
+  const top = h >= 7 ? 1 : 0
+  const rule = h >= 6
+  const head: Row[] = [
+    ...(top ? [line([])] : []),
+    line([blank(x), { text: 'Supported formats', fg: modeColours(palette, mode).fg, bold: true }]),
+    ...(rule
+      ? [line([blank(x), { text: '─'.repeat(Math.max(0, W - x * 2)), fg: palette.border }])]
+      : []),
+  ]
+  const entries: Row[] = kinds.flatMap(([kind, formats]) =>
+    wrapFormats(formats, Math.max(8, W - x * 2 - lead - 2)).map((text, i) =>
+      line([
+        blank(x),
+        { text: (i === 0 ? kind : '').padEnd(lead), fg: palette.fg, bold: true },
+        { text: text, fg: palette.dim },
+      ]),
+    ),
+  )
+  const room = Math.max(1, h - head.length)
+  if (entries.length <= room) {
+    const out = [...head, ...entries]
+    while (out.length < h) out.push(line([]))
+    return out
+  }
+  const shown = Math.max(1, room - 1)
+  const thumb = Math.max(1, Math.round((shown * shown) / entries.length))
+  const edge = (row: Row, ch: string, fg: string): Row => {
+    const end = row[row.length - 1] as Run
+    return [...row.slice(0, -1), { ...end, text: end.text.slice(1) }, { text: ch, fg, bg: fill }]
+  }
+  const note = `↓ ${entries.length - shown} more`
+  return [
+    ...head,
+    ...entries
+      .slice(0, shown)
+      .map((row, i) => (i < thumb ? edge(row, '┃', palette.dim) : edge(row, '│', palette.faint))),
+    line([blank(Math.max(0, W - 1 - note.length)), { text: note, fg: palette.dim }]),
+  ]
+}
+
+/** One suggestion as the drop area lists it: the name, and the folder it is in. */
+export interface SuggestionItem {
+  name: string
+  where: string
+}
+
+/**
+ * The field's suggestions, drawn on the drop surface's fill in place of its
+ * dots while something is typed (S2, mockups/file-suggestions-2026-10.html):
+ * a row each, the name at the left and the folder it is in at the far end.
+ * Only the chosen row is bright; the rest are faded. As many rows as the surface has, less a blank above and below;
+ * the window follows the choice.
+ */
+export function suggestionRows({
+  width: columns,
+  rows: h,
+  palette,
+  items,
+  selected,
+}: {
+  width: number
+  rows: number
+  palette: Palette
+  /** The mode it is drawn in; the list itself takes no colour from it. */
+  mode?: ShellMode
+  items: readonly SuggestionItem[]
+  selected: number
+}): Row[] {
+  const M = HOME_MARGIN
+  const W = columns - M * 2
+  const fill = palette.selectionBg
+  const line = (runs: Run[]): Row => {
+    const row = runs.map((run) => ({ ...run, bg: run.bg ?? fill }))
+    return [blank(M), ...row, { text: ' '.repeat(Math.max(0, W - width(row))), bg: fill }]
+  }
+  const visible = Math.max(1, h - 2)
+  const start = Math.min(Math.max(0, selected - visible + 1), Math.max(0, items.length - visible))
+  // The band runs from the strip to two cells short of the surface's end.
+  const inner = Math.max(10, W - 4)
+  const out: Row[] = [line([])]
+  items.slice(start, start + visible).forEach((item, i) => {
+    // The chosen row is lit by its text alone (2026-10-19): no band, no strip.
+    const chosen = start + i === selected
+    const room = inner - 3
+    const where = middleEllipsis(item.where, Math.max(4, Math.floor(room * 0.45)))
+    const name = middleEllipsis(item.name, Math.max(4, room - width([{ text: where }]) - 2))
+    const gap = Math.max(1, room - width([{ text: name }]) - width([{ text: where }]))
+    out.push(
+      line([
+        blank(4),
+        { text: name, fg: chosen ? palette.fg : palette.dim, bold: chosen },
+        { text: ' '.repeat(gap) },
+        { text: where, fg: chosen ? palette.fg : palette.border },
+        blank(1),
+      ]),
+    )
+  })
+  while (out.length < h) out.push(line([]))
+  return out
+}
+
+/** `text` broken at spaces into lines of at most `max` columns. */
+function wrapWords(text: string, max: number): string[] {
+  const out: string[] = []
+  let line = ''
+  for (const word of text.split(' ')) {
+    const next = line ? `${line} ${word}` : word
+    if (stringWidth(next) > max && line) {
+      out.push(line)
+      line = word
+    } else line = next
+  }
+  if (line) out.push(line)
+  return out
+}
+
+/**
+ * A question on the drop surface's fill in place of its dots: the first name
+ * typed asks before the Mac is searched (2026-10-19, P2) — a bold line, then
+ * what it means, dim, broken to the surface's width.
+ */
+export function askRows({
+  width: columns,
+  rows: h,
+  palette,
+  title,
+  body,
+}: {
+  width: number
+  rows: number
+  palette: Palette
+  title: string
+  body: string
+}): Row[] {
+  const M = HOME_MARGIN
+  const W = columns - M * 2
+  const fill = palette.selectionBg
+  const line = (runs: Run[]): Row => {
+    const row = [blank(3), ...runs].map((run) => ({ ...run, bg: run.bg ?? fill }))
+    return [blank(M), ...row, { text: ' '.repeat(Math.max(0, W - width(row))), bg: fill }]
+  }
+  const said = [
+    line([{ text: clip(title, W - 6), fg: palette.fg, bold: true }]),
+    ...wrapWords(body, W - 6).map((t) => line([{ text: t, fg: palette.dim }])),
+  ]
+  const top = Math.max(0, Math.min(2, Math.floor((h - said.length) / 2)))
+  const out: Row[] = [...Array.from({ length: top }, () => line([])), ...said].slice(0, h)
+  while (out.length < h) out.push(line([]))
+  return out
+}
+
+/**
+ * The drop surface while a name is being looked for (2026-10-19, L1), at
+ * least 0.3 s however fast the search: its fill and one line in the middle —
+ * the spinner in the mode's colour, then "Searching your Mac", dim.
+ */
+export function searchingRows({
+  width: columns,
+  rows: h,
+  palette,
+  mode,
+  glyph,
+}: {
+  width: number
+  rows: number
+  palette: Palette
+  mode: ShellMode
+  /** The spinner's frame. */
+  glyph: string
+}): Row[] {
+  const M = HOME_MARGIN
+  const W = columns - M * 2
+  const fill = palette.selectionBg
+  const said: Run[] = [
+    { text: `${glyph} `, fg: modeColours(palette, mode).fg, bold: true },
+    { text: 'Searching your Mac', fg: palette.dim },
+  ]
+  const lead = Math.max(0, Math.floor((W - width(said)) / 2))
+  const mid = Math.floor((h - 1) / 2)
+  return Array.from({ length: h }, (_, r): Row => {
+    const runs = r === mid ? [blank(lead), ...said] : []
+    const row = runs.map((run) => ({ ...run, bg: run.bg ?? fill }))
+    return [blank(M), ...row, { text: ' '.repeat(Math.max(0, W - width(row))), bg: fill }]
   })
 }
 

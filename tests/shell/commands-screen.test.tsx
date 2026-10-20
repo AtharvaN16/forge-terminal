@@ -70,14 +70,17 @@ describe('commands as a fourth tab of home (N6), against the decided mockup', ()
 
   // Row 23, the key row, says "1–6 ←→ mode" since ←→ step through the modes
   // (2026-10-13), after this mockup; mode-arrows-app.test.tsx holds it.
-  it('1 · home: "/ menu" waits, dim, after the modes', () => expectStep(rest, [23]))
-  // Row 11 is compress's kinds line, which leaves out the mockup's "video":
-  // compress has no video engine (see home-screen.test.tsx).
-  it('4 · pressed ↵ on /compress: compress, with the dots back', () => expectStep(after, [11, 23]))
+  // Rows 10 and 11 are the drop zone's heading and kinds line, which name the
+  // formats themselves since 2026-10-18; the longer line clears more dots
+  // (see home-screen.test.tsx).
+  it('1 · home: "/ menu" waits, dim, after the modes', () => expectStep(rest, [10, 11, 23]))
+  it('4 · pressed ↵ on /compress: compress, with the dots back', () =>
+    expectStep(after, [10, 11, 23]))
 })
 
 describe('the key row at rest', () => {
-  it('no longer says "/ menu": the tab row does', () => {
-    expect(homeKeys({ typing: false, completions: 0 }).main).toEqual([['↵', 'send']])
+  it('no longer says "/ menu": the tab row does — nor ↵, with nothing to send (2026-10-19)', () => {
+    expect(homeKeys({ typing: false, completions: 0 }).main).toEqual([])
+    expect(JSON.stringify(homeKeys({ typing: false, completions: 0 }))).not.toContain('menu')
   })
 })

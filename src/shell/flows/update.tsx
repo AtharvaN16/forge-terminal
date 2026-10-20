@@ -356,7 +356,10 @@ export function UpdateFlow({
   const busy = state.kind === 'installing'
   useKeys((_input, key) => {
     if (busy) return
-    if (key.escape) return onClose()
+    // Installed, the files this Forge would load next are gone (npm replaced
+    // them, and chunk names change with every release): no way home, only
+    // ↵ restart into the new one, or quit.
+    if (key.escape) return state.kind === 'installed' ? undefined : onClose()
     if (key.upArrow) {
       if (focus === 'notes') {
         const before = starts.filter((k) => k < start).at(-1)
@@ -416,7 +419,8 @@ export function UpdateFlow({
   const keys = (): { main: Array<[string, string]>; foot: Array<[string, string]> } => {
     const quit: [string, string] = ['ctrl-c', 'quit']
     if (busy) return { main: [], foot: [quit] }
-    const foot: Array<[string, string]> = [['esc', 'home'], quit]
+    const foot: Array<[string, string]> =
+      state.kind === 'installed' ? [quit] : [['esc', 'home'], quit]
     if (focus === 'notes') return { main: [['↑↓', 'scroll']], foot }
     const main: Array<[string, string]> = [['↑↓', 'choose']]
     if (focus === 'auto') main.push(['←→', 'on / off'])

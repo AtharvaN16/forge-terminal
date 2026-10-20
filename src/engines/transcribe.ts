@@ -17,6 +17,7 @@ import {
   transcribeUnavailable,
   untranscribable,
 } from '../core/errors.js'
+import { DEFAULT_DETAIL, type Detail } from '../core/transcribe/detail.js'
 import type { Transcription } from '../core/transcribe/markdown.js'
 
 export interface TranscribeStatus {
@@ -137,6 +138,8 @@ export async function runTranscribe(
   path: string,
   opts: {
     notes: boolean
+    /** How much the notes say; the helper's own default (standard) when left out. */
+    detail?: Detail | undefined
     locale?: string | undefined
     signal?: AbortSignal | undefined
     onEvent?: (e: TranscribeEvent) => void
@@ -147,6 +150,9 @@ export async function runTranscribe(
     path,
     ...(opts.locale ? ['--locale', opts.locale] : []),
     ...(opts.notes ? ['--notes'] : []),
+    ...(opts.notes && opts.detail && opts.detail !== DEFAULT_DETAIL
+      ? ['--detail', opts.detail]
+      : []),
   ]
   const r = await call(args, path, {
     signal: opts.signal,

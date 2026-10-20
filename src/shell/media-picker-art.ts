@@ -20,7 +20,7 @@ export interface PickerBox {
 export function mediaBoxes(targets: readonly FormatId[]): PickerBox[] {
   const boxes: PickerBox[] = [
     { name: 'video', ids: targets.filter((id) => FORMATS[id].media === 'video') },
-    { name: 'sound only', ids: targets.filter((id) => FORMATS[id].media === 'sound') },
+    { name: 'audio only', ids: targets.filter((id) => FORMATS[id].media === 'sound') },
   ]
   return boxes.filter((b) => b.ids.length > 0)
 }

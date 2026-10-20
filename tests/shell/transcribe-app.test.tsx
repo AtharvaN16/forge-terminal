@@ -87,9 +87,11 @@ describe('transcribe on home', () => {
   it('5 makes transcribe the mode, asking for a video or sound file, or a link', async () => {
     const { app } = await setUp()
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
     expect(frame(app)).toContain('or paste a YouTube link')
-    expect(frame(app)).toContain('or type a path or link')
+    expect(frame(app)).toContain('OR search or enter a file path…')
+    expect(frame(app)).not.toContain('(English only)')
+    expect(frame(app)).toContain('Currently only English transcription supported')
   }, 30_000)
 
   it('/transcribe opens it too', async () => {
@@ -97,13 +99,13 @@ describe('transcribe on home', () => {
     app.stdin.write('/transcribe')
     await settle()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
   }, 30_000)
 
   it('a dropped video waits as its card: its length and size', async () => {
     const { app, input } = await setUp()
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
     // A whole path at once is a drop: read, no ↵ needed.
     app.stdin.write(input)
     await until(() => frame(app).includes('1:01:57'))
@@ -115,7 +117,7 @@ describe('transcribe on home', () => {
     const { app } = await setUp()
     const png = await makePng(await makeTempDir(), 'still.mp4')
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
     app.stdin.write(png)
     await settle()
     app.stdin.write(ENTER)
@@ -128,7 +130,7 @@ describe('transcribe on home', () => {
       facts: { title: 'Me at the zoo', uploader: 'jawed', duration: 19, is_live: false },
     })
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
     app.stdin.write('https://youtu.be/jNQXAC9IVRw')
     await settle()
     app.stdin.write(ENTER)
@@ -140,7 +142,7 @@ describe('transcribe on home', () => {
   it('a playlist is refused under the field', async () => {
     const { app } = await setUp()
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
     app.stdin.write('https://www.youtube.com/playlist?list=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs')
     await settle()
     app.stdin.write(ENTER)
@@ -150,21 +152,22 @@ describe('transcribe on home', () => {
 
 describe('transcribe, from ↵ to Done', () => {
   const DOWN = `${ESC}[B`
+  const RIGHT = `${ESC}[C`
 
   async function staged(notes: 'available' | 'off' = 'available') {
     const s = await setUp(notes)
     s.app.stdin.write('5')
-    await until(() => frame(s.app).includes('Drop a video or sound file'))
+    await until(() => frame(s.app).includes('Drop a video or audio file'))
     s.app.stdin.write(s.input)
     await until(() => frame(s.app).includes('1:01:57'))
     await settle()
     return s
   }
 
-  it('asks Notes or Only transcript, then Save as, then writes the .md and shows Done', async () => {
+  it('asks All, Notes or Transcript, then Save as, then writes the .md and shows Done', async () => {
     const { app, out } = await staged()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Only transcript'))
+    await until(() => frame(app).includes('Transcribe to'))
     await settle()
     expect(frame(app)).toContain('Transcribe to')
     expect(frame(app)).toContain('summary, notes and transcript · .md')
@@ -199,10 +202,12 @@ describe('transcribe, from ↵ to Done', () => {
     ])
   }, 40_000)
 
-  it('writes the transcript alone when Only transcript is chosen', async () => {
+  it('writes the transcript alone when Transcript is chosen', async () => {
     const { app, fake } = await staged()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Only transcript'))
+    await until(() => frame(app).includes('Transcribe to'))
+    await settle()
+    app.stdin.write(DOWN)
     await settle()
     app.stdin.write(DOWN)
     await settle()
@@ -216,15 +221,64 @@ describe('transcribe, from ↵ to Done', () => {
     expect(argv).not.toContain('--notes')
   }, 40_000)
 
+  it('writes the notes without the transcript when Notes is chosen', async () => {
+    const { app, out, fake } = await staged()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Transcribe to'))
+    await settle()
+    app.stdin.write(DOWN)
+    await settle()
+    expect(frame(app)).toContain('summary and notes · .md')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Save as'))
+    await settle()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('✓ talk.md'))
+    await settle()
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv).toContain('--notes')
+    const md = await readFile(join(out, 'talk.md'), 'utf8')
+    expect(md).toContain('## Notes')
+    expect(md).not.toContain('## Transcript')
+  }, 40_000)
+
+  it('steps the detail pill with ←→ on All and Notes, and not on Transcript', async () => {
+    const { app, fake } = await staged()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Transcribe to'))
+    await settle()
+    expect(frame(app)).toContain('Standard')
+    expect(frame(app)).toContain('←→')
+    app.stdin.write(RIGHT)
+    await settle()
+    expect(frame(app)).toContain('Detailed')
+    app.stdin.write(DOWN)
+    app.stdin.write(DOWN)
+    await settle()
+    expect(frame(app)).not.toContain('Detailed')
+    expect(frame(app)).not.toContain('←→')
+    app.stdin.write(`${ESC}[A`)
+    await settle()
+    expect(frame(app)).toContain('Detailed')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Save as'))
+    await settle()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('✓ talk.md'))
+    await settle()
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv).toEqual(['run', expect.any(String), '--notes', '--detail', 'detailed'])
+  }, 40_000)
+
   it('esc on Transcribe to goes home, the file still there', async () => {
     const { app } = await staged()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Only transcript'))
+    await until(() => frame(app).includes('Transcribe to'))
     await settle()
     app.stdin.write(ESC)
     await until(
       () =>
-        frame(app).includes('Drop a video or sound file') || frame(app).includes('↵  transcribe'),
+        frame(app).includes('Drop a video or audio file') || frame(app).includes('↵  transcribe'),
     )
     expect(frame(app)).toContain('talk.mp4')
   }, 40_000)
@@ -232,7 +286,7 @@ describe('transcribe, from ↵ to Done', () => {
   it('↵ on Done starts again, with nothing staged', async () => {
     const { app } = await staged()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Only transcript'))
+    await until(() => frame(app).includes('Transcribe to'))
     await settle()
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
@@ -241,7 +295,7 @@ describe('transcribe, from ↵ to Done', () => {
     await until(() => frame(app).includes('✓ talk.md'))
     await settle()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Drop a video or sound file'))
+    await until(() => frame(app).includes('Drop a video or audio file'))
     expect(frame(app)).not.toContain('talk.mp4')
   }, 40_000)
 })

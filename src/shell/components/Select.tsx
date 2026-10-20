@@ -47,6 +47,12 @@ interface SelectProps {
    * (`hint`, edit's details).
    */
   speakAt?: 'end' | 'hint'
+  /**
+   * A pill at the far end of the highlighted row, beside its hint rather than
+   * instead of it (Transcribe's detail): the node and its width in columns,
+   * or null for a row with none.
+   */
+  pill?: (item: Choice) => { node: ReactNode; width: number } | null
 }
 
 /** The first row that isn't `disabled`, or 0 if every row is (nothing to land on anyway). */
@@ -108,6 +114,7 @@ export function Select({
   speak,
   hints = 'highlighted',
   speakAt = 'end',
+  pill,
 }: SelectProps) {
   const palette = useTheme()
   const [index, setIndex] = useState(() => initialIndex(items, initialValue))
@@ -214,7 +221,12 @@ export function Select({
          * with one sentence in it. A disabled row keeps its hint, because
          * there the hint is the reason the row cannot be chosen.
          */
-        const used = stringWidth(marker) + stringWidth(label) + (badge ? stringWidth(badge) + 3 : 0)
+        const pilled = selected && pill ? pill(item) : null
+        const used =
+          stringWidth(marker) +
+          stringWidth(label) +
+          (badge ? stringWidth(badge) + 3 : 0) +
+          (pilled ? pilled.width + 2 : 0)
         const room = Math.max(0, width - used - 2)
         const spoken = selected && showHints && speak ? speak(item, room) : null
         const speaks = hints === 'every' ? showHints && !spoken : selected && showHints && !speak
@@ -278,6 +290,12 @@ export function Select({
                 >
                   {`  ${shownHint}`}
                 </Text>
+              ) : null}
+              {pilled ? (
+                <>
+                  <Box flexGrow={1} />
+                  <Box paddingRight={2}>{pilled.node}</Box>
+                </>
               ) : null}
               {badge ? (
                 <>

@@ -3,6 +3,9 @@ import type { Preferences } from '../config/preferences.js'
 import type { Opened } from '../menu/command.js'
 import { clipboardSupported, macPasteboard } from '../utils/pasteboard.js'
 import { App } from './App.js'
+// Loaded now, not when the shell exits: by then /update may have replaced
+// the bundle's chunks, whose names change with every release.
+import { relaunch, restartRequested } from './restart.js'
 import { ThemeProvider } from './ThemeContext.js'
 import type { Palette } from './theme.js'
 
@@ -90,6 +93,5 @@ export async function launchShell(start: ShellStart): Promise<void> {
     },
   )
   await instance.waitUntilExit()
-  const { restartRequested, relaunch } = await import('./restart.js')
   if (restartRequested()) relaunch()
 }

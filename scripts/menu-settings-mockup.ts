@@ -38,21 +38,43 @@ const C = {
   settings: '#e5a23c',
   field: '#2c2c2c',
 }
-const MODE = { forge: '#a68ce0', convert: '#55c7d9', compress: '#79c98b', edit: '#b39ae8', pdf: '#ff6b4a' }
+const MODE = {
+  forge: '#a68ce0',
+  convert: '#55c7d9',
+  compress: '#79c98b',
+  edit: '#b39ae8',
+  pdf: '#ff6b4a',
+}
 
 const get = (k: string): Frame => structuredClone(F[k] as Frame)
 const textOf = (row: Cell[]) => row.map((c) => c.ch).join('')
 const blankRow = (n = 80, bg: string | null = C.canvas): Cell[] =>
   Array.from({ length: n }, () => ({ ch: ' ', fg: null, bg, b: false }))
 
-function put(f: Frame, r: number, c: number, s: string, fg: string | null, bg?: string | null, b = false) {
+function put(
+  f: Frame,
+  r: number,
+  c: number,
+  s: string,
+  fg: string | null,
+  bg?: string | null,
+  b = false,
+) {
   ;[...s].forEach((ch, i) => {
     const under = f[r]?.[c + i]
     if (!under) return
     f[r]![c + i] = { ch, fg, bg: bg === undefined ? under.bg : bg, b }
   })
 }
-function fill(f: Frame, r: number, c0: number, c1: number, ch: string, fg: string | null, bg: string | null) {
+function fill(
+  f: Frame,
+  r: number,
+  c0: number,
+  c1: number,
+  ch: string,
+  fg: string | null,
+  bg: string | null,
+) {
   for (let c = c0; c < c1; c++) if (f[r]?.[c]) f[r]![c] = { ch, fg, bg, b: false }
 }
 /** Writes runs left to right from column `c`. */
@@ -72,7 +94,13 @@ function settingsHeader(f: Frame, chip: string) {
     const k = (x - from) / (76 - from)
     const a = [0xe7, 0xaa, 0x44]
     const b = [0xf0, 0xca, 0x65]
-    const hex = `#${a.map((v, i) => Math.round(v + ((b[i] as number) - v) * k).toString(16).padStart(2, '0')).join('')}`
+    const hex = `#${a
+      .map((v, i) =>
+        Math.round(v + ((b[i] as number) - v) * k)
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('')}`
     put(f, 1, x, '╱', hex, C.canvas)
   }
 }
@@ -156,15 +184,34 @@ function itemLines(f: Frame, r: number, c: number, dimmed = false) {
   const tone = (hex: string) => (dimmed ? C.rule : hex)
   const name = dimmed ? C.border : C.fg
   const rows: [string, [string, string][]][] = [
-    ['An image', [['Open', MODE.forge], ['Convert', MODE.convert], ['Compress', MODE.compress], ['Sharpen', MODE.edit]]],
-    ['A folder', [['Open', MODE.forge], ['Convert', MODE.convert], ['Compress', MODE.compress]]],
+    [
+      'An image',
+      [
+        ['Open', MODE.forge],
+        ['Convert', MODE.convert],
+        ['Compress', MODE.compress],
+        ['Sharpen', MODE.edit],
+      ],
+    ],
+    [
+      'A folder',
+      [
+        ['Open', MODE.forge],
+        ['Convert', MODE.convert],
+        ['Compress', MODE.compress],
+      ],
+    ],
     ['A PDF', [['Open in Forge', MODE.pdf]]],
   ]
   rows.forEach(([what, items], i) => {
     put(f, r + i, c, what, C.border, C.canvas)
     let x = c + 12
     for (const [label, hex] of items) {
-      x = runs(f, r + i, x, [['╱ ', tone(hex), true], [label, name], ['   ', null]])
+      x = runs(f, r + i, x, [
+        ['╱ ', tone(hex), true],
+        [label, name],
+        ['   ', null],
+      ])
     }
   })
   return r + rows.length
@@ -182,8 +229,15 @@ function cap(f: Frame, r: number, c: number, key: string, word: string) {
 /** The switch, with ↵ beside it saying what it does. */
 function switchRow(f: Frame, r: number, c: number, on: boolean, label = true) {
   let x = c
-  if (label) x = runs(f, r, c, [['Right-click menu', C.fg, true], ['   ', null]])
-  x = runs(f, r, x, [[on ? '● on' : '○ off', on ? C.ok : C.border, on], ['    ', null]])
+  if (label)
+    x = runs(f, r, c, [
+      ['Right-click menu', C.fg, true],
+      ['   ', null],
+    ])
+  x = runs(f, r, x, [
+    [on ? '● on' : '○ off', on ? C.ok : C.border, on],
+    ['    ', null],
+  ])
   cap(f, r, x, '↵', on ? 'turn off' : 'turn on')
 }
 
@@ -213,14 +267,19 @@ function wrap(text: string, width: number): string[] {
 function uninstallBlock(f: Frame, r: number, c: number, width: number, os: Os) {
   put(f, r, c, HEAD, C.fg, C.canvas, true)
   const lines = wrap(WHY_TEXT[os], width)
-  lines.forEach((l, i) => put(f, r + 1 + i, c, l, C.dim, C.canvas))
+  lines.forEach((l, i) => {
+    put(f, r + 1 + i, c, l, C.dim, C.canvas)
+  })
   commandRow(f, r + 2 + lines.length, c)
   return r + 3 + lines.length
 }
 
 /** The command on its field, c beside it. */
 function commandRow(f: Frame, r: number, c: number) {
-  const x = runs(f, r, c, [[' forge uninstall ', C.fg, false, C.field], ['   ', null]])
+  const x = runs(f, r, c, [
+    [' forge uninstall ', C.fg, false, C.field],
+    ['   ', null],
+  ])
   cap(f, r, x, 'c', 'copy')
 }
 
@@ -263,7 +322,9 @@ function s2(lit: 0 | 1, on = true, os: Os = 'mac'): Frame {
         f,
         next,
         35,
-        WHERE[os].map(([t, c]) => [t.replace(': right-click a file', ''), c] as [string, string | null]),
+        WHERE[os].map(
+          ([t, c]) => [t.replace(': right-click a file', ''), c] as [string, string | null],
+        ),
       )
   } else uninstallBlock(f, 3, 35, 40, os)
   keys(f, [['↑↓', 'choose']])
@@ -274,7 +335,13 @@ function s2(lit: 0 | 1, on = true, os: Os = 'mac'): Frame {
 function s3(on: boolean, os: Os = 'mac'): Frame {
   const f = screen('right-click')
   switchRow(f, 3, 6, on)
-  const box = (r0: number, c0: number, w: number, lines: [string, string | null, string?][], lit = -1) => {
+  const box = (
+    r0: number,
+    c0: number,
+    w: number,
+    lines: [string, string | null, string?][],
+    lit = -1,
+  ) => {
     put(f, r0, c0, `╭${'─'.repeat(w - 2)}╮`, C.rule, C.canvas)
     lines.forEach(([t, fg, mark], i) => {
       const r = r0 + 1 + i
@@ -287,13 +354,19 @@ function s3(on: boolean, os: Os = 'mac'): Frame {
     })
     put(f, r0 + 1 + lines.length, c0, `╰${'─'.repeat(w - 2)}╯`, C.rule, C.canvas)
   }
-  box(5, 6, 22, [
-    ['Open', C.dim],
-    ['Get Info', C.dim],
-    ['Rename', C.dim],
-    ['Copy', C.dim],
-    ['Quick Actions     ›', C.fg],
-  ], 4)
+  box(
+    5,
+    6,
+    22,
+    [
+      ['Open', C.dim],
+      ['Get Info', C.dim],
+      ['Rename', C.dim],
+      ['Copy', C.dim],
+      ['Quick Actions     ›', C.fg],
+    ],
+    4,
+  )
   box(8, 28, 26, [
     ['Rotate Left', C.dim],
     ['Markup', C.dim],
@@ -315,8 +388,16 @@ function s4(on: boolean, os: Os = 'mac'): Frame {
     4,
     6,
     on
-      ? [['● ', C.ok, true], ['Forge is in Finder’s Quick Actions', C.fg, true], ['    ', null]]
-      : [['○ ', C.border], ['Forge is not in Finder’s Quick Actions', C.dim], ['    ', null]],
+      ? [
+          ['● ', C.ok, true],
+          ['Forge is in Finder’s Quick Actions', C.fg, true],
+          ['    ', null],
+        ]
+      : [
+          ['○ ', C.border],
+          ['Forge is not in Finder’s Quick Actions', C.dim],
+          ['    ', null],
+        ],
   )
   cap(f, 4, x, '↵', on ? 'turn off' : 'turn on')
   uninstallBlock(f, 7, 6, 68, os)
@@ -379,7 +460,9 @@ function commands(typed?: string): Frame {
     return f
   }
   group(9, 'Settings')
-  settings.forEach(([cmd, what], i) => row(11 + i, cmd, what, i === 0))
+  settings.forEach(([cmd, what], i) => {
+    row(11 + i, cmd, what, i === 0)
+  })
   group(17, 'Modes')
   put(f, 18, 67, '↓ 5 more', C.border, C.canvas)
   return f
@@ -399,7 +482,11 @@ function term(f: Frame): string {
         cur = ''
       }
       for (const c of row) {
-        const s = [c.fg ? `color:${c.fg}` : '', c.bg ? `background:${c.bg}` : '', c.b ? 'font-weight:700' : '']
+        const s = [
+          c.fg ? `color:${c.fg}` : '',
+          c.bg ? `background:${c.bg}` : '',
+          c.b ? 'font-weight:700' : '',
+        ]
           .filter(Boolean)
           .join(';')
         if (s !== style) {
@@ -460,7 +547,12 @@ const WHYS: Card[] = [
     note: 'Your words, wrapped to the pane.',
     frames: [s2(1, true, 'mac')],
   },
-  { id: 'U·w', name: 'Windows', note: 'The same, with the PC and its right-click menu.', frames: [s2(1, true, 'win')] },
+  {
+    id: 'U·w',
+    name: 'Windows',
+    note: 'The same, with the PC and its right-click menu.',
+    frames: [s2(1, true, 'win')],
+  },
 ]
 
 const QUESTIONS = [

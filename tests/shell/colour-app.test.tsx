@@ -48,7 +48,7 @@ describe("colour's home and screens", () => {
     const out = plain(app.lastFrame())
     expect(out).toContain('Palette')
     expect(out).toContain('create shades')
-    expect(out).not.toContain('or type a path')
+    expect(out).not.toContain('OR search or enter a file path…')
     expect(keyRow(app.lastFrame())).toMatch(/A S D +open/)
     // Each card carries its key.
     expect(plain(app.lastFrame())).toMatch(/A Extract +S Scale +D Palette/)
@@ -230,7 +230,7 @@ describe("colour's home and screens", () => {
     await settle()
     expect(plain(app.lastFrame())).not.toContain('g.png')
     app.stdin.write('1')
-    await waitFor(() => plain(app.lastFrame()).includes('or type a path'))
+    await waitFor(() => plain(app.lastFrame()).includes('OR search or enter a file path…'))
     expect(plain(app.lastFrame())).not.toContain('g.png')
     expect(plain(app.lastFrame())).not.toContain('drop more')
   }, 20_000)

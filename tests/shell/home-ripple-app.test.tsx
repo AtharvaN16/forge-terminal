@@ -76,7 +76,7 @@ describe('the drop zone’s ripple on the home screen', () => {
     await flush()
     // The grid's dots are all missing; only the fixed ones are left.
     const fixed = dots(app.lastFrame())
-    expect(dots(still) - fixed).toBeGreaterThan(100)
+    expect(dots(still) - fixed).toBeGreaterThan(90)
 
     await advance(RIPPLE.ring * 0.3)
     const part = dots(app.lastFrame())

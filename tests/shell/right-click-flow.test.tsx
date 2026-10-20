@@ -128,10 +128,10 @@ describe('/right-click in the app', () => {
 })
 
 describe('/right-click in the / menu', () => {
-  it('is a setting, between /extensions and /update', () => {
+  it('is a setting, after /extensions and before /cli', () => {
     expect(parseCommand('/right-click')?.group).toBe('settings')
     const names = listCommands('').items.map((c) => c.name)
     expect(names.indexOf('right-click')).toBe(names.indexOf('extensions') + 1)
-    expect(names.indexOf('update')).toBe(names.indexOf('right-click') + 1)
+    expect(names.indexOf('cli')).toBe(names.indexOf('right-click') + 1)
   })
 })

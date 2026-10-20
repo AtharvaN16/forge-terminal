@@ -1,9 +1,10 @@
 /**
  * The .md transcribe writes (spec 2026-10-17-transcribe-design §4.2): the
- * title and where it came from, then — with notes — the summary, the
- * disclaimer, the notes part by part and the transcript under the same
- * headings; without notes, the transcript alone. Pure: it formats what the
- * helper returned.
+ * title and where it came from (a link is clickable), then — with notes — the
+ * summary, the notes part by part and the transcript under the same headings,
+ * and the disclaimer last; without notes, the transcript alone. With `transcript: false`
+ * the notes stand alone and the transcript is left out. Pure: it formats what
+ * the helper returned.
  */
 
 export interface Segment {
@@ -77,8 +78,15 @@ export function paragraphs(segments: Segment[]): { start: number; text: string }
 const paragraphLines = (segments: Segment[]) =>
   paragraphs(segments).flatMap((p) => [`**${clock(p.start)}** ${p.text}`, ''])
 
-export function transcriptMarkdown(result: Transcription, origin: Origin): string {
-  const lines = [`# ${origin.title}`, '', `${origin.from} · ${clock(result.seconds)}`, '']
+/** A link as an autolink, so it is clickable wherever the .md is read; a file's name stays text. */
+const source = (from: string) => (/^https?:\/\/\S+$/.test(from) ? `<${from}>` : from)
+
+export function transcriptMarkdown(
+  result: Transcription,
+  origin: Origin,
+  { transcript = true }: { transcript?: boolean } = {},
+): string {
+  const lines = [`# ${origin.title}`, '', source(origin.from), '']
   const notes = result.notes
   if (!notes) return [...lines, ...paragraphLines(result.segments)].join('\n')
 
@@ -88,18 +96,20 @@ export function transcriptMarkdown(result: Transcription, origin: Origin): strin
     if (!p) return ''
     return `### ${p.refused ? `Part ${i + 1}` : p.heading} · ${clock(p.start)}`
   }
-  lines.push(notes.summary, '', `_${DISCLAIMER}_`, '', '## Notes', '')
+  lines.push(notes.summary, '', '## Notes', '')
   parts.forEach((p, i) => {
     lines.push(heading(i), '')
     if (p.points.length > 0) lines.push(...p.points.map((point) => `- ${point}`), '')
   })
+  const disclaimer = [`_${DISCLAIMER}_`, '']
+  if (!transcript) return [...lines, ...disclaimer].join('\n')
   lines.push('## Transcript', '')
   parts.forEach((p, i) => {
     const end = parts[i + 1]?.start ?? Number.POSITIVE_INFINITY
     const own = result.segments.filter((s) => s.start >= p.start && s.start < end)
     lines.push(heading(i), '', ...paragraphLines(own))
   })
-  return lines.join('\n')
+  return [...lines, ...disclaimer].join('\n')
 }
 
 /** A video's title as a file name: no slashes or colons, nothing a Finder or a shell trips on. */

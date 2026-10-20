@@ -24,7 +24,9 @@ function home(dir: string) {
 }
 
 /** The line the field is drawn on. */
-const fieldLine = (frame: string) => frame.split('\n').find((l) => l.startsWith('    › ')) ?? ''
+/** The field's row, less the tab cap at its far end. */
+const fieldLine = (frame: string) =>
+  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +(?:tab|enter) *$/, '')
 
 /**
  * A drop is a paste: `stdin.write` hands the whole string to the app as one
@@ -134,7 +136,9 @@ describe('dropping onto home', () => {
     expect(lines.join('\n')).not.toMatch(/^\s+failed\s*$/m)
     // Nothing is staged: it is a refusal of this drop, not a file left out.
     expect(lines.join('\n')).not.toContain('left out')
-    expect(lines[at]?.trimEnd()).toBe('    › or type a path')
+    expect(lines[at]?.replace(/ +(?:tab|enter) *$/, '')).toBe(
+      '    › OR search or enter a file path…',
+    )
   }, 20_000)
 
   it('says what it left out, and esc clears the stage and the line', async () => {
@@ -156,6 +160,6 @@ describe('dropping onto home', () => {
     frame = plain(app.lastFrame())
     expect(frame).not.toContain('left out')
     expect(frame).not.toContain('photo.png')
-    expect(fieldLine(frame)).toBe('    › or type a path')
+    expect(fieldLine(frame)).toBe('    › OR search or enter a file path…')
   }, 20_000)
 })

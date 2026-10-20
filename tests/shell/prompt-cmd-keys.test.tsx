@@ -33,7 +33,12 @@ const settle = (ms = 120) => new Promise((r) => setTimeout(r, ms))
 const ANSI = /\x1b\[[0-9;]*m/g
 const field = (frame: string | undefined) => {
   const line = (frame ?? '').split('\n').find((l) => l.includes('›'))
-  return (line ?? '').replace(ANSI, '').replace('›', '').trim()
+  // Less the enter key at the field's far end (2026-10-19).
+  return (line ?? '')
+    .replace(ANSI, '')
+    .replace('›', '')
+    .replace(/ +enter *$/, '')
+    .trim()
 }
 
 async function typed(text: string) {

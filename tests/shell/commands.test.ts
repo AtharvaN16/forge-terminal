@@ -51,6 +51,7 @@ describe('listCommands', () => {
       'theme',
       'extensions',
       'right-click',
+      'cli',
       'update',
       'about',
       'convert',
@@ -61,6 +62,7 @@ describe('listCommands', () => {
       'colour',
     ])
     expect(listCommands('').items.map((c) => c.group)).toEqual([
+      'settings',
       'settings',
       'settings',
       'settings',
@@ -87,6 +89,7 @@ describe('listCommands', () => {
         'theme',
         'extensions',
         'right-click',
+        'cli',
         'update',
         'about',
         'convert',
@@ -106,6 +109,7 @@ describe('listCommands', () => {
 
   it('names the mode each mode command switches to', () => {
     expect(listCommands('').items.map((c) => c.mode)).toEqual([
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -167,6 +171,7 @@ describe('the registry', () => {
   it('carries every command the shell can run', () => {
     expect(COMMANDS.map((c) => c.name).sort()).toEqual([
       'about',
+      'cli',
       'color',
       'colour',
       'compress',

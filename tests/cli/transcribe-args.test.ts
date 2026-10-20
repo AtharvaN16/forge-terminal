@@ -17,6 +17,8 @@ describe('forge transcribe', () => {
       kind: 'transcribe',
       input: 'talk.mp4',
       notes: true,
+      transcript: true,
+      detail: 'standard',
       force: false,
       debug: false,
     })
@@ -28,11 +30,25 @@ describe('forge transcribe', () => {
     })
   })
 
-  it('takes --to transcript for the transcript only, and --to notes', () => {
+  it('takes --to transcript for the transcript only, and --to all', () => {
     expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'transcript'])).toMatchObject({
       notes: false,
     })
-    expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'notes'])).toMatchObject({ notes: true })
+    expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'all'])).toMatchObject({ notes: true })
+  })
+
+  it('takes --to notes for the notes without the transcript', () => {
+    expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'notes'])).toMatchObject({
+      notes: true,
+      transcript: false,
+    })
+  })
+
+  it('takes --detail brief | standard | detailed, and refuses anything else', () => {
+    expect(parseArgs(['transcribe', 'talk.mp4', '--detail', 'Detailed'])).toMatchObject({
+      detail: 'detailed',
+    })
+    expect(() => parseArgs(['transcribe', 'talk.mp4', '--detail', 'long'])).toThrow(/not long/)
   })
 
   it('takes a language, an output and --force', () => {
@@ -42,6 +58,8 @@ describe('forge transcribe', () => {
       kind: 'transcribe',
       input: 'talk.mp4',
       notes: true,
+      transcript: true,
+      detail: 'standard',
       language: 'hi',
       output: 'out/',
       force: true,

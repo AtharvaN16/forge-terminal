@@ -6,7 +6,7 @@
 //
 //   forge-transcribe status [--locale <id>]
 //   forge-transcribe probe <file>
-//   forge-transcribe run <file> [--locale <id>] [--notes]
+//   forge-transcribe run <file> [--locale <id>] [--notes [--detail brief|standard|detailed]]
 //
 // Built by scripts/build.mjs on macOS with a 26+ SDK; original Forge code, MIT.
 import AVFoundation
@@ -36,6 +36,7 @@ struct Args {
     var file: String?
     var locale: String?
     var notes = false
+    var detail = Detail.standard
 
     init(_ argv: [String]) {
         var rest = Array(argv.dropFirst())
@@ -45,6 +46,7 @@ struct Args {
             switch a {
             case "--locale": locale = rest.isEmpty ? nil : rest.removeFirst()
             case "--notes": notes = true
+            case "--detail": detail = Detail(rawValue: rest.isEmpty ? "" : rest.removeFirst()) ?? .standard
             default: if file == nil { file = a }
             }
         }
@@ -111,8 +113,42 @@ func transcribe(_ file: AVAudioFile, locale: Locale, seconds: Double) async thro
 
 // MARK: - Notes
 
+/// How much the notes say (the Detail pill on Transcribe to). Standard is what was measured
+/// (spike 2026-10-17); brief and detailed change the part size, the points per part and the
+/// summary's length. The schemas differ only in those counts, which a @Guide fixes at compile time.
+enum Detail: String {
+    case brief, standard, detailed
+
+    /// The share of the window a part may fill: smaller parts, more of them, finer notes.
+    var budget: Double { self == .detailed ? 0.30 : 0.55 }
+    var maxPoints: Int { self == .brief ? 3 : self == .detailed ? 8 : 5 }
+    var instructions: String {
+        let base = "Write notes on part of a talk transcript. Use only what the transcript says."
+        switch self {
+        case .brief: return base + " Cover the whole part, not only its start: one short point for each main topic."
+        case .standard: return base
+        case .detailed: return base + " Cover the whole part, with a point for every topic it raises, keeping names, numbers and examples."
+        }
+    }
+    var pointStyle: String {
+        self == .detailed ? "one or two sentences each" : self == .brief ? "one short sentence each" : "one sentence each"
+    }
+    var summaryAsk: String {
+        switch self {
+        case .brief: return "In one or two sentences, what is this talk about?"
+        case .standard: return "In two or three sentences, what is this talk about?"
+        case .detailed: return "In a short paragraph of four to six sentences, what is this talk about?"
+        }
+    }
+}
+
+protocol PartWriting: Generable {
+    var heading: String { get }
+    var points: [String] { get }
+}
+
 @Generable
-struct PartNotes {
+struct PartNotes: PartWriting {
     @Guide(description: "A short heading for this part of the talk, at most six words")
     var heading: String
     @Guide(description: "The main points made in this part, one sentence each", .maximumCount(5))
@@ -120,8 +156,45 @@ struct PartNotes {
 }
 
 @Generable
-struct Overview {
+struct BriefPartNotes: PartWriting {
+    @Guide(description: "A short heading for this part of the talk, at most six words")
+    var heading: String
+    @Guide(description: "The main points made in this part, one short sentence each", .maximumCount(3))
+    var points: [String]
+}
+
+@Generable
+struct DetailedPartNotes: PartWriting {
+    @Guide(description: "A short heading for this part of the talk, at most six words")
+    var heading: String
+    @Guide(description: "One point for each topic raised in this part, in order, one or two sentences each", .maximumCount(8))
+    var points: [String]
+}
+
+protocol OverviewWriting: Generable {
+    var summary: String { get }
+    var headings: [String] { get }
+}
+
+@Generable
+struct Overview: OverviewWriting {
     @Guide(description: "What the whole talk is about, in two or three sentences")
+    var summary: String
+    @Guide(description: "One distinct heading of at most six words for each part, in order")
+    var headings: [String]
+}
+
+@Generable
+struct BriefOverview: OverviewWriting {
+    @Guide(description: "What the whole talk is about, in one or two sentences")
+    var summary: String
+    @Guide(description: "One distinct heading of at most six words for each part, in order")
+    var headings: [String]
+}
+
+@Generable
+struct DetailedOverview: OverviewWriting {
+    @Guide(description: "What the whole talk is about, in a short paragraph of four to six sentences")
     var summary: String
     @Guide(description: "One distinct heading of at most six words for each part, in order")
     var headings: [String]
@@ -165,41 +238,51 @@ func window(_ model: SystemLanguageModel) async -> Int {
     return 4096
 }
 
-let instructions = "Write notes on part of a talk transcript. Use only what the transcript says."
 let greedy = GenerationOptions(sampling: .greedy)
 
 /// One part's notes: structured first; if Apple's model refuses or fails, once more with the
 /// looser filter and a plain-text reply (the only kind it applies to); then give up on this part.
-func notes(for part: inout Part, model: SystemLanguageModel) async {
+func structured<T: PartWriting>(_ type: T.Type, _ prompt: String, _ detail: Detail, _ model: SystemLanguageModel) async throws -> (String, [String]) {
+    let r = try await LanguageModelSession(model: model, instructions: detail.instructions)
+        .respond(to: prompt, generating: type, options: greedy)
+    return (r.content.heading, r.content.points)
+}
+
+func notes(for part: inout Part, model: SystemLanguageModel, detail: Detail) async {
     let prompt = "Transcript:\n\(part.text)"
     do {
-        let r = try await LanguageModelSession(model: model, instructions: instructions)
-            .respond(to: prompt, generating: PartNotes.self, options: greedy)
-        part.heading = r.content.heading
-        part.points = Array(r.content.points.prefix(5))
+        let (heading, points) = try await {
+            switch detail {
+            case .brief: return try await structured(BriefPartNotes.self, prompt, detail, model)
+            case .standard: return try await structured(PartNotes.self, prompt, detail, model)
+            case .detailed: return try await structured(DetailedPartNotes.self, prompt, detail, model)
+            }
+        }()
+        part.heading = heading
+        part.points = Array(points.prefix(detail.maxPoints))
         return
     } catch {}
     let lax = SystemLanguageModel(guardrails: .permissiveContentTransformations)
-    let ask = prompt + "\n\nReply with a heading of at most six words on the first line, then up to five main points, one per line, each starting with \"- \"."
+    let ask = prompt + "\n\nReply with a heading of at most six words on the first line, then up to \(detail.maxPoints) main points, \(detail.pointStyle), one per line, each starting with \"- \"."
     do {
-        let r = try await LanguageModelSession(model: lax, instructions: instructions).respond(to: ask, options: greedy)
+        let r = try await LanguageModelSession(model: lax, instructions: detail.instructions).respond(to: ask, options: greedy)
         let lines = r.content.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         part.heading = (lines.first ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "#* "))
         part.points = Array(lines.dropFirst()
             .filter { $0.hasPrefix("-") || $0.hasPrefix("*") || $0.hasPrefix("•") }
             .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-*• ")) }
-            .prefix(5))
+            .prefix(detail.maxPoints))
         if part.heading.isEmpty || part.points.isEmpty { part.refused = true }
     } catch {
         part.refused = true
     }
 }
 
-func writeNotes(_ segments: [Segment]) async -> [String: Any]? {
+func writeNotes(_ segments: [Segment], detail: Detail) async -> [String: Any]? {
     let model = SystemLanguageModel.default
     guard case .available = model.availability else { return nil }
     // A part, its instructions, the schema and the reply all share the window.
-    let budget = Int(Double(await window(model)) * 0.55)
+    let budget = Int(Double(await window(model)) * detail.budget)
     var parts: [Part] = []
     var start = 0.0
     var text = ""
@@ -218,7 +301,7 @@ func writeNotes(_ segments: [Segment]) async -> [String: Any]? {
 
     for i in parts.indices {
         emit(["event": "notes", "part": i + 1, "of": parts.count])
-        await notes(for: &parts[i], model: model)
+        await notes(for: &parts[i], model: model, detail: detail)
     }
 
     // The summary and the headings last, with every part's notes in view, so headings differ.
@@ -226,17 +309,27 @@ func writeNotes(_ segments: [Segment]) async -> [String: Any]? {
         "Part \(i + 1): " + (p.refused ? "(no notes)" : p.points.joined(separator: " "))
     }.joined(separator: "\n")
     var summary = ""
-    do {
+    func overview<T: OverviewWriting>(_ type: T.Type) async throws -> (String, [String]) {
         let r = try await LanguageModelSession(model: model, instructions: "Summarise a talk from notes on each of its parts.")
-            .respond(to: "Notes on the talk's \(parts.count) parts:\n\(outline)", generating: Overview.self, options: greedy)
-        summary = r.content.summary
-        if r.content.headings.count == parts.count {
-            for i in parts.indices where !parts[i].refused { parts[i].heading = r.content.headings[i] }
+            .respond(to: "Notes on the talk's \(parts.count) parts:\n\(outline)", generating: type, options: greedy)
+        return (r.content.summary, r.content.headings)
+    }
+    do {
+        let (written, headings) = try await {
+            switch detail {
+            case .brief: return try await overview(BriefOverview.self)
+            case .standard: return try await overview(Overview.self)
+            case .detailed: return try await overview(DetailedOverview.self)
+            }
+        }()
+        summary = written
+        if headings.count == parts.count {
+            for i in parts.indices where !parts[i].refused { parts[i].heading = headings[i] }
         }
     } catch {
         let lax = SystemLanguageModel(guardrails: .permissiveContentTransformations)
         if let r = try? await LanguageModelSession(model: lax, instructions: "Summarise a talk from notes on each of its parts.")
-            .respond(to: "In two or three sentences, what is this talk about?\n\(outline)", options: greedy) {
+            .respond(to: "\(detail.summaryAsk)\n\(outline)", options: greedy) {
             summary = r.content.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
@@ -281,7 +374,7 @@ struct Main {
                     "seconds": seconds,
                     "segments": segments.map { ["start": $0.start, "end": $0.end, "text": $0.text] },
                 ]
-                if args.notes, let notes = await writeNotes(segments) { result["notes"] = notes }
+                if args.notes, let notes = await writeNotes(segments, detail: args.detail) { result["notes"] = notes }
                 emit(result)
             } catch {
                 fail("speech", "Transcription failed: \(error.localizedDescription)")

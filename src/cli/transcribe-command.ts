@@ -80,8 +80,12 @@ export async function runTranscribeCommand(
       throw transcribeUnavailable('Transcribe needs macOS 26 or later on Apple silicon.')
     }
     const notes = intent.notes && status.notes === 'available'
-    if (intent.notes && !notes)
+    if (intent.notes && !notes) {
+      // Notes alone were the whole ask: a transcript would not be what they wanted.
+      if (!intent.transcript)
+        throw transcribeUnavailable('Summary and notes need Apple Intelligence, and it is off.')
       io.err('⚠ Apple Intelligence is off, so this is the transcript only.')
+    }
 
     if (link === undefined) {
       source = resolve(intent.input)
@@ -112,6 +116,7 @@ export async function runTranscribeCommand(
     try {
       result = await runTranscribe(source, {
         notes,
+        detail: intent.detail,
         locale: intent.language,
         signal: io.signal,
         onEvent: io.onProgress,
@@ -119,7 +124,7 @@ export async function runTranscribeCommand(
     } finally {
       await fetched?.dispose()
     }
-    const md = transcriptMarkdown(result, origin)
+    const md = transcriptMarkdown(result, origin, { transcript: intent.transcript })
     await writeAtomic(output, Buffer.from(md, 'utf8'))
     const parts = result.notes ? ` · ${result.notes.parts.length} parts` : ''
     io.out(

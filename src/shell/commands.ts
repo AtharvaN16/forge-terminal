@@ -93,6 +93,12 @@ export const COMMANDS: Command[] = [
     group: 'settings',
   },
   {
+    name: 'cli',
+    description: 'run Forge using terminal commands',
+    needsSource: false,
+    group: 'settings',
+  },
+  {
     name: 'update',
     description: 'check for updates',
     needsSource: false,

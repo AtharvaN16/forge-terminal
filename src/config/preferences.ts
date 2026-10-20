@@ -23,6 +23,11 @@ export interface Preferences {
    * Forge then leaves the menu out on every start until it is switched on.
    */
   rightClickMenu?: boolean
+  /**
+   * Typing a name searches the Mac for it (src/shell/find-files.ts). Absent
+   * means not yet asked: the first name typed asks first (2026-10-19, P2).
+   */
+  searchMac?: boolean
   /** The folder the last file was saved to: Save as lists it after the default. */
   lastOutput?: string
   /** Saved from Done's Save as preset; run with `--preset name`. */
@@ -94,6 +99,11 @@ function validate(raw: Record<string, unknown>): { prefs: Preferences; rejected:
   if (raw.rightClickMenu !== undefined) {
     if (typeof raw.rightClickMenu === 'boolean') prefs.rightClickMenu = raw.rightClickMenu
     else rejected.push('rightClickMenu')
+  }
+
+  if (raw.searchMac !== undefined) {
+    if (typeof raw.searchMac === 'boolean') prefs.searchMac = raw.searchMac
+    else rejected.push('searchMac')
   }
 
   if (raw.lastOutput !== undefined) {
