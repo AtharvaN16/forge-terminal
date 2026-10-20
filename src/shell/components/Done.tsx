@@ -5,7 +5,7 @@ import type { Result } from '../../core/types.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
-import { blank, type Row, type Run, width as widthOf } from '../home-art.js'
+import { blank, HOME_MARGIN, type Row, type Run, width as widthOf } from '../home-art.js'
 import { easeOut, motionEnabled, useTween } from '../motion.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
@@ -15,15 +15,16 @@ import { KeyRow, Runs } from './Home.js'
 import { NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
 
 /**
- * Done (B6a): what a single-file convert or compress leaves on screen. The
- * header bar's trail ends in "Done" — and says the folder, so the body does
- * not; under it, the formats, one bar sized by bytes (see `done-art.ts`) and
- * the two sizes, then any offer or warning low above the keys. No file card:
- * the bar is the file.
+ * Done (round 24, mockups/done-2026-10-round18.html): what a single-file
+ * convert or compress leaves on screen. The header bar's trail ends in
+ * "Done" — and says the folder, so the body does not; under it, the strip
+ * with the formats and the change, one bar sized by bytes (see
+ * `done-art.ts`) and the two sizes, then any offer or warning low above the
+ * keys. No file card: the bar is the file.
  *
  * `DoneScreen` fills the terminal's height, as home does, so the keys sit on
- * the bottom row. `DoneRecord` is the same body without the padding and the
- * keys, for the scrollback once the screen is left — and with the folder
+ * the bottom row. `DoneRecord` is the compact body without the padding and
+ * the keys, for the scrollback once the screen is left — and with the folder
  * under it, since the header that said it is gone (audit #9).
  */
 
@@ -124,11 +125,12 @@ export function DoneScreen({
   /** Rows shown where the offers go, in their place: E3's tinted panel. */
   block?: Row[] | undefined
   /**
-   * A result a preset can be made from (presets, round 9): p save as preset
-   * beside the chip, → continue editing at the bottom right above the rule.
+   * A result a preset can be made from (round 24, K26): p save as preset
+   * quiet at the bottom left, → continue editing on its frame at the bottom
+   * right, above the rule.
    */
   preset?: DonePreset | undefined
-  /** What was done, once Continue editing changed it: the chip says every step. */
+  /** What was done, once Continue editing changed it: the strip says every step. */
   chain?: string[] | undefined
   /** Offers to show at the foot (`✧` sentences), in order. */
   offers: string[]
@@ -157,29 +159,6 @@ export function DoneScreen({
       : { bar: easeOut(ms / BAR_MS), label: Math.max(0, Math.min(1, (ms - LABEL_FROM) / LABEL_MS)) }
   const facts = doneFacts(result, mode)
   if (afterName !== undefined) facts.after.name = afterName
-  const body = doneBody({ palette, facts, width, draw })
-  if (chain && chain.length > 1) {
-    const chip = body[0]?.[1]
-    if (chip) body[0] = [body[0]?.[0] ?? blank(0), { ...chip, text: ` ${chain.join(' → ')} ` }]
-  }
-  if (preset) {
-    const aside: Run[] =
-      preset.save === 'saved'
-        ? [
-            blank(2),
-            { text: '✓ saved as ', fg: palette.ok },
-            { text: preset.name ?? '', fg: palette.ok, bold: true },
-          ]
-        : [
-            blank(1),
-            ...keyHint(
-              palette,
-              'p',
-              preset.save === 'update' ? `update ${preset.name ?? ''}` : 'save as preset',
-            ),
-          ]
-    body[0] = [...(body[0] ?? []), ...aside]
-  }
   const notes =
     block ??
     doneNotes({
@@ -190,11 +169,22 @@ export function DoneScreen({
     })
   // What the shell just said (a failed open) sits on the keys, with a blank
   // row above, out of the blank rows Done has; one line where they are fewer.
+  // The preset's foot takes a row of them at least (its frame without the
+  // half rows). When the notice would not fit, the body steps back first —
+  // a three-row bar, no half rows — so the notice can say all it has to.
   const notices = useNotices()
-  const bare = doneLayout({ height, body: body.length, notes: notes.length })
-  const spare = bare.top + bare.bottom + (notes.length > 0 ? bare.between - 1 : 0)
   const fullRows = notices.length > 0 ? noticeRows(notices, width, palette) + 1 : 0
-  const full = fullRows > 0 && spare >= fullRows
+  const footRows = preset ? 1 : 0
+  const spareFor = (rows: number) => {
+    const bare = doneLayout({ height, body: rows, notes: notes.length })
+    return bare.top + bare.bottom - footRows + (notes.length > 0 ? bare.between - 1 : 0)
+  }
+  const roomy = doneBody({ palette, facts, width, draw, chain })
+  const body =
+    fullRows > 0 && spareFor(roomy.length) < fullRows
+      ? doneBody({ palette, facts, width, draw, chain, compact: true })
+      : roomy
+  const full = fullRows > 0 && spareFor(body.length) >= fullRows
   const noticed = full ? fullRows : notices.length > 0 ? 1 : 0
   const { top, between, bottom } = doneLayout({
     height: height - noticed,
@@ -224,8 +214,11 @@ export function DoneScreen({
       ) : null}
       {preset && bottom > 0 ? (
         <>
-          <Blank rows={bottom - 1} />
-          <Runs row={continueHint(palette, width)} />
+          <Blank rows={bottom - presetRows(bottom)} />
+          {presetFoot(palette, preset, width, presetRows(bottom)).map((row, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the rows are positional
+            <Runs key={i} row={row} />
+          ))}
         </>
       ) : (
         <Blank rows={bottom} />
@@ -248,10 +241,59 @@ export function DoneScreen({
   )
 }
 
-/** `→ continue editing`, ending where the key row's footnote ends. */
-function continueHint(palette: ReturnType<typeof useTheme>, width: number): Row {
-  const hint = keyHint(palette, '→', 'continue editing')
-  return [blank(Math.max(0, width - 1 - widthOf(hint))), ...hint]
+/** The frame's half rows above and below it fit when there are three rows for it. */
+const presetRows = (bottom: number) => (bottom >= 3 ? 3 : 1)
+
+/**
+ * The foot of a result a preset can be made from (round 24, K26): p save as
+ * preset quiet at the bottom left — p in the dim grey, its words quieter —
+ * and → continue editing on a small frame in the shelf grey at the bottom
+ * right, the → on a key cap, ending on the block's edge. The frame has half
+ * a row of its grey above and below when `rows` is 3, none when it is 1.
+ */
+function presetFoot(
+  palette: ReturnType<typeof useTheme>,
+  preset: DonePreset,
+  width: number,
+  rows: number,
+): Row[] {
+  const left: Run[] =
+    preset.save === 'saved'
+      ? [
+          { text: '✓ saved as ', fg: palette.ok },
+          { text: preset.name ?? '', fg: palette.ok, bold: true },
+        ]
+      : [
+          { text: 'p', fg: palette.dim, bold: true },
+          {
+            text: preset.save === 'update' ? ` update ${preset.name ?? ''}` : ' save as preset',
+            fg: palette.border,
+          },
+        ]
+  const shelf = palette.shelf === '' ? undefined : palette.shelf
+  const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
+  const cap: Run =
+    palette.keycapBg !== '' && !noColour
+      ? { text: ' → ', fg: palette.fg, bg: palette.keycapBg, bold: true }
+      : { text: '[→]', fg: palette.fg, bold: true, bg: shelf }
+  const frame: Run[] = [
+    { text: ' ', bg: shelf },
+    cap,
+    { text: ' continue editing', fg: palette.fg, bg: shelf },
+    { text: ' ', bg: shelf },
+  ]
+  const end = width - HOME_MARGIN
+  const at = Math.max(HOME_MARGIN + widthOf(left) + 1, end - widthOf(frame))
+  const middle: Row = [
+    blank(HOME_MARGIN),
+    ...left,
+    blank(at - HOME_MARGIN - widthOf(left)),
+    ...frame,
+  ]
+  if (rows < 3) return [middle]
+  const half = (ch: string): Row =>
+    shelf ? [blank(at), { text: ch.repeat(widthOf(frame)), fg: shelf }] : []
+  return [half('▄'), middle, half('▀')]
 }
 
 /**
@@ -273,11 +315,14 @@ export function DoneRecord({
   const palette = useTheme()
   const facts = doneFacts(result, mode)
   if (place) facts.after.name = place.name
+  // The scrollback keeps the compact picture: the same bar and words in six
+  // rows, so the history stays as tight as it was.
   const body = doneBody({
     palette,
     facts,
     width,
     folder: place?.folder ?? displayPath(dirname(result.job.outputs[0] ?? '')),
+    compact: true,
   })
   const warnings = doneNotes({
     palette,

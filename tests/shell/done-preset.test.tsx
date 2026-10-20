@@ -13,9 +13,10 @@ vi.hoisted(() => {
 })
 
 /**
- * Done with presets (mockups/presets-2026-10.html, round 9): `p save as
- * preset` beside the formats' chip, `→ continue editing` at the bottom right
- * above the rule — both in the key row's greys. The key row is today's.
+ * Done with presets (round 24, mockups/done-2026-10-round18.html, K26):
+ * `p save as preset` quiet at the bottom left; `→ continue editing` on a small
+ * frame in the shelf grey at the bottom right, half a row above and below it,
+ * ending on the block's edge. The key row is today's.
  */
 const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 const DESKTOP = join(homedir(), 'Desktop')
@@ -43,51 +44,71 @@ const result: Result = {
   warnings: [],
 }
 
-const lines = (preset?: { save: 'key' | 'saved' | 'update'; name?: string }) =>
-  (
-    render(
-      <ThemeProvider palette={modePalette(DARK, 'convert')}>
-        <DoneScreen
-          mode="convert"
-          trail={{ answers: ['WebP', '80', 'Desktop', 'photo.webp'], current: 'Done' }}
-          result={result}
-          offers={[]}
-          again="convert another"
-          reveal="Show in Finder"
-          width={80}
-          height={24}
-          preset={preset}
-        />
-      </ThemeProvider>,
-    ).lastFrame() ?? ''
-  )
+const frame = (preset?: { save: 'key' | 'saved' | 'update'; name?: string }, height = 24) =>
+  render(
+    <ThemeProvider palette={modePalette(DARK, 'convert')}>
+      <DoneScreen
+        mode="convert"
+        trail={{ answers: ['WebP', '80', 'Desktop', 'photo.webp'], current: 'Done' }}
+        result={result}
+        offers={[]}
+        again="convert another"
+        reveal="Show in Finder"
+        width={80}
+        height={height}
+        preset={preset}
+      />
+    </ThemeProvider>,
+  ).lastFrame() ?? ''
+const lines = (preset?: { save: 'key' | 'saved' | 'update'; name?: string }, height = 24) =>
+  frame(preset, height)
     .split('\n')
     .map((l) => l.replace(SGR, ''))
+/** The truecolor SGR that sets `hex` as the fill (48) or the ink (38). */
+const sgr = (layer: 38 | 48, hex: string) =>
+  `${layer};2;${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')}m`
 
 describe('Done, with presets', () => {
-  it('puts p save as preset beside the formats’ chip', () => {
-    const chip = lines({ save: 'key' }).find((l) => l.includes('PNG → WebP')) ?? ''
-    expect(chip).toMatch(/PNG → WebP {3}p {2}save as preset\s*$/)
+  it('leaves the strip to the formats and the change', () => {
+    const strip = lines({ save: 'key' }).find((l) => l.includes('PNG → WebP')) ?? ''
+    expect(strip).not.toContain('preset')
   })
 
-  it('puts → continue editing at the bottom right, just above the rule and the keys', () => {
+  it('puts p save as preset at the bottom left and → continue editing framed at the bottom right', () => {
     const all = lines({ save: 'key' })
     expect(all).toHaveLength(24)
-    expect(all[21]?.trimEnd()).toMatch(/→ {2}continue editing$/)
-    // Ends where the key row's footnote ends, a cell from the edge.
-    expect(all[21]?.trimEnd().length).toBe(79)
+    expect(all[20]?.trimEnd()).toMatch(/^ {2}p save as preset +→ {2}continue editing$/)
+    // The frame ends on the block's edge, two cells from the window's.
+    expect(all[20]?.trimEnd().length).toBe(77)
+    expect(all[19]?.trimEnd()).toMatch(/^ +▄{22}$/)
+    expect(all[19]?.trimEnd().length).toBe(78)
+    expect(all[21]?.trimEnd()).toMatch(/^ +▀{22}$/)
     expect(all[22]).toMatch(/^─+$/)
     expect(all[23]).toMatch(/^ {4}↵ {2}convert another/)
   })
 
-  it('says it was saved, where the key was', () => {
-    const chip = lines({ save: 'saved', name: 'blog' }).find((l) => l.includes('PNG → WebP')) ?? ''
-    expect(chip).toMatch(/PNG → WebP {3}✓ saved as blog\s*$/)
+  it('keeps p quiet and gives the frame the shelf grey, → on a key cap', () => {
+    const row = frame({ save: 'key' }).split('\n')[20] ?? ''
+    expect(row).toMatch(new RegExp(`${sgr(38, DARK.dim)}p`))
+    expect(row).toMatch(new RegExp(`${sgr(38, DARK.border)} save as preset`))
+    expect(row).toContain(sgr(48, DARK.shelf))
+    expect(row).toMatch(new RegExp(`${sgr(48, DARK.keycapBg)}.* → `))
+  })
+
+  it('says it was saved, where p was', () => {
+    expect(lines({ save: 'saved', name: 'blog' })[20]).toMatch(/^ {2}✓ saved as blog +/)
   })
 
   it('offers to update it once the steps change after saving', () => {
-    const chip = lines({ save: 'update', name: 'blog' }).find((l) => l.includes('PNG → WebP')) ?? ''
-    expect(chip).toMatch(/p {2}update blog\s*$/)
+    expect(lines({ save: 'update', name: 'blog' })[20]).toMatch(/^ {2}p update blog +/)
+  })
+
+  it('draws the frame one row tall on a screen too short for its half rows', () => {
+    const all = lines({ save: 'key' }, 17)
+    expect(all).toHaveLength(17)
+    expect(all[14]?.trimEnd()).toMatch(/p save as preset +→ {2}continue editing$/)
+    // No row holds the frame's half rows alone (the strip's own are the block's width).
+    for (const l of all) expect(l.trimEnd()).not.toMatch(/^ +[▄▀]{22}$/)
   })
 
   it('draws neither where presets do not apply', () => {
