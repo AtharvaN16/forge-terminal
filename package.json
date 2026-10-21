@@ -1,19 +1,23 @@
 {
   "name": "forge-terminal",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "A terminal-native file converter for macOS and Windows",
   "whatsNew": [
     {
-      "title": "Keys light up",
-      "text": "Press a key and its hint on screen turns orange for a moment. Tab stays lit while the supported formats are showing."
+      "title": "Enter is easier to see",
+      "text": "The enter key in the file field now wears a ↵ and the mode's colour, so it is clear what to press."
     },
     {
-      "title": "A calmer formats list",
-      "text": "The supported formats list has lost its title and rule, so it has more room to breathe."
+      "title": "esc clear moved down",
+      "text": "With a file staged, esc clear now sits on the bottom row, right beside ↵."
     },
     {
-      "title": "Copy all commands",
-      "text": "On /cli, press c to copy the whole command reference in one go."
+      "title": "Modes change on home",
+      "text": "The 1–6 mode keys work on the home screen only. Pickers and edit screens no longer offer them."
+    },
+    {
+      "title": "Boost scale pill",
+      "text": "When an image has only one boost scale, the pill no longer shows arrows that go nowhere."
     }
   ],
   "keywords": [
