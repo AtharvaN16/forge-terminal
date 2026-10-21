@@ -170,8 +170,8 @@ describe('Tab on home', () => {
 
 /**
  * The bottom rows around it (2026-10-19): "tab supported formats" on the key
- * row where "ctrl-n new" was; "esc clear" beside ↵ send while typing, and at
- * the left of the "/ menu" row while something is staged.
+ * row where "ctrl-n new" was; "esc clear" on the key row while typing and
+ * while something is staged (beside ↵, 2026-10-21).
  */
 describe('the key row and the row above its rule', () => {
   const rows = (frame: string) => {
@@ -205,7 +205,7 @@ describe('the key row and the row above its rule', () => {
     await settle()
     const { keys, hint } = rows(plain(app.lastFrame()))
     expect(keys).toMatch(/^ +esc +clear/)
-    expect(plain(app.lastFrame())).toMatch(/› ~\/zz +enter/)
+    expect(plain(app.lastFrame())).toMatch(/› ~\/zz +↵ enter/)
     expect(hint).not.toContain('esc')
     app.stdin.write(ESC)
     await settle()
@@ -221,12 +221,13 @@ describe('the key row and the row above its rule', () => {
     await settle()
     app.stdin.write(`${png}\r`)
     await settle(400)
-    const { hint } = rows(plain(app.lastFrame()))
-    expect(hint).toMatch(/esc +clear/)
+    const { keys, hint } = rows(plain(app.lastFrame()))
+    expect(keys).toMatch(/^ +↵ +\w+ +esc +clear/)
+    expect(hint).not.toContain('esc')
     expect(hint).toMatch(/\/ +menu\s*$/)
     app.stdin.write(ESC)
     await settle()
-    expect(rows(plain(app.lastFrame())).hint).not.toContain('esc')
+    expect(rows(plain(app.lastFrame())).keys).not.toContain('esc')
   })
 })
 

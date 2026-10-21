@@ -167,7 +167,6 @@ import { writeToTerminal } from './terminal-write.js'
 import {
   colourProp,
   type HomeTab,
-  MODE_KEYS,
   menuPalette,
   modeColours,
   modeForKey,
@@ -1502,19 +1501,25 @@ export function App({
       : undefined
 
   /**
-   * The enter key alone at the field's far end, on the key row's grey cap,
-   * while there is something for it to do (2026-10-19): a path or name typed,
+   * The enter key alone at the field's far end, as a chip in the mode's
+   * colour with the ↵ symbol, while there is something for it to do (2026-10-19): a path or name typed,
    * or a file staged that ↵ would act on. An empty home shows nothing. Not
    * for a command, whose menu says ↵ open, nor while the drop area asks.
    */
   const enterCap: Row =
     (process.env.NO_COLOR ?? '') !== '' || palette.keycapBg === ''
-      ? [{ text: '[enter]', fg: keyIsDown('enter') ? palette.fg : palette.border }]
+      ? [{ text: '[↵ enter]', fg: keyIsDown('enter') ? palette.fg : palette.border }]
       : [
           {
-            text: ' enter ',
-            fg: keyIsDown('enter') ? palette.brand : palette.fg,
-            bg: palette.keycapBg,
+            text: ' ↵ enter ',
+            fg: palette.ink,
+            // The mode's colour, so it reads as the thing to press — a neutral
+            // grey in colour mode, where the swatches already compete (2026-10-16).
+            bg: keyIsDown('enter')
+              ? palette.fg
+              : mode === 'colour'
+                ? palette.border
+                : modeColours(palette, mode).fg,
             bold: true,
           },
         ]
@@ -1648,28 +1653,6 @@ export function App({
     setText('')
     switchMode(next)
   }
-
-  /**
-   * `1`–`3` on a screen with no text field — the pickers and the quality
-   * slider — move the file to that mode, as its command would (see
-   * `runCommand` for what that means for the file). Screens that take text
-   * leave the digits to the field.
-   */
-  useKeys(
-    (input, key) => {
-      const next = modeForKey(input)
-      if (key.ctrl || key.meta || !next || next === mode) return
-      // Not while a tool installs: that row is busy until it finishes or stops.
-      if (installAbort.current) return
-      const command = COMMANDS.find((c) => c.mode === next)
-      if (command) runCommand(command)
-    },
-    {
-      isActive: ['mode', 'target', 'pages', 'dpi', 'quality', 'edit', 'resize', 'crop'].includes(
-        step,
-      ),
-    },
-  )
 
   /**
    * Keys the command list takes before the field sees them, while it is
@@ -4821,7 +4804,6 @@ export function App({
                   pairs={[
                     ['↑↓', 'choose'],
                     ['↵', 'confirm'],
-                    [MODE_KEYS, 'mode'],
                     // Method is the first question: esc takes the file off the bench.
                     ['esc', 'remove file'],
                   ]}
@@ -4956,7 +4938,6 @@ export function App({
                   pairs={[
                     ['↑↓', 'choose'],
                     ['↵', 'confirm'],
-                    [MODE_KEYS, 'mode'],
                     // A document stays staged on esc (/pdf may still want it); an image
                     // is taken off the bench. The key says which.
                     ['esc', source.kind === 'document' ? 'back' : 'remove file'],
@@ -4992,7 +4973,6 @@ export function App({
                   pairs={[
                     ['↑↓', 'choose'],
                     ['↵', 'confirm'],
-                    [MODE_KEYS, 'mode'],
                     ['esc', 'back'],
                   ]}
                 />
@@ -5046,7 +5026,6 @@ export function App({
                   pairs={[
                     ['↑↓', 'choose'],
                     ['↵', 'confirm'],
-                    [MODE_KEYS, 'mode'],
                     ['esc', 'back'],
                   ]}
                 />

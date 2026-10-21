@@ -33,7 +33,7 @@ import { sketchNoteRows } from '../halfblocks.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { useTheme } from '../ThemeContext.js'
-import { MODE_KEYS, modeColours, type ShellMode } from '../theme.js'
+import { modeColours, type ShellMode } from '../theme.js'
 import { useInlinePictures } from '../useInlinePictures.js'
 import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
@@ -326,7 +326,6 @@ export function CropStep({
         width={width}
         pairs={cropKeys({ size, box, changed })}
         foot={[
-          [MODE_KEYS, 'mode'],
           ['esc', 'back'],
           ['ctrl-c', 'quit'],
         ]}

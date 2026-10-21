@@ -198,6 +198,18 @@ describe('the key row (F1)', () => {
     ])
   })
 
+  it('puts esc clear on the key row beside ↵ while files are staged', () => {
+    expect(
+      homeKeys({ typing: false, completions: 0, staged: { count: 1, verb: 'edit' } }).main,
+    ).toEqual([
+      ['↵', 'edit'],
+      ['esc', 'clear'],
+    ])
+    expect(
+      homeKeys({ typing: false, completions: 0, staged: { count: 1, verb: null } }).main,
+    ).toEqual([['esc', 'clear']])
+  })
+
   it('says tab for the supported formats on a bare home, and no ctrl-n new anywhere', () => {
     const bare = homeKeys({ typing: false, completions: 0, formats: true })
     expect(bare.foot).toEqual([

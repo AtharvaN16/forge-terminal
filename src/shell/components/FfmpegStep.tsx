@@ -3,7 +3,6 @@ import { formatBytes } from '../../core/units.js'
 import type { ToolState } from '../edit.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
 import { useTheme } from '../ThemeContext.js'
-import { MODE_KEYS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { bytesOf } from './EditPicker.js'
 import { HintBar } from './HintBar.js'
@@ -98,12 +97,10 @@ export function FfmpegStep({
             : offered
               ? [
                   ['↵', 'install'],
-                  [MODE_KEYS, 'mode'],
                   ['esc', 'remove file'],
                 ]
               : [
                   ['↵', 'look again'],
-                  [MODE_KEYS, 'mode'],
                   ['esc', 'remove file'],
                 ]
         }

@@ -5,7 +5,7 @@ import { keyIsDown } from '../pressed-key.js'
 import { endsRow, SLIDER_WIDTH, sliderRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, MODE_KEYS, modeColours, type ShellMode } from '../theme.js'
+import { colourProp, modeColours, type ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import type { MeasuredSize } from '../useMeasuredSize.js'
 import { HintBar } from './HintBar.js'
@@ -45,7 +45,6 @@ export function QualityStep({
   points = false,
   noBigger = false,
   dither,
-  modeKeys = true,
   unit = '',
 }: {
   mode: ShellMode
@@ -67,8 +66,6 @@ export function QualityStep({
   noBigger?: boolean
   /** Dithering, where it would change the file: on or off, and d to switch. */
   dither?: { on: boolean; onToggle: () => void } | undefined
-  /** The mode digits work here; not in a folder's flow, which a mode cannot take over. */
-  modeKeys?: boolean
   /** After the value on the thumb: ` kbps` for sound. */
   unit?: string
 }) {
@@ -139,7 +136,6 @@ export function QualityStep({
           ['↵', 'confirm'],
         ]}
         foot={[
-          ...(modeKeys ? ([[MODE_KEYS, 'mode']] as Array<[string, string]>) : []),
           ['esc', 'back'],
           ['ctrl-c', 'quit'],
         ]}

@@ -14,6 +14,8 @@ export const pillWidth = (label: string) => stringWidth(` ‹ ${label} › `)
 export function StepPill({ labels, at }: { labels: string[]; at: number }) {
   const palette = useTheme()
   const i = Math.max(0, Math.min(at, labels.length - 1))
+  // One step, nothing to step to: no arrows, the same width.
+  const only = labels.length < 2
   const chip = palette.folderChip === '' ? {} : { backgroundColor: palette.folderChip }
   const arrow = (live: boolean, text: string) => (
     <Text bold={live} color={colourProp(live ? palette.accent : palette.border)} {...chip}>
@@ -22,11 +24,11 @@ export function StepPill({ labels, at }: { labels: string[]; at: number }) {
   )
   return (
     <Text>
-      {arrow(i > 0, ' ‹ ')}
+      {arrow(i > 0, only ? '   ' : ' ‹ ')}
       <Text bold color={colourProp(palette.fg)} {...chip}>
         {labels[i]}
       </Text>
-      {arrow(i < labels.length - 1, ' › ')}
+      {arrow(i < labels.length - 1, only ? '   ' : ' › ')}
     </Text>
   )
 }

@@ -601,7 +601,6 @@ export function WatchFlow({
             size={{ status: 'idle' }}
             sourceBytes={only.bytes}
             width={width}
-            modeKeys={false}
           />
         </Box>
       )

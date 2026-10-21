@@ -10,7 +10,7 @@ import {
   placeOf,
 } from '../media-picker-art.js'
 import { useTheme } from '../ThemeContext.js'
-import { MODE_KEYS, type ShellMode } from '../theme.js'
+import type { ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
@@ -90,7 +90,6 @@ export function MediaFormatPicker({
         pairs={[
           ['↑↓←→', 'choose'],
           ['↵', 'confirm'],
-          [MODE_KEYS, 'mode'],
           ['esc', 'remove file'],
         ]}
       />

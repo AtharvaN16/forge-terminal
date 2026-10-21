@@ -255,19 +255,17 @@ describe('colour, the sixth mode', () => {
     expect(tabRow(app.lastFrame())).not.toContain('clipboard')
   }, 20_000)
 
-  it('6 on a picker switches to colour, and ctrl-n goes back to convert', async () => {
+  it('6 on a picker does nothing: modes change on home only', async () => {
     const { app, dir } = await home(96)
     app.stdin.write(await makeGradientPng(dir, 'a.png', 32))
     await settle()
     app.stdin.write(ENTER)
-    await waitFor(() => plain(app.lastFrame()).includes('Convert PNG to'))
+    await waitFor(() => plain(app.lastFrame()).includes('Convert to'))
     await settle(300) // the picker's keys attach after its first frame
-    expect(keyRow(app.lastFrame())).toMatch(/1–6 +mode/)
+    expect(keyRow(app.lastFrame())).not.toMatch(/1–6/)
     app.stdin.write('6')
-    await waitFor(() => plain(app.lastFrame()).includes('extract colours'))
-    expect(plain(app.lastFrame())).toContain('extract colours')
-    app.stdin.write(CTRL_N)
-    await waitFor(() => plain(app.lastFrame()).includes('Drop a file here'))
+    await settle(300)
+    expect(plain(app.lastFrame())).toContain('Convert to')
     expect(plain(app.lastFrame())).not.toContain('extract colours')
   }, 20_000)
 })

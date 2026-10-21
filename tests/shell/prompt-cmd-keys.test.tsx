@@ -37,7 +37,7 @@ const field = (frame: string | undefined) => {
   return (line ?? '')
     .replace(ANSI, '')
     .replace('›', '')
-    .replace(/ +enter *$/, '')
+    .replace(/ +↵ enter *$/, '')
     .trim()
 }
 

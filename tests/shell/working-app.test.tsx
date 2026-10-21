@@ -110,11 +110,13 @@ describe('Working, finding a size', () => {
     const file = await makeNoiseImage(dir, 'photo.jpg', 1400, 'jpeg')
     const app = render(<App initialWidth={80} initialHeight={24} prefs={prefsFor(dir)} />)
     await settle()
+    app.stdin.write('/compress')
+    await settle()
+    app.stdin.write(ENTER)
+    await settle()
     app.stdin.write(file)
     await settle()
     app.stdin.write(ENTER)
-    await settle(400)
-    app.stdin.write('2') // compress
     await settle(400)
     app.stdin.write(DOWN) // To a target size
     await settle()

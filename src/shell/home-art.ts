@@ -13,7 +13,6 @@ import {
 import { FORMATS } from '../core/formats.js'
 import type { FormatId } from '../core/types.js'
 import type { Command } from './commands.js'
-import { keyIsDown } from './pressed-key.js'
 import type { StagedFile, StagedView, UnderField } from './stage.js'
 import {
   dotGradient,
@@ -380,14 +379,11 @@ export function menuHintRow({
   palette,
   width: columns,
   open,
-  clear = false,
   menu = true,
 }: {
   palette: Palette
   width: number
   open: boolean
-  /** "esc clear" at the row's left, lined up with the key row's first key: only while something is staged. */
-  clear?: boolean
   /** "/ menu" at the right; off while a path is being typed. */
   menu?: boolean
 }): Row {
@@ -404,32 +400,9 @@ export function menuHintRow({
             { text: ' / ', fg: palette.fg, bg: palette.keycapBg },
             { text: ' menu', fg: palette.dim },
           ]
-  const esc: Row = !clear
-    ? []
-    : palette.keycapBg === ''
-      ? [
-          {
-            text: '[esc] clear',
-            fg: keyIsDown('esc') ? palette.fg : palette.border,
-            bold: keyIsDown('esc'),
-          },
-        ]
-      : [
-          keyIsDown('esc')
-            ? { text: ' esc ', fg: palette.brand, bg: palette.keycapBg, bold: true }
-            : { text: ' esc ', fg: palette.fg, bg: palette.keycapBg },
-          { text: ' clear', fg: palette.dim },
-        ]
-  // Both ends on the margins, as the key row under them (2026-10-20).
-  const left: Row = esc
-  const lead = left.length > 0 ? HOME_MARGIN : 0
-  if (hint.length === 0) return left.length > 0 ? [blank(lead), ...left] : []
-  return [
-    ...(left.length > 0 ? [blank(lead), ...left] : []),
-    blank(columns - HOME_MARGIN - width(hint) - lead - width(left)),
-    ...hint,
-    blank(HOME_MARGIN),
-  ]
+  // On the margin, as the key row under it (2026-10-20).
+  if (hint.length === 0) return []
+  return [blank(columns - HOME_MARGIN - width(hint)), ...hint, blank(HOME_MARGIN)]
 }
 
 /**

@@ -140,7 +140,7 @@ export function homeKeys({
   }
   // ↵ is said in the field, "enter send", once something is typed (2026-10-19);
   // an empty field has nothing to send. Typing, esc clear is a key here; with something
-  // staged it is on the row above, beside "/ menu" (`menuHintRow`).
+  // staged it is on the key row too, beside ↵.
   if (typing && completions > 0) {
     return {
       main: [
@@ -170,7 +170,13 @@ export function homeKeys({
   }
   if (staged && staged.count > 0) {
     return {
-      main: staged.verb === null ? [] : [['↵', staged.verb]],
+      main:
+        staged.verb === null
+          ? [['esc', 'clear']]
+          : [
+              ['↵', staged.verb],
+              ['esc', 'clear'],
+            ],
       foot: [
         [MODE_ARROWS, 'mode'],
         ['ctrl-c', 'quit'],
@@ -655,17 +661,15 @@ export function Home({
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
         {note ? null : list?.(Math.max(1, layout.list - 2 - (below ? 2 : 0)))}
       </Box>
-      {/* "/ menu" at the right while the field is empty, and "esc clear" at
-          the left while something is staged. Typing — a path or a command —
-          the list below the field needs the row, and esc clear is on the key
-          row beside ↵ send. */}
+      {/* "/ menu" at the right while the field is empty. Typing — a path or a
+          command — the list below the field needs the row. esc clear is on
+          the key row, beside ↵. */}
       {typing ? null : (
         <Runs
           row={menuHintRow({
             palette,
             width,
             open: false,
-            clear: staged !== undefined,
           })}
         />
       )}

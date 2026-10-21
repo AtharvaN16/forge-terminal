@@ -134,7 +134,9 @@ describe('edit mode', () => {
       app.stdin.write(DOWN)
       await until(() => frame().includes('becomes 8200 × 100'))
       expect(frame()).toContain('Makes it bigger.')
-      expect(frame()).toMatch(/Boost resolution +‹ 2× ›/)
+      // A pill with one scale has nothing to step to, so it wears no arrows.
+      expect(frame()).toMatch(/Boost resolution +2× /)
+      expect(frame()).not.toMatch(/Boost resolution +‹/)
       expect(frame()).not.toContain('16,400')
       expect(frame()).not.toContain('same size')
 

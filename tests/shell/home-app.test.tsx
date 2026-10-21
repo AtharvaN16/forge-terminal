@@ -33,7 +33,7 @@ const POPUP = /menu ╱╱/
 
 /** The field's row, less the tab cap at its far end (see `formats-key-app.test.tsx`). */
 const fieldLine = (frame: string) =>
-  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +(?:tab|enter) *$/, '')
+  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +(?:tab|↵ enter) *$/, '')
 
 describe('the home screen in the app', () => {
   it('is what an empty prompt shows, filling the terminal', async () => {
@@ -118,7 +118,7 @@ describe('the home screen in the app', () => {
     expect(
       frame
         .split('\n')
-        .map((l) => l.replace(/ +enter *$/, '').trim())
+        .map((l) => l.replace(/ +↵ enter *$/, '').trim())
         .join(''),
     ).toContain(`${dir}/beta.png`)
   })
@@ -142,7 +142,7 @@ describe('the home screen in the app', () => {
     expect(lines.join('\n')).not.toContain('Check the filename')
 
     // The path stays in the field, to be corrected.
-    expect(lines[at]?.replace(/ +enter *$/, '').trimEnd()).toBe('    › /definitely/not/here.jpg')
+    expect(lines[at]?.replace(/ +↵ enter *$/, '').trimEnd()).toBe('    › /definitely/not/here.jpg')
 
     // The next keystroke clears the row, and the completions come back to the list.
     app.stdin.write('x')

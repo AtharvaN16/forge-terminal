@@ -26,7 +26,7 @@ function home(dir: string) {
 /** The line the field is drawn on. */
 /** The field's row, less the tab cap at its far end. */
 const fieldLine = (frame: string) =>
-  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +(?:tab|enter) *$/, '')
+  (frame.split('\n').find((l) => l.startsWith('    › ')) ?? '').replace(/ +(?:tab|↵ enter) *$/, '')
 
 /**
  * A drop is a paste: `stdin.write` hands the whole string to the app as one
@@ -136,7 +136,7 @@ describe('dropping onto home', () => {
     expect(lines.join('\n')).not.toMatch(/^\s+failed\s*$/m)
     // Nothing is staged: it is a refusal of this drop, not a file left out.
     expect(lines.join('\n')).not.toContain('left out')
-    expect(lines[at]?.replace(/ +(?:tab|enter) *$/, '')).toBe(
+    expect(lines[at]?.replace(/ +(?:tab|↵ enter) *$/, '')).toBe(
       '    › OR search or enter a file path…',
     )
   }, 20_000)

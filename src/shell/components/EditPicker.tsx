@@ -9,7 +9,7 @@ import { HOME_MARGIN } from '../home-art.js'
 import { titleRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp, MODE_KEYS } from '../theme.js'
+import { colourProp } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
@@ -294,7 +294,6 @@ export function EditPicker({
         width={width}
         pairs={main}
         foot={[
-          [MODE_KEYS, 'mode'],
           ['esc', 'back'],
           ['ctrl-c', 'quit'],
         ]}

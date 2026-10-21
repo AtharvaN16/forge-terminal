@@ -66,25 +66,17 @@ describe('the header bar in the flow', () => {
   }, 60_000)
 })
 
-describe('1–6 switch mode on a screen with no text field', () => {
-  it('says so on the key row of Format', async () => {
+describe('mode keys belong to home (2026-10-21)', () => {
+  it('does not offer 1–6 on the key row of Format', async () => {
     const { app } = await atFormat()
-    expect(keyRow(app.lastFrame() ?? '')).toMatch(/1–6 +mode/)
+    expect(keyRow(app.lastFrame() ?? '')).not.toMatch(/1–6/)
   })
 
-  it('moves the file to compress with 2, and back to convert with 1', async () => {
+  it('leaves the mode alone when a digit is pressed on a picker', async () => {
     const { app } = await atFormat()
     app.stdin.write('2')
     await settle(400)
-    let frame = app.lastFrame() ?? ''
-    expect(barLine(frame)).toMatch(/compress ╱+ Method ╱╱$/)
-    expect(plain(frame)).toContain('By quality')
-    expect(keyRow(frame)).toMatch(/1–6 +mode/)
-
-    app.stdin.write('1')
-    await settle(400)
-    frame = app.lastFrame() ?? ''
-    expect(barLine(frame)).toMatch(/convert ╱+ Format ╱╱$/)
+    expect(barLine(app.lastFrame() ?? '')).toMatch(/convert ╱+ Format ╱╱$/)
   })
 
   it('does nothing for the mode already on', async () => {
