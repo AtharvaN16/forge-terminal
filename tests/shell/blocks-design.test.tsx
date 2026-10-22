@@ -99,8 +99,7 @@ describe('result block', () => {
     expect(frame).toContain('✓ diagram.webp')
     // Round 24: the formats say what it was; "was" and "now" say which size is which.
     expect(frame).toMatch(/^ {3}PNG → WebP +.*smaller\s*$/m)
-    expect(frame).toMatch(/^ {2}now +was\s*$/m)
-    expect(frame).toMatch(/^ {2}115 KB +348 KB\s*$/m)
+    expect(frame).toMatch(/^ {2}now 115 KB +was 348 KB\s*$/m)
   })
 
   it('states the saving in words', () => {
@@ -136,8 +135,7 @@ describe('result block, as Done leaves it in the scrollback', () => {
     // The strip over the bar's top row, the change at its end; no half rows.
     expect(lines[bar - 2]).toMatch(/\d+(\.\d)?% smaller\s*$/)
     expect(frame).not.toMatch(/[▄▀]/)
-    expect(lines[bar + 2]).toMatch(/^ {2}now +was\s*$/)
-    expect(lines[bar + 3]).toMatch(/^ {2}133 KB +348 KB\s*$/)
+    expect(lines[bar + 2]).toMatch(/^ {2}now 133 KB +was 348 KB\s*$/)
   })
 
   it('keeps a warning in the record, under the folder', () => {

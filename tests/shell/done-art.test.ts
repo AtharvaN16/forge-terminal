@@ -34,7 +34,7 @@ const gif: DoneFacts = {
   after: { format: 'PNG', name: 'party.png', bytes: 1_600_000 },
 }
 
-/** Rows of the body, by what they are: the strip (three), the bar (seven), a gap, the sizes (two). */
+/** Rows of the body, by what they are: the strip (three), the bar (seven), a gap, the sizes (one row). */
 const ROW = {
   stripTop: 0,
   strip: 1,
@@ -43,8 +43,7 @@ const ROW = {
   mid: 6,
   barBottom: 9,
   gap: 10,
-  words: 11,
-  sizes: 12,
+  sizes: 11,
 }
 
 describe('receiptBars', () => {
@@ -92,14 +91,13 @@ describe('changePhrase', () => {
 })
 
 describe('the Done body (round 24)', () => {
-  it('reads top to bottom: the strip, the bar, a blank row, then the sizes stacked', () => {
+  it('reads top to bottom: the strip, the bar, a blank row, then the sizes on one row', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80 })
-    expect(rows).toHaveLength(13)
+    expect(rows).toHaveLength(12)
     expect(text(rows[ROW.strip])).toMatch(/^ {2} PNG → JPEG +47\.4 KB saved · 38\.9% smaller $/)
     expect(text(rows[ROW.gap])).toBe('')
-    expect(text(rows[ROW.words])).toMatch(/^ {2}now +was$/)
-    expect(text(rows[ROW.sizes])).toMatch(/^ {2}74\.6 KB +122 KB$/)
-    for (const r of [ROW.strip, ROW.words, ROW.sizes]) expect(width(rows[r] ?? [])).toBe(78)
+    expect(text(rows[ROW.sizes])).toMatch(/^ {2}now 74\.6 KB +was 122 KB$/)
+    for (const r of [ROW.strip, ROW.sizes]) expect(width(rows[r] ?? [])).toBe(78)
   })
 
   it('draws the strip in the selection grey, a whole row of it above and below the words', () => {
@@ -221,18 +219,19 @@ describe('the Done body (round 24)', () => {
     })
   })
 
-  it('stacks the sizes, the word quiet over the size, the smaller file on the left', () => {
+  it('puts each size after its word on one row, at either end, the smaller file on the left', () => {
     const shrank = doneBody({ palette: P, facts: cv, width: 80 })
-    expect(cells(shrank[ROW.words])[2]).toMatchObject({ ch: 'n', fg: DARK.dim })
-    expect(cells(shrank[ROW.words]).at(-1)).toMatchObject({ ch: 's', fg: DARK.border })
-    expect(cells(shrank[ROW.sizes])[2]).toMatchObject({ ch: '7', fg: DARK.ok, bold: true })
-    expect(cells(shrank[ROW.sizes]).at(-1)).toMatchObject({ ch: 'B', fg: DARK.fg, bold: true })
+    const row = cells(shrank[ROW.sizes])
+    expect(row[2]).toMatchObject({ ch: 'n', fg: DARK.dim })
+    expect(row[6]).toMatchObject({ ch: '7', fg: DARK.ok, bold: true })
+    const was = text(shrank[ROW.sizes]).indexOf('was')
+    expect(row[was]).toMatchObject({ ch: 'w', fg: DARK.border })
+    expect(row.at(-1)).toMatchObject({ ch: 'B', fg: DARK.fg, bold: true })
     // A file that grew: was on the left, now on the right, in orange.
     const grew = doneBody({ palette: P, facts: gif, width: 80 })
-    expect(text(grew[ROW.words])).toMatch(/^ {2}was +now$/)
-    expect(text(grew[ROW.sizes])).toMatch(/^ {2}1\.1 MB +1\.6 MB$/)
+    expect(text(grew[ROW.sizes])).toMatch(/^ {2}was 1\.1 MB +now 1\.6 MB$/)
     expect(cells(grew[ROW.sizes]).at(-1)).toMatchObject({ ch: 'B', fg: DARK.larger, bold: true })
-    expect(cells(grew[ROW.sizes])[2]).toMatchObject({ ch: '1', fg: DARK.fg, bold: true })
+    expect(cells(grew[ROW.sizes])[6]).toMatchObject({ ch: '1', fg: DARK.fg, bold: true })
   })
 
   it('gives a narrow strip to the formats first: the change shortens, then goes', () => {
@@ -244,21 +243,20 @@ describe('the Done body (round 24)', () => {
     expect(at(24)).not.toContain('%')
   })
 
-  it('steps back when asked to make room: a three-row bar, no half rows, no gap — six rows, as before', () => {
+  it('steps back when asked to make room: a three-row bar, no half rows, no gap — five rows', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80, compact: true })
-    expect(rows).toHaveLength(6)
+    expect(rows).toHaveLength(5)
     expect(text(rows[0])).toMatch(/^ {2} PNG → JPEG +47\.4 KB saved · 38\.9% smaller $/)
     expect(text(rows[2])).toMatch(/^ {3}✓ test\.jpg +╱+$/)
-    expect(text(rows[4])).toMatch(/^ {2}now +was$/)
-    expect(text(rows[5])).toMatch(/^ {2}74\.6 KB +122 KB$/)
+    expect(text(rows[4])).toMatch(/^ {2}now 74\.6 KB +was 122 KB$/)
   })
 
   it('names the folder under the sizes when asked to, for the scrollback', () => {
     const rows = doneBody({ palette: P, facts: cv, width: 80, folder: '~/d/nonexistent/out' })
-    expect(rows).toHaveLength(15)
-    expect(text(rows[13])).toBe('')
-    expect(text(rows[14])).toBe('   in ~/d/nonexistent/out')
-    expect(doneBody({ palette: P, facts: cv, width: 80 })).toHaveLength(13)
+    expect(rows).toHaveLength(14)
+    expect(text(rows[12])).toBe('')
+    expect(text(rows[13])).toBe('   in ~/d/nonexistent/out')
+    expect(doneBody({ palette: P, facts: cv, width: 80 })).toHaveLength(12)
   })
 
   it('draws the same size as one full band, saying so quietly', () => {
@@ -325,20 +323,16 @@ describe('the Done notes', () => {
 })
 
 describe('the Done layout', () => {
-  it('sits the body a row above the middle of the space between bar and keys', () => {
-    // 24 rows: the bar and a blank; the rule and the keys; 18 rows between,
-    // less a row of margin either side. The body is six rows.
-    expect(doneLayout({ height: 24, body: 6, notes: 0 })).toEqual({
-      top: 5,
-      between: 0,
-      bottom: 9,
-    })
+  it('sits the body two blank rows under the bar, in any window: the rest goes under it', () => {
+    // The bar's own blank row and one more (2026-10-22, the layout picker).
+    expect(doneLayout({ height: 24, body: 6, notes: 0 })).toEqual({ top: 1, between: 0, bottom: 13 })
+    expect(doneLayout({ height: 34, body: 6, notes: 0 })).toEqual({ top: 1, between: 0, bottom: 23 })
   })
 
   it('ends the notes four rows above the keys, at least a row under the body', () => {
-    expect(doneLayout({ height: 24, body: 6, notes: 1 })).toEqual({ top: 5, between: 5, bottom: 3 })
-    expect(doneLayout({ height: 24, body: 6, notes: 2 })).toEqual({ top: 5, between: 4, bottom: 3 })
-    expect(doneLayout({ height: 24, body: 6, notes: 4 })).toEqual({ top: 5, between: 2, bottom: 3 })
+    expect(doneLayout({ height: 24, body: 6, notes: 1 })).toEqual({ top: 1, between: 9, bottom: 3 })
+    expect(doneLayout({ height: 24, body: 6, notes: 2 })).toEqual({ top: 1, between: 8, bottom: 3 })
+    expect(doneLayout({ height: 24, body: 6, notes: 4 })).toEqual({ top: 1, between: 6, bottom: 3 })
     // A short screen gives up the rows above the body first.
     expect(doneLayout({ height: 18, body: 6, notes: 4 })).toEqual({ top: 0, between: 1, bottom: 3 })
   })

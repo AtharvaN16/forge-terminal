@@ -58,10 +58,10 @@ describe('Done, in the flow', () => {
     expect(out[22]).toMatch(/^ {3}←→ {2}choose {3}↵ {2}confirm +ctrl-c quit$/)
     const all = plain(app.lastFrame())
     // Round 25: the strip with the formats and the change, one bar with the
-    // new file's name, the sizes stacked; the way on above the rule.
+    // new file's name, the sizes on one row; the way on above the rule.
     expect(all).toMatch(/^ {3}PNG → JPEG +.*(\d+(\.\d)?% (smaller|larger)|same size) ?$/m)
     expect(all).toContain('✓ test.jpg')
-    expect(all).toMatch(/^ {2}(now|was) +(now|was) ?$/m)
+    expect(all).toMatch(/^ {2}(now|was) \S+ \S+ +(now|was) \S+ \S+ ?$/m)
     expect(all).toMatch(/^ {3}o Open +f \S+ +p Save as preset +e Continue editing +↵ Home *$/m)
     // The rule sits on the app's margins (2026-10-20): two columns in, two short.
     expect(out[21]).toBe(`  ${'─'.repeat(72)}`)

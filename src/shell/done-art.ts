@@ -13,8 +13,8 @@ import { middleEllipsis } from './width.js'
  * in the selection grey, three rows — the words on the middle one, whole
  * rows of the grey above and below (never ▄ ▀, which Apple Terminal seams):
  * the formats at its left ("PNG → WebP", the new one leading), the change at
- * its right. Under the bar, after a blank row, the two sizes, each word over
- * its size, the smaller file on the left.
+ * its right. Under the bar, after a blank row, the two sizes on one row,
+ * each after its word, the smaller file at the left end.
  *
  * Every number is measured — the file has been written — so the bar is a
  * picture of two real sizes, never progress (invariant 7). A file too small
@@ -155,7 +155,7 @@ const COMPACT_BAR_ROWS = 3
 /**
  * The body, top to bottom: the strip (three rows, the formats and the
  * change on the middle one), the bar (seven rows), a blank row, and the two
- * sizes, each word over its size.
+ * sizes on one row, each after its word.
  */
 export function doneBody({
   palette,
@@ -190,7 +190,7 @@ export function doneBody({
   chain?: readonly string[] | undefined
   /**
    * Room is short (an error panel needs it): the strip one row, the bar
-   * three rows tall and no blank row under the bar — six rows, the same
+   * three rows tall and no blank row under the bar — five rows, the same
    * picture.
    */
   compact?: boolean | undefined
@@ -276,8 +276,9 @@ export function doneBody({
     r === tall >> 1 ? row(mid) : row(cellsOf()),
   )
 
-  // Under the bar: each word quiet over its size, the smaller file on the
-  // left. The new size takes the outcome's colour.
+  // Under the bar, after a blank row, one row: each size after its word
+  // (2026-10-22, the layout picker), the smaller file at the left end and the
+  // larger at the right. The new size takes the outcome's colour.
   const now = {
     word: { text: 'now', fg: palette.dim },
     size: { text: formatBytes(after.bytes), fg: same ? palette.fg : outcome, bold: true },
@@ -287,15 +288,20 @@ export function doneBody({
     size: { text: formatBytes(before.bytes), fg: palette.fg, bold: true },
   }
   const [left, right] = bars.grew ? [was, now] : [now, was]
-  const ends = (a: Run, b: Run): Row => [blank(M), a, blank(Math.max(1, block - width([a, b]))), b]
+  const pair = (s: typeof now): Run[] => [s.word, { text: ' ' }, s.size]
+  const ends = (a: Run[], b: Run[]): Row => [
+    blank(M),
+    ...a,
+    blank(Math.max(1, block - width([...a, ...b]))),
+    ...b,
+  ]
 
   const pad: Row = tone ? [blank(M), { text: ' '.repeat(block), bg: tone }] : []
   const body = [
     ...(compact ? [row(strip)] : [pad, row(strip), pad]),
     ...barRows,
     ...(compact ? [] : [[]]),
-    ends(left.word, right.word),
-    ends(left.size, right.size),
+    ends(pair(left), pair(right)),
   ]
   if (folder === undefined) return body
   const where: Row = [
@@ -336,11 +342,15 @@ export function doneNotes({
 /**
  * The blank rows around the body, for a screen `height` rows tall: the bar
  * and a blank row above, the keys on the last row under their rule. The body
- * sits a little above the middle of the space between them, a blank row
- * more under it than over it (H1); the notes end four rows above
- * the keys, with at least a row between them and the body. Blank rows above
- * the body go first when the screen is short; it never cuts the body.
+ * sits two blank rows under the bar — its own and one more — in any window
+ * (2026-10-22, the layout picker), so whatever the window spares goes under
+ * it; the notes end four rows above the keys, with at least a row between
+ * them and the body. Blank rows above the body go first when the screen is
+ * short; it never cuts the body.
  */
+/** Blank rows between the bar's own blank row and the body. */
+const UNDER_BAR = 1
+
 export function doneLayout({
   height,
   body,
@@ -351,14 +361,14 @@ export function doneLayout({
   notes: number
 }): { top: number; between: number; bottom: number } {
   const space = height - 6
-  const centred = Math.max(0, Math.floor((space - body - 1) / 2))
+  const under = UNDER_BAR
   const fixed = 4 + body
   if (notes === 0) {
-    const top = Math.min(centred, Math.max(0, height - fixed))
+    const top = Math.min(under, Math.max(0, height - fixed))
     return { top, between: 0, bottom: Math.max(0, height - fixed - top) }
   }
   const room = space - notes - 1
-  const top = Math.max(0, Math.min(centred, room - body - 1))
+  const top = Math.max(0, Math.min(under, room - body - 1))
   const between = Math.max(1, room - top - body)
   return { top, between, bottom: Math.max(0, height - fixed - top - between - notes) }
 }
