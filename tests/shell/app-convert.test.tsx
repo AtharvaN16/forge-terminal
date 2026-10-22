@@ -56,7 +56,7 @@ async function driveToResult() {
   app.stdin.write(ENTER) // accept quality
   await until(app.lastFrame, 'Save as')
   app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
-  await until(app.lastFrame, 'convert another')
+  await until(app.lastFrame, '↵ Home')
   return { ...app, dir }
 }
 
@@ -77,10 +77,10 @@ describe('shell conversion', () => {
   it('offers the result keybindings', async () => {
     const { lastFrame } = await driveToResult()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('convert another')
-    expect(frame).toContain('open')
-    // "Reveal" is Finder's word; the label follows the platform now.
-    expect(frame.toLowerCase()).toContain('show in')
+    // Done's way on (round nine): the actions, each with its key, and Home.
+    expect(frame).toContain('o Open')
+    expect(frame).toMatch(/f (Finder|Explorer|Files)/)
+    expect(frame).toContain('↵ Home')
   })
 
   it('returns to the prompt on enter so you can convert another', async () => {
@@ -159,7 +159,7 @@ describe('shell conversion', () => {
     await settle(1500)
     const frame = lastFrame() ?? ''
     expect(frame).toMatch(/^\s+failed\s*$/m)
-    expect(frame).toContain('convert another') // still alive, still on the result stage
+    expect(frame).toContain('↵ Home') // still alive, still on the result stage
   })
 
   it('opens with a capital O too, as edit’s note says it', async () => {

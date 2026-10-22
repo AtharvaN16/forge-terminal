@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Result, SourceInfo } from '../../src/core/types.js'
-import { DoneScreen, doneFacts } from '../../src/shell/components/Done.js'
+import { DoneScreen, doneActions, doneFacts } from '../../src/shell/components/Done.js'
 import { doneBody, doneLayout } from '../../src/shell/done-art.js'
 import { setMotionForTests } from '../../src/shell/motion.js'
 import { ThemeProvider } from '../../src/shell/ThemeContext.js'
@@ -29,7 +29,6 @@ interface Sample {
   out: string
   bytes: number
   answers: string[]
-  again: string
   offer?: { format: string; sentence: string }
   warnings?: string[]
 }
@@ -42,7 +41,6 @@ const SAMPLES: Record<string, Sample> = {
     out: join(DESKTOP, 'test.jpg'),
     bytes: 74_600,
     answers: ['JPEG', '80', 'Desktop', 'test.jpg'],
-    again: 'convert another',
   },
   cm: {
     mode: 'compress',
@@ -50,7 +48,6 @@ const SAMPLES: Record<string, Sample> = {
     out: join(DESKTOP, 'photo.jpg'),
     bytes: 812_000,
     answers: ['By quality', '70', 'Desktop', 'photo.jpg'],
-    again: 'compress again',
     offer: { format: 'WebP', sentence: '✧ WebP would be 590 KB, 27% smaller again.' },
   },
   gif: {
@@ -59,7 +56,6 @@ const SAMPLES: Record<string, Sample> = {
     out: join(DESKTOP, 'party.png'),
     bytes: 1_600_000,
     answers: ['PNG', 'Desktop', 'party.png'],
-    again: 'convert another',
     warnings: [
       'party.gif has 12 frames, and PNG cannot animate. Only the first frame was converted.',
     ],
@@ -97,9 +93,8 @@ const doneScreen = (
       trail={{ answers: s.answers, current: 'Done' }}
       result={result}
       offers={s.offer ? [s.offer.sentence] : []}
-      again={s.again}
       offer={s.offer?.format}
-      reveal="Show in Finder"
+      actions={doneActions({ reveal: 'Show in Finder' })}
       width={80}
       height={24}
       pressed={pressed}
@@ -131,7 +126,7 @@ describe('Done through Ink (B6a)', () => {
       // The rule sits on the app's margins (2026-10-20): two columns in, two short.
       const rule = runsRow([{ text: '  ' }, { text: '─'.repeat(76), fg: DARK.border }])
       expect(describeRow(ansiRow(lines[22] ?? ''), rule)).toBe('equal')
-      expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {3}↵ /)
+      expect((lines[23] ?? '').replace(SGR, '')).toMatch(/^ {3}←→ {2}choose {3}↵ {2}confirm/)
     })
   }
 
@@ -185,12 +180,12 @@ describe('a pressed key answers at once (M6b)', () => {
     setMotionForTests(undefined)
   })
   const cv = SAMPLES.cv as Sample
-  const keys = (frame: string) => frame.split('\n')[23] ?? ''
+  /** The actions' words row, where o is. */
+  const keys = (frame: string) => frame.split('\n')[19] ?? ''
   const rgb = (hex: string) =>
     [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(';')
-  /** The `o` key as Ink writes it in truecolor: the fill under it, and the colour it is drawn in. */
-  const key = (fill: string, ink: string) =>
-    new RegExp(`48;2;${rgb(fill)}m(?:${SGR.source})*\\x1b\\[38;2;${rgb(ink)}m o `)
+  /** The `o` key on its button as Ink writes it in truecolor: drawn in `ink`. */
+  const key = (ink: string) => new RegExp(`38;2;${rgb(ink)}m(?:${SGR.source})* o`)
 
   it('lights the key orange for a moment, then puts it back (B)', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
@@ -200,13 +195,13 @@ describe('a pressed key answers at once (M6b)', () => {
     vi.advanceTimersByTime(1000)
     await flush()
     const rest = keys(app.lastFrame() ?? '')
-    expect(rest).toMatch(new RegExp(`48;2;${rgb(DARK.keycapBg)}m(?:${SGR.source})* o `))
-    expect(rest).not.toMatch(key(DARK.keycapBg, DARK.brand))
+    expect(rest.replace(SGR, '')).toContain(' o Open ')
+    expect(rest).not.toMatch(key(DARK.brand))
     app.rerender(doneScreen(cv, { result, pressed: { key: 'o', n: 1 } }))
     await flush()
-    // The cap keeps its grey; only the key changes, and the words beside it stay.
-    expect(keys(app.lastFrame() ?? '')).toMatch(key(DARK.keycapBg, DARK.brand))
-    expect(keys(app.lastFrame() ?? '')).toContain(` open`)
+    // Only the key changes; the words beside it stay.
+    expect(keys(app.lastFrame() ?? '')).toMatch(key(DARK.brand))
+    expect(keys(app.lastFrame() ?? '').replace(SGR, '')).toContain(' o Open ')
     vi.advanceTimersByTime(200)
     await flush()
     expect(keys(app.lastFrame() ?? '')).toBe(rest)

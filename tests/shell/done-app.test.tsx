@@ -7,6 +7,8 @@ import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
+const LEFT = `${ESC}[D`
+const RIGHT = `${ESC}[C`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
@@ -42,7 +44,7 @@ async function atDone() {
   app.stdin.write(ENTER) // the quality as it opens
   await until(app, 'Save as')
   app.stdin.write(ENTER) // save
-  await until(app, 'convert another')
+  await until(app, '↵ Home')
   return { app, dir }
 }
 
@@ -53,16 +55,14 @@ describe('Done, in the flow', () => {
     // The window's 24 rows, less the canvas's blank row on top.
     expect(out).toHaveLength(23)
     expect(out[0]).toMatch(/JPEG ╱ 80 ╱ .+ ╱ test\.jpg ╱ Done ╱╱ *$/)
-    expect(out[22]).toMatch(
-      /^ {3}↵ {2}convert another {3}o {2}open {3}s {2}show in \S+ +ctrl-c quit$/,
-    )
+    expect(out[22]).toMatch(/^ {3}←→ {2}choose {3}↵ {2}confirm +ctrl-c quit$/)
     const all = plain(app.lastFrame())
     // Round 25: the strip with the formats and the change, one bar with the
-    // new file's name, the sizes stacked, p and → at the foot.
+    // new file's name, the sizes stacked; the way on above the rule.
     expect(all).toMatch(/^ {3}PNG → JPEG +.*(\d+(\.\d)?% (smaller|larger)|same size) ?$/m)
     expect(all).toContain('✓ test.jpg')
     expect(all).toMatch(/^ {2}(now|was) +(now|was) ?$/m)
-    expect(all).toMatch(/^ {2}p save as preset +continue editing → ?$/m)
+    expect(all).toMatch(/^ {3}o Open +f \S+ +p Save as preset +e Continue editing +↵ Home *$/m)
     // The rule sits on the app's margins (2026-10-20): two columns in, two short.
     expect(out[21]).toBe(`  ${'─'.repeat(72)}`)
     // Not today's receipt.
@@ -74,7 +74,7 @@ describe('Done, in the flow', () => {
     const { app } = await atDone()
     const before = app.frames.length
     app.stdin.write(ENTER)
-    await until(app, 'convert another', true)
+    await until(app, '↵ Home', true)
     const after = plain(app.frames.slice(before).join('\n'))
     const bar = after.indexOf('Done ╱╱')
     const record = after.indexOf('✓ test.jpg')
@@ -83,8 +83,32 @@ describe('Done, in the flow', () => {
     expect(record).toBeGreaterThan(bar)
     expect(separator).toBeGreaterThan(record)
     // The record is the body alone: no keys.
-    expect(after.slice(bar, separator)).not.toContain('convert another')
+    expect(after.slice(bar, separator)).not.toContain('↵ Home')
     // And the screen itself is gone: home is back.
-    expect(plain(app.lastFrame())).not.toContain('convert another')
+    expect(plain(app.lastFrame())).toContain('Drop a file here')
+  }, 20_000)
+
+  it('goes home on esc too', async () => {
+    const { app } = await atDone()
+    app.stdin.write(ESC)
+    await until(app, 'Drop a file here')
+  }, 20_000)
+
+  it('moves the selection with ←→ and runs the selected action on ↵', async () => {
+    const { app } = await atDone()
+    app.stdin.write(LEFT) // from Home to Continue editing
+    await settle()
+    app.stdin.write(RIGHT) // back to Home
+    await settle()
+    app.stdin.write(LEFT)
+    await settle()
+    app.stdin.write(ENTER)
+    await until(app, '─ Continue editing ─')
+  }, 20_000)
+
+  it('opens Continue editing on e', async () => {
+    const { app } = await atDone()
+    app.stdin.write('e')
+    await until(app, '─ Continue editing ─')
   }, 20_000)
 })

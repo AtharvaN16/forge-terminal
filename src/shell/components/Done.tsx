@@ -4,8 +4,15 @@ import { FORMATS } from '../../core/formats.js'
 import type { Result } from '../../core/types.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
-import { type DoneFacts, doneBody, doneLayout, doneNotes } from '../done-art.js'
-import { blank, HOME_MARGIN, type Row, type Run, width as widthOf } from '../home-art.js'
+import {
+  type DoneAction,
+  type DoneFacts,
+  doneActionRows,
+  doneBody,
+  doneLayout,
+  doneNotes,
+} from '../done-art.js'
+import type { Row, Run } from '../home-art.js'
 import { easeOut, motionEnabled, PRESS_MS, useTween } from '../motion.js'
 import { keyIsDown } from '../pressed-key.js'
 import { useTheme } from '../ThemeContext.js'
@@ -21,6 +28,10 @@ import { NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
  * with the formats and the change, one bar sized by bytes (see
  * `done-art.ts`) and the two sizes, then any offer or warning low above the
  * keys. No file card: the bar is the file.
+ *
+ * Under it, the way on (mockups/done-next-2026-10-round9.html, Y31): the
+ * actions in a frame and Home as its own block, ←→ to choose and ↵ to
+ * confirm, every action on its own key too.
  *
  * `DoneScreen` fills the terminal's height, as home does, so the keys sit on
  * the bottom row. `DoneRecord` is the compact body without the padding and
@@ -83,6 +94,53 @@ export interface DonePreset {
   name?: string | undefined
 }
 
+/** What a Done action does, for the shell to act on. */
+export type DoneActionId = 'open' | 'reveal' | 'preset' | 'edit' | 'undo' | 'copy'
+
+/**
+ * Done's actions besides Home, in order: Open, then Finder (or, for an image
+ * placed on the clipboard, Undo and Save a copy), then Save as preset and
+ * Continue editing where a preset can be made from the result.
+ */
+export function doneActions({
+  preset,
+  reveal,
+  clipboard,
+}: {
+  preset?: DonePreset | undefined
+  /** What revealing is called on this platform: "Show in Finder". */
+  reveal: string
+  /** `placed`: the result is on the clipboard, with no file to show. */
+  clipboard?: 'placed' | undefined
+}): Array<DoneAction & { id: DoneActionId }> {
+  const where = reveal.replace(/^Show in /, '')
+  return [
+    { id: 'open', key: 'o', label: 'Open' },
+    ...(clipboard === 'placed'
+      ? [
+          { id: 'undo' as const, key: 'u', label: 'Undo' },
+          { id: 'copy' as const, key: 's', label: 'Save a copy' },
+        ]
+      : [{ id: 'reveal' as const, key: 'f', label: where }]),
+    ...(preset
+      ? [
+          {
+            id: 'preset' as const,
+            key: 'p',
+            label:
+              preset.save === 'saved'
+                ? 'Preset saved'
+                : preset.save === 'update'
+                  ? 'Update preset'
+                  : 'Save as preset',
+            ok: preset.save === 'saved',
+          },
+          { id: 'edit' as const, key: 'e', label: 'Continue editing' },
+        ]
+      : []),
+  ]
+}
+
 /** A key drawn as the key row draws it, for a hint that sits in the body: the cap on the key grey, the words dim. */
 export function keyHint(palette: ReturnType<typeof useTheme>, key: string, words: string): Run[] {
   const noColour = process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== ''
@@ -100,21 +158,82 @@ export function keyHint(palette: ReturnType<typeof useTheme>, key: string, words
   ]
 }
 
+/**
+ * Done's key row: ←→ choose and ↵ confirm under the actions' frame; where
+ * the window is too narrow for the frame, every action said as a key
+ * instead. `c` and its offer after either.
+ */
+export function doneKeys({
+  actions,
+  framed,
+  offer,
+}: {
+  actions: readonly DoneAction[]
+  framed: boolean
+  offer?: string | undefined
+}): Array<[string, string]> {
+  const extra: Array<[string, string]> = offer ? [['c', offer]] : []
+  return framed
+    ? [['←→', 'choose'], ['↵', 'confirm'], ...extra]
+    : [
+        ['↵', 'home'],
+        ...actions.map((a): [string, string] => [a.key, a.label.toLowerCase()]),
+        ...extra,
+      ]
+}
+
+/**
+ * Done's way on alone, for a Done that lays itself out (edit's, with its
+ * pictures): the actions' frame and Home, three rows, or nothing where the
+ * window is too narrow for them (`doneKeys` then says them).
+ */
+export function DoneActions({
+  mode,
+  actions,
+  selected,
+  width,
+  pressed,
+}: {
+  mode: ShellMode
+  actions: readonly DoneAction[]
+  selected?: number | undefined
+  width: number
+  pressed?: { key: string; n: number } | undefined
+}) {
+  const palette = useTheme()
+  const press = useTween(pressed?.n, PRESS_MS, { enabled: motionEnabled(palette.name) })
+  const rows = doneActionRows({
+    palette,
+    mode,
+    actions,
+    selected: selected ?? actions.length,
+    width,
+    down: (key) => keyIsDown(key) || (press < 1 && pressed?.key === key),
+  })
+  if (!rows) return null
+  return (
+    <Box flexDirection="column">
+      {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the rows are positional
+        <Runs key={`action-${i}`} row={row} />
+      ))}
+    </Box>
+  )
+}
+
 export function DoneScreen({
   mode,
   trail,
   result,
   offers,
-  again,
   offer,
-  reveal,
+  actions,
+  selected,
   width,
   height,
   pressed,
   afterName,
-  keys: ownKeys,
   block,
-  preset,
   chain,
 }: {
   mode: ShellMode
@@ -123,32 +242,23 @@ export function DoneScreen({
   result: Result
   /** What the result's bar is named, when not its file: "On the clipboard". */
   afterName?: string | undefined
-  /** The key row, when not the usual ↵ · c · o · s. */
-  keys?: Array<[string, string]> | undefined
   /** Rows shown where the offers go, in their place: E3's tinted panel. */
   block?: Row[] | undefined
-  /**
-   * A result a preset can be made from (round 24, K26): p save as preset
-   * quiet at the bottom left, → continue editing on its frame at the bottom
-   * right, above the rule.
-   */
-  preset?: DonePreset | undefined
+  /** The ways on besides Home (`doneActions`). */
+  actions: readonly DoneAction[]
+  /** The action chosen with ←→, an index into `actions`; `actions.length`, the default, is Home. */
+  selected?: number | undefined
   /** What was done, once Continue editing changed it: the strip says every step. */
   chain?: string[] | undefined
   /** Offers to show at the foot (`✧` sentences), in order. */
   offers: string[]
-  /** What ↵ does: "convert another", "compress again". */
-  again: string
-  /** The format `c` converts to, when there is a measured suggestion. */
+  /** What `c` does, on the key row, when there is a measured suggestion: "WebP", "compress it". */
   offer?: string | undefined
-  /** What `s` is called on this platform ("Show in Finder"). */
-  reveal: string
   width: number
   height: number
   /**
-   * The key last pressed here (`o`, `s`); `n` counts presses, so pressing the
-   * same key again shows again. Opening a file takes the system a moment, and
-   * the inverted cap says the key was taken meanwhile.
+   * The key last pressed here (`o`, `f`); `n` counts presses, so pressing the
+   * same key again shows again. Its button's key lights for a moment.
    */
   pressed?: { key: string; n: number } | undefined
 }) {
@@ -172,40 +282,51 @@ export function DoneScreen({
     })
   // What the shell just said (a failed open) sits on the keys, with a blank
   // row above, out of the blank rows Done has; one line where they are fewer.
-  // The preset's foot takes a row of them. When the notice would not fit, the
+  // The actions take three of them. When the notice would not fit, the
   // body steps back first — a three-row bar — so the notice can say all it
   // has to.
   const notices = useNotices()
   const fullRows = notices.length > 0 ? noticeRows(notices, width, palette) + 1 : 0
-  const footRows = preset ? 1 : 0
-  const spareFor = (rows: number) => {
+  const framed = doneActionRows({
+    palette,
+    mode,
+    actions,
+    selected: selected ?? actions.length,
+    width,
+    // Held down, or just pressed (M6b): opening a file takes the system a
+    // moment, and the lit key says it was taken meanwhile.
+    down: (key) => keyIsDown(key) || (press < 1 && pressed?.key === key),
+  })
+  const spareFor = (rows: number, foot: number) => {
     const bare = doneLayout({ height, body: rows, notes: notes.length })
-    return bare.top + bare.bottom - footRows + (notes.length > 0 ? bare.between - 1 : 0)
+    return bare.top + bare.bottom - foot + (notes.length > 0 ? bare.between - 1 : 0)
   }
   // The body steps back on a screen too short for it with its notes and the
-  // preset's foot, too: nothing is ever pushed off the keys.
-  const fits = (rows: number) =>
-    4 + rows + (notes.length > 0 ? notes.length + 1 : 0) + footRows <= height
+  // actions, too: nothing is ever pushed off the keys.
+  const fits = (rows: number, foot: number) =>
+    4 + rows + (notes.length > 0 ? notes.length + 1 : 0) + foot <= height
   const roomy = doneBody({ palette, facts, width, draw, chain })
+  const tall = framed?.length ?? 0
   const body =
-    !fits(roomy.length) || (fullRows > 0 && spareFor(roomy.length) < fullRows)
+    !fits(roomy.length, tall) || (fullRows > 0 && spareFor(roomy.length, tall) < fullRows)
       ? doneBody({ palette, facts, width, draw, chain, compact: true })
       : roomy
-  const full = fullRows > 0 && spareFor(body.length) >= fullRows
+  // Still no room for what the shell has to say: the actions lose the
+  // frame's rows above and below them, so the whole notice can show.
+  const flat = framed !== undefined && fullRows > 0 && spareFor(body.length, tall) < fullRows
+  const actionRows = flat ? framed.slice(1, 2) : framed
+  const footRows = actionRows?.length ?? 0
+  const full = fullRows > 0 && spareFor(body.length, footRows) >= fullRows
   const noticed = full ? fullRows : notices.length > 0 ? 1 : 0
   const { top, between, bottom } = doneLayout({
     height: height - noticed,
     body: body.length,
     notes: notes.length,
   })
-  // A row between the preset's foot and the rule, where there is one to spare.
-  const gap = bottom >= 2 ? 1 : 0
-  const keys: Array<[string, string]> = ownKeys ?? [
-    ['↵', again],
-    ...(offer ? ([['c', offer]] as Array<[string, string]>) : []),
-    ['o', 'open'],
-    ['s', reveal.charAt(0).toLowerCase() + reveal.slice(1)],
-  ]
+  // A row between the actions and the rule, where there is one to spare.
+  const gap = bottom >= footRows + 1 ? 1 : 0
+  const shown = actionRows !== undefined && bottom >= footRows
+  const keys = doneKeys({ actions, framed: shown, offer })
   return (
     <Box flexDirection="column" width={width} height={height}>
       <HeaderBar mode={mode} trail={trail} width={width} />
@@ -221,10 +342,13 @@ export function DoneScreen({
           ))}
         </>
       ) : null}
-      {preset && bottom > 0 ? (
+      {shown && actionRows ? (
         <>
-          <Blank rows={bottom - 1 - gap} />
-          <Runs row={presetFoot(palette, preset, width)} />
+          <Blank rows={bottom - footRows - gap} />
+          {actionRows.map((row, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the rows are positional
+            <Runs key={`action-${i}`} row={row} />
+          ))}
           <Blank rows={gap} />
         </>
       ) : (
@@ -246,37 +370,6 @@ export function DoneScreen({
       />
     </Box>
   )
-}
-
-/**
- * The foot of a result a preset can be made from (round 25): p save as
- * preset quiet at the bottom left — p in the dim grey, its words quieter —
- * and continue editing → in the same two greys at the bottom right, ending
- * on the block's edge. One row.
- */
-function presetFoot(palette: ReturnType<typeof useTheme>, preset: DonePreset, width: number): Row {
-  const left: Run[] =
-    preset.save === 'saved'
-      ? [
-          { text: '✓ saved as ', fg: palette.ok },
-          { text: preset.name ?? '', fg: palette.ok, bold: true },
-        ]
-      : [
-          { text: 'p', fg: palette.dim, bold: true },
-          {
-            text: preset.save === 'update' ? ` update ${preset.name ?? ''}` : ' save as preset',
-            fg: palette.border,
-          },
-        ]
-  // Quiet like p (round 25): the words in the border grey, → after them in
-  // the dim grey, bold — no frame, no key cap.
-  const onward: Run[] = [
-    { text: 'continue editing ', fg: palette.border },
-    { text: '→', fg: palette.dim, bold: true },
-  ]
-  const end = width - HOME_MARGIN
-  const at = Math.max(HOME_MARGIN + widthOf(left) + 1, end - widthOf(onward))
-  return [blank(HOME_MARGIN), ...left, blank(at - HOME_MARGIN - widthOf(left)), ...onward]
 }
 
 /**

@@ -86,7 +86,7 @@ describe('several files at once', () => {
     app.stdin.write(ENTER) // the first offered target: PNG, lossless, so no quality
     await reach('Save as')
     app.stdin.write(ENTER) // Save as: the proposed name, in the default folder
-    await reach('convert another')
+    await reach('↵ Home')
 
     expect(app.lastFrame() ?? '').not.toContain("isn't supported yet")
     const written = (await readdir(dir)).filter((f) => f !== 'solo.jpg')

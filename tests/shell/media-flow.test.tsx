@@ -55,7 +55,7 @@ describe.skipIf(!ffmpegHere)('video and sound in the shell', () => {
     await until(() => frame().includes('Save as'))
     await settle(400)
     app.stdin.write(ENTER)
-    await until(() => frame().includes('convert another'))
+    await until(() => frame().includes('↵ Home'))
     expect(existsSync(join(dir, 'clip.mp4'))).toBe(true)
     app.unmount()
   }, 60_000)

@@ -64,7 +64,7 @@ async function toPdf({ stdin, lastFrame }: Shell, file: string) {
   stdin.write(ENTER) // choose PDF -> Save as (PDF isn't lossy: no quality step)
   await until(lastFrame, 'Save as')
   stdin.write(ENTER) // Save as: the proposed name, in the default folder -> runs the conversion
-  await until(lastFrame, 'convert another')
+  await until(lastFrame, '↵ Home')
 }
 
 /** Back at idle, from the result screen, without discarding anything else. */

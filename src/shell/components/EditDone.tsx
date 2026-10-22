@@ -38,8 +38,8 @@ import { middleEllipsis } from '../width.js'
  * changed most, at true pixel scale (core/closeup.ts). Cutouts sit on a
  * checkerboard either way.
  *
- * Pure presentation: the keys (↵ edit another · o open · s show in
- * Finder) and the header bar belong to the App.
+ * Pure presentation: the way on (Done's `DoneActions` and keys) and the
+ * header bar belong to the App.
  */
 
 export interface EditDoneProps {

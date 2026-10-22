@@ -161,7 +161,7 @@ describe('Crop to shape in Edit', () => {
     await settle(400) // let Save as's key handler attach
     app.stdin.write(ENTER)
     const out = join(dir, 'photo-cropped-1x1.png')
-    await until(() => existsSync(out) && frame().includes('edit another'))
+    await until(() => existsSync(out) && frame().includes('↵ Home'))
     const meta = await sharp(out).metadata()
     expect([meta.width, meta.height]).toEqual([600, 600])
     // The square is the disc's side: its middle pixel is red.

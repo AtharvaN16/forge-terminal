@@ -1,7 +1,6 @@
 import { copyFile, mkdtemp, rename, rm, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
-import type { Key } from 'ink'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { Preferences } from '../../config/preferences.js'
 import { targetsFor } from '../../core/capabilities.js'
@@ -175,19 +174,15 @@ export function usePresetsOnDone(o: {
     void sweep()
   }
 
-  /** Done's keys: p and →, while a preset can be made from what is shown. */
-  const key = (input: string, k: Key): boolean => {
+  /** Opens Save as preset or Continue editing, while a preset can be made from what is shown. */
+  const open = (which: 'save' | 'edit'): boolean => {
     if (!usable) return false
-    if (input === 'p') {
-      o.setOpen('save')
-      return true
-    }
-    if (k.rightArrow) {
-      o.setOpen('edit')
-      return true
-    }
-    return false
+    o.setOpen(which)
+    return true
   }
+  /** Done's keys: p and e (→ moves Done's selection, mockups/done-next-2026-10-round9.html). */
+  const key = (input: string): boolean =>
+    input === 'p' ? open('save') : input === 'e' ? open('edit') : false
 
   const done: DonePreset | undefined = usable
     ? saved
@@ -306,5 +301,5 @@ export function usePresetsOnDone(o: {
     }
   }
 
-  return { done, chain, key, screen, reset }
+  return { done, chain, key, open, screen, reset }
 }

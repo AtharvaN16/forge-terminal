@@ -118,7 +118,7 @@ describe('mode keys belong to home (2026-10-21)', () => {
 describe('Done', () => {
   it('heads its screen with the bar, the trail ending in Done', async () => {
     const { app } = await atFormat()
-    for (let i = 0; i < 4 && !plain(app.lastFrame()).includes('convert another'); i++) {
+    for (let i = 0; i < 4 && !plain(app.lastFrame()).includes('↵ Home'); i++) {
       app.stdin.write(ENTER)
       await settle(600)
     }
