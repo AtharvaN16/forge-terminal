@@ -223,6 +223,11 @@ export const CLI_TABS: CliTab[] = [
         does: 'video, audio or link · --detail, --language',
         ex: 'forge transcribe talk.mp4 --detail brief',
       },
+      {
+        name: 'transcribe --format',
+        does: 'Markdown, Word, PDF or text',
+        ex: 'forge transcribe talk.mp4 --format pdf',
+      },
     ],
   },
   {

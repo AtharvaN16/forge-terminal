@@ -1,8 +1,15 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
-import { probeSound, runTranscribe, transcribeStatus } from '../../src/engines/transcribe.js'
+import { markdownHtml, markdownText } from '../../src/core/transcribe/output.js'
+import {
+  probeSound,
+  renderTranscript,
+  runTranscribe,
+  transcribeStatus,
+} from '../../src/engines/transcribe.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
@@ -166,5 +173,58 @@ describe('runTranscribe', () => {
       (e: unknown) => e,
     )
     expect(isForgeError(error) && error.code).toBe('language-unsupported')
+  })
+})
+
+describe('renderTranscript', () => {
+  const MD = '# Tea talk\n\nAbout tea.\n\n## Notes\n\n- Tea first.\n'
+
+  it('gives the Markdown itself for .md, and its words for text, without the helper', async () => {
+    use(join(await makeTempDir(), 'missing'))
+    expect((await renderTranscript(MD, 'md')).toString('utf8')).toBe(MD)
+    expect((await renderTranscript(MD, 'txt')).toString('utf8')).toBe(markdownText(MD))
+  })
+
+  it('has the helper set the HTML as Word, and returns what it wrote', async () => {
+    const fake = await fakeTranscribeHelper({
+      render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'docx:' } },
+    })
+    use(fake.path)
+    const bytes = await renderTranscript(MD, 'docx')
+    expect(bytes.toString('utf8')).toBe(`docx:${markdownHtml(MD)}`)
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv[0]).toBe('render')
+    expect(argv.slice(3)).toEqual(['--as', 'docx'])
+    // Its scratch files are gone once the bytes are read.
+    expect(existsSync(argv[1] ?? '')).toBe(false)
+    expect(existsSync(argv[2] ?? '')).toBe(false)
+  })
+
+  it('asks for a PDF the same way', async () => {
+    const fake = await fakeTranscribeHelper({
+      render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'pdf:' } },
+    })
+    use(fake.path)
+    expect((await renderTranscript(MD, 'pdf')).toString('utf8').startsWith('pdf:')).toBe(true)
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv.slice(3)).toEqual(['--as', 'pdf'])
+  })
+
+  it('fails as a ForgeError when the helper cannot write it', async () => {
+    use(
+      (
+        await fakeTranscribeHelper({
+          render: { lines: [{ ok: false, code: 'render', message: 'no' }], exit: 1 },
+        })
+      ).path,
+    )
+    const e = await renderTranscript(MD, 'pdf').catch((x: unknown) => x)
+    expect(isForgeError(e)).toBe(true)
+  })
+
+  it('says transcribe is unavailable when there is no helper for Word or PDF', async () => {
+    use(join(await makeTempDir(), 'missing'))
+    const e = await renderTranscript(MD, 'docx').catch((x: unknown) => x)
+    expect(isForgeError(e) && e.code).toBe('transcribe-unavailable')
   })
 })

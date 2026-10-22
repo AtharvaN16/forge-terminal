@@ -21,7 +21,13 @@ import {
   type Transcription,
   transcriptMarkdown,
 } from '../core/transcribe/markdown.js'
-import { runTranscribe, type TranscribeEvent, transcribeStatus } from '../engines/transcribe.js'
+import { OUTPUTS, type Output, outputExt } from '../core/transcribe/output.js'
+import {
+  renderTranscript,
+  runTranscribe,
+  type TranscribeEvent,
+  transcribeStatus,
+} from '../engines/transcribe.js'
 import { type FetchedSound, fetchSound } from '../engines/youtube.js'
 import { displayName } from '../utils/display-path.js'
 import type { TranscribeIntent } from './args.js'
@@ -36,9 +42,23 @@ export interface TranscribeIo {
   onProgress?: (e: TranscribeEvent) => void
 }
 
-/** Where the .md goes: beside the source (or here, for a link), into an `-o` folder, or the `-o` file itself. */
-function outputFor(stem: string, beside: string, output: string | undefined): string {
-  const name = `${stem}.md`
+/** `--format`, else `-o`'s extension when it is one transcribe writes, else Markdown. */
+function formatFor(intent: TranscribeIntent): Output {
+  if (intent.format) return intent.format
+  const o = intent.output
+  if (o === undefined || looksLikeDirectory(o)) return 'md'
+  const ext = extname(o).toLowerCase()
+  return OUTPUTS.find((f) => f.ext === ext)?.id ?? 'md'
+}
+
+/** Where the file goes: beside the source (or here, for a link), into an `-o` folder, or the `-o` file itself. */
+function outputFor(
+  stem: string,
+  beside: string,
+  output: string | undefined,
+  format: Output,
+): string {
+  const name = `${stem}${outputExt(format)}`
   if (output === undefined) return join(beside, name)
   return looksLikeDirectory(output) ? join(resolve(output), name) : resolve(output)
 }
@@ -48,7 +68,8 @@ const words = (t: Transcription) =>
 
 /**
  * `forge transcribe <file|link>` (spec 2026-10-17-transcribe-design §4.5): the
- * transcript, and notes when Apple Intelligence is on, written as one .md.
+ * transcript, and notes when Apple Intelligence is on, written as one file —
+ * Markdown, or Word, PDF or text with `--format`.
  * Never prints itself; `io` is how the entry point gets each line.
  */
 export async function runTranscribeCommand(
@@ -67,6 +88,7 @@ export async function runTranscribeCommand(
     let origin: { title: string; from: string }
     let output: string
     let fetched: FetchedSound | undefined
+    const format = formatFor(intent)
     if (link === undefined) {
       source = resolve(intent.input)
       const info = await stat(source).catch(() => undefined)
@@ -90,7 +112,7 @@ export async function runTranscribeCommand(
     if (link === undefined) {
       source = resolve(intent.input)
       origin = { title: basename(source, extname(source)), from: basename(source) }
-      output = outputFor(origin.title, dirname(source), intent.output)
+      output = outputFor(origin.title, dirname(source), intent.output, format)
       // Before the minute of listening, not after it.
       if (existsSync(output) && !intent.force) throw outputExists(output)
     } else {
@@ -103,13 +125,14 @@ export async function runTranscribeCommand(
         signal: stop.signal,
         onEvent: (e) => {
           if (e.kind !== 'facts') return
-          named = outputFor(fileStem(e.facts.title), process.cwd(), intent.output)
+          named = outputFor(fileStem(e.facts.title), process.cwd(), intent.output, format)
           if (existsSync(named) && !intent.force) stop.abort(outputExists(named))
         },
       })
       source = fetched.path
       origin = { title: fetched.facts.title, from: link.url }
-      output = named ?? outputFor(fileStem(fetched.facts.title), process.cwd(), intent.output)
+      output =
+        named ?? outputFor(fileStem(fetched.facts.title), process.cwd(), intent.output, format)
     }
 
     let result: Awaited<ReturnType<typeof runTranscribe>>
@@ -125,8 +148,9 @@ export async function runTranscribeCommand(
       await fetched?.dispose()
     }
     const md = transcriptMarkdown(result, origin, { transcript: intent.transcript })
-    await writeAtomic(output, Buffer.from(md, 'utf8'))
-    const parts = result.notes ? ` · ${result.notes.parts.length} parts` : ''
+    await writeAtomic(output, await renderTranscript(md, format, { signal: io.signal }))
+    const n = result.notes?.parts.length
+    const parts = n === undefined ? '' : ` · ${n} ${n === 1 ? 'part' : 'parts'}`
     io.out(
       `✓ ${displayName(output)}   ${clock(result.seconds)} → ${words(result).toLocaleString('en-US')} words${parts}`,
     )

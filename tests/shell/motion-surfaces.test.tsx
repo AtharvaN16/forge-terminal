@@ -70,9 +70,8 @@ describe('Working', () => {
     const keys = (f: string | undefined) => plain(f).trimEnd().split('\n').at(-1) ?? ''
     const single = render(working())
     await flush()
-    expect(keys(single.lastFrame())).toMatch(
-      /^ {30,}nothing is saved until it is done · ctrl-c quit$/,
-    )
+    // No footnote (2026-10-22): a job that cannot be stopped says only ctrl-c.
+    expect(keys(single.lastFrame())).toMatch(/^ {50,}ctrl-c quit$/)
     const search = render(working({ label: 'Finding the right quality', search: { n: 2, of: 8 } }))
     await flush()
     expect(keys(search.lastFrame())).toMatch(/^ {3}esc {2}stop {10,}ctrl-c quit$/)

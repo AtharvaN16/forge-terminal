@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
+import { DEFAULT_PREFERENCES, type Preferences } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
@@ -15,6 +15,8 @@ import { makePng, makeTempDir } from '../helpers/fixtures.js'
  */
 const ESC = String.fromCharCode(27)
 const ENTER = String.fromCharCode(13)
+const TAB = '\t'
+const DOWN = `${ESC}[B`
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
@@ -54,17 +56,23 @@ afterEach(() => {
   else process.env.XDG_CONFIG_HOME = savedXdg
 })
 
-async function setUp(notes: 'available' | 'off' = 'available') {
+async function setUp(
+  notes: 'available' | 'off' = 'available',
+  opts: { run?: object[]; hang?: boolean; prefs?: Partial<Preferences> } = {},
+) {
   const fake = await fakeTranscribeHelper({
     status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes }] },
     probe: { lines: [{ ok: true, seconds: 3717, sound: true }] },
     run: {
-      lines: [
+      lines: opts.run ?? [
         { event: 'heard', seconds: 70, of: 75 },
         { event: 'notes', part: 1, of: 2 },
         notes === 'available' ? RESULT : { ...RESULT, notes: undefined },
       ],
+      ...(opts.hang ? { hang: true } : {}),
     },
+    // Word and PDF: the stand-in writes the HTML it was given, marked.
+    render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'rendered:' } },
   })
   process.env.FORGE_TRANSCRIBE_HELPER = fake.path
   const dir = await makeTempDir()
@@ -75,7 +83,7 @@ async function setUp(notes: 'available' | 'off' = 'available') {
     <App
       initialWidth={80}
       initialHeight={24}
-      prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: out }}
+      prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: out, ...opts.prefs }}
     />,
   )
   await until(() => plain(app.lastFrame()).includes('1 convert'))
@@ -154,11 +162,13 @@ describe('transcribe on home', () => {
 })
 
 describe('transcribe, from ↵ to Done', () => {
-  const DOWN = `${ESC}[B`
   const RIGHT = `${ESC}[C`
 
-  async function staged(notes: 'available' | 'off' = 'available') {
-    const s = await setUp(notes)
+  async function staged(
+    notes: 'available' | 'off' = 'available',
+    opts: Parameters<typeof setUp>[1] = {},
+  ) {
+    const s = await setUp(notes, opts)
     s.app.stdin.write('5')
     await until(() => frame(s.app).includes('Drop a video or audio file'))
     s.app.stdin.write(s.input)
@@ -167,13 +177,18 @@ describe('transcribe, from ↵ to Done', () => {
     return s
   }
 
-  it('asks All, Notes or Transcript, then Save as, then writes the .md and shows Done', async () => {
+  it('asks Transcribe to, then Format, then Save as, then writes the .md and shows Done', async () => {
     const { app, out } = await staged()
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Transcribe to'))
     await settle()
     expect(frame(app)).toContain('Transcribe to')
-    expect(frame(app)).toContain('summary, notes and transcript · .md')
+    // The format is its own step now: the row no longer says ".md".
+    expect(frame(app)).toContain('summary, notes and transcript')
+    expect(frame(app)).not.toContain('.md')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
@@ -190,12 +205,15 @@ describe('transcribe, from ↵ to Done', () => {
     expect(md).toContain('### Milk · 1:10')
   }, 40_000)
 
-  it('skips Transcribe to when Apple Intelligence is off: there is nothing to choose', async () => {
+  it('skips Transcribe to when Apple Intelligence is off: Format comes first', async () => {
     const { app, fake } = await staged('off')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
+    expect(frame(app)).not.toContain('Transcribe to')
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
-    expect(frame(app)).not.toContain('Transcribe to')
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('✓ talk.md'))
     await settle()
@@ -215,6 +233,9 @@ describe('transcribe, from ↵ to Done', () => {
     app.stdin.write(DOWN)
     await settle()
     app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
+    app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
     app.stdin.write(ENTER)
@@ -231,7 +252,10 @@ describe('transcribe, from ↵ to Done', () => {
     await settle()
     app.stdin.write(DOWN)
     await settle()
-    expect(frame(app)).toContain('summary and notes · .md')
+    expect(frame(app)).toContain('summary and notes')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
@@ -264,6 +288,9 @@ describe('transcribe, from ↵ to Done', () => {
     await settle()
     expect(frame(app)).toContain('Detailed')
     app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
+    app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
     app.stdin.write(ENTER)
@@ -292,6 +319,9 @@ describe('transcribe, from ↵ to Done', () => {
     await until(() => frame(app).includes('Transcribe to'))
     await settle()
     app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
+    app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
     app.stdin.write(ENTER)
@@ -300,5 +330,163 @@ describe('transcribe, from ↵ to Done', () => {
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Drop a video or audio file'))
     expect(frame(app)).not.toContain('talk.mp4')
+  }, 40_000)
+})
+
+/*
+ * Format, its own step after Transcribe to (mockups/transcribe-2026-10-round4.html,
+ * tab 3, T1, approved 2026-10-22): a plain list, the extension on the
+ * highlighted row, Save as's "default" tag on the default, tab moves it.
+ */
+describe('the Format step', () => {
+  async function atFormat(opts: Parameters<typeof setUp>[1] = {}) {
+    const s = await setUp('available', opts)
+    s.app.stdin.write('5')
+    await until(() => frame(s.app).includes('Drop a video or audio file'))
+    s.app.stdin.write(s.input)
+    await until(() => frame(s.app).includes('1:01:57'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Transcribe to'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Markdown'))
+    await settle()
+    return s
+  }
+  const barOf = (f: string) => f.split('\n').find((l) => l.includes('╱╱')) ?? ''
+
+  it('lists Markdown, Word, PDF and Text, opening on Markdown, the default', async () => {
+    const { app } = await atFormat()
+    const f = frame(app)
+    expect(barOf(f)).toMatch(/ All ╱ Format ╱╱$/)
+    const rows = f.split('\n')
+    const at = rows.findIndex((l) => /^\s+Format\s*$/.test(l))
+    const names = rows.slice(at + 1, at + 5).map((l) => l.replace('▌', '').trim().split(/\s+/)[0])
+    expect(names).toEqual(['Markdown', 'Word', 'PDF', 'Text'])
+    expect(rows[at + 1]).toMatch(/▌ Markdown\s+\.md\s+default\s*$/)
+    expect(f.split('\n').at(-1)).toMatch(/↑↓ +choose +tab +make default +↵ +confirm/)
+  }, 40_000)
+
+  it('Word: Save as names it .docx, and the helper sets it as Word', async () => {
+    const { app, out } = await atFormat()
+    app.stdin.write(DOWN)
+    await settle()
+    expect(frame(app)).toMatch(/▌ Word\s+\.docx/)
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Save as'))
+    await settle()
+    expect(barOf(frame(app))).toMatch(/ All ╱ Word ╱ Save as ╱╱$/)
+    expect(frame(app)).toContain('.docx')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('✓ talk.docx'))
+    const bytes = await readFile(join(out, 'talk.docx'), 'utf8')
+    expect(bytes.startsWith('rendered:<!doctype html>')).toBe(true)
+    expect(bytes).toContain('<h3>Milk · 1:10</h3>')
+  }, 40_000)
+
+  it('tab makes the highlighted format the default: tagged, saved, and opened on next time', async () => {
+    const home = await makeTempDir()
+    process.env.XDG_CONFIG_HOME = home
+    const { app } = await atFormat()
+    app.stdin.write(DOWN)
+    app.stdin.write(DOWN)
+    await settle()
+    app.stdin.write(TAB)
+    await settle(300)
+    expect(frame(app)).toMatch(/▌ PDF\s+\.pdf\s+default\s*$/m)
+    expect(frame(app)).not.toMatch(/Markdown\s+default/)
+    const config = JSON.parse(await readFile(join(home, 'forge', 'config.json'), 'utf8'))
+    expect(config.transcribeFormat).toBe('pdf')
+  }, 40_000)
+
+  it('opens on the default format when one is set', async () => {
+    const { app } = await atFormat({ prefs: { transcribeFormat: 'txt' } })
+    expect(frame(app)).toMatch(/▌ Text\s+\.txt\s+default\s*$/m)
+  }, 40_000)
+
+  it('writes text for Text: the words, no Markdown', async () => {
+    const { app, out } = await atFormat()
+    for (let i = 0; i < 3; i++) app.stdin.write(DOWN)
+    await settle()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Save as'))
+    await settle()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('✓ talk.txt'))
+    const text = await readFile(join(out, 'talk.txt'), 'utf8')
+    expect(text.split('\n')[0]).toBe('talk')
+    expect(text).not.toContain('## ')
+  }, 40_000)
+
+  it('esc on Format goes back to Transcribe to', async () => {
+    const { app } = await atFormat()
+    app.stdin.write(ESC)
+    await until(() => barOf(frame(app)).includes('Transcribe to'))
+    expect(frame(app)).toContain('summary, notes and transcript')
+  }, 40_000)
+})
+
+/*
+ * Working, decided 2026-10-22 (mockups/transcribe-2026-10-round4.html):
+ * Transcribing with its bar and Writing notes faint under it; once the notes
+ * start, "✓ Transcribing <time>" above Writing notes and a square per part.
+ */
+describe('transcribe’s Working', () => {
+  async function working(run: object[], pick: 'all' | 'transcript' = 'all') {
+    const s = await setUp('available', { run, hang: true })
+    s.app.stdin.write('5')
+    await until(() => frame(s.app).includes('Drop a video or audio file'))
+    s.app.stdin.write(s.input)
+    await until(() => frame(s.app).includes('1:01:57'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Transcribe to'))
+    await settle()
+    if (pick === 'transcript') {
+      s.app.stdin.write(DOWN)
+      s.app.stdin.write(DOWN)
+      await settle()
+    }
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Markdown'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Save as'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    return s
+  }
+
+  it('while it transcribes: the line and its bar, then Writing notes, faint, still to come', async () => {
+    const { app } = await working([{ event: 'heard', seconds: 1390, of: 3717 }])
+    await until(() => frame(app).includes('23:10 of 1:01:57'))
+    const rows = frame(app).split('\n')
+    // Flows sit two cells in from Working's own margin: the mark at 4, words at 6.
+    const line = rows.findIndex((l) => /^ {4}. Transcribing\b|^ {6}Transcribing\b/.test(l))
+    expect(line).toBeGreaterThan(0)
+    expect(rows[line + 2]).toMatch(/^ {6}█+ +23:10 of 1:01:57/)
+    expect(rows[line + 4]).toMatch(/^ {6}Writing notes\s*$/)
+    expect(frame(app)).not.toContain('✓ Transcribing')
+    expect(frame(app)).not.toContain('nothing is saved')
+  }, 40_000)
+
+  it('while it writes notes: ✓ Transcribing and its time, Writing notes, a square per part', async () => {
+    const { app } = await working([
+      { event: 'heard', seconds: 3717, of: 3717 },
+      { event: 'notes', part: 2, of: 3 },
+    ])
+    await until(() => frame(app).includes('of 3 parts'))
+    const rows = frame(app).split('\n')
+    const done = rows.findIndex((l) => l.includes('✓ Transcribing'))
+    expect(rows[done]).toMatch(/^ {4}✓ Transcribing +[0-9.]+s$/)
+    expect(rows[done + 2]).toMatch(/Writing notes/)
+    expect(rows[done + 4]).toMatch(/^ {6}██ ██ ██ {2}1 of 3 parts$/)
+  }, 40_000)
+
+  it('has no Writing notes when only the transcript was asked for', async () => {
+    const { app } = await working([{ event: 'heard', seconds: 1390, of: 3717 }], 'transcript')
+    await until(() => frame(app).includes('23:10 of 1:01:57'))
+    expect(frame(app)).not.toContain('Writing notes')
   }, 40_000)
 })

@@ -9,6 +9,7 @@ import { formatById } from '../core/formats.js'
 import { RESIZE_MAX } from '../core/resize.js'
 import { parseCut } from '../core/timecode.js'
 import { DEFAULT_DETAIL, DETAILS, type Detail } from '../core/transcribe/detail.js'
+import { OUTPUTS, type Output } from '../core/transcribe/output.js'
 import type { ConvertOptions, CropSpec, FormatId, MediaOptions, ResizeSpec } from '../core/types.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
@@ -231,7 +232,7 @@ export interface WatchIntent {
 
 /**
  * `forge transcribe <file|link>`: a video or audio file, or a YouTube link,
- * into a Markdown file (spec 2026-10-17-transcribe-design §4.5).
+ * into a Markdown, Word, PDF or text file (spec 2026-10-17-transcribe-design §4.5).
  */
 export interface TranscribeIntent {
   kind: 'transcribe'
@@ -245,6 +246,8 @@ export interface TranscribeIntent {
   detail: Detail
   /** The spoken language, when it is not the Mac's own: `hi`, `fr-FR`. */
   language?: string
+  /** `--format`; when absent, `-o`'s extension if it is one of ours, else Markdown. */
+  format?: Output
   output?: string
   force: boolean
   debug: boolean
@@ -412,9 +415,9 @@ Other commands:
   forge clip               compress the copied image and put it back (--to, --quality,
                            --max-size, --save [folder], --undo)
   forge transcribe <file | link>
-                           a video or audio file, or a YouTube link, into Markdown
+                           a video or audio file, or a YouTube link, into notes
                            (--to all | notes | transcript, --detail brief | standard | detailed,
-                           --language <id>, -o <path>, --force)
+                           --format md | docx | pdf | txt, --language <id>, -o <path>, --force)
   forge watch <folder> --to <format>
                            convert the folder, then every file added to it, until ctrl-c
                            (--quality, --dpi, -o <folder>, --new-only, --json)
@@ -538,6 +541,16 @@ function parseTranscribeArgs(argv: string[]): TranscribeIntent {
         )
       }
       intent.detail = detail as Detail
+    } else if (a === '--format') {
+      const named = value(a, i++).toLowerCase()
+      const format = OUTPUTS.find((o) => o.id === named || o.label.toLowerCase() === named)
+      if (format === undefined) {
+        throw invalidArguments(
+          `forge transcribe writes md, docx, pdf or txt, not ${named}.`,
+          'Try: forge transcribe talk.mp4 --format pdf',
+        )
+      }
+      intent.format = format.id
     } else if (a === '--to' || a === '-t') {
       const to = value(a, i++).toLowerCase()
       if (to !== 'all' && to !== 'notes' && to !== 'transcript') {

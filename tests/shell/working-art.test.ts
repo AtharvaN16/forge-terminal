@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { SPINNER_FRAMES } from '../../src/cli/spinner.js'
 import type { Job } from '../../src/core/types.js'
 import { trailBarRow } from '../../src/shell/bar-art.js'
+import { mix } from '../../src/shell/home-art.js'
 import { DARK, LIGHT, modePalette } from '../../src/shell/theme.js'
 import {
   clockFor,
+  doneLine,
+  elapsed,
+  nextLine,
   pagesRow,
+  partsRow,
   phaseLabel,
   timeRow,
   triesRow,
@@ -103,10 +108,99 @@ describe('clockFor', () => {
     expect(clockFor(2999)).toBeUndefined()
   })
 
-  it('says the real seconds, to a tenth, from then on', () => {
+  it('says the real seconds, to a tenth, up to a minute', () => {
     expect(clockFor(3000)).toBe('3.0s')
     expect(clockFor(3840)).toBe('3.8s')
-    expect(clockFor(61_250)).toBe('61.3s')
+    expect(clockFor(59_940)).toBe('59.9s')
+  })
+
+  // T1, mockups/transcribe-2026-10-round3.html (2026-10-22): minutes past a minute.
+  it('says minutes and seconds past a minute, and hours and minutes past an hour', () => {
+    expect(clockFor(60_000)).toBe('1m 00s')
+    expect(clockFor(61_250)).toBe('1m 01s')
+    expect(clockFor(252_000)).toBe('4m 12s')
+    expect(clockFor(3_599_999)).toBe('59m 59s')
+    expect(clockFor(3_800_000)).toBe('1h 03m')
+  })
+})
+
+describe('elapsed', () => {
+  it('says how long a finished step took, however short, as the clock does', () => {
+    expect(elapsed(1200)).toBe('1.2s')
+    expect(elapsed(68_000)).toBe('1m 08s')
+  })
+})
+
+/*
+ * Transcribe's Working (mockups/transcribe-2026-10-round4.html, decided
+ * 2026-10-22): "✓ Transcribing 1m 08s" once it is done, Writing notes faint
+ * until it starts, and a two-cell square per part.
+ */
+describe('a finished step', () => {
+  it('is a green ✓, the step in plain type, and the time it took at the clock’s place', () => {
+    const cells = runsRow(doneLine({ palette: DARK, label: 'Transcribing', took: '1m 08s' }))
+    const text = cells.map((c) => c.ch).join('')
+    expect(text.trimEnd()).toMatch(/^ {2}✓ Transcribing +1m 08s$/)
+    expect(cells[2]?.fg).toBe(DARK.ok)
+    expect(cells[4]?.b).toBe(false)
+    // Its clock ends where the working line's does.
+    const working = runsRow(
+      workLine({
+        palette: DARK,
+        mode: 'transcribe',
+        spinner: '⠹',
+        label: 'Writing notes',
+        clock: '18.2s',
+      }),
+    )
+    const end = (c: typeof cells) =>
+      c
+        .map((x) => x.ch)
+        .join('')
+        .trimEnd().length
+    expect(end(cells)).toBe(end(working))
+  })
+})
+
+describe('a step still to come', () => {
+  it('is its name alone, faint, where the working line’s label starts', () => {
+    const cells = runsRow(nextLine({ palette: DARK, label: 'Writing notes' }))
+    expect(
+      cells
+        .map((c) => c.ch)
+        .join('')
+        .trimEnd(),
+    ).toBe('    Writing notes')
+    expect(cells[4]?.fg).toBe(DARK.faint)
+  })
+})
+
+describe('the parts', () => {
+  const p = modePalette(DARK, 'transcribe')
+  const red = '#e63946'
+
+  it('are a two-cell square each: written in the mode’s colour, the one being written half, the rest the track’s', () => {
+    const cells = runsRow(partsRow({ palette: p, mode: 'transcribe', done: 2, of: 5 }))
+    const text = cells.map((c) => c.ch).join('')
+    expect(text.trimEnd()).toBe('    ██ ██ ██ ██ ██  2 of 5 parts')
+    expect([4, 7, 10, 13, 16].map((i) => cells[i]?.fg)).toEqual([
+      red,
+      red,
+      mix(red, p.canvas, 0.55),
+      p.track,
+      p.track,
+    ])
+  })
+
+  it('never draws more squares than parts, or a part past the last', () => {
+    const text = (done: number, of: number) =>
+      runsRow(partsRow({ palette: p, mode: 'transcribe', done, of }))
+        .map((c) => c.ch)
+        .join('')
+        .trimEnd()
+    expect(text(9, 3)).toBe('    ██ ██ ██  3 of 3 parts')
+    expect(text(-1, 2)).toBe('    ██ ██  0 of 2 parts')
+    expect(text(0, 1)).toBe('    ██  0 of 1 part')
   })
 })
 

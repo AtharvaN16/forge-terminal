@@ -46,6 +46,7 @@ import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import { readLink } from '../core/transcribe/links.js'
+import type { Output } from '../core/transcribe/output.js'
 import type {
   Box as CropBox,
   FormatId,
@@ -3220,6 +3221,12 @@ export function App({
     savePreferences({ lastOutput: folder }).catch(() => {})
   }
 
+  /** tab on transcribe's Format: the format it opens on from now on. The tag moving says so. */
+  const makeFormatDefault = (format: Output) => {
+    setLivePrefs((p) => ({ ...p, transcribeFormat: format }))
+    savePreferences({ transcribeFormat: format }).catch(showError)
+  }
+
   const makeDefault = (path: string) => {
     setLivePrefs((p) => ({ ...p, defaultOutput: path }))
     hold({
@@ -5600,6 +5607,7 @@ export function App({
                   holdFailure(e)
                 }}
                 onMakeDefault={makeDefault}
+                onMakeFormatDefault={makeFormatDefault}
                 onSaved={rememberSaved}
               />
             ) : null}

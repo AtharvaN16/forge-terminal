@@ -3,7 +3,7 @@ import { FORMATS } from '../core/formats.js'
 import { clockOf } from '../core/timecode.js'
 import type { Job, Phase } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
-import { blank, clip, HOME_MARGIN, type Row, type Run } from './home-art.js'
+import { blank, clip, HOME_MARGIN, mix, type Row, type Run } from './home-art.js'
 import { modeColours, type Palette, type ShellMode } from './theme.js'
 
 /**
@@ -25,9 +25,21 @@ export const PAGE_BAR = 30
 /** The clock appears once a job has run this long (W5: only a long job shows it). */
 export const CLOCK_AFTER_MS = 3000
 
+/**
+ * A real time, said the way a person reads one (T1, mockups/transcribe-2026-10-round3.html,
+ * 2026-10-22): seconds to a tenth under a minute, "4m 12s" under an hour, "1h 03m" past it.
+ */
+export function elapsed(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  const two = (n: number) => String(n).padStart(2, '0')
+  if (s < 60) return `${(ms / 1000).toFixed(1)}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${two(s % 60)}s`
+  return `${Math.floor(s / 3600)}h ${two(Math.floor(s / 60) % 60)}m`
+}
+
 /** The real time a job has run, once it is long enough to say; `undefined` before. */
 export function clockFor(ms: number): string | undefined {
-  return ms < CLOCK_AFTER_MS ? undefined : `${(ms / 1000).toFixed(1)}s`
+  return ms < CLOCK_AFTER_MS ? undefined : elapsed(ms)
 }
 
 /**
@@ -61,6 +73,72 @@ export function workLine({
   if (!clock) return row
   const gap = end - lead - stringWidth(shown) - stringWidth(clock)
   return [...row, blank(Math.max(1, gap)), { text: clock, fg: palette.border }]
+}
+
+/**
+ * A step that is done, above the one working now (transcribe's Transcribing
+ * once notes start, decided 2026-10-22): a green ✓, its name in plain type,
+ * and the time it took where the working line keeps its clock.
+ */
+export function doneLine({
+  palette,
+  label,
+  took,
+  width = LEAD + LINE_WIDTH,
+}: {
+  palette: Palette
+  label: string
+  took: string
+  width?: number
+}): Row {
+  const end = Math.min(width, LEAD + LINE_WIDTH)
+  const lead = LEAD + 2
+  const shown = clip(label, Math.max(1, end - lead - stringWidth(took) - 1))
+  const gap = end - lead - stringWidth(shown) - stringWidth(took)
+  return [
+    blank(LEAD),
+    { text: '✓', fg: palette.ok, bold: true },
+    blank(1),
+    { text: shown, fg: palette.fg },
+    blank(Math.max(1, gap)),
+    { text: took, fg: palette.border },
+  ]
+}
+
+/** A step still to come, under the one working now: its name alone, faint, where labels start. */
+export function nextLine({ palette, label }: { palette: Palette; label: string }): Row {
+  return [blank(LEAD + 2), { text: label, fg: palette.faint }]
+}
+
+/**
+ * Parts of a known count (transcribe's notes, W3): a square per part, two
+ * cells wide because a cell is twice as tall as it is wide. Written parts in
+ * the mode's colour, the one being written half way to the canvas, the rest
+ * the track's; then the count. `done` parts are finished — the one after them
+ * is the one in hand. The count is known before the first part starts, so
+ * nothing here is estimated (invariant 7).
+ */
+export function partsRow({
+  palette,
+  mode,
+  done,
+  of,
+}: {
+  palette: Palette
+  mode: ShellMode
+  done: number
+  of: number
+}): Row {
+  const n = Math.max(0, Math.min(done, of))
+  const fg = modeColours(palette, mode).fg
+  const now = mix(fg, palette.canvas || '#000000', 0.55)
+  const squares: Run[] = []
+  for (let i = 0; i < of; i++) {
+    if (i) squares.push(blank(1))
+    squares.push({ text: '██', fg: i < n ? fg : i === n ? now : palette.track })
+  }
+  const unit = of === 1 ? 'part' : 'parts'
+  return [blank(COUNT_LEAD), ...squares, { text: `  ${n} of ${of} ${unit}`, fg: palette.dim }]
 }
 
 /**
