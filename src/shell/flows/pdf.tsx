@@ -55,10 +55,13 @@ const HUB_HANDOFFS: { id: PdfHandoff; action: Action }[] = [
   { id: 'convert', action: convertAction },
 ]
 
-/** Why a hand-off row is dimmed: both modes take one file, and compress needs images to re-encode. */
+/**
+ * Why a hand-off row is dimmed: compress needs images to re-encode. Both
+ * modes take several PDFs as one batch, so compress needs them in one of them.
+ */
 function handoffReason(id: PdfHandoff, sources: SourceInfo[]): string | undefined {
-  if (sources.length > 1) return 'one file at a time'
-  return id === 'compress' && !compressAction.appliesTo(sources) ? 'no images to shrink' : undefined
+  if (id !== 'compress') return undefined
+  return sources.some((s) => compressAction.appliesTo([s])) ? undefined : 'no images to shrink'
 }
 
 /**

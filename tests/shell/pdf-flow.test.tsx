@@ -403,8 +403,10 @@ describe('the hub Compress and Convert rows', () => {
     expect(frame([withImages('/a.pdf')])).not.toContain('no images to shrink')
   })
 
-  it('dims both for several files', () => {
-    expect(frame([doc('/a.pdf'), doc('/b.pdf')]).match(/one file at a time/g)).toHaveLength(2)
+  it('takes several PDFs as one batch; Compress needs images in one of them', () => {
+    expect(frame([doc('/a.pdf'), withImages('/b.pdf')])).not.toContain('one file at a time')
+    expect(frame([doc('/a.pdf'), withImages('/b.pdf')])).not.toContain('no images to shrink')
+    expect(frame([doc('/a.pdf'), doc('/b.pdf')])).toContain('no images to shrink')
   })
 
   it('hands off to compress on ↵', async () => {

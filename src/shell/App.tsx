@@ -3144,6 +3144,11 @@ export function App({
     setFromPdfHub(true)
     setValues({})
     setMode(to)
+    // Several PDFs: one batch, in that mode.
+    if (stagedBatch) {
+      setStep('watch')
+      return
+    }
     if (to === 'compress') {
       setStep('mode')
       return
@@ -5682,7 +5687,7 @@ export function App({
                 height={height}
                 prefs={livePrefs}
                 onTrail={setWatchTrailNow}
-                onCancel={backToPromptKeepingStage}
+                onCancel={fromPdfHub ? backToPdfHub : backToPromptKeepingStage}
                 onClose={clearSource}
                 onMakeDefault={makeDefault}
                 onSaved={rememberSaved}

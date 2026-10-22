@@ -209,6 +209,35 @@ describe('/pdf end to end through App', () => {
     expect(lastFrame() ?? '').toContain('Choose an operation')
   }, 20_000)
 
+  it('the hub Convert row takes several PDFs on as one batch, and esc comes back', async () => {
+    const dir = await makeTempDir()
+    const a = await makePdf(dir, 'jan.pdf', 2)
+    const b = await makePdf(dir, 'feb.pdf', 2)
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
+
+    stdin.write('3')
+    await settle()
+    stdin.write(`${a} ${b}`)
+    await settle(500)
+    stdin.write(ENTER)
+    await settle(400)
+    expect(lastFrame() ?? '').toContain('Choose an operation')
+
+    // Merge → Convert: the page operations take one PDF, and Compress has no images.
+    stdin.write(DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    const frame = (lastFrame() ?? '').replace(SGR, '')
+    expect(frame).toContain('Convert to')
+    expect(frame).toContain('PDF ×2')
+
+    stdin.write(ESC)
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Choose an operation')
+  }, 20_000)
+
   it('the target picker has a selectable row into /pdf, not just a hint', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)
