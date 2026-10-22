@@ -17,11 +17,11 @@ export const RESIZE_STEP = 5
 
 /**
  * What Sharpen, Boost, Trim and Resize write: the source's own format where
- * the image engine writes it, else JPEG for a HEIC (it cannot be written),
- * else PNG.
+ * the image engine writes it, else JPEG for a photo it cannot write (HEIC,
+ * camera RAW), else PNG.
  */
 export function keptFormat(source: ImageInfo): FormatId {
-  if (source.format === 'heic') return 'jpeg'
+  if (source.format === 'heic' || source.format === 'raw') return 'jpeg'
   return targetIdsFor(source).includes(source.format) ? source.format : 'png'
 }
 

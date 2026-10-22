@@ -125,7 +125,7 @@ export function editRows(
   platform: NodeJS.Platform = process.platform,
 ): EditRow[] {
   const kept = keptFormat(source)
-  const asJpeg = source.format === 'heic' ? ' · as JPEG' : ''
+  const asJpeg = kept === 'jpeg' && source.format !== 'jpeg' ? ' · as JPEG' : ''
   const scales = offered
     .filter((k) => !tooLarge(source, k))
     .map((scale) => ({

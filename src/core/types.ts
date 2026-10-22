@@ -4,6 +4,8 @@ export type FormatId =
   | 'webp'
   | 'avif'
   | 'heic'
+  // Camera RAW, every maker's: read on macOS, never written.
+  | 'raw'
   | 'gif'
   | 'tiff'
   | 'pdf'

@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'permission-denied'
   | 'unsupported-source'
   | 'heic-decoder-unavailable'
+  | 'raw-decoder-unavailable'
   | 'unsupported-compress'
   | 'unsupported-pdf'
   | 'unsupported-operation'
@@ -252,6 +253,47 @@ export function heicDecoderUnavailable(
     detail: `${displayName(path)} is a HEIC photo, which Forge decodes with the macOS sips tool.`,
     short: 'HEIC needs sips, which could not be run.',
     hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
+  })
+}
+
+/**
+ * Camera RAW is decoded by macOS itself, through `sips` (engines/raw.ts):
+ * Sharp has no RAW decoder, and a TIFF reader sees only the small preview
+ * most RAW files carry. Windows has neither, so there RAW is not read at all.
+ */
+export function rawDecoderUnavailable(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const detail = `${displayName(path, platform)} is a camera RAW photo, which Forge reads with macOS's own RAW support.`
+  if (platform !== 'darwin') {
+    return new ForgeError({
+      code: 'raw-decoder-unavailable',
+      title: 'Cannot read RAW here',
+      detail,
+      short: 'RAW photos open on a Mac only.',
+    })
+  }
+  return new ForgeError({
+    code: 'raw-decoder-unavailable',
+    title: 'Cannot read RAW here',
+    detail,
+    short: 'RAW needs sips, which could not be run.',
+    hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
+  })
+}
+
+/**
+ * A RAW file whose camera this Mac does not know: macOS reads each model
+ * separately, and a camera newer than the system is the usual reason.
+ */
+export function rawCameraUnsupported(path: string): ForgeError {
+  return new ForgeError({
+    code: 'raw-decoder-unavailable',
+    title: 'Cannot read this RAW',
+    detail: `${displayName(path)} is a camera RAW photo that this Mac cannot read.`,
+    short: 'macOS cannot read RAW photos from this camera.',
+    hint: 'A newer camera usually needs a newer macOS.',
   })
 }
 

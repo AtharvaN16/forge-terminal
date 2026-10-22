@@ -1,7 +1,9 @@
 import { readFile, stat } from 'node:fs/promises'
 import type { Sharp } from 'sharp'
-import { decodeHeic, looksLikeHeic } from '../engines/heic.js'
+import { openable } from '../engines/decoded.js'
+import { looksLikeHeic } from '../engines/heic.js'
 import { loadSharp } from '../engines/libs.js'
+import { sniffRaw } from '../engines/raw.js'
 
 /**
  * Edit's Done (X5) shows the picture, not the bytes. At 80 × 24 a whole
@@ -92,10 +94,8 @@ export const CHECKER: readonly [number, number] = [0x4a, 0x33]
 const SEARCH_LIMIT = 4_000_000
 
 interface Opened {
-  /** Something sharp opens: the path, or the decoded HEIC's bytes. */
+  /** Something sharp opens: the path, or the decoded HEIC's or RAW's bytes. */
   input: string | Buffer
-  /** Whether EXIF orientation still has to be applied (sips already did for HEIC). */
-  rotate: boolean
   width: number
   height: number
 }
@@ -103,29 +103,28 @@ interface Opened {
 async function openImage(path: string): Promise<Opened> {
   const sharp = await loadSharp()
   let input: string | Buffer = path
-  let rotate = true
-  if (await looksLikeHeic(path)) {
-    const decoded = await decodeHeic(path)
+  const format = (await looksLikeHeic(path)) ? 'heic' : (await sniffRaw(path)) ? 'raw' : undefined
+  if (format) {
+    // The decode keeps its orientation as EXIF, so it is turned like any photo.
+    const opened = await openable(path, format)
     try {
-      input = await readFile(decoded.path)
+      input = await readFile(opened.path)
     } finally {
-      await decoded.cleanup()
+      await opened.cleanup()
     }
-    rotate = false
   }
   const meta = await sharp(input).metadata()
   // EXIF orientations 5–8 turn the picture a quarter: its upright size is swapped.
-  const turned = rotate && (meta.orientation ?? 1) >= 5
+  const turned = (meta.orientation ?? 1) >= 5
   const w = meta.width ?? 0
   const h = meta.height ?? 0
-  return { input, rotate, width: turned ? h : w, height: turned ? w : h }
+  return { input, width: turned ? h : w, height: turned ? w : h }
 }
 
 /** An upright pipeline for the image (invariant 4: rotate first). */
 async function pipeline(img: Opened): Promise<Sharp> {
   const sharp = await loadSharp()
-  const p = sharp(img.input, { animated: false })
-  return img.rotate ? p.rotate() : p
+  return sharp(img.input, { animated: false }).rotate()
 }
 
 async function rgba(p: Sharp): Promise<PixelGrid> {
@@ -350,7 +349,7 @@ async function choose(before: string, after: string, scale: 1 | 2 | 3 | 4): Prom
   return last.chosen
 }
 
-/** Lets go of the cached pair (its decoded HEIC and search buffers) once Done is left. */
+/** Lets go of the cached pair (its decoded HEIC or RAW and search buffers) once Done is left. */
 export function forgetCloseup(): void {
   last = undefined
 }

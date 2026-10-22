@@ -50,6 +50,39 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     lossy: true,
     hint: 'Apple photos',
   },
+  // Each maker's own format, one id: macOS decodes them all (engines/raw.ts),
+  // and none is ever written. Extensions only shortlist a folder's files;
+  // what a file is comes from its bytes.
+  raw: {
+    id: 'raw',
+    label: 'RAW',
+    extensions: [
+      '.dng',
+      '.cr2',
+      '.cr3',
+      '.nef',
+      '.nrw',
+      '.arw',
+      '.srf',
+      '.sr2',
+      '.raf',
+      '.orf',
+      '.rw2',
+      '.rwl',
+      '.pef',
+      '.srw',
+      '.3fr',
+      '.fff',
+      '.erf',
+      '.dcr',
+      '.kdc',
+      '.mos',
+    ],
+    hasAlpha: false,
+    animatable: false,
+    lossy: false,
+    hint: 'camera photos',
+  },
   // Video (video spec §2), between heic and gif so the picker's video box
   // reads MP4, HEVC, WebM, GIF. The image formats keep their order.
   mp4: {
