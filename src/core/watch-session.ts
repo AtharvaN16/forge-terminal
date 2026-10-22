@@ -1,75 +1,58 @@
-import type { ForgeError } from './errors.js'
-import { type PlanEvent, type RunOutcome, runPlan } from './execute-jobs.js'
 import {
-  type FolderScan,
-  type KindAnswer,
-  type KindId,
-  kindOf,
-  planFolderFile,
-  readFolderFile,
-} from './folder.js'
+  type BatchRun,
+  batchRows,
+  type KindAnswers,
+  type LeftAlone,
+  planBatch,
+  type Recipe,
+  runBatch,
+} from './batch.js'
+import type { ForgeError } from './errors.js'
+import { type PlanEvent, runPlan } from './execute-jobs.js'
+import { type FolderScan, readFolderFile } from './folder.js'
 import { resolveConcurrency } from './run.js'
 import type { Job, Phase, Result, SourceInfo } from './types.js'
 import { watchFolder } from './watch.js'
 
-/** Each kind's answer; a kind without one is left alone. */
-export type KindAnswers = Partial<Record<KindId, KindAnswer>>
+export type { KindAnswers, LeftAlone, Recipe } from './batch.js'
 
-/** A file left alone, and why, as its row says it. */
-export interface LeftAlone {
-  path: string
-  reason: string
-}
+/** A convert's kind answers as a recipe; a recipe as it is. */
+const recipeOf = (r: KindAnswers | Recipe): Recipe =>
+  'op' in r && (r.op === 'convert' || r.op === 'compress')
+    ? (r as Recipe)
+    : { op: 'convert', answers: r as KindAnswers }
 
 /**
- * Plans every file of a scan with its kind's answer: the jobs to run and
- * what is left alone. `claimed` is filled with every output planned, which
- * is what keeps the watcher from picking up Forge's own writes afterwards.
+ * Plans every file of a scan with its kind's answer (or a compress): the
+ * jobs to run and what is left alone. `claimed` is filled with every output
+ * planned, which is what keeps the watcher from picking up Forge's own
+ * writes afterwards.
  */
 export function planFolder(
   sources: SourceInfo[],
-  answers: KindAnswers,
+  answers: KindAnswers | Recipe,
   claimed: Set<string>,
   destination?: string,
 ): { jobs: Job[]; left: LeftAlone[] } {
-  const jobs: Job[] = []
-  const left: LeftAlone[] = []
-  for (const source of sources) {
-    const answer = answers[kindOf(source)]
-    if (!answer) {
-      left.push({ path: source.path, reason: notKind(answers) })
-      continue
-    }
-    const planned = planFolderFile(source, answer, claimed, destination)
-    if ('job' in planned) jobs.push(planned.job)
-    else left.push({ path: source.path, reason: planned.left })
-  }
+  const { jobs, left } = planBatch(sources, recipeOf(answers), claimed, { destination })
   return { jobs, left }
 }
 
 /**
- * Converts what a folder holds now, before watching starts: one write-safety
- * pass and one pool over every job, as any batch (`runPlan`).
+ * Converts (or compresses) what a folder holds now, before watching starts:
+ * one write-safety pass and one pool over every job, as any batch.
  */
 export async function convertFolder(
   scan: FolderScan,
-  answers: KindAnswers,
+  answers: KindAnswers | Recipe,
   opts: {
     destination?: string | undefined
     onEvent?: (event: PlanEvent) => void
     signal?: AbortSignal
     concurrency?: number
   } = {},
-): Promise<{ outcome: RunOutcome; left: LeftAlone[]; claimed: Set<string>; jobs: Job[] }> {
-  const claimed = new Set<string>()
-  const { jobs, left } = planFolder(scan.sources, answers, claimed, opts.destination)
-  const outcome = await runPlan(jobs, {
-    force: false,
-    ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
-    ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-    ...(opts.signal ? { signal: opts.signal } : {}),
-  })
-  return { outcome, left, claimed, jobs }
+): Promise<BatchRun> {
+  return runBatch(scan.sources, recipeOf(answers), opts)
 }
 
 /** What happened to a file that landed while watching, as it happens. */
@@ -86,37 +69,21 @@ export interface WatchSession {
   stop(): Promise<void>
 }
 
-const A_KIND: Record<KindId, string> = {
-  images: 'an image',
-  pdfs: 'a PDF',
-  documents: 'a document',
-  videos: 'a video',
-  audio: 'audio',
-  other: 'a file Forge reads',
-}
-
-/** Why a file of a kind with no answer is left alone: "not an image", "not an image or a PDF". */
-function notKind(answers: KindAnswers): string {
-  const kinds = (Object.keys(answers) as KindId[]).filter((k) => answers[k])
-  if (kinds.length === 0) return 'not supported'
-  const named = kinds.map((k) => A_KIND[k])
-  return `not ${named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} or ${named.at(-1)}`}`
-}
-
 /** Why a kind Forge cannot read is left alone. */
 const unreadWhy = (kind: 'videos' | 'audio' | 'other', sniffed: string): string =>
   kind === 'other' ? (sniffed === 'text' ? 'a text file' : 'not supported') : 'not yet supported'
 
 /**
- * Watches `dir` and converts each file that lands with its kind's answer,
- * up to `concurrency` at a time (default as any batch: up to 4). `known` are
- * the files already handled; `claimed` the outputs Forge has written or is
+ * Watches `dir` and converts (or compresses) each file that lands, up to
+ * `concurrency` at a time (default as any batch: up to 4). `known` are the
+ * files already handled; `claimed` the outputs Forge has written or is
  * writing, which are never picked up as new files. Every outcome is an event;
  * nothing is printed, nothing is drawn.
  */
 export function startWatch(opts: {
   dir: string
-  answers: KindAnswers
+  /** What is done to each file that lands: a convert's kind answers, or a recipe. */
+  answers: KindAnswers | Recipe
   known: Iterable<string>
   claimed: Set<string>
   destination?: string | undefined
@@ -126,6 +93,7 @@ export function startWatch(opts: {
   concurrency?: number
 }): WatchSession {
   const limit = resolveConcurrency(opts.concurrency)
+  const recipe = recipeOf(opts.answers)
   const queue: string[] = []
   const running = new Set<Promise<void>>()
   let stopped = false
@@ -142,7 +110,7 @@ export function startWatch(opts: {
       opts.onEvent({ type: 'left', path, reason: unreadWhy(read.kind, read.sniffed) })
       return
     }
-    const { jobs, left } = planFolder([read.source], opts.answers, opts.claimed, opts.destination)
+    const { jobs, left } = planFolder([read.source], recipe, opts.claimed, opts.destination)
     const [gone] = left
     if (gone) {
       opts.onEvent({ type: 'left', path, reason: gone.reason })
@@ -151,6 +119,9 @@ export function startWatch(opts: {
     const outcome = await runPlan(jobs, {
       force: false,
       concurrency: 1,
+      ...(recipe.op === 'compress' && recipe.targetBytes !== undefined
+        ? { targetBytes: recipe.targetBytes }
+        : {}),
       onEvent: (event: PlanEvent) => {
         if (
           event.type === 'job:phase' &&
@@ -162,10 +133,14 @@ export function startWatch(opts: {
         }
       },
     })
-    const [result] = outcome.results
-    const failure = [...outcome.refusals, ...outcome.failures][0]
-    if (result) opts.onEvent({ type: 'converted', path, result })
-    else if (failure) opts.onEvent({ type: 'failed', path, error: failure.error })
+    // Told as any batch tells a file: done, failed, or left alone and why.
+    const [row] = batchRows([read.source], { outcome, left: [], claimed: opts.claimed, jobs })
+    if (row?.result) opts.onEvent({ type: 'converted', path, result: row.result })
+    else if (row?.state === 'left') opts.onEvent({ type: 'left', path, reason: row.reason ?? '' })
+    else {
+      const failure = [...outcome.refusals, ...outcome.failures][0]
+      if (failure) opts.onEvent({ type: 'failed', path, error: failure.error })
+    }
   }
 
   const next = (): void => {

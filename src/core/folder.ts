@@ -1,14 +1,11 @@
-import { existsSync } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { extname, join, resolve } from 'node:path'
 import { probe } from '../engines/registry.js'
-import { convertAction } from './actions/convert.js'
 import { targetIdsFor } from './capabilities.js'
 import { isForgeError } from './errors.js'
 import { FORMATS } from './formats.js'
-import { fitName } from './output-path.js'
 import type { InputFailure } from './resolve.js'
-import type { FormatId, Job, SourceInfo } from './types.js'
+import type { FormatId, SourceInfo } from './types.js'
 
 /**
  * A folder as `forge watch` and the shell's folder card see it: every file
@@ -237,47 +234,4 @@ export function answerFor(sources: SourceInfo[], target: FormatId, quality: numb
     answer.dpi = 150
   }
   return answer
-}
-
-/**
- * One folder file's job, or why it is left alone. `claimed` holds the
- * outputs this run has already planned, so two files that would take one
- * name keep both (`hero (1).webp`) — nobody is there to ask. A file whose
- * output is already on disk was converted before (the folder dropped
- * again), and is left alone rather than converted twice.
- */
-export function planFolderFile(
-  source: SourceInfo,
-  answer: KindAnswer,
-  claimed: Set<string>,
-  destination?: string,
-): { job: Job } | { left: string } {
-  if (source.format === answer.target) return { left: `already ${FORMATS[answer.target].label}` }
-  if (!targetIdsFor(source).includes(answer.target)) {
-    return { left: `can’t become ${FORMATS[answer.target].label}` }
-  }
-  const [job] = convertAction.plan([source], {
-    target: answer.target,
-    ...(answer.quality === undefined ? {} : { quality: answer.quality }),
-    ...(answer.dpi === undefined ? {} : { dpi: String(answer.dpi) }),
-    pages: 'all',
-    ...(destination === undefined ? {} : { destination }),
-  })
-  if (job?.op !== 'convert') return { left: 'not supported' }
-  if (job.outputs.some((o) => existsSync(o) && !claimed.has(o)))
-    return { left: 'already converted' }
-  job.outputs = job.outputs.map((o) => keepBoth(o, claimed)) as typeof job.outputs
-  for (const o of job.outputs) claimed.add(o)
-  return { job }
-}
-
-/** `o`, or `o` numbered (`hero (1).webp`) past every name this run or the disk already holds. */
-function keepBoth(o: string, claimed: Set<string>): string {
-  if (!claimed.has(o)) return o
-  const ext = extname(o)
-  const stem = basename(o, ext)
-  for (let n = 1; ; n++) {
-    const candidate = join(dirname(o), fitName(stem, ` (${n})${ext}`))
-    if (!claimed.has(candidate) && !existsSync(candidate)) return candidate
-  }
 }

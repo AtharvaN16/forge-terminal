@@ -9,7 +9,14 @@ import {
   type WatchEvent,
   type WatchSession,
 } from '../../src/core/watch-session.js'
-import { makeCorruptFile, makeJpeg, makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
+import {
+  makeCorruptFile,
+  makeJpeg,
+  makeNoiseImage,
+  makePdf,
+  makePng,
+  makeTempDir,
+} from '../helpers/fixtures.js'
 
 const FAST = { settleMs: 100, pollMs: 25 }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -89,6 +96,24 @@ describe('startWatch', () => {
     expect(ends(events)).toEqual(['converted hero.png hero.webp'])
     expect(events[0]).toEqual({ type: 'arrived', path: join(dir, 'hero.png') })
     expect(existsSync(join(dir, 'hero.webp'))).toBe(true)
+  })
+
+  it('compresses a file that lands, and never picks up its own -small file', async () => {
+    const dir = await makeTempDir()
+    const events: WatchEvent[] = []
+    session = startWatch({
+      dir,
+      answers: { op: 'compress', quality: 40 },
+      known: [],
+      claimed: new Set(),
+      onEvent: (e) => events.push(e),
+      ...FAST,
+    })
+    await makeNoiseImage(dir, 'hero.jpg', 200, 'jpeg')
+    await until(events, 1)
+    await wait(400)
+    expect(ends(events)).toEqual(['converted hero.jpg hero-small.jpg'])
+    expect(existsSync(join(dir, 'hero-small.jpg'))).toBe(true)
   })
 
   it('leaves a kind with no answer alone, and says it is not that kind', async () => {

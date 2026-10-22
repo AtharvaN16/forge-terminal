@@ -1,13 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  defaultAnswer,
-  kindTargets,
-  planFolderFile,
-  scanFolder,
-  sniffKind,
-} from '../../src/core/folder.js'
+import { planFolderFile } from '../../src/core/batch.js'
+import { defaultAnswer, kindTargets, scanFolder, sniffKind } from '../../src/core/folder.js'
 import type { SourceInfo } from '../../src/core/types.js'
 import { makeCorruptFile, makeJpeg, makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
 
