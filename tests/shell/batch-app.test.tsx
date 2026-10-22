@@ -149,6 +149,34 @@ describe('several files in compress mode', () => {
   }, 60_000)
 })
 
+describe('stopping a batch', () => {
+  it('esc lets the files already started finish, starts no more, and says which stopped', async () => {
+    const dir = await makeTempDir()
+    const out = await makeTempDir()
+    const paths: string[] = []
+    for (let i = 0; i < 8; i++) paths.push(await makeNoiseImage(dir, `p${i}.jpg`, 900, 'jpeg'))
+    const app = await compressHome(out)
+    app.stdin.write(paths.join(' '))
+    await app.until(() => app.frame().includes('8 images'))
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('Method'))
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('smaller'))
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('Save as'))
+    app.stdin.write(ENTER)
+    await settle(60)
+    app.stdin.write(String.fromCharCode(27))
+    await app.until(() => app.frame().includes('go home'), 30_000)
+    const done = app.frame()
+    expect(done).toContain('stopped')
+    expect(done).not.toContain('Watching')
+    const written = await readdir(out)
+    expect(written.length).toBeGreaterThan(0)
+    expect(written.length).toBeLessThan(8)
+  }, 60_000)
+})
+
 describe('several files in convert mode', () => {
   it('converts them as one batch and lists each, from → to, without watching', async () => {
     const dir = await makeTempDir()

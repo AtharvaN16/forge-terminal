@@ -135,6 +135,33 @@ describe('runBatch and batchRows', () => {
     expect(existsSync(join(dir, 'big-small.jpg'))).toBe(true)
   })
 
+  it('stopped part-way: what finished is kept, and the rest are told as stopped', async () => {
+    const dir = await makeTempDir()
+    const sources = [
+      await probe(await makeNoiseImage(dir, 'a.jpg', 200, 'jpeg')),
+      await probe(await makeNoiseImage(dir, 'b.jpg', 200, 'jpeg')),
+      await probe(await makeNoiseImage(dir, 'c.jpg', 200, 'jpeg')),
+    ]
+    const stop = new AbortController()
+    const run = await runBatch(
+      sources,
+      { op: 'compress', quality: 40 },
+      {
+        concurrency: 1,
+        signal: stop.signal,
+        onEvent: (e) => {
+          if (e.type === 'job:done') stop.abort()
+        },
+      },
+    )
+    expect(run.outcome.cancelled).toBe(true)
+    expect(
+      batchRows(sources, run).map((r) => `${basename(r.path)} ${r.state} ${r.reason ?? ''}`),
+    ).toEqual(['a.jpg done ', 'b.jpg left stopped', 'c.jpg left stopped'])
+    expect(existsSync(join(dir, 'a-small.jpg'))).toBe(true)
+    expect(existsSync(join(dir, 'b-small.jpg'))).toBe(false)
+  })
+
   it('says how small a file could get when the target is out of reach', async () => {
     const dir = await makeTempDir()
     const big = await probe(await makeNoiseImage(dir, 'noise.png', 300, 'png'))

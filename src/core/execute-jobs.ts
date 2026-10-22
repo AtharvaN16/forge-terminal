@@ -98,9 +98,10 @@ export interface RunOutcome {
   /** Ran and threw. Not retryable. */
   failures: InputFailure[]
   /**
-   * The search was cancelled before it settled, so nothing ran. Distinct from
-   * `unreachable`: that is an answer the user must choose between, this is the
-   * user having already chosen to stop being asked.
+   * The search was cancelled before it settled, so nothing ran — or the run
+   * was stopped part-way, and `results` holds what finished before it did.
+   * Distinct from `unreachable`: that is an answer the user must choose
+   * between, this is the user having already chosen to stop being asked.
    */
   cancelled?: boolean
   inputBytes: number
@@ -374,8 +375,10 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
   })
 
   // Aborted mid-run: the killed jobs wrote nothing, and their "failure" is the
-  // user's own cancel, not an answer to report.
-  if (policy.signal?.aborted && done.failures.length > 0) {
+  // user's own cancel, not an answer to report. Jobs not yet started when it
+  // came never ran (`runJobs`): the batch was stopped, its results kept.
+  const unfinished = ready.length - done.results.length
+  if (policy.signal?.aborted && unfinished > 0) {
     const real = done.failures.filter((f) => failedBeforeCancel.has(f))
     return {
       ...done,

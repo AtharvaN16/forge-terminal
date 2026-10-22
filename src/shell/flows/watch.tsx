@@ -324,6 +324,11 @@ export function WatchFlow({
   const backRef = useRef(0)
   backRef.current = back
   const session = useRef<WatchSession | undefined>(undefined)
+  /** esc while the batch runs: the files already started finish, the rest do not. */
+  const stop = useRef<AbortController | undefined>(undefined)
+  const [stopping, setStopping] = useState(false)
+  /** A folder, once what it held is done and the run was not stopped. */
+  const [watching, setWatching] = useState(false)
 
   // Stopped however the flow goes: ↵, ctrl-n, quitting.
   useEffect(
@@ -377,7 +382,10 @@ export function WatchFlow({
           current: compress ? 'Compressing' : 'Converting',
         }
       case 'watching':
-        return { answers: [...answered(), placeName(folder)], current: watch ? 'Watching' : 'Done' }
+        return {
+          answers: [...answered(), placeName(folder)],
+          current: watching ? 'Watching' : 'Done',
+        }
     }
   })()
   const trailKey = JSON.stringify(trail)
@@ -454,7 +462,16 @@ export function WatchFlow({
         setWork((w) => ({ ...w, done: event.completed, total: event.total }))
       }
     }
-    const done = await convertFolder(scan, recipe, { destination: to, existing, onEvent })
+    const controller = new AbortController()
+    stop.current = controller
+    setStopping(false)
+    const done = await convertFolder(scan, recipe, {
+      destination: to,
+      existing,
+      onEvent,
+      signal: controller.signal,
+    })
+    stop.current = undefined
     const results = done.outcome.results
     setTotals({
       n: results.length,
@@ -478,8 +495,10 @@ export function WatchFlow({
       ),
       ...batchRows(scan.sources, done).map((row) => rowOf(row, mode, at)),
     ])
+    setWatching(watch && !done.outcome.cancelled)
     setStep('watching')
-    if (!watch) return
+    // Stopped: nothing more is done, so a folder is not watched either.
+    if (!watch || done.outcome.cancelled) return
     session.current = startWatch({
       dir: scan.dir,
       answers: recipe,
@@ -606,6 +625,15 @@ export function WatchFlow({
       }
     },
     { isActive: step === 'kinds' && win !== undefined },
+  )
+
+  useKeys(
+    (_input, key) => {
+      if (!key.escape || !stop.current || stopping) return
+      setStopping(true)
+      stop.current.abort()
+    },
+    { isActive: step === 'converting' },
   )
 
   // Target size: tab moves between the amount and its unit, ←→ changes the
@@ -1054,10 +1082,11 @@ export function WatchFlow({
         {cardBox}
         <Working
           mode={mode}
-          label={work.label}
+          label={stopping ? 'Stopping' : work.label}
           startedAt={work.at}
           pages={work.total > 0 ? { done: work.done, total: work.total } : undefined}
           unit={unit}
+          stoppable={!stopping}
           width={width}
         />
       </Box>
@@ -1067,7 +1096,7 @@ export function WatchFlow({
   return (
     <Watching
       mode={mode}
-      watching={watch}
+      watching={watching}
       name={name}
       folder={folder}
       totals={totals}
@@ -1077,7 +1106,7 @@ export function WatchFlow({
       avail={avail}
       width={width}
       onScroll={(d) => {
-        const room = listRoom(avail, watch)
+        const room = listRoom(avail, watching)
         const most = Math.max(0, files.length - (room - 1))
         setBack((b) => {
           const next = Math.max(0, Math.min(most, b + d))

@@ -86,6 +86,8 @@ export async function runJobs(
   let completed = 0
 
   await pool(jobs, limit, async (job, index) => {
+    // Stopped: the jobs already running finish; no new one starts.
+    if (opts.signal?.aborted) return
     emit({ type: 'job:start', job, index, total })
 
     const engine = resolveEngine(job)
