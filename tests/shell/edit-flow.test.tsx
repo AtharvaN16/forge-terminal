@@ -155,8 +155,11 @@ describe('edit mode', () => {
       await settle(400) // let Save as's key handler attach
       app.stdin.write(ENTER)
       const out = join(dir, 'banner-cutout.png')
-      await until(() => existsSync(out) && frame().includes('edit another'))
+      await until(() => existsSync(out) && frame().includes('↵ Home'))
       expect(frame()).toContain('banner-cutout.png')
+      // The way on, as on every Done: the actions and Home, ←→ to choose.
+      expect(frame()).toMatch(/o Open +f \S+ +↵ Home/)
+      expect(frame()).toMatch(/←→ +choose +↵ +confirm/)
       const meta = await sharp(out).metadata()
       expect([meta.width, meta.height, meta.hasAlpha]).toEqual([4100, 50, true])
     },
@@ -421,7 +424,7 @@ describe('edit mode', () => {
       await settle(400)
       app.stdin.write(ENTER)
       const out = join(dir, 'tile-4x.png')
-      await until(() => existsSync(out) && frame().includes('edit another'))
+      await until(() => existsSync(out) && frame().includes('↵ Home'))
       const meta = await sharp(out).metadata()
       expect([meta.width, meta.height]).toEqual([160, 120])
     }, 90_000)

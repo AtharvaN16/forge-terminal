@@ -239,11 +239,11 @@ describe('the shell — page and resolution steps, live progress', () => {
     await settle(200)
     stdin.write(ENTER) // Save as: the proposed name, in the default folder -> runs
 
-    const frames = await framesUntil(lastFrame, (f) => f.includes('convert another'))
+    const frames = await framesUntil(lastFrame, (f) => f.includes('↵ Home'))
 
     // Sanity first: real, non-blank frames were actually sampled — the
     // negative assertion below would hold trivially against silence.
-    expect(frames.some((f) => f.includes('convert another'))).toBe(true)
+    expect(frames.some((f) => f.includes('↵ Home'))).toBe(true)
 
     for (const frame of frames) {
       expect(frame).not.toMatch(/page \d+ of \d+/)
@@ -251,7 +251,7 @@ describe('the shell — page and resolution steps, live progress', () => {
       expect(frame).not.toMatch(/^ {4}[█░]{30}/m)
     }
 
-    expect(lastFrame() ?? '').toContain('convert another')
+    expect(lastFrame() ?? '').toContain('↵ Home')
   }, 20_000)
 })
 

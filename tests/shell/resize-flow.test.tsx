@@ -132,7 +132,7 @@ describe('Trim edges and Resize in Edit', () => {
     await settle(400) // let Save as's key handler attach
     app.stdin.write(ENTER)
     const out = join(dir, 'photo-100x75.png')
-    await until(() => existsSync(out) && frame().includes('edit another'))
+    await until(() => existsSync(out) && frame().includes('↵ Home'))
     expect(frame()).toContain('photo-100x75.png')
     const meta = await sharp(out).metadata()
     expect([meta.width, meta.height]).toEqual([100, 75])

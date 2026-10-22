@@ -9,7 +9,7 @@ import { unpaint } from '../helpers/unpaint.js'
 
 /**
  * Presets in the flow (mockups/presets-2026-10.html, round 9): from Done,
- * p saves what was done as a preset; → opens Continue editing over Done, and
+ * p saves what was done as a preset; e opens Continue editing over Done, and
  * ↵ there leaves Done showing the new file.
  */
 const ESC = String.fromCharCode(27)
@@ -44,37 +44,37 @@ async function atDone() {
   app.stdin.write(ENTER)
   await until(app, 'Save as')
   app.stdin.write(ENTER)
-  await until(app, 'convert another')
+  await until(app, '↵ Home')
   return { app, dir }
 }
 
 describe('presets, from Done', () => {
-  it('offers p save as preset and → continue editing on Done', async () => {
+  it('offers Save as preset and Continue editing as buttons on Done', async () => {
     const { app } = await atDone()
     const all = plain(app.lastFrame())
-    expect(all).toMatch(/^ {2}p save as preset +continue editing → ?$/m)
+    expect(all).toMatch(/p Save as preset +e Continue editing +↵ Home *$/m)
     expect(all).not.toMatch(/PNG → JPEG +p/)
   }, 30_000)
 
   it('saves what was done as a preset with p, and says so on Done', async () => {
     const { app, dir } = await atDone()
     app.stdin.write('p')
-    await until(app, 'Save as preset')
+    await until(app, '─ Save as preset ─')
     for (const ch of 'webblog') {
       app.stdin.write(ch)
       await settle(30)
     }
     app.stdin.write(ENTER)
-    await until(app, '✓ saved as webblog')
+    await until(app, 'p Preset saved')
     const { prefs } = await loadPreferences()
     const saved = prefs.presets?.find((p) => p.name === 'webblog')
     expect(saved).toEqual({ name: 'webblog', steps: { to: 'jpeg', quality: 80 }, saveTo: dir })
   }, 30_000)
 
-  it('opens Continue editing with →, and ↵ leaves Done showing the new file', async () => {
+  it('opens Continue editing with e, and ↵ leaves Done showing the new file', async () => {
     const { app, dir } = await atDone()
-    app.stdin.write(RIGHT)
-    await until(app, 'Continue editing')
+    app.stdin.write('e')
+    await until(app, '─ Continue editing ─')
     app.stdin.write(DOWN) // Resize, from Compress
     await settle(100)
     app.stdin.write(RIGHT)
@@ -88,7 +88,7 @@ describe('presets, from Done', () => {
     await until(app, 'now ') // the rerun
     await settle(800)
     app.stdin.write(ENTER) // done
-    await until(app, 'Continue editing', true)
+    await until(app, '─ Continue editing ─', true)
     await until(app, '32 wide')
     expect((await sharp(join(dir, 'test.jpg')).metadata()).width).toBe(32)
   }, 30_000)
@@ -112,15 +112,15 @@ describe('presets, from Done', () => {
     app.stdin.write(ENTER) // the slider's quality
     await until(app, 'Save as')
     app.stdin.write(ENTER)
-    await until(app, 'save as preset')
+    await until(app, '↵ Home')
     app.stdin.write('p')
-    await until(app, 'Save as preset')
+    await until(app, '─ Save as preset ─')
     for (const ch of 'smaller') {
       app.stdin.write(ch)
       await settle(30)
     }
     app.stdin.write(ENTER)
-    await until(app, '✓ saved as smaller')
+    await until(app, 'p Preset saved')
     const saved = (await loadPreferences()).prefs.presets?.find((p) => p.name === 'smaller')
     expect(saved?.steps).toMatchObject({ to: 'png', compress: { dither: false } })
   }, 30_000)

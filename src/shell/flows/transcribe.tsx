@@ -36,6 +36,7 @@ import type { FetchedSound } from '../../engines/youtube.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { copy } from '../clipboard.js'
+import { DoneActions, doneKeys } from '../components/Done.js'
 import { bytesOf } from '../components/EditPicker.js'
 import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
@@ -45,9 +46,9 @@ import { pillWidth, StepPill } from '../components/StepPill.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
 import { NEW_FOLDER } from '../destinations.js'
-import { doneNotes } from '../done-art.js'
+import { type DoneAction, doneActionRows, doneNotes } from '../done-art.js'
 import { blank, HOME_MARGIN, mix, type Row, width as widthOf } from '../home-art.js'
-import { openPath, revealPath } from '../reveal.js'
+import { openPath, revealLabel, revealPath } from '../reveal.js'
 import { useTheme } from '../ThemeContext.js'
 import type { Palette } from '../theme.js'
 import { type TranscribeSource, transcribeCard } from '../transcribe-stage.js'
@@ -306,14 +307,33 @@ export function TranscribeFlow({
     { isActive: step === 'format' },
   )
 
-  // Done's keys: ↵ new, o open, s finder, c copy.
+  /**
+   * Done's way on, as every Done's (mockups/done-next-2026-10-round9.html):
+   * Open, Finder and Copy, then Home, selected as Done opens. ←→ chooses,
+   * ↵ confirms, each keeps its key (s still reveals), esc goes home.
+   */
+  const doneList: DoneAction[] = [
+    { key: 'o', label: 'Open' },
+    { key: 'f', label: revealLabel().replace(/^Show in /, '') },
+    { key: 'c', label: 'Copy' },
+  ]
+  const [doneSel, setDoneSel] = useState<number | undefined>()
+  useEffect(() => {
+    if (step === 'done') setDoneSel(undefined)
+  }, [step])
   useKeys(
     (input, key) => {
       if (!done) return
-      if (key.return) onNew()
-      else if (input === 'o') void openPath(done.output).catch(() => {})
-      else if (input === 's') void revealPath(done.output).catch(() => {})
-      else if (input === 'c') copy(done.text)
+      const home = doneList.length
+      if (key.leftArrow || key.rightArrow) {
+        setDoneSel((at) => Math.max(0, Math.min(home, (at ?? home) + (key.rightArrow ? 1 : -1))))
+        return
+      }
+      const chosen = key.return ? doneList[doneSel ?? home]?.key : input
+      if (key.escape || (key.return && chosen === undefined)) onNew()
+      else if (chosen === 'o') void openPath(done.output).catch(() => {})
+      else if (chosen === 'f' || chosen === 's') void revealPath(done.output).catch(() => {})
+      else if (chosen === 'c') copy(done.text)
     },
     { isActive: step === 'done' },
   )
@@ -489,7 +509,7 @@ export function TranscribeFlow({
     )
   }
 
-  // Done: a green "done" chip, the file, the parts it found; the keys on the key row.
+  // Done: a green "done" chip, the file, the parts it found; the way on above the keys.
   const parts = done?.parts ?? []
   const refused = parts.findIndex((p) => p.refused)
   const rows: Row[] = [
@@ -542,12 +562,20 @@ export function TranscribeFlow({
       </Box>
       <HintBar
         width={width}
-        pairs={[
-          ['↵', 'new'],
-          ['o', 'open'],
-          ['s', 'finder'],
-          ['c', 'copy'],
-        ]}
+        above={
+          <DoneActions mode="transcribe" actions={doneList} selected={doneSel} width={width} />
+        }
+        pairs={doneKeys({
+          actions: doneList,
+          framed:
+            doneActionRows({
+              palette,
+              mode: 'transcribe',
+              actions: doneList,
+              selected: 0,
+              width,
+            }) !== undefined,
+        })}
         foot={[['ctrl-c', 'quit']]}
       />
     </Box>

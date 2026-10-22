@@ -362,3 +362,87 @@ export function doneLayout({
   const between = Math.max(1, room - top - body)
   return { top, between, bottom: Math.max(0, height - fixed - top - between - notes) }
 }
+
+/** One of Done's ways on, besides Home: its key and its word. */
+export interface DoneAction {
+  key: string
+  label: string
+  /** The word in the success green: a preset just saved. */
+  ok?: boolean | undefined
+}
+
+/**
+ * Done's way on (mockups/done-next-2026-10-round9.html, Y31), three rows
+ * across the block. A frame in the shelf grey holds `actions`, the first
+ * flush on its left edge, the spare cells shared between them and one cell
+ * of the grey after the last; then a cell of canvas; then Home as its own
+ * block in the mode's tint, two cells either side of its words, ending on
+ * the block's edge. `selected` is an index into `actions`, or
+ * `actions.length` for Home: a selected action fills all three rows in the
+ * key caps' grey, its words bright; Home selected turns the bright mode
+ * colour, its words dark. `down` lights a key while it is held.
+ *
+ * Undefined where the actions do not fit a cell apart: the screen then says
+ * them on the key row instead.
+ */
+export function doneActionRows({
+  palette,
+  mode,
+  actions,
+  selected,
+  width: columns,
+  home = 'Home',
+  down = () => false,
+}: {
+  palette: Palette
+  mode: ShellMode
+  actions: readonly DoneAction[]
+  selected: number
+  width: number
+  home?: string
+  down?: (key: string) => boolean
+}): Row[] | undefined {
+  const block = columns - 2 * M
+  const tone = modeColours(palette, mode)
+  const homeOn = selected === actions.length
+  const homeBg = homeOn ? tone.fg : tone.bg
+  const homeFg = homeOn ? palette.ink : tone.fg
+  const homeRuns: Run[] = [
+    { text: '  ↵', fg: down('↵') ? palette.brand : homeFg, bg: homeBg, bold: true },
+    { text: ` ${home}  `, fg: homeFg, bg: homeBg, bold: true },
+  ]
+  const homeW = width(homeRuns)
+  const frameW = block - homeW - 1
+  const buttons = actions.map((a, i): Run[] => {
+    const on = i === selected
+    // The first-run palette has no greys: a selected action takes the mode's
+    // colour instead, so the selection still shows.
+    const lit = on && palette.keycapBg === ''
+    const bg = lit ? tone.fg : on ? palette.keycapBg : palette.shelf
+    const words = lit ? palette.ink : a.ok ? palette.ok : on ? palette.fg : palette.dim
+    return [
+      {
+        text: ` ${a.key}`,
+        fg: down(a.key) ? palette.brand : lit ? palette.ink : palette.fg,
+        bg,
+        bold: true,
+      },
+      { text: ` ${a.label} `, fg: words, bg, bold: on },
+    ]
+  })
+  const gaps = Math.max(0, buttons.length - 1)
+  const spare = frameW - 1 - buttons.reduce((n, b) => n + width(b), 0)
+  if (spare < gaps) return undefined
+  const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
+  const fill = (n: number, bg: string): Run => ({ text: ' '.repeat(Math.max(0, n)), bg })
+  // The words' row, then the rows above and below it: the same runs with the
+  // words blanked, so a selected action's grey runs the full height.
+  const middle: Run[] = buttons.flatMap((b, i) =>
+    i ? [fill(gapAt(i - 1), palette.shelf), ...b] : b,
+  )
+  const used = width(middle)
+  const frame: Run[] = [...middle, fill(frameW - used, palette.shelf)]
+  const bare = (runs: Run[]): Run[] => runs.map((r) => ({ text: ' '.repeat(width([r])), bg: r.bg }))
+  const row = (runs: Run[], homeRow: Run[]): Row => [blank(M), ...runs, blank(1), ...homeRow]
+  return [row(bare(frame), bare(homeRuns)), row(frame, homeRuns), row(bare(frame), bare(homeRuns))]
+}

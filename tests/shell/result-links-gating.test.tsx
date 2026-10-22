@@ -46,7 +46,7 @@ async function renderResult(mouseSupported: boolean) {
   app.stdin.write(ENTER) // quality (JPEG default)
   await until(app.lastFrame, 'Save as')
   app.stdin.write(ENTER) // Save as -> runs
-  await until(app.lastFrame, 'convert another')
+  await until(app.lastFrame, '↵ Home')
   return app
 }
 
@@ -56,7 +56,7 @@ describe('Done, opening and showing the file', () => {
       const app = await renderResult(mouse)
       const frame = (app.lastFrame() ?? '').replace(SGR, '')
       expect(frame).not.toContain('Open file')
-      expect(frame).toMatch(/o {2}open {3}s {2}show in \S+/)
+      expect(frame).toMatch(/o Open +f \S+/)
       vi.doUnmock('../../src/shell/mouse.js')
     })
   }

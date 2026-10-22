@@ -170,7 +170,7 @@ describe('Name taken (L1), everywhere', () => {
     expect(out).toMatch(/▌ Keep both +saves yours as test \(1\)\.jpg/)
     expect(out.split('\n')[0]).toMatch(/Name taken ╱╱ *$/)
     app.stdin.write(ENTER)
-    await until(app, 'convert another', 20_000)
+    await until(app, '↵ Home', 20_000)
     expect(existsSync(join(dir, 'test (1).jpg'))).toBe(true)
   }, 60_000)
 

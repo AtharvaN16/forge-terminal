@@ -261,8 +261,8 @@ describe('the format suggestion', () => {
     await settle()
     await finish(stdin)
     await settle(600)
-    // On Done's key row, beside ↵: `c` and the format it converts to.
-    expect(lastFrame() ?? '').toMatch(/compress again {3}c {2}WebP {3}o {2}open/)
+    // On Done's key row, after ←→ choose and ↵ confirm: `c` and the format it converts to.
+    expect(lastFrame() ?? '').toMatch(/↵ {2}confirm {3}c {2}WebP/)
   }, 30_000)
 
   it('takes it with c, to Save as, the name proposed for the new format', async () => {
@@ -339,7 +339,7 @@ describe('knowing which mode you are in', () => {
     )
   })
 
-  it('offers to compress again, not convert another', async () => {
+  it('goes Home from compress too, the same word in every mode', async () => {
     const { stdin, lastFrame, frames } = await toCompress()
     stdin.write(ENTER)
     await settle()
@@ -348,7 +348,8 @@ describe('knowing which mode you are in', () => {
     await finish(stdin)
     await settle(600)
     const all = frames.join('') + (lastFrame() ?? '')
-    expect(all).toContain('compress again')
+    expect(all).toContain('↵ Home')
+    expect(all).not.toContain('convert another')
   }, 30_000)
 
   it('/convert switches back out of compress', async () => {

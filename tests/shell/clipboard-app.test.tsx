@@ -24,8 +24,6 @@ const FOCUS_IN = `${ESC}[I`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
-const lines = (f: string | undefined) => plain(f).split('\n')
-const keyRow = (f: string | undefined) => lines(f).findLast((l) => l.trim() !== '') ?? ''
 
 async function waitFor(ok: () => boolean, ms = 10_000) {
   const start = Date.now()
@@ -169,7 +167,7 @@ describe('compressing a copied image', () => {
     const frame = app.lastFrame()
     expect(plain(frame)).not.toContain('Save as')
     expect(plain(frame)).toMatch(/Clipboard ╱ Done/)
-    expect(keyRow(frame)).toMatch(/↵ +compress again +u +undo +s +save a copy +o +open/)
+    expect(plain(frame)).toMatch(/o Open +u Undo +s Save a copy +↵ Home/)
     expect(held(clip).format).toBe('jpeg')
     expect(held(clip).bytes.byteLength).toBeLessThan(before)
   }, 30_000)
@@ -214,7 +212,7 @@ describe('compressing a copied image', () => {
     const frame = plain(app.lastFrame())
     expect(frame).toContain('The file you uploaded is no longer in the clipboard.')
     expect(frame).toMatch(/The compressed image is saved to [^.]+\./)
-    expect(keyRow(app.lastFrame())).toMatch(/↵ +compress again +o +open +s +show in Finder/)
+    expect(plain(app.lastFrame())).toMatch(/o Open +f Finder +↵ Home/)
     expect(clip.held()?.kind).toBe('text')
     expect(await readdir(desktop)).toEqual(['Copied image.jpg'])
   }, 30_000)

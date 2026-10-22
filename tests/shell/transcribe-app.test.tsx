@@ -199,11 +199,36 @@ describe('transcribe, from ↵ to Done', () => {
     expect(done).toContain('done')
     expect(done).toMatch(/0:00\s+Welcome/)
     expect(done).toMatch(/1:10\s+Milk/)
-    expect(done.split('\n').at(-1)).toMatch(/↵ +new +o +open +s +finder +c +copy/)
+    // Done's way on, as on every Done: the actions and Home, ←→ to choose.
+    expect(done).toMatch(/o Open +f \S+ +c Copy +↵ Home/)
+    expect(done.split('\n').at(-1)).toMatch(/←→ +choose +↵ +confirm/)
     const md = await readFile(join(out, 'talk.md'), 'utf8')
     expect(md).toContain('## Notes')
     expect(md).toContain('### Milk · 1:10')
   }, 40_000)
+
+  it('leaves Done for home with ↵ on Home, after ←→, and with esc', async () => {
+    for (const leave of [[`${ESC}[D`, RIGHT, ENTER], [ESC]]) {
+      const { app } = await staged()
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes('Transcribe to'))
+      await settle()
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes('Markdown'))
+      await settle()
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes('Save as'))
+      await settle()
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes('↵ Home'))
+      await settle()
+      for (const k of leave) {
+        app.stdin.write(k)
+        await settle(150)
+      }
+      await until(() => frame(app).includes('Drop a video or audio file'))
+    }
+  }, 60_000)
 
   it('skips Transcribe to when Apple Intelligence is off: Format comes first', async () => {
     const { app, fake } = await staged('off')

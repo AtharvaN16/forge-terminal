@@ -91,7 +91,7 @@ import { type Start as ColourStart, typedPair } from './colour/state.js'
 import { COMMANDS, type Command, isCommandBuffer, listCommands, parseCommand } from './commands.js'
 import { type Completion, completePath } from './complete.js'
 import { type CropAt, CropStep } from './components/CropStep.js'
-import { DoneScreen } from './components/Done.js'
+import { DoneActions, DoneScreen, doneActions, doneKeys } from './components/Done.js'
 import { EditDone } from './components/EditDone.js'
 import { EditPicker } from './components/EditPicker.js'
 import { ErrorLine } from './components/ErrorLine.js'
@@ -119,6 +119,7 @@ import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { Working } from './components/Working.js'
 import { NEW_FOLDER, safeStem } from './destinations.js'
+import { doneActionRows } from './done-art.js'
 import {
   actionForRow,
   batchEditRows,
@@ -2358,11 +2359,48 @@ export function App({
   const [donePressed, setDonePressed] = useState<{ key: string; n: number } | undefined>()
   const pressDone = (k: string) => setDonePressed((p) => ({ key: k, n: (p?.n ?? 0) + 1 }))
 
+  /**
+   * Done's ways on besides Home (mockups/done-next-2026-10-round9.html), and
+   * the one chosen with ←→: undefined for Home, where every Done opens.
+   */
+  const doneList = doneActions({
+    preset: presets.done,
+    reveal: revealLabel(),
+    clipboard: clipDone?.status === 'placed' ? 'placed' : undefined,
+  })
+  const [doneSel, setDoneSel] = useState<number | undefined>()
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new result opens on Home
+  useEffect(() => setDoneSel(undefined), [lastResult])
+
   useKeys(
     (input, key) => {
       if (!lastResult) return
-      if (presets.key(input, key)) return
-      if (key.return) {
+      if (presets.key(input)) return
+      const home = doneList.length
+      if (key.leftArrow || key.rightArrow) {
+        setDoneSel((at) => Math.max(0, Math.min(home, (at ?? home) + (key.rightArrow ? 1 : -1))))
+        return
+      }
+      const chosen = key.return ? doneList[doneSel ?? home] : undefined
+      if (chosen) {
+        if (chosen.id === 'open') {
+          pressDone('o')
+          openLastResult()
+        } else if (chosen.id === 'reveal') {
+          pressDone('f')
+          revealLastResult()
+        } else if (chosen.id === 'undo') {
+          pressDone('u')
+          undoCopied()
+        } else if (chosen.id === 'copy' && clipDone?.status === 'placed') {
+          pressDone('s')
+          saveCopied(clipDone.output)
+        } else if (chosen.id === 'preset') presets.open('save')
+        else if (chosen.id === 'edit') presets.open('edit')
+        return
+      }
+      // ↵ on Home, or esc from anywhere on Done: home, ready for the next file.
+      if (key.return || key.escape) {
         presets.reset()
         recordDone()
         // A dashed rule and a blank line either side, so a long session reads
@@ -2393,8 +2431,9 @@ export function App({
         pressDone('o')
         openLastResult()
       }
-      if (input === 's') {
-        pressDone('s')
+      // f shows the file (Done's Finder button); s still does, as it used to.
+      if (input === 'f' || input === 's') {
+        pressDone(input)
         revealLastResult()
       }
       // After an edit of a video or sound file: on to compress, the result
@@ -4623,18 +4662,8 @@ export function App({
    * original back, s keeps a file too. When something else was copied
    * meanwhile, the user's own words (2026-10-16) say where it went instead.
    */
-  const clipDoneProps = (again: string) => {
-    if (clipDone?.status === 'placed') {
-      return {
-        afterName: 'On the clipboard',
-        keys: [
-          ['↵', again],
-          ['u', 'undo'],
-          ['s', 'save a copy'],
-          ['o', 'open'],
-        ] as Array<[string, string]>,
-      }
-    }
+  const clipDoneProps = () => {
+    if (clipDone?.status === 'placed') return { afterName: 'On the clipboard' }
     if (clipDone?.status !== 'changed') return {}
     const inset = HOME_MARGIN + 2
     const verb = mode === 'compress' ? 'compressed' : 'converted'
@@ -4648,16 +4677,7 @@ export function App({
       width: Math.max(8, width - 2 * inset),
       plain: (process.env.NO_COLOR ?? '') !== '',
     }).map((row): Row => [{ text: ' '.repeat(inset) }, ...row])
-    const reveal = revealLabel()
-    return {
-      afterName: displayName(clipDone.saved),
-      block,
-      keys: [
-        ['↵', again],
-        ['o', 'open'],
-        ['s', reveal.charAt(0).toLowerCase() + reveal.slice(1)],
-      ] as Array<[string, string]>,
-    }
+    return { afterName: displayName(clipDone.saved), block }
   }
 
   /** The header bar's trail for the screen on now. */
@@ -5569,26 +5589,33 @@ export function App({
                   }
                   placed={clipDone?.status === 'placed' ? 'On the clipboard' : undefined}
                   width={width}
-                  // The terminal's rows less the header bar (2) and keys (3),
-                  // and one more so the frame never fills the screen.
-                  rows={height - 6}
+                  // The terminal's rows less the header bar (2), the way on
+                  // (3 and a blank row) and keys (3), and one more so the
+                  // frame never fills the screen.
+                  rows={height - 10}
                 />
                 <HintBar
                   width={width}
-                  pairs={
-                    clipDone?.status === 'placed'
-                      ? [
-                          ['↵', 'edit another'],
-                          ['u', 'undo'],
-                          ['s', 'save a copy'],
-                          ['o', 'open'],
-                        ]
-                      : [
-                          ['↵', 'edit another'],
-                          ['o', 'open'],
-                          ['s', revealLabel()],
-                        ]
+                  above={
+                    <DoneActions
+                      mode="edit"
+                      actions={doneList}
+                      selected={doneSel}
+                      width={width}
+                      pressed={donePressed}
+                    />
                   }
+                  pairs={doneKeys({
+                    actions: doneList,
+                    framed:
+                      doneActionRows({
+                        palette,
+                        mode: 'edit',
+                        actions: doneList,
+                        selected: 0,
+                        width,
+                      }) !== undefined,
+                  })}
                   foot={[['ctrl-c', 'quit']]}
                 />
               </Box>
@@ -5616,13 +5643,6 @@ export function App({
                       ]
                     : []),
                 ]}
-                again={
-                  doneBar.mode === 'compress'
-                    ? 'compress again'
-                    : doneBar.mode === 'edit'
-                      ? 'edit another'
-                      : 'convert another'
-                }
                 offer={
                   suggestion
                     ? FORMATS[suggestion.target].label
@@ -5630,15 +5650,13 @@ export function App({
                       ? 'compress it'
                       : undefined
                 }
-                reveal={revealLabel()}
+                actions={doneList}
+                selected={doneSel}
                 width={width}
                 height={height}
                 pressed={donePressed}
-                preset={presets.done}
                 chain={presets.chain}
-                {...clipDoneProps(
-                  doneBar.mode === 'compress' ? 'compress again' : 'convert another',
-                )}
+                {...clipDoneProps()}
               />
             ) : null}
 
