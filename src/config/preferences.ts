@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { type Preset, parsePreset } from '../core/preset.js'
+import { isOutput, type Output } from '../core/transcribe/output.js'
 import { knownFolder } from '../utils/known-folders.js'
 import { configBase } from './config-base.js'
 
@@ -32,6 +33,8 @@ export interface Preferences {
   lastOutput?: string
   /** Saved from Done's Save as preset; run with `--preset name`. */
   presets?: Preset[]
+  /** The format tab made the default on transcribe's Format step. Absent means Markdown. */
+  transcribeFormat?: Output
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -112,6 +115,11 @@ function validate(raw: Record<string, unknown>): { prefs: Preferences; rejected:
     } else {
       rejected.push('lastOutput')
     }
+  }
+
+  if (raw.transcribeFormat !== undefined) {
+    if (isOutput(raw.transcribeFormat)) prefs.transcribeFormat = raw.transcribeFormat
+    else rejected.push('transcribeFormat')
   }
 
   if (raw.presets !== undefined) {

@@ -1,9 +1,11 @@
 /**
  * Transcribe from ↵ on home to Done (spec 2026-10-17-transcribe-design §4.4,
  * mockups/transcribe-2026-10-round2.html): Transcribe to (All, Notes
- * or Transcript; skipped when Apple Intelligence is off), Save as, Working
- * (the sound still downloading, then what has been heard, then a dot per
- * part), and Done. App draws the header bar from `onTrail`.
+ * or Transcript; skipped when Apple Intelligence is off), Format (Markdown,
+ * Word, PDF or text; mockups/transcribe-2026-10-round4.html, T1), Save as,
+ * Working (the sound still downloading, then Transcribing with what has been
+ * heard, then ✓ Transcribing above Writing notes and a square per part), and
+ * Done. App draws the header bar from `onTrail`.
  */
 
 import { dirname, join } from 'node:path'
@@ -21,7 +23,15 @@ import {
   type NotesPart,
   transcriptMarkdown,
 } from '../../core/transcribe/markdown.js'
-import { runTranscribe, transcribeStatus } from '../../engines/transcribe.js'
+import {
+  DEFAULT_OUTPUT,
+  markdownText,
+  OUTPUTS,
+  type Output,
+  outputExt,
+  outputLabel,
+} from '../../core/transcribe/output.js'
+import { renderTranscript, runTranscribe, transcribeStatus } from '../../engines/transcribe.js'
 import type { FetchedSound } from '../../engines/youtube.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
@@ -43,6 +53,7 @@ import type { Palette } from '../theme.js'
 import { type TranscribeSource, transcribeCard } from '../transcribe-stage.js'
 import { useKeys } from '../useKeys.js'
 import { CARD_WIDTH, middleEllipsis } from '../width.js'
+import { elapsed } from '../working-art.js'
 
 export interface TranscribeFlowProps {
   /** A file, or a link whose facts are in. */
@@ -59,14 +70,17 @@ export interface TranscribeFlowProps {
   /** The run failed: home, and why. */
   onFail: (error: ForgeError) => void
   onMakeDefault?: ((path: string) => void) | undefined
+  /** tab on Format: this format is the one Format opens on from now on. */
+  onMakeFormatDefault?: ((format: Output) => void) | undefined
   onSaved?: ((folder: string) => void) | undefined
 }
 
 type Want = 'all' | 'notes' | 'transcript'
+// The format is its own step now, so the rows say what is in the file, not what kind it is.
 const WANTS = [
-  { value: 'all', label: 'All', hint: 'summary, notes and transcript · .md' },
-  { value: 'notes', label: 'Notes', hint: 'summary and notes · .md' },
-  { value: 'transcript', label: 'Transcript', hint: '.md' },
+  { value: 'all', label: 'All', hint: 'summary, notes and transcript' },
+  { value: 'notes', label: 'Notes', hint: 'summary and notes' },
+  { value: 'transcript', label: 'Transcript' },
 ]
 const label = (want: Want) => WANTS.find((w) => w.value === want)?.label ?? ''
 
@@ -75,7 +89,8 @@ type Work =
   /** macOS fetching its speech model for this language, the first time: a real fraction. */
   | { phase: 'model'; at: number; fraction: number }
   | { phase: 'heard'; at: number; seconds: number; of: number }
-  | { phase: 'notes'; at: number; part: number; of: number }
+  /** `at` is when the notes began; `took` is how long transcribing took, said as the clock says it. */
+  | { phase: 'notes'; at: number; took: string; part: number; of: number }
 
 /** The file or video, framed, with its kind in the top edge: as home's card, without the dots. */
 export function transcribeCardRows(
@@ -116,15 +131,27 @@ export function TranscribeFlow({
   onNew,
   onFail,
   onMakeDefault,
+  onMakeFormatDefault,
   onSaved,
 }: TranscribeFlowProps) {
   const palette = useTheme()
-  const [step, setStep] = useState<'checking' | 'choose' | 'save' | 'working' | 'done'>('checking')
+  const [step, setStep] = useState<'checking' | 'choose' | 'format' | 'save' | 'working' | 'done'>(
+    'checking',
+  )
   const [notesOn, setNotesOn] = useState(false)
   const [want, setWant] = useState<Want>('all')
   // Detail is the pill on All and Notes; the row under the cursor decides whether it shows.
   const [detail, setDetail] = useState<Detail>(DEFAULT_DETAIL)
   const [cursor, setCursor] = useState(0)
+  // Format opens on the default; tab on a row makes that one the default.
+  const defaultFormat = prefs.transcribeFormat ?? DEFAULT_OUTPUT
+  const [format, setFormat] = useState<Output>(defaultFormat)
+  const [formatCursor, setFormatCursor] = useState(() =>
+    Math.max(
+      0,
+      OUTPUTS.findIndex((o) => o.id === defaultFormat),
+    ),
+  )
   const here = source.kind === 'file' ? dirname(source.path) : undefined
   const destination = useMemo(
     () => destinationAt(here, prefs, { subfolder: NEW_FOLDER.transcribe }),
@@ -133,7 +160,8 @@ export function TranscribeFlow({
   const [folder, setFolder] = useState(() => expandTilde(prefs.defaultOutput))
   const [name, setName] = useState('')
   const [work, setWork] = useState<Work>({ phase: 'download', at: Date.now() })
-  const [done, setDone] = useState<{ output: string; md: string; parts?: NotesPart[] }>()
+  /** `text` is what c copies: the Markdown for a .md, its words for any other format. */
+  const [done, setDone] = useState<{ output: string; text: string; parts?: NotesPart[] }>()
   const stop = useRef<AbortController | undefined>(undefined)
 
   const origin =
@@ -160,7 +188,7 @@ export function TranscribeFlow({
         const on = status?.notes === 'available'
         setNotesOn(on)
         setWant(on ? 'all' : 'transcript')
-        setStep(on ? 'choose' : 'save')
+        setStep(on ? 'choose' : 'format')
       },
       (e: unknown) => {
         if (live) fail.current(isForgeError(e) ? e : unexpectedError(e))
@@ -180,13 +208,16 @@ export function TranscribeFlow({
   trail.current = onTrail
   useEffect(() => {
     if (step === 'choose') trail.current({ answers: [], current: 'Transcribe to' })
+    // Transcribe to's answer, when there was a question to answer.
+    const asked = notesOn ? [label(want)] : []
+    if (step === 'format') trail.current({ answers: asked, current: 'Format' })
     if (step === 'save') {
-      trail.current({ answers: notesOn ? [label(want)] : [], current: 'Save as' })
+      trail.current({ answers: [...asked, outputLabel(format)], current: 'Save as' })
     }
-  }, [step, want, notesOn])
+  }, [step, want, notesOn, format])
 
   const run = async (to: string, typed: string) => {
-    const output = uniqueOutputPath(join(to, `${typed.trim() || stem}.md`))
+    const output = uniqueOutputPath(join(to, `${typed.trim() || stem}${outputExt(format)}`))
     const trail = [...answered(want), place(to), displayName(output)]
     const ctrl = new AbortController()
     stop.current = ctrl
@@ -211,15 +242,30 @@ export function TranscribeFlow({
           if (e.kind === 'model') setWork({ phase: 'model', at, fraction: e.fraction })
           if (e.kind === 'heard') setWork({ phase: 'heard', at, seconds: e.seconds, of: e.of })
           if (e.kind === 'notes') {
-            setWork({ phase: 'notes', at, part: e.part, of: e.of })
+            // The notes' own clock starts with their first part; transcribing's time stays.
+            setWork((w) =>
+              w.phase === 'notes'
+                ? { ...w, part: e.part, of: e.of }
+                : {
+                    phase: 'notes',
+                    at: Date.now(),
+                    took: elapsed(Date.now() - at),
+                    part: e.part,
+                    of: e.of,
+                  },
+            )
             onTrail({ answers: trail, current: 'Writing notes' })
           }
         },
       })
       const md = transcriptMarkdown(result, origin, { transcript: want !== 'notes' })
-      await writeAtomic(output, Buffer.from(md, 'utf8'))
+      await writeAtomic(output, await renderTranscript(md, format, { signal: ctrl.signal }))
       onSaved?.(to)
-      setDone({ output, md, ...(result.notes ? { parts: result.notes.parts } : {}) })
+      setDone({
+        output,
+        text: format === 'md' ? md : markdownText(md),
+        ...(result.notes ? { parts: result.notes.parts } : {}),
+      })
       onTrail({ answers: trail, current: 'Done' })
       setStep('done')
     } catch (e) {
@@ -251,6 +297,15 @@ export function TranscribeFlow({
     { isActive: step === 'choose' },
   )
 
+  // tab on Format: the highlighted format becomes the default, tagged at once.
+  useKeys(
+    (_input, key) => {
+      const row = OUTPUTS[formatCursor]
+      if (key.tab && row) onMakeFormatDefault?.(row.id)
+    },
+    { isActive: step === 'format' },
+  )
+
   // Done's keys: ↵ new, o open, s finder, c copy.
   useKeys(
     (input, key) => {
@@ -258,7 +313,7 @@ export function TranscribeFlow({
       if (key.return) onNew()
       else if (input === 'o') void openPath(done.output).catch(() => {})
       else if (input === 's') void revealPath(done.output).catch(() => {})
-      else if (input === 'c') copy(done.md)
+      else if (input === 'c') copy(done.text)
     },
     { isActive: step === 'done' },
   )
@@ -281,6 +336,7 @@ export function TranscribeFlow({
         <StepTitle mode="transcribe" title="Transcribe to" width={width} />
         <Box flexGrow={1}>
           <Select
+            key="want"
             items={WANTS}
             width={width - 2 * HOME_MARGIN}
             initialValue={want}
@@ -297,7 +353,7 @@ export function TranscribeFlow({
             }
             onSubmit={(v) => {
               setWant(v as Want)
-              setStep('save')
+              setStep('format')
             }}
             onCancel={onCancel}
           />
@@ -307,6 +363,50 @@ export function TranscribeFlow({
           pairs={[
             ['↑↓', 'choose'],
             ...(pilled ? ([['←→', 'detail']] as Array<[string, string]>) : []),
+            ['↵', 'confirm'],
+          ]}
+          foot={[
+            ['esc', 'back'],
+            ['ctrl-c', 'quit'],
+          ]}
+        />
+      </Box>
+    )
+  }
+
+  if (step === 'format') {
+    return (
+      <Box flexDirection="column" flexGrow={1}>
+        {cardBox}
+        <StepTitle mode="transcribe" title="Format" width={width} />
+        <Box flexGrow={1}>
+          {/*
+            Its own key: in the same place as Transcribe to's list, React would
+            keep that one and its cursor, and Format must open on the default.
+          */}
+          <Select
+            key="format"
+            items={OUTPUTS.map((o) => ({
+              value: o.id,
+              label: o.label,
+              hint: o.ext,
+              ...(o.id === defaultFormat ? { badge: 'default' } : {}),
+            }))}
+            width={width - 2 * HOME_MARGIN}
+            initialValue={format}
+            onHighlight={setFormatCursor}
+            onSubmit={(v) => {
+              setFormat(v as Output)
+              setStep('save')
+            }}
+            onCancel={() => (notesOn ? setStep('choose') : onCancel())}
+          />
+        </Box>
+        <HintBar
+          width={width}
+          pairs={[
+            ['↑↓', 'choose'],
+            ['tab', 'make default'],
             ['↵', 'confirm'],
           ]}
           foot={[
@@ -328,7 +428,7 @@ export function TranscribeFlow({
           name={name}
           onNameChange={setName}
           proposed={stem}
-          ext=".md"
+          ext={outputExt(format)}
           folder={folder}
           onFolder={setFolder}
           presets={destination.presets}
@@ -340,7 +440,7 @@ export function TranscribeFlow({
             setFolder(to)
             void run(to, typed)
           }}
-          onBack={() => (notesOn ? setStep('choose') : onCancel())}
+          onBack={() => setStep('format')}
         />
       </Box>
     )
@@ -379,7 +479,9 @@ export function TranscribeFlow({
           }
           startedAt={work.at}
           progress={progress}
-          search={work.phase === 'notes' ? { n: work.part - 1, of: work.of } : undefined}
+          parts={work.phase === 'notes' ? { done: work.part - 1, of: work.of } : undefined}
+          finished={work.phase === 'notes' ? { label: 'Transcribing', took: work.took } : undefined}
+          next={work.phase === 'heard' && want !== 'transcript' ? 'Writing notes' : undefined}
           stoppable
           width={width}
         />

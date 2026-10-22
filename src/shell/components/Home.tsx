@@ -278,7 +278,7 @@ export function KeyRow({
     lead,
   )
   let shown = [...foot]
-  // A footnote item with no word is a sentence on its own ("nothing is saved until it is done").
+  // A footnote item with no word is a sentence on its own.
   const footText = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
   // The note only where the whole footnote still fits beside it. The
   // footnote ends on the margin, the block's last column.

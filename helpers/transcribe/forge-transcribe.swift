@@ -7,10 +7,13 @@
 //   forge-transcribe status [--locale <id>]
 //   forge-transcribe probe <file>
 //   forge-transcribe run <file> [--locale <id>] [--notes [--detail brief|standard|detailed]]
+//   forge-transcribe render <html> <out> --as docx|pdf
 //
 // Built by scripts/build.mjs on macOS with a 26+ SDK; original Forge code, MIT.
+import AppKit
 import AVFoundation
 import CoreMedia
+import CoreText
 import Foundation
 import FoundationModels
 import Speech
@@ -34,6 +37,10 @@ func fail(_ code: String, _ message: String) -> Never {
 struct Args {
     var command = ""
     var file: String?
+    /// render's second path: where the document goes.
+    var out: String?
+    /// render's format: "docx" or "pdf".
+    var format: String?
     var locale: String?
     var notes = false
     var detail = Detail.standard
@@ -47,7 +54,8 @@ struct Args {
             case "--locale": locale = rest.isEmpty ? nil : rest.removeFirst()
             case "--notes": notes = true
             case "--detail": detail = Detail(rawValue: rest.isEmpty ? "" : rest.removeFirst()) ?? .standard
-            default: if file == nil { file = a }
+            case "--as": format = rest.isEmpty ? nil : rest.removeFirst()
+            default: if file == nil { file = a } else if out == nil { out = a }
             }
         }
     }
@@ -339,6 +347,54 @@ func writeNotes(_ segments: [Segment], detail: Detail) async -> [String: Any]? {
     ]
 }
 
+// MARK: - Documents
+
+/// A transcript's HTML (from Forge's Markdown) set as Word or PDF by AppKit's own
+/// HTML reader, the one TextEdit and textutil use. Word is written whole; PDF is
+/// laid out by Core Text a page at a time, on the paper this Mac's region uses.
+@MainActor
+func render(html: String, out: String, format: String) {
+    guard let data = FileManager.default.contents(atPath: html),
+          let text = try? NSAttributedString(
+              data: data,
+              options: [.documentType: NSAttributedString.DocumentType.html,
+                        .characterEncoding: String.Encoding.utf8.rawValue],
+              documentAttributes: nil)
+    else { fail("render", "The transcript could not be read.") }
+    let url = URL(fileURLWithPath: out)
+    switch format {
+    case "docx":
+        let whole = NSRange(location: 0, length: text.length)
+        guard let docx = try? text.data(from: whole, documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]),
+              (try? docx.write(to: url)) != nil
+        else { fail("render", "The Word document could not be written.") }
+    case "pdf":
+        // US Letter where the region measures in inches, A4 everywhere else.
+        let letter = Locale.current.measurementSystem == .us
+        var page = CGRect(x: 0, y: 0, width: letter ? 612 : 595, height: letter ? 792 : 842)
+        guard let pdf = CGContext(url as CFURL, mediaBox: &page, nil) else {
+            fail("render", "The PDF could not be written.")
+        }
+        let setter = CTFramesetterCreateWithAttributedString(text as CFAttributedString)
+        let area = CGPath(rect: page.insetBy(dx: 64, dy: 64), transform: nil)
+        var at = 0
+        repeat {
+            pdf.beginPDFPage(nil)
+            let frame = CTFramesetterCreateFrame(setter, CFRange(location: at, length: 0), area, nil)
+            CTFrameDraw(frame, pdf)
+            let shown = CTFrameGetVisibleStringRange(frame).length
+            pdf.endPDFPage()
+            // A frame that fits nothing would page for ever.
+            if shown == 0 { break }
+            at += shown
+        } while at < text.length
+        pdf.closePDF()
+    default:
+        fail("usage", "render makes docx or pdf")
+    }
+    emit(["ok": true])
+}
+
 // MARK: - Main
 
 @main
@@ -379,8 +435,13 @@ struct Main {
             } catch {
                 fail("speech", "Transcription failed: \(error.localizedDescription)")
             }
+        case "render":
+            guard let html = args.file, let out = args.out, let format = args.format else {
+                fail("usage", "render needs <html> <out> --as docx|pdf")
+            }
+            await MainActor.run { render(html: html, out: out, format: format) }
         default:
-            fail("usage", "usage: forge-transcribe status|probe|run")
+            fail("usage", "usage: forge-transcribe status|probe|run|render")
         }
     }
 }

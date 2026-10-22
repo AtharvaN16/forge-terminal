@@ -15,7 +15,8 @@ const barLine = (frame: string) =>
   plain(frame)
     .split('\n')
     .find((l) => l.includes('╱╱') && /convert|compress|pdf/.test(l)) ?? ''
-const FOOT = 'nothing is saved until it is done · ctrl-c quit'
+/** Working is on screen: the bar's trail ends in its verb. */
+const isWorking = (frame: string) => / Converting ╱╱$/.test(barLine(frame))
 
 /** Every frame from now until `done` holds, sampled every 10 ms. */
 async function framesUntil(lastFrame: () => string | undefined, done: (f: string) => boolean) {
@@ -65,7 +66,7 @@ describe('Working', () => {
     app.stdin.write(ENTER)
     const frames = await framesUntil(app.lastFrame, (f) => f.includes('convert another'))
     expect(frames.at(-1)?.frame).toContain('convert another')
-    expect(frames.some(({ frame }) => frame.includes(FOOT))).toBe(false)
+    expect(frames.some(({ frame }) => isWorking(frame))).toBe(false)
   }, 30_000)
 
   it('appears once a slow job has run 0.3 s: the bar ends in the verb, the line says the true phase', async () => {
@@ -74,13 +75,13 @@ describe('Working', () => {
     app.stdin.write(ENTER)
     const frames = await framesUntil(app.lastFrame, (f) => f.includes('convert another'))
 
-    const working = frames.filter(({ frame }) => frame.includes(FOOT))
+    const working = frames.filter(({ frame }) => isWorking(frame))
     expect(working.length).toBeGreaterThan(0)
     // Not before 0.3 s; the frames before it keep the bar and the card.
     expect(working[0]?.at).toBeGreaterThanOrEqual(250)
     const before = frames.filter(({ at }) => at < 200)
     for (const { frame } of before) {
-      expect(frame).not.toContain(FOOT)
+      expect(isWorking(frame)).toBe(false)
       expect(frame).toContain('noise.png')
     }
 
@@ -91,6 +92,9 @@ describe('Working', () => {
     expect(frame).not.toMatch(/\d+%/)
     expect(frame).not.toMatch(/reading.*decoding/i)
     expect(frame).not.toContain('Converting…')
+    // No footnote on the key row (2026-10-22): only what the keys do.
+    expect(frame).not.toContain('nothing is saved')
+    expect(frame.trimEnd().split('\n').at(-1)).toMatch(/^ {30,}ctrl-c quit$/)
   }, 30_000)
 
   it('leaves no Working behind once the job is done', async () => {
@@ -99,7 +103,7 @@ describe('Working', () => {
     app.stdin.write(ENTER)
     await framesUntil(app.lastFrame, (f) => f.includes('convert another'))
     await settle(200)
-    expect(plain(app.lastFrame())).not.toContain(FOOT)
+    expect(isWorking(plain(app.lastFrame()))).toBe(false)
     expect(plain(app.frames.join('\n'))).toMatch(/Converting ╱╱/)
   }, 30_000)
 })

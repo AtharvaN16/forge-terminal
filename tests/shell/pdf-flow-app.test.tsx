@@ -181,6 +181,34 @@ describe('/pdf end to end through App', () => {
    * JPEG or PNG are — arrow down, Enter — with the file still staged when it
    * lands.
    */
+  it('the hub Convert row opens the convert picker, and esc comes back to the hub', async () => {
+    const dir = await makeTempDir()
+    const file = await makePdf(dir, 'doc.pdf', 3)
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const { stdin, lastFrame } = render(<App initialWidth={100} initialHeight={24} prefs={prefs} />)
+
+    stdin.write(file)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    stdin.write(DOWN + DOWN + DOWN) // the picker's /pdf row
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    expect(lastFrame() ?? '').toContain('Choose an operation')
+
+    // Split → Extract → Delete → Rotate → Convert (Compress is dimmed: no images).
+    stdin.write(DOWN + DOWN + DOWN + DOWN)
+    await settle()
+    stdin.write(ENTER)
+    await settle(400)
+    expect(lastFrame() ?? '').toContain('Convert to')
+
+    stdin.write(ESC)
+    await settle(300)
+    expect(lastFrame() ?? '').toContain('Choose an operation')
+  }, 20_000)
+
   it('the target picker has a selectable row into /pdf, not just a hint', async () => {
     const dir = await makeTempDir()
     const file = await makePdf(dir, 'doc.pdf', 3)

@@ -3,10 +3,13 @@
  * §4.1): a Swift program built into dist/helpers on macOS. Apple's speech
  * recogniser writes the transcript and Apple's on-device model the notes;
  * this file only finds the helper, runs it, and turns its JSON lines into
- * data and `ForgeError`s.
+ * data and `ForgeError`s. The helper also sets a transcript as Word or PDF
+ * (AppKit reads the HTML; nothing to install).
  */
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -19,6 +22,7 @@ import {
 } from '../core/errors.js'
 import { DEFAULT_DETAIL, type Detail } from '../core/transcribe/detail.js'
 import type { Transcription } from '../core/transcribe/markdown.js'
+import { markdownHtml, markdownText, type Output } from '../core/transcribe/output.js'
 
 export interface TranscribeStatus {
   speech: boolean
@@ -175,4 +179,28 @@ function eventOf(line: Line): TranscribeEvent | undefined {
     return { kind: 'heard', seconds: Number(line.seconds), of: Number(line.of) }
   if (line.event === 'notes') return { kind: 'notes', part: Number(line.part), of: Number(line.of) }
   return undefined
+}
+
+/**
+ * The transcript's bytes in the chosen format (mockups/transcribe-2026-10-round4.html,
+ * T1): the Markdown itself, its words as text, or — through the helper —
+ * its HTML set as Word or PDF. The caller writes the bytes atomically.
+ */
+export async function renderTranscript(
+  md: string,
+  format: Output,
+  opts: { signal?: AbortSignal | undefined } = {},
+): Promise<Buffer> {
+  if (format === 'md') return Buffer.from(md, 'utf8')
+  if (format === 'txt') return Buffer.from(markdownText(md), 'utf8')
+  const dir = await mkdtemp(join(tmpdir(), 'forge-render-'))
+  try {
+    const html = join(dir, 'transcript.html')
+    const out = join(dir, `transcript.${format}`)
+    await writeFile(html, markdownHtml(md), 'utf8')
+    await call(['render', html, out, '--as', format], out, { signal: opts.signal })
+    return await readFile(out)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 }

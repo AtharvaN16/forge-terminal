@@ -67,6 +67,19 @@ describe('forge transcribe', () => {
     })
   })
 
+  it('takes --format md | docx | pdf | txt, or the names Markdown, Word and Text', () => {
+    expect(parseArgs(['transcribe', 'talk.mp4', '--format', 'pdf'])).toMatchObject({
+      format: 'pdf',
+    })
+    expect(parseArgs(['transcribe', 'talk.mp4', '--format', 'Word'])).toMatchObject({
+      format: 'docx',
+    })
+    expect(parseArgs(['transcribe', 'talk.mp4', '--format', 'text'])).toMatchObject({
+      format: 'txt',
+    })
+    expect(() => parseArgs(['transcribe', 'talk.mp4', '--format', 'rtf'])).toThrow(/not rtf/)
+  })
+
   it.each([
     [['transcribe']],
     [['transcribe', 'a.mp4', 'b.mp4']],

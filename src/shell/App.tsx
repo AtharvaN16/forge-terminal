@@ -47,6 +47,7 @@ import { uniqueOutputPath } from '../core/output-path.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import { readLink } from '../core/transcribe/links.js'
+import type { Output } from '../core/transcribe/output.js'
 import type {
   Box as CropBox,
   FormatId,
@@ -1255,6 +1256,15 @@ export function App({
   const [savedAs, setSavedAs] = useState<string | undefined>(undefined)
   /** Where `PdfFlow` is, as the header bar's trail — it owns its own steps. */
   const [pdfTrailNow, setPdfTrailNow] = useState<Trail>({ answers: [], current: 'Action' })
+  /**
+   * Set while compress or convert was opened from the /pdf hub's Compress or
+   * Convert row: esc on that mode's first question returns to the hub rather
+   * than to home.
+   */
+  const [fromPdfHub, setFromPdfHub] = useState(false)
+  useEffect(() => {
+    if (step === 'idle') setFromPdfHub(false)
+  }, [step])
   /** Where `WatchFlow` is, as the header bar's trail — it owns its own steps. */
   const [watchTrailNow, setWatchTrailNow] = useState<Trail>({ answers: [], current: 'Format' })
   const [transcribeTrailNow, setTranscribeTrailNow] = useState<Trail>({
@@ -3105,6 +3115,7 @@ export function App({
    * convert flow then refused (UX audit #7).
    */
   const clearSource = () => {
+    setFromPdfHub(false)
     setStage(clearStage())
     setValues({})
     setStep('idle')
@@ -3127,6 +3138,27 @@ export function App({
    * Wired up only where the staged source is a document (see the `target`
    * step below) — an image still uses `clearSource`, unchanged.
    */
+  /** The hub's Compress and Convert rows: that mode opens on the staged PDF, as its own command would. */
+  const handoffFromPdf = (to: 'compress' | 'convert') => {
+    if (!source) return
+    setFromPdfHub(true)
+    setValues({})
+    setMode(to)
+    if (to === 'compress') {
+      setStep('mode')
+      return
+    }
+    setStep(hasConvertTarget(source) ? 'target' : 'idle')
+  }
+
+  /** esc on the first question of a mode opened from the hub: back to the hub, the file still staged. */
+  const backToPdfHub = () => {
+    setFromPdfHub(false)
+    setValues({})
+    setMode('pdf')
+    setStep('pdf')
+  }
+
   const backToPromptKeepingStage = () => {
     setValues({})
     setStep('idle')
@@ -3225,6 +3257,12 @@ export function App({
   const rememberSaved = (folder: string) => {
     setLivePrefs((p) => ({ ...p, lastOutput: folder }))
     savePreferences({ lastOutput: folder }).catch(() => {})
+  }
+
+  /** tab on transcribe's Format: the format it opens on from now on. The tag moving says so. */
+  const makeFormatDefault = (format: Output) => {
+    setLivePrefs((p) => ({ ...p, transcribeFormat: format }))
+    savePreferences({ transcribeFormat: format }).catch(showError)
   }
 
   const makeDefault = (path: string) => {
@@ -4813,7 +4851,7 @@ export function App({
                     const sound = source.kind === 'media' && !hasPicture(source)
                     setStep(chosen === 'size' ? 'size' : sound ? 'bitrate' : 'quality')
                   }}
-                  onCancel={clearSource}
+                  onCancel={fromPdfHub ? backToPdfHub : clearSource}
                   showHints={band !== 'compact'}
                 />
                 <HintBar
@@ -4821,8 +4859,9 @@ export function App({
                   pairs={[
                     ['↑↓', 'choose'],
                     ['↵', 'confirm'],
-                    // Method is the first question: esc takes the file off the bench.
-                    ['esc', 'remove file'],
+                    // Method is the first question: esc takes the file off the bench,
+                    // or back to the /pdf hub it was opened from.
+                    ['esc', fromPdfHub ? 'back' : 'remove file'],
                   ]}
                 />
               </Box>
@@ -4947,7 +4986,13 @@ export function App({
                     }
                     chooseTarget(source, target)
                   }}
-                  onCancel={source.kind === 'document' ? backToPromptKeepingStage : clearSource}
+                  onCancel={
+                    fromPdfHub
+                      ? backToPdfHub
+                      : source.kind === 'document'
+                        ? backToPromptKeepingStage
+                        : clearSource
+                  }
                   showHints={band !== 'compact'}
                 />
                 <HintBar
@@ -5620,6 +5665,7 @@ export function App({
                   holdFailure(e)
                 }}
                 onMakeDefault={makeDefault}
+                onMakeFormatDefault={makeFormatDefault}
                 onSaved={rememberSaved}
               />
             ) : null}
@@ -5678,6 +5724,7 @@ export function App({
                   setPdfReopen(undefined)
                   backToPromptKeepingStage()
                 }}
+                onHandoff={handoffFromPdf}
                 onTrail={setPdfTrailNow}
                 onMakeDefault={makeDefault}
                 onSaved={rememberSaved}

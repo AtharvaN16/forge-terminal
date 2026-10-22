@@ -1058,7 +1058,6 @@ export function WatchFlow({
           startedAt={work.at}
           pages={work.total > 0 ? { done: work.done, total: work.total } : undefined}
           unit={unit}
-          savedAsItGoes
           width={width}
         />
       </Box>

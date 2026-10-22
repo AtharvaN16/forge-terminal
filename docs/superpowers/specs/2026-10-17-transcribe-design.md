@@ -7,7 +7,7 @@ Spike measurements are in §9.
 ## 1. What it is
 
 A sixth mode on home, **transcribe**, in red. It turns a video or sound file, a
-typed path, or a YouTube link into a Markdown file: the transcript, and —
+typed path, or a YouTube link into a Markdown, Word, PDF or text file: the transcript, and —
 when Apple Intelligence is on — a summary and notes for each part of the
 talk. Everything runs on the Mac: Apple's speech recogniser writes the
 transcript, Apple's on-device model writes the notes.
@@ -20,8 +20,23 @@ transcript, Apple's on-device model writes the notes.
 - Input: a dropped file, a typed path, or a YouTube link.
 - Mac only (macOS 26 or later). Windows only if it gains equivalent built-in
   tools.
-- Output is Markdown. **All** (summary, notes per part, transcript),
+- **All** (summary, notes per part, transcript),
   **Notes** (the same without the transcript) or **Transcript** (renamed 2026-10-19). No subtitles.
+- **Format** (2026-10-22, mockups/transcribe-2026-10-round4.html tab 3, T1):
+  its own step after Transcribe to — Markdown, Word, PDF or Text, a plain
+  list with the extension on the highlighted row. One format is the
+  default: Save as's amber "default" tag marks it, tab moves it
+  (`transcribeFormat` in the config), and the list opens on it. The
+  Transcribe to rows no longer say ".md". With Apple Intelligence off,
+  Format is the first step. CLI: `--format md|docx|pdf|txt` (or the names),
+  else `-o`'s extension, else Markdown.
+- **Working** (2026-10-22, round 4): Transcribing with its bar, and Writing
+  notes faint under it while it waits. Once the notes start, the bar goes:
+  "✓ Transcribing 1m 08s" above "⠹ Writing notes" and a two-cell square per
+  part — written, being written (half the red), still to come (the track) —
+  with "n of N parts". Each step keeps its own clock. The clock is minutes
+  past a minute everywhere ("4m 12s", "1h 03m"), and no Working screen has
+  the "nothing is saved until it is done" footnote any more.
 - The file ends with one line (moved from under the summary, 2026-10-19):
   *Summary and notes by Apple Intelligence. They may contain mistakes.*
 - YouTube links stay, through yt-dlp as an add-on, after the terms-of-service
@@ -85,6 +100,9 @@ Every line on stdout is one JSON object.
   `{"ok":true,"speech":bool,"locale":"en-US","notes":"available"|"off"|"unsupported"}`
 - `forge-transcribe probe <file>` →
   `{"ok":true,"seconds":3717.0,"sound":true}`
+- `forge-transcribe render <html> <out> --as docx|pdf` → `{"ok":true}`: AppKit
+  reads the HTML of the .md and writes Word (Office Open XML) or a PDF laid
+  out by Core Text, Letter where the region measures in inches, else A4.
 - `forge-transcribe run <file> --locale <id> [--notes]` → progress lines, then
   the result:
   - `{"event":"model","fraction":0.4}` — macOS fetching the speech model
@@ -106,11 +124,14 @@ Every line on stdout is one JSON object.
   they have 60 words, or at 140 words, each led by its time in bold).
   The disclaimer is the last line. Notes: the same, ending after `## Notes` (CLI `--to notes`; refused when
   Apple Intelligence is off). Transcript: title, source line, paragraphs, no headings.
+- `src/core/transcribe/output.ts` — the four formats; the .md as HTML (for
+  Word and PDF, what was said escaped) and as text (the marks dropped).
 
 ### 4.3 Engines
 
 - `src/engines/transcribe.ts` — find the helper, run it with progress and
-  abort, map its errors to `ForgeError`s.
+  abort, map its errors to `ForgeError`s; `renderTranscript` gives the bytes
+  in the chosen format (Word and PDF through the helper's `render`).
 - `src/engines/youtube.ts` — find yt-dlp (the extension), the one run per link
   (metadata event, then byte progress, then the file), the update-and-retry.
 
@@ -129,7 +150,7 @@ Every line on stdout is one JSON object.
 
 ### 4.5 CLI
 
-`forge transcribe <file|link> [--to all|notes|transcript] [--language <id>] [-o <path>]`.
+`forge transcribe <file|link> [--to all|notes|transcript] [--format md|docx|pdf|txt] [--language <id>] [-o <path>]`.
 Prints the same `✓ name` line as convert; refusals as the other commands do.
 
 ## 5. Out of scope

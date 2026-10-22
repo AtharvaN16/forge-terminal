@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { TranscribeIntent } from '../../src/cli/args.js'
 import { runTranscribeCommand } from '../../src/cli/transcribe-command.js'
 import { transcriptMarkdown } from '../../src/core/transcribe/markdown.js'
+import { markdownText } from '../../src/core/transcribe/output.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makePng, makeTempDir } from '../helpers/fixtures.js'
@@ -139,6 +140,56 @@ describe('forge transcribe <file>', () => {
     const target = join(await makeTempDir(), 'notes.md')
     expect((await run(intent(input, { output: target }))).code).toBe(0)
     expect(existsSync(target)).toBe(true)
+  })
+
+  it('says one part as "1 part"', async () => {
+    const { input } = await setUp()
+    process.env.FORGE_TRANSCRIBE_HELPER = (
+      await fakeTranscribeHelper({
+        status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'available' }] },
+        run: { lines: [{ ...RESULT, notes: { ...NOTES, parts: NOTES.parts.slice(0, 1) } }] },
+      })
+    ).path
+    const { out } = await run(intent(input))
+    expect(out).toEqual(['✓ talk.md   1:15 → 5 words · 1 part'])
+  })
+
+  it('writes text with --format txt: the same words, no marks', async () => {
+    const { dir, input } = await setUp()
+    const { code, out } = await run(intent(input, { format: 'txt' }))
+    expect(code).toBe(0)
+    expect(await readFile(join(dir, 'talk.txt'), 'utf8')).toBe(
+      markdownText(
+        transcriptMarkdown(
+          { seconds: 75, segments: RESULT.segments, notes: NOTES },
+          { title: 'talk', from: 'talk.mp4' },
+        ),
+      ),
+    )
+    expect(existsSync(join(dir, 'talk.md'))).toBe(false)
+    expect(out[0]).toMatch(/^✓ talk\.txt /)
+  })
+
+  it('has the helper set Word with --format docx', async () => {
+    const { dir, input } = await setUp()
+    process.env.FORGE_TRANSCRIBE_HELPER = (
+      await fakeTranscribeHelper({
+        status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'available' }] },
+        run: { lines: [{ ...RESULT, notes: NOTES }] },
+        render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'docx:' } },
+      })
+    ).path
+    expect((await run(intent(input, { format: 'docx' }))).code).toBe(0)
+    expect(
+      (await readFile(join(dir, 'talk.docx'), 'utf8')).startsWith('docx:<!doctype html>'),
+    ).toBe(true)
+  })
+
+  it('takes the format from -o when there is no --format', async () => {
+    const { input } = await setUp()
+    const target = join(await makeTempDir(), 'notes.txt')
+    expect((await run(intent(input, { output: target }))).code).toBe(0)
+    expect(await readFile(target, 'utf8')).toMatch(/^talk\n/)
   })
 
   it('refuses to replace a file that is already there, unless --force', async () => {

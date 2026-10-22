@@ -205,3 +205,14 @@ describe('presets', () => {
     expect(warning).toContain('presets')
   })
 })
+
+describe('transcribeFormat', () => {
+  it('is the format made the default on Format, and one Forge does not write is rejected', async () => {
+    await savePreferences({ transcribeFormat: 'pdf' })
+    expect((await loadPreferences()).prefs.transcribeFormat).toBe('pdf')
+    await writeFile(configPath(), JSON.stringify({ transcribeFormat: 'rtf' }))
+    const bad = await loadPreferences()
+    expect(bad.prefs.transcribeFormat).toBeUndefined()
+    expect(bad.warning).toContain('transcribeFormat')
+  })
+})
