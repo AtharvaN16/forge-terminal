@@ -3441,6 +3441,11 @@ export function App({
       setStep('quality')
       return
     }
+    // Compress has no format picker: by size, the field the number came from.
+    if (mode === 'compress') {
+      setStep(values.mode === 'size' ? 'size' : 'mode')
+      return
+    }
     setStep(specFor('dpi') ? 'dpi' : 'target')
   }
 
@@ -5125,7 +5130,10 @@ export function App({
                     if (copied && mode === 'compress' && grows) return
                     chooseQuality(q)
                   }}
-                  onCancel={() => setStep(dpiSpec ? 'dpi' : 'target')}
+                  // Compress has no format picker: its question before this is the method.
+                  onCancel={() =>
+                    setStep(dpiSpec ? 'dpi' : mode === 'compress' ? 'mode' : 'target')
+                  }
                   size={qualitySize}
                   sourceBytes={source.bytes}
                   width={width}
