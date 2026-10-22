@@ -300,6 +300,7 @@ export function watchListRows({
   failedAt,
   back = 0,
   fresh = 0,
+  still = false,
 }: {
   palette: Palette
   rows: Row[]
@@ -309,11 +310,13 @@ export function watchListRows({
   failedAt: number[]
   back?: number
   fresh?: number
+  /** Nothing more will land (a batch's Done): no row is kept for "↓ 1 new". */
+  still?: boolean
 }): Row[] {
   const end = columns - HOME_MARGIN
   const total = rows.length
   if (total <= room) return [[], ...rows]
-  const shown = back > 0 ? room - 1 : room
+  const shown = back > 0 && !still ? room - 1 : room
   const start = Math.max(0, total - shown - back)
   const thumb = Math.max(1, Math.round((shown * shown) / total))
   const at = Math.round((start / Math.max(1, total - shown)) * (shown - thumb))
@@ -327,7 +330,7 @@ export function watchListRows({
   return [
     above > 0 ? right({ text: `↑ ${above} failed`, fg: palette.fail }) : [],
     ...body,
-    ...(back > 0
+    ...(back > 0 && !still
       ? [fresh > 0 ? right({ text: `↓ ${fresh} new`, fg: palette.accent, bold: true }) : []]
       : []),
   ]

@@ -80,7 +80,7 @@ describe('Boost resolution on several images', () => {
       await until(() => frame().includes('Save as'))
       expect(frame()).toMatch(/Boost resolution ╱ 2× ╱ Save as/)
       app.stdin.write(ENTER)
-      await until(() => frame().includes('go home'))
+      await until(() => frame().includes('↵ Home'))
       expect((await readdir(out)).sort()).toEqual(['a-2x.png', 'b-2x.png'])
       const meta = await sharp(`${out}/a-2x.png`).metadata()
       expect([meta.width, meta.height]).toEqual([80, 60])

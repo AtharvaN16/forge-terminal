@@ -75,18 +75,22 @@ describe('several files in compress mode', () => {
     await app.until(() => app.frame().includes('Save as'))
     expect(app.frame()).toContain('one-small.jpg … 3 files')
     app.stdin.write(ENTER)
-    await app.until(() => app.frame().includes('go home'))
+    await app.until(() => app.frame().includes('↵ Home'))
 
     const done = app.frame()
     expect(done).toContain('3 images')
     for (const name of ['one.jpg', 'two.jpg', 'three.jpg']) expect(done).toContain(name)
     expect(done).toMatch(/one\.jpg +\d.* → +\d.*−\d+%/)
     expect(done).not.toContain('Watching')
+    expect(done).toMatch(/o Open +f \w+ +↵ Home/)
     expect((await readdir(out)).sort()).toEqual([
       'one-small.jpg',
       'three-small.jpg',
       'two-small.jpg',
     ])
+    // esc goes home, as on every Done, with nothing staged.
+    app.stdin.write(String.fromCharCode(27))
+    await app.until(() => app.frame().includes('1 convert') && !app.frame().includes('3 images'))
   }, 40_000)
 
   it('to a target size: each file under it, and a file already under it left alone', async () => {
@@ -107,7 +111,7 @@ describe('several files in compress mode', () => {
     app.stdin.write(ENTER)
     await app.until(() => app.frame().includes('Save as'))
     app.stdin.write(ENTER)
-    await app.until(() => app.frame().includes('go home'), 30_000)
+    await app.until(() => app.frame().includes('↵ Home'), 30_000)
     const done = app.frame()
     expect(done).toMatch(/tiny\.jpg +already under that size/)
     expect(existsSync(join(out, 'tiny-small.jpg'))).toBe(false)
@@ -134,7 +138,7 @@ describe('several files in compress mode', () => {
         expect(app.frame()).toContain('one-small (1).jpg …')
         app.stdin.write(ENTER)
       }
-      await app.until(() => app.frame().includes('go home'))
+      await app.until(() => app.frame().includes('↵ Home'))
       unmount?.()
       unmount = undefined
     }
@@ -184,7 +188,7 @@ describe('several images in edit mode', () => {
     await app.until(() => app.frame().includes('Save as'))
     expect(app.frame()).toMatch(/Resize ╱ 100% ╱ Save as/)
     app.stdin.write(ENTER)
-    await app.until(() => app.frame().includes('go home'))
+    await app.until(() => app.frame().includes('↵ Home'))
     expect(app.frame()).toMatch(/two\.jpg +JPEG → JPEG/)
     expect((await readdir(out)).sort()).toEqual([
       'one-220x220.jpg',
@@ -202,7 +206,7 @@ describe('several images in edit mode', () => {
     app.stdin.write(ENTER)
     await app.until(() => app.frame().includes('Save as'))
     app.stdin.write(ENTER)
-    await app.until(() => app.frame().includes('go home'))
+    await app.until(() => app.frame().includes('↵ Home'))
     expect(app.frame()).toMatch(/one\.jpg +no empty edges/)
   }, 40_000)
 
@@ -236,7 +240,7 @@ describe('stopping a batch', () => {
     app.stdin.write(ENTER)
     await settle(60)
     app.stdin.write(String.fromCharCode(27))
-    await app.until(() => app.frame().includes('go home'), 30_000)
+    await app.until(() => app.frame().includes('↵ Home'), 30_000)
     const done = app.frame()
     expect(done).toContain('stopped')
     expect(done).not.toContain('Watching')
@@ -264,7 +268,7 @@ describe('several files in convert mode', () => {
     app.stdin.write(ENTER)
     await app.until(() => app.frame().includes('Save as'))
     app.stdin.write(ENTER)
-    await app.until(() => app.frame().includes('go home'))
+    await app.until(() => app.frame().includes('↵ Home'))
     expect(app.frame()).toMatch(/two\.jpg +JPEG → WebP/)
     expect(app.frame()).toMatch(/convert ╱.*╱ Done/)
     expect((await readdir(out)).sort()).toEqual(['one.webp', 'three.webp', 'two.webp'])

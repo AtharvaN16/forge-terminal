@@ -35,6 +35,7 @@ import {
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { windowOver } from '../colour/system-art.js'
+import { DoneActions, doneKeys } from '../components/Done.js'
 import { ErrorLine } from '../components/ErrorLine.js'
 import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
@@ -46,11 +47,11 @@ import { SIZE_UNIT_IDS, SizeField, type SizeUnit } from '../components/SizeField
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
 import { NEW_FOLDER } from '../destinations.js'
-import { doneBody } from '../done-art.js'
+import { type DoneAction, doneActionRows, doneBody } from '../done-art.js'
 import { blank, HOME_MARGIN, type Row } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { titleRow } from '../quality-art.js'
-import { openPath } from '../reveal.js'
+import { openPath, revealLabel, revealPath } from '../reveal.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeColours, SYMBOLS } from '../theme.js'
@@ -512,6 +513,12 @@ export function WatchFlow({
       ...batchRows(scan.sources, done).map((row) => rowOf(row, mode, at)),
     ])
     setWatching(watch && !done.outcome.cancelled)
+    // A batch's Done reads from the top, failures and all; a watched list
+    // follows the newest at the bottom, where the eye is when a file lands.
+    if (!watch || done.outcome.cancelled) {
+      const listed = scan.failures.length + scan.sources.length
+      setBack(Math.max(0, listed - listRoom(avail)))
+    }
     setStep('watching')
     // Stopped: nothing more is done, so a folder is not watched either.
     if (!watch || done.outcome.cancelled) return
@@ -1123,8 +1130,9 @@ export function WatchFlow({
       avail={avail}
       width={width}
       onScroll={(d) => {
-        const room = listRoom(avail, watching)
-        const most = Math.max(0, files.length - (room - 1))
+        const room = listRoom(avail)
+        // Watched, one row is kept for "↓ 1 new"; a batch's Done keeps none.
+        const most = Math.max(0, files.length - (watching ? room - 1 : room))
         setBack((b) => {
           const next = Math.max(0, Math.min(most, b + d))
           if (next === 0) setFresh(0)
@@ -1141,8 +1149,8 @@ export function WatchFlow({
   )
 }
 
-/** The list's room: what is left under the bar, the words (a folder's) and the hairline. */
-const listRoom = (avail: number, watching: boolean) => Math.max(3, avail - (watching ? 12 : 9))
+/** The list's room: what is left under the bar, the hairline, and a folder's words or a Done's way on. */
+const listRoom = (avail: number) => Math.max(3, avail - 12)
 
 /**
  * The watching screen (T1, R1): Done's bar, the words, the hairline, the
@@ -1185,15 +1193,40 @@ function Watching({
   const flashing = files.some((f) => f.doneAt !== undefined && Date.now() - f.doneAt < FLASH_MS)
   // The hairline's light says the folder is watched; a batch's Done holds still.
   const tick = useTicker((moving && watching) || running || flashing, FRAME_MS)
-  const room = listRoom(avail, watching)
+  const room = listRoom(avail)
   const scrolls = files.length > room
 
+  /**
+   * A batch's Done ends in every Done's way on (mockups/done-next-2026-10-
+   * round9.html): Open and Finder for the folder the files went to, then
+   * Home, selected as Done opens. ←→ chooses, ↵ confirms, each keeps its key
+   * (s still reveals), esc goes home. Watching keeps its one key: ↵ stops.
+   */
+  const doneList: DoneAction[] = [
+    { key: 'o', label: 'Open' },
+    { key: 'f', label: revealLabel().replace(/^Show in /, '') },
+  ]
+  const [sel, setSel] = useState<number | undefined>()
   useKeys((input, key) => {
-    if (key.return) onClose()
-    else if (input === 'o') void openPath(folder).catch(() => {})
-    else if (key.upArrow && scrolls) onScroll(1)
+    if (key.upArrow && scrolls) onScroll(1)
     else if (key.downArrow && scrolls) onScroll(-1)
+    else if (watching) {
+      if (key.return) onClose()
+      else if (input === 'o') void openPath(folder).catch(() => {})
+    } else {
+      const home = doneList.length
+      if (key.leftArrow || key.rightArrow) {
+        setSel((at) => Math.max(0, Math.min(home, (at ?? home) + (key.rightArrow ? 1 : -1))))
+        return
+      }
+      const chosen = key.return ? doneList[sel ?? home]?.key : input
+      if (key.escape || (key.return && chosen === undefined)) onClose()
+      else if (chosen === 'o') void openPath(folder).catch(() => {})
+      else if (chosen === 'f' || chosen === 's') void revealPath(folder).catch(() => {})
+    }
   })
+  const framed =
+    doneActionRows({ palette, mode, actions: doneList, selected: 0, width }) !== undefined
 
   const noun = kind ? countOf(kind, totals.n) : `${totals.n} ${totals.n === 1 ? 'file' : 'files'}`
   const formats = (s: Set<string>) => [...s].filter(Boolean).join(' · ') || '—'
@@ -1269,20 +1302,41 @@ function Watching({
         <Lines
           rows={[
             hairlineRow({ palette, mode, width, at: light }),
-            ...watchListRows({ palette, rows, room, width, failedAt, back, fresh }),
+            ...watchListRows({
+              palette,
+              rows,
+              room,
+              width,
+              failedAt,
+              back,
+              fresh,
+              still: !watching,
+            }),
           ]}
           shift={false}
         />
       </Box>
-      <HintBar
-        width={width}
-        pairs={[
-          ['↵', watching ? 'stop and go home' : 'go home'],
-          ['o', 'open folder'],
-          ...(scrolls ? ([['↑↓', 'scroll']] as Array<[string, string]>) : []),
-        ]}
-        foot={[['ctrl-c', 'quit']]}
-      />
+      {watching ? (
+        <HintBar
+          width={width}
+          pairs={[
+            ['↵', 'stop and go home'],
+            ['o', 'open folder'],
+            ...(scrolls ? ([['↑↓', 'scroll']] as Array<[string, string]>) : []),
+          ]}
+          foot={[['ctrl-c', 'quit']]}
+        />
+      ) : (
+        <HintBar
+          width={width}
+          above={<DoneActions mode={mode} actions={doneList} selected={sel} width={width} />}
+          pairs={[
+            ...doneKeys({ actions: doneList, framed }),
+            ...(scrolls ? ([['↑↓', 'scroll']] as Array<[string, string]>) : []),
+          ]}
+          foot={[['ctrl-c', 'quit']]}
+        />
+      )}
     </Box>
   )
 }

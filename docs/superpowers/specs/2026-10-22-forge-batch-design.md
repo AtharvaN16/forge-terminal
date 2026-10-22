@@ -85,6 +85,13 @@ percentage added.
 - **The PDF menu's Compress and Convert rows** take several PDFs as one batch.
   - Compress is dimmed only when none of them has images to shrink.
   - esc on the batch's first question goes back to the menu.
+- **A batch's Done ends in every Done's way on** (done-next round 9, Y31):
+  - Open and Finder for the folder the files went to, then Home, selected as
+    Done opens.
+  - ←→ chooses and ↵ confirms; each button keeps its key; esc goes home.
+  - The list opens at its top, failures first. No row is kept for "↓ 1 new",
+    since nothing more lands.
+  - A watched folder keeps its own screen: ↵ stops and goes home.
 - **The "isn't supported yet" refusal is gone.** Every way of reaching
   several files now leads to a batch.
 
