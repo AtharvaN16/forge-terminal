@@ -34,6 +34,7 @@ import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
+import { NEW_FOLDER } from '../destinations.js'
 import { doneBody } from '../done-art.js'
 import { blank, HOME_MARGIN, type Row } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
@@ -192,7 +193,7 @@ export function WatchFlow({
   // Save as, as today: the configured default first, the folder's own place as Same location.
   const first = scan.sources[0]
   const destination = useMemo(
-    () => (first ? destinationOption(first, prefs, { subfolder: true }) : undefined),
+    () => (first ? destinationOption(first, prefs, { subfolder: NEW_FOLDER.convert }) : undefined),
     [first, prefs],
   )
   const [folder, setFolder] = useState(() => expandTilde(prefs.defaultOutput))

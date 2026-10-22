@@ -8,7 +8,7 @@ import type { Choice, PathPreset } from '../../core/actions/index.js'
 import { displayName } from '../../utils/display-path.js'
 import { useClickTarget } from '../ClickTargets.js'
 import { completePath, isFolderCompletion } from '../complete.js'
-import { destinationRows, isPathQuery, NO_MATCH } from '../destinations.js'
+import { destinationRows, isPathQuery, NEW_FOLDER, NO_MATCH } from '../destinations.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { easeOut, mix, motionEnabled, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
@@ -51,10 +51,11 @@ type At = string | typeof PATH_ROW | null
  */
 const DROP_MS = 450
 
-/** What `/` names a new folder at first: `converted`, or the next one free in `parent`. */
-function freeName(parent: string): string {
-  let name = 'converted'
-  for (let n = 2; existsSync(join(parent, name)); n++) name = `converted ${n}`
+/** What `/` names a new folder at first: the mode's word, or the next one free in `parent`. */
+function freeName(parent: string, mode: ShellMode): string {
+  const base = NEW_FOLDER[mode]
+  let name = base
+  for (let n = 2; existsSync(join(parent, name)); n++) name = `${base} ${n}`
   return name
 }
 
@@ -75,10 +76,11 @@ const folderText = (input: string) =>
  * anywhere lands on that row. ↵ saves with the name and folder as they stand.
  *
  * `/` on a folder opens a row under it naming a new folder inside it —
- * `converted`, or the next one free — said "new folder" while no folder of
- * that name is there. Typing goes to it; ↵ saves into it, made as the file is
- * written; esc clears the name, and a second esc closes it. A slash cannot
- * be in a file name, so the name loses nothing to the key.
+ * the mode's `NEW_FOLDER` name (`converted`, `compressed` …), or the next one
+ * free — said "new folder" while no folder of that name is there. Typing goes
+ * to it; ↵ saves into it, made as the file is written; esc clears the name,
+ * and a second esc closes it. A slash cannot be in a file name, so the name
+ * loses nothing to the key.
  *
  * The folders are `destinationRows`, from the action's own destination spec —
  * never a list of its own (invariant 2).
@@ -269,7 +271,7 @@ export function SaveAs({
   const startNew = (): boolean => {
     const here = atRef.current
     if (!canMake(here)) return false
-    setMaking({ parent: here, name: freeName(here) })
+    setMaking({ parent: here, name: freeName(here, mode) })
     return true
   }
   /** Keys while a new folder is being named: the name takes the typing. */

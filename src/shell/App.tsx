@@ -18,6 +18,7 @@ import {
   type Preferences,
   savePreferences,
 } from '../config/preferences.js'
+import { destinationOption } from '../core/actions/destination.js'
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
@@ -115,7 +116,7 @@ import { StagedFiles } from './components/StagedFiles.js'
 import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { Working } from './components/Working.js'
-import { safeStem } from './destinations.js'
+import { NEW_FOLDER, safeStem } from './destinations.js'
 import {
   actionForRow,
   type EditRow,
@@ -4478,7 +4479,12 @@ export function App({
   const pagesSpec = specFor('pages')
   const dpiSpec = specFor('dpi')
   const qualitySpec = specFor('quality')
-  const destinationSpec = specFor('destination')
+  // The action's folders, plus a new subfolder named for the mode: edit runs
+  // on convert's action, so only the mode knows its folder is `edited`.
+  const destinationSpec =
+    source && specFor('destination')
+      ? destinationOption(source, livePrefs, { subfolder: NEW_FOLDER[mode] })
+      : undefined
 
   /**
    * Every answer given so far in convert or compress, as the user would say

@@ -131,7 +131,8 @@ describe('convert action options', () => {
     expect(dest.default).toBe(join(homedir(), 'Desktop'))
     expect(dest.presets[0]?.label).toBe('Desktop')
     expect(dest.presets.map((p) => p.label)).toContain('Same location')
-    expect(dest.presets.map((p) => p.label)).toContain('New subfolder')
+    // New subfolder is the shell's to add: it is named for the mode.
+    expect(dest.presets.map((p) => p.label)).not.toContain('New subfolder')
     expect(dest.presets.find((p) => p.label === 'Downloads')?.path).toBe(
       join(homedir(), 'Downloads'),
     )
@@ -270,7 +271,6 @@ describe('destination presets', () => {
     const labels = destination().presets.map((x) => x.label)
     expect(labels).toContain('Same location')
     expect(labels).toContain('Downloads')
-    expect(labels).toContain('New subfolder')
   })
 })
 

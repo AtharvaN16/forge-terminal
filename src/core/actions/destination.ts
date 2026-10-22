@@ -7,7 +7,7 @@ import type { OptionSpec, PathPreset } from './index.js'
 
 /** The row for the folder the source is in. */
 export const SAME_LOCATION = 'Same location'
-/** The row for a `converted` folder beside the source (convert only). */
+/** The row for a new folder beside the source, named for what was done (`converted` …). */
 export const NEW_SUBFOLDER = 'New subfolder'
 
 /**
@@ -15,25 +15,27 @@ export const NEW_SUBFOLDER = 'New subfolder'
  * shown as a bare path when it happens to be one of them. The source's own
  * folder is named for that first: on the Desktop, its row is Same location.
  */
-function labelFor(path: string, sourceDir: string | undefined): string {
+function labelFor(path: string, sourceDir: string | undefined, subfolder?: string): string {
   if (path === sourceDir) return SAME_LOCATION
   if (path === knownFolder('Desktop')) return 'Desktop'
   if (path === knownFolder('Downloads')) return 'Downloads'
-  if (sourceDir !== undefined && path === join(sourceDir, 'converted')) return NEW_SUBFOLDER
+  if (sourceDir !== undefined && subfolder !== undefined && path === join(sourceDir, subfolder))
+    return NEW_SUBFOLDER
   return lastSegment(path) || path
 }
 
 /**
  * Where a result can go, as Save as lists it: the configured default first,
  * then where the last file was saved, Desktop, the source's own folder and
- * Downloads — and, for convert, a new subfolder beside the source. One list
- * for every action that writes, so convert, compress and the page operations
- * offer the same places.
+ * Downloads — and, given `subfolder`, a new folder of that name beside the
+ * source. One list for every action that writes, so convert, compress and
+ * the page operations offer the same places. The shell names the subfolder
+ * for its mode: edit runs on convert's action, so the action cannot.
  */
 export function destinationOption(
   source: SourceInfo,
   prefs: Preferences,
-  opts: { subfolder?: boolean } = {},
+  opts: { subfolder?: string } = {},
 ): Extract<OptionSpec, { kind: 'path' }> {
   return destinationAt(dirname(source.path), prefs, opts)
 }
@@ -45,11 +47,11 @@ export function destinationOption(
 export function destinationAt(
   here: string | undefined,
   prefs: Preferences,
-  { subfolder = false }: { subfolder?: boolean } = {},
+  { subfolder }: { subfolder?: string } = {},
 ): Extract<OptionSpec, { kind: 'path' }> {
   const preferred = expandTilde(prefs.defaultOutput)
   const last = prefs.lastOutput ? expandTilde(prefs.lastOutput) : undefined
-  const named = (path: string): PathPreset => ({ label: labelFor(path, here), path })
+  const named = (path: string): PathPreset => ({ label: labelFor(path, here, subfolder), path })
 
   // The configured default leads, listed explicitly so that a default
   // pointing somewhere none of the built-ins cover still appears at all. When
@@ -63,8 +65,8 @@ export function destinationAt(
     named(knownFolder('Desktop')),
     ...(here === undefined ? [] : [{ label: SAME_LOCATION, path: here }]),
     named(knownFolder('Downloads')),
-    ...(subfolder && here !== undefined
-      ? [{ label: NEW_SUBFOLDER, path: join(here, 'converted') }]
+    ...(subfolder !== undefined && here !== undefined
+      ? [{ label: NEW_SUBFOLDER, path: join(here, subfolder) }]
       : []),
   ]
   // Two presets can resolve to the identical folder — e.g. "Same folder" and

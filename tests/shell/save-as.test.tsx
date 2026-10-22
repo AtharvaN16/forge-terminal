@@ -218,6 +218,17 @@ describe('Save as: / makes a new folder inside the highlighted one', () => {
     expect(plain(lastFrame())).not.toContain('new folder ')
   })
 
+  it.each([
+    ['compress', 'compressed'],
+    ['edit', 'edited'],
+    ['transcribe', 'transcribed'],
+  ] as const)('names it for what %s mode did: %s', async (mode, word) => {
+    const { stdin, lastFrame } = render(<Harness mode={mode} />)
+    stdin.write('/')
+    await settle()
+    expect(plain(lastFrame())).toMatch(new RegExp(`└ ${word} +new folder `))
+  })
+
   it('esc clears the name, and a second esc puts the list back as it was', async () => {
     const onBack = vi.fn()
     const { stdin, lastFrame } = render(<Harness onBack={onBack} />)

@@ -62,12 +62,26 @@ describe('destinationOption', () => {
     expect(spec.presets.filter((p) => p.path === '/work/out')).toHaveLength(1)
   })
 
-  it('offers New subfolder only when asked (convert)', () => {
-    const spec = destinationOption(source, DEFAULT_PREFERENCES, { subfolder: true })
+  it('offers New subfolder only when given its name', () => {
+    expect(destinationOption(source, DEFAULT_PREFERENCES).presets.map((p) => p.label)).not.toContain(
+      'New subfolder',
+    )
+    const spec = destinationOption(source, DEFAULT_PREFERENCES, { subfolder: 'compressed' })
     expect(spec.presets.at(-1)).toEqual({
       label: 'New subfolder',
-      path: join('/work/scans/converted'),
+      path: join('/work/scans/compressed'),
     })
+  })
+
+  it('names a last-saved subfolder of that name New subfolder, and no other', () => {
+    const last = join('/work/scans/compressed')
+    const prefs = { ...DEFAULT_PREFERENCES, lastOutput: last }
+    const named = destinationOption(source, prefs, { subfolder: 'compressed' })
+    expect(named.presets.filter((p) => p.path === last)).toEqual([
+      { label: 'New subfolder', path: last },
+    ])
+    const other = destinationOption(source, prefs, { subfolder: 'edited' })
+    expect(other.presets.find((p) => p.path === last)?.label).toBe('compressed')
   })
 })
 

@@ -34,6 +34,7 @@ import { Select } from '../components/Select.js'
 import { pillWidth, StepPill } from '../components/StepPill.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
+import { NEW_FOLDER } from '../destinations.js'
 import { doneNotes } from '../done-art.js'
 import { blank, HOME_MARGIN, mix, type Row, width as widthOf } from '../home-art.js'
 import { openPath, revealPath } from '../reveal.js'
@@ -125,7 +126,10 @@ export function TranscribeFlow({
   const [detail, setDetail] = useState<Detail>(DEFAULT_DETAIL)
   const [cursor, setCursor] = useState(0)
   const here = source.kind === 'file' ? dirname(source.path) : undefined
-  const destination = useMemo(() => destinationAt(here, prefs), [here, prefs])
+  const destination = useMemo(
+    () => destinationAt(here, prefs, { subfolder: NEW_FOLDER.transcribe }),
+    [here, prefs],
+  )
   const [folder, setFolder] = useState(() => expandTilde(prefs.defaultOutput))
   const [name, setName] = useState('')
   const [work, setWork] = useState<Work>({ phase: 'download', at: Date.now() })
