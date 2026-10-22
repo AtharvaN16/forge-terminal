@@ -184,7 +184,7 @@ describe('rotate — one select, then confirm', () => {
     const sources = [doc('/docs/r.pdf')]
     const { stdin, lastFrame, onDone } = mount(sources)
     // hub order is merge, split, extract, delete, rotate.
-    stdin.write(DOWN + DOWN + DOWN + DOWN)
+    stdin.write(DOWN + DOWN + DOWN)
     await settle()
     stdin.write(ENTER) // choose Rotate
     await settle()
@@ -385,6 +385,71 @@ describe('delete — one question fewer than extract', () => {
   })
 })
 
+describe('the hub Compress and Convert rows', () => {
+  const withImages = (path: string): DocumentInfo => ({
+    ...doc(path),
+    images: { compressible: 2, skipped: 0 },
+  })
+
+  it('lists both after the page operations', () => {
+    const out = frame([doc('/a.pdf')])
+    expect(out).toContain('Compress')
+    expect(out).toContain('Convert')
+    expect(out.indexOf('Rotate')).toBeLessThan(out.indexOf('Compress'))
+  })
+
+  it('dims Compress when the PDF has no images to re-encode', () => {
+    expect(frame([doc('/a.pdf')])).toContain('no images to shrink')
+    expect(frame([withImages('/a.pdf')])).not.toContain('no images to shrink')
+  })
+
+  it('dims both for several files', () => {
+    expect(frame([doc('/a.pdf'), doc('/b.pdf')]).match(/one file at a time/g)).toHaveLength(2)
+  })
+
+  it('hands off to compress on ↵', async () => {
+    const onHandoff = vi.fn()
+    const stage = addToStage(emptyStage(), [withImages('/a.pdf')], [])
+    const { stdin } = render(
+      createElement(PdfFlow, {
+        stage,
+        width: 80,
+        height: 24,
+        onDone: () => {},
+        onCancel: () => {},
+        onHandoff,
+      } as never),
+    )
+    await settle()
+    stdin.write(DOWN + DOWN + DOWN + DOWN) // Split → Extract → Delete → Rotate → Compress
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onHandoff).toHaveBeenCalledWith('compress')
+  })
+
+  it('hands off to convert on ↵, skipping a dimmed Compress', async () => {
+    const onHandoff = vi.fn()
+    const stage = addToStage(emptyStage(), [doc('/a.pdf')], [])
+    const { stdin } = render(
+      createElement(PdfFlow, {
+        stage,
+        width: 80,
+        height: 24,
+        onDone: () => {},
+        onCancel: () => {},
+        onHandoff,
+      } as never),
+    )
+    await settle()
+    stdin.write(DOWN + DOWN + DOWN + DOWN) // … Rotate → Convert
+    await settle()
+    stdin.write(ENTER)
+    await settle()
+    expect(onHandoff).toHaveBeenCalledWith('convert')
+  })
+})
+
 describe('cancelling out of the hub', () => {
   it('calls onCancel on escape', async () => {
     const { stdin, onCancel } = mount([doc('/a.pdf')])
@@ -404,7 +469,7 @@ describe('/pdf ends on Save as', () => {
   async function rotateToSaveAs() {
     const sources = [doc('/docs/report.pdf', 3)]
     const app = mount(sources)
-    app.stdin.write(DOWN + DOWN + DOWN + DOWN) // Rotate
+    app.stdin.write(DOWN + DOWN + DOWN) // Rotate
     await settle()
     app.stdin.write(ENTER)
     await settle()
@@ -502,7 +567,7 @@ describe('/pdf, drawn with the decided parts', () => {
     await settle()
     expect(plain(split.lastFrame())).toMatch(/^ {2}How to split +7 pages$/m)
     const rotate = mount([doc('/docs/r.pdf', 7)])
-    rotate.stdin.write(DOWN + DOWN + DOWN + DOWN + ENTER)
+    rotate.stdin.write(DOWN + DOWN + DOWN + ENTER)
     await settle()
     expect(plain(rotate.lastFrame())).toMatch(/^ {2}Turn +7 pages$/m)
   })

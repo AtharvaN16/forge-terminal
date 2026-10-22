@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_PREFERENCES, expandTilde, type Preferences } from '../../config/preferences.js'
 import { destinationOption } from '../../core/actions/destination.js'
 import type { Action, Choice, OptionSpec } from '../../core/actions/index.js'
-import { PAGE_ACTIONS, unavailableReason } from '../../core/actions/index.js'
+import {
+  compressAction,
+  convertAction,
+  PAGE_ACTIONS,
+  unavailableReason,
+} from '../../core/actions/index.js'
 import { everyNCuts, everyPageCuts } from '../../core/actions/split.js'
 import { isForgeError } from '../../core/errors.js'
 import { formatRanges, parseRanges } from '../../core/pages.js'
@@ -30,16 +35,31 @@ import { useKeys } from '../useKeys.js'
 import { bandFor, CARD_WIDTH } from '../width.js'
 
 /**
- * The five page operations this phase built, in the order the hub lists
- * them. Compress and Convert reach the hub in phase 4, as shortcuts to
- * `/compress` and `/convert` — listing them here now would say "not built
- * yet", which is noise, not information.
+ * The five page operations, in the order the hub lists them. Compress and
+ * Convert follow them as two more rows (`HUB_HANDOFFS`) that hand the file to
+ * those modes rather than run here, so they are not in this list: the hub
+ * opens only when a *page* operation applies, and `convertAction` applies to
+ * everything.
  *
  * Exported so `App.tsx` can ask the same question the hub itself answers
  * per-row (`appliesTo`) before ever mounting this component — one list,
  * asked twice, rather than two lists that could drift.
  */
 export const HUB_ACTIONS = PAGE_ACTIONS
+
+/** The two rows after the page operations: shortcuts into `/compress` and `/convert`. */
+export type PdfHandoff = 'compress' | 'convert'
+
+const HUB_HANDOFFS: { id: PdfHandoff; action: Action }[] = [
+  { id: 'compress', action: compressAction },
+  { id: 'convert', action: convertAction },
+]
+
+/** Why a hand-off row is dimmed: both modes take one file, and compress needs images to re-encode. */
+function handoffReason(id: PdfHandoff, sources: SourceInfo[]): string | undefined {
+  if (sources.length > 1) return 'one file at a time'
+  return id === 'compress' && !compressAction.appliesTo(sources) ? 'no images to shrink' : undefined
+}
 
 /**
  * `hub` — pick an operation. `options` — walk that action's `options()`,
@@ -119,6 +139,8 @@ export interface PdfFlowProps {
   height: number
   onDone: (jobs: Job[], resume: PdfResume) => void
   onCancel: () => void
+  /** Compress or Convert chosen on the hub: App opens that mode on the staged file. */
+  onHandoff?: ((to: PdfHandoff) => void) | undefined
   prefs?: Preferences
   /** Save as's tab: make the highlighted folder the default (App writes the config). */
   onMakeDefault?: ((path: string) => void) | undefined
@@ -146,6 +168,7 @@ export function PdfFlow({
   height,
   onDone,
   onCancel,
+  onHandoff,
   prefs = DEFAULT_PREFERENCES,
   onTrail,
   onMakeDefault,
@@ -235,15 +258,29 @@ export function PdfFlow({
     [action, values, stage.sources, mergeOrder, saveFolder],
   )
 
-  const hubItems: Choice[] = HUB_ACTIONS.map((a) => {
-    const applies = a.appliesTo(stage.sources)
-    return {
-      value: a.id,
-      label: a.label,
-      hint: applies ? a.hint : unavailableReason(a, stage.sources),
-      disabled: !applies,
-    }
-  })
+  const hubItems: Choice[] = [
+    ...HUB_ACTIONS.map((a) => {
+      const applies = a.appliesTo(stage.sources)
+      return {
+        value: a.id,
+        label: a.label,
+        hint: applies ? a.hint : unavailableReason(a, stage.sources),
+        disabled: !applies,
+      }
+    }),
+    // A gap sets the two mode shortcuts apart from the page operations, as the
+    // convert picker sets its /pdf row apart from the formats.
+    { value: '__gap__', label: '', hint: '', disabled: true },
+    ...HUB_HANDOFFS.map(({ id, action: a }) => {
+      const reason = handoffReason(id, stage.sources)
+      return {
+        value: id,
+        label: a.label,
+        hint: reason ?? a.hint,
+        disabled: reason !== undefined,
+      }
+    }),
+  ]
 
   const resetForAction = () => {
     setValues({})
@@ -257,6 +294,10 @@ export function PdfFlow({
   }
 
   const chooseAction = (id: string) => {
+    if (id === 'compress' || id === 'convert') {
+      onHandoff?.(id)
+      return
+    }
     const chosen = HUB_ACTIONS.find((a) => a.id === id)
     if (!chosen) return
     resetForAction()
