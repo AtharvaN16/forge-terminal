@@ -55,6 +55,36 @@ describe('compress in the shell', () => {
     expect(frame).toContain('To a target size')
   })
 
+  it('esc on the quality slider steps back to the method picker', async () => {
+    const { stdin, lastFrame } = await toCompress()
+    stdin.write(ENTER) // By quality
+    await settle(300)
+    stdin.write(String.fromCharCode(27))
+    await settle(300)
+    // Compress has no format picker to go back to: a blank screen here has
+    // nothing mounted to answer a key, so the app looks frozen.
+    expect(lastFrame() ?? '').toContain('By quality')
+    expect(lastFrame() ?? '').toContain('To a target size')
+  })
+
+  it('esc on Save as after a target size steps back to the size field', async () => {
+    const { stdin, lastFrame } = await toCompress()
+    stdin.write(DOWN) // To a target size
+    stdin.write(ENTER)
+    await settle(300)
+    stdin.write('20kb')
+    await settle(100)
+    stdin.write(ENTER)
+    await settle(1500)
+    expect(lastFrame() ?? '').toContain('Save as')
+    stdin.write(String.fromCharCode(27))
+    await settle(400)
+    // Not "Format": compress has no format picker, and landing there left
+    // nothing mounted to answer a key.
+    expect(lastFrame() ?? '').toContain('Target size')
+    expect(lastFrame() ?? '').not.toContain('Format')
+  })
+
   it('compresses by quality and writes a suffixed file', async () => {
     const { stdin, dir } = await toCompress()
     stdin.write(ENTER) // By quality

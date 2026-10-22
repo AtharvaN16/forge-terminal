@@ -1,10 +1,17 @@
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { describe, expect, it, vi } from 'vitest'
 import { CELL_ASPECT, CHECKER, closeupPictures, findCloseup } from '../../src/core/closeup.js'
 import { looksLikeHeic } from '../../src/engines/heic.js'
+import { imageEngine } from '../../src/engines/image.js'
 import { loadSharp } from '../../src/engines/libs.js'
+import { probe } from '../../src/engines/registry.js'
+import { makeOrientedJpeg } from '../helpers/fixtures.js'
+import { makeDng } from '../helpers/raw.js'
 
 // Passed through, counted: each file opened for a search is asked about once.
 vi.mock('../../src/engines/heic.js', async (orig) => {
@@ -178,3 +185,69 @@ describe('findCloseup', () => {
     }
   })
 })
+
+/**
+ * A portrait photo's close-up: the before is the camera file, stored on its
+ * side with an orientation; the after is what an edit writes, upright, with a
+ * dark square at (x, y) in upright pixels. The patch must find the square.
+ */
+describe.skipIf(process.platform !== 'darwin' || !existsSync('/usr/bin/sips'))(
+  'findCloseup on a portrait photo',
+  () => {
+    async function upright(source: string, dir: string, x: number, y: number) {
+      const sharp = await loadSharp()
+      const png = join(dir, 'upright.png')
+      await imageEngine.run(
+        {
+          op: 'convert',
+          sources: [await probe(source)],
+          outputs: [png],
+          target: 'png',
+          options: { background: '#ffffff', keepMetadata: false },
+        },
+        () => {},
+      )
+      const square = await sharp({
+        create: { width: 10, height: 10, channels: 3, background: '#000000' },
+      })
+        .png()
+        .toBuffer()
+      const after = join(dir, 'after.png')
+      await sharp(png)
+        .composite([{ input: square, left: x, top: y }])
+        .toFile(after)
+      return after
+    }
+
+    function expectAround(
+      box: { x: number; y: number; w: number; h: number },
+      x: number,
+      y: number,
+    ) {
+      expect(box.x).toBeLessThanOrEqual(x)
+      expect(box.x + box.w).toBeGreaterThanOrEqual(x + 10)
+      expect(box.y).toBeLessThanOrEqual(y)
+      expect(box.y + box.h).toBeGreaterThanOrEqual(y + 10)
+    }
+
+    it('a HEIC', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+      const jpeg = await makeOrientedJpeg(dir, 'p.jpg', 6)
+      const heic = join(dir, 'p.heic')
+      await promisify(execFile)('/usr/bin/sips', ['-s', 'format', 'heic', jpeg, '--out', heic])
+      const after = await upright(heic, dir, 60, 20)
+      const c = await findCloseup(heic, after, { cols: 16, rows: 8, scale: 1 })
+      expect(c.output).toEqual({ width: 80, height: 40 })
+      expectAround(c.box, 60, 20)
+    })
+
+    it('a RAW photo', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'forge-closeup-'))
+      const dng = await makeDng(dir, 'p.dng', { orientation: 6 })
+      const after = await upright(dng, dir, 200, 40)
+      const c = await findCloseup(dng, after, { cols: 16, rows: 8, scale: 1 })
+      expect(c.output).toEqual({ width: 240, height: 320 })
+      expectAround(c.box, 200, 40)
+    }, 30_000)
+  },
+)

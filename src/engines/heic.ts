@@ -58,6 +58,11 @@ export async function heicDecodable(
   platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
   if (platform === 'win32') return (await (await extensions()).installed('heic')) !== undefined
+  return sipsRuns()
+}
+
+/** Whether macOS's `sips` runs here. Cached; HEIC and camera RAW both decode through it. */
+export async function sipsRuns(): Promise<boolean> {
   if (cached !== undefined) return cached
   try {
     await run('/usr/bin/sips', ['--help'], { timeout: 5000 })
@@ -249,8 +254,8 @@ export async function heicInfo(
   }
 }
 
-/** Box type and the bounds of its body, within `buf`. */
-function* boxes(buf: Buffer, from: number, to: number) {
+/** ISO media box type and the bounds of its body, within `buf`. */
+export function* boxes(buf: Buffer, from: number, to: number) {
   let at = from
   while (at + 8 <= to) {
     let size = buf.readUInt32BE(at)

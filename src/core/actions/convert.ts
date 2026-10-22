@@ -207,7 +207,7 @@ export const convertAction: Action = {
       })
     }
 
-    specs.push(destinationOption(source, prefs, { subfolder: true }))
+    specs.push(destinationOption(source, prefs))
     return specs
   },
 

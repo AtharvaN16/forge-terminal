@@ -49,6 +49,12 @@ describe('capability graph', () => {
     expect(targetIdsFor(source('heic'))).toContain('png')
   })
 
+  it('reads camera RAW on a Mac only, and never writes it', () => {
+    expect(readableFormats().includes('raw')).toBe(process.platform === 'darwin')
+    expect(writableFormats()).not.toContain('raw')
+    expect(canConvert(source('jpeg'), 'raw')).toBe(false)
+  })
+
   it('allows same-format conversion, which is what recompression will use', () => {
     expect(canConvert(source('jpeg'), 'jpeg')).toBe(true)
   })

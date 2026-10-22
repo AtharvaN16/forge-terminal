@@ -19,6 +19,7 @@ import { gridLayout, PageGrid } from '../components/PageGrid.js'
 import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
 import { StepTitle } from '../components/StepTitle.js'
+import { NEW_FOLDER } from '../destinations.js'
 import { HOME_MARGIN } from '../home-art.js'
 import type { Stage } from '../stage.js'
 import { Text } from '../Text.js'
@@ -193,7 +194,10 @@ export function PdfFlow({
    * the name keeps following what `plan()` proposes for the folder.
    */
   const destinationSpec = useMemo(
-    () => (stage.sources[0] ? destinationOption(stage.sources[0], prefs) : undefined),
+    () =>
+      stage.sources[0]
+        ? destinationOption(stage.sources[0], prefs, { subfolder: NEW_FOLDER.pdf })
+        : undefined,
     [stage.sources, prefs],
   )
   const [saveFolder, setSaveFolder] = useState(() =>

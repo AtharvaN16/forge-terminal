@@ -66,6 +66,35 @@ describe('Save as, in the flow', () => {
     )
   }, 20_000)
 
+  it('in compress, New subfolder is a compressed folder beside the file, made as it saves', async () => {
+    const dir = await makeTempDir()
+    const file = await makeGradientPng(dir, 'test.png', 64)
+    const app = render(<App initialWidth={80} initialHeight={24} prefs={prefsFor(dir)} />)
+    await settle()
+    app.stdin.write('/compress')
+    await settle()
+    app.stdin.write(ENTER)
+    await settle()
+    app.stdin.write(file)
+    await settle()
+    app.stdin.write(ENTER)
+    await settle(500)
+    app.stdin.write(ENTER) // By quality
+    await settle(300)
+    app.stdin.write(ENTER) // the quality as it opens
+    await waitFor(() => lines(app.lastFrame()).includes('  Save as'))
+    await settle()
+    for (let i = 0; i < 6 && !/▌ New subfolder/.test(plain(app.lastFrame())); i++) {
+      app.stdin.write(DOWN)
+      await settle(100)
+    }
+    expect(plain(app.lastFrame())).toMatch(/▌ New subfolder/)
+    app.stdin.write(ENTER)
+    await waitFor(() => existsSync(join(dir, 'compressed', 'test-small.png')))
+    expect(await readdir(join(dir, 'compressed'))).toEqual(['test-small.png'])
+    expect(existsSync(join(dir, 'converted'))).toBe(false)
+  }, 20_000)
+
   it('/ then ↵ saves into a new converted folder, and remembers it as the last place saved', async () => {
     const saved = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = await makeTempDir()

@@ -69,6 +69,13 @@ describe('planEdit', () => {
       outputs: [resolve('/p/IMG-trimmed.jpg')],
       options: { trim: true },
     })
+    // A camera RAW cannot be written either: its edits are JPEGs too.
+    const [raw] = planEdit([img({ format: 'raw', path: '/p/DSC_0042.NEF' })], {
+      trim: true,
+      background: '#fff',
+      keepMetadata: false,
+    })
+    expect(raw).toMatchObject({ target: 'jpeg', outputs: [resolve('/p/DSC_0042-trimmed.jpg')] })
     const [both] = planEdit([img()], {
       trim: true,
       resize: { width: 1200 },

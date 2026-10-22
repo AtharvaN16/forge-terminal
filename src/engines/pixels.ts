@@ -1,8 +1,8 @@
 import type { Pixels } from '../core/colour/palette.js'
-import { corruptSource, heicDecoderUnavailable, isForgeError, notAnImage } from '../core/errors.js'
+import { corruptSource, isForgeError, notAnImage } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { ImageInfo } from '../core/types.js'
-import { decodeHeic, heicDecodable } from './heic.js'
+import { openable } from './decoded.js'
 import { loadSharp } from './libs.js'
 import { probe } from './registry.js'
 
@@ -18,14 +18,12 @@ export async function samplePixels(
 ): Promise<{ source: ImageInfo; pixels: Pixels }> {
   const source = await probe(path)
   if (source.kind !== 'image') throw notAnImage(path, `a ${FORMATS[source.format].label}`)
-  const heic = source.format === 'heic'
-  if (heic && !(await heicDecodable())) throw heicDecoderUnavailable(path)
-  const decoded = heic ? await decodeHeic(path) : undefined
+  const opened = await openable(path, source.format)
   try {
     const sharp = await loadSharp()
-    // sips already uprights HEIC; everything else is rotated first (invariant 4).
-    const input = sharp(decoded?.path ?? path, { animated: false })
-    const { data, info } = await (heic ? input : input.rotate())
+    // Rotated first (invariant 4), a decoded HEIC or RAW too (engines/decoded.ts).
+    const { data, info } = await sharp(opened.path, { animated: false })
+      .rotate()
       .resize(longest, longest, { fit: 'inside', withoutEnlargement: true })
       .ensureAlpha()
       .raw()
@@ -42,6 +40,6 @@ export async function samplePixels(
     if (isForgeError(e)) throw e
     throw corruptSource(path, e)
   } finally {
-    await decoded?.cleanup()
+    await opened.cleanup()
   }
 }

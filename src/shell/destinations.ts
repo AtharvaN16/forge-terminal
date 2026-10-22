@@ -6,6 +6,20 @@ import { FORMATS } from '../core/formats.js'
 import { fitName } from '../core/output-path.js'
 import { displayName } from '../utils/display-path.js'
 import { unescapePath } from '../utils/unescape-path.js'
+import type { ShellMode } from './theme.js'
+
+/**
+ * What a new folder is called in each mode, as Save as offers it — the New
+ * subfolder row and `/` alike: what the mode did to the files.
+ */
+export const NEW_FOLDER: Record<ShellMode, string> = {
+  convert: 'converted',
+  compress: 'compressed',
+  pdf: 'edited',
+  edit: 'edited',
+  transcribe: 'transcribed',
+  colour: 'colours',
+}
 
 /** The value of the one row that says nothing matched. Never a folder. */
 export const NO_MATCH = '__no-match__'
