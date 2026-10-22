@@ -52,7 +52,7 @@ describe('dropping onto home', () => {
     expect(frame).toContain('Convert to')
   }, 20_000)
 
-  it('adds a second drop to the first, and ↵ waits for batch', async () => {
+  it('adds a second drop to the first, and ↵ converts both as one batch', async () => {
     const dir = await makeTempDir()
     const a = await makePng(dir, 'a.png')
     const b = await makePng(dir, 'b.png')
@@ -68,8 +68,8 @@ describe('dropping onto home', () => {
     app.stdin.write(ENTER)
     await settle(400)
     const frame = plain(app.lastFrame())
-    expect(frame).not.toContain('Convert to')
-    expect(fieldLine(frame)).toBe('    › drop more, or type a path')
+    expect(frame).toContain('Convert to')
+    expect(frame).toContain('PNG ×2')
   }, 20_000)
 
   it('leaves a paste that names nothing on disk in the field, as typed', async () => {

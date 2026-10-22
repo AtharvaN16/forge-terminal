@@ -67,7 +67,7 @@ describe('the shell, opened from the right-click menu', () => {
     expect(frame).toMatch(/↵\s+pdf/)
   })
 
-  it('Compress on several files: staged, and says it cannot do several at once yet', async () => {
+  it('Compress on several files: one batch, at its first step', async () => {
     const { dir, file } = await jpeg()
     const second = join(dir, 'second.jpg')
     await sharp(file).toFile(second)
@@ -79,10 +79,13 @@ describe('the shell, opened from the right-click menu', () => {
       />,
     )
     await settle()
-    expect(frames.join('\n')).toContain("isn't supported yet")
+    const shown = frames.join('\n')
+    expect(shown).toContain('JPEG ×2')
+    expect(shown).toContain('By quality')
+    expect(shown).not.toContain("isn't supported yet")
   })
 
-  it('Compress on a folder: says the same, rather than sitting there', async () => {
+  it('Compress on a folder: the folder, at its first step', async () => {
     const { dir } = await jpeg()
     await sharp(join(dir, 'photo.jpg')).toFile(join(dir, 'second.jpg'))
     const { frames } = render(
@@ -93,7 +96,9 @@ describe('the shell, opened from the right-click menu', () => {
       />,
     )
     await settle()
-    expect(frames.join('\n')).toContain("isn't supported yet")
+    const shown = frames.join('\n')
+    expect(shown).toContain('FOLDER –')
+    expect(shown).toContain('By quality')
   })
 
   it('does not step in later, on a drop, when the opened files could not be read', async () => {

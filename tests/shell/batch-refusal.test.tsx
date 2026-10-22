@@ -17,7 +17,7 @@ const prefsFor = (dir: string) => ({
 })
 
 describe('several files at once', () => {
-  it('still refuses /convert on a staged merge list rather than converting one of it', async () => {
+  it('takes /convert on several staged files as one batch, and writes nothing until asked', async () => {
     const dir = await makeTempDir()
     const a = await makePdf(dir, 'jan.pdf', 2)
     const b = await makePdf(dir, 'feb.pdf', 2)
@@ -32,7 +32,10 @@ describe('several files at once', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').toContain("isn't supported yet")
+    const frame = (app.lastFrame() ?? '').replace(SGR, '')
+    expect(frame).toContain('Convert to')
+    expect(frame).toContain('PDF ×2')
+    expect(frame).not.toContain("isn't supported yet")
 
     const written = (await readdir(dir)).filter((f) => f !== 'jan.pdf' && f !== 'feb.pdf')
     expect(written).toHaveLength(0)
@@ -42,10 +45,10 @@ describe('several files at once', () => {
    * Dropping a second PDF is the only way to build a merge stage. A PDF has a
    * real convert target, so ↵ on the first drop opens that picker; esc backs
    * out of it keeping the stage (`backToPromptKeepingStage`), landing on home
-   * with the card, and the second drop joins it there — a list, with the note
-   * that says where several PDFs can go today.
+   * with the card, and the second drop joins it there — a list that ↵
+   * converts as one batch.
    */
-  it('stages two PDFs, shows them, and points at /pdf to merge them', async () => {
+  it('stages two PDFs, shows them, and offers to convert them as one batch', async () => {
     const dir = await makeTempDir()
     const a = await makePdf(dir, 'jan.pdf', 3)
     const b = await makePdf(dir, 'feb.pdf', 2)
@@ -64,8 +67,8 @@ describe('several files at once', () => {
     expect(frame).toContain('2 PDFs')
     expect(frame).toContain('jan.pdf')
     expect(frame).toContain('feb.pdf')
-    expect(frame).toContain('/pdf merges them')
-    expect(frame).not.toContain("isn't supported yet")
+    expect(frame).not.toContain('is coming')
+    expect(frame.replace(SGR, '')).toMatch(/↵ +convert/)
   }, 20_000)
 
   it('still converts a single staged file normally — the common case has not moved', async () => {

@@ -5,6 +5,13 @@ import { expandTilde, type Preferences } from '../../config/preferences.js'
 import { convertAction } from '../../core/actions/convert.js'
 import { destinationOption } from '../../core/actions/destination.js'
 import type { OptionSpec } from '../../core/actions/index.js'
+import {
+  type BatchRow,
+  batchRows,
+  type Existing,
+  planBatch,
+  type Recipe,
+} from '../../core/batch.js'
 import type { PlanEvent } from '../../core/execute-jobs.js'
 import {
   answerFor,
@@ -16,22 +23,25 @@ import {
   kindTargets,
 } from '../../core/folder.js'
 import { FORMATS } from '../../core/formats.js'
-import type { FormatId, Job } from '../../core/types.js'
+import type { FormatId, Job, Result } from '../../core/types.js'
+import { describeSize, formatBytes, parseSize } from '../../core/units.js'
 import {
   convertFolder,
   type KindAnswers,
-  planFolder,
   startWatch,
   type WatchSession,
 } from '../../core/watch-session.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
 import type { Trail } from '../bar-art.js'
 import { windowOver } from '../colour/system-art.js'
+import { ErrorLine } from '../components/ErrorLine.js'
 import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
+import { NameTaken } from '../components/NameTaken.js'
 import { QualityStep } from '../components/QualityStep.js'
 import { SaveAs } from '../components/SaveAs.js'
 import { Select } from '../components/Select.js'
+import { SIZE_UNIT_IDS, SizeField, type SizeUnit } from '../components/SizeField.js'
 import { StepTitle } from '../components/StepTitle.js'
 import { Working } from '../components/Working.js'
 import { NEW_FOLDER } from '../destinations.js'
@@ -40,8 +50,9 @@ import { blank, HOME_MARGIN, type Row } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { titleRow } from '../quality-art.js'
 import { openPath } from '../reveal.js'
+import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { modeColours } from '../theme.js'
+import { colourProp, modeColours, SYMBOLS } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import {
   countOf,
@@ -67,19 +78,43 @@ import { phaseLabel } from '../working-art.js'
  * in its own window. Then today's Save as, the folder converted with a real
  * count, and the watching screen: Done's bar for everything so far, the
  * hairline with its light, and each file that lands, newest at the bottom.
+ *
+ * Several files at once (mockups/batch-2026-10.html, 2026-10-22) are the same
+ * flow: a folder or a drop of several files, in convert or compress. Compress
+ * asks Method, then Quality or Target size, for every file at once. The list
+ * holds every file of the batch, and only a folder is watched after.
  */
 
-type Step = 'kinds' | 'target' | 'setting' | 'save-as' | 'converting' | 'watching'
+type Step =
+  | 'kinds'
+  | 'target'
+  | 'setting'
+  | 'method'
+  | 'quality'
+  | 'size'
+  | 'save-as'
+  | 'taken'
+  | 'converting'
+  | 'watching'
 
 export interface WatchFlowProps {
   scan: FolderScan
+  /** Convert (each kind to its format) or compress (every file at one quality or size). */
+  mode?: 'convert' | 'compress'
+  /**
+   * A folder is watched once what it holds is done; several files dropped
+   * together are not, and the list is the batch's Done.
+   */
+  watch?: boolean
+  /** Several files, not a folder: what the card's edge says ("PNG ×12"). */
+  tag?: string | undefined
   width: number
   height: number
   prefs: Preferences
   onTrail: (trail: Trail) => void
   /** esc from the first question: back home, the folder still there. */
   onCancel: () => void
-  /** ↵ while watching: stop, and home with nothing staged. */
+  /** ↵ while watching, or on a batch's Done: stop, and home with nothing staged. */
   onClose: () => void
   onMakeDefault?: (path: string) => void
   /** Where the outputs went, as Save as remembers a save. */
@@ -158,8 +193,62 @@ const FRAME_MS = 70
 /** How long a finished row keeps its band, fading. */
 const FLASH_MS = 1700
 
+/** A compress's method, as its row and the trail say it. */
+const METHODS = [
+  { value: 'quality', label: 'By quality', hint: 'pick a level' },
+  { value: 'size', label: 'To a target size', hint: 'smallest quality that fits' },
+] as const
+
+/** The quality slider for every file: a PNG's or GIF's three points when that is all there is. */
+function qualitySpec(scan: FolderScan, quality: number) {
+  const points = scan.sources.every(
+    (s) => s.kind === 'image' && FORMATS[s.format].quantisable === true,
+  )
+  if (points) {
+    const steps = Math.ceil((quality - 30) / 35)
+    return {
+      min: 30,
+      max: 100,
+      step: 35,
+      points: true,
+      start: Math.min(100, 30 + Math.max(0, steps) * 35),
+    }
+  }
+  return { min: 1, max: 100, step: 5, points: false, start: quality }
+}
+
+/** A file of the batch as the list's row says it, from what became of it. */
+function rowOf(row: BatchRow, mode: 'convert' | 'compress', at: string): ListedFile {
+  const r = row.result
+  if (row.state === 'done' && r) return { ...doneRow(r, mode), path: row.path, at, startedAt: 0 }
+  return {
+    path: row.path,
+    at,
+    startedAt: 0,
+    state: row.state === 'failed' ? 'failed' : 'left',
+    ...(row.reason === undefined ? {} : { reason: row.reason }),
+  }
+}
+
+/** A finished file's row: from → to for a convert, was → now for a compress. */
+function doneRow(r: Result, mode: 'convert' | 'compress') {
+  const job: Job = r.job
+  return {
+    state: 'done' as const,
+    from: FORMATS[job.sources[0].format].label,
+    to: job.op === 'convert' ? FORMATS[job.target].label : '',
+    bytes: r.outputBytes,
+    ...(mode === 'compress' ? { was: job.sources[0].bytes } : {}),
+  }
+}
+
+type ListedFile = WatchedFile & { startedAt: number; doneAt?: number }
+
 export function WatchFlow({
   scan,
+  mode = 'convert',
+  watch = true,
+  tag,
   width,
   height,
   prefs,
@@ -172,11 +261,14 @@ export function WatchFlow({
   pollMs,
 }: WatchFlowProps) {
   const palette = useTheme()
-  const mode = 'convert' as const
+  const compress = mode === 'compress'
   const kinds = convertible(scan)
-  const mixed = scan.kinds.length > 1
+  const mixed = !compress && scan.kinds.length > 1
   const only = kinds[0]
-  const name = displayName(scan.dir)
+  const name = watch ? displayName(scan.dir) : ''
+  /** Every file of the batch: "12 images", "3 PDFs", "8 files". */
+  const count =
+    scan.kinds.length === 1 && only ? countOf(only.id, only.count) : `${scan.paths.length} files`
 
   const [answers, setAnswers] = useState<KindAnswers>(() => {
     const out: KindAnswers = {}
@@ -186,15 +278,26 @@ export function WatchFlow({
     }
     return out
   })
-  const [step, setStep] = useState<Step>(mixed ? 'kinds' : 'target')
+  const [step, setStep] = useState<Step>(compress ? 'method' : mixed ? 'kinds' : 'target')
+  // Compress: one method and one answer for every file.
+  const [method, setMethod] = useState<'quality' | 'size'>('quality')
+  const slider = qualitySpec(scan, prefs.quality)
+  const [quality, setQuality] = useState(slider.start)
+  const [targetBytes, setTargetBytes] = useState<number | undefined>()
+  const [sizeText, setSizeText] = useState('')
+  const [sizeUnit, setSizeUnit] = useState<SizeUnit>('kb')
+  const [unitFocused, setUnitFocused] = useState(false)
+  const [sizeError, setSizeError] = useState<string | undefined>()
+  // Name taken, for several files: how many, and where they were to go.
+  const [taken, setTaken] = useState<{ n: number; to: string; keepBoth: string } | undefined>()
   const [kindAt, setKindAt] = useState(0)
   const [win, setWin] = useState<{ kind: KindId; focus: number; draft: KindAnswer } | undefined>()
 
   // Save as, as today: the configured default first, the folder's own place as Same location.
   const first = scan.sources[0]
   const destination = useMemo(
-    () => (first ? destinationOption(first, prefs, { subfolder: NEW_FOLDER.convert }) : undefined),
-    [first, prefs],
+    () => (first ? destinationOption(first, prefs, { subfolder: NEW_FOLDER[mode] }) : undefined),
+    [first, prefs, mode],
   )
   const [folder, setFolder] = useState(() => expandTilde(prefs.defaultOutput))
   const placeName = (path: string) =>
@@ -215,7 +318,7 @@ export function WatchFlow({
     from: new Set<string>(),
     to: new Set<string>(),
   })
-  const [files, setFiles] = useState<(WatchedFile & { startedAt: number; doneAt?: number })[]>([])
+  const [files, setFiles] = useState<ListedFile[]>([])
   const [back, setBack] = useState(0)
   const [fresh, setFresh] = useState(0)
   const backRef = useRef(0)
@@ -232,13 +335,29 @@ export function WatchFlow({
 
   /** The answers the bar's trail says: one kind's format and setting, or how many kinds. */
   const answered = (): string[] => {
+    if (compress) return [methodLabel, ...(valueSaid ? [valueSaid] : [])]
     if (mixed) return [`${Object.keys(answers).length} kinds`]
     const a = only ? answers[only.id] : undefined
     if (!a) return []
     return answerText(a).split(' · ')
   }
+  const methodLabel = METHODS.find((m) => m.value === method)?.label ?? ''
+  const valueSaid =
+    method === 'size'
+      ? targetBytes === undefined
+        ? undefined
+        : formatBytes(targetBytes)
+      : String(quality)
   const trail: Trail = (() => {
     switch (step) {
+      case 'method':
+        return { answers: [], current: 'Method' }
+      case 'quality':
+        return { answers: [methodLabel], current: 'Quality' }
+      case 'size':
+        return { answers: [methodLabel], current: 'Size' }
+      case 'taken':
+        return { answers: [...answered(), placeName(folder)], current: 'Name taken' }
       case 'kinds':
         return { answers: [], current: 'Each kind' }
       case 'target':
@@ -253,9 +372,12 @@ export function WatchFlow({
       case 'save-as':
         return { answers: answered(), current: 'Save as' }
       case 'converting':
-        return { answers: [...answered(), placeName(folder)], current: 'Converting' }
+        return {
+          answers: [...answered(), placeName(folder)],
+          current: compress ? 'Compressing' : 'Converting',
+        }
       case 'watching':
-        return { answers: [...answered(), placeName(folder)], current: 'Watching' }
+        return { answers: [...answered(), placeName(folder)], current: watch ? 'Watching' : 'Done' }
     }
   })()
   const trailKey = JSON.stringify(trail)
@@ -264,14 +386,62 @@ export function WatchFlow({
     onTrail(trail)
   }, [trailKey])
 
-  /** Converts what the folder holds, then watches it. */
-  const run = async (to: string) => {
+  /** What is done to every file: each kind's answer, or one compress. */
+  const recipe: Recipe = compress
+    ? method === 'size' && targetBytes !== undefined
+      ? { op: 'compress', targetBytes }
+      : { op: 'compress', quality }
+    : { op: 'convert', answers }
+  /** What a finished file adds to the bar's totals. */
+  const add = (r: Result) =>
+    setTotals((t) => ({
+      n: t.n + 1,
+      before: t.before + r.job.sources[0].bytes,
+      after: t.after + r.outputBytes,
+      from: new Set([...t.from, FORMATS[r.job.sources[0].format].label]),
+      to: new Set([...t.to, r.job.op === 'convert' ? FORMATS[r.job.target].label : '']),
+    }))
+
+  /**
+   * Several files, not a folder: names already on disk are asked about once
+   * for all of them, as /pdf asks (keep both, replace, cancel). A folder
+   * leaves them alone instead — it was done before, and is watched.
+   */
+  const save = (to: string) => {
+    if (!watch) {
+      const plan = planBatch(scan.sources, recipe, new Set(), { destination: to, existing: 'ask' })
+      const [one] = plan.taken
+      if (one) {
+        const keep = planBatch(scan.sources, recipe, new Set(), {
+          destination: to,
+          existing: 'number',
+        })
+        const kept = keep.jobs.find((j) => j.sources[0].path === one.sources[0].path)?.outputs[0]
+        setTaken({
+          n: plan.taken.length,
+          to,
+          keepBoth: `${kept ? displayName(kept) : ''}${plan.taken.length > 1 ? ' …' : ''}`,
+        })
+        setStep('taken')
+        return
+      }
+    }
+    void run(to, 'leave')
+  }
+
+  /** Converts (or compresses) every file, lists what became of each, then watches a folder. */
+  const run = async (to: string, existing: Existing) => {
     onSaved?.(to)
     setStep('converting')
     setWork({ done: 0, total: 0, label: 'Reading', at: Date.now() })
     const onEvent = (event: PlanEvent) => {
-      if (event.type === 'job:start') {
-        setWork((w) => ({ ...w, total: event.total }))
+      if (event.type === 'search:attempt') {
+        const label = `Finding the right quality · ${displayName(event.job.sources[0].path)}`
+        setWork((w) => ({ ...w, label }))
+      } else if (event.type === 'search:settled') {
+        setWork((w) => ({ ...w, done: event.completed, total: event.total }))
+      } else if (event.type === 'job:start') {
+        setWork((w) => (w.total === event.total ? w : { ...w, done: 0, total: event.total }))
       } else if (
         event.type === 'job:phase' &&
         'phase' in event.progress &&
@@ -284,7 +454,7 @@ export function WatchFlow({
         setWork((w) => ({ ...w, done: event.completed, total: event.total }))
       }
     }
-    const done = await convertFolder(scan, answers, { destination: to, onEvent })
+    const done = await convertFolder(scan, recipe, { destination: to, existing, onEvent })
     const results = done.outcome.results
     setTotals({
       n: results.length,
@@ -293,10 +463,26 @@ export function WatchFlow({
       from: new Set(results.map((r) => FORMATS[r.job.sources[0].format].label)),
       to: new Set(results.map((r) => (r.job.op === 'convert' ? FORMATS[r.job.target].label : ''))),
     })
+    // Every file of the batch in the list, in the order given; the ones that
+    // could not be read at all first.
+    const at = clock(new Date())
+    setFiles([
+      ...scan.failures.map(
+        (f): ListedFile => ({
+          path: f.path,
+          at,
+          startedAt: 0,
+          state: 'failed',
+          reason: f.error.title.toLowerCase(),
+        }),
+      ),
+      ...batchRows(scan.sources, done).map((row) => rowOf(row, mode, at)),
+    ])
     setStep('watching')
+    if (!watch) return
     session.current = startWatch({
       dir: scan.dir,
-      answers,
+      answers: recipe,
       known: scan.paths,
       claimed: done.claimed,
       destination: to,
@@ -321,20 +507,12 @@ export function WatchFlow({
           }
           return
         }
-        const update = (f: WatchedFile & { startedAt: number; doneAt?: number }) => {
+        const update = (f: ListedFile): ListedFile => {
           if (event.type === 'phase') {
             return { ...f, phase: event.job ? phaseLabel(event.job, event.phase) : 'Reading' }
           }
           if (event.type === 'converted') {
-            const job: Job = event.result.job
-            return {
-              ...f,
-              state: 'done' as const,
-              from: FORMATS[job.sources[0].format].label,
-              to: job.op === 'convert' ? FORMATS[job.target].label : '',
-              bytes: event.result.outputBytes,
-              doneAt: Date.now(),
-            }
+            return { ...f, ...doneRow(event.result, mode), doneAt: Date.now() }
           }
           if (event.type === 'failed') {
             return { ...f, state: 'failed' as const, reason: event.error.title.toLowerCase() }
@@ -346,23 +524,14 @@ export function WatchFlow({
           if (i < 0) return list
           return list.map((f, k) => (k === i ? update(f) : f))
         })
-        if (event.type === 'converted') {
-          const r = event.result
-          setTotals((t) => ({
-            n: t.n + 1,
-            before: t.before + r.job.sources[0].bytes,
-            after: t.after + r.outputBytes,
-            from: new Set([...t.from, FORMATS[r.job.sources[0].format].label]),
-            to: new Set([...t.to, r.job.op === 'convert' ? FORMATS[r.job.target].label : '']),
-          }))
-        }
+        if (event.type === 'converted') add(event.result)
       },
     })
   }
 
   /** What Save as says the files will be called: the first, and how many. */
   const fixedName = (to: string) => {
-    const { jobs } = planFolder(scan.sources, answers, new Set(), to)
+    const { jobs } = planBatch(scan.sources, recipe, new Set(), { destination: to })
     const outputs = jobs.flatMap((j) => j.outputs)
     const [one] = outputs
     if (!one) return `${scan.sources.length} files`
@@ -378,7 +547,10 @@ export function WatchFlow({
     name,
     lines: folderFacts({ kinds: scan.kinds, bytes: scan.bytes, files: scan.paths.length }),
     width,
+    tag,
   }).map((r): Row => [blank(HOME_MARGIN), ...r])
+  /** One kind: its own name counts it ("images"); several kinds count files. */
+  const oneKind = scan.kinds.length === 1 ? only?.id : undefined
 
   // ---------------------------------------------------------------- Each kind
 
@@ -436,23 +608,61 @@ export function WatchFlow({
     { isActive: step === 'kinds' && win !== undefined },
   )
 
+  // Target size: tab moves between the amount and its unit, ←→ changes the
+  // unit, ↵ on the unit confirms both (as compress for one file does).
+  useKeys(
+    (_input, key) => {
+      if (key.escape) {
+        setSizeError(undefined)
+        setUnitFocused(false)
+        setStep('method')
+        return
+      }
+      if (key.tab) {
+        setUnitFocused((f) => !f)
+        return
+      }
+      if (!unitFocused) return
+      if (key.return) {
+        const raw = /[a-z]/i.test(sizeText) ? sizeText.trim() : `${sizeText.trim()}${sizeUnit}`
+        const bytes = parseSize(raw)
+        if (bytes === undefined) {
+          setSizeError(`${raw.trim() || 'that'} is not a size. Try 500kb or 2mb.`)
+          return
+        }
+        setTargetBytes(bytes)
+        setUnitFocused(false)
+        setStep('save-as')
+        return
+      }
+      const d = key.rightArrow ? 1 : key.leftArrow ? -1 : 0
+      if (d === 0) return
+      setSizeUnit((u) => {
+        const i = SIZE_UNIT_IDS.indexOf(u) + d
+        return SIZE_UNIT_IDS[Math.min(SIZE_UNIT_IDS.length - 1, Math.max(0, i))] ?? u
+      })
+    },
+    { isActive: step === 'size' },
+  )
+
   if (step === 'kinds') {
-    const body: Row[] = [
-      ...card,
+    const title: Row[] = [
       [],
       [blank(HOME_MARGIN), ...titleRow({ palette, mode, title: 'Each kind', width })],
       [],
-      ...scan.kinds.map((k, i) =>
-        kindRow({
-          palette,
-          mode,
-          kind: k,
-          answer: answerText(answers[k.id]),
-          selected: i === kindAt,
-        }),
-      ),
     ]
-    const placed = body.map((r) => inset(r))
+    const rows = scan.kinds.map((k, i) =>
+      kindRow({
+        palette,
+        mode,
+        kind: k,
+        answer: answerText(answers[k.id]),
+        selected: i === kindAt,
+      }),
+    )
+    // The card and the kinds' band on the margin, as a file's card and a
+    // picker's rows are; the title starts at the content's edge.
+    const placed = [...card, ...title.map((r) => inset(r)), ...rows]
     while (placed.length < avail) placed.push([])
     let shown = placed
     if (win && winKind) {
@@ -531,7 +741,7 @@ export function WatchFlow({
 
   const cardBox = (
     <Box flexDirection="column" marginBottom={1}>
-      <Lines rows={card} />
+      <Lines rows={card} shift={false} />
     </Box>
   )
 
@@ -647,9 +857,158 @@ export function WatchFlow({
 
   // ---------------------------------------------------------------- Save as
 
+  if (step === 'method') {
+    return (
+      <Box flexDirection="column" flexGrow={1}>
+        {cardBox}
+        <Box marginBottom={1}>
+          <StepTitle mode={mode} title="Method" aside={count} width={width} />
+        </Box>
+        <Select
+          width={Math.min(width - 4, 60)}
+          items={METHODS.map((m) => ({ ...m }))}
+          initialValue={method}
+          onSubmit={(chosen) => {
+            const m = chosen === 'size' ? 'size' : 'quality'
+            setMethod(m)
+            if (m === 'size') setSizeUnit('mb')
+            setStep(m)
+          }}
+          onCancel={onCancel}
+          showHints={width >= 60}
+        />
+        <HintBar
+          width={width}
+          pairs={[
+            ['↑↓', 'choose'],
+            ['↵', 'confirm'],
+          ]}
+          foot={[
+            ['esc', 'back'],
+            ['ctrl-c', 'quit'],
+          ]}
+        />
+      </Box>
+    )
+  }
+
+  if (step === 'quality') {
+    return (
+      <Box flexDirection="column" flexGrow={1}>
+        {cardBox}
+        <QualityStep
+          mode={mode}
+          aside={count}
+          min={slider.min}
+          max={slider.max}
+          step={slider.step}
+          points={slider.points}
+          value={quality}
+          onChange={setQuality}
+          onSubmit={(q) => {
+            setQuality(q)
+            setStep('save-as')
+          }}
+          onCancel={() => setStep('method')}
+          // Several files have no one size to show.
+          size={{ status: 'idle' }}
+          sourceBytes={scan.bytes}
+          width={width}
+        />
+      </Box>
+    )
+  }
+
+  if (step === 'size') {
+    const withUnit = (raw: string) => (/[a-z]/i.test(raw) ? raw.trim() : `${raw.trim()}${sizeUnit}`)
+    return (
+      <Box flexDirection="column" flexGrow={1}>
+        {cardBox}
+        <StepTitle
+          mode={mode}
+          title="Target size"
+          aside={`${count} · ${formatBytes(scan.bytes)}`}
+          width={width}
+        />
+        <Box marginTop={1} flexDirection="column">
+          <SizeField
+            value={sizeText}
+            onChange={(v) => {
+              setSizeText(v)
+              setSizeError(undefined)
+            }}
+            onSubmit={(typed) => {
+              const raw = withUnit(typed)
+              const bytes = parseSize(raw)
+              if (bytes === undefined) {
+                setSizeError(`${raw.trim() || 'that'} is not a size. Try 500kb or 2mb.`)
+                return
+              }
+              setTargetBytes(bytes)
+              setUnitFocused(false)
+              setStep('save-as')
+            }}
+            placeholder="e.g. 500kb or 2mb"
+            unit={sizeUnit}
+            units={SIZE_UNIT_IDS}
+            unitFocused={unitFocused}
+            width={width}
+          />
+          {sizeText.trim() !== '' && describeSize(withUnit(sizeText)) === undefined ? (
+            <Text
+              color={colourProp(palette.dim)}
+            >{`  ${SYMBOLS.warn} not a size — try 500kb or 2mb`}</Text>
+          ) : null}
+          {sizeError ? (
+            <Box flexDirection="column">
+              <Text> </Text>
+              <ErrorLine
+                title="Not a size"
+                reason={sizeError}
+                width={Math.max(8, width - 2 * HOME_MARGIN)}
+              />
+            </Box>
+          ) : null}
+        </Box>
+        <HintBar
+          width={width}
+          pairs={[
+            ['↵', 'confirm'],
+            ['tab', unitFocused ? 'amount' : 'unit'],
+            ...(unitFocused ? ([['←→', 'change unit']] as Array<[string, string]>) : []),
+          ]}
+          foot={[
+            ['esc', 'back'],
+            ['ctrl-c', 'quit'],
+          ]}
+        />
+      </Box>
+    )
+  }
+
+  if (step === 'taken' && taken) {
+    return (
+      <Box flexDirection="column" flexGrow={1}>
+        {cardBox}
+        <NameTaken
+          mode={mode}
+          width={width}
+          name={taken.n === 1 ? '1 file' : `${taken.n} files`}
+          keepBoth={taken.keepBoth}
+          onSubmit={(choice) => {
+            if (choice === 'cancel') setStep('save-as')
+            else void run(taken.to, choice === 'keep' ? 'number' : 'replace')
+          }}
+          onCancel={() => setStep('save-as')}
+        />
+      </Box>
+    )
+  }
+
   if (step === 'save-as' && destination) {
     const back = () => {
-      if (mixed) setStep('kinds')
+      if (compress) setStep(method)
+      else if (mixed) setStep('kinds')
       else if (
         only &&
         answers[only.id] &&
@@ -678,7 +1037,7 @@ export function WatchFlow({
           onMakeDefault={(path) => onMakeDefault?.(path)}
           onSubmit={(to) => {
             setFolder(to)
-            void run(to)
+            save(to)
           }}
           onBack={back}
         />
@@ -689,7 +1048,7 @@ export function WatchFlow({
   // ---------------------------------------------------------------- converting
 
   if (step === 'converting') {
-    const unit = mixed ? 'files' : only ? countOf(only.id, 2).split(' ')[1] : 'files'
+    const unit = oneKind ? countOf(oneKind, 2).split(' ')[1] : 'files'
     return (
       <Box flexDirection="column" flexGrow={1}>
         {cardBox}
@@ -708,6 +1067,8 @@ export function WatchFlow({
 
   return (
     <Watching
+      mode={mode}
+      watching={watch}
       name={name}
       folder={folder}
       totals={totals}
@@ -717,7 +1078,7 @@ export function WatchFlow({
       avail={avail}
       width={width}
       onScroll={(d) => {
-        const room = Math.max(3, avail - 12)
+        const room = listRoom(avail, watch)
         const most = Math.max(0, files.length - (room - 1))
         setBack((b) => {
           const next = Math.max(0, Math.min(most, b + d))
@@ -730,13 +1091,22 @@ export function WatchFlow({
         session.current = undefined
         onClose()
       }}
-      kind={mixed ? undefined : only?.id}
+      kind={oneKind}
     />
   )
 }
 
-/** The watching screen (T1, R1): Done's bar, the words, the hairline, the list. */
+/** The list's room: what is left under the bar, the words (a folder's) and the hairline. */
+const listRoom = (avail: number, watching: boolean) => Math.max(3, avail - (watching ? 12 : 9))
+
+/**
+ * The watching screen (T1, R1): Done's bar, the words, the hairline, the
+ * list. Several files dropped together get the same screen as their Done,
+ * without the words: nothing is watched.
+ */
 function Watching({
+  mode,
+  watching,
   name,
   folder,
   totals,
@@ -749,6 +1119,8 @@ function Watching({
   onClose,
   kind,
 }: {
+  mode: 'convert' | 'compress'
+  watching: boolean
   name: string
   folder: string
   totals: { n: number; before: number; after: number; from: Set<string>; to: Set<string> }
@@ -763,12 +1135,12 @@ function Watching({
   kind?: KindId | undefined
 }) {
   const palette = useTheme()
-  const mode = 'convert' as const
   const moving = motionEnabled(palette.name)
   const running = files.some((f) => f.state === 'running')
   const flashing = files.some((f) => f.doneAt !== undefined && Date.now() - f.doneAt < FLASH_MS)
-  const tick = useTicker(moving || running || flashing, FRAME_MS)
-  const room = Math.max(3, avail - 12)
+  // The hairline's light says the folder is watched; a batch's Done holds still.
+  const tick = useTicker((moving && watching) || running || flashing, FRAME_MS)
+  const room = listRoom(avail, watching)
   const scrolls = files.length > room
 
   useKeys((input, key) => {
@@ -820,25 +1192,34 @@ function Watching({
     }),
   )
   const failedAt = files.flatMap((f, i) => (f.state === 'failed' ? [i] : []))
-  const light = moving ? sweepAt(tick % SWEEP, SWEEP, Math.max(1, width - 6)) : undefined
+  const light =
+    moving && watching ? sweepAt(tick % SWEEP, SWEEP, Math.max(1, width - 6)) : undefined
   const accent = modeColours(palette, mode).fg
 
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Lines rows={bar} shift={false} />
-      <Box marginTop={bar.length > 0 ? 1 : 0} flexDirection="column">
-        <Lines
-          rows={[
-            [
-              blank(3),
-              { text: 'Watching ', fg: palette.fg },
-              { text: name, fg: accent, bold: true },
-            ],
-            [blank(3), { text: 'Any new files you add will be converted.', fg: palette.dim }],
-          ]}
-          shift={false}
-        />
-      </Box>
+      {watching ? (
+        <Box marginTop={bar.length > 0 ? 1 : 0} flexDirection="column">
+          <Lines
+            rows={[
+              [
+                blank(3),
+                { text: 'Watching ', fg: palette.fg },
+                { text: name, fg: accent, bold: true },
+              ],
+              [
+                blank(3),
+                {
+                  text: `Any new files you add will be ${mode === 'compress' ? 'compressed' : 'converted'}.`,
+                  fg: palette.dim,
+                },
+              ],
+            ]}
+            shift={false}
+          />
+        </Box>
+      ) : null}
       <Box marginTop={1} flexDirection="column">
         <Lines
           rows={[
@@ -851,7 +1232,7 @@ function Watching({
       <HintBar
         width={width}
         pairs={[
-          ['↵', 'stop and go home'],
+          ['↵', watching ? 'stop and go home' : 'go home'],
           ['o', 'open folder'],
           ...(scrolls ? ([['↑↓', 'scroll']] as Array<[string, string]>) : []),
         ]}

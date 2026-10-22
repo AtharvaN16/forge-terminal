@@ -1,6 +1,7 @@
 import {
   type BatchRun,
   batchRows,
+  type Existing,
   type KindAnswers,
   type LeftAlone,
   planBatch,
@@ -47,6 +48,8 @@ export async function convertFolder(
   answers: KindAnswers | Recipe,
   opts: {
     destination?: string | undefined
+    /** A name already on disk: left alone (a folder done before), numbered, or replaced. */
+    existing?: Existing
     onEvent?: (event: PlanEvent) => void
     signal?: AbortSignal
     concurrency?: number

@@ -87,6 +87,17 @@ export interface StagedView {
 
 const allPdf = (sources: SourceInfo[]) => sources.every((s) => s.format === 'pdf')
 
+/** Several files' card edge: the format they share ("PNG ×12"), or "MIXED ×12". */
+export function batchTag(sources: SourceInfo[]): string {
+  const [first] = sources
+  const same = first !== undefined && sources.every((s) => s.format === first.format)
+  return `${same ? FORMATS[first.format].label : 'MIXED'} ×${sources.length}`
+}
+
+/** The modes that take several files, or a folder, as one batch. */
+export const batchMode = (mode: ShellMode | undefined): mode is 'convert' | 'compress' =>
+  mode === 'convert' || mode === 'compress'
+
 /** A source's facts, as the file card says them. */
 export function cardFacts(source: SourceInfo): string {
   if (source.kind === 'media') return mediaFacts(source)
@@ -125,7 +136,7 @@ export function stagedView(stage: Stage, fresh: number, mode?: ShellMode): Stage
     headline: `${sources.length} ${noun}`,
     total: formatBytes(sources.reduce((n, s) => n + s.bytes, 0)),
     fresh: Math.max(0, Math.min(fresh, sources.length)),
-    ...(folder && mode === 'convert'
+    ...(folder && batchMode(mode)
       ? {
           folder: {
             name: displayName(folder.dir),
@@ -161,11 +172,9 @@ export function underField(stage: Stage, mode: ShellMode): UnderField | undefine
     }
   }
   if (stage.sources.length < 2 || stagedVerb(stage, mode) !== null) return undefined
-  if (stage.folder && mode === 'convert') return undefined
-  return {
-    kind: 'note',
-    text: `→ converting several files at once is coming${allPdf(stage.sources) ? ' · /pdf merges them' : ''}`,
-  }
+  // Convert and compress take several files; edit takes one image, for now.
+  if (mode !== 'edit') return undefined
+  return { kind: 'note', text: '→ editing several files at once is coming' }
 }
 
 /**
@@ -174,8 +183,9 @@ export function underField(stage: Stage, mode: ShellMode): UnderField | undefine
  * several otherwise — until batch conversion exists.
  */
 export function stagedVerb(stage: Stage, mode: ShellMode): string | null {
-  // A folder in convert mode is one thing: converted, then watched.
-  if (stage.folder && mode === 'convert') return 'convert'
+  // A folder is one thing: converted or compressed, then watched; several
+  // files are one batch.
+  if (batchMode(mode) && (stage.folder || stage.sources.length > 1)) return mode
   if (stage.sources.length === 1) return mode
   if (mode === 'pdf' && stage.sources.length > 1 && allPdf(stage.sources)) return 'pdf'
   return null

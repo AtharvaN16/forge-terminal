@@ -1,6 +1,6 @@
 import stringWidth from 'string-width'
 import type { FolderKind, KindId } from '../core/folder.js'
-import { formatBytes } from '../core/units.js'
+import { formatBytes, percentChange } from '../core/units.js'
 import { blank, gradientAt, HOME_MARGIN, mix, type Row, type Run, width } from './home-art.js'
 import { sliderRow } from './quality-art.js'
 import { modeColours, modeGradient, type Palette, type ShellMode } from './theme.js'
@@ -32,6 +32,7 @@ export function folderCardLines({
   mode,
   name,
   lines,
+  tag,
   width: columns,
 }: {
   palette: Palette
@@ -39,20 +40,24 @@ export function folderCardLines({
   name: string
   lines: string[]
   width: number
+  /**
+   * Several files dropped together, not a folder: the edge says what they
+   * are ("PNG ×12"), as the steps' card for several files does, and no name.
+   */
+  tag?: string | undefined
 }): Row[] {
   const cw = Math.max(20, Math.min(CARD_WIDTH, columns - 2 * HOME_MARGIN))
   const e = palette.border
-  const kind: Run = { text: 'FOLDER', fg: modeColours(palette, mode).fg, bold: true }
+  const kind: Run = { text: tag ?? 'FOLDER', fg: modeColours(palette, mode).fg, bold: true }
   const dash: Run = { text: ' – ', fg: e }
   const room = Math.max(1, cw - 5 - width([kind, dash]) - EDGE_MIN)
   const named: Run = { text: middleEllipsis(name, room), fg: palette.fg, bold: true }
-  const used = width([kind, dash, named])
+  const edge = tag === undefined ? [kind, dash, named] : [kind]
+  const used = width(edge)
   return [
     [
       { text: '╭─ ', fg: e },
-      kind,
-      dash,
-      named,
+      ...edge,
       { text: ` ${'─'.repeat(Math.max(0, cw - 5 - used))}╮`, fg: e },
     ],
     ...lines.map(
@@ -171,6 +176,8 @@ export interface WatchedFile {
   from?: string
   to?: string
   bytes?: number
+  /** Done, compressed: the size it was. The row says was → now and the change. */
+  was?: number
   /** Failed or left alone: why. */
   reason?: string
   /** A finished row's band as it fades, 1 to 0. */
@@ -179,6 +186,8 @@ export interface WatchedFile {
 
 const NAME_W = 30
 const AFTER_W = 17
+/** A compressed row's change, "−65%". */
+const SAVED_W = 7
 
 /**
  * A landed file's row: its state, its name, what it became and how big it
@@ -246,6 +255,22 @@ export function watchedRow({
   }
   const bg = file.flash && file.flash > 0 ? mix(p.canvas, p.panelBand, file.flash) : undefined
   const on = (r: Run): Run => (bg ? { ...r, bg } : r)
+  if (file.was !== undefined) {
+    // Compressed: the format stayed, so the row says what it weighed and what it saved.
+    const { pct } = percentChange(file.was, file.bytes ?? 0)
+    return timed(
+      [
+        blank(2),
+        on({ text: ' ✓ ', fg: p.ok, bold: true }),
+        on({ text: name, fg: p.fg }),
+        on({ text: formatBytes(file.was).padStart(8), fg: p.border }),
+        on({ text: '  →  ', fg: p.border }),
+        on({ text: formatBytes(file.bytes ?? 0).padStart(8), fg: p.fg }),
+        on({ text: `−${Math.round(pct)}%`.padStart(SAVED_W), fg: p.ok, bold: true }),
+      ],
+      bg,
+    )
+  }
   return timed(
     [
       blank(2),

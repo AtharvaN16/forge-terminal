@@ -225,10 +225,6 @@ export interface BatchRow {
   reason?: string
 }
 
-/** A thrown or refused file's few words: the error's short form, else its title. */
-const shortOf = (error: { short?: string | undefined; title: string }) =>
-  error.short ?? error.title.toLowerCase()
-
 /**
  * Every file of a batch, in the order given, with what became of it. A file
  * already under a target size, or that can't get under it, was left as it
@@ -244,9 +240,13 @@ export function batchRows(sources: SourceInfo[], run: BatchRun): BatchRow[] {
   for (const f of [...outcome.refusals, ...outcome.failures]) {
     // Compress never writes a file that is no smaller: nothing wrong with it.
     if (f.error.code === 'cannot-compress-more') {
-      const reason = f.error.short === 'nothing written' ? 'can’t get smaller' : shortOf(f.error)
+      const reason =
+        f.error.short === 'nothing written' ? 'can’t get smaller' : 'already under that size'
       by.set(f.path, { path: f.path, state: 'left', reason })
-    } else by.set(f.path, { path: f.path, state: 'failed', reason: shortOf(f.error) })
+    } else {
+      // A failure in the few words the home and watch rows use: "damaged file".
+      by.set(f.path, { path: f.path, state: 'failed', reason: f.error.title.toLowerCase() })
+    }
   }
   for (const u of outcome.unreachable) {
     const path = u.job.sources[0].path

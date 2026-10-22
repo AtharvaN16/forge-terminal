@@ -40,7 +40,7 @@ import {
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
 import { boostScales } from '../core/extension-targets.js'
-import { type FolderScan, scanFolder } from '../core/folder.js'
+import { type FolderScan, scanFolder, scanOfFiles } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
 import { compressFloor, hasPicture, sizeUnitsFor, soundBytes } from '../core/media.js'
 import { uniqueOutputPath } from '../core/output-path.js'
@@ -154,6 +154,8 @@ import { requestRestart } from './restart.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
 import {
   addToStage,
+  batchMode,
+  batchTag,
   clearStage,
   emptyStage,
   folderStage,
@@ -1168,14 +1170,18 @@ export function App({
   const compressNextFor = (r: Result | null) =>
     mode === 'edit' && r?.job.sources[0]?.kind === 'media'
   /**
-   * Whether converting or compressing right now would silently act on only
-   * the first of several staged files. Batch convert/compress is deferred —
-   * see the note above `convert()` — so this is what keeps that deferral
-   * from being a silent one: `/convert` and `/compress`, and a drop that
-   * would otherwise advance straight into the wizard, all check this first
-   * and refuse instead of quietly picking `stage.sources[0]` for the user.
+   * Several files staged. Convert and compress take them as one batch
+   * (`WatchFlow`, step `watch`); the modes that act on one file check this
+   * and refuse, instead of quietly picking `stage.sources[0]` for the user.
    */
   const stagedBatch = stage.sources.length > 1
+  /** The batch convert and compress run: a folder as scanned, or several files grouped by kind. */
+  const batchScan = useMemo(
+    () =>
+      stage.folder ??
+      (stage.sources.length > 1 ? scanOfFiles(stage.sources, stage.failures) : undefined),
+    [stage],
+  )
   /** Anything but an empty idle prompt — see `isWorking` and `HeaderBar`. */
   const working = isWorking(step, stage.sources.length)
   /** A job is running: a conversion, or a page operation. */
@@ -2675,14 +2681,11 @@ export function App({
       }
 
       if (command.name === 'convert') {
-        if (stage.folder) {
+        // A folder, or several files: one batch (a folder is watched after).
+        if (stage.folder || stagedBatch) {
           setMode('convert')
           setValues({})
           setStep('watch')
-          return
-        }
-        if (stagedBatch) {
-          refuseBatch()
           return
         }
         setMode('convert')
@@ -2697,8 +2700,11 @@ export function App({
       }
 
       if (command.name === 'compress') {
-        if (stagedBatch) {
-          refuseBatch()
+        if (stage.folder || stagedBatch) {
+          fenceOff()
+          setMode('compress')
+          setValues({})
+          setStep('watch')
           return
         }
         if (source && !compressAction.appliesTo([source])) {
@@ -2861,7 +2867,7 @@ export function App({
   /** ↵ on a staged home: the first step for what is staged, in the current mode. */
   const enterStaged = (staged: Stage) => {
     const [only] = staged.sources
-    if (staged.folder && mode === 'convert') setStep('watch')
+    if ((staged.folder || staged.sources.length > 1) && batchMode(mode)) setStep('watch')
     else if (only && staged.sources.length === 1) proceedWith(only)
     else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
   }
@@ -2885,9 +2891,9 @@ export function App({
   useEffect(() => {
     if (!openedAdvance.current || step !== 'idle' || stage.sources.length === 0) return
     openedAdvance.current = false
-    // A folder converts by watching; several files, or a folder to compress,
-    // the shell cannot do yet, and says so rather than sitting on home.
-    if (stage.sources.length === 1 || (stage.folder && mode === 'convert')) enterStaged(stage)
+    // Several files, or a folder, are one batch in convert and compress; the
+    // other modes take one file, and say so rather than sitting on home.
+    if (stage.sources.length === 1 || batchMode(mode)) enterStaged(stage)
     else refuseBatch()
   })
 
@@ -5618,9 +5624,14 @@ export function App({
               />
             ) : null}
 
-            {step === 'watch' && stage.folder ? (
+            {step === 'watch' && batchScan && batchMode(mode) ? (
               <WatchFlow
-                scan={stage.folder}
+                // A new batch, or the same files in another mode, starts the flow afresh.
+                key={`${mode}:${batchScan.paths.join('\n')}`}
+                scan={batchScan}
+                mode={mode}
+                watch={stage.folder !== undefined}
+                tag={stage.folder ? undefined : batchTag(stage.sources)}
                 width={width}
                 height={height}
                 prefs={livePrefs}

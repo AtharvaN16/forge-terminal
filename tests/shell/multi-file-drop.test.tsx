@@ -6,6 +6,7 @@ import { App } from '../../src/shell/App.js'
 import { makePdf, makeTempDir } from '../helpers/fixtures.js'
 
 const ENTER = String.fromCharCode(13)
+const ESC = String.fromCharCode(27)
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms))
 
 /**
@@ -45,6 +46,9 @@ describe('dropping several files at once', () => {
     await settle()
     stdin.write(ENTER)
     await until(lastFrame, '2 PDFs')
+    // ↵ took both straight into the batch; esc is home again, both still staged.
+    stdin.write(ESC)
+    await until(lastFrame, 'feb.pdf')
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('jan.pdf')
@@ -94,6 +98,9 @@ describe('dropping several files at once', () => {
     await settle()
     stdin.write(ENTER)
     await until(lastFrame, '2 PDFs')
+    // ↵ took both straight into the batch; esc is home again, both still staged.
+    stdin.write(ESC)
+    await until(lastFrame, 'feb.pdf')
 
     const frame = lastFrame() ?? ''
     expect(frame).toContain('my report.pdf')

@@ -5,7 +5,7 @@ import { clockOf } from '../../core/timecode.js'
 import type { SourceInfo } from '../../core/types.js'
 import { lastSegment } from '../../utils/last-segment.js'
 import type { Stage } from '../stage.js'
-import { stageSummary } from '../stage.js'
+import { batchTag, stageSummary } from '../stage.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, SYMBOLS } from '../theme.js'
@@ -83,8 +83,7 @@ export function StagedFiles({
   // "MIXED" instead, and each row then carries its own format so the mix is
   // still legible file by file.
   const sameFormat = sources.every((s) => s.format === first?.format)
-  const formatLabel = first ? FORMATS[first.format].label : ''
-  const tag = sameFormat ? `${formatLabel} ×${sources.length}` : `MIXED ×${sources.length}`
+  const tag = batchTag(sources)
 
   // Below the compact band (<60 columns) the frame is dropped entirely,
   // exactly as `FileCard` drops it — spec §13: content is truncated, not

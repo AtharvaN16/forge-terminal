@@ -90,24 +90,39 @@ describe('a dropped folder', () => {
     expect(stagedVerb(folderStage({ ...scan, sources: [img] }), 'convert')).toBe('convert')
   })
 
-  it('is a list of files as before in the other modes', () => {
-    expect(stagedVerb(folder, 'compress')).toBeNull()
+  it('compresses on ↵ in compress mode too, and is a list of files in the others', () => {
+    expect(stagedVerb(folder, 'compress')).toBe('compress')
+    expect(stagedVerb(folder, 'edit')).toBeNull()
   })
 
-  it('has no “coming” note in convert mode', () => {
+  it('has no “coming” note in convert or compress; edit still takes one file', () => {
     expect(underField(folder, 'convert')).toBeUndefined()
-    expect(underField(folder, 'compress')?.kind).toBe('note')
+    expect(underField(folder, 'compress')).toBeUndefined()
+    expect(underField(folder, 'edit')).toEqual({
+      kind: 'note',
+      text: '→ editing several files at once is coming',
+    })
   })
 
   it('stops being a folder once another file joins it', () => {
     expect(addToStage(folder, [{ ...img, path: '/c.jpg' }], []).folder).toBeUndefined()
   })
 
-  it('draws the folder’s card on home in convert mode only', () => {
+  it('draws the folder’s card on home in convert and compress', () => {
     expect(stagedView(folder, 0, 'convert').folder).toEqual({
       name: 'images',
       lines: ['2 images · 4.1 KB'],
     })
-    expect(stagedView(folder, 0, 'compress').folder).toBeUndefined()
+    expect(stagedView(folder, 0, 'compress').folder).toEqual(
+      stagedView(folder, 0, 'convert').folder,
+    )
+    expect(stagedView(folder, 0, 'edit').folder).toBeUndefined()
+  })
+
+  it('takes several loose files on ↵ in convert and compress', () => {
+    const two = addToStage(emptyStage(), [img, { ...img, path: '/c.jpg' }], [])
+    expect(stagedVerb(two, 'convert')).toBe('convert')
+    expect(stagedVerb(two, 'compress')).toBe('compress')
+    expect(stagedVerb(two, 'edit')).toBeNull()
   })
 })

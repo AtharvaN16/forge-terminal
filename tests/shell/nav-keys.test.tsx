@@ -150,8 +150,8 @@ describe('esc at the idle prompt', () => {
     await settle()
     app.stdin.write(ENTER)
     await settle(300)
-    expect(app.lastFrame() ?? '').toContain('a.pdf')
-    expect(app.lastFrame() ?? '').toContain('b.pdf')
+    // Both staged: ↵ takes the two on as one batch.
+    expect(app.lastFrame() ?? '').toContain('PDF ×2')
   }, 20_000)
 
   it('clears a leftover stage on the press after the text is already empty', async () => {

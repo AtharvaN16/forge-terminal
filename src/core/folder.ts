@@ -134,15 +134,7 @@ export async function scanFolder(dir: string): Promise<FolderScan> {
       bytes += read.bytes
     }
   }
-  const kinds: FolderKind[] = []
-  for (const id of KIND_ORDER) {
-    const of = sources.filter((s) => kindOf(s) === id)
-    if (of.length > 0) {
-      kinds.push({ id, count: of.length, bytes: of.reduce((n, s) => n + s.bytes, 0), sources: of })
-    }
-  }
-  // The kinds Forge converts first, the largest first; then the rest, as found.
-  kinds.sort((a, b) => b.count - a.count)
+  const kinds = kindsOf(sources)
   for (const id of KIND_ORDER) {
     const held = unread.get(id)
     if (!held) continue
@@ -156,6 +148,45 @@ export async function scanFolder(dir: string): Promise<FolderScan> {
     })
   }
   return { dir: abs, sources, failures, kinds, bytes, paths }
+}
+
+/** The kinds Forge converts, the largest first. */
+function kindsOf(sources: SourceInfo[]): FolderKind[] {
+  const kinds: FolderKind[] = []
+  for (const id of KIND_ORDER) {
+    const of = sources.filter((s) => kindOf(s) === id)
+    if (of.length > 0) {
+      kinds.push({ id, count: of.length, bytes: of.reduce((n, s) => n + s.bytes, 0), sources: of })
+    }
+  }
+  return kinds.sort((a, b) => b.count - a.count)
+}
+
+/**
+ * Several files dropped together, read as a folder is read: grouped into
+ * kinds, so the steps ask once per kind. Not a folder: `dir` is empty, and
+ * nothing is watched. Video and sound go one at a time, so they are a kind
+ * of their own that the batch leaves alone.
+ */
+export function scanOfFiles(sources: SourceInfo[], failures: InputFailure[] = []): FolderScan {
+  const media = sources.filter((s) => s.kind === 'media')
+  const read = sources.filter((s) => s.kind !== 'media')
+  const kinds = kindsOf(read)
+  for (const id of ['videos', 'audio'] as const) {
+    const of = media.filter((s) => (FORMATS[s.format].media === 'video') === (id === 'videos'))
+    if (of.length > 0) {
+      const bytes = of.reduce((n, s) => n + s.bytes, 0)
+      kinds.push({ id, count: of.length, bytes, sources: [], why: 'one at a time' })
+    }
+  }
+  return {
+    dir: '',
+    sources: read,
+    failures,
+    kinds,
+    bytes: sources.reduce((n, s) => n + s.bytes, 0),
+    paths: sources.map((s) => s.path),
+  }
 }
 
 export type FolderFileRead =

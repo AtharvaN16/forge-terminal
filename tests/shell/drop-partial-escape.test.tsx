@@ -43,8 +43,6 @@ describe('a single dropped path with one unescaped space', () => {
 
   it('still splits a genuine multi-file drop of real files', async () => {
     const dir = await makeTempDir()
-    // PDFs, because only a merge list stages several files at once — two
-    // images would be (correctly) refused before staging.
     const a = await makePdf(dir, 'a.pdf', 1)
     const b = await makePdf(dir, 'b.pdf', 1)
 
@@ -57,9 +55,10 @@ describe('a single dropped path with one unescaped space', () => {
     const frame = lastFrame() ?? ''
     // Both real files staged — the whole-string attempt fails (no file
     // literally named "a.pdf <space> b.pdf"), so it correctly falls through
-    // to splitting, unchanged from before this fix.
-    expect(frame).toContain('a.pdf')
-    expect(frame).toContain('b.pdf')
+    // to splitting, unchanged from before this fix. ↵ took both on as one
+    // batch, whose card counts them.
+    expect(frame).toContain('PDF ×2')
+    expect(frame).toContain('2 PDFs')
   })
 
   // A macOS recording or screenshot has a narrow no-break space (U+202F)
