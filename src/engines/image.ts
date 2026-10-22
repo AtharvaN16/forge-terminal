@@ -21,6 +21,8 @@ import {
   nothingToTrim,
   pathTooLong,
   permissionDenied,
+  rawCameraUnsupported,
+  rawDecoderUnavailable,
   resizeTooLarge,
   symlinkLoop,
   unreadablePath,
@@ -39,8 +41,10 @@ import type {
   Warning,
 } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
-import { decodeHeic, heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
+import { openable } from './decoded.js'
+import { heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import { loadSharp } from './libs.js'
+import { rawDecodable, rawSize, sniffRaw } from './raw.js'
 import type { Engine, Measurer } from './types.js'
 
 const READS: ReadonlySet<FormatId> = new Set<FormatId>([
@@ -49,11 +53,13 @@ const READS: ReadonlySet<FormatId> = new Set<FormatId>([
   'webp',
   'avif',
   'heic',
+  // Camera RAW is macOS's to decode (engines/raw.ts); Windows does not read it.
+  ...(process.platform === 'darwin' ? (['raw'] as const) : []),
   'gif',
   'tiff',
 ])
 
-/** heic is absent deliberately: sharp cannot encode HEVC. */
+/** heic and raw are absent deliberately: sharp encodes neither. */
 const WRITES: ReadonlySet<FormatId> = new Set<FormatId>([
   'jpeg',
   'png',
@@ -154,8 +160,35 @@ async function probe(path: string): Promise<SourceInfo> {
     }
   }
 
-  // Loaded here, after the HEIC branch: a HEIC is measured with sips and
-  // never needs Sharp to probe.
+  /**
+   * Camera RAW is identified from its own bytes too, before Sharp, which
+   * would open most RAW files as a TIFF and report the preview inside them.
+   * See engines/raw.ts.
+   */
+  const raw = await sniffRaw(path)
+  if (raw) {
+    if (!(await rawDecodable())) throw rawDecoderUnavailable(path)
+    let size: Awaited<ReturnType<typeof rawSize>>
+    try {
+      size = await rawSize(path, raw)
+    } catch (cause) {
+      throw corruptFormatSource(path, 'raw', cause)
+    }
+    if (!size) throw rawCameraUnsupported(path)
+    return {
+      kind: 'image',
+      path,
+      format: 'raw',
+      width: size.width,
+      height: size.height,
+      bytes: stats.size,
+      hasAlpha: false,
+      frames: 1,
+    }
+  }
+
+  // Loaded here, after the HEIC and RAW branches, which are measured with
+  // sips and never need Sharp to probe.
   const sharp = await loadSharp()
   let meta: Metadata
   try {
@@ -217,6 +250,8 @@ export function encode(
       return pipeline.tiff({ compression: 'deflate' })
     case 'heic':
       throw new Error('heic is not writable; the capability graph should have prevented this')
+    case 'raw':
+      throw new Error('raw is not writable; the capability graph should have prevented this')
     case 'pdf':
       throw new Error('pdf is not an image target; the capability graph should have prevented this')
     case 'docx':
@@ -298,12 +333,12 @@ export async function writeAtomic(bytes: Buffer, output: string): Promise<number
  * encode itself.
  *
  * Shared rather than duplicated so the correctness rules hold on both paths:
- * HEIC decoded through sips, `.rotate()` before anything else, alpha
+ * HEIC and RAW decoded through sips, `.rotate()` before anything else, alpha
  * flattened for a target that cannot carry it, EXIF stripped unless asked
  * for. A second copy of this would be a second place for those to drift.
  *
  * The caller owns `cleanup` and must call it on every path — the temp HEIC
- * decode is exactly the litter invariant 6 exists to prevent.
+ * or RAW decode is exactly the litter invariant 6 exists to prevent.
  */
 async function pipelineFor(
   source: SourceInfo,
@@ -312,8 +347,8 @@ async function pipelineFor(
   animated: boolean,
   /**
    * The source already in memory, for the target-size search, which encodes
-   * from the same bytes up to eight times. A HEIC arrives here already
-   * decoded to PNG (see `readOnce`), so it skips the sips step.
+   * from the same bytes up to eight times. A HEIC or RAW arrives here
+   * already decoded to PNG (see `readOnce`), so it skips the sips step.
    */
   input?: Buffer,
   /**
@@ -331,27 +366,23 @@ async function pipelineFor(
   }
 
   /**
-   * HEIC cannot be decoded by the bundled libvips (see engines/heic.ts), so
-   * it is transcoded to a temporary PNG by `sips` first and the ordinary
-   * pipeline runs on that. Everything downstream is unchanged; only the file
-   * Sharp opens differs.
+   * HEIC and RAW cannot be decoded by the bundled libvips (engines/heic.ts,
+   * engines/raw.ts), so they are transcoded to a temporary PNG by `sips`
+   * first and the ordinary pipeline runs on that. Everything downstream is
+   * unchanged; only the file Sharp opens differs.
    */
-  if (input === undefined && source.format === 'heic' && !(await heicDecodable())) {
-    throw heicDecoderUnavailable(source.path)
-  }
-  const heic =
-    input === undefined && source.format === 'heic' ? await decodeHeic(source.path) : undefined
+  const opened = input === undefined ? await openable(source.path, source.format) : undefined
   const cleanup = async () => {
-    await heic?.cleanup()
+    await opened?.cleanup()
   }
 
   const sharp = await loadSharp()
-  let pipeline = sharp(input ?? heic?.path ?? source.path, animated ? { animated: true } : {})
+  let pipeline = sharp(input ?? opened?.path ?? source.path, animated ? { animated: true } : {})
 
   // Rule 1: EXIF orientation, before anything else. Verified safe on
   // animated input — page count survives.
   //
-  // Applies to a decoded HEIC too. Measured, because the opposite seemed
+  // Applies to a decoded HEIC or RAW too. Measured, because the opposite seemed
   // more likely: an oriented JPEG stored 40x80/orientation-6 becomes an
   // 80x40 HEIC with the rotation baked in, and `sips` then decodes that
   // back to a 40x80 PNG *carrying orientation 6* in an eXIf chunk. So the
@@ -447,15 +478,12 @@ export async function measureImage(source: ImageInfo): Promise<ImageMeasure> {
   const upright = { width: source.width, height: source.height }
   if (source.frames > 1) return { upright, trimmed: 'animated' }
 
-  if (source.format === 'heic' && !(await heicDecodable())) {
-    throw heicDecoderUnavailable(source.path)
-  }
-  const heic = source.format === 'heic' ? await decodeHeic(source.path) : undefined
+  const opened = await openable(source.path, source.format)
   try {
     const sharp = await loadSharp()
     // Encoded at quality 1 only because Sharp reports the trimmed size with the
     // encoded buffer; the bytes are thrown away.
-    const { info } = await sharp(heic?.path ?? source.path)
+    const { info } = await sharp(opened.path)
       .rotate()
       .trim()
       .jpeg({ quality: 1 })
@@ -466,7 +494,7 @@ export async function measureImage(source: ImageInfo): Promise<ImageMeasure> {
   } catch (cause) {
     throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
   } finally {
-    await heic?.cleanup()
+    await opened.cleanup()
   }
 }
 
@@ -686,8 +714,8 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
 
 /**
  * The source's bytes, read once for a search that encodes from them
- * repeatedly. A HEIC is decoded through sips here, once, and handed on as the
- * decoded PNG. Per attempt that decode was the most expensive step.
+ * repeatedly. A HEIC or RAW is decoded through sips here, once, and handed on
+ * as the decoded PNG. Per attempt that decode was the most expensive step.
  *
  * Bytes rather than decoded pixels on purpose: encoding from a buffer runs
  * the same libvips decode as encoding from the file, so every measured size
@@ -695,13 +723,11 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
  * cannot move (spec §3).
  */
 async function readOnce(source: ImageInfo): Promise<Buffer> {
-  if (source.format !== 'heic') return readFile(source.path)
-  if (!(await heicDecodable())) throw heicDecoderUnavailable(source.path)
-  const decoded = await decodeHeic(source.path)
+  const opened = await openable(source.path, source.format)
   try {
-    return await readFile(decoded.path)
+    return await readFile(opened.path)
   } finally {
-    await decoded.cleanup()
+    await opened.cleanup()
   }
 }
 

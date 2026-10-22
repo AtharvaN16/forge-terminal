@@ -16,6 +16,8 @@ import {
   outputIsInput,
   pathTooLong,
   permissionDenied,
+  rawCameraUnsupported,
+  rawDecoderUnavailable,
   renderError,
   selfCollision,
   symlinkLoop,
@@ -318,6 +320,16 @@ describe('short', () => {
       'heic-decoder-unavailable',
       heicDecoderUnavailable('/tmp/a.heic', 'darwin'),
       'HEIC needs sips, which could not be run.',
+    ],
+    [
+      'raw-decoder-unavailable',
+      rawDecoderUnavailable('/tmp/a.nef', 'darwin'),
+      'RAW needs sips, which could not be run.',
+    ],
+    [
+      'raw-decoder-unavailable (camera)',
+      rawCameraUnsupported('/tmp/a.nef'),
+      'macOS cannot read RAW photos from this camera.',
     ],
   ] as const
 

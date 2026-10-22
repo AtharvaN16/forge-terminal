@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALL_FORMAT_IDS, FORMATS, formatById, primaryExtension } from '../../src/core/formats.js'
 
 describe('format registry', () => {
-  it('knows the image, document, video and sound formats', () => {
+  it('knows the image, camera RAW, document, video and sound formats', () => {
     expect(ALL_FORMAT_IDS.sort()).toEqual([
       'aiff',
       'avi',
@@ -23,6 +23,7 @@ describe('format registry', () => {
       'opus',
       'pdf',
       'png',
+      'raw',
       'tiff',
       'wav',
       'webm',
