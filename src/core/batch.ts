@@ -2,13 +2,17 @@ import { existsSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { compressAction } from './actions/compress.js'
 import { convertAction } from './actions/convert.js'
+import { boostAction, removeBackgroundAction } from './actions/extension.js'
+import { resizeAction, trimAction } from './actions/resize.js'
 import { targetIdsFor } from './capabilities.js'
 import { type PlanEvent, type RunOutcome, runPlan } from './execute-jobs.js'
+import { boostOverLimit } from './extension-targets.js'
 import type { KindAnswer, KindId } from './folder.js'
 import { kindOf } from './folder.js'
 import { FORMATS } from './formats.js'
 import { fitName } from './output-path.js'
-import type { Job, Result, SourceInfo } from './types.js'
+import { keptFormat } from './resize.js'
+import type { ImageInfo, Job, ResizeSpec, Result, SourceInfo } from './types.js'
 import { formatBytes } from './units.js'
 
 /**
@@ -26,6 +30,17 @@ export type Recipe =
   | { op: 'convert'; answers: KindAnswers }
   /** Compressed at a quality, or each file to fit under `targetBytes`. */
   | { op: 'compress'; quality?: number; targetBytes?: number }
+  /** One of Edit's tools on every image: Boost's scale, Resize's size. */
+  | { op: 'edit'; tool: BatchEditTool; scale?: number; resize?: ResizeSpec }
+
+/** An edit recipe: one tool, run on every image. */
+export type EditRecipe = Extract<Recipe, { op: 'edit' }>
+
+/**
+ * The edit tools a batch runs on every image. Not Crop to shape: where to
+ * cut is a choice made for each picture, so it is one image at a time.
+ */
+export type BatchEditTool = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize'
 
 /**
  * What to do with a file whose output is already on disk. `leave` it alone
@@ -65,12 +80,47 @@ function nothingToCompress(source: SourceInfo): string {
   return `${FORMATS[source.format].label} is lossless`
 }
 
+/** One image's edit job, or why the tool leaves it as it is. */
+function editJob(
+  source: SourceInfo,
+  recipe: Extract<Recipe, { op: 'edit' }>,
+  destination: string | undefined,
+): { job: Job } | { left: string } {
+  if (source.kind !== 'image') return { left: 'images only' }
+  const image: ImageInfo = source
+  const where = destination === undefined ? {} : { output: destination }
+  if (recipe.tool === 'sharpen' || recipe.tool === 'boost') {
+    const scale = recipe.tool === 'sharpen' ? 1 : (recipe.scale ?? 2)
+    if (boostOverLimit(image.width, image.height, scale))
+      return { left: scale === 1 ? 'too large' : `too large for ${scale}×` }
+    const [job] = boostAction.plan([image], {
+      scale: String(scale),
+      target: keptFormat(image),
+      ...where,
+    })
+    return job ? { job } : { left: 'not supported' }
+  }
+  if (recipe.tool === 'cutout') {
+    const [job] = removeBackgroundAction.plan([image], { target: 'png', ...where })
+    return job ? { job } : { left: 'not supported' }
+  }
+  if (recipe.tool === 'trim' && image.frames > 1) return { left: 'animated' }
+  const action = recipe.tool === 'trim' ? trimAction : resizeAction
+  const [job] = action.plan([image], {
+    target: keptFormat(image),
+    ...(recipe.resize ? { resize: recipe.resize } : {}),
+    ...where,
+  })
+  return job ? { job } : { left: 'not supported' }
+}
+
 /** One file's job for the recipe, before anything on disk is looked at; or why not. */
 function jobFor(
   source: SourceInfo,
   recipe: Recipe,
   destination: string | undefined,
 ): { job: Job } | { left: string } {
+  if (recipe.op === 'edit') return editJob(source, recipe, destination)
   // Video and sound go one at a time: each has its own length and floor.
   if (source.kind === 'media') return { left: 'one at a time' }
   const where = destination === undefined ? {} : { destination }
@@ -131,7 +181,14 @@ export function planBatchFile(
   const { job } = planned
   const onDisk = job.outputs.some((o) => existsSync(o) && !claimed.has(o))
   if (onDisk && existing === 'leave') {
-    return { left: recipe.op === 'compress' ? 'already compressed' : 'already converted' }
+    return {
+      left:
+        recipe.op === 'compress'
+          ? 'already compressed'
+          : recipe.op === 'edit'
+            ? 'already edited'
+            : 'already converted',
+    }
   }
   const taken =
     existing === 'number'
@@ -243,6 +300,8 @@ export function batchRows(sources: SourceInfo[], run: BatchRun): BatchRow[] {
       const reason =
         f.error.short === 'nothing written' ? 'can’t get smaller' : 'already under that size'
       by.set(f.path, { path: f.path, state: 'left', reason })
+    } else if (f.error.code === 'nothing-to-trim') {
+      by.set(f.path, { path: f.path, state: 'left', reason: 'no empty edges' })
     } else {
       // A failure in the few words the home and watch rows use: "damaged file".
       by.set(f.path, { path: f.path, state: 'failed', reason: f.error.title.toLowerCase() })

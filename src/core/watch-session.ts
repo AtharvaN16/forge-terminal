@@ -19,7 +19,7 @@ export type { KindAnswers, LeftAlone, Recipe } from './batch.js'
 
 /** A convert's kind answers as a recipe; a recipe as it is. */
 const recipeOf = (r: KindAnswers | Recipe): Recipe =>
-  'op' in r && (r.op === 'convert' || r.op === 'compress')
+  'op' in r && (r.op === 'convert' || r.op === 'compress' || r.op === 'edit')
     ? (r as Recipe)
     : { op: 'convert', answers: r as KindAnswers }
 

@@ -95,8 +95,8 @@ export function batchTag(sources: SourceInfo[]): string {
 }
 
 /** The modes that take several files, or a folder, as one batch. */
-export const batchMode = (mode: ShellMode | undefined): mode is 'convert' | 'compress' =>
-  mode === 'convert' || mode === 'compress'
+export const batchMode = (mode: ShellMode | undefined): mode is 'convert' | 'compress' | 'edit' =>
+  mode === 'convert' || mode === 'compress' || mode === 'edit'
 
 /** A source's facts, as the file card says them. */
 export function cardFacts(source: SourceInfo): string {
@@ -157,10 +157,10 @@ export type UnderField =
   | { kind: 'note'; text: string }
 
 /**
- * Files that could not be read win (R1, in `fail` red); otherwise several
- * files that ↵ cannot act on yet get the note saying batch is coming.
+ * Files that could not be read (R1, in `fail` red). Several files are one
+ * batch in convert, compress and edit, so nothing else is said under the field.
  */
-export function underField(stage: Stage, mode: ShellMode): UnderField | undefined {
+export function underField(stage: Stage, _mode: ShellMode): UnderField | undefined {
   const [first] = stage.failures
   if (first) {
     return {
@@ -171,10 +171,7 @@ export function underField(stage: Stage, mode: ShellMode): UnderField | undefine
       more: stage.failures.length - 1,
     }
   }
-  if (stage.sources.length < 2 || stagedVerb(stage, mode) !== null) return undefined
-  // Convert and compress take several files; edit takes one image, for now.
-  if (mode !== 'edit') return undefined
-  return { kind: 'note', text: '→ editing several files at once is coming' }
+  return undefined
 }
 
 /**

@@ -7,6 +7,8 @@
  */
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
+// biome-ignore lint/correctness/noUnusedImports: tsx compiles this script's JSX to React.createElement.
+import React from 'react'
 import { DEFAULT_PREFERENCES } from '../src/config/preferences.js'
 import { App } from '../src/shell/App.js'
 import {
@@ -79,6 +81,23 @@ await session('compress to a size', [
   6000,
 ])
 await session('convert', ['1', paths.join(' '), ENTER, 300, ENTER, ENTER, ENTER, 4000])
+await session('edit', [
+  '4',
+  paths.slice(0, 5).join(' '),
+  ENTER,
+  1500,
+  DOWN,
+  DOWN,
+  DOWN,
+  DOWN,
+  500,
+  ENTER,
+  500,
+  ENTER,
+  500,
+  ENTER,
+  4000,
+])
 const pdf = await makePdf(dir, 'deck.pdf', 2)
 await session('convert, mixed', ['1', [...paths.slice(0, 3), pdf].join(' '), ENTER, 300])
 process.exit(0)

@@ -52,9 +52,12 @@ export function resizeSliderRows({
   width = 80,
   band = SLIDER_WIDTH,
   plain,
+  exact = true,
 }: {
   palette: Palette
   percent: number
+  /** `#  type an exact size` is offered: not for several images, which each keep their shape. */
+  exact?: boolean
   /** Unused: the band carries no mode colour (G1). */
   mode?: ShellMode
   /** The terminal's width. */
@@ -73,7 +76,7 @@ export function resizeSliderRows({
     ...(plain === undefined ? {} : { plain }),
   })
   const hint: Row = [blank(HINT_GAP), keycap(palette, '#'), run(` ${HINT}`, palette.dim)]
-  const fits = widthOf(slider) + widthOf(hint) < width
+  const fits = exact && widthOf(slider) + widthOf(hint) < width
   return [
     fits ? [...slider, ...hint] : slider,
     endsRow({ palette, width: band, ends: ['smaller', 'larger'], middle: 'same size' }),
@@ -91,17 +94,19 @@ export function resizeResultRows({
   percent,
 }: {
   palette: Palette
-  from: Size
+  /** The size the percent is of; several images have no one size, so no line says one. */
+  from: Size | undefined
   percent: number
 }): Row[] {
-  const to = dims(resizedSize(from, { percent }))
-  const rows: Row[] = [
-    [
-      blank(1),
-      run(percent === 100 ? 'same size · ' : 'becomes ', palette.dim),
-      run(to, palette.fg, undefined, true),
-    ],
-  ]
+  const rows: Row[] = from
+    ? [
+        [
+          blank(1),
+          run(percent === 100 ? 'same size · ' : 'becomes ', palette.dim),
+          run(dims(resizedSize(from, { percent })), palette.fg, undefined, true),
+        ],
+      ]
+    : []
   if (percent > 100) {
     rows.push([
       blank(1),

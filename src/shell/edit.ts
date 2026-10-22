@@ -202,6 +202,41 @@ export function editRows(
 }
 
 /**
+ * The rows for several images at once (mockups/batch-2026-10.html, G1): the
+ * same tools, each run on every image. Nothing here is measured from one
+ * picture — an image a tool cannot change is left as it is and told at Done —
+ * so no row is dimmed for one image's sake, and the facts are the tool's
+ * alone. Crop to shape is one image at a time: where to cut is a choice made
+ * for each picture.
+ */
+export function batchEditRows(
+  first: ImageInfo,
+  offered: readonly BoostScale[] = boostScales(undefined),
+  platform: NodeJS.Platform = process.platform,
+): EditRow[] {
+  const none: Detail = { dim: '', bold: '' }
+  return editRows(first, undefined, offered, platform).map((row): EditRow => {
+    const { tooLarge: _one, ...rest } = row
+    switch (row.id) {
+      case 'sharpen':
+        return { ...rest, detail: { dim: '', bold: 'same size' } }
+      case 'boost':
+        return {
+          ...rest,
+          scales: offered.map((scale) => ({ scale, detail: none })),
+          detail: none,
+        }
+      case 'trim':
+        return { ...rest, detail: none }
+      case 'crop':
+        return { ...rest, shapes: [], detail: none, tooLarge: 'one at a time' }
+      default:
+        return rest
+    }
+  })
+}
+
+/**
  * A video's or sound file's rows (video spec §3.4): Trim and Mute, a blank
  * row, then Resize and Crop to shape for a video; Trim and Even out loudness
  * for sound. Each keeps the format and runs through `mediaEditAction`.

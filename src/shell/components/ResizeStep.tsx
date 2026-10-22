@@ -32,13 +32,14 @@ export function ResizeStep({
   mode: ShellMode
   /** The file and its upright size, at the title's right. */
   aside: string
-  /** The upright size the percent is of. */
-  from: Size
+  /** The upright size the percent is of; none for several images, each its own. */
+  from?: Size | undefined
   percent: number
   max: number
   onChange: (percent: number) => void
   onSubmit: (percent: number) => void
-  onExact: () => void
+  /** `#`: the exact Width × Height pair; absent for several images. */
+  onExact?: (() => void) | undefined
   onCancel: () => void
   width: number
 }) {
@@ -53,7 +54,7 @@ export function ResizeStep({
     onCancel,
   })
   useKeys((input) => {
-    if (input === '#') onExact()
+    if (input === '#') onExact?.()
   })
   const band = Math.min(SLIDER_WIDTH, Math.max(12, width - 2))
   // Read at render time, as Quality reads it: NO_COLOR strips every fill.
@@ -62,7 +63,14 @@ export function ResizeStep({
     <Box flexDirection="column" flexGrow={1}>
       <StepTitle mode={mode} title="Resize to" aside={aside} width={width} />
       <Box marginTop={1} flexDirection="column">
-        {resizeSliderRows({ palette, percent, width, band, plain }).map((row, i) => (
+        {resizeSliderRows({
+          palette,
+          percent,
+          width,
+          band,
+          plain,
+          exact: onExact !== undefined,
+        }).map((row, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
           <Runs key={i} row={row} />
         ))}
@@ -78,7 +86,7 @@ export function ResizeStep({
         pairs={[
           ['←→', 'adjust'],
           ['↵', 'confirm'],
-          ['#', 'exact size'],
+          ...(onExact ? ([['#', 'exact size']] as Array<[string, string]>) : []),
         ]}
         foot={[
           ['esc', 'back'],

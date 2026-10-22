@@ -24,6 +24,7 @@ import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { mediaEditAction } from '../core/actions/media.js'
 import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import type { EditRecipe } from '../core/batch.js'
 import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
 import { parseColour } from '../core/colour/parse.js'
 import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
@@ -120,6 +121,7 @@ import { Working } from './components/Working.js'
 import { NEW_FOLDER, safeStem } from './destinations.js'
 import {
   actionForRow,
+  batchEditRows,
   type EditRow,
   type EditTools,
   editRow,
@@ -973,6 +975,10 @@ export function App({
   >(undefined)
   /** Resize's slider, in percent of the upright size. */
   const [resizePercent, setResizePercent] = useState(100)
+  /** Edit on several images: the tool chosen for all of them, for the batch flow to run. */
+  const [batchEdit, setBatchEdit] = useState<
+    { recipe: EditRecipe; label: string; answer?: string; verb: string } | undefined
+  >(undefined)
   /**
    * Where the crop stood when its preview was left for Save as, so coming
    * back finds it there. A row chosen afresh starts on the guess again.
@@ -1176,6 +1182,13 @@ export function App({
    * and refuse, instead of quietly picking `stage.sources[0]` for the user.
    */
   const stagedBatch = stage.sources.length > 1
+  /** A folder, or several files: one batch in convert, compress and edit. */
+  const isBatch = stagedBatch || stage.folder !== undefined
+  /** The images of a batch, which Edit's tools run on. */
+  const batchImages = useMemo(
+    () => stage.sources.filter((s): s is ImageInfo => s.kind === 'image'),
+    [stage],
+  )
   /** The batch convert and compress run: a folder as scanned, or several files grouped by kind. */
   const batchScan = useMemo(
     () =>
@@ -2003,26 +2016,6 @@ export function App({
    */
   const showError = holdFailure
 
-  /**
-   * Refuses to convert or compress a staged batch rather than silently
-   * acting on the first file in it. Refusing beats converting-the-first-
-   * loudly: a partial action on an ambiguous request is worse than no
-   * action, because the user can clear the stage and drop one file in a
-   * second, but they cannot un-convert a file they never meant to touch —
-   * the same "a change nobody asked for is a surprise" reasoning the phase-2
-   * compress design doc uses for why compress never changes the format.
-   *
-   * A `note` block, not a new one: this is a plain history line, the same
-   * shape `/help` and the config-warning banner already use, with the warn
-   * symbol paired with words so the reason survives a monochrome terminal.
-   */
-  const refuseBatch = useCallback(() => {
-    hold({
-      kind: 'note',
-      id: nextId(),
-      text: `${SYMBOLS.warn} Converting several files at once isn't supported yet. Drop a single file, or esc to clear the list.`,
-    })
-  }, [hold])
 
   /**
    * Whether `convertAction` actually has somewhere to send this source.
@@ -2644,8 +2637,15 @@ export function App({
        * arms the mode for the next drop, as `/compress` and `/pdf` do.
        */
       if (command.name === 'edit') {
-        if (stagedBatch) {
-          refuseBatch()
+        // Several files, or a folder: every image, one tool for all of them.
+        if (isBatch) {
+          if (batchImages.length === 0) {
+            if (source) hold({ kind: 'note', id: nextId(), text: editRefusal(source) })
+            return
+          }
+          setMode('edit')
+          setValues({})
+          setStep('edit')
           return
         }
         if (source && source.kind !== 'image') {
@@ -2729,13 +2729,9 @@ export function App({
       }
 
       /**
-       * Deliberately does not consult `stagedBatch`/`refuseBatch` — those
-       * exist to stop convert/compress from silently acting on only the
-       * first of several staged files (see the note above `convert()`),
-       * and `/pdf`'s whole point is the opposite: merge is defined by
-       * having several files staged, and the hub itself dims whatever the
-       * current stage can't do, with a reason, rather than the shell
-       * refusing to even open it.
+       * Several files staged open the hub as one: merge is defined by
+       * having several, and the hub itself dims whatever the current stage
+       * can't do, with a reason, rather than the shell refusing to open it.
        *
        * With no source at all, this arms `mode` and stays at idle — the same
        * shape `/compress` already has a few lines up, for the same reason:
@@ -2777,7 +2773,8 @@ export function App({
       stage.sources,
       stage.folder,
       stagedBatch,
-      refuseBatch,
+      isBatch,
+      batchImages.length,
       hasConvertTarget,
       pdfActionsApply,
       hold,
@@ -2855,9 +2852,8 @@ export function App({
   /**
    * Adds what a drop read to the stage and stays on home. Appended, exact
    * repeats dropped (`addToStage`); files that exist but could not be read
-   * ride along as the stage's failures, for the left-out line. Nothing is
-   * refused here any more: a stage of several images is shown as it is, and
-   * `refuseBatch` speaks up only if `/convert` or `/compress` is run on it.
+   * ride along as the stage's failures, for the left-out line. Several files
+   * are shown as they are: convert, compress and edit take them as one batch.
    */
   const landDrop = useCallback((drop: DropResolution) => {
     const known = new Set(stageRef.current.sources.map((s) => s.path))
@@ -2877,8 +2873,11 @@ export function App({
   /** ↵ on a staged home: the first step for what is staged, in the current mode. */
   const enterStaged = (staged: Stage) => {
     const [only] = staged.sources
-    if ((staged.folder || staged.sources.length > 1) && batchMode(mode)) setStep('watch')
-    else if (only && staged.sources.length === 1) proceedWith(only)
+    if ((staged.folder || staged.sources.length > 1) && batchMode(mode)) {
+      if (mode !== 'edit') setStep('watch')
+      else if (staged.sources.some((s) => s.kind === 'image')) setStep('edit')
+      else if (only) hold({ kind: 'note', id: nextId(), text: editRefusal(only) })
+    } else if (only && staged.sources.length === 1) proceedWith(only)
     else if (stagedVerb(staged, mode) === 'pdf' && pdfCommand) runCommand(pdfCommand)
   }
 
@@ -2901,10 +2900,9 @@ export function App({
   useEffect(() => {
     if (!openedAdvance.current || step !== 'idle' || stage.sources.length === 0) return
     openedAdvance.current = false
-    // Several files, or a folder, are one batch in convert and compress; the
-    // other modes take one file, and say so rather than sitting on home.
-    if (stage.sources.length === 1 || batchMode(mode)) enterStaged(stage)
-    else refuseBatch()
+    // The menu advances only into convert and compress, where several files,
+    // or a folder, are one batch.
+    enterStaged(stage)
   })
 
   /**
@@ -3890,7 +3888,7 @@ export function App({
    * list opens. The engine is loaded only then. A failure leaves the row
    * without its fact; the run itself says what went wrong.
    */
-  const measureFor = source?.kind === 'image' && step === 'edit' ? source : undefined
+  const measureFor = source?.kind === 'image' && step === 'edit' && !isBatch ? source : undefined
   useEffect(() => {
     if (!measureFor || imageMeasure?.path === measureFor.path) return
     let live = true
@@ -3914,6 +3912,10 @@ export function App({
    * its size first; Crop to shape shows where it cuts.
    */
   const chooseEdit = (row: EditRow, step?: number | string) => {
+    if (isBatch) {
+      chooseBatchEdit(row, step)
+      return
+    }
     if (!source) return
     const vals = rowValues(row, step)
     setValues(vals)
@@ -3948,6 +3950,37 @@ export function App({
       return
     }
     openSaveAs({ values: vals, action: actionForRow(row) })
+  }
+
+  /**
+   * Edit on several images: the tool chosen once for all of them. Resize asks
+   * its size first; every other tool goes on to the batch's Save as. Crop to
+   * shape is dimmed: where to cut is one picture's choice.
+   */
+  const chooseBatchEdit = (row: EditRow, step?: number | string) => {
+    if (row.id === 'crop' || row.tooLarge) return
+    if (row.id === 'resize') {
+      // Never past what the largest image can take (spec §2.3).
+      const most = Math.min(100, ...batchImages.map((i) => largestPercent(i)))
+      setResizePercent(most)
+      setValues({ tool: 'resize' })
+      setStep('resize')
+      return
+    }
+    const tool = row.id
+    if (tool !== 'sharpen' && tool !== 'boost' && tool !== 'cutout' && tool !== 'trim') return
+    const scale = tool === 'boost' ? Number(step ?? row.scales?.[0]?.scale ?? 2) : undefined
+    startBatchEdit({
+      recipe: { op: 'edit', tool, ...(scale === undefined ? {} : { scale }) },
+      label: row.label,
+      ...(scale === undefined ? {} : { answer: `${scale}×` }),
+      verb: row.verb,
+    })
+  }
+
+  const startBatchEdit = (chosen: NonNullable<typeof batchEdit>) => {
+    setBatchEdit(chosen)
+    setStep('watch')
   }
 
   /**
@@ -5213,7 +5246,30 @@ export function App({
               </Box>
             ) : null}
 
-            {step === 'edit' && source?.kind === 'media' ? (
+            {step === 'edit' && isBatch && toolStates && batchImages[0] ? (
+              <EditPicker
+                format={`${batchImages.length} images`}
+                rows={batchEditRows(
+                  batchImages[0],
+                  boostScales(
+                    toolStates.boost?.kind === 'ready' ? toolStates.boost.version : undefined,
+                  ),
+                )}
+                tools={toolStates}
+                checking={checking}
+                chosen={{ tool: values.tool }}
+                width={width}
+                onChoose={(row, step) => {
+                  const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
+                  if (state?.kind === 'ready') chooseEdit(row, step)
+                  else if (state?.kind === 'absent') void installThen(row)
+                }}
+                onStop={stopInstall}
+                onCancel={backToPromptKeepingStage}
+              />
+            ) : null}
+
+            {step === 'edit' && !isBatch && source?.kind === 'media' ? (
               <EditPicker
                 format={FORMATS[source.format].label}
                 rows={mediaEditRows(source)}
@@ -5227,7 +5283,7 @@ export function App({
               />
             ) : null}
 
-            {step === 'edit' && source?.kind === 'image' && toolStates ? (
+            {step === 'edit' && !isBatch && source?.kind === 'image' && toolStates ? (
               <EditPicker
                 format={FORMATS[source.format].label}
                 rows={editRows(
@@ -5251,7 +5307,28 @@ export function App({
               />
             ) : null}
 
-            {step === 'resize' && source?.kind === 'media' && source.facts?.video ? (
+            {step === 'resize' && isBatch && batchImages[0] ? (
+              <ResizeStep
+                mode={mode}
+                aside={`${batchImages.length} images`}
+                percent={resizePercent}
+                max={Math.min(...batchImages.map((i) => largestPercent(i)))}
+                onChange={setResizePercent}
+                onSubmit={(percent) =>
+                  startBatchEdit({
+                    recipe: { op: 'edit', tool: 'resize', resize: { percent } },
+                    label: 'Resize',
+                    answer: `${percent}%`,
+                    verb: 'Resizing',
+                  })
+                }
+                // No exact size: several images keep each its own shape, at a percent.
+                onCancel={() => setStep('edit')}
+                width={width}
+              />
+            ) : null}
+
+            {step === 'resize' && !isBatch && source?.kind === 'media' && source.facts?.video ? (
               <ResizeStep
                 mode={mode}
                 aside={`${displayName(source.path)} · ${source.facts.video.width} × ${source.facts.video.height}`}
@@ -5284,7 +5361,7 @@ export function App({
               />
             ) : null}
 
-            {step === 'resize' && source?.kind === 'image' ? (
+            {step === 'resize' && !isBatch && source?.kind === 'image' ? (
               <ResizeStep
                 mode={mode}
                 aside={`${displayName(source.path)} · ${source.width} × ${source.height}`}
@@ -5675,19 +5752,26 @@ export function App({
               />
             ) : null}
 
-            {step === 'watch' && batchScan && batchMode(mode) ? (
+            {step === 'watch' && batchScan && batchMode(mode) && (mode !== 'edit' || batchEdit) ? (
               <WatchFlow
                 // A new batch, or the same files in another mode, starts the flow afresh.
-                key={`${mode}:${batchScan.paths.join('\n')}`}
+                key={`${mode}:${batchEdit?.label ?? ''}:${batchScan.paths.join('\n')}`}
                 scan={batchScan}
                 mode={mode}
-                watch={stage.folder !== undefined}
+                watch={stage.folder !== undefined && mode !== 'edit'}
+                edit={mode === 'edit' ? batchEdit : undefined}
                 tag={stage.folder ? undefined : batchTag(stage.sources)}
                 width={width}
                 height={height}
                 prefs={livePrefs}
                 onTrail={setWatchTrailNow}
-                onCancel={fromPdfHub ? backToPdfHub : backToPromptKeepingStage}
+                onCancel={
+                  mode === 'edit'
+                    ? () => setStep('edit')
+                    : fromPdfHub
+                      ? backToPdfHub
+                      : backToPromptKeepingStage
+                }
                 onClose={clearSource}
                 onMakeDefault={makeDefault}
                 onSaved={rememberSaved}

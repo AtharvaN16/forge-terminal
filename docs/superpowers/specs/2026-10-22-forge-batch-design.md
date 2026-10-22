@@ -53,13 +53,38 @@ percentage added.
   margin; before, they were two columns outside it.
 - By quality's hint drops "see the result": a batch has no one result to show.
 
-## Not yet
+## Edit with several images (built, second pass)
 
-- **Edit with several images.** Home still says "→ editing several files at
-  once is coming".
-  - Planned: every tool applies to each image except Crop to shape, which
-    stays one at a time.
-  - Trim and Boost leave alone the images they can't change.
-- **The PDF menu's Compress and Convert rows.** They aren't on dev yet, and
-  should take several PDFs once they land.
-- **Esc to stop a batch** after the file in progress (mockup F6).
+- ↵ on home, or `/edit`, opens the picker for every image, as "Edit 12 images".
+  - The batch is an `edit` recipe: one tool on every image.
+  - Files that aren't images are left alone ("images only").
+  - A folder in edit is a batch of its images, and is not watched.
+- **The rows.** Every tool runs on each image. The details are the tool's
+  alone ("same size"), not one picture's measurements.
+  - No row is dimmed for one image's sake; Done says which images a tool left
+    as they were:
+    - Trim: "no empty edges", "animated";
+    - Boost and Sharpen: "too large for 4×".
+  - Crop to shape is dimmed "one at a time": where to cut is a choice made
+    for each picture.
+- **Resize** asks one percent, up to what the largest image can take.
+  - There is no `#` exact size: several images each keep their own shape.
+  - There is no "becomes W × H" line either: no single size is true of them all.
+- **After the tool:** the batch flow from Save as on.
+  - esc on Save as goes back to the picker.
+  - Done lists every image.
+
+## Stopping and the PDF menu (built, second pass)
+
+- **esc while a batch runs.**
+  - The files already started finish and nothing more starts (`runJobs`), and
+    the run is `cancelled` with what finished kept.
+  - Done lists the rest as "stopped". A stopped folder is not watched.
+  - esc during a target-size search stops before anything is written, as it
+    does for one file.
+- **The PDF menu's Compress and Convert rows** take several PDFs as one batch.
+  - Compress is dimmed only when none of them has images to shrink.
+  - esc on the batch's first question goes back to the menu.
+- **The "isn't supported yet" refusal is gone.** Every way of reaching
+  several files now leads to a batch.
+

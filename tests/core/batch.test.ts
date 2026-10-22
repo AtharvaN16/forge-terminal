@@ -110,6 +110,46 @@ describe('planBatch, what is already there', () => {
   })
 })
 
+describe('edit, several images', () => {
+  it('resizes every image, keeping its format, and leaves what is not an image', async () => {
+    const dir = await makeTempDir()
+    const sources = [
+      await probe(await makeNoiseImage(dir, 'a.png', 200, 'png')),
+      await probe(await makeNoiseImage(dir, 'b.jpg', 300, 'jpeg')),
+      await probe(await makePdf(dir, 'c.pdf', 1)),
+    ]
+    const recipe = { op: 'edit', tool: 'resize', resize: { percent: 50 } } as const
+    const run = await runBatch(sources, recipe)
+    const rows = batchRows(sources, run)
+    expect(rows.map((r) => `${basename(r.path)} ${r.state} ${r.reason ?? ''}`)).toEqual([
+      'a.png done ',
+      'b.jpg done ',
+      'c.pdf left images only',
+    ])
+    expect(names(rows.flatMap((r) => r.result?.job.outputs ?? []))).toEqual([
+      'a-100x100.png',
+      'b-150x150.jpg',
+    ])
+  })
+
+  it('trims what has empty edges, and says when an image has none', async () => {
+    const dir = await makeTempDir()
+    const flat = await probe(await makePng(dir, 'flat.png'))
+    const run = await runBatch([flat], { op: 'edit', tool: 'trim' })
+    expect(batchRows([flat], run).map((r) => `${r.state} ${r.reason ?? ''}`)).toEqual([
+      'left no empty edges',
+    ])
+  })
+
+  it('leaves an image too large for the boost asked', async () => {
+    const dir = await makeTempDir()
+    const huge = { ...(await probe(await makePng(dir, 'huge.png'))), width: 9000, height: 6000 }
+    const { jobs, left } = planBatch([huge], { op: 'edit', tool: 'boost', scale: 4 }, new Set())
+    expect(jobs).toEqual([])
+    expect(left.map((l) => l.reason)).toEqual(['too large for 4×'])
+  })
+})
+
 describe('runBatch and batchRows', () => {
   it('compresses each file under a target size, and tells every file’s fate in order', async () => {
     const dir = await makeTempDir()

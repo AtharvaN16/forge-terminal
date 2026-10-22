@@ -149,6 +149,75 @@ describe('several files in compress mode', () => {
   }, 60_000)
 })
 
+describe('several images in edit mode', () => {
+  /** Down the picker until `label`'s row is the chosen one. */
+  async function pick(app: Awaited<ReturnType<typeof compressHome>>, label: string) {
+    for (let i = 0; i < 8 && !new RegExp(`▌ +${label}`).test(app.frame()); i++) {
+      app.stdin.write(DOWN)
+      await settle(120)
+    }
+    expect(app.frame()).toMatch(new RegExp(`▌ +${label}`))
+  }
+
+  async function editHome(out: string, paths: string[]) {
+    const app = await compressHome(out)
+    app.stdin.write('4')
+    await settle(300)
+    app.stdin.write(paths.join(' '))
+    await app.until(() => app.frame().includes(`${paths.length} images`))
+    expect(app.frame()).toMatch(/↵ +edit/)
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes(`Edit ${paths.length} images`))
+    return app
+  }
+
+  it('resizes every image at one percent, and lists each at Done', async () => {
+    const dir = await makeTempDir()
+    const out = await makeTempDir()
+    const paths = await photos(dir)
+    const app = await editHome(out, paths)
+    expect(app.frame()).toMatch(/Crop to shape +one at a time/)
+    await pick(app, 'Resize')
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('3 images'))
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('Save as'))
+    expect(app.frame()).toMatch(/Resize ╱ 100% ╱ Save as/)
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('go home'))
+    expect(app.frame()).toMatch(/two\.jpg +JPEG → JPEG/)
+    expect((await readdir(out)).sort()).toEqual([
+      'one-220x220.jpg',
+      'three-260x260.jpg',
+      'two-240x240.jpg',
+    ])
+  }, 40_000)
+
+  it('trims each, and tells which had no empty edges', async () => {
+    const dir = await makeTempDir()
+    const out = await makeTempDir()
+    const paths = await photos(dir)
+    const app = await editHome(out, paths)
+    await pick(app, 'Trim edges')
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('Save as'))
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('go home'))
+    expect(app.frame()).toMatch(/one\.jpg +no empty edges/)
+  }, 40_000)
+
+  it('esc on Save as goes back to the picker', async () => {
+    const dir = await makeTempDir()
+    const out = await makeTempDir()
+    const app = await editHome(out, await photos(dir))
+    await pick(app, 'Trim edges')
+    app.stdin.write(ENTER)
+    await app.until(() => app.frame().includes('Save as'))
+    app.stdin.write(String.fromCharCode(27))
+    await app.until(() => app.frame().includes('Edit 3 images'))
+  }, 40_000)
+})
+
 describe('stopping a batch', () => {
   it('esc lets the files already started finish, starts no more, and says which stopped', async () => {
     const dir = await makeTempDir()

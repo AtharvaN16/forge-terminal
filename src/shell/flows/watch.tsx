@@ -8,6 +8,7 @@ import type { OptionSpec } from '../../core/actions/index.js'
 import {
   type BatchRow,
   batchRows,
+  type EditRecipe,
   type Existing,
   planBatch,
   type Recipe,
@@ -100,7 +101,13 @@ type Step =
 export interface WatchFlowProps {
   scan: FolderScan
   /** Convert (each kind to its format) or compress (every file at one quality or size). */
-  mode?: 'convert' | 'compress'
+  mode?: 'convert' | 'compress' | 'edit'
+  /**
+   * Edit: the tool, chosen on the picker for every image, with what the
+   * trail says of it ("Boost resolution", "2×") and Working's verb. The flow
+   * starts at Save as.
+   */
+  edit?: { recipe: EditRecipe; label: string; answer?: string; verb: string } | undefined
   /**
    * A folder is watched once what it holds is done; several files dropped
    * together are not, and the list is the batch's Done.
@@ -218,7 +225,9 @@ function qualitySpec(scan: FolderScan, quality: number) {
 }
 
 /** A file of the batch as the list's row says it, from what became of it. */
-function rowOf(row: BatchRow, mode: 'convert' | 'compress', at: string): ListedFile {
+type BatchMode = 'convert' | 'compress' | 'edit'
+
+function rowOf(row: BatchRow, mode: BatchMode, at: string): ListedFile {
   const r = row.result
   if (row.state === 'done' && r) return { ...doneRow(r, mode), path: row.path, at, startedAt: 0 }
   return {
@@ -231,7 +240,7 @@ function rowOf(row: BatchRow, mode: 'convert' | 'compress', at: string): ListedF
 }
 
 /** A finished file's row: from → to for a convert, was → now for a compress. */
-function doneRow(r: Result, mode: 'convert' | 'compress') {
+function doneRow(r: Result, mode: BatchMode) {
   const job: Job = r.job
   return {
     state: 'done' as const,
@@ -247,6 +256,7 @@ type ListedFile = WatchedFile & { startedAt: number; doneAt?: number }
 export function WatchFlow({
   scan,
   mode = 'convert',
+  edit,
   watch = true,
   tag,
   width,
@@ -262,8 +272,9 @@ export function WatchFlow({
 }: WatchFlowProps) {
   const palette = useTheme()
   const compress = mode === 'compress'
+  const editing = mode === 'edit' && edit !== undefined
   const kinds = convertible(scan)
-  const mixed = !compress && scan.kinds.length > 1
+  const mixed = mode === 'convert' && scan.kinds.length > 1
   const only = kinds[0]
   const name = watch ? displayName(scan.dir) : ''
   /** Every file of the batch: "12 images", "3 PDFs", "8 files". */
@@ -278,7 +289,9 @@ export function WatchFlow({
     }
     return out
   })
-  const [step, setStep] = useState<Step>(compress ? 'method' : mixed ? 'kinds' : 'target')
+  const [step, setStep] = useState<Step>(
+    editing ? 'save-as' : compress ? 'method' : mixed ? 'kinds' : 'target',
+  )
   // Compress: one method and one answer for every file.
   const [method, setMethod] = useState<'quality' | 'size'>('quality')
   const slider = qualitySpec(scan, prefs.quality)
@@ -340,6 +353,7 @@ export function WatchFlow({
 
   /** The answers the bar's trail says: one kind's format and setting, or how many kinds. */
   const answered = (): string[] => {
+    if (editing) return [edit.label, ...(edit.answer ? [edit.answer] : [])]
     if (compress) return [methodLabel, ...(valueSaid ? [valueSaid] : [])]
     if (mixed) return [`${Object.keys(answers).length} kinds`]
     const a = only ? answers[only.id] : undefined
@@ -379,7 +393,7 @@ export function WatchFlow({
       case 'converting':
         return {
           answers: [...answered(), placeName(folder)],
-          current: compress ? 'Compressing' : 'Converting',
+          current: editing ? edit.verb : compress ? 'Compressing' : 'Converting',
         }
       case 'watching':
         return {
@@ -395,11 +409,13 @@ export function WatchFlow({
   }, [trailKey])
 
   /** What is done to every file: each kind's answer, or one compress. */
-  const recipe: Recipe = compress
-    ? method === 'size' && targetBytes !== undefined
-      ? { op: 'compress', targetBytes }
-      : { op: 'compress', quality }
-    : { op: 'convert', answers }
+  const recipe: Recipe = editing
+    ? edit.recipe
+    : compress
+      ? method === 'size' && targetBytes !== undefined
+        ? { op: 'compress', targetBytes }
+        : { op: 'compress', quality }
+      : { op: 'convert', answers }
   /** What a finished file adds to the bar's totals. */
   const add = (r: Result) =>
     setTotals((t) => ({
@@ -1035,7 +1051,8 @@ export function WatchFlow({
 
   if (step === 'save-as' && destination) {
     const back = () => {
-      if (compress) setStep(method)
+      if (editing) onCancel()
+      else if (compress) setStep(method)
       else if (mixed) setStep('kinds')
       else if (
         only &&
@@ -1147,7 +1164,7 @@ function Watching({
   onClose,
   kind,
 }: {
-  mode: 'convert' | 'compress'
+  mode: BatchMode
   watching: boolean
   name: string
   folder: string

@@ -90,25 +90,22 @@ describe('a dropped folder', () => {
     expect(stagedVerb(folderStage({ ...scan, sources: [img] }), 'convert')).toBe('convert')
   })
 
-  it('compresses on ↵ in compress mode too, and is a list of files in the others', () => {
+  it('compresses and edits on ↵ too, and is a list of files in the other modes', () => {
     expect(stagedVerb(folder, 'compress')).toBe('compress')
-    expect(stagedVerb(folder, 'edit')).toBeNull()
+    expect(stagedVerb(folder, 'edit')).toBe('edit')
+    expect(stagedVerb(folder, 'transcribe')).toBeNull()
   })
 
-  it('has no “coming” note in convert or compress; edit still takes one file', () => {
-    expect(underField(folder, 'convert')).toBeUndefined()
-    expect(underField(folder, 'compress')).toBeUndefined()
-    expect(underField(folder, 'edit')).toEqual({
-      kind: 'note',
-      text: '→ editing several files at once is coming',
-    })
+  it('has no “coming” note in any mode', () => {
+    for (const mode of ['convert', 'compress', 'edit', 'transcribe'] as const)
+      expect(underField(folder, mode)).toBeUndefined()
   })
 
   it('stops being a folder once another file joins it', () => {
     expect(addToStage(folder, [{ ...img, path: '/c.jpg' }], []).folder).toBeUndefined()
   })
 
-  it('draws the folder’s card on home in convert and compress', () => {
+  it('draws the folder’s card on home in convert, compress and edit', () => {
     expect(stagedView(folder, 0, 'convert').folder).toEqual({
       name: 'images',
       lines: ['2 images · 4.1 KB'],
@@ -116,13 +113,15 @@ describe('a dropped folder', () => {
     expect(stagedView(folder, 0, 'compress').folder).toEqual(
       stagedView(folder, 0, 'convert').folder,
     )
-    expect(stagedView(folder, 0, 'edit').folder).toBeUndefined()
+    expect(stagedView(folder, 0, 'edit').folder).toEqual(stagedView(folder, 0, 'convert').folder)
+    expect(stagedView(folder, 0, 'transcribe').folder).toBeUndefined()
   })
 
-  it('takes several loose files on ↵ in convert and compress', () => {
+  it('takes several loose files on ↵ in convert, compress and edit', () => {
     const two = addToStage(emptyStage(), [img, { ...img, path: '/c.jpg' }], [])
     expect(stagedVerb(two, 'convert')).toBe('convert')
     expect(stagedVerb(two, 'compress')).toBe('compress')
-    expect(stagedVerb(two, 'edit')).toBeNull()
+    expect(stagedVerb(two, 'edit')).toBe('edit')
+    expect(stagedVerb(two, 'transcribe')).toBeNull()
   })
 })
