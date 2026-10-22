@@ -94,7 +94,7 @@ function rowLine(p: Palette, row: EditorRow, lit: boolean, inner: number, glyph?
 export function editorLines(
   p: Palette,
   e: Editor,
-  foot: Row,
+  foot: Row[],
   inner: number,
   spin?: { id: OpId; glyph: string },
 ): Row[] {
@@ -104,7 +104,7 @@ export function editorLines(
       rowLine(p, row, i === e.at, inner, spin?.id === row.id ? spin.glyph : undefined),
     ),
     [],
-    [blank(3), ...foot],
+    ...foot.map((line): Row => [blank(3), ...line]),
     [],
   ]
 }

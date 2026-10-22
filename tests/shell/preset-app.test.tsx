@@ -92,4 +92,36 @@ describe('presets, from Done', () => {
     await until(app, '32 wide')
     expect((await sharp(join(dir, 'test.jpg')).metadata()).width).toBe(32)
   }, 30_000)
+
+  it('saves a /compress result as a preset that still compresses', async () => {
+    const dir = await makeTempDir()
+    const file = await makeGradientPng(dir, 'test.png', 64)
+    const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
+    const app = render(<App initialWidth={80} initialHeight={24} prefs={prefs} />)
+    await settle()
+    app.stdin.write('/compress')
+    await settle()
+    app.stdin.write(ENTER)
+    await settle()
+    app.stdin.write(file)
+    await settle()
+    app.stdin.write(ENTER)
+    await until(app, 'By quality')
+    app.stdin.write(ENTER) // By quality
+    await settle(500)
+    app.stdin.write(ENTER) // the slider's quality
+    await until(app, 'Save as')
+    app.stdin.write(ENTER)
+    await until(app, 'save as preset')
+    app.stdin.write('p')
+    await until(app, 'Save as preset')
+    for (const ch of 'smaller') {
+      app.stdin.write(ch)
+      await settle(30)
+    }
+    app.stdin.write(ENTER)
+    await until(app, '✓ saved as smaller')
+    const saved = (await loadPreferences()).prefs.presets?.find((p) => p.name === 'smaller')
+    expect(saved?.steps).toMatchObject({ to: 'png', compress: { dither: false } })
+  }, 30_000)
 })

@@ -27,6 +27,23 @@ const at = (e: Editor) => e.rows[e.at]?.id
 const keys = (e: Editor, ...ks: Parameters<typeof press>[1][]) => ks.reduce(press, e)
 
 describe('the Continue editing window', () => {
+  it('keeps a /compress result compressed: its palette cut stays in every rerun', () => {
+    const e = openEditor({
+      target: 'png',
+      quality: 70,
+      compress: { dither: true },
+      targets: ['jpeg', 'webp', 'png'],
+      scales: [2, 3, 4],
+      cutout: false,
+    })
+    expect(stepsOf(keys(e, 'down', 'down', 'space'))).toEqual({
+      to: 'png',
+      quality: 70,
+      compress: { dither: true },
+      trim: true,
+    })
+  })
+
   it('lists every operation, the convert just done already selected', () => {
     const e = open()
     expect(ids(e)).toEqual([

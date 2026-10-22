@@ -70,6 +70,8 @@ function mount(
     reasons?: Partial<Record<OpId, string>>
     missing?: Partial<Record<OpId, number>>
     onAdd?: (id: OpId) => void
+    /** What a rerun fails with, instead of a file. */
+    fail?: string
   } = {},
 ) {
   setMotionForTests(false)
@@ -91,6 +93,7 @@ function mount(
         run={async (steps) => {
           runs.push(steps)
           if (o.slow) await settle(o.slow)
+          if (o.fail) return { kind: 'failed', message: o.fail }
           return { kind: 'ready', output: join(DESKTOP, 'photo.webp'), bytes: 840_000 }
         }}
         onDone={o.onDone ?? (() => {})}
@@ -170,6 +173,61 @@ describe('Continue editing, the window', () => {
     expect(plain(app)).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Trimming/)
     await until(app, 'now 840 KB')
     expect(plain(app)).not.toContain('Trimming')
+  })
+
+  it('stops spinning when a change is undone while its rerun works', async () => {
+    const { app } = mount({ slow: 1500 })
+    await until(app, 'Continue editing')
+    app.stdin.write(DOWN) // Resize
+    await settle()
+    app.stdin.write(DOWN) // Trim edges
+    await settle()
+    app.stdin.write(' ')
+    await until(app, 'Trimming')
+    app.stdin.write(' ') // back to Done's own steps
+    await settle(400)
+    expect(plain(app)).not.toContain('Trimming')
+    expect(plain(app)).toContain('✓ photo.webp')
+  })
+
+  it('waits for a rerun still working on ↵, then hands over its file with its steps', async () => {
+    const done = vi.fn()
+    const { app } = mount({ slow: 800, onDone: done })
+    await until(app, 'Continue editing')
+    app.stdin.write(DOWN) // Resize
+    await settle()
+    app.stdin.write(DOWN) // Trim edges
+    await settle()
+    app.stdin.write(' ')
+    await settle()
+    app.stdin.write('\r')
+    await settle(300)
+    expect(done).not.toHaveBeenCalled()
+    const start = Date.now()
+    while (done.mock.calls.length === 0 && Date.now() - start < 3_000) await settle(20)
+    expect(done).toHaveBeenCalledTimes(1)
+    expect(done.mock.calls[0]?.[0]).toEqual({ to: 'webp', quality: 80, trim: true })
+    expect(done.mock.calls[0]?.[1]).toMatchObject({ kind: 'ready', bytes: 840_000 })
+  })
+
+  it('says a failed rerun in full, wrapped inside the window', async () => {
+    const fail =
+      'photo.png can’t get under 5 KB: the smallest it gets is 182 KB, at the lowest quality'
+    const { app } = mount({ fail })
+    await until(app, 'Continue editing')
+    app.stdin.write(DOWN) // Resize
+    await settle()
+    app.stdin.write(DOWN) // Trim edges
+    await settle()
+    app.stdin.write(' ')
+    await until(app, '✕')
+    expectWhole(plain(app))
+    const inside = plain(app)
+      .split('\n')
+      .map((l) => /│(.*)│/.exec(l)?.[1]?.trim() ?? '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+    expect(inside).toContain(`✕ ${fail}`)
   })
 
   it('says nothing for a quick rerun: no spinner flashes up', async () => {

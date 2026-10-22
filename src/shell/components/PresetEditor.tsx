@@ -7,7 +7,7 @@ import type { FormatId, Result } from '../../core/types.js'
 import { formatBytes } from '../../core/units.js'
 import type { Trail } from '../bar-art.js'
 import { windowOver } from '../colour/system-art.js'
-import { changePhrase, doneBody, doneLayout } from '../done-art.js'
+import { changePhrase, doneBody, doneLayout, wrapWords } from '../done-art.js'
 import { blank, type Row } from '../home-art.js'
 import { useElapsed } from '../motion.js'
 import {
@@ -137,7 +137,14 @@ export function PresetEditorScreen({
   const [editor, setEditor] = useState<Editor>(() =>
     withReasons(
       initial ??
-        openEditor({ target: job.target, quality: job.options.quality, targets, scales, cutout }),
+        openEditor({
+          target: job.target,
+          quality: job.options.quality,
+          compress: job.options.compress,
+          targets,
+          scales,
+          cutout,
+        }),
       reasons ?? {},
     ),
   )
@@ -154,27 +161,38 @@ export function PresetEditorScreen({
   useEffect(() => {
     if (adding) onAdd?.(adding)
   }, [adding, onAdd])
-  const [preview, setPreview] = useState<PresetPreview | undefined>()
+  /** The newest rerun, with the steps it ran. */
+  const [ran, setRan] = useState<{ key: string; preview: PresetPreview } | undefined>()
   /** The row whose change is being rerun, while it is. */
   const [busy, setBusy] = useState<OpId | null>(null)
+  /** ↵ came while a rerun was still to land: the window goes once it does. */
+  const [closing, setClosing] = useState(false)
   const changed = useRef<OpId>('convert')
   const elapsed = useElapsed(busy !== null, 80)
   const steps = stepsOf(editor)
   const key = JSON.stringify(steps)
   const first = useRef(key)
+  // The shell may hand a new `run` on any render; only a change of steps reruns.
+  const runNow = useRef(run)
+  runNow.current = run
+  /** The rerun the foot shows: none once the steps are Done's own again. */
+  const preview = key === first.current ? undefined : ran?.preview
+  /** The foot is the file these steps make: nothing is still to land. */
+  const settled = key === first.current || ran?.key === key
 
   // Rerun from the original when the selected rows change; the newest change wins.
   useEffect(() => {
     if (key === first.current) {
-      setPreview(undefined)
+      // Back to Done's own steps: a rerun still working is abandoned, and says so.
+      setBusy(null)
       return
     }
     const abort = new AbortController()
     const timer = setTimeout(() => {
       setBusy(changed.current)
-      void run(JSON.parse(key) as PresetSteps, abort.signal).then((p) => {
+      void runNow.current(JSON.parse(key) as PresetSteps, abort.signal).then((p) => {
         if (abort.signal.aborted) return
-        setPreview(p)
+        setRan({ key, preview: p })
         setBusy(null)
       })
     }, SETTLE_MS)
@@ -182,11 +200,24 @@ export function PresetEditorScreen({
       clearTimeout(timer)
       abort.abort()
     }
-  }, [key, run])
+  }, [key])
+
+  // ↵ waited for the rerun: it has landed, so the window hands it over.
+  const handed = useRef(false)
+  useEffect(() => {
+    if (!closing || !settled || handed.current) return
+    handed.current = true
+    onDone(steps, preview, editor)
+  })
 
   useKeys((input, k) => {
+    if (closing) {
+      if (k.escape) onCancel()
+      return
+    }
     if (k.return && !editor.sub) {
-      onDone(steps, preview, editor)
+      if (settled) onDone(steps, preview, editor)
+      else setClosing(true)
       return
     }
     if (k.escape) {
@@ -234,37 +265,44 @@ export function PresetEditorScreen({
       : { name: basename(job.outputs[0]), bytes: result.outputBytes }
   const grew = shown.bytes > source.bytes
   const working = busy !== null && elapsed !== undefined && elapsed >= SHOW_MS
-  const foot: Row = working
+  // As wide as Tweak's window allows, narrower in a narrow terminal.
+  const W = Math.min(WINDOW_WIDTH, width - 4)
+  const foot: Row[] = working
     ? [
-        {
-          text: `${SPINNER_FRAMES[Math.floor((elapsed ?? 0) / 80) % SPINNER_FRAMES.length]} `,
-          fg: palette.accent,
-          bold: true,
-        },
-        { text: VERBS[busy], fg: palette.fg, bold: true },
-        ...((elapsed ?? 0) >= CLOCK_MS
-          ? [{ text: `   ${clock(elapsed ?? 0)}`, fg: palette.dim }]
-          : []),
-      ]
-    : preview?.kind === 'failed'
-      ? [{ text: `✕ ${preview.message}`, fg: palette.fail }]
-      : [
-          { text: '✓ ', fg: palette.ok, bold: true },
-          { text: shown.name, fg: palette.fg, bold: true },
-          { text: '   now ', fg: palette.border },
-          { text: formatBytes(shown.bytes), fg: palette.fg, bold: true },
+        [
           {
-            text: `   ${changePhrase(source.bytes, shown.bytes)}`,
-            fg: grew ? palette.larger : palette.ok,
+            text: `${SPINNER_FRAMES[Math.floor((elapsed ?? 0) / 80) % SPINNER_FRAMES.length]} `,
+            fg: palette.accent,
             bold: true,
           },
+          { text: VERBS[busy], fg: palette.fg, bold: true },
+          ...((elapsed ?? 0) >= CLOCK_MS
+            ? [{ text: `   ${clock(elapsed ?? 0)}`, fg: palette.dim }]
+            : []),
+        ],
+      ]
+    : preview?.kind === 'failed'
+      ? // In full, inside the window: its 3-cell margins, and "✕ " hanging.
+        wrapWords(preview.message, W - 2 - 3 - 3 - 2).map((line, i) => [
+          { text: `${i === 0 ? '✕' : ' '} ${line}`, fg: palette.fail },
+        ])
+      : [
+          [
+            { text: '✓ ', fg: palette.ok, bold: true },
+            { text: shown.name, fg: palette.fg, bold: true },
+            { text: '   now ', fg: palette.border },
+            { text: formatBytes(shown.bytes), fg: palette.fg, bold: true },
+            {
+              text: `   ${changePhrase(source.bytes, shown.bytes)}`,
+              fg: grew ? palette.larger : palette.ok,
+              bold: true,
+            },
+          ],
         ]
 
   // Done under the window, faded by it.
   const area = height - 3
   const under = doneUnder(palette, result, mode, width, height)
-  // As wide as Tweak's window allows, narrower in a narrow terminal.
-  const W = Math.min(WINDOW_WIDTH, width - 4)
   const glyph = SPINNER_FRAMES[Math.floor((elapsed ?? 0) / 80) % SPINNER_FRAMES.length] ?? ''
   const lines = editorLines(
     palette,
@@ -306,43 +344,45 @@ export function PresetEditorScreen({
   }
 
   const lit = editor.rows[editor.at]
-  const keys: Array<[string, string]> = sub
-    ? sub.add
-      ? sub.adding
-        ? []
-        : [['↵', 'add']]
-      : sub.id === 'resize'
-        ? [
-            ['0–9', 'width'],
-            ['tab', 'height'],
-            ['↵', 'confirm'],
-          ]
-        : sub.id === 'compress'
+  const keys: Array<[string, string]> = closing
+    ? []
+    : sub
+      ? sub.add
+        ? sub.adding
+          ? []
+          : [['↵', 'add']]
+        : sub.id === 'resize'
           ? [
-              ['0–9', 'size'],
+              ['0–9', 'width'],
+              ['tab', 'height'],
               ['↵', 'confirm'],
+            ]
+          : sub.id === 'compress'
+            ? [
+                ['0–9', 'size'],
+                ['↵', 'confirm'],
+              ]
+            : [
+                ['↑↓', 'choose'],
+                ['↵', 'confirm'],
+              ]
+      : lit?.why
+        ? [['↑↓', 'choose']]
+        : lit?.id === 'quality'
+          ? [
+              ['↑↓', 'choose'],
+              ['←→', '1'],
+              ['⇧←→', '10'],
+              ['↵', 'done'],
             ]
           : [
               ['↑↓', 'choose'],
-              ['↵', 'confirm'],
+              ['space', 'select'],
+              ...(lit && ['convert', 'compress', 'resize', 'crop', 'boost'].includes(lit.id)
+                ? ([['→', 'more']] as Array<[string, string]>)
+                : []),
+              ['↵', 'done'],
             ]
-    : lit?.why
-      ? [['↑↓', 'choose']]
-      : lit?.id === 'quality'
-        ? [
-            ['↑↓', 'choose'],
-            ['←→', '1'],
-            ['⇧←→', '10'],
-            ['↵', 'done'],
-          ]
-        : [
-            ['↑↓', 'choose'],
-            ['space', 'select'],
-            ...(lit && ['convert', 'compress', 'resize', 'crop', 'boost'].includes(lit.id)
-              ? ([['→', 'more']] as Array<[string, string]>)
-              : []),
-            ['↵', 'done'],
-          ]
 
   return (
     <Box flexDirection="column" width={width} height={height}>

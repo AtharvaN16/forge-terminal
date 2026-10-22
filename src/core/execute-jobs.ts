@@ -55,6 +55,11 @@ export interface RunPolicy {
    * resolved by search before the job runs. Unset, the job's own options stand.
    */
   targetBytes?: number
+  /**
+   * The highest quality a target-size search may settle on: the quality the
+   * user asked for, which a size limit only ever lowers. Unset, up to 100.
+   */
+  maxQuality?: number
   onEvent?: (event: PlanEvent) => void
   /**
    * Stops a target-size search between encodes — the shell's esc key. Once a
@@ -124,6 +129,7 @@ async function searchJob(
   resolveEngine: (job: Job) => Engine | undefined,
   emit: (event: PlanEvent) => void,
   signal: AbortSignal | undefined,
+  maxQuality?: number,
 ): Promise<Searched> {
   const path = job.sources[0].path
   const failed = (e: unknown): Searched => ({
@@ -201,6 +207,7 @@ async function searchJob(
       const found = await findQuality({
         encode: (quality) => m.measure({ ...job.options, ...rung, quality }),
         targetBytes: aim,
+        ...(maxQuality === undefined ? {} : { max: maxQuality }),
         onAttempt: (attempt, of) => emit({ type: 'search:attempt', job, attempt, of, rung }),
         ...(signal === undefined ? {} : { signal }),
       })
@@ -310,7 +317,14 @@ export async function runPlan(jobs: Job[], policy: RunPolicy): Promise<RunOutcom
       searched[index] = { kind: 'cancelled' }
       return
     }
-    const outcome = await searchJob(job, targetBytes, resolveEngine, emit, policy.signal)
+    const outcome = await searchJob(
+      job,
+      targetBytes,
+      resolveEngine,
+      emit,
+      policy.signal,
+      policy.maxQuality,
+    )
     searched[index] = outcome
     if (outcome.kind !== 'cancelled') {
       settled += 1

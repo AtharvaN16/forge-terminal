@@ -53,6 +53,8 @@ export interface Editor {
   /** What Convert to can become, from the source (invariant 2). */
   targets: FormatId[]
   scales: Array<2 | 3 | 4>
+  /** The result was made by `/compress`: every rerun compresses as it did. */
+  compress?: { dither: boolean } | undefined
 }
 
 export type EditorKey =
@@ -79,6 +81,8 @@ export function openEditor(o: {
   target: FormatId
   /** Its quality, for a lossy target. */
   quality?: number | undefined
+  /** Made by `/compress`: its options, kept by every rerun. */
+  compress?: { dither: boolean } | undefined
   targets: FormatId[]
   scales: Array<2 | 3 | 4>
   /** Remove background is offered here (macOS). */
@@ -98,7 +102,13 @@ export function openEditor(o: {
     ...(o.cutout ? [{ id: 'cutout' as const, on: false }] : []),
   ]
   const first = rows.findIndex((r) => !r.on)
-  return { rows, at: first < 0 ? 0 : first, targets: o.targets, scales: o.scales }
+  return {
+    rows,
+    at: first < 0 ? 0 : first,
+    targets: o.targets,
+    scales: o.scales,
+    ...(o.compress ? { compress: o.compress } : {}),
+  }
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
@@ -243,7 +253,7 @@ export function press(e: Editor, k: EditorKey): Editor {
 
 /** The preset the selected rows make. */
 export function stepsOf(e: Editor): PresetSteps {
-  const steps: PresetSteps = {}
+  const steps: PresetSteps = e.compress ? { compress: e.compress } : {}
   for (const row of e.rows) {
     if (!row.on || row.why || row.missing !== undefined) continue
     const v = row.value

@@ -14,7 +14,7 @@ const open = () =>
     scales: [2, 3, 4],
     cutout: true,
   })
-const foot: Row = [{ text: '✓ photo.webp   now 2 MB' }]
+const foot: Row[] = [[{ text: '✓ photo.webp   now 2 MB' }]]
 
 describe('the Continue editing window’s lines', () => {
   it('draws a row per operation: ● or ○, its name, its value, — for none', () => {

@@ -22,6 +22,11 @@ export interface PresetSteps {
   removeBackground?: boolean
   /** What goes behind a cut-out when the format has no transparency. */
   behind?: 'white' | 'black'
+  /**
+   * Made by `/compress`: smaller than the original or nothing, and a PNG or
+   * GIF cut to a palette at the quality. A target size always compresses.
+   */
+  compress?: { dither: boolean }
 }
 
 export interface Preset {
@@ -82,6 +87,10 @@ function parseSteps(v: unknown): PresetSteps | undefined {
     if (v.boost !== 2 && v.boost !== 3 && v.boost !== 4) return undefined
     steps.boost = v.boost
   }
+  if (v.compress !== undefined) {
+    if (!isRecord(v.compress) || typeof v.compress.dither !== 'boolean') return undefined
+    steps.compress = { dither: v.compress.dither }
+  }
   if (v.behind !== undefined) {
     if (v.behind !== 'white' && v.behind !== 'black') return undefined
     steps.behind = v.behind
@@ -119,6 +128,7 @@ export type Pass =
       crop?: Aspect
       /** What goes behind a cut-out the target cannot keep transparent. */
       background?: string
+      compress?: { dither: boolean }
     }
 
 const BEHIND = { white: '#ffffff', black: '#000000' } as const
@@ -136,8 +146,10 @@ export function passesFor(steps: PresetSteps, sourceFormat: FormatId): Pass[] {
 
   const target = steps.to ?? sourceFormat
   const encode: Extract<Pass, { kind: 'encode' }> = { kind: 'encode', target }
-  if (steps.quality !== undefined && !steps.maxBytes) encode.quality = steps.quality
+  // With a target size, the quality is the most the size search may use.
+  if (steps.quality !== undefined) encode.quality = steps.quality
   if (steps.maxBytes) encode.maxBytes = steps.maxBytes
+  if (steps.compress || steps.maxBytes) encode.compress = steps.compress ?? { dither: false }
   if (steps.resize) encode.resize = steps.resize
   // The engine cuts and encodes in one go when nothing runs between them.
   if (enhance.length === 0) {

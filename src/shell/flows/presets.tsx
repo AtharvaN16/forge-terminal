@@ -31,6 +31,7 @@ function stepsOfResult(result: Result): PresetSteps {
   return {
     to: job.target,
     ...(job.options.quality === undefined ? {} : { quality: job.options.quality }),
+    ...(job.options.compress ? { compress: job.options.compress } : {}),
   }
 }
 

@@ -69,6 +69,7 @@ function jobFor(pass: Pass, source: ImageInfo, output: string): Job {
           ...BASE,
           ...(pass.background ? { background: pass.background } : {}),
           ...(pass.quality !== undefined ? { quality: pass.quality } : {}),
+          ...(pass.compress ? { compress: pass.compress } : {}),
           ...(pass.trim ? { trim: true } : {}),
           ...(pass.crop ? { crop: { aspect: pass.crop } } : {}),
           ...(pass.resize ? { resize: pass.resize } : {}),
@@ -104,7 +105,12 @@ export async function runPreset(
         ...run,
         // Temp files are ours to replace; only the result answers to `force`.
         ...(last ? {} : { force: true }),
-        ...(last && pass.kind === 'encode' && pass.maxBytes ? { targetBytes: pass.maxBytes } : {}),
+        ...(last && pass.kind === 'encode' && pass.maxBytes
+          ? {
+              targetBytes: pass.maxBytes,
+              ...(pass.quality === undefined ? {} : { maxQuality: pass.quality }),
+            }
+          : {}),
       })
       if (outcome.cancelled) return { kind: 'cancelled' }
       const refusal = outcome.refusals[0]

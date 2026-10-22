@@ -42,6 +42,7 @@ describe('parsePreset', () => {
         boost: 2,
         removeBackground: true,
         behind: 'white',
+        compress: { dither: true },
       },
       saveTo: 'same',
     }

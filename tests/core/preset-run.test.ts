@@ -26,6 +26,20 @@ async function framed(dir: string): Promise<string> {
 
 const image = async (path: string) => (await probe(path)) as ImageInfo
 
+/** A photo-like PNG: soft noise, which a palette cuts far smaller than lossless PNG keeps it. */
+async function photo(dir: string): Promise<string> {
+  const [w, h] = [400, 300]
+  const pixels = Buffer.alloc(w * h * 3)
+  for (let i = 0; i < pixels.length; i++)
+    pixels[i] = (Math.sin(i / 97) * 60 + 128 + ((i * 7919) % 50)) | 0
+  const path = join(dir, 'photo.png')
+  await sharp(pixels, { raw: { width: w, height: h, channels: 3 } })
+    .blur(1)
+    .png()
+    .toFile(path)
+  return path
+}
+
 const fake = fakeExtensions()
 afterEach(() => fake.restore())
 
@@ -110,5 +124,48 @@ describe('runPreset', () => {
     expect(outcome.kind).toBe('failed')
     if (outcome.kind === 'failed') expect(outcome.pass).toEqual({ kind: 'boost', scale: 1 })
     expect((await readdir(dir)).sort()).toEqual(['framed.png'])
+  })
+
+  it('compresses a PNG to a target size, cutting it to a palette as /compress does', async () => {
+    const dir = await makeTempDir()
+    const source = await image(await photo(dir))
+    const output = join(dir, 'out.png')
+    const aim = Math.floor(source.bytes / 2)
+    const outcome = await runPreset(source, passesFor({ maxBytes: aim }, 'png'), output, {
+      force: false,
+    })
+    expect(outcome.kind).toBe('done')
+    expect((await sharp(output).metadata()).format).toBe('png')
+    expect((await stat(output)).size).toBeLessThanOrEqual(aim)
+  })
+
+  it('keeps a compress by quality: a PNG is cut to a palette, not written lossless again', async () => {
+    const dir = await makeTempDir()
+    const source = await image(await photo(dir))
+    const output = join(dir, 'out.png')
+    const outcome = await runPreset(
+      source,
+      passesFor({ quality: 60, compress: { dither: false } }, 'png'),
+      output,
+      { force: false },
+    )
+    expect(outcome.kind).toBe('done')
+    expect((await stat(output)).size).toBeLessThan(source.bytes * 0.6)
+  })
+
+  it('never raises the quality asked for to fill a target size', async () => {
+    const dir = await makeTempDir()
+    const source = await image(await photo(dir))
+    const plain = join(dir, 'plain.jpg')
+    await runPreset(source, passesFor({ to: 'jpeg', quality: 50 }, 'png'), plain, { force: false })
+    const sized = join(dir, 'sized.jpg')
+    const outcome = await runPreset(
+      source,
+      passesFor({ to: 'jpeg', quality: 50, maxBytes: source.bytes }, 'png'),
+      sized,
+      { force: false },
+    )
+    expect(outcome.kind).toBe('done')
+    expect((await stat(sized)).size).toBeLessThanOrEqual((await stat(plain)).size)
   })
 })

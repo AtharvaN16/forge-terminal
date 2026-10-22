@@ -69,22 +69,34 @@ describe('passesFor', () => {
     })
   })
 
-  it('carries a target size to the encode, which searches the quality', () => {
+  it('carries a target size to the encode, which compresses: the search picks the quality', () => {
     expect(passesFor({ to: 'webp', maxBytes: 500_000 }, 'png')).toEqual([
-      { kind: 'encode', target: 'webp', maxBytes: 500_000 },
+      { kind: 'encode', target: 'webp', maxBytes: 500_000, compress: { dither: false } },
+    ])
+  })
+
+  it('keeps the quality beside a target size, as the most the search may use', () => {
+    expect(passesFor({ to: 'jpeg', quality: 80, maxBytes: 500_000 }, 'png')).toEqual([
+      {
+        kind: 'encode',
+        target: 'jpeg',
+        quality: 80,
+        maxBytes: 500_000,
+        compress: { dither: false },
+      },
     ])
   })
 
   it('cuts and resizes before a target size: the size search only encodes', () => {
     expect(passesFor({ to: 'webp', maxBytes: 500_000, resize: { width: 1920 } }, 'png')).toEqual([
       { kind: 'cut', resize: { width: 1920 } },
-      { kind: 'encode', target: 'webp', maxBytes: 500_000 },
+      { kind: 'encode', target: 'webp', maxBytes: 500_000, compress: { dither: false } },
     ])
     expect(
       passesFor({ to: 'webp', maxBytes: 500_000, trim: true, resize: { width: 1920 } }, 'png'),
     ).toEqual([
       { kind: 'cut', trim: true, resize: { width: 1920 } },
-      { kind: 'encode', target: 'webp', maxBytes: 500_000 },
+      { kind: 'encode', target: 'webp', maxBytes: 500_000, compress: { dither: false } },
     ])
   })
 
