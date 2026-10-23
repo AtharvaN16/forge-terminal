@@ -5,9 +5,10 @@
  * so the card can show the title while the sound is still coming.
  */
 import { spawn } from 'node:child_process'
+import { accessSync, constants, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { extensionMissing, linkUnavailable } from '../core/errors.js'
 import { installed } from '../extensions/paths.js'
@@ -40,6 +41,31 @@ const KNOWN: [RegExp, string][] = [
 
 class RunFailed extends Error {}
 
+/**
+ * Linux has no yt-dlp extension: Forge uses the user's own, FORGE_YT_DLP or
+ * `yt-dlp` on PATH. It is theirs to update, so Forge never runs --update on it.
+ */
+export function systemYtDlp(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (platform !== 'linux') return undefined
+  const runnable = (p: string) => {
+    try {
+      accessSync(p, constants.X_OK)
+      return statSync(p).isFile()
+    } catch {
+      return false
+    }
+  }
+  if (env.FORGE_YT_DLP) return runnable(env.FORGE_YT_DLP) ? env.FORGE_YT_DLP : undefined
+  return (env.PATH ?? '')
+    .split(delimiter)
+    .filter(Boolean)
+    .map((dir) => join(dir, 'yt-dlp'))
+    .find(runnable)
+}
+
 export async function fetchSound(
   url: string,
   opts: {
@@ -49,23 +75,33 @@ export async function fetchSound(
     onDir?: (dir: string) => void
   } = {},
 ): Promise<FetchedSound> {
-  const yt = await installed('yt-dlp')
-  if (yt === undefined) throw extensionMissing('yt-dlp')
+  const managed = await installed('yt-dlp')
+  const entry = managed?.entry ?? systemYtDlp()
+  if (entry === undefined) {
+    if (process.platform === 'linux')
+      throw linkUnavailable('YouTube links on Linux need yt-dlp on your PATH.', undefined, {
+        hint: 'Install yt-dlp (https://github.com/yt-dlp/yt-dlp), or set FORGE_YT_DLP.',
+        shellHint: 'Install yt-dlp, or set FORGE_YT_DLP.',
+      })
+    throw extensionMissing('yt-dlp')
+  }
   const dir = await mkdtemp(join(tmpdir(), 'forge-yt-'))
   opts.onDir?.(dir)
   const dispose = () => rm(dir, { recursive: true, force: true })
   try {
     let got: { path: string; facts: VideoFacts }
     try {
-      got = await once(yt.entry, url, dir, opts)
+      got = await once(entry, url, dir, opts)
     } catch (e) {
       if (!(e instanceof RunFailed)) throw e
+      if (managed === undefined)
+        throw linkUnavailable(`yt-dlp could not fetch this video: ${e.message}`, e)
       // Not one of the known refusals: most likely YouTube changed and this
       // yt-dlp is behind. It updates itself (checking its own signatures);
       // then one more try.
-      await update(yt.entry, opts.signal)
+      await update(entry, opts.signal)
       try {
-        got = await once(yt.entry, url, dir, opts)
+        got = await once(entry, url, dir, opts)
       } catch (again) {
         if (!(again instanceof RunFailed)) throw again
         throw linkUnavailable(`yt-dlp could not fetch this video: ${again.message}`, again)

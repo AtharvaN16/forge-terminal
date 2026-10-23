@@ -132,6 +132,30 @@ image's and a folder's in a **Forge** submenu, a PDF's one item on its own. They
 `npm install -g`; from a source checkout, `forge menu install` sets them up
 by hand and `forge menu remove` takes them out.
 
+## Transcribe on Linux
+
+`forge transcribe` runs on Linux too, on whisper.cpp instead of Apple's
+recogniser. Everything stays on the machine. Install the two tools it calls
+(and yt-dlp for YouTube links):
+
+```bash
+# Debian/Ubuntu: ffmpeg from apt; whisper.cpp from your distro, Homebrew, or a source build
+sudo apt install ffmpeg
+brew install whisper-cpp yt-dlp      # Homebrew on Linux; or build whisper.cpp (whisper-cli)
+
+forge transcribe talk.mp4
+forge transcribe "https://www.youtube.com/watch?v=..." --language en
+```
+
+- The first run downloads the speech model (ggml-base, multilingual, 148 MB)
+  into `~/.cache/forge/whisper`, checked against its sha256.
+- Without `--language`, whisper detects the language itself.
+- Summary and notes need Apple Intelligence, so Linux writes the transcript.
+  `--to notes` is refused; the default `--to all` gives the transcript.
+- Forge uses your own yt-dlp and never updates it for you.
+- Overrides: `FORGE_WHISPER_CLI`, `FORGE_FFMPEG`, `FORGE_WHISPER_MODEL` (any
+  ggml `.bin`, e.g. a larger model for accuracy), `FORGE_YT_DLP`.
+
 ## Configuration
 
 Forge stores preferences at `~/.config/forge/config.json`, or

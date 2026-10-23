@@ -9,7 +9,7 @@ import { fileNotFound, transcribeUnavailable, untranscribable } from '../core/er
 import { sniffKind } from '../core/folder.js'
 import { clock } from '../core/transcribe/markdown.js'
 import { formatBytes } from '../core/units.js'
-import { probeSound, transcribeStatus } from '../engines/transcribe.js'
+import { probeSound, transcribeNeeds, transcribeStatus } from '../engines/transcribe.js'
 import type { VideoFacts } from '../engines/youtube.js'
 import { bytesOf } from './components/EditPicker.js'
 import type { StagedFile, StagedView } from './stage.js'
@@ -39,7 +39,7 @@ export async function readTranscribeFile(path: string): Promise<TranscribeSource
   if (kind !== 'video' && kind !== 'audio') throw untranscribable(path)
   const status = await transcribeStatus()
   if (!status?.speech) {
-    throw transcribeUnavailable('Transcribe needs macOS 26 or later on Apple silicon.')
+    throw transcribeUnavailable(transcribeNeeds())
   }
   const { seconds } = await probeSound(path)
   return { kind: 'file', path, seconds, bytes: info.size }

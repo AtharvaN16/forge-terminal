@@ -3,7 +3,8 @@
  * §4.1): a Swift program built into dist/helpers on macOS. Apple's speech
  * recogniser writes the transcript and Apple's on-device model the notes;
  * this file only finds the helper, runs it, and turns its JSON lines into
- * data and `ForgeError`s.
+ * data and `ForgeError`s. On Linux the helper is `forge-transcribe-linux.mjs`,
+ * which speaks the same lines over whisper.cpp and ffmpeg (no notes).
  */
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -33,6 +34,21 @@ export type TranscribeEvent =
   | { kind: 'notes'; part: number; of: number }
 
 const NAME = 'forge-transcribe'
+const LINUX_NAME = 'forge-transcribe-linux.mjs'
+
+/** Why transcribe is not offered here, in the user's words for this OS. */
+export function transcribeNeeds(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'linux'
+    ? 'Transcribe on Linux needs ffmpeg and whisper.cpp (whisper-cli) on your PATH.'
+    : 'Transcribe needs macOS 26 or later on Apple silicon.'
+}
+
+/** Why notes are not written here: Apple Intelligence is off, or (Linux) there is none. */
+export function notesNeed(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'linux'
+    ? 'Summary and notes need Apple Intelligence, which Linux does not have.'
+    : 'Summary and notes need Apple Intelligence, and it is off.'
+}
 
 /**
  * Where the helper is: FORGE_TRANSCRIBE_HELPER (tests), beside the bundle in
@@ -41,9 +57,16 @@ const NAME = 'forge-transcribe'
 export function transcribeHelper(): string | undefined {
   const pinned = process.env.FORGE_TRANSCRIBE_HELPER
   if (pinned !== undefined) return existsSync(pinned) ? pinned : undefined
-  if (process.platform !== 'darwin') return undefined
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return undefined
   const here = dirname(fileURLToPath(import.meta.url))
   // The bundle is dist/index.js or a chunk in dist/chunks; from source this is src/engines.
+  if (process.platform === 'linux') {
+    return [
+      join(here, 'helpers', LINUX_NAME),
+      join(here, '..', 'helpers', LINUX_NAME),
+      join(here, '..', '..', 'helpers', 'transcribe', LINUX_NAME),
+    ].find((p) => existsSync(p))
+  }
   return [
     join(here, 'helpers', NAME),
     join(here, '..', 'helpers', NAME),
@@ -60,14 +83,15 @@ function call(
   opts: { signal?: AbortSignal | undefined; onLine?: (line: Line) => void } = {},
 ): Promise<Line> {
   const helper = transcribeHelper()
-  if (helper === undefined)
-    return Promise.reject(
-      transcribeUnavailable('Transcribe needs macOS 26 or later on Apple silicon.'),
-    )
+  if (helper === undefined) return Promise.reject(transcribeUnavailable(transcribeNeeds()))
   const { signal } = opts
   if (signal?.aborted) return Promise.reject(signal.reason ?? new Error('aborted'))
   return new Promise((resolve, reject) => {
-    const child = spawn(helper, args, { stdio: ['ignore', 'pipe', 'ignore'] })
+    // The Linux helper is a script for the Node Forge runs on; the Swift one is a binary.
+    const [cmd, argv] = helper.endsWith('.mjs')
+      ? [process.execPath, [helper, ...args]]
+      : [helper, args]
+    const child = spawn(cmd, argv, { stdio: ['ignore', 'pipe', 'ignore'] })
     let result: Line | undefined
     let settled = false
     const done = (f: () => void) => {
