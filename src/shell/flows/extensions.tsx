@@ -105,20 +105,34 @@ const SHEETS: Record<
   },
 }
 
-function sheetFor(entry: CatalogEntry) {
-  return (
-    SHEETS[entry.id] ?? {
-      name: entry.title,
-      gives: entry.summary,
-      again: `${entry.title} will offer to download it again.`,
-      parts: [[entry.licence, '']] as Array<[string, string]>,
-    }
-  )
+/**
+ * Parts where a tool is a different program off macOS: Remove background is
+ * Apple Vision on a Mac, a small model on ONNX Runtime on Windows and Linux.
+ */
+const PARTS_ELSEWHERE: Record<string, Array<[string, string]>> = {
+  'remove-background': [
+    ['U²-Net-p (via rembg)', 'Apache-2.0'],
+    ['ONNX Runtime', 'MIT'],
+  ],
+}
+
+function sheetFor(entry: CatalogEntry, platform: NodeJS.Platform = process.platform) {
+  const sheet = SHEETS[entry.id] ?? {
+    name: entry.title,
+    gives: entry.summary,
+    again: `${entry.title} will offer to download it again.`,
+    parts: [[entry.licence, '']] as Array<[string, string]>,
+  }
+  const elsewhere = platform === 'darwin' ? undefined : PARTS_ELSEWHERE[entry.id]
+  return elsewhere ? { ...sheet, parts: elsewhere } : sheet
 }
 
 /** What an installed tool brought with it, for /about's Attributions: its parts, each doing the tool's job. */
-export function extensionCredits(entry: CatalogEntry): Credit[] {
-  const sheet = sheetFor(entry)
+export function extensionCredits(
+  entry: CatalogEntry,
+  platform: NodeJS.Platform = process.platform,
+): Credit[] {
+  const sheet = sheetFor(entry, platform)
   return sheet.parts.map(([name, licence]) => ({ name, licence, does: sheet.name }))
 }
 
@@ -486,7 +500,7 @@ export function ExtensionsFlow({
   }
 
   const sheet = (s: ExtensionStatus): ReactNode[] => {
-    const T = sheetFor(s.entry)
+    const T = sheetFor(s.entry, platform)
     const name = (
       <Text bold color={fg}>
         {T.name}
