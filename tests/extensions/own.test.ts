@@ -173,7 +173,10 @@ describe('ownUpdate', () => {
     const { brew } = await fakeBrew('2026.11.02')
     expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew })).toBe('2026.11.02')
     const none = await fakeBrew()
-    expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew: none.brew })).toBeUndefined()
+    // Homebrew answered: nothing newer — the copy is the latest.
+    expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew: none.brew })).toBeNull()
+    // Nobody to ask: no claim either way.
+    expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew: '/missing' })).toBeUndefined()
   })
 
   it('knows a copy older than the pinned version has one, without asking', async () => {

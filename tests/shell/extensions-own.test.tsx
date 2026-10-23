@@ -29,6 +29,8 @@ function fake(opts: {
   deep?: OwnCopy
   probe?: (path: string) => OwnCopy | undefined
   newer?: string
+  /** Nobody could say whether there is a newer version. */
+  unknown?: boolean
   forgeInstalled?: boolean
 }) {
   let forge = opts.forgeInstalled ?? false
@@ -50,7 +52,7 @@ function fake(opts: {
       return 37.1 * MB
     },
     async newer() {
-      return opts.newer
+      return opts.unknown ? undefined : (opts.newer ?? null)
     },
     async update() {
       calls.update++
@@ -123,6 +125,15 @@ describe('/extensions — a tool the user has themselves', () => {
     expect(out).toMatch(/YouTube links\s+✓/)
     // Header, a blank row, then the card: the gap keeps the levels apart.
     expect(out).toMatch(/Transcribe YouTube videos\s*\n.*│\s*\n.*╭─ yt-dlp/)
+  })
+
+  it('never says latest when nobody could say', async () => {
+    const { manager } = fake({ quick: MINE, unknown: true })
+    const f = await openOn(manager, 'YouTube links')
+    await until(() => frame(f).includes('Uses your copy'))
+    await new Promise((r) => setTimeout(r, 60))
+    expect(frame(f)).toMatch(/Version {3}2026\.10\.03 /)
+    expect(frame(f)).not.toContain('latest')
   })
 
   it('↵ on theirs installs nothing of Forge’s', async () => {

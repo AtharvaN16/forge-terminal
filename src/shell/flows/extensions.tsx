@@ -56,8 +56,8 @@ export interface OwnManager {
   choose(id: OwnableId, path: string): Promise<void>
   /** Removes Forge's copy once the user's is used; the bytes freed. */
   removeForgeCopy(id: OwnableId): Promise<number>
-  /** A newer version of the user's copy, when there is one to install. */
-  newer(copy: OwnCopy): Promise<string | undefined>
+  /** A newer version of the user's copy; null when it is the latest; undefined when unknown. */
+  newer(copy: OwnCopy): Promise<string | null | undefined>
   /** Updates the user's copy the way it was installed. */
   update(copy: OwnCopy, signal: AbortSignal): Promise<void>
 }
@@ -312,7 +312,7 @@ export function ExtensionsFlow({
 
   /** What Forge knows of each tool the user may have themselves: their copy, a newer version, what removing Forge's copy freed. */
   const [owns, setOwns] = useState<
-    Record<string, { copy?: OwnCopy; newer?: string; freed?: number }>
+    Record<string, { copy?: OwnCopy; newer?: string; latest?: boolean; freed?: number }>
   >({})
   /** "Check this Mac" on the current tool: looking, found, or nothing found (the Path field). */
   const [check, setCheck] = useState<
@@ -339,8 +339,12 @@ export function ExtensionsFlow({
       if (freed) void refresh()
       if (!copy) return
       const newer = await own.newer(copy).catch(() => undefined)
-      if (newer && alive.current)
-        setOwns((o) => (o[id]?.copy === copy ? { ...o, [id]: { ...o[id], newer } } : o))
+      if (newer === undefined || !alive.current) return
+      setOwns((o) =>
+        o[id]?.copy === copy
+          ? { ...o, [id]: { ...o[id], ...(newer === null ? { latest: true } : { newer }) } }
+          : o,
+      )
     },
     [manager, refresh],
   )
@@ -870,7 +874,7 @@ export function ExtensionsFlow({
         facts: [
           ['Status', c.tooOld ? [run('Too old to use')] : ok('Uses your copy')],
           ['Path', [run(tilde(c.path), palette.dim)]],
-          ['Version', version(c.version, mine.newer, c.homebrew)],
+          ['Version', version(c.version, mine.newer, mine.latest === true)],
         ],
         under:
           error ??

@@ -276,13 +276,14 @@ async function brewPath(opts: BrewOptions): Promise<string | undefined> {
 /**
  * A newer version of the user's copy, when there is one Forge can install:
  * Homebrew's answer for its own copy (without updating Homebrew itself, so
- * it is quick), the pinned version for a yt-dlp older than it. Undefined
- * otherwise, or when the answer cannot be had.
+ * it is quick), the pinned version for a yt-dlp older than it. Null when
+ * Homebrew answered that there is none — the copy is the latest — and
+ * undefined when nobody could say, so "latest" is never claimed unasked.
  */
 export async function ownUpdate(
   copy: OwnCopy,
   opts: BrewOptions = {},
-): Promise<string | undefined> {
+): Promise<string | null | undefined> {
   if (copy.tooOld) return pinned(copy.id)
   if (!copy.homebrew) return undefined
   const brew = await brewPath(opts)
@@ -294,8 +295,9 @@ export async function ownUpdate(
       { timeout: 15_000, env: { ...process.env, HOMEBREW_NO_AUTO_UPDATE: '1' } },
     )
     const raw = JSON.parse(stdout) as { formulae?: Array<{ current_version?: unknown }> }
-    const current = raw.formulae?.[0]?.current_version
-    return typeof current === 'string' ? current : undefined
+    if (!Array.isArray(raw.formulae)) return undefined
+    const current = raw.formulae[0]?.current_version
+    return typeof current === 'string' ? current : null
   } catch {
     return undefined
   }
