@@ -1,4 +1,5 @@
 import { cropSuffix, largestBox } from '../crop.js'
+import { extractTarget } from '../media.js'
 import { placeOutput, suffixedImagePath } from '../output-path.js'
 import { resizedSize, sizeSuffix } from '../resize.js'
 import type {
@@ -20,7 +21,7 @@ import type { Action, OptionSpec } from './index.js'
  * convert job to the file's own format, with options, named by what was done.
  */
 
-export type MediaTool = 'cut' | 'mute' | 'resize' | 'crop' | 'loudness'
+export type MediaTool = 'cut' | 'mute' | 'resize' | 'crop' | 'loudness' | 'extract' | 'cleanup'
 
 /** Podcasts' level, and the one Even out loudness evens to (other levels are `--loudness`). */
 export const LOUDNESS_LUFS = -16
@@ -45,13 +46,21 @@ const soleMedia = (sources: SourceInfo[]): MediaInfo | undefined =>
   sources.length === 1 && sources[0]?.kind === 'media' ? sources[0] : undefined
 
 const isTool = (v: unknown): v is MediaTool =>
-  v === 'cut' || v === 'mute' || v === 'resize' || v === 'crop' || v === 'loudness'
+  v === 'cut' ||
+  v === 'mute' ||
+  v === 'resize' ||
+  v === 'crop' ||
+  v === 'loudness' ||
+  v === 'extract' ||
+  v === 'cleanup'
 
 export interface MediaEditRequest {
   media?: MediaOptions
   resize?: ResizeSpec
   /** No box: the largest of the shape, centred. */
   crop?: CropSpec
+  /** Take the sound out as a file of its own (named `-audio`). */
+  extract?: boolean
   /** Absent: the source's own format. */
   target?: FormatId
   output?: string
@@ -65,9 +74,11 @@ function suffixFor(source: MediaInfo, req: MediaEditRequest): string {
   const m = req.media ?? {}
   const v = source.facts?.video
   const said: string[] = []
+  if (req.extract) said.push('audio')
   if (m.cut) said.push('trimmed')
   if (m.mute) said.push('muted')
-  if (m.loudness !== undefined) said.push('levelled')
+  if (m.cleanup) said.push('cleaned')
+  else if (m.loudness !== undefined) said.push('levelled')
   if (m.speed !== undefined) said.push(`${m.speed}x`)
   if (m.fps !== undefined) said.push(`${m.fps}fps`)
   if (m.bitrate !== undefined) said.push(`${m.bitrate}k`)
@@ -123,6 +134,7 @@ export function mediaOptionsOf(values: Record<string, unknown>): MediaOptions | 
   if (typeof values.fps === 'number') m.fps = values.fps
   if (typeof values.bitrate === 'number') m.bitrate = values.bitrate
   if (typeof values.loudness === 'number') m.loudness = values.loudness
+  if (values.cleanup === true) m.cleanup = true
   return Object.keys(m).length ? m : undefined
 }
 
@@ -154,6 +166,16 @@ export const mediaEditAction: Action = {
       req.media = {
         loudness: typeof values.loudness === 'number' ? values.loudness : LOUDNESS_LUFS,
       }
+    }
+    if (tool === 'cleanup') {
+      if (!source.facts?.audio) return []
+      req.media = { cleanup: true, loudness: LOUDNESS_LUFS }
+    }
+    if (tool === 'extract') {
+      const audio = source.facts?.audio
+      if (!audio || !source.facts?.video) return []
+      req.extract = true
+      req.target = extractTarget(audio.codec)
     }
     if (tool === 'resize') {
       if (typeof values.resize !== 'object' || values.resize === null) return []

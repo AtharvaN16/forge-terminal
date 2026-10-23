@@ -132,6 +132,30 @@ describe('edit, for video and sound', () => {
     expect(job.outputs[0]).toBe('/rec/Screen Recording-cropped-1x1.mov')
   })
 
+  it('extracts the sound, in the container that holds it, named -audio', () => {
+    const job = convert(mediaEditAction.plan([recording], { tool: 'extract' }))
+    expect(job.target).toBe('m4a')
+    expect(job.options.media).toBeUndefined()
+    expect(job.outputs[0]).toBe('/rec/Screen Recording-audio.m4a')
+  })
+
+  it('refuses to extract from a sound file', () => {
+    expect(mediaEditAction.plan([podcast], { tool: 'extract' })).toEqual([])
+  })
+
+  it('cleans up a video, keeping its format, named -cleaned', () => {
+    const job = convert(mediaEditAction.plan([recording], { tool: 'cleanup' }))
+    expect(job.target).toBe('mov')
+    expect(job.options.media).toEqual({ cleanup: true, loudness: -16 })
+    expect(job.outputs[0]).toBe('/rec/Screen Recording-cleaned.mov')
+  })
+
+  it('cleans up a sound file, keeping its format', () => {
+    const job = convert(mediaEditAction.plan([podcast], { tool: 'cleanup' }))
+    expect(job.target).toBe('wav')
+    expect(job.outputs[0]).toBe('/pod/episode-cleaned.wav')
+  })
+
   it('evens out loudness to −16', () => {
     const job = convert(mediaEditAction.plan([podcast], { tool: 'loudness' }))
     expect(job.options.media).toEqual({ loudness: -16 })

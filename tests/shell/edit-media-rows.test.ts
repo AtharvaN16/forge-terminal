@@ -23,18 +23,34 @@ const podcast: MediaInfo = {
 }
 
 describe('edit rows for a video', () => {
-  it('offers Trim and Mute, then Resize and Crop to shape', () => {
+  it('offers the sound tools, then Resize and Crop to shape', () => {
     const rows = mediaEditRows(recording)
-    expect(rows.map((r) => r.label)).toEqual(['Trim', 'Mute', 'Resize', 'Crop to shape'])
-    expect(rows.find((r) => r.gapAfter)?.id).toBe('mute')
+    expect(rows.map((r) => r.label)).toEqual([
+      'Trim',
+      'Mute',
+      'Extract audio',
+      'Clean up audio',
+      'Resize',
+      'Crop to shape',
+    ])
+    expect(rows.find((r) => r.gapAfter)?.id).toBe('cleanup')
   })
 
-  it('leaves out Mute for a video with no sound', () => {
+  it('leaves out every sound tool for a video with no sound', () => {
     const silent: MediaInfo = {
       ...recording,
       facts: { ...recording.facts, audio: undefined } as never,
     }
-    expect(mediaEditRows(silent).map((r) => r.id)).not.toContain('mute')
+    const ids = mediaEditRows(silent).map((r) => r.id)
+    expect(ids).toEqual(['cut', 'resize', 'crop'])
+  })
+
+  it('makes Extract audio a sound file in the codec’s own container', () => {
+    const extract = mediaEditRows(recording).find((r) => r.id === 'extract')
+    expect(extract?.target).toBe('m4a')
+    expect(extract?.detail).toEqual({ dim: 'becomes ', bold: 'M4A' })
+    expect(extract && actionForRow(extract)).toBe(mediaEditAction)
+    expect(extract && rowValues(extract)).toMatchObject({ tool: 'extract' })
   })
 
   it('gives Crop its shapes with the size each cuts', () => {
@@ -43,7 +59,7 @@ describe('edit rows for a video', () => {
   })
 
   it('keeps the format and runs through the media edit action', () => {
-    for (const row of mediaEditRows(recording)) {
+    for (const row of mediaEditRows(recording).filter((r) => r.id !== 'extract')) {
       expect(row.target).toBe('mov')
       expect(actionForRow(row)).toBe(mediaEditAction)
     }
@@ -52,7 +68,11 @@ describe('edit rows for a video', () => {
 })
 
 describe('edit rows for sound', () => {
-  it('offers Trim and Even out loudness', () => {
-    expect(mediaEditRows(podcast).map((r) => r.label)).toEqual(['Trim', 'Even out loudness'])
+  it('offers Trim, Clean up audio and Even out loudness', () => {
+    expect(mediaEditRows(podcast).map((r) => r.label)).toEqual([
+      'Trim',
+      'Clean up audio',
+      'Even out loudness',
+    ])
   })
 })

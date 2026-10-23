@@ -274,6 +274,8 @@ export interface MediaOptions {
   bitrate?: number
   /** Loudness evened out to this, in LUFS (−16 for podcasts). */
   loudness?: number
+  /** Rumble and steady hiss or hum taken out of the sound, before `loudness` evens it. */
+  cleanup?: boolean
   /**
    * The bytes to fit, set by `runPlan` once the engine's arithmetic says it
    * can be reached (video spec §3.3). The encode hits it in two passes.

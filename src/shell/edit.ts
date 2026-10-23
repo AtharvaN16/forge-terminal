@@ -10,7 +10,7 @@ import {
   boostScales,
 } from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
-import { hasPicture } from '../core/media.js'
+import { extractTarget, hasPicture } from '../core/media.js'
 import { keptFormat } from '../core/resize.js'
 import type { FormatId, ImageInfo, MediaInfo } from '../core/types.js'
 import type { ImageMeasure } from '../engines/image.js'
@@ -38,6 +38,8 @@ export type EditToolId =
   | 'cut'
   | 'mute'
   | 'loudness'
+  | 'extract'
+  | 'cleanup'
 
 /** The row the picker leaves a blank row after (E3): the AI tools above it, the plain ones below. */
 export const GAP_AFTER: EditToolId = 'cutout'
@@ -236,10 +238,25 @@ export function batchEditRows(
   })
 }
 
+/** Clean up audio: the same row for a video and a sound file (design 2026-10-23 §2.2). */
+const cleanupRow = (target: FormatId): EditRow => ({
+  id: 'cleanup',
+  label: 'Clean up audio',
+  target,
+  detail: { dim: '', bold: '' },
+  pane: {
+    short: 'Clearer voices.',
+    long: 'Takes out rumble and hiss, then evens the level.',
+  },
+  verb: 'Cleaning up audio',
+})
+
 /**
- * A video's or sound file's rows (video spec §3.4): Trim and Mute, a blank
- * row, then Resize and Crop to shape for a video; Trim and Even out loudness
- * for sound. Each keeps the format and runs through `mediaEditAction`.
+ * A video's or sound file's rows (video spec §3.4; design 2026-10-23): Trim,
+ * Mute, Extract audio and Clean up audio, a blank row, then Resize and Crop
+ * to shape for a video; Trim, Clean up audio and Even out loudness for sound.
+ * Each keeps the format, except Extract audio, which writes the sound in the
+ * container that holds it; all run through `mediaEditAction`.
  */
 export function mediaEditRows(source: MediaInfo): EditRow[] {
   const target = source.format
@@ -259,6 +276,7 @@ export function mediaEditRows(source: MediaInfo): EditRow[] {
   if (!hasPicture(source)) {
     return [
       trim,
+      ...(sound ? [cleanupRow(target)] : []),
       {
         id: 'loudness',
         label: 'Even out loudness',
@@ -279,6 +297,19 @@ export function mediaEditRows(source: MediaInfo): EditRow[] {
       pane: { short: 'Takes the sound out.', long: 'The picture is copied as it is.' },
       verb: 'Muting',
     })
+    const out = extractTarget(source.facts?.audio?.codec ?? '')
+    rows.push({
+      id: 'extract',
+      label: 'Extract audio',
+      target: out,
+      detail: { dim: 'becomes ', bold: FORMATS[out].label },
+      pane: {
+        short: 'Keeps just the sound.',
+        long: 'Copied out as it is, so it takes seconds and loses nothing.',
+      },
+      verb: 'Extracting audio',
+    })
+    rows.push(cleanupRow(target))
   }
   rows[rows.length - 1] = { ...(rows[rows.length - 1] as EditRow), gapAfter: true }
   rows.push({

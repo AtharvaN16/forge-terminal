@@ -18,6 +18,17 @@ export function hasSound(source: MediaInfo): boolean {
   return source.facts ? source.facts.audio !== undefined : true
 }
 
+/**
+ * Where a video's sound is written when it is only taken out (Edit → Extract
+ * audio): copied as it is into the container that holds it — AAC and ALAC in
+ * M4A, MP3, Opus — and encoded to M4A for any other codec.
+ */
+export function extractTarget(codec: string): FormatId {
+  if (codec === 'mp3') return 'mp3'
+  if (codec === 'opus') return 'opus'
+  return 'm4a'
+}
+
 const channels = (n: number) => (n === 1 ? 'mono' : n === 2 ? 'stereo' : `${n} channels`)
 const kHz = (hz: number) => `${Math.round(hz / 100) / 10} kHz`
 

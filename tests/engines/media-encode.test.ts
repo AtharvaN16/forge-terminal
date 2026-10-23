@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConvertOptions, FormatId, MediaFacts } from '../../src/core/types.js'
-import { planEncode } from '../../src/engines/media-encode.js'
+import { NOISE_FLOOR, noiseFloorOf, planEncode } from '../../src/engines/media-encode.js'
 
 const screen: MediaFacts = {
   duration: 130,
@@ -166,6 +166,35 @@ describe('sound', () => {
     expect(p.steps[0]?.args.join(' ')).toContain('print_format=json')
   })
 
+  it('cleans up in three steps: the noise is measured, then the level, then it is written', () => {
+    const p = plan('wav', { media: { cleanup: true, loudness: -16 } }, podcast)
+    expect(p.steps.map((s) => s.measures)).toEqual(['noise', 'loudness', undefined])
+    // Only the last two are the passes Working counts.
+    expect(p.steps.map((s) => s.pass?.at)).toEqual([undefined, 1, 2])
+    const chain = (args: string[]) => flag(args, '-af') ?? ''
+    for (const step of p.steps.slice(1)) {
+      const af = chain(step.args)
+      expect(af.indexOf('highpass')).toBeGreaterThanOrEqual(0)
+      expect(af.indexOf('highpass')).toBeLessThan(af.indexOf('afftdn'))
+      expect(af.indexOf('afftdn')).toBeLessThan(af.indexOf('loudnorm'))
+      expect(af).toContain(`nf=${NOISE_FLOOR}`)
+    }
+  })
+
+  it('measures the noise on the part that is kept', () => {
+    const p = plan('wav', { media: { cleanup: true, cut: { start: 5, end: 20 } } }, podcast)
+    expect(p.steps).toHaveLength(2)
+    expect(p.steps[0]?.args).toContain('-ss')
+    expect(flag(p.steps[0]?.args ?? [], '-t')).toBe('15')
+  })
+
+  it('cleans up a video’s sound and copies its picture', () => {
+    const p = plan('mov', { media: { cleanup: true, loudness: -16 } })
+    expect(p.copies).toEqual({ video: true, audio: false })
+    expect(flag(p.steps[2]?.args ?? [], '-c:v')).toBe('copy')
+    expect(flag(p.steps[2]?.args ?? [], '-c:a')).not.toBe('copy')
+  })
+
   it('fits a size by arithmetic: one pass at the bitrate that lands', () => {
     const p = plan(
       'm4a',
@@ -258,5 +287,35 @@ describe('what this ffmpeg has', () => {
     const args = p.steps.at(-1)?.args ?? []
     expect(flag(args, '-c:v')).toBe('hevc_videotoolbox')
     expect(flag(args, '-b:v')).toMatch(/k$/)
+  })
+})
+
+describe('extracting the sound of a video', () => {
+  it.each([
+    ['aac', 'm4a'],
+    ['mp3', 'mp3'],
+    ['opus', 'opus'],
+  ] as const)('copies %s out as it is into %s', (codec, target) => {
+    const facts: MediaFacts = { ...screen, audio: { codec, channels: 2, sampleRate: 48000 } }
+    const p = plan(target, {}, facts)
+    expect(p.copies.audio).toBe(true)
+    expect(flag(single(p), '-c:a')).toBe('copy')
+    expect(single(p)).toContain('-vn')
+  })
+})
+
+describe('where the noise floor is set', () => {
+  const report = (trough: string) => `[Parsed_astats_1 @ 0x1] RMS trough dB: ${trough}\n`
+  it('sits 8 dB above the quietest stretch', () => {
+    expect(noiseFloorOf(report('-57.377666'))).toBe(-49)
+    expect(noiseFloorOf(report('-37.269087'))).toBe(-30)
+  })
+  it('never goes below -70 or above -30 (afftdn works within them)', () => {
+    expect(noiseFloorOf(report('-90'))).toBe(-70)
+    expect(noiseFloorOf(report('-12'))).toBe(-30)
+  })
+  it('falls back to afftdn’s own -50 when there is no quiet stretch to read', () => {
+    expect(noiseFloorOf(report('-inf'))).toBe(-50)
+    expect(noiseFloorOf('nothing here')).toBe(-50)
   })
 })
