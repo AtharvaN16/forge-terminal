@@ -21,10 +21,11 @@ name: extensions
 # `npm ci` — every dev dependency's install scripts — with a read-only token.
 # Actions are pinned to commit SHAs; the comment names the release.
 #
-# Windows archives are assembled on the macOS runner (they are only files) and
-# then run for real on windows-latest by the verify-windows job, also with a
-# read-only token. Nothing is uploaded until that has passed:
-# resolve -> package -> verify-windows -> publish.
+# Windows and Linux archives are assembled on the macOS runner (they are only
+# files) and then run for real on windows-latest and ubuntu-latest by the
+# verify-windows and verify-linux jobs, also with read-only tokens. Nothing is
+# uploaded until those have passed:
+# resolve -> package -> verify-windows, verify-linux -> publish.
 
 on:
   push:
@@ -75,7 +76,7 @@ jobs:
           case "$id" in
             boost) runner=macos-14 ;;
             remove-background) runner=xcode-27 ;;
-            # Pure JavaScript and WebAssembly, packaged for Windows; any macOS runner assembles it.
+            # Pure JavaScript and WebAssembly, packaged for Windows and Linux; any macOS runner assembles it.
             heic) runner=macos-14 ;;
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
             video) runner=macos-14 ;;
@@ -145,8 +146,11 @@ jobs:
             sh extensions/video/build.sh dist-ext/payload-arm64 dist-ext/out
             node scripts/package-extension.mjs video "$VERSION" arm64 dist-ext/payload-arm64 dist-ext/out >> dist-ext/assets.jsonl
           elif [ "$ID" = "heic" ]; then
-            node extensions/heic/build.mjs --out dist-ext/payload-win32-universal
-            node scripts/package-extension.mjs heic "$VERSION" win32-universal dist-ext/payload-win32-universal dist-ext/out >> dist-ext/assets.jsonl
+            # The same files for both; only the manifest's arch differs.
+            for platform in win32 linux; do
+              node extensions/heic/build.mjs --out "dist-ext/payload-$platform-universal"
+              node scripts/package-extension.mjs heic "$VERSION" "$platform-universal" "dist-ext/payload-$platform-universal" dist-ext/out >> dist-ext/assets.jsonl
+            done
           else
             bash extensions/remove-background/build.sh dist-ext/payload-universal
             node scripts/package-extension.mjs remove-background "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
@@ -197,7 +201,7 @@ jobs:
             dist-ext/assets.jsonl
           if-no-files-found: error
 
-      # Keep the payload directories so verify-windows runs the very files that were packaged.
+      # Keep the payload directories so verify-windows and verify-linux run the very files that were packaged.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: payloads
@@ -286,13 +290,47 @@ jobs:
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
           '
 
-  # Uploads only after the Windows archives have run on Windows. remove-background
-  # has none, so for it verify-windows is skipped and that counts as passed.
+  # Runs what the Linux archive contains, on Linux. Nothing here publishes anything.
+  verify-linux:
+    needs: [resolve, package]
+    if: needs.resolve.outputs.id == 'heic'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: payloads
+          path: dist-ext
+
+      - name: HEIC extension runs on Linux
+        run: |
+          out="$(node dist-ext/payload-linux-universal/runner.mjs --info --in tests/fixtures/heic/small.heic)"
+          echo "$out"
+          printf '%s' "$out" | grep -Eq '"width"[[:space:]]*:[[:space:]]*64([^0-9]|$)'
+          # And a real decode: raw RGBA, exactly 64 x 48 x 4 bytes.
+          node dist-ext/payload-linux-universal/runner.mjs --in tests/fixtures/heic/small.heic --out x.rgba
+          node -e '
+            const n = require("fs").statSync("x.rgba").size
+            if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
+          '
+
+  # Uploads only after the Windows and Linux archives have run there. An
+  # extension with none for an OS skips that job, and a skip counts as passed.
   publish:
-    needs: [resolve, package, verify-windows]
+    needs: [resolve, package, verify-windows, verify-linux]
     if: >-
       always() && needs.resolve.result == 'success' && needs.package.result == 'success' &&
-      (needs.verify-windows.result == 'success' || needs.verify-windows.result == 'skipped')
+      (needs.verify-windows.result == 'success' || needs.verify-windows.result == 'skipped') &&
+      (needs.verify-linux.result == 'success' || needs.verify-linux.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

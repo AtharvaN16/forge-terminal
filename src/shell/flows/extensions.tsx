@@ -80,7 +80,7 @@ const SHEETS: Record<
       ['a small helper', 'MIT'],
     ],
   },
-  // Windows only: no Edit row of its own, it is what lets a HEIC open at all.
+  // Off macOS only: no Edit row of its own, it is what lets a HEIC open at all.
   heic: {
     name: 'HEIC photos',
     gives: 'Opens iPhone photos (HEIC)',

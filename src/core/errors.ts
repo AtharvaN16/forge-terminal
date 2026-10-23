@@ -230,17 +230,19 @@ export function nothingVisible(path: string): ForgeError {
  *
  * Windows has no sips, and its own HEVC codec is a paid add-on on many PCs,
  * so there HEIC is decoded by Forge's optional `heic` extension — and the way
- * forward is installing it.
+ * forward is installing it. Linux has neither, and gets the same extension.
  */
 export function heicDecoderUnavailable(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  if (platform === 'win32') {
+  if (platform !== 'darwin') {
+    // Spelt out rather than osName(): core must not load src/extensions.
+    const os = platform === 'win32' ? 'Windows' : platform === 'linux' ? 'Linux' : 'this system'
     return new ForgeError({
       code: 'heic-decoder-unavailable',
       title: 'Cannot read HEIC here',
-      detail: `${displayName(path, platform)} is a HEIC photo, which needs Forge's free HEIC extension on Windows.`,
+      detail: `${displayName(path, platform)} is a HEIC photo, which needs Forge's free HEIC extension on ${os}.`,
       short: 'HEIC needs the heic extension.',
       hint: 'Install it with: forge extensions add heic',
       shellHint: 'Open /extensions to install it.',

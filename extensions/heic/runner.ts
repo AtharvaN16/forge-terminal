@@ -1,5 +1,5 @@
 /**
- * HEIC — the extension's child-process entry (Windows only; macOS uses sips).
+ * HEIC — the extension's child-process entry (Windows and Linux; macOS uses sips).
  *
  *   node runner.mjs --info --in <file.heic>
  *   node runner.mjs --in <file.heic> --out <file.rgba>

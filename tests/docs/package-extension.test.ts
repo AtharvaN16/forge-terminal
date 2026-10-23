@@ -60,4 +60,26 @@ describe('package-extension', () => {
       }
     },
   )
+
+  it('packs linux archives, and pins the gzip OS byte so the host leaves no trace', async () => {
+    const root = await makeTempDir()
+    const payload = join(root, 'payload')
+    await mkdir(payload, { recursive: true })
+    await writeFile(join(payload, 'runner.mjs'), 'console.log(1)\n')
+    const out = join(root, 'out')
+    const r = JSON.parse(
+      execFileSync('node', [script, 'heic', '1.0.0', 'linux-universal', payload, out], {
+        encoding: 'utf8',
+      }),
+    ) as { asset: string }
+    expect(r.asset).toBe('forge-ext-heic-1.0.0-linux-universal.tar.gz')
+    const gz = await readFile(join(out, r.asset))
+    // 19 is what macOS's zlib writes, and what every published archive carries.
+    expect(gz[9]).toBe(19)
+    const x = join(root, 'x')
+    await mkdir(x)
+    execFileSync('tar', ['-xzf', join(out, r.asset), '-C', x])
+    const manifest = JSON.parse(await readFile(join(x, 'manifest.json'), 'utf8'))
+    expect(manifest).toMatchObject({ id: 'heic', arch: 'linux-universal', entry: 'runner.mjs' })
+  })
 })

@@ -9,7 +9,8 @@
  * Prints one JSON line: {asset, bytes, sha256}.
  *
  * Deterministic: entries sorted bytewise, mtime/uid/gid/names zeroed, mode
- * normalised to 0644 / 0755 (exec bit kept), gzip header mtime 0. Node
+ * normalised to 0644 / 0755 (exec bit kept), gzip header mtime 0 and OS
+ * byte pinned, so the bytes do not depend on the host. Node
  * built-ins only; the output is plain ustar, readable by any `tar`.
  */
 import { createHash } from 'node:crypto'
@@ -25,9 +26,20 @@ const ENTRIES = {
   // ffmpeg beside ffprobe; Forge finds both in the extension's folder.
   video: { entry: 'ffmpeg', kind: 'exec' },
 }
-// Bare labels are the Mac builds, as published before Windows; win32 ones say so.
-const ARCHES = ['arm64', 'x64', 'universal', 'win32-x64', 'win32-arm64', 'win32-universal']
+// Bare labels are the Mac builds, as published before Windows; win32 and linux ones say so.
+const ARCHES = [
+  'arm64',
+  'x64',
+  'universal',
+  'win32-x64',
+  'win32-arm64',
+  'win32-universal',
+  'linux-x64',
+  'linux-arm64',
+  'linux-universal',
+]
 const FIXED_MTIME = 946684800 // 2000-01-01
+const GZIP_OS = 19 // macOS, as zlib on the macOS runners writes it
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 
@@ -112,6 +124,10 @@ export async function packageExtension(id, version, arch, payloadDir, outDir) {
   }
   parts.push(Buffer.alloc(1024))
   const gz = gzipSync(Buffer.concat(parts), { level: 9 })
+  // The gzip header's OS byte is the one thing zlib takes from the host: 19
+  // on macOS, 3 on Linux. Pinned to the macOS value every archive so far was
+  // published with, so the same payload packs to the same bytes anywhere.
+  gz[9] = GZIP_OS
 
   const asset = `forge-ext-${id}-${version}-${arch}.tar.gz`
   await mkdir(outDir, { recursive: true })

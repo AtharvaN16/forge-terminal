@@ -31,14 +31,15 @@ const run = promisify(execFile)
  * the ordinary Sharp pipeline runs on that. No new dependency, no build
  * step, and the fidelity comes from the same decoder Preview uses.
  *
- * Windows has no sips, so there HEIC is decoded by the optional `heic`
- * extension: libheif-js — a WASM build of libheif — run as a child process
- * (extensions/heic/runner.ts), which writes raw RGBA that Sharp wraps into
- * the same temporary PNG. Everything downstream is unchanged.
+ * Windows and Linux have no sips, so there HEIC is decoded by the optional
+ * `heic` extension: libheif-js — a WASM build of libheif — run as a child
+ * process (extensions/heic/runner.ts), which writes raw RGBA that Sharp wraps
+ * into the same temporary PNG. Everything downstream is unchanged. The WASM
+ * payload is the same bytes on both; only macOS goes another way.
  */
 
 /**
- * src/extensions is imported only on Windows, when HEIC is asked about: a
+ * src/extensions is imported only off macOS, when HEIC is asked about: a
  * plain conversion must not load it (tests/cli/lazy-load.test.ts).
  */
 const extensions = async () => ({
@@ -48,16 +49,19 @@ const extensions = async () => ({
 
 let cached: boolean | undefined
 
+/** Every OS but macOS decodes HEIC through the extension: sips is Apple's. */
+const viaExtension = (platform: NodeJS.Platform) => platform !== 'darwin'
+
 /**
  * Whether HEIC can be decoded here. Cached on macOS: this shells out, and the
- * answer cannot change while the process is running. Not cached on Windows,
+ * answer cannot change while the process is running. Not cached elsewhere,
  * where it is a couple of file reads and an extension installed mid-session
  * must take effect at once.
  */
 export async function heicDecodable(
   platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
-  if (platform === 'win32') return (await (await extensions()).installed('heic')) !== undefined
+  if (viaExtension(platform)) return (await (await extensions()).installed('heic')) !== undefined
   if (cached !== undefined) return cached
   try {
     await run('/usr/bin/sips', ['--help'], { timeout: 5000 })
@@ -93,7 +97,7 @@ export async function decodeHeic(
   source: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<DecodedHeic> {
-  if (platform === 'win32') return decodeWithExtension(source)
+  if (viaExtension(platform)) return decodeWithExtension(source, platform)
   const path = join(tmpdir(), `forge-heic-${randomBytes(8).toString('hex')}.png`)
   const cleanup = async () => {
     await rm(path, { force: true }).catch(() => {})
@@ -110,26 +114,29 @@ export async function decodeHeic(
 }
 
 /** The installed heic extension, or the same refusal a missing sips gets on a Mac. */
-async function heicExtension(source: string) {
+async function heicExtension(source: string, platform: NodeJS.Platform) {
   const { installed, runExtension } = await extensions()
   const ext = await installed('heic')
-  if (ext === undefined) throw heicDecoderUnavailable(source, 'win32')
+  if (ext === undefined) throw heicDecoderUnavailable(source, platform)
   return { ext, runExtension }
 }
 
 /**
- * Windows: the extension writes raw RGBA, which Sharp wraps into the PNG the
+ * Windows and Linux: the extension writes raw RGBA, which Sharp wraps into the PNG the
  * rest of the pipeline expects. libheif applies the container's rotation and
  * mirror while decoding, so the pixels are upright and carry no EXIF —
  * `.rotate()` on the PNG is a no-op, as it must be.
  */
-async function decodeWithExtension(source: string): Promise<DecodedHeic> {
+async function decodeWithExtension(
+  source: string,
+  platform: NodeJS.Platform,
+): Promise<DecodedHeic> {
   const dir = await mkdtemp(join(tmpdir(), 'forge-heic-'))
   const cleanup = async () => {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
   try {
-    const { ext, runExtension } = await heicExtension(source)
+    const { ext, runExtension } = await heicExtension(source, platform)
     const rgba = join(dir, 'decoded.rgba')
     const png = join(dir, 'decoded.png')
     const { width, height } = await runExtension(ext, ['--in', source, '--out', rgba], {
@@ -221,15 +228,15 @@ export interface HeicInfo {
  * channel, but a HEIC exported from a graphics tool can, and guessing would
  * silently skip the flatten step that keeps transparency from going black.
  *
- * On Windows the heic extension reads the same three from the container
+ * On Windows and Linux the heic extension reads the same three from the container
  * without decoding pixels, and reports dimensions already rotated.
  */
 export async function heicInfo(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<HeicInfo> {
-  if (platform === 'win32') {
-    const { ext, runExtension } = await heicExtension(path)
+  if (viaExtension(platform)) {
+    const { ext, runExtension } = await heicExtension(path, platform)
     const r = await runExtension(ext, ['--info', '--in', path], { subject: path })
     // An absent flag reads as alpha: flattening an opaque image costs nothing.
     return { width: r.width, height: r.height, hasAlpha: r.hasAlpha ?? true }

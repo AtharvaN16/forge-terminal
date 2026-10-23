@@ -84,16 +84,24 @@ export const CATALOG: readonly CatalogEntry[] = [
     licence: 'Uses Apple Vision on-device; helper is MIT',
   },
   {
-    // macOS decodes HEIC itself (sips); only Windows needs this.
+    // macOS decodes HEIC itself (sips); Windows and Linux need this. The two
+    // archives hold the same files (JavaScript and WebAssembly, any chip) and
+    // differ only in the manifest's arch.
     id: 'heic',
     title: 'HEIC photos',
-    summary: 'Open iPhone photos (HEIC) on Windows',
+    summary: 'Open iPhone photos (HEIC)',
     assets: {
       'win32-universal': {
         version: '1.0.0',
         url: `${RELEASES}/ext-heic-v1.0.0/forge-ext-heic-1.0.0-win32-universal.tar.gz`,
         bytes: 532364,
         sha256: '6c5f86c1a896d84264fb19371117e6ca6ec9b8726afec03f8c30aa5125a3ad97',
+      },
+      'linux-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-heic-v1.0.0/forge-ext-heic-1.0.0-linux-universal.tar.gz`,
+        bytes: 532362,
+        sha256: 'fccac1de0c707c18778e7909237747fdd47602f9c6861e600a24d23ac3f5b63c',
       },
     },
     licence: 'libheif and libde265 (LGPL-3.0), via libheif-js',

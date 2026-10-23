@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { assetFor, CATALOG, offeredHere } from '../../src/extensions/catalog.js'
+import { assetFor, CATALOG, catalogEntry, offeredHere } from '../../src/extensions/catalog.js'
 import { editRows } from '../../src/shell/edit.js'
 
 // macOS 15, whatever this machine runs: the Mac listing is pinned on any CI host.
@@ -92,6 +92,19 @@ describe('by OS', () => {
     expect(offeredHere('remove-background', 'win32')).toBe(false)
     expect(offeredHere('heic', 'darwin')).toBe(false)
     expect(CATALOG.map((e) => e.id)).toContain('heic')
+  })
+
+  it('heic is offered on Windows and Linux, one build for any chip', () => {
+    expect(offeredHere('heic', 'win32')).toBe(true)
+    expect(offeredHere('heic', 'linux')).toBe(true)
+    const heic = catalogEntry('heic')
+    if (heic === undefined) throw new Error('heic is catalogued')
+    for (const arch of ['x64', 'arm64']) {
+      expect(assetFor(heic, 'linux', arch)?.url).toMatch(
+        /forge-ext-heic-1\.0\.0-linux-universal\.tar\.gz$/,
+      )
+      expect(assetFor(heic, 'win32', arch)?.url).toMatch(/-win32-universal\.tar\.gz$/)
+    }
   })
 
   it('Edit has no Remove background row where it is not offered', () => {

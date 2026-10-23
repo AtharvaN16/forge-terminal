@@ -272,6 +272,10 @@ describe('HEIC on Windows (the heic extension)', () => {
     })
   })
 
+  it('names Windows in the refusal', () => {
+    expect(heicDecoderUnavailable('a.heic', 'win32').detail).toMatch(/extension on Windows\.$/)
+  })
+
   it('macOS keeps its sips wording', () => {
     expect(heicDecoderUnavailable('a.heic', 'darwin').hint).toBe(
       'sips could not be run. It ships with macOS at /usr/bin/sips.',
@@ -285,5 +289,36 @@ describe('HEIC on Windows (the heic extension)', () => {
     }
     await emptyConfig()
     expect(await heicInfo(smallHeic, 'darwin')).toEqual({ width: 64, height: 48, hasAlpha: false })
+  })
+})
+
+describe('HEIC on Linux (the same heic extension)', () => {
+  it('is decodable once the extension is installed, and decodes through it', async () => {
+    const dir = await emptyConfig()
+    expect(await heicDecodable('linux')).toBe(false)
+    await installHeicExtension(dir)
+    expect(await heicDecodable('linux')).toBe(true)
+
+    expect(await heicInfo(smallHeic, 'linux')).toEqual({ width: 64, height: 48, hasAlpha: false })
+
+    const decoded = await decodeHeic(smallHeic, 'linux')
+    const meta = await sharp(decoded.path).metadata()
+    expect(meta).toMatchObject({ format: 'png', width: 64, height: 48 })
+    await decoded.cleanup()
+    expect(existsSync(dirname(decoded.path))).toBe(false)
+  }, 60_000)
+
+  it('without the extension, refuses with the install hint and names Linux', async () => {
+    await emptyConfig()
+    const refusal = await decodeHeic(smallHeic, 'linux').catch((e: unknown) => e)
+    expect(refusal).toMatchObject({
+      code: 'heic-decoder-unavailable',
+      hint: 'Install it with: forge extensions add heic',
+      shellHint: 'Open /extensions to install it.',
+    })
+    expect((refusal as Error & { detail: string }).detail).toMatch(/extension on Linux\.$/)
+    await expect(heicInfo(smallHeic, 'linux')).rejects.toMatchObject({
+      code: 'heic-decoder-unavailable',
+    })
   })
 })
