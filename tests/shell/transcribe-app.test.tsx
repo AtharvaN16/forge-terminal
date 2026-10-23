@@ -58,7 +58,12 @@ afterEach(() => {
 
 async function setUp(
   notes: 'available' | 'off' = 'available',
-  opts: { run?: object[]; hang?: boolean; prefs?: Partial<Preferences> } = {},
+  opts: {
+    run?: object[]
+    hang?: boolean
+    prefs?: Partial<Preferences>
+    width?: number
+  } = {},
 ) {
   const fake = await fakeTranscribeHelper({
     status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes }] },
@@ -81,7 +86,7 @@ async function setUp(
   const out = await makeTempDir()
   const app = render(
     <App
-      initialWidth={80}
+      initialWidth={opts.width ?? 80}
       initialHeight={24}
       prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: out, ...opts.prefs }}
     />,
@@ -176,6 +181,14 @@ describe('transcribe, from ↵ to Done', () => {
     await settle()
     return s
   }
+
+  it('drops the English note once the key row has keys', async () => {
+    // 100 columns: wide enough that the note would fit beside ↵ transcribe.
+    const { app } = await staged('available', { width: 100 })
+    const keys = frame(app).split('\n').at(-1) ?? ''
+    expect(keys).toContain('transcribe')
+    expect(frame(app)).not.toContain('Currently only English is supported')
+  }, 30_000)
 
   it('asks Transcribe to, then Format, then Save as, then writes the .md and shows Done', async () => {
     const { app, out } = await staged()

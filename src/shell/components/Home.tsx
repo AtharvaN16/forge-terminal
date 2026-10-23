@@ -248,7 +248,7 @@ export function KeyRow({
   note,
 }: KeySet & {
   width: number
-  /** A mode's standing caveat, in the app's orange (`larger`) at the row's left edge after the keys; dropped where it does not fit. */
+  /** A mode's standing caveat, in the app's orange (`larger`) at the row's left edge: only on a row with no keys, and dropped where it does not fit. */
   note?: string | undefined
   /**
    * Where the first key's cap starts: on the margin, the column the content
@@ -280,11 +280,14 @@ export function KeyRow({
   let shown = [...foot]
   // A footnote item with no word is a sentence on its own.
   const footText = () => shown.map(([key, word]) => (word ? `${key} ${word}` : key)).join(' · ')
-  // The note only where the whole footnote still fits beside it. The
-  // footnote ends on the margin, the block's last column.
-  const noteWidth = note ? (main.length > 0 ? 2 : 0) + stringWidth(note) : 0
+  // The note only on a row with no keys — beside ↵ transcribe it reads as one
+  // of them (2026-10-22) — and only where the whole footnote still fits beside
+  // it. The footnote ends on the margin, the block's last column.
+  const noteWidth = note ? stringWidth(note) : 0
   const said =
-    note !== undefined && left + noteWidth + 1 + stringWidth(footText()) + HOME_MARGIN <= width
+    note !== undefined &&
+    main.length === 0 &&
+    left + noteWidth + 1 + stringWidth(footText()) + HOME_MARGIN <= width
   while (
     shown.length > 0 &&
     left + (said ? noteWidth + 1 : 3) + stringWidth(footText()) + HOME_MARGIN > width
@@ -319,7 +322,7 @@ export function KeyRow({
           </Text>
         ))}
         {said ? (
-          <Text color={colourProp(palette.larger)}>{`${main.length > 0 ? '  ' : ''}${note}`}</Text>
+          <Text color={colourProp(palette.larger)}>{note}</Text>
         ) : null}
         {' '.repeat(gap)}
         {/* The footnote's keys bright, what they do faded (2026-10-19); an item
