@@ -321,9 +321,7 @@ export function KeyRow({
             >{` ${word}`}</Text>
           </Text>
         ))}
-        {said ? (
-          <Text color={colourProp(palette.larger)}>{note}</Text>
-        ) : null}
+        {said ? <Text color={colourProp(palette.larger)}>{note}</Text> : null}
         {' '.repeat(gap)}
         {/* The footnote's keys bright, what they do faded (2026-10-19); an item
             with no word is a sentence, faded whole. */}

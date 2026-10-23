@@ -254,3 +254,89 @@ export async function resolveYtDlp(opts: FindOptions = {}): Promise<Resolved | u
   const forge = await installed('yt-dlp')
   return forge ? { entry: forge.entry, own: false } : undefined
 }
+
+/* ------------------------------------------------------- updating */
+
+export interface BrewOptions {
+  /** The brew to run (tests); found in Homebrew's folders or on PATH otherwise. */
+  brew?: string
+  signal?: AbortSignal
+}
+
+/** Homebrew's own command, where it is. */
+async function brewPath(opts: BrewOptions): Promise<string | undefined> {
+  if (opts.brew !== undefined) return (await runnable(opts.brew)) ? opts.brew : undefined
+  for (const dir of searchDirs({ env: { PATH: process.env.PATH ?? '' } })) {
+    const path = join(dir, 'brew')
+    if (await runnable(path)) return path
+  }
+  return undefined
+}
+
+/**
+ * A newer version of the user's copy, when there is one Forge can install:
+ * Homebrew's answer for its own copy (without updating Homebrew itself, so
+ * it is quick), the pinned version for a yt-dlp older than it. Undefined
+ * otherwise, or when the answer cannot be had.
+ */
+export async function ownUpdate(
+  copy: OwnCopy,
+  opts: BrewOptions = {},
+): Promise<string | undefined> {
+  if (copy.tooOld) return pinned(copy.id)
+  if (!copy.homebrew) return undefined
+  const brew = await brewPath(opts)
+  if (brew === undefined) return undefined
+  try {
+    const { stdout } = await execFileAsync(
+      brew,
+      ['outdated', '--json=v2', '--formula', TOOLS[copy.id].formula],
+      { timeout: 15_000, env: { ...process.env, HOMEBREW_NO_AUTO_UPDATE: '1' } },
+    )
+    const raw = JSON.parse(stdout) as { formulae?: Array<{ current_version?: unknown }> }
+    const current = raw.formulae?.[0]?.current_version
+    return typeof current === 'string' ? current : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Who updates the user's copy, in the shell's words: "Homebrew", or the tool itself. */
+export const updater = (copy: OwnCopy): string | undefined =>
+  copy.homebrew ? 'Homebrew' : copy.id === 'yt-dlp' ? 'yt-dlp' : undefined
+
+/**
+ * Updates the user's copy the way it was installed: `brew upgrade` for
+ * Homebrew's, `yt-dlp --update` for any other yt-dlp. Rejects with the
+ * tool's own last words when it fails.
+ */
+export async function updateOwn(copy: OwnCopy, opts: BrewOptions = {}): Promise<void> {
+  let file: string
+  let args: string[]
+  if (copy.homebrew) {
+    const brew = await brewPath(opts)
+    if (brew === undefined) throw new Error('Homebrew was not found')
+    file = brew
+    args = ['upgrade', TOOLS[copy.id].formula]
+  } else if (copy.id === 'yt-dlp') {
+    file = copy.path
+    args = ['--update']
+  } else throw new Error(`${TOOLS[copy.id].name} cannot update itself`)
+  try {
+    await execFileAsync(file, args, {
+      timeout: 10 * 60_000,
+      maxBuffer: 8 << 20,
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    })
+  } catch (e) {
+    if (opts.signal?.aborted) throw opts.signal.reason ?? e
+    const err = e as { stderr?: string; message?: string }
+    const last = (err.stderr ?? '')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .at(-1)
+      ?.replace(/^Error:\s*/, '')
+    throw new Error(last || err.message || 'the update failed')
+  }
+}

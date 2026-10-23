@@ -325,8 +325,16 @@ describe('the Done notes', () => {
 describe('the Done layout', () => {
   it('sits the body two blank rows under the bar, in any window: the rest goes under it', () => {
     // The bar's own blank row and one more (2026-10-22, the layout picker).
-    expect(doneLayout({ height: 24, body: 6, notes: 0 })).toEqual({ top: 1, between: 0, bottom: 13 })
-    expect(doneLayout({ height: 34, body: 6, notes: 0 })).toEqual({ top: 1, between: 0, bottom: 23 })
+    expect(doneLayout({ height: 24, body: 6, notes: 0 })).toEqual({
+      top: 1,
+      between: 0,
+      bottom: 13,
+    })
+    expect(doneLayout({ height: 34, body: 6, notes: 0 })).toEqual({
+      top: 1,
+      between: 0,
+      bottom: 23,
+    })
   })
 
   it('ends the notes four rows above the keys, at least a row under the body', () => {

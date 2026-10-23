@@ -1,14 +1,17 @@
-import { chmod, mkdir, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   chosenPath,
   findOwn,
   newer,
+  type OwnCopy,
+  ownUpdate,
   probeOwn,
   resolveYtDlp,
   searchDirs,
   setChosenPath,
+  updateOwn,
 } from '../../src/extensions/own.js'
 import { installed } from '../../src/extensions/paths.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
@@ -134,5 +137,76 @@ describe('resolveYtDlp', () => {
 
   it('is nothing with neither', async () => {
     expect(await resolveYtDlp({ dirs: [] })).toBeUndefined()
+  })
+})
+
+/** A brew that records its argv and answers `outdated` with `current`. */
+async function fakeBrew(current?: string): Promise<{ brew: string; calls: string }> {
+  const dir = await makeTempDir()
+  const brew = join(dir, 'brew')
+  const calls = join(dir, 'calls.jsonl')
+  const outdated = current
+    ? JSON.stringify({ formulae: [{ name: 'yt-dlp', current_version: current }] })
+    : JSON.stringify({ formulae: [] })
+  await writeFile(
+    brew,
+    `#!${process.execPath}
+const fs = require('node:fs')
+const a = process.argv.slice(2)
+fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(a) + '\\n')
+if (a[0] === 'outdated') console.log(${JSON.stringify(outdated)})
+`,
+  )
+  await chmod(brew, 0o755)
+  return { brew, calls }
+}
+const homebrewCopy = (path: string): OwnCopy => ({
+  id: 'yt-dlp',
+  path,
+  version: '2026.10.03',
+  homebrew: true,
+  tooOld: false,
+})
+
+describe('ownUpdate', () => {
+  it('asks Homebrew for a newer version of its own copy', async () => {
+    const { brew } = await fakeBrew('2026.11.02')
+    expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew })).toBe('2026.11.02')
+    const none = await fakeBrew()
+    expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew: none.brew })).toBeUndefined()
+  })
+
+  it('knows a copy older than the pinned version has one, without asking', async () => {
+    const copy: OwnCopy = { ...homebrewCopy('/x'), homebrew: false, tooOld: true }
+    expect(await ownUpdate(copy, { brew: '/missing' })).toBe('2026.08.19')
+  })
+})
+
+describe('updateOwn', () => {
+  it('runs brew upgrade for Homebrew’s copy', async () => {
+    const { brew, calls } = await fakeBrew()
+    await updateOwn(homebrewCopy('/x/yt-dlp'), { brew })
+    expect(await readFile(calls, 'utf8')).toContain('["upgrade","yt-dlp"]')
+  })
+
+  it('lets any other yt-dlp update itself', async () => {
+    const dir = await makeTempDir()
+    const path = join(dir, 'yt-dlp')
+    const calls = join(dir, 'calls')
+    await writeFile(
+      path,
+      `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(calls)}, process.argv.slice(2).join(' ') + '\\n')\n`,
+    )
+    await chmod(path, 0o755)
+    await updateOwn({ ...homebrewCopy(path), homebrew: false }, { brew: '/missing' })
+    expect(await readFile(calls, 'utf8')).toBe('--update\n')
+  })
+
+  it('says why when the update fails', async () => {
+    const dir = await makeTempDir()
+    const brew = join(dir, 'brew')
+    await writeFile(brew, '#!/bin/sh\necho "Error: no network" >&2\nexit 1\n')
+    await chmod(brew, 0o755)
+    await expect(updateOwn(homebrewCopy('/x/yt-dlp'), { brew })).rejects.toThrow('no network')
   })
 })
