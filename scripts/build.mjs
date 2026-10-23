@@ -17,7 +17,7 @@
  *   node scripts/build.mjs [--outdir dist] [--metafile]
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { build } from 'esbuild'
@@ -81,6 +81,7 @@ const result = await build({
 writeFileSync(join(outdir, 'third-party-licenses.txt'), licences(result.metafile))
 if (values.metafile) writeFileSync(join(outdir, 'meta.json'), JSON.stringify(result.metafile))
 buildTranscribeHelper()
+copyLinuxTranscribeHelper()
 
 /**
  * The transcribe helper (spec 2026-10-17-transcribe-design §4.1): Swift,
@@ -117,6 +118,18 @@ function buildTranscribeHelper() {
     if (required) throw e
     console.log('transcribe helper skipped: needs swiftc and a macOS 26 SDK')
   }
+}
+
+/**
+ * The Linux transcribe helper: plain Node (whisper.cpp + ffmpeg underneath), so
+ * it is copied, not built, and copied on every OS: releases are cut on macOS.
+ */
+function copyLinuxTranscribeHelper() {
+  mkdirSync(join(outdir, 'helpers'), { recursive: true })
+  copyFileSync(
+    join(ROOT, 'helpers/transcribe/forge-transcribe-linux.mjs'),
+    join(outdir, 'helpers', 'forge-transcribe-linux.mjs'),
+  )
 }
 
 /** One section per package the bundle inlines: name, version, licence, and its licence text. */
