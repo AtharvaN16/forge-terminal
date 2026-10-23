@@ -1010,7 +1010,8 @@ export function stagedCardRows({
       { text: ` ${'─'.repeat(Math.max(0, cw - 5 - stringWidth(tag)))}╮`, fg: edge },
     ],
     side(file.name, palette.fg, true),
-    side(file.facts, palette.dim),
+    // No facts yet (a link whose tool is still to come): a card of one line.
+    ...(file.facts === '' ? [] : [side(file.facts, palette.dim)]),
     [{ text: `╰${'─'.repeat(cw - 2)}╯`, fg: edge }],
   ]
   return dotted({ width: columns, rows, palette, mode, lines: card, pad: 1, scale: 0.42, ring })

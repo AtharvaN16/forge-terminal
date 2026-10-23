@@ -69,7 +69,6 @@ import { probe } from '../engines/registry.js'
 import { type FetchedSound, fetchSound } from '../engines/youtube.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { assetFor, catalogEntry } from '../extensions/catalog.js'
-import { installed } from '../extensions/paths.js'
 import type { Opened } from '../menu/command.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { lastSegment } from '../utils/last-segment.js'
@@ -189,6 +188,7 @@ import { answerFor, type Question, trailFor } from './trail.js'
 import {
   readTranscribeFile,
   type TranscribeSource,
+  transcribeNeed,
   transcribeVerb,
   transcribeView,
 } from './transcribe-stage.js'
@@ -759,6 +759,9 @@ const SETTINGS_STEPS: ReadonlySet<string> = new Set([
   'update',
   'about',
 ])
+
+/** The install band's length in the field, as /extensions draws it (G1). */
+const NEED_BAND = 16
 
 export function App({
   initialWidth,
@@ -1350,16 +1353,18 @@ export function App({
 
   /** A link's one yt-dlp run, from the facts the card shows to the sound the run reads. */
   const lookUp = useCallback(
-    (url: string) => {
+    /** `go`: straight on to Transcribe to once the facts are in — after an install, ↵ was already pressed. */
+    (url: string, go = false) => {
       const stop = new AbortController()
       setTranscribing({ kind: 'link', url, phase: 'looking' })
       const sound = fetchSound(url, {
         signal: stop.signal,
         onEvent: (e) => {
           if (stop.signal.aborted) return
-          if (e.kind === 'facts')
+          if (e.kind === 'facts') {
             setTranscribing({ kind: 'link', url, phase: 'ready', facts: e.facts })
-          else {
+            if (go) setStep('transcribe')
+          } else {
             setTranscribing((t) =>
               t?.kind === 'link' && t.phase === 'ready'
                 ? { ...t, fetched: { done: e.done, total: e.total } }
@@ -1411,7 +1416,9 @@ export function App({
         }
         return
       }
-      if ((await installed('yt-dlp')) === undefined) {
+      // The user's own yt-dlp counts: it is used, and nothing is offered (own.ts).
+      const { resolveYtDlp } = await import('../extensions/own.js')
+      if ((await resolveYtDlp()) === undefined) {
         const entry = catalogEntry('yt-dlp')
         const asset = entry && assetFor(entry)
         setTranscribing({
@@ -1429,10 +1436,11 @@ export function App({
 
   /** ↵ on a link that needs yt-dlp: installed in place, in real bytes, then looked up. */
   const installYtDlp = useCallback(
-    async (url: string) => {
+    /** `bytes`: the catalogue's count, so the field says "0 of 37.1 MB" before the first byte. */
+    async (url: string, bytes: number) => {
       const stop = new AbortController()
       installAbort.current = stop
-      setTranscribing({ kind: 'link', url, phase: 'installing', done: 0, total: 1 })
+      setTranscribing({ kind: 'link', url, phase: 'installing', done: 0, total: bytes })
       try {
         const { installExtension } = await import('../extensions/manager.js')
         await installExtension('yt-dlp', {
@@ -1441,7 +1449,8 @@ export function App({
             setTranscribing({ kind: 'link', url, phase: 'installing', done, total }),
         })
         installAbort.current = undefined
-        lookUp(url)
+        // ↵ install meant "go": no second ↵ once yt-dlp is in.
+        lookUp(url, true)
       } catch (e) {
         installAbort.current = undefined
         setTranscribing(undefined)
@@ -1537,12 +1546,17 @@ export function App({
    * or a file staged that ↵ would act on. An empty home shows nothing. Not
    * for a command, whose menu says ↵ open, nor while the drop area asks.
    */
+  /** ↵ install while it installs (a link that needs yt-dlp), ↵ enter otherwise. */
+  const enterWord =
+    mode === 'transcribe' && transcribing && transcribeVerb(transcribing) === 'install'
+      ? 'install'
+      : 'enter'
   const enterCap: Row =
     (process.env.NO_COLOR ?? '') !== '' || palette.keycapBg === ''
-      ? [{ text: '[↵ enter]', fg: keyIsDown('enter') ? palette.fg : palette.border }]
+      ? [{ text: `[↵ ${enterWord}]`, fg: keyIsDown('enter') ? palette.fg : palette.border }]
       : [
           {
-            text: ' ↵ enter ',
+            text: ` ↵ ${enterWord} `,
             fg: palette.ink,
             // The mode's colour, so it reads as the thing to press — a neutral
             // grey in colour mode, where the swatches already compete (2026-10-16).
@@ -1565,6 +1579,39 @@ export function App({
         ? stagedVerb(stage, mode)
         : null
   const emptyHint: Row | undefined = onHome && stagedVerbNow ? enterCap : pasteHint
+  /**
+   * A link waiting for yt-dlp says so in the field, beside ↵ install
+   * (mockups/own-tools-2026-10-round5.html, F2): the need and its size, then
+   * the download on the same line — the G1 band, real bytes.
+   */
+  const need = transcribeNeed(transcribing)
+  const needRow: Row | undefined =
+    need?.kind === 'needs'
+      ? [
+          { text: 'YouTube links need yt-dlp', fg: palette.dim },
+          { text: ' · ', fg: palette.border },
+          { text: need.size, fg: palette.fg, bold: true },
+          { text: ' download', fg: palette.dim },
+        ]
+      : need?.kind === 'installing'
+        ? (() => {
+            const k =
+              need.total > 0 ? Math.round(Math.min(1, need.done / need.total) * NEED_BAND) : 0
+            const band: Row =
+              palette.track === '' || palette.trackFill === ''
+                ? [{ text: `${'━'.repeat(k)}${'─'.repeat(NEED_BAND - k)}`, fg: palette.dim }]
+                : [
+                    { text: ' '.repeat(k), bg: palette.trackFill },
+                    { text: ' '.repeat(NEED_BAND - k), bg: palette.track },
+                  ]
+            return [
+              { text: 'Installing yt-dlp  ', fg: palette.dim },
+              ...band,
+              { text: `  ${need.got}`, fg: palette.fg, bold: true },
+              { text: ` of ${need.of}`, fg: palette.dim },
+            ]
+          })()
+        : undefined
 
   /**
    * Tab lists the supported formats on the drop surface until the next key
@@ -1833,7 +1880,8 @@ export function App({
       if (key.return && mode === 'transcribe' && held) {
         const verb = transcribeVerb(held)
         if (verb === 'transcribe') setStep('transcribe')
-        else if (verb === 'install' && held.kind === 'link') void installYtDlp(held.url)
+        else if (verb === 'install' && held.kind === 'link')
+          void installYtDlp(held.url, held.phase === 'needs-yt-dlp' ? held.bytes : 0)
         return true
       }
       const staged = stageRef.current
@@ -4770,6 +4818,7 @@ export function App({
       intercept={homeKey}
       hint={emptyHint}
       typedHint={askingSearch ? undefined : sendHint}
+      placeholderRow={mode === 'transcribe' ? needRow : undefined}
       row={row}
     />
   )

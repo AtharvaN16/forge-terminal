@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transcribeCard, transcribeVerb } from '../../src/shell/transcribe-stage.js'
+import { transcribeCard, transcribeNeed, transcribeVerb } from '../../src/shell/transcribe-stage.js'
 
 const URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
 
@@ -39,17 +39,22 @@ describe('the card home shows for transcribe', () => {
     expect(facts(4)).toBe(facts(0))
   })
 
-  it('a link that needs yt-dlp first, with its real download size', () => {
-    expect(
-      transcribeCard({ kind: 'link', url: URL, phase: 'needs-yt-dlp', bytes: 37146048 }).facts,
-    ).toBe('YouTube links need yt-dlp · 37.1 MB download · ↵ installs')
+  it('a link that needs yt-dlp first: the card keeps only the link; the field says the need and its real size', () => {
+    const src = { kind: 'link', url: URL, phase: 'needs-yt-dlp', bytes: 37146048 } as const
+    expect(transcribeCard(src)).toMatchObject({ name: URL, facts: '' })
+    expect(transcribeNeed(src)).toEqual({ kind: 'needs', size: '37.1 MB' })
   })
 
-  it('yt-dlp installing, in real bytes', () => {
-    expect(
-      transcribeCard({ kind: 'link', url: URL, phase: 'installing', done: 12.6e6, total: 37146048 })
-        .facts,
-    ).toBe('Installing yt-dlp · 12.6 of 37.1 MB')
+  it('yt-dlp installing, in real bytes, said in the field', () => {
+    const src = {
+      kind: 'link',
+      url: URL,
+      phase: 'installing',
+      done: 12.6e6,
+      total: 37146048,
+    } as const
+    expect(transcribeCard(src).facts).toBe('')
+    expect(transcribeNeed(src)).toMatchObject({ kind: 'installing', got: '12.6', of: '37.1 MB' })
   })
 
   it('a link looked up: the title, the channel and the length', () => {
