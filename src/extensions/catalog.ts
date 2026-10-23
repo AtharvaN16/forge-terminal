@@ -5,7 +5,7 @@
 export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
-export type PlatformKey = `${'darwin' | 'win32'}-${'arm64' | 'x64' | 'universal'}`
+export type PlatformKey = `${'darwin' | 'win32' | 'linux'}-${'arm64' | 'x64' | 'universal'}`
 
 export interface CatalogAsset {
   /** Per asset: a Windows build can ship, or be fixed, without moving the Mac one. */
@@ -133,6 +133,24 @@ export const CATALOG: readonly CatalogEntry[] = [
     licence: 'yt-dlp (Unlicense); its bundled Python and libraries under their own licences',
   },
 ]
+
+/** The machine, as sentences name it: "this Mac", "this PC", "this computer" (Linux). */
+export function machineName(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') return 'PC'
+  if (platform === 'darwin') return 'Mac'
+  return 'computer'
+}
+
+/** The OS, as sentences name it. */
+export function osName(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') return 'Windows'
+  if (platform === 'darwin') return 'macOS'
+  if (platform === 'linux') return 'Linux'
+  return 'this system'
+}
+
+/** The OSes the catalogue has builds for. */
+export const EXTENSION_PLATFORMS: readonly NodeJS.Platform[] = ['darwin', 'win32', 'linux']
 
 export function catalogEntry(id: string): CatalogEntry | undefined {
   return CATALOG.find((e) => e.id === id)

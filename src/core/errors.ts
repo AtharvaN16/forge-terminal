@@ -698,7 +698,7 @@ export function extensionUnsupported(
   reason: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  const machine = platform === 'win32' ? 'PC' : 'Mac'
+  const machine = platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'
   return new ForgeError({
     code: 'extension-unsupported',
     title: 'Extension not available here',
@@ -717,7 +717,14 @@ export function extensionNotOffered(
   title: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  const os = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'this system'
+  const os =
+    platform === 'win32'
+      ? 'Windows'
+      : platform === 'darwin'
+        ? 'macOS'
+        : platform === 'linux'
+          ? 'Linux'
+          : 'this system'
   return new ForgeError({
     code: 'extension-unsupported',
     title: 'Extension not available here',

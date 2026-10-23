@@ -34,7 +34,7 @@ import {
 /** What a client tells its model about Forge as a whole. */
 export function instructionsFor(platform: NodeJS.Platform = process.platform): string {
   return [
-    `Forge converts, compresses and edits files on this ${platform === 'win32' ? 'PC' : 'Mac'}, locally.`,
+    `Forge converts, compresses and edits files on this ${platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'}, locally.`,
     'Every path must be absolute.',
     'Call forge_probe first: it says what a file is, every format it can become, and every action that applies.',
     'Nothing is overwritten unless you pass overwrite: true — only do that when the user asked to replace a file.',
