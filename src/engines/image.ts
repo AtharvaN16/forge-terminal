@@ -6,6 +6,7 @@ import { prepareOutputDir, renameAtomic, tempBeside } from '../core/atomic.js'
 import { type Aspect, aspectLabel, type Box, largestBox, type Thumb } from '../core/crop.js'
 import {
   animatedCrop,
+  animatedRotate,
   animatedTrim,
   cannotCompressMore,
   classifyWriteError,
@@ -406,6 +407,9 @@ async function pipelineFor(
     const size = outputSize ?? resizedSize(source, options.resize)
     pipeline = pipeline.resize(size.width, size.height, { fit: 'fill' })
   }
+  // Rotate, last: the crop's box and the resize are of the upright picture.
+  // Sharp keeps the EXIF orientation applied above when an angle follows it.
+  if (options.rotate) pipeline = pipeline.rotate(options.rotate)
 
   // Rule 2: composite onto a background when the target has no alpha channel.
   if (source.hasAlpha && !FORMATS[target].hasAlpha) {
@@ -625,6 +629,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
   // crop goes, and the size the pipeline gets.
   let options = job.options
   let outputSize: Size | undefined
+  if (options.rotate && isAnimated) throw animatedRotate(source.path)
   if (options.trim || options.crop || options.resize) {
     let base: Size = { width: source.width, height: source.height }
     if (options.trim && options.crop) throw new Error('a job cannot both trim and crop')

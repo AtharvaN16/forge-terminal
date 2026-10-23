@@ -25,8 +25,8 @@ const until = async (cond: () => boolean) => {
 
 /** Not pinned (as resize-flow): Crop to shape is built in on both OSes. */
 const WINDOWS = process.platform === 'win32'
-/** Sharpen, Boost, Remove background on a Mac, Trim edges, Resize: Crop is the next row. */
-const ROWS_ABOVE = WINDOWS ? 4 : 5
+/** Sharpen, Boost, Remove background on a Mac, Trim edges, Resize, Rotate: Crop is the next row. */
+const ROWS_ABOVE = WINDOWS ? 5 : 6
 
 const tools: EditTools = {
   async list() {

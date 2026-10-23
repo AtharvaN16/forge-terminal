@@ -23,10 +23,17 @@ const podcast: MediaInfo = {
 }
 
 describe('edit rows for a video', () => {
-  it('offers Trim and Mute, then Resize and Crop to shape', () => {
+  it('offers Trim, Mute and Speed, then Resize, Rotate and Crop to shape', () => {
     const rows = mediaEditRows(recording)
-    expect(rows.map((r) => r.label)).toEqual(['Trim', 'Mute', 'Resize', 'Crop to shape'])
-    expect(rows.find((r) => r.gapAfter)?.id).toBe('mute')
+    expect(rows.map((r) => r.label)).toEqual([
+      'Trim',
+      'Mute',
+      'Speed',
+      'Resize',
+      'Rotate',
+      'Crop to shape',
+    ])
+    expect(rows.find((r) => r.gapAfter)?.id).toBe('speed')
   })
 
   it('leaves out Mute for a video with no sound', () => {
@@ -42,6 +49,31 @@ describe('edit rows for a video', () => {
     expect(crop && pillOf(crop)?.steps.map((s) => s.label)).toContain('1:1')
   })
 
+  it('gives Speed its steps with the length each leaves', () => {
+    const speed = mediaEditRows(recording).find((r) => r.id === 'speed')
+    expect(speed && pillOf(speed)?.noun).toBe('speed')
+    expect(speed && pillOf(speed)?.steps.map((s) => [s.label, s.detail.bold])).toEqual([
+      ['2×', '1:05'],
+      ['1.5×', '1:27'],
+      ['1.25×', '1:44'],
+      ['0.75×', '2:53'],
+      ['0.5×', '4:20'],
+    ])
+    expect(speed && rowValues(speed, 0.5)).toMatchObject({ tool: 'speed', speed: 0.5 })
+    expect(speed && rowValues(speed)).toMatchObject({ speed: 2 })
+    expect(speed && actionForRow(speed)).toBe(mediaEditAction)
+  })
+
+  it('gives Rotate its turns with the size each leaves', () => {
+    const rotate = mediaEditRows(recording).find((r) => r.id === 'rotate')
+    expect(rotate && pillOf(rotate)?.steps.map((s) => [s.label, s.detail.bold])).toEqual([
+      ['90° right', '1912 × 2940'],
+      ['180°', '2940 × 1912'],
+      ['90° left', '1912 × 2940'],
+    ])
+    expect(rotate && rowValues(rotate, 270)).toMatchObject({ tool: 'rotate', turn: 270 })
+  })
+
   it('keeps the format and runs through the media edit action', () => {
     for (const row of mediaEditRows(recording)) {
       expect(row.target).toBe('mov')
@@ -52,7 +84,11 @@ describe('edit rows for a video', () => {
 })
 
 describe('edit rows for sound', () => {
-  it('offers Trim and Even out loudness', () => {
-    expect(mediaEditRows(podcast).map((r) => r.label)).toEqual(['Trim', 'Even out loudness'])
+  it('offers Trim, Speed and Even out loudness', () => {
+    expect(mediaEditRows(podcast).map((r) => r.label)).toEqual([
+      'Trim',
+      'Speed',
+      'Even out loudness',
+    ])
   })
 })

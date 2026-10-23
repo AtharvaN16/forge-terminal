@@ -1,6 +1,7 @@
 import { cropSuffix, largestBox } from '../crop.js'
 import { placeOutput, suffixedImagePath } from '../output-path.js'
 import { resizedSize, sizeSuffix } from '../resize.js'
+import { isTurn, turnSuffix } from '../turn.js'
 import type {
   ConvertOptions,
   CropSpec,
@@ -10,6 +11,7 @@ import type {
   MediaOptions,
   ResizeSpec,
   SourceInfo,
+  Turn,
 } from '../types.js'
 import { answer } from './destination.js'
 import type { Action, OptionSpec } from './index.js'
@@ -20,7 +22,14 @@ import type { Action, OptionSpec } from './index.js'
  * convert job to the file's own format, with options, named by what was done.
  */
 
-export type MediaTool = 'cut' | 'mute' | 'resize' | 'crop' | 'loudness'
+export type MediaTool = 'cut' | 'mute' | 'speed' | 'resize' | 'crop' | 'rotate' | 'loudness'
+
+/** The speeds Edit's Speed row steps through: faster first, then slower. */
+export const SPEEDS: readonly number[] = [2, 1.5, 1.25, 0.75, 0.5]
+
+/** The range the engine takes (the CLI's `--speed`). */
+const SPEED_MIN = 0.25
+const SPEED_MAX = 4
 
 /** Podcasts' level, and the one Even out loudness evens to (other levels are `--loudness`). */
 export const LOUDNESS_LUFS = -16
@@ -45,13 +54,20 @@ const soleMedia = (sources: SourceInfo[]): MediaInfo | undefined =>
   sources.length === 1 && sources[0]?.kind === 'media' ? sources[0] : undefined
 
 const isTool = (v: unknown): v is MediaTool =>
-  v === 'cut' || v === 'mute' || v === 'resize' || v === 'crop' || v === 'loudness'
+  v === 'cut' ||
+  v === 'mute' ||
+  v === 'speed' ||
+  v === 'resize' ||
+  v === 'crop' ||
+  v === 'rotate' ||
+  v === 'loudness'
 
 export interface MediaEditRequest {
   media?: MediaOptions
   resize?: ResizeSpec
   /** No box: the largest of the shape, centred. */
   crop?: CropSpec
+  rotate?: Turn
   /** Absent: the source's own format. */
   target?: FormatId
   output?: string
@@ -73,6 +89,7 @@ function suffixFor(source: MediaInfo, req: MediaEditRequest): string {
   if (m.bitrate !== undefined) said.push(`${m.bitrate}k`)
   if (req.crop) said.push(cropSuffix(req.crop.aspect))
   if (req.resize) said.push(v ? sizeSuffix(resizedSize(v, req.resize)) : 'resized')
+  if (req.rotate) said.push(turnSuffix(req.rotate))
   return said.length === 1 ? (said[0] as string) : 'edited'
 }
 
@@ -86,6 +103,7 @@ export function planMediaEdit(
     const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
     if (req.media && Object.keys(req.media).length) options.media = req.media
     if (req.resize) options.resize = req.resize
+    if (req.rotate) options.rotate = req.rotate
     const v = source.facts?.video
     if (req.crop && v) {
       options.crop = {
@@ -130,7 +148,7 @@ export const mediaEditAction: Action = {
   id: 'media-edit',
   label: 'Edit',
   verb: 'Editing',
-  hint: 'trim, mute, resize, crop',
+  hint: 'trim, mute, speed, resize, rotate, crop',
   appliesTo: (sources) => soleMedia(sources) !== undefined,
   unavailable: () => 'one video or audio file',
   // The shell asks its own questions (the Length step, the crop frame).
@@ -150,6 +168,13 @@ export const mediaEditAction: Action = {
       req.media = { cut }
     }
     if (tool === 'mute') req.media = { mute: true }
+    if (tool === 'speed') {
+      const speed = values.speed
+      if (typeof speed !== 'number' || speed === 1 || speed < SPEED_MIN || speed > SPEED_MAX) {
+        return []
+      }
+      req.media = { speed }
+    }
     if (tool === 'loudness') {
       req.media = {
         loudness: typeof values.loudness === 'number' ? values.loudness : LOUDNESS_LUFS,
@@ -158,6 +183,10 @@ export const mediaEditAction: Action = {
     if (tool === 'resize') {
       if (typeof values.resize !== 'object' || values.resize === null) return []
       req.resize = values.resize as ResizeSpec
+    }
+    if (tool === 'rotate') {
+      if (!source.facts?.video || !isTurn(values.turn)) return []
+      req.rotate = values.turn
     }
     if (tool === 'crop') {
       const crop = values.crop as CropSpec | undefined
