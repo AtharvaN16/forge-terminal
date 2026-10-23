@@ -164,6 +164,12 @@ export function usePresetsOnDone(o: {
     setSaved(undefined)
     void sweep()
   }
+  /** Done after a saved preset ran: the chain starts from its steps, and the button says it is saved. */
+  const seed = (steps: PresetSteps, name: string) => {
+    setBase(steps)
+    setHistory([])
+    setSaved({ name, changed: false })
+  }
 
   /** Opens Save as preset or Continue editing, while a preset can be made from what is shown. */
   const open = (which: 'save' | 'edit'): boolean => {
@@ -333,5 +339,5 @@ export function usePresetsOnDone(o: {
     }
   }
 
-  return { done, links, key, open, screen, reset }
+  return { done, links, key, open, screen, reset, seed }
 }
