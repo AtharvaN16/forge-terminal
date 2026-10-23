@@ -102,7 +102,7 @@ import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Runs } from './components/Home.js'
 import { type Cut, LengthStep } from './components/LengthStep.js'
 import { MediaFormatPicker } from './components/MediaFormatPicker.js'
-import { MenuPopup } from './components/MenuPopup.js'
+import { MenuPopup, menuBodyRows } from './components/MenuPopup.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -4802,8 +4802,8 @@ export function App({
   const menuOpen = commands !== undefined
   /** The popup's inside: one column in from each side, the border and a column of padding. */
   const menuInner = Math.max(20, width - 2 * HOME_MARGIN - 4)
-  /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
-  const menuBody = Math.max(6, height - 3 - 6)
+  /** Rows for a setting's own content, as the popup lays them out. */
+  const menuBody = menuBodyRows(height, palette)
   const homeField = (w: number, row = false) => (
     <Prompt
       value={text}

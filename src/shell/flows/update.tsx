@@ -145,11 +145,16 @@ export function UpdateFlow({
     }
   }, [])
 
+  // Held, not depended on: the shell hands a new one on every render, and
+  // each would check npm again and put the notes back at the top.
+  const told = useRef(onChecked)
+  told.current = onChecked
+
   const check = useCallback(async () => {
     setState({ kind: 'checking' })
     const latest = await updater.check().catch(() => undefined)
     if (!alive.current) return
-    onChecked?.(latest)
+    told.current?.(latest)
     if (latest === undefined) return setState({ kind: 'unreachable' })
     const { isNewer } = await import('../../update/check.js')
     const newer = isNewer(latest, current)
@@ -158,7 +163,7 @@ export function UpdateFlow({
     setNotes(said)
     setStart(0)
     setState(newer ? { kind: 'available', latest } : { kind: 'latest' })
-  }, [updater, current, onChecked])
+  }, [updater, current])
 
   useEffect(() => {
     void check()
