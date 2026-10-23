@@ -94,6 +94,29 @@ describe('by OS', () => {
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
 
+  it("yt-dlp is upstream's own 2026.08.19 build on every OS and chip", () => {
+    const yt = catalogEntry('yt-dlp')
+    if (yt === undefined) throw new Error('yt-dlp is catalogued')
+    const files = {
+      'darwin-arm64': 'yt-dlp_macos',
+      'darwin-x64': 'yt-dlp_macos',
+      'linux-x64': 'yt-dlp_linux',
+      'linux-arm64': 'yt-dlp_linux_aarch64',
+      'win32-x64': 'yt-dlp.exe',
+      'win32-arm64': 'yt-dlp_arm64.exe',
+    }
+    for (const [key, file] of Object.entries(files)) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(yt, platform, arch)
+      expect(asset?.url, key).toBe(
+        `https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/${file}`,
+      )
+      expect(asset?.version).toBe('2026.08.19')
+      // Windows runs a program only by its .exe name.
+      expect(asset?.binary).toBe(platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+    }
+  })
+
   it('heic is offered on Windows and Linux, one build for any chip', () => {
     expect(offeredHere('heic', 'win32')).toBe(true)
     expect(offeredHere('heic', 'linux')).toBe(true)

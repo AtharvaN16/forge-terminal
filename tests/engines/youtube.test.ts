@@ -1,9 +1,15 @@
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
-import { fetchSound, type YouTubeEvent } from '../../src/engines/youtube.js'
+import {
+  fetchSound,
+  findYtDlp,
+  systemYtDlp,
+  type YouTubeEvent,
+  ytDlpMissing,
+} from '../../src/engines/youtube.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
@@ -127,15 +133,11 @@ describe('fetchSound', () => {
 
   it('says yt-dlp is not installed', async () => {
     process.env.XDG_CONFIG_HOME = await makeTempDir()
-    // Linux has no extension; it uses the user's own yt-dlp, here pointed at nothing.
+    // No extension, and the user's own yt-dlp pointed at nothing.
     const before = process.env.FORGE_YT_DLP
     process.env.FORGE_YT_DLP = join(process.env.XDG_CONFIG_HOME, 'missing')
     try {
-      expect(await codeOf(fetchSound(URL))).toMatch(
-        process.platform === 'linux'
-          ? /^link-unavailable: YouTube links on Linux need yt-dlp/
-          : /^extension-missing: /,
-      )
+      expect(await codeOf(fetchSound(URL))).toMatch(/^extension-missing: /)
     } finally {
       if (before === undefined) delete process.env.FORGE_YT_DLP
       else process.env.FORGE_YT_DLP = before
@@ -168,4 +170,66 @@ describe('fetchSound', () => {
       }
     },
   )
+})
+
+describe('which yt-dlp', () => {
+  it('prefers the extension over a yt-dlp on PATH, on every OS', async () => {
+    const yt = await fakeYtDlp({})
+    const dir = await makeTempDir()
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      expect(await findYtDlp({ PATH: dir }, platform)).toEqual({
+        path: join(yt.home, 'forge', 'extensions', 'yt-dlp', '2026.08.19', 'yt-dlp'),
+        managed: true,
+      })
+    }
+  })
+
+  it("falls back to the user's own, which is never managed", async () => {
+    process.env.XDG_CONFIG_HOME = await makeTempDir()
+    const dir = await makeTempDir()
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    expect(await findYtDlp({ PATH: dir }, 'darwin')).toEqual({
+      path: join(dir, 'yt-dlp'),
+      managed: false,
+    })
+    expect(await findYtDlp({ PATH: '' }, 'linux')).toBeUndefined()
+  })
+
+  it('on Windows reads Path, splits on semicolons and looks for yt-dlp.exe', async () => {
+    const empty = await makeTempDir()
+    const dir = await makeTempDir()
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    // A bare yt-dlp is not something Windows can run.
+    expect(systemYtDlp({ Path: `${empty};${dir}` }, 'win32')).toBeUndefined()
+    await writeFile(join(dir, 'yt-dlp.exe'), 'MZ')
+    await chmod(join(dir, 'yt-dlp.exe'), 0o755)
+    expect(systemYtDlp({ Path: `${empty};${dir}` }, 'win32')).toBe(join(dir, 'yt-dlp.exe'))
+    expect(systemYtDlp({ PATH: `${empty};${dir}` }, 'win32')).toBe(join(dir, 'yt-dlp.exe'))
+  })
+
+  it('points at the extension wherever the catalogue has a build', () => {
+    for (const [platform, arch] of [
+      ['darwin', 'arm64'],
+      ['darwin', 'x64'],
+      ['linux', 'x64'],
+      ['linux', 'arm64'],
+      ['win32', 'x64'],
+      ['win32', 'arm64'],
+    ] as const) {
+      expect(ytDlpMissing(platform, arch).code, `${platform}-${arch}`).toBe('extension-missing')
+    }
+  })
+
+  it("asks for the user's own where there is no build", () => {
+    const e = ytDlpMissing('linux', 'ia32')
+    expect(e.code).toBe('link-unavailable')
+    expect(e.detail).toBe('YouTube links on Linux need yt-dlp on your PATH.')
+    expect(e.hint).toMatch(/FORGE_YT_DLP/)
+    expect(ytDlpMissing('freebsd', 'x64').detail).toMatch(/^YouTube links on this system need/)
+  })
 })

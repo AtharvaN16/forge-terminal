@@ -8,9 +8,10 @@ import { spawn } from 'node:child_process'
 import { accessSync, constants, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { extensionMissing, linkUnavailable } from '../core/errors.js'
+import { extensionMissing, type ForgeError, linkUnavailable } from '../core/errors.js'
+import { assetFor, catalogEntry, osName } from '../extensions/catalog.js'
 import { installed } from '../extensions/paths.js'
 
 export interface VideoFacts {
@@ -42,14 +43,15 @@ const KNOWN: [RegExp, string][] = [
 class RunFailed extends Error {}
 
 /**
- * Linux has no yt-dlp extension: Forge uses the user's own, FORGE_YT_DLP or
- * `yt-dlp` on PATH. It is theirs to update, so Forge never runs --update on it.
+ * The user's own yt-dlp, FORGE_YT_DLP or `yt-dlp` on PATH, for when the
+ * extension is not installed: someone who already keeps one need not download
+ * a second. It is theirs to update, so Forge never runs --update on it.
  */
 export function systemYtDlp(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ): string | undefined {
-  if (platform !== 'linux') return undefined
+  const windows = platform === 'win32'
   const runnable = (p: string) => {
     try {
       accessSync(p, constants.X_OK)
@@ -59,11 +61,48 @@ export function systemYtDlp(
     }
   }
   if (env.FORGE_YT_DLP) return runnable(env.FORGE_YT_DLP) ? env.FORGE_YT_DLP : undefined
-  return (env.PATH ?? '')
-    .split(delimiter)
+  // Windows spells it Path, and runs a program only by its .exe name.
+  return ((windows ? (env.Path ?? env.PATH) : env.PATH) ?? '')
+    .split(windows ? ';' : ':')
     .filter(Boolean)
-    .map((dir) => join(dir, 'yt-dlp'))
+    .map((dir) => join(dir, windows ? 'yt-dlp.exe' : 'yt-dlp'))
     .find(runnable)
+}
+
+/**
+ * The yt-dlp to run: the extension when it is installed, on every OS, else
+ * the user's own. `managed` says which, since only the extension is updated.
+ */
+export async function findYtDlp(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<{ path: string; managed: boolean } | undefined> {
+  const managed = await installed('yt-dlp')
+  if (managed !== undefined) return { path: managed.entry, managed: true }
+  const own = systemYtDlp(env, platform)
+  return own === undefined ? undefined : { path: own, managed: false }
+}
+
+/**
+ * No yt-dlp at all. Where the catalogue has a build, the way forward is the
+ * extension; elsewhere (a chip it has no build for) the user's own.
+ */
+export function ytDlpMissing(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): ForgeError {
+  const entry = catalogEntry('yt-dlp')
+  if (entry !== undefined && assetFor(entry, platform, arch) !== undefined) {
+    return extensionMissing('yt-dlp')
+  }
+  return linkUnavailable(
+    `YouTube links on ${osName(platform)} need yt-dlp on your PATH.`,
+    undefined,
+    {
+      hint: 'Install yt-dlp (https://github.com/yt-dlp/yt-dlp), or set FORGE_YT_DLP.',
+      shellHint: 'Install yt-dlp, or set FORGE_YT_DLP.',
+    },
+  )
 }
 
 export async function fetchSound(
@@ -75,16 +114,9 @@ export async function fetchSound(
     onDir?: (dir: string) => void
   } = {},
 ): Promise<FetchedSound> {
-  const managed = await installed('yt-dlp')
-  const entry = managed?.entry ?? systemYtDlp()
-  if (entry === undefined) {
-    if (process.platform === 'linux')
-      throw linkUnavailable('YouTube links on Linux need yt-dlp on your PATH.', undefined, {
-        hint: 'Install yt-dlp (https://github.com/yt-dlp/yt-dlp), or set FORGE_YT_DLP.',
-        shellHint: 'Install yt-dlp, or set FORGE_YT_DLP.',
-      })
-    throw extensionMissing('yt-dlp')
-  }
+  const found = await findYtDlp()
+  if (found === undefined) throw ytDlpMissing()
+  const entry = found.path
   const dir = await mkdtemp(join(tmpdir(), 'forge-yt-'))
   opts.onDir?.(dir)
   const dispose = () => rm(dir, { recursive: true, force: true })
@@ -94,7 +126,7 @@ export async function fetchSound(
       got = await once(entry, url, dir, opts)
     } catch (e) {
       if (!(e instanceof RunFailed)) throw e
-      if (managed === undefined)
+      if (!found.managed)
         throw linkUnavailable(`yt-dlp could not fetch this video: ${e.message}`, e)
       // Not one of the known refusals: most likely YouTube changed and this
       // yt-dlp is behind. It updates itself (checking its own signatures);

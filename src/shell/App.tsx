@@ -63,10 +63,9 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
-import { type FetchedSound, fetchSound } from '../engines/youtube.js'
+import { type FetchedSound, fetchSound, findYtDlp, ytDlpMissing } from '../engines/youtube.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { assetFor, catalogEntry } from '../extensions/catalog.js'
-import { installed } from '../extensions/paths.js'
 import type { Opened } from '../menu/command.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { lastSegment } from '../utils/last-segment.js'
@@ -1380,14 +1379,20 @@ export function App({
         }
         return
       }
-      if ((await installed('yt-dlp')) === undefined) {
+      // The extension, or the user's own yt-dlp: either will do.
+      if ((await findYtDlp()) === undefined) {
         const entry = catalogEntry('yt-dlp')
         const asset = entry && assetFor(entry)
+        if (asset === undefined) {
+          // No build for this machine: nothing to offer, so say what would work.
+          refuseOnHome(ytDlpMissing(), text)
+          return
+        }
         setTranscribing({
           kind: 'link',
           url: link.url,
           phase: 'needs-yt-dlp',
-          bytes: asset?.bytes ?? 0,
+          bytes: asset.bytes,
         })
         return
       }

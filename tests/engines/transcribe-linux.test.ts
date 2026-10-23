@@ -194,12 +194,12 @@ describe.skipIf(process.platform === 'win32')('runTranscribe with the Linux help
 })
 
 describe('systemYtDlp', () => {
-  it('finds yt-dlp on PATH on Linux only', async () => {
+  it('finds yt-dlp on PATH, on Linux and macOS alike', async () => {
     const dir = await makeTempDir()
     await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\n')
     await chmod(join(dir, 'yt-dlp'), 0o755)
     expect(systemYtDlp({ PATH: dir }, 'linux')).toBe(join(dir, 'yt-dlp'))
-    expect(systemYtDlp({ PATH: dir }, 'darwin')).toBeUndefined()
+    expect(systemYtDlp({ PATH: dir }, 'darwin')).toBe(join(dir, 'yt-dlp'))
   })
 
   it('takes FORGE_YT_DLP over PATH, and nothing when it points at nothing', async () => {

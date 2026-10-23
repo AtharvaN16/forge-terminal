@@ -214,9 +214,17 @@ describe('forge transcribe <link>', () => {
   it('says yt-dlp is needed when it is not installed', async () => {
     await setUp()
     process.env.XDG_CONFIG_HOME = await makeTempDir()
-    const r = await run(intent(LINK))
-    expect(r.code).toBe(1)
-    expect(r.err[0]).toBe('✕ Extension not installed')
+    // Nor one of the user's own: this machine's PATH may well have one.
+    const before = process.env.FORGE_YT_DLP
+    process.env.FORGE_YT_DLP = join(process.env.XDG_CONFIG_HOME, 'missing')
+    try {
+      const r = await run(intent(LINK))
+      expect(r.code).toBe(1)
+      expect(r.err[0]).toBe('✕ Extension not installed')
+    } finally {
+      if (before === undefined) delete process.env.FORGE_YT_DLP
+      else process.env.FORGE_YT_DLP = before
+    }
   })
 
   it('stops before transcribing when the name is taken', async () => {

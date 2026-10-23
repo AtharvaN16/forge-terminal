@@ -34,6 +34,7 @@ export interface CatalogEntry {
 }
 
 const RELEASES = 'https://github.com/AtharvaN16/forge-terminal/releases/download'
+const YT_DLP = 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19'
 
 export const CATALOG: readonly CatalogEntry[] = [
   {
@@ -121,10 +122,11 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     // Transcribe's YouTube links (spec 2026-10-17-transcribe-design §3): the
-    // upstream single-file build, pinned like every asset. It runs on the
-    // Node Forge runs on; between Forge releases it updates itself
-    // (`yt-dlp --update`, which checks its own signatures) when YouTube
-    // breaks it.
+    // upstream single-file builds, pinned like every asset (bytes and sha256
+    // from the release's SHA2-256SUMS, checked against the downloads). They
+    // run on the Node Forge runs on; between Forge releases they update
+    // themselves (`yt-dlp --update`, which checks its own signatures) when
+    // YouTube breaks them. Windows runs a program only by its .exe name.
     id: 'yt-dlp',
     title: 'YouTube links',
     summary: 'Transcribe YouTube videos: yt-dlp fetches their sound',
@@ -132,10 +134,38 @@ export const CATALOG: readonly CatalogEntry[] = [
     assets: {
       'darwin-universal': {
         version: '2026.08.19',
-        url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos',
+        url: `${YT_DLP}/yt-dlp_macos`,
         bytes: 37146048,
         sha256: '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202',
         binary: 'yt-dlp',
+      },
+      'linux-x64': {
+        version: '2026.08.19',
+        url: `${YT_DLP}/yt-dlp_linux`,
+        bytes: 40446224,
+        sha256: '58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a',
+        binary: 'yt-dlp',
+      },
+      'linux-arm64': {
+        version: '2026.08.19',
+        url: `${YT_DLP}/yt-dlp_linux_aarch64`,
+        bytes: 40167448,
+        sha256: 'b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc',
+        binary: 'yt-dlp',
+      },
+      'win32-x64': {
+        version: '2026.08.19',
+        url: `${YT_DLP}/yt-dlp.exe`,
+        bytes: 17840399,
+        sha256: '66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a',
+        binary: 'yt-dlp.exe',
+      },
+      'win32-arm64': {
+        version: '2026.08.19',
+        url: `${YT_DLP}/yt-dlp_arm64.exe`,
+        bytes: 21159286,
+        sha256: '05b438997bafc3affdfda9d041353c9d73e04dc842207254b655b0887c4445b0',
+        binary: 'yt-dlp.exe',
       },
     },
     licence: 'yt-dlp (Unlicense); its bundled Python and libraries under their own licences',
