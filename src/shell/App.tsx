@@ -4156,11 +4156,13 @@ export function App({
   }, [step, tools])
 
   /** ffmpeg is here now (installed, or found): read the file again and go on where it was going. */
-  const lookAgain = () => {
+  const lookAgain = (quiet = false) => {
     const waiting = source
     if (!waiting) return
     probe(waiting.path).then((info) => {
       if (info.kind === 'media' && !info.facts) {
+        // The look every couple of seconds says nothing while it is still missing.
+        if (quiet) return
         hold({
           kind: 'note',
           id: nextId(),
@@ -4172,6 +4174,11 @@ export function App({
       proceedWith(info)
     }, showError)
   }
+
+  /** Forge's own look while the user installs ffmpeg: goes on the moment it is there. */
+  const lookQuietly = useCallback(() => lookAgainRef.current(true), [])
+  const lookAgainRef = useRef(lookAgain)
+  lookAgainRef.current = lookAgain
 
   const installFfmpeg = async () => {
     if (installAbort.current) return
@@ -5242,7 +5249,8 @@ export function App({
                 checking={checking}
                 how={process.platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'}
                 onInstall={() => void installFfmpeg()}
-                onLookAgain={lookAgain}
+                onLookAgain={() => lookAgain()}
+                onPoll={lookQuietly}
                 onStop={() => installAbort.current?.abort()}
                 onCancel={clearSource}
                 width={width}

@@ -146,13 +146,12 @@ describe.skipIf(!ffmpegHere)('without ffmpeg', () => {
       // Known from its bytes alone: a video, its size, nothing more.
       expect(frame()).toContain('video · ')
       app.stdin.write(ENTER)
-      await until(() => frame().includes('needs ffmpeg'))
+      await until(() => frame().includes('Video needs ffmpeg · brew install ffmpeg'))
       expect(frame()).toContain('Video and audio')
       expect(frame()).toContain('look again')
-      // Installed in another window: ↵ finds it, and compress goes on.
+      // Installed in another window: Forge finds it by itself, and compress
+      // goes on — no ↵ (mockups/own-tools-2026-10-round5.html, F4).
       forceFfmpegForTests(real ?? null)
-      await settle()
-      app.stdin.write(ENTER)
       await until(() => frame().includes('Method'))
       expect(frame()).toContain('0:01')
       app.unmount()
@@ -193,7 +192,7 @@ describe.skipIf(!ffmpegHere)('without ffmpeg', () => {
       app.stdin.write(typed(clip))
       await until(() => frame().includes('clip.mov'))
       app.stdin.write(ENTER)
-      await until(() => frame().includes('31.4 MB download'))
+      await until(() => /Video needs ffmpeg · 31\.4 MB download +↵ install/.test(frame()))
       await settle()
       app.stdin.write(ENTER)
       await until(() => frame().includes('12.6 of 31.4 MB'))

@@ -141,7 +141,7 @@ describe('edit mode', () => {
       expect(frame()).not.toContain('same size')
 
       app.stdin.write(DOWN)
-      await until(() => frame().includes('32.5 KB download · ↵ installs'))
+      await until(() => /needs .+ · 32\.5 KB download +↵ install/.test(frame()))
 
       await settle(300)
       app.stdin.write(ENTER)
@@ -212,7 +212,7 @@ describe('edit mode', () => {
       app.stdin.write(DOWN)
       await settle(60)
     }
-    await until(() => frame().includes('32.5 KB download · ↵ installs'))
+    await until(() => /needs .+ · 32\.5 KB download +↵ install/.test(frame()))
     return { app, frame }
   }
 
@@ -287,7 +287,7 @@ describe('edit mode', () => {
       await settle(300)
       app.stdin.write(DOWN)
       await until(() => frame().includes('Makes it bigger.'))
-      expect(frame()).toContain('32.5 KB download · ↵ installs')
+      expect(frame()).toMatch(/needs .+ · 32\.5 KB download +↵ install/)
 
       app.stdin.write(ENTER)
       await until(() => frame().includes('‹ 2× ›'))
@@ -442,7 +442,7 @@ describe('edit mode', () => {
 
     app.stdin.write(ENTER)
     await until(() => frame().includes('Download failed'))
-    await until(() => frame().includes('32.5 KB download · ↵ installs'))
+    await until(() => /needs .+ · 32\.5 KB download +↵ install/.test(frame()))
     expect(frame()).toContain('could not reach github.com')
   }, 60_000)
 })
