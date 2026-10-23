@@ -113,6 +113,41 @@ describe.skipIf(!ffmpegHere)('video and sound in the shell', () => {
     app.unmount()
   }, 60_000)
 
+  it('changes the speed in edit: the pill steps, the length is said, the file is shorter', async () => {
+    const clip = await makeClip({ seconds: 4 })
+    const { app, frame, dir } = await start('4')
+    app.stdin.write(typed(clip))
+    await until(() => frame().includes('clip.mov'))
+    app.stdin.write(ENTER)
+    await until(() => frame().includes('Edit MOV'))
+    // Trim, Mute, Extract audio, Clean up audio, then Speed.
+    for (let i = 0; i < 3; i++) {
+      app.stdin.write(DOWN)
+      await settle(150)
+    }
+    app.stdin.write(DOWN)
+    await until(() => frame().includes('‹ 2× ›'))
+    expect(frame()).toContain('becomes 0:02')
+    expect(frame()).toMatch(/←→ +speed/)
+    await settle(300) // ←→ attach once the pill shows
+    app.stdin.write(RIGHT)
+    await until(() => frame().includes('‹ 1.5× ›'))
+    expect(frame()).toContain('becomes 0:03')
+    app.stdin.write(`${ESC}[D`)
+    await until(() => frame().includes('‹ 2× ›'))
+    app.stdin.write(ENTER)
+    await until(() => frame().includes('Save as'))
+    expect(frame()).toContain('clip-2x')
+    expect(frame()).toContain('Speed 2×')
+    await settle(400)
+    app.stdin.write(ENTER)
+    await until(() => frame().includes('↵ Home'))
+    const out = join(dir, 'clip-2x.mov')
+    expect(existsSync(out)).toBe(true)
+    expect((await probeMedia(out)).duration).toBeLessThan(2.4)
+    app.unmount()
+  }, 60_000)
+
   it('extracts the sound of a video in edit: M4A, copied, named -audio', async () => {
     const clip = await makeClip({ seconds: 2 })
     const { app, frame, dir } = await start('4')

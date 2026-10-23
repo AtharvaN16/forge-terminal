@@ -141,6 +141,14 @@ describe('edit, several images', () => {
     ])
   })
 
+  it('rotates every image the way asked, and leaves what is not a picture', async () => {
+    const dir = await makeTempDir()
+    const a = await probe(await makePng(dir, 'a.png'))
+    const { jobs } = planBatch([a], { op: 'edit', tool: 'rotate', turn: 270 }, new Set())
+    expect(names(jobs.flatMap((j) => j.outputs))).toEqual(['a-rotated-left.png'])
+    expect(jobs[0]).toMatchObject({ options: { rotate: 270 } })
+  })
+
   it('leaves an image too large for the boost asked', async () => {
     const dir = await makeTempDir()
     const huge = { ...(await probe(await makePng(dir, 'huge.png'))), width: 9000, height: 6000 }

@@ -3,7 +3,7 @@ import { basename, dirname, extname, join } from 'node:path'
 import { compressAction } from './actions/compress.js'
 import { convertAction } from './actions/convert.js'
 import { boostAction, removeBackgroundAction } from './actions/extension.js'
-import { resizeAction, trimAction } from './actions/resize.js'
+import { resizeAction, trimAction, turnAction } from './actions/resize.js'
 import { targetIdsFor } from './capabilities.js'
 import { type PlanEvent, type RunOutcome, runPlan } from './execute-jobs.js'
 import { boostOverLimit } from './extension-targets.js'
@@ -12,7 +12,7 @@ import { kindOf } from './folder.js'
 import { FORMATS } from './formats.js'
 import { fitName } from './output-path.js'
 import { keptFormat } from './resize.js'
-import type { ImageInfo, Job, ResizeSpec, Result, SourceInfo } from './types.js'
+import type { ImageInfo, Job, ResizeSpec, Result, SourceInfo, Turn } from './types.js'
 import { formatBytes } from './units.js'
 
 /**
@@ -31,7 +31,7 @@ export type Recipe =
   /** Compressed at a quality, or each file to fit under `targetBytes`. */
   | { op: 'compress'; quality?: number; targetBytes?: number }
   /** One of Edit's tools on every image: Boost's scale, Resize's size. */
-  | { op: 'edit'; tool: BatchEditTool; scale?: number; resize?: ResizeSpec }
+  | { op: 'edit'; tool: BatchEditTool; scale?: number; resize?: ResizeSpec; turn?: Turn }
 
 /** An edit recipe: one tool, run on every image. */
 export type EditRecipe = Extract<Recipe, { op: 'edit' }>
@@ -40,7 +40,7 @@ export type EditRecipe = Extract<Recipe, { op: 'edit' }>
  * The edit tools a batch runs on every image. Not Crop to shape: where to
  * cut is a choice made for each picture, so it is one image at a time.
  */
-export type BatchEditTool = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize'
+export type BatchEditTool = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize' | 'rotate'
 
 /**
  * What to do with a file whose output is already on disk. `leave` it alone
@@ -102,6 +102,11 @@ function editJob(
   }
   if (recipe.tool === 'cutout') {
     const [job] = removeBackgroundAction.plan([image], { target: 'png', ...where })
+    return job ? { job } : { left: 'not supported' }
+  }
+  if (recipe.tool === 'rotate') {
+    if (image.frames > 1) return { left: 'animated' }
+    const [job] = turnAction.plan([image], { turn: recipe.turn ?? 90, ...where })
     return job ? { job } : { left: 'not supported' }
   }
   if (recipe.tool === 'trim' && image.frames > 1) return { left: 'animated' }

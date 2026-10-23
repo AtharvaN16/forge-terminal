@@ -23,17 +23,19 @@ const podcast: MediaInfo = {
 }
 
 describe('edit rows for a video', () => {
-  it('offers the sound tools, then Resize and Crop to shape', () => {
+  it('offers the sound tools, then Resize, Rotate and Crop to shape', () => {
     const rows = mediaEditRows(recording)
     expect(rows.map((r) => r.label)).toEqual([
       'Trim',
       'Mute',
       'Extract audio',
       'Clean up audio',
+      'Speed',
       'Resize',
+      'Rotate',
       'Crop to shape',
     ])
-    expect(rows.find((r) => r.gapAfter)?.id).toBe('cleanup')
+    expect(rows.find((r) => r.gapAfter)?.id).toBe('speed')
   })
 
   it('leaves out every sound tool for a video with no sound', () => {
@@ -42,7 +44,7 @@ describe('edit rows for a video', () => {
       facts: { ...recording.facts, audio: undefined } as never,
     }
     const ids = mediaEditRows(silent).map((r) => r.id)
-    expect(ids).toEqual(['cut', 'resize', 'crop'])
+    expect(ids).toEqual(['cut', 'speed', 'resize', 'rotate', 'crop'])
   })
 
   it('makes Extract audio a sound file in the codec’s own container', () => {
@@ -58,6 +60,31 @@ describe('edit rows for a video', () => {
     expect(crop && pillOf(crop)?.steps.map((s) => s.label)).toContain('1:1')
   })
 
+  it('gives Speed its steps with the length each leaves', () => {
+    const speed = mediaEditRows(recording).find((r) => r.id === 'speed')
+    expect(speed && pillOf(speed)?.noun).toBe('speed')
+    expect(speed && pillOf(speed)?.steps.map((s) => [s.label, s.detail.bold])).toEqual([
+      ['2×', '1:05'],
+      ['1.5×', '1:27'],
+      ['1.25×', '1:44'],
+      ['0.75×', '2:53'],
+      ['0.5×', '4:20'],
+    ])
+    expect(speed && rowValues(speed, 0.5)).toMatchObject({ tool: 'speed', speed: 0.5 })
+    expect(speed && rowValues(speed)).toMatchObject({ speed: 2 })
+    expect(speed && actionForRow(speed)).toBe(mediaEditAction)
+  })
+
+  it('gives Rotate its turns with the size each leaves', () => {
+    const rotate = mediaEditRows(recording).find((r) => r.id === 'rotate')
+    expect(rotate && pillOf(rotate)?.steps.map((s) => [s.label, s.detail.bold])).toEqual([
+      ['90° right', '1912 × 2940'],
+      ['180°', '2940 × 1912'],
+      ['90° left', '1912 × 2940'],
+    ])
+    expect(rotate && rowValues(rotate, 270)).toMatchObject({ tool: 'rotate', turn: 270 })
+  })
+
   it('keeps the format and runs through the media edit action', () => {
     for (const row of mediaEditRows(recording).filter((r) => r.id !== 'extract')) {
       expect(row.target).toBe('mov')
@@ -68,9 +95,10 @@ describe('edit rows for a video', () => {
 })
 
 describe('edit rows for sound', () => {
-  it('offers Trim, Clean up audio and Even out loudness', () => {
+  it('offers Trim, Speed, Clean up audio and Even out loudness', () => {
     expect(mediaEditRows(podcast).map((r) => r.label)).toEqual([
       'Trim',
+      'Speed',
       'Clean up audio',
       'Even out loudness',
     ])

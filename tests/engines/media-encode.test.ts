@@ -132,6 +132,33 @@ describe('encoding', () => {
   })
 })
 
+describe('rotate', () => {
+  const vfOf = (rotate: 90 | 180 | 270, extra: Partial<ConvertOptions> = {}) => {
+    const p = plan('mp4', { rotate, ...extra })
+    return { p, vf: flag(single(p), '-vf') ?? '' }
+  }
+
+  it('turns right with transpose=1 and left with transpose=2', () => {
+    expect(vfOf(90).vf).toBe('transpose=1')
+    expect(vfOf(270).vf).toBe('transpose=2')
+  })
+
+  it('turns a half turn with both flips', () => {
+    expect(vfOf(180).vf).toBe('hflip,vflip')
+  })
+
+  it('encodes, since the picture changes: nothing is copied', () => {
+    const { p } = vfOf(90)
+    expect(p.copies.video).toBe(false)
+    expect(p.copies.audio).toBe(true)
+  })
+
+  it('turns after the crop and the resize, which are of the upright picture', () => {
+    const { vf } = vfOf(90, { resize: { width: 1080 } })
+    expect(vf.indexOf('scale=')).toBeLessThan(vf.indexOf('transpose='))
+  })
+})
+
 describe('compress', () => {
   it('fits a size in two passes of x264 at the planned picture', () => {
     const p = plan('mov', { compress: { dither: false }, media: { targetBytes: 10_000_000 } })

@@ -248,6 +248,15 @@ export function planEncode(job: EncodeInput): EncodePlan {
       else if ('height' in r) vf.push(`scale=-2:trunc(min(${even(r.height)}\\,ih)/2)*2`)
       else vf.push(`scale=trunc(iw*${r.percent / 100}/2)*2:-2`)
     }
+    // After the crop and resize, which are of the upright picture.
+    if (options.rotate)
+      vf.push(
+        options.rotate === 90
+          ? 'transpose=1'
+          : options.rotate === 270
+            ? 'transpose=2'
+            : 'hflip,vflip',
+      )
     if (speed !== 1) vf.push(`setpts=PTS/${speed}`)
     if (gif) {
       const w = Math.min(GIF_WIDTH, even(v.width))

@@ -85,6 +85,19 @@ const NO_LINE = {
 /** Rows the popup takes above the hint, the key row's gap, its rule and its keys. */
 const BELOW = 3
 
+/** The filled field (F): a block under the box, closing it, when there is a fill to show it by. */
+const fieldIsBlock = (p: Palette) => p.selectionBg !== '' && p.shelf !== ''
+
+/**
+ * Rows the popup leaves for the list or a setting: the box less its top
+ * edge, bar and two blanks, and either the filled field's three rows under
+ * it or the line's bottom edge and the field inside it.
+ */
+export function menuBodyRows(height: number, palette: Palette): number {
+  const boxHeight = Math.max(8, height - BELOW)
+  return Math.max(6, boxHeight - (fieldIsBlock(palette) ? 7 : 6))
+}
+
 export function MenuPopup({
   width,
   height,
@@ -123,7 +136,7 @@ export function MenuPopup({
   // it at the bottom, the marker in the list's column. Without a fill to show
   // the block by, it stays a line inside the box, as before.
   const shelf = palette.shelf || undefined
-  const block = fill !== undefined && shelf !== undefined
+  const block = fieldIsBlock(palette)
   return (
     <Box flexDirection="column" width={width} minHeight={height}>
       <Box

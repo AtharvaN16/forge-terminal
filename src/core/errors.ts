@@ -46,6 +46,7 @@ export type ErrorCode =
   | 'animated-trim'
   | 'nothing-to-crop'
   | 'animated-crop'
+  | 'animated-rotate'
   | 'update-unavailable'
   | 'update-denied'
   | 'update-failed'
@@ -1024,6 +1025,14 @@ export function animatedCrop(path: string): ForgeError {
     code: 'animated-crop',
     title: "Can't crop an animation",
     detail: `${displayName(path)} is animated; cropping works on still images.`,
+  })
+}
+
+export function animatedRotate(path: string): ForgeError {
+  return new ForgeError({
+    code: 'animated-rotate',
+    title: "Can't rotate an animation",
+    detail: `${displayName(path)} is animated; rotating works on still images.`,
   })
 }
 

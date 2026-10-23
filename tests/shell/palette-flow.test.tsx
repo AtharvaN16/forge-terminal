@@ -39,7 +39,7 @@ describe('the command list in the prompt', () => {
     const { stdin, lastFrame } = render(<App initialWidth={100} prefs={prefs} />)
     stdin.write('/')
     await settle()
-    expect(lastFrame() ?? '').toContain('/compress')
+    expect(lastFrame() ?? '').toContain('/theme')
     stdin.write(BACKSPACE)
     await settle()
     expect(lastFrame() ?? '').not.toContain('Modes')

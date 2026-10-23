@@ -91,6 +91,16 @@ describe.skipIf(!ffmpegHere)('with ffmpeg', () => {
     expect((await probeMedia(j.outputs[0])).audio).toBeUndefined()
   })
 
+  it('rotates a video a quarter turn: the sides swap and the sound is kept', async () => {
+    const clip = await makeClip({ seconds: 1, width: 320, height: 240 })
+    const source = (await videoEngine.probe(clip)) as MediaInfo
+    const j = await job(source, 'mp4', { rotate: 90 })
+    await videoEngine.run(j, () => {})
+    const out = (await videoEngine.probe(j.outputs[0])) as MediaInfo
+    expect(out.facts?.video).toMatchObject({ width: 240, height: 320 })
+    expect(out.facts?.audio).toBeDefined()
+  })
+
   it('makes a GIF', async () => {
     const clip = await makeClip({ seconds: 1 })
     const source = (await videoEngine.probe(clip)) as MediaInfo

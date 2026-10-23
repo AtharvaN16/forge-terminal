@@ -156,6 +156,26 @@ describe('edit, for video and sound', () => {
     expect(job.outputs[0]).toBe('/pod/episode-cleaned.wav')
   })
 
+  it('changes speed, named by it, for a video and for sound', () => {
+    const fast = convert(mediaEditAction.plan([recording], { tool: 'speed', speed: 2 }))
+    expect(fast.options.media).toEqual({ speed: 2 })
+    expect(fast.outputs[0]).toBe('/rec/Screen Recording-2x.mov')
+    const slow = convert(mediaEditAction.plan([podcast], { tool: 'speed', speed: 0.5 }))
+    expect(slow.outputs[0]).toBe('/pod/episode-0.5x.wav')
+    // Nothing without a speed, at 1×, or outside what the engine takes.
+    for (const speed of [undefined, 1, 5, 0.1]) {
+      expect(mediaEditAction.plan([recording], { tool: 'speed', speed })).toEqual([])
+    }
+  })
+
+  it('rotates, named by the turn', () => {
+    const job = convert(mediaEditAction.plan([recording], { tool: 'rotate', turn: 90 }))
+    expect(job.options.rotate).toBe(90)
+    expect(job.outputs[0]).toBe('/rec/Screen Recording-rotated-right.mov')
+    expect(mediaEditAction.plan([recording], { tool: 'rotate' })).toEqual([])
+    expect(mediaEditAction.plan([podcast], { tool: 'rotate', turn: 90 })).toEqual([])
+  })
+
   it('evens out loudness to −16', () => {
     const job = convert(mediaEditAction.plan([podcast], { tool: 'loudness' }))
     expect(job.options.media).toEqual({ loudness: -16 })

@@ -23,7 +23,7 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { mediaEditAction } from '../core/actions/media.js'
-import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { cropAction, resizeAction, trimAction, turnAction } from '../core/actions/resize.js'
 import type { EditRecipe } from '../core/batch.js'
 import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
 import { parseColour } from '../core/colour/parse.js'
@@ -60,6 +60,7 @@ import type {
   ResizeSpec,
   Result,
   SourceInfo,
+  Turn,
 } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
@@ -102,7 +103,7 @@ import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Runs } from './components/Home.js'
 import { type Cut, LengthStep } from './components/LengthStep.js'
 import { MediaFormatPicker } from './components/MediaFormatPicker.js'
-import { MenuPopup } from './components/MenuPopup.js'
+import { MenuPopup, menuBodyRows } from './components/MenuPopup.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -390,6 +391,7 @@ const isExtensionAction = (act: Action): boolean =>
   act === removeBackgroundAction ||
   act === trimAction ||
   act === resizeAction ||
+  act === turnAction ||
   act === cropAction
 
 /** What edit says to a file that is not an image. */
@@ -4045,6 +4047,16 @@ export function App({
    */
   const chooseBatchEdit = (row: EditRow, step?: number | string) => {
     if (row.id === 'crop' || row.tooLarge) return
+    if (row.id === 'rotate') {
+      const turn = Number(step ?? row.turns?.[0]?.degrees ?? 90) as Turn
+      startBatchEdit({
+        recipe: { op: 'edit', tool: 'rotate', turn },
+        label: row.label,
+        answer: row.turns?.find((t) => t.degrees === turn)?.label ?? row.label,
+        verb: row.verb,
+      })
+      return
+    }
     if (row.id === 'resize') {
       // Never past what the largest image can take (spec §2.3).
       const most = Math.min(100, ...batchImages.map((i) => largestPercent(i)))
@@ -4682,7 +4694,11 @@ export function App({
           ? `${enhancing.label} ${values.scale}×`
           : enhancing.shapes && typeof values.shape === 'string'
             ? `${enhancing.label} ${values.shape}`
-            : enhancing.label
+            : enhancing.turns && values.turn !== undefined
+              ? `${enhancing.label} ${enhancing.turns.find((t) => t.degrees === values.turn)?.label ?? ''}`.trim()
+              : enhancing.speeds && typeof values.speed === 'number'
+                ? `${enhancing.label} ${values.speed}×`
+                : enhancing.label
         : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
@@ -4802,8 +4818,8 @@ export function App({
   const menuOpen = commands !== undefined
   /** The popup's inside: one column in from each side, the border and a column of padding. */
   const menuInner = Math.max(20, width - 2 * HOME_MARGIN - 4)
-  /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
-  const menuBody = Math.max(6, height - 3 - 6)
+  /** Rows for a setting's own content, as the popup lays them out. */
+  const menuBody = menuBodyRows(height, palette)
   const homeField = (w: number, row = false) => (
     <Prompt
       value={text}
@@ -5351,7 +5367,7 @@ export function App({
                 rows={mediaEditRows(source)}
                 tools={{}}
                 checking={false}
-                chosen={{ tool: values.tool, step: values.shape }}
+                chosen={{ tool: values.tool, step: values.shape ?? values.turn ?? values.speed }}
                 width={width}
                 onChoose={chooseEdit}
                 onStop={() => {}}
@@ -5371,7 +5387,10 @@ export function App({
                 )}
                 tools={toolStates}
                 checking={checking}
-                chosen={{ tool: values.tool, step: values.shape ?? values.scale }}
+                chosen={{
+                  tool: values.tool,
+                  step: values.shape ?? values.scale ?? values.turn ?? values.speed,
+                }}
                 width={width}
                 onChoose={(row, step) => {
                   const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
@@ -5628,9 +5647,11 @@ export function App({
                     lastResult.job.op === 'convert'
                       ? lastResult.job.options.crop
                         ? 'crop'
-                        : lastResult.job.options.resize
-                          ? 'resize'
-                          : 'trim'
+                        : lastResult.job.options.rotate
+                          ? 'rotate'
+                          : lastResult.job.options.resize
+                            ? 'resize'
+                            : 'trim'
                       : lastResult.job.op === 'remove-background'
                         ? 'remove-background'
                         : 'boost'

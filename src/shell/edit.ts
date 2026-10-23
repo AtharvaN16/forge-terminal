@@ -1,7 +1,7 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
-import { mediaEditAction } from '../core/actions/media.js'
-import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { mediaEditAction, SPEEDS } from '../core/actions/media.js'
+import { cropAction, resizeAction, trimAction, turnAction } from '../core/actions/resize.js'
 import { type CropShape, largestBox, shapesFor } from '../core/crop.js'
 import {
   BOOST_MAX_SIDE,
@@ -12,7 +12,9 @@ import {
 import { FORMATS } from '../core/formats.js'
 import { extractTarget, hasPicture } from '../core/media.js'
 import { keptFormat } from '../core/resize.js'
-import type { FormatId, ImageInfo, MediaInfo } from '../core/types.js'
+import { clockOf } from '../core/timecode.js'
+import { TURNS, turnedSize } from '../core/turn.js'
+import type { FormatId, ImageInfo, MediaInfo, Turn } from '../core/types.js'
 import type { ImageMeasure } from '../engines/image.js'
 import { type ExtensionId, offeredHere } from '../extensions/catalog.js'
 import type { ExtensionStatus } from '../extensions/manager.js'
@@ -23,7 +25,7 @@ import type { ExtensionStatus } from '../extensions/manager.js'
  * three each one of the two optional extensions run a particular way —
  * Boost resolution one row whose scale changes on the row — then, after one
  * blank row (E3, mockups/resize-2026-10.html), Trim edges, Resize and Crop to
- * shape (mockups/crop-2026-10.html), which are built in. Pure: what the rows
+ * shape (mockups/crop-2026-10.html) and Rotate, which are built in. Pure: what the rows
  * are and say for an image, nothing drawn.
  */
 
@@ -33,10 +35,12 @@ export type EditToolId =
   | 'cutout'
   | 'trim'
   | 'resize'
+  | 'rotate'
   | 'crop'
   // Video and sound (video spec §3.4).
   | 'cut'
   | 'mute'
+  | 'speed'
   | 'loudness'
   | 'extract'
   | 'cleanup'
@@ -63,6 +67,10 @@ export interface EditRow {
   scales?: Array<{ scale: BoostScale; detail: Detail }>
   /** Crop to shape: the shapes this image can be cut to, in the pill's order; ←→ steps through them. */
   shapes?: Array<{ shape: CropShape; detail: Detail }>
+  /** Rotate: the turns, in the pill's order; ←→ steps through them. */
+  turns?: Array<{ degrees: Turn; label: string; detail: Detail }>
+  /** Speed: how fast, faster ones first; ←→ steps through them. */
+  speeds?: Array<{ speed: number; detail: Detail }>
   /** What the file is written as: the source's own format, or PNG for a cutout. */
   target: FormatId
   /** What the row makes; Boost's at its smallest scale, Crop's at its first shape. */
@@ -199,8 +207,51 @@ export function editRows(
       },
       verb: resizeAction.verb,
     },
+    rotateRow(source, asJpeg),
     cropRow(source, asJpeg),
   ]
+}
+
+/**
+ * Rotate's row: the turns, each with the size it leaves (a quarter turn swaps
+ * the sides; a half turn keeps them). Dimmed for an animation, as Trim is.
+ */
+function rotateRow(source: ImageInfo | MediaInfo, asJpeg = ''): EditRow {
+  const size =
+    source.kind === 'image'
+      ? source
+      : source.facts?.video && {
+          width: source.facts.video.width,
+          height: source.facts.video.height,
+        }
+  const turns = TURNS.map((t) => ({
+    degrees: t.degrees,
+    label: t.label,
+    detail: size
+      ? t.degrees === 180
+        ? { dim: 'same size · ', bold: dims(size.width, size.height), after: asJpeg }
+        : (() => {
+            const to = turnedSize(size, t.degrees)
+            return { dim: 'becomes ', bold: dims(to.width, to.height), after: asJpeg }
+          })()
+      : { dim: '', bold: '' },
+  }))
+  return {
+    id: 'rotate',
+    label: 'Rotate',
+    turns,
+    target: source.kind === 'image' ? keptFormat(source) : source.format,
+    detail: (turns[0] as { detail: Detail }).detail,
+    pane: {
+      short: 'Turns it a quarter or a half.',
+      long:
+        source.kind === 'image'
+          ? 'The picture is turned and nothing else changes.'
+          : 'The picture is turned, so it is encoded again. The sound is copied.',
+    },
+    ...(source.kind === 'image' && source.frames > 1 ? { tooLarge: 'animated' } : {}),
+    verb: turnAction.verb,
+  }
 }
 
 /**
@@ -230,6 +281,12 @@ export function batchEditRows(
         }
       case 'trim':
         return { ...rest, detail: none }
+      case 'rotate':
+        return {
+          ...rest,
+          turns: rest.turns?.map((t) => ({ ...t, detail: none })) ?? [],
+          detail: none,
+        }
       case 'crop':
         return { ...rest, shapes: [], detail: none, tooLarge: 'one at a time' }
       default:
@@ -260,6 +317,26 @@ const cleanupRow = (target: FormatId): EditRow => ({
  */
 export function mediaEditRows(source: MediaInfo): EditRow[] {
   const target = source.format
+  const length = source.facts?.duration
+  const speedRow: EditRow = {
+    id: 'speed',
+    label: 'Speed',
+    target,
+    speeds: SPEEDS.map((speed) => ({
+      speed,
+      detail: length ? { dim: 'becomes ', bold: clockOf(length / speed) } : { dim: '', bold: '' },
+    })),
+    detail: length
+      ? { dim: 'becomes ', bold: clockOf(length / (SPEEDS[0] as number)) }
+      : { dim: '', bold: '' },
+    pane: {
+      short: 'Plays faster or slower.',
+      long: hasPicture(source)
+        ? 'The picture and the sound change together. The pitch stays the same.'
+        : 'The pitch stays the same.',
+    },
+    verb: 'Changing speed',
+  }
   const v = source.facts?.video
   const sound = source.facts ? source.facts.audio !== undefined : true
   const trim: EditRow = {
@@ -276,6 +353,7 @@ export function mediaEditRows(source: MediaInfo): EditRow[] {
   if (!hasPicture(source)) {
     return [
       trim,
+      speedRow,
       ...(sound ? [cleanupRow(target)] : []),
       {
         id: 'loudness',
@@ -311,6 +389,7 @@ export function mediaEditRows(source: MediaInfo): EditRow[] {
     })
     rows.push(cleanupRow(target))
   }
+  rows.push(speedRow)
   rows[rows.length - 1] = { ...(rows[rows.length - 1] as EditRow), gapAfter: true }
   rows.push({
     id: 'resize',
@@ -320,6 +399,7 @@ export function mediaEditRows(source: MediaInfo): EditRow[] {
     pane: { short: 'Makes the picture smaller.', long: 'The shape is kept.' },
     verb: 'Resizing',
   })
+  rows.push(rotateRow(source))
   const size = v ? { width: v.width, height: v.height } : undefined
   const shapes = size
     ? shapesFor(size).map((shape) => {
@@ -391,6 +471,18 @@ export function pillOf(row: EditRow): { noun: string; steps: PillStep[] } | unde
       steps: row.scales.map((s) => ({ value: s.scale, label: `${s.scale}×`, detail: s.detail })),
     }
   }
+  if (row.speeds) {
+    return {
+      noun: 'speed',
+      steps: row.speeds.map((s) => ({ value: s.speed, label: `${s.speed}×`, detail: s.detail })),
+    }
+  }
+  if (row.turns) {
+    return {
+      noun: 'turn',
+      steps: row.turns.map((t) => ({ value: t.degrees, label: t.label, detail: t.detail })),
+    }
+  }
   if (row.shapes) {
     return {
       noun: 'shape',
@@ -435,9 +527,11 @@ export const actionForRow = (row: Pick<EditRow, 'id' | 'extension' | 'target'>):
         ? resizeAction
         : row.id === 'crop'
           ? cropAction
-          : row.extension === 'boost'
-            ? boostAction
-            : removeBackgroundAction
+          : row.id === 'rotate'
+            ? turnAction
+            : row.extension === 'boost'
+              ? boostAction
+              : removeBackgroundAction
 
 /**
  * The answers Save as and the run plan with, for a row at `step` on its pill:
@@ -451,6 +545,8 @@ export function rowValues(row: EditRow, step?: number | string): Record<string, 
     target: row.target,
     ...(k === undefined ? {} : { scale: String(k) }),
     ...(row.shapes && at ? { shape: at.label } : {}),
+    ...(row.turns && at ? { turn: at.value } : {}),
+    ...(row.speeds && at ? { speed: at.value } : {}),
     ...(row.id === 'trim' ? { trim: true } : {}),
   }
 }
