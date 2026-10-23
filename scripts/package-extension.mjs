@@ -9,8 +9,9 @@
  * Prints one JSON line: {asset, bytes, sha256}.
  *
  * Deterministic: entries sorted bytewise, mtime/uid/gid/names zeroed, mode
- * normalised to 0644 / 0755 (exec bit kept), gzip header mtime 0. Node
- * built-ins only; the output is plain ustar, readable by any `tar`.
+ * normalised to 0644 / 0755 (exec bit kept), gzip header mtime 0 and its OS
+ * byte fixed, so any host packs the same bytes. Node built-ins only; the
+ * output is plain ustar, readable by any `tar`.
  */
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
@@ -25,9 +26,38 @@ const ENTRIES = {
   // ffmpeg beside ffprobe; Forge finds both in the extension's folder.
   video: { entry: 'ffmpeg', kind: 'exec' },
 }
-// Bare labels are the Mac builds, as published before Windows; win32 ones say so.
-const ARCHES = ['arm64', 'x64', 'universal', 'win32-x64', 'win32-arm64', 'win32-universal']
+/**
+ * Where an OS's build is a different program: remove-background is Apple
+ * Vision's Swift helper on macOS, a Node runner on ONNX Runtime elsewhere
+ * (extensions/remove-background-onnx).
+ */
+const ELSEWHERE = {
+  'remove-background': { entry: 'runner.mjs', kind: 'node' },
+}
+// Bare labels are the Mac builds, as published before Windows; win32 and linux ones say so.
+const ARCHES = [
+  'arm64',
+  'x64',
+  'universal',
+  'win32-x64',
+  'win32-arm64',
+  'win32-universal',
+  'linux-x64',
+  'linux-arm64',
+]
 const FIXED_MTIME = 946684800 // 2000-01-01
+/**
+ * zlib writes the host OS into byte 9 of the gzip header (19 on macOS, 3 on
+ * Linux, 10 on Windows). Every published archive was packed on macOS, so 19
+ * keeps them reproducible while Linux and Windows hosts pack the same bytes.
+ */
+const GZIP_OS = 19
+
+/** The entry for `id` packed for `arch`: a Mac label (bare) or another OS's. */
+export function entryFor(id, arch) {
+  const mac = !arch.includes('-')
+  return (!mac && ELSEWHERE[id]) || ENTRIES[id]
+}
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 
@@ -78,9 +108,9 @@ function header(name, size, exec) {
 }
 
 export async function packageExtension(id, version, arch, payloadDir, outDir) {
-  const spec = ENTRIES[id]
-  if (!spec) throw new Error(`unknown extension id: ${id}`)
+  if (!ENTRIES[id]) throw new Error(`unknown extension id: ${id}`)
   if (!ARCHES.includes(arch)) throw new Error(`arch must be one of ${ARCHES.join('|')}`)
+  const spec = entryFor(id, arch)
 
   const found = (await walk(payloadDir)).filter((f) => f.rel !== 'manifest.json')
   found.sort((a, b) => Buffer.compare(Buffer.from(a.rel), Buffer.from(b.rel)))
@@ -112,6 +142,7 @@ export async function packageExtension(id, version, arch, payloadDir, outDir) {
   }
   parts.push(Buffer.alloc(1024))
   const gz = gzipSync(Buffer.concat(parts), { level: 9 })
+  gz[9] = GZIP_OS
 
   const asset = `forge-ext-${id}-${version}-${arch}.tar.gz`
   await mkdir(outDir, { recursive: true })
