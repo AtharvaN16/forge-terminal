@@ -30,6 +30,12 @@ export default defineConfig({
        * pass a temp home and ask for it (src/shell/find-files.ts).
        */
       FORGE_NO_FIND: '1',
+      /**
+       * Nor use the yt-dlp or ffmpeg this machine happens to have instead of
+       * the fakes: which one runs would differ from machine to machine. The
+       * own-tools tests pass the folders to look in (src/extensions/own.ts).
+       */
+      FORGE_NO_OWN_TOOLS: '1',
     },
     /**
      * Capped well below the machine's core count on purpose.

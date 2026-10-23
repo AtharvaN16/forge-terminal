@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { MediaFacts } from '../core/types.js'
 import { readProbe } from './media-probe.js'
@@ -61,10 +61,34 @@ async function extensionDir(): Promise<string | undefined> {
   }
 }
 
+/** The folder of the ffmpeg the user pointed Forge to in /extensions, if any. */
+async function chosenDir(): Promise<string | undefined> {
+  try {
+    const { chosenPath } = await import('../extensions/own.js')
+    const path = await chosenPath('video')
+    return path === undefined ? undefined : dirname(path)
+  } catch {
+    return undefined
+  }
+}
+
+/** Forge's own ffmpeg goes once the user's is used: one copy, always (own.ts). */
+async function dropForgeCopy(): Promise<void> {
+  try {
+    const { removeForgeCopy } = await import('../extensions/own.js')
+    await removeForgeCopy('video')
+  } catch {}
+}
+
 async function resolveFfmpeg(): Promise<Ffmpeg | undefined> {
-  // A user's own ffmpeg first (PATH, Homebrew), then Forge's download.
+  // The ffmpeg the user chose, then their own (PATH, Homebrew), then Forge's download.
   const ext = await extensionDir()
-  const dirs = [...ffmpegCandidates(process.platform, process.env), ...(ext ? [ext] : [])]
+  const chosen = await chosenDir()
+  const dirs = [
+    ...(chosen ? [chosen] : []),
+    ...ffmpegCandidates(process.platform, process.env),
+    ...(ext ? [ext] : []),
+  ]
   for (const dir of dirs) {
     const ffmpeg = join(dir, exe('ffmpeg'))
     const ffprobe = join(dir, exe('ffprobe'))
@@ -83,6 +107,7 @@ async function resolveFfmpeg(): Promise<Ffmpeg | undefined> {
       ),
     )
     const has = encoders && filters ? new Set([...encoders, ...filters]) : undefined
+    if (ext !== undefined && dir !== ext) await dropForgeCopy()
     return { ffmpeg, ffprobe, ...(has ? { has } : {}) }
   }
   return undefined

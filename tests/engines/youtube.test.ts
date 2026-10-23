@@ -1,9 +1,11 @@
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { chmod, copyFile, readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
 import { fetchSound, type YouTubeEvent } from '../../src/engines/youtube.js'
+import { setChosenPath } from '../../src/extensions/own.js'
+import { installed } from '../../src/extensions/paths.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makeTempDir } from '../helpers/fixtures.js'
 
@@ -123,6 +125,19 @@ describe('fetchSound', () => {
     await expect(running).rejects.toThrow('stopped')
     expect(dir).not.toBe('')
     expect(existsSync(dir)).toBe(false)
+  })
+
+  it('never updates a yt-dlp of the user’s own, and uses it instead of Forge’s', async () => {
+    const { home, calls } = await fakeYtDlp({ error: 'Unable to extract nsig function code' })
+    const mine = join(await makeTempDir(), 'yt-dlp')
+    await copyFile(join(home, 'forge', 'extensions', 'yt-dlp', '2026.08.19', 'yt-dlp'), mine)
+    await chmod(mine, 0o755)
+    await setChosenPath('yt-dlp', mine)
+    expect(await codeOf(fetchSound(URL))).toMatch(
+      /^link-unavailable: yt-dlp could not fetch this video/,
+    )
+    expect((await callsOf(calls)).map((a) => a.includes('--update'))).toEqual([false])
+    expect(await installed('yt-dlp')).toBeUndefined()
   })
 
   it('says yt-dlp is not installed', async () => {

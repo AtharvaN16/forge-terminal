@@ -32,6 +32,7 @@ export async function fakeYtDlp(scenario: YtScenario): Promise<{ home: string; c
 const fs = require('node:fs')
 const s = ${JSON.stringify(scenario)}
 const a = process.argv.slice(2)
+if (a.includes('--version')) { console.log('2026.08.19'); process.exit(0) }
 fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(a) + '\\n')
 if (a.includes('--update')) { fs.writeFileSync(${JSON.stringify(updated)}, ''); console.log('Updated yt-dlp'); process.exit(0) }
 if (s.error && !(s.fixedByUpdate && fs.existsSync(${JSON.stringify(updated)}))) {
