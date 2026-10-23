@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Box } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import { expandTilde } from '../../config/preferences.js'
 import type { Result } from '../../core/types.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
@@ -10,6 +11,7 @@ import type { Trail } from '../bar-art.js'
 import { windowOver } from '../colour/system-art.js'
 import { completePath, isFolderCompletion } from '../complete.js'
 import { destinationRows, isPathQuery } from '../destinations.js'
+import { doneBody, doneLayout } from '../done-art.js'
 import { blank, type Row } from '../home-art.js'
 import { isStrayEscapeSequence } from '../mouse.js'
 import {
@@ -31,9 +33,39 @@ import { useTheme } from '../ThemeContext.js'
 import type { ShellMode } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { bandFor } from '../width.js'
+import { doneFacts } from './Done.js'
 import { HeaderBar } from './HeaderBar.js'
 import { KeyRow, KeyRule, Runs } from './Home.js'
-import { doneUnder } from './PresetEditor.js'
+
+/**
+ * Done's rows between the header and the rule, as a window covers them: the
+ * same body where Done puts it — the chain on its strip — so the window opens
+ * over the screen it came from.
+ */
+export function doneUnder(
+  palette: ReturnType<typeof useTheme>,
+  result: Result,
+  mode: ShellMode,
+  width: number,
+  height: number,
+  links?: DoneLinks,
+): Row[] {
+  const area = height - 3
+  const facts = doneFacts(result, mode)
+  // Compact where Done is: a screen too short for the body and its buttons.
+  const roomy = doneBody({ palette, facts, width, links })
+  const body =
+    4 + roomy.length + 1 > height
+      ? doneBody({ palette, facts, width, links, compact: true })
+      : roomy
+  const { top } = doneLayout({ height, body: body.length, notes: 0 })
+  const under: Row[] = [[], ...Array.from({ length: top }, (): Row => []), ...body]
+  while (under.length < area) under.push([])
+  return under.slice(0, area)
+}
+
+/** The chain Done's strip says (C1): what Save as preset keeps. */
+export type DoneLinks = { source: string; steps: readonly string[]; slot: boolean }
 
 /** A place a preset can save to: a folder (`~` unexpanded), `same`, or `ask`. */
 export interface PresetFolder {
@@ -128,10 +160,17 @@ export function PresetSaveScreen({
   onSave,
   onMakeDefault,
   onCancel,
+  links,
 }: {
   mode: ShellMode
   trail: Trail
   result: Result
+  /**
+   * The chain being saved (decided, mockups/presets-ux-2026-10-round10.html):
+   * shown first, in a block on the grey of Done's buttons, so what is named
+   * is in sight.
+   */
+  links?: DoneLinks | undefined
   width: number
   height: number
   /** The name the field opens with: empty, or the preset being updated. */
@@ -326,7 +365,34 @@ export function PresetSaveScreen({
   // A row's line of the list, counting the new folder's row while it is open.
   const lineOf = (i: number) => i + (making !== null && index !== -1 && index < i ? 1 : 0)
   const caret = making === null && !onPath ? [{ text: ' ', bg: p.fg }] : []
+  // The chain, steps joined by ─▸, in a block of its own grey: three rows,
+  // the words on the middle one, three cells in from the window's sides.
+  const block = p.shelf || undefined
+  const fillRow = (runs: Row = []): Row => {
+    const inner = fw - 6
+    const used = runs.reduce((n, r) => n + stringWidth(r.text), 0)
+    return [
+      blank(3),
+      ...runs.map((r) => ({ ...r, ...(block ? { bg: block } : {}) })),
+      { text: ' '.repeat(Math.max(0, inner - used)), ...(block ? { bg: block } : {}) },
+      blank(3),
+    ]
+  }
+  const chainRuns: Row = links
+    ? [
+        { text: '  ' },
+        { text: links.source, fg: p.dim },
+        ...links.steps.flatMap(
+          (t): Row => [
+            { text: ' ─▸ ', fg: p.border },
+            { text: t, fg: p.fg, bold: true },
+          ],
+        ),
+      ]
+    : []
+  const chainBlock: Row[] = links ? [[], fillRow(), fillRow(chainRuns), fillRow()] : []
   const lines: Row[] = [
+    ...chainBlock,
     fieldBlank({ palette: p, width: fw }),
     fieldRow({
       palette: p,
@@ -404,7 +470,7 @@ export function PresetSaveScreen({
     r[0] && r[0].bg === edge ? [{ ...r[0], bg: undefined }, ...r.slice(1)] : r,
   )
   const area = height - 3
-  const rows = windowOver(p, doneUnder(p, result, mode, width, height), {
+  const rows = windowOver(p, doneUnder(p, result, mode, width, height, links), {
     title: 'Save as preset',
     lines: framed,
     width: W,

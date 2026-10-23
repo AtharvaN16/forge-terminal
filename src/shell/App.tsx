@@ -1260,6 +1260,8 @@ export function App({
       (doneBar?.mode === 'convert' || doneBar?.mode === 'compress') &&
       clip === null &&
       clipDone === null,
+    // A step that failed: its error on Done, the file and the chain as they were.
+    fail: (e) => holdFailure(e),
     tools,
   })
   const doneRecord = useRef<HistoryBlock[] | null>(null)
@@ -5654,7 +5656,7 @@ export function App({
                 width={width}
                 height={height}
                 pressed={donePressed}
-                chain={presets.chain}
+                links={presets.links}
                 {...clipDoneProps()}
               />
             ) : null}

@@ -15,7 +15,6 @@ import { unpaint } from '../helpers/unpaint.js'
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
 const DOWN = `${ESC}[B`
-const RIGHT = `${ESC}[C`
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => unpaint((f ?? '').replace(SGR, ''))
@@ -60,37 +59,40 @@ describe('presets, from Done', () => {
     const { app, dir } = await atDone()
     app.stdin.write('p')
     await until(app, '─ Save as preset ─')
+    // The chain it keeps, first, in its own block.
+    expect(plain(app.lastFrame())).toMatch(/│ {5}PNG ─▸ JPEG 80 +│/)
     for (const ch of 'webblog') {
       app.stdin.write(ch)
       await settle(30)
     }
     app.stdin.write(ENTER)
-    await until(app, 'p Preset saved')
+    await until(app, 'p ✓ webblog')
     const { prefs } = await loadPreferences()
     const saved = prefs.presets?.find((p) => p.name === 'webblog')
     expect(saved).toEqual({ name: 'webblog', steps: { to: 'jpeg', quality: 80 }, saveTo: dir })
   }, 30_000)
 
-  it('opens Continue editing with e, and ↵ leaves Done showing the new file', async () => {
+  it('does one more thing with e — Resize, on its own screen — and comes back to Done, the chain one longer', async () => {
     const { app, dir } = await atDone()
     app.stdin.write('e')
-    await until(app, '─ Continue editing ─')
+    await until(app, 'Convert to another format')
     app.stdin.write(DOWN) // Resize, from Compress
     await settle(100)
-    app.stdin.write(RIGHT)
-    await until(app, '─ Resize ─')
+    app.stdin.write(ENTER)
+    await until(app, 'Resize to')
+    app.stdin.write('#') // the exact size
+    await settle(200)
     for (const ch of '32') {
       app.stdin.write(ch)
       await settle(30)
     }
-    app.stdin.write(ENTER) // confirm the width
-    await until(app, '32 wide')
-    await until(app, 'now ') // the rerun
-    await settle(800)
-    app.stdin.write(ENTER) // done
-    await until(app, '─ Continue editing ─', true)
-    await until(app, '32 wide')
+    app.stdin.write(ENTER)
+    await until(app, 'PNG ─▸ JPEG 80 ─▸ 32 wide ─▸')
+    expect(plain(app.lastFrame())).toContain('↵ Home')
     expect((await sharp(join(dir, 'test.jpg')).metadata()).width).toBe(32)
+    // And Continue editing now offers to undo it.
+    app.stdin.write('e')
+    await until(app, 'Undo 32 wide')
   }, 30_000)
 
   it('saves a /compress result as a preset that still compresses', async () => {
@@ -120,7 +122,7 @@ describe('presets, from Done', () => {
       await settle(30)
     }
     app.stdin.write(ENTER)
-    await until(app, 'p Preset saved')
+    await until(app, 'p ✓ smaller')
     const saved = (await loadPreferences()).prefs.presets?.find((p) => p.name === 'smaller')
     expect(saved?.steps).toMatchObject({ to: 'png', compress: { dither: false } })
   }, 30_000)

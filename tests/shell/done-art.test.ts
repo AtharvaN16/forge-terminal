@@ -131,12 +131,62 @@ describe('the Done body (round 24)', () => {
     expect(cells(strip)[3]).toMatchObject({ ch: 'P', fg: DARK.fg, bold: true })
   })
 
-  it('writes every step of a chain, the last one leading', () => {
-    const rows = doneBody({ palette: P, facts: cv, width: 80, chain: ['PNG', 'JPEG', 'WebP'] })
-    expect(text(rows[ROW.strip])).toMatch(/^ {3}PNG → JPEG → WebP +47\.4 KB/)
-    const strip = cells(rows[ROW.strip])
-    expect(strip[9]).toMatchObject({ ch: 'J', fg: DARK.dim, bold: false })
-    expect(strip[16]).toMatchObject({ ch: 'W', fg: DARK.fg, bold: true })
+  it('draws the chain of links: the source quiet, each step bold, joined by ─▸, then the + slot', () => {
+    const rows = doneBody({
+      palette: P,
+      facts: cv,
+      width: 80,
+      links: { source: 'PNG', steps: ['JPEG 80', '1920 wide'], slot: true },
+    })
+    const strip = text(rows[ROW.strip])
+    expect(strip).toMatch(
+      /^ {3}PNG ─▸ JPEG 80 ─▸ 1920 wide ─▸ {2}\+ {2,}47\.4 KB saved · 38\.9% smaller $/,
+    )
+    const at = cells(rows[ROW.strip])
+    expect(at[3]).toMatchObject({ ch: 'P', fg: DARK.dim, bold: false })
+    expect(at[10]).toMatchObject({ ch: 'J', fg: DARK.fg, bold: true })
+    // The slot is the one chip: + on the key grey, dim.
+    const plus = at.findIndex((c) => c.ch === '+')
+    expect(at[plus]).toMatchObject({ fg: DARK.dim, bg: DARK.keycapBg })
+    expect(text(rows[ROW.sizes])).not.toContain('saved')
+  })
+
+  it('moves the saving beside now when the chain leaves it no room on the strip', () => {
+    const rows = doneBody({
+      palette: P,
+      facts: cv,
+      width: 80,
+      links: { source: 'PNG', steps: ['JPEG 80', '1920 wide', 'Crop 1:1', 'Sharpen'], slot: true },
+    })
+    expect(text(rows[ROW.strip])).not.toContain('saved')
+    expect(text(rows[ROW.sizes])).toMatch(
+      /^ {2}now 74\.6 KB {3}47\.4 KB saved · 38\.9% smaller +was 122 KB$/,
+    )
+  })
+
+  it('wraps a chain longer than the strip onto a second row: four rows of strip, the saving beside now', () => {
+    const steps = [
+      'JPEG 80',
+      '1920 wide',
+      'Crop 1:1',
+      'Sharpen',
+      'Remove background',
+      'under 300 KB',
+    ]
+    const rows = doneBody({
+      palette: P,
+      facts: cv,
+      width: 80,
+      links: { source: 'PNG', steps, slot: true },
+    })
+    expect(text(rows[1])).toMatch(
+      /^ {3}PNG ─▸ JPEG 80 ─▸ 1920 wide ─▸ Crop 1:1 ─▸ Sharpen ─▸ Remove background +$/,
+    )
+    expect(text(rows[2])).toMatch(/^ {7}─▸ under 300 KB ─▸ {2}\+ {2,}$/)
+    expect(cells(rows[3])[4]).toMatchObject({ bg: DARK.selectionBg })
+    expect(rows).toHaveLength(13)
+    expect(text(rows.at(-1))).toContain('47.4 KB saved · 38.9% smaller')
+    for (const row of rows) expect(width(row)).toBeLessThanOrEqual(80)
   })
 
   it('is a bar seven rows tall as long as the larger file: the new file on the mode’s band, the rest hatched grey', () => {
@@ -325,8 +375,16 @@ describe('the Done notes', () => {
 describe('the Done layout', () => {
   it('sits the body two blank rows under the bar, in any window: the rest goes under it', () => {
     // The bar's own blank row and one more (2026-10-22, the layout picker).
-    expect(doneLayout({ height: 24, body: 6, notes: 0 })).toEqual({ top: 1, between: 0, bottom: 13 })
-    expect(doneLayout({ height: 34, body: 6, notes: 0 })).toEqual({ top: 1, between: 0, bottom: 23 })
+    expect(doneLayout({ height: 24, body: 6, notes: 0 })).toEqual({
+      top: 1,
+      between: 0,
+      bottom: 13,
+    })
+    expect(doneLayout({ height: 34, body: 6, notes: 0 })).toEqual({
+      top: 1,
+      between: 0,
+      bottom: 23,
+    })
   })
 
   it('ends the notes four rows above the keys, at least a row under the body', () => {
