@@ -327,7 +327,9 @@ export function usePresetsOnDone(o: {
             void o.save({ defaultOutput: path })
           }}
           onSave={({ name, saveTo }) => {
-            const preset: Preset = { name, steps, saveTo }
+            // Saved again under its name, a preset stays where it was in the right-click menu.
+            const kept = presets.find((p) => p.name === name)?.quickAction
+            const preset: Preset = { name, steps, saveTo, ...(kept ? { quickAction: kept } : {}) }
             const next = [...presets.filter((p) => p.name !== name), preset]
             o.setPrefs((p) => ({ ...p, presets: next }))
             void o.save({ presets: next })

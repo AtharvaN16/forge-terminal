@@ -114,9 +114,10 @@ export function stepLabel(step: Step): string {
 /**
  * The chain on Done's strip after the source, in Forge's order: the format
  * (or, where it kept the format, the quality it was compressed at), the
- * size, the cut, the models, then a target size.
+ * size, the cut, the models, then a target size. With no source (a preset
+ * listed on its own, as /right-click does) a format is always said.
  */
-export function chainLabels(source: FormatId, steps: PresetSteps): string[] {
+export function chainLabels(source: FormatId | undefined, steps: PresetSteps): string[] {
   const kept = steps.to === undefined || steps.to === source
   const format =
     !kept && steps.to

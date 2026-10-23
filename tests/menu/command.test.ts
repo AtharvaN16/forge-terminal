@@ -23,6 +23,20 @@ describe('parseMenuArgs', () => {
     expect(parseMenuArgs(['remove'])).toEqual({ kind: 'remove' })
   })
 
+  it('reads a preset’s click: the preset’s name, then the files', () => {
+    expect(parseMenuArgs(['run', 'preset', 'webblog', '/a.png'])).toEqual({
+      kind: 'run',
+      action: 'preset',
+      preset: 'webblog',
+      paths: ['/a.png'],
+    })
+  })
+
+  it('refuses a preset click with no name, or a name no preset could have', () => {
+    expect(() => parseMenuArgs(['run', 'preset'])).toThrow()
+    expect(() => parseMenuArgs(['run', 'preset', '/a.png'])).toThrow()
+  })
+
   it('refuses an action it does not know', () => {
     expect(() => parseMenuArgs(['run', 'rotate', '/a.png'])).toThrow(/rotate/)
     expect(() => parseMenuArgs([])).toThrow()

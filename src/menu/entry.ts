@@ -11,7 +11,7 @@ import { gather } from './gather.js'
 import { installMenu, type MenuEnv, removeMenu, runProgram } from './install.js'
 import { stableNode } from './node-path.js'
 import { notify } from './notify.js'
-import { freeSharpName, runMenuAction, type SharpenResult } from './run.js'
+import { freeSharpName, type PresetRunResult, runMenuAction, type SharpenResult } from './run.js'
 import { ensureMenu, rememberedTerminal, rememberTerminal, resync } from './setup.js'
 import { uninstallForge } from './uninstall.js'
 
@@ -22,6 +22,17 @@ import { uninstallForge } from './uninstall.js'
  */
 
 const menuDir = () => join(configBase(), 'forge', 'menu')
+
+/** The presets turned on in /right-click, by name. A settings file that won't read gives none. */
+async function quickActionPresets(): Promise<string[]> {
+  try {
+    const { loadPreferences } = await import('../config/preferences.js')
+    const { prefs } = await loadPreferences()
+    return (prefs.presets ?? []).filter((p) => p.quickAction).map((p) => p.name)
+  } catch {
+    return []
+  }
+}
 
 /** This machine, this Forge. */
 export async function realMenuEnv(version: string): Promise<MenuEnv> {
@@ -35,6 +46,7 @@ export async function realMenuEnv(version: string): Promise<MenuEnv> {
     ...(process.env.XDG_CONFIG_HOME ? { xdgConfigHome: process.env.XDG_CONFIG_HOME } : {}),
     version,
     sharpen: (await installed('boost')) !== undefined,
+    presets: await quickActionPresets(),
     run: runProgram,
   }
 }
@@ -95,6 +107,40 @@ async function sharpenFile(path: string): Promise<SharpenResult> {
   return { error: isForgeError(failure) ? failure.detail : 'It could not be sharpened.' }
 }
 
+/**
+ * Runs a saved preset on one file as `forge <file> --preset <name>` would,
+ * keeping both when the name is taken: the file it wrote and the steps as
+ * the chain says them, or why not.
+ */
+async function presetFile(name: string, path: string): Promise<PresetRunResult> {
+  const { runPresetCommand } = await import('../cli/preset-command.js')
+  const { loadPreferences } = await import('../config/preferences.js')
+  const { chainLabels } = await import('../shell/continue-editing.js')
+  try {
+    const report = await runPresetCommand({
+      kind: 'preset',
+      inputs: [path],
+      name,
+      force: false,
+      recursive: false,
+      debug: false,
+      keepBoth: true,
+    })
+    const result = report.results[0]
+    const output = result?.job.outputs[0]
+    if (result !== undefined && output !== undefined) {
+      const { prefs } = await loadPreferences()
+      const steps = prefs.presets?.find((p) => p.name === name)?.steps
+      const from = result.job.sources[0]?.format
+      return { output, chain: steps && from ? chainLabels(from, steps) : [] }
+    }
+    const failure = report.failures[0]?.error
+    return { error: isForgeError(failure) ? failure.detail : 'It could not be made.' }
+  } catch (e) {
+    return { error: isForgeError(e) ? e.detail : 'It could not be made.' }
+  }
+}
+
 /** Starts a program and lets it outlive this one: a terminal window, which stays once this process exits. */
 const launch = (cmd: string, args: string[]) =>
   new Promise<void>((resolve) => {
@@ -119,21 +165,28 @@ export async function runMenuCommand(cmd: MenuCommand, version: string): Promise
   let paths = cmd.paths
   // Explorer runs an item once per selected file; the first gathers the rest.
   if (e.platform === 'win32' && paths.length === 1) {
-    const all = await gather(join(e.menuDir, 'spool'), cmd.action, paths[0] as string)
+    const spool = cmd.preset === undefined ? cmd.action : `preset-${cmd.preset}`
+    const all = await gather(join(e.menuDir, 'spool'), spool, paths[0] as string)
     if (all === null) return 0
     paths = all
   }
-  await runMenuAction(cmd.action, paths, {
-    platform: e.platform,
-    self: [e.node, ...e.execArgv, e.forge],
-    terminal: rememberedTerminal(e),
-    launch,
-    sharpen: sharpenFile,
-    notify: (title, body) => notify(title, body, e.platform),
-    reveal: async (path) => {
-      await revealPath(path, e.platform)
+  await runMenuAction(
+    cmd.action,
+    paths,
+    {
+      platform: e.platform,
+      self: [e.node, ...e.execArgv, e.forge],
+      terminal: rememberedTerminal(e),
+      launch,
+      sharpen: sharpenFile,
+      runPreset: presetFile,
+      notify: (title, body) => notify(title, body, e.platform),
+      reveal: async (path) => {
+        await revealPath(path, e.platform)
+      },
     },
-  })
+    cmd.preset,
+  )
   return 0
 }
 

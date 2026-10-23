@@ -5857,6 +5857,12 @@ export function App({
                   <RightClickFlow
                     width={menuInner}
                     system={rightClick}
+                    presets={livePrefs.presets ?? []}
+                    onPresets={(next) => {
+                      setLivePrefs((p) => ({ ...p, presets: next }))
+                      // Returned: the menu is written again from the settings once they are saved.
+                      return savePreferences({ presets: next })
+                    }}
                     onClose={() => backToCommands('right-click')}
                   />,
                 )

@@ -75,6 +75,13 @@ describe('ensureMenu', () => {
     )
   })
 
+  it('sets it up again when the presets in it have changed some other way', async () => {
+    const e = env()
+    await ensureMenu(e, { global: true })
+    await ensureMenu({ ...e, presets: ['webblog'] }, { global: true })
+    expect(existsSync(join(services(e), 'webblog in Forge.workflow'))).toBe(true)
+  })
+
   it('leaves the menu alone for a Forge not installed with npm -g, such as a source checkout', async () => {
     const e = env()
     expect(await ensureMenu(e, { global: false })).toBeUndefined()
@@ -122,6 +129,13 @@ describe('resync', () => {
     await resync({ ...e, sharpen: true, forge: '/src/forge/src/index.ts' })
     expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).toContain(e.forge)
     expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).not.toContain('/src/forge/')
+  })
+
+  it('writes the presets as they are now, not as the menu was set up', async () => {
+    const e = env()
+    await ensureMenu(e, { global: true })
+    await resync({ ...e, presets: ['webblog'] })
+    expect(existsSync(join(services(e), 'webblog in Forge.workflow'))).toBe(true)
   })
 
   it('does nothing when the menu was never set up', async () => {

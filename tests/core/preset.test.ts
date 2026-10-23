@@ -75,4 +75,10 @@ describe('parsePreset', () => {
     expect(parsePreset({ ...blog, saveTo: 'ask' })?.saveTo).toBe('ask')
     expect(parsePreset({ ...blog, saveTo: '' })).toBeUndefined()
   })
+
+  it('keeps whether the preset is in the right-click menu, and only a true one', () => {
+    expect(parsePreset({ ...blog, quickAction: true })?.quickAction).toBe(true)
+    expect(parsePreset({ ...blog, quickAction: 'yes' })).not.toHaveProperty('quickAction')
+    expect(parsePreset(blog)).not.toHaveProperty('quickAction')
+  })
 })
