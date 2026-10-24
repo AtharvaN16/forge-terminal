@@ -243,7 +243,7 @@ describe('read-text', () => {
       const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
       const asset = assetFor(rt, platform, arch)
       expect(asset?.url, key).toBe(
-        `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-${file}.tar.gz`,
+        `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-${file}.tar.gz`,
       )
       expect(asset?.bytes, key).toBeLessThan(25_000_000)
     }
