@@ -41,6 +41,19 @@ describe('whisperUseful', () => {
 })
 
 describe('hideUnneeded', () => {
+  it("leaves read-text out where Apple's reader reads, unless it is installed", async () => {
+    if (process.platform !== 'darwin') return
+    const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off', read: true }] },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    const ids = async (list: ExtensionStatus[]) => (await hideUnneeded(list)).map((s) => s.entry.id)
+    expect(await ids([status('read-text'), status('whisper')])).toEqual([])
+    expect(await ids([status('read-text', '1.0.0')])).toEqual(['read-text'])
+    await apple(true)
+    expect(await ids([status('read-text')])).toEqual(['read-text'])
+  })
+
   it("leaves whisper out where Apple's recogniser hears, unless it is installed", async () => {
     if (process.platform !== 'darwin') return
     await apple(true)

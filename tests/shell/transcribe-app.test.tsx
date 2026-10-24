@@ -170,7 +170,8 @@ describe('transcribe on home', () => {
     app.stdin.write('5')
     await until(() => frame(app).includes('or a YouTube link'))
     app.stdin.write(png)
-    await until(() => frame(app).includes('Reading text needs macOS 26 or later.'))
+    // Where the helper cannot read, the read-text extension can, and is offered for this machine.
+    await until(() => frame(app).includes('Needs the read-text extension.'))
   }, 30_000)
 
   it('a pasted link shows the video’s title and channel once yt-dlp has looked it up', async () => {

@@ -1204,8 +1204,22 @@ export function transcribeUnavailable(reason: string): ForgeError {
   })
 }
 
-/** This Mac cannot read the text of a picture or PDF (spec 2026-10-23-extract-text-design §3.4). */
-export function readUnavailable(): ForgeError {
+/**
+ * Nothing here reads the text of a picture or PDF (spec 2026-10-23-extract-text-design
+ * §3.4, §6): Apple's reader (macOS 26) is not here, and the read-text
+ * extension is not installed. Where the extension is offered it says so, as
+ * HEIC's does; elsewhere (a chip with no build) the Mac's words stand.
+ */
+export function readUnavailable(offered = false): ForgeError {
+  if (offered)
+    return new ForgeError({
+      code: 'read-unavailable',
+      title: 'Reading text is not available',
+      detail: "Reading text needs Forge's free read-text extension.",
+      short: 'Needs the read-text extension.',
+      hint: 'Install it with: forge extensions add read-text',
+      shellHint: 'Open /extensions to install it.',
+    })
   return new ForgeError({
     code: 'read-unavailable',
     title: 'Reading text is not available',

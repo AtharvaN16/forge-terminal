@@ -31,6 +31,7 @@ import { hasText, pagePlain, pageText } from '../core/transcribe/page-text.js'
 import {
   notesNeed,
   type ReadEvent,
+  readRefusal,
   renderPages,
   renderTranscript,
   runRead,
@@ -104,7 +105,7 @@ async function readPage(
     )
   }
   const status = await transcribeStatus()
-  if (!status?.read) throw readUnavailable()
+  if (!status?.read) throw await readRefusal()
   const output = outputFor(
     basename(page.path, extname(page.path)),
     dirname(page.path),

@@ -39,8 +39,8 @@ On Windows, use Windows Terminal for the full experience.
 Most features work on all three. The exceptions: transcript summaries and
 notes need Apple Intelligence, so they are Mac-only; remove background is
 Mac-only until a model matches Apple Vision; Boost has no Intel Mac or Linux
-build yet (both would run on the processor alone); reading text from pictures
-and PDF transcripts need macOS 26; camera RAW photos open on a Mac only. Where a feature needs a
+build yet (both would run on the processor alone); PDF transcripts need
+macOS 26; camera RAW photos open on a Mac only. Where a feature needs a
 tool the OS does not have, it is a small optional extension
 (`forge extensions`) or a common package, named in the error that asks for it.
 
@@ -178,6 +178,11 @@ forge transcribe "https://www.youtube.com/watch?v=..." --language en
   `%LOCALAPPDATA%\forge\whisper`, `~/Library/Caches/forge/whisper` or
   `~/.cache/forge/whisper`.
 - Transcripts can be Markdown, Word or text everywhere; PDF needs macOS 26.
+- Reading the text of pictures and PDFs (`forge transcribe shot.png`) uses
+  Apple's reader on macOS 26. Everywhere else it uses the read-text extension
+  (`forge extensions add read-text`, about 20 MB): PaddleOCR's small models,
+  for English and the languages written in Latin letters. A PDF's own text, when it
+  has one, corrects words OCR splits at ligatures.
 - Without `--language`, whisper detects the language itself.
 - Summary and notes need Apple Intelligence, so off it Forge writes the
   transcript. `--to notes` is refused; the default `--to all` gives the

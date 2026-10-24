@@ -3173,9 +3173,9 @@ export function App({
         const taken = await takeImage(pb, clipRoot)
         const page = taken ? pageSource(await probe(taken.source)) : undefined
         if (!settled() || !taken || page?.what !== 'image') return
-        const { transcribeStatus } = await import('../engines/transcribe.js')
+        const { readRefusal, transcribeStatus } = await import('../engines/transcribe.js')
         if (!(await transcribeStatus())?.read) {
-          refuseOnHome(readUnavailable(), '')
+          refuseOnHome(await readRefusal(), '')
           return
         }
         if (!settled()) return

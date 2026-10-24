@@ -95,7 +95,7 @@ describe("help in this OS's words", () => {
     }
     expect(commandsHelp('linux')).toContain('such as whisper and heic')
     const rows = (os: NodeJS.Platform) => cliTabs(os).flatMap((t) => t.items)
-    expect(rows('win32').map((r) => r.does)).toContain('the text in it, on a Mac only')
+    expect(rows('win32').map((r) => r.does)).toContain('the text in it')
     expect(rows('linux').map((r) => r.ex)).toContain('forge extensions add whisper')
     expect(rows('linux').map((r) => r.ex)).not.toContain('forge extensions add boost')
   })

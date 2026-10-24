@@ -200,3 +200,26 @@ describe('the Windows and Linux catalogue', () => {
     expect(boost && assetFor(boost, 'darwin', 'x64')).toBeUndefined()
   })
 })
+
+describe('read-text', () => {
+  it('is offered on every OS and chip, one archive each, under 25 MB', () => {
+    const rt = catalogEntry('read-text')
+    if (rt === undefined) throw new Error('read-text is catalogued')
+    const files = {
+      'darwin-arm64': 'arm64',
+      'darwin-x64': 'x64',
+      'win32-x64': 'win32-x64',
+      'win32-arm64': 'win32-arm64',
+      'linux-x64': 'linux-x64',
+      'linux-arm64': 'linux-arm64',
+    }
+    for (const [key, file] of Object.entries(files)) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(rt, platform, arch)
+      expect(asset?.url, key).toBe(
+        `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-${file}.tar.gz`,
+      )
+      expect(asset?.bytes, key).toBeLessThan(25_000_000)
+    }
+  })
+})

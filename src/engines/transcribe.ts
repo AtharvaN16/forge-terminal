@@ -356,7 +356,9 @@ export async function transcribeStatus(
   const here = helpers()
   if (here.apple === undefined && here.whisper === undefined) return undefined
   const apple = await appleStatus(opts.locale)
-  const base = { read: apple?.read === true, render: apple !== undefined }
+  // Reading is Apple's where it reads, else the read-text extension's once it is installed.
+  const read = apple?.read === true || (await installed('read-text')) !== undefined
+  const base = { read, render: apple !== undefined }
   if (apple?.speech === true)
     return {
       speech: true,
@@ -393,6 +395,15 @@ export async function whisperUseful(
 ): Promise<boolean> {
   if (platform !== 'darwin') return true
   return (await transcribeStatus().catch(() => undefined))?.hears !== 'apple'
+}
+
+/** What Apple's helper does here: hear, read pictures and PDFs. Off a Mac, neither. */
+export async function appleDoes(
+  platform: NodeJS.Platform = process.platform,
+): Promise<{ hears: boolean; reads: boolean }> {
+  if (platform !== 'darwin') return { hears: false, reads: false }
+  const apple = await appleStatus().catch(() => undefined)
+  return { hears: apple?.speech === true, reads: apple?.read === true }
 }
 
 /** The helper that hears, or why there is none. */
@@ -463,6 +474,8 @@ export async function runRead(
     onEvent?: (e: ReadEvent) => void
   } = {},
 ): Promise<ReadPage[]> {
+  // Apple's reader where it reads; else the read-text extension, which answers the same.
+  if ((await appleStatus())?.read !== true) return readWithExtension(path, opts)
   const args = ['read', path, ...(opts.language ? ['--language', opts.language] : [])]
   const r = await exec(appleHelper(readUnavailable), args, path, {
     signal: opts.signal,
@@ -472,6 +485,113 @@ export async function runRead(
     },
   })
   return (r.pages ?? []) as ReadPage[]
+}
+
+/** A page is read at this many dots per inch, and no side over READ_MAX_SIDE pixels. */
+const READ_DPI = 200
+const READ_MAX_SIDE = 4000
+
+/** Why nothing reads here, in this machine's words: the extension to add, where there is one. */
+export async function readRefusal(): Promise<ForgeError> {
+  return readUnavailable(await readTextOffered())
+}
+
+/** Whether the read-text extension is offered for this machine. */
+async function readTextOffered(): Promise<boolean> {
+  const { catalogEntry, assetFor } = await import('../extensions/catalog.js')
+  const entry = catalogEntry('read-text')
+  return entry !== undefined && assetFor(entry) !== undefined
+}
+
+/**
+ * The text of a picture or PDF through the read-text extension (spec
+ * 2026-10-23-extract-text-design §6): each page drawn as a PNG Forge
+ * prepared — a picture turned upright (invariant 4) and decoded (HEIC, RAW),
+ * a PDF's pages drawn by pdfium on white — read by PP-OCR in the extension's
+ * own process, its answer the Mac helper's `read`.
+ */
+async function readWithExtension(
+  path: string,
+  opts: { signal?: AbortSignal | undefined; onEvent?: (e: ReadEvent) => void },
+): Promise<ReadPage[]> {
+  const ext = await installed('read-text')
+  if (ext === undefined) throw readUnavailable(await readTextOffered())
+  const [{ probe }, { openable }, { loadSharp }, { runExtension }] = await Promise.all([
+    import('./registry.js'),
+    import('./decoded.js'),
+    import('./libs.js'),
+    import('../extensions/run.js'),
+  ])
+  const sharp = await loadSharp()
+  const info = await probe(path)
+  const dir = await mkdtemp(join(tmpdir(), 'forge-read-'))
+  const fit = {
+    width: READ_MAX_SIDE,
+    height: READ_MAX_SIDE,
+    fit: 'inside',
+    withoutEnlargement: true,
+  } as const
+  try {
+    const pngs: string[] = []
+    if (info.kind === 'document' && info.format === 'pdf') {
+      const { openPdf } = await import('./pdfium.js')
+      const doc = await openPdf(await readFile(path))
+      try {
+        for (let i = 0; i < info.pages; i++) {
+          const bitmap = await doc.getPage(i).render({ scale: READ_DPI / 72, render: 'bitmap' })
+          const out = join(dir, `page-${i + 1}.png`)
+          await sharp(Buffer.from(bitmap.data), {
+            raw: { width: bitmap.width, height: bitmap.height, channels: 4 },
+          })
+            .flatten({ background: '#ffffff' })
+            .resize(fit)
+            .png()
+            .toFile(out)
+          pngs.push(out)
+        }
+      } finally {
+        doc.destroy()
+      }
+    } else if (info.kind === 'image') {
+      const open = await openable(path, info.format)
+      try {
+        const out = join(dir, 'page-1.png')
+        await sharp(open.path)
+          .rotate()
+          .flatten({ background: '#ffffff' })
+          .resize(fit)
+          .png()
+          .toFile(out)
+        pngs.push(out)
+      } finally {
+        await open.cleanup()
+      }
+    } else throw untranscribable(path)
+    const r = await runExtension(
+      { id: 'read-text', entry: ext.entry, kind: ext.kind },
+      pngs.flatMap((p) => ['--in', p]),
+      {
+        subject: path,
+        what: `Reading the text of ${path}`,
+        ...(opts.signal ? { signal: opts.signal } : {}),
+        onLine: (line) => {
+          if (line.event === 'page')
+            opts.onEvent?.({ kind: 'page', page: Number(line.page), of: Number(line.of) })
+        },
+      },
+    )
+    const pages = (r.pages ?? []) as ReadPage[]
+    if (!(info.kind === 'document' && info.format === 'pdf')) return pages
+    // A PDF's own text, where it has one, mends the words OCR broke (core/transcribe/text-layer.ts).
+    const [{ extractPdfText }, { mendPage }] = await Promise.all([
+      import('./pdfium.js'),
+      import('../core/transcribe/text-layer.js'),
+    ])
+    const layers = await extractPdfText(await readFile(path)).catch(() => [] as string[])
+    return pages.map((page, i) => mendPage(page, layers[i] ?? ''))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 }
 
 /** Whether Apple's helper is here and answers: it alone sets HTML as Word or PDF. */

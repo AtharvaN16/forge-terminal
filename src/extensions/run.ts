@@ -16,6 +16,8 @@ export interface ExtensionJobResult {
   ms: number
   /** Only from jobs that report it (the heic runner's `--info`). */
   hasAlpha?: boolean
+  /** Only from the read-text runner: each page's blocks, as the Mac helper's `read` gives them. */
+  pages?: unknown[]
 }
 
 type RunOpts = {
@@ -36,6 +38,8 @@ type RunOpts = {
   onStart?: () => void
   /** Which queue the job joins (see `tails`). */
   platform?: NodeJS.Platform
+  /** Each JSON line before the result, as it comes (the read-text runner's page events). */
+  onLine?: (line: Record<string, unknown>) => void
 }
 
 /**
@@ -122,8 +126,22 @@ function runOne(
     })
     signal?.addEventListener('abort', onAbort, { once: true })
 
+    let pending = ''
     child.stdout.setEncoding('utf8').on('data', (d: string) => {
       out += d
+      if (!opts.onLine) return
+      pending += d
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const l of lines) {
+        if (!l.trim().startsWith('{')) continue
+        try {
+          const parsed = JSON.parse(l) as Record<string, unknown>
+          if (!('ok' in parsed)) opts.onLine(parsed)
+        } catch {
+          // Not a line of ours: a library's noise.
+        }
+      }
     })
     child.stderr.setEncoding('utf8').on('data', (d: string) => {
       err += d
@@ -149,6 +167,7 @@ function runOne(
               height?: number
               ms?: number
               hasAlpha?: boolean
+              pages?: unknown[]
               code?: string
               message?: string
             }
@@ -159,6 +178,7 @@ function runOne(
             height: Number(r.height),
             ms: Number(r.ms),
             ...(typeof r.hasAlpha === 'boolean' ? { hasAlpha: r.hasAlpha } : {}),
+            ...(Array.isArray(r.pages) ? { pages: r.pages } : {}),
           })
         }
         if (r && r.ok === false) {

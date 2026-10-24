@@ -2,7 +2,14 @@
  * The catalogue of optional extensions, compiled into Forge (spec §4.2).
  * Forge never downloads a catalogue and never runs anything not listed here.
  */
-export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp' | 'whisper'
+export type ExtensionId =
+  | 'boost'
+  | 'remove-background'
+  | 'heic'
+  | 'video'
+  | 'yt-dlp'
+  | 'whisper'
+  | 'read-text'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
 export type PlatformKey = `${'darwin' | 'win32' | 'linux'}-${'arm64' | 'x64' | 'universal'}`
@@ -234,6 +241,56 @@ export const CATALOG: readonly CatalogEntry[] = [
       },
     },
     licence: 'whisper.cpp and ggml (MIT), OpenAI Whisper base model (MIT)',
+  },
+  {
+    // Reading the text of pictures and PDFs where Apple's reader is not
+    // (spec 2026-10-23-extract-text-design §6): Windows, Linux, and Macs on
+    // Intel or before macOS 26. PP-OCR's small models on ONNX Runtime's CPU
+    // provider; it answers as the Mac helper's \`read\` does.
+    id: 'read-text',
+    title: 'Read text',
+    summary: 'Read the text of pictures and PDFs on this computer',
+    minMacos: 13,
+    assets: {
+      'darwin-arm64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-arm64.tar.gz`,
+        bytes: 21975039,
+        sha256: 'dc20e1930e74d7a275635d4b35652a10842de3067c746f48e5ad83ed25b83c54',
+      },
+      'darwin-x64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-x64.tar.gz`,
+        bytes: 23165961,
+        sha256: 'a0777d1eea165af71a9ea03537b3aba99adf761d7094c0cc7be8941a29008e0d',
+      },
+      'win32-x64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-win32-x64.tar.gz`,
+        bytes: 20729741,
+        sha256: '3bb522c6c692b1062ecf5dd2db6c44114c070f6ab962df49704301eaeda05750',
+      },
+      'win32-arm64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-win32-arm64.tar.gz`,
+        bytes: 20805690,
+        sha256: 'f1e2a1a691ebd86598605034e7e791eeb1595909c9e0002be5329e43dee1e7c4',
+      },
+      'linux-x64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-linux-x64.tar.gz`,
+        bytes: 24127474,
+        sha256: '2dd13981438ad0e1110d0bc66d2f47ea76e3abf99b9a3e92edfe15a255fa350d',
+      },
+      'linux-arm64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-read-text-v1.0.0/forge-ext-read-text-1.0.0-linux-arm64.tar.gz`,
+        bytes: 19113060,
+        sha256: '3862f3ce6167b0afbdbd86dc209784595039355bfe9225a5421fbefb60b32a1f',
+      },
+    },
+    licence:
+      'PP-OCRv4 detection and PP-OCRv5 Latin recognition (Apache-2.0, PaddlePaddle; ONNX by RapidOCR and monkt), ONNX Runtime (MIT)',
   },
 ]
 

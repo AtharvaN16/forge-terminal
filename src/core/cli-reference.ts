@@ -277,15 +277,17 @@ export const CLI_TABS: CliTab[] = [
  */
 /**
  * The tabs in this OS's words: the Mac's as written. Elsewhere reading text
- * is said to be the Mac's alone, and Linux's extension example is one it has.
+ * is the read-text extension's, not "this Mac's", and Linux's extension
+ * example is one it has.
  */
 export function cliTabs(platform: NodeJS.Platform = process.platform): CliTab[] {
   if (platform === 'darwin') return [...CLI_TABS]
   return CLI_TABS.map((tab) => ({
     ...tab,
     items: tab.items.map((item) => {
+      // Read by the read-text extension off a Mac.
       if (item.does === 'the text in it, read on this Mac')
-        return { ...item, does: 'the text in it, on a Mac only' }
+        return { ...item, does: 'the text in it' }
       if (platform === 'linux' && item.ex === 'forge extensions add boost')
         return {
           ...item,

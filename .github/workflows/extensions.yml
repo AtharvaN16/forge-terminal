@@ -50,13 +50,14 @@ on:
       - 'ext-heic-v*'
       - 'ext-video-v*'
       - 'ext-whisper-v*'
+      - 'ext-read-text-v*'
   workflow_dispatch:
     inputs:
       id:
         description: 'Extension id'
         required: true
         type: choice
-        options: [boost, remove-background, heic, video, whisper]
+        options: [boost, remove-background, heic, video, whisper, read-text]
       version:
         description: 'Version (no leading v); a release ext-<id>-v<version> must exist or will be created'
         required: true
@@ -94,6 +95,8 @@ jobs:
             remove-background) runner=xcode-27 ;;
             # Pure JavaScript and WebAssembly, packaged for Windows and Linux; any macOS runner assembles it.
             heic) runner=macos-14 ;;
+            # PP-OCR on ONNX Runtime: JavaScript and prebuilt libraries for every OS; any macOS runner assembles it.
+            read-text) runner=macos-14 ;;
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
             video) runner=macos-14 ;;
             # whisper.cpp's whisper-cli: Mac built, Windows repacked, Linux cross-built with zig (extensions/whisper/build.mjs).
@@ -189,6 +192,13 @@ jobs:
               node extensions/whisper/build.mjs --platform linux --arch "$arch" --zig "$PWD/.zig/bin/python -m ziglang" --out "dist-ext/payload-linux-$arch"
               node scripts/package-extension.mjs whisper "$VERSION" "linux-$arch" "dist-ext/payload-linux-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
+          elif [ "$ID" = "read-text" ]; then
+            # Mac builds are labelled by chip alone, as published before Windows; the others say their OS.
+            for spec in darwin:arm64:arm64 darwin:x64:x64 win32:x64:win32-x64 win32:arm64:win32-arm64 linux:x64:linux-x64 linux:arm64:linux-arm64; do
+              IFS=: read -r os arch label <<< "$spec"
+              node extensions/read-text/build.mjs --platform "$os" --arch "$arch" --out "dist-ext/payload-$label"
+              node scripts/package-extension.mjs read-text "$VERSION" "$label" "dist-ext/payload-$label" dist-ext/out >> dist-ext/assets.jsonl
+            done
           elif [ "$ID" = "heic" ]; then
             # The same files for both; only the manifest's arch differs.
             for platform in win32 linux; do
@@ -274,6 +284,7 @@ jobs:
     needs: [resolve, package]
     if: >-
       needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic' ||
+      needs.resolve.outputs.id == 'read-text' ||
       needs.resolve.outputs.id == 'whisper'
     runs-on: windows-latest
     permissions:
@@ -340,6 +351,23 @@ jobs:
             if (w !== 64 || h !== 64) { console.error("expected 64x64, got " + w + "x" + h); process.exit(1) }
           '
 
+      # A blank page: ONNX Runtime and both models load and run, and the reply is the read contract.
+      - name: read-text runs on Windows
+        if: needs.resolve.outputs.id == 'read-text'
+        run: |
+          node -e '
+            const zlib = require("zlib"), fs = require("fs")
+            const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
+            const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0 }
+            const chunk = (t, d) => { const body = Buffer.concat([Buffer.from(t), d]); const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const s = Buffer.alloc(4); s.writeUInt32BE(crc(body)); return Buffer.concat([l, body, s]) }
+            const W = 64, H = 64, ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2
+            const raw = Buffer.alloc((W * 3 + 1) * H, 255); for (let y = 0; y < H; y++) raw[y * (W * 3 + 1)] = 0
+            fs.writeFileSync("blank.png", Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]))
+          '
+          out="$(node dist-ext/payload-win32-x64/runner.mjs --in blank.png | tail -1)"
+          echo "$out"
+          printf '%s' "$out" | grep -q '"ok":true'
+
       - name: HEIC extension runs on Windows
         if: needs.resolve.outputs.id == 'heic'
         run: |
@@ -366,7 +394,7 @@ jobs:
   # the same build for the other chip). Nothing here publishes anything.
   verify-linux:
     needs: [resolve, package]
-    if: needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'whisper'
+    if: needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'read-text'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -383,6 +411,23 @@ jobs:
         with:
           name: payloads
           path: dist-ext
+
+      # A blank page: ONNX Runtime and both models load and run, and the reply is the read contract.
+      - name: read-text runs on Linux
+        if: needs.resolve.outputs.id == 'read-text'
+        run: |
+          node -e '
+            const zlib = require("zlib"), fs = require("fs")
+            const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
+            const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0 }
+            const chunk = (t, d) => { const body = Buffer.concat([Buffer.from(t), d]); const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const s = Buffer.alloc(4); s.writeUInt32BE(crc(body)); return Buffer.concat([l, body, s]) }
+            const W = 64, H = 64, ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2
+            const raw = Buffer.alloc((W * 3 + 1) * H, 255); for (let y = 0; y < H; y++) raw[y * (W * 3 + 1)] = 0
+            fs.writeFileSync("blank.png", Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]))
+          '
+          out="$(node dist-ext/payload-linux-x64/runner.mjs --in blank.png | tail -1)"
+          echo "$out"
+          printf '%s' "$out" | grep -q '"ok":true'
 
       - name: HEIC extension runs on Linux
         if: needs.resolve.outputs.id == 'heic'

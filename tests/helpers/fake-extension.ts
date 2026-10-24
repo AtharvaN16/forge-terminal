@@ -38,6 +38,24 @@ await sharp(data, { raw: info }).png().toFile(out)
 console.log(JSON.stringify({ ok: true, width: info.width, height: info.height, ms: 1 }))
 `
 
+/**
+ * The stand-in read-text: one page event and one text block per --in, saying
+ * which page it was given and the PNG's width, plus a word broken as PP-OCR
+ * breaks one at a ligature, for the text-layer mend to fix.
+ */
+const READ_TEXT = `
+import sharp from '${sharpUrl}'
+const a = process.argv.slice(2)
+const ins = a.flatMap((v, i) => (v === '--in' ? [a[i + 1]] : []))
+const pages = []
+for (const [i, path] of ins.entries()) {
+  console.log(JSON.stringify({ event: 'page', page: i + 1, of: ins.length }))
+  const { width } = await sharp(path).metadata()
+  pages.push({ blocks: [{ kind: 'text', text: 'page ' + (i + 1) + ' width ' + width + ' waff e', title: false, lines: 1, lineHeight: 0.02, box: [0.1, 0.1, 0.8, 0.02] }] })
+}
+console.log(JSON.stringify({ ok: true, pages }))
+`
+
 export function fakeExtensions() {
   const saved = process.env.XDG_CONFIG_HOME
   return {
@@ -48,13 +66,16 @@ export function fakeExtensions() {
     },
     async install(
       home: string,
-      id: 'boost' | 'remove-background',
+      id: 'boost' | 'remove-background' | 'read-text',
       version = '1.0.0',
     ): Promise<void> {
       const dir = join(home, 'forge', 'extensions', id)
       const payload = join(dir, version)
       await mkdir(payload, { recursive: true })
-      await writeFile(join(payload, 'runner.mjs'), id === 'boost' ? BOOST : CUTOUT)
+      await writeFile(
+        join(payload, 'runner.mjs'),
+        id === 'boost' ? BOOST : id === 'read-text' ? READ_TEXT : CUTOUT,
+      )
       await writeFile(
         join(payload, 'manifest.json'),
         JSON.stringify({

@@ -16,7 +16,12 @@ import { FORMATS } from '../core/formats.js'
 import { clock } from '../core/transcribe/markdown.js'
 import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
 import { formatBytes } from '../core/units.js'
-import { probeSound, transcribeNeeds, transcribeStatus } from '../engines/transcribe.js'
+import {
+  probeSound,
+  readRefusal,
+  transcribeNeeds,
+  transcribeStatus,
+} from '../engines/transcribe.js'
 import type { VideoFacts } from '../engines/youtube.js'
 import { bytesOf } from './components/EditPicker.js'
 import type { StagedFile, StagedView } from './stage.js'
@@ -59,7 +64,7 @@ export async function readTranscribeFile(path: string): Promise<TranscribeSource
     })
     const page = pageSource(probed)
     if (page === undefined) throw untranscribable(path)
-    if (!(await transcribeStatus())?.read) throw readUnavailable()
+    if (!(await transcribeStatus())?.read) throw await readRefusal()
     return { kind: 'page', ...page }
   }
   const status = await transcribeStatus()

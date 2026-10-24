@@ -292,9 +292,13 @@ const DOC = JSON.parse(
   readFileSync(join(__dirname, '..', 'fixtures', 'read', 'doc.json'), 'utf8'),
 ) as { ok: true; pages: object[] }
 
+/** Apple's reader saying it reads, as macOS 26's does. */
+const READS = { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off', read: true }] }
+
 describe('runRead', () => {
   it('passes the pages on as they are read, then returns what Vision saw', async () => {
     const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off', read: true }] },
       read: {
         lines: [
           { event: 'page', page: 1, of: 2 },
@@ -317,7 +321,7 @@ describe('runRead', () => {
   })
 
   it('pins the language when one is given', async () => {
-    const fake = await fakeTranscribeHelper({ read: { lines: [DOC] } })
+    const fake = await fakeTranscribeHelper({ status: READS, read: { lines: [DOC] } })
     use(fake.path)
     await runRead('/tmp/shot.png', { language: 'ja' })
     const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
@@ -328,6 +332,7 @@ describe('runRead', () => {
     use(
       (
         await fakeTranscribeHelper({
+          status: READS,
           read: {
             lines: [{ ok: false, code: 'unreadable', message: 'This file cannot be read.' }],
             exit: 1,
