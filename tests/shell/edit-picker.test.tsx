@@ -48,11 +48,12 @@ describe('the edit picker’s split (S1)', () => {
     expect(lines[boost + 1]).toMatch(/^ +Remove background +│/)
   })
 
-  it('on Windows, with no Remove background row, keeps the blank row after Boost', async () => {
+  it('with no Remove background row, keeps the blank row after Boost', async () => {
+    // Every OS with a build offers Remove background now; one without it would draw this.
     const app = render(
       <EditPicker
         format="JPEG"
-        rows={editRows(photo, undefined, undefined, 'win32')}
+        rows={editRows(photo, undefined, undefined, 'win32').filter((r) => r.id !== 'cutout')}
         tools={{ boost: { kind: 'ready' } }}
         checking={false}
         width={80}

@@ -63,10 +63,9 @@ import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
-import { type FetchedSound, fetchSound } from '../engines/youtube.js'
+import { type FetchedSound, fetchSound, findYtDlp, ytDlpMissing } from '../engines/youtube.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { assetFor, catalogEntry } from '../extensions/catalog.js'
-import { installed } from '../extensions/paths.js'
 import type { Opened } from '../menu/command.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { lastSegment } from '../utils/last-segment.js'
@@ -742,7 +741,15 @@ const SEARCH_SHOWN_MS = 300
 /** How long typing rests before a name is looked for: one search per pause, not per key. */
 const NAME_WAIT_MS = 120
 
-const PASTE_HINT = { key: '⌘V', words: 'to paste from clipboard' } as const
+const PASTE_HINT = { words: 'to paste from clipboard' } as const
+
+/**
+ * Ctrl+V off a Mac: it reaches the app as itself in a Linux terminal, which
+ * pastes with Ctrl+Shift+V, and is what a Windows user presses.
+ */
+export function pasteKey(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'darwin' ? '⌘V' : 'Ctrl+V'
+}
 
 /** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
 const SETTINGS_STEPS: ReadonlySet<string> = new Set([
@@ -790,7 +797,8 @@ export function App({
   latestRelease?: () => Promise<string | undefined>
   /**
    * The clipboard as a picture, for ⌘V on home; null where there is none
-   * (not macOS, over SSH). launch.tsx passes the real one; tests a fake.
+   * (over SSH, a Linux without a desktop). launch.tsx passes the real one;
+   * tests a fake.
    */
   pasteboard?: Pasteboard | null
   /** Where a copied image and its result are kept; the system temp folder by default. */
@@ -1380,14 +1388,20 @@ export function App({
         }
         return
       }
-      if ((await installed('yt-dlp')) === undefined) {
+      // The extension, or the user's own yt-dlp: either will do.
+      if ((await findYtDlp()) === undefined) {
         const entry = catalogEntry('yt-dlp')
         const asset = entry && assetFor(entry)
+        if (asset === undefined) {
+          // No build for this machine: nothing to offer, so say what would work.
+          refuseOnHome(ytDlpMissing(), text)
+          return
+        }
         setTranscribing({
           kind: 'link',
           url: link.url,
           phase: 'needs-yt-dlp',
-          bytes: asset?.bytes ?? 0,
+          bytes: asset.bytes,
         })
         return
       }
@@ -1493,7 +1507,7 @@ export function App({
     clipHint && onHome && !staged && text === '' && mode !== 'colour'
       ? fieldKey({
           palette,
-          key: PASTE_HINT.key,
+          key: pasteKey(),
           words: PASTE_HINT.words,
           colour: modeColours(palette, mode).fg,
           plain: (process.env.NO_COLOR ?? '') !== '',

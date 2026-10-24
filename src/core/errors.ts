@@ -51,6 +51,7 @@ export type ErrorCode =
   | 'update-unreachable'
   | 'no-clipboard-image'
   | 'clipboard-unavailable'
+  | 'clipboard-tool-missing'
   | 'nothing-to-undo'
   | 'cannot-compress-more'
   | 'ffmpeg-missing'
@@ -230,17 +231,19 @@ export function nothingVisible(path: string): ForgeError {
  *
  * Windows has no sips, and its own HEVC codec is a paid add-on on many PCs,
  * so there HEIC is decoded by Forge's optional `heic` extension — and the way
- * forward is installing it.
+ * forward is installing it. Linux has neither, and gets the same extension.
  */
 export function heicDecoderUnavailable(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  if (platform === 'win32') {
+  if (platform !== 'darwin') {
+    // Spelt out rather than osName(): core must not load src/extensions.
+    const os = platform === 'win32' ? 'Windows' : platform === 'linux' ? 'Linux' : 'this system'
     return new ForgeError({
       code: 'heic-decoder-unavailable',
       title: 'Cannot read HEIC here',
-      detail: `${displayName(path, platform)} is a HEIC photo, which needs Forge's free HEIC extension on Windows.`,
+      detail: `${displayName(path, platform)} is a HEIC photo, which needs Forge's free HEIC extension on ${os}.`,
       short: 'HEIC needs the heic extension.',
       hint: 'Install it with: forge extensions add heic',
       shellHint: 'Open /extensions to install it.',
@@ -698,7 +701,7 @@ export function extensionUnsupported(
   reason: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  const machine = platform === 'win32' ? 'PC' : 'Mac'
+  const machine = platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'
   return new ForgeError({
     code: 'extension-unsupported',
     title: 'Extension not available here',
@@ -717,7 +720,14 @@ export function extensionNotOffered(
   title: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  const os = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'this system'
+  const os =
+    platform === 'win32'
+      ? 'Windows'
+      : platform === 'darwin'
+        ? 'macOS'
+        : platform === 'linux'
+          ? 'Linux'
+          : 'this system'
   return new ForgeError({
     code: 'extension-unsupported',
     title: 'Extension not available here',
@@ -875,22 +885,55 @@ export function resizeTooLarge(path: string, size: Size): ForgeError {
   })
 }
 
+/**
+ * The keys that put a screenshot straight on the clipboard. Linux has no one
+ * shortcut: each desktop picks its own.
+ */
+const SCREENSHOT_KEYS: Partial<Record<NodeJS.Platform, string>> = {
+  darwin: '⌃⇧⌘4',
+  win32: 'Win+Shift+S',
+}
+
 /** `forge clip` with no picture copied. `holds` says what is there instead. */
-export function noClipboardImage(holds: 'text' | 'nothing'): ForgeError {
+export function noClipboardImage(
+  holds: 'text' | 'nothing',
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const keys = SCREENSHOT_KEYS[platform]
   return new ForgeError({
     code: 'no-clipboard-image',
     title: 'No image',
     detail:
       holds === 'text' ? 'The clipboard holds text, not a picture.' : 'The clipboard is empty.',
-    hint: 'Copy a picture, or take a screenshot with ⌃⇧⌘4, then run forge clip again.',
+    hint:
+      keys === undefined
+        ? 'Copy a picture or a screenshot, then run forge clip again.'
+        : `Copy a picture, or take a screenshot with ${keys}, then run forge clip again.`,
   })
 }
 
-export function clipboardUnavailable(): ForgeError {
+export function clipboardUnavailable(platform: NodeJS.Platform = process.platform): ForgeError {
   return new ForgeError({
     code: 'clipboard-unavailable',
     title: 'No clipboard',
-    detail: 'Forge reads the clipboard on a Mac, and not over SSH.',
+    detail:
+      platform === 'linux'
+        ? 'Forge reads the clipboard of a Wayland or X11 desktop, and not over SSH.'
+        : 'Forge reads the clipboard on macOS, Windows and Linux, and not over SSH.',
+  })
+}
+
+/**
+ * Linux has no clipboard command of its own: Wayland's is in the wl-clipboard
+ * package, X11's is xclip. `tool` is the package this desktop needs.
+ */
+export function clipboardToolMissing(tool: 'wl-clipboard' | 'xclip'): ForgeError {
+  return new ForgeError({
+    code: 'clipboard-tool-missing',
+    title: `Clipboard needs ${tool}`,
+    detail: `Forge reaches the clipboard through ${tool}, and it is not on this computer.`,
+    short: `${tool} is not on this computer`,
+    hint: `Install it with sudo apt install ${tool} (or your distribution's package manager), then try again.`,
   })
 }
 

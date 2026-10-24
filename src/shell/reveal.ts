@@ -1,6 +1,7 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
-import { win32 } from 'node:path'
+import { dirname, win32 } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -39,6 +40,23 @@ async function assertExists(path: string): Promise<void> {
   }
 }
 
+/**
+ * Linux: xdg-open, started and let go. Where no desktop answers for it,
+ * xdg-open runs the viewer itself and waits for it to close, and Forge must
+ * not wait with it. So it cannot say whether the file opened; the file is
+ * looked for first, as on Windows, and only xdg-open being missing fails.
+ */
+function xdgOpen(target: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('xdg-open', [target], { detached: true, stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
+}
+
 /** Opens a file with its default application. */
 export async function openPath(
   path: string,
@@ -47,6 +65,10 @@ export async function openPath(
   if (platform === 'win32') {
     await assertExists(path)
     return runExplorer([forExplorer(path)])
+  }
+  if (platform === 'linux') {
+    await assertExists(path)
+    return xdgOpen(path)
   }
   await run('open', [path])
 }
@@ -57,10 +79,56 @@ export async function openUrl(
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
   if (platform === 'win32') return runExplorer([url])
+  if (platform === 'linux') return xdgOpen(url)
   await run('open', [url])
 }
 
-/** Reveals a file in Finder (Explorer on Windows) with it selected. */
+/**
+ * Asks the file manager to show `path` selected, through the freedesktop
+ * FileManager1 interface that Nautilus, Nemo, Dolphin, Thunar and Caja
+ * answer on D-Bus: by gdbus, or dbus-send where GLib's tool is not
+ * installed. Rejects when neither can, or no file manager answers.
+ */
+async function showItem(path: string): Promise<void> {
+  // dbus-send separates an array's items with commas, so one in the name is escaped.
+  const uri = pathToFileURL(path).href.replace(/,/g, '%2C')
+  const call = ['/org/freedesktop/FileManager1', 'org.freedesktop.FileManager1.ShowItems']
+  try {
+    await run(
+      'gdbus',
+      [
+        'call',
+        '--session',
+        '--dest',
+        'org.freedesktop.FileManager1',
+        '--object-path',
+        call[0] as string,
+        '--method',
+        call[1] as string,
+        `['${uri.replace(/'/g, '%27')}']`,
+        "''",
+      ],
+      { timeout: 5000 },
+    )
+  } catch (err) {
+    if ((err as { code?: unknown }).code !== 'ENOENT') throw err
+    await run(
+      'dbus-send',
+      [
+        '--session',
+        '--print-reply',
+        '--reply-timeout=5000',
+        '--dest=org.freedesktop.FileManager1',
+        ...call,
+        `array:string:${uri}`,
+        'string:',
+      ],
+      { timeout: 6000 },
+    )
+  }
+}
+
+/** Reveals a file in Finder (Explorer on Windows, the file manager on Linux) with it selected. */
 export async function revealPath(
   path: string,
   platform: NodeJS.Platform = process.platform,
@@ -71,6 +139,17 @@ export async function revealPath(
   if (platform === 'win32') {
     await assertExists(path)
     return runExplorer(['/select,', forExplorer(path)])
+  }
+  // Linux: the file selected in the file manager when one answers on D-Bus,
+  // else its folder opened, with nothing selected.
+  if (platform === 'linux') {
+    await assertExists(path)
+    try {
+      await showItem(path)
+    } catch {
+      await xdgOpen(dirname(path))
+    }
+    return
   }
   await run('open', ['-R', path])
 }

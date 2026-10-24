@@ -112,6 +112,8 @@ async function openModel(ort: Ort, path: string): Promise<InferenceSession> {
     logSeverityLevel: 3 as const,
   }
   // DirectML on Windows (any DX12 GPU), CoreML on macOS; CPU is always the way out.
+  // On Linux ONNX Runtime drops the CoreML request itself ("not available:
+  // backend not found", on stderr) and the session runs on the CPU.
   const win = process.platform === 'win32'
   const preferred = win ? (['dml'] as const) : ([{ name: 'coreml', coreMlFlags: 0 }] as const)
   try {

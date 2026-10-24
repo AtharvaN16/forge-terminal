@@ -32,8 +32,11 @@ import {
   CATALOG,
   type CatalogEntry,
   catalogEntry,
+  EXTENSION_PLATFORMS,
   type ExtensionId,
+  machineName,
   offeredOn,
+  osName,
 } from './catalog.js'
 import { withExtensionLock } from './lock.js'
 import { extensionsRoot, type Installed, installed, SAFE_NAME } from './paths.js'
@@ -73,19 +76,16 @@ function supportFor(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
 ): { supported: boolean; reason?: string } {
-  if (platform !== 'darwin' && platform !== 'win32') {
-    return { supported: false, reason: 'extensions need macOS or Windows' }
+  if (!EXTENSION_PLATFORMS.includes(platform)) {
+    return { supported: false, reason: 'extensions need macOS, Windows or Linux' }
   }
   // Only reached by naming one: an entry with no asset for this OS is not listed.
   if (!offeredOn(entry, platform)) {
-    return {
-      supported: false,
-      reason: platform === 'win32' ? 'not available on Windows' : 'not available on macOS',
-    }
+    return { supported: false, reason: `not available on ${osName(platform)}` }
   }
-  if (platform === 'win32') {
+  if (platform !== 'darwin') {
     if (assetFor(entry, platform, arch) === undefined) {
-      return { supported: false, reason: `no build for ${arch} PCs` }
+      return { supported: false, reason: `no build for ${arch} ${machineName(platform)}s` }
     }
     return { supported: true }
   }
@@ -106,9 +106,7 @@ function supportFor(
 function knownEntry(id: string, platform: NodeJS.Platform): CatalogEntry | undefined {
   const entry = catalogEntry(id)
   if (entry === undefined) return undefined
-  return (platform === 'darwin' || platform === 'win32') && !offeredOn(entry, platform)
-    ? undefined
-    : entry
+  return EXTENSION_PLATFORMS.includes(platform) && !offeredOn(entry, platform) ? undefined : entry
 }
 
 function unknownExtension(id: string, platform: NodeJS.Platform) {
@@ -291,7 +289,7 @@ async function installOnly(
   const support = supportFor(entry, platform, arch)
   const asset = assetFor(entry, platform, arch)
   if (!support.supported || asset === undefined) {
-    const fallback = platform === 'win32' ? 'no build for this PC' : 'no build for this Mac'
+    const fallback = `no build for this ${machineName(platform)}`
     throw extensionUnsupported(id, support.reason ?? fallback, platform)
   }
   const current = await installed(entry.id)

@@ -4,7 +4,13 @@ import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import type { Credit } from '../../core/attributions.js'
 import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
 import { formatBytes } from '../../core/units.js'
-import { assetFor, type CatalogEntry, type PlatformKey } from '../../extensions/catalog.js'
+import {
+  assetFor,
+  type CatalogEntry,
+  machineName,
+  osName,
+  type PlatformKey,
+} from '../../extensions/catalog.js'
 import type { LockHolder } from '../../extensions/lock.js'
 import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { BarChip } from '../bar-art.js'
@@ -74,7 +80,7 @@ const SHEETS: Record<
       ['a small helper', 'MIT'],
     ],
   },
-  // Windows only: no Edit row of its own, it is what lets a HEIC open at all.
+  // Off macOS only: no Edit row of its own, it is what lets a HEIC open at all.
   heic: {
     name: 'HEIC photos',
     gives: 'Opens iPhone photos (HEIC)',
@@ -97,33 +103,54 @@ const SHEETS: Record<
       ['zimg', 'WTFPL'],
     ],
   },
+  // whisper-cli, where Apple's recogniser is not there: what lets transcribe hear at all.
+  whisper: {
+    name: 'Speech to text',
+    gives: 'Transcripts of video and sound, made on this computer',
+    again: 'Transcribe will say how to get it again.',
+    parts: [['whisper.cpp and ggml', 'MIT']],
+  },
 }
 
-function sheetFor(entry: CatalogEntry) {
-  return (
-    SHEETS[entry.id] ?? {
-      name: entry.title,
-      gives: entry.summary,
-      again: `${entry.title} will offer to download it again.`,
-      parts: [[entry.licence, '']] as Array<[string, string]>,
-    }
-  )
+/**
+ * Parts where a tool is a different program off macOS: Remove background is
+ * Apple Vision on a Mac, a small model on ONNX Runtime on Windows and Linux.
+ */
+const PARTS_ELSEWHERE: Record<string, Array<[string, string]>> = {
+  'remove-background': [
+    ['U²-Net-p (via rembg)', 'Apache-2.0'],
+    ['ONNX Runtime', 'MIT'],
+  ],
+}
+
+function sheetFor(entry: CatalogEntry, platform: NodeJS.Platform = process.platform) {
+  const sheet = SHEETS[entry.id] ?? {
+    name: entry.title,
+    gives: entry.summary,
+    again: `${entry.title} will offer to download it again.`,
+    parts: [[entry.licence, '']] as Array<[string, string]>,
+  }
+  const elsewhere = platform === 'darwin' ? undefined : PARTS_ELSEWHERE[entry.id]
+  return elsewhere ? { ...sheet, parts: elsewhere } : sheet
 }
 
 /** What an installed tool brought with it, for /about's Attributions: its parts, each doing the tool's job. */
-export function extensionCredits(entry: CatalogEntry): Credit[] {
-  const sheet = sheetFor(entry)
+export function extensionCredits(
+  entry: CatalogEntry,
+  platform: NodeJS.Platform = process.platform,
+): Credit[] {
+  const sheet = sheetFor(entry, platform)
   return sheet.parts.map(([name, licence]) => ({ name, licence, does: sheet.name }))
 }
 
 /** What a Mac needs for the tool, from its builds: Apple Silicon when arm64 is the only one. */
 function needsOf(entry: CatalogEntry, platform: NodeJS.Platform = process.platform): string {
-  if (platform === 'win32') {
-    // The chips Windows builds exist for; a universal build would never be unsupported.
+  if (platform !== 'darwin') {
+    // The chips this OS's builds exist for; a universal build would never be unsupported.
     const chips = (Object.keys(entry.assets) as PlatformKey[])
-      .filter((key) => key.startsWith('win32-'))
-      .map((key) => key.slice('win32-'.length))
-    return `Windows · ${chips.join(' or ')}`
+      .filter((key) => key.startsWith(`${platform}-`))
+      .map((key) => key.slice(platform.length + 1))
+    return `${osName(platform)} · ${chips.join(' or ')}`
   }
   const silicon =
     entry.assets['darwin-universal'] === undefined && entry.assets['darwin-x64'] === undefined
@@ -480,7 +507,7 @@ export function ExtensionsFlow({
   }
 
   const sheet = (s: ExtensionStatus): ReactNode[] => {
-    const T = sheetFor(s.entry)
+    const T = sheetFor(s.entry, platform)
     const name = (
       <Text bold color={fg}>
         {T.name}
@@ -491,7 +518,7 @@ export function ExtensionsFlow({
         name,
         '',
         <Text key="q" bold color={fg}>
-          {`Remove it from this ${platform === 'win32' ? 'PC' : 'Mac'}?`}
+          {`Remove it from this ${machineName(platform)}?`}
         </Text>,
         <Text key="f" color={dim}>{`Frees ${formatBytes(s.installedBytes ?? 0)}.`}</Text>,
         <Text key="a" color={quiet}>

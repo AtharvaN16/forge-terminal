@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { assetFor, CATALOG, offeredHere } from '../../src/extensions/catalog.js'
+import { assetFor, CATALOG, catalogEntry, offeredHere } from '../../src/extensions/catalog.js'
 import { editRows } from '../../src/shell/edit.js'
 
 // macOS 15, whatever this machine runs: the Mac listing is pinned on any CI host.
@@ -48,10 +48,10 @@ describe('the Mac catalogue, as published', () => {
     })
   })
 
-  it("lists yt-dlp as upstream's own pinned release, for macOS 26 and later", async () => {
+  it("lists yt-dlp as upstream's own pinned release, for macOS 13 and later", async () => {
     const yt = (await listExtensions('darwin', 'arm64')).find((s) => s.entry.id === 'yt-dlp')
-    // This file pins macOS 15.
-    expect(yt).toMatchObject({ supported: false, reason: 'needs macOS 26 or later' })
+    // This file pins macOS 15: transcribe works there through whisper.cpp, so links do too.
+    expect(yt).toMatchObject({ supported: true })
     expect(yt && assetFor(yt.entry, 'darwin', 'arm64')).toEqual({
       version: '2026.08.19',
       url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos',
@@ -87,14 +87,73 @@ describe('the Mac catalogue, as published', () => {
 })
 
 describe('by OS', () => {
-  it('remove-background is Mac-only, heic is never offered on a Mac', () => {
-    expect(offeredHere('remove-background', 'darwin')).toBe(true)
-    expect(offeredHere('remove-background', 'win32')).toBe(false)
+  it('remove-background is on every OS, heic is never offered on a Mac', () => {
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(offeredHere('remove-background', os)).toBe(true)
     expect(offeredHere('heic', 'darwin')).toBe(false)
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
 
-  it('Edit has no Remove background row where it is not offered', () => {
+  it("yt-dlp is upstream's own 2026.08.19 build on every OS and chip", () => {
+    const yt = catalogEntry('yt-dlp')
+    if (yt === undefined) throw new Error('yt-dlp is catalogued')
+    const files = {
+      'darwin-arm64': 'yt-dlp_macos',
+      'darwin-x64': 'yt-dlp_macos',
+      'linux-x64': 'yt-dlp_linux',
+      'linux-arm64': 'yt-dlp_linux_aarch64',
+      'win32-x64': 'yt-dlp.exe',
+      'win32-arm64': 'yt-dlp_arm64.exe',
+    }
+    for (const [key, file] of Object.entries(files)) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(yt, platform, arch)
+      expect(asset?.url, key).toBe(
+        `https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/${file}`,
+      )
+      expect(asset?.version).toBe('2026.08.19')
+      // Windows runs a program only by its .exe name.
+      expect(asset?.binary).toBe(platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+    }
+  })
+
+  it('heic is offered on Windows and Linux, one build for any chip', () => {
+    expect(offeredHere('heic', 'win32')).toBe(true)
+    expect(offeredHere('heic', 'linux')).toBe(true)
+    const heic = catalogEntry('heic')
+    if (heic === undefined) throw new Error('heic is catalogued')
+    for (const arch of ['x64', 'arm64']) {
+      expect(assetFor(heic, 'linux', arch)?.url).toMatch(
+        /forge-ext-heic-1\.0\.0-linux-universal\.tar\.gz$/,
+      )
+      expect(assetFor(heic, 'win32', arch)?.url).toMatch(/-win32-universal\.tar\.gz$/)
+    }
+  })
+
+  it('whisper is for Windows and Linux; a Mac gets whisper.cpp from Homebrew instead', async () => {
+    expect(offeredHere('whisper', 'win32')).toBe(true)
+    expect(offeredHere('whisper', 'linux')).toBe(true)
+    expect(offeredHere('whisper', 'darwin')).toBe(false)
+    for (const arch of ['x64', 'arm64']) {
+      const w = (await listExtensions('win32', arch)).find((s) => s.entry.id === 'whisper')
+      expect(w?.supported).toBe(true)
+      expect(w && assetFor(w.entry, 'win32', arch)?.url).toBe(
+        `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-${arch}.tar.gz`,
+      )
+    }
+    const x64 = (await listExtensions('linux', 'x64')).find((s) => s.entry.id === 'whisper')
+    expect(x64?.supported).toBe(true)
+    const linux = (await listExtensions('linux', 'arm64')).find((s) => s.entry.id === 'whisper')
+    expect(linux?.supported).toBe(true)
+    expect(linux && assetFor(linux.entry, 'linux', 'arm64')).toEqual({
+      version: '1.0.0',
+      url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
+      bytes: 1186510,
+      sha256: '873bc017f4496fbaed1fa859e777a182690cd4eb819b25fa9316beb64f206909',
+    })
+  })
+
+  it('Edit has a Remove background row on every OS, and none where it is not offered', () => {
     const photo = {
       kind: 'image',
       path: '/p.png',
@@ -105,7 +164,48 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    expect(editRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
-    expect(editRows(photo, undefined, undefined, 'win32').map((r) => r.id)).not.toContain('cutout')
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).toContain('cutout')
+    expect(editRows(photo, undefined, undefined, 'freebsd').map((r) => r.id)).not.toContain(
+      'cutout',
+    )
+  })
+})
+
+describe('the Windows and Linux catalogue', () => {
+  it('offers boost and remove-background on Linux, both chips, at 1.1.0', async () => {
+    for (const arch of ['x64', 'arm64']) {
+      // Other tools may come to Linux too; these two are this file's.
+      const list = (await listExtensions('linux', arch)).filter(
+        (s) => s.entry.id === 'boost' || s.entry.id === 'remove-background',
+      )
+      expect(list.map((s) => s.entry.id)).toEqual(['boost', 'remove-background'])
+      expect(list.every((s) => s.supported)).toBe(true)
+      for (const s of list) {
+        const asset = assetFor(s.entry, 'linux', arch)
+        expect(asset?.version).toBe('1.1.0')
+        expect(asset?.url).toBe(
+          `${RELEASES}/ext-${s.entry.id}-v1.1.0/forge-ext-${s.entry.id}-1.1.0-linux-${arch}.tar.gz`,
+        )
+        expect(asset?.sha256).toMatch(/^[0-9a-f]{64}$/)
+      }
+    }
+  })
+
+  it('offers remove-background on Windows beside boost and heic, and leaves the Mac its own build', async () => {
+    const list = await listExtensions('win32', 'x64')
+    expect(list.map((s) => s.entry.id)).toEqual(
+      expect.arrayContaining(['boost', 'remove-background', 'heic']),
+    )
+    const cutout = list.find((s) => s.entry.id === 'remove-background')
+    expect(cutout && assetFor(cutout.entry, 'win32', 'arm64')?.url).toBe(
+      `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
+    )
+    expect(cutout && assetFor(cutout.entry, 'darwin', 'arm64')?.version).toBe('1.0.0')
+  })
+
+  it('still tells an Intel Mac there is no boost build', () => {
+    const boost = CATALOG.find((e) => e.id === 'boost')
+    expect(boost && assetFor(boost, 'darwin', 'x64')).toBeUndefined()
   })
 })

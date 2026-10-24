@@ -1,0 +1,18 @@
+{
+  "file": "u2netp.onnx",
+  "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+  "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+  "bytes": 4574861,
+  "rembgMd5": "8e83ca70e441ab06c318d82300c84806",
+  "licence": "Apache-2.0 (U-2-Net, Xuebin Qin et al.); ONNX export distributed by rembg (MIT, Copyright (c) 2020 Daniel Gatis)",
+  "licences": {
+    "u2net": {
+      "url": "https://raw.githubusercontent.com/xuebinqin/U-2-Net/ac7e1c817ecab7c7dff5ce6b1abba61cd213ff29/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "rembg": {
+      "url": "https://raw.githubusercontent.com/danielgatis/rembg/7fb6683169d588f653281d53c3c258838194c950/LICENSE.txt",
+      "sha256": "90a3215072968fd304669c5389f04f1274a587abdd0507d99dead0f5511f8999"
+    }
+  }
+}

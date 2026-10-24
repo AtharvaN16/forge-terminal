@@ -8,6 +8,11 @@ import { transcriptMarkdown } from '../../src/core/transcribe/markdown.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makePng, makeTempDir } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
+
+// These are the Mac's words; Linux, Windows and a Mac without Apple's recogniser have
+// their own blocks at the end.
+pinPlatform('darwin')
 
 /** The first bytes of an MP4: what `sniffKind` reads it by. */
 const MP4 = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0])
@@ -210,9 +215,17 @@ describe('forge transcribe <link>', () => {
   it('says yt-dlp is needed when it is not installed', async () => {
     await setUp()
     process.env.XDG_CONFIG_HOME = await makeTempDir()
-    const r = await run(intent(LINK))
-    expect(r.code).toBe(1)
-    expect(r.err[0]).toBe('✕ Extension not installed')
+    // Nor one of the user's own: this machine's PATH may well have one.
+    const before = process.env.FORGE_YT_DLP
+    process.env.FORGE_YT_DLP = join(process.env.XDG_CONFIG_HOME, 'missing')
+    try {
+      const r = await run(intent(LINK))
+      expect(r.code).toBe(1)
+      expect(r.err[0]).toBe('✕ Extension not installed')
+    } finally {
+      if (before === undefined) delete process.env.FORGE_YT_DLP
+      else process.env.FORGE_YT_DLP = before
+    }
   })
 
   it('stops before transcribing when the name is taken', async () => {
@@ -224,5 +237,117 @@ describe('forge transcribe <link>', () => {
     expect(r.code).toBe(1)
     expect(r.err[0]).toBe('✕ File already exists')
     expect(existsSync(join(fake.dir, 'argv.json')) && (await argv(fake.dir))[0]).not.toBe('run')
+  })
+})
+
+describe('forge transcribe on Linux', () => {
+  pinPlatform('linux')
+
+  it('writes the transcript without a warning: Linux never has notes', async () => {
+    const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en', notes: 'unsupported' }] },
+      run: { lines: [RESULT] },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    const dir = await makeTempDir()
+    const input = join(dir, 'talk.mp4')
+    await writeFile(input, MP4)
+    const { code, out, err } = await run(intent(input))
+    expect(code).toBe(0)
+    expect(err).toEqual([])
+    expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
+  })
+
+  it('refuses --to notes in Linux words', async () => {
+    const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en', notes: 'unsupported' }] },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    const dir = await makeTempDir()
+    const input = join(dir, 'talk.mp4')
+    await writeFile(input, MP4)
+    const { code, err } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('which this computer does not have')
+  })
+
+  it('names whisper.cpp and ffmpeg when there is no speech', async () => {
+    const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: false, locale: 'en', notes: 'unsupported' }] },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    const dir = await makeTempDir()
+    const input = join(dir, 'talk.mp4')
+    await writeFile(input, MP4)
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('whisper.cpp')
+  })
+})
+
+/** The whisper helper's answers (no notes, ever), and a video to give it. */
+async function whisperSetUp(status: object) {
+  const fake = await fakeTranscribeHelper({
+    status: { lines: [{ ok: true, locale: 'en', notes: 'unsupported', ...status }] },
+    run: { lines: [RESULT] },
+  })
+  process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+  const dir = await makeTempDir()
+  const input = join(dir, 'talk.mp4')
+  await writeFile(input, MP4)
+  return { dir, input }
+}
+
+describe('forge transcribe on Windows', () => {
+  pinPlatform('win32')
+
+  it('writes the transcript without a warning: there are no notes to miss', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, out, err } = await run(intent(input))
+    expect(code).toBe(0)
+    expect(err).toEqual([])
+    expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
+  })
+
+  it('refuses --to notes: Apple Intelligence, which this computer does not have', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain(
+      'Summary and notes need Apple Intelligence, which this computer does not have.',
+    )
+  })
+
+  it('names the whisper extension, and ffmpeg when that is missing too', async () => {
+    const { input } = await whisperSetUp({ speech: false, missing: ['whisper', 'ffmpeg'] })
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('forge extensions add whisper')
+    expect(err.join('\n')).toContain('winget install ffmpeg')
+  })
+})
+
+describe("forge transcribe on a Mac without Apple's recogniser (Intel, before macOS 26)", () => {
+  pinPlatform('darwin')
+
+  it('writes the transcript without the Apple Intelligence warning', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(0)
+    expect(err).toEqual([])
+  })
+
+  it('refuses --to notes: Apple Intelligence, which this Mac does not have', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('which this Mac does not have')
+  })
+
+  it('says how to get whisper.cpp from Homebrew', async () => {
+    const { input } = await whisperSetUp({ speech: false, missing: ['whisper'] })
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('brew install whisper-cpp')
   })
 })

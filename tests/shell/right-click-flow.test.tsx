@@ -94,6 +94,16 @@ describe('/right-click (S4)', () => {
     expect(frame).toContain('npm uninstall won’t remove Forge from your PC’s right-click menu.')
   })
 
+  it('speaks of the file manager’s right-click menu on Linux', async () => {
+    const { lastFrame } = screen(false, 'linux')
+    await settle()
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ')
+    expect(frame).toContain('○ Forge is not in the right-click menu')
+    expect(frame).toContain(
+      'npm uninstall won’t remove Forge from your file manager’s right-click menu.',
+    )
+  })
+
   it('closes on esc', async () => {
     const { stdin, closed } = screen(true)
     await settle()

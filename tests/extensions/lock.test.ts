@@ -62,7 +62,8 @@ describe('extension lock', () => {
   it('refuses to remove a tool while a job holds it', async () => {
     let code = ''
     await withExtensionLock('boost', async () => {
-      code = await removeExtension('boost').then(
+      // An OS boost is offered on, whatever runs the tests.
+      code = await removeExtension('boost', 'darwin').then(
         () => 'removed',
         (e) => (isForgeError(e) ? e.code : String(e)),
       )

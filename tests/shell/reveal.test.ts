@@ -1,11 +1,12 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { access } from 'node:fs/promises'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { openPath, openUrl, revealLabel, revealPath } from '../../src/shell/reveal.js'
 
 // A factory, not automock: automock keeps execFile's util.promisify.custom as a
 // stub returning undefined, which would bypass the callback this test drives.
-vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
+vi.mock('node:child_process', () => ({ execFile: vi.fn(), spawn: vi.fn() }))
 // On Windows the file is looked for first; these paths exist on no machine.
 vi.mock('node:fs/promises', async (orig) => ({
   ...(await orig<typeof import('node:fs/promises')>()),
@@ -21,10 +22,22 @@ function finishWith(err?: Error & { code?: unknown }): void {
 }
 const calls = () => vi.mocked(execFile).mock.calls
 
+/** Makes the mocked spawn start the program, or fail to with `err`. */
+function spawnWith(err?: Error) {
+  vi.mocked(spawn).mockImplementation((() => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+    process.nextTick(() => (err ? child.emit('error', err) : child.emit('spawn')))
+    return child
+  }) as never)
+}
+const spawned = () => vi.mocked(spawn).mock.calls.map((c) => c.slice(0, 2))
+
 beforeEach(() => {
   vi.mocked(access).mockReset().mockResolvedValue(undefined)
   vi.mocked(execFile).mockReset()
+  vi.mocked(spawn).mockReset()
   finishWith()
+  spawnWith()
 })
 
 describe('open and reveal on macOS', () => {
@@ -66,9 +79,62 @@ describe('open and reveal on Windows', () => {
   })
 })
 
+describe('open and reveal on Linux', () => {
+  it('opens with xdg-open, let go rather than waited on, once the file is found', async () => {
+    await openPath('/a/b.png', 'linux')
+    expect(spawned()).toEqual([['xdg-open', ['/a/b.png']]])
+    expect(vi.mocked(spawn).mock.calls[0]?.[2]).toMatchObject({ detached: true, stdio: 'ignore' })
+    expect(access).toHaveBeenCalledWith('/a/b.png')
+  })
+
+  it('fails the way open does for a file that is not there', async () => {
+    vi.mocked(access).mockRejectedValue(new Error('ENOENT'))
+    await expect(openPath('/gone.png', 'linux')).rejects.toThrow(
+      'The file /gone.png does not exist.',
+    )
+    expect(spawned()).toEqual([])
+  })
+
+  it('opens a web address with xdg-open, and fails when xdg-open is missing', async () => {
+    await openUrl('https://atharvanayak.design/', 'linux')
+    expect(spawned()).toEqual([['xdg-open', ['https://atharvanayak.design/']]])
+    spawnWith(Object.assign(new Error('spawn xdg-open ENOENT'), { code: 'ENOENT' }))
+    await expect(openUrl('https://x.y/', 'linux')).rejects.toThrow('ENOENT')
+  })
+
+  it('asks the file manager over D-Bus to show the file selected', async () => {
+    await revealPath('/a b/c,d.png', 'linux')
+    const [cmd, args] = calls()[0] ?? []
+    expect(cmd).toBe('gdbus')
+    expect(args).toContain('org.freedesktop.FileManager1.ShowItems')
+    expect(args).toContain("['file:///a%20b/c%2Cd.png']")
+    expect(spawned()).toEqual([])
+  })
+
+  it('uses dbus-send where gdbus is not installed', async () => {
+    let n = 0
+    vi.mocked(execFile).mockImplementation(((...a: unknown[]) => {
+      const err =
+        n++ === 0 ? Object.assign(new Error('spawn gdbus ENOENT'), { code: 'ENOENT' }) : null
+      ;(a[a.length - 1] as Done)(err, { stdout: '', stderr: '' })
+    }) as never)
+    await revealPath('/a/b.png', 'linux')
+    expect(calls()[1]?.[0]).toBe('dbus-send')
+    expect(calls()[1]?.[1]).toContain('array:string:file:///a/b.png')
+    expect(spawned()).toEqual([])
+  })
+
+  it('opens the folder instead when no file manager answers', async () => {
+    finishWith(Object.assign(new Error('ServiceUnknown'), { code: 1 }))
+    await revealPath('/a/b.png', 'linux')
+    expect(spawned()).toEqual([['xdg-open', ['/a']]])
+  })
+})
+
 describe('revealLabel', () => {
   it('names the platform file manager', () => {
     expect(revealLabel('darwin')).toBe('Show in Finder')
     expect(revealLabel('win32')).toBe('Show in Explorer')
+    expect(revealLabel('linux')).toBe('Show in file manager')
   })
 })

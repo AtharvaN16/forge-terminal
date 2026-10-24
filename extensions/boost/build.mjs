@@ -2,7 +2,7 @@
 /**
  * Builds the boost payload directory.
  *
- *   node extensions/boost/build.mjs --arch arm64|x64 --out <dir> [--platform darwin|win32]
+ *   node extensions/boost/build.mjs --arch arm64|x64 --out <dir> [--platform darwin|win32|linux]
  *                                   [--pth <file> | --onnx <file>] [--runner-only]
  *
  * <dir> receives:
@@ -10,6 +10,7 @@
  *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/<platform>/<arch>/, loaded from beside runner.mjs
  *   libonnxruntime.*.dylib      darwin: the binding links it via @loader_path
  *   onnxruntime.dll, DirectML.dll  win32: the binding loads them from the same directory
+ *   libonnxruntime.so.1         linux: the binding's RUNPATH is $ORIGIN, so it is found beside it
  *   realesr-general-x4v3.onnx   upstream .pth (pinned by sha256) converted by convert.py, output pinned too
  *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT), DirectML's terms (win32 only)
  *                               and ONNX Runtime's third-party notices
@@ -18,7 +19,7 @@
  * time. --pth uses a local copy of the upstream checkpoint (still verified).
  * --onnx uses an already-converted model instead of converting a .pth, checked against
  * the same pinned output sha256; the Windows build takes the macOS build's output this
- * way, so one conversion backs every archive and CI needs no Python on Windows.
+ * way, so one conversion backs every archive and CI needs no Python on Windows or Linux.
  * --runner-only writes just runner.mjs and the native files (no network), for tests.
  * manifest.json is not written here — scripts/package-extension.mjs does that.
  */
@@ -36,7 +37,7 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -44,7 +45,7 @@ const cacheDir = join(here, '.cache')
 const model = JSON.parse(readFileSync(join(here, 'model.json'), 'utf8'))
 const require = createRequire(import.meta.url)
 
-const ORT_VERSION = '1.23.2'
+export const ORT_VERSION = '1.23.2'
 /**
  * win32 ships exactly these, not the whole directory. It also holds dxcompiler.dll and
  * dxil.dll, which are only ONNX Runtime's optional shader-compiler path for its WebGPU
@@ -55,7 +56,7 @@ const ORT_VERSION = '1.23.2'
 const WIN32_NATIVE = ['onnxruntime_binding.node', 'onnxruntime.dll', 'DirectML.dll']
 /** The DirectML.dll inside onnxruntime-node 1.23.2's win32 binaries (its version resource). */
 const DIRECTML_VERSION = '1.15.4'
-const ORT_NOTICES = {
+export const ORT_NOTICES = {
   url: `https://raw.githubusercontent.com/microsoft/onnxruntime/v${ORT_VERSION}/ThirdPartyNotices.txt`,
   sha256: 'e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc',
 }
@@ -76,17 +77,17 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${a}`)
   }
   if (out.arch !== 'arm64' && out.arch !== 'x64') throw new Error('--arch must be arm64 or x64')
-  if (out.platform !== 'darwin' && out.platform !== 'win32')
-    throw new Error('--platform must be darwin or win32')
+  if (!['darwin', 'win32', 'linux'].includes(out.platform))
+    throw new Error('--platform must be darwin, win32 or linux')
   if (out.pth && out.onnx) throw new Error('--pth and --onnx are mutually exclusive')
   if (!out.out) throw new Error('--out <dir> is required')
   return out
 }
 
-const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
+export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 
 /** Returns the cached file at `name`, downloading it first if needed. Always verified. */
-async function pinned(name, url, expected) {
+export async function pinned(name, url, expected) {
   mkdirSync(cacheDir, { recursive: true })
   const path = join(cacheDir, name)
   if (!existsSync(path)) {
@@ -132,7 +133,7 @@ async function modelFile(localPth, localOnnx) {
 }
 
 /** onnxruntime-node loads its binding from ../bin/napi-v6/<platform>/<arch>/; point it beside runner.mjs instead. */
-const bindingBesideRunner = {
+export const bindingBesideRunner = {
   name: 'ort-binding-beside-runner',
   setup(b) {
     b.onResolve({ filter: /onnxruntime_binding\.node$/ }, (args) => ({
@@ -185,6 +186,8 @@ async function main() {
   )
   if (!existsSync(nativeDir))
     throw new Error(`onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`)
+  // darwin and linux ship the whole directory: the binding and the one ONNX
+  // Runtime library it links (libonnxruntime.1.23.2.dylib / libonnxruntime.so.1).
   const native = args.platform === 'win32' ? WIN32_NATIVE : readdirSync(nativeDir)
   for (const f of native) copyFileSync(join(nativeDir, f), join(out, f))
 
@@ -287,7 +290,10 @@ ONNX Runtime third-party notices (ThirdPartyNotices.txt, v${ORT_VERSION})
 ${ortThirdParty}`
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err)
-  process.exit(1)
-})
+// Run as a script; the cutout build (extensions/remove-background-onnx) imports the helpers above.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : err)
+    process.exit(1)
+  })
+}

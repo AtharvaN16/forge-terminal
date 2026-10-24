@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { installMenu, type MenuEnv, readState } from '../../src/menu/install.js'
 import { ensureMenu, rememberedTerminal, rememberTerminal, resync } from '../../src/menu/setup.js'
@@ -103,7 +103,7 @@ describe('ensureMenu', () => {
   })
 
   it('does nothing where there is no menu to add to', async () => {
-    expect(await ensureMenu(env({ platform: 'linux' }), { global: true })).toBeUndefined()
+    expect(await ensureMenu(env({ platform: 'freebsd' }), { global: true })).toBeUndefined()
   })
 })
 
@@ -163,5 +163,58 @@ describe('rememberTerminal', () => {
     rememberTerminal(e, { TERM_PROGRAM: 'ghostty' })
     rememberTerminal(e, {})
     expect(rememberedTerminal(e)).toBe('ghostty')
+  })
+})
+
+describe('on Linux', () => {
+  const linux = () => {
+    const e = env({ platform: 'linux' })
+    const root = dirname(e.home)
+    return {
+      ...e,
+      xdgDataHome: join(root, 'data'),
+      xdgConfigHome: join(root, 'cfg'),
+      path: join(root, 'bin'),
+    }
+  }
+
+  it('sets the menu up the first time, in the file managers, and says so', async () => {
+    const e = linux()
+    expect(await ensureMenu(e, { global: true })).toBe('Added Forge to the right-click menu')
+    expect(existsSync(join(e.xdgDataHome, 'nautilus', 'scripts', 'Forge', 'Open Forge'))).toBe(true)
+    expect(await ensureMenu(e, { global: true })).toBeUndefined()
+  })
+
+  it('takes it out at the next start when switched off', async () => {
+    const e = linux()
+    await ensureMenu(e, { global: true })
+    await ensureMenu(e, { global: true, enabled: false })
+    expect(existsSync(join(e.xdgDataHome, 'nautilus'))).toBe(false)
+    expect(readState(e)).toBeUndefined()
+  })
+
+  it('keeps the terminal Forge was run in, by the variable each terminal sets', () => {
+    const cases: [NodeJS.ProcessEnv, string][] = [
+      [{ GNOME_TERMINAL_SCREEN: '/org/gnome/Terminal/screen/1' }, 'gnome-terminal'],
+      [{ KONSOLE_VERSION: '240202' }, 'konsole'],
+      [{ KITTY_WINDOW_ID: '1' }, 'kitty'],
+      [{ ALACRITTY_WINDOW_ID: '1' }, 'alacritty'],
+      [{ TERM_PROGRAM: 'WezTerm' }, 'wezterm'],
+      [{ TERM_PROGRAM: 'ghostty' }, 'ghostty'],
+      [{ XTERM_VERSION: 'XTerm(379)' }, 'xterm'],
+    ]
+    for (const [vars, name] of cases) {
+      const e = linux()
+      rememberTerminal(e, vars)
+      expect(rememberedTerminal(e)).toBe(name)
+    }
+  })
+
+  it('reads nothing inside VS Code or tmux, where those may be left over', () => {
+    const e = linux()
+    rememberTerminal(e, { KONSOLE_VERSION: '1' })
+    rememberTerminal(e, { TERM_PROGRAM: 'vscode', GNOME_TERMINAL_SCREEN: 'x' })
+    rememberTerminal(e, { TMUX: '/tmp/tmux', KITTY_WINDOW_ID: '1' })
+    expect(rememberedTerminal(e)).toBe('konsole')
   })
 })
