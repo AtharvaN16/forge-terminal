@@ -1,7 +1,10 @@
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
+import { linuxBackends } from '../utils/pasteboard.js'
 
 /**
- * The system clipboard, via macOS's own `pbcopy` / `pbpaste`.
+ * The system clipboard as text: macOS's own `pbcopy` / `pbpaste`, Windows'
+ * `clip.exe` and PowerShell, and on Linux wl-clipboard (Wayland) or xclip or
+ * xsel (X11).
  *
  * `execFile`, never `execSync` with an interpolated string: no shell means no
  * quoting surface for a path that contains a quote, a backtick, or a newline —
@@ -26,8 +29,16 @@ const env = () => ({ ...process.env, LANG: process.env.LANG ?? 'en_US.UTF-8' })
  * `.catch` is not optional though — an unhandled rejection would take the
  * process down, which is the one outcome worse than a failed copy.
  */
-export function copy(text: string, platform: NodeJS.Platform = process.platform): void {
+export function copy(
+  text: string,
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env,
+): void {
   if (text === '') return
+  if (platform === 'linux') {
+    copyOnLinux(Buffer.from(text, 'utf8'), linuxText(environment, 'copy'))
+    return
+  }
   if (platform === 'win32') {
     try {
       const child = execFile('clip.exe', () => {})
@@ -59,7 +70,11 @@ export function copy(text: string, platform: NodeJS.Platform = process.platform)
  * that returns in single-digit milliseconds, so this does not stall the UI in
  * any way a person can perceive.
  */
-export function paste(platform: NodeJS.Platform = process.platform): string {
+export function paste(
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  if (platform === 'linux') return pasteOnLinux(linuxText(environment, 'paste'))
   if (platform === 'win32') {
     try {
       const out = execFileSync(
@@ -96,4 +111,77 @@ export function paste(platform: NodeJS.Platform = process.platform): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * The commands for Linux's clipboard, the desktop's own first (as the image
+ * clipboard picks them, `linuxBackends`). X11 has two common ones; xclip is
+ * tried first, xsel where it is the one installed.
+ *
+ * Paste asks for text by name: given no type, `wl-paste` hands over whatever
+ * is held, and a copied picture would land in the field as bytes.
+ */
+export function linuxText(
+  environment: NodeJS.ProcessEnv,
+  direction: 'copy' | 'paste',
+): [string, string[]][] {
+  return linuxBackends(environment).flatMap((b): [string, string[]][] =>
+    b.name === 'wayland'
+      ? direction === 'copy'
+        ? [['wl-copy', ['--type', 'text/plain;charset=utf-8']]]
+        : [['wl-paste', ['--no-newline', '--type', 'text']]]
+      : direction === 'copy'
+        ? [
+            ['xclip', ['-selection', 'clipboard', '-i']],
+            ['xsel', ['--clipboard', '--input']],
+          ]
+        : [
+            ['xclip', ['-selection', 'clipboard', '-o']],
+            ['xsel', ['--clipboard', '--output']],
+          ],
+  )
+}
+
+/**
+ * `spawn` with no pipe back, not `execFile`: wl-copy, xclip and xsel all fork
+ * and leave a child holding the copy until something else is copied, and a
+ * pipe that child inherited would keep Forge running as long. Detached, so
+ * the copy outlives the terminal, as it does on a Mac. A command that is not
+ * installed moves on to the next; none at all is the same quiet failure as a
+ * Mac without pbcopy.
+ */
+function copyOnLinux(bytes: Buffer, commands: [string, string[]][]): void {
+  const [first, ...rest] = commands
+  if (!first) return
+  try {
+    const child = spawn(first[0], first[1], { stdio: ['pipe', 'ignore', 'ignore'], detached: true })
+    child.on('error', (e: NodeJS.ErrnoException) => {
+      if (e.code === 'ENOENT') copyOnLinux(bytes, rest)
+    })
+    child.stdin?.on('error', () => {})
+    child.stdin?.end(bytes)
+    child.unref()
+  } catch {
+    copyOnLinux(bytes, rest)
+  }
+}
+
+function pasteOnLinux(commands: [string, string[]][]): string {
+  for (const [cmd, args] of commands) {
+    try {
+      const out = execFileSync(cmd, args, {
+        encoding: 'buffer',
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 2000,
+        // Not 'pipe' for stdin: xclip -o would otherwise wait on it.
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      return out.toString('utf8')
+    } catch (e) {
+      // Installed but holding no text: that is the answer. Not installed:
+      // the next command may be.
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return ''
+    }
+  }
+  return ''
 }

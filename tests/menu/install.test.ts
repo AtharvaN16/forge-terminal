@@ -1,6 +1,15 @@
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { installMenu, isInstalled, type MenuEnv, removeMenu } from '../../src/menu/install.js'
@@ -198,9 +207,196 @@ describe('installMenu on Windows', () => {
 
 describe('installMenu elsewhere', () => {
   it('does nothing on a platform with no menu to add to', async () => {
-    const { e, calls } = env('linux' as 'darwin')
+    const { e, calls } = env('freebsd' as 'darwin')
     await installMenu(e)
     expect(calls).toEqual([])
     expect(isInstalled(e)).toBe(false)
   })
 })
+
+describe('installMenu on Linux', () => {
+  /** A Linux home in a temp folder, its XDG folders passed in as the shell had them. */
+  function linux(over: Partial<MenuEnv> & { thunar?: boolean } = {}) {
+    const { thunar, ...rest } = over
+    const r = env('linux' as 'darwin', rest)
+    const root = dirname(r.e.home)
+    const bin = join(root, 'bin')
+    mkdirSync(bin, { recursive: true })
+    if (thunar) {
+      writeFileSync(join(bin, 'thunar'), '#!/bin/sh\n')
+      chmodSync(join(bin, 'thunar'), 0o755)
+    }
+    const e: MenuEnv = {
+      ...r.e,
+      platform: 'linux',
+      xdgDataHome: join(root, 'data'),
+      xdgConfigHome: join(root, 'cfg'),
+      xdgConfigDirs: join(root, 'etc-xdg'),
+      path: bin,
+      ...rest,
+    }
+    return {
+      e,
+      calls: r.calls,
+      root,
+      nautilus: join(root, 'data', 'nautilus', 'scripts', 'Forge'),
+      nemo: join(root, 'data', 'nemo', 'actions'),
+      dolphin: join(root, 'data', 'kio', 'servicemenus'),
+      uca: join(root, 'cfg', 'Thunar', 'uca.xml'),
+      systemUca: join(root, 'etc-xdg', 'Thunar', 'uca.xml'),
+    }
+  }
+  const exec = (p: string) => (statSync(p).mode & 0o111) !== 0
+  /** Every file under `dir`, relative to it. */
+  const tree = (dir: string): string[] =>
+    existsSync(dir)
+      ? (readdirSync(dir, { recursive: true }) as string[])
+          .filter((f) => statSync(join(dir, f)).isFile())
+          .sort()
+      : []
+
+  it('writes a Nautilus script per item in a Forge folder, executable, calling the launcher', async () => {
+    const { e, nautilus } = linux()
+    await installMenu(e)
+    expect(tree(nautilus)).toEqual([
+      'Compress in Forge',
+      'Convert in Forge',
+      'Open Forge',
+      'Open in Forge',
+      'Sharpen in Forge',
+    ])
+    const script = join(nautilus, 'Convert in Forge')
+    if (process.platform !== 'win32') expect(exec(script)).toBe(true)
+    expect(readFileSync(script, 'utf8')).toContain(`'${join(e.menuDir, 'run')}' convert "$@"`)
+  })
+
+  it('writes a Nemo action per item and a Dolphin menu per kind, the menus executable for KDE 6', async () => {
+    const { e, nemo, dolphin } = linux()
+    await installMenu(e)
+    expect(tree(nemo)).toEqual([
+      'forge-1-open.nemo_action',
+      'forge-2-convert.nemo_action',
+      'forge-3-compress.nemo_action',
+      'forge-4-sharpen.nemo_action',
+      'forge-5-open-pdf.nemo_action',
+    ])
+    expect(tree(dolphin)).toEqual([
+      'forge-folder.desktop',
+      'forge-image.desktop',
+      'forge-pdf.desktop',
+    ])
+    if (process.platform !== 'win32') expect(exec(join(dolphin, 'forge-image.desktop'))).toBe(true)
+  })
+
+  it('writes an executable launcher and an icon per colour into its own folder', async () => {
+    const { e } = linux()
+    await installMenu(e)
+    const launcher = join(e.menuDir, 'run')
+    if (process.platform !== 'win32') expect(exec(launcher)).toBe(true)
+    expect(readFileSync(launcher, 'utf8')).toContain('menu run "$@"')
+    for (const paint of ['forge', 'convert', 'compress', 'edit', 'pdf'])
+      expect((await sharp(join(e.menuDir, `${paint}.png`)).metadata()).format).toBe('png')
+    expect(isInstalled(e)).toBe(true)
+  })
+
+  it('runs nothing: there is no registry or service list to tell', async () => {
+    const { e, calls } = linux()
+    await installMenu(e)
+    expect(calls).toEqual([])
+  })
+
+  it('takes Sharpen out everywhere once Boost has gone', async () => {
+    const { e, nautilus, nemo, dolphin, uca } = linux({ thunar: true })
+    await installMenu(e)
+    await installMenu({ ...e, sharpen: false })
+    expect(existsSync(join(nautilus, 'Sharpen in Forge'))).toBe(false)
+    expect(existsSync(join(nemo, 'forge-4-sharpen.nemo_action'))).toBe(false)
+    expect(readFileSync(join(dolphin, 'forge-image.desktop'), 'utf8')).not.toContain('sharpen')
+    expect(readFileSync(uca, 'utf8')).not.toContain('sharpen')
+    expect(existsSync(join(nautilus, 'Convert in Forge'))).toBe(true)
+  })
+
+  it('leaves Thunar alone when it is not installed', async () => {
+    const { e, uca } = linux()
+    await installMenu(e)
+    expect(existsSync(uca)).toBe(false)
+  })
+
+  it('starts a new uca.xml from the actions Thunar ships with, so they are not lost', async () => {
+    const { e, uca, systemUca } = linux({ thunar: true })
+    mkdirSync(dirname(systemUca), { recursive: true })
+    writeFileSync(systemUca, USER_UCA)
+    await installMenu(e)
+    const text = readFileSync(uca, 'utf8')
+    expect(text).toContain('Open Terminal Here')
+    expect(text).toContain('<unique-id>forge-terminal-menu-convert</unique-id>')
+  })
+
+  it('merges into the user’s own uca.xml and takes back out only its own', async () => {
+    const { e, uca } = linux()
+    mkdirSync(dirname(uca), { recursive: true })
+    writeFileSync(uca, USER_UCA)
+    await installMenu(e)
+    await installMenu(e)
+    const text = readFileSync(uca, 'utf8')
+    expect(text.match(/forge-terminal-menu-open</g)).toHaveLength(1)
+    await removeMenu(e)
+    expect(readFileSync(uca, 'utf8')).toBe(USER_UCA)
+  })
+
+  it('leaves a uca.xml it cannot read exactly as it was', async () => {
+    const { e, uca } = linux({ thunar: true })
+    mkdirSync(dirname(uca), { recursive: true })
+    writeFileSync(uca, 'garbage')
+    await installMenu(e)
+    expect(readFileSync(uca, 'utf8')).toBe('garbage')
+  })
+
+  it('removes everything it wrote, and the folders it made, and nothing else', async () => {
+    const { e, root, nautilus, nemo, dolphin } = linux({ thunar: true })
+    // The user's own, beside Forge's: a script, a Nemo action, a service menu.
+    mkdirSync(join(root, 'data', 'nautilus', 'scripts'), { recursive: true })
+    writeFileSync(join(root, 'data', 'nautilus', 'scripts', 'Mine'), '#!/bin/sh\n')
+    mkdirSync(nemo, { recursive: true })
+    writeFileSync(join(nemo, 'mine.nemo_action'), '[Nemo Action]\n')
+    await installMenu(e)
+    // Named like one of Forge's, but not marked as Forge's.
+    writeFileSync(join(dolphin, 'forge-pdf.desktop'), '[Desktop Entry]\n')
+    await removeMenu(e)
+    expect(existsSync(e.menuDir)).toBe(false)
+    expect(existsSync(nautilus)).toBe(false)
+    expect(tree(join(root, 'data'))).toEqual([
+      'kio/servicemenus/forge-pdf.desktop',
+      'nautilus/scripts/Mine',
+      'nemo/actions/mine.nemo_action',
+    ])
+    expect(existsSync(join(root, 'cfg', 'Thunar'))).toBe(false)
+    expect(isInstalled(e)).toBe(false)
+  })
+
+  it('leaves no trace in a home that had none of the file managers’ folders', async () => {
+    const { e, root } = linux({ thunar: true })
+    await installMenu(e)
+    await removeMenu(e)
+    expect(existsSync(join(root, 'data'))).toBe(false)
+    expect(existsSync(join(root, 'cfg'))).toBe(false)
+  })
+
+  it('removes what is there even when it was never installed', async () => {
+    const { e } = linux()
+    await expect(removeMenu(e)).resolves.toBeUndefined()
+  })
+})
+
+const USER_UCA = `<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+<action>
+	<icon>utilities-terminal</icon>
+	<name>Open Terminal Here</name>
+	<unique-id>1234-1</unique-id>
+	<command>exo-open --working-directory %f --launch TerminalEmulator</command>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+</actions>
+`

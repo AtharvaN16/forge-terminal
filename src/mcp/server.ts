@@ -34,7 +34,7 @@ import {
 /** What a client tells its model about Forge as a whole. */
 export function instructionsFor(platform: NodeJS.Platform = process.platform): string {
   return [
-    `Forge converts, compresses and edits files on this ${platform === 'win32' ? 'PC' : 'Mac'}, locally.`,
+    `Forge converts, compresses and edits files on this ${platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'}, locally.`,
     'Every path must be absolute.',
     'Call forge_probe first: it says what a file is, every format it can become, and every action that applies.',
     'Nothing is overwritten unless you pass overwrite: true — only do that when the user asked to replace a file.',
@@ -124,7 +124,7 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Compress the copied image',
       description:
-        'The image on the macOS clipboard, made smaller (quality or maxSize) or converted (to), and put back on the clipboard, so the next paste is the result. The result is also kept as a file, linked. A newer copy is never overwritten: if something else was copied meanwhile, the result goes to the default folder instead. A compression that would come out larger is refused. undo: true puts the last original back.',
+        'The image on the clipboard, made smaller (quality or maxSize) or converted (to), and put back on the clipboard, so the next paste is the result. The result is also kept as a file, linked. A newer copy is never overwritten: if something else was copied meanwhile, the result goes to the default folder instead. A compression that would come out larger is refused. undo: true puts the last original back.',
       inputSchema: ClipInput,
       outputSchema: ClipOutput,
       annotations: { ...WRITES, destructiveHint: true },

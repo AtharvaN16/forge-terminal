@@ -3,7 +3,7 @@ import { chmod, copyFile, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
-import { fetchSound, type YouTubeEvent } from '../../src/engines/youtube.js'
+import { fetchSound, type YouTubeEvent, ytDlpMissing } from '../../src/engines/youtube.js'
 import { setChosenPath } from '../../src/extensions/own.js'
 import { installed } from '../../src/extensions/paths.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
@@ -142,6 +142,64 @@ describe('fetchSound', () => {
 
   it('says yt-dlp is not installed', async () => {
     process.env.XDG_CONFIG_HOME = await makeTempDir()
-    expect(await codeOf(fetchSound(URL))).toMatch(/^extension-missing: /)
+    // No extension, and the user's own yt-dlp pointed at nothing.
+    const before = process.env.FORGE_YT_DLP
+    process.env.FORGE_YT_DLP = join(process.env.XDG_CONFIG_HOME, 'missing')
+    try {
+      expect(await codeOf(fetchSound(URL))).toMatch(/^extension-missing: /)
+    } finally {
+      if (before === undefined) delete process.env.FORGE_YT_DLP
+      else process.env.FORGE_YT_DLP = before
+    }
+  })
+
+  it.skipIf(process.platform !== 'linux')(
+    "uses the user's yt-dlp on Linux, and never updates it",
+    async () => {
+      const yt = await fakeYtDlp({ error: 'Some new YouTube change', fixedByUpdate: true })
+      // The same script, as the user's own: no extension installed.
+      process.env.XDG_CONFIG_HOME = await makeTempDir()
+      const before = process.env.FORGE_YT_DLP
+      process.env.FORGE_YT_DLP = join(
+        yt.home,
+        'forge',
+        'extensions',
+        'yt-dlp',
+        '2026.08.19',
+        'yt-dlp',
+      )
+      try {
+        expect(await codeOf(fetchSound(URL))).toMatch(/^link-unavailable: yt-dlp could not fetch/)
+        const calls = (await readFile(yt.calls, 'utf8')).trim().split('\n')
+        expect(calls).toHaveLength(1)
+        expect(calls[0]).not.toContain('--update')
+      } finally {
+        if (before === undefined) delete process.env.FORGE_YT_DLP
+        else process.env.FORGE_YT_DLP = before
+      }
+    },
+  )
+})
+
+describe('no yt-dlp', () => {
+  it('points at the extension wherever the catalogue has a build', () => {
+    for (const [platform, arch] of [
+      ['darwin', 'arm64'],
+      ['darwin', 'x64'],
+      ['linux', 'x64'],
+      ['linux', 'arm64'],
+      ['win32', 'x64'],
+      ['win32', 'arm64'],
+    ] as const) {
+      expect(ytDlpMissing(platform, arch).code, `${platform}-${arch}`).toBe('extension-missing')
+    }
+  })
+
+  it("asks for the user's own where there is no build", () => {
+    const e = ytDlpMissing('linux', 'ia32')
+    expect(e.code).toBe('link-unavailable')
+    expect(e.detail).toBe('YouTube links on Linux need yt-dlp on your PATH.')
+    expect(e.hint).toMatch(/PATH/)
+    expect(ytDlpMissing('freebsd', 'x64').detail).toMatch(/^YouTube links on this system need/)
   })
 })

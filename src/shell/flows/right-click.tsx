@@ -74,9 +74,13 @@ function words(platform: NodeJS.Platform, on: boolean) {
         : 'Forge is not in the right-click menu',
     presetsTail: mac ? ' presets in Quick Actions' : ' presets in the right-click menu',
     windowTitle: mac ? 'Presets in Quick Actions' : 'Presets in the right-click menu',
-    why: mac
-      ? 'npm uninstall won’t remove Forge from your Mac’s Quick Actions. To remove it, run the command below to uninstall Forge and delete any remaining settings.'
-      : 'npm uninstall won’t remove Forge from your PC’s right-click menu. To remove it, run the command below to uninstall Forge and delete any remaining settings.',
+    why: `npm uninstall won’t remove Forge from ${
+      mac
+        ? 'your Mac’s Quick Actions'
+        : platform === 'linux'
+          ? 'your file manager’s right-click menu'
+          : 'your PC’s right-click menu'
+    }. To remove it, run the command below to uninstall Forge and delete any remaining settings.`,
   }
 }
 

@@ -1,10 +1,19 @@
 /**
- * The transcribe helper, `forge-transcribe` (spec 2026-10-17-transcribe-design
- * §4.1): a Swift program built into dist/helpers on macOS. Apple's speech
- * recogniser writes the transcript and Apple's on-device model the notes;
- * this file only finds the helper, runs it, and turns its JSON lines into
- * data and `ForgeError`s. The helper also sets a transcript as Word or PDF
- * (AppKit reads the HTML; nothing to install).
+ * Transcribe's engines (spec 2026-10-17-transcribe-design §4.1), chosen job
+ * by job rather than machine by machine, so that each job runs wherever an
+ * engine for it does:
+ *
+ * - hearing: Apple's recogniser where it works (macOS 26, through
+ *   `forge-transcribe`, a Swift program built into dist/helpers), else
+ *   whisper.cpp through `forge-transcribe-whisper.mjs`, which speaks the
+ *   same lines (Windows, Linux, an Intel Mac, a Mac before macOS 26);
+ * - notes: Apple's on-device model, during Apple's hearing, nowhere else;
+ * - reading pictures and PDFs: Apple's Vision, through the Swift helper;
+ * - Word and PDF: AppKit through the Swift helper on a Mac that runs it;
+ *   elsewhere Word is written here and PDF is not offered (`outputsFor`).
+ *
+ * This file only picks the engine for a job, runs it, and turns its JSON
+ * lines into data and `ForgeError`s.
  */
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -19,12 +28,18 @@ import {
   languageUnsupported,
   noSound,
   readUnavailable,
+  renderUnavailable,
   transcribeUnavailable,
   untranscribable,
 } from '../core/errors.js'
 import { DEFAULT_DETAIL, type Detail } from '../core/transcribe/detail.js'
 import type { Transcription } from '../core/transcribe/markdown.js'
-import { markdownHtml, markdownText, type Output } from '../core/transcribe/output.js'
+import {
+  markdownHtml,
+  markdownPages,
+  markdownText,
+  type Output,
+} from '../core/transcribe/output.js'
 import {
   type PageText,
   pageHtml,
@@ -32,15 +47,27 @@ import {
   pagePlain,
   type ReadPage,
 } from '../core/transcribe/page-text.js'
+import { installed } from '../extensions/paths.js'
+import { findFfmpeg } from './ffmpeg.js'
 import { loadDocx } from './libs.js'
 
+/** What the whisper helper can lack: whisper.cpp's whisper-cli, or ffmpeg. */
+export type TranscribeMissing = 'whisper' | 'ffmpeg'
+
 export interface TranscribeStatus {
+  /** Whether anything here can hear: Apple's recogniser or whisper.cpp. */
   speech: boolean
-  /** The Mac's language as the recogniser names it, or null when it has none for it. */
+  /** Which engine hears, when one can. */
+  hears?: 'apple' | 'whisper'
+  /** The system's language as the recogniser names it, or null when it has none for it. */
   locale: string | null
   notes: 'available' | 'off' | 'unsupported'
   /** Whether it reads the text of pictures and PDFs (spec 2026-10-23-extract-text-design §5.1). */
   read: boolean
+  /** Whether Apple's helper sets Word and PDF here. Without it Word is written by Forge and PDF is not offered. */
+  render: boolean
+  /** Without speech, what the whisper helper is missing: what to install. */
+  missing?: TranscribeMissing[]
 }
 
 export type TranscribeEvent =
@@ -51,48 +78,205 @@ export type TranscribeEvent =
 /** A PDF's page about to be read: the count is known before the first. */
 export type ReadEvent = { kind: 'page'; page: number; of: number }
 
-const NAME = 'forge-transcribe'
+/** A helper and which one it is: Apple's (a binary) or whisper's (a script for Forge's Node). */
+export interface Helper {
+  path: string
+  kind: 'apple' | 'whisper'
+}
+
+const APPLE_NAME = 'forge-transcribe'
+const WHISPER_NAME = 'forge-transcribe-whisper.mjs'
+const PLATFORMS: readonly NodeJS.Platform[] = ['darwin', 'win32', 'linux']
 
 /**
- * Where the helper is: FORGE_TRANSCRIBE_HELPER (tests), beside the bundle in
- * dist/helpers (published), or the repo's dist/helpers when run from source.
+ * Why transcribe is not offered here: what to install, in this OS's words.
+ * The whisper helper says the same when run without them (its `needs`).
  */
-export function transcribeHelper(): string | undefined {
-  const pinned = process.env.FORGE_TRANSCRIBE_HELPER
-  if (pinned !== undefined) return existsSync(pinned) ? pinned : undefined
-  if (process.platform !== 'darwin') return undefined
-  const here = dirname(fileURLToPath(import.meta.url))
-  // The bundle is dist/index.js or a chunk in dist/chunks; from source this is src/engines.
-  return [
-    join(here, 'helpers', NAME),
-    join(here, '..', 'helpers', NAME),
-    join(here, '..', '..', 'dist', 'helpers', NAME),
-  ].find((p) => existsSync(p))
+export function transcribeNeeds(
+  platform: NodeJS.Platform = process.platform,
+  missing: readonly TranscribeMissing[] = ['whisper'],
+): string {
+  // Nothing named still means whisper: it is what every one of these OSes is told to get.
+  const whisper = missing.includes('whisper') || !missing.includes('ffmpeg')
+  const ffmpeg = missing.includes('ffmpeg')
+  const parts = [
+    whisper && 'the whisper extension (forge extensions add whisper, or /extensions)',
+    ffmpeg &&
+      (platform === 'darwin'
+        ? 'ffmpeg (brew install ffmpeg)'
+        : platform === 'win32'
+          ? 'ffmpeg (winget install ffmpeg)'
+          : 'ffmpeg on your PATH'),
+  ].filter(Boolean)
+  if (platform === 'darwin') return `Transcribe on this Mac needs ${parts.join(' and ')}.`
+  if (platform === 'win32') return `Transcribe on Windows needs ${parts.join(' and ')}.`
+  if (platform === 'linux') return `Transcribe on Linux needs ${parts.join(' and ')}.`
+  return 'Transcribe needs macOS, Windows or Linux.'
+}
+
+/**
+ * Why notes are not written here: Apple Intelligence is off, or this machine
+ * has none (Windows, Linux, a Mac without Apple's recogniser). Notes are the
+ * one part that stays Apple's.
+ */
+export function notesNeed(
+  platform: NodeJS.Platform = process.platform,
+  notes: TranscribeStatus['notes'] = platform === 'darwin' ? 'off' : 'unsupported',
+): string {
+  if (notes === 'off') return 'Summary and notes need Apple Intelligence, and it is off.'
+  const machine = platform === 'darwin' ? 'Mac' : 'computer'
+  return `Summary and notes need Apple Intelligence, which this ${machine} does not have.`
+}
+
+/**
+ * Where each helper may be, from the folder this module runs in: beside the
+ * bundle in dist/helpers (published; the bundle is dist/index.js or a chunk in
+ * dist/chunks), or the repo's own when run from source (src/engines).
+ */
+export function helperPaths(here: string): { apple: string[]; whisper: string[] } {
+  return {
+    apple: [
+      join(here, 'helpers', APPLE_NAME),
+      join(here, '..', 'helpers', APPLE_NAME),
+      join(here, '..', '..', 'dist', 'helpers', APPLE_NAME),
+    ],
+    whisper: [
+      join(here, 'helpers', WHISPER_NAME),
+      join(here, '..', 'helpers', WHISPER_NAME),
+      join(here, '..', '..', 'helpers', 'transcribe', WHISPER_NAME),
+    ],
+  }
+}
+
+/**
+ * The two helpers that are here. FORGE_TRANSCRIBE_HELPER (tests) pins one:
+ * a .mjs is whisper's, anything else Apple's. Apple's is looked for on a Mac
+ * only; whisper's on every OS Forge runs on.
+ */
+export function helpers(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): { apple?: string; whisper?: string } {
+  const pinned = env.FORGE_TRANSCRIBE_HELPER
+  if (pinned !== undefined) {
+    if (!existsSync(pinned)) return {}
+    return pinned.endsWith('.mjs') ? { whisper: pinned } : { apple: pinned }
+  }
+  if (!PLATFORMS.includes(platform)) return {}
+  const paths = helperPaths(dirname(fileURLToPath(import.meta.url)))
+  const apple = platform === 'darwin' ? paths.apple.find((p) => existsSync(p)) : undefined
+  const whisper = paths.whisper.find((p) => existsSync(p))
+  return { ...(apple ? { apple } : {}), ...(whisper ? { whisper } : {}) }
+}
+
+/**
+ * Which helper hears. Apple's when it is there and says it can (so Apple's
+ * recogniser stays first wherever it works), else whisper's. An Intel Mac or
+ * an older macOS fails Apple's `status`, and falls to whisper's.
+ */
+export async function chooseHearing(opts: {
+  apple?: string | undefined
+  whisper?: string | undefined
+  appleHears: (path: string) => Promise<boolean>
+}): Promise<Helper | undefined> {
+  // With nothing to fall back to, Apple's is asked nothing: it says itself why it cannot.
+  if (opts.apple !== undefined && opts.whisper === undefined)
+    return { path: opts.apple, kind: 'apple' }
+  if (opts.apple !== undefined) {
+    const hears = await opts.appleHears(opts.apple).catch(() => false)
+    if (hears) return { path: opts.apple, kind: 'apple' }
+  }
+  return opts.whisper === undefined ? undefined : { path: opts.whisper, kind: 'whisper' }
+}
+
+/** Apple's helper's `status`, or undefined when it is not here or cannot answer. */
+async function appleStatus(locale?: string): Promise<Line | undefined> {
+  const { apple } = helpers()
+  if (apple === undefined) return undefined
+  const args = ['status', ...(locale ? ['--locale', locale] : [])]
+  // A helper that cannot even answer (the universal build's Intel slice is
+  // untested, spec 2026-10-23 §5.5) is no helper for any job.
+  return exec({ path: apple, kind: 'apple' }, args, '').catch(() => undefined)
+}
+
+let hearing: Promise<Helper | undefined> | undefined
+
+/** The helper that hears here. Chosen once per process: the answer depends on the machine. */
+function hearingHelper(): Promise<Helper | undefined> {
+  if (process.env.FORGE_TRANSCRIBE_HELPER !== undefined) hearing = undefined
+  hearing ??= chooseHearing({
+    ...helpers(),
+    appleHears: async () => (await appleStatus())?.speech === true,
+  })
+  return hearing
+}
+
+/**
+ * Apple's helper, for the jobs only it does (reading, Word and PDF);
+ * `missing` when it is not here. Those jobs are offered only where its
+ * `status` says so, so it is not asked again.
+ */
+function appleHelper(missing: () => ForgeError): Helper {
+  const { apple } = helpers()
+  if (apple === undefined) throw missing()
+  return { path: apple, kind: 'apple' }
+}
+
+/**
+ * What whisper's helper is handed: the ffmpeg the rest of Forge uses (PATH,
+ * Homebrew, the video extension) and the whisper extension's whisper-cli,
+ * unless the user named their own. And a stdin to close to stop it: on
+ * Windows a kill could not reach its ffmpeg and whisper-cli.
+ */
+async function whisperEnv(): Promise<NodeJS.ProcessEnv> {
+  const env: NodeJS.ProcessEnv = { ...process.env, FORGE_HELPER_STOP_ON_EOF: '1' }
+  if (!env.FORGE_FFMPEG) {
+    const tools = await findFfmpeg().catch(() => undefined)
+    if (tools) env.FORGE_FFMPEG = tools.ffmpeg
+  }
+  if (!env.FORGE_WHISPER_CLI) {
+    const ext = await installed('whisper')
+    if (ext) env.FORGE_WHISPER_CLI = ext.entry
+  }
+  if (!env.FORGE_WHISPER_MODEL) {
+    const ext = await installed('whisper')
+    // The model ships inside the extension, beside whisper-cli.
+    const model = ext && join(dirname(ext.entry), 'model.bin')
+    if (model && existsSync(model)) env.FORGE_WHISPER_MODEL = model
+  }
+  return env
 }
 
 type Line = Record<string, unknown>
 
-/** Run the helper; every JSON line but the result goes to `onLine`; resolves with the result. */
-function call(
+/** Grace for whisper's helper to stop its tools after its stdin closes, before it is killed. */
+const STOP_GRACE_MS = 5000
+
+/** Run a helper; every JSON line but the result goes to `onLine`; resolves with the result. */
+async function exec(
+  helper: Helper,
   args: string[],
   path: string,
   opts: {
     signal?: AbortSignal | undefined
     onLine?: (line: Line) => void
-    /** What to say when there is no helper at all. */
-    missing?: () => ForgeError
   } = {},
 ): Promise<Line> {
-  const helper = transcribeHelper()
-  if (helper === undefined)
-    return Promise.reject(
-      opts.missing?.() ??
-        transcribeUnavailable('Transcribe needs macOS 26 or later on Apple silicon.'),
-    )
   const { signal } = opts
-  if (signal?.aborted) return Promise.reject(signal.reason ?? new Error('aborted'))
+  if (signal?.aborted) throw signal.reason ?? new Error('aborted')
+  const whisper = helper.kind === 'whisper'
+  const env = whisper ? await whisperEnv() : process.env
+  if (signal?.aborted) throw signal.reason ?? new Error('aborted')
   return new Promise((resolve, reject) => {
-    const child = spawn(helper, args, { stdio: ['ignore', 'pipe', 'ignore'] })
+    // Whisper's helper is a script for the Node Forge runs on; Apple's is a binary.
+    const [cmd, argv] = whisper ? [process.execPath, [helper.path, ...args]] : [helper.path, args]
+    const child = spawn(cmd, argv, {
+      stdio: [whisper ? 'pipe' : 'ignore', 'pipe', 'ignore'],
+      env,
+      windowsHide: true,
+    })
+    // Closed early when the helper is gone; nothing to say about that.
+    child.stdin?.on('error', () => {})
     let result: Line | undefined
     let settled = false
     const done = (f: () => void) => {
@@ -102,11 +286,16 @@ function call(
       f()
     }
     const onAbort = () => {
-      child.kill('SIGKILL')
+      if (whisper && child.stdin) {
+        // Its stdin closing is whisper's helper's cue to stop its tools and go.
+        child.stdin.end()
+        setTimeout(() => child.kill('SIGKILL'), STOP_GRACE_MS).unref()
+      } else child.kill('SIGKILL')
       done(() => reject(signal?.reason ?? new Error('aborted')))
     }
     signal?.addEventListener('abort', onAbort, { once: true })
-    createInterface({ input: child.stdout }).on('line', (text) => {
+    // Always a pipe (stdio above); its type cannot say so when stdin is chosen at run time.
+    createInterface({ input: child.stdout as NodeJS.ReadableStream }).on('line', (text) => {
       let line: Line
       try {
         line = JSON.parse(text) as Line
@@ -120,7 +309,7 @@ function call(
     child.on('close', () =>
       done(() => {
         if (result === undefined)
-          return reject(conversionFailed(path, new Error(`${NAME} gave no result`)))
+          return reject(conversionFailed(path, new Error(`${APPLE_NAME} gave no result`)))
         if (result.ok === true) return resolve(result)
         reject(failure(String(result.code ?? ''), String(result.message ?? ''), path, args))
       }),
@@ -135,31 +324,62 @@ function failure(code: string, message: string, path: string, args: string[]): E
     const i = args.indexOf('--locale')
     return languageUnsupported(i >= 0 ? (args[i + 1] ?? 'this language') : "this Mac's language")
   }
-  if (code === 'unsupported') return transcribeUnavailable(message)
+  // unsupported: a tool is missing; runtime: whisper-cli is there but cannot start.
+  if (code === 'unsupported' || code === 'runtime') return transcribeUnavailable(message)
   return conversionFailed(path, new Error(`${code}: ${message}`))
 }
 
-/** What this Mac can do, or undefined when there is no helper, or one that cannot answer. */
+const MISSING: readonly TranscribeMissing[] = ['whisper', 'ffmpeg']
+
+/**
+ * What this machine can do, job by job, or undefined when no helper is here
+ * at all. Notes come only with Apple's hearing; reading and Apple's Word and
+ * PDF only with Apple's helper.
+ */
 export async function transcribeStatus(
   opts: { locale?: string } = {},
 ): Promise<TranscribeStatus | undefined> {
-  if (transcribeHelper() === undefined) return undefined
-  const args = ['status', ...(opts.locale ? ['--locale', opts.locale] : [])]
-  // A helper that cannot even answer (the universal build's Intel slice is
-  // untested, spec 2026-10-23 §5.5) is no helper: nothing is offered.
-  const r = await call(args, '').catch(() => undefined)
-  if (r === undefined) return undefined
-  return {
-    speech: r.speech === true,
-    locale: typeof r.locale === 'string' ? r.locale : null,
-    notes: r.notes === 'available' || r.notes === 'off' ? r.notes : 'unsupported',
-    read: r.read === true,
+  const here = helpers()
+  if (here.apple === undefined && here.whisper === undefined) return undefined
+  const apple = await appleStatus(opts.locale)
+  const base = { read: apple?.read === true, render: apple !== undefined }
+  if (apple?.speech === true)
+    return {
+      speech: true,
+      hears: 'apple',
+      locale: typeof apple.locale === 'string' ? apple.locale : null,
+      notes: apple.notes === 'available' || apple.notes === 'off' ? apple.notes : 'unsupported',
+      ...base,
+    }
+  if (here.whisper === undefined) {
+    if (apple === undefined) return undefined
+    return { speech: false, locale: null, notes: 'unsupported', ...base }
   }
+  const args = ['status', ...(opts.locale ? ['--locale', opts.locale] : [])]
+  const w = await exec({ path: here.whisper, kind: 'whisper' }, args, '')
+  const missing = Array.isArray(w.missing)
+    ? MISSING.filter((m) => (w.missing as unknown[]).includes(m))
+    : []
+  return {
+    speech: w.speech === true,
+    ...(w.speech === true ? { hears: 'whisper' as const } : {}),
+    locale: typeof w.locale === 'string' ? w.locale : null,
+    notes: 'unsupported',
+    ...base,
+    ...(missing.length > 0 ? { missing } : {}),
+  }
+}
+
+/** The helper that hears, or why there is none. */
+async function hearer(): Promise<Helper> {
+  const helper = await hearingHelper()
+  if (helper === undefined) throw transcribeUnavailable(transcribeNeeds())
+  return helper
 }
 
 /** The sound's length; refuses a file with no sound or one the recogniser cannot read. */
 export async function probeSound(path: string): Promise<{ seconds: number }> {
-  const r = await call(['probe', path], path)
+  const r = await exec(await hearer(), ['probe', path], path)
   return { seconds: Number(r.seconds) }
 }
 
@@ -183,7 +403,7 @@ export async function runTranscribe(
       ? ['--detail', opts.detail]
       : []),
   ]
-  const r = await call(args, path, {
+  const r = await exec(await hearer(), args, path, {
     signal: opts.signal,
     onLine: (line) => {
       const e = eventOf(line)
@@ -219,9 +439,8 @@ export async function runRead(
   } = {},
 ): Promise<ReadPage[]> {
   const args = ['read', path, ...(opts.language ? ['--language', opts.language] : [])]
-  const r = await call(args, path, {
+  const r = await exec(appleHelper(readUnavailable), args, path, {
     signal: opts.signal,
-    missing: readUnavailable,
     onLine: (line) => {
       if (line.event === 'page')
         opts.onEvent?.({ kind: 'page', page: Number(line.page), of: Number(line.of) })
@@ -230,7 +449,12 @@ export async function runRead(
   return (r.pages ?? []) as ReadPage[]
 }
 
-/** HTML set as Word or PDF by the helper; the caller writes the bytes. */
+/** Whether Apple's helper is here and answers: it alone sets HTML as Word or PDF. */
+async function appleRenders(): Promise<boolean> {
+  return helpers().apple !== undefined && (await appleStatus()) !== undefined
+}
+
+/** HTML set as Word or PDF by Apple's helper; the caller writes the bytes. */
 async function renderHtml(
   html: string,
   format: 'docx' | 'pdf',
@@ -241,7 +465,8 @@ async function renderHtml(
     const page = join(dir, 'transcript.html')
     const out = join(dir, `transcript.${format}`)
     await writeFile(page, html, 'utf8')
-    await call(['render', page, out, '--as', format], out, { signal: opts.signal })
+    const apple = appleHelper(() => renderUnavailable(format))
+    await exec(apple, ['render', page, out, '--as', format], out, { signal: opts.signal })
     return await readFile(out)
   } finally {
     await rm(dir, { recursive: true, force: true })
@@ -350,8 +575,10 @@ export async function renderPages(
 
 /**
  * The transcript's bytes in the chosen format (mockups/transcribe-2026-10-round4.html,
- * T1): the Markdown itself, its words as text, or — through the helper —
- * its HTML set as Word or PDF. The caller writes the bytes atomically.
+ * T1): the Markdown itself, its words as text, or — through Apple's helper —
+ * its HTML set as Word or PDF. Without Apple's helper, Word is written here
+ * from the same Markdown, and PDF is not offered (`outputsFor`). The caller
+ * writes the bytes atomically.
  */
 export async function renderTranscript(
   md: string,
@@ -360,5 +587,6 @@ export async function renderTranscript(
 ): Promise<Buffer> {
   if (format === 'md') return Buffer.from(md, 'utf8')
   if (format === 'txt') return Buffer.from(markdownText(md), 'utf8')
+  if (format === 'docx' && !(await appleRenders())) return pagesDocx(markdownPages(md))
   return renderHtml(markdownHtml(md), format, opts)
 }

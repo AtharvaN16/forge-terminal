@@ -1,5 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
+  clipboardToolMissing,
+  clipboardUnavailable,
   conversionFailed,
   corruptFormatSource,
   corruptSource,
@@ -9,6 +11,7 @@ import {
   fileNotFound,
   heicDecoderUnavailable,
   isForgeError,
+  noClipboardImage,
   notADirectory,
   notAFile,
   outputCollision,
@@ -341,5 +344,33 @@ describe('short', () => {
 
   it('leaves short absent when the detail already reads as one line', () => {
     expect(conversionFailed('/tmp/a.png', new Error('x')).short).toBeUndefined()
+  })
+})
+
+describe('clipboard errors', () => {
+  it('names the screenshot keys where there is one shortcut for it', () => {
+    expect(noClipboardImage('nothing', 'darwin').hint).toContain('⌃⇧⌘4')
+    expect(noClipboardImage('nothing', 'win32').hint).toContain('Win+Shift+S')
+    expect(noClipboardImage('text', 'linux').hint).toBe(
+      'Copy a picture or a screenshot, then run forge clip again.',
+    )
+    expect(noClipboardImage('text', 'linux').detail).toBe(
+      'The clipboard holds text, not a picture.',
+    )
+  })
+
+  it('says what a clipboard needs on each system', () => {
+    expect(clipboardUnavailable('linux').detail).toBe(
+      'Forge reads the clipboard of a Wayland or X11 desktop, and not over SSH.',
+    )
+    expect(clipboardUnavailable('darwin').detail).not.toMatch(/on a Mac/)
+  })
+
+  it('names the package to install for Linux’s clipboard', () => {
+    const e = clipboardToolMissing('xclip')
+    expect(e.code).toBe('clipboard-tool-missing')
+    expect(e.title).toBe('Clipboard needs xclip')
+    expect(e.hint).toContain('sudo apt install xclip')
+    expect(clipboardToolMissing('wl-clipboard').short).toBe('wl-clipboard is not on this computer')
   })
 })

@@ -62,7 +62,7 @@ export function runExtension(
     opts.onStart?.()
     return runOne(ext, args, opts)
   }
-  const queue = (opts.platform ?? process.platform) === 'win32' ? ext.id : undefined
+  const queue = (opts.platform ?? process.platform) === 'darwin' ? undefined : ext.id
   const tail = tails.get(queue) ?? Promise.resolve()
   const job = tail.then(() =>
     ext.id === undefined

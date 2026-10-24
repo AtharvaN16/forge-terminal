@@ -32,10 +32,10 @@ import {
 import {
   DEFAULT_OUTPUT,
   markdownText,
-  OUTPUTS,
   type Output,
   outputExt,
   outputLabel,
+  outputsFor,
 } from '../../core/transcribe/output.js'
 import {
   hasText,
@@ -210,12 +210,19 @@ export function TranscribeFlow({
   const [detail, setDetail] = useState<Detail>(DEFAULT_DETAIL)
   const [cursor, setCursor] = useState(0)
   // Format opens on the default; tab on a row makes that one the default.
-  const defaultFormat = prefs.transcribeFormat ?? DEFAULT_OUTPUT
+  // What this machine can write: without Apple's helper there is no PDF (outputsFor).
+  const [render, setRender] = useState(true)
+  const outputs = outputsFor({ render })
+  const saved = prefs.transcribeFormat ?? DEFAULT_OUTPUT
+  // Read by the status check, which runs once on arrival.
+  const savedRef = useRef(saved)
+  savedRef.current = saved
+  const defaultFormat = outputs.some((o) => o.id === saved) ? saved : DEFAULT_OUTPUT
   const [format, setFormat] = useState<Output>(defaultFormat)
   const [formatCursor, setFormatCursor] = useState(() =>
     Math.max(
       0,
-      OUTPUTS.findIndex((o) => o.id === defaultFormat),
+      outputs.findIndex((o) => o.id === defaultFormat),
     ),
   )
   const here = source.kind === 'file' || source.kind === 'page' ? dirname(source.path) : undefined
@@ -270,6 +277,21 @@ export function TranscribeFlow({
     transcribeStatus().then(
       (status) => {
         if (!live) return
+        const can = status?.render ?? true
+        setRender(can)
+        if (!can) {
+          // The list loses PDF: the cursor follows the default into it.
+          const list = outputsFor({ render: false })
+          const want = savedRef.current
+          const id = list.some((o) => o.id === want) ? want : DEFAULT_OUTPUT
+          setFormat(id)
+          setFormatCursor(
+            Math.max(
+              0,
+              list.findIndex((o) => o.id === id),
+            ),
+          )
+        }
         const on = status?.notes === 'available'
         setNotesOn(on)
         setWant(on ? 'all' : 'transcript')
@@ -467,7 +489,7 @@ export function TranscribeFlow({
   // tab on Format: the highlighted format becomes the default, tagged at once.
   useKeys(
     (_input, key) => {
-      const row = OUTPUTS[formatCursor]
+      const row = outputs[formatCursor]
       if (key.tab && row) onMakeFormatDefault?.(row.id)
     },
     { isActive: step === 'format' },
@@ -591,7 +613,7 @@ export function TranscribeFlow({
           */}
           <Select
             key="format"
-            items={OUTPUTS.map((o) => ({
+            items={outputs.map((o) => ({
               value: o.id,
               label: o.label,
               hint: o.ext,

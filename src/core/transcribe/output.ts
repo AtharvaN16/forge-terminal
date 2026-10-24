@@ -9,6 +9,8 @@
  * functions read only the Markdown that function writes. Pure.
  */
 
+import type { PageText } from './page-text.js'
+
 export const OUTPUTS = [
   { id: 'md', label: 'Markdown', ext: '.md' },
   { id: 'docx', label: 'Word', ext: '.docx' },
@@ -19,6 +21,15 @@ export const OUTPUTS = [
 export type Output = (typeof OUTPUTS)[number]['id']
 
 export const DEFAULT_OUTPUT: Output = 'md'
+
+/**
+ * The formats this machine can write: every one where Apple's helper sets
+ * documents (`render`), and all but PDF elsewhere, where Word is written by
+ * Forge (`markdownPages`) and nothing sets a PDF yet.
+ */
+export function outputsFor(can: { render: boolean }): (typeof OUTPUTS)[number][] {
+  return OUTPUTS.filter((o) => o.id !== 'pdf' || can.render)
+}
 
 export const isOutput = (v: unknown): v is Output => OUTPUTS.some((o) => o.id === v)
 
@@ -82,6 +93,37 @@ export const STYLE = [
   'a{color:#0b57d0}',
   'i{color:#6e6e73}',
 ].join('')
+
+/**
+ * The .md as pages of pieces, for Word written by Forge where Apple's helper
+ * does not run: the same headings, points and paragraphs its HTML has, one
+ * page. A timed paragraph keeps its time in front; a level-3 heading is
+ * Word's second level, the deepest a page's text has.
+ */
+export function markdownPages(md: string): PageText {
+  const page: PageText[number] = []
+  let points: string[] = []
+  const flush = () => {
+    if (points.length) page.push({ kind: 'list', ordered: false, items: points })
+    points = []
+  }
+  for (const line of md.split('\n').map(read)) {
+    if (line.kind === 'point') {
+      points.push(line.text)
+      continue
+    }
+    flush()
+    if (line.kind === 'heading')
+      page.push({ kind: 'heading', level: line.level === 1 ? 1 : 2, text: line.text })
+    else if (line.kind === 'link') page.push({ kind: 'paragraph', text: line.url })
+    else if (line.kind === 'timed')
+      page.push({ kind: 'paragraph', text: `${line.time} ${line.text}` })
+    else if (line.kind === 'aside' || line.kind === 'text')
+      page.push({ kind: 'paragraph', text: line.text })
+  }
+  flush()
+  return [page]
+}
 
 /** A whole HTML document of the .md, for the helper to set as Word or PDF. */
 export function markdownHtml(md: string): string {

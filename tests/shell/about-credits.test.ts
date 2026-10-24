@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { loadCredits } from '../../src/shell/about-credits.js'
+import { extensionCredits } from '../../src/shell/flows/extensions.js'
 
 const boost = CATALOG.find((e) => e.id === 'boost')
 if (!boost) throw new Error('no boost in the catalogue')
@@ -50,5 +51,20 @@ describe('loadCredits', () => {
       licence: 'MIT',
       does: 'Boost resolution',
     })
+  })
+})
+
+describe('extensionCredits', () => {
+  it('credits Remove background with what it is on each OS: Apple Vision on a Mac, U²-Net-p elsewhere', () => {
+    const cutout = CATALOG.find((e) => e.id === 'remove-background')
+    if (!cutout) throw new Error('no remove-background in the catalogue')
+    const names = (os: NodeJS.Platform) => extensionCredits(cutout, os).map((c) => c.name)
+    expect(names('darwin')).toContain('Apple Vision')
+    for (const os of ['win32', 'linux'] as const) {
+      expect(extensionCredits(cutout, os)).toEqual([
+        { name: 'U²-Net-p (via rembg)', licence: 'Apache-2.0', does: 'Remove background' },
+        { name: 'ONNX Runtime', licence: 'MIT', does: 'Remove background' },
+      ])
+    }
   })
 })

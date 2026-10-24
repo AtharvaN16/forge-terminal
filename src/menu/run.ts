@@ -27,6 +27,56 @@ export interface RunDeps {
   runPreset?: (name: string, path: string) => Promise<PresetRunResult>
   notify: (title: string, body: string) => Promise<void>
   reveal: (path: string) => Promise<void>
+  /** Linux: whether a program is on PATH, to find a terminal that is installed. */
+  has?: (cmd: string) => boolean
+}
+
+/**
+ * How each Linux terminal is told to run a command in a new window: the
+ * arguments that go before it. Known by the name rememberTerminal keeps.
+ */
+const LINUX_TERMINALS: Record<string, string[]> = {
+  'gnome-terminal': ['--'],
+  konsole: ['-e'],
+  'xfce4-terminal': ['-x'],
+  kitty: [],
+  alacritty: ['-e'],
+  wezterm: ['start', '--'],
+  ghostty: ['-e'],
+  xterm: ['-e'],
+  // Debian's and Ubuntu's choice of terminal, which takes -e by policy.
+  'x-terminal-emulator': ['-e'],
+  // The freedesktop way to the user's chosen terminal, where it is installed.
+  'xdg-terminal-exec': [],
+}
+
+/** Tried in this order when the terminal Forge was last run in is not known, or not there. */
+const LINUX_FALLBACK = [
+  'xdg-terminal-exec',
+  'x-terminal-emulator',
+  'gnome-terminal',
+  'konsole',
+  'xfce4-terminal',
+  'kitty',
+  'alacritty',
+  'wezterm',
+  'ghostty',
+  'xterm',
+]
+
+/**
+ * The Linux terminal to open `argv` in: the one Forge was last run in if it
+ * is still installed, else the first installed of the usual ones. Undefined
+ * when there is none.
+ */
+export function linuxTerminalCommand(
+  terminal: string | undefined,
+  argv: string[],
+  has: (cmd: string) => boolean,
+): [string, string[]] | undefined {
+  const known = terminal !== undefined && terminal in LINUX_TERMINALS ? [terminal] : []
+  const found = [...known, ...LINUX_FALLBACK].find(has)
+  return found === undefined ? undefined : [found, [...(LINUX_TERMINALS[found] ?? []), ...argv]]
 }
 
 export type SharpenResult = { output: string } | { input?: string; error: string }
@@ -40,6 +90,8 @@ export function terminalCommand(
   argv: string[],
   platform: NodeJS.Platform,
 ): [string, string[]] {
+  if (platform === 'linux')
+    return linuxTerminalCommand(terminal, argv, () => true) ?? ['xterm', ['-e', ...argv]]
   if (platform === 'win32') {
     if (terminal === 'wt') return ['wt.exe', ['-w', 'new', ...argv]]
     // Not Node itself, detached: that gets no console at all (DETACHED_PROCESS),
@@ -164,10 +216,14 @@ export async function runMenuAction(
   }
   // Open Forge opens the app as it starts; the file clicked is not brought in.
   const files = action === 'open' ? [] : paths
-  const [cmd, args] = terminalCommand(
-    d.terminal,
-    [...d.self, 'menu', 'open', action, ...files],
-    d.platform,
-  )
-  await d.launch(cmd, args)
+  const argv = [...d.self, 'menu', 'open', action, ...files]
+  const command =
+    d.platform === 'linux'
+      ? linuxTerminalCommand(d.terminal, argv, d.has ?? (() => true))
+      : terminalCommand(d.terminal, argv, d.platform)
+  if (command === undefined) return d.notify(NO_TERMINAL_TITLE, NO_TERMINAL_BODY)
+  await d.launch(...command)
 }
+
+const NO_TERMINAL_TITLE = 'Forge could not open'
+const NO_TERMINAL_BODY = 'No terminal was found to open it in.'

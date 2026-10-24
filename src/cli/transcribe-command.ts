@@ -11,6 +11,7 @@ import {
   outputExists,
   readUnavailable,
   renderError,
+  renderUnavailable,
   transcribeUnavailable,
   unexpectedError,
   untranscribable,
@@ -24,16 +25,18 @@ import {
   type Transcription,
   transcriptMarkdown,
 } from '../core/transcribe/markdown.js'
-import { OUTPUTS, type Output, outputExt } from '../core/transcribe/output.js'
+import { OUTPUTS, type Output, outputExt, outputsFor } from '../core/transcribe/output.js'
 import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
 import { hasText, pagePlain, pageText } from '../core/transcribe/page-text.js'
 import {
+  notesNeed,
   type ReadEvent,
   renderPages,
   renderTranscript,
   runRead,
   runTranscribe,
   type TranscribeEvent,
+  transcribeNeeds,
   transcribeStatus,
 } from '../engines/transcribe.js'
 import { type FetchedSound, fetchSound } from '../engines/youtube.js'
@@ -166,14 +169,18 @@ export async function runTranscribeCommand(
     }
     const status = await transcribeStatus(intent.language ? { locale: intent.language } : {})
     if (status === undefined || !status.speech) {
-      throw transcribeUnavailable('Transcribe needs macOS 26 or later on Apple silicon.')
+      throw transcribeUnavailable(transcribeNeeds(process.platform, status?.missing))
     }
+    // Before the minute of listening: a PDF nothing here can set is said now (outputsFor).
+    if (!outputsFor(status).some((o) => o.id === format)) throw renderUnavailable('pdf')
     const notes = intent.notes && status.notes === 'available'
     if (intent.notes && !notes) {
       // Notes alone were the whole ask: a transcript would not be what they wanted.
-      if (!intent.transcript)
-        throw transcribeUnavailable('Summary and notes need Apple Intelligence, and it is off.')
-      io.err('⚠ Apple Intelligence is off, so this is the transcript only.')
+      if (!intent.transcript) throw transcribeUnavailable(notesNeed(process.platform, status.notes))
+      // Without Apple Intelligence at all (whisper) there are never notes, so `--to all`
+      // (the default) is a transcript there, not a warning. Only "it is off" is news.
+      if (status.notes === 'off')
+        io.err('⚠ Apple Intelligence is off, so this is the transcript only.')
     }
 
     if (link === undefined) {

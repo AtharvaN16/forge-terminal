@@ -38,9 +38,11 @@ describe('transcribeStatus', () => {
     )
     expect(await transcribeStatus()).toEqual({
       speech: true,
+      hears: 'apple',
       locale: 'en_US',
       notes: 'off',
       read: false,
+      render: true,
     })
   })
 
@@ -221,6 +223,7 @@ describe('renderTranscript', () => {
 
   it('has the helper set the HTML as Word, and returns what it wrote', async () => {
     const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off' }] },
       render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'docx:' } },
     })
     use(fake.path)
@@ -256,10 +259,17 @@ describe('renderTranscript', () => {
     expect(isForgeError(e)).toBe(true)
   })
 
-  it('says transcribe is unavailable when there is no helper for Word or PDF', async () => {
+  it("writes Word itself where Apple's helper is not, from the same Markdown", async () => {
     use(join(await makeTempDir(), 'missing'))
-    const e = await renderTranscript(MD, 'docx').catch((x: unknown) => x)
-    expect(isForgeError(e) && e.code).toBe('transcribe-unavailable')
+    const bytes = await renderTranscript(MD, 'docx')
+    const xml = new AdmZip(bytes).readAsText('word/document.xml')
+    expect(xml).toContain('Heading1')
+  })
+
+  it("says PDF is not available where Apple's helper is not", async () => {
+    use(join(await makeTempDir(), 'missing'))
+    const e = await renderTranscript(MD, 'pdf').catch((x: unknown) => x)
+    expect(isForgeError(e) && e.code).toBe('render-unavailable')
   })
 })
 

@@ -14,13 +14,13 @@ export interface Command {
 }
 
 /**
- * What /right-click says it manages: Quick Actions in Finder, a "Forge ›"
- * submenu in File Explorer.
+ * What /right-click says it manages: Quick Actions in Finder; elsewhere a
+ * "Forge ›" submenu in File Explorer or the Linux file managers.
  */
 export function rightClickDescription(platform: NodeJS.Platform): string {
-  return platform === 'win32'
-    ? 'manage Forge right-click actions'
-    : 'manage Forge mac quick actions'
+  return platform === 'darwin'
+    ? 'manage Forge mac quick actions'
+    : 'manage Forge right-click actions'
 }
 
 /**

@@ -7,7 +7,8 @@ import { makeTempDir } from './fixtures.js'
  * a node script that answers each command with the JSON lines given here.
  * Every command writes its argv to `argv.json` beside it, so a test can see
  * what was asked for; `echo` stands in for a command that writes a file.
- * Point FORGE_TRANSCRIBE_HELPER at the returned path.
+ * Point FORGE_TRANSCRIBE_HELPER at the returned path. `whisper` makes it
+ * the whisper helper's stand-in instead: a .mjs, run by Forge's own Node.
  */
 export async function fakeTranscribeHelper(
   answers: Partial<
@@ -22,11 +23,12 @@ export async function fakeTranscribeHelper(
       }
     >
   >,
+  opts: { whisper?: boolean } = {},
 ): Promise<{ path: string; dir: string }> {
   const dir = await makeTempDir()
-  const path = join(dir, 'forge-transcribe')
+  const path = join(dir, opts.whisper ? 'forge-transcribe-whisper.mjs' : 'forge-transcribe')
   const script = `#!${process.execPath}
-const fs = require('node:fs')
+${opts.whisper ? "import fs from 'node:fs'" : "const fs = require('node:fs')"}
 const answers = ${JSON.stringify(answers)}
 const cmd = process.argv[2]
 fs.writeFileSync(${JSON.stringify(join(dir, 'argv.json'))}, JSON.stringify(process.argv.slice(2)))

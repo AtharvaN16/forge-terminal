@@ -9,7 +9,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { extensionMissing, linkUnavailable } from '../core/errors.js'
+import { extensionMissing, type ForgeError, linkUnavailable } from '../core/errors.js'
+import { assetFor, catalogEntry, osName } from '../extensions/catalog.js'
 import { resolveYtDlp } from '../extensions/own.js'
 
 export interface VideoFacts {
@@ -40,6 +41,28 @@ const KNOWN: [RegExp, string][] = [
 
 class RunFailed extends Error {}
 
+/**
+ * No yt-dlp at all. Where the catalogue has a build, the way forward is the
+ * extension; elsewhere (a chip it has no build for) the user's own.
+ */
+export function ytDlpMissing(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): ForgeError {
+  const entry = catalogEntry('yt-dlp')
+  if (entry !== undefined && assetFor(entry, platform, arch) !== undefined) {
+    return extensionMissing('yt-dlp')
+  }
+  return linkUnavailable(
+    `YouTube links on ${osName(platform)} need yt-dlp on your PATH.`,
+    undefined,
+    {
+      hint: 'Install yt-dlp (https://github.com/yt-dlp/yt-dlp) and put it on your PATH.',
+      shellHint: 'Install yt-dlp and put it on your PATH.',
+    },
+  )
+}
+
 export async function fetchSound(
   url: string,
   opts: {
@@ -51,7 +74,7 @@ export async function fetchSound(
 ): Promise<FetchedSound> {
   // The user's own yt-dlp when it is new enough, else Forge's (own.ts).
   const yt = await resolveYtDlp()
-  if (yt === undefined) throw extensionMissing('yt-dlp')
+  if (yt === undefined) throw ytDlpMissing()
   const dir = await mkdtemp(join(tmpdir(), 'forge-yt-'))
   opts.onDir?.(dir)
   const dispose = () => rm(dir, { recursive: true, force: true })
