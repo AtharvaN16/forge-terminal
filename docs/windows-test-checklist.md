@@ -21,6 +21,7 @@ You do not need all of these. Use what you have.
 - a camera RAW photo (`.CR2`, `.NEF`, `.ARW`, `.DNG`...), if anyone you know has a camera
 - a PDF, and a Word file (`.docx`)
 - a video or sound file with someone talking, one or two minutes long
+  (you can make the other kinds from it once ffmpeg is installed: `ffmpeg -i talk.mp4 -c copy talk.mkv` and `ffmpeg -i talk.mp4 -vn talk.flac`)
 - a scanned page or a photo of a printed page (for reading text)
 
 ## Before you start
@@ -70,7 +71,7 @@ Type `forge`, then drop a file onto the window, or type its path, then Enter.
    then convert the photo again. **Right:** it works, and a portrait photo
    comes out taller than wide, upright.
 2. If you have a RAW photo: convert it to JPG the same way. **Right:** the same
-   "install it first" step (the extension is called **Camera RAW photos**),
+   "install it first" step (the extension is called **Camera RAW photos** (or type `forge extensions add raw`)),
    then a normal-looking photo, upright.
 3. Press `4` (edit), pick a small photo, and try **Boost resolution** at 2x. It
    needs the **Boost** extension (about 23 MB). **Right:** you are offered the
@@ -120,6 +121,9 @@ On Windows this uses the whisper extension and ffmpeg.
 2. Install whisper: `forge extensions add whisper` (about 60 MB).
 3. `forge transcribe talk.mp4` (your video or sound file). **Right:** a bar
    moves while it listens, then `talk.md` appears next to the file.
+   Then the same with two other kinds of file: `forge transcribe talk.mkv --force` (a video) and
+   `forge transcribe talk.flac --force` (a sound file). **Right:** the same words as before. Both
+   formats need ffmpeg. If either is refused, tell us the exact message.
 4. **If it says it needs the Microsoft Visual C++ Redistributable**, that is
    expected on some PCs. Install it from the link it shows, then run it again.
    Tell us whether you saw this.

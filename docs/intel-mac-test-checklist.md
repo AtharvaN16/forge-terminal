@@ -24,6 +24,7 @@ You do not need all of these. Use what you have.
 - a HEIC photo from an iPhone, a camera RAW photo (`.CR2`, `.NEF`, `.ARW`, `.DNG`...)
 - a PDF and a Word file (`.docx`)
 - a video or sound file with someone talking, one or two minutes long
+  (you can make the other kinds from it once ffmpeg is installed: `ffmpeg -i talk.mp4 -c copy talk.mkv` and `ffmpeg -i talk.mp4 -vn talk.flac`)
 - a scanned page or a photo of a printed page (for reading text)
 
 ## Before you start
@@ -135,6 +136,9 @@ whisper extension and ffmpeg, like Windows and Linux.
 3. `forge extensions add whisper` (about 60 MB).
 4. `forge transcribe talk.mp4` (your video or sound file). **Right:** a bar
    moves while it listens, then `talk.md` appears next to the file. Note how
+   Then the same with two other kinds of file: `forge transcribe talk.mkv --force` (a video) and
+   `forge transcribe talk.flac --force` (a sound file). **Right:** the same words as before. Both
+   formats need ffmpeg. If either is refused, tell us the exact message.
    long a one-minute file takes.
 5. Make the other formats and open each result:
    - `forge transcribe talk.mp4 --format docx --force`

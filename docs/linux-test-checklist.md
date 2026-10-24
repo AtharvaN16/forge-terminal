@@ -23,6 +23,7 @@ You do not need all of these. Use what you have.
 - a HEIC photo from an iPhone, a camera RAW photo (`.CR2`, `.NEF`, `.ARW`, `.DNG`...)
 - a PDF and a Word file (`.docx`)
 - a video or sound file with someone talking, one or two minutes long
+  (you can make the other kinds from it once ffmpeg is installed: `ffmpeg -i talk.mp4 -c copy talk.mkv` and `ffmpeg -i talk.mp4 -vn talk.flac`)
 - a scanned page or a photo of a printed page (for reading text)
 
 ## Before you start
@@ -81,7 +82,7 @@ Type `forge`, then drop a file onto the window (or type its path), then Enter.
 1. Convert a HEIC photo to JPG. **Right:** the first time it stops and says to
    open `/extensions`. Do that: type `/extensions`, install **HEIC photos**,
    then convert it again. **Right:** it works, and a portrait photo is upright.
-2. If you have a RAW photo: the same, with the extension **Camera RAW photos**.
+2. If you have a RAW photo: the same, with the extension **Camera RAW photos** (or type `forge extensions add raw`).
    **Right:** a normal-looking, upright photo.
 
 ## 4. Pasting a picture
@@ -146,6 +147,9 @@ On Linux this uses the whisper extension and ffmpeg.
 3. `forge extensions add whisper` (about 60 MB).
 4. `forge transcribe talk.mp4` (your video or sound file). **Right:** a bar
    moves while it listens, then `talk.md` appears next to the file.
+   Then the same with two other kinds of file: `forge transcribe talk.mkv --force` (a video) and
+   `forge transcribe talk.flac --force` (a sound file). **Right:** the same words as before. Both
+   formats need ffmpeg. If either is refused, tell us the exact message.
 5. Make the other formats and open each result:
    - `forge transcribe talk.mp4 --format docx --force` (LibreOffice or any Word reader)
    - `forge transcribe talk.mp4 --format pdf --force` (any PDF viewer)
