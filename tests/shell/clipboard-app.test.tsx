@@ -4,10 +4,12 @@ import { render } from 'ink-testing-library'
 import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
-import { App } from '../../src/shell/App.js'
+import { App, pasteKey } from '../../src/shell/App.js'
+import { revealLabel } from '../../src/shell/reveal.js'
 import { DARK } from '../../src/shell/theme.js'
 import { makeNoiseImage, makeTempDir } from '../helpers/fixtures.js'
 import { memoryPasteboard } from '../helpers/pasteboard.js'
+import { pinPlatform } from '../helpers/platform.js'
 import { ansiRow } from './home-cells.js'
 
 vi.hoisted(() => {
@@ -62,10 +64,11 @@ const held = (clip: Clip) => {
   return h
 }
 
-const HINT = '⌘V  to paste from clipboard'
+/** The key the hint names is this computer's; `pasteKey` is pinned per platform below. */
+const HINT = `${pasteKey()}  to paste from clipboard`
 
 describe('the hint on home', () => {
-  it('says ⌘V pastes, on a chip in the mode’s colour at the field’s far end', async () => {
+  it('says the paste key, on a chip in the mode’s colour at the field’s far end', async () => {
     const { app } = await open(await holdingJpeg())
     await waitFor(() => plain(app.lastFrame()).includes(HINT))
     const line = (app.lastFrame() ?? '').split('\n').find((l) => plain(l).includes(HINT)) ?? ''
@@ -75,8 +78,9 @@ describe('the hint on home', () => {
       .map((c) => c.ch)
       .join('')
       .indexOf(HINT)
-    expect(cells[at]).toMatchObject({ ch: '⌘', fg: DARK.ink, bg: DARK.modeConvert, b: true })
-    expect(cells[at + 4]).toMatchObject({ ch: 't', fg: DARK.modeConvert })
+    const key = [...pasteKey()]
+    expect(cells[at]).toMatchObject({ ch: key[0], fg: DARK.ink, bg: DARK.modeConvert, b: true })
+    expect(cells[at + key.length + 2]).toMatchObject({ ch: 't', fg: DARK.modeConvert })
     // Two cells short of the shelf's edge, as colour's hints end.
     const end = at + [...HINT].length
     expect(cells[end]?.bg).toBe(DARK.shelf)
@@ -112,6 +116,37 @@ describe('the hint on home', () => {
     expect(plain(app.lastFrame())).toContain(HINT)
     // The focus report itself is never typed into the field.
     expect(plain(app.lastFrame())).toContain('› OR search or enter a file path…')
+  })
+})
+
+describe('the key the hint names', () => {
+  it('is ⌘V on a Mac, Ctrl+V on Windows and Linux', () => {
+    expect(pasteKey('darwin')).toBe('⌘V')
+    expect(pasteKey('win32')).toBe('Ctrl+V')
+    expect(pasteKey('linux')).toBe('Ctrl+V')
+  })
+
+  describe('on Linux', () => {
+    pinPlatform('linux')
+
+    it('says Ctrl+V, and Ctrl+V lands the image', async () => {
+      const { app } = await open(await holdingJpeg())
+      await waitFor(() => plain(app.lastFrame()).includes('Ctrl+V  to paste from clipboard'))
+      expect(plain(app.lastFrame())).toContain('Ctrl+V  to paste from clipboard')
+      app.stdin.write(CTRL_V)
+      await waitFor(() => plain(app.lastFrame()).includes('Copied image'))
+      expect(plain(app.lastFrame())).toContain('JPEG')
+    })
+  })
+
+  describe('on Windows', () => {
+    pinPlatform('win32')
+
+    it('says Ctrl+V', async () => {
+      const { app } = await open(await holdingJpeg())
+      await waitFor(() => plain(app.lastFrame()).includes('Ctrl+V  to paste from clipboard'))
+      expect(plain(app.lastFrame())).toContain('Ctrl+V  to paste from clipboard')
+    })
   })
 })
 
@@ -214,7 +249,10 @@ describe('compressing a copied image', () => {
     const frame = plain(app.lastFrame())
     expect(frame).toContain('The file you uploaded is no longer in the clipboard.')
     expect(frame).toMatch(/The compressed image is saved to [^.]+\./)
-    expect(keyRow(app.lastFrame())).toMatch(/↵ +compress again +o +open +s +show in Finder/)
+    // The reveal key names this computer's file manager.
+    expect(keyRow(app.lastFrame())).toMatch(
+      new RegExp(`↵ +compress again +o +open +s +${revealLabel().toLowerCase()}`),
+    )
     expect(clip.held()?.kind).toBe('text')
     expect(await readdir(desktop)).toEqual(['Copied image.jpg'])
   }, 30_000)

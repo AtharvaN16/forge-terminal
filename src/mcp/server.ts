@@ -124,7 +124,7 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Compress the copied image',
       description:
-        'The image on the macOS clipboard, made smaller (quality or maxSize) or converted (to), and put back on the clipboard, so the next paste is the result. The result is also kept as a file, linked. A newer copy is never overwritten: if something else was copied meanwhile, the result goes to the default folder instead. A compression that would come out larger is refused. undo: true puts the last original back.',
+        'The image on the clipboard, made smaller (quality or maxSize) or converted (to), and put back on the clipboard, so the next paste is the result. The result is also kept as a file, linked. A newer copy is never overwritten: if something else was copied meanwhile, the result goes to the default folder instead. A compression that would come out larger is refused. undo: true puts the last original back.',
       inputSchema: ClipInput,
       outputSchema: ClipOutput,
       annotations: { ...WRITES, destructiveHint: true },

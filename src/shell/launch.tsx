@@ -1,7 +1,7 @@
 import { render } from 'ink'
 import type { Preferences } from '../config/preferences.js'
 import type { Opened } from '../menu/command.js'
-import { clipboardSupported, macPasteboard } from '../utils/pasteboard.js'
+import { clipboardSupported, systemPasteboard } from '../utils/pasteboard.js'
 import { App } from './App.js'
 // Loaded now, not when the shell exits: by then /update may have replaced
 // the bundle's chunks, whose names change with every release.
@@ -40,7 +40,7 @@ export async function launchShell(start: ShellStart): Promise<void> {
     <ThemeProvider palette={palette}>
       <App
         prefs={prefs}
-        pasteboard={clipboardSupported() ? macPasteboard() : null}
+        pasteboard={clipboardSupported() ? systemPasteboard() : null}
         {...(warning === undefined ? {} : { configWarning: warning })}
         {...(opened === undefined ? {} : { opened })}
         {...(menuNote === undefined ? {} : { menuNote })}

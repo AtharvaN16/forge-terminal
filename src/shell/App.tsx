@@ -741,7 +741,15 @@ const SEARCH_SHOWN_MS = 300
 /** How long typing rests before a name is looked for: one search per pause, not per key. */
 const NAME_WAIT_MS = 120
 
-const PASTE_HINT = { key: '⌘V', words: 'to paste from clipboard' } as const
+const PASTE_HINT = { words: 'to paste from clipboard' } as const
+
+/**
+ * Ctrl+V off a Mac: it reaches the app as itself in a Linux terminal, which
+ * pastes with Ctrl+Shift+V, and is what a Windows user presses.
+ */
+export function pasteKey(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'darwin' ? '⌘V' : 'Ctrl+V'
+}
 
 /** The settings' own screens: each draws its own bar, so the app's mode bar stays off them. */
 const SETTINGS_STEPS: ReadonlySet<string> = new Set([
@@ -789,7 +797,8 @@ export function App({
   latestRelease?: () => Promise<string | undefined>
   /**
    * The clipboard as a picture, for ⌘V on home; null where there is none
-   * (not macOS, over SSH). launch.tsx passes the real one; tests a fake.
+   * (over SSH, a Linux without a desktop). launch.tsx passes the real one;
+   * tests a fake.
    */
   pasteboard?: Pasteboard | null
   /** Where a copied image and its result are kept; the system temp folder by default. */
@@ -1498,7 +1507,7 @@ export function App({
     clipHint && onHome && !staged && text === '' && mode !== 'colour'
       ? fieldKey({
           palette,
-          key: PASTE_HINT.key,
+          key: pasteKey(),
           words: PASTE_HINT.words,
           colour: modeColours(palette, mode).fg,
           plain: (process.env.NO_COLOR ?? '') !== '',

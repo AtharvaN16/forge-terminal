@@ -8,7 +8,7 @@ import { formatBytes } from '../core/units.js'
 import { probe } from '../engines/registry.js'
 import { VERSION } from '../shell/theme.js'
 import { displayPath } from '../utils/display-path.js'
-import { clipboardSupported, macPasteboard, type Pasteboard } from '../utils/pasteboard.js'
+import { clipboardSupported, type Pasteboard, systemPasteboard } from '../utils/pasteboard.js'
 import type { ClipIntent, CompressIntent, ConvertIntent } from './args.js'
 import {
   type ExecuteOptions,
@@ -51,7 +51,7 @@ async function defaultFolder(deps: ClipDeps): Promise<string> {
 function pasteboardFor(deps: ClipDeps): Pasteboard {
   if (deps.pasteboard) return deps.pasteboard
   if (!clipboardSupported()) throw clipboardUnavailable()
-  return macPasteboard()
+  return systemPasteboard()
 }
 
 /** The intent that turns the copied image into its result, in the run's own folder. */
