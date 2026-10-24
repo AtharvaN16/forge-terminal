@@ -130,9 +130,9 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#F26E69')
     await settle()
-    // A whole colour typed: no ↵ done at the field's end (the key row says it, 2026-10-24).
+    // A whole colour typed: ↵ done at the field's end, and on the key row.
     const field = lines(app.lastFrame()).find((l) => l.includes('#F26E69')) ?? ''
-    expect(field).not.toContain('done')
+    expect(field).toMatch(/#F26E69 .* ↵ {2}done/)
     expect(keyRow(app.lastFrame())).toMatch(/↵ +done/)
     app.stdin.write(SHIFT_RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))

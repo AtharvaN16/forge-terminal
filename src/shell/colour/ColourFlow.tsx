@@ -36,6 +36,7 @@ import { copy } from '../clipboard.js'
 import { HintBar } from '../components/HintBar.js'
 import { Runs } from '../components/Home.js'
 import { Prompt } from '../components/Prompt.js'
+import { fieldKey } from '../field-key.js'
 import { trueColour } from '../glyphs.js'
 import { sketchNoteRows } from '../halfblocks.js'
 import { blank, type Row, width as widthOf } from '../home-art.js'
@@ -584,6 +585,17 @@ function withNewColour(p: ReturnType<typeof useTheme>, row: Row, width: number):
   return gap >= 2 ? [...row, blank(gap), ...hint] : row
 }
 
+/**
+ * A key and what it does, at the field's far end, as every field's key hint
+ * is drawn (`fieldKey`), in grey rather than the mode's pink: the swatches
+ * already compete for attention (2026-10-16).
+ */
+function keyHint(p: ReturnType<typeof useTheme>, keys: string, words: string): Row {
+  return fieldKey({ palette: p, key: keys, words, colour: p.border, ink: p.canvas })
+}
+/** While a colour is typed: ↵ is done. */
+const DONE_HINT = ['↵', 'done'] as const
+
 /** The empty box's one hint (§12.4): a colour on Scale and Palette, a path on Extract. */
 const COLOUR_HINT = 'type a hex, rgb(), hsl(), oklch() or a colour name'
 function hintFor(screen: Screen): string {
@@ -672,14 +684,22 @@ function FieldEditor({
     blank(Math.max(2, room - widthOf(before) - widthOf(tail))),
     ...tail,
   ]
-  // No ↵ done at the far end while typing (2026-10-24): the key row says it.
+  // A whole colour typed, or two or more for a gradient: ↵ is done, as a grey
+  // chip at the far end (asked for again 2026-10-24), where it fits.
+  const done = keyHint(p, ...DONE_HINT)
+  const whole = last ?? (stops === undefined ? one?.rgb : undefined)
+  // A name or a function (`crimson`) says the hex beside its swatch; a gradient's last colour does not.
+  const named = last === undefined
+  const finished = whole !== undefined && room - widthOf(swatch(whole, named)) - widthOf(done) >= 2
   const after: Row = wrong
     ? farEnd([], [{ text: 'wrong input', fg: p.border }])
     : waiting
       ? [{ text: 'type a second colour to mix', fg: p.border }]
-      : last
-        ? swatch(last)
-        : swatch(one?.rgb, true)
+      : finished
+        ? farEnd(swatch(whole, named), done)
+        : last
+          ? swatch(last)
+          : swatch(one?.rgb, true)
   const pad = <Box width={width - 4} height={1} {...fillProps} />
   return (
     <Box flexDirection="column" marginLeft={2}>

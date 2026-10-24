@@ -56,19 +56,35 @@ async function onScale() {
   return app
 }
 
-describe('colour mode’s field (2026-10-24)', () => {
-  it('no ↵ done at its end while a colour is typed: the key row says it', async () => {
+describe('colour mode’s field', () => {
+  it('↵ done is a grey chip at its end while a colour is typed (back, 2026-10-24)', async () => {
     const app = await onScale()
     app.stdin.write('#F26E69')
+    await waitFor(() => plain(app.lastFrame()).includes('done'))
+    const { cells, at } = cellsOf(app.lastFrame(), ' ↵  done', '#F26E69')
+    expect(cells[at + 1]).toMatchObject({ ch: '↵', fg: DARK.canvas, bg: DARK.border, b: true })
+    expect(cells[at + 4]).toMatchObject({ ch: 'd', fg: DARK.border })
+  }, 20_000)
+
+  it('and while two or more are typed for a gradient', async () => {
+    const app = await onScale()
+    app.stdin.write('#F26E69 → #6579FD → #32A852')
+    await waitFor(() => plain(app.lastFrame()).includes('done'))
+    const field = plain(app.lastFrame())
+      .split('\n')
+      .find((l) => l.includes('#F26E69'))
+    expect(field).toMatch(/#32A852 .* ↵ {2}done/)
+  }, 20_000)
+
+  it('none while the second colour is still to come', async () => {
+    const app = await onScale()
+    app.stdin.write('#F26E69 → ')
     await settle()
     const field = plain(app.lastFrame())
       .split('\n')
       .find((l) => l.includes('#F26E69'))
     expect(field).not.toContain('done')
-    const keys = plain(app.lastFrame())
-      .split('\n')
-      .findLast((l) => l.trim() !== '')
-    expect(keys).toMatch(/↵ +done/)
+    expect(field).toContain('type a second colour to mix')
   }, 20_000)
 
   it('# new colour at its end once the scale is shown, plain: the key bright, the words quiet', async () => {

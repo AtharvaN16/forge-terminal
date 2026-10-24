@@ -816,8 +816,9 @@ different screens. The audit and its rounds are in
 - **The lines say no keys**: the steps line, the gradient's line and the
   mode's line are values only; the tab row ends in the `tab` cap alone.
 - **The field**: `# new colour` at its far end at rest, as plain text (the
-  key bright, the words quiet). No `↵ done` there while typing, and no
-  gradient hint: the key row says ↵ done.
+  key bright, the words quiet). While a whole colour is typed — or two or more
+  for a gradient — `↵ done` is its grey chip at the far end, as before; there
+  is no gradient hint (Gradient is in More).
 - **Key rows**: Colour `←→ choose ↵ copy c copy all · r make centre · esc
   back`; Neutral, Alpha, a gradient `… · esc back`; Palette `↑↓←→ choose …
   · (r reset ·) esc back`; More `↑↓ choose ↵ open · esc close`; Gradient
