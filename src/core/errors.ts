@@ -1188,7 +1188,7 @@ export function renderUnavailable(format: 'docx' | 'pdf'): ForgeError {
   return new ForgeError({
     code: 'render-unavailable',
     title: `${what} is not available here`,
-    detail: `${what} transcripts need macOS 26 or later. Markdown and text work everywhere.`,
+    detail: `${what} transcripts need macOS 26 or later. Markdown, Word and text work everywhere.`,
     short: `${what} needs macOS 26 or later.`,
   })
 }
