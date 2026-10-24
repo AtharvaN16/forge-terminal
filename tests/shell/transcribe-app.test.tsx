@@ -75,25 +75,38 @@ async function setUp(
     read?: boolean
     /** What `read` answers; the spike page by default. */
     lines?: object[]
+    /** The helper is whisper's: no Apple recogniser, no notes, and no Apple helper to set documents. */
+    whisper?: boolean
   } = {},
 ) {
-  const fake = await fakeTranscribeHelper({
-    status: {
-      lines: [{ ok: true, speech: true, locale: 'en_US', notes, read: opts.read ?? false }],
+  const fake = await fakeTranscribeHelper(
+    {
+      status: {
+        lines: [
+          {
+            ok: true,
+            speech: true,
+            locale: 'en_US',
+            notes: opts.whisper ? 'unsupported' : notes,
+            read: opts.read ?? false,
+          },
+        ],
+      },
+      read: { lines: opts.lines ?? [DOC], ...(opts.hang ? { hang: true } : {}) },
+      probe: { lines: [{ ok: true, seconds: 3717, sound: true }] },
+      run: {
+        lines: opts.run ?? [
+          { event: 'heard', seconds: 70, of: 75 },
+          { event: 'notes', part: 1, of: 2 },
+          notes === 'available' ? RESULT : { ...RESULT, notes: undefined },
+        ],
+        ...(opts.hang ? { hang: true } : {}),
+      },
+      // Word and PDF: the stand-in writes the HTML it was given, marked.
+      render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'rendered:' } },
     },
-    read: { lines: opts.lines ?? [DOC], ...(opts.hang ? { hang: true } : {}) },
-    probe: { lines: [{ ok: true, seconds: 3717, sound: true }] },
-    run: {
-      lines: opts.run ?? [
-        { event: 'heard', seconds: 70, of: 75 },
-        { event: 'notes', part: 1, of: 2 },
-        notes === 'available' ? RESULT : { ...RESULT, notes: undefined },
-      ],
-      ...(opts.hang ? { hang: true } : {}),
-    },
-    // Word and PDF: the stand-in writes the HTML it was given, marked.
-    render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'rendered:' } },
-  })
+    opts.whisper ? { whisper: true } : {},
+  )
   process.env.FORGE_TRANSCRIBE_HELPER = fake.path
   const dir = await makeTempDir()
   const input = join(dir, 'talk.mp4')
@@ -437,6 +450,34 @@ describe('the Format step', () => {
     expect(names).toEqual(['Markdown', 'Word', 'PDF', 'Text'])
     expect(rows[at + 1]).toMatch(/▌ Markdown\s+\.md\s+default\s*$/)
     expect(f.split('\n').at(-1)).toMatch(/↑↓ +choose +tab +make default +↵ +confirm/)
+  }, 40_000)
+
+  it("lists PDF where Apple's helper is not: Forge writes it (Windows, Linux, before macOS 26)", async () => {
+    const s = await setUp('available', { whisper: true })
+    s.app.stdin.write('5')
+    await until(() => frame(s.app).includes('or a YouTube link'))
+    s.app.stdin.write(s.input)
+    await until(() => frame(s.app).includes('1:01:57'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    // No notes here, so Transcribe to is skipped and Format comes first.
+    await until(() => frame(s.app).includes('Markdown'))
+    await settle()
+    const rows = frame(s.app).split('\n')
+    const at = rows.findIndex((l) => /^\s+Format\s*$/.test(l))
+    const names = rows.slice(at + 1, at + 5).map((l) => l.replace('▌', '').trim().split(/\s+/)[0])
+    expect(names).toEqual(['Markdown', 'Word', 'PDF', 'Text'])
+    // Down to PDF and on: the file is a real PDF, not the helper's marked HTML.
+    s.app.stdin.write(DOWN)
+    s.app.stdin.write(DOWN)
+    await settle()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Save as'))
+    await settle()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('✓ talk.pdf'))
+    const bytes = await readFile(join(s.out, 'talk.pdf'))
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
   }, 40_000)
 
   it('Word: Save as names it .docx, and the helper sets it as Word', async () => {

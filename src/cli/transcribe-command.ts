@@ -11,7 +11,6 @@ import {
   outputExists,
   readUnavailable,
   renderError,
-  renderUnavailable,
   transcribeUnavailable,
   unexpectedError,
   untranscribable,
@@ -25,7 +24,7 @@ import {
   type Transcription,
   transcriptMarkdown,
 } from '../core/transcribe/markdown.js'
-import { OUTPUTS, type Output, outputExt, outputsFor } from '../core/transcribe/output.js'
+import { OUTPUTS, type Output, outputExt } from '../core/transcribe/output.js'
 import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
 import { hasText, pagePlain, pageText } from '../core/transcribe/page-text.js'
 import {
@@ -172,8 +171,6 @@ export async function runTranscribeCommand(
     if (status === undefined || !status.speech) {
       throw transcribeUnavailable(transcribeNeeds(process.platform, status?.missing))
     }
-    // Before the minute of listening: a PDF nothing here can set is said now (outputsFor).
-    if (!outputsFor(status).some((o) => o.id === format)) throw renderUnavailable('pdf')
     const notes = intent.notes && status.notes === 'available'
     if (intent.notes && !notes) {
       // Notes alone were the whole ask: a transcript would not be what they wanted.

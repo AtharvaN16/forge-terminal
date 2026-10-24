@@ -8,6 +8,7 @@ import { runTranscribeCommand } from '../../src/cli/transcribe-command.js'
 import { transcriptMarkdown } from '../../src/core/transcribe/markdown.js'
 import { markdownText } from '../../src/core/transcribe/output.js'
 import { pageMarkdown, pagePlain, pageText } from '../../src/core/transcribe/page-text.js'
+import { extractPdfText } from '../../src/engines/pdfium.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
@@ -437,6 +438,29 @@ describe('forge transcribe on Linux', () => {
     expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words'])
   })
 
+  it('writes a PDF with --format pdf, set by Forge since there is no Apple helper', async () => {
+    const fake = await fakeTranscribeHelper(
+      {
+        status: { lines: [{ ok: true, speech: true, locale: 'en', notes: 'unsupported' }] },
+        run: { lines: [RESULT] },
+      },
+      { whisper: true },
+    )
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    const dir = await makeTempDir()
+    const input = join(dir, 'talk.mp4')
+    await writeFile(input, MP4)
+    const { code, out, err } = await run(intent(input, { format: 'pdf' }))
+    expect(err).toEqual([])
+    expect(code).toBe(0)
+    expect(shown(out)).toEqual(['✓ talk.pdf   1:15 → 5 words'])
+    const bytes = await readFile(join(dir, 'talk.pdf'))
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    const [page] = await extractPdfText(bytes)
+    expect(page).toContain('Hello and welcome.')
+    expect(page).toContain('Now, milk.')
+  })
+
   it('refuses --to notes in Linux words', async () => {
     const fake = await fakeTranscribeHelper({
       status: { lines: [{ ok: true, speech: true, locale: 'en', notes: 'unsupported' }] },
@@ -490,6 +514,15 @@ describe('forge transcribe on Windows', () => {
     expect(code).toBe(0)
     expect(err).toEqual([])
     expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words'])
+  })
+
+  it('writes a PDF with --format pdf, as on every other OS', async () => {
+    const { dir, input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input, { format: 'pdf' }))
+    expect(err).toEqual([])
+    expect(code).toBe(0)
+    const [page] = await extractPdfText(await readFile(join(dir, 'talk.pdf')))
+    expect(page).toContain('Hello and welcome.')
   })
 
   it('refuses --to notes: Apple Intelligence, which this PC does not have', async () => {
