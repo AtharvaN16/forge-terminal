@@ -3,6 +3,7 @@ import { cloneElement, isValidElement, type ReactNode, useRef, useState } from '
 import stringWidth from 'string-width'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { COLOUR_CARD_KEYS, COLOUR_SAMPLES, choiceCards } from '../colour/colour-art.js'
+import { windowOver } from '../colour/system-art.js'
 import {
   askRows,
   brandIntro,
@@ -18,6 +19,7 @@ import {
   MODE_NOTES,
   menuHintRow,
   type Row,
+  type Run,
   type SuggestionItem,
   searchingRows,
   stagedCardRows,
@@ -429,6 +431,7 @@ export function Home({
   suggest,
   ask,
   searching = false,
+  presets,
 }: {
   width: number
   height: number
@@ -469,6 +472,14 @@ export function Home({
   ask?: { title: string; body: string } | undefined
   /** A name is being looked for: the drop surface says so (L1). */
   searching?: boolean
+  /**
+   * p presets, open (N5, mockups/presets-ux-2026-10-round10.html): the
+   * presets that fit what is staged, in a small window over the drop surface
+   * at its right, the chosen one lit.
+   */
+  presets?:
+    | { items: ReadonlyArray<{ name: string; steps: readonly string[] }>; selected: number }
+    | undefined
 }) {
   const palette = useTheme()
   const layout = homeLayout(width, height, noteRows)
@@ -546,6 +557,9 @@ export function Home({
                         })
       : []
 
+  // p presets: the window over the surface, the surface faded under it.
+  const surface = presets && panel.length > 0 ? presetsOver(palette, panel, presets, width) : panel
+
   // The row under the field. With no room for a panel the staged headline
   // takes it, so what is staged is still said.
   const first = staged?.files[0]
@@ -588,7 +602,7 @@ export function Home({
         blendRows([], row, tabsIn, { canvas: palette.canvas, fg: palette.fg }),
       )
     : tabsAtRest
-  const faded = useBlendedRows(mode, [...brand, ...tabs, ...panel], MODE_FADE_MS, {
+  const faded = useBlendedRows(mode, [...brand, ...tabs, ...surface], MODE_FADE_MS, {
     enabled: motionEnabled(palette.name),
     canvas: palette.canvas,
     fg: palette.fg,
@@ -684,4 +698,47 @@ export function Home({
       />
     </Box>
   )
+}
+
+/**
+ * The presets that fit what is staged, as a window over the drop surface at
+ * its right (N5): each a row — the name, then its steps joined by ─▸ — the
+ * chosen one on the band with › in the mode's colour.
+ */
+function presetsOver(
+  palette: ReturnType<typeof useTheme>,
+  panel: Row[],
+  presets: { items: ReadonlyArray<{ name: string; steps: readonly string[] }>; selected: number },
+  columns: number,
+): Row[] {
+  const W = Math.min(52, columns - 2 * HOME_MARGIN)
+  const inner = W - 2
+  const lines: Row[] = [
+    [],
+    ...presets.items.map((p, i): Row => {
+      const lit = i === presets.selected
+      const bg = lit && palette.panelBand ? palette.panelBand : undefined
+      const on = bg ? { bg } : {}
+      const steps: Run[] = p.steps.flatMap((t, k): Run[] => [
+        ...(k > 0 ? [{ text: ' ─▸ ', fg: lit ? palette.border : palette.faint, ...on }] : []),
+        { text: t, fg: lit ? palette.fg : palette.border, bold: lit, ...on },
+      ])
+      const row: Row = [
+        { text: lit ? ' › ' : '   ', fg: palette.accent, bold: true, ...on },
+        { text: p.name.padEnd(12), fg: palette.fg, bold: lit, ...on },
+        ...steps,
+      ]
+      const used = row.reduce((n, r) => n + stringWidth(r.text), 0)
+      return [...row, { text: ' '.repeat(Math.max(0, inner - used)), ...on }]
+    }),
+    [],
+  ]
+  return windowOver(palette, panel, {
+    title: 'Presets',
+    lines,
+    width: W,
+    columns,
+    top: Math.max(0, panel.length - lines.length - 2),
+    left: columns - HOME_MARGIN - W,
+  }).slice(0, panel.length)
 }

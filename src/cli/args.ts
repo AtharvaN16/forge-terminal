@@ -144,6 +144,11 @@ export interface PresetIntent {
   force: boolean
   recursive: boolean
   debug: boolean
+  /**
+   * A name taken becomes `photo (1).jpg` rather than a refusal: the
+   * right-click menu's preset items, which have no one to ask.
+   */
+  keepBoth?: boolean
 }
 
 export interface EditIntent {

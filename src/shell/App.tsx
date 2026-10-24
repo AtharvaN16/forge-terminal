@@ -46,6 +46,7 @@ import { type FolderScan, scanFolder, scanOfFiles } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
 import { compressFloor, hasPicture, sizeUnitsFor, soundBytes } from '../core/media.js'
 import { uniqueOutputPath } from '../core/output-path.js'
+import type { Preset } from '../core/preset.js'
 import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import { readLink } from '../core/transcribe/links.js'
@@ -109,6 +110,7 @@ import { MenuPopup, menuBodyRows } from './components/MenuPopup.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
+import { PresetRunScreen } from './components/PresetRun.js'
 import { Prompt } from './components/Prompt.js'
 import { QualityStep } from './components/QualityStep.js'
 import { ResizeStep } from './components/ResizeStep.js'
@@ -120,6 +122,7 @@ import { StagedFiles } from './components/StagedFiles.js'
 import { StepTitle } from './components/StepTitle.js'
 import { ThemePicker } from './components/ThemePicker.js'
 import { Working } from './components/Working.js'
+import { chainLabels } from './continue-editing.js'
 import { NEW_FOLDER, safeStem } from './destinations.js'
 import { doneActionRows } from './done-art.js'
 import {
@@ -153,6 +156,7 @@ import { HOME_MARGIN, MODE_FORMATS, type Row } from './home-art.js'
 import { menuListRows } from './menu-art.js'
 import { motionEnabled, useTicker } from './motion.js'
 import { isStrayEscapeSequence } from './mouse.js'
+import { presetOutput, presetsFor } from './preset-runs.js'
 import { keyIsDown, usePressedKeys } from './pressed-key.js'
 import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { largestPercent } from './resize-art.js'
@@ -264,6 +268,8 @@ export type Step =
   | 'preset-edit'
   /** Done's p : Save as preset, over Done. */
   | 'preset-save'
+  /** A saved preset running on what is staged (R6), from p presets or Convert to's Presets tab. */
+  | 'preset-run'
   /** A folder in convert mode, converted then watched: `WatchFlow` owns it. */
   | 'watch'
   /** Transcribe, from Transcribe to on: `TranscribeFlow` owns it. */
@@ -1267,8 +1273,22 @@ export function App({
       (doneBar?.mode === 'convert' || doneBar?.mode === 'compress') &&
       clip === null &&
       clipDone === null,
+    // A step that failed: its error on Done, the file and the chain as they were.
+    fail: (e) => holdFailure(e),
     tools,
   })
+  /**
+   * Saved presets next time (decided, mockups/presets-ux-2026-10-round10.html):
+   * the ones that fit the one image staged, p presets' window over the drop
+   * surface (N5) with which is chosen, Convert to's tab (T11), and the run.
+   */
+  const fitting: Preset[] =
+    stage.sources.length === 1 && stage.sources[0]?.kind === 'image'
+      ? presetsFor(livePrefs.presets ?? [], stage.sources[0])
+      : []
+  const [presetPick, setPresetPick] = useState<number | null>(null)
+  const [targetTab, setTargetTab] = useState<'formats' | 'presets'>('formats')
+  const [presetRun, setPresetRun] = useState<{ preset: Preset; output: string } | null>(null)
   const doneRecord = useRef<HistoryBlock[] | null>(null)
   const [pending, setPending] = useState<PendingOverwrite | null>(null)
   /** Save as's folder and proposed name, while it is open — see `SaveAsState`. */
@@ -1582,7 +1602,16 @@ export function App({
       : staged
         ? stagedVerb(stage, mode)
         : null
-  const emptyHint: Row | undefined = onHome && stagedVerbNow ? enterCap : pasteHint
+  const presetsCap: Row =
+    (process.env.NO_COLOR ?? '') !== '' || palette.keycapBg === ''
+      ? [{ text: '[p presets]', fg: palette.border }]
+      : [{ text: ' p presets ', fg: palette.dim, bg: palette.keycapBg }]
+  const emptyHint: Row | undefined =
+    onHome && stagedVerbNow
+      ? fitting.length > 0 && mode !== 'transcribe' && mode !== 'colour'
+        ? [...presetsCap, { text: '  ' }, ...enterCap]
+        : enterCap
+      : pasteHint
   /**
    * A link waiting for yt-dlp says so in the field, beside ↵ install
    * (mockups/own-tools-2026-10-round5.html, F2): the need and its size, then
@@ -1809,7 +1838,78 @@ export function App({
    * `DROP_PIECE_MS` is joined to it and the whole read again
    * (docs/superpowers/specs/2026-10-13-forge-paste-drops-design.md).
    */
+  useKeys(
+    (_input, key) => {
+      if (key.tab) setTargetTab((t) => (t === 'formats' ? 'presets' : 'formats'))
+    },
+    { isActive: step === 'target' && fitting.length > 0 },
+  )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new stage opens on Formats, the window shut
+  useEffect(() => {
+    setTargetTab('formats')
+    setPresetPick(null)
+  }, [stage])
+  /**
+   * Convert to's tabs where presets fit (T11, decided): the row a dark band,
+   * the shown tab a lighter grey, no divider; tab's cap at the row's far end.
+   */
+  const presetTabs = (on: 'formats' | 'presets', count: number): Row => {
+    const bandBg = palette.tabChip || undefined
+    const lit = palette.panelBand || undefined
+    const tab = (label: string, shown: boolean) => ({
+      text: `  ${label}  `,
+      fg: shown ? palette.fg : palette.dim,
+      bold: shown,
+      ...(shown ? (lit ? { bg: lit } : {}) : bandBg ? { bg: bandBg } : {}),
+    })
+    const tabs = [tab('Formats', on === 'formats'), tab(`Presets (${count})`, on === 'presets')]
+    const cap = {
+      text: ' tab ',
+      fg: palette.dim,
+      ...(palette.keycapBg ? { bg: palette.keycapBg } : {}),
+    }
+    const inner = width - 2 * HOME_MARGIN
+    const used = tabs.reduce((n, t) => n + t.text.length, 0) + cap.text.length
+    return [
+      { text: ' '.repeat(HOME_MARGIN) },
+      ...tabs,
+      { text: ' '.repeat(Math.max(0, inner - used)), ...(bandBg ? { bg: bandBg } : {}) },
+      cap,
+    ]
+  }
+  /** A saved preset on the one image staged: where its file goes, then the run (R6). */
+  const startPreset = (preset: Preset) => {
+    const src = stage.sources[0]
+    if (src?.kind !== 'image') return
+    setPresetRun({ preset, output: presetOutput(preset, src) })
+    setStep('preset-run')
+  }
   const homeKey = (input: string, key: Key, value: string): boolean => {
+    if (presetPick !== null) {
+      if (key.escape) setPresetPick(null)
+      else if (key.upArrow || key.downArrow)
+        setPresetPick((at) =>
+          Math.max(0, Math.min(fitting.length - 1, (at ?? 0) + (key.downArrow ? 1 : -1))),
+        )
+      else if (key.return) {
+        const chosen = fitting[presetPick]
+        setPresetPick(null)
+        if (chosen) startPreset(chosen)
+      }
+      return true
+    }
+    if (
+      value === '' &&
+      input === 'p' &&
+      !key.ctrl &&
+      !key.meta &&
+      fitting.length > 0 &&
+      mode !== 'transcribe' &&
+      mode !== 'colour'
+    ) {
+      setPresetPick(0)
+      return true
+    }
     if (pasteboard && ((key === PASTE && input === '') || (key.ctrl && input === 'v'))) {
       pasteClipboard()
       return true
@@ -2238,6 +2338,8 @@ export function App({
       if (!key.escape) return
       // Asking whether to search the Mac, esc is "not now", and the name stays.
       if (askingSearch) return
+      // p presets' window: esc closes it (`homeKey`), the file stays staged.
+      if (presetPick !== null) return
       setHomeError(undefined)
       if (text !== '') {
         setText('')
@@ -4953,7 +5055,7 @@ export function App({
             trail ending in "Done" (see `doneTrail` and `DoneScreen`). Nor on
             the settings (/extensions, /update, /cli, /about), which are no mode and
             each draw their own chip. */}
-            {working && !onHome && !atDone && !SETTINGS_STEPS.has(step) ? (
+            {working && !onHome && !atDone && step !== 'preset-run' && !SETTINGS_STEPS.has(step) ? (
               <Box marginBottom={1}>
                 <HeaderBar
                   mode={mode}
@@ -4971,6 +5073,7 @@ export function App({
             step !== 'theme' &&
             !atDone &&
             step !== 'watch' &&
+            step !== 'preset-run' &&
             !onHome ? (
               <Box marginBottom={1} marginLeft={HOME_MARGIN}>
                 <StagedFiles
@@ -5123,41 +5226,64 @@ export function App({
             targetSpec?.kind === 'select' ? (
               <Box flexDirection="column" flexGrow={1}>
                 <Box marginBottom={1}>
-                  <StepTitle mode={mode} title="Convert to" width={width} />
+                  {fitting.length > 0 ? (
+                    <Runs row={presetTabs(targetTab, fitting.length)} />
+                  ) : (
+                    <StepTitle mode={mode} title="Convert to" width={width} />
+                  )}
                 </Box>
-                <Select
-                  width={pickerWidth}
-                  items={targetItems}
-                  onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
-                  speak={(item, budget) =>
-                    item.value === GOTO_PDF ? null : (
-                      <SizeAside
-                        size={
-                          source.kind === 'media'
-                            ? soundSize(source, item.value as FormatId)
-                            : targetSize
-                        }
-                        sourceBytes={source.bytes}
-                        budget={budget}
-                      />
-                    )
-                  }
-                  onSubmit={(target) => {
-                    if (target === GOTO_PDF) {
-                      if (pdfCommand) runCommand(pdfCommand)
-                      return
+                {fitting.length > 0 && targetTab === 'presets' ? (
+                  <Select
+                    key="presets"
+                    width={pickerWidth}
+                    items={fitting.map((p) => ({
+                      value: p.name,
+                      label: p.name,
+                      hint: chainLabels(source.format, p.steps).join(' ─▸ '),
+                    }))}
+                    hints="every"
+                    onSubmit={(name) => {
+                      const chosen = fitting.find((p) => p.name === name)
+                      if (chosen) startPreset(chosen)
+                    }}
+                    onCancel={clearSource}
+                    showHints={band !== 'compact'}
+                  />
+                ) : (
+                  <Select
+                    width={pickerWidth}
+                    items={targetItems}
+                    onHighlight={(i) => setTargetHighlight(targetItems[i]?.value)}
+                    speak={(item, budget) =>
+                      item.value === GOTO_PDF ? null : (
+                        <SizeAside
+                          size={
+                            source.kind === 'media'
+                              ? soundSize(source, item.value as FormatId)
+                              : targetSize
+                          }
+                          sourceBytes={source.bytes}
+                          budget={budget}
+                        />
+                      )
                     }
-                    chooseTarget(source, target)
-                  }}
-                  onCancel={
-                    fromPdfHub
-                      ? backToPdfHub
-                      : source.kind === 'document'
-                        ? backToPromptKeepingStage
-                        : clearSource
-                  }
-                  showHints={band !== 'compact'}
-                />
+                    onSubmit={(target) => {
+                      if (target === GOTO_PDF) {
+                        if (pdfCommand) runCommand(pdfCommand)
+                        return
+                      }
+                      chooseTarget(source, target)
+                    }}
+                    onCancel={
+                      fromPdfHub
+                        ? backToPdfHub
+                        : source.kind === 'document'
+                          ? backToPromptKeepingStage
+                          : clearSource
+                    }
+                    showHints={band !== 'compact'}
+                  />
+                )}
                 <HintBar
                   width={width}
                   pairs={[
@@ -5766,8 +5892,49 @@ export function App({
                 width={width}
                 height={height}
                 pressed={donePressed}
-                chain={presets.chain}
+                links={presets.links}
                 {...clipDoneProps()}
+              />
+            ) : null}
+
+            {step === 'preset-run' && presetRun && stage.sources[0]?.kind === 'image' ? (
+              <PresetRunScreen
+                mode={mode === 'compress' ? 'compress' : 'convert'}
+                preset={presetRun.preset}
+                source={stage.sources[0]}
+                output={presetRun.output}
+                width={width}
+                height={height}
+                onDone={(result) => {
+                  const ran = presetRun.preset
+                  const shown = mode === 'compress' ? 'compress' : 'convert'
+                  const trail: Trail = {
+                    answers: [
+                      ran.name,
+                      displayPath(dirname(presetRun.output)),
+                      displayName(presetRun.output),
+                    ],
+                    current: 'Done',
+                  }
+                  setLastResult(result)
+                  setDoneBar({ mode: shown, trail })
+                  doneRecord.current = [
+                    { kind: 'bar', id: nextId(), mode: shown, trail },
+                    { kind: 'result', id: nextId(), result, mode: shown },
+                  ]
+                  presets.seed(ran.steps, ran.name)
+                  setPresetRun(null)
+                  setStep('result')
+                }}
+                onFail={(e) => {
+                  setPresetRun(null)
+                  setStep('idle')
+                  holdFailure(e)
+                }}
+                onCancel={() => {
+                  setPresetRun(null)
+                  setStep('idle')
+                }}
               />
             ) : null}
 
@@ -5802,6 +5969,12 @@ export function App({
                   <RightClickFlow
                     width={menuInner}
                     system={rightClick}
+                    presets={livePrefs.presets ?? []}
+                    onPresets={(next) => {
+                      setLivePrefs((p) => ({ ...p, presets: next }))
+                      // Returned: the menu is written again from the settings once they are saved.
+                      return savePreferences({ presets: next })
+                    }}
                     onClose={() => backToCommands('right-click')}
                   />,
                 )
@@ -6054,21 +6227,42 @@ export function App({
                     : undefined
                 }
                 colourChoice={colourChoice}
-                keys={homeKeys({
-                  typing: text !== '',
-                  completions: completions.length,
-                  colour: mode === 'colour',
-                  formats: formatsHere,
-                  asking: askingSearch,
-                  staged:
-                    mode === 'transcribe'
-                      ? transcribing
-                        ? { count: 1, verb: transcribeVerb(transcribing) }
-                        : undefined
-                      : staged
-                        ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
-                        : undefined,
-                })}
+                presets={
+                  presetPick !== null && stage.sources[0]
+                    ? {
+                        items: fitting.map((p) => ({
+                          name: p.name,
+                          steps: chainLabels(stage.sources[0]?.format ?? 'png', p.steps),
+                        })),
+                        selected: presetPick,
+                      }
+                    : undefined
+                }
+                keys={
+                  presetPick !== null
+                    ? {
+                        main: [
+                          ['↑↓', 'choose'],
+                          ['↵', `run on ${displayName(stage.sources[0]?.path ?? '')}`],
+                        ],
+                        foot: [['esc', 'close']],
+                      }
+                    : homeKeys({
+                        typing: text !== '',
+                        completions: completions.length,
+                        colour: mode === 'colour',
+                        formats: formatsHere,
+                        asking: askingSearch,
+                        staged:
+                          mode === 'transcribe'
+                            ? transcribing
+                              ? { count: 1, verb: transcribeVerb(transcribing) }
+                              : undefined
+                            : staged
+                              ? { count: stage.sources.length, verb: stagedVerb(stage, mode) }
+                              : undefined,
+                      })
+                }
               />
             ) : null}
           </Box>

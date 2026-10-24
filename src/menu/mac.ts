@@ -63,7 +63,14 @@ export const shellQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 /** The icon's name in the bundle's Resources, without its extension, as NSIconName wants it. */
 export const ICON_NAME = 'forge'
 
-const bundleId = (item: MenuItem) => `com.forge-terminal.menu.${item.action}`
+/** Each preset's item has its own ID, so the services settings key one preset apart from the next. */
+const bundleId = (item: MenuItem) =>
+  item.preset === undefined
+    ? `com.forge-terminal.menu.${item.action}`
+    : `com.forge-terminal.menu.preset.${item.preset}`
+
+/** Every bundle ID Forge writes starts with this; a bundle without it is someone else's. */
+export const BUNDLE_PREFIX = 'com.forge-terminal.menu.'
 const MESSAGE = 'runWorkflowAsService'
 
 /**
@@ -145,7 +152,9 @@ export function workflowFiles(
       },
     ],
   })
-  const command = `${shellQuote(launcher)} ${item.action} "$@"`
+  // A preset's name goes before the files, so the launcher knows which preset to run.
+  const preset = item.preset === undefined ? '' : ` ${shellQuote(item.preset)}`
+  const command = `${shellQuote(launcher)} ${item.action}${preset} "$@"`
   const document = plist({
     AMApplicationBuild: '521',
     AMApplicationVersion: '2.10',

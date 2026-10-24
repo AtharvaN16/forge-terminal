@@ -58,7 +58,7 @@ export async function runPresetCommand(intent: PresetIntent): Promise<RunReport>
       ...(folder === undefined ? {} : { output: folder }),
       ...(resolved.roots.get(source.path) ? { sourceRoot: resolved.roots.get(source.path) } : {}),
     })
-    if (sameFile(output, source.path)) output = uniqueOutputPath(output)
+    if (sameFile(output, source.path) || intent.keepBoth) output = uniqueOutputPath(output)
     const outcome = await runPreset(source, passes, output, { force: intent.force })
     if (outcome.kind === 'done') {
       results.push(outcome.result)

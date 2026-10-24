@@ -55,6 +55,18 @@ describe('registryPlan', () => {
     expect(keys.some((x) => x.includes('sharpen'))).toBe(false)
   })
 
+  it('puts each preset turned on in the images’ Forge › row, after Forge’s own, with the name before the file', () => {
+    const k = byKey({ ...O, items: menuItems({ sharpen: true, presets: ['webblog'] }) })
+    const item = `${C}\\SystemFileAssociations\\image\\shell\\Forge\\shell\\5preset-webblog`
+    expect(k[item]).toEqual({ MUIVerb: 'webblog in Forge', Icon: `${O.menuDir}\\forge.ico` })
+    expect(k[`${item}\\command`]).toEqual({
+      '': `conhost.exe --headless "${O.node}" "${O.menuDir}\\run.mjs" preset webblog "%1"`,
+    })
+    expect(
+      Object.keys(k).some((x) => x.startsWith(`${C}\\Directory`) && x.includes('preset')),
+    ).toBe(false)
+  })
+
   it('registers Forge’s app ID so its notifications carry its name and logo', () => {
     expect(byKey()[`${C}\\AppUserModelId\\ForgeTerminal.Forge`]).toEqual({
       DisplayName: 'Forge',

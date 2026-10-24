@@ -66,6 +66,28 @@ describe('workflowFiles', () => {
   })
 })
 
+describe('a preset’s Quick Action', () => {
+  const webblog = menuItems({ sharpen: false, presets: ['webblog'] }).find(
+    (i) => i.preset === 'webblog',
+  )
+  if (!webblog) throw new Error('webblog')
+
+  it('is named as Finder lists it and runs the launcher with the preset’s name before the files', () => {
+    const { name, files } = workflowFiles(webblog, LAUNCHER)
+    expect(name).toBe('webblog in Forge.workflow')
+    expect(files['Contents/document.wflow']).toContain(
+      `<string>'${LAUNCHER}' preset 'webblog' "$@"</string>`,
+    )
+    expect(files['Contents/Info.plist']).toContain('<string>public.image</string>')
+  })
+
+  it('has a bundle ID of its own, so the services settings key each preset apart', () => {
+    expect(serviceKey(webblog)).toBe(
+      'com.forge-terminal.menu.preset.webblog - webblog in Forge - runWorkflowAsService',
+    )
+  })
+})
+
 describe('serviceKey', () => {
   it('names the service as the services settings key it: bundle ID, menu name, message', () => {
     const info = workflowFiles(item('open-pdf'), LAUNCHER).files['Contents/Info.plist'] as string

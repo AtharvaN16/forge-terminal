@@ -20,6 +20,7 @@ import type { ShellMode } from '../theme.js'
 import { HeaderBar } from './HeaderBar.js'
 import { KeyRow, KeyRule, Runs } from './Home.js'
 import { NoticeLine, Notices, noticeRows, useNotices } from './Notices.js'
+import type { DoneLinks } from './PresetSave.js'
 
 /**
  * Done (round 24, mockups/done-2026-10-round18.html): what a single-file
@@ -129,7 +130,7 @@ export function doneActions({
             key: 'p',
             label:
               preset.save === 'saved'
-                ? 'Preset saved'
+                ? `✓ ${preset.name ?? 'saved'}`
                 : preset.save === 'update'
                   ? 'Update preset'
                   : 'Save as preset',
@@ -234,7 +235,7 @@ export function DoneScreen({
   pressed,
   afterName,
   block,
-  chain,
+  links,
 }: {
   mode: ShellMode
   /** The run's answers, ending in "Done". */
@@ -248,8 +249,11 @@ export function DoneScreen({
   actions: readonly DoneAction[]
   /** The action chosen with ←→, an index into `actions`; `actions.length`, the default, is Home. */
   selected?: number | undefined
-  /** What was done, once Continue editing changed it: the strip says every step. */
-  chain?: string[] | undefined
+  /**
+   * The chain the file was made by (C1): the strip says the source, every
+   * step, and the + slot Continue editing fills.
+   */
+  links?: DoneLinks | undefined
   /** Offers to show at the foot (`✧` sentences), in order. */
   offers: string[]
   /** What `c` does, on the key row, when there is a measured suggestion: "WebP", "compress it". */
@@ -305,11 +309,11 @@ export function DoneScreen({
   // actions, too: nothing is ever pushed off the keys.
   const fits = (rows: number, foot: number) =>
     4 + rows + (notes.length > 0 ? notes.length + 1 : 0) + foot <= height
-  const roomy = doneBody({ palette, facts, width, draw, chain })
+  const roomy = doneBody({ palette, facts, width, draw, links })
   const tall = framed?.length ?? 0
   const body =
     !fits(roomy.length, tall) || (fullRows > 0 && spareFor(roomy.length, tall) < fullRows)
-      ? doneBody({ palette, facts, width, draw, chain, compact: true })
+      ? doneBody({ palette, facts, width, draw, links, compact: true })
       : roomy
   // Still no room for what the shell has to say: the actions lose the
   // frame's rows above and below them, so the whole notice can show.

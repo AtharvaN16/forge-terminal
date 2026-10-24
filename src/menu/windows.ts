@@ -38,8 +38,9 @@ export function registryPlan(o: {
   menuDir: string
   items: MenuItem[]
 }): RegistryEntry[] {
-  const command = (action: string) =>
-    `conhost.exe --headless "${o.node}" "${o.menuDir}\\run.mjs" ${action} "%1"`
+  // A preset's name (letters, digits and dashes) goes before the file.
+  const command = (item: Pick<MenuItem, 'action' | 'preset'>) =>
+    `conhost.exe --headless "${o.node}" "${o.menuDir}\\run.mjs" ${item.action}${item.preset === undefined ? '' : ` ${item.preset}`} "%1"`
   const icon = (item: Pick<MenuItem, 'paint'>) => `${o.menuDir}\\${icoName(item)}`
   const cascade = (root: string, kind: MenuKind): RegistryEntry[] => {
     const items = o.items.filter((i) => i.kinds.includes(kind))
@@ -48,10 +49,11 @@ export function registryPlan(o: {
       { key: root, values: { MUIVerb: 'Forge', Icon: icon({ paint: 'forge' }), SubCommands: '' } },
       // Explorer orders a submenu by key name, hence the numbers.
       ...items.flatMap((item, n): RegistryEntry[] => {
-        const key = `${root}\\shell\\${n + 1}${item.action}`
+        const name = item.preset === undefined ? item.action : `preset-${item.preset}`
+        const key = `${root}\\shell\\${n + 1}${name}`
         return [
           { key, values: { MUIVerb: item.label, Icon: icon(item) } },
-          { key: `${key}\\command`, values: { '': command(item.action) } },
+          { key: `${key}\\command`, values: { '': command(item) } },
         ]
       }),
     ]
@@ -63,7 +65,7 @@ export function registryPlan(o: {
     ...(pdf
       ? [
           { key: PDF, values: { MUIVerb: pdf.label, Icon: icon(pdf) } },
-          { key: `${PDF}\\command`, values: { '': command(pdf.action) } },
+          { key: `${PDF}\\command`, values: { '': command(pdf) } },
         ]
       : []),
     { key: APP_ID, values: { DisplayName: 'Forge', IconUri: `${o.menuDir}\\forge.png` } },

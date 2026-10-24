@@ -111,8 +111,8 @@ describe('Done, its way on', () => {
     expect(row).not.toContain(sgr(48, DARK.modeConvert))
   })
 
-  it('says a preset was saved, in green, on its button', () => {
-    expect(lines({ save: 'saved', name: 'blog' })[19]).toContain('p Preset saved')
+  it('says a preset was saved, in green, on its button: ✓ and its name', () => {
+    expect(lines({ save: 'saved', name: 'blog' })[19]).toContain('p ✓ blog')
   })
 
   it('offers to update it once the steps change after saving', () => {

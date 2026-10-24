@@ -113,13 +113,13 @@ interface Cell {
   bold?: boolean | undefined
 }
 
-/** `row`'s runs written over `cells` from column `at`, each cell keeping its fill. */
+/** `row`'s runs written over `cells` from column `at`, each cell keeping its fill unless the run has one. */
 function writeOver(cells: Cell[], at: number, row: Run[]): void {
   let i = at
   for (const run of row) {
     for (const ch of run.text) {
       const under = cells[i]
-      if (under) cells[i] = { ch, fg: run.fg, bg: under.bg, bold: run.bold }
+      if (under) cells[i] = { ch, fg: run.fg, bg: run.bg ?? under.bg, bold: run.bold }
       i++
     }
   }
@@ -163,7 +163,7 @@ export function doneBody({
   width: columns,
   folder,
   draw,
-  chain,
+  links,
   compact = false,
 }: {
   palette: Palette
@@ -184,10 +184,13 @@ export function doneBody({
    */
   folder?: string | undefined
   /**
-   * Every format the file has been, once Continue editing changed it
-   * ("PNG", "JPEG", "WebP"): the strip says each step, the last one leading.
+   * The chain the file was made by (C1, mockups/presets-ux-2026-10-round10.html):
+   * the source quiet, each step bold, joined by ─▸, and — where Continue
+   * editing can add to it — the + slot, the strip's one chip. A chain that
+   * leaves the change no room beside it sends the change down beside now; one
+   * longer than the strip wraps onto a second row of it.
    */
-  chain?: readonly string[] | undefined
+  links?: { source: string; steps: readonly string[]; slot: boolean } | undefined
   /**
    * Room is short (an error panel needs it): the strip one row, the bar
    * three rows tall and no blank row under the bar — five rows, the same
@@ -213,37 +216,84 @@ export function doneBody({
   const tone = fillOf(palette.selectionBg)
   const hatchFg = tone ?? palette.border
 
-  // The strip: the formats from its left, the change flush to its right, on
-  // the strip's grey with a whole row of it above and below. The formats are
-  // quiet up to the last, which leads.
-  const steps =
-    chain && chain.length > 1
-      ? chain
-      : before.format === after.format
-        ? [after.format]
-        : [before.format, after.format]
-  const formats: Run[] = [{ text: ' ' }]
-  steps.forEach((step, i) => {
-    const last = i === steps.length - 1
-    if (i > 0) formats.push({ text: ' → ', fg: palette.border })
-    formats.push({ text: step, fg: last ? palette.fg : palette.dim, bold: last })
+  // The strip: the formats — or the chain — from its left, the change flush
+  // to its right, on the strip's grey with a whole row of it above and below.
+  const arrow: Run = { text: ' ─▸ ', fg: palette.border }
+  const stepRuns = (steps: readonly string[]): Run[] =>
+    steps.flatMap((step, i): Run[] => [
+      ...(i > 0 ? [arrow] : []),
+      { text: step, fg: palette.fg, bold: true },
+    ])
+  const slotRuns: Run[] = links?.slot
+    ? [
+        arrow,
+        { text: ' + ', fg: palette.dim, ...(palette.keycapBg ? { bg: palette.keycapBg } : {}) },
+      ]
+    : []
+  let lines: Run[][]
+  if (links) {
+    const lead: Run[] = [{ text: ' ' }, { text: links.source, fg: palette.dim }]
+    const whole = [
+      ...lead,
+      ...(links.steps.length ? [arrow, ...stepRuns(links.steps)] : []),
+      ...slotRuns,
+    ]
+    if (width(whole) <= block - 1) lines = [whole]
+    else {
+      // Wrap after the last step that fits; the rest carries on under it,
+      // its arrow lined up under the source's end.
+      let cut = 1
+      while (
+        cut < links.steps.length &&
+        width([...lead, arrow, ...stepRuns(links.steps.slice(0, cut + 1))]) <= block - 1
+      )
+        cut++
+      lines = [
+        [...lead, arrow, ...stepRuns(links.steps.slice(0, cut))],
+        [
+          { text: ' ' },
+          { text: ' '.repeat(stringWidth(links.source)) },
+          arrow,
+          ...stepRuns(links.steps.slice(cut)),
+          ...slotRuns,
+        ],
+      ]
+    }
+  } else {
+    // The formats are quiet up to the last, which leads.
+    const steps = before.format === after.format ? [after.format] : [before.format, after.format]
+    const formats: Run[] = [{ text: ' ' }]
+    steps.forEach((step, i) => {
+      const last = i === steps.length - 1
+      if (i > 0) formats.push({ text: ' → ', fg: palette.border })
+      formats.push({ text: step, fg: last ? palette.fg : palette.dim, bold: last })
+    })
+    lines = [formats]
+  }
+  const stripRows: Cell[][] = lines.map((line) => {
+    const cells: Cell[] = Array.from({ length: block }, (): Cell => ({ ch: ' ', bg: tone }))
+    writeOver(cells, 0, line)
+    return cells
   })
-  const strip: Cell[] = Array.from({ length: block }, (): Cell => ({ ch: ' ', bg: tone }))
-  writeOver(strip, 0, formats)
+  const strip = stripRows[0] as Cell[]
+  const first = lines[0] as Run[]
   // A narrow strip keeps the formats first: the change shortens, then goes.
-  const label = changeLabels(before.bytes, after.bytes).find(
-    (l) => block - width(formats) - (stringWidth(l) + 2) >= 1,
-  )
+  // A chain keeps the change whole and sends it down beside now instead.
+  const labels = changeLabels(before.bytes, after.bytes)
+  const fits = (l: string) => lines.length === 1 && block - width(first) - (stringWidth(l) + 2) >= 1
+  const label = links
+    ? labels[0] !== undefined && fits(labels[0])
+      ? labels[0]
+      : undefined
+    : labels.find(fits)
+  const moved = links && label === undefined ? labels[0] : undefined
   const fade = draw?.label ?? 1
+  const ink = same ? palette.dim : outcome
+  const inked = fade < 1 ? mix(palette.selectionBg || palette.canvas, ink, fade) : ink
   if (label !== undefined && fade > 0) {
     // Fading in, the words come up out of the strip's grey.
-    const ink = same ? palette.dim : outcome
     writeOver(strip, block - stringWidth(label) - 2, [
-      {
-        text: ` ${label} `,
-        fg: fade < 1 ? mix(palette.selectionBg || palette.canvas, ink, fade) : ink,
-        bold: !same,
-      },
+      { text: ` ${label} `, fg: inked, bold: !same },
     ])
   }
 
@@ -282,13 +332,20 @@ export function doneBody({
   const now = {
     word: { text: 'now', fg: palette.dim },
     size: { text: formatBytes(after.bytes), fg: same ? palette.fg : outcome, bold: true },
+    // The change, sent down from a strip the chain fills.
+    ...(moved !== undefined && fade > 0 ? { change: { text: `   ${moved}`, fg: inked } } : {}),
   }
   const was = {
     word: { text: 'was', fg: palette.border },
     size: { text: formatBytes(before.bytes), fg: palette.fg, bold: true },
   }
   const [left, right] = bars.grew ? [was, now] : [now, was]
-  const pair = (s: typeof now): Run[] => [s.word, { text: ' ' }, s.size]
+  const pair = (s: { word: Run; size: Run; change?: Run }): Run[] => [
+    s.word,
+    { text: ' ' },
+    s.size,
+    ...(s.change ? [s.change] : []),
+  ]
   const ends = (a: Run[], b: Run[]): Row => [
     blank(M),
     ...a,
@@ -298,7 +355,7 @@ export function doneBody({
 
   const pad: Row = tone ? [blank(M), { text: ' '.repeat(block), bg: tone }] : []
   const body = [
-    ...(compact ? [row(strip)] : [pad, row(strip), pad]),
+    ...(compact ? stripRows.map(row) : [pad, ...stripRows.map(row), pad]),
     ...barRows,
     ...(compact ? [] : [[]]),
     ends(pair(left), pair(right)),

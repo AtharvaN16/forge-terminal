@@ -34,6 +34,12 @@ export interface Preset {
   steps: PresetSteps
   /** A folder (`~` unexpanded), `same` for the source's own folder, or `ask` each time. */
   saveTo: string
+  /**
+   * In Finder's Quick Actions (Explorer's right-click menu on Windows), as
+   * "<name> in Forge". Off until turned on in /right-click
+   * (mockups/quick-actions-presets-2026-10-round4.html).
+   */
+  quickAction?: true
 }
 
 /** Letters, digits and dashes, not starting with a dash: `/blog` and `--preset blog` both work. */
@@ -105,7 +111,12 @@ export function parsePreset(raw: unknown): Preset | undefined {
   if (typeof raw.saveTo !== 'string' || raw.saveTo.trim() === '') return undefined
   const steps = parseSteps(raw.steps)
   if (!steps) return undefined
-  return { name: raw.name, steps, saveTo: raw.saveTo }
+  return {
+    name: raw.name,
+    steps,
+    saveTo: raw.saveTo,
+    ...(raw.quickAction === true ? { quickAction: true as const } : {}),
+  }
 }
 
 /**

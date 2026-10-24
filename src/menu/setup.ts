@@ -35,7 +35,8 @@ export async function ensureMenu(
 }
 
 /**
- * After an extension is added or removed: Sharpen comes and goes with Boost.
+ * After an extension is added or removed: Sharpen comes and goes with Boost;
+ * after a preset is turned on or off in /right-click, its item does.
  * Only a menu already set up is touched, and it keeps the Forge, Node and
  * version it was set up with: an extension added from a source checkout must
  * not point Finder at the checkout, and the next start still sees it as current.
@@ -44,7 +45,8 @@ export async function resync(e: MenuEnv): Promise<void> {
   const state = readState(e)
   if (state === undefined) return
   const { xdgConfigHome: _current, ...rest } = e
-  await installMenu({ ...rest, ...state })
+  // The presets are this moment's: a resync is how /right-click puts one in or takes one out.
+  await installMenu({ ...rest, ...state, presets: e.presets ?? [] })
 }
 
 const terminalFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'terminal')

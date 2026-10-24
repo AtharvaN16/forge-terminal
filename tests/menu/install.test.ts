@@ -99,6 +99,39 @@ describe('installMenu on a Mac', () => {
     expect(existsSync(join(services, 'Convert in Forge.workflow'))).toBe(true)
   })
 
+  it('writes a Quick Action for each preset turned on, and the launcher’s clean-up knows it', async () => {
+    const { e, services } = env('darwin', { presets: ['webblog'] })
+    await installMenu(e)
+    expect(existsSync(join(services, 'webblog in Forge.workflow', 'Contents', 'Info.plist'))).toBe(
+      true,
+    )
+    expect(readFileSync(join(e.menuDir, 'run'), 'utf8')).toContain('webblog in Forge.workflow')
+  })
+
+  it('takes a preset out, and switches its service off, once it is turned off', async () => {
+    const { e, calls, services } = env('darwin', { presets: ['webblog'] })
+    await installMenu(e)
+    calls.length = 0
+    await installMenu({ ...e, presets: [] })
+    expect(existsSync(join(services, 'webblog in Forge.workflow'))).toBe(false)
+    const [, args] = calls.find(([cmd]) => cmd === '/usr/bin/osascript') ?? ['', []]
+    expect(args).toContain(
+      '-com.forge-terminal.menu.preset.webblog - webblog in Forge - runWorkflowAsService',
+    )
+  })
+
+  it('takes every preset’s Quick Action out with the rest', async () => {
+    const { e, calls, services } = env('darwin', { presets: ['webblog'] })
+    await installMenu(e)
+    calls.length = 0
+    await removeMenu(e)
+    expect(existsSync(join(services, 'webblog in Forge.workflow'))).toBe(false)
+    const [, args] = calls.find(([cmd]) => cmd === '/usr/bin/osascript') ?? ['', []]
+    expect(args).toContain(
+      '-com.forge-terminal.menu.preset.webblog - webblog in Forge - runWorkflowAsService',
+    )
+  })
+
   it('leaves Quick Actions that are not Forge’s alone', async () => {
     const { e, services } = env('darwin')
     await installMenu(e)

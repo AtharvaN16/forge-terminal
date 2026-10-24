@@ -1,4 +1,5 @@
 import { invalidArguments } from '../core/errors.js'
+import { isPresetName } from '../core/preset.js'
 import type { ShellMode } from '../shell/theme.js'
 import type { MenuAction } from './items.js'
 
@@ -9,12 +10,20 @@ import type { MenuAction } from './items.js'
  * the menu up or take it down by hand.
  */
 export type MenuCommand =
-  | { kind: 'run'; action: MenuAction; paths: string[] }
+  /** A preset's item carries the preset's name. */
+  | { kind: 'run'; action: MenuAction; paths: string[]; preset?: string }
   | { kind: 'open'; action: MenuAction; paths: string[] }
   | { kind: 'install' }
   | { kind: 'remove' }
 
-const ACTIONS: readonly MenuAction[] = ['open', 'convert', 'compress', 'sharpen', 'open-pdf']
+const ACTIONS: readonly MenuAction[] = [
+  'open',
+  'convert',
+  'compress',
+  'sharpen',
+  'open-pdf',
+  'preset',
+]
 
 export function parseMenuArgs(argv: string[]): MenuCommand {
   const [sub, action, ...paths] = argv
@@ -22,6 +31,12 @@ export function parseMenuArgs(argv: string[]): MenuCommand {
   if (sub === 'run' || sub === 'open') {
     if (!ACTIONS.includes(action as MenuAction))
       throw invalidArguments(`No menu action called "${action ?? ''}".`)
+    if (action === 'preset') {
+      const [name, ...files] = paths
+      if (sub !== 'run' || name === undefined || !isPresetName(name))
+        throw invalidArguments(`No preset called "${name ?? ''}".`)
+      return { kind: 'run', action, preset: name, paths: files }
+    }
     return { kind: sub, action: action as MenuAction, paths }
   }
   throw invalidArguments(`No menu command called "${sub ?? ''}".`)

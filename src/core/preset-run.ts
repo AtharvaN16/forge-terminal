@@ -20,6 +20,8 @@ export interface PresetPolicy {
   force: boolean
   signal?: AbortSignal
   onEvent?: (event: PlanEvent) => void
+  /** Each pass as it starts, by its place in `passes`: what a run shows as its step. */
+  onPass?: (index: number) => void
   /** Test seam: reads what a pass wrote. */
   probe?: (path: string) => Promise<SourceInfo>
 }
@@ -99,6 +101,7 @@ export async function runPreset(
   try {
     let current = source
     for (const [i, pass] of passes.entries()) {
+      policy.onPass?.(i)
       const last = i === passes.length - 1
       const to = last ? output : join(temp, `${i}.png`)
       const outcome = await runPlan([jobFor(pass, current, to)], {

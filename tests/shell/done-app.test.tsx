@@ -57,9 +57,12 @@ describe('Done, in the flow', () => {
     expect(out[0]).toMatch(/JPEG ╱ 80 ╱ .+ ╱ test\.jpg ╱ Done ╱╱ *$/)
     expect(out[22]).toMatch(/^ {3}←→ {2}choose {3}↵ {2}confirm +ctrl-c quit$/)
     const all = plain(app.lastFrame())
-    // Round 25: the strip with the formats and the change, one bar with the
-    // new file's name, the sizes on one row; the way on above the rule.
-    expect(all).toMatch(/^ {3}PNG → JPEG +.*(\d+(\.\d)?% (smaller|larger)|same size) ?$/m)
+    // The strip says the chain (C1, presets-ux round 10) — the source, the
+    // convert, the + slot Continue editing fills — and the change at its right;
+    // one bar with the new file's name, the sizes on one row; the way on above the rule.
+    expect(all).toMatch(
+      /^ {3}PNG ─▸ JPEG 80 ─▸ {2}\+ +.*(\d+(\.\d)?% (smaller|larger)|same size) ?$/m,
+    )
     expect(all).toContain('✓ test.jpg')
     expect(all).toMatch(/^ {2}(now|was) \S+ \S+ +(now|was) \S+ \S+ ?$/m)
     expect(all).toMatch(/^ {3}o Open +f \S+ +p Save as preset +e Continue editing +↵ Home *$/m)
@@ -103,12 +106,14 @@ describe('Done, in the flow', () => {
     app.stdin.write(LEFT)
     await settle()
     app.stdin.write(ENTER)
-    await until(app, '─ Continue editing ─')
+    await until(app, 'Convert to another format')
   }, 20_000)
 
   it('opens Continue editing on e', async () => {
     const { app } = await atDone()
     app.stdin.write('e')
-    await until(app, '─ Continue editing ─')
+    // One list of every operation, the chain so far with ? for the next.
+    await until(app, 'Convert to another format')
+    expect(plain(app.lastFrame())).toMatch(/Continue editing +PNG ─▸ JPEG 80 ─▸ {2}\?/)
   }, 20_000)
 })

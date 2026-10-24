@@ -9,22 +9,18 @@ import { FORMATS, primaryExtension } from '../../core/formats.js'
 import { uniqueOutputPath } from '../../core/output-path.js'
 import { type Preset, type PresetSteps, passesFor } from '../../core/preset.js'
 import { runPreset } from '../../core/preset-run.js'
-import type { FormatId, ImageInfo, Result } from '../../core/types.js'
+import type { ImageInfo, Result } from '../../core/types.js'
 import { offeredHere } from '../../extensions/catalog.js'
 import type { ExtensionStatus } from '../../extensions/manager.js'
 import type { Trail } from '../bar-art.js'
+import { ContinueEditingScreen, type Rerun } from '../components/ContinueEditing.js'
 import type { DonePreset } from '../components/Done.js'
-import { PresetEditorScreen, type PresetPreview } from '../components/PresetEditor.js'
-import { PresetSaveScreen, presetFolders } from '../components/PresetSave.js'
-import { type Editor, type OpId, reasonsFor } from '../preset-editor.js'
-import { valueText } from '../preset-editor-art.js'
+import { type DoneLinks, PresetSaveScreen, presetFolders } from '../components/PresetSave.js'
+import { chainLabels, type Op, reasonsFor, stepLabel } from '../continue-editing.js'
 import type { ShellMode } from '../theme.js'
 
-/** A preview's file, where it really is until ↵ done moves it into place. */
-type Preview = PresetPreview & { file?: string }
-
-/** What Done's result was made with: the convert just done, as a preset's steps. */
-function stepsOfResult(result: Result): PresetSteps {
+/** What Done's result was made with: the convert or compress just done, as a preset's steps. */
+export function stepsOfResult(result: Result): PresetSteps {
   const job = result.job
   if (job.op !== 'convert') return {}
   return {
@@ -34,25 +30,7 @@ function stepsOfResult(result: Result): PresetSteps {
   }
 }
 
-/** The steps as the formats' chip says them: `PNG → WebP 80 → 1920 wide → Sharpen`. */
-export function chainOf(source: FormatId, steps: PresetSteps): string[] {
-  const label = (f: FormatId) => FORMATS[f]?.label ?? f.toUpperCase()
-  return [
-    label(source),
-    ...(steps.to
-      ? [`${label(steps.to)}${steps.quality === undefined ? '' : ` ${steps.quality}`}`]
-      : []),
-    ...(steps.maxBytes ? [valueText({ id: 'compress', on: true, value: steps.maxBytes })] : []),
-    ...(steps.resize ? [valueText({ id: 'resize', on: true, value: steps.resize })] : []),
-    ...(steps.trim ? ['Trim'] : []),
-    ...(steps.crop ? [`${steps.crop.w}:${steps.crop.h}`] : []),
-    ...(steps.sharpen && !steps.boost ? ['Sharpen'] : []),
-    ...(steps.boost ? [`Boost ${steps.boost}×`] : []),
-    ...(steps.removeBackground ? ['Remove background'] : []),
-  ]
-}
-
-/** Moves a finished preview into place: a rename, or a copy across volumes. */
+/** Moves a finished rerun into place: a rename, or a copy across volumes. */
 async function moveInto(from: string, to: string): Promise<void> {
   try {
     await rename(from, to)
@@ -63,10 +41,11 @@ async function moveInto(from: string, to: string): Promise<void> {
 }
 
 /**
- * Presets on Done (mockups/presets-2026-10.html, round 9): `p` opens Save as
- * preset, `→` opens Continue editing. Holds what this Done's session made —
- * the window as it was left, the steps, the preset saved — and gives App the
- * screen to show while either window is open.
+ * Presets on Done (decided, mockups/presets-ux-2026-10-round10.html). Done is
+ * the hub: `e` opens Continue editing — one more thing done to the file, then
+ * back to Done — and `p` opens Save as preset, which keeps the chain Done's
+ * strip says. Holds this Done's session: the steps added (for Undo), the
+ * preset saved, and the screen App shows while either is open.
  */
 export function usePresetsOnDone(o: {
   result: Result | null
@@ -82,6 +61,8 @@ export function usePresetsOnDone(o: {
   save: (patch: Partial<Preferences>) => Promise<void>
   /** Clipboard results and other modes have no presets. */
   enabled: boolean
+  /** A step that failed: said on Done, which keeps the file and the chain as they were. */
+  fail: (error: unknown) => void
   /** The extensions on this machine, and adding one: the shell's own, injectable for tests. */
   tools: {
     list(): Promise<ExtensionStatus[]>
@@ -91,8 +72,9 @@ export function usePresetsOnDone(o: {
     ): Promise<unknown>
   }
 }) {
-  const [editor, setEditor] = useState<Editor | undefined>()
-  const [steps, setSteps] = useState<PresetSteps | undefined>()
+  /** The steps Done's result was first made with, and each step added since, with what Undo calls it. */
+  const [base, setBase] = useState<PresetSteps | undefined>()
+  const [history, setHistory] = useState<Array<{ steps: PresetSteps; label: string }>>([])
   const [saved, setSaved] = useState<{ name: string; changed: boolean } | undefined>()
   const temps = useRef<string[]>([])
 
@@ -100,8 +82,14 @@ export function usePresetsOnDone(o: {
   const source =
     job?.op === 'convert' && job.sources[0].kind === 'image' ? job.sources[0] : undefined
   const usable = o.enabled && source !== undefined
+  // The first result of a session is what the chain starts from.
+  const first = base ?? (o.result && usable ? stepsOfResult(o.result) : undefined)
+  useEffect(() => {
+    if (base === undefined && o.result && usable) setBase(stepsOfResult(o.result))
+  }, [base, o.result, usable])
+  const steps = history.at(-1)?.steps ?? first ?? {}
 
-  // Previews no one moved into place go when the session ends.
+  // Reruns no one moved into place go when the session ends.
   const sweep = useCallback(async () => {
     const dirs = temps.current
     temps.current = []
@@ -109,8 +97,8 @@ export function usePresetsOnDone(o: {
   }, [])
   useEffect(() => () => void sweep(), [sweep])
 
-  // Why rows cannot apply (E2): what the probe knows at once, the trim once the image is read.
-  const [reasons, setReasons] = useState<Partial<Record<OpId, string>>>({})
+  // Why an operation cannot apply: what the probe knows at once, the trim once the image is read.
+  const [reasons, setReasons] = useState<Partial<Record<Op, string>>>({})
   const editing = o.open === 'edit' ? source : undefined
   useEffect(() => {
     if (!editing) return
@@ -129,16 +117,16 @@ export function usePresetsOnDone(o: {
     }
   }, [editing])
 
-  // Rows whose extension is not added (E3), and the boost scales the installed one makes.
-  const [missing, setMissing] = useState<Partial<Record<OpId, number>>>({})
-  const [unavailable, setUnavailable] = useState<Partial<Record<OpId, string>>>({})
+  // Operations whose on-device model is not added, and the boost scales the installed one makes.
+  const [missing, setMissing] = useState<Partial<Record<Op, number>>>({})
+  const [unavailable, setUnavailable] = useState<Partial<Record<Op, string>>>({})
   const [boostVersion, setBoostVersion] = useState<string | undefined>()
   const tools = o.tools
-  const check = useCallback(async () => {
+  const check = useCallback(async (): Promise<Partial<Record<Op, number>>> => {
     const all = await tools.list().catch((): ExtensionStatus[] => [])
-    const away: Partial<Record<OpId, number>> = {}
-    const not: Partial<Record<OpId, string>> = {}
-    const rows: Array<[string, OpId[]]> = [
+    const away: Partial<Record<Op, number>> = {}
+    const not: Partial<Record<Op, string>> = {}
+    const rows: Array<[string, Op[]]> = [
       ['boost', ['sharpen', 'boost']],
       ['remove-background', ['cutout']],
     ]
@@ -153,25 +141,34 @@ export function usePresetsOnDone(o: {
     setMissing(away)
     setUnavailable(not)
     setBoostVersion(all.find((s) => s.entry.id === 'boost')?.installed)
+    return away
   }, [tools])
   useEffect(() => {
     if (editing) void check()
   }, [editing, check])
   const add = useCallback(
-    (op: OpId) => {
+    async (op: Op): Promise<boolean> => {
       const id = op === 'cutout' ? 'remove-background' : 'boost'
-      void tools
+      await tools
         .install(id, { onProgress: () => {}, signal: new AbortController().signal })
-        .then(check, check)
+        .catch(() => {})
+      const away = await check()
+      return away[op] === undefined
     },
     [tools, check],
   )
 
   const reset = () => {
-    setEditor(undefined)
-    setSteps(undefined)
+    setBase(undefined)
+    setHistory([])
     setSaved(undefined)
     void sweep()
+  }
+  /** Done after a saved preset ran: the chain starts from its steps, and the button says it is saved. */
+  const seed = (steps: PresetSteps, name: string) => {
+    setBase(steps)
+    setHistory([])
+    setSaved({ name, changed: false })
   }
 
   /** Opens Save as preset or Continue editing, while a preset can be made from what is shown. */
@@ -180,7 +177,7 @@ export function usePresetsOnDone(o: {
     o.setOpen(which)
     return true
   }
-  /** Done's keys: p and e (→ moves Done's selection, mockups/done-next-2026-10-round9.html). */
+  /** Done's keys: p and e (←→ move Done's selection, mockups/done-next-2026-10-round9.html). */
   const key = (input: string): boolean =>
     input === 'p' ? open('save') : input === 'e' ? open('edit') : false
 
@@ -189,20 +186,26 @@ export function usePresetsOnDone(o: {
       ? { save: saved.changed ? 'update' : 'saved', name: saved.name }
       : { save: 'key' }
     : undefined
-  const chain = source && steps ? chainOf(source.format, steps) : undefined
+  /** The chain Done's strip says (C1): the source, every step, and the + slot. */
+  const links: DoneLinks | undefined =
+    usable && source
+      ? {
+          source: FORMATS[source.format]?.label ?? source.format.toUpperCase(),
+          steps: chainLabels(source.format, steps),
+          slot: true,
+        }
+      : undefined
 
-  let screen: ReactNode = null
-  if (o.open && o.result && source && job?.op === 'convert') {
-    const result = o.result
-    const output = job.outputs[0]
-    const original: ImageInfo = source
-    // The rerun: the selected rows on the original, into a temp folder, named
-    // as the result will be.
-    const run = async (s: PresetSteps, signal: AbortSignal): Promise<Preview> => {
+  // The rerun: the steps on the original, into a temp folder, named as the
+  // result will be.
+  const original = source
+  const output = job?.outputs[0]
+  const run = useCallback(
+    async (s: PresetSteps, signal: AbortSignal): Promise<Rerun> => {
+      if (!original || !output) return { kind: 'failed', message: 'nothing to edit' }
       const passes = passesFor(s, original.format)
       const last = passes[passes.length - 1]
-      if (last?.kind !== 'encode')
-        return { kind: 'ready', output: original.path, bytes: original.bytes }
+      if (last?.kind !== 'encode') return { kind: 'failed', message: 'nothing to do' }
       const name = `${basename(output, extname(output))}${primaryExtension(last.target)}`
       const temp = await mkdtemp(join(tmpdir(), 'forge-edit-'))
       temps.current.push(temp)
@@ -218,55 +221,89 @@ export function usePresetsOnDone(o: {
       }
       if (outcome.kind === 'cancelled') return { kind: 'failed', message: 'cancelled' }
       const error = outcome.kind === 'unreachable' ? outcome.entry.error : outcome.error
-      return { kind: 'failed', message: error.detail ?? error.title }
-    }
+      return { kind: 'failed', message: error.detail ?? error.title, error }
+    },
+    [original, output],
+  )
+  const setOpen = o.setOpen
+  const fail = o.fail
+  const onFail = useCallback(
+    (error: unknown) => {
+      setOpen(null)
+      if (error !== 'cancelled') fail(error)
+    },
+    [setOpen, fail],
+  )
+  const result = o.result
+  const setResult = o.setResult
+  const onFinish = useCallback(
+    (
+      next: PresetSteps,
+      rerun: Extract<Rerun, { kind: 'ready' }>,
+      change: Parameters<Parameters<typeof ContinueEditingScreen>[0]['onFinish']>[2],
+    ) => {
+      if (!result || !original || !output || result.job.op !== 'convert' || !rerun.file) return
+      const convert = result.job
+      const file = rerun.file
+      void (async () => {
+        let to = rerun.output
+        // Never written over the original.
+        if (to === original.path) to = uniqueOutputPath(to)
+        await moveInto(file, to)
+        if (to !== output) await unlink(output).catch(() => {})
+        const last = passesFor(next, original.format).at(-1)
+        const target = last?.kind === 'encode' ? last.target : convert.target
+        setResult({
+          job: {
+            ...convert,
+            target,
+            outputs: [to],
+            options: {
+              ...convert.options,
+              ...(next.quality === undefined ? {} : { quality: next.quality }),
+            },
+          },
+          outputBytes: rerun.bytes,
+          warnings: [],
+        })
+        setHistory((h) =>
+          change.kind === 'undo'
+            ? h.slice(0, -1)
+            : [...h, { steps: next, label: stepLabel(change.step) }],
+        )
+        setSaved((s) => (s ? { ...s, changed: true } : s))
+        setOpen(null)
+      })()
+    },
+    [result, original, output, setResult, setOpen],
+  )
+
+  let screen: ReactNode = null
+  if (o.open && result && original && result.job.op === 'convert') {
     if (o.open === 'edit') {
+      const last = history.at(-1)
       screen = (
-        <PresetEditorScreen
+        <ContinueEditingScreen
           mode={o.mode}
           trail={o.trail}
           result={result}
-          width={o.width}
-          height={o.height}
+          original={original as ImageInfo}
+          steps={steps}
+          undo={
+            last ? { label: last.label, steps: history.at(-2)?.steps ?? first ?? {} } : undefined
+          }
           targets={targetsFor(original).map((t) => t.id)}
           scales={boostScales(boostVersion)}
           cutout={offeredHere('remove-background')}
-          initial={editor}
           reasons={{ ...unavailable, ...reasons }}
           missing={missing}
           onAdd={add}
           run={run}
-          onCancel={() => o.setOpen(null)}
-          onDone={(next, preview: Preview | undefined, left) => {
-            setEditor(left)
-            o.setOpen(null)
-            if (preview?.kind !== 'ready' || !preview.file) return
-            const file = preview.file
-            void (async () => {
-              let to = preview.output
-              // A preset never writes over the original.
-              if (to === original.path) to = uniqueOutputPath(to)
-              await moveInto(file, to)
-              if (to !== output) await unlink(output).catch(() => {})
-              const last = passesFor(next, original.format).at(-1)
-              const target = last?.kind === 'encode' ? last.target : job.target
-              o.setResult({
-                job: {
-                  ...job,
-                  target,
-                  outputs: [to],
-                  options: {
-                    ...job.options,
-                    ...(next.quality === undefined ? {} : { quality: next.quality }),
-                  },
-                },
-                outputBytes: preview.bytes,
-                warnings: [],
-              })
-              setSteps(next)
-              setSaved((s) => (s ? { ...s, changed: true } : s))
-            })()
-          }}
+          onFinish={onFinish}
+          onFail={onFail}
+          onCancel={() => setOpen(null)}
+          width={o.width}
+          height={o.height}
         />
       )
     } else {
@@ -277,29 +314,32 @@ export function usePresetsOnDone(o: {
           mode={o.mode}
           trail={o.trail}
           result={result}
+          links={links ? { ...links, slot: false } : undefined}
           width={o.width}
           height={o.height}
           name={updating ?? ''}
           taken={presets.map((p) => p.name).filter((n) => n !== updating)}
           folders={presetFolders(o.prefs.defaultOutput)}
           defaultValue={o.prefs.defaultOutput}
-          onCancel={() => o.setOpen(null)}
+          onCancel={() => setOpen(null)}
           onMakeDefault={(path) => {
             o.setPrefs((p) => ({ ...p, defaultOutput: path }))
             void o.save({ defaultOutput: path })
           }}
           onSave={({ name, saveTo }) => {
-            const preset: Preset = { name, steps: steps ?? stepsOfResult(result), saveTo }
+            // Saved again under its name, a preset stays where it was in the right-click menu.
+            const kept = presets.find((p) => p.name === name)?.quickAction
+            const preset: Preset = { name, steps, saveTo, ...(kept ? { quickAction: kept } : {}) }
             const next = [...presets.filter((p) => p.name !== name), preset]
             o.setPrefs((p) => ({ ...p, presets: next }))
             void o.save({ presets: next })
             setSaved({ name, changed: false })
-            o.setOpen(null)
+            setOpen(null)
           }}
         />
       )
     }
   }
 
-  return { done, chain, key, open, screen, reset }
+  return { done, links, key, open, screen, reset, seed }
 }

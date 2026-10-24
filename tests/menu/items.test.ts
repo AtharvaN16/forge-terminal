@@ -36,6 +36,24 @@ describe('menuItems', () => {
     expect(windowless.map((i) => i.action)).toEqual(['sharpen'])
   })
 
+  it('adds each preset turned on in /right-click after Forge’s own: images only, no window, Forge’s mark', () => {
+    const items = menuItems({ sharpen: false, presets: ['webblog', 'thumbs'] })
+    expect(items.map((i) => i.label).slice(-3)).toEqual([
+      'Open in Forge',
+      'webblog in Forge',
+      'thumbs in Forge',
+    ])
+    const webblog = items.find((i) => i.preset === 'webblog')
+    expect(webblog).toEqual({
+      action: 'preset',
+      preset: 'webblog',
+      label: 'webblog in Forge',
+      kinds: ['image'],
+      window: false,
+      paint: 'forge',
+    })
+  })
+
   it('paints each item in its mode colour, Open Forge in Forge’s own gradient', () => {
     const paint = Object.fromEntries(menuItems({ sharpen: true }).map((i) => [i.action, i.paint]))
     expect(paint).toEqual({

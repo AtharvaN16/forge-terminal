@@ -59,6 +59,20 @@ describe('runPreset', () => {
     expect([meta.format, meta.width, meta.height]).toEqual(['webp', 100, 60])
   })
 
+  it('says each pass as it starts, so a run can show which step it is on', async () => {
+    const dir = await makeTempDir()
+    const source = await image(await framed(dir))
+    const started: number[] = []
+    const outcome = await runPreset(
+      source,
+      passesFor({ trim: true, crop: { w: 1, h: 1 } }, 'png'),
+      join(dir, 'out.png'),
+      { force: false, onPass: (i) => started.push(i) },
+    )
+    expect(outcome.kind).toBe('done')
+    expect(started).toEqual([0, 1])
+  })
+
   it('trims, then crops, in two passes, and leaves nothing behind but the file', async () => {
     const dir = await makeTempDir()
     const source = await image(await framed(dir))

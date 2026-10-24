@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { icoFrom, renderIcon } from './icon.js'
 import { type MenuPaint, menuItems } from './items.js'
 import { macLauncher, windowsLauncher } from './launcher.js'
-import { ICON_NAME, serviceKey, servicesStatus, workflowFiles } from './mac.js'
+import { BUNDLE_PREFIX, ICON_NAME, serviceKey, servicesStatus, workflowFiles } from './mac.js'
 import { icoName, registryPlan, registryRoots, registryScript } from './windows.js'
 
 /**
@@ -30,6 +30,8 @@ export interface MenuEnv {
   version: string
   /** Whether Boost is installed, which Sharpen needs. */
   sharpen: boolean
+  /** The presets turned on in /right-click, by name. */
+  presets?: readonly string[]
   /** Runs a program; install waits for it. */
   run: (cmd: string, args: string[]) => Promise<void>
 }
@@ -41,6 +43,8 @@ export interface MenuState {
   node: string
   execArgv: string[]
   xdgConfigHome?: string
+  /** The presets the menu was written with, so a change made elsewhere is written at the next start. */
+  presets?: string[]
 }
 
 /** True when `state` was written for this Forge, Node and config folder: nothing to redo. */
@@ -49,7 +53,8 @@ export const stateMatches = (state: MenuState, e: MenuEnv) =>
   state.forge === e.forge &&
   state.node === e.node &&
   state.execArgv.join('\0') === e.execArgv.join('\0') &&
-  state.xdgConfigHome === e.xdgConfigHome
+  state.xdgConfigHome === e.xdgConfigHome &&
+  (state.presets ?? []).join('\0') === (e.presets ?? []).join('\0')
 
 const PBS = '/System/Library/CoreServices/pbs'
 const stateFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'state.json')
@@ -61,6 +66,34 @@ const allBundles = (e: Pick<MenuEnv, 'home'>) =>
 
 /** Every service Forge has ever named, for the services settings. */
 const allServices = () => menuItems({ sharpen: true }).map(serviceKey)
+
+/**
+ * The Quick Actions Forge wrote that are in the Services folder now, found
+ * by their bundle ID: a preset's item is named after a preset that may since
+ * have been turned off, renamed or deleted, so no fixed list finds it.
+ */
+function forgeBundles(e: Pick<MenuEnv, 'home'>): { path: string; key: string }[] {
+  let names: string[]
+  try {
+    names = readdirSync(servicesDir(e)).filter((n) => n.endsWith('.workflow'))
+  } catch {
+    return []
+  }
+  return names.flatMap((n) => {
+    const path = join(servicesDir(e), n)
+    try {
+      const info = readFileSync(join(path, 'Contents', 'Info.plist'), 'utf8')
+      const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]*)<\/string>/.exec(info)?.[1]
+      const label = /<key>CFBundleName<\/key>\s*<string>([^<]*)<\/string>/.exec(info)?.[1]
+      if (!id?.startsWith(BUNDLE_PREFIX) || label === undefined) return []
+      const unxml = (t: string) =>
+        t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+      return [{ path, key: `${id} - ${unxml(label)} - runWorkflowAsService` }]
+    } catch {
+      return []
+    }
+  })
+}
 
 /** What install last recorded, or undefined when the menu is not set up. */
 export function readState(e: Pick<MenuEnv, 'menuDir'>): MenuState | undefined {
@@ -85,13 +118,26 @@ const write = (path: string, data: string | Buffer) => {
  */
 export async function installMenu(e: MenuEnv): Promise<void> {
   if (e.platform !== 'darwin' && e.platform !== 'win32') return
-  const items = menuItems({ sharpen: e.sharpen })
+  const items = menuItems({ sharpen: e.sharpen, presets: e.presets ?? [] })
   mkdirSync(e.menuDir, { recursive: true })
   if (e.platform === 'darwin') {
     const launcher = join(e.menuDir, 'run')
-    write(launcher, macLauncher({ ...e, bundles: allBundles(e), services: allServices() }))
+    const presetItems = items.filter((i) => i.preset !== undefined)
+    const presetBundles = presetItems.map((i) =>
+      join(servicesDir(e), workflowFiles(i, launcher).name),
+    )
+    write(
+      launcher,
+      macLauncher({
+        ...e,
+        bundles: [...allBundles(e), ...presetBundles],
+        services: [...allServices(), ...presetItems.map(serviceKey)],
+      }),
+    )
     chmodSync(launcher, 0o755)
-    for (const bundle of allBundles(e)) rmSync(bundle, { recursive: true, force: true })
+    const before = forgeBundles(e)
+    for (const bundle of [...allBundles(e), ...before.map((b) => b.path)])
+      rmSync(bundle, { recursive: true, force: true })
     const tiffs = new Map<MenuPaint, Buffer>()
     // Loaded here, not at the top: `forge uninstall` imports this module, and
     // on Windows a loaded sharp holds its DLL open against npm deleting it.
@@ -114,7 +160,8 @@ export async function installMenu(e: MenuEnv): Promise<void> {
     }
     // Without this the items reach only the Services menu, not the right-click menu.
     const on = items.map(serviceKey)
-    await e.run(...servicesStatus({ on, off: allServices().filter((k) => !on.includes(k)) }))
+    const known = new Set([...allServices(), ...before.map((b) => b.key)])
+    await e.run(...servicesStatus({ on, off: [...known].filter((k) => !on.includes(k)) }))
     await e.run(PBS, ['-update'])
   } else {
     write(join(e.menuDir, 'run.mjs'), windowsLauncher({ ...e, keys: registryRoots() }))
@@ -134,6 +181,7 @@ export async function installMenu(e: MenuEnv): Promise<void> {
     node: e.node,
     execArgv: e.execArgv,
     ...(e.xdgConfigHome === undefined ? {} : { xdgConfigHome: e.xdgConfigHome }),
+    ...(e.presets && e.presets.length > 0 ? { presets: [...e.presets] } : {}),
   }
   write(stateFile(e), JSON.stringify(state))
 }
@@ -141,9 +189,12 @@ export async function installMenu(e: MenuEnv): Promise<void> {
 /** Takes everything install wrote back out: the items, the keys, Forge's menu folder. */
 export async function removeMenu(e: MenuEnv): Promise<void> {
   if (e.platform === 'darwin') {
-    for (const bundle of allBundles(e)) rmSync(bundle, { recursive: true, force: true })
+    const before = forgeBundles(e)
+    for (const bundle of [...allBundles(e), ...before.map((b) => b.path)])
+      rmSync(bundle, { recursive: true, force: true })
     rmSync(e.menuDir, { recursive: true, force: true })
-    await e.run(...servicesStatus({ on: [], off: allServices() }))
+    const off = new Set([...allServices(), ...before.map((b) => b.key)])
+    await e.run(...servicesStatus({ on: [], off: [...off] }))
     await e.run(PBS, ['-update'])
   } else if (e.platform === 'win32') {
     rmSync(e.menuDir, { recursive: true, force: true })

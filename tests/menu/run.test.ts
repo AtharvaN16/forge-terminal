@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   freeSharpName,
+  presetSummary,
   type RunDeps,
   runMenuAction,
   sharpenSummary,
@@ -56,6 +57,42 @@ describe('terminalCommand', () => {
     // menu's own runs under a hidden one: conhost opens a visible window.
     expect(terminalCommand(undefined, ARGV, 'win32')).toEqual(['conhost.exe', ARGV])
     expect(terminalCommand('console', ARGV, 'win32')).toEqual(['conhost.exe', ARGV])
+  })
+})
+
+describe('presetSummary', () => {
+  it('names the new file, then the preset and its steps (decided, quick-actions round one)', () => {
+    expect(
+      presetSummary('webblog', [{ output: '/x/photo.jpg', chain: ['JPEG 80', '1920 wide'] }]),
+    ).toEqual({ title: 'photo.jpg', body: 'webblog · JPEG 80 ─▸ 1920 wide' })
+  })
+
+  it('counts several', () => {
+    const made = { output: '/x/a.jpg', chain: ['JPEG 80'] }
+    expect(presetSummary('webblog', [made, { ...made, output: '/x/b.jpg' }])).toEqual({
+      title: '2 files',
+      body: 'webblog · JPEG 80',
+    })
+  })
+
+  it('says the preset didn’t finish, with the file and Forge’s own reason', () => {
+    expect(
+      presetSummary('webblog', [
+        { input: '/x/photo.png', error: 'Remove background needs its on-device model.' },
+      ]),
+    ).toEqual({
+      title: 'webblog didn’t finish',
+      body: 'photo.png: Remove background needs its on-device model.',
+    })
+  })
+
+  it('says how many of several it finished', () => {
+    expect(
+      presetSummary('webblog', [
+        { output: '/x/a.jpg', chain: ['JPEG 80'] },
+        { input: '/x/b.png', error: 'Not an image.' },
+      ]),
+    ).toEqual({ title: 'webblog finished 1 of 2 files', body: 'b.png: Not an image.' })
   })
 })
 
@@ -144,6 +181,19 @@ describe('runMenuAction', () => {
     const { d, log } = deps()
     await runMenuAction('sharpen', ['/x/photo.png'], d)
     expect(log).toEqual(['notify photo-sharp.png / Sharpened', 'reveal /x/photo-sharp.png'])
+  })
+
+  it('runs a preset on each file with no window, says so once and selects the last it made', async () => {
+    const ran: string[] = []
+    const { d, log } = deps({
+      runPreset: async (name, path) => {
+        ran.push(`${name} ${path}`)
+        return { output: path.replace('.png', '.jpg'), chain: ['JPEG 80'] }
+      },
+    })
+    await runMenuAction('preset', ['/x/a.png', '/x/b.png'], d, 'webblog')
+    expect(ran).toEqual(['webblog /x/a.png', 'webblog /x/b.png'])
+    expect(log).toEqual(['notify 2 files / webblog · JPEG 80', 'reveal /x/b.jpg'])
   })
 
   it('reveals nothing when nothing was made', async () => {
