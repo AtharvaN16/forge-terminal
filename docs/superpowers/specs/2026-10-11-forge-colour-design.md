@@ -817,9 +817,13 @@ different screens. The audit and its rounds are in
 - **The lines say no keys**: the steps line, the gradient's line and the
   mode's line are values only; the tab row ends in the `tab` cap alone.
 - **The field**: `# new colour` at its far end at rest, as plain text (the
-  key bright, the words quiet). While a whole colour is typed — or two or more
-  for a gradient — `↵ done` is its grey chip at the far end, as before; there
-  is no gradient hint (Gradient is in More).
+  key bright, the words quiet). Typing goes on by itself, with no ↵, once the
+  colour is whole for certain: six hex digits (with or without `#`), or
+  `rgb()`, `hsl()` or `oklch()` with its bracket closed (`settledColour`). What
+  could still grow waits for ↵ — a name (`red`, on the way to `redwood`),
+  shorthand (`#657`), colours typed for a gradient (`a → b`) — and shows `↵ done`
+  as a grey chip at the far end, where it fits. A ↵ that arrives after typing
+  has gone on is nothing. There is no gradient hint (Gradient is in More).
 - **Key rows**: Colour `←→ choose ↵ copy c copy all · r make centre · esc
   back`; Neutral, Alpha, a gradient `… · esc back`; Palette `↑↓←→ choose …
   · (r reset ·) esc back`; More `↑↓ choose ↵ open · esc close`; Gradient

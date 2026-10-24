@@ -61,15 +61,23 @@ describe('typing', () => {
     expect(state.field).toMatchObject({ text: '#', focus: true })
   })
 
-  it('a whole hex shows its scale at once; ↵ keeps it', () => {
+  it('a whole hex shows its scale at once and goes on by itself, no ↵ (2026-10-24)', () => {
     let { state } = run(initial('scale'), { type: 'text', text: '#6579F' })
     expect(top(state)?.kind).toBe('scale-empty')
     ;({ state } = run(state, { type: 'text', text: '#6579FD' }))
-    expect(state.preview).toEqual({ r: 101, g: 121, b: 253 })
-    ;({ state } = run(state, { type: 'submit' }))
     expect(top(state)).toMatchObject({ kind: 'scale', ref: { r: 101, g: 121, b: 253 }, sel: 5 })
     expect(state.history).toHaveLength(1)
     expect(state.field.focus).toBe(false)
+    // A ↵ that still arrives is nothing: the scale is not made twice.
+    expect(run(state, { type: 'submit' }).state.history).toHaveLength(1)
+  })
+
+  it('shorthand is drawn as it is, and waits for ↵: it may be on its way to six digits', () => {
+    let { state } = run(initial('scale'), { type: 'text', text: '#657' })
+    expect(state.preview).toEqual({ r: 0x66, g: 0x55, b: 0x77 })
+    expect(top(state)?.kind).toBe('scale-empty')
+    ;({ state } = run(state, { type: 'submit' }))
+    expect(top(state)).toMatchObject({ kind: 'scale', ref: { r: 0x66, g: 0x55, b: 0x77 }, sel: 5 })
   })
 
   it('/, ~ or a drop on the palette opens the field with it', () => {
@@ -142,12 +150,7 @@ describe('the palette', () => {
   })
 
   it('a typed colour on the palette makes a scale from it', () => {
-    const { state } = run(
-      onPalette(),
-      key('#'),
-      { type: 'text', text: '#E8B44C' },
-      { type: 'submit' },
-    )
+    const { state } = run(onPalette(), key('#'), { type: 'text', text: '#E8B44C' })
     expect(top(state)).toMatchObject({ kind: 'scale', ref: { r: 232, g: 180, b: 76 } })
     expect(state.history).toHaveLength(2)
   })

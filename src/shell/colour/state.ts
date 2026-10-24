@@ -280,6 +280,18 @@ function typedColour(screen: Screen, text: string): Rgb | undefined {
   return parseColour(t)?.rgb
 }
 
+/**
+ * A colour typed that is whole for certain (2026-10-24): six hex digits, or a
+ * function with its bracket closed. Typing goes on by itself from there, with
+ * no ↵. What could still grow stays for ↵: a name (`red` is on the way to
+ * `redwood`), shorthand (`#657` to `#6579FD`), and colours typed for a gradient.
+ */
+function settledColour(screen: Screen, text: string): Rgb | undefined {
+  const t = text.trim()
+  if (!/^#?[0-9a-f]{6}$/i.test(t) && !/^(?:rgb|hsl|oklch)a?\(.*\)$/i.test(t)) return undefined
+  return typedColour(screen, t)
+}
+
 /** What splits colours typed for a gradient: an arrow, or `->`, `>`. */
 const MIX_ARROW = /\s*(?:→|->|>)\s*/
 
@@ -947,15 +959,20 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
           effects: [{ type: 'open', path: action.text.trim() }],
         }
       }
-      return same({
+      const typed: ColourState = {
         ...s,
         field: { ...s.field, text: action.text },
         preview: rgb,
         error: undefined,
         wrong: undefined,
-      })
+      }
+      // Whole for certain: on to the scale, as ↵ would go.
+      const whole = settledColour(top(s), action.text)
+      return same(whole ? scaleFrom(typed, whole, undefined) : typed)
     }
     case 'submit': {
+      // Only the field's own ↵: one that arrives once typing has gone on is nothing.
+      if (!s.field.focus) return same(s)
       const text = s.field.text.trim()
       const screen = top(s)
       if (onScale(screen) || screen.kind === 'mix') {

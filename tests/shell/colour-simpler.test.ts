@@ -231,3 +231,60 @@ describe('what a copy says', () => {
     expect(s.flash?.keys).toBeUndefined()
   })
 })
+
+describe('typing a colour goes on by itself when it is whole for certain (2026-10-24)', () => {
+  const settled = (typed: string, from: 'scale' | 'palette' | 'system' = 'scale') =>
+    run(initial(from), text(typed)).state
+
+  it('a full 6-digit hex, with or without #: the scale, no ↵', () => {
+    for (const typed of ['#6579FD', '6579fd']) {
+      const s = settled(typed)
+      expect(top(s), typed).toMatchObject({ kind: 'scale', ref: BLUE })
+      expect(s.field.focus, typed).toBe(false)
+      expect(s.preview).toBeUndefined()
+    }
+  })
+
+  it('rgb(), hsl() and oklch() once the bracket closes, not before', () => {
+    expect(top(settled('rgb(101 121 253)'))).toMatchObject({ kind: 'scale' })
+    expect(top(settled('oklch(63% 0.196 273)'))).toMatchObject({ kind: 'scale' })
+    expect(top(settled('hsl(231 98% 70%)'))).toMatchObject({ kind: 'scale' })
+    const open = settled('rgb(101 121 25')
+    expect(top(open)).toEqual({ kind: 'scale-empty' })
+    expect(open.field.focus).toBe(true)
+  })
+
+  it('what could still grow stays in the box, drawn as it is, for ↵: shorthand and names', () => {
+    for (const typed of ['#657', '#6579F', 'crimson', 'red']) {
+      const s = settled(typed)
+      expect(top(s), typed).toEqual({ kind: 'scale-empty' })
+      expect(s.field.focus, typed).toBe(true)
+    }
+    expect(settled('#657').preview).toBeDefined()
+    expect(run(settled('crimson'), SUBMIT).state.field.focus).toBe(false)
+  })
+
+  it('colours typed for a gradient stay in the box: there may be another', () => {
+    const s = settled('#F5A524 → #6579FD')
+    expect(top(s)).toEqual({ kind: 'scale-empty' })
+    expect(s.field.focus).toBe(true)
+    expect(top(run(s, SUBMIT).state)).toMatchObject({ kind: 'mix' })
+  })
+
+  it('on the Palette card the scale opens on its Palette tab; on Extract only a #hex goes on', () => {
+    const pal = settled('#D2042D', 'system')
+    expect(top(pal)).toMatchObject({ kind: 'scale' })
+    expect(pal.tab).toBe('palette')
+    expect(top(settled('#6579FD', 'palette'))).toMatchObject({ kind: 'scale', ref: BLUE })
+    const path = settled('/tmp/6579fd', 'palette')
+    expect(top(path)).toEqual({ kind: 'palette-empty' })
+  })
+
+  it('a wrong colour is not gone on from; a scale shown goes to the next whole colour typed over it', () => {
+    expect(settled('#6579FG').wrong).toBeUndefined()
+    expect(top(settled('#6579FG'))).toEqual({ kind: 'scale-empty' })
+    const on = run(onScale(), key('#'), text('#F26E69')).state
+    expect(top(on)).toMatchObject({ kind: 'scale', ref: { r: 0xf2 } })
+    expect(on.history).toHaveLength(2)
+  })
+})

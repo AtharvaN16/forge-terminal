@@ -90,7 +90,6 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     for (const tab of ['Colour', 'Neutral', 'Alpha', 'Palette']) {
       expect(lines(app.lastFrame()), tab).toHaveLength(24)
@@ -113,7 +112,6 @@ describe('colour, round two, in the app', () => {
       await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
       app.stdin.write('#6579FD')
       await settle()
-      app.stdin.write('\r')
       await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
       const all = lines(app.lastFrame())
       const tabs = all.findIndex((l) => /Colour +Neutral +Alpha +Palette/.test(l))
@@ -125,15 +123,15 @@ describe('colour, round two, in the app', () => {
     }
   }, 30_000)
 
-  it('⇧→ after a colour asks for a second; ↵ mixes them', async () => {
+  it('a name waits for ↵, and ⇧→ after it asks for a second colour; ↵ makes the gradient', async () => {
     const app = await colourHome()
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
-    app.stdin.write('#F26E69')
+    app.stdin.write('crimson')
     await settle()
-    // A whole colour typed: ↵ done at the field's end, and on the key row.
-    const field = lines(app.lastFrame()).find((l) => l.includes('#F26E69')) ?? ''
-    expect(field).toMatch(/#F26E69 .* ↵ {2}done/)
+    // Whole, but it could grow: ↵ done at the field's end, and on the key row.
+    const field = lines(app.lastFrame()).find((l) => l.includes('crimson')) ?? ''
+    expect(field).toMatch(/crimson .* ↵ {2}done/)
     expect(keyRow(app.lastFrame())).toMatch(/↵ +done/)
     app.stdin.write(SHIFT_RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
@@ -142,8 +140,19 @@ describe('colour, round two, in the app', () => {
     await settle()
     app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('straight across'))
-    expect(plain(app.lastFrame())).toMatch(/#F26E69 ╱ Gradient/)
+    expect(plain(app.lastFrame())).toMatch(/#DC143C ╱ Gradient/)
     expect(lines(app.lastFrame())).toHaveLength(24)
+  }, 30_000)
+
+  it('six hex digits go on by themselves: the scale is there at once, with no ↵ to press (2026-10-24)', async () => {
+    const app = await colourHome()
+    app.stdin.write('s')
+    await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+    app.stdin.write('#F26E69')
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
+    expect(plain(app.lastFrame())).toMatch(/Colour +Neutral +Alpha +Palette/)
+    expect(lines(app.lastFrame()).find((l) => l.includes('› #F26E69'))).not.toContain('done')
+    expect(keyRow(app.lastFrame())).toMatch(/←→ +choose +↵ +copy/)
   }, 30_000)
 
   it('once the scale is shown, ⇧→ opens the Gradient window; three colours make a gradient', async () => {
@@ -152,7 +161,6 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#32A852')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     expect(plain(app.lastFrame())).toMatch(/#32A852 .* # new colour/)
     // → alone still walks the ramp.
@@ -183,7 +191,6 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#32A852')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     // t still opens Tweak at once; More lists it too.
     expect(plain(app.lastFrame())).toMatch(/ m {2}more/)
@@ -249,7 +256,6 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     app.stdin.write('\t')
     await settle()
@@ -267,7 +273,6 @@ describe('colour, round two, in the app', () => {
       await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
       app.stdin.write('#6579FD')
       await settle()
-      app.stdin.write('\r')
       await waitFor(() => plain(app.lastFrame()).includes('Full set'))
       const all = lines(app.lastFrame())
       expect(all, `${height} rows`).toHaveLength(height)
@@ -297,7 +302,6 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     app.stdin.write('c')
     await waitFor(() => keyRow(app.lastFrame()).includes('copied'))
@@ -315,7 +319,6 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#D2042D')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('Full set'))
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('‹ Tailwind ›'))

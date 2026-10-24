@@ -57,11 +57,12 @@ async function onScale() {
 }
 
 describe('colour mode’s field', () => {
-  it('↵ done is a grey chip at its end while a colour is typed (back, 2026-10-24)', async () => {
+  it('↵ done is a grey chip at its end while a colour that could still grow is typed', async () => {
     const app = await onScale()
-    app.stdin.write('#F26E69')
+    // A name could still grow (`red` to `redwood`), so it waits for ↵.
+    app.stdin.write('crimson')
     await waitFor(() => plain(app.lastFrame()).includes('done'))
-    const { cells, at } = cellsOf(app.lastFrame(), ' ↵  done', '#F26E69')
+    const { cells, at } = cellsOf(app.lastFrame(), ' ↵  done', 'crimson')
     expect(cells[at + 1]).toMatchObject({ ch: '↵', fg: DARK.canvas, bg: DARK.border, b: true })
     expect(cells[at + 4]).toMatchObject({ ch: 'd', fg: DARK.border })
   }, 20_000)
@@ -91,7 +92,6 @@ describe('colour mode’s field', () => {
     const app = await onScale()
     app.stdin.write('#32A852')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('new colour'))
     expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
     const { cells, at } = cellsOf(app.lastFrame(), '# new colour', '#32A852')

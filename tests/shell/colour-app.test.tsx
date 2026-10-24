@@ -87,7 +87,6 @@ describe("colour's home and screens", () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('6579FD')
     await settle()
-    app.stdin.write(ENTER)
     await waitFor(() => plain(app.lastFrame()).includes('Tailwind  50 – 950'))
     // Tweak and Steps are in More, over the rule; # new colour is at the field's far end.
     expect(plain(app.lastFrame())).toMatch(/11 steps\s*\n/)
