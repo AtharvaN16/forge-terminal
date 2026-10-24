@@ -1,6 +1,6 @@
 # Forge
 
-**Convert** — a terminal-native file converter for macOS and Windows. Command: `forge`.
+**Convert** — a terminal-native file converter for macOS, Windows and Linux. Command: `forge`.
 
 ## What it is
 
@@ -30,10 +30,17 @@ and arrow keys instead of flags. See [Interactive shell](#interactive-shell).
 
 ## Installation
 
-**Requires macOS or Windows 10/11, and Node 20 or newer** (developed and
+**Requires macOS, Windows 10/11 or Linux, and Node 20 or newer** (developed and
 tested on Node 24). Check with `node --version`; if you don't have it,
-`brew install node` on a Mac, or the LTS installer from nodejs.org on Windows.
+`brew install node` on a Mac, the LTS installer from nodejs.org on Windows, or
+your distro's package (or nodejs.org's build) on Linux.
 On Windows, use Windows Terminal for the full experience.
+
+Every feature works on all three, with two exceptions: transcript summaries and
+notes need Apple Intelligence, so they are Mac-only, and Boost has no Intel Mac
+build yet. Where a feature needs a
+tool the OS does not have, it is a small optional extension
+(`forge extensions`) or a common package, named in the error that asks for it.
 
 ```bash
 npm install -g forge-terminal
@@ -104,8 +111,8 @@ From source, `git pull && npm install && npm run build` updates and
 
 ## Right-click menu
 
-On a Mac and on Windows, Forge adds itself to the right-click menu the first
-time you run `forge`, and says so once:
+On a Mac, on Windows and on Linux, Forge adds itself to the right-click menu
+the first time you run `forge`, and says so once:
 
 | Right-click | Items |
 | --- | --- |
@@ -122,7 +129,10 @@ time you run `forge`, and says so once:
   extension is installed (`forge extensions add boost`).
 
 Forge opens in the terminal you last ran it in: Terminal, iTerm or Ghostty on
-a Mac; Windows Terminal, or a console window, on Windows. Each item's icon is
+a Mac; Windows Terminal, or a console window, on Windows; on Linux the one you
+last ran it in if it is still installed, else your desktop's default
+(xdg-terminal-exec, x-terminal-emulator, then GNOME Terminal, Konsole and the
+other common ones). Each item's icon is
 Forge's logo with the slashes in its mode's colour.
 
 On a Mac the items are under **Quick Actions**, and Finder's own
@@ -132,27 +142,51 @@ image's and a folder's in a **Forge** submenu, a PDF's one item on its own. They
 `npm install -g`; from a source checkout, `forge menu install` sets them up
 by hand and `forge menu remove` takes them out.
 
-## Transcribe on Linux
+On Linux, Forge writes entries for the common file managers, no dependencies
+needed: GNOME Files (Nautilus) shows them under **Scripts › Forge**, and
+Nemo, Dolphin and Thunar in a **Forge** submenu. Nautilus cannot limit a script
+to some kinds of file, so there every item shows for every file, and Forge
+says so when a file is not one it takes. Thunar's entries are merged into
+`~/.config/Thunar/uca.xml` beside your own and removed without touching them.
+Sharpen's notification uses `notify-send` (or D-Bus); without either, it is
+silent.
 
-`forge transcribe` runs on Linux too, on whisper.cpp instead of Apple's
-recogniser. Everything stays on the machine. Install the two tools it calls
-(and yt-dlp for YouTube links):
+## Transcribe on Windows, Linux and older Macs
+
+On Apple-silicon Macs with macOS 26 or later, `forge transcribe` uses Apple's
+speech recogniser. Everywhere else (Windows, Linux, Intel Macs, and Macs before
+macOS 26) it uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+instead. Everything stays on the machine. It needs ffmpeg and whisper.cpp's
+`whisper-cli`:
 
 ```bash
-# Debian/Ubuntu: ffmpeg from apt; whisper.cpp from your distro, Homebrew, or a source build
-sudo apt install ffmpeg
-brew install whisper-cpp yt-dlp      # Homebrew on Linux; or build whisper.cpp (whisper-cli)
+# Windows
+forge extensions add whisper     # whisper.cpp, about 4 MB (x64) or 1.5 MB (arm64)
+winget install ffmpeg
+
+# Linux
+forge extensions add whisper     # static whisper-cli, about 1.2 MB (x64 needs AVX2)
+sudo apt install ffmpeg          # or your distro's ffmpeg
+
+# Intel Mac, or a Mac before macOS 26
+brew install whisper-cpp ffmpeg
 
 forge transcribe talk.mp4
 forge transcribe "https://www.youtube.com/watch?v=..." --language en
 ```
 
-- The first run downloads the speech model (ggml-base, multilingual, 148 MB)
-  into `~/.cache/forge/whisper`, checked against its sha256.
+- The first run downloads the speech model (ggml-base, multilingual, 148 MB),
+  checked against its sha256, into `%LOCALAPPDATA%\forge\whisper`,
+  `~/Library/Caches/forge/whisper` or `~/.cache/forge/whisper`.
 - Without `--language`, whisper detects the language itself.
-- Summary and notes need Apple Intelligence, so Linux writes the transcript.
-  `--to notes` is refused; the default `--to all` gives the transcript.
-- Forge uses your own yt-dlp and never updates it for you.
+- Summary and notes need Apple Intelligence, so off it Forge writes the
+  transcript. `--to notes` is refused; the default `--to all` gives the
+  transcript.
+- On Windows the upstream whisper.cpp build needs the Microsoft Visual C++
+  Redistributable; if it is missing, Forge says so and links it.
+- YouTube links need yt-dlp: `forge extensions add yt-dlp` installs upstream's
+  own build on every OS (and updates it when YouTube breaks it). A yt-dlp of
+  your own on PATH also works; Forge never updates that one.
 - Overrides: `FORGE_WHISPER_CLI`, `FORGE_FFMPEG`, `FORGE_WHISPER_MODEL` (any
   ggml `.bin`, e.g. a larger model for accuracy), `FORGE_YT_DLP`.
 
@@ -320,6 +354,12 @@ back and `s` also saves the result to the default folder.
 If your terminal sends nothing on ⌘V with only a picture copied, ctrl-v does
 the same.
 
+On Windows and Linux the same works with Ctrl+V, and the hint says so.
+Windows uses its own clipboard through PowerShell. Linux needs a desktop
+session and `wl-clipboard` (Wayland) or `xclip` (X11), and Forge names the one
+to install if neither is there; on Linux a result goes back as image data
+only. There is no clipboard over SSH on any system.
+
 Forge never overwrites something you copied while it worked: the result is
 saved to the default folder instead, and Done says so. A compression that
 would come out larger is never put back.
@@ -409,16 +449,20 @@ zoom.
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather
-than part of the install. On a Mac both need macOS 14 or later; on Windows,
-Boost runs on DirectML and remove background is not available yet. Windows
-also has a `heic` extension, because macOS opens iPhone photos itself and
-Windows needs a decoder. Nothing downloads until you ask:
+than part of the install. On a Mac both need macOS 14 or later. On Windows,
+Boost runs on DirectML; on Linux, on the CPU, which is slow on large images.
+Remove background uses Apple Vision on a Mac, and U²-Net-p (a 4.6 MB model,
+Apache-2.0) on ONNX Runtime on Windows and Linux: expect softer edges than on
+a Mac. Windows and Linux also have a `heic` extension, because macOS opens
+iPhone photos itself and they need a decoder. Nothing downloads until you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
-forge extensions add boost              # about 15 MB on Apple Silicon (no Intel Mac build), 23 MB on Windows
-forge extensions add remove-background  # about 32 KB; macOS only
-forge extensions add heic               # about 0.5 MB; Windows only
+forge extensions add boost              # about 15 MB on Apple Silicon (no Intel Mac build), 23 MB on Windows, 12-17 MB on Linux
+forge extensions add remove-background  # about 32 KB on a Mac, 12-17 MB on Windows and Linux
+forge extensions add heic               # about 0.5 MB; Windows and Linux
+forge extensions add whisper            # transcribe on Windows and Linux (see above)
+forge extensions add yt-dlp             # YouTube links for transcribe, every OS
 forge extensions remove boost
 ```
 
@@ -1354,9 +1398,12 @@ in a patent pool, so upstream's position is that HEIC support requires a
 globally installed libvips built against libheif, libde265 and x265 — AVIF
 works in the same container only because AV1 is royalty-free.
 
-Forge decodes HEIC with `/usr/bin/sips` instead, which uses the same system
-codec Preview does. No install, no build step. If `sips` is missing, HEIC
-conversion is the only thing that stops working.
+On a Mac, Forge decodes HEIC with `/usr/bin/sips` instead, which uses the
+same system codec Preview does. No install, no build step. If `sips` is
+missing, HEIC conversion is the only thing that stops working.
+
+On Windows and Linux, `forge extensions add heic` installs libheif compiled to
+WebAssembly (about 0.5 MB, one build for any chip, LGPL-3.0 in its own files).
 
 Writing HEIC is still unavailable: Sharp cannot encode HEVC at all.
 
