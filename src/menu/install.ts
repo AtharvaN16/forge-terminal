@@ -313,7 +313,7 @@ async function installLinux(e: MenuEnv, items: MenuItem[]) {
     linuxLauncher({
       ...e,
       files: linuxFiles(d),
-      folders: [nautilusDir(d), ...made(e)].sort((a, b) => b.length - a.length),
+      folders: [...new Set([nautilusDir(d), ...made(e)])].sort((a, b) => b.length - a.length),
       marker: MARKER,
       thunar: { file: thunarFile(d), seed: thunarSeed(e) },
     }),

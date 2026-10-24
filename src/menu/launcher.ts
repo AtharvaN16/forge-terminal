@@ -187,8 +187,7 @@ if [ ! -f ${shellQuote(o.forge)} ]; then
   for f in ${files}; do
     if [ -f "$f" ] && grep -qF ${shellQuote(o.marker)} "$f"; then rm -f "$f"; fi
   done
-${o.folders.map((d) => `  rmdir ${shellQuote(d)} 2>/dev/null`).join('\n')}
-${thunar}  rm -rf ${shellQuote(o.menuDir)}
+${thunar}${o.folders.map((d) => `  rmdir ${shellQuote(d)} 2>/dev/null\n`).join('')}  rm -rf ${shellQuote(o.menuDir)}
   say ${shellQuote(GONE_TITLE)} ${shellQuote(GONE_BODY)}
   exit 0
 fi

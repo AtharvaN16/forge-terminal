@@ -237,7 +237,7 @@ describe.skipIf(process.platform === 'win32')('linuxLauncher, run for real', () 
         forge,
         menuDir,
         files: [ours, theirs],
-        folders: [folder],
+        folders: [folder, dirname(uca)],
         marker: 'forge-terminal-menu',
         thunar: { file: uca, seed },
       }),
@@ -253,6 +253,7 @@ describe.skipIf(process.platform === 'win32')('linuxLauncher, run for real', () 
       menuLeft: existsSync(menuDir),
       uca: existsSync(uca) ? readFileSync(uca, 'utf8') : undefined,
       theirsLeft: existsSync(theirs),
+      thunarDirLeft: existsSync(dirname(uca)),
     }
   }
 
@@ -272,6 +273,8 @@ describe.skipIf(process.platform === 'win32')('linuxLauncher, run for real', () 
   it('deletes a uca.xml it made once its actions are out and nothing else changed', () => {
     const r = run({ forgeExists: false, nodeExists: true, seeded: true })
     expect(r.uca).toBeUndefined()
+    // Its folder too, emptied only now, so taken away after the file.
+    expect(r.thunarDirLeft).toBe(false)
   })
 
   it('says so through gdbus when notify-send is not installed', () => {
