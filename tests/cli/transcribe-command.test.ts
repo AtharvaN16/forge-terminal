@@ -235,7 +235,8 @@ describe('forge transcribe <file>', () => {
   })
 })
 
-describe('forge transcribe <link>', () => {
+// A fake yt-dlp is a #! script, which Windows cannot start; the link flow is the same everywhere.
+describe.skipIf(process.platform === 'win32')('forge transcribe <link>', () => {
   const LINK = 'https://youtu.be/jNQXAC9IVRw?si=abc'
   const savedXdg = process.env.XDG_CONFIG_HOME
   afterEach(() => {
