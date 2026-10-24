@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   freeSharpName,
+  linuxTerminalCommand,
   type RunDeps,
   runMenuAction,
   sharpenSummary,
@@ -150,5 +151,57 @@ describe('runMenuAction', () => {
     const { d, log } = deps({ sharpen: async () => ({ error: 'Not an image.' }) })
     await runMenuAction('sharpen', ['/x/photo.png'], d)
     expect(log).toEqual(['notify photo.png not sharpened / Not an image.'])
+  })
+})
+
+describe('linuxTerminalCommand', () => {
+  const has =
+    (...installed: string[]) =>
+    (cmd: string) =>
+      installed.includes(cmd)
+
+  it('opens the terminal Forge was last run in, each told to run the command its own way', () => {
+    expect(linuxTerminalCommand('gnome-terminal', ARGV, has('gnome-terminal'))).toEqual([
+      'gnome-terminal',
+      ['--', ...ARGV],
+    ])
+    expect(linuxTerminalCommand('konsole', ARGV, has('konsole'))).toEqual([
+      'konsole',
+      ['-e', ...ARGV],
+    ])
+    expect(linuxTerminalCommand('kitty', ARGV, has('kitty'))).toEqual(['kitty', ARGV])
+    expect(linuxTerminalCommand('wezterm', ARGV, has('wezterm'))).toEqual([
+      'wezterm',
+      ['start', '--', ...ARGV],
+    ])
+  })
+
+  it('falls back to the system’s choice, then the usual terminals, when that one is gone', () => {
+    expect(
+      linuxTerminalCommand('kitty', ARGV, has('x-terminal-emulator', 'xterm', 'konsole')),
+    ).toEqual(['x-terminal-emulator', ['-e', ...ARGV]])
+    expect(linuxTerminalCommand(undefined, ARGV, has('xterm', 'konsole'))).toEqual([
+      'konsole',
+      ['-e', ...ARGV],
+    ])
+    expect(linuxTerminalCommand('vscode', ARGV, has('xterm'))).toEqual(['xterm', ['-e', ...ARGV]])
+  })
+
+  it('finds none when no terminal is installed', () => {
+    expect(linuxTerminalCommand('kitty', ARGV, has())).toBeUndefined()
+  })
+})
+
+describe('runMenuAction on Linux', () => {
+  it('opens Forge in a terminal that is installed', async () => {
+    const { d, log } = deps({ platform: 'linux', terminal: undefined, has: (c) => c === 'xterm' })
+    await runMenuAction('compress', ['/a b/p.png'], d)
+    expect(log).toEqual(['launch xterm /a b/p.png'])
+  })
+
+  it('says so when there is no terminal to open it in', async () => {
+    const { d, log } = deps({ platform: 'linux', terminal: undefined, has: () => false })
+    await runMenuAction('convert', ['/a.png'], d)
+    expect(log).toEqual(['notify Forge could not open / No terminal was found to open it in.'])
   })
 })

@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { macLauncher, windowsLauncher } from '../../src/menu/launcher.js'
+import { linuxLauncher, macLauncher, windowsLauncher } from '../../src/menu/launcher.js'
 
 const MAC = {
   node: '/usr/local/bin/node',
@@ -147,5 +147,143 @@ describe('windowsLauncher', () => {
     expect(js).toContain(`execFileSync('reg.exe', ['delete', key, '/f']`)
     expect(js).toContain('rmSync(MENU, { recursive: true, force: true })')
     expect(js).toContain('Forge was uninstalled')
+  })
+})
+
+const LINUX = {
+  node: '/usr/bin/node',
+  execArgv: [],
+  forge: '/usr/lib/node_modules/forge-terminal/dist/index.js',
+  menuDir: '/home/me/.config/forge/menu',
+  files: ['/home/me/.local/share/nautilus/scripts/Forge/Open Forge'],
+  folders: ['/home/me/.local/share/nautilus/scripts/Forge'],
+  marker: 'forge-terminal-menu',
+  thunar: {
+    file: '/home/me/.config/Thunar/uca.xml',
+    seed: '/home/me/.config/forge/menu/thunar-seed.xml',
+  },
+}
+
+describe('linuxLauncher', () => {
+  it('runs Forge’s menu command with the action and files when Forge is there', () => {
+    const sh = linuxLauncher(LINUX)
+    expect(sh.startsWith('#!/bin/sh\n')).toBe(true)
+    expect(sh).toContain(`exec '/usr/bin/node' '${LINUX.forge}' menu run "$@"`)
+    expect(linuxLauncher({ ...LINUX, xdgConfigHome: '/home/me/cfg' })).toContain(
+      `export XDG_CONFIG_HOME='/home/me/cfg'\nexec`,
+    )
+  })
+
+  it('says so through notify-send, else gdbus, else not at all', () => {
+    const sh = linuxLauncher(LINUX)
+    expect(sh).toContain('notify-send --app-name=Forge -- "$1" "$2"')
+    expect(sh).toContain('org.freedesktop.Notifications.Notify')
+  })
+})
+
+// Runs the generated script with /bin/sh, as a file manager would.
+describe.skipIf(process.platform === 'win32')('linuxLauncher, run for real', () => {
+  const UCA = `<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+<action>
+	<name>Mine</name>
+	<unique-id>1-1</unique-id>
+</action>
+</actions>
+`
+  const FORGES = `<action>
+	<name>Convert in Forge</name>
+	<unique-id>forge-terminal-menu-convert</unique-id>
+</action>
+`
+  function run(o: {
+    forgeExists: boolean
+    nodeExists: boolean
+    notifier?: 'notify-send' | 'gdbus'
+    seeded?: boolean
+  }) {
+    const root = mkdtempSync(join(tmpdir(), 'forge-launch-'))
+    const forge = join(root, 'forge.js')
+    const node = join(root, 'node')
+    const log = join(root, 'log')
+    const menuDir = join(root, 'menu')
+    const folder = join(root, 'scripts', 'Forge')
+    const ours = join(folder, 'Open Forge')
+    const theirs = join(root, 'scripts', 'Forge', 'Mine')
+    const uca = join(root, 'Thunar', 'uca.xml')
+    const seed = join(menuDir, 'thunar-seed.xml')
+    const bin = join(root, 'bin')
+    for (const d of [folder, menuDir, dirname(uca), bin]) mkdirSync(d, { recursive: true })
+    writeFileSync(ours, '#!/bin/sh\n# forge-terminal-menu\n')
+    // Named in the list, but not marked as Forge's: someone else's.
+    writeFileSync(theirs, 'mine')
+    writeFileSync(uca, UCA.replace('</actions>', `${FORGES}</actions>`))
+    if (o.seeded) writeFileSync(seed, UCA)
+    if (o.forgeExists) writeFileSync(forge, '')
+    if (o.nodeExists) {
+      writeFileSync(node, `#!/bin/sh\necho ran "$@" >> '${log}'\n`)
+      chmodSync(node, 0o755)
+    }
+    if (o.notifier) {
+      writeFileSync(join(bin, o.notifier), `#!/bin/sh\necho said "$@" >> '${log}'\n`)
+      chmodSync(join(bin, o.notifier), 0o755)
+    }
+    const script = join(root, 'run')
+    writeFileSync(
+      script,
+      linuxLauncher({
+        node,
+        execArgv: [],
+        forge,
+        menuDir,
+        files: [ours, theirs],
+        folders: [folder],
+        marker: 'forge-terminal-menu',
+        thunar: { file: uca, seed },
+      }),
+    )
+    chmodSync(script, 0o755)
+    // Only the stand-in notifier on PATH, beside the tools the script uses.
+    const PATH = `${bin}:/usr/bin:/bin`
+    spawnSync(script, ['sharpen', '/a b.png'], { stdio: 'ignore', env: { PATH } })
+    const said = existsSync(log) ? readFileSync(log, 'utf8') : ''
+    return {
+      said,
+      oursLeft: existsSync(ours),
+      menuLeft: existsSync(menuDir),
+      uca: existsSync(uca) ? readFileSync(uca, 'utf8') : undefined,
+      theirsLeft: existsSync(theirs),
+    }
+  }
+
+  it('runs Forge with the action and files', () => {
+    const r = run({ forgeExists: true, nodeExists: true })
+    expect(r.said).toContain('menu run sharpen /a b.png')
+    expect(r.oursLeft).toBe(true)
+  })
+
+  it('takes the menu away when Forge is gone, Thunar’s actions too, and says so', () => {
+    const r = run({ forgeExists: false, nodeExists: true, notifier: 'notify-send' })
+    expect([r.oursLeft, r.menuLeft, r.theirsLeft]).toEqual([false, false, true])
+    expect(r.uca).toBe(UCA)
+    expect(r.said).toContain('said --app-name=Forge -- Forge was uninstalled')
+  })
+
+  it('deletes a uca.xml it made once its actions are out and nothing else changed', () => {
+    const r = run({ forgeExists: false, nodeExists: true, seeded: true })
+    expect(r.uca).toBeUndefined()
+  })
+
+  it('says so through gdbus when notify-send is not installed', () => {
+    const r = run({ forgeExists: false, nodeExists: true, notifier: 'gdbus' })
+    expect(r.said).toContain(
+      'org.freedesktop.Notifications.Notify Forge 0 \'\' "Forge was uninstalled"',
+    )
+  })
+
+  it('keeps the menu when only Node has moved, and says how to set it up again', () => {
+    const r = run({ forgeExists: true, nodeExists: false, notifier: 'notify-send' })
+    expect([r.oursLeft, r.menuLeft]).toEqual([true, true])
+    expect(r.said).toContain('Forge could not start')
   })
 })

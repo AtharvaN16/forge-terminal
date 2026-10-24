@@ -1,9 +1,41 @@
 import { execFile } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
+import { writeAtomic } from '../core/atomic.js'
 import { icoFrom, renderIcon } from './icon.js'
-import { type MenuPaint, menuItems } from './items.js'
-import { macLauncher, windowsLauncher } from './launcher.js'
+import { type MenuItem, type MenuPaint, menuItems } from './items.js'
+import { linuxLauncher, macLauncher, windowsLauncher } from './launcher.js'
+import {
+  DOLPHIN_KINDS,
+  dolphinDir,
+  dolphinMenu,
+  dolphinName,
+  EMPTY_UCA,
+  hasThunar,
+  type LinuxDirs,
+  linuxDirs,
+  MARKER,
+  mergeUca,
+  nautilusDir,
+  nautilusName,
+  nautilusScript,
+  nemoAction,
+  nemoDir,
+  nemoName,
+  pngName,
+  stripUca,
+  thunarActions,
+  thunarDefaults,
+  thunarFile,
+} from './linux.js'
 import { ICON_NAME, serviceKey, servicesStatus, workflowFiles } from './mac.js'
 import { icoName, registryPlan, registryRoots, registryScript } from './windows.js'
 
@@ -26,6 +58,12 @@ export interface MenuEnv {
    * the item would look for extensions and settings in the wrong folder.
    */
   xdgConfigHome?: string
+  /** Linux: XDG_DATA_HOME as the shell had it, where Nautilus, Nemo and Dolphin look. */
+  xdgDataHome?: string
+  /** Linux: XDG_CONFIG_DIRS, where Thunar keeps the actions it starts with. */
+  xdgConfigDirs?: string
+  /** Linux: PATH, to tell whether Thunar is installed. */
+  path?: string
   /** Forge's version, recorded so a newer one sets the menu up again. */
   version: string
   /** Whether Boost is installed, which Sharpen needs. */
@@ -84,10 +122,12 @@ const write = (path: string, data: string | Buffer) => {
  * platform with no menu to add to is left untouched.
  */
 export async function installMenu(e: MenuEnv): Promise<void> {
-  if (e.platform !== 'darwin' && e.platform !== 'win32') return
+  if (!hasMenu(e.platform)) return
   const items = menuItems({ sharpen: e.sharpen })
   mkdirSync(e.menuDir, { recursive: true })
-  if (e.platform === 'darwin') {
+  if (e.platform === 'linux') {
+    await installLinux(e, items)
+  } else if (e.platform === 'darwin') {
     const launcher = join(e.menuDir, 'run')
     write(launcher, macLauncher({ ...e, bundles: allBundles(e), services: allServices() }))
     chmodSync(launcher, 0o755)
@@ -118,8 +158,7 @@ export async function installMenu(e: MenuEnv): Promise<void> {
     await e.run(PBS, ['-update'])
   } else {
     write(join(e.menuDir, 'run.mjs'), windowsLauncher({ ...e, keys: registryRoots() }))
-    const paints: MenuPaint[] = ['forge', 'convert', 'compress', 'edit', 'pdf']
-    for (const paint of paints) {
+    for (const paint of PAINTS) {
       const images = await Promise.all(
         [16, 24, 32, 48, 256].map(async (size) => ({ size, png: await renderIcon(paint, size) })),
       )
@@ -138,9 +177,163 @@ export async function installMenu(e: MenuEnv): Promise<void> {
   write(stateFile(e), JSON.stringify(state))
 }
 
+/** Whether Forge has a right-click menu to add to on `platform`. */
+export const hasMenu = (platform: NodeJS.Platform) =>
+  platform === 'darwin' || platform === 'win32' || platform === 'linux'
+
+const PAINTS: MenuPaint[] = ['forge', 'convert', 'compress', 'edit', 'pdf']
+
+const dirsOf = (e: MenuEnv) =>
+  linuxDirs({
+    home: e.home,
+    ...(e.xdgDataHome === undefined ? {} : { xdgDataHome: e.xdgDataHome }),
+    ...(e.xdgConfigHome === undefined ? {} : { xdgConfigHome: e.xdgConfigHome }),
+    ...(e.xdgConfigDirs === undefined ? {} : { xdgConfigDirs: e.xdgConfigDirs }),
+  })
+
+/** Every file Forge may have written for a Linux file manager, Sharpen's included. */
+function linuxFiles(d: LinuxDirs): string[] {
+  const all = menuItems({ sharpen: true })
+  const order = all.map((i) => i.action)
+  return [
+    ...all.map((i) => join(nautilusDir(d), nautilusName(i))),
+    ...all.map((i) => join(nemoDir(d), nemoName(i, order))),
+    ...DOLPHIN_KINDS.map((k) => join(dolphinDir(d), dolphinName(k))),
+  ]
+}
+
+const readText = (path: string) => {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
+/** Deletes each of `paths` that Forge wrote: one without Forge's marker is someone else's. */
+function removeOwned(paths: string[]) {
+  for (const path of paths) if (readText(path)?.includes(MARKER)) rmSync(path, { force: true })
+}
+
+/** The folders install made for the file managers' menus, kept so removal can take them back out. */
+const madeFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'made.json')
+const made = (e: Pick<MenuEnv, 'menuDir'>): string[] => {
+  try {
+    return JSON.parse(readFileSync(madeFile(e), 'utf8')) as string[]
+  } catch {
+    return []
+  }
+}
+
+/** Makes `dir` and any parents, recording the ones that were not there. */
+function makeDir(e: Pick<MenuEnv, 'menuDir'>, dir: string) {
+  const fresh: string[] = []
+  for (let d = dir; !existsSync(d) && dirname(d) !== d; d = dirname(d)) fresh.push(d)
+  if (fresh.length === 0) return
+  mkdirSync(dir, { recursive: true })
+  write(madeFile(e), JSON.stringify([...new Set([...made(e), ...fresh])]))
+}
+
+/** Removes each folder that is empty, deepest first. */
+function removeEmpty(dirs: string[]) {
+  for (const dir of [...dirs].sort((a, b) => b.length - a.length))
+    try {
+      rmdirSync(dir)
+    } catch {}
+}
+
+const thunarSeed = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'thunar-seed.xml')
+
+/**
+ * Forge's actions into Thunar's uca.xml, beside the user's own. With no
+ * uca.xml yet, Thunar is reading the actions it ships with, so the new file
+ * starts as a copy of those (only for a Thunar that is installed: any other
+ * would take the file as the user's and never read its defaults). What it
+ * started as is kept, so removing Forge's actions can tell the file is as
+ * Forge found it and delete it. A uca.xml Forge cannot read is left alone.
+ */
+async function installThunar(e: MenuEnv, d: LinuxDirs, items: MenuItem[], launcher: string) {
+  const file = thunarFile(d)
+  let current = readText(file)
+  if (current === undefined) {
+    if (!hasThunar(d, e.path, existsSync)) return
+    current =
+      thunarDefaults(d)
+        .map(readText)
+        .find((t) => t !== undefined && mergeUca(t, '') !== undefined) ?? EMPTY_UCA
+    write(thunarSeed(e), current)
+    makeDir(e, dirname(file))
+  }
+  const merged = mergeUca(current, thunarActions(items, { launcher, menuDir: e.menuDir }))
+  if (merged !== undefined && merged !== readText(file))
+    await writeAtomic(file, Buffer.from(merged))
+}
+
+/** Forge's actions back out of uca.xml, and the file gone if Forge made it and nothing else changed. */
+async function removeThunar(e: MenuEnv, d: LinuxDirs) {
+  const file = thunarFile(d)
+  const current = readText(file)
+  if (current === undefined || !current.includes(`<unique-id>${MARKER}-`)) return
+  const stripped = stripUca(current)
+  if (stripped === readText(thunarSeed(e))) rmSync(file, { force: true })
+  else await writeAtomic(file, Buffer.from(stripped))
+}
+
+/** Writes `text` atomically, as an executable when `exec`. */
+async function writeFile(path: string, text: string, exec = false) {
+  await writeAtomic(path, Buffer.from(text))
+  if (exec) chmodSync(path, 0o755)
+}
+
+async function installLinux(e: MenuEnv, items: MenuItem[]) {
+  const d = dirsOf(e)
+  const launcher = join(e.menuDir, 'run')
+  for (const paint of PAINTS)
+    write(join(e.menuDir, pngName({ paint })), await renderIcon(paint, 128))
+  // What an earlier install wrote goes first, so an item that went (Sharpen,
+  // with Boost removed) does not linger.
+  removeOwned(linuxFiles(d))
+  const order = menuItems({ sharpen: true }).map((i) => i.action)
+  makeDir(e, nautilusDir(d))
+  for (const item of items)
+    await writeFile(join(nautilusDir(d), nautilusName(item)), nautilusScript(item, launcher), true)
+  makeDir(e, nemoDir(d))
+  for (const item of items)
+    await writeFile(join(nemoDir(d), nemoName(item, order)), nemoAction(item, launcher))
+  makeDir(e, dolphinDir(d))
+  for (const kind of DOLPHIN_KINDS) {
+    const menu = dolphinMenu(kind, items, { launcher, menuDir: e.menuDir })
+    // KDE 6 runs a service menu outside the system's folders only if it is executable.
+    if (menu !== undefined) await writeFile(join(dolphinDir(d), dolphinName(kind)), menu, true)
+  }
+  await installThunar(e, d, items, launcher)
+  // Last, once every folder it may have to take away is known.
+  write(
+    launcher,
+    linuxLauncher({
+      ...e,
+      files: linuxFiles(d),
+      folders: [nautilusDir(d), ...made(e)].sort((a, b) => b.length - a.length),
+      marker: MARKER,
+      thunar: { file: thunarFile(d), seed: thunarSeed(e) },
+    }),
+  )
+  chmodSync(launcher, 0o755)
+}
+
+async function removeLinux(e: MenuEnv) {
+  const d = dirsOf(e)
+  removeOwned(linuxFiles(d))
+  await removeThunar(e, d)
+  removeEmpty([nautilusDir(d), ...made(e)])
+  rmSync(e.menuDir, { recursive: true, force: true })
+}
+
 /** Takes everything install wrote back out: the items, the keys, Forge's menu folder. */
 export async function removeMenu(e: MenuEnv): Promise<void> {
-  if (e.platform === 'darwin') {
+  if (e.platform === 'linux') {
+    await removeLinux(e)
+  } else if (e.platform === 'darwin') {
     for (const bundle of allBundles(e)) rmSync(bundle, { recursive: true, force: true })
     rmSync(e.menuDir, { recursive: true, force: true })
     await e.run(...servicesStatus({ on: [], off: allServices() }))

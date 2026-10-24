@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { configBase } from '../config/config-base.js'
 import { isForgeError } from '../core/errors.js'
 import { installed } from '../extensions/paths.js'
@@ -9,6 +9,7 @@ import { installedGlobally, npmBeside, npmCliBeside, runningScript } from '../up
 import type { MenuCommand } from './command.js'
 import { gather } from './gather.js'
 import { installMenu, type MenuEnv, removeMenu, runProgram } from './install.js'
+import { onPath, pngName } from './linux.js'
 import { stableNode } from './node-path.js'
 import { notify } from './notify.js'
 import { freeSharpName, runMenuAction, type SharpenResult } from './run.js'
@@ -33,6 +34,9 @@ export async function realMenuEnv(version: string): Promise<MenuEnv> {
     execArgv: process.execArgv,
     forge: runningScript(process.argv[1]) ?? '',
     ...(process.env.XDG_CONFIG_HOME ? { xdgConfigHome: process.env.XDG_CONFIG_HOME } : {}),
+    ...(process.env.XDG_DATA_HOME ? { xdgDataHome: process.env.XDG_DATA_HOME } : {}),
+    ...(process.env.XDG_CONFIG_DIRS ? { xdgConfigDirs: process.env.XDG_CONFIG_DIRS } : {}),
+    ...(process.env.PATH ? { path: process.env.PATH } : {}),
     version,
     sharpen: (await installed('boost')) !== undefined,
     run: runProgram,
@@ -116,7 +120,9 @@ export async function runMenuCommand(cmd: MenuCommand, version: string): Promise
     return 0
   }
   if (cmd.kind !== 'run') return 2
-  let paths = cmd.paths
+  // Full paths: a file manager may hand over ones relative to the folder on
+  // screen, and the terminal Forge opens in starts somewhere else.
+  let paths = cmd.paths.map((p) => resolve(p))
   // Explorer runs an item once per selected file; the first gathers the rest.
   if (e.platform === 'win32' && paths.length === 1) {
     const all = await gather(join(e.menuDir, 'spool'), cmd.action, paths[0] as string)
@@ -129,7 +135,9 @@ export async function runMenuCommand(cmd: MenuCommand, version: string): Promise
     terminal: rememberedTerminal(e),
     launch,
     sharpen: sharpenFile,
-    notify: (title, body) => notify(title, body, e.platform),
+    notify: (title, body) =>
+      notify(title, body, e.platform, { icon: join(e.menuDir, pngName({ paint: 'forge' })) }),
+    has: (program) => onPath(program, e.path),
     reveal: async (path) => {
       await revealPath(path, e.platform)
     },
