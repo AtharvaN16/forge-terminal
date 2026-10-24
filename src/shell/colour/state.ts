@@ -714,7 +714,8 @@ function onWindowKey(s: ColourState, win: PaletteWindow, input: string, key: Key
   if (win.kind === 'gradient') return onGradientKey(s, win, input, key)
   if (win.kind === 'more') {
     const items = moreItems(s)
-    if (key.escape) return same({ ...s, win: undefined })
+    // m opened it, and m is done with it, as esc is (2026-10-24).
+    if (key.escape || input === 'm') return same({ ...s, win: undefined })
     if (key.upArrow) return same({ ...s, win: { ...win, at: Math.max(0, win.at - 1) } })
     if (key.downArrow) {
       return same({ ...s, win: { ...win, at: Math.min(items.length - 1, win.at + 1) } })

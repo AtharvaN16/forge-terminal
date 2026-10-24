@@ -116,6 +116,18 @@ describe('More', () => {
     expect(run(onScale(), key('m'), ESC).state.win).toBeUndefined()
   })
 
+  it('m again is done: it closes More, as esc does, on the first screen it was opened from', () => {
+    const open = run(onScale(), key('m')).state
+    expect(open.win?.kind).toBe('more')
+    const done = run(open, key('m')).state
+    expect(done.win).toBeUndefined()
+    expect(top(done)).toEqual(top(onScale()))
+    // On Palette too, and over a gradient.
+    expect(run(onScale(), TAB, TAB, TAB, key('m'), key('m')).state.win).toBeUndefined()
+    const gradient = run(onScale(), SHIFT_RIGHT, ...typeIn('#F5A524'), ENTER, TAB).state
+    expect(run(gradient, key('m'), key('m')).state.win).toBeUndefined()
+  })
+
   it('t and s still open Tweak and Steps at once', () => {
     expect(run(onScale(), key('t')).state.win?.kind).toBe('tweak')
     expect(run(onScale(), key('s')).state.stepsEdit?.field).toBe('set')

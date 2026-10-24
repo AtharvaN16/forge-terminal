@@ -59,6 +59,7 @@ describe('colour, round two, in the app', () => {
     app.stdin.write('m')
     await waitFor(() => plain(app.lastFrame()).includes('╭─ More'))
     expect(plain(app.lastFrame())).toMatch(/› Mode/)
+    expect(keyRow(app.lastFrame())).toMatch(/↑↓ +choose +↵ +open +m +done/)
     expect(lines(app.lastFrame())).toHaveLength(24)
     app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('╭─ Mode'))

@@ -805,7 +805,8 @@ different screens. The audit and its rounds are in
   "/ menu" is — the key on the grey cap, in the mode's pink, then `more`
   dim. It opens a W1 window (centred, the screen faded): Gradient (⇧→),
   Tweak (t), Steps (s) on a scale's tabs; Mode, Tweak, Steps on Palette;
-  Steps on a gradient. The keys still work at once. `m` is no longer Mode.
+  Steps on a gradient. The keys still work at once. `m` is no longer Mode;
+  in the window `m` is done, closing it as esc does (`↑↓ choose ↵ open m done`).
 - **Gradient** (was Mix) takes any number of colours. Its window lists them
   numbered, then a box for the next on the shelf's grey, then the gradient
   as one strip: ↵ adds, ↑↓ choose, ⌫ removes the chosen one (or deletes in

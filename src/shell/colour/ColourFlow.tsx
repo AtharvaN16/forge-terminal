@@ -1146,6 +1146,7 @@ function keysFor(
       main: [
         ['↑↓', 'choose'],
         ['↵', 'open'],
+        ['m', 'done'],
       ],
       foot: [
         ['esc', 'close'],
