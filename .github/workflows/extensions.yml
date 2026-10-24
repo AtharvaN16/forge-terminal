@@ -11,6 +11,9 @@ name: extensions
 #      release is downloaded and verified against the catalogue instead of
 #      overwritten. Only an archive the catalogue does not list (boost x64,
 #      built but not offered) and the release does not have is uploaded.
+#      Adding a platform to a published version works the same way: the
+#      catalogue lists the new archives, the release lacks them, so a
+#      workflow_dispatch run for that version uploads them and checks the rest.
 #
 # The rebuild only matches when the toolchain matches the one that built the
 # published archive. remove-background is a Swift binary, so it builds on the
@@ -22,10 +25,14 @@ name: extensions
 # Actions are pinned to commit SHAs; the comment names the release.
 #
 # Windows and Linux archives are assembled on the macOS runner (they are only
-# files) and then run for real on windows-latest and ubuntu-latest by the
-# verify-windows and verify-linux jobs, also with read-only tokens. Nothing is
-# uploaded until those have passed:
-# resolve -> package -> verify-windows, verify-linux -> publish.
+# files, and package-extension.mjs packs the same bytes on any host) and then
+# run for real on windows-latest and ubuntu-latest by the verify-windows and
+# verify-linux jobs, also with read-only tokens. Nothing is uploaded until
+# both have passed: resolve -> package -> verify-windows, verify-linux -> publish.
+#
+# remove-background is two programs: Apple Vision's Swift helper for macOS,
+# and a Node runner on ONNX Runtime (extensions/remove-background-onnx) for
+# Windows and Linux, built beside it from the same tag.
 
 on:
   push:
@@ -136,9 +143,11 @@ jobs:
             done
             # Windows reuses the model the arm64 build converted (verified against the same
             # pinned sha256), so nothing is converted twice and no Python is needed for it.
-            for arch in x64 arm64; do
-              node extensions/boost/build.mjs --platform win32 --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-win32-$arch"
-              node scripts/package-extension.mjs boost "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
+            for os in win32 linux; do
+              for arch in x64 arm64; do
+                node extensions/boost/build.mjs --platform "$os" --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-$os-$arch"
+                node scripts/package-extension.mjs boost "$VERSION" "$os-$arch" "dist-ext/payload-$os-$arch" dist-ext/out >> dist-ext/assets.jsonl
+              done
             done
           elif [ "$ID" = "video" ]; then
             # The GPL asks for the source beside the binaries: the source bundle goes
@@ -154,6 +163,13 @@ jobs:
           else
             bash extensions/remove-background/build.sh dist-ext/payload-universal
             node scripts/package-extension.mjs remove-background "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
+            # Windows and Linux: U²-Net-p on ONNX Runtime, pinned by sha256 in model.json.
+            for os in win32 linux; do
+              for arch in x64 arm64; do
+                node extensions/remove-background-onnx/build.mjs --platform "$os" --arch "$arch" --out "dist-ext/payload-$os-$arch"
+                node scripts/package-extension.mjs remove-background "$VERSION" "$os-$arch" "dist-ext/payload-$os-$arch" dist-ext/out >> dist-ext/assets.jsonl
+              done
+            done
           fi
           cat dist-ext/assets.jsonl
 
@@ -211,7 +227,9 @@ jobs:
   # Runs what the Windows archives contain, on Windows. Nothing here publishes anything.
   verify-windows:
     needs: [resolve, package]
-    if: needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic'
+    if: >-
+      needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic' ||
+      needs.resolve.outputs.id == 'remove-background'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -290,10 +308,15 @@ jobs:
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
           '
 
-  # Runs what the Linux archive contains, on Linux. Nothing here publishes anything.
+      - name: Remove background runs on Windows
+        if: needs.resolve.outputs.id == 'remove-background'
+        run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-win32-x64
+
+  # Runs what the Linux archives contain, on Linux (x64; the arm64 archives hold
+  # the same runner and ONNX Runtime's arm64 build). Nothing here publishes anything.
   verify-linux:
     needs: [resolve, package]
-    if: needs.resolve.outputs.id == 'heic'
+    if: needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'remove-background' || needs.resolve.outputs.id == 'heic'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -312,6 +335,7 @@ jobs:
           path: dist-ext
 
       - name: HEIC extension runs on Linux
+        if: needs.resolve.outputs.id == 'heic'
         run: |
           out="$(node dist-ext/payload-linux-universal/runner.mjs --info --in tests/fixtures/heic/small.heic)"
           echo "$out"
@@ -322,9 +346,17 @@ jobs:
             const n = require("fs").statSync("x.rgba").size
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
           '
+      # Built-ins only (no npm ci): it writes its own test PNGs and reads the results.
+      - name: Boost runs on Linux
+        if: needs.resolve.outputs.id == 'boost'
+        run: node scripts/verify-extension-payload.mjs boost dist-ext/payload-linux-x64
 
-  # Uploads only after the Windows and Linux archives have run there. An
-  # extension with none for an OS skips that job, and a skip counts as passed.
+      - name: Remove background runs on Linux
+        if: needs.resolve.outputs.id == 'remove-background'
+        run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-linux-x64
+
+  # Uploads only after the Windows and Linux archives have run there. An id with
+  # none for an OS skips that job, and a skip counts as passed.
   publish:
     needs: [resolve, package, verify-windows, verify-linux]
     if: >-

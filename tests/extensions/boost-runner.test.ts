@@ -30,8 +30,11 @@ let work: string
 beforeAll(async () => {
   work = mkdtempSync(join(tmpdir(), 'forge-boost-'))
   payload = join(work, 'payload')
+  // This machine's own ONNX Runtime binaries, so the model test runs here: macOS, Windows or Linux.
   await run(process.execPath, [
     join(boostDir, 'build.mjs'),
+    '--platform',
+    process.platform,
     '--arch',
     process.arch,
     '--out',
@@ -138,6 +141,7 @@ describe('boost runner', () => {
         expect(alphaAt(info.width / 2, info.height / 2)).toBe(255)
       }
     },
-    60_000,
+    // Four model runs; on Linux, and on a GPU-less Windows, they are on the CPU.
+    180_000,
   )
 })

@@ -87,9 +87,9 @@ describe('the Mac catalogue, as published', () => {
 })
 
 describe('by OS', () => {
-  it('remove-background is Mac-only, heic is never offered on a Mac', () => {
-    expect(offeredHere('remove-background', 'darwin')).toBe(true)
-    expect(offeredHere('remove-background', 'win32')).toBe(false)
+  it('remove-background is on every OS, heic is never offered on a Mac', () => {
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(offeredHere('remove-background', os)).toBe(true)
     expect(offeredHere('heic', 'darwin')).toBe(false)
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
@@ -129,8 +129,7 @@ describe('by OS', () => {
       expect(assetFor(heic, 'win32', arch)?.url).toMatch(/-win32-universal\.tar\.gz$/)
     }
   })
-
-  it('Edit has no Remove background row where it is not offered', () => {
+  it('Edit has a Remove background row on every OS, and none where it is not offered', () => {
     const photo = {
       kind: 'image',
       path: '/p.png',
@@ -141,7 +140,48 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    expect(editRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
-    expect(editRows(photo, undefined, undefined, 'win32').map((r) => r.id)).not.toContain('cutout')
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).toContain('cutout')
+    expect(editRows(photo, undefined, undefined, 'freebsd').map((r) => r.id)).not.toContain(
+      'cutout',
+    )
+  })
+})
+
+describe('the Windows and Linux catalogue', () => {
+  it('offers boost and remove-background on Linux, both chips, at 1.1.0', async () => {
+    for (const arch of ['x64', 'arm64']) {
+      // Other tools may come to Linux too; these two are this file's.
+      const list = (await listExtensions('linux', arch)).filter(
+        (s) => s.entry.id === 'boost' || s.entry.id === 'remove-background',
+      )
+      expect(list.map((s) => s.entry.id)).toEqual(['boost', 'remove-background'])
+      expect(list.every((s) => s.supported)).toBe(true)
+      for (const s of list) {
+        const asset = assetFor(s.entry, 'linux', arch)
+        expect(asset?.version).toBe('1.1.0')
+        expect(asset?.url).toBe(
+          `${RELEASES}/ext-${s.entry.id}-v1.1.0/forge-ext-${s.entry.id}-1.1.0-linux-${arch}.tar.gz`,
+        )
+        expect(asset?.sha256).toMatch(/^[0-9a-f]{64}$/)
+      }
+    }
+  })
+
+  it('offers remove-background on Windows beside boost and heic, and leaves the Mac its own build', async () => {
+    const list = await listExtensions('win32', 'x64')
+    expect(list.map((s) => s.entry.id)).toEqual(
+      expect.arrayContaining(['boost', 'remove-background', 'heic']),
+    )
+    const cutout = list.find((s) => s.entry.id === 'remove-background')
+    expect(cutout && assetFor(cutout.entry, 'win32', 'arm64')?.url).toBe(
+      `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
+    )
+    expect(cutout && assetFor(cutout.entry, 'darwin', 'arm64')?.version).toBe('1.0.0')
+  })
+
+  it('still tells an Intel Mac there is no boost build', () => {
+    const boost = CATALOG.find((e) => e.id === 'boost')
+    expect(boost && assetFor(boost, 'darwin', 'x64')).toBeUndefined()
   })
 })

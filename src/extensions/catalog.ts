@@ -66,23 +66,69 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 22936985,
         sha256: '7d39d93cae52f298423db0b185b0ae3a3bac65464abeb23561d9bcb2ebb3f026',
       },
+      // Linux runs on the CPU: onnxruntime-node's only Linux GPU provider is
+      // CUDA, a separate download of hundreds of MB. The runner is 1.1.0's,
+      // unchanged (the Windows archives above rebuild from it byte for byte),
+      // so it is 1.1.0 too. Slow on a big image, as Windows without a GPU is:
+      // the same limits, and the working screen's spinner and clock.
+      'linux-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-linux-x64.tar.gz`,
+        bytes: 17020233,
+        sha256: 'd87c0dcf719f940f255b274a2696e8df548902fe54353bbca36f809897805402',
+      },
+      'linux-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-linux-arm64.tar.gz`,
+        bytes: 12003550,
+        sha256: '522bda2f2e13edac3d49aa89dfadf5b02d79ae1e3b701f615c042d5e74f8f609',
+      },
     },
     licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
   },
   {
     id: 'remove-background',
     title: 'Remove background',
-    summary: 'Cut the subject out of a photo, on this Mac',
+    summary: 'Cut the subject out of a photo, on this computer',
+    // Darwin assets only, like every minMacos.
     minMacos: 14,
     assets: {
+      // Apple Vision, through a small Swift helper (extensions/remove-background).
       'darwin-universal': {
         version: '1.0.0',
         url: `${RELEASES}/ext-remove-background-v1.0.0/forge-ext-remove-background-1.0.0-universal.tar.gz`,
         bytes: 32489,
         sha256: '9f6e055c0ce25f7504e10c7871e506a813bc75d6536396a675a8c075c4eb4686',
       },
+      // Elsewhere U²-Net-p, a 4.6 MB model, on ONNX Runtime's CPU provider
+      // (extensions/remove-background-onnx): the same arguments and replies.
+      'win32-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-x64.tar.gz`,
+        bytes: 13324892,
+        sha256: 'c505032600bd44c8da9ae2bf5a93892142abaaaf29ff3b13a4cbbd141be1c1c1',
+      },
+      'win32-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
+        bytes: 13398461,
+        sha256: '8b65bac6b5d3a00b4f124fb8fa662c8ddf6bc517ef39175c5faf7f4b596d7807',
+      },
+      'linux-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-x64.tar.gz`,
+        bytes: 16721400,
+        sha256: '3195f6ce0346cf4ebb01ef92b3de20ad1d811c20a290ede2112ba6a277893623',
+      },
+      'linux-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-arm64.tar.gz`,
+        bytes: 11703766,
+        sha256: '448896ae9dd1ec0943fcc4c8a8ac3f75258a496ec12405151f324627a8aca30f',
+      },
     },
-    licence: 'Uses Apple Vision on-device; helper is MIT',
+    licence:
+      'Apple Vision on macOS (helper MIT); elsewhere U²-Net-p (Apache-2.0) and ONNX Runtime (MIT)',
   },
   {
     // macOS decodes HEIC itself (sips); Windows and Linux need this. The two

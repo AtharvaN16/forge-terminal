@@ -33,9 +33,18 @@ describe('boost build.mjs --runner-only', () => {
     ])
   }, 60_000)
 
+  it('--platform linux copies the binding and the one ONNX Runtime library it links', async () => {
+    for (const arch of ['x64', 'arm64'])
+      expect(await files('--platform', 'linux', '--arch', arch)).toEqual([
+        'libonnxruntime.so.1',
+        'onnxruntime_binding.node',
+        'runner.mjs',
+      ])
+  }, 60_000)
+
   it('rejects a platform it does not build for', async () => {
-    await expect(files('--platform', 'linux', '--arch', 'x64')).rejects.toThrow(
-      /--platform must be/,
+    await expect(files('--platform', 'freebsd', '--arch', 'x64')).rejects.toThrow(
+      /--platform must be darwin, win32 or linux/,
     )
   }, 60_000)
 })
