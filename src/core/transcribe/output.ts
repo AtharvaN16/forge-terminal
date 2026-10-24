@@ -5,8 +5,9 @@
  * conversion targets — transcribe never goes through `targetsFor`.
  *
  * The .md from `transcriptMarkdown` is the one source: Word and PDF are made
- * from its HTML (by the helper, on the Mac), text from its words. Both
- * functions read only the Markdown that function writes. Pure.
+ * from its HTML by Apple's helper where that runs, and from `markdownPages`
+ * by Forge everywhere else; text from its words. Every machine offers all
+ * four. Both functions read only the Markdown that function writes. Pure.
  */
 
 import type { PageText } from './page-text.js'
@@ -21,15 +22,6 @@ export const OUTPUTS = [
 export type Output = (typeof OUTPUTS)[number]['id']
 
 export const DEFAULT_OUTPUT: Output = 'md'
-
-/**
- * The formats this machine can write: every one where Apple's helper sets
- * documents (`render`), and all but PDF elsewhere, where Word is written by
- * Forge (`markdownPages`) and nothing sets a PDF yet.
- */
-export function outputsFor(can: { render: boolean }): (typeof OUTPUTS)[number][] {
-  return OUTPUTS.filter((o) => o.id !== 'pdf' || can.render)
-}
 
 export const isOutput = (v: unknown): v is Output => OUTPUTS.some((o) => o.id === v)
 

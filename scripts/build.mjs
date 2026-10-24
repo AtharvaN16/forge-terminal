@@ -17,7 +17,15 @@
  *   node scripts/build.mjs [--outdir dist] [--metafile]
  */
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { build } from 'esbuild'
@@ -82,6 +90,7 @@ writeFileSync(join(outdir, 'third-party-licenses.txt'), licences(result.metafile
 if (values.metafile) writeFileSync(join(outdir, 'meta.json'), JSON.stringify(result.metafile))
 buildTranscribeHelper()
 copyWhisperTranscribeHelper()
+copyPdfFonts()
 
 /**
  * The transcribe helper (spec 2026-10-17-transcribe-design §4.1): Swift,
@@ -141,6 +150,24 @@ function copyWhisperTranscribeHelper() {
   copyFileSync(
     join(ROOT, 'helpers/transcribe/forge-transcribe-whisper.mjs'),
     join(outdir, 'helpers', 'forge-transcribe-whisper.mjs'),
+  )
+}
+
+/**
+ * The fonts a transcript PDF is set in (src/engines/pages-pdf.ts), Noto Sans
+ * under the SIL Open Font License: copied beside the bundle, with the licence
+ * text added to third-party-licenses.txt, since the OFL asks that it travels
+ * with the font.
+ */
+function copyPdfFonts() {
+  const from = join(ROOT, 'assets/fonts')
+  const to = join(outdir, 'fonts')
+  mkdirSync(to, { recursive: true })
+  for (const file of readdirSync(from).filter((f) => f.endsWith('.ttf.gz') || f === 'OFL.txt'))
+    copyFileSync(join(from, file), join(to, file))
+  appendFileSync(
+    join(outdir, 'third-party-licenses.txt'),
+    `\n${'-'.repeat(72)}\n\nNoto Sans (fonts/NotoSans-*.ttf.gz) — OFL-1.1\n\n${readFileSync(join(from, 'OFL.txt'), 'utf8').trim()}\n`,
   )
 }
 

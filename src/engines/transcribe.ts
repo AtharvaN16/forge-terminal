@@ -10,7 +10,7 @@
  * - notes: Apple's on-device model, during Apple's hearing, nowhere else;
  * - reading pictures and PDFs: Apple's Vision, through the Swift helper;
  * - Word and PDF: AppKit through the Swift helper on a Mac that runs it;
- *   elsewhere Word is written here and PDF is not offered (`outputsFor`).
+ *   elsewhere both are written here (`pagesDocx`, `pagesPdf`).
  *
  * This file only picks the engine for a job, runs it, and turns its JSON
  * lines into data and `ForgeError`s.
@@ -28,7 +28,6 @@ import {
   languageUnsupported,
   noSound,
   readUnavailable,
-  renderUnavailable,
   transcribeUnavailable,
   untranscribable,
 } from '../core/errors.js'
@@ -51,6 +50,7 @@ import { machineName } from '../extensions/catalog.js'
 import { installed } from '../extensions/paths.js'
 import { findFfmpeg } from './ffmpeg.js'
 import { loadDocx } from './libs.js'
+import { pagesPdf } from './pages-pdf.js'
 
 /** What the whisper helper can lack: whisper.cpp's whisper-cli, or ffmpeg. */
 export type TranscribeMissing = 'whisper' | 'ffmpeg'
@@ -65,8 +65,6 @@ export interface TranscribeStatus {
   notes: 'available' | 'off' | 'unsupported'
   /** Whether it reads the text of pictures and PDFs (spec 2026-10-23-extract-text-design §5.1). */
   read: boolean
-  /** Whether Apple's helper sets Word and PDF here. Without it Word is written by Forge and PDF is not offered. */
-  render: boolean
   /** Without speech, what the whisper helper is missing: what to install. */
   missing?: TranscribeMissing[]
 }
@@ -347,8 +345,8 @@ const MISSING: readonly TranscribeMissing[] = ['whisper', 'ffmpeg']
 
 /**
  * What this machine can do, job by job, or undefined when no helper is here
- * at all. Notes come only with Apple's hearing; reading and Apple's Word and
- * PDF only with Apple's helper.
+ * at all. Notes come only with Apple's hearing; reading only with Apple's
+ * helper. Word and PDF are written everywhere, so they are not asked of it.
  */
 export async function transcribeStatus(
   opts: { locale?: string } = {},
@@ -356,7 +354,7 @@ export async function transcribeStatus(
   const here = helpers()
   if (here.apple === undefined && here.whisper === undefined) return undefined
   const apple = await appleStatus(opts.locale)
-  const base = { read: apple?.read === true, render: apple !== undefined }
+  const base = { read: apple?.read === true }
   if (apple?.speech === true)
     return {
       speech: true,
@@ -474,13 +472,16 @@ export async function runRead(
   return (r.pages ?? []) as ReadPage[]
 }
 
-/** Whether Apple's helper is here and answers: it alone sets HTML as Word or PDF. */
-async function appleRenders(): Promise<boolean> {
-  return helpers().apple !== undefined && (await appleStatus()) !== undefined
+/** Apple's helper when it is here and answers: it sets HTML as Word or PDF. Elsewhere Forge writes both. */
+async function appleRenderer(): Promise<Helper | undefined> {
+  const { apple } = helpers()
+  if (apple === undefined || (await appleStatus()) === undefined) return undefined
+  return { path: apple, kind: 'apple' }
 }
 
 /** HTML set as Word or PDF by Apple's helper; the caller writes the bytes. */
 async function renderHtml(
+  apple: Helper,
   html: string,
   format: 'docx' | 'pdf',
   opts: { signal?: AbortSignal | undefined },
@@ -490,7 +491,6 @@ async function renderHtml(
     const page = join(dir, 'transcript.html')
     const out = join(dir, `transcript.${format}`)
     await writeFile(page, html, 'utf8')
-    const apple = appleHelper(() => renderUnavailable(format))
     await exec(apple, ['render', page, out, '--as', format], out, { signal: opts.signal })
     return await readFile(out)
   } finally {
@@ -583,8 +583,8 @@ async function pagesDocx(doc: PageText): Promise<Buffer> {
 
 /**
  * A picture's or PDF's text in the chosen format: the Markdown, the bare
- * words, Word (written here), or — through the helper — its HTML set as a
- * PDF, named after the file it was read from.
+ * words, Word (written here), or a PDF named after the file it was read from:
+ * Apple's helper sets its HTML where it runs, Forge writes it elsewhere.
  */
 export async function renderPages(
   doc: PageText,
@@ -595,15 +595,24 @@ export async function renderPages(
   if (format === 'md') return Buffer.from(pageMarkdown(doc), 'utf8')
   if (format === 'txt') return Buffer.from(pagePlain(doc), 'utf8')
   if (format === 'docx') return pagesDocx(doc)
-  return renderHtml(pageHtml(doc, name), format, opts)
+  const apple = await appleRenderer()
+  if (apple) return renderHtml(apple, pageHtml(doc, name), 'pdf', opts)
+  return pagesPdf(doc, { title: name })
+}
+
+/** The transcript's own title: its first level-1 heading. */
+function titleOf(doc: PageText): string {
+  for (const piece of doc.flat())
+    if (piece.kind === 'heading' && piece.level === 1) return piece.text
+  return 'Transcript'
 }
 
 /**
  * The transcript's bytes in the chosen format (mockups/transcribe-2026-10-round4.html,
- * T1): the Markdown itself, its words as text, or — through Apple's helper —
- * its HTML set as Word or PDF. Without Apple's helper, Word is written here
- * from the same Markdown, and PDF is not offered (`outputsFor`). The caller
- * writes the bytes atomically.
+ * T1): the Markdown itself, its words as text, or its HTML set as Word or PDF
+ * through Apple's helper where that runs. Elsewhere Word and PDF are written
+ * here from the same Markdown (`markdownPages`). The caller writes the bytes
+ * atomically.
  */
 export async function renderTranscript(
   md: string,
@@ -612,6 +621,8 @@ export async function renderTranscript(
 ): Promise<Buffer> {
   if (format === 'md') return Buffer.from(md, 'utf8')
   if (format === 'txt') return Buffer.from(markdownText(md), 'utf8')
-  if (format === 'docx' && !(await appleRenders())) return pagesDocx(markdownPages(md))
-  return renderHtml(markdownHtml(md), format, opts)
+  const apple = await appleRenderer()
+  if (apple) return renderHtml(apple, markdownHtml(md), format, opts)
+  const doc = markdownPages(md)
+  return format === 'docx' ? pagesDocx(doc) : pagesPdf(doc, { title: titleOf(doc) })
 }

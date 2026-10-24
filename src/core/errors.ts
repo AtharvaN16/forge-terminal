@@ -61,7 +61,6 @@ export type ErrorCode =
   | 'language-unsupported'
   | 'transcribe-unavailable'
   | 'read-unavailable'
-  | 'render-unavailable'
   | 'no-text'
   | 'link-unavailable'
   | 'unexpected'
@@ -1211,21 +1210,6 @@ export function readUnavailable(): ForgeError {
     title: 'Reading text is not available',
     detail: 'Reading text needs macOS 26 or later.',
     short: 'Reading text needs macOS 26 or later.',
-  })
-}
-
-/**
- * A transcript or a page's text asked for as PDF (or Word, by a page) where
- * Apple's helper does not run: only it sets HTML as a document. Pickers do
- * not offer it there (`outputsFor`); the CLI's --to can still ask.
- */
-export function renderUnavailable(format: 'docx' | 'pdf'): ForgeError {
-  const what = format === 'pdf' ? 'PDF' : 'Word'
-  return new ForgeError({
-    code: 'render-unavailable',
-    title: `${what} is not available here`,
-    detail: `${what} transcripts need macOS 26 or later. Markdown, Word and text work everywhere.`,
-    short: `${what} needs macOS 26 or later.`,
   })
 }
 

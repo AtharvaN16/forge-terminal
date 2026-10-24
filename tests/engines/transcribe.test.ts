@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
 import { markdownHtml, markdownText } from '../../src/core/transcribe/output.js'
 import { pageHtml, pageMarkdown, pagePlain, pageText } from '../../src/core/transcribe/page-text.js'
+import { extractPdfText } from '../../src/engines/pdfium.js'
 import {
   probeSound,
   type ReadEvent,
@@ -42,7 +43,6 @@ describe('transcribeStatus', () => {
       locale: 'en_US',
       notes: 'off',
       read: false,
-      render: true,
     })
   })
 
@@ -253,6 +253,7 @@ describe('renderTranscript', () => {
 
   it('asks for a PDF the same way', async () => {
     const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off' }] },
       render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'pdf:' } },
     })
     use(fake.path)
@@ -265,6 +266,7 @@ describe('renderTranscript', () => {
     use(
       (
         await fakeTranscribeHelper({
+          status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off' }] },
           render: { lines: [{ ok: false, code: 'render', message: 'no' }], exit: 1 },
         })
       ).path,
@@ -280,10 +282,27 @@ describe('renderTranscript', () => {
     expect(xml).toContain('Heading1')
   })
 
-  it("says PDF is not available where Apple's helper is not", async () => {
+  it("writes PDF itself where Apple's helper is not, with the transcript's words", async () => {
     use(join(await makeTempDir(), 'missing'))
-    const e = await renderTranscript(MD, 'pdf').catch((x: unknown) => x)
-    expect(isForgeError(e) && e.code).toBe('render-unavailable')
+    const bytes = await renderTranscript(MD, 'pdf')
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    const [page] = await extractPdfText(bytes)
+    expect(page).toContain('Tea talk')
+    expect(page).toContain('About tea.')
+    expect(page).toContain('Tea first.')
+  })
+
+  it('writes PDF itself on a Mac whose helper is there but cannot answer (before macOS 26)', async () => {
+    // No `status` answer: the helper cannot run here, so it is not asked to render either.
+    const fake = await fakeTranscribeHelper({
+      render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'pdf:' } },
+    })
+    use(fake.path)
+    const bytes = await renderTranscript(MD, 'pdf')
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    expect(existsSync(join(fake.dir, 'argv.json'))).toBe(true)
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv[0]).toBe('status')
   })
 })
 
@@ -366,12 +385,22 @@ describe('renderPages', () => {
     expect(xml).toContain('1,240')
   })
 
-  it('has the helper set its HTML as a PDF', async () => {
+  it('has the helper set its HTML as a PDF, where it runs', async () => {
     const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off' }] },
       render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'pdf:' } },
     })
     use(fake.path)
     const bytes = await renderPages(doc, 'pdf', 'shot.png')
     expect(bytes.toString('utf8')).toBe(`pdf:${pageHtml(doc, 'shot.png')}`)
+  })
+
+  it("writes the PDF itself where Apple's helper is not: headings, text and the table", async () => {
+    use(join(await makeTempDir(), 'missing'))
+    const bytes = await renderPages(doc, 'pdf', 'shot.png')
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    const text = (await extractPdfText(bytes)).join('\n')
+    expect(text).toContain('Quarterly Field Report')
+    expect(text).toContain('1,240')
   })
 })
