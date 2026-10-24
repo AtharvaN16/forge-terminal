@@ -43,6 +43,13 @@ async function ownYtDlp(dir: string, version = '2026.10.03'): Promise<string> {
   return path
 }
 
+/**
+ * These run fake yt-dlp and brew programs written as #! scripts, which
+ * Windows cannot start; what they test (versions, Homebrew, who updates
+ * what) is the same on every OS. searchDirs and newer run everywhere.
+ */
+const WINDOWS = process.platform === 'win32'
+
 describe('newer', () => {
   it('compares dotted versions part by part, as numbers', () => {
     expect(newer('2026.10.03', '2026.08.19')).toBe(true)
@@ -67,7 +74,7 @@ describe('searchDirs', () => {
   })
 })
 
-describe('probeOwn', () => {
+describe.skipIf(WINDOWS)('probeOwn', () => {
   it('reads the version, and calls it Homebrew’s when it lives in a Cellar', async () => {
     const root = await makeTempDir()
     const real = await ownYtDlp(join(root, 'Cellar', 'yt-dlp', '2026.10.03', 'bin'))
@@ -92,7 +99,7 @@ describe('probeOwn', () => {
   })
 })
 
-describe('findOwn', () => {
+describe.skipIf(WINDOWS)('findOwn', () => {
   it('finds yt-dlp in the folders it is given', async () => {
     const dir = await makeTempDir()
     const path = await ownYtDlp(dir)
@@ -118,7 +125,7 @@ describe('findOwn', () => {
   })
 })
 
-describe('resolveYtDlp', () => {
+describe.skipIf(WINDOWS)('resolveYtDlp', () => {
   it('uses yours when it is new enough, and removes Forge’s copy', async () => {
     await fakeYtDlp({})
     const mine = await ownYtDlp(await makeTempDir())
@@ -168,7 +175,7 @@ const homebrewCopy = (path: string): OwnCopy => ({
   tooOld: false,
 })
 
-describe('ownUpdate', () => {
+describe.skipIf(WINDOWS)('ownUpdate', () => {
   it('asks Homebrew for a newer version of its own copy', async () => {
     const { brew } = await fakeBrew('2026.11.02')
     expect(await ownUpdate(homebrewCopy('/x/yt-dlp'), { brew })).toBe('2026.11.02')
@@ -185,7 +192,7 @@ describe('ownUpdate', () => {
   })
 })
 
-describe('updateOwn', () => {
+describe.skipIf(WINDOWS)('updateOwn', () => {
   it('runs brew upgrade for Homebrew’s copy', async () => {
     const { brew, calls } = await fakeBrew()
     await updateOwn(homebrewCopy('/x/yt-dlp'), { brew })

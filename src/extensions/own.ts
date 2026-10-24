@@ -15,7 +15,7 @@
 import { execFile } from 'node:child_process'
 import { access, constants, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { delimiter, dirname, join, sep } from 'node:path'
+import { dirname, join, posix, sep, win32 } from 'node:path'
 import { promisify } from 'node:util'
 import { assetFor, catalogEntry } from './catalog.js'
 import { extensionsRoot, installed } from './paths.js'
@@ -113,11 +113,13 @@ export function searchDirs({
   deep?: boolean
 } = {}): string[] {
   const path = env.PATH ?? env.Path ?? ''
-  const dirs = path.split(platform === 'win32' ? ';' : delimiter).filter(Boolean)
+  // The OS asked about, not the one running: PATH's separator and its paths are its own.
+  const dirs = path.split(platform === 'win32' ? ';' : ':').filter(Boolean)
   if (platform === 'darwin') dirs.push('/opt/homebrew/bin', '/usr/local/bin')
   if (deep) {
     const home = env.HOME ?? homedir()
-    dirs.push(join(home, '.local', 'bin'), join(home, 'bin'), '/opt/local/bin', '/usr/bin')
+    const { join: under } = platform === 'win32' ? win32 : posix
+    dirs.push(under(home, '.local', 'bin'), under(home, 'bin'), '/opt/local/bin', '/usr/bin')
   }
   return [...new Set(dirs)]
 }

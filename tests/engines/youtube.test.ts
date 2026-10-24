@@ -27,7 +27,8 @@ const codeOf = async (p: Promise<unknown>) => {
   return isForgeError(e) ? `${e.code}: ${e.detail}` : String(e)
 }
 
-describe('fetchSound', () => {
+/** A fake yt-dlp is a #! script, which Windows cannot start; fetchSound is the same everywhere. */
+describe.skipIf(process.platform === 'win32')('fetchSound', () => {
   it('tells the facts first, then the bytes, then hands over the sound file', async () => {
     await fakeYtDlp({
       bytes: [

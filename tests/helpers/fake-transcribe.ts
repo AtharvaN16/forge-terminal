@@ -26,7 +26,9 @@ export async function fakeTranscribeHelper(
   opts: { whisper?: boolean } = {},
 ): Promise<{ path: string; dir: string }> {
   const dir = await makeTempDir()
-  const path = join(dir, opts.whisper ? 'forge-transcribe-whisper.mjs' : 'forge-transcribe')
+  // A script either way, run on Forge's own Node (Windows cannot run a #! file):
+  // .mjs is whisper's, .cjs Apple's stand-in.
+  const path = join(dir, opts.whisper ? 'forge-transcribe-whisper.mjs' : 'forge-transcribe.cjs')
   const script = `#!${process.execPath}
 ${opts.whisper ? "import fs from 'node:fs'" : "const fs = require('node:fs')"}
 const answers = ${JSON.stringify(answers)}

@@ -268,8 +268,9 @@ async function exec(
   const env = whisper ? await whisperEnv() : process.env
   if (signal?.aborted) throw signal.reason ?? new Error('aborted')
   return new Promise((resolve, reject) => {
-    // Whisper's helper is a script for the Node Forge runs on; Apple's is a binary.
-    const [cmd, argv] = whisper ? [process.execPath, [helper.path, ...args]] : [helper.path, args]
+    // A script (whisper's helper) runs on the Node Forge runs on; a program (Apple's) runs itself.
+    const script = /\.[cm]?js$/.test(helper.path)
+    const [cmd, argv] = script ? [process.execPath, [helper.path, ...args]] : [helper.path, args]
     const child = spawn(cmd, argv, {
       stdio: [whisper ? 'pipe' : 'ignore', 'pipe', 'ignore'],
       env,

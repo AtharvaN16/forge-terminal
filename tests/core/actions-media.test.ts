@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { compressAction, convertAction } from '../../src/core/actions/index.js'
@@ -53,7 +54,7 @@ describe('convert, for video and sound', () => {
   it('writes HEVC beside an MP4 without landing on it', () => {
     const mp4: MediaInfo = { ...recording, path: '/rec/clip.mp4', format: 'mp4' }
     const job = convert(convertAction.plan([mp4], { target: 'hevc' }))
-    expect(job.outputs[0]).not.toBe('/rec/clip.mp4')
+    expect(job.outputs[0]).not.toBe(resolve('/rec/clip.mp4'))
     expect(job.outputs[0]?.endsWith('.mp4')).toBe(true)
   })
 
@@ -80,7 +81,7 @@ describe('compress, for video and sound', () => {
   it('keeps a video’s format, with -small', () => {
     const job = convert(compressAction.plan([recording], { mode: 'size' }))
     expect(job.target).toBe('mov')
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-small.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-small.mov'))
     expect(job.options.compress).toBeDefined()
   })
 
@@ -107,13 +108,13 @@ describe('edit, for video and sound', () => {
     )
     expect(job.target).toBe('mov')
     expect(job.options.media).toEqual({ cut: { start: 3.2, end: 41 } })
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-trimmed.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-trimmed.mov'))
   })
 
   it('mutes, named -muted', () => {
     const job = convert(mediaEditAction.plan([recording], { tool: 'mute' }))
     expect(job.options.media).toEqual({ mute: true })
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-muted.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-muted.mov'))
   })
 
   it('resizes, named by the new size', () => {
@@ -121,7 +122,7 @@ describe('edit, for video and sound', () => {
       mediaEditAction.plan([recording], { tool: 'resize', resize: { width: 1280 } }),
     )
     expect(job.options.resize).toEqual({ width: 1280 })
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-1280x832.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-1280x832.mov'))
   })
 
   it('crops to a shape, named by it', () => {
@@ -129,14 +130,14 @@ describe('edit, for video and sound', () => {
       mediaEditAction.plan([recording], { tool: 'crop', crop: { aspect: { w: 1, h: 1 } } }),
     )
     expect(job.options.crop?.box).toEqual({ left: 514, top: 0, width: 1912, height: 1912 })
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-cropped-1x1.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-cropped-1x1.mov'))
   })
 
   it('extracts the sound, in the container that holds it, named -audio', () => {
     const job = convert(mediaEditAction.plan([recording], { tool: 'extract' }))
     expect(job.target).toBe('m4a')
     expect(job.options.media).toBeUndefined()
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-audio.m4a')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-audio.m4a'))
   })
 
   it('refuses to extract from a sound file', () => {
@@ -147,7 +148,7 @@ describe('edit, for video and sound', () => {
     const job = convert(mediaEditAction.plan([recording], { tool: 'cleanup' }))
     expect(job.target).toBe('mov')
     expect(job.options.media).toEqual({ cleanup: true, loudness: -16 })
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-cleaned.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-cleaned.mov'))
   })
 
   it('cleans up a sound file, keeping its format', () => {
@@ -159,7 +160,7 @@ describe('edit, for video and sound', () => {
   it('changes speed, named by it, for a video and for sound', () => {
     const fast = convert(mediaEditAction.plan([recording], { tool: 'speed', speed: 2 }))
     expect(fast.options.media).toEqual({ speed: 2 })
-    expect(fast.outputs[0]).toBe('/rec/Screen Recording-2x.mov')
+    expect(fast.outputs[0]).toBe(resolve('/rec/Screen Recording-2x.mov'))
     const slow = convert(mediaEditAction.plan([podcast], { tool: 'speed', speed: 0.5 }))
     expect(slow.outputs[0]).toBe('/pod/episode-0.5x.wav')
     // Nothing without a speed, at 1×, or outside what the engine takes.
@@ -171,7 +172,7 @@ describe('edit, for video and sound', () => {
   it('rotates, named by the turn', () => {
     const job = convert(mediaEditAction.plan([recording], { tool: 'rotate', turn: 90 }))
     expect(job.options.rotate).toBe(90)
-    expect(job.outputs[0]).toBe('/rec/Screen Recording-rotated-right.mov')
+    expect(job.outputs[0]).toBe(resolve('/rec/Screen Recording-rotated-right.mov'))
     expect(mediaEditAction.plan([recording], { tool: 'rotate' })).toEqual([])
     expect(mediaEditAction.plan([podcast], { tool: 'rotate', turn: 90 })).toEqual([])
   })
@@ -191,19 +192,19 @@ describe('edit, for video and sound', () => {
 describe('planMediaEdit, for the CLI', () => {
   it('names a single change by what it did', () => {
     const [job] = planMediaEdit([recording], { media: { speed: 2 } })
-    expect(job?.outputs[0]).toBe('/rec/Screen Recording-2x.mov')
+    expect(job?.outputs[0]).toBe(resolve('/rec/Screen Recording-2x.mov'))
   })
 
   it('names several changes plainly', () => {
     const [job] = planMediaEdit([recording], {
       media: { cut: { start: 1, end: 2 }, mute: true },
     })
-    expect(job?.outputs[0]).toBe('/rec/Screen Recording-edited.mov')
+    expect(job?.outputs[0]).toBe(resolve('/rec/Screen Recording-edited.mov'))
   })
 
   it('writes another format when asked', () => {
     const [job] = planMediaEdit([recording], { media: { mute: true }, target: 'mp4' })
-    expect(job?.outputs[0]).toBe('/rec/Screen Recording-muted.mp4')
+    expect(job?.outputs[0]).toBe(resolve('/rec/Screen Recording-muted.mp4'))
     expect(job?.target).toBe('mp4')
   })
 })
