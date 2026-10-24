@@ -34,7 +34,9 @@ name: extensions
 # runner (extensions/remove-background-onnx) is not built here until a model
 # passes the quality bar; boost's Linux payloads likewise wait for a GPU route.
 #
-# whisper packages on macOS: its Mac archive is built here from source (one
+# whisper packages on macos-26 (publish.yml's runner; the Mac archive was
+# built on Xcode 27, so a different Xcode there may not match it byte for
+# byte, which the check below would say). Its Mac archive is built here from source (one
 # universal whisper-cli), its Windows ones are upstream's own whisper.cpp
 # binaries (pinned by sha256), and its Linux ones are cross-built with a
 # hash-pinned zig, which makes the same bytes on any host. Every archive
@@ -95,7 +97,7 @@ jobs:
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
             video) runner=macos-14 ;;
             # whisper.cpp's whisper-cli: Mac built, Windows repacked, Linux cross-built with zig (extensions/whisper/build.mjs).
-            whisper) runner=xcode-27 ;;
+            whisper) runner=macos-26 ;;
             *) echo "::error::unknown extension id: $id"; exit 1 ;;
           esac
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
