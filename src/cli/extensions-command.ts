@@ -83,7 +83,8 @@ export async function runExtensions(
     message = removed ? `Removed ${intent.id}` : `${intent.id} was not installed`
   }
 
-  const all = await listExtensions()
+  const { hideUnneeded } = await import('../extensions/needed.js')
+  const all = await hideUnneeded(await listExtensions())
   return {
     stdout: message === undefined ? listLines(all) : [message],
     data: { extensions: all.map(toExtensionJson), ...(changed ? { changed } : {}) },

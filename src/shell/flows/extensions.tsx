@@ -101,7 +101,8 @@ export const realManager: ExtensionsManager = {
         !offeredOn(entry, process.platform) &&
         !all.some((s) => s.entry.id === entry.id),
     ).map((entry): ExtensionStatus => ({ entry, updateAvailable: false, supported: false }))
-    return [...all, ...more]
+    const { hideUnneeded } = await import('../../extensions/needed.js')
+    return hideUnneeded([...all, ...more])
   },
   async install(id, opts) {
     return (await import('../../extensions/manager.js')).installExtension(id, opts)

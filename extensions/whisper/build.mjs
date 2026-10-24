@@ -2,12 +2,20 @@
 /**
  * Builds the whisper payload directory: whisper.cpp's `whisper-cli`, which
  * transcribe's whisper helper (helpers/transcribe/forge-transcribe-whisper.mjs)
- * runs where Apple's recogniser is not there.
+ * runs where Apple's recogniser is not there, and the speech model beside it.
  *
  *   node extensions/whisper/build.mjs --platform win32|linux --arch x64|arm64 --out <dir>
  *                                     [--zig <command>]
+ *   node extensions/whisper/build.mjs --platform darwin --arch universal --out <dir>
  *
  * <dir> receives:
+ *   model.bin  ggml-base (multilingual) compressed to q5_1, 60 MB, as whisper.cpp
+ *          publishes it: in the extension, so /extensions counts it and removing
+ *          the extension removes it (the helper downloads it only for a
+ *          whisper-cli of the user's own).
+ *   darwin whisper-cli, built here from the pinned source with Apple's clang,
+ *          once per chip and joined into one universal file (Metal and
+ *          Accelerate, both part of macOS), macOS 13 and later.
  *   win32  whisper-cli.exe and the DLLs it loads, from upstream's own CPU build
  *          of the pinned release (whisper-bin-x64.zip, whisper-bin-win-cpu-arm64.zip),
  *          unmodified. x64 keeps every ggml-cpu-*.dll: ggml picks the one for the
@@ -33,9 +41,10 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { availableParallelism } from 'node:os'
+import { availableParallelism, tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inflateRawSync } from 'node:zlib'
@@ -90,6 +99,13 @@ export const WHISPER = {
   },
 }
 
+/** The speech model: the same file, by the same pin, as the helper's MODEL. */
+export const MODEL = {
+  name: 'ggml-base-q5_1.bin',
+  url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin',
+  sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
+}
+
 /** zig's names for the chips; musl so the binary needs no particular glibc. */
 const ZIG_TARGET = { x64: 'x86_64-linux-musl', arm64: 'aarch64-linux-musl' }
 const CMAKE_PROCESSOR = { x64: 'x86_64', arm64: 'aarch64' }
@@ -113,9 +129,14 @@ function parseArgs(argv) {
       out[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument: ${a}`)
   }
-  if (out.platform !== 'win32' && out.platform !== 'linux')
-    throw new Error('--platform must be win32 or linux')
-  if (out.arch !== 'x64' && out.arch !== 'arm64') throw new Error('--arch must be x64 or arm64')
+  if (out.platform !== 'win32' && out.platform !== 'linux' && out.platform !== 'darwin')
+    throw new Error('--platform must be win32, linux or darwin')
+  if (
+    out.platform === 'darwin'
+      ? out.arch !== 'universal'
+      : out.arch !== 'x64' && out.arch !== 'arm64'
+  )
+    throw new Error('--arch must be x64 or arm64 (universal on darwin)')
   if (!out.out) throw new Error('--out <dir> is required')
   return out
 }
@@ -177,7 +198,13 @@ async function sourceTree() {
     rmSync(dir, { recursive: true, force: true })
     execFileSync('tar', ['-xzf', archive, '-C', cacheDir], { stdio: 'inherit' })
   }
-  return dir
+  // Compiler flags are split on spaces, so a checkout under a folder with one
+  // (…/Convert Terminal/…) is reached through a link without.
+  if (!dir.includes(' ')) return dir
+  const link = join(tmpdir(), `forge-whisper.cpp-${WHISPER.version}`)
+  rmSync(link, { force: true })
+  symlinkSync(dir, link)
+  return link
 }
 
 async function win32(arch, out) {
@@ -261,6 +288,58 @@ async function linux(arch, out, zig) {
   return `${WHISPER.source.name}, built with zig ${version} for ${target}`
 }
 
+/** One Mac build per chip with Apple's clang, joined by lipo, signed ad hoc. */
+async function darwin(out) {
+  const src = await sourceTree()
+  const jobs = String(Math.max(1, availableParallelism()))
+  const slices = []
+  for (const arch of ['arm64', 'x86_64']) {
+    const build = join(cacheDir, `build-darwin-${arch}`)
+    rmSync(build, { recursive: true, force: true })
+    const prefix = `-ffile-prefix-map=${src}=whisper.cpp`
+    execFileSync(
+      'cmake',
+      [
+        ...['-S', src, '-B', build],
+        ...(onPath('ninja') ? ['-G', 'Ninja'] : []),
+        '-DCMAKE_BUILD_TYPE=Release',
+        `-DCMAKE_OSX_ARCHITECTURES=${arch}`,
+        '-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0',
+        `-DCMAKE_C_FLAGS=${prefix}`,
+        `-DCMAKE_CXX_FLAGS=${prefix}`,
+        '-DBUILD_SHARED_LIBS=OFF',
+        '-DGGML_NATIVE=OFF',
+        // Metal's shaders inside the binary: nothing to find at run time.
+        '-DGGML_METAL_EMBED_LIBRARY=ON',
+        '-DGGML_CCACHE=OFF',
+        '-DGGML_OPENMP=OFF',
+        '-DWHISPER_BUILD_TESTS=OFF',
+        '-DWHISPER_BUILD_SERVER=OFF',
+        '-DWHISPER_SDL2=OFF',
+        '-DWHISPER_CURL=OFF',
+        // Core ML wants a second, per-model download; plain Metal needs none.
+        '-DWHISPER_COREML=OFF',
+      ],
+      {
+        stdio: ['ignore', 'ignore', 'inherit'],
+        env: { ...process.env, GIT_CEILING_DIRECTORIES: cacheDir },
+      },
+    )
+    execFileSync('cmake', ['--build', build, '--target', 'whisper-cli', '-j', jobs], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+      env: { ...process.env, GIT_CEILING_DIRECTORIES: cacheDir },
+    })
+    slices.push(join(build, 'bin', 'whisper-cli'))
+  }
+  const cli = join(out, 'whisper-cli')
+  execFileSync('lipo', ['-create', ...slices, '-output', cli])
+  execFileSync('strip', ['-x', cli])
+  execFileSync('codesign', ['--force', '--sign', '-', cli])
+  chmodSync(cli, 0o755)
+  const clang = execFileSync('xcrun', ['clang', '--version'], { encoding: 'utf8' }).split('\n')[0]
+  return `${WHISPER.source.name}, built with ${clang} for arm64 and x86_64, macOS 13 and later`
+}
+
 function notices(from, platform, arch, licence) {
   const runtime =
     platform === 'win32'
@@ -272,7 +351,12 @@ Microsoft Visual C++ 2015-2022 Redistributable (MSVCP140.dll, VCRUNTIME140.dll${
             : ''
         }
 `
-      : `
+      : platform === 'darwin'
+        ? `
+whisper-cli is built from the source above, unmodified. It uses Metal and
+Accelerate, which are part of macOS.
+`
+        : `
 whisper-cli is built from the source above, unmodified, statically linked
 against musl libc (MIT) and LLVM's libc++ (Apache-2.0 WITH LLVM-exception),
 both as zig ships them.
@@ -282,6 +366,10 @@ both as zig ships them.
 whisper.cpp ${WHISPER.version} (https://github.com/ggml-org/whisper.cpp), including ggml.
 From: ${from}
 ${runtime}
+model.bin is ${MODEL.name} (${MODEL.url}),
+OpenAI's Whisper base model as whisper.cpp converts and quantises it.
+Whisper's code and model weights are MIT-licensed (https://github.com/openai/whisper).
+
 ----------------------------------------------------------------------------
 whisper.cpp and ggml
 ----------------------------------------------------------------------------
@@ -295,7 +383,12 @@ async function main() {
   rmSync(out, { recursive: true, force: true })
   mkdirSync(out, { recursive: true })
   const from =
-    args.platform === 'win32' ? await win32(args.arch, out) : await linux(args.arch, out, args.zig)
+    args.platform === 'win32'
+      ? await win32(args.arch, out)
+      : args.platform === 'darwin'
+        ? await darwin(out)
+        : await linux(args.arch, out, args.zig)
+  copyFileSync(await pinned(MODEL), join(out, 'model.bin'))
   const licence = readFileSync(join(await sourceTree(), 'LICENSE'), 'utf8')
   writeFileSync(join(out, 'NOTICES.txt'), notices(from, args.platform, args.arch, licence))
   console.log(out)

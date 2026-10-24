@@ -30,13 +30,15 @@ name: extensions
 # verify-linux jobs, also with read-only tokens. Nothing is uploaded until
 # both have passed: resolve -> package -> verify-windows, verify-linux -> publish.
 #
-# remove-background is two programs: Apple Vision's Swift helper for macOS,
-# and a Node runner on ONNX Runtime (extensions/remove-background-onnx) for
-# Windows and Linux, built beside it from the same tag.
+# remove-background is Apple Vision's Swift helper, macOS only. Its ONNX
+# runner (extensions/remove-background-onnx) is not built here until a model
+# passes the quality bar; boost's Linux payloads likewise wait for a GPU route.
 #
-# whisper packages on ubuntu-latest: its Windows archives are upstream's own
-# whisper.cpp binaries (pinned by sha256), and its Linux ones are cross-built
-# with a hash-pinned zig, which makes the same bytes on any host.
+# whisper packages on macOS: its Mac archive is built here from source (one
+# universal whisper-cli), its Windows ones are upstream's own whisper.cpp
+# binaries (pinned by sha256), and its Linux ones are cross-built with a
+# hash-pinned zig, which makes the same bytes on any host. Every archive
+# carries the same speech model, model.bin (ggml-base q5_1, 60 MB).
 
 on:
   push:
@@ -92,8 +94,8 @@ jobs:
             heic) runner=macos-14 ;;
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
             video) runner=macos-14 ;;
-            # whisper.cpp's whisper-cli: Windows repacked, Linux cross-built with zig (extensions/whisper/build.mjs).
-            whisper) runner=ubuntu-latest ;;
+            # whisper.cpp's whisper-cli: Mac built, Windows repacked, Linux cross-built with zig (extensions/whisper/build.mjs).
+            whisper) runner=xcode-27 ;;
             *) echo "::error::unknown extension id: $id"; exit 1 ;;
           esac
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -142,7 +144,8 @@ jobs:
         run: |
           python3 -m pip install --require-hashes -r extensions/whisper/zig-requirements.txt
           python3 -m ziglang version
-          command -v ninja || sudo apt-get install -y ninja-build
+          command -v cmake || brew install cmake
+          command -v ninja || brew install ninja
 
       # ffmpeg's build tools; only the video extension compiles C.
       - name: Build tools (video)
@@ -164,11 +167,9 @@ jobs:
             done
             # Windows reuses the model the arm64 build converted (verified against the same
             # pinned sha256), so nothing is converted twice and no Python is needed for it.
-            for os in win32 linux; do
-              for arch in x64 arm64; do
-                node extensions/boost/build.mjs --platform "$os" --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-$os-$arch"
-                node scripts/package-extension.mjs boost "$VERSION" "$os-$arch" "dist-ext/payload-$os-$arch" dist-ext/out >> dist-ext/assets.jsonl
-              done
+            for arch in x64 arm64; do
+              node extensions/boost/build.mjs --platform win32 --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-win32-$arch"
+              node scripts/package-extension.mjs boost "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
           elif [ "$ID" = "video" ]; then
             # The GPL asks for the source beside the binaries: the source bundle goes
@@ -176,6 +177,8 @@ jobs:
             sh extensions/video/build.sh dist-ext/payload-arm64 dist-ext/out
             node scripts/package-extension.mjs video "$VERSION" arm64 dist-ext/payload-arm64 dist-ext/out >> dist-ext/assets.jsonl
           elif [ "$ID" = "whisper" ]; then
+            node extensions/whisper/build.mjs --platform darwin --arch universal --out dist-ext/payload-universal
+            node scripts/package-extension.mjs whisper "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
             for arch in x64 arm64; do
               node extensions/whisper/build.mjs --platform win32 --arch "$arch" --out "dist-ext/payload-win32-$arch"
               node scripts/package-extension.mjs whisper "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
@@ -191,13 +194,6 @@ jobs:
           else
             bash extensions/remove-background/build.sh dist-ext/payload-universal
             node scripts/package-extension.mjs remove-background "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
-            # Windows and Linux: U²-Net-p on ONNX Runtime, pinned by sha256 in model.json.
-            for os in win32 linux; do
-              for arch in x64 arm64; do
-                node extensions/remove-background-onnx/build.mjs --platform "$os" --arch "$arch" --out "dist-ext/payload-$os-$arch"
-                node scripts/package-extension.mjs remove-background "$VERSION" "$os-$arch" "dist-ext/payload-$os-$arch" dist-ext/out >> dist-ext/assets.jsonl
-              done
-            done
           fi
           cat dist-ext/assets.jsonl
 
@@ -234,15 +230,13 @@ jobs:
           done
           exit $status
 
-      # The x64 Linux build, run on this (x64) runner: a real transcription of
-      # whisper.cpp's own sample with its smallest model, pinned by sha256.
-      - name: whisper runs on Linux
+      # The Mac build, run on this runner with the model it carries: a real
+      # transcription of whisper.cpp's own sample.
+      - name: whisper runs on macOS
         if: needs.resolve.outputs.id == 'whisper'
         shell: bash
         run: |
-          curl -fsSL -o ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
-          echo "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  ggml-tiny.bin" | sha256sum -c -
-          dist-ext/payload-linux-x64/whisper-cli -m ggml-tiny.bin -f extensions/whisper/.cache/whisper.cpp-*/samples/jfk.wav -l en -nt > out.txt
+          dist-ext/payload-universal/whisper-cli -m dist-ext/payload-universal/model.bin -f extensions/whisper/.cache/whisper.cpp-*/samples/jfk.wav -l en -nt > out.txt
           cat out.txt
           grep -qi "ask not what your country" out.txt
 
@@ -269,7 +263,6 @@ jobs:
     needs: [resolve, package]
     if: >-
       needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic' ||
-      needs.resolve.outputs.id == 'remove-background' ||
       needs.resolve.outputs.id == 'whisper'
     runs-on: windows-latest
     permissions:
@@ -349,26 +342,20 @@ jobs:
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
           '
 
-      - name: Remove background runs on Windows
-        if: needs.resolve.outputs.id == 'remove-background'
-        run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-win32-x64
-
       # x64 only, as for boost: windows-latest cannot run the arm64 build.
       - name: whisper runs on Windows
         if: needs.resolve.outputs.id == 'whisper'
         run: |
-          curl -fsSL -o ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
-          echo "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  ggml-tiny.bin" | sha256sum -c -
           curl -fsSL -o jfk.wav https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.5/samples/jfk.wav
-          dist-ext/payload-win32-x64/whisper-cli.exe -m ggml-tiny.bin -f jfk.wav -l en -nt > out.txt
+          dist-ext/payload-win32-x64/whisper-cli.exe -m dist-ext/payload-win32-x64/model.bin -f jfk.wav -l en -nt > out.txt
           cat out.txt
           grep -qi "ask not what your country" out.txt
 
-  # Runs what the Linux archives contain, on Linux (x64; the arm64 archives hold
-  # the same runner and ONNX Runtime's arm64 build). Nothing here publishes anything.
+  # Runs what the Linux archives contain, on Linux (x64; the arm64 archives are
+  # the same build for the other chip). Nothing here publishes anything.
   verify-linux:
     needs: [resolve, package]
-    if: needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'remove-background' || needs.resolve.outputs.id == 'heic'
+    if: needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'whisper'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -398,14 +385,15 @@ jobs:
             const n = require("fs").statSync("x.rgba").size
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
           '
-      # Built-ins only (no npm ci): it writes its own test PNGs and reads the results.
-      - name: Boost runs on Linux
-        if: needs.resolve.outputs.id == 'boost'
-        run: node scripts/verify-extension-payload.mjs boost dist-ext/payload-linux-x64
-
-      - name: Remove background runs on Linux
-        if: needs.resolve.outputs.id == 'remove-background'
-        run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-linux-x64
+      # A real transcription of whisper.cpp's own sample, with the model the archive carries.
+      - name: whisper runs on Linux
+        if: needs.resolve.outputs.id == 'whisper'
+        run: |
+          curl -fsSL -o jfk.wav https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.5/samples/jfk.wav
+          chmod +x dist-ext/payload-linux-x64/whisper-cli
+          dist-ext/payload-linux-x64/whisper-cli -m dist-ext/payload-linux-x64/model.bin -f jfk.wav -l en -nt > out.txt
+          cat out.txt
+          grep -qi "ask not what your country" out.txt
 
   # Uploads only after the Windows and Linux archives have run there. An id with
   # none for an OS skips that job, and a skip counts as passed.

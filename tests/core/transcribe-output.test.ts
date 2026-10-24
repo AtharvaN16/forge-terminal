@@ -3,9 +3,11 @@ import { transcriptMarkdown } from '../../src/core/transcribe/markdown.js'
 import {
   DEFAULT_OUTPUT,
   markdownHtml,
+  markdownPages,
   markdownText,
   OUTPUTS,
   outputExt,
+  outputsFor,
 } from '../../src/core/transcribe/output.js'
 
 /**
@@ -91,5 +93,36 @@ describe('markdownHtml', () => {
   it('escapes what was said, so speech never becomes markup', () => {
     expect(html).toContain('Now, &lt;milk&gt;.')
     expect(html).not.toContain('<milk>')
+  })
+})
+
+describe('outputsFor', () => {
+  it("offers every format where Apple's helper sets documents, all but PDF elsewhere", () => {
+    expect(outputsFor({ render: true }).map((o) => o.id)).toEqual(['md', 'docx', 'pdf', 'txt'])
+    expect(outputsFor({ render: false }).map((o) => o.id)).toEqual(['md', 'docx', 'txt'])
+  })
+})
+
+describe('markdownPages (Word written by Forge, off the Mac)', () => {
+  const md = transcriptMarkdown(RESULT, { title: 'Tea', from: 'tea.m4a' })
+  const [page] = markdownPages(md)
+
+  it('is one page with the same headings, points and timed paragraphs as the HTML', () => {
+    expect(markdownPages(md)).toHaveLength(1)
+    expect(page?.[0]).toEqual({ kind: 'heading', level: 1, text: 'Tea' })
+    expect(page).toContainEqual({
+      kind: 'list',
+      ordered: false,
+      items: ['Tea first.', 'Then cake.'],
+    })
+    expect(page).toContainEqual({ kind: 'paragraph', text: '0:00 Hello & welcome.' })
+  })
+
+  it('keeps what was said as words, never markup', () => {
+    expect(page).toContainEqual({ kind: 'paragraph', text: '1:10 Now, <milk>.' })
+  })
+
+  it("has no heading deeper than Word's second level", () => {
+    for (const p of page ?? []) if (p.kind === 'heading') expect(p.level).toBeLessThanOrEqual(2)
   })
 })

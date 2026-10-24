@@ -36,9 +36,11 @@ tested on Node 24). Check with `node --version`; if you don't have it,
 your distro's package (or nodejs.org's build) on Linux.
 On Windows, use Windows Terminal for the full experience.
 
-Every feature works on all three, with two exceptions: transcript summaries and
-notes need Apple Intelligence, so they are Mac-only, and Boost has no Intel Mac
-build yet. Where a feature needs a
+Most features work on all three. The exceptions: transcript summaries and
+notes need Apple Intelligence, so they are Mac-only; remove background is
+Mac-only until a model matches Apple Vision; Boost has no Intel Mac or Linux
+build yet (both would run on the processor alone); reading text from pictures
+and PDF transcripts need macOS 26; camera RAW photos open on a Mac only. Where a feature needs a
 tool the OS does not have, it is a small optional extension
 (`forge extensions`) or a common package, named in the error that asks for it.
 
@@ -156,28 +158,26 @@ silent.
 On Apple-silicon Macs with macOS 26 or later, `forge transcribe` uses Apple's
 speech recogniser. Everywhere else (Windows, Linux, Intel Macs, and Macs before
 macOS 26) it uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-instead. Everything stays on the machine. It needs ffmpeg and whisper.cpp's
-`whisper-cli`:
+instead. Everything stays on the machine. It needs ffmpeg and the whisper
+extension (whisper.cpp's `whisper-cli` and its speech model, about 60 MB on
+every OS):
 
 ```bash
-# Windows
-forge extensions add whisper     # whisper.cpp, about 4 MB (x64) or 1.5 MB (arm64)
-winget install ffmpeg
-
-# Linux
-forge extensions add whisper     # static whisper-cli, about 1.2 MB (x64 needs AVX2)
-sudo apt install ffmpeg          # or your distro's ffmpeg
-
-# Intel Mac, or a Mac before macOS 26
-brew install whisper-cpp ffmpeg
+forge extensions add whisper     # every OS (Linux x64 needs AVX2)
+winget install ffmpeg            # Windows
+sudo apt install ffmpeg          # Linux, or your distro's ffmpeg
+brew install ffmpeg              # Mac
 
 forge transcribe talk.mp4
 forge transcribe "https://www.youtube.com/watch?v=..." --language en
 ```
 
-- The first run downloads the speech model (ggml-base, multilingual, 148 MB),
-  checked against its sha256, into `%LOCALAPPDATA%\forge\whisper`,
-  `~/Library/Caches/forge/whisper` or `~/.cache/forge/whisper`.
+- The speech model is ggml-base, multilingual, compressed to q5_1 (60 MB),
+  inside the extension. With a `whisper-cli` of your own instead, the first
+  run downloads the same model, checked against its sha256, into
+  `%LOCALAPPDATA%\forge\whisper`, `~/Library/Caches/forge/whisper` or
+  `~/.cache/forge/whisper`.
+- Transcripts can be Markdown, Word or text everywhere; PDF needs macOS 26.
 - Without `--language`, whisper detects the language itself.
 - Summary and notes need Apple Intelligence, so off it Forge writes the
   transcript. `--to notes` is refused; the default `--to all` gives the
@@ -188,7 +188,7 @@ forge transcribe "https://www.youtube.com/watch?v=..." --language en
   own build on every OS (and updates it when YouTube breaks it). A yt-dlp of
   your own on PATH also works; Forge never updates that one.
 - Overrides: `FORGE_WHISPER_CLI`, `FORGE_FFMPEG`, `FORGE_WHISPER_MODEL` (any
-  ggml `.bin`, e.g. a larger model for accuracy), `FORGE_YT_DLP`.
+  ggml `.bin`, e.g. a larger model for accuracy).
 
 ## Configuration
 
@@ -450,18 +450,16 @@ zoom.
 
 Two image operations that need a model, so they are optional extensions rather
 than part of the install. On a Mac both need macOS 14 or later. On Windows,
-Boost runs on DirectML; on Linux, on the CPU, which is slow on large images.
-Remove background uses Apple Vision on a Mac, and U²-Net-p (a 4.6 MB model,
-Apache-2.0) on ONNX Runtime on Windows and Linux: expect softer edges than on
-a Mac. Windows and Linux also have a `heic` extension, because macOS opens
+Boost runs on DirectML (any DirectX 12 graphics). Remove background uses Apple
+Vision, so it is Mac-only for now. Windows and Linux also have a `heic` extension, because macOS opens
 iPhone photos itself and they need a decoder. Nothing downloads until you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
-forge extensions add boost              # about 15 MB on Apple Silicon (no Intel Mac build), 23 MB on Windows, 12-17 MB on Linux
-forge extensions add remove-background  # about 32 KB on a Mac, 12-17 MB on Windows and Linux
+forge extensions add boost              # about 15 MB on Apple Silicon (no Intel Mac build), 23 MB on Windows
+forge extensions add remove-background  # about 32 KB; Mac only
 forge extensions add heic               # about 0.5 MB; Windows and Linux
-forge extensions add whisper            # transcribe on Windows and Linux (see above)
+forge extensions add whisper            # transcribe where Apple's recogniser is not (see above)
 forge extensions add yt-dlp             # YouTube links for transcribe, every OS
 forge extensions remove boost
 ```

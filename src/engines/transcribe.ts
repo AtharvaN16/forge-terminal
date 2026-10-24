@@ -370,6 +370,17 @@ export async function transcribeStatus(
   }
 }
 
+/**
+ * Whether the whisper extension has anything to do here: everywhere but a
+ * Mac whose own recogniser hears. Such a Mac does not list it.
+ */
+export async function whisperUseful(
+  platform: NodeJS.Platform = process.platform,
+): Promise<boolean> {
+  if (platform !== 'darwin') return true
+  return (await transcribeStatus().catch(() => undefined))?.hears !== 'apple'
+}
+
 /** The helper that hears, or why there is none. */
 async function hearer(): Promise<Helper> {
   const helper = await hearingHelper()

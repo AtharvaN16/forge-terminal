@@ -13,7 +13,7 @@
 // Needs ffmpeg and whisper.cpp's `whisper-cli` (or `whisper-cpp`). Forge passes
 // the ones it found as FORGE_FFMPEG and FORGE_WHISPER_CLI (the whisper
 // extension's); without them they are looked for on PATH, and on a Mac in
-// Homebrew's two prefixes as well. The speech model (ggml-base, multilingual)
+// Homebrew's two prefixes as well. The speech model (ggml-base q5_1, multilingual)
 // is downloaded once into the OS's cache folder, pinned by its sha256.
 // Overrides: FORGE_WHISPER_CLI, FORGE_FFMPEG, FORGE_WHISPER_MODEL (a .bin path).
 // Notes need Apple's on-device model, so they are reported as unsupported.
@@ -281,11 +281,17 @@ async function decode(path) {
 
 // MARK: - Model
 
-/** ggml-base (multilingual), as whisper.cpp publishes it. */
+/**
+ * ggml-base (multilingual), compressed to 5 bits (q5_1) as whisper.cpp
+ * publishes it: 60 MB against the full model's 148, under Forge's 100 MB
+ * ceiling for a model. The whisper extension carries this same file as
+ * model.bin (FORGE_WHISPER_MODEL); it is downloaded here only for a
+ * whisper-cli of the user's own.
+ */
 export const MODEL = {
-  name: 'ggml-base.bin',
-  url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
-  sha256: '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe',
+  name: 'ggml-base-q5_1.bin',
+  url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin',
+  sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
 }
 
 /** Where the model is kept: each OS's own folder for caches. */

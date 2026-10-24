@@ -30,7 +30,9 @@ afterEach(async () => {
 
 describe('the Mac catalogue, as published', () => {
   it('offers boost and remove-background on Apple Silicon with the released archives', async () => {
-    const list = (await listExtensions('darwin', 'arm64')).filter((s) => s.entry.id !== 'yt-dlp')
+    const list = (await listExtensions('darwin', 'arm64')).filter(
+      (s) => s.entry.id === 'boost' || s.entry.id === 'remove-background',
+    )
     expect(list.map((s) => s.entry.id)).toEqual(['boost', 'remove-background'])
     expect(list.every((s) => s.supported)).toBe(true)
     const [boost, cutout] = list.map((s) => assetFor(s.entry, 'darwin', 'arm64'))
@@ -87,9 +89,10 @@ describe('the Mac catalogue, as published', () => {
 })
 
 describe('by OS', () => {
-  it('remove-background is on every OS, heic is never offered on a Mac', () => {
-    for (const os of ['darwin', 'win32', 'linux'] as const)
-      expect(offeredHere('remove-background', os)).toBe(true)
+  it("remove-background is the Mac's alone until a model passes; heic is never offered on a Mac", () => {
+    expect(offeredHere('remove-background', 'darwin')).toBe(true)
+    for (const os of ['win32', 'linux'] as const)
+      expect(offeredHere('remove-background', os)).toBe(false)
     expect(offeredHere('heic', 'darwin')).toBe(false)
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
@@ -130,30 +133,34 @@ describe('by OS', () => {
     }
   })
 
-  it('whisper is for Windows and Linux; a Mac gets whisper.cpp from Homebrew instead', async () => {
-    expect(offeredHere('whisper', 'win32')).toBe(true)
-    expect(offeredHere('whisper', 'linux')).toBe(true)
-    expect(offeredHere('whisper', 'darwin')).toBe(false)
-    for (const arch of ['x64', 'arm64']) {
-      const w = (await listExtensions('win32', arch)).find((s) => s.entry.id === 'whisper')
-      expect(w?.supported).toBe(true)
-      expect(w && assetFor(w.entry, 'win32', arch)?.url).toBe(
-        `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-${arch}.tar.gz`,
-      )
+  it('whisper is on every OS, model inside, one archive per OS and chip', async () => {
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(offeredHere('whisper', os)).toBe(true)
+    const w = catalogEntry('whisper')
+    if (w === undefined) throw new Error('whisper is catalogued')
+    const files = {
+      'darwin-arm64': 'universal',
+      'darwin-x64': 'universal',
+      'win32-x64': 'win32-x64',
+      'win32-arm64': 'win32-arm64',
+      'linux-x64': 'linux-x64',
+      'linux-arm64': 'linux-arm64',
     }
-    const x64 = (await listExtensions('linux', 'x64')).find((s) => s.entry.id === 'whisper')
-    expect(x64?.supported).toBe(true)
+    for (const [key, file] of Object.entries(files)) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(w, platform, arch)
+      expect(asset?.url, key).toBe(
+        `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-${file}.tar.gz`,
+      )
+      // The 60 MB model is in every archive.
+      expect(asset?.bytes, key).toBeGreaterThan(55_000_000)
+      expect(asset?.bytes, key).toBeLessThan(100_000_000)
+    }
     const linux = (await listExtensions('linux', 'arm64')).find((s) => s.entry.id === 'whisper')
     expect(linux?.supported).toBe(true)
-    expect(linux && assetFor(linux.entry, 'linux', 'arm64')).toEqual({
-      version: '1.0.0',
-      url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
-      bytes: 1186510,
-      sha256: '873bc017f4496fbaed1fa859e777a182690cd4eb819b25fa9316beb64f206909',
-    })
   })
 
-  it('Edit has a Remove background row on every OS, and none where it is not offered', () => {
+  it('Edit has a Remove background row only where it is offered: the Mac', () => {
     const photo = {
       kind: 'image',
       path: '/p.png',
@@ -164,44 +171,28 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    for (const os of ['darwin', 'win32', 'linux'] as const)
-      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).toContain('cutout')
-    expect(editRows(photo, undefined, undefined, 'freebsd').map((r) => r.id)).not.toContain(
-      'cutout',
-    )
+    expect(editRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
+    for (const os of ['win32', 'linux', 'freebsd'] as const)
+      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).not.toContain('cutout')
   })
 })
 
 describe('the Windows and Linux catalogue', () => {
-  it('offers boost and remove-background on Linux, both chips, at 1.1.0', async () => {
+  it('offers neither boost nor remove-background on Linux: CPU only, and no model passed yet', async () => {
     for (const arch of ['x64', 'arm64']) {
-      // Other tools may come to Linux too; these two are this file's.
-      const list = (await listExtensions('linux', arch)).filter(
-        (s) => s.entry.id === 'boost' || s.entry.id === 'remove-background',
-      )
-      expect(list.map((s) => s.entry.id)).toEqual(['boost', 'remove-background'])
-      expect(list.every((s) => s.supported)).toBe(true)
-      for (const s of list) {
-        const asset = assetFor(s.entry, 'linux', arch)
-        expect(asset?.version).toBe('1.1.0')
-        expect(asset?.url).toBe(
-          `${RELEASES}/ext-${s.entry.id}-v1.1.0/forge-ext-${s.entry.id}-1.1.0-linux-${arch}.tar.gz`,
-        )
-        expect(asset?.sha256).toMatch(/^[0-9a-f]{64}$/)
-      }
+      const ids = (await listExtensions('linux', arch)).map((s) => s.entry.id)
+      expect(ids).not.toContain('boost')
+      expect(ids).not.toContain('remove-background')
+      expect(ids).toEqual(expect.arrayContaining(['heic', 'whisper', 'yt-dlp']))
     }
   })
 
-  it('offers remove-background on Windows beside boost and heic, and leaves the Mac its own build', async () => {
-    const list = await listExtensions('win32', 'x64')
-    expect(list.map((s) => s.entry.id)).toEqual(
-      expect.arrayContaining(['boost', 'remove-background', 'heic']),
-    )
-    const cutout = list.find((s) => s.entry.id === 'remove-background')
-    expect(cutout && assetFor(cutout.entry, 'win32', 'arm64')?.url).toBe(
-      `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
-    )
-    expect(cutout && assetFor(cutout.entry, 'darwin', 'arm64')?.version).toBe('1.0.0')
+  it('offers boost and heic on Windows, and remove-background only on the Mac', async () => {
+    const ids = (await listExtensions('win32', 'x64')).map((s) => s.entry.id)
+    expect(ids).toEqual(expect.arrayContaining(['boost', 'heic', 'whisper']))
+    expect(ids).not.toContain('remove-background')
+    const cutout = catalogEntry('remove-background')
+    expect(cutout && assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')
   })
 
   it('still tells an Intel Mac there is no boost build', () => {

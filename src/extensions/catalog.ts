@@ -66,30 +66,17 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 22936985,
         sha256: '7d39d93cae52f298423db0b185b0ae3a3bac65464abeb23561d9bcb2ebb3f026',
       },
-      // Linux runs on the CPU: onnxruntime-node's only Linux GPU provider is
-      // CUDA, a separate download of hundreds of MB. The runner is 1.1.0's,
-      // unchanged (the Windows archives above rebuild from it byte for byte),
-      // so it is 1.1.0 too. Slow on a big image, as Windows without a GPU is:
-      // the same limits, and the working screen's spinner and clock.
-      'linux-x64': {
-        version: '1.1.0',
-        url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-linux-x64.tar.gz`,
-        bytes: 17020233,
-        sha256: 'd87c0dcf719f940f255b274a2696e8df548902fe54353bbca36f809897805402',
-      },
-      'linux-arm64': {
-        version: '1.1.0',
-        url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-linux-arm64.tar.gz`,
-        bytes: 12003550,
-        sha256: '522bda2f2e13edac3d49aa89dfadf5b02d79ae1e3b701f615c042d5e74f8f609',
-      },
+      // Not on Linux: onnxruntime-node's only Linux GPU provider is CUDA, a
+      // separate download of hundreds of MB, and on the CPU alone a photo
+      // takes minutes: the rule that keeps it off Intel Macs. Linux payloads
+      // still build (extensions/boost) for a GPU route to come.
     },
     licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
   },
   {
     id: 'remove-background',
     title: 'Remove background',
-    summary: 'Cut the subject out of a photo, on this computer',
+    summary: 'Cut the subject out of a photo, on this Mac',
     // Darwin assets only, like every minMacos.
     minMacos: 14,
     assets: {
@@ -100,35 +87,13 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 32489,
         sha256: '9f6e055c0ce25f7504e10c7871e506a813bc75d6536396a675a8c075c4eb4686',
       },
-      // Elsewhere U²-Net-p, a 4.6 MB model, on ONNX Runtime's CPU provider
-      // (extensions/remove-background-onnx): the same arguments and replies.
-      'win32-x64': {
-        version: '1.1.0',
-        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-x64.tar.gz`,
-        bytes: 13324892,
-        sha256: 'c505032600bd44c8da9ae2bf5a93892142abaaaf29ff3b13a4cbbd141be1c1c1',
-      },
-      'win32-arm64': {
-        version: '1.1.0',
-        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
-        bytes: 13398461,
-        sha256: '8b65bac6b5d3a00b4f124fb8fa662c8ddf6bc517ef39175c5faf7f4b596d7807',
-      },
-      'linux-x64': {
-        version: '1.1.0',
-        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-x64.tar.gz`,
-        bytes: 16721400,
-        sha256: '3195f6ce0346cf4ebb01ef92b3de20ad1d811c20a290ede2112ba6a277893623',
-      },
-      'linux-arm64': {
-        version: '1.1.0',
-        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-arm64.tar.gz`,
-        bytes: 11703766,
-        sha256: '448896ae9dd1ec0943fcc4c8a8ac3f75258a496ec12405151f324627a8aca30f',
-      },
+      // Not on Windows or Linux yet: U²-Net-p (extensions/remove-background-onnx)
+      // failed the quality bar on 2026-10-11, and a compressed IS-Net
+      // (45 MB) is close but not Apple's (mockups/remove-bg-compressed-2026-10.html).
+      // The runner speaks the Swift helper's arguments, so a model that passes
+      // drops in.
     },
-    licence:
-      'Apple Vision on macOS (helper MIT); elsewhere U²-Net-p (Apache-2.0) and ONNX Runtime (MIT)',
+    licence: 'Uses Apple Vision on-device; helper is MIT',
   },
   {
     // macOS decodes HEIC itself (sips); Windows and Linux need this. The two
@@ -228,35 +193,47 @@ export const CATALOG: readonly CatalogEntry[] = [
     id: 'whisper',
     title: 'Speech to text (whisper.cpp)',
     summary: 'Transcribe video and sound on this computer, with whisper.cpp',
+    // Every OS, the same way: whisper.cpp's whisper-cli and the speech model
+    // (model.bin, ggml-base q5_1, 60 MB) in one archive, so /extensions counts
+    // it and removing the extension removes it. On a Mac it is for where
+    // Apple's recogniser is not (Intel, before macOS 26).
+    minMacos: 13,
     assets: {
+      // One universal whisper-cli (Metal and Accelerate), macOS 13 and later.
+      'darwin-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-universal.tar.gz`,
+        bytes: 61123538,
+        sha256: 'f521e829afdbcf56da901bd9df5f7644d9903489a2167c3cf75c72cab98629ad',
+      },
       'win32-x64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-x64.tar.gz`,
-        bytes: 4036317,
-        sha256: 'cc5603591209f41dedb0c6bd59874f8a6df8836392a156a8ac9408d4e908e984',
+        bytes: 60751383,
+        sha256: '930014128158e14903413dce5b15b1a9853d6257fd6998da5ecedffb8a435c2f',
       },
       'win32-arm64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-arm64.tar.gz`,
-        bytes: 1482982,
-        sha256: '52e7e9b020be44e9366a61fe30cfa23c15f5a1e6f417150576aea8449f009f61',
+        bytes: 58197088,
+        sha256: 'f11f1fdcc07816033558ebc89d19e31f60a4672b0e239a67e18160d205cc4460',
       },
       // Static (musl), so one build runs on any Linux of that chip.
       'linux-arm64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
-        bytes: 1186510,
-        sha256: '873bc017f4496fbaed1fa859e777a182690cd4eb819b25fa9316beb64f206909',
+        bytes: 57902587,
+        sha256: '17f793a111809b81f7761a7c226be1f9c71aa23701030e0616663ed411d0b827',
       },
       // Needs AVX2 (2013 on); an older PC is told to use its own whisper-cli.
       'linux-x64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-x64.tar.gz`,
-        bytes: 1335589,
-        sha256: 'a5eefae623bfa53892e96bf957c7c25547a0f6117a4cdedec15cb63a0ccf8f36',
+        bytes: 58051297,
+        sha256: '23ef0a03fa46364a85b485f03234327e6a6cc9c8b31e8ac86f6abb9dfad8f82e',
       },
     },
-    licence: 'whisper.cpp and ggml (MIT)',
+    licence: 'whisper.cpp and ggml (MIT), OpenAI Whisper base model (MIT)',
   },
 ]
 
