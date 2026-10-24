@@ -32,6 +32,7 @@ import { describeResult } from '../core/describe.js'
 import {
   emptyDirectory,
   type ForgeError,
+  ffmpegInstall,
   ffmpegMissing,
   isForgeError,
   linkUnavailable,
@@ -5222,13 +5223,7 @@ export function App({
                 initial={
                   typeof values.target === 'string' ? (values.target as FormatId) : undefined
                 }
-                missing={
-                  source.facts
-                    ? undefined
-                    : process.platform === 'win32'
-                      ? 'winget install ffmpeg'
-                      : 'brew install ffmpeg'
-                }
+                missing={source.facts ? undefined : ffmpegInstall()}
                 onSubmit={(target) => chooseTarget(source, target)}
                 onCancel={clearSource}
                 width={width}
@@ -5438,7 +5433,7 @@ export function App({
               <FfmpegStep
                 state={ffmpegState}
                 checking={checking}
-                how={process.platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'}
+                how={ffmpegInstall()}
                 onInstall={() => void installFfmpeg()}
                 onLookAgain={() => lookAgain()}
                 onPoll={lookQuietly}

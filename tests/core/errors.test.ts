@@ -8,9 +8,12 @@ import {
   emptyDirectory,
   encryptedSource,
   ForgeError,
+  ffmpegInstall,
+  ffmpegMissing,
   fileNotFound,
   heicDecoderUnavailable,
   isForgeError,
+  languageUnsupported,
   noClipboardImage,
   notADirectory,
   notAFile,
@@ -29,6 +32,7 @@ import {
   unsupportedCompress,
   unsupportedSource,
   unsupportedTarget,
+  untranscribable,
   type WarningCode,
 } from '../../src/core/errors.js'
 import type { SourceInfo, Warning } from '../../src/core/types.js'
@@ -372,5 +376,50 @@ describe('clipboard errors', () => {
     expect(e.title).toBe('Clipboard needs xclip')
     expect(e.hint).toContain('sudo apt install xclip')
     expect(clipboardToolMissing('wl-clipboard').short).toBe('wl-clipboard is not on this computer')
+  })
+})
+
+describe('install and recogniser words, per OS', () => {
+  it('installs ffmpeg with Homebrew, winget or apt', () => {
+    expect(ffmpegInstall('darwin')).toBe('brew install ffmpeg')
+    expect(ffmpegInstall('win32')).toBe('winget install ffmpeg')
+    expect(ffmpegInstall('linux')).toBe('sudo apt install ffmpeg')
+  })
+
+  it('says how to get ffmpeg in this OS’s words; the Mac’s as it always was', () => {
+    expect(ffmpegMissing('/tmp/a.mp4', 'darwin').hint).toBe(
+      'Install it with brew install ffmpeg, then run Forge again.',
+    )
+    expect(ffmpegMissing('/tmp/a.mp4', 'darwin', true).hint).toBe(
+      'Install it with forge extensions add video (or brew install ffmpeg), then run Forge again.',
+    )
+    expect(ffmpegMissing('C:\\a.mp4', 'win32').hint).toBe(
+      'Install it with winget install ffmpeg, then run Forge again.',
+    )
+    expect(ffmpegMissing('/tmp/a.mp4', 'linux').hint).toBe(
+      "Install it with sudo apt install ffmpeg (or your distribution's package manager), then run Forge again.",
+    )
+    expect(ffmpegMissing('/tmp/a.mp4', 'linux', true).hint).toBe(
+      'Install it with forge extensions add video (or sudo apt install ffmpeg), then run Forge again.',
+    )
+  })
+
+  it('names Apple’s recogniser on a Mac only; whisper hears elsewhere', () => {
+    expect(untranscribable('/tmp/a.mkv', 'darwin')).toMatchObject({
+      detail: "a.mkv cannot be read by Apple's speech recogniser.",
+      hint: 'MP4, MOV, M4A, MP3, WAV and AIFF files can be transcribed.',
+    })
+    expect(languageUnsupported('xx-YY', 'darwin').detail).toBe(
+      "Apple's speech recogniser does not support xx-YY.",
+    )
+    for (const platform of ['win32', 'linux'] as const) {
+      const e = untranscribable('/tmp/a.zip', platform)
+      expect(e.code).toBe('unsupported-source')
+      expect(e.detail).toBe('a.zip cannot be read by whisper.')
+      expect(e.hint).toBe('Video and sound files can be transcribed.')
+      expect(languageUnsupported('xx-YY', platform).detail).toBe(
+        'The whisper extension does not support xx-YY.',
+      )
+    }
   })
 })

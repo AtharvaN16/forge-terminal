@@ -542,7 +542,8 @@ export function copiedRow(
   return [
     ...tick,
     ink(`copied ${what.count} swatches`, p.fg),
-    ink(` · paste into Figma with ${platform === 'win32' ? 'Ctrl+V' : '⌘V'}`, p.dim),
+    // As the app's pasteKey: ⌘V on a Mac, Ctrl+V on Windows and Linux.
+    ink(` · paste into Figma with ${platform === 'darwin' ? '⌘V' : 'Ctrl+V'}`, p.dim),
   ]
 }
 

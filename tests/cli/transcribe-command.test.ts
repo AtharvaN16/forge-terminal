@@ -491,12 +491,12 @@ describe('forge transcribe on Windows', () => {
     expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words'])
   })
 
-  it('refuses --to notes: Apple Intelligence, which this computer does not have', async () => {
+  it('refuses --to notes: Apple Intelligence, which this PC does not have', async () => {
     const { input } = await whisperSetUp({ speech: true })
     const { code, err } = await run(intent(input, { transcript: false }))
     expect(code).toBe(1)
     expect(err.join('\n')).toContain(
-      'Summary and notes need Apple Intelligence, which this computer does not have.',
+      'Summary and notes need Apple Intelligence, which this PC does not have.',
     )
   })
 

@@ -210,6 +210,20 @@ describe('runTranscribe', () => {
     )
     expect(isForgeError(error) && error.code).toBe('language-unsupported')
   })
+
+  it('names this machine’s own language when none was asked for', async () => {
+    use(
+      (
+        await fakeTranscribeHelper({
+          run: { lines: [{ ok: false, code: 'locale', message: 'Not supported.' }], exit: 1 },
+        })
+      ).path,
+    )
+    const error = await runTranscribe('/tmp/zoo.m4a', { notes: false }).catch((e: unknown) => e)
+    const machine =
+      process.platform === 'win32' ? 'PC' : process.platform === 'darwin' ? 'Mac' : 'computer'
+    expect(isForgeError(error) && error.detail).toContain(`this ${machine}'s language`)
+  })
 })
 
 describe('renderTranscript', () => {

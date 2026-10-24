@@ -90,11 +90,16 @@ function fake(opts: {
   return { manager, calls }
 }
 
-async function openOn(manager: ExtensionsManager, name: string) {
+async function openOn(
+  manager: ExtensionsManager,
+  name: string,
+  platform: NodeJS.Platform = 'darwin',
+  width = 100,
+) {
   const f = render(
     <ExtensionsFlow
-      width={100}
-      platform="darwin"
+      width={width}
+      platform={platform}
       manager={manager}
       onError={vi.fn()}
       onClose={vi.fn()}
@@ -190,6 +195,27 @@ describe('/extensions — a tool the user has themselves', () => {
     expect(frame(f)).toMatch(/YouTube links\s+update/)
     f.stdin.write(ENTER)
     await until(() => calls.update === 1)
+  })
+
+  it('names the PC on Windows and the computer on Linux, the keys still on one 80-column row', async () => {
+    for (const [platform, here] of [
+      ['win32', 'this PC'],
+      ['linux', 'this computer'],
+    ] as const) {
+      const { manager } = fake({ deep: { ...MINE, path: '/home/x/.local/bin/yt-dlp' } })
+      const f = await openOn(manager, 'YouTube links', platform, 80)
+      const out = frame(f)
+      expect(out).not.toContain('Mac')
+      const ask = out.split('\n').find((l) => l.includes('Already have yt-dlp?'))
+      expect(ask, platform).toContain(`check ${here}`)
+      const keyRow = out.split('\n').find((l) => l.includes('esc back'))
+      expect(keyRow, platform).toContain(`check ${here}`)
+      expect([...(keyRow ?? '')].length).toBeLessThanOrEqual(80)
+      f.stdin.write('c')
+      await until(() => frame(f).includes(`Found on ${here}`))
+      expect(frame(f)).toContain(`Found on ${here}`)
+      f.unmount()
+    }
   })
 
   it('lists Video and audio, with no download of Forge’s: only the check', async () => {

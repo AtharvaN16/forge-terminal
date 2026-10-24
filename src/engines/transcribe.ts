@@ -47,6 +47,7 @@ import {
   pagePlain,
   type ReadPage,
 } from '../core/transcribe/page-text.js'
+import { machineName } from '../extensions/catalog.js'
 import { installed } from '../extensions/paths.js'
 import { findFfmpeg } from './ffmpeg.js'
 import { loadDocx } from './libs.js'
@@ -124,8 +125,7 @@ export function notesNeed(
   notes: TranscribeStatus['notes'] = platform === 'darwin' ? 'off' : 'unsupported',
 ): string {
   if (notes === 'off') return 'Summary and notes need Apple Intelligence, and it is off.'
-  const machine = platform === 'darwin' ? 'Mac' : 'computer'
-  return `Summary and notes need Apple Intelligence, which this ${machine} does not have.`
+  return `Summary and notes need Apple Intelligence, which this ${machineName(platform)} does not have.`
 }
 
 /**
@@ -323,7 +323,9 @@ function failure(code: string, message: string, path: string, args: string[]): E
   if (code === 'unreadable') return untranscribable(path)
   if (code === 'locale') {
     const i = args.indexOf('--locale')
-    return languageUnsupported(i >= 0 ? (args[i + 1] ?? 'this language') : "this Mac's language")
+    return languageUnsupported(
+      i >= 0 ? (args[i + 1] ?? 'this language') : `this ${machineName()}'s language`,
+    )
   }
   // unsupported: a tool is missing; runtime: whisper-cli is there but cannot start.
   if (code === 'unsupported' || code === 'runtime') return transcribeUnavailable(message)

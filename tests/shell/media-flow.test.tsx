@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
+import { ffmpegInstall } from '../../src/core/errors.js'
 import { findFfmpeg, forceFfmpegForTests, probeMedia } from '../../src/engines/ffmpeg.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
@@ -235,7 +236,9 @@ describe.skipIf(!ffmpegHere)('without ffmpeg', () => {
       // Known from its bytes alone: a video, its size, nothing more.
       expect(frame()).toContain('video · ')
       app.stdin.write(ENTER)
-      await until(() => frame().includes('Video needs ffmpeg · brew install ffmpeg'))
+      // brew install ffmpeg on a Mac, winget on Windows, apt on Linux.
+      await until(() => frame().includes(`Video needs ffmpeg · ${ffmpegInstall()}`))
+      expect(frame()).toContain(`Video needs ffmpeg · ${ffmpegInstall()}`)
       expect(frame()).toContain('Video and audio')
       expect(frame()).toContain('look again')
       // Installed in another window: Forge finds it by itself, and compress

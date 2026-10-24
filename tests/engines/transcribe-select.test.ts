@@ -130,11 +130,13 @@ describe('transcribeNeeds', () => {
 })
 
 describe('notesNeed', () => {
-  it('Windows and Linux: Apple Intelligence, which this computer does not have', () => {
-    for (const platform of ['win32', 'linux'] as const)
-      expect(notesNeed(platform)).toBe(
-        'Summary and notes need Apple Intelligence, which this computer does not have.',
-      )
+  it('Windows and Linux: Apple Intelligence, which this PC or computer does not have', () => {
+    expect(notesNeed('win32')).toBe(
+      'Summary and notes need Apple Intelligence, which this PC does not have.',
+    )
+    expect(notesNeed('linux')).toBe(
+      'Summary and notes need Apple Intelligence, which this computer does not have.',
+    )
   })
 
   it('a Mac: off, or (Intel, older macOS) not there at all', () => {

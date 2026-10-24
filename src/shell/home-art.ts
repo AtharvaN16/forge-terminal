@@ -12,6 +12,7 @@ import {
 } from '../core/colour/space.js'
 import { FORMATS } from '../core/formats.js'
 import type { FormatId } from '../core/types.js'
+import { machineName } from '../extensions/catalog.js'
 import type { Command } from './commands.js'
 import type { StagedFile, StagedView, UnderField } from './stage.js'
 import {
@@ -940,7 +941,8 @@ export function askRows({
 /**
  * The drop surface while a name is being looked for (2026-10-19, L1), at
  * least 0.3 s however fast the search: its fill and one line in the middle —
- * the spinner in the mode's colour, then "Searching your Mac", dim.
+ * the spinner in the mode's colour, then "Searching your Mac", dim ("your
+ * PC" on Windows, "your computer" on Linux).
  */
 export function searchingRows({
   width: columns,
@@ -948,6 +950,7 @@ export function searchingRows({
   palette,
   mode,
   glyph,
+  platform = process.platform,
 }: {
   width: number
   rows: number
@@ -955,13 +958,14 @@ export function searchingRows({
   mode: ShellMode
   /** The spinner's frame. */
   glyph: string
+  platform?: NodeJS.Platform
 }): Row[] {
   const M = HOME_MARGIN
   const W = columns - M * 2
   const fill = palette.selectionBg
   const said: Run[] = [
     { text: `${glyph} `, fg: modeColours(palette, mode).fg, bold: true },
-    { text: 'Searching your Mac', fg: palette.dim },
+    { text: `Searching your ${machineName(platform)}`, fg: palette.dim },
   ]
   const lead = Math.max(0, Math.floor((W - width(said)) / 2))
   const mid = Math.floor((h - 1) / 2)

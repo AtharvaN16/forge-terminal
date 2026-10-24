@@ -318,8 +318,18 @@ const BASIC_FIDELITY_WARNING: Warning = {
     'Install LibreOffice for full-fidelity conversion: brew install --cask libreoffice',
 }
 
-/** The fallback's warning; Homebrew is a Mac answer, so Windows is pointed at the download. */
+/**
+ * The fallback's warning; Homebrew is a Mac answer, so Windows is pointed at
+ * the download and Linux at its package manager.
+ */
 export function basicFidelityWarning(platform: NodeJS.Platform = process.platform): Warning {
+  if (platform === 'linux')
+    return {
+      code: 'word-basic-fidelity',
+      message:
+        "Converted with basic formatting only — tables, images, and complex layouts weren't preserved. " +
+        'Install LibreOffice for full-fidelity conversion: sudo apt install libreoffice',
+    }
   if (platform !== 'win32') return BASIC_FIDELITY_WARNING
   return {
     code: 'word-basic-fidelity',

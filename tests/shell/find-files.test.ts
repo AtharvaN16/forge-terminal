@@ -162,7 +162,14 @@ describe('suggestionRows (S2)', () => {
 describe('searchingRows (L1)', () => {
   const p = modePalette(DARK, 'convert')
   it('is the surface’s fill and one line in its middle: the spinner, then “Searching your Mac”', () => {
-    const rows = searchingRows({ width: 80, rows: 8, palette: p, mode: 'convert', glyph: '⠹' })
+    const rows = searchingRows({
+      width: 80,
+      rows: 8,
+      palette: p,
+      mode: 'convert',
+      glyph: '⠹',
+      platform: 'darwin',
+    })
     expect(rows).toHaveLength(8)
     for (const r of rows) expect(width(r)).toBe(78)
     const lines = rows.map((r) => r.map((run) => run.text).join(''))
@@ -177,5 +184,24 @@ describe('searchingRows (L1)', () => {
     const glyph = rows[3]?.find((r) => r.text.startsWith('⠹'))
     expect(glyph).toMatchObject({ fg: p.accent, bold: true, bg: p.selectionBg })
     expect(rows[3]?.find((r) => r.text === 'Searching your Mac')).toMatchObject({ fg: p.dim })
+  })
+
+  it('says your PC on Windows and your computer on Linux', () => {
+    for (const [platform, said] of [
+      ['win32', 'Searching your PC'],
+      ['linux', 'Searching your computer'],
+    ] as const) {
+      const rows = searchingRows({
+        width: 80,
+        rows: 8,
+        palette: p,
+        mode: 'convert',
+        glyph: '⠹',
+        platform,
+      })
+      const lines = rows.map((r) => r.map((run) => run.text).join(''))
+      expect(lines[3]?.trim()).toBe(`⠹ ${said}`)
+      for (const r of rows) expect(width(r)).toBe(78)
+    }
   })
 })

@@ -307,6 +307,8 @@ export function ExtensionsFlow({
   platform = process.platform,
 }: ExtensionsFlowProps) {
   const palette = useTheme()
+  /** "this Mac", "this PC", "this computer": where `c` looks for the user's own copy. */
+  const here = `this ${machineName(platform)}`
   const [statuses, setStatuses] = useState<ExtensionStatus[] | undefined>()
   const [cursor, setCursor] = useState(0)
   const [busy, setBusy] = useState<Busy>()
@@ -830,7 +832,7 @@ export function ExtensionsFlow({
       ...(palette.keycapBg !== ''
         ? [{ text: ' c ', fg: palette.fg, bg: palette.keycapBg, bold: true }]
         : [run('[c]', palette.fg, true)]),
-      run(' check this Mac', palette.dim),
+      run(` check ${here}`, palette.dim),
     ]
     const error =
       failed?.id === id
@@ -877,7 +879,7 @@ export function ExtensionsFlow({
         ...base,
         action: installable ? '↵ install' : undefined,
         facts: [
-          ['Status', spin('Checking this Mac')],
+          ['Status', spin(`Checking ${here}`)],
           ...(installable && size ? [['Size', [run(size, palette.dim)]] as [string, Run[]]] : []),
         ],
       }
@@ -887,7 +889,7 @@ export function ExtensionsFlow({
         ...base,
         action: '↵ use it',
         facts: [
-          ['Status', ok('Found on this Mac')],
+          ['Status', ok(`Found on ${here}`)],
           ['Path', [run(tilde(check.copy.path), palette.dim)]],
           ['Version', [run(check.copy.version, palette.dim)]],
         ],
@@ -898,7 +900,7 @@ export function ExtensionsFlow({
         ...base,
         action: path.trim() !== '' ? '↵ use it' : installable ? '↵ install' : undefined,
         facts: [
-          ['Status', [run('Not found on this Mac')]],
+          ['Status', [run(`Not found on ${here}`)]],
           [
             'Path',
             path === ''
@@ -1088,7 +1090,7 @@ export function ExtensionsFlow({
       else if (s.supported && failed?.id === id) main.push(['↵', 'try again'])
       else if (s.supported && s.installed === undefined && !mine?.copy) main.push(['↵', 'install'])
       else if (s.updateAvailable && !mine?.copy) main.push(['↵', 'update'])
-      if (!(mine?.copy && !mine.copy.tooOld)) main.push(['c', 'check this Mac'])
+      if (!(mine?.copy && !mine.copy.tooOld)) main.push(['c', `check ${here}`])
       if (removable && !mine?.copy) main.push(['x', 'remove'])
       return { main, foot: [['i', 'about'], ['esc', 'back'], quit] }
     }

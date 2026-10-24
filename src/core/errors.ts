@@ -1092,8 +1092,12 @@ export function ffmpegMissing(
   /** Forge's own download (the video extension) is offered on this computer. */
   downloadable = false,
 ): ForgeError {
-  const own = platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'
-  const how = downloadable ? `forge extensions add video (or ${own})` : own
+  const own = ffmpegInstall(platform)
+  const how = downloadable
+    ? `forge extensions add video (or ${own})`
+    : platform === 'linux'
+      ? `${own} (or your distribution's package manager)`
+      : own
   return new ForgeError({
     code: 'ffmpeg-missing',
     title: 'Video and audio need ffmpeg',
@@ -1101,6 +1105,16 @@ export function ffmpegMissing(
     short: 'ffmpeg is not on this computer',
     hint: `Install it with ${how}, then run Forge again.`,
   })
+}
+
+/**
+ * The command that installs ffmpeg, in this OS's words: Homebrew on a Mac,
+ * winget on Windows, apt on Linux.
+ */
+export function ffmpegInstall(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') return 'winget install ffmpeg'
+  if (platform === 'linux') return 'sudo apt install ffmpeg'
+  return 'brew install ffmpeg'
 }
 
 export function conversionFailed(path: string, cause: unknown): ForgeError {
@@ -1124,8 +1138,23 @@ export function noSound(path: string): ForgeError {
   })
 }
 
-/** A file Apple's speech recogniser cannot open (MKV and WebM, until transcribe can use ffmpeg). */
-export function untranscribable(path: string): ForgeError {
+/**
+ * A file Apple's speech recogniser cannot open (MKV and WebM, until transcribe
+ * can use ffmpeg). Off a Mac it is whisper that hears, through ffmpeg, so any
+ * video or sound ffmpeg reads is one it takes.
+ */
+export function untranscribable(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  if (platform !== 'darwin') {
+    return new ForgeError({
+      code: 'unsupported-source',
+      title: 'Cannot transcribe this file',
+      detail: `${displayName(path, platform)} cannot be read by whisper.`,
+      hint: 'Video and sound files can be transcribed.',
+    })
+  }
   return new ForgeError({
     code: 'unsupported-source',
     title: 'Cannot transcribe this file',
@@ -1134,12 +1163,16 @@ export function untranscribable(path: string): ForgeError {
   })
 }
 
-/** The recogniser has no model for the language asked for. */
-export function languageUnsupported(language: string): ForgeError {
+/** The recogniser has no model for the language asked for: Apple's on a Mac, whisper elsewhere. */
+export function languageUnsupported(
+  language: string,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const who = platform === 'darwin' ? "Apple's speech recogniser" : 'The whisper extension'
   return new ForgeError({
     code: 'language-unsupported',
     title: 'Language not supported',
-    detail: `Apple's speech recogniser does not support ${language}.`,
+    detail: `${who} does not support ${language}.`,
     hint: 'Pass another with --language, for example --language en-US.',
   })
 }
