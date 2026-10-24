@@ -103,6 +103,13 @@ const SHEETS: Record<
       ['zimg', 'WTFPL'],
     ],
   },
+  // whisper-cli, where Apple's recogniser is not there: what lets transcribe hear at all.
+  whisper: {
+    name: 'Speech to text',
+    gives: 'Transcripts of video and sound, made on this computer',
+    again: 'Transcribe will say how to get it again.',
+    parts: [['whisper.cpp and ggml', 'MIT']],
+  },
 }
 
 /**

@@ -25,6 +25,11 @@ const ENTRIES = {
   heic: { entry: 'runner.mjs', kind: 'node' },
   // ffmpeg beside ffprobe; Forge finds both in the extension's folder.
   video: { entry: 'ffmpeg', kind: 'exec' },
+  // whisper.cpp's whisper-cli, which transcribe's whisper helper runs; .exe on Windows.
+  whisper: (arch) => ({
+    entry: arch.startsWith('win32-') ? 'whisper-cli.exe' : 'whisper-cli',
+    kind: 'exec',
+  }),
 }
 /**
  * Where an OS's build is a different program: remove-background is Apple
@@ -57,7 +62,9 @@ const GZIP_OS = 19
 /** The entry for `id` packed for `arch`: a Mac label (bare) or another OS's. */
 export function entryFor(id, arch) {
   const mac = !arch.includes('-')
-  return (!mac && ELSEWHERE[id]) || ENTRIES[id]
+  // An entry can depend on the platform: the same tool is foo.exe on Windows.
+  const own = typeof ENTRIES[id] === 'function' ? ENTRIES[id](arch) : ENTRIES[id]
+  return (!mac && ELSEWHERE[id]) || own
 }
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')

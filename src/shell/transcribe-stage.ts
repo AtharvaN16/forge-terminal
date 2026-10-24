@@ -39,7 +39,7 @@ export async function readTranscribeFile(path: string): Promise<TranscribeSource
   if (kind !== 'video' && kind !== 'audio') throw untranscribable(path)
   const status = await transcribeStatus()
   if (!status?.speech) {
-    throw transcribeUnavailable(transcribeNeeds())
+    throw transcribeUnavailable(transcribeNeeds(process.platform, status?.missing))
   }
   const { seconds } = await probeSound(path)
   return { kind: 'file', path, seconds, bytes: info.size }

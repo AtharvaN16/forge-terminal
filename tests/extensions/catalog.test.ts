@@ -129,6 +129,30 @@ describe('by OS', () => {
       expect(assetFor(heic, 'win32', arch)?.url).toMatch(/-win32-universal\.tar\.gz$/)
     }
   })
+
+  it('whisper is for Windows and Linux; a Mac gets whisper.cpp from Homebrew instead', async () => {
+    expect(offeredHere('whisper', 'win32')).toBe(true)
+    expect(offeredHere('whisper', 'linux')).toBe(true)
+    expect(offeredHere('whisper', 'darwin')).toBe(false)
+    for (const arch of ['x64', 'arm64']) {
+      const w = (await listExtensions('win32', arch)).find((s) => s.entry.id === 'whisper')
+      expect(w?.supported).toBe(true)
+      expect(w && assetFor(w.entry, 'win32', arch)?.url).toBe(
+        `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-${arch}.tar.gz`,
+      )
+    }
+    const x64 = (await listExtensions('linux', 'x64')).find((s) => s.entry.id === 'whisper')
+    expect(x64?.supported).toBe(true)
+    const linux = (await listExtensions('linux', 'arm64')).find((s) => s.entry.id === 'whisper')
+    expect(linux?.supported).toBe(true)
+    expect(linux && assetFor(linux.entry, 'linux', 'arm64')).toEqual({
+      version: '1.0.0',
+      url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
+      bytes: 1186510,
+      sha256: 'cb06763e5301617ad443901a9110413eaabfd1ecf06cc7202d74553d000d3e6d',
+    })
+  })
+
   it('Edit has a Remove background row on every OS, and none where it is not offered', () => {
     const photo = {
       kind: 'image',

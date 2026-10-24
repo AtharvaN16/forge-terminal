@@ -16,3 +16,6 @@ coverage/
 
 # boost payload build cache (downloads, converted model)
 extensions/boost/.cache/
+
+# whisper payload build cache (downloads, source tree, builds)
+extensions/whisper/.cache/

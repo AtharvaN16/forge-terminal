@@ -33,6 +33,10 @@ name: extensions
 # remove-background is two programs: Apple Vision's Swift helper for macOS,
 # and a Node runner on ONNX Runtime (extensions/remove-background-onnx) for
 # Windows and Linux, built beside it from the same tag.
+#
+# whisper packages on ubuntu-latest: its Windows archives are upstream's own
+# whisper.cpp binaries (pinned by sha256), and its Linux ones are cross-built
+# with a hash-pinned zig, which makes the same bytes on any host.
 
 on:
   push:
@@ -41,13 +45,14 @@ on:
       - 'ext-remove-background-v*'
       - 'ext-heic-v*'
       - 'ext-video-v*'
+      - 'ext-whisper-v*'
   workflow_dispatch:
     inputs:
       id:
         description: 'Extension id'
         required: true
         type: choice
-        options: [boost, remove-background, heic, video]
+        options: [boost, remove-background, heic, video, whisper]
       version:
         description: 'Version (no leading v); a release ext-<id>-v<version> must exist or will be created'
         required: true
@@ -87,6 +92,8 @@ jobs:
             heic) runner=macos-14 ;;
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
             video) runner=macos-14 ;;
+            # whisper.cpp's whisper-cli: Windows repacked, Linux cross-built with zig (extensions/whisper/build.mjs).
+            whisper) runner=ubuntu-latest ;;
             *) echo "::error::unknown extension id: $id"; exit 1 ;;
           esac
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -117,11 +124,25 @@ jobs:
       - run: npm ci
 
       - name: Toolchain
+        shell: bash
         run: |
-          sw_vers
-          xcodebuild -version
-          swiftc --version
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            sw_vers
+            xcodebuild -version
+            swiftc --version
+          else
+            uname -a
+            cmake --version | head -1
+          fi
           node --version
+
+      # zig from PyPI, pinned by hash; it is what makes the Linux builds reproducible.
+      - name: Build tools (whisper)
+        if: needs.resolve.outputs.id == 'whisper'
+        run: |
+          python3 -m pip install --require-hashes -r extensions/whisper/zig-requirements.txt
+          python3 -m ziglang version
+          command -v ninja || sudo apt-get install -y ninja-build
 
       # ffmpeg's build tools; only the video extension compiles C.
       - name: Build tools (video)
@@ -154,6 +175,13 @@ jobs:
             # into out/ too, so publish uploads it to the same release.
             sh extensions/video/build.sh dist-ext/payload-arm64 dist-ext/out
             node scripts/package-extension.mjs video "$VERSION" arm64 dist-ext/payload-arm64 dist-ext/out >> dist-ext/assets.jsonl
+          elif [ "$ID" = "whisper" ]; then
+            for arch in x64 arm64; do
+              node extensions/whisper/build.mjs --platform win32 --arch "$arch" --out "dist-ext/payload-win32-$arch"
+              node scripts/package-extension.mjs whisper "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
+              node extensions/whisper/build.mjs --platform linux --arch "$arch" --zig "python3 -m ziglang" --out "dist-ext/payload-linux-$arch"
+              node scripts/package-extension.mjs whisper "$VERSION" "linux-$arch" "dist-ext/payload-linux-$arch" dist-ext/out >> dist-ext/assets.jsonl
+            done
           elif [ "$ID" = "heic" ]; then
             # The same files for both; only the manifest's arch differs.
             for platform in win32 linux; do
@@ -206,6 +234,18 @@ jobs:
           done
           exit $status
 
+      # The x64 Linux build, run on this (x64) runner: a real transcription of
+      # whisper.cpp's own sample with its smallest model, pinned by sha256.
+      - name: whisper runs on Linux
+        if: needs.resolve.outputs.id == 'whisper'
+        shell: bash
+        run: |
+          curl -fsSL -o ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          echo "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  ggml-tiny.bin" | sha256sum -c -
+          dist-ext/payload-linux-x64/whisper-cli -m ggml-tiny.bin -f extensions/whisper/.cache/whisper.cpp-*/samples/jfk.wav -l en -nt > out.txt
+          cat out.txt
+          grep -qi "ask not what your country" out.txt
+
       # What publish uploads: the archives, which of them the catalogue lists,
       # and the values for the catalogue entry.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -229,7 +269,8 @@ jobs:
     needs: [resolve, package]
     if: >-
       needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic' ||
-      needs.resolve.outputs.id == 'remove-background'
+      needs.resolve.outputs.id == 'remove-background' ||
+      needs.resolve.outputs.id == 'whisper'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -311,6 +352,17 @@ jobs:
       - name: Remove background runs on Windows
         if: needs.resolve.outputs.id == 'remove-background'
         run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-win32-x64
+
+      # x64 only, as for boost: windows-latest cannot run the arm64 build.
+      - name: whisper runs on Windows
+        if: needs.resolve.outputs.id == 'whisper'
+        run: |
+          curl -fsSL -o ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          echo "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  ggml-tiny.bin" | sha256sum -c -
+          curl -fsSL -o jfk.wav https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.5/samples/jfk.wav
+          dist-ext/payload-win32-x64/whisper-cli.exe -m ggml-tiny.bin -f jfk.wav -l en -nt > out.txt
+          cat out.txt
+          grep -qi "ask not what your country" out.txt
 
   # Runs what the Linux archives contain, on Linux (x64; the arm64 archives hold
   # the same runner and ONNX Runtime's arm64 build). Nothing here publishes anything.

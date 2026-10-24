@@ -2,7 +2,7 @@
  * The catalogue of optional extensions, compiled into Forge (spec §4.2).
  * Forge never downloads a catalogue and never runs anything not listed here.
  */
-export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp'
+export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp' | 'whisper'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
 export type PlatformKey = `${'darwin' | 'win32' | 'linux'}-${'arm64' | 'x64' | 'universal'}`
@@ -215,6 +215,46 @@ export const CATALOG: readonly CatalogEntry[] = [
       },
     },
     licence: 'yt-dlp (Unlicense); its bundled Python and libraries under their own licences',
+  },
+  {
+    // whisper.cpp's whisper-cli: transcribe's speech to text wherever Apple's
+    // recogniser is not there (whisper helper). Built by
+    // extensions/whisper/build.mjs from whisper.cpp 1.9.5: Windows is
+    // upstream's own CPU build repacked, Linux is built from the same tag,
+    // static. No Mac build: Homebrew's whisper-cpp covers the Intel and
+    // older Macs that need it.
+    id: 'whisper',
+    title: 'Speech to text (whisper.cpp)',
+    summary: 'Transcribe video and sound on this computer, with whisper.cpp',
+    assets: {
+      'win32-x64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-x64.tar.gz`,
+        bytes: 4036317,
+        sha256: '6ef35ad2167c54a562c17717af38e0ac46941a2519d2d47ede730b583d29ad9a',
+      },
+      'win32-arm64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-arm64.tar.gz`,
+        bytes: 1482982,
+        sha256: 'a59506f00cf2fae340455648aa7429ccb0422951c3d85fb8b6bb0e618f02677d',
+      },
+      // Static (musl), so one build runs on any Linux of that chip.
+      'linux-arm64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
+        bytes: 1186510,
+        sha256: 'cb06763e5301617ad443901a9110413eaabfd1ecf06cc7202d74553d000d3e6d',
+      },
+      // Needs AVX2 (2013 on); an older PC is told to use its own whisper-cli.
+      'linux-x64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-x64.tar.gz`,
+        bytes: 1299655,
+        sha256: '22554cb9ecf220f2345543267f59339701de8e2292773646b65922232ce98ed7',
+      },
+    },
+    licence: 'whisper.cpp and ggml (MIT)',
   },
 ]
 
