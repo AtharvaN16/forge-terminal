@@ -136,10 +136,12 @@ export const MODE_FORMATS: Partial<Record<ShellMode, FormatKinds>> = {
     ['Video', labels(VIDEO_IDS)],
     ['Audio', labels(SOUND_IDS)],
   ],
-  // What Apple's speech recogniser reads (AVFoundation), and the pictures and PDFs Vision reads.
+  // Every video and sound Forge reads: Apple's recogniser takes MP4, MOV, M4A,
+  // MP3, WAV and AIFF itself and the rest through ffmpeg, as whisper does
+  // everywhere (engines/transcribe.ts); and the pictures and PDFs it reads.
   transcribe: [
-    ['Video', labels(['mp4', 'mov'])],
-    ['Audio', labels(['m4a', 'mp3', 'wav', 'aiff'])],
+    ['Video', labels(VIDEO_IDS)],
+    ['Audio', labels(SOUND_IDS)],
     ['Images', labels(IMAGE_IDS)],
     ['PDF', 'PDF'],
   ],

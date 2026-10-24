@@ -1167,7 +1167,8 @@ export function untranscribable(
     code: 'unsupported-source',
     title: 'Cannot transcribe this file',
     detail: `${displayName(path)} cannot be read by Apple's speech recogniser.`,
-    hint: 'MP4, MOV, M4A, MP3, WAV and AIFF files can be transcribed.',
+    // Any other video or sound reaches it through ffmpeg (engines/transcribe.ts).
+    hint: 'MP4, MOV, M4A, MP3, WAV and AIFF can be transcribed; with ffmpeg (brew install ffmpeg), any video or sound file.',
   })
 }
 

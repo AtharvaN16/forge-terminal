@@ -441,7 +441,7 @@ describe('install and recogniser words, per OS', () => {
   it('names Apple’s recogniser on a Mac only; whisper hears elsewhere', () => {
     expect(untranscribable('/tmp/a.mkv', 'darwin')).toMatchObject({
       detail: "a.mkv cannot be read by Apple's speech recogniser.",
-      hint: 'MP4, MOV, M4A, MP3, WAV and AIFF files can be transcribed.',
+      hint: 'MP4, MOV, M4A, MP3, WAV and AIFF can be transcribed; with ffmpeg (brew install ffmpeg), any video or sound file.',
     })
     expect(languageUnsupported('xx-YY', 'darwin').detail).toBe(
       "Apple's speech recogniser does not support xx-YY.",
