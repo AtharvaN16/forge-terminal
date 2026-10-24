@@ -54,8 +54,10 @@ const READS: ReadonlySet<FormatId> = new Set<FormatId>([
   'webp',
   'avif',
   'heic',
-  // Camera RAW is macOS's to decode (engines/raw.ts); Windows does not read it.
-  ...(process.platform === 'darwin' ? (['raw'] as const) : []),
+  // Read everywhere, as HEIC is: sips decodes it on a Mac, the raw extension
+  // elsewhere, and probing a RAW without either says how to get one
+  // (engines/raw.ts, `rawDecodable`).
+  'raw',
   'gif',
   'tiff',
 ])
@@ -189,7 +191,7 @@ async function probe(path: string): Promise<SourceInfo> {
   }
 
   // Loaded here, after the HEIC and RAW branches, which are measured with
-  // sips and never need Sharp to probe.
+  // sips (or their extension, off a Mac) and never need Sharp to probe.
   const sharp = await loadSharp()
   let meta: Metadata
   try {

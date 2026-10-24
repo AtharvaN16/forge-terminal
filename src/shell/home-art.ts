@@ -106,17 +106,9 @@ export const MODE_KINDS: Record<ShellMode, string> = {
 export type FormatKinds = readonly (readonly [kind: string, formats: string])[]
 
 const labels = (ids: readonly FormatId[]) => ids.map((id) => FORMATS[id].label).join(' · ')
-// Camera RAW reads only on a Mac (engines/raw.ts), so only a Mac lists it.
-const IMAGE_IDS: readonly FormatId[] = [
-  'jpeg',
-  'png',
-  'webp',
-  'avif',
-  'heic',
-  ...(process.platform === 'darwin' ? (['raw'] as const) : []),
-  'gif',
-  'tiff',
-]
+// HEIC and camera RAW are listed on every OS: off a Mac each opens through
+// its extension, and a drop without it says how to get it (engines/raw.ts).
+const IMAGE_IDS: readonly FormatId[] = ['jpeg', 'png', 'webp', 'avif', 'heic', 'raw', 'gif', 'tiff']
 // `hevc` is a codec written into an .mp4, never a source (video spec §2).
 const VIDEO_IDS = ['mp4', 'mov', 'webm', 'mkv', 'avi'] as const
 const SOUND_IDS = ['mp3', 'm4a', 'opus', 'flac', 'aiff', 'wav', 'ogg'] as const

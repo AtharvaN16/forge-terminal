@@ -49,8 +49,9 @@ describe('capability graph', () => {
     expect(targetIdsFor(source('heic'))).toContain('png')
   })
 
-  it('reads camera RAW on a Mac only, and never writes it', () => {
-    expect(readableFormats().includes('raw')).toBe(process.platform === 'darwin')
+  it('reads camera RAW on every OS, as HEIC (sips, or the raw extension), and never writes it', () => {
+    expect(readableFormats()).toContain('raw')
+    expect(targetIdsFor(source('raw'))).toContain('jpeg')
     expect(writableFormats()).not.toContain('raw')
     expect(canConvert(source('jpeg'), 'raw')).toBe(false)
   })

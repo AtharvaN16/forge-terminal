@@ -2,7 +2,14 @@
  * The catalogue of optional extensions, compiled into Forge (spec §4.2).
  * Forge never downloads a catalogue and never runs anything not listed here.
  */
-export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp' | 'whisper'
+export type ExtensionId =
+  | 'boost'
+  | 'remove-background'
+  | 'heic'
+  | 'raw'
+  | 'video'
+  | 'yt-dlp'
+  | 'whisper'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
 export type PlatformKey = `${'darwin' | 'win32' | 'linux'}-${'arm64' | 'x64' | 'universal'}`
@@ -117,6 +124,29 @@ export const CATALOG: readonly CatalogEntry[] = [
       },
     },
     licence: 'libheif and libde265 (LGPL-3.0), via libheif-js',
+  },
+  {
+    // macOS decodes camera RAW itself (sips); Windows and Linux need this:
+    // LibRaw, through libraw-wasm's WASM build. As with heic, the two
+    // archives hold the same files and differ only in the manifest's arch.
+    id: 'raw',
+    title: 'Camera RAW photos',
+    summary: 'Open camera RAW photos',
+    assets: {
+      'win32-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-raw-v1.0.0/forge-ext-raw-1.0.0-win32-universal.tar.gz`,
+        bytes: 529983,
+        sha256: 'def170f48e004240c0cd23a539e4345d8056ea1f4d9c90f45c2a07573bfad199',
+      },
+      'linux-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-raw-v1.0.0/forge-ext-raw-1.0.0-linux-universal.tar.gz`,
+        bytes: 529982,
+        sha256: '35c21be2691cecfcadca944ee8c61736b7d6149130e42492c097115467facd36',
+      },
+    },
+    licence: 'LibRaw (LGPL-2.1 or CDDL-1.0), via libraw-wasm (ISC)',
   },
   {
     // ffmpeg for a Mac without Homebrew's (video spec §3.7). Built from source

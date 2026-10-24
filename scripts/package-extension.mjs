@@ -23,6 +23,7 @@ const ENTRIES = {
   boost: { entry: 'runner.mjs', kind: 'node' },
   'remove-background': { entry: 'forge-cutout', kind: 'exec' },
   heic: { entry: 'runner.mjs', kind: 'node' },
+  raw: { entry: 'runner.mjs', kind: 'node' },
   // ffmpeg beside ffprobe; Forge finds both in the extension's folder.
   video: { entry: 'ffmpeg', kind: 'exec' },
   // whisper.cpp's whisper-cli, which transcribe's whisper helper runs; .exe on Windows.

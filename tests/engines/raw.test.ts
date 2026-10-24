@@ -1,12 +1,14 @@
+import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { promisify } from 'node:util'
 import sharp from 'sharp'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { targetIdsFor } from '../../src/core/capabilities.js'
 import { rawDecoderUnavailable } from '../../src/core/errors.js'
 import { imageEngine } from '../../src/engines/image.js'
-import { rawDecodable, sniffRaw } from '../../src/engines/raw.js'
+import { decodeRaw, rawDecodable, rawSize, sniffRaw } from '../../src/engines/raw.js'
 import { probe } from '../../src/engines/registry.js'
 import { makeJpeg, makeTempDir, makeTiff, pixelAt } from '../helpers/fixtures.js'
 import {
@@ -21,6 +23,7 @@ import {
 } from '../helpers/raw.js'
 
 const mac = process.platform === 'darwin' && existsSync('/usr/bin/sips')
+const run = promisify(execFile)
 
 async function file(name: string, bytes: Buffer): Promise<string> {
   const path = join(await makeTempDir(), name)
@@ -144,16 +147,136 @@ describe.skipIf(!mac)('RAW conversion', () => {
   }, 30_000)
 })
 
-describe('RAW off macOS', () => {
-  it('is not decodable on Windows', async () => {
-    expect(await rawDecodable('win32')).toBe(false)
-  })
+/** Points the config dir at an empty temp dir; returns where raw 1.0.0 would install. */
+async function emptyConfig(): Promise<string> {
+  const config = await makeTempDir()
+  process.env.XDG_CONFIG_HOME = config
+  return join(config, 'forge', 'extensions', 'raw', '1.0.0')
+}
 
-  it('says it needs a Mac', () => {
-    expect(rawDecoderUnavailable('/tmp/a.nef', 'win32')).toMatchObject({
+/** The layout `installed()` reads: the built runner, its manifest, and `current`. */
+async function installRawExtension(dir: string): Promise<void> {
+  await run(process.execPath, [join(process.cwd(), 'extensions', 'raw', 'build.mjs'), '--out', dir])
+  const manifest = {
+    id: 'raw',
+    version: '1.0.0',
+    entry: 'runner.mjs',
+    kind: 'node',
+    files: { 'runner.mjs': '' },
+  }
+  await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest))
+  await writeFile(join(dirname(dir), 'current'), '1.0.0')
+}
+
+const savedXdg = process.env.XDG_CONFIG_HOME
+afterEach(() => {
+  if (savedXdg === undefined) delete process.env.XDG_CONFIG_HOME
+  else process.env.XDG_CONFIG_HOME = savedXdg
+})
+
+for (const [platform, os] of [
+  ['win32', 'Windows'],
+  ['linux', 'Linux'],
+] as const) {
+  describe(`RAW on ${os} (the raw extension)`, () => {
+    it('is decodable once the extension is installed, mid-session, and decodes through it', async () => {
+      const dir = await emptyConfig()
+      expect(await rawDecodable(platform)).toBe(false)
+      await installRawExtension(dir)
+      expect(await rawDecodable(platform)).toBe(true)
+
+      // A portrait photo with a maker's crop: upright and cropped, from the header alone.
+      const path = await makeDng(await makeTempDir(), 'shot.dng', {
+        orientation: 6,
+        crop: { left: 40, top: 20, width: 240, height: 200 },
+      })
+      const kind = await sniffRaw(path)
+      if (!kind) throw new Error('a DNG is RAW')
+      expect(await rawSize(path, kind, platform)).toEqual({ width: 200, height: 240 })
+
+      const decoded = await decodeRaw(path, platform)
+      const meta = await sharp(decoded.path).metadata()
+      // Upright already, with no orientation of its own: `.rotate()` leaves it be.
+      expect(meta).toMatchObject({ format: 'png', width: 200, height: 240, channels: 3 })
+      expect(meta.orientation).toBeUndefined()
+      const rotated = await sharp(decoded.path).rotate().toBuffer({ resolveWithObject: true })
+      expect(rotated.info).toMatchObject({ width: 200, height: 240 })
+      await decoded.cleanup()
+      expect(existsSync(dirname(decoded.path))).toBe(false)
+    }, 60_000)
+
+    it('decodes the photo, not the preview, and by its bytes whatever it is called', async () => {
+      await installRawExtension(await emptyConfig())
+      const path = await makeDng(await makeTempDir(), 'shot.tif')
+      const decoded = await decodeRaw(path, platform)
+      expect(await sharp(decoded.path).metadata()).toMatchObject({ width: 320, height: 240 })
+      // The gradient, not the all-green preview.
+      const [r1, g1] = await pixelAt(decoded.path, 310, 10)
+      const [r2, g2] = await pixelAt(decoded.path, 10, 230)
+      expect(r1).toBeGreaterThan(g1 + 100)
+      expect(g2).toBeGreaterThan(r2 + 100)
+      await decoded.cleanup()
+    }, 60_000)
+
+    it('without the extension, refuses with the install hint and names the OS', async () => {
+      await emptyConfig()
+      const path = await makeDng(await makeTempDir(), 'shot.dng')
+      const kind = { ext: '.dng', orientation: 1 }
+      const refusal = await decodeRaw(path, platform).catch((e: unknown) => e)
+      expect(refusal).toMatchObject({
+        code: 'raw-decoder-unavailable',
+        short: 'RAW needs the raw extension.',
+        hint: 'Install it with: forge extensions add raw',
+        shellHint: 'Open /extensions to install it.',
+      })
+      expect((refusal as Error & { detail: string }).detail).toMatch(
+        new RegExp(`free RAW extension on ${os}\\.$`),
+      )
+      await expect(rawSize(path, kind, platform)).rejects.toMatchObject({
+        code: 'raw-decoder-unavailable',
+      })
+    })
+
+    it('a file LibRaw cannot read is an error, never the Mac’s too-new-camera answer', async () => {
+      await installRawExtension(await emptyConfig())
+      const path = join(await makeTempDir(), 'broken.nef')
+      await writeFile(path, nefBytes())
+      await expect(rawSize(path, { ext: '.nef', orientation: 1 }, platform)).rejects.toThrow()
+    }, 60_000)
+  })
+}
+
+describe('RAW on macOS stays with sips', () => {
+  it('is decodable exactly when sips runs, extension or not', async () => {
+    await installRawExtension(await emptyConfig())
+    expect(await rawDecodable('darwin')).toBe(mac)
+  }, 60_000)
+
+  it.skipIf(!mac)(
+    'measures and decodes with sips even when the extension is installed',
+    async () => {
+      await installRawExtension(await emptyConfig())
+      const path = await makeDng(await makeTempDir(), 'shot.dng', { orientation: 6 })
+      const kind = await sniffRaw(path)
+      if (!kind) throw new Error('a DNG is RAW')
+      expect(await rawSize(path, kind, 'darwin')).toEqual({ width: 240, height: 320 })
+      // sips keeps the orientation as EXIF rather than turning the pixels: stored size, flag 6.
+      const decoded = await decodeRaw(path, 'darwin')
+      expect(await sharp(decoded.path).metadata()).toMatchObject({
+        width: 320,
+        height: 240,
+        orientation: 6,
+      })
+      await decoded.cleanup()
+    },
+    60_000,
+  )
+
+  it('keeps its sips wording', () => {
+    expect(rawDecoderUnavailable('/tmp/a.nef', 'darwin')).toMatchObject({
       code: 'raw-decoder-unavailable',
-      title: 'Cannot read RAW here',
-      short: 'RAW photos open on a Mac only.',
+      short: 'RAW needs sips, which could not be run.',
+      hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
     })
   })
 })

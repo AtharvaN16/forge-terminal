@@ -88,6 +88,28 @@ describe('package-extension', () => {
   )
   // Unpacked with tar, which on a Windows host cannot take a C:\ path.
   it.skipIf(process.platform === 'win32')(
+    'packs raw as heic is: a Node runner, one archive per OS for any chip',
+    async () => {
+      const root = await makeTempDir()
+      const payload = join(root, 'payload')
+      await mkdir(payload, { recursive: true })
+      await writeFile(join(payload, 'runner.mjs'), 'export {}\n')
+      for (const arch of ['win32-universal', 'linux-universal']) {
+        const out = join(root, arch)
+        const r = JSON.parse(
+          execFileSync('node', [script, 'raw', '1.0.0', arch, payload, out], { encoding: 'utf8' }),
+        ) as { asset: string }
+        expect(r.asset).toBe(`forge-ext-raw-1.0.0-${arch}.tar.gz`)
+        const x = join(root, `x-${arch}`)
+        await mkdir(x)
+        execFileSync('tar', ['-xzf', join(out, r.asset), '-C', x])
+        const manifest = JSON.parse(await readFile(join(x, 'manifest.json'), 'utf8'))
+        expect(manifest).toMatchObject({ id: 'raw', arch, entry: 'runner.mjs', kind: 'node' })
+      }
+    },
+  )
+  // Unpacked with tar, which on a Windows host cannot take a C:\ path.
+  it.skipIf(process.platform === 'win32')(
     'packs a Windows or Linux remove-background as the Node runner, and names the OS',
     async () => {
       const root = await makeTempDir()

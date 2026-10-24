@@ -81,6 +81,11 @@ export interface DngOptions {
   width?: number
   height?: number
   orientation?: number
+  /**
+   * The maker's crop, as DNG's DefaultCropOrigin and DefaultCropSize: the
+   * part of the sensor the camera means as the photo, in stored pixels.
+   */
+  crop?: { left: number; top: number; width: number; height: number }
 }
 
 /**
@@ -92,7 +97,12 @@ export interface DngOptions {
  * blue fixed at half. A converted file that is green all over, or 16×12, came
  * from the preview.
  */
-export function dngBytes({ width = 320, height = 240, orientation = 1 }: DngOptions = {}): Buffer {
+export function dngBytes({
+  width = 320,
+  height = 240,
+  orientation = 1,
+  crop,
+}: DngOptions = {}): Buffer {
   const pw = 16
   const ph = 12
   const preview = Buffer.alloc(pw * ph * 3)
@@ -129,6 +139,12 @@ export function dngBytes({ width = 320, height = 240, orientation = 1 }: DngOpti
       [33422, BYTE, [0, 1, 1, 2]],
       [50710, BYTE, [0, 1, 2]],
       [50717, LONG, [65535]],
+      ...(crop
+        ? ([
+            [50719, LONG, [crop.left, crop.top]],
+            [50720, LONG, [crop.width, crop.height]],
+          ] satisfies Entry[])
+        : []),
     ],
     rawAt,
   )
