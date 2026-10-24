@@ -18,7 +18,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -129,13 +129,21 @@ interface Frame {
 function button(b: Button, i: number, at: number, f: Frame): Seg[] {
   const home = i === 0
   const focused = i === at
-  const text = (k: string, w: string, kFg: string, wFg: string, bg: string | undefined, bold: boolean): Seg[] => [
+  const text = (
+    k: string,
+    w: string,
+    kFg: string,
+    wFg: string,
+    bg: string | undefined,
+    bold: boolean,
+  ): Seg[] => [
     [` ${k}`, kFg, bg, true],
     [` ${w} `, wFg, bg, bold],
   ]
   const tinted = f.focus === 'moves' ? focused : home
   if (tinted) return text(b.key, b.label, MODE, MODE, MODE_BG, true)
-  if (focused && f.focus === 'grey') return text(b.key, b.label, q.fg, q.fg, f.lift ?? q.panelBand, true)
+  if (focused && f.focus === 'grey')
+    return text(b.key, b.label, q.fg, q.fg, f.lift ?? q.panelBand, true)
   if (focused && f.focus === 'words') return text(b.key, b.label, q.fg, q.fg, f.fill, true)
   return text(b.key, b.label, q.fg, q.dim, f.fill, false)
 }
@@ -149,7 +157,9 @@ function frameRows(f: Frame, at: number): Cell[][] {
   const gaps = parts.length - 1
   const spare = f.wide ? inner - used : gaps
   const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
-  const segs: Seg[] = parts.flatMap((p, i) => (i ? [[' '.repeat(gapAt(i - 1)), undefined, f.fill] as Seg, ...p] : p))
+  const segs: Seg[] = parts.flatMap((p, i) =>
+    i ? [[' '.repeat(gapAt(i - 1)), undefined, f.fill] as Seg, ...p] : p,
+  )
   const width = len(segs) + (f.border ? 4 : 2)
   const fillRow = () => line(L, [[' '.repeat(width), undefined, f.fill]])
   if (f.border) {
@@ -184,7 +194,10 @@ const states = (f: Frame) =>
     ['on Home', 0],
     ['on Open', 1],
   ]
-    .map(([label, at]) => `<div class="moderow"><span class="mlabel">${label}</span>${shot(frameRows(f, at as number))}</div>`)
+    .map(
+      ([label, at]) =>
+        `<div class="moderow"><span class="mlabel">${label}</span>${shot(frameRows(f, at as number))}</div>`,
+    )
     .join('')}</div>`
 
 const figure = (f: Frame) =>
@@ -226,7 +239,13 @@ const concepts: PageConcept[] = [
         y10Row,
         blankRow(),
         RULE,
-        keyRow([cap('←→', 'choose'), cap('↵', 'confirm')], [['esc', 'home'], ['ctrl-c', 'quit']]),
+        keyRow(
+          [cap('←→', 'choose'), cap('↵', 'confirm')],
+          [
+            ['esc', 'home'],
+            ['ctrl-c', 'quit'],
+          ],
+        ),
       ]),
     ),
     section: 'Liked earlier',
@@ -239,7 +258,16 @@ const concepts: PageConcept[] = [
     html: shot(
       screen(
         [blankRow(), HEADER, blankRow(), ...BODY, blankRow(), ...listRows],
-        [RULE, keyRow([cap('↑↓', 'choose'), cap('↵', 'confirm')], [['esc', 'home'], ['ctrl-c', 'quit']])],
+        [
+          RULE,
+          keyRow(
+            [cap('↑↓', 'choose'), cap('↵', 'confirm')],
+            [
+              ['esc', 'home'],
+              ['ctrl-c', 'quit'],
+            ],
+          ),
+        ],
       ),
     ),
   },

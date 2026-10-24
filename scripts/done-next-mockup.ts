@@ -15,7 +15,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -283,7 +283,16 @@ const concepts: PageConcept[] = [
     html: shot(
       screen(
         [blankRow(), HEADER, blankRow(), ...BODY, blankRow(), ...listRows],
-        [RULE, keyRow([cap('↑↓', 'choose'), cap('↵', 'confirm')], [['esc', 'home'], ['ctrl-c', 'quit']])],
+        [
+          RULE,
+          keyRow(
+            [cap('↑↓', 'choose'), cap('↵', 'confirm')],
+            [
+              ['esc', 'home'],
+              ['ctrl-c', 'quit'],
+            ],
+          ),
+        ],
       ),
     ),
   },
@@ -292,10 +301,7 @@ const concepts: PageConcept[] = [
     name: 'The field comes back',
     idea: 'As a shell gives its prompt back once a command ends: home’s field sits under the result, ready for a path or a drop. o, s and p keep their keys. Typing / or ~, pasting or dropping goes into the field.',
     html: shot(
-      screen(
-        [...doneTop(), blankRow(), field],
-        doneBottom(keyRow([cap('↵', 'home'), OPEN, SHOW])),
-      ),
+      screen([...doneTop(), blankRow(), field], doneBottom(keyRow([cap('↵', 'home'), OPEN, SHOW]))),
     ),
   },
   {
@@ -305,7 +311,18 @@ const concepts: PageConcept[] = [
     html: shot(
       screen(
         [...doneTop()],
-        [buttonRow, blankRow(), RULE, keyRow([cap('←→', 'choose'), cap('↵', 'confirm')], [['esc', 'home'], ['ctrl-c', 'quit']])],
+        [
+          buttonRow,
+          blankRow(),
+          RULE,
+          keyRow(
+            [cap('←→', 'choose'), cap('↵', 'confirm')],
+            [
+              ['esc', 'home'],
+              ['ctrl-c', 'quit'],
+            ],
+          ),
+        ],
       ),
     ),
   },

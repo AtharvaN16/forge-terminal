@@ -19,7 +19,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { mix } from '../src/shell/home-art.js'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -143,7 +143,9 @@ function rows(k: Look, gap: number, at = -1): Cell[][] {
   const spare = frameW - 2 * SIDE - parts.reduce((n, p) => n + len(p), 0)
   const gaps = parts.length - 1
   const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
-  const segs: Seg[] = parts.flatMap((p, i) => (i ? [[' '.repeat(gapAt(i - 1)), undefined, k.fill] as Seg, ...p] : p))
+  const segs: Seg[] = parts.flatMap((p, i) =>
+    i ? [[' '.repeat(gapAt(i - 1)), undefined, k.fill] as Seg, ...p] : p,
+  )
   const row = (words: boolean) => {
     const r = line(L, [[' '.repeat(frameW), undefined, k.fill]])
     if (words) put(r, L + SIDE, segs)
@@ -157,7 +159,9 @@ const KEYS = keyRow([cap('tab', 'choose'), cap('↵', 'confirm')])
 const onScreen = (r: Cell[][]) => shot(screen(doneTop(), [...r, blankRow(), RULE, KEYS]))
 const states = (pairs: Array<[string, Cell[][]]>) =>
   `<div class="alone">${pairs
-    .map(([label, r]) => `<div class="moderow"><span class="mlabel">${label}</span>${shot(r)}</div>`)
+    .map(
+      ([label, r]) => `<div class="moderow"><span class="mlabel">${label}</span>${shot(r)}</div>`,
+    )
     .join('')}</div>`
 
 /** The screen at `gap`, then the row alone touching, a cell apart, and focused on Open. */

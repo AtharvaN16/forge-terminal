@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { mix } from '../src/shell/home-art.js'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -145,7 +145,9 @@ function rows(k: Look, gap: number, at: number): Cell[][] {
   const spare = frameW - 2 * SIDE - parts.reduce((n, p) => n + len(p), 0)
   const gaps = parts.length - 1
   const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
-  const segs: Seg[] = parts.flatMap((p, i) => (i ? [[' '.repeat(gapAt(i - 1)), undefined, k.fill] as Seg, ...p] : p))
+  const segs: Seg[] = parts.flatMap((p, i) =>
+    i ? [[' '.repeat(gapAt(i - 1)), undefined, k.fill] as Seg, ...p] : p,
+  )
   const words = line(L, [[' '.repeat(frameW), undefined, k.fill]])
   put(words, L + SIDE, segs)
   put(words, R - homeW, home)
@@ -188,7 +190,10 @@ function compare<R, C>(
 ): string {
   const head = `<div></div>${cols.map(([c]) => `<div class="ch">${c}</div>`).join('')}`
   const body = rowsOf
-    .map(([label, r]) => `<div class="rh">${label}</div>${cols.map(([, c]) => `<div>${shot(draw(r, c))}</div>`).join('')}`)
+    .map(
+      ([label, r]) =>
+        `<div class="rh">${label}</div>${cols.map(([, c]) => `<div>${shot(draw(r, c))}</div>`).join('')}`,
+    )
     .join('')
   return `<h2>${title}</h2><p class="lede">${note}</p><div class="cmp" style="grid-template-columns:120px repeat(${cols.length}, max-content)">${head}${body}</div>`
 }
@@ -243,7 +248,12 @@ const grids = [
       ['frame #242424', F_242],
       ['frame #1e1e1e', F_CANVAS],
     ],
-    (tint, fill) => rows({ ...BASE, fill, lift: fill === F_CANVAS ? q.selectionBg : q.keycapBg, tint }, 0, OPEN_AT),
+    (tint, fill) =>
+      rows(
+        { ...BASE, fill, lift: fill === F_CANVAS ? q.selectionBg : q.keycapBg, tint },
+        0,
+        OPEN_AT,
+      ),
   ),
   compare(
     'Compare: touching or a cell apart',

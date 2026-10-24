@@ -98,7 +98,12 @@ const frames: Record<string, Cell[][]> = {}
 }
 
 {
-  const part = (start: number, heading: string) => ({ start, heading, points: ['…'], refused: false })
+  const part = (start: number, heading: string) => ({
+    start,
+    heading,
+    points: ['…'],
+    refused: false,
+  })
   const { app, frame } = await session(
     [
       {

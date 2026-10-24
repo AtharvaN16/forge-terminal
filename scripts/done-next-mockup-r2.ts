@@ -17,7 +17,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -149,7 +149,11 @@ const bare: Draw = (b) =>
       ]
 
 /** The buttons from the margin, `gap` cells apart; `split` pushes the last to the block's end. */
-function row(bs: Button[], draw: Draw, { gap = 1, split = false, sep }: { gap?: number; split?: boolean; sep?: Seg } = {}): Cell[] {
+function row(
+  bs: Button[],
+  draw: Draw,
+  { gap = 1, split = false, sep }: { gap?: number; split?: boolean; sep?: Seg } = {},
+): Cell[] {
   const parts = bs.map(draw)
   if (split) {
     const last = parts.pop() ?? []
@@ -157,7 +161,10 @@ function row(bs: Button[], draw: Draw, { gap = 1, split = false, sep }: { gap?: 
     return ends(left, last)
   }
   const between: Seg[] = sep ? [sep] : [[' '.repeat(gap)]]
-  return line(L, parts.flatMap((p, i) => (i ? [...between, ...p] : p)))
+  return line(
+    L,
+    parts.flatMap((p, i) => (i ? [...between, ...p] : p)),
+  )
 }
 
 /** Y14: one bar across the block, no gaps; the spare cells shared out as padding. */
@@ -200,7 +207,10 @@ const above = (rows: Cell[][]) => shot(screen(doneTop(), [...rows, blankRow(), R
 /** The row alone, both words, for the detail. */
 const rowsAlone = (make: (word: string) => Cell[][]) =>
   `<div class="alone">${['Home', 'Done']
-    .map((w) => `<div class="moderow"><span class="mlabel">${w.toLowerCase()}</span>${shot(make(w))}</div>`)
+    .map(
+      (w) =>
+        `<div class="moderow"><span class="mlabel">${w.toLowerCase()}</span>${shot(make(w))}</div>`,
+    )
     .join('')}</div>`
 
 const figure = (screenHtml: string, make: (word: string) => Cell[][]) =>
@@ -243,7 +253,13 @@ const concepts: PageConcept[] = [
         y10Row,
         blankRow(),
         RULE,
-        keyRow([cap('←→', 'choose'), cap('↵', 'confirm')], [['esc', 'home'], ['ctrl-c', 'quit']]),
+        keyRow(
+          [cap('←→', 'choose'), cap('↵', 'confirm')],
+          [
+            ['esc', 'home'],
+            ['ctrl-c', 'quit'],
+          ],
+        ),
       ]),
     ),
     section: 'Liked in round one',
@@ -256,7 +272,16 @@ const concepts: PageConcept[] = [
     html: shot(
       screen(
         [blankRow(), HEADER, blankRow(), ...BODY, blankRow(), ...listRows],
-        [RULE, keyRow([cap('↑↓', 'choose'), cap('↵', 'confirm')], [['esc', 'home'], ['ctrl-c', 'quit']])],
+        [
+          RULE,
+          keyRow(
+            [cap('↑↓', 'choose'), cap('↵', 'confirm')],
+            [
+              ['esc', 'home'],
+              ['ctrl-c', 'quit'],
+            ],
+          ),
+        ],
       ),
     ),
   },
@@ -301,7 +326,10 @@ const concepts: PageConcept[] = [
     id: 'Y17',
     name: 'Tall buttons',
     idea: 'Each button three rows tall, a row of its fill above and below the words, so the row has the same weight as the strip at the top.',
-    html: figure(shot(screen(doneTop(), [...tall(buttons('Home')), blankRow(), RULE, FOOTNOTE])), (w) => tall(buttons(w))),
+    html: figure(
+      shot(screen(doneTop(), [...tall(buttons('Home')), blankRow(), RULE, FOOTNOTE])),
+      (w) => tall(buttons(w)),
+    ),
   },
   {
     id: 'Y18',

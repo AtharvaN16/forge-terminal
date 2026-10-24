@@ -40,7 +40,9 @@ async function until(what: string, cond: () => boolean, ms = 30_000) {
 }
 type Cell = { ch: string; fg: string | null; bg: string | null; b: boolean }
 const cells = (frame: string): Cell[][] =>
-  frame.split('\n').map((l) => ansiRow(l, 80).map((c) => ({ ch: c.ch, fg: c.fg, bg: c.bg, b: c.b })))
+  frame
+    .split('\n')
+    .map((l) => ansiRow(l, 80).map((c) => ({ ch: c.ch, fg: c.fg, bg: c.bg, b: c.b })))
 
 const dir = join(home, 'Pictures')
 mkdirSync(dir)
@@ -51,7 +53,10 @@ const W = 3000
 const H = 2000
 const raw = Buffer.alloc(W * H * 3)
 let seed = 7
-const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+const rnd = () => {
+  seed = (seed * 1103515245 + 12345) & 0x7fffffff
+  return seed / 0x7fffffff
+}
 for (let y = 0; y < H; y++)
   for (let x = 0; x < W; x++) {
     const i = (y * W + x) * 3
@@ -60,7 +65,9 @@ for (let y = 0; y < H; y++)
     raw[i + 1] = (y / H) * 160 + 50 + grain
     raw[i + 2] = 180 - (x / W) * 90 + grain
   }
-await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toFile(input)
+await sharp(raw, { raw: { width: W, height: H, channels: 3 } })
+  .png()
+  .toFile(input)
 const app = render(
   <App
     initialWidth={80}
@@ -119,7 +126,10 @@ try {
   await until('spinner', () => frame().includes('Compressing'), 10_000)
   await settle(500)
   snap('working')
-  await until('rerun', () => /✓ IMG_2041\.jpg {3}now/.test(frame()) && !frame().includes('Compressing'))
+  await until(
+    'rerun',
+    () => /✓ IMG_2041\.jpg {3}now/.test(frame()) && !frame().includes('Compressing'),
+  )
   await settle(300)
   snap('edited')
   app.stdin.write(ENTER)

@@ -90,7 +90,8 @@ function trail(g: Grid, answers: string[], current: string) {
   const start = end - cells.length
   for (let i = from; i < end; i++) row[i] = { ch: '╱', fg: HATCH[i], bg: CANVAS }
   cells.forEach((c, i) => {
-    row[start + i] = c.ch === '╱' ? { ch: '╱', fg: HATCH[start + i], bg: CANVAS } : { ...c, bg: CANVAS }
+    row[start + i] =
+      c.ch === '╱' ? { ch: '╱', fg: HATCH[start + i], bg: CANVAS } : { ...c, bg: CANVAS }
   })
 }
 
@@ -142,7 +143,9 @@ function stepLine(
         : run(label, p.faint)
   const head: Run[] = [blank(LEAD), mark, blank(1), name, ...count]
   const used = cellsOf(head).length
-  return clock ? [...head, blank(Math.max(1, END - used - clock.length)), run(clock, p.border)] : head
+  return clock
+    ? [...head, blank(Math.max(1, END - used - clock.length)), run(clock, p.border)]
+    : head
 }
 
 const HEARD = 2890
@@ -153,7 +156,13 @@ const clockOf = (s: number) =>
     : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 const heardBar = (done: number) =>
-  pagesRow({ palette: p, mode: 'transcribe', done, total: LENGTH, says: `${clockOf(done)} of ${clockOf(LENGTH)}` })
+  pagesRow({
+    palette: p,
+    mode: 'transcribe',
+    done,
+    total: LENGTH,
+    says: `${clockOf(done)} of ${clockOf(LENGTH)}`,
+  })
 
 const PARTS = 5
 const DONE = 2 // part 3 is being written
@@ -165,7 +174,9 @@ const smallSquares = (known: boolean): Row =>
   known
     ? [
         blank(LEAD + 2),
-        ...Array.from({ length: PARTS }, (_, i) => run('■ ', i < DONE ? RED : i === DONE ? NOW : p.faint)),
+        ...Array.from({ length: PARTS }, (_, i) =>
+          run('■ ', i < DONE ? RED : i === DONE ? NOW : p.faint),
+        ),
         said(DONE),
       ]
     : []
@@ -209,7 +220,13 @@ const VARIANTS: Variant[] = [
     id: 'W1',
     name: 'Your idea: two steps, small squares',
     idea: 'Writing notes waits faint under Transcribing until its parts are known. Each step keeps its own clock. A square per part: red when written, half red while it is being written, grey for the rest.',
-    heard: [stepLine('now', 'Transcribing', T1.heard), [], heardBar(HEARD), [], stepLine('later', 'Writing notes')],
+    heard: [
+      stepLine('now', 'Transcribing', T1.heard),
+      [],
+      heardBar(HEARD),
+      [],
+      stepLine('later', 'Writing notes'),
+    ],
     notes: [
       stepLine('done', 'Transcribing', T1.took),
       [],
@@ -224,7 +241,13 @@ const VARIANTS: Variant[] = [
     id: 'W2',
     name: 'The bar, cut into parts',
     idea: 'The notes bar is the transcribing bar’s own thirty cells, cut into one segment per part, so the two bars line up and read as one kind of thing.',
-    heard: [stepLine('now', 'Transcribing', T1.heard), [], heardBar(HEARD), [], stepLine('later', 'Writing notes')],
+    heard: [
+      stepLine('now', 'Transcribing', T1.heard),
+      [],
+      heardBar(HEARD),
+      [],
+      stepLine('later', 'Writing notes'),
+    ],
     notes: [
       stepLine('done', 'Transcribing', T1.took),
       [],
@@ -239,7 +262,13 @@ const VARIANTS: Variant[] = [
     id: 'W3',
     name: 'Big squares',
     idea: 'Two cells per part make a true square (a terminal cell is twice as tall as it is wide), drawn solid like the bar above.',
-    heard: [stepLine('now', 'Transcribing', T1.heard), [], heardBar(HEARD), [], stepLine('later', 'Writing notes')],
+    heard: [
+      stepLine('now', 'Transcribing', T1.heard),
+      [],
+      heardBar(HEARD),
+      [],
+      stepLine('later', 'Writing notes'),
+    ],
     notes: [
       stepLine('done', 'Transcribing', T1.took),
       [],
@@ -254,7 +283,13 @@ const VARIANTS: Variant[] = [
     id: 'W4',
     name: 'A finished step folds to one line',
     idea: 'Once transcribing is done its bar goes; the ✓ line keeps the length and the time it took. Only the step still running has a bar.',
-    heard: [stepLine('now', 'Transcribing', T1.heard), [], heardBar(HEARD), [], stepLine('later', 'Writing notes')],
+    heard: [
+      stepLine('now', 'Transcribing', T1.heard),
+      [],
+      heardBar(HEARD),
+      [],
+      stepLine('later', 'Writing notes'),
+    ],
     notes: [
       stepLine('done', 'Transcribing', T1.took, [run(`   ${clockOf(LENGTH)}`, p.dim)]),
       [],
@@ -268,7 +303,9 @@ const VARIANTS: Variant[] = [
     name: 'Two lines, no bars',
     idea: 'The least: each step is one line with its count beside its name. Nothing grows, so it says less about how far along it is.',
     heard: [
-      stepLine('now', 'Transcribing', T1.heard, [run(`   ${clockOf(HEARD)} of ${clockOf(LENGTH)}`, p.dim)]),
+      stepLine('now', 'Transcribing', T1.heard, [
+        run(`   ${clockOf(HEARD)} of ${clockOf(LENGTH)}`, p.dim),
+      ]),
       [],
       stepLine('later', 'Writing notes'),
     ],
@@ -286,9 +323,21 @@ function working(name: 'heard' | 'notes', rows: Row[]): Grid {
   realSize(g)
   trail(g, ['Desktop', 'influence-talk.md'], name === 'heard' ? 'Transcribing' : 'Writing notes')
   clearRows(g, 8, 21)
-  rows.forEach((r, i) => setRow(g, 8 + i, r))
+  rows.forEach((r, i) => {
+    setRow(g, 8 + i, r)
+  })
   // Both steps can be stopped, and nothing is written until the end.
-  setRow(g, keysOf(g), keyRow([['esc', 'stop']], [['nothing is saved until it is done', ''], ['ctrl-c', 'quit']]))
+  setRow(
+    g,
+    keysOf(g),
+    keyRow(
+      [['esc', 'stop']],
+      [
+        ['nothing is saved until it is done', ''],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 
@@ -313,7 +362,12 @@ const CLOCKS: { id: string; name: string; idea: string; say: (s: number) => stri
     id: 'T1',
     name: 'Minutes and seconds',
     idea: '“4m 12s”, and “1h 03m” past an hour. Under a minute it stays as today: “42.3s”.',
-    say: (s) => (s < 60 ? `${s.toFixed(1)}s` : s < 3600 ? `${Math.floor(s / 60)}m ${String(Math.floor(s % 60)).padStart(2, '0')}s` : `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`),
+    say: (s) =>
+      s < 60
+        ? `${s.toFixed(1)}s`
+        : s < 3600
+          ? `${Math.floor(s / 60)}m ${String(Math.floor(s % 60)).padStart(2, '0')}s`
+          : `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`,
   },
   {
     id: 'T2',
@@ -375,18 +429,35 @@ function pick(label: string, on: boolean, hint = '', pill = '', col = 18, quiet 
     run(' ', undefined, PILL),
   ]
   const pw = cellsOf(pillRuns).length
-  return [...head, run(' '.repeat(74 - used - pw), undefined, SELECT), ...pillRuns, run('  ', undefined, SELECT)]
+  return [
+    ...head,
+    run(' '.repeat(74 - used - pw), undefined, SELECT),
+    ...pillRuns,
+    run('  ', undefined, SELECT),
+  ]
 }
 /** The inactive group's choice: kept, marked, not highlighted. */
-const kept = (label: string): Row => [blank(4), run('▌', p.border), blank(1), run(label, p.fg, undefined, true)]
+const kept = (label: string): Row => [
+  blank(4),
+  run('▌', p.border),
+  blank(1),
+  run(label, p.fg, undefined, true),
+]
 const title = (t: string): Row => [blank(4), run(t, RED, undefined, true)]
 
-function chooseScreen(rows: Row[], keys: Row, answers: string[] = [], current = 'Transcribe to'): Grid {
+function chooseScreen(
+  rows: Row[],
+  keys: Row,
+  answers: string[] = [],
+  current = 'Transcribe to',
+): Grid {
   const g = frame('choose')
   realSize(g)
   trail(g, answers, current)
   clearRows(g, 8, 21)
-  rows.forEach((r, i) => setRow(g, 8 + i, r))
+  rows.forEach((r, i) => {
+    setRow(g, 8 + i, r)
+  })
   setRow(g, keysOf(g), keys)
   return g
 }
@@ -396,7 +467,12 @@ const BACK: [string, string][] = [
 ]
 const wantRows = (pillOn = true, hintFull = false) => [
   title('Transcribe to'),
-  pick('All', true, hintFull ? 'summary, notes and transcript · .md' : 'summary, notes and transcript', pillOn ? 'Standard' : ''),
+  pick(
+    'All',
+    true,
+    hintFull ? 'summary, notes and transcript · .md' : 'summary, notes and transcript',
+    pillOn ? 'Standard' : '',
+  ),
   pick('Notes', false),
   pick('Transcript', false),
 ]
@@ -444,7 +520,11 @@ const formatRows = (on: number) => [
 const bothRows = (focus: 'want' | 'format') => [
   title('Transcribe to'),
   ...(focus === 'want'
-    ? [pick('All', true, 'summary, notes and transcript', 'Standard'), pick('Notes', false), pick('Transcript', false)]
+    ? [
+        pick('All', true, 'summary, notes and transcript', 'Standard'),
+        pick('Notes', false),
+        pick('Transcript', false),
+      ]
     : [kept('All'), pick('Notes', false), pick('Transcript', false)]),
   [],
   title('Format'),
@@ -462,8 +542,20 @@ function doneScreen(menu: boolean): Grid {
       ...FORMATS.slice(1).map(([l, e], i) => pick(l, i === 0, e)),
     ]
     clearRows(g, 13, 21)
-    rows.forEach((r, i) => setRow(g, 13 + i, r))
-    setRow(g, keysOf(g), keyRow([['↑↓', 'choose'], ['↵', 'save']], BACK))
+    rows.forEach((r, i) => {
+      setRow(g, 13 + i, r)
+    })
+    setRow(
+      g,
+      keysOf(g),
+      keyRow(
+        [
+          ['↑↓', 'choose'],
+          ['↵', 'save'],
+        ],
+        BACK,
+      ),
+    )
   } else {
     setRow(
       g,
@@ -487,7 +579,10 @@ function doneScreen(menu: boolean): Grid {
 
 const flow = (steps: [string, Grid, number][]) =>
   `<div class="flow">${steps
-    .map(([cap, g, to], i) => `${i ? '<div class="arrow">↓</div>' : ''}<div class="cap">${cap}</div>${cropped(g, to)}`)
+    .map(
+      ([cap, g, to], i) =>
+        `${i ? '<div class="arrow">↓</div>' : ''}<div class="cap">${cap}</div>${cropped(g, to)}`,
+    )
     .join('')}</div>`
 
 const concepts: PageConcept[] = [
@@ -534,8 +629,37 @@ const concepts: PageConcept[] = [
     section:
       'OPTIONS — F1, F2, F3 or F4, pick one <span class="sub">Each is shown as its steps in order, top to bottom. Word is picked to show the change.</span>',
     html: flow([
-      ['Step 1 · Transcribe to', chooseScreen(wantRows(), keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['↵', 'confirm']], BACK)), 12],
-      ['Step 2 · Format', chooseScreen(formatRows(1), keyRow([['↑↓', 'choose'], ['↵', 'confirm']], BACK), ['All'], 'Format'), 13],
+      [
+        'Step 1 · Transcribe to',
+        chooseScreen(
+          wantRows(),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['↵', 'confirm'],
+            ],
+            BACK,
+          ),
+        ),
+        12,
+      ],
+      [
+        'Step 2 · Format',
+        chooseScreen(
+          formatRows(1),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['↵', 'confirm'],
+            ],
+            BACK,
+          ),
+          ['All'],
+          'Format',
+        ),
+        13,
+      ],
       ['Step 3 · Save as', saveAs('.docx', ['All', 'Word']), 24],
     ]),
   },
@@ -546,12 +670,33 @@ const concepts: PageConcept[] = [
     html: flow([
       [
         'Transcribe to has focus',
-        chooseScreen(bothRows('want'), keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['tab', 'format'], ['↵', 'confirm']], [['esc', 'back']])),
+        chooseScreen(
+          bothRows('want'),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['tab', 'format'],
+              ['↵', 'confirm'],
+            ],
+            [['esc', 'back']],
+          ),
+        ),
         18,
       ],
       [
         'After tab: Format has focus',
-        chooseScreen(bothRows('format'), keyRow([['↑↓', 'choose'], ['tab', 'transcribe to'], ['↵', 'confirm']], BACK)),
+        chooseScreen(
+          bothRows('format'),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['tab', 'transcribe to'],
+              ['↵', 'confirm'],
+            ],
+            BACK,
+          ),
+        ),
         18,
       ],
     ]),
@@ -563,7 +708,20 @@ const concepts: PageConcept[] = [
     html: flow([
       [
         'Save as',
-        saveAs('.docx', ['All'], true, keyRow([['↵', 'save'], ['↑↓', 'folder'], ['←→', 'format'], ['tab', 'default']], [['esc', 'back']])),
+        saveAs(
+          '.docx',
+          ['All'],
+          true,
+          keyRow(
+            [
+              ['↵', 'save'],
+              ['↑↓', 'folder'],
+              ['←→', 'format'],
+              ['tab', 'default'],
+            ],
+            [['esc', 'back']],
+          ),
+        ),
         24,
       ],
     ]),

@@ -143,7 +143,9 @@ function rows(k: Look, gap: number, at: number): Cell[][] {
   const spare = frameW - LEFT - RIGHT - parts.reduce((n, p) => n + len(p), 0)
   const gaps = parts.length - 1
   const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
-  const segs: Seg[] = parts.flatMap((p, i) => (i ? [[' '.repeat(gapAt(i - 1)), undefined, k.fill] as Seg, ...p] : p))
+  const segs: Seg[] = parts.flatMap((p, i) =>
+    i ? [[' '.repeat(gapAt(i - 1)), undefined, k.fill] as Seg, ...p] : p,
+  )
   const words = line(L, [[' '.repeat(frameW), undefined, k.fill]])
   put(words, L + LEFT, segs)
   put(words, R - homeW, home)
@@ -206,7 +208,12 @@ for (const [f, , fill] of FRAMES)
           )
 
 /** The screen around the buttons, drawn once: everything above them, and the rule and keys below. */
-const sample = screen(doneTop(), [...rows({ fill: q.shelf, lift: q.keycapBg, tint: MODE_BG }, 0, HOME_AT), blankRow(), RULE, KEYS])
+const sample = screen(doneTop(), [
+  ...rows({ fill: q.shelf, lift: q.keycapBg, tint: MODE_BG }, 0, HOME_AT),
+  blankRow(),
+  RULE,
+  KEYS,
+])
 const above = gridHtml(sample.slice(0, sample.length - 6), q)
 const below = gridHtml(sample.slice(sample.length - 3), q)
 

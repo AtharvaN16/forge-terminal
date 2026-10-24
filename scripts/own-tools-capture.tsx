@@ -58,13 +58,17 @@ function fakeYtDlp(script: string) {
       files: { 'yt-dlp': 'x' },
     }),
   )
-  writeFileSync(join(dir, 'yt-dlp'), `#!/bin/sh\ncase "$*" in *--update*) exit 0;; esac\n${script}\n`)
+  writeFileSync(
+    join(dir, 'yt-dlp'),
+    `#!/bin/sh\ncase "$*" in *--update*) exit 0;; esac\n${script}\n`,
+  )
   chmodSync(join(dir, 'yt-dlp'), 0o755)
 }
 const FACTS =
   'echo \'forge-facts {"title":"How Apple Silicon Works","uploader":"Branch Education","duration":1394,"is_live":false}\'\n' +
   'echo "forge-bytes 4200000 21800000"\nsleep 60'
-const FAILS = 'echo "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you are not a bot" >&2\nexit 1'
+const FAILS =
+  'echo "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you are not a bot" >&2\nexit 1'
 const LINK = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
 
 const app = render(

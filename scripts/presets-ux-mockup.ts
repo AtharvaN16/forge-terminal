@@ -26,8 +26,8 @@ import {
 } from '../src/shell/preset-editor.js'
 import { editorLines, OP_NAMES, subLines } from '../src/shell/preset-editor-art.js'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
-import { type Cell, type Grid, cellsOf, rowOf, termHtml, toGrid } from './term-cells.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
+import { type Cell, cellsOf, type Grid, rowOf, termHtml, toGrid } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
 const frames = JSON.parse(
@@ -87,7 +87,10 @@ const cap = (k: string, words: string): Seg[] => [
   [' ', undefined, P.keycapBg],
   [` ${words}`, P.dim],
 ]
-function keyRow(main: Array<[string, string]>, foot: Array<[string, string]> = [['esc', 'cancel']]): Cell[] {
+function keyRow(
+  main: Array<[string, string]>,
+  foot: Array<[string, string]> = [['esc', 'cancel']],
+): Cell[] {
   const left: Seg[] = main.flatMap(([k, w], i) => (i ? [['  '] as Seg, ...cap(k, w)] : cap(k, w)))
   const right: Seg[] = foot.flatMap(([k, w], i) => [
     ...(i ? ([[' · ', P.border]] as Seg[]) : []),
@@ -185,9 +188,7 @@ const inset = (runs: Run[]): Row => [run('   '), ...runs]
 /** The Done strip's way of saying the steps: dim source, faint arrows, the rest white bold. */
 function chain(parts: string[]): Run[] {
   return parts.flatMap((t, i) =>
-    i === 0
-      ? [run(t, P.dim)]
-      : [run(' → ', P.faint), run(t, P.fg, undefined, true)],
+    i === 0 ? [run(t, P.dim)] : [run(' → ', P.faint), run(t, P.fg, undefined, true)],
   )
 }
 const STEPS = ['PNG', 'JPEG 80', 'under 300 KB']
@@ -201,16 +202,47 @@ const stack = (...parts: string[]) => `<div class="stack">${parts.join('')}</div
 /* ---------------------------------------------------------------- today */
 
 const today: Array<[string, string, string]> = [
-  ['done', '1 · Done', '“continue editing →” and “p save as preset” are the quietest words on screen. Nothing says what either does.'],
-  ['editor', '2 · → opens nine rows', 'The cursor starts on Compress, which nobody asked for. ● and ○ are not explained; three rows say “not added”, one “no empty edges”.'],
-  ['compressSub', '3 · space on Compress', 'A window asks for a size in KB. Compress mode asked “By quality or To a target size”; here there is only one.'],
-  ['working', '4 · it works', 'A spinner and “Compressing”, nothing more. Undoing the change here used to leave it spinning forever (fixed in b91c125).'],
-  ['edited', '5 · the file as it is now', '“98.1% smaller” is against the original, not against the file you had a moment ago, so a step that made it bigger read as a saving (fixed).'],
-  ['save', '6 · p, Save as preset', 'The window covers the steps you are about to save. Nothing says what a preset is, or where you will find it again.'],
-  ['saved', '7 · saved', '“✓ saved as webblog” — and the app never mentions it again. The only way to run it is forge --preset webblog in a shell.'],
+  [
+    'done',
+    '1 · Done',
+    '“continue editing →” and “p save as preset” are the quietest words on screen. Nothing says what either does.',
+  ],
+  [
+    'editor',
+    '2 · → opens nine rows',
+    'The cursor starts on Compress, which nobody asked for. ● and ○ are not explained; three rows say “not added”, one “no empty edges”.',
+  ],
+  [
+    'compressSub',
+    '3 · space on Compress',
+    'A window asks for a size in KB. Compress mode asked “By quality or To a target size”; here there is only one.',
+  ],
+  [
+    'working',
+    '4 · it works',
+    'A spinner and “Compressing”, nothing more. Undoing the change here used to leave it spinning forever (fixed in b91c125).',
+  ],
+  [
+    'edited',
+    '5 · the file as it is now',
+    '“98.1% smaller” is against the original, not against the file you had a moment ago, so a step that made it bigger read as a saving (fixed).',
+  ],
+  [
+    'save',
+    '6 · p, Save as preset',
+    'The window covers the steps you are about to save. Nothing says what a preset is, or where you will find it again.',
+  ],
+  [
+    'saved',
+    '7 · saved',
+    '“✓ saved as webblog” — and the app never mentions it again. The only way to run it is forge --preset webblog in a shell.',
+  ],
 ]
 const todayHtml = `<div class="flow">${today
-  .map(([k, t, c]) => `<figure class="fr"><div class="ft">${t}</div>${shot(F[k] as Grid)}<figcaption>${c}</figcaption></figure>`)
+  .map(
+    ([k, t, c]) =>
+      `<figure class="fr"><div class="ft">${t}</div>${shot(F[k] as Grid)}<figcaption>${c}</figcaption></figure>`,
+  )
   .join('<div class="arrow">→</div>')}</div>`
 
 /* ======================================================= A · where presets live */
@@ -221,24 +253,57 @@ function menuWithPresets(): Grid {
   const SHELF = '#2c2c2c'
   const section = (name: string, row: number) => {
     const r = clear(g[row] as Cell[], 4, 72, SHELF)
-    put(r, 8, [[name, GOLD, SHELF, true], [' ', undefined, SHELF], ['─'.repeat(72 - 9 - name.length), P.faint, SHELF]])
+    put(r, 8, [
+      [name, GOLD, SHELF, true],
+      [' ', undefined, SHELF],
+      ['─'.repeat(72 - 9 - name.length), P.faint, SHELF],
+    ])
   }
   const item = (row: number, cmd: string, words: string, lit: boolean) => {
     const bg = lit ? P.panelBand : SHELF
     const r = clear(g[row] as Cell[], lit ? 6 : 4, 72, bg)
-    if (lit) put(r, 4, [['  ', undefined, SHELF], ['▌', GOLD, bg], [' ', undefined, bg]])
-    put(r, 8, [[cmd, P.fg, bg, lit], [' '.repeat(Math.max(1, 14 - cmd.length)), undefined, bg], [words, lit ? P.dim : P.border, bg]])
+    if (lit)
+      put(r, 4, [
+        ['  ', undefined, SHELF],
+        ['▌', GOLD, bg],
+        [' ', undefined, bg],
+      ])
+    put(r, 8, [
+      [cmd, P.fg, bg, lit],
+      [' '.repeat(Math.max(1, 14 - cmd.length)), undefined, bg],
+      [words, lit ? P.dim : P.border, bg],
+    ])
   }
   for (let row = 4; row <= 16; row++) clear(g[row] as Cell[], 4, 72, SHELF)
   section('Presets', 4)
   item(6, '/webblog', 'PNG → JPEG 80 → under 300 KB', true)
   item(7, '/social', '1080 wide → Crop to shape 1:1', false)
   section('Settings', 9)
-  for (const [i, c] of ['/theme', '/extensions', '/right-click', '/cli', '/update', '/about'].entries())
+  for (const [i, c] of [
+    '/theme',
+    '/extensions',
+    '/right-click',
+    '/cli',
+    '/update',
+    '/about',
+  ].entries())
     item(11 + i, c, '', false)
   // The field: what was typed.
   put(clear(g[19] as Cell[], 10, 76, '#242424'), 10, [['/web', P.fg, '#242424']])
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↑↓', 'choose'], ['↵', 'open']], [['esc', 'close'], ['ctrl-c', 'quit']]))
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'open'],
+      ],
+      [
+        ['esc', 'close'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 
@@ -247,9 +312,29 @@ function homeOnPreset(): Grid {
   const g = (F.home as Grid).map(copy)
   const row = g[7] as Cell[]
   clear(row, 4, 76, CANVAS)
-  put(row, 4, [[' ', undefined, '#262626'], ['/', ACCENT, '#262626', true], [' ', undefined, '#262626'], ['webblog', P.fg, '#262626', true], [' ', undefined, '#262626']])
-  put(row, 17, chain(STEPS).map((r) => [r.text, r.fg, undefined, r.bold] as Seg))
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([], [['esc', 'back to convert'], ['ctrl-c', 'quit']]))
+  put(row, 4, [
+    [' ', undefined, '#262626'],
+    ['/', ACCENT, '#262626', true],
+    [' ', undefined, '#262626'],
+    ['webblog', P.fg, '#262626', true],
+    [' ', undefined, '#262626'],
+  ])
+  put(
+    row,
+    17,
+    chain(STEPS).map((r) => [r.text, r.fg, undefined, r.bold] as Seg),
+  )
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [],
+      [
+        ['esc', 'back to convert'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 
@@ -263,14 +348,30 @@ function pickerWithPresets(): Grid {
     const r = g[row] as Cell[]
     if (lit) {
       clear(r, 4, 56, SEL)
-      put(r, 4, [['▌', ACCENT, SEL], [' ', undefined, SEL], [name, P.fg, SEL, true]])
-      put(r, 22, after.map(([t, fg, , b]) => [t, fg, SEL, b] as Seg))
+      put(r, 4, [
+        ['▌', ACCENT, SEL],
+        [' ', undefined, SEL],
+        [name, P.fg, SEL, true],
+      ])
+      put(
+        r,
+        22,
+        after.map(([t, fg, , b]) => [t, fg, SEL, b] as Seg),
+      )
     } else {
       put(r, 6, [[name, P.fg]])
       put(r, 22, after)
     }
   }
-  line(10, 'webblog', [['JPEG 80 → under 300 KB', P.dim], ['   297 KB', P.fg, undefined, true]], true)
+  line(
+    10,
+    'webblog',
+    [
+      ['JPEG 80 → under 300 KB', P.dim],
+      ['   297 KB', P.fg, undefined, true],
+    ],
+    true,
+  )
   line(11, 'social', [['1080 wide → 1:1', P.border]])
   put(g[12] as Cell[], 6, [['─'.repeat(48), P.faint]])
   for (const [i, f] of ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF'].entries()) line(13 + i, f, [])
@@ -282,7 +383,15 @@ function presetsTab(): Grid {
   const g = (F.home as Grid).map(copy)
   const row = g[7] as Cell[]
   clear(row, 4, 76, CANVAS)
-  const tabs: Array<[string, string]> = [['1', 'convert'], ['2', 'compress'], ['3', 'pdf'], ['4', 'edit'], ['5', 'transcribe'], ['6', 'colour'], ['7', 'presets']]
+  const tabs: Array<[string, string]> = [
+    ['1', 'convert'],
+    ['2', 'compress'],
+    ['3', 'pdf'],
+    ['4', 'edit'],
+    ['5', 'transcribe'],
+    ['6', 'colour'],
+    ['7', 'presets'],
+  ]
   // Seven only fit in the block at 80 columns with two-cell gaps, the lit
   // one padded on its fill: exactly the 72 cells from 4 to 75.
   let x = 4
@@ -291,16 +400,45 @@ function presetsTab(): Grid {
     if (on) {
       x -= 1
       const bg = '#262626'
-      put(row, x, [[' ', undefined, bg], [n, ACCENT, bg, true], [' ', undefined, bg], [t, P.fg, bg, true], [' ', undefined, bg]])
+      put(row, x, [
+        [' ', undefined, bg],
+        [n, ACCENT, bg, true],
+        [' ', undefined, bg],
+        [t, P.fg, bg, true],
+        [' ', undefined, bg],
+      ])
     } else put(row, x, [[n, P.border], [' '], [t, P.dim]])
     x += n.length + 1 + t.length + 2
   }
   // The drop zone keeps its shape and dots; the list sits under it.
   const SEL = '#323232'
   for (let r = 15; r <= 21; r++) clear(g[r] as Cell[], 0, N, CANVAS)
-  put(clear(g[16] as Cell[], 4, 60, SEL), 4, [['▌', ACCENT, SEL], [' ', undefined, SEL], ['webblog', P.fg, SEL, true], ['        ', undefined, SEL], ['JPEG 80 → under 300 KB', P.dim, SEL]])
-  put(g[17] as Cell[], 6, [['social', P.fg], ['         ', undefined], ['1080 wide → 1:1', P.border]])
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↑↓', 'choose'], ['⌫', 'delete']], [['1–7 ←→', 'mode'], ['ctrl-c', 'quit']]))
+  put(clear(g[16] as Cell[], 4, 60, SEL), 4, [
+    ['▌', ACCENT, SEL],
+    [' ', undefined, SEL],
+    ['webblog', P.fg, SEL, true],
+    ['        ', undefined, SEL],
+    ['JPEG 80 → under 300 KB', P.dim, SEL],
+  ])
+  put(g[17] as Cell[], 6, [
+    ['social', P.fg],
+    ['         ', undefined],
+    ['1080 wide → 1:1', P.border],
+  ])
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['⌫', 'delete'],
+      ],
+      [
+        ['1–7 ←→', 'mode'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 
@@ -312,7 +450,10 @@ const finderMenu = `<div class="mac"><div class="mac-file"><div class="thumb"></
 
 /* ====================================================== B · the editing window */
 
-const B0 = screen(overDone('Continue editing', editorLines(P, editor(), [FOOT_DONE], 66)), EDIT_KEYS)
+const B0 = screen(
+  overDone('Continue editing', editorLines(P, editor(), [FOOT_DONE], 66)),
+  EDIT_KEYS,
+)
 
 /** B1: the steps so far as the window's first line, the rows under it. */
 function b1(): Grid {
@@ -367,7 +508,14 @@ function b4(open: boolean): Grid {
   let mid = overDone('Continue editing', lines)
   if (open) {
     const top = winTop(lines) + 1 + 1 + have.length
-    const items = ['Resize', 'Trim edges', 'Crop to shape', 'Sharpen', 'Boost resolution', 'Remove background']
+    const items = [
+      'Resize',
+      'Trim edges',
+      'Crop to shape',
+      'Sharpen',
+      'Boost resolution',
+      'Remove background',
+    ]
     const sub: Row[] = [
       [],
       ...items.map((t, i): Row => {
@@ -383,13 +531,31 @@ function b4(open: boolean): Grid {
       }),
       [],
     ]
-    mid = windowOver(P, mid, { title: 'Add a step', lines: sub, width: 42, columns: N, top: top + 1, left: SUB_LEFT }).slice(0, 20)
+    mid = windowOver(P, mid, {
+      title: 'Add a step',
+      lines: sub,
+      width: 42,
+      columns: N,
+      top: top + 1,
+      left: SUB_LEFT,
+    }).slice(0, 20)
   }
   return screen(
     mid,
     open
-      ? keyRow([['↑↓', 'choose'], ['↵', 'add']], [['esc', 'back']])
-      : keyRow([['↑↓', 'choose'], ['space', 'select'], ['→', 'more'], ['↵', 'done']]),
+      ? keyRow(
+          [
+            ['↑↓', 'choose'],
+            ['↵', 'add'],
+          ],
+          [['esc', 'back']],
+        )
+      : keyRow([
+          ['↑↓', 'choose'],
+          ['space', 'select'],
+          ['→', 'more'],
+          ['↵', 'done'],
+        ]),
   )
 }
 
@@ -401,12 +567,18 @@ function working(foot: Row[], o: { lock?: boolean; keys?: Cell[] } = {}): Grid {
   if (o.lock) {
     // Every row but the working one goes faint, so the window reads as busy.
     lines = lines.map((row, i) =>
-      i >= 1 && i <= 9 && i !== 3 ? row.map((r) => (r.fg ? { ...r, fg: P.faint, bold: false } : r)) : row,
+      i >= 1 && i <= 9 && i !== 3
+        ? row.map((r) => (r.fg ? { ...r, fg: P.faint, bold: false } : r))
+        : row,
     )
   }
   return screen(overDone('Continue editing', lines), o.keys ?? EDIT_KEYS)
 }
-const spinFoot = (...after: Run[]): Row => [run(`${SPIN} `, ACCENT, undefined, true), run('Compressing', P.fg, undefined, true), ...after]
+const spinFoot = (...after: Run[]): Row => [
+  run(`${SPIN} `, ACCENT, undefined, true),
+  run('Compressing', P.fg, undefined, true),
+  ...after,
+]
 
 /* ========================================================== D · saving the steps */
 
@@ -419,7 +591,12 @@ function saveLines(typed = false): Row[] {
   while (out.length && rlen(out[out.length - 1] as Row) === 0) out.pop()
   return out
 }
-const SAVE_KEYS = keyRow([['↵', 'save'], ['↑↓', 'folder'], ['tab', 'make default'], ['/', 'new folder']])
+const SAVE_KEYS = keyRow([
+  ['↵', 'save'],
+  ['↑↓', 'folder'],
+  ['tab', 'make default'],
+  ['/', 'new folder'],
+])
 
 /** The edit window, faded, with Save as preset over it: p pressed inside Continue editing. */
 function saveOverEditor(withSteps: boolean): Grid {
@@ -433,7 +610,11 @@ function saveOverEditor(withSteps: boolean): Grid {
 function savedSays(words: Run[]): Grid {
   const g = (F.saved as Grid).map(copy)
   const r = clear(g[20] as Cell[], 4, 50, CANVAS)
-  put(r, 4, words.map((w) => [w.text, w.fg, undefined, w.bold] as Seg))
+  put(
+    r,
+    4,
+    words.map((w) => [w.text, w.fg, undefined, w.bold] as Seg),
+  )
   return g
 }
 
@@ -448,17 +629,41 @@ function e1(): Grid {
   const top = winTop(lines) + 1 + 1 + 1
   const opt = (lit: boolean, name: string, after: Run[]): Row => {
     const b = lit ? P.panelBand : undefined
-    const r: Row = [run(lit ? ' › ' : '   ', ACCENT, b, true), run(name.padEnd(20), lit ? P.fg : P.dim, b, lit), ...after]
+    const r: Row = [
+      run(lit ? ' › ' : '   ', ACCENT, b, true),
+      run(name.padEnd(20), lit ? P.fg : P.dim, b, lit),
+      ...after,
+    ]
     return [...r, run(' '.repeat(Math.max(0, 40 - rlen(r))), undefined, b)]
   }
   const sub: Row[] = [
     [],
     opt(true, 'By quality', [run('80', P.fg, P.panelBand, true)]),
-    opt(false, 'To a target size', [run(' ', undefined, P.band), run('    ', undefined, P.band), run(' KB', P.dim)]),
+    opt(false, 'To a target size', [
+      run(' ', undefined, P.band),
+      run('    ', undefined, P.band),
+      run(' KB', P.dim),
+    ]),
     [],
   ]
-  mid = windowOver(P, mid, { title: 'Quality', lines: sub, width: 42, columns: N, top: top + 1, left: SUB_LEFT }).slice(0, 20)
-  return screen(mid, keyRow([['↑↓', 'choose'], ['↵', 'confirm']], [['esc', 'back']]))
+  mid = windowOver(P, mid, {
+    title: 'Quality',
+    lines: sub,
+    width: 42,
+    columns: N,
+    top: top + 1,
+    left: SUB_LEFT,
+  }).slice(0, 20)
+  return screen(
+    mid,
+    keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'confirm'],
+      ],
+      [['esc', 'back']],
+    ),
+  )
 }
 
 /** E2: both rows stay; with Compress on, Quality says it is now the most it may use. */
@@ -471,7 +676,8 @@ function e2(): Grid {
   if (at >= 0) q.splice(at, 1, run('up to 80', P.fg))
   const fixed: Row = [...q]
   const w = rlen(fixed)
-  if (w > 66) fixed.splice(-1, 1, run(' '.repeat(Math.max(0, 66 - (w - rlen([q[q.length - 1] as Run]))))))
+  if (w > 66)
+    fixed.splice(-1, 1, run(' '.repeat(Math.max(0, 66 - (w - rlen([q[q.length - 1] as Run]))))))
   lines[2] = fixed
   return screen(overDone('Continue editing', lines), EDIT_KEYS)
 }
@@ -494,7 +700,14 @@ function e3(): Grid {
     run(' KB', P.dim, b),
   ]
   lines[2] = [...lit, run(' '.repeat(Math.max(0, 66 - rlen(lit))), undefined, b)]
-  return screen(overDone('Continue editing', lines), keyRow([['0–9', 'size'], ['tab', 'quality'], ['↵', 'done']]))
+  return screen(
+    overDone('Continue editing', lines),
+    keyRow([
+      ['0–9', 'size'],
+      ['tab', 'quality'],
+      ['↵', 'done'],
+    ]),
+  )
 }
 
 /* ------------------------------------------------------------ concepts */
@@ -507,7 +720,10 @@ const concepts: PageConcept[] = [
     section: 'OPTIONS — pick one or more: where a saved preset is found again',
     name: 'Each preset is a / command',
     idea: 'MY PICK, with A2. The / menu gets a Presets section first: /webblog, its steps where a command’s words go. Choosing it makes the preset the mode — its steps under the tabs — and the next file dropped goes straight through it. The name rule (letters, digits, dashes) was made for this: /webblog here, forge --preset webblog in a shell.',
-    html: stack(frameOf(menuWithPresets(), 'typing /web'), frameOf(homeOnPreset(), '↵ — webblog is the mode until esc')),
+    html: stack(
+      frameOf(menuWithPresets(), 'typing /web'),
+      frameOf(homeOnPreset(), '↵ — webblog is the mode until esc'),
+    ),
   },
   {
     id: 'A2',
@@ -532,7 +748,8 @@ const concepts: PageConcept[] = [
   {
     id: 'B0',
     tab: '2 · The editing window',
-    section: 'OPTIONS — what Continue editing shows. Its shape (W2: one window, a row per operation, ● / ○, a row’s window under it) stays unless you pick B4',
+    section:
+      'OPTIONS — what Continue editing shows. Its shape (W2: one window, a row per operation, ● / ○, a row’s window under it) stays unless you pick B4',
     name: 'Today, after the fixes',
     idea: 'For comparison. Opens with the cursor on Compress; nine rows; four of them cannot be used on this photo.',
     html: frameOf(B0),
@@ -566,7 +783,8 @@ const concepts: PageConcept[] = [
   {
     id: 'C1',
     tab: '3 · While it works',
-    section: 'OPTIONS — what the window says while a step runs (here Compress on a 16 MB photo, a few seconds)',
+    section:
+      'OPTIONS — what the window says while a step runs (here Compress on a 16 MB photo, a few seconds)',
     name: 'Today, after the fixes',
     idea: 'For comparison: the row spins, the foot says Compressing, a clock after 3 s. Nothing says the file on disk is untouched or how far along it is.',
     html: frameOf(F.working as Grid),
@@ -592,7 +810,15 @@ const concepts: PageConcept[] = [
             run('…', P.dim),
           ],
         ],
-        { keys: keyRow([['↑↓', 'choose'], ['space', 'select']], [['esc', 'stop']]) },
+        {
+          keys: keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['space', 'select'],
+            ],
+            [['esc', 'stop']],
+          ),
+        },
       ),
     ),
   },
@@ -600,7 +826,12 @@ const concepts: PageConcept[] = [
     id: 'C4',
     name: 'The window waits with you',
     idea: 'Every row but the working one goes faint and the keys shrink to esc stop: plainly busy, plainly stoppable. Costs the ability to queue the next change while one runs.',
-    html: frameOf(working([spinFoot(run('   0:04', P.dim))], { lock: true, keys: keyRow([], [['esc', 'stop']]) })),
+    html: frameOf(
+      working([spinFoot(run('   0:04', P.dim))], {
+        lock: true,
+        keys: keyRow([], [['esc', 'stop']]),
+      }),
+    ),
   },
 
   /* D */
@@ -611,7 +842,18 @@ const concepts: PageConcept[] = [
     name: 'p inside the window',
     idea: 'MY PICK, with D2. The edit window’s keys gain p save as preset, the same key as on Done. The Save as preset window opens over the edit window; esc goes back to it.',
     html: stack(
-      frameOf(screen(overDone('Continue editing', editorLines(P, compressed(), [FOOT_EDITED], 66)), keyRow([['↑↓', 'choose'], ['space', 'select'], ['↵', 'done'], ['p', 'save as preset']])), 'the edit window’s keys'),
+      frameOf(
+        screen(
+          overDone('Continue editing', editorLines(P, compressed(), [FOOT_EDITED], 66)),
+          keyRow([
+            ['↑↓', 'choose'],
+            ['space', 'select'],
+            ['↵', 'done'],
+            ['p', 'save as preset'],
+          ]),
+        ),
+        'the edit window’s keys',
+      ),
       frameOf(saveOverEditor(false), 'p'),
     ),
   },
@@ -627,8 +869,22 @@ const concepts: PageConcept[] = [
     idea: 'Leaving the window with new steps asks once whether to keep them; ↵ again just leaves. Hard to miss — but a question every time you edit, which may wear.',
     html: frameOf(
       screen(
-        overDone('Continue editing', editorLines(P, compressed(), [[run('Keep these steps as a preset?', P.fg, undefined, true)]], 66)),
-        keyRow([['p', 'save as preset'], ['↵', 'just this file']], [['esc', 'back']]),
+        overDone(
+          'Continue editing',
+          editorLines(
+            P,
+            compressed(),
+            [[run('Keep these steps as a preset?', P.fg, undefined, true)]],
+            66,
+          ),
+        ),
+        keyRow(
+          [
+            ['p', 'save as preset'],
+            ['↵', 'just this file'],
+          ],
+          [['esc', 'back']],
+        ),
       ),
     ),
   },
@@ -643,7 +899,8 @@ const concepts: PageConcept[] = [
   {
     id: 'E1',
     tab: '5 · Compress and Quality',
-    section: 'OPTIONS — Compress and Quality both set how small the file gets; today they are two rows that silently fight',
+    section:
+      'OPTIONS — Compress and Quality both set how small the file gets; today they are two rows that silently fight',
     name: 'One Quality row, compress mode’s two ways',
     idea: 'The Compress row goes. Quality’s window offers By quality or To a target size, exactly as compress mode asks. One row, one answer.',
     html: frameOf(e1()),

@@ -11,7 +11,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -135,7 +135,9 @@ function frameRows(bs: Button[], at: number, f: Frame): Cell[][] {
   const spare = inner - parts.reduce((n, p) => n + len(p), 0)
   const gaps = parts.length - 1
   const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
-  const segs: Seg[] = parts.flatMap((p, i) => (i ? [[' '.repeat(gapAt(i - 1)), undefined, f.fill] as Seg, ...p] : p))
+  const segs: Seg[] = parts.flatMap((p, i) =>
+    i ? [[' '.repeat(gapAt(i - 1)), undefined, f.fill] as Seg, ...p] : p,
+  )
   const fillRow = () => line(L, [[' '.repeat(W), undefined, f.fill]])
   const words = put(fillRow(), L + f.side, segs)
   const padRow = () => {
@@ -164,7 +166,9 @@ function splitRows(at: number, f: Frame, gap: number): Cell[][] {
   const spare = frameW - 2 * f.side - parts.reduce((n, p) => n + len(p), 0)
   const gaps = parts.length - 1
   const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
-  const segs: Seg[] = parts.flatMap((p, i) => (i ? [[' '.repeat(gapAt(i - 1)), undefined, f.fill] as Seg, ...p] : p))
+  const segs: Seg[] = parts.flatMap((p, i) =>
+    i ? [[' '.repeat(gapAt(i - 1)), undefined, f.fill] as Seg, ...p] : p,
+  )
   const row = (words: boolean) => {
     const r = line(L, [[' '.repeat(frameW), undefined, f.fill]])
     if (words) put(r, L + f.side, segs)
@@ -178,25 +182,40 @@ function splitRows(at: number, f: Frame, gap: number): Cell[][] {
 const R3_KEYS = keyRow([cap('←→', 'choose'), cap('↵', 'confirm')])
 const KEYS = keyRow([cap('tab', 'choose'), cap('↵', 'confirm')])
 
-const onScreen = (rows: Cell[][], keys: Cell[]) => shot(screen(doneTop(), [...rows, blankRow(), RULE, keys]))
+const onScreen = (rows: Cell[][], keys: Cell[]) =>
+  shot(screen(doneTop(), [...rows, blankRow(), RULE, keys]))
 
 /** The row alone in two states, labelled. */
 const states = (pairs: Array<[string, Cell[][]]>) =>
   `<div class="alone">${pairs
-    .map(([label, rows]) => `<div class="moderow"><span class="mlabel">${label}</span>${shot(rows)}</div>`)
+    .map(
+      ([label, rows]) =>
+        `<div class="moderow"><span class="mlabel">${label}</span>${shot(rows)}</div>`,
+    )
     .join('')}</div>`
 
 const splitFigure = (f: Frame, gap: number) =>
-  `<div style="display:flex;flex-direction:column;gap:18px">${onScreen(splitRows(-1, f, gap), KEYS)}${states([
-    ['on Home', splitRows(-1, f, gap)],
-    ['on Open', splitRows(0, f, gap)],
-  ])}</div>`
+  `<div style="display:flex;flex-direction:column;gap:18px">${onScreen(splitRows(-1, f, gap), KEYS)}${states(
+    [
+      ['on Home', splitRows(-1, f, gap)],
+      ['on Open', splitRows(0, f, gap)],
+    ],
+  )}</div>`
 
-const figure = (bs: Button[], f: Frame, keys: Cell[], home: number, other: number, otherName: string) =>
-  `<div style="display:flex;flex-direction:column;gap:18px">${onScreen(frameRows(bs, home, f), keys)}${states([
-    ['on Home', frameRows(bs, home, f)],
-    [`on ${otherName}`, frameRows(bs, other, f)],
-  ])}</div>`
+const figure = (
+  bs: Button[],
+  f: Frame,
+  keys: Cell[],
+  home: number,
+  other: number,
+  otherName: string,
+) =>
+  `<div style="display:flex;flex-direction:column;gap:18px">${onScreen(frameRows(bs, home, f), keys)}${states(
+    [
+      ['on Home', frameRows(bs, home, f)],
+      [`on ${otherName}`, frameRows(bs, other, f)],
+    ],
+  )}</div>`
 
 /* ------------------------------------------------------------ concepts */
 

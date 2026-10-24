@@ -91,7 +91,8 @@ function trail(g: Grid, answers: string[], current: string) {
   const start = end - cells.length
   for (let i = from; i < end; i++) row[i] = { ch: '╱', fg: HATCH[i], bg: CANVAS }
   cells.forEach((c, i) => {
-    row[start + i] = c.ch === '╱' ? { ch: '╱', fg: HATCH[start + i], bg: CANVAS } : { ...c, bg: CANVAS }
+    row[start + i] =
+      c.ch === '╱' ? { ch: '╱', fg: HATCH[start + i], bg: CANVAS } : { ...c, bg: CANVAS }
   })
 }
 
@@ -143,7 +144,9 @@ function stepLine(
         : run(label, p.faint)
   const head: Run[] = [blank(LEAD), mark, blank(1), name, ...count]
   const used = cellsOf(head).length
-  return clock ? [...head, blank(Math.max(1, END - used - clock.length)), run(clock, p.border)] : head
+  return clock
+    ? [...head, blank(Math.max(1, END - used - clock.length)), run(clock, p.border)]
+    : head
 }
 
 const HEARD = 2890
@@ -154,7 +157,13 @@ const clockOf = (s: number) =>
     : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 const heardBar = (done: number) =>
-  pagesRow({ palette: p, mode: 'transcribe', done, total: LENGTH, says: `${clockOf(done)} of ${clockOf(LENGTH)}` })
+  pagesRow({
+    palette: p,
+    mode: 'transcribe',
+    done,
+    total: LENGTH,
+    says: `${clockOf(done)} of ${clockOf(LENGTH)}`,
+  })
 
 const PARTS = 5
 const DONE = 2 // part 3 is being written
@@ -166,7 +175,9 @@ const smallSquares = (known: boolean): Row =>
   known
     ? [
         blank(LEAD + 2),
-        ...Array.from({ length: PARTS }, (_, i) => run('■ ', i < DONE ? RED : i === DONE ? NOW : p.faint)),
+        ...Array.from({ length: PARTS }, (_, i) =>
+          run('■ ', i < DONE ? RED : i === DONE ? NOW : p.faint),
+        ),
         said(DONE),
       ]
     : []
@@ -199,7 +210,9 @@ function working(name: 'heard' | 'notes', rows: Row[]): Grid {
   realSize(g)
   trail(g, ['Desktop', 'influence-talk.md'], name === 'heard' ? 'Transcribing' : 'Writing notes')
   clearRows(g, 8, 21)
-  rows.forEach((r, i) => setRow(g, 8 + i, r))
+  rows.forEach((r, i) => {
+    setRow(g, 8 + i, r)
+  })
   // Both steps can be stopped. No footnote (user, 2026-10-22).
   setRow(g, keysOf(g), keyRow([['esc', 'stop']], [['ctrl-c', 'quit']]))
   return g
@@ -257,18 +270,35 @@ function pick(label: string, on: boolean, hint = '', pill = '', col = 18, quiet 
     run(' ', undefined, PILL),
   ]
   const pw = cellsOf(pillRuns).length
-  return [...head, run(' '.repeat(74 - used - pw), undefined, SELECT), ...pillRuns, run('  ', undefined, SELECT)]
+  return [
+    ...head,
+    run(' '.repeat(74 - used - pw), undefined, SELECT),
+    ...pillRuns,
+    run('  ', undefined, SELECT),
+  ]
 }
 /** The inactive group's choice: kept, marked, not highlighted. */
-const kept = (label: string): Row => [blank(4), run('▌', p.border), blank(1), run(label, p.fg, undefined, true)]
+const kept = (label: string): Row => [
+  blank(4),
+  run('▌', p.border),
+  blank(1),
+  run(label, p.fg, undefined, true),
+]
 const title = (t: string): Row => [blank(4), run(t, RED, undefined, true)]
 
-function chooseScreen(rows: Row[], keys: Row, answers: string[] = [], current = 'Transcribe to'): Grid {
+function chooseScreen(
+  rows: Row[],
+  keys: Row,
+  answers: string[] = [],
+  current = 'Transcribe to',
+): Grid {
   const g = frame('choose')
   realSize(g)
   trail(g, answers, current)
   clearRows(g, 8, 21)
-  rows.forEach((r, i) => setRow(g, 8 + i, r))
+  rows.forEach((r, i) => {
+    setRow(g, 8 + i, r)
+  })
   setRow(g, keysOf(g), keys)
   return g
 }
@@ -299,7 +329,11 @@ const decidedNotes: Row[] = [
 const TAG_FG = '#c98a4b'
 const TAG_BG = '#33261a'
 /** Save as's "default" tag, as it sits on the default folder's row. */
-const tag = (): Run[] => [run(' ', undefined, TAG_BG), run('default', TAG_FG, TAG_BG), run(' ', undefined, TAG_BG)]
+const tag = (): Run[] => [
+  run(' ', undefined, TAG_BG),
+  run('default', TAG_FG, TAG_BG),
+  run(' ', undefined, TAG_BG),
+]
 const pillOf = (v: string): Run[] => [
   run(' ', undefined, PILL),
   run('‹', RED, PILL, true),
@@ -330,13 +364,21 @@ function item(
     run(' ', undefined, bg),
     run(label, p.fg, bg, state !== 'off'),
     ...(state === 'on' && hint
-      ? [run(' '.repeat(Math.max(1, col - from - 2 - label.length)), undefined, bg), run(hint, p.dim, bg)]
+      ? [
+          run(' '.repeat(Math.max(1, col - from - 2 - label.length)), undefined, bg),
+          run(hint, p.dim, bg),
+        ]
       : []),
   ]
   const used = cellsOf(head).length
   const tail = cellsOf(end).length
   const gap = to - from - used - tail - (tail ? 2 : 0)
-  return [...head, run(' '.repeat(Math.max(1, gap)), undefined, bg), ...end, ...(tail ? [run('  ', undefined, bg)] : [])]
+  return [
+    ...head,
+    run(' '.repeat(Math.max(1, gap)), undefined, bg),
+    ...end,
+    ...(tail ? [run('  ', undefined, bg)] : []),
+  ]
 }
 const row = (...runs: Run[][]): Row => [blank(4), ...runs.flat()]
 
@@ -352,7 +394,12 @@ function windowed(rows: Row[], room: number, cursor: number): Row[] {
 
 const WHAT = (want: State, detail = true): Row[] => [
   title('Transcribe to'),
-  row(item('All', want, { hint: 'summary, notes and transcript', end: detail && want === 'on' ? pillOf('Standard') : [] })),
+  row(
+    item('All', want, {
+      hint: 'summary, notes and transcript',
+      end: detail && want === 'on' ? pillOf('Standard') : [],
+    }),
+  ),
   row(item('Notes', 'off')),
   row(item('Transcript', 'off')),
 ]
@@ -369,13 +416,37 @@ function screen(
   const room = h - 10
   const g = chooseScreen([], keys, answers, current)
   clearRows(g, 8, 21)
-  windowed(rows, room, cursor).forEach((r, i) => setRow(g, 8 + i, r))
+  windowed(rows, room, cursor).forEach((r, i) => {
+    setRow(g, 8 + i, r)
+  })
   return h === 24 ? g : [...g.slice(0, 8 + room), ...g.slice(g.length - 2)]
 }
 
-const ON_ALL = keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['↵', 'confirm']], BACK)
-const ON_FORMAT = keyRow([['↑↓', 'choose'], ['tab', 'make default'], ['↵', 'confirm']], BACK)
-const ON_FORMAT_ROW = keyRow([['↑↓', 'choose'], ['←→', 'format'], ['tab', 'make default'], ['↵', 'confirm']], [['esc', 'back']])
+const ON_ALL = keyRow(
+  [
+    ['↑↓', 'choose'],
+    ['←→', 'detail'],
+    ['↵', 'confirm'],
+  ],
+  BACK,
+)
+const ON_FORMAT = keyRow(
+  [
+    ['↑↓', 'choose'],
+    ['tab', 'make default'],
+    ['↵', 'confirm'],
+  ],
+  BACK,
+)
+const ON_FORMAT_ROW = keyRow(
+  [
+    ['↑↓', 'choose'],
+    ['←→', 'format'],
+    ['tab', 'make default'],
+    ['↵', 'confirm'],
+  ],
+  [['esc', 'back']],
+)
 
 const formatRows1 = (on: number): Row[] => [
   title('Format'),
@@ -427,7 +498,10 @@ const SPLIT = 44
 function s3(focus: 'what' | 'format'): Row[] {
   const left: Run[][] = [
     [run('Transcribe to', RED, undefined, true)],
-    item('All', focus === 'what' ? 'on' : 'kept', { to: SPLIT - 2, end: focus === 'what' ? pillOf('Standard') : [] }),
+    item('All', focus === 'what' ? 'on' : 'kept', {
+      to: SPLIT - 2,
+      end: focus === 'what' ? pillOf('Standard') : [],
+    }),
     item('Notes', 'off', { to: SPLIT - 2 }),
     item('Transcript', 'off', { to: SPLIT - 2 }),
     [],
@@ -457,7 +531,10 @@ const s4 = (focus: 'what' | 'format', value: number): Row[] => [
     item('Format', focus === 'format' ? 'on' : 'off', {
       end:
         focus === 'format'
-          ? [...(value === 0 ? [...tag(), run(' ', undefined, SELECT)] : []), ...pillOf((FORMATS[value] ?? FORMATS[0])[0])]
+          ? [
+              ...(value === 0 ? [...tag(), run(' ', undefined, SELECT)] : []),
+              ...pillOf((FORMATS[value] ?? FORMATS[0])[0]),
+            ]
           : [run((FORMATS[value] ?? FORMATS[0])[0], p.dim)],
     }),
   ),
@@ -488,7 +565,11 @@ const b1 = (chosen: number): Row[] => [strip(chosen), [], ...WHAT('on')]
 function b2Row(ext: string): Row {
   const base = item('All', 'on', { end: pillOf('Standard') })
   const head = base.slice(0, 3)
-  const hint: Run[] = [pad(18 - 6 - 3, SELECT), run('summary, notes and transcript · ', p.dim, SELECT), run(ext, RED, SELECT, true)]
+  const hint: Run[] = [
+    pad(18 - 6 - 3, SELECT),
+    run('summary, notes and transcript · ', p.dim, SELECT),
+    run(ext, RED, SELECT, true),
+  ]
   const tail = pillOf('Standard')
   const gap = 72 - used([...head, ...hint]) - used(tail) - 2
   return [blank(4), ...head, ...hint, pad(gap, SELECT), ...tail, pad(2, SELECT)]
@@ -504,8 +585,18 @@ function cards(sel: number, focus: boolean, def = 0): Row[] {
     const on = i === sel
     const edge = on && focus ? RED : on ? p.fg : p.border
     const gap = i ? [pad(2)] : []
-    tops.push(...gap, run('╭─ ', edge), run(e, on ? (focus ? RED : p.fg) : p.dim, undefined, on), run(` ${'─'.repeat(w - 5 - e.length)}╮`, edge))
-    mids.push(...gap, run('│ ', edge), run(l.padEnd(w - 3), on ? p.fg : p.dim, undefined, on), run('│', edge))
+    tops.push(
+      ...gap,
+      run('╭─ ', edge),
+      run(e, on ? (focus ? RED : p.fg) : p.dim, undefined, on),
+      run(` ${'─'.repeat(w - 5 - e.length)}╮`, edge),
+    )
+    mids.push(
+      ...gap,
+      run('│ ', edge),
+      run(l.padEnd(w - 3), on ? p.fg : p.dim, undefined, on),
+      run('│', edge),
+    )
     bots.push(
       ...gap,
       ...(i === def
@@ -570,7 +661,19 @@ function typedName(): Grid {
     to[at + i] = { ...(to[at] as Cell), ch, fg: p.fg, b: true }
   })
   swap(g, 17, 'Desktop  ', 'Documents', p.fg)
-  setRow(g, keysOf(g), keyRow([['↵', 'save'], ['→', 'complete'], ['↑↓', 'folder'], ['tab', 'default']], [['esc', 'back']]))
+  setRow(
+    g,
+    keysOf(g),
+    keyRow(
+      [
+        ['↵', 'save'],
+        ['→', 'complete'],
+        ['↑↓', 'folder'],
+        ['tab', 'default'],
+      ],
+      [['esc', 'back']],
+    ),
+  )
   return g
 }
 
@@ -612,8 +715,40 @@ const BROAD: { id: string; name: string; idea: string; frames: [string, Grid][] 
     name: 'A strip of formats, picked by number',
     idea: 'The formats sit on one strip above the question, like home’s tabs; 1–4 picks one from anywhere, so ↑↓ and ←→ keep their jobs. No default to set: the last one used is the one next time. One row, so it never hides.',
     frames: [
-      ['80 × 24 · Word picked', screen(b1(1), keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['1–4', 'format'], ['↵', 'confirm']], [['esc', 'back']]), 24, 3)],
-      ['80 × 16', screen(b1(1), keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['1–4', 'format'], ['↵', 'confirm']], [['esc', 'back']]), 16, 3)],
+      [
+        '80 × 24 · Word picked',
+        screen(
+          b1(1),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['1–4', 'format'],
+              ['↵', 'confirm'],
+            ],
+            [['esc', 'back']],
+          ),
+          24,
+          3,
+        ),
+      ],
+      [
+        '80 × 16',
+        screen(
+          b1(1),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['1–4', 'format'],
+              ['↵', 'confirm'],
+            ],
+            [['esc', 'back']],
+          ),
+          16,
+          3,
+        ),
+      ],
     ],
   },
   {
@@ -624,8 +759,21 @@ const BROAD: { id: string; name: string; idea: string; frames: [string, Grid][] 
       [
         '80 × 24 · after w',
         screen(
-          [title('Transcribe to'), b2Row('.docx'), row(item('Notes', 'off')), row(item('Transcript', 'off'))],
-          keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['m w p t', 'format'], ['↵', 'confirm']], [['esc', 'back']]),
+          [
+            title('Transcribe to'),
+            b2Row('.docx'),
+            row(item('Notes', 'off')),
+            row(item('Transcript', 'off')),
+          ],
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['m w p t', 'format'],
+              ['↵', 'confirm'],
+            ],
+            [['esc', 'back']],
+          ),
           24,
           1,
         ),
@@ -646,8 +794,38 @@ const BROAD: { id: string; name: string; idea: string; frames: [string, Grid][] 
     name: 'More than one at once',
     idea: 'Tick as many as you want and get one file each — say Markdown for your notes app and PDF to send. space ticks; the ticked set is remembered, which is the default. Save as then names them together.',
     frames: [
-      ['80 × 24 · Markdown and PDF ticked, cursor on PDF', screen(b4([0, 2], 2), keyRow([['↑↓', 'choose'], ['space', 'tick'], ['↵', 'confirm']], BACK), 24, 7)],
-      ['80 × 16', screen(b4([0, 2], 2), keyRow([['↑↓', 'choose'], ['space', 'tick'], ['↵', 'confirm']], BACK), 16, 7)],
+      [
+        '80 × 24 · Markdown and PDF ticked, cursor on PDF',
+        screen(
+          b4([0, 2], 2),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['space', 'tick'],
+              ['↵', 'confirm'],
+            ],
+            BACK,
+          ),
+          24,
+          7,
+        ),
+      ],
+      [
+        '80 × 16',
+        screen(
+          b4([0, 2], 2),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['space', 'tick'],
+              ['↵', 'confirm'],
+            ],
+            BACK,
+          ),
+          16,
+          7,
+        ),
+      ],
     ],
   },
   {
@@ -655,12 +833,39 @@ const BROAD: { id: string; name: string; idea: string; frames: [string, Grid][] 
     name: 'Asked once, then out of the way',
     idea: 'The first transcription asks for a format on its own step; that answer becomes the default and the step is skipped from then on. The format rides in the row’s hint, and f opens the step again for one run.',
     frames: [
-      ['First run only · Format', screen(formatRows1(1), keyRow([['↑↓', 'choose'], ['↵', 'confirm']], BACK), 24, 2)],
+      [
+        'First run only · Format',
+        screen(
+          formatRows1(1),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['↵', 'confirm'],
+            ],
+            BACK,
+          ),
+          24,
+          2,
+        ),
+      ],
       [
         'Every run after',
         screen(
-          [title('Transcribe to'), b2Row('.docx'), row(item('Notes', 'off')), row(item('Transcript', 'off'))],
-          keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['f', 'format'], ['↵', 'confirm']], [['esc', 'back']]),
+          [
+            title('Transcribe to'),
+            b2Row('.docx'),
+            row(item('Notes', 'off')),
+            row(item('Transcript', 'off')),
+          ],
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['f', 'format'],
+              ['↵', 'confirm'],
+            ],
+            [['esc', 'back']],
+          ),
           24,
           1,
         ),
@@ -689,15 +894,39 @@ const BROAD: { id: string; name: string; idea: string; frames: [string, Grid][] 
 /** Step 1: today's Transcribe to, its All row no longer saying "· .md". */
 const step1 = (h = 24) => screen(WHAT('on'), ON_ALL, h, 1)
 /** Step 2 on its own page: the header bar carries step 1's answer. */
-const step2 = (rows: Row[], keys: Row, h = 24, cursor = 0) => screen(rows, keys, h, cursor, ['All'], 'Format')
-const STEP2_KEYS = keyRow([['↑↓', 'choose'], ['tab', 'make default'], ['↵', 'confirm']], BACK)
-const CARD_KEYS = keyRow([['←→', 'choose'], ['tab', 'make default'], ['↵', 'confirm']], BACK)
-const GRID_KEYS = keyRow([['↑↓←→', 'choose'], ['tab', 'make default'], ['↵', 'confirm']], BACK)
+const step2 = (rows: Row[], keys: Row, h = 24, cursor = 0) =>
+  screen(rows, keys, h, cursor, ['All'], 'Format')
+const STEP2_KEYS = keyRow(
+  [
+    ['↑↓', 'choose'],
+    ['tab', 'make default'],
+    ['↵', 'confirm'],
+  ],
+  BACK,
+)
+const CARD_KEYS = keyRow(
+  [
+    ['←→', 'choose'],
+    ['tab', 'make default'],
+    ['↵', 'confirm'],
+  ],
+  BACK,
+)
+const GRID_KEYS = keyRow(
+  [
+    ['↑↓←→', 'choose'],
+    ['tab', 'make default'],
+    ['↵', 'confirm'],
+  ],
+  BACK,
+)
 
 /* T1 — a plain list. */
 const t1 = (cursor: number): Row[] => [
   title('Format'),
-  ...FORMATS.map(([l, e], i) => row(item(l, i === cursor ? 'on' : 'off', { hint: e, end: i === 0 ? tag() : [] }))),
+  ...FORMATS.map(([l, e], i) =>
+    row(item(l, i === cursor ? 'on' : 'off', { hint: e, end: i === 0 ? tag() : [] })),
+  ),
 ]
 
 /* T2 — a list and a large preview: the page has the room a split screen lacked. */
@@ -706,7 +935,11 @@ function t2(cursor: number): Row[] {
     item(l, i === cursor ? 'on' : 'off', { to: 30, hint: e, col: 17, end: i === 0 ? tag() : [] }),
   )
   const W2 = 40
-  const page = (t: Run[]): Run[] => [pad(2, PAGE), ...t.map((r) => ({ ...r, bg: PAGE })), pad(W2 - 2 - used(t), PAGE)]
+  const page = (t: Run[]): Run[] => [
+    pad(2, PAGE),
+    ...t.map((r) => ({ ...r, bg: PAGE })),
+    pad(W2 - 2 - used(t), PAGE),
+  ]
   const word: Run[][] = [
     page([]),
     page([run('Influence talk', p.fg, PAGE, true)]),
@@ -745,9 +978,22 @@ function t4(sel: number): Row[] {
     const on = i === sel
     const edge = on ? RED : p.border
     const bg = i === 2 ? PAGE : undefined
-    const body = (t: Run[]): Run[] => [run('│ ', edge), pad(1, bg), ...t, pad(w - 5 - used(t), bg), pad(1, bg), run('│', edge)]
+    const body = (t: Run[]): Run[] => [
+      run('│ ', edge),
+      pad(1, bg),
+      ...t,
+      pad(w - 5 - used(t), bg),
+      pad(1, bg),
+      run('│', edge),
+    ]
     return [
-      [run('╭─ ', edge), run(l, on ? RED : p.fg, undefined, true), run(` ${'─'.repeat(w - 6 - l.length - e.length - 2)} `, edge), run(e, p.dim), run(' ─╮', edge)],
+      [
+        run('╭─ ', edge),
+        run(l, on ? RED : p.fg, undefined, true),
+        run(` ${'─'.repeat(w - 6 - l.length - e.length - 2)} `, edge),
+        run(e, p.dim),
+        run(' ─╮', edge),
+      ],
       body([]),
       ...(samples[i] ?? []).map(body),
       i === 0
@@ -760,7 +1006,9 @@ function t4(sel: number): Row[] {
     if (pairIx) rows.push([])
     const a = tile(pairIx)
     const b = tile(pairIx + 1)
-    a.forEach((ra, r) => rows.push([blank(4), ...ra, pad(2), ...(b[r] ?? [])]))
+    a.forEach((ra, r) => {
+      rows.push([blank(4), ...ra, pad(2), ...(b[r] ?? [])])
+    })
   }
   return rows
 }
@@ -829,11 +1077,35 @@ const TWO: { id: string; name: string; idea: string; frames: [string, Grid][] }[
       ['Step 2 · until a default is set', step2(t1(1), STEP2_KEYS, 24, 2)],
       [
         'Afterwards · step 1',
-        screen(WHAT('on'), keyRow([['↑↓', 'choose'], ['←→', 'detail'], ['f', 'format'], ['↵', 'confirm']], [['esc', 'back']]), 24, 1),
+        screen(
+          WHAT('on'),
+          keyRow(
+            [
+              ['↑↓', 'choose'],
+              ['←→', 'detail'],
+              ['f', 'format'],
+              ['↵', 'confirm'],
+            ],
+            [['esc', 'back']],
+          ),
+          24,
+          1,
+        ),
       ],
       [
         'Afterwards · ↵ goes straight to Save as',
-        saveAsWith('.docx', ['All', 'Word'], keyRow([['↵', 'save'], ['↑↓', 'folder'], ['tab', 'make default']], BACK)),
+        saveAsWith(
+          '.docx',
+          ['All', 'Word'],
+          keyRow(
+            [
+              ['↵', 'save'],
+              ['↑↓', 'folder'],
+              ['tab', 'make default'],
+            ],
+            BACK,
+          ),
+        ),
       ],
     ],
   },
@@ -845,7 +1117,15 @@ const term = (g: Grid) => termHtml(DARK, solidify(g), CANVAS)
 const two = (big: Grid, small: Grid, a: string, b: string) =>
   `<div class="stack"><div class="cap">${a}</div>${term(big)}<div class="cap">${b}</div>${term(small)}</div>`
 
-const SPLITS: { id: string; name: string; idea: string; big: Grid; small: Grid; a: string; b: string }[] = [
+const SPLITS: {
+  id: string
+  name: string
+  idea: string
+  big: Grid
+  small: Grid
+  a: string
+  b: string
+}[] = [
   {
     id: 'S1',
     name: 'Two lists, one under the other',

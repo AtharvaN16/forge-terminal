@@ -29,7 +29,9 @@ async function until(what: string, cond: () => boolean, ms = 20_000) {
 }
 type Cell = { ch: string; fg: string | null; bg: string | null; b: boolean }
 const cells = (frame: string): Cell[][] =>
-  frame.split('\n').map((l) => ansiRow(l, 80).map((c) => ({ ch: c.ch, fg: c.fg, bg: c.bg, b: c.b })))
+  frame
+    .split('\n')
+    .map((l) => ansiRow(l, 80).map((c) => ({ ch: c.ch, fg: c.fg, bg: c.bg, b: c.b })))
 
 const dir = await makeTempDir()
 const input = join(dir, 'Screenshot 2026-10-19 at 9.43.23 PM.png')
@@ -39,7 +41,10 @@ const W = 900
 const H = 600
 const raw = Buffer.alloc(W * H * 3)
 let seed = 7
-const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+const rnd = () => {
+  seed = (seed * 1103515245 + 12345) & 0x7fffffff
+  return seed / 0x7fffffff
+}
 for (let y = 0; y < H; y++)
   for (let x = 0; x < W; x++) {
     const i = (y * W + x) * 3
@@ -49,7 +54,9 @@ for (let y = 0; y < H; y++)
     raw[i + 1] = speck ? 20 : (y / H) * 160 + 50 + grain
     raw[i + 2] = speck ? 20 : 180 - (x / W) * 90 + grain
   }
-await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toFile(input)
+await sharp(raw, { raw: { width: W, height: H, channels: 3 } })
+  .png()
+  .toFile(input)
 const out = await makeTempDir()
 const app = render(
   <App
