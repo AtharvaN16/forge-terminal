@@ -11,7 +11,10 @@ vi.hoisted(() => {
   process.env.NO_COLOR = ''
 })
 
-/** Key hints inside a field are chips (2026-10-16); in colour mode, grey ones. */
+/**
+ * Key hints inside a field are chips (2026-10-16). Colour mode's field has none
+ * since 2026-10-24: `# new colour` at its end is plain text.
+ */
 
 const ESC = String.fromCharCode(27)
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
@@ -53,24 +56,32 @@ async function onScale() {
   return app
 }
 
-describe('key hints in colour mode’s field', () => {
-  it('↵ done is a grey chip while a colour is typed', async () => {
+describe('colour mode’s field (2026-10-24)', () => {
+  it('no ↵ done at its end while a colour is typed: the key row says it', async () => {
     const app = await onScale()
     app.stdin.write('#F26E69')
-    await waitFor(() => plain(app.lastFrame()).includes('done'))
-    const { cells, at } = cellsOf(app.lastFrame(), ' ↵  done', '#F26E69')
-    expect(cells[at + 1]).toMatchObject({ ch: '↵', fg: DARK.canvas, bg: DARK.border, b: true })
-    expect(cells[at + 4]).toMatchObject({ ch: 'd', fg: DARK.border })
+    await settle()
+    const field = plain(app.lastFrame())
+      .split('\n')
+      .find((l) => l.includes('#F26E69'))
+    expect(field).not.toContain('done')
+    const keys = plain(app.lastFrame())
+      .split('\n')
+      .findLast((l) => l.trim() !== '')
+    expect(keys).toMatch(/↵ +done/)
   }, 20_000)
 
-  it('⇧ → gradient is a grey chip once the scale is shown', async () => {
+  it('# new colour at its end once the scale is shown, plain: the key bright, the words quiet', async () => {
     const app = await onScale()
     app.stdin.write('#32A852')
     await settle()
     app.stdin.write('\r')
-    await waitFor(() => plain(app.lastFrame()).includes('gradient to a second colour'))
-    const { cells, at } = cellsOf(app.lastFrame(), ' ⇧ →  gradient', '#32A852')
-    expect(cells[at + 1]).toMatchObject({ ch: '⇧', fg: DARK.canvas, bg: DARK.border })
-    expect(cells[at + 6]).toMatchObject({ ch: 'g', fg: DARK.border })
+    await waitFor(() => plain(app.lastFrame()).includes('new colour'))
+    expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
+    const { cells, at } = cellsOf(app.lastFrame(), '# new colour', '#32A852')
+    expect(cells[at]).toMatchObject({ ch: '#', fg: DARK.fg })
+    expect(cells[at + 2]).toMatchObject({ ch: 'n', fg: DARK.border })
+    // No chip: the field's own grey behind both.
+    expect(cells[at]?.bg).toBe(cells[at - 2]?.bg)
   }, 20_000)
 })

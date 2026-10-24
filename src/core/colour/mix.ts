@@ -68,18 +68,35 @@ export function mix(a: Rgb, b: Rgb, t: number, space: MixSpace): Rgb {
 
 /** `count` colours evenly from `a` to `b`, both ends included. */
 export function mixSteps(a: Rgb, b: Rgb, count: number, space: MixSpace): MixStep[] {
+  return gradientSteps([a, b], count, space)
+}
+
+/**
+ * `count` colours evenly through `stops`, in order (a gradient, 2026-10-24):
+ * the stops spaced evenly along it, each stretch between two neighbours their
+ * mix. A step that lands on a stop is that colour exactly, and a reference.
+ */
+export function gradientSteps(stops: readonly Rgb[], count: number, space: MixSpace): MixStep[] {
   if (!MIX_COUNTS.includes(count)) {
     throw invalidArguments(`A mix has 3 to 21 steps; got ${count}.`, 'Try: 9 steps.')
   }
+  if (stops.length < 2) {
+    throw invalidArguments('A gradient needs two colours or more.', 'Try: #6579FD → #F5A524.')
+  }
+  const spans = stops.length - 1
   return Array.from({ length: count }, (_, i) => {
     const at = i / (count - 1)
-    const rgb = mix(a, b, at, space)
+    const x = at * spans
+    // Which stretch the step is on, and how far along it; the last step is on the last stop.
+    const k = Math.min(spans - 1, Math.floor(x))
+    const t = x - k
+    const rgb = mix(stops[k] as Rgb, stops[k + 1] as Rgb, t, space)
     return {
       step: Math.round(at * 100),
       at,
       rgb,
       hex: toHex(rgb),
-      reference: i === 0 || i === count - 1,
+      reference: Math.abs(x - Math.round(x)) < 1e-9,
     }
   })
 }

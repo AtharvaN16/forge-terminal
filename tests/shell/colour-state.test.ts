@@ -232,10 +232,10 @@ describe('leaving, and the flash', () => {
     expect(run(onPalette(), ESC).effects).toContainEqual({ type: 'back' })
   })
 
-  it('a copy confirmation clears itself after 1.5 s', () => {
+  it('a copy’s message clears itself after 3 s (2026-10-24)', () => {
     const { state } = run(onPalette(), ENTER)
-    expect(reduce(state, { type: 'tick' }, ctx(1000)).state.flash).toBeDefined()
-    expect(reduce(state, { type: 'tick' }, ctx(1600)).state.flash).toBeUndefined()
+    expect(reduce(state, { type: 'tick' }, ctx(2900)).state.flash).toBeDefined()
+    expect(reduce(state, { type: 'tick' }, ctx(3100)).state.flash).toBeUndefined()
   })
 })
 

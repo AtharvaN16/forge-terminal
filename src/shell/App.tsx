@@ -2393,12 +2393,11 @@ export function App({
     setColourStart(start)
     setColourTrailNow({
       answers: [],
+      // The Palette card opens Scale on its Palette tab (2026-10-24).
       current:
         start === 'palette' || (typeof start === 'object' && 'palette' in start)
           ? 'Extract'
-          : start === 'system'
-            ? 'Palette'
-            : 'Scale',
+          : 'Scale',
     })
     setText('')
     setStep('colour')

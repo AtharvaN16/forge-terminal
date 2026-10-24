@@ -389,18 +389,17 @@ describe('the ramp at other widths and counts', () => {
     }
   })
 
-  it('the steps line ends at the field’s right edge, s steps at rest and ↵ done while editing', () => {
+  it('the steps line says the steps at rest, no keys (More has them); ↵ done at its end while editing', () => {
     const tw = { set: 'tailwind', start: 50, end: 950, count: 11 } as const
     const rest = text(stepsLine({ width: 76, palette: P, spec: tw }))
-    expect(rest).toMatch(/^ {2}Tailwind {2}50 – 950 {2}· {2}11 steps +s +steps$/)
-    expect(rest.length).toBe(74)
+    expect(rest).toMatch(/^ {2}Tailwind {2}50 – 950 {2}· {2}11 steps$/)
     const even = { set: 'even', start: 0, end: 1000, count: 15 } as const
     const editing = text(stepsLine({ width: 76, palette: P, spec: even, editing: 'count' }))
     expect(editing).toMatch(/^ +Even +from +0 +to +1000 +steps +‹ 15 › +↵ +done$/)
     expect(editing.length).toBe(74)
     const radix = { set: 'radix', start: 50, end: 950, count: 11 } as const
     expect(text(stepsLine({ width: 76, palette: P, spec: radix }))).toMatch(
-      /Radix {2}1 – 12 {2}· {2}12 steps · your colour at 9 +s +steps$/,
+      /Radix {2}1 – 12 {2}· {2}12 steps · your colour at 9$/,
     )
   })
 })

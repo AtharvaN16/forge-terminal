@@ -537,13 +537,61 @@ export function copiedRow(
   what: { hex: string } | { count: number },
   platform: NodeJS.Platform = process.platform,
 ): Row {
-  const tick: Row = [blank(4), ink('✓', p.ok, true), blank(1)]
-  if ('hex' in what) return [...tick, ink('copied ', p.fg), ink(what.hex, p.fg, true)]
-  return [
-    ...tick,
-    ink(`copied ${what.count} swatches`, p.fg),
-    ink(` · paste into Figma with ${platform === 'win32' ? 'Ctrl+V' : '⌘V'}`, p.dim),
-  ]
+  const said = 'hex' in what ? `copied ${what.hex}` : `copied ${what.count} swatches`
+  return [blank(4), ...copiedMessage(p, said, platform)]
+}
+
+/**
+ * What a copy says, said in place of the key row for a moment (2026-10-24,
+ * K1): a colour, just what was copied; a set — swatches, or a palette's rows
+ * of them — where it pastes, as the line under the view said it before.
+ */
+export function copiedMessage(
+  p: Palette,
+  text: string,
+  platform: NodeJS.Platform = process.platform,
+): Row {
+  const tick: Row = [ink('✓', p.ok, true), blank(1)]
+  const hex = /^copied (#[0-9A-F]{6}(?:[0-9A-F]{2})?)$/i.exec(text)
+  if (hex) return [...tick, ink('copied ', p.fg), ink(hex[1] as string, p.fg, true)]
+  if (/^copied \d+ (?:rows of )?swatches$/.test(text)) {
+    return [
+      ...tick,
+      ink(text, p.fg),
+      ink(` · paste into Figma with ${platform === 'win32' ? 'Ctrl+V' : '⌘V'}`, p.dim),
+    ]
+  }
+  return [...tick, ink(text, p.fg)]
+}
+
+/**
+ * The field's far end at rest (2026-10-24): `#` starts a new colour, said in
+ * plain text — the key bright, the words quiet — as the key row's foot is.
+ */
+export function newColourHint(p: Palette): Row {
+  return [ink('#', p.fg), ink(' new colour', p.border)]
+}
+
+/**
+ * More, over the key row's rule at the right (2026-10-24, P1): drawn as
+ * home's "/ menu" — the key on a grey cap, the word dim — its key in the
+ * mode's colour. Without fills, the key bracketed.
+ */
+export function moreHintRow({
+  palette: p,
+  width: columns,
+}: {
+  palette: Palette
+  width: number
+}): Row {
+  const hint: Row =
+    p.keycapBg === ''
+      ? [{ text: '[m] more', fg: lc(p.accent), bold: true }]
+      : [
+          { text: ' m ', fg: lc(p.accent), bg: lc(p.keycapBg), bold: true },
+          { text: ' more', fg: lc(p.dim) },
+        ]
+  return [blank(columns - 2 - width(hint)), ...hint, blank(2)]
 }
 
 /**
@@ -551,10 +599,7 @@ export function copiedRow(
  * What follows a ` · ` is said quietly.
  */
 export function flashRow(p: Palette, text: string): Row {
-  const hex = /^copied (#[0-9A-F]{6})$/i.exec(text)
-  if (hex) return copiedRow(p, { hex: hex[1] as string })
-  const count = /^copied (\d+) swatches$/.exec(text)
-  if (count) return copiedRow(p, { count: Number(count[1]) })
+  if (/^copied /.test(text)) return [blank(4), ...copiedMessage(p, text)]
   const [first = '', ...rest] = text.split(' · ')
   const row: Row = [blank(4), ink('✓', p.ok, true), blank(1), ink(first, p.fg)]
   if (rest.length > 0) row.push(ink(` · ${rest.join(' · ')}`, p.dim))
@@ -818,7 +863,6 @@ export function stepsLine({
   spec,
   editing,
   extra,
-  tweak = false,
 }: {
   width: number
   palette: Palette
@@ -826,8 +870,6 @@ export function stepsLine({
   editing?: StepsField | undefined
   /** The tab's own setting, last on the line: a neutral's tint, an alpha's background (§12.1). */
   extra?: { field: 'tint' | 'over'; value: string } | undefined
-  /** `t tweak` before `s steps`: a scale has its own Tweak window (2026-10-14). */
-  tweak?: boolean
 }): Row {
   const words = extra
     ? extra.field === 'tint'
@@ -845,13 +887,8 @@ export function stepsLine({
       ink(`  ·  ${spec.set === 'radix' ? radix : count}`, p.border),
       ...(extra ? [ink(`  ·  ${words}`, p.border)] : []),
     ]
-    const keys: [string, string][] = tweak
-      ? [
-          ['t', 'tweak'],
-          ['s', 'steps'],
-        ]
-      : [['s', 'steps']]
-    return withKeys(p, row, keys, columns - 1)
+    // Tweak and Steps are in More now (2026-10-24): the line says what the steps are, no keys.
+    return row
   }
   const plain = p.thumb === ''
   const pill = (f: StepsField, v: string | number): Run =>
@@ -903,18 +940,13 @@ export function mixLine({
   editing?: 'way' | 'mixCount' | undefined
 }): Row {
   if (!editing) {
-    return withKey(
-      p,
-      [
-        blank(2),
-        ink(SPACE_NAMES[space], p.fg, true),
-        ink(`  ${SPACE_WORDS[space]}`, p.dim),
-        ink(`  ·  ${count} steps`, p.border),
-      ],
-      's',
-      'steps',
-      columns - 1,
-    )
+    // Steps is in More now (2026-10-24).
+    return [
+      blank(2),
+      ink(SPACE_NAMES[space], p.fg, true),
+      ink(`  ${SPACE_WORDS[space]}`, p.dim),
+      ink(`  ·  ${count} steps`, p.border),
+    ]
   }
   const plain = p.thumb === ''
   const pill = (on: boolean, v: string | number): Run =>
@@ -952,7 +984,7 @@ export function scaleTabRows({
   const names: Row = [blank(2)]
   const rule: Row = [blank(2)]
   let used = 0
-  ;['Colour', 'Neutral', 'Alpha'].forEach((name, i) => {
+  ;['Colour', 'Neutral', 'Alpha', 'Palette'].forEach((name, i) => {
     const on = i === at
     const w = name.length + 4
     names.push(ink(`  ${name}  `, on ? p.fg : p.dim, on))
@@ -960,7 +992,14 @@ export function scaleTabRows({
     used += w
   })
   rule.push(ink('─'.repeat(Math.max(0, columns - 4 - used)), p.faint))
-  return [withKey(p, names, 'tab', 'switch', columns - 1), rule]
+  // The tab key alone on its cap, no word after it (2026-10-24), as the formats hint is.
+  const cap: Run =
+    p.keycapBg === ''
+      ? { text: '[tab]', fg: lc(p.fg), bold: true }
+      : { text: ' tab ', fg: lc(p.fg), bg: lc(p.keycapBg), bold: true }
+  // Ending on the margin, where the field above ends.
+  const gap = columns - 2 - width(names) - width([cap])
+  return [gap < 2 ? names : [...names, blank(gap), cap], rule]
 }
 
 /** The checkerboard an alpha is drawn over: Figma's white and grey, or black and a dark grey. */
