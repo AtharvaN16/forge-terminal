@@ -3692,7 +3692,8 @@ export function App({
     setSaving((s) => (s ? { ...s, given: typed } : s))
     setText('')
     setSavedAs(`${stem}${proposal.ext}`)
-    const output = `${destination}/${stem}${proposal.ext}`
+    // join, not a '/': on Windows the path must look like the folder's own.
+    const output = join(destination, `${stem}${proposal.ext}`)
     if (enhancing) {
       void runExtensionJob(destination, { output })
       return

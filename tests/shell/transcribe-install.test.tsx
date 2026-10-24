@@ -5,6 +5,10 @@ import { App } from '../../src/shell/App.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makeTempDir } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
+
+// The Mac's yt-dlp download (37.1 MB): the flow is the same on every OS.
+pinPlatform('darwin')
 
 /**
  * A YouTube link with no yt-dlp anywhere (mockups/own-tools-2026-10-round5.html,

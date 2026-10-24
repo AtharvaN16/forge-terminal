@@ -203,6 +203,8 @@ jobs:
 
       - name: Verify against the catalogue
         shell: bash
+        env:
+          ID: ${{ needs.resolve.outputs.id }}
         run: |
           # Prints the catalogued sha256 for an asset file name, or nothing if it is not catalogued.
           catalogued() {
@@ -227,6 +229,11 @@ jobs:
             elif [ "$want" = "$got" ]; then
               echo "$name: matches the catalogue"
               echo "$name" >> dist-ext/catalogued.txt
+            elif [ "$ID" = "whisper" ] && [ "${name%-universal.tar.gz}" != "$name" ]; then
+              # The Mac whisper-cli is compiled by the runner's Xcode, which need not be the one
+              # that built the published file; the published file stands, and is what installs.
+              # Not listed as catalogued, so publish keeps the release's own copy without comparing.
+              echo "::warning::$name: rebuilt on $(xcodebuild -version | head -1), sha256 $got, not the catalogue's $want (built on another Xcode)"
             else
               echo "::error::$name: rebuilt sha256 $got differs from the catalogue's $want"
               status=1

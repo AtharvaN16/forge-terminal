@@ -9,6 +9,10 @@ import type { ExtensionStatus } from '../../src/extensions/manager.js'
 import { App } from '../../src/shell/App.js'
 import type { EditTools } from '../../src/shell/edit.js'
 import { makeTempDir } from '../helpers/fixtures.js'
+import { pinPlatform } from '../helpers/platform.js'
+
+// Edit's rows as a Mac has them (Boost's first), so the cursor counts hold off a Mac too.
+pinPlatform('darwin')
 
 const ESC = String.fromCharCode(27)
 const DOWN = `${ESC}[B`

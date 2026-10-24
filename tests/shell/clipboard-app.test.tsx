@@ -247,7 +247,9 @@ describe('compressing a copied image', () => {
     const frame = plain(app.lastFrame())
     expect(frame).toContain('The file you uploaded is no longer in the clipboard.')
     expect(frame).toMatch(/The compressed image is saved to [^.]+\./)
-    expect(plain(app.lastFrame())).toMatch(/o Open +f Finder +↵ Home/)
+    // The reveal button says this OS's own word: Finder, Explorer or Files.
+    const where = revealLabel().replace(/^Show in /, '')
+    expect(plain(app.lastFrame())).toMatch(new RegExp(`o Open +f ${where} +↵ Home`))
     expect(clip.held()?.kind).toBe('text')
     expect(await readdir(desktop)).toEqual(['Copied image.jpg'])
   }, 30_000)

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { Box } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
@@ -298,7 +298,7 @@ export function PresetSaveScreen({
     if (making !== null) {
       if (k.escape) setMaking(null)
       else if (k.return && making.trim() !== '' && folder) {
-        save(`${folder.value}/${making.trim()}`)
+        save(join(folder.value, making.trim()))
       } else if (k.backspace || k.delete) setMaking(making.slice(0, -1))
       else if (/^[A-Za-z0-9 _.-]$/.test(input)) setMaking(making + input)
       return

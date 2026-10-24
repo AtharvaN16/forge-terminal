@@ -48,7 +48,7 @@ describe('convert, for video and sound', () => {
   it('carries the bitrate to the job', () => {
     const job = convert(convertAction.plan([podcast], { target: 'mp3', bitrate: 96 }))
     expect(job.options.media).toEqual({ bitrate: 96 })
-    expect(job.outputs[0]).toBe('/pod/episode.mp3')
+    expect(resolve(job.outputs[0] ?? '')).toBe(resolve('/pod/episode.mp3'))
   })
 
   it('writes HEVC beside an MP4 without landing on it', () => {
@@ -88,7 +88,7 @@ describe('compress, for video and sound', () => {
   it('makes a WAV an M4A: WAV has no smaller setting', () => {
     const job = convert(compressAction.plan([podcast], { mode: 'size' }))
     expect(job.target).toBe('m4a')
-    expect(job.outputs[0]).toBe('/pod/episode-small.m4a')
+    expect(resolve(job.outputs[0] ?? '')).toBe(resolve('/pod/episode-small.m4a'))
   })
 
   it('compresses sound by bitrate', () => {
@@ -154,7 +154,7 @@ describe('edit, for video and sound', () => {
   it('cleans up a sound file, keeping its format', () => {
     const job = convert(mediaEditAction.plan([podcast], { tool: 'cleanup' }))
     expect(job.target).toBe('wav')
-    expect(job.outputs[0]).toBe('/pod/episode-cleaned.wav')
+    expect(resolve(job.outputs[0] ?? '')).toBe(resolve('/pod/episode-cleaned.wav'))
   })
 
   it('changes speed, named by it, for a video and for sound', () => {
@@ -162,7 +162,7 @@ describe('edit, for video and sound', () => {
     expect(fast.options.media).toEqual({ speed: 2 })
     expect(resolve(fast.outputs[0] ?? '')).toBe(resolve('/rec/Screen Recording-2x.mov'))
     const slow = convert(mediaEditAction.plan([podcast], { tool: 'speed', speed: 0.5 }))
-    expect(slow.outputs[0]).toBe('/pod/episode-0.5x.wav')
+    expect(resolve(slow.outputs[0] ?? '')).toBe(resolve('/pod/episode-0.5x.wav'))
     // Nothing without a speed, at 1×, or outside what the engine takes.
     for (const speed of [undefined, 1, 5, 0.1]) {
       expect(mediaEditAction.plan([recording], { tool: 'speed', speed })).toEqual([])
@@ -180,7 +180,7 @@ describe('edit, for video and sound', () => {
   it('evens out loudness to −16', () => {
     const job = convert(mediaEditAction.plan([podcast], { tool: 'loudness' }))
     expect(job.options.media).toEqual({ loudness: -16 })
-    expect(job.outputs[0]).toBe('/pod/episode-levelled.wav')
+    expect(resolve(job.outputs[0] ?? '')).toBe(resolve('/pod/episode-levelled.wav'))
   })
 
   it('applies to one video or audio file only', () => {

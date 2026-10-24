@@ -181,7 +181,7 @@ describe('forge transcribe <file>', () => {
       ),
     )
     expect(existsSync(join(dir, 'talk.md'))).toBe(false)
-    expect(out[0]).toMatch(/^✓ talk\.txt /)
+    expect(shown(out)[0]).toMatch(/^✓ talk\.txt /)
   })
 
   it('has the helper set Word with --format docx', async () => {

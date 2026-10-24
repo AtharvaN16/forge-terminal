@@ -1,4 +1,4 @@
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { lastSegment } from '../../utils/last-segment.js'
 import { invalidArguments } from '../errors.js'
 import { FORMATS, primaryExtension } from '../formats.js'
@@ -168,7 +168,9 @@ export const compressAction: Action = {
       typeof values.destination === 'string' ? values.destination : dirname(source.path)
     // Video and sound keep their format, except where it has no smaller setting.
     const target = source.kind === 'media' ? compressedFormat(source.format) : source.format
-    const output = `${destination}/${fitName(stem, `${SUFFIX}${primaryExtension(target)}`)}`
+    // join, not a '/': on Windows a '/' left the path unlike the folder's own,
+    // so `forge watch` did not know its -small file and compressed it again.
+    const output = join(destination, fitName(stem, `${SUFFIX}${primaryExtension(target)}`))
     const media = source.kind === 'media' ? mediaOptionsOf(values) : undefined
 
     return [
