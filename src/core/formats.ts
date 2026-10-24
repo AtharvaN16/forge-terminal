@@ -50,9 +50,9 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     lossy: true,
     hint: 'Apple photos',
   },
-  // Each maker's own format, one id: macOS decodes them all (engines/raw.ts),
-  // and none is ever written. Extensions only shortlist a folder's files;
-  // what a file is comes from its bytes.
+  // Each maker's own format, one id: macOS decodes them all, the raw extension
+  // elsewhere (engines/raw.ts), and none is ever written. Extensions only
+  // shortlist a folder's files; what a file is comes from its bytes.
   raw: {
     id: 'raw',
     label: 'RAW',

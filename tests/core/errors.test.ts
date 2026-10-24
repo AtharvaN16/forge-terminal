@@ -334,6 +334,16 @@ describe('short', () => {
       'RAW needs sips, which could not be run.',
     ],
     [
+      'raw-decoder-unavailable (Windows)',
+      rawDecoderUnavailable('C:\\photos\\a.nef', 'win32'),
+      'RAW needs the raw extension.',
+    ],
+    [
+      'raw-decoder-unavailable (Linux)',
+      rawDecoderUnavailable('/tmp/a.nef', 'linux'),
+      'RAW needs the raw extension.',
+    ],
+    [
       'raw-decoder-unavailable (camera)',
       rawCameraUnsupported('/tmp/a.nef'),
       'macOS cannot read RAW photos from this camera.',
@@ -380,6 +390,30 @@ describe('clipboard errors', () => {
 })
 
 describe('install and recogniser words, per OS', () => {
+  it('sends camera RAW to the raw extension off a Mac, as HEIC; the Mac’s words as they were', () => {
+    expect(rawDecoderUnavailable('C:\\photos\\a.nef', 'win32')).toMatchObject({
+      code: 'raw-decoder-unavailable',
+      title: 'Cannot read RAW here',
+      detail: "a.nef is a camera RAW photo, which needs Forge's free RAW extension on Windows.",
+      short: 'RAW needs the raw extension.',
+      hint: 'Install it with: forge extensions add raw',
+      shellHint: 'Open /extensions to install it.',
+    })
+    expect(rawDecoderUnavailable('/tmp/a.nef', 'linux')).toMatchObject({
+      detail: "a.nef is a camera RAW photo, which needs Forge's free RAW extension on Linux.",
+      hint: 'Install it with: forge extensions add raw',
+      shellHint: 'Open /extensions to install it.',
+    })
+    const mac = rawDecoderUnavailable('/tmp/a.nef', 'darwin')
+    expect(mac).toMatchObject({
+      title: 'Cannot read RAW here',
+      detail: "a.nef is a camera RAW photo, which Forge reads with macOS's own RAW support.",
+      short: 'RAW needs sips, which could not be run.',
+      hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
+    })
+    expect(mac.shellHint).toBeUndefined()
+  })
+
   it('installs ffmpeg with Homebrew, winget or apt', () => {
     expect(ffmpegInstall('darwin')).toBe('brew install ffmpeg')
     expect(ffmpegInstall('win32')).toBe('winget install ffmpeg')

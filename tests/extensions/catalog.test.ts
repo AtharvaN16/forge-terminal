@@ -133,6 +133,32 @@ describe('by OS', () => {
     }
   })
 
+  it('raw is offered on Windows and Linux, never on a Mac (sips), one build for any chip', () => {
+    expect(offeredHere('raw', 'darwin')).toBe(false)
+    expect(offeredHere('raw', 'win32')).toBe(true)
+    expect(offeredHere('raw', 'linux')).toBe(true)
+    const raw = catalogEntry('raw')
+    if (raw === undefined) throw new Error('raw is catalogued')
+    expect(raw).toMatchObject({
+      title: 'Camera RAW photos',
+      summary: 'Open camera RAW photos',
+      licence: 'LibRaw (LGPL-2.1 or CDDL-1.0), via libraw-wasm (ISC)',
+    })
+    for (const os of ['win32', 'linux'] as const) {
+      for (const arch of ['x64', 'arm64']) {
+        const asset = assetFor(raw, os, arch)
+        expect(asset?.url, `${os}-${arch}`).toBe(
+          `${RELEASES}/ext-raw-v1.0.0/forge-ext-raw-1.0.0-${os}-universal.tar.gz`,
+        )
+        expect(asset?.version).toBe('1.0.0')
+        // Pinned to the archives built: a WASM LibRaw, about half a megabyte.
+        expect(asset?.sha256).toMatch(/^[0-9a-f]{64}$/)
+        expect(asset?.bytes).toBeGreaterThan(400_000)
+        expect(asset?.bytes).toBeLessThan(1_000_000)
+      }
+    }
+  })
+
   it('whisper is on every OS, model inside, one archive per OS and chip', async () => {
     for (const os of ['darwin', 'win32', 'linux'] as const)
       expect(offeredHere('whisper', os)).toBe(true)
@@ -183,13 +209,13 @@ describe('the Windows and Linux catalogue', () => {
       const ids = (await listExtensions('linux', arch)).map((s) => s.entry.id)
       expect(ids).not.toContain('boost')
       expect(ids).not.toContain('remove-background')
-      expect(ids).toEqual(expect.arrayContaining(['heic', 'whisper', 'yt-dlp']))
+      expect(ids).toEqual(expect.arrayContaining(['heic', 'raw', 'whisper', 'yt-dlp']))
     }
   })
 
   it('offers boost and heic on Windows, and remove-background only on the Mac', async () => {
     const ids = (await listExtensions('win32', 'x64')).map((s) => s.entry.id)
-    expect(ids).toEqual(expect.arrayContaining(['boost', 'heic', 'whisper']))
+    expect(ids).toEqual(expect.arrayContaining(['boost', 'heic', 'raw', 'whisper']))
     expect(ids).not.toContain('remove-background')
     const cutout = catalogEntry('remove-background')
     expect(cutout && assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')

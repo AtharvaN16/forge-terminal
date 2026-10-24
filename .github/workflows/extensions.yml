@@ -48,6 +48,7 @@ on:
       - 'ext-boost-v*'
       - 'ext-remove-background-v*'
       - 'ext-heic-v*'
+      - 'ext-raw-v*'
       - 'ext-video-v*'
       - 'ext-whisper-v*'
       - 'ext-read-text-v*'
@@ -57,7 +58,7 @@ on:
         description: 'Extension id'
         required: true
         type: choice
-        options: [boost, remove-background, heic, video, whisper, read-text]
+        options: [boost, remove-background, heic, raw, video, whisper, read-text]
       version:
         description: 'Version (no leading v); a release ext-<id>-v<version> must exist or will be created'
         required: true
@@ -95,6 +96,8 @@ jobs:
             remove-background) runner=xcode-27 ;;
             # Pure JavaScript and WebAssembly, packaged for Windows and Linux; any macOS runner assembles it.
             heic) runner=macos-14 ;;
+            # LibRaw through libraw-wasm: JavaScript and WebAssembly too, packaged the same way as heic.
+            raw) runner=macos-14 ;;
             # PP-OCR on ONNX Runtime: JavaScript and prebuilt libraries for every OS; any macOS runner assembles it.
             read-text) runner=macos-14 ;;
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
@@ -199,11 +202,11 @@ jobs:
               node extensions/read-text/build.mjs --platform "$os" --arch "$arch" --out "dist-ext/payload-$label"
               node scripts/package-extension.mjs read-text "$VERSION" "$label" "dist-ext/payload-$label" dist-ext/out >> dist-ext/assets.jsonl
             done
-          elif [ "$ID" = "heic" ]; then
+          elif [ "$ID" = "heic" ] || [ "$ID" = "raw" ]; then
             # The same files for both; only the manifest's arch differs.
             for platform in win32 linux; do
-              node extensions/heic/build.mjs --out "dist-ext/payload-$platform-universal"
-              node scripts/package-extension.mjs heic "$VERSION" "$platform-universal" "dist-ext/payload-$platform-universal" dist-ext/out >> dist-ext/assets.jsonl
+              node "extensions/$ID/build.mjs" --out "dist-ext/payload-$platform-universal"
+              node scripts/package-extension.mjs "$ID" "$VERSION" "$platform-universal" "dist-ext/payload-$platform-universal" dist-ext/out >> dist-ext/assets.jsonl
             done
           else
             bash extensions/remove-background/build.sh dist-ext/payload-universal
@@ -284,7 +287,7 @@ jobs:
     needs: [resolve, package]
     if: >-
       needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic' ||
-      needs.resolve.outputs.id == 'read-text' ||
+      needs.resolve.outputs.id == 'raw' || needs.resolve.outputs.id == 'read-text' ||
       needs.resolve.outputs.id == 'whisper'
     runs-on: windows-latest
     permissions:
@@ -381,6 +384,22 @@ jobs:
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
           '
 
+      # The fixture is a 64x48 DNG turned a quarter (orientation 6) with a 60x44 maker's
+      # crop (tests/fixtures/README.md): a right decode is cropped, then upright, 44x60.
+      - name: RAW extension runs on Windows
+        if: needs.resolve.outputs.id == 'raw'
+        run: |
+          out="$(node dist-ext/payload-win32-universal/runner.mjs --info --in tests/fixtures/raw/small.dng)"
+          echo "$out"
+          printf '%s' "$out" | grep -Eq '"width"[[:space:]]*:[[:space:]]*44([^0-9]|$)'
+          printf '%s' "$out" | grep -Eq '"height"[[:space:]]*:[[:space:]]*60([^0-9]|$)'
+          # And a real decode: raw RGB, exactly 44 x 60 x 3 bytes.
+          node dist-ext/payload-win32-universal/runner.mjs --in tests/fixtures/raw/small.dng --out x.rgb
+          node -e '
+            const n = require("fs").statSync("x.rgb").size
+            if (n !== 44 * 60 * 3) { console.error("expected " + 44 * 60 * 3 + " bytes, got " + n); process.exit(1) }
+          '
+
       # x64 only, as for boost: windows-latest cannot run the arm64 build.
       - name: whisper runs on Windows
         if: needs.resolve.outputs.id == 'whisper'
@@ -394,7 +413,9 @@ jobs:
   # the same build for the other chip). Nothing here publishes anything.
   verify-linux:
     needs: [resolve, package]
-    if: needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'read-text'
+    if: >-
+      needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'raw' ||
+      needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'read-text'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -440,6 +461,20 @@ jobs:
           node -e '
             const n = require("fs").statSync("x.rgba").size
             if (n !== 64 * 48 * 4) { console.error("expected " + 64 * 48 * 4 + " bytes, got " + n); process.exit(1) }
+          '
+      # The same fixture as on Windows: cropped, then upright, 44x60.
+      - name: RAW extension runs on Linux
+        if: needs.resolve.outputs.id == 'raw'
+        run: |
+          out="$(node dist-ext/payload-linux-universal/runner.mjs --info --in tests/fixtures/raw/small.dng)"
+          echo "$out"
+          printf '%s' "$out" | grep -Eq '"width"[[:space:]]*:[[:space:]]*44([^0-9]|$)'
+          printf '%s' "$out" | grep -Eq '"height"[[:space:]]*:[[:space:]]*60([^0-9]|$)'
+          # And a real decode: raw RGB, exactly 44 x 60 x 3 bytes.
+          node dist-ext/payload-linux-universal/runner.mjs --in tests/fixtures/raw/small.dng --out x.rgb
+          node -e '
+            const n = require("fs").statSync("x.rgb").size
+            if (n !== 44 * 60 * 3) { console.error("expected " + 44 * 60 * 3 + " bytes, got " + n); process.exit(1) }
           '
       # A real transcription of whisper.cpp's own sample, with the model the archive carries.
       - name: whisper runs on Linux

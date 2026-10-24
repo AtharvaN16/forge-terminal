@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { copyFile, mkdtemp, open, rm } from 'node:fs/promises'
+import { copyFile, mkdtemp, open, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { extname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { rawDecoderUnavailable } from '../core/errors.js'
 import { boxes, sipsRuns } from './heic.js'
+import { loadSharp } from './libs.js'
 
 const run = promisify(execFile)
 
@@ -31,7 +32,25 @@ const run = promisify(execFile)
  * preview. Forge never trusts a name (invariant 3), so the bytes say which
  * format a file is, and `sips` is shown it under the extension that format
  * needs: the file itself when its name already fits, else a copy.
+ *
+ * Windows and Linux have no sips, so there RAW is decoded by the optional
+ * `raw` extension: LibRaw, through libraw-wasm's WASM build, run as a child
+ * process (extensions/raw/runner.ts), which writes raw RGB that Sharp wraps
+ * into the same temporary PNG — exactly as the heic extension does for HEIC.
+ * LibRaw reads a file by its bytes, so no name games are needed there.
  */
+
+/**
+ * src/extensions is imported only off macOS, when RAW is asked about: a
+ * plain conversion must not load it (tests/cli/lazy-load.test.ts).
+ */
+const extensions = async () => ({
+  ...(await import('../extensions/paths.js')),
+  ...(await import('../extensions/run.js')),
+})
+
+/** Every OS but macOS decodes RAW through the extension: sips is Apple's. */
+const viaExtension = (platform: NodeJS.Platform) => platform !== 'darwin'
 
 export interface RawKind {
   /** The extension macOS needs to see to read this file as RAW. */
@@ -284,9 +303,23 @@ export async function sniffRaw(path: string): Promise<RawKind | undefined> {
   }
 }
 
-/** Whether camera RAW can be decoded here: on a Mac, where sips runs. */
+/**
+ * Whether camera RAW can be decoded here: on a Mac, where sips runs; elsewhere
+ * once the raw extension is installed. Not cached off macOS, where it is a
+ * couple of file reads and an extension installed mid-session must take
+ * effect at once.
+ */
 export async function rawDecodable(platform: NodeJS.Platform = process.platform): Promise<boolean> {
-  return platform === 'darwin' && sipsRuns()
+  if (viaExtension(platform)) return (await (await extensions()).installed('raw')) !== undefined
+  return sipsRuns()
+}
+
+/** The installed raw extension, or the refusal that says how to get it. */
+async function rawExtension(source: string, platform: NodeJS.Platform) {
+  const { installed, runExtension } = await extensions()
+  const ext = await installed('raw')
+  if (ext === undefined) throw rawDecoderUnavailable(source, platform)
+  return { ext, runExtension }
 }
 
 /**
@@ -310,11 +343,23 @@ async function named<T>(path: string, kind: RawKind, use: (path: string) => Prom
  * The photo's upright size, or undefined when macOS does not read the file as
  * RAW — a camera newer than the system, usually. `sips` reports the stored
  * size and no orientation for RAW, so the header's orientation turns it.
+ *
+ * On Windows and Linux the raw extension reads it from the file's header,
+ * without decoding pixels, already upright and with the maker's crop taken.
  */
 export async function rawSize(
   path: string,
   kind: RawKind,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<{ width: number; height: number } | undefined> {
+  if (viaExtension(platform)) {
+    const { ext, runExtension } = await rawExtension(path, platform)
+    const r = await runExtension(ext, ['--info', '--in', path], { subject: path, platform })
+    // Never undefined here: that answer is the Mac's "this camera is too new"
+    // refusal, whose words are macOS's. A file LibRaw cannot size is damaged.
+    if (!(r.width > 0 && r.height > 0)) throw new Error('the raw extension reported no size')
+    return { width: r.width, height: r.height }
+  }
   const { stdout } = await named(path, kind, (p) =>
     run('/usr/bin/sips', ['-g', 'typeIdentifier', '-g', 'pixelWidth', '-g', 'pixelHeight', p], {
       timeout: 30_000,
@@ -328,7 +373,11 @@ export async function rawSize(
 }
 
 export interface DecodedRaw {
-  /** A PNG holding the decoded pixels, as stored: it carries the orientation, so rotate it. */
+  /**
+   * A PNG holding the decoded pixels. From sips, as stored: it carries the
+   * orientation, so rotate it. From the extension, already upright with no
+   * orientation of its own, so rotating it changes nothing.
+   */
   path: string
   /** Deletes the temporary file. Always call it, including on failure. */
   cleanup: () => Promise<void>
@@ -338,8 +387,12 @@ export interface DecodedRaw {
  * Decodes a RAW file to a temporary PNG — lossless, so the only rendering
  * choices made are macOS's own defaults, as Preview shows the photo.
  */
-export async function decodeRaw(path: string): Promise<DecodedRaw> {
-  if (!(await rawDecodable())) throw rawDecoderUnavailable(path)
+export async function decodeRaw(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<DecodedRaw> {
+  if (viaExtension(platform)) return decodeWithExtension(path, platform)
+  if (!(await rawDecodable(platform))) throw rawDecoderUnavailable(path, platform)
   const kind = (await sniffRaw(path)) ?? { ext: extname(path).toLowerCase(), orientation: 1 }
   const out = join(tmpdir(), `forge-raw-${randomBytes(8).toString('hex')}.png`)
   const cleanup = async () => {
@@ -350,6 +403,39 @@ export async function decodeRaw(path: string): Promise<DecodedRaw> {
       run('/usr/bin/sips', ['-s', 'format', 'png', p, '--out', out], { timeout: 300_000 }),
     )
     return { path: out, cleanup }
+  } catch (e) {
+    await cleanup()
+    throw e
+  }
+}
+
+/**
+ * Windows and Linux: the extension writes raw RGB, which Sharp wraps into the
+ * PNG the rest of the pipeline expects. LibRaw turns the photo by the RAW's
+ * own orientation while decoding, so the pixels are upright and the PNG
+ * carries no EXIF — `.rotate()` on it is a no-op, as it must be.
+ */
+async function decodeWithExtension(source: string, platform: NodeJS.Platform): Promise<DecodedRaw> {
+  const dir = await mkdtemp(join(tmpdir(), 'forge-raw-'))
+  const cleanup = async () => {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+  try {
+    const { ext, runExtension } = await rawExtension(source, platform)
+    const rgb = join(dir, 'decoded.rgb')
+    const png = join(dir, 'decoded.png')
+    const { width, height } = await runExtension(ext, ['--in', source, '--out', rgb], {
+      subject: source,
+      platform,
+    })
+    const sharp = await loadSharp()
+    // A buffer, not the path: Sharp honours `raw` only for buffer input and
+    // otherwise sniffs the file for a format, which raw bytes do not have.
+    await sharp(await readFile(rgb), { raw: { width, height, channels: 3 } })
+      .png()
+      .toFile(png)
+    await rm(rgb, { force: true })
+    return { path: png, cleanup }
   } catch (e) {
     await cleanup()
     throw e

@@ -266,25 +266,32 @@ export function heicDecoderUnavailable(
 /**
  * Camera RAW is decoded by macOS itself, through `sips` (engines/raw.ts):
  * Sharp has no RAW decoder, and a TIFF reader sees only the small preview
- * most RAW files carry. Windows has neither, so there RAW is not read at all.
+ * most RAW files carry.
+ *
+ * Windows and Linux have no sips, so there RAW is decoded by Forge's optional
+ * `raw` extension (LibRaw), and the way forward is installing it — the same
+ * shape as HEIC's refusal.
  */
 export function rawDecoderUnavailable(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  const detail = `${displayName(path, platform)} is a camera RAW photo, which Forge reads with macOS's own RAW support.`
   if (platform !== 'darwin') {
+    // Spelt out rather than osName(): core must not load src/extensions.
+    const os = platform === 'win32' ? 'Windows' : platform === 'linux' ? 'Linux' : 'this system'
     return new ForgeError({
       code: 'raw-decoder-unavailable',
       title: 'Cannot read RAW here',
-      detail,
-      short: 'RAW photos open on a Mac only.',
+      detail: `${displayName(path, platform)} is a camera RAW photo, which needs Forge's free RAW extension on ${os}.`,
+      short: 'RAW needs the raw extension.',
+      hint: 'Install it with: forge extensions add raw',
+      shellHint: 'Open /extensions to install it.',
     })
   }
   return new ForgeError({
     code: 'raw-decoder-unavailable',
     title: 'Cannot read RAW here',
-    detail,
+    detail: `${displayName(path, platform)} is a camera RAW photo, which Forge reads with macOS's own RAW support.`,
     short: 'RAW needs sips, which could not be run.',
     hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
   })

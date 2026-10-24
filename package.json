@@ -93,6 +93,7 @@
     "ink": "^7.1.1",
     "ink-testing-library": "^4.0.0",
     "libheif-js": "^1.23.5",
+    "libraw-wasm": "^1.6.0",
     "mammoth": "^1.13.0",
     "onnxruntime-node": "1.23.2",
     "pdf-lib": "^1.17.1",
