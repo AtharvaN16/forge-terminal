@@ -1,5 +1,5 @@
 import { alphaOf, BLACK, WHITE } from '../../core/colour/alpha.js'
-import { MIX_COUNTS, type MixSpace, mixSteps } from '../../core/colour/mix.js'
+import { gradientSteps, MIX_COUNTS, type MixSpace } from '../../core/colour/mix.js'
 import { DEFAULT_TINT, neutral, type Tint } from '../../core/colour/neutral.js'
 import { parseColour } from '../../core/colour/parse.js'
 import {
@@ -53,16 +53,21 @@ export type Screen =
       sel: number
       /** Its own Tweak window's (2026-10-14): none until one is kept. */
       tweak?: Tweak
+      /** The chosen cell on the Palette tab's grid (§13): row, then step. */
+      cell: { row: number; col: number }
     }
-  /** Two colours mixed (colour spec §12.3), reached from a scale. */
-  | { kind: 'mix'; a: Rgb; b: Rgb; sel: number }
-  /** A palette from one colour (§12.6): the screen called Palette. */
-  | { kind: 'system-empty' }
-  | { kind: 'system'; ref: Rgb; sel: { row: number; col: number } }
+  /**
+   * A gradient (colour spec §12.3, §13): through two colours or more, in
+   * order, reached from a scale. Called Mix before 2026-10-24.
+   */
+  | { kind: 'mix'; stops: Rgb[]; sel: number }
 
-/** Scale's tabs over the ramp (§12.1). */
-export type ScaleTab = 'colour' | 'neutral' | 'alpha'
-export const SCALE_TABS: readonly ScaleTab[] = ['colour', 'neutral', 'alpha']
+/**
+ * Scale's tabs over the ramp (§12.1); since 2026-10-24 the palette from the
+ * colour is the fourth (§13), where it had a screen of its own.
+ */
+export type ScaleTab = 'colour' | 'neutral' | 'alpha' | 'palette'
+export const SCALE_TABS: readonly ScaleTab[] = ['colour', 'neutral', 'alpha', 'palette']
 export type Over = 'white' | 'black'
 export const TINT_ORDER: readonly Tint[] = ['none', 'faint', 'soft', 'strong']
 export const OVERS: readonly Over[] = ['white', 'black']
@@ -71,11 +76,20 @@ export const MIX_SPACES: readonly MixSpace[] = ['oklab', 'oklch']
 /** The value `s` is changing on the line under the ramp, or under a mix. */
 export type StepsField = 'set' | 'start' | 'end' | 'count' | 'tint' | 'over' | 'way' | 'mixCount'
 
-/** What Palette's windows are doing (W1): choosing a mode, or moving the four sliders. */
+/**
+ * A window open over the screen (W1): More's list, choosing a mode, moving
+ * the four sliders, or a gradient's colours being gathered — those so far,
+ * then the box for the next; `at` is a colour, or the box at `stops.length`.
+ */
 export type PaletteWindow =
+  | { kind: 'more'; at: number }
   | { kind: 'mode'; at: number }
   | { kind: 'tweak'; at: number; before: Tweak }
+  | { kind: 'gradient'; stops: Rgb[]; at: number; text: string; wrong?: boolean }
 export const TWEAK_KEYS: readonly (keyof Tweak)[] = ['brightness', 'saturation', 'hue', 'contrast']
+
+/** What More lists (§13). */
+export type MoreItem = 'gradient' | 'tweak' | 'steps' | 'mode'
 
 export interface ColourState {
   /** The way back; the last entry is on screen. */
@@ -88,7 +102,11 @@ export interface ColourState {
   }
   /** A whole hex typed into the field on a scale: drawn at once, kept on ↵. */
   preview?: Rgb
-  flash?: { text: string; until: number }
+  /**
+   * Something just said: under the view, or — for a copy, `keys` — in place
+   * of the key row, for longer (§13).
+   */
+  flash?: { text: string; until: number; keys?: boolean }
   error?: string
   /** Which steps a scale has (V1, mockups/scale-steps-2026-10.html); kept for the session. */
   steps: StepSpec
@@ -111,10 +129,10 @@ export interface ColourState {
   /** How a mix goes across, and how many steps it has. */
   mixSpace: MixSpace
   mixCount: number
-  /** Palette's mode and tweaks. */
+  /** The Palette tab's mode and tweaks. */
   mode: Mode
   tweak: Tweak
-  /** A window open over Palette's grid. */
+  /** A window open over the screen. */
   win?: PaletteWindow
   /** What was typed could not be read: drawn red, `wrong input` at the box's far end. */
   wrong?: boolean
@@ -132,6 +150,8 @@ export interface KeyLike {
   shift?: boolean
   ctrl?: boolean
   meta?: boolean
+  backspace?: boolean
+  delete?: boolean
 }
 
 export type Action =
@@ -168,7 +188,8 @@ export interface Ctx {
 /**
  * How the flow opens: on an empty palette or scale, on an image (opened at
  * once), on a colour, or on the scale with something already typed (`#`
- * pressed on colour's home).
+ * pressed on colour's home). `system` is the Palette card: the scale, on its
+ * Palette tab (§13).
  */
 export type Start =
   | 'palette'
@@ -179,6 +200,8 @@ export type Start =
   | { typed: string }
 
 const FLASH_MS = 1500
+/** A copy says so on the key row, for longer: it has more to say (§13). */
+const COPY_FLASH_MS = 3000
 
 /** What every flow starts with besides its screens. */
 const SETTINGS = {
@@ -199,7 +222,12 @@ export function initial(start: Start, steps: StepSpec = DEFAULT_STEPS): ColourSt
   if (start === 'scale')
     return { ...base, history: [{ kind: 'scale-empty' }], field: field('', true) }
   if (start === 'system') {
-    return { ...base, history: [{ kind: 'system-empty' }], field: field('', true) }
+    return {
+      ...base,
+      tab: 'palette',
+      history: [{ kind: 'scale-empty' }],
+      field: field('', true),
+    }
   }
   if ('typed' in start) {
     return {
@@ -217,7 +245,7 @@ export function initial(start: Start, steps: StepSpec = DEFAULT_STEPS): ColourSt
   }
   return {
     ...base,
-    history: [{ kind: 'scale', ref: start.scale, sel: centreOf(steps) }],
+    history: [scaleScreen(base, start.scale)],
     field: field(toHex(start.scale), false),
   }
 }
@@ -241,11 +269,10 @@ function field(text: string, focus: boolean): ColourState['field'] {
 const top = (s: ColourState): Screen => s.history[s.history.length - 1] as Screen
 const onPalette = (screen: Screen) => screen.kind === 'palette' || screen.kind === 'palette-empty'
 const onScale = (screen: Screen) => screen.kind === 'scale' || screen.kind === 'scale-empty'
-const onSystem = (screen: Screen) => screen.kind === 'system' || screen.kind === 'system-empty'
 
 /**
  * A typed colour. On Extract only a hex with its `#`, so a path never reads
- * as one; on Scale and Palette anything `parseColour` reads (§12.4).
+ * as one; on Scale anything `parseColour` reads (§12.4).
  */
 function typedColour(screen: Screen, text: string): Rgb | undefined {
   const t = text.trim()
@@ -253,30 +280,52 @@ function typedColour(screen: Screen, text: string): Rgb | undefined {
   return parseColour(t)?.rgb
 }
 
-/** What splits two colours typed for a mix: an arrow, or `->`, `>`. */
+/**
+ * A colour typed that is whole for certain (2026-10-24): six hex digits, or a
+ * function with its bracket closed. Typing goes on by itself from there, with
+ * no ↵. What could still grow stays for ↵: a name (`red` is on the way to
+ * `redwood`), shorthand (`#657` to `#6579FD`), and colours typed for a gradient.
+ */
+function settledColour(screen: Screen, text: string): Rgb | undefined {
+  const t = text.trim()
+  if (!/^#?[0-9a-f]{6}$/i.test(t) && !/^(?:rgb|hsl|oklch)a?\(.*\)$/i.test(t)) return undefined
+  return typedColour(screen, t)
+}
+
+/** What splits colours typed for a gradient: an arrow, or `->`, `>`. */
 const MIX_ARROW = /\s*(?:→|->|>)\s*/
 
 /**
- * Two colours typed into Scale's box, for a mix (§12.3): either side of an
- * arrow, or two hexes with a space between. `first` when only the first is
- * there yet, still waiting for the second.
+ * Colours typed into Scale's box for a gradient (§12.3, §13): between arrows,
+ * any number, or two hexes with a space between. The last may be missing
+ * still (an arrow typed, nothing after it); undefined when any part is no
+ * colour.
  */
-export function typedPair(text: string): { a: Rgb; b?: Rgb } | undefined {
+export function typedStops(text: string): Rgb[] | undefined {
   const t = text.trim()
   if (MIX_ARROW.test(t)) {
-    const [left = '', right = ''] = t.split(MIX_ARROW)
-    const a = parseColour(left)?.rgb
-    if (!a) return undefined
-    const b = right.trim() === '' ? undefined : parseColour(right)?.rgb
-    return right.trim() === '' || b ? { a, ...(b ? { b } : {}) } : undefined
+    const parts = t.split(MIX_ARROW)
+    const last = parts[parts.length - 1] ?? ''
+    const whole = last.trim() === '' ? parts.slice(0, -1) : parts
+    const rgbs = whole.map((x) => parseColour(x)?.rgb)
+    return rgbs.length > 0 && rgbs.every((x) => x !== undefined) ? (rgbs as Rgb[]) : undefined
   }
   const parts = t.split(/\s+/)
   if (parts.length === 2 && parts.every((x) => /^#[0-9a-f]+$/i.test(x))) {
-    const a = parseColour(parts[0] as string)?.rgb
-    const b = parseColour(parts[1] as string)?.rgb
-    return a && b ? { a, b } : undefined
+    const rgbs = parts.map((x) => parseColour(x)?.rgb)
+    return rgbs.every((x) => x !== undefined) ? (rgbs as Rgb[]) : undefined
   }
   return undefined
+}
+
+/**
+ * The first two colours typed (§12.3): `b` missing while only the first is
+ * there yet. Home reads a pasted pair with it.
+ */
+export function typedPair(text: string): { a: Rgb; b?: Rgb } | undefined {
+  const stops = typedStops(text)
+  const [a, b] = stops ?? []
+  return a ? { a, ...(b ? { b } : {}) } : undefined
 }
 
 /**
@@ -288,14 +337,46 @@ export function tabSteps(s: ColourState, ref: Rgb, tweak: Tweak = NO_TWEAK) {
   return isTweaked(tweak) ? tweakSteps(make, ref, tweak, centreOf(s.steps)) : make(ref)
 }
 
-/** The steps a mix shows. */
+/** The steps a gradient shows. */
 export function mixOf(s: ColourState, screen: Extract<Screen, { kind: 'mix' }>) {
-  return mixSteps(screen.a, screen.b, s.mixCount, s.mixSpace)
+  return gradientSteps(screen.stops, s.mixCount, s.mixSpace)
 }
 
-/** Palette's colours: every row's steps, the neutral last. */
-export function systemOf(s: ColourState, ref: Rgb) {
+/** The Palette tab's colours: every row's steps, the neutral last. */
+export function systemOf(s: Pick<ColourState, 'mode' | 'tweak' | 'steps'>, ref: Rgb) {
   return system(ref, s.mode, s.tweak, s.steps)
+}
+
+/** The row of the Palette tab's grid the colour itself is on. */
+function yoursRow(s: Pick<ColourState, 'mode' | 'tweak' | 'steps'>, ref: Rgb): number {
+  return Math.max(
+    0,
+    systemOf(s, ref).rows.findIndex((r) => r.yours),
+  )
+}
+
+/** A scale of `ref`: its own step chosen, and on the Palette tab its own cell. */
+function scaleScreen(
+  s: Pick<ColourState, 'mode' | 'tweak' | 'steps'>,
+  ref: Rgb,
+  from?: string,
+): Extract<Screen, { kind: 'scale' }> {
+  const centre = centreOf(s.steps)
+  return {
+    kind: 'scale',
+    ref,
+    sel: centre,
+    cell: { row: yoursRow(s, ref), col: centre },
+    ...(from ? { from } : {}),
+  }
+}
+
+/** What More lists on the screen in hand (§13): nothing where it does not open. */
+export function moreItems(s: ColourState): MoreItem[] {
+  const screen = top(s)
+  if (screen.kind === 'mix') return ['steps']
+  if (screen.kind !== 'scale') return []
+  return s.tab === 'palette' ? ['mode', 'tweak', 'steps'] : ['gradient', 'tweak', 'steps']
 }
 
 type Out = { state: ColourState; effects: Effect[] }
@@ -309,17 +390,22 @@ function push(s: ColourState, screen: Screen): ColourState {
   return { ...s, history: [...s.history, screen] }
 }
 
+/** A gradient's colours as its box shows them: `#6579FD → #F5A524 → #2EC4B6`. */
+export const stopsText = (stops: readonly Rgb[]) => stops.map(toHex).join(' → ')
+
 /** One step back, or out of colour from the first screen. */
 function back(s: ColourState): Out {
   if (s.history.length <= 1) return { state: s, effects: [{ type: 'back' }] }
   const history = s.history.slice(0, -1)
   const now = history[history.length - 1] as Screen
   const text =
-    now.kind === 'scale' || now.kind === 'system'
+    now.kind === 'scale'
       ? toHex(now.ref)
       : now.kind === 'palette'
         ? now.path
-        : ''
+        : now.kind === 'mix'
+          ? stopsText(now.stops)
+          : ''
   return same({
     ...s,
     history,
@@ -334,14 +420,22 @@ function flash(s: ColourState, text: string, ctx: Ctx): ColourState {
   return { ...s, flash: { text, until: ctx.now + FLASH_MS } }
 }
 
+/** A copy: what it copied, said in place of the key row (§13). */
+function copied(s: ColourState, text: string, ctx: Ctx, effect: Effect): Out {
+  return {
+    state: { ...s, flash: { text, until: ctx.now + COPY_FLASH_MS, keys: true } },
+    effects: [effect],
+  }
+}
+
 /** Put the field in focus with `text` typed, remembering what was there. */
 function focusWith(s: ColourState, text: string): ColourState {
   return { ...s, field: { text, focus: true, before: s.field.text }, error: undefined }
 }
 
 function scaleFrom(s: ColourState, ref: Rgb, from: string | undefined): ColourState {
-  const screen: Screen = { kind: 'scale', ref, sel: centreOf(s.steps), ...(from ? { from } : {}) }
-  // A new colour on a mix is a scale again, in the mix's place.
+  const screen = scaleScreen(s, ref, from)
+  // A new colour on a gradient is a scale again, in the gradient's place.
   const kind = top(s).kind
   const next = kind === 'scale-empty' || kind === 'mix' ? replaceTop(s, screen) : push(s, screen)
   return {
@@ -353,13 +447,14 @@ function scaleFrom(s: ColourState, ref: Rgb, from: string | undefined): ColourSt
   }
 }
 
-/** Two colours mixed: on from the scale of the first. */
-function mixFrom(s: ColourState, a: Rgb, b: Rgb): ColourState {
-  const screen: Screen = { kind: 'mix', a, b, sel: Math.floor(s.mixCount / 2) }
+/** A gradient through `stops`: on from the scale of the first. */
+function mixFrom(s: ColourState, stops: Rgb[]): ColourState {
+  const a = stops[0] as Rgb
+  const screen: Screen = { kind: 'mix', stops, sel: Math.floor(s.mixCount / 2) }
   const now = top(s)
-  // The mix sits on the scale of its first colour: that one, if it is not already on screen.
+  // The gradient sits on the scale of its first colour: that one, if it is not already on screen.
   const other = now.kind === 'scale' && toHex(now.ref) !== toHex(a)
-  const scaleOfA: Screen = { kind: 'scale', ref: a, sel: centreOf(s.steps) }
+  const scaleOfA = scaleScreen(s, a)
   const base =
     now.kind === 'scale-empty'
       ? replaceTop(s, scaleOfA)
@@ -370,37 +465,23 @@ function mixFrom(s: ColourState, a: Rgb, b: Rgb): ColourState {
           : s
   return {
     ...push(base, screen),
-    field: field(`${toHex(a)} → ${toHex(b)}`, false),
+    win: undefined,
+    field: field(stopsText(stops), false),
     preview: undefined,
     error: undefined,
     wrong: undefined,
   }
 }
 
-/** A palette from `ref`, in Palette's place. */
-function systemFrom(s: ColourState, ref: Rgb): ColourState {
-  // The cursor starts on the colour itself, wherever its family's row is.
-  const yours = Math.max(
-    0,
-    systemOf(s, ref).rows.findIndex((r) => r.yours),
-  )
-  const screen: Screen = { kind: 'system', ref, sel: { row: yours, col: centreOf(s.steps) } }
-  return {
-    ...replaceTop(s, screen),
-    field: field(toHex(ref), false),
-    preview: undefined,
-    error: undefined,
-    wrong: undefined,
-  }
+/** The Gradient window, on `ref`: it first, the box empty and in hand. */
+function gradientWindow(s: ColourState, ref: Rgb): ColourState {
+  return { ...s, win: { kind: 'gradient', stops: [ref], at: 1, text: '' } }
 }
 
 function onKeyWhileTyping(s: ColourState, key: KeyLike): Out {
   if (!key.escape) return same(s)
   const screen = top(s)
-  const empty =
-    screen.kind === 'palette-empty' ||
-    screen.kind === 'scale-empty' ||
-    screen.kind === 'system-empty'
+  const empty = screen.kind === 'palette-empty' || screen.kind === 'scale-empty'
   if (s.field.text === s.field.before) {
     if (empty) return back(s)
     return same({
@@ -438,14 +519,9 @@ function onPaletteKey(
     return same(push(s, { ...screen, level: [...screen.level, screen.sel], sel: 0 }))
   }
   if (key.leftArrow) return screen.level.length > 0 ? back(s) : same(s)
-  if (key.return && hex) {
-    return { state: flash(s, `copied ${hex}`, ctx), effects: [{ type: 'copy', text: hex }] }
-  }
+  if (key.return && hex) return copied(s, `copied ${hex}`, ctx, { type: 'copy', text: hex })
   if (input === 'c') {
-    return {
-      state: flash(s, `copied ${colours.length} swatches`, ctx),
-      effects: [{ type: 'copy-all' }],
-    }
+    return copied(s, `copied ${colours.length} swatches`, ctx, { type: 'copy-all' })
   }
   if (input === 's' && hex) {
     const ref = parseHex(hex)
@@ -454,6 +530,16 @@ function onPaletteKey(
   return same(s)
 }
 
+/** The next of Scale's tabs, or the one before with shift. */
+function nextTab(s: ColourState, key: KeyLike): ColourState {
+  const i = SCALE_TABS.indexOf(s.tab)
+  const next = SCALE_TABS[(i + (key.shift ? SCALE_TABS.length - 1 : 1)) % SCALE_TABS.length]
+  return { ...s, tab: next as ScaleTab }
+}
+
+/** More's window, on its first item. */
+const moreWindow = (s: ColourState): ColourState => ({ ...s, win: { kind: 'more', at: 0 } })
+
 function onScaleKey(
   s: ColourState,
   screen: Extract<Screen, { kind: 'scale' }>,
@@ -461,22 +547,19 @@ function onScaleKey(
   key: KeyLike,
   ctx: Ctx,
 ): Out {
+  if (key.tab || input === '\t') return same(nextTab(s, key))
+  if (input === 'm') return same(moreWindow(s))
+  if (input === 's') return same(editSteps(s, 'set'))
+  // The Tweak window, on what the tab shows: this scale's own, or the palette's.
+  if (input === 't') {
+    return same({ ...s, win: { kind: 'tweak', at: 0, before: tweakOf(s) } })
+  }
+  if (s.tab === 'palette') return onPaletteTabKey(s, screen, input, key, ctx)
   const steps = tabSteps(s, screen.ref, screen.tweak)
   const step = steps[screen.sel]
   const centre = centreOf(s.steps)
-  if (key.tab || input === '\t') {
-    const i = SCALE_TABS.indexOf(s.tab)
-    const next = SCALE_TABS[(i + (key.shift ? SCALE_TABS.length - 1 : 1)) % SCALE_TABS.length]
-    return same({ ...s, tab: next as ScaleTab })
-  }
-  if (input === 's') return same(editSteps(s, 'set'))
-  // Palette's Tweak window, on this scale's own tweak.
-  if (input === 't') {
-    return same({ ...s, win: { kind: 'tweak', at: 0, before: screen.tweak ?? NO_TWEAK } })
-  }
-  // ⇧→ asks for a second colour, for a mix, as it does while the colour is
-  // typed: the box opens with this one and its → (2026-10-14).
-  if (key.rightArrow && key.shift) return same(focusWith(s, `${toHex(screen.ref)} → `))
+  // ⇧→ opens the Gradient window on this colour, as More's Gradient does (§13).
+  if (key.rightArrow && key.shift) return same(gradientWindow(s, screen.ref))
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
     return same(replaceTop(s, { ...screen, sel: Math.min(steps.length - 1, screen.sel + 1) }))
@@ -485,21 +568,54 @@ function onScaleKey(
     // On Alpha the step is copied as its see-through 8-digit hex.
     const text =
       s.tab === 'alpha' ? alphaOf(step.rgb, s.over === 'white' ? WHITE : BLACK).hex8 : step.hex
-    return { state: flash(s, `copied ${text}`, ctx), effects: [{ type: 'copy', text }] }
+    return copied(s, `copied ${text}`, ctx, { type: 'copy', text })
   }
   if (input === 'c') {
-    return {
-      state: flash(s, `copied ${steps.length} swatches`, ctx),
-      effects: [{ type: 'copy-all' }],
-    }
+    return copied(s, `copied ${steps.length} swatches`, ctx, { type: 'copy-all' })
   }
   // Making a step the centre is the colour's own; a neutral's centre is fixed, an alpha follows its colour.
   if (input === 'r' && s.tab === 'colour' && step && screen.sel !== centre) {
     const was = `was ${step.step} of ${toHex(screen.ref)}`
-    const next = push(s, { kind: 'scale', ref: step.rgb, from: was, sel: centre })
+    const next = push(s, scaleScreen(s, step.rgb, was))
     const said = `${step.hex} is now ${steps[centre]?.step ?? 500} · esc goes back to ${toHex(screen.ref)}`
     return same(flash({ ...next, field: field(step.hex, false) }, said, ctx))
   }
+  return same(s)
+}
+
+/** The Palette tab (§12.6, §13): the grid, its cursor, its copies, its tweak's reset. */
+function onPaletteTabKey(
+  s: ColourState,
+  screen: Extract<Screen, { kind: 'scale' }>,
+  input: string,
+  key: KeyLike,
+  ctx: Ctx,
+): Out {
+  const sys = systemOf(s, screen.ref)
+  const rows = [...sys.rows.map((r) => r.steps), sys.neutral]
+  const { row, col } = screen.cell
+  const step = rows[row]?.[col]
+  const at = (r: number, c: number) =>
+    same(
+      replaceTop(s, {
+        ...screen,
+        cell: {
+          row: Math.max(0, Math.min(rows.length - 1, r)),
+          col: Math.max(0, Math.min((rows[0]?.length ?? 1) - 1, c)),
+        },
+      }),
+    )
+  if (key.upArrow) return at(row - 1, col)
+  if (key.downArrow) return at(row + 1, col)
+  if (key.leftArrow) return at(row, col - 1)
+  if (key.rightArrow) return at(row, col + 1)
+  if (key.return && step) {
+    return copied(s, `copied ${step.hex}`, ctx, { type: 'copy', text: step.hex })
+  }
+  if (input === 'c') {
+    return copied(s, `copied ${rows.length} rows of swatches`, ctx, { type: 'copy-all' })
+  }
+  if (input === 'r' && isTweaked(s.tweak)) return same({ ...s, tweak: NO_TWEAK })
   return same(s)
 }
 
@@ -512,92 +628,41 @@ function onMixKey(
 ): Out {
   const steps = mixOf(s, screen)
   const step = steps[screen.sel]
+  if (input === 'm') return same(moreWindow(s))
   if (input === 's') return same(editSteps(s, 'way'))
   if (key.leftArrow) return same(replaceTop(s, { ...screen, sel: Math.max(0, screen.sel - 1) }))
   if (key.rightArrow) {
     return same(replaceTop(s, { ...screen, sel: Math.min(steps.length - 1, screen.sel + 1) }))
   }
   if (key.return && step) {
-    return {
-      state: flash(s, `copied ${step.hex}`, ctx),
-      effects: [{ type: 'copy', text: step.hex }],
-    }
+    return copied(s, `copied ${step.hex}`, ctx, { type: 'copy', text: step.hex })
   }
   if (input === 'c') {
-    return {
-      state: flash(s, `copied ${steps.length} swatches`, ctx),
-      effects: [{ type: 'copy-all' }],
-    }
+    return copied(s, `copied ${steps.length} swatches`, ctx, { type: 'copy-all' })
   }
   return same(s)
 }
 
-function onSystemKey(
-  s: ColourState,
-  screen: Extract<Screen, { kind: 'system' }>,
-  input: string,
-  key: KeyLike,
-  ctx: Ctx,
-): Out {
-  const sys = systemOf(s, screen.ref)
-  const rows = [...sys.rows.map((r) => r.steps), sys.neutral]
-  const { row, col } = screen.sel
-  const step = rows[row]?.[col]
-  const at = (r: number, c: number) =>
-    same(
-      replaceTop(s, {
-        ...screen,
-        sel: {
-          row: Math.max(0, Math.min(rows.length - 1, r)),
-          col: Math.max(0, Math.min((rows[0]?.length ?? 1) - 1, c)),
-        },
-      }),
-    )
-  if (key.upArrow) return at(row - 1, col)
-  if (key.downArrow) return at(row + 1, col)
-  if (key.leftArrow) return at(row, col - 1)
-  if (key.rightArrow) return at(row, col + 1)
-  if (key.return && step) {
-    return {
-      state: flash(s, `copied ${step.hex}`, ctx),
-      effects: [{ type: 'copy', text: step.hex }],
-    }
-  }
-  if (input === 'c') {
-    return {
-      state: flash(s, `copied ${rows.length} rows of swatches`, ctx),
-      effects: [{ type: 'copy-all' }],
-    }
-  }
-  if (input === 'm') return same({ ...s, win: { kind: 'mode', at: MODES.indexOf(s.mode) } })
-  if (input === 't') return same({ ...s, win: { kind: 'tweak', at: 0, before: s.tweak } })
-  if (input === 's') return same(editSteps(s, 'set'))
-  if (input === 'r' && isTweaked(s.tweak)) return same({ ...s, tweak: NO_TWEAK })
-  return same(s)
-}
-
-/** The colour's own row in Palette's grid, for a cursor after the mode changes. */
+/** The colour's own row on the Palette tab, for the cursor after the mode changes. */
 function onYours(s: ColourState): ColourState {
   const screen = top(s)
-  if (screen.kind !== 'system') return s
-  const rows = systemOf(s, screen.ref).rows
-  const yours = Math.max(
-    0,
-    rows.findIndex((r) => r.yours),
-  )
-  return replaceTop(s, { ...screen, sel: { ...screen.sel, row: yours } })
+  if (screen.kind !== 'scale') return s
+  return replaceTop(s, { ...screen, cell: { ...screen.cell, row: yoursRow(s, screen.ref) } })
 }
 
-/** The tweak the Tweak window moves: the scale's own on a scale, else Palette's. */
+/** Whether the Tweak window moves the palette's tweak (on its tab), not a scale's own. */
+const palettesTweak = (s: ColourState) => top(s).kind !== 'scale' || s.tab === 'palette'
+
+/** The tweak the Tweak window moves: on the Palette tab the palette's, else the scale's own. */
 export function tweakOf(s: ColourState): Tweak {
   const screen = top(s)
-  return screen.kind === 'scale' ? (screen.tweak ?? NO_TWEAK) : s.tweak
+  return screen.kind === 'scale' && !palettesTweak(s) ? (screen.tweak ?? NO_TWEAK) : s.tweak
 }
 
 /** `s` with `t` as the tweak the window moves. None on a scale is none kept. */
 function withTweak(s: ColourState, t: Tweak): ColourState {
   const screen = top(s)
-  if (screen.kind !== 'scale') return { ...s, tweak: t }
+  if (screen.kind !== 'scale' || palettesTweak(s)) return { ...s, tweak: t }
   const { tweak: _, ...rest } = screen
   return replaceTop(s, isTweaked(t) ? { ...rest, tweak: t } : rest)
 }
@@ -610,8 +675,67 @@ const REACH: Record<keyof Tweak, number> = {
   contrast: 100,
 }
 
-/** Keys while a window is open over Palette: the Mode list, or the Tweak sliders. */
+/** What More's ↵ opens (§13). */
+function openFromMore(s: ColourState, item: MoreItem): ColourState {
+  const closed = { ...s, win: undefined }
+  const screen = top(s)
+  if (item === 'gradient' && screen.kind === 'scale') return gradientWindow(closed, screen.ref)
+  if (item === 'tweak') return { ...s, win: { kind: 'tweak', at: 0, before: tweakOf(s) } }
+  if (item === 'mode') return { ...s, win: { kind: 'mode', at: MODES.indexOf(s.mode) } }
+  return editSteps(closed, screen.kind === 'mix' ? 'way' : 'set')
+}
+
+/** Keys in the Gradient window: its box takes what is typed (§13). */
+function onGradientKey(
+  s: ColourState,
+  win: Extract<PaletteWindow, { kind: 'gradient' }>,
+  input: string,
+  key: KeyLike,
+): Out {
+  const box = win.stops.length
+  const set = (w: Partial<typeof win>) => same({ ...s, win: { ...win, ...w } })
+  if (key.escape) return same({ ...s, win: undefined })
+  if (key.tab || input === '\t')
+    return win.stops.length >= 2 ? same(mixFrom(s, win.stops)) : same(s)
+  if (key.upArrow) return set({ at: Math.max(0, win.at - 1) })
+  if (key.downArrow) return set({ at: Math.min(box, win.at + 1) })
+  if (key.return) {
+    const rgb = parseColour(win.text.trim())?.rgb
+    if (!rgb) return win.text.trim() === '' ? same(s) : set({ wrong: true })
+    const stops = [...win.stops, rgb]
+    return same({ ...s, win: { kind: 'gradient', stops, at: stops.length, text: '' } })
+  }
+  if (key.backspace || key.delete) {
+    if (win.at === box) {
+      const { wrong: _, ...rest } = win
+      return same({ ...s, win: { ...rest, text: win.text.slice(0, -1) } })
+    }
+    // A colour chosen: it goes, as long as one is left.
+    if (win.stops.length <= 1) return same(s)
+    const stops = win.stops.filter((_, i) => i !== win.at)
+    return set({ stops, at: Math.min(win.at, stops.length) })
+  }
+  if (key.ctrl || key.meta || key.leftArrow || key.rightArrow || input === '') return same(s)
+  // Anything else typed goes into the box, which is then in hand.
+  const { wrong: _, ...rest } = win
+  return same({ ...s, win: { ...rest, at: box, text: win.text + input } })
+}
+
+/** Keys while a window is open: More's list, the Mode list, the Tweak sliders, a gradient's colours. */
 function onWindowKey(s: ColourState, win: PaletteWindow, input: string, key: KeyLike): Out {
+  if (win.kind === 'gradient') return onGradientKey(s, win, input, key)
+  if (win.kind === 'more') {
+    const items = moreItems(s)
+    // m opened it, and m is done with it, as esc is (2026-10-24).
+    if (key.escape || input === 'm') return same({ ...s, win: undefined })
+    if (key.upArrow) return same({ ...s, win: { ...win, at: Math.max(0, win.at - 1) } })
+    if (key.downArrow) {
+      return same({ ...s, win: { ...win, at: Math.min(items.length - 1, win.at + 1) } })
+    }
+    const item = items[win.at]
+    if (key.return && item) return same(openFromMore(s, item))
+    return same(s)
+  }
   if (win.kind === 'mode') {
     if (key.escape) return same({ ...s, win: undefined })
     if (key.upArrow) return same({ ...s, win: { ...win, at: Math.max(0, win.at - 1) } })
@@ -620,7 +744,7 @@ function onWindowKey(s: ColourState, win: PaletteWindow, input: string, key: Key
     if (key.return) return same(onYours({ ...s, mode: MODES[win.at] as Mode, win: undefined }))
     return same(s)
   }
-  // Over a scale the window moves the scale's own tweak; over Palette, Palette's.
+  // Over a scale's own tabs the window moves the scale's tweak; over Palette, the palette's.
   const now = tweakOf(s)
   const put = (t: Tweak, rest: Partial<ColourState> = {}) => same({ ...withTweak(s, t), ...rest })
   if (key.escape) return put(win.before, { win: undefined })
@@ -717,10 +841,12 @@ function withSteps(
     )
   const history = edit.history.map((h) =>
     h.kind === 'scale'
-      ? { ...h, sel: nearest(was[h.sel] ?? 500) }
-      : h.kind === 'system'
-        ? { ...h, sel: { ...h.sel, col: nearest(was[h.sel.col] ?? 500) } }
-        : h,
+      ? {
+          ...h,
+          sel: nearest(was[h.sel] ?? 500),
+          cell: { ...h.cell, col: nearest(was[h.cell.col] ?? 500) },
+        }
+      : h,
   )
   return { ...s, steps, history }
 }
@@ -804,7 +930,6 @@ function onKey(s: ColourState, input: string, key: KeyLike, ctx: Ctx): Out {
   if (screen.kind === 'palette') return onPaletteKey(s, screen, input, key, ctx)
   if (screen.kind === 'scale') return onScaleKey(s, screen, input, key, ctx)
   if (screen.kind === 'mix') return onMixKey(s, screen, input, key, ctx)
-  if (screen.kind === 'system') return onSystemKey(s, screen, input, key, ctx)
   return same(s)
 }
 
@@ -834,23 +959,27 @@ export function reduce(s: ColourState, action: Action, ctx: Ctx): Out {
           effects: [{ type: 'open', path: action.text.trim() }],
         }
       }
-      return same({
+      const typed: ColourState = {
         ...s,
         field: { ...s.field, text: action.text },
-        preview: onSystem(top(s)) ? undefined : rgb,
+        preview: rgb,
         error: undefined,
         wrong: undefined,
-      })
+      }
+      // Whole for certain: on to the scale, as ↵ would go.
+      const whole = settledColour(top(s), action.text)
+      return same(whole ? scaleFrom(typed, whole, undefined) : typed)
     }
     case 'submit': {
+      // Only the field's own ↵: one that arrives once typing has gone on is nothing.
+      if (!s.field.focus) return same(s)
       const text = s.field.text.trim()
       const screen = top(s)
       if (onScale(screen) || screen.kind === 'mix') {
-        const pair = typedPair(text)
-        if (pair?.b) return same(mixFrom(s, pair.a, pair.b))
+        const stops = typedStops(text)
+        if (stops && stops.length >= 2) return same(mixFrom(s, stops))
       }
       const rgb = typedColour(screen, text)
-      if (rgb && onSystem(screen)) return same(systemFrom(s, rgb))
       if (rgb) return same(scaleFrom(s, rgb, undefined))
       if (onPalette(screen) && text !== '' && !text.startsWith('#')) {
         return { state: s, effects: [{ type: 'open', path: text }] }
@@ -898,8 +1027,7 @@ export function trailOf(s: ColourState, ctx: Ctx): Trail {
       return ctx.colours(parent)[screen.level[screen.level.length - 1] as number] ?? 'Extract'
     }
     if (onPalette(screen)) return 'Extract'
-    if (screen.kind === 'mix') return 'Mix'
-    if (onSystem(screen)) return 'Palette'
+    if (screen.kind === 'mix') return 'Gradient'
     return 'Scale'
   }
   const answers = s.history

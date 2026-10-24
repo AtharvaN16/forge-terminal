@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { MIX_COUNTS, type MixSpace, mix, mixSteps } from '../../../src/core/colour/mix.js'
+import {
+  gradientSteps,
+  MIX_COUNTS,
+  type MixSpace,
+  mix,
+  mixSteps,
+} from '../../../src/core/colour/mix.js'
 import {
   inGamut,
   parseHex,
@@ -85,5 +91,39 @@ describe('mixSteps', () => {
     for (const n of [0, 2, 22, 4.5, Number.NaN]) {
       expect(() => mixSteps(hex('#6579FD'), hex('#F26E69'), n, 'oklab'), `${n}`).toThrow(ForgeError)
     }
+  })
+})
+
+describe('gradientSteps: through any number of colours (2026-10-24)', () => {
+  const a = hex('#6579FD')
+  const b = hex('#F5A524')
+  const c = hex('#2EC4B6')
+
+  it('through two colours is mixSteps', () => {
+    for (const space of SPACES) {
+      expect(gradientSteps([a, b], 9, space)).toEqual(mixSteps(a, b, 9, space))
+    }
+  })
+
+  it('passes through every colour, evenly spaced; the steps on them are the references', () => {
+    const s = gradientSteps([a, b, c], 9, 'oklab')
+    expect(s.map((x) => x.step)).toEqual([0, 13, 25, 38, 50, 63, 75, 88, 100])
+    expect(s.filter((x) => x.reference).map((x) => x.hex)).toEqual([
+      '#6579FD',
+      '#F5A524',
+      '#2EC4B6',
+    ])
+    for (const x of s) expect(x.hex).toBe(toHex(x.rgb))
+  })
+
+  it('between two neighbours, a step is their mix at that point', () => {
+    const s = gradientSteps([a, b, c], 9, 'oklch')
+    expect(s[2]?.hex).toBe(toHex(mix(a, b, 0.5, 'oklch')))
+    expect(s[6]?.hex).toBe(toHex(mix(b, c, 0.5, 'oklch')))
+  })
+
+  it('needs two colours or more, and 3 to 21 steps', () => {
+    expect(() => gradientSteps([a], 9, 'oklab')).toThrow(ForgeError)
+    expect(() => gradientSteps([a, b, c], 2, 'oklab')).toThrow(ForgeError)
   })
 })

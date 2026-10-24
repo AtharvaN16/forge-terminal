@@ -1,8 +1,10 @@
 import stringWidth from 'string-width'
+import { mix as mixColours } from '../../core/colour/mix.js'
+import { parseColour } from '../../core/colour/parse.js'
+import { type Rgb, toHex } from '../../core/colour/space.js'
 import { blank, mix, type Row, type Run, width } from '../home-art.js'
 import { sliderRow } from '../quality-art.js'
 import type { Palette } from '../theme.js'
-import { withKeys } from './colour-art.js'
 
 /**
  * Palette's screen (colour spec §12.6) as rows of runs: the grid of a
@@ -130,7 +132,12 @@ export function gridRows({
   const nameW = nameColumn(all.map((r) => r.name))
   const n = labels.length
   const { cell } = gridFit(columns, n, nameW)
-  const { tall, shown } = gridLayout(lines, all.length)
+  const gapped = gridLayout(lines, all.length)
+  // When the rows, a line each with a gap line between, would not all show,
+  // but a line each touching would (2026-10-24), every row shows and none
+  // scrolls: the chosen cell is marked in the gaps either side of it.
+  const gapless = gapped.shown < all.length && lines >= all.length
+  const { tall, shown } = gapless ? { tall: 1, shown: all.length } : gapped
   const first = Math.max(0, Math.min(all.length - shown, sel.row - Math.floor((shown - 1) / 2)))
   const frame = lc(p.fg)
   const C = (ch: string, fg?: string, bg?: string, bold = false): Cell => ({ ch, fg, bg, bold })
@@ -181,7 +188,7 @@ export function gridRows({
   const body: Cell[][] = []
   for (let r = first; r < first + shown; r++) {
     const x = all[r] as GridRow
-    body.push(gap(r))
+    if (!gapless) body.push(gap(r))
     for (let k = 0; k < tall; k++) {
       const cells = line()
       if (k === 0) {
@@ -194,13 +201,13 @@ export function gridRows({
         for (let c = 0; c < cell; c++) cells[at(i) + c] = C(' ', undefined, lc(h))
       })
       if (framed && r === sel.row && sel.col >= 0) {
-        cells[at(sel.col) - 1] = C('│', frame)
-        cells[at(sel.col) + cell] = C('│', frame)
+        cells[at(sel.col) - 1] = C(gapless ? '▕' : '│', frame)
+        cells[at(sel.col) + cell] = C(gapless ? '▏' : '│', frame)
       }
       body.push(cells)
     }
   }
-  body.push(gap(first + shown))
+  if (!gapless) body.push(gap(first + shown))
 
   // Where the rows shown are in the list: a thumb on a faint track, as the windows' bars.
   if (shown < all.length) {
@@ -264,18 +271,9 @@ export function chosenRow(p: Palette, name: string, step: string, hex: string, o
   ]
 }
 
-/** The line under the grid: the mode's name, and `m mode  t tweak  s steps`. */
-export function modeRow(p: Palette, columns: number, modeName: string): Row {
-  return withKeys(
-    p,
-    [blank(2), ink(modeName, p.fg, true)],
-    [
-      ['m', 'mode'],
-      ['t', 'tweak'],
-      ['s', 'steps'],
-    ],
-    columns - 1,
-  )
+/** The line under the grid: the mode's name. Mode, Tweak and Steps are in More (2026-10-24). */
+export function modeRow(p: Palette, _columns: number, modeName: string): Row {
+  return [blank(2), ink(modeName, p.fg, true)]
 }
 
 /* -------------------------------------------------------------- windows */
@@ -451,4 +449,94 @@ export function tweakLines(p: Palette, sliders: Slider[], focus: number, hexes: 
   })
   lines.push([], strip)
   return lines
+}
+
+/* ------------------------------------------------------- More, Gradient */
+
+export const MORE_WINDOW_WIDTH = 56
+
+/** More's items as they read, each with the key that opens it at once (Mode has none: m is More). */
+const MORE_NAMES: Record<string, [string, string]> = {
+  gradient: ['Gradient', '⇧→'],
+  tweak: ['Tweak', 't'],
+  steps: ['Steps', 's'],
+  mode: ['Mode', ''],
+}
+
+/**
+ * More's window (2026-10-24): its items as the Mode list's rows, the one in
+ * hand on the band with ›, each with its key at the right.
+ */
+export function moreLines(p: Palette, items: readonly string[], at: number): Row[] {
+  const inner = MORE_WINDOW_WIDTH - 2
+  const rows = items.map((item, i) => {
+    const [name, key] = MORE_NAMES[item] ?? [item, '']
+    return listRow(p, name, i === at, inner, inner - 3 - 6, [ink(key.padEnd(3), p.border)])
+  })
+  return [[], ...rows, []]
+}
+
+export const GRADIENT_WINDOW_WIDTH = 56
+
+/** `n` cells evenly along `stops`, as the gradient they make (one colour: all of it). */
+function strip(stops: readonly Rgb[], n: number): string[] {
+  return Array.from({ length: n }, (_, i) => {
+    if (stops.length < 2) return toHex(stops[0] ?? { r: 0, g: 0, b: 0 })
+    const x = (i / Math.max(1, n - 1)) * (stops.length - 1)
+    const k = Math.min(stops.length - 2, Math.floor(x))
+    return toHex(mixColours(stops[k] as Rgb, stops[k + 1] as Rgb, x - k, 'oklab'))
+  })
+}
+
+/**
+ * The Gradient window (2026-10-24): the colours so far, numbered, each with
+ * its swatch and hex, the one in hand on the band; then the box for the next,
+ * on the field's grey, its swatch once whole, "wrong input" at its end when
+ * what was typed is no colour; then the gradient they make, as one strip.
+ */
+export function gradientLines(
+  p: Palette,
+  win: { stops: readonly Rgb[]; at: number; text: string; wrong?: boolean },
+): Row[] {
+  const inner = GRADIENT_WINDOW_WIDTH - 2
+  const band = p.panelBand === '' ? undefined : lc(p.panelBand)
+  // The box on the shelf's grey, a step down from the window's, so it reads as a box.
+  const field = p.shelf === '' ? undefined : lc(p.shelf)
+  const on =
+    (bg: string | undefined) =>
+    (r: Run): Run =>
+      bg ? { ...r, bg: r.bg ?? bg } : r
+  const stops = win.stops.map((c, i): Row => {
+    const chosen = i === win.at
+    const row: Row = [
+      { text: chosen ? ' › ' : '   ', fg: lc(p.accent), bold: true },
+      ink(String(i + 1), chosen ? p.fg : p.border, chosen),
+      blank(3),
+      { text: '    ', bg: lc(toHex(c)) },
+      blank(2),
+      ink(toHex(c), chosen ? p.fg : p.dim, chosen),
+    ]
+    row.push(blank(Math.max(0, inner - width(row))))
+    return chosen ? row.map(on(band)) : row
+  })
+  const inHand = win.at === win.stops.length
+  const typed = parseColour(win.text.trim())?.rgb
+  const boxW = inner - 6 - 3
+  const inside: Row = [
+    blank(1),
+    ink('›', inHand ? p.accent : p.border, true),
+    blank(1),
+    ink(win.text, win.wrong ? p.fail : p.fg),
+    ...(typed && !win.wrong ? [blank(2), { text: '    ', bg: lc(toHex(typed)) }] : []),
+  ]
+  const tail: Row = win.wrong ? [ink('wrong input', p.border), blank(2)] : []
+  const fill = Math.max(1, boxW - width(inside) - width(tail))
+  const box: Row = [
+    { text: '   ' },
+    ink(String(win.stops.length + 1), inHand ? p.fg : p.border, inHand),
+    blank(2),
+    ...[...inside, blank(fill), ...tail].map(on(field)),
+  ]
+  const cells = strip(win.stops, inner - 6).map((h): Run => ({ text: ' ', bg: lc(h) }))
+  return [[], ...stops, box, [], [blank(3), ...cells], []]
 }

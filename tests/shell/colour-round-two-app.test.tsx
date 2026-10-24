@@ -51,10 +51,17 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('Full set'))
     const frame = app.lastFrame()
     expect(plain(frame)).toMatch(/red 500 {2}#F7022A/)
-    expect(plain(frame)).toMatch(/Full set +m +mode +t +tweak +s +steps/)
+    // The mode's name alone; Mode, Tweak and Steps are in More (2026-10-24).
+    expect(plain(frame)).toMatch(/Full set\s*\n/)
+    expect(plain(frame)).toMatch(/ m {2}more\s*\n/)
     expect(lines(frame)).toHaveLength(24)
 
     app.stdin.write('m')
+    await waitFor(() => plain(app.lastFrame()).includes('╭─ More'))
+    expect(plain(app.lastFrame())).toMatch(/› Mode/)
+    expect(keyRow(app.lastFrame())).toMatch(/↑↓ +choose +↵ +open +m +done/)
+    expect(lines(app.lastFrame())).toHaveLength(24)
+    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('╭─ Mode'))
     expect(plain(app.lastFrame())).toContain('Split complementary')
     expect(lines(app.lastFrame())).toHaveLength(24)
@@ -77,15 +84,14 @@ describe('colour, round two, in the app', () => {
     expect(keyRow(app.lastFrame())).toContain('r reset')
   }, 30_000)
 
-  it('Scale’s three tabs each fit the window; wrong input turns up in the box', async () => {
+  it('Scale’s four tabs each fit the window; wrong input turns up in the box', async () => {
     const app = await colourHome()
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
-    app.stdin.write('\r')
-    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
-    for (const tab of ['Colour', 'Neutral', 'Alpha']) {
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
+    for (const tab of ['Colour', 'Neutral', 'Alpha', 'Palette']) {
       expect(lines(app.lastFrame()), tab).toHaveLength(24)
       app.stdin.write('\t')
       await settle(200)
@@ -106,10 +112,9 @@ describe('colour, round two, in the app', () => {
       await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
       app.stdin.write('#6579FD')
       await settle()
-      app.stdin.write('\r')
-      await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
+      await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
       const all = lines(app.lastFrame())
-      const tabs = all.findIndex((l) => l.includes('tab  switch'))
+      const tabs = all.findIndex((l) => /Colour +Neutral +Alpha +Palette/.test(l))
       // The field is three rows, its last blank: under it, a blank row or the tabs.
       const blanks = tabs - all.findIndex((l) => l.includes('› #6579FD')) - 1
       expect(blanks, `${height} rows`).toBe(height === 24 ? 1 : 2)
@@ -118,16 +123,16 @@ describe('colour, round two, in the app', () => {
     }
   }, 30_000)
 
-  it('⇧→ after a colour asks for a second; ↵ mixes them', async () => {
+  it('a name waits for ↵, and ⇧→ after it asks for a second colour; ↵ makes the gradient', async () => {
     const app = await colourHome()
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
-    app.stdin.write('#F26E69')
+    app.stdin.write('crimson')
     await settle()
-    // A whole colour typed: the field's far end says ↵ is done. The
-    // gradient's helper waits until it is (⇧→ works all the same).
-    expect(plain(app.lastFrame())).toMatch(/#F26E69 .* ↵ {2}done/)
-    expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
+    // Whole, but it could grow: ↵ done at the field's end, and on the key row.
+    const field = lines(app.lastFrame()).find((l) => l.includes('crimson')) ?? ''
+    expect(field).toMatch(/crimson .* ↵ {2}done/)
+    expect(keyRow(app.lastFrame())).toMatch(/↵ +done/)
     app.stdin.write(SHIFT_RIGHT)
     await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
     expect(plain(app.lastFrame())).not.toContain('gradient to a second colour')
@@ -135,30 +140,48 @@ describe('colour, round two, in the app', () => {
     await settle()
     app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('straight across'))
-    expect(plain(app.lastFrame())).toMatch(/#F26E69 ╱ Mix/)
+    expect(plain(app.lastFrame())).toMatch(/#DC143C ╱ Gradient/)
     expect(lines(app.lastFrame())).toHaveLength(24)
   }, 30_000)
 
-  it('⇧→ still starts a gradient once the scale is shown, and the field says so', async () => {
+  it('six hex digits go on by themselves: the scale is there at once, with no ↵ to press (2026-10-24)', async () => {
+    const app = await colourHome()
+    app.stdin.write('s')
+    await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+    app.stdin.write('#F26E69')
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
+    expect(plain(app.lastFrame())).toMatch(/Colour +Neutral +Alpha +Palette/)
+    expect(lines(app.lastFrame()).find((l) => l.includes('› #F26E69'))).not.toContain('done')
+    expect(keyRow(app.lastFrame())).toMatch(/←→ +choose +↵ +copy/)
+  }, 30_000)
+
+  it('once the scale is shown, ⇧→ opens the Gradient window; three colours make a gradient', async () => {
     const app = await colourHome()
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#32A852')
     await settle()
-    app.stdin.write('\r')
-    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
-    expect(plain(app.lastFrame())).toMatch(/#32A852 .* ⇧ → {2}gradient to a second colour/)
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
+    expect(plain(app.lastFrame())).toMatch(/#32A852 .* # new colour/)
     // → alone still walks the ramp.
     app.stdin.write(RIGHT)
     await settle()
-    expect(plain(app.lastFrame())).not.toContain('type a second colour to mix')
+    expect(plain(app.lastFrame())).not.toContain('Gradient')
     app.stdin.write(SHIFT_RIGHT)
-    await waitFor(() => plain(app.lastFrame()).includes('type a second colour to mix'))
-    app.stdin.write('#6579FD')
-    await settle()
-    app.stdin.write('\r')
+    await waitFor(() => plain(app.lastFrame()).includes('╭─ Gradient'))
+    expect(keyRow(app.lastFrame())).toMatch(/↵ +add +↑↓ +choose .*tab done · esc cancel/)
+    for (const c of ['#6579FD', '#F5A524']) {
+      app.stdin.write(c)
+      await settle()
+      app.stdin.write('\r')
+      await settle()
+    }
+    expect(plain(app.lastFrame())).toMatch(/3 +#F5A524/)
+    expect(lines(app.lastFrame())).toHaveLength(24)
+    app.stdin.write('\t')
     await waitFor(() => plain(app.lastFrame()).includes('straight across'))
-    expect(plain(app.lastFrame())).toMatch(/╱ Mix/)
+    expect(plain(app.lastFrame())).toMatch(/╱ Gradient/)
+    expect(plain(app.lastFrame())).toMatch(/#32A852 .*→ .*#6579FD .*→ .*#F5A524/)
     expect(lines(app.lastFrame())).toHaveLength(24)
   }, 30_000)
 
@@ -168,10 +191,9 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#32A852')
     await settle()
-    app.stdin.write('\r')
-    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
-    const before = plain(app.lastFrame())
-    expect(before).toMatch(/t +tweak +s +steps/)
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
+    // t still opens Tweak at once; More lists it too.
+    expect(plain(app.lastFrame())).toMatch(/ m {2}more/)
     app.stdin.write('t')
     await waitFor(() => plain(app.lastFrame()).includes('Tweak'))
     expect(plain(app.lastFrame())).toMatch(/brightness/)
@@ -200,7 +222,7 @@ describe('colour, round two, in the app', () => {
     await settle()
     expect(plain(app.lastFrame())).toMatch(/› crimson/)
     app.stdin.write('\r')
-    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     expect(plain(app.lastFrame())).toContain('#DC143C')
   }, 30_000)
 
@@ -234,8 +256,7 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#6579FD')
     await settle()
-    app.stdin.write('\r')
-    await waitFor(() => plain(app.lastFrame()).includes('tab  switch'))
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     app.stdin.write('\t')
     await settle()
     app.stdin.write('\t')
@@ -245,13 +266,59 @@ describe('colour, round two, in the app', () => {
     expect(lines(app.lastFrame())).toHaveLength(24)
   }, 30_000)
 
+  it('the Palette tab fits the window and shows every row at 24, 26, 30 and 40 rows (2026-10-24)', async () => {
+    for (const height of [24, 26, 30, 40]) {
+      const app = await colourHome(height)
+      app.stdin.write('d')
+      await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+      app.stdin.write('#6579FD')
+      await settle()
+      await waitFor(() => plain(app.lastFrame()).includes('Full set'))
+      const all = lines(app.lastFrame())
+      expect(all, `${height} rows`).toHaveLength(height)
+      for (const name of [
+        'red',
+        'orange',
+        'yellow',
+        'green',
+        'teal',
+        'blue',
+        'purple',
+        'pink',
+        'neutral',
+      ]) {
+        expect(
+          all.some((l) => new RegExp(`^ *${name}( |$)`).test(l)),
+          `${height}: ${name}`,
+        ).toBe(true)
+      }
+      app.unmount()
+    }
+  }, 60_000)
+
+  it('a copy says so in place of the key row, then the keys come back', async () => {
+    const app = await colourHome()
+    app.stdin.write('s')
+    await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
+    app.stdin.write('#6579FD')
+    await settle()
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
+    app.stdin.write('c')
+    await waitFor(() => keyRow(app.lastFrame()).includes('copied'))
+    expect(keyRow(app.lastFrame())).toMatch(
+      /✓ copied 11 swatches · paste into Figma with (⌘V|Ctrl\+V)/,
+    )
+    expect(lines(app.lastFrame())).toHaveLength(24)
+    await waitFor(() => keyRow(app.lastFrame()).includes('choose'), 5000)
+    expect(keyRow(app.lastFrame())).toMatch(/←→ +choose/)
+  }, 30_000)
+
   it('s on Palette shows the steps line in the mode line’s place', async () => {
     const app = await colourHome()
     app.stdin.write('d')
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('#D2042D')
     await settle()
-    app.stdin.write('\r')
     await waitFor(() => plain(app.lastFrame()).includes('Full set'))
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('‹ Tailwind ›'))

@@ -142,8 +142,8 @@ describe('the scale', () => {
     expect(plain(app.lastFrame())).toContain('type a hex, rgb(), hsl(), oklch() or a colour name')
     app.stdin.write('#6579FD')
     await waitFor(() => plain(app.lastFrame()).includes('normal  large'))
-    app.stdin.write(ENTER)
-    await settle()
+    // Six hex digits go on by themselves, no ↵ (2026-10-24).
+    await waitFor(() => plain(app.lastFrame()).includes('# new colour'))
     app.stdin.write(RIGHT)
     await settle()
     app.stdin.write(RIGHT)

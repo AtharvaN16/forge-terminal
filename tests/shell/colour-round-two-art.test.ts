@@ -30,7 +30,7 @@ const steps = scale(BLUE)
 describe('Scale’s tabs and lines', () => {
   it('the tabs as /about’s: names, then a rule heavy under the one in use', () => {
     const [names, rule] = scaleTabRows({ width: 76, palette: P, at: 1 })
-    expect(text(names)).toMatch(/Colour +Neutral +Alpha +tab +switch/)
+    expect(text(names)).toMatch(/Colour +Neutral +Alpha +Palette +tab $/)
     expect(text(rule)).toMatch(/^ {2}─{10}━{11}─+$/)
     // As wide as the field above it.
     expect(width(rule as Row)).toBe(74)
@@ -43,7 +43,7 @@ describe('Scale’s tabs and lines', () => {
       spec: DEFAULT_STEPS,
       extra: { field: 'tint', value: 'soft' },
     })
-    expect(text(rest)).toMatch(/Tailwind {2}50 – 950 {2}· {2}11 steps {2}· {2}soft tint +s +steps/)
+    expect(text(rest)).toMatch(/Tailwind {2}50 – 950 {2}· {2}11 steps {2}· {2}soft tint$/)
     const editing = stepsLine({
       width: 76,
       palette: P,
@@ -56,7 +56,7 @@ describe('Scale’s tabs and lines', () => {
 
   it('the mix’s line: the way across and the count; under s, both as pills', () => {
     expect(text(mixLine({ width: 76, palette: P, space: 'oklab', count: 9 }))).toMatch(
-      /OKLab {2}straight across {2}· {2}9 steps +s +steps/,
+      /OKLab {2}straight across {2}· {2}9 steps$/,
     )
     expect(
       text(mixLine({ width: 76, palette: P, space: 'oklch', count: 9, editing: 'way' })),
@@ -191,27 +191,27 @@ describe('Palette’s grid (§12.6)', () => {
     expect(tall).toBe((opposite.rows.length + 1) * 3)
   })
 
-  it('too many rows for the lines: it scrolls, the chosen row kept in the middle, a bar at the right', () => {
+  it('rows that only fit on a line each, touching: every one shows, and none scrolls (2026-10-24)', () => {
     const rows = gridOf({ row: 8, col: 10 }, { lines: 13 })
     expect(rows).toHaveLength(14)
-    // Two-line swatches while four rows fit: blue to neutral, the last four.
-    expect(text(rows[2])).toMatch(/^ {2}blue/)
-    expect(text(rows[11])).toMatch(/^ {2}neutral/)
+    expect(text(rows[1])).toMatch(/^ {2}red/)
+    expect(text(rows[9])).toMatch(/^ {2}neutral/)
+    expect(rows.every((r) => !/[┃│]/.test(text(r)))).toBe(true)
+    // The chosen cell, marked in the gaps either side.
+    expect([...text(rows[9])][at(10) - 1]).toBe('▕')
+  })
+
+  it('fewer lines than rows: one-line swatches with gaps, scrolling, the chosen row kept in the middle', () => {
+    const rows = gridOf({ row: 8, col: 10 }, { lines: 7 })
+    expect(rows).toHaveLength(8)
+    // The last three: purple, pink, neutral.
+    expect(text(rows[2])).toMatch(/^ {2}purple/)
+    expect(text(rows[6])).toMatch(/^ {2}neutral/)
     const bar = rows.slice(1).map((r) => [...text(r)].at(-1))
     expect(bar.every((ch) => ch === '│' || ch === '┃')).toBe(true)
     // At the end of the list, so the thumb is at the bottom.
     expect(bar.at(-1)).toBe('┃')
     expect(bar[0]).toBe('│')
-    const middle = gridOf({ row: 4, col: 0 }, { lines: 13 })
-    // Teal chosen: green, teal, blue, purple.
-    expect(text(middle[2])).toMatch(/^ {2}green/)
-  })
-
-  it('down to one-line swatches when four rows would not fit; no bar when all fit', () => {
-    const rows = gridOf({ row: 0, col: 0 }, { lines: 10 })
-    expect(rows).toHaveLength(11)
-    expect(text(rows[2])).toMatch(/^ {2}red/)
-    expect(text(rows[4])).toMatch(/^ {2}orange/)
     expect(gridOf({ row: 0, col: 0 }).every((r) => !text(r).includes('┃'))).toBe(true)
   })
 

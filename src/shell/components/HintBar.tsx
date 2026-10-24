@@ -29,6 +29,7 @@ export function HintBar({
   above,
   off,
   hint,
+  message,
 }: {
   pairs: Array<[string, string]>
   /**
@@ -47,6 +48,11 @@ export function HintBar({
    * Something the shell just said takes the row while it shows.
    */
   hint?: ReactNode
+  /**
+   * Said in place of the keys for a moment, under the rule: colour mode's
+   * copies (2026-10-24). The keys come back when it goes.
+   */
+  message?: ReactNode
 }) {
   const palette = useTheme()
   const notices = useNotices()
@@ -93,7 +99,7 @@ export function HintBar({
       <Box width={width} marginTop={line || hint ? 0 : 1} flexDirection="column" flexShrink={0}>
         {line ? <NoticeLine notices={notices} width={width} /> : hint}
         <KeyRule width={width} />
-        <KeyRow main={main} foot={[...extra, ...footed]} width={width} off={off} />
+        {message ?? <KeyRow main={main} foot={[...extra, ...footed]} width={width} off={off} />}
       </Box>
     </>
   )

@@ -784,3 +784,50 @@ The CLI and MCP keep `forge palette` (an image's colours) and `forge scale`
 as they are, except that `forge scale`, `--inside` and the MCP tools read a
 colour with `parseColour`.
 Steps, neutrals, alpha, mix and Palette are app-only for now.
+
+## 13. Simpler (2026-10-24)
+
+People given colour mode without guidance got lost: about ten tools behind
+three cards, key hints on four rows, keys meaning different things on
+different screens. The audit and its rounds are in
+`mockups/colour-audit-2026-10-simple.html`, `colour-redesign-2026-10-round5.html`
+(Flow 1, liked) and `colour-more-copy-2026-10-round6.html` (P1, picked).
+
+- **Home is unchanged**: Extract, Scale and Palette cards, A S D.
+- **Palette is Scale's fourth tab**: Colour · Neutral · Alpha · Palette.
+  `S` opens Scale on Colour, `D` on Palette; one screen, one colour, the
+  trail says Scale. The Palette tab draws the grid where the ramp is, its own
+  cursor (`cell`) beside the scale's step; ↑↓←→ move it. When its rows would
+  scroll with gap lines between them but fit a line each, they show touching,
+  all of them, the chosen cell marked `▕ ▏` in the gaps; the blank lines round
+  the grid go before the rows would scroll.
+- **More**: `m`, drawn over the key row's rule at the right as home's
+  "/ menu" is — the key on the grey cap, in the mode's pink, then `more`
+  dim. It opens a W1 window (centred, the screen faded): Gradient (⇧→),
+  Tweak (t), Steps (s) on a scale's tabs; Mode, Tweak, Steps on Palette;
+  Steps on a gradient. The keys still work at once. `m` is no longer Mode;
+  in the window `m` is done, closing it as esc does (`↑↓ choose ↵ open m done`).
+- **Gradient** (was Mix) takes any number of colours. Its window lists them
+  numbered, then a box for the next on the shelf's grey, then the gradient
+  as one strip: ↵ adds, ↑↓ choose, ⌫ removes the chosen one (or deletes in
+  the box), tab shows it, esc cancels. The screen is the Mix screen with every
+  colour; the bar says Gradient. Typed in the field, `a → b → c` makes one
+  too. Core: `gradientSteps(stops, count, space)`; `mixSteps` is its two-stop
+  case.
+- **The lines say no keys**: the steps line, the gradient's line and the
+  mode's line are values only; the tab row ends in the `tab` cap alone.
+- **The field**: `# new colour` at its far end at rest, as plain text (the
+  key bright, the words quiet). Typing goes on by itself, with no ↵, once the
+  colour is whole for certain: six hex digits (with or without `#`), or
+  `rgb()`, `hsl()` or `oklch()` with its bracket closed (`settledColour`). What
+  could still grow waits for ↵ — a name (`red`, on the way to `redwood`),
+  shorthand (`#657`), colours typed for a gradient (`a → b`) — and shows `↵ done`
+  as a grey chip at the far end, where it fits. A ↵ that arrives after typing
+  has gone on is nothing. There is no gradient hint (Gradient is in More).
+- **Key rows**: Colour `←→ choose ↵ copy c copy all · r make centre · esc
+  back`; Neutral, Alpha, a gradient `… · esc back`; Palette `↑↓←→ choose …
+  · (r reset ·) esc back`; More `↑↓ choose ↵ open · esc close`; Gradient
+  `↵ add ↑↓ choose · ⌫ remove · tab done · esc cancel`.
+- **A copy says so in place of the key row** for 3 s (K1): a colour just
+  what was copied; a set — swatches or a palette's rows of them — with
+  "paste into Figma with ⌘V". Make centre's line stays under the view.

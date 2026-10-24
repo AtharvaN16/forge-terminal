@@ -51,7 +51,7 @@ const BLUE = { r: 0x65, g: 0x79, b: 0xfd }
 const onScale = () => initial({ scale: BLUE })
 
 describe('Scale’s tabs (§12.1)', () => {
-  it('tab goes Colour → Neutral → Alpha → Colour; shift-tab the other way', () => {
+  it('tab goes Colour → Neutral → Alpha → Palette → Colour; shift-tab the other way', () => {
     let s = onScale()
     expect(s.tab).toBe('colour')
     s = run(s, TAB).state
@@ -59,8 +59,10 @@ describe('Scale’s tabs (§12.1)', () => {
     s = run(s, TAB).state
     expect(s.tab).toBe('alpha')
     s = run(s, TAB).state
+    expect(s.tab).toBe('palette')
+    s = run(s, TAB).state
     expect(s.tab).toBe('colour')
-    expect(run(s, SHIFT_TAB).state.tab).toBe('alpha')
+    expect(run(s, SHIFT_TAB).state.tab).toBe('palette')
   })
 
   it('↵ copies the step as each tab shows it: the hex, the neutral’s hex, the 8-digit alpha', () => {
@@ -116,7 +118,7 @@ describe('typing a colour (§12.4, §12.5)', () => {
   })
 })
 
-describe('Mix (§12.3)', () => {
+describe('Gradient, was Mix (§12.3, §13)', () => {
   it('reads two colours either side of an arrow, or two hexes', () => {
     expect(typedPair('#F26E69 → #6579FD')).toMatchObject({ a: { r: 0xf2 }, b: { r: 0x65 } })
     expect(typedPair('#F26E69 -> crimson')).toMatchObject({ b: { r: 0xdc } })
@@ -126,10 +128,13 @@ describe('Mix (§12.3)', () => {
     expect(typedPair('nope → #fff')).toBeUndefined()
   })
 
-  it('↵ on two colours mixes them on the first one’s scale; the bar says Scale ╱ Mix; esc goes back', () => {
+  it('↵ on two colours makes a gradient on the first one’s scale; the bar says Gradient; esc goes back', () => {
     const { state } = run(onScale(), key('#'), text('#F26E69 → #6579FD'), SUBMIT)
     expect(top(state)).toMatchObject({ kind: 'mix', sel: 4 })
-    expect(trailOf(state, ctx())).toEqual({ answers: ['#6579FD', '#F26E69'], current: 'Mix' })
+    expect(trailOf(state, ctx())).toEqual({
+      answers: ['#6579FD', '#F26E69'],
+      current: 'Gradient',
+    })
     expect(top(run(state, ESC).state)).toMatchObject({ kind: 'scale', ref: { r: 0xf2 } })
   })
 
@@ -151,22 +156,22 @@ describe('Mix (§12.3)', () => {
   })
 })
 
-describe('Palette (§12.6)', () => {
+describe('Palette, Scale’s fourth tab since 2026-10-24 (§12.6, §13)', () => {
   const RED = { r: 0xd2, g: 0x04, b: 0x2d }
   const onPalette = () => run(initial('system'), text('#D2042D'), SUBMIT).state
 
   it('opens empty with the box ready; a colour lands the cursor on its own cell', () => {
-    expect(initial('system')).toMatchObject({ history: [{ kind: 'system-empty' }] })
+    expect(initial('system')).toMatchObject({ tab: 'palette', history: [{ kind: 'scale-empty' }] })
     const s = onPalette()
-    expect(top(s)).toEqual({ kind: 'system', ref: RED, sel: { row: 0, col: 5 } })
-    expect(trailOf(s, ctx())).toEqual({ answers: [], current: 'Palette' })
+    expect(top(s)).toEqual({ kind: 'scale', ref: RED, sel: 5, cell: { row: 0, col: 5 } })
+    expect(trailOf(s, ctx())).toEqual({ answers: [], current: 'Scale' })
   })
 
   it('↑↓←→ move through the grid and stop at its edges; ↵ copies the swatch', () => {
     const s = run(onPalette(), UP, LEFT, LEFT).state
-    expect(top(s)).toMatchObject({ sel: { row: 0, col: 3 } })
+    expect(top(s)).toMatchObject({ cell: { row: 0, col: 3 } })
     const far = run(onPalette(), ...Array(20).fill(DOWN), ...Array(20).fill(RIGHT)).state
-    expect(top(far)).toMatchObject({ sel: { row: 8, col: 10 } })
+    expect(top(far)).toMatchObject({ cell: { row: 8, col: 10 } })
     expect(run(onPalette(), ENTER).effects).toEqual([{ type: 'copy', text: '#D2042D' }])
     expect(run(onPalette(), key('c')).effects).toEqual([{ type: 'copy-all' }])
   })
@@ -208,13 +213,13 @@ describe('Palette (§12.6)', () => {
     expect(after[0]?.hex).not.toBe(before[0]?.hex)
   })
 
-  it('m opens the Mode window on the mode in use; ↓ ↵ chooses, esc leaves it as it was', () => {
-    const open = run(onPalette(), key('m')).state
+  it('More’s Mode opens the Mode window on the mode in use; ↓ ↵ chooses, esc leaves it as it was', () => {
+    const open = run(onPalette(), key('m'), ENTER).state
     expect(open.win).toEqual({ kind: 'mode', at: 0 })
     const chosen = run(open, DOWN, DOWN, DOWN, ENTER).state
     expect(chosen).toMatchObject({ mode: 'opposite', win: undefined })
     // The cursor goes to the colour's own row in the new mode.
-    expect(top(chosen)).toMatchObject({ sel: { row: 0 } })
+    expect(top(chosen)).toMatchObject({ cell: { row: 0 } })
     expect(run(open, DOWN, ESC).state).toMatchObject({ mode: 'full', win: undefined })
   })
 
@@ -238,6 +243,6 @@ describe('Palette (§12.6)', () => {
 
   it('a wrong colour on Palette is marked, as on Scale', () => {
     const { state } = run(initial('system'), text('not a colour'), SUBMIT)
-    expect(state).toMatchObject({ wrong: true, history: [{ kind: 'system-empty' }] })
+    expect(state).toMatchObject({ wrong: true, history: [{ kind: 'scale-empty' }] })
   })
 })

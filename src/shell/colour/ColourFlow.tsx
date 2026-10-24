@@ -54,6 +54,7 @@ import {
   alphaPreviewRows,
   alphaRampRows,
   approximateRow,
+  copiedMessage,
   detailRow,
   dropZone,
   emptyRampRows,
@@ -65,6 +66,8 @@ import {
   framed,
   insideColumn,
   mixLine,
+  moreHintRow,
+  newColourHint,
   paletteBody,
   paletteColumn,
   photoPixels,
@@ -87,6 +90,7 @@ import {
   initial,
   initialEffects,
   mixOf,
+  moreItems,
   reduce,
   SCALE_TABS,
   type Screen,
@@ -96,15 +100,19 @@ import {
   tabSteps,
   trailOf,
   tweakOf,
-  typedPair,
+  typedStops,
 } from './state.js'
 import {
   chosenRow,
   emptyGridRows,
+  GRADIENT_WINDOW_WIDTH,
+  gradientLines,
   gridRows,
   MODE_WINDOW_WIDTH,
+  MORE_WINDOW_WIDTH,
   modeLines,
   modeRow,
+  moreLines,
   type Slider,
   TWEAK_WINDOW_WIDTH,
   tweakLines,
@@ -294,6 +302,9 @@ export function ColourFlow({
       const inside = screen.level.length > 0 ? parentOf(screen, groupsAt).hex : undefined
       return paletteCard(screen.name, groupsAt(screen.level), theme, inside)
     }
+    if (screen.kind === 'scale' && s.tab === 'palette') {
+      return systemCard(screen.ref, systemOf(s, screen.ref), s.mode, s.steps, theme)
+    }
     if (screen.kind === 'scale') {
       // What is copied is what is shown: the scale with its tweak on.
       const shown = tabSteps(s, screen.ref, screen.tweak)
@@ -313,14 +324,11 @@ export function ColourFlow({
     if (screen.kind === 'mix') {
       const steps = mixOf(s, screen)
       return card(
-        `${toHex(screen.a)} to ${toHex(screen.b)}`,
+        screen.stops.map(toHex).join(' to '),
         `${s.mixSpace === 'oklab' ? 'OKLab' : 'OKLCH'} · ${steps.length} steps`,
         steps.map((x) => ({ id: `mix-${x.step}`, name: `${x.step}%`, value: x.hex, hex: x.hex })),
         theme,
       )
-    }
-    if (screen.kind === 'system') {
-      return systemCard(screen.ref, systemOf(s, screen.ref), s.mode, s.steps, theme)
     }
     return ''
   }
@@ -508,7 +516,7 @@ export function ColourFlow({
       {full(screen, state) ? null : <Text> </Text>}
       <Line
         row={
-          state.flash && screen.kind !== 'system'
+          state.flash && !state.flash.keys && !onPaletteTab(screen, state)
             ? flashRow(p, state.flash.text)
             : approximate && onScaleScreen(screen)
               ? approximateRow(p)
@@ -516,20 +524,32 @@ export function ColourFlow({
         }
       />
       {approximate && !onScaleScreen(screen) ? <Runs row={approximateRow(p)} /> : null}
-      <HintBar pairs={keys.main} foot={keys.foot} width={width} />
+      <HintBar
+        pairs={keys.main}
+        foot={keys.foot}
+        width={width}
+        hint={
+          moreItems(state).length > 0 && !state.win && !state.stepsEdit && !state.field.focus ? (
+            <Runs row={moreHintRow({ palette: p, width })} />
+          ) : undefined
+        }
+        message={
+          state.flash?.keys ? (
+            <Runs row={[blank(2), ...copiedMessage(p, state.flash.text)]} />
+          ) : undefined
+        }
+      />
     </Box>
   )
 }
 
 const onScaleScreen = (screen: Screen) =>
-  screen.kind === 'scale' ||
-  screen.kind === 'scale-empty' ||
-  screen.kind === 'mix' ||
-  screen.kind === 'system' ||
-  screen.kind === 'system-empty'
+  screen.kind === 'scale' || screen.kind === 'scale-empty' || screen.kind === 'mix'
+/** The Palette tab of a scale, typed or not yet. */
+const onPaletteTab = (screen: Screen, state: ColourState) =>
+  state.tab === 'palette' && (screen.kind === 'scale' || screen.kind === 'scale-empty')
 /** Screens whose body fills the rows the gap above the detail line would take. */
-const full = (screen: Screen, _state: ColourState) =>
-  screen.kind === 'scale' || screen.kind === 'system'
+const full = (screen: Screen, _state: ColourState) => screen.kind === 'scale'
 
 /** The field at rest: the image and its size, or the colour, its swatch and where it came from. */
 function restingField(p: ReturnType<typeof useTheme>, screen: Screen, width: number): Row {
@@ -543,46 +563,41 @@ function restingField(p: ReturnType<typeof useTheme>, screen: Screen, width: num
       swatch: true,
       ...(screen.from ? { detail: screen.from } : {}),
     })
-    // ⇧→ still starts a mix here: the far end says so, where the editor
-    // would, and where it fits.
-    const hint = keyHint(p, ...GRADIENT_HINT)
-    const gap = width - 9 - widthOf(value) - widthOf(hint)
-    return gap >= 2 ? [...value, blank(gap), ...hint] : value
+    return withNewColour(p, value, width)
   }
-  if (screen.kind === 'system')
-    return fieldValue({ palette: p, value: toHex(screen.ref), swatch: true })
   if (screen.kind === 'mix') {
-    const a = toHex(screen.a)
-    const b = toHex(screen.b)
-    return [
-      ...fieldValue({ palette: p, value: a, swatch: true }),
-      blank(3),
-      { text: '→', fg: p.dim },
-      blank(3),
-      ...fieldValue({ palette: p, value: b, swatch: true }),
-    ]
+    const stops: Row = screen.stops.flatMap((c, i) => [
+      ...(i ? [blank(3), { text: '→', fg: p.dim }, blank(3)] : []),
+      ...fieldValue({ palette: p, value: toHex(c), swatch: true }),
+    ])
+    return withNewColour(p, stops, width)
   }
   return fieldHint(p, hintFor(screen))
 }
 
-/** The empty box's one hint (§12.4): a colour on Scale and Palette, a path on Extract. */
-const COLOUR_HINT = 'type a hex, rgb(), hsl(), oklch() or a colour name'
+/**
+ * `row` with "# new colour" at the field's far end (2026-10-24), ending where
+ * every field's hint ends, where it fits.
+ */
+function withNewColour(p: ReturnType<typeof useTheme>, row: Row, width: number): Row {
+  const hint = newColourHint(p)
+  const gap = width - 9 - widthOf(row) - widthOf(hint)
+  return gap >= 2 ? [...row, blank(gap), ...hint] : row
+}
+
 /**
  * A key and what it does, at the field's far end, as every field's key hint
  * is drawn (`fieldKey`), in grey rather than the mode's pink: the swatches
- * already compete for attention (2026-10-16). A space between the glyphs so
- * ⇧ and → read as two.
+ * already compete for attention (2026-10-16).
  */
 function keyHint(p: ReturnType<typeof useTheme>, keys: string, words: string): Row {
   return fieldKey({ palette: p, key: keys, words, colour: p.border, ink: p.canvas })
 }
-/** While a colour is typed on a scale: ↵ is done. */
+/** While a colour is typed: ↵ is done. */
 const DONE_HINT = ['↵', 'done'] as const
-/**
- * Once the scale is shown, where ⇧→ mixes (approved 2026-10-14; ⇧ since
- * then, as → moves along the ramp; only after ↵, from then on).
- */
-const GRADIENT_HINT = ['⇧ →', 'gradient to a second colour'] as const
+
+/** The empty box's one hint (§12.4): a colour on Scale and Palette, a path on Extract. */
+const COLOUR_HINT = 'type a hex, rgb(), hsl(), oklch() or a colour name'
 function hintFor(screen: Screen): string {
   return screen.kind === 'palette' || screen.kind === 'palette-empty'
     ? 'type an image path'
@@ -645,7 +660,7 @@ function FieldEditor({
   const fillProps = fill === '' ? {} : { backgroundColor: colourProp(fill) }
   const typed = value.trim()
   const one = parseColour(typed)
-  const pair = mixes ? typedPair(typed) : undefined
+  const stops = mixes && /→|->|>/.test(typed) ? typedStops(typed) : undefined
   const swatch = (rgb: Rgb | undefined, words = false): Row =>
     rgb
       ? [
@@ -657,7 +672,8 @@ function FieldEditor({
         ]
       : []
   // After the colour and its →: the hint for the second (approved, §12.3).
-  const waiting = pair && !pair.b && /→\s*$/.test(value)
+  const waiting = stops?.length === 1 && /→\s*$/.test(value)
+  const last = stops && stops.length >= 2 ? stops[stops.length - 1] : undefined
   /**
    * `tail` at the far end of the field, after `before`: ending where the
    * resting field's hint ends, two cells short of the fill, not against it.
@@ -668,24 +684,21 @@ function FieldEditor({
     blank(Math.max(2, room - widthOf(before) - widthOf(tail))),
     ...tail,
   ]
-  // A whole colour typed on a scale: ↵ is done (asked for, 2026-10-14), where
-  // it fits beside what was typed. ⇧→ already starts a mix here, but its
-  // helper waits for the scale to be shown (`restingField`).
+  // A whole colour typed, or two or more for a gradient: ↵ is done, as a grey
+  // chip at the far end (asked for again 2026-10-24), where it fits.
   const done = keyHint(p, ...DONE_HINT)
-  const finished =
-    mixes &&
-    one !== undefined &&
-    !pair?.b &&
-    !/→/.test(value) &&
-    room - widthOf(swatch(one.rgb, true)) - widthOf(done) >= 2
+  const whole = last ?? (stops === undefined ? one?.rgb : undefined)
+  // A name or a function (`crimson`) says the hex beside its swatch; a gradient's last colour does not.
+  const named = last === undefined
+  const finished = whole !== undefined && room - widthOf(swatch(whole, named)) - widthOf(done) >= 2
   const after: Row = wrong
     ? farEnd([], [{ text: 'wrong input', fg: p.border }])
     : waiting
       ? [{ text: 'type a second colour to mix', fg: p.border }]
-      : pair?.b
-        ? swatch(pair.b)
-        : finished
-          ? farEnd(swatch(one?.rgb, true), done)
+      : finished
+        ? farEnd(swatch(whole, named), done)
+        : last
+          ? swatch(last)
           : swatch(one?.rgb, true)
   const pad = <Box width={width - 4} height={1} {...fillProps} />
   return (
@@ -766,6 +779,8 @@ function bodyRows({
   }
   if (screen.kind === 'scale-empty' || screen.kind === 'scale') {
     const ref: Rgb | undefined = state.preview ?? (screen.kind === 'scale' ? screen.ref : undefined)
+    // The Palette tab (§13): its grid where the ramp would be.
+    if (state.tab === 'palette') return paletteTabRows({ p, screen, state, ref, width, height })
     if (!ref) return emptyRampRows({ width, palette: p, steps: stepsOf(state.steps) })
     // A colour being typed is drawn as it is; a shown scale with its own tweak.
     const tweak = screen.kind === 'scale' && !state.preview ? screen.tweak : undefined
@@ -788,7 +803,6 @@ function bodyRows({
           spec: state.steps,
           editing: state.stepsEdit?.field,
           extra,
-          tweak: true,
         })
       : []
     // A blank row between the field and the tabs where the window has one to
@@ -863,58 +877,13 @@ function bodyRows({
     const at = first?.findIndex((r) => r.text === String(step.step) && r.bold) ?? -1
     if (first && at >= 0)
       first[at] = { ...(first[at] as (typeof first)[number]), text: `${step.step}%` }
-    return [...rampRows({ width, palette: p, steps, selected: screen.sel }), line, [], ...preview]
-  }
-  if (screen.kind === 'system-empty' || screen.kind === 'system') {
-    const labels = stepsOf(state.steps).map(String)
-    if (screen.kind === 'system-empty') {
-      return [[], [], ...emptyGridRows({ width, palette: p, labels, lines: gridLinesFor(height) })]
-    }
-    const sys = systemOf(state, screen.ref)
-    const rows = [
-      ...sys.rows.map((r) => ({ name: r.name, hexes: r.steps.map((x) => x.hex), yours: r.yours })),
-      { name: 'neutral', hexes: sys.neutral.map((x) => x.hex), yours: false },
+    const body = [
+      ...rampRows({ width, palette: p, steps, selected: screen.sel }),
+      line,
+      [],
+      ...preview,
     ]
-    const steps = [...sys.rows.map((r) => r.steps), sys.neutral]
-    const { row, col } = screen.sel
-    const chosen = steps[row]?.[col]
-    const top: Row = state.flash
-      ? flashRow(p, state.flash.text)
-      : chosen
-        ? chosenRow(
-            p,
-            rows[row]?.name ?? '',
-            labels[col] ?? '',
-            chosen.hex,
-            formatOklch(chosen.rgb),
-          )
-        : []
-    if (p.selectionBg === '') {
-      const picked = (steps[row] ?? []).map((x) => ({ ...x, ...onWhiteAndBlack(x.rgb) }))
-      return [
-        top,
-        [],
-        ...plainScaleRows({ palette: p, steps: picked, selected: col }),
-        [],
-        modeRow(p, width, MODE_NAMES[state.mode]),
-      ]
-    }
-    const grid = gridRows({
-      width,
-      palette: p,
-      labels,
-      rows,
-      reference: centreOf(state.steps),
-      sel: screen.sel,
-      framed: !state.win,
-      lines: gridLinesFor(height),
-    })
-    // Under s, the steps line takes the mode's line, as it does under a scale's ramp.
-    const under = state.stepsEdit
-      ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit.field })
-      : modeRow(p, width, MODE_NAMES[state.mode])
-    const body: Row[] = [top, [], ...grid, [], under]
-    return state.win ? windowFor(p, state, screen.ref, body, width) : body
+    return state.win ? windowFor(p, state, steps[0]?.rgb ?? step.rgb, body, width) : body
   }
   // The palette, or inside one of its colours.
   const groups = groupsAt(screen.level)
@@ -996,6 +965,94 @@ function photoFor(
     lit: screen.sel,
     outside: { map: photoMap(pixels, top, max), colours: top.map((g) => g.hex) },
   })
+}
+
+/**
+ * The Palette tab (§12.6, §13): the tabs, the chosen swatch, the grid of a
+ * palette from the colour, and the mode's name under it; before a colour,
+ * the grid's outline. Windows open over it.
+ */
+function paletteTabRows({
+  p,
+  screen,
+  state,
+  ref,
+  width,
+  height,
+}: {
+  p: ReturnType<typeof useTheme>
+  screen: Extract<Screen, { kind: 'scale' | 'scale-empty' }>
+  state: ColourState
+  ref: Rgb | undefined
+  width: number
+  height: number
+}): Row[] {
+  const labels = stepsOf(state.steps).map(String)
+  const gap: Row[] = height > TIGHT_HEIGHT ? [[]] : []
+  const tabs =
+    screen.kind === 'scale'
+      ? [...gap, ...scaleTabRows({ width, palette: p, at: SCALE_TABS.indexOf(state.tab) })]
+      : []
+  if (!ref) {
+    const lines = paletteLinesFor(height, tabs.length)
+    return [[], [], ...emptyGridRows({ width, palette: p, labels, lines })]
+  }
+  const sys = systemOf(state, ref)
+  const rows = [
+    ...sys.rows.map((r) => ({ name: r.name, hexes: r.steps.map((x) => x.hex), yours: r.yours })),
+    { name: 'neutral', hexes: sys.neutral.map((x) => x.hex), yours: false },
+  ]
+  // The blank lines round the grid go when keeping them would make it scroll.
+  const most = paletteLinesFor(height, tabs.length)
+  const spaced = most - 2 >= rows.length
+  const lines = spaced ? most - 2 : most
+  const gap2: Row[] = spaced ? [[]] : []
+  const steps = [...sys.rows.map((r) => r.steps), sys.neutral]
+  const centre = centreOf(state.steps)
+  const yours = Math.max(
+    0,
+    rows.findIndex((r) => r.yours),
+  )
+  const cell = screen.kind === 'scale' && !state.preview ? screen.cell : { row: yours, col: centre }
+  const chosen = steps[cell.row]?.[cell.col]
+  const top: Row =
+    state.flash && !state.flash.keys
+      ? flashRow(p, state.flash.text)
+      : chosen
+        ? chosenRow(
+            p,
+            rows[cell.row]?.name ?? '',
+            labels[cell.col] ?? '',
+            chosen.hex,
+            formatOklch(chosen.rgb),
+          )
+        : []
+  const under = state.stepsEdit
+    ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit.field })
+    : modeRow(p, width, MODE_NAMES[state.mode])
+  if (p.selectionBg === '') {
+    const picked = (steps[cell.row] ?? []).map((x) => ({ ...x, ...onWhiteAndBlack(x.rgb) }))
+    return [
+      ...tabs,
+      top,
+      ...gap2,
+      ...plainScaleRows({ palette: p, steps: picked, selected: cell.col }),
+      ...gap2,
+      under,
+    ]
+  }
+  const grid = gridRows({
+    width,
+    palette: p,
+    labels,
+    rows,
+    reference: centre,
+    sel: cell,
+    framed: !state.win,
+    lines,
+  })
+  const body: Row[] = [...tabs, top, ...gap2, ...grid, ...gap2, under]
+  return state.win ? windowFor(p, state, ref, body, width) : body
 }
 
 function detailFor({
@@ -1083,7 +1140,33 @@ function keysFor(
       ],
     }
   }
-  // A window over Palette has the key row while it is open.
+  // A window has the key row while it is open.
+  if (state.win?.kind === 'more') {
+    return {
+      main: [
+        ['↑↓', 'choose'],
+        ['↵', 'open'],
+        ['m', 'done'],
+      ],
+      foot: [
+        ['esc', 'close'],
+        ['ctrl-c', 'quit'],
+      ],
+    }
+  }
+  if (state.win?.kind === 'gradient') {
+    return {
+      main: [
+        ['↵', 'add'],
+        ['↑↓', 'choose'],
+      ],
+      foot: [
+        ['⌫', 'remove'],
+        ['tab', 'done'],
+        ['esc', 'cancel'],
+      ],
+    }
+  }
   if (state.win?.kind === 'mode') {
     return {
       main: [
@@ -1122,7 +1205,8 @@ function keysFor(
       ],
     }
   }
-  if (screen.kind === 'system') {
+  // # new colour is at the field's far end now (2026-10-24); esc back on every one.
+  if (screen.kind === 'scale' && state.tab === 'palette') {
     return {
       main: [
         ['↑↓←→', 'choose'],
@@ -1132,13 +1216,9 @@ function keysFor(
       foot: isTweaked(state.tweak)
         ? [
             ['r', 'reset'],
-            ['#', 'new colour'],
             ['esc', 'back'],
           ]
-        : [
-            ['#', 'new colour'],
-            ['esc', 'back'],
-          ],
+        : [['esc', 'back']],
     }
   }
   return {
@@ -1152,13 +1232,9 @@ function keysFor(
       screen.kind === 'scale' && state.tab === 'colour'
         ? [
             ['r', 'make centre'],
-            ['#', 'new colour'],
             ['esc', 'back'],
           ]
-        : [
-            ['#', 'new colour'],
-            ['esc', 'back'],
-          ],
+        : [['esc', 'back']],
   }
 }
 
@@ -1170,7 +1246,13 @@ const TIGHT_HEIGHT = 23
  * the screen leaves it, nine at 80×24.
  */
 const GRID_LINES = 9
-const gridLinesFor = (height: number) => Math.max(GRID_LINES, height - 14)
+/**
+ * The most lines the Palette tab's grid can have under its step numbers: the
+ * bar, the field, the tabs, the chosen swatch's line, the mode's line, the
+ * detail line and the key rows take the rest. At least three.
+ */
+const paletteLinesFor = (height: number, tabRows: number) =>
+  Math.max(3, Math.min(GRID_LINES + 6, height - 12 - tabRows))
 
 /** Palette's open window (W1), drawn over its body: the Mode list, or the Tweak sliders. */
 function windowFor(
@@ -1182,6 +1264,27 @@ function windowFor(
 ): Row[] {
   const win = state.win
   if (!win) return body
+  const centred = (lines: Row[]) => Math.max(1, Math.floor((body.length - lines.length - 2) / 2))
+  if (win.kind === 'more') {
+    const lines = moreLines(p, moreItems(state), win.at)
+    return windowOver(p, body, {
+      title: 'More',
+      lines,
+      width: MORE_WINDOW_WIDTH,
+      columns: width,
+      top: centred(lines),
+    })
+  }
+  if (win.kind === 'gradient') {
+    const lines = gradientLines(p, win)
+    return windowOver(p, body, {
+      title: 'Gradient',
+      lines,
+      width: GRADIENT_WINDOW_WIDTH,
+      columns: width,
+      top: centred(lines),
+    })
+  }
   const chipsOf = (sys: ReturnType<typeof systemOf>) => [
     ...sys.rows.map((r) => r.steps[centreOf(state.steps)]?.hex ?? '#000000'),
     sys.neutral[centreOf(state.steps)]?.hex ?? '#000000',
@@ -1215,7 +1318,7 @@ function windowFor(
     unit: k === 'hue' ? '°' : '',
   }))
   const strip =
-    screen.kind === 'scale'
+    screen.kind === 'scale' && state.tab !== 'palette'
       ? tabSteps(state, ref, tweak).map((x) => x.hex)
       : chipsOf(systemOf(state, ref))
   const lines = tweakLines(p, sliders, win.at, strip)

@@ -60,9 +60,11 @@ describe("colour's home and screens", () => {
     await waitFor(() => plain(first.app.lastFrame()).includes('type an image path'))
     expect(plain(first.app.lastFrame())).toContain('type an image path')
     const second = await colourHome()
+    // The Palette card opens Scale on its Palette tab (2026-10-24).
     second.app.stdin.write('D')
-    await waitFor(() => plain(second.app.lastFrame()).includes('Palette //'))
-    expect(lines(second.app.lastFrame()).find((l) => l.includes('colour'))).toMatch(/Palette/)
+    await waitFor(() => plain(second.app.lastFrame()).includes('type a hex'))
+    expect(lines(second.app.lastFrame()).find((l) => l.includes('colour'))).toMatch(/Scale/)
+    expect(plain(second.app.lastFrame())).toMatch(/50 +100 +200/)
   }, 20_000)
 
   it('s opens the scale; a typed colour draws it; the bar says Scale; esc esc is home again', async () => {
@@ -85,10 +87,12 @@ describe("colour's home and screens", () => {
     await waitFor(() => plain(app.lastFrame()).includes('type a hex'))
     app.stdin.write('6579FD')
     await settle()
-    app.stdin.write(ENTER)
     await waitFor(() => plain(app.lastFrame()).includes('Tailwind  50 – 950'))
-    expect(plain(app.lastFrame())).toMatch(/11 steps +t +tweak +s +steps/)
-    expect(keyRow(app.lastFrame())).toMatch(/r make centre · # new colour/)
+    // Tweak and Steps are in More, over the rule; # new colour is at the field's far end.
+    expect(plain(app.lastFrame())).toMatch(/11 steps\s*\n/)
+    expect(plain(app.lastFrame())).toMatch(/ m {2}more\s*\n/)
+    expect(plain(app.lastFrame())).toMatch(/#6579FD .* # new colour/)
+    expect(keyRow(app.lastFrame())).toMatch(/r make centre · esc back/)
     expect(lines(app.lastFrame())).toHaveLength(24)
 
     app.stdin.write('s')
