@@ -176,7 +176,9 @@ export const CATALOG: readonly CatalogEntry[] = [
     id: 'yt-dlp',
     title: 'YouTube links',
     summary: 'Transcribe YouTube videos: yt-dlp fetches their sound',
-    minMacos: 26,
+    // Transcribe runs on every Mac now (whisper.cpp where Apple's recogniser is
+    // missing), so this follows the video extension's floor, not macOS 26.
+    minMacos: 13,
     assets: {
       'darwin-universal': {
         version: '2026.08.19',
@@ -231,27 +233,27 @@ export const CATALOG: readonly CatalogEntry[] = [
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-x64.tar.gz`,
         bytes: 4036317,
-        sha256: '6ef35ad2167c54a562c17717af38e0ac46941a2519d2d47ede730b583d29ad9a',
+        sha256: 'cc5603591209f41dedb0c6bd59874f8a6df8836392a156a8ac9408d4e908e984',
       },
       'win32-arm64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-win32-arm64.tar.gz`,
         bytes: 1482982,
-        sha256: 'a59506f00cf2fae340455648aa7429ccb0422951c3d85fb8b6bb0e618f02677d',
+        sha256: '52e7e9b020be44e9366a61fe30cfa23c15f5a1e6f417150576aea8449f009f61',
       },
       // Static (musl), so one build runs on any Linux of that chip.
       'linux-arm64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
         bytes: 1186510,
-        sha256: 'cb06763e5301617ad443901a9110413eaabfd1ecf06cc7202d74553d000d3e6d',
+        sha256: '873bc017f4496fbaed1fa859e777a182690cd4eb819b25fa9316beb64f206909',
       },
       // Needs AVX2 (2013 on); an older PC is told to use its own whisper-cli.
       'linux-x64': {
         version: '1.0.0',
         url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-x64.tar.gz`,
-        bytes: 1299655,
-        sha256: '22554cb9ecf220f2345543267f59339701de8e2292773646b65922232ce98ed7',
+        bytes: 1335589,
+        sha256: 'a5eefae623bfa53892e96bf957c7c25547a0f6117a4cdedec15cb63a0ccf8f36',
       },
     },
     licence: 'whisper.cpp and ggml (MIT)',

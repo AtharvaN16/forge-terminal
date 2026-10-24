@@ -48,10 +48,10 @@ describe('the Mac catalogue, as published', () => {
     })
   })
 
-  it("lists yt-dlp as upstream's own pinned release, for macOS 26 and later", async () => {
+  it("lists yt-dlp as upstream's own pinned release, for macOS 13 and later", async () => {
     const yt = (await listExtensions('darwin', 'arm64')).find((s) => s.entry.id === 'yt-dlp')
-    // This file pins macOS 15.
-    expect(yt).toMatchObject({ supported: false, reason: 'needs macOS 26 or later' })
+    // This file pins macOS 15: transcribe works there through whisper.cpp, so links do too.
+    expect(yt).toMatchObject({ supported: true })
     expect(yt && assetFor(yt.entry, 'darwin', 'arm64')).toEqual({
       version: '2026.08.19',
       url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos',
@@ -149,7 +149,7 @@ describe('by OS', () => {
       version: '1.0.0',
       url: `${RELEASES}/ext-whisper-v1.0.0/forge-ext-whisper-1.0.0-linux-arm64.tar.gz`,
       bytes: 1186510,
-      sha256: 'cb06763e5301617ad443901a9110413eaabfd1ecf06cc7202d74553d000d3e6d',
+      sha256: '873bc017f4496fbaed1fa859e777a182690cd4eb819b25fa9316beb64f206909',
     })
   })
 
