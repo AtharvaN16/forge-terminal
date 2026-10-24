@@ -24,9 +24,23 @@ const ENTRIES = {
   heic: { entry: 'runner.mjs', kind: 'node' },
   // ffmpeg beside ffprobe; Forge finds both in the extension's folder.
   video: { entry: 'ffmpeg', kind: 'exec' },
+  // whisper.cpp's whisper-cli, which transcribe's whisper helper runs; .exe on Windows.
+  whisper: (arch) => ({
+    entry: arch.startsWith('win32-') ? 'whisper-cli.exe' : 'whisper-cli',
+    kind: 'exec',
+  }),
 }
-// Bare labels are the Mac builds, as published before Windows; win32 ones say so.
-const ARCHES = ['arm64', 'x64', 'universal', 'win32-x64', 'win32-arm64', 'win32-universal']
+// Bare labels are the Mac builds, as published before Windows; win32 and linux ones say so.
+const ARCHES = [
+  'arm64',
+  'x64',
+  'universal',
+  'win32-x64',
+  'win32-arm64',
+  'win32-universal',
+  'linux-x64',
+  'linux-arm64',
+]
 const FIXED_MTIME = 946684800 // 2000-01-01
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
@@ -78,9 +92,10 @@ function header(name, size, exec) {
 }
 
 export async function packageExtension(id, version, arch, payloadDir, outDir) {
-  const spec = ENTRIES[id]
-  if (!spec) throw new Error(`unknown extension id: ${id}`)
+  if (!ENTRIES[id]) throw new Error(`unknown extension id: ${id}`)
   if (!ARCHES.includes(arch)) throw new Error(`arch must be one of ${ARCHES.join('|')}`)
+  // An entry can depend on the platform: the same tool is foo.exe on Windows.
+  const spec = typeof ENTRIES[id] === 'function' ? ENTRIES[id](arch) : ENTRIES[id]
 
   const found = (await walk(payloadDir)).filter((f) => f.rel !== 'manifest.json')
   found.sort((a, b) => Buffer.compare(Buffer.from(a.rel), Buffer.from(b.rel)))

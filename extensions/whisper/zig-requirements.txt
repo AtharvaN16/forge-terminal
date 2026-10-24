@@ -1,0 +1,10 @@
+# zig, for the Linux builds of the whisper extension (extensions/whisper/build.mjs),
+# from PyPI's ziglang wheels. Pinned by hash; install with
+#   python3 -m pip install --require-hashes -r extensions/whisper/zig-requirements.txt
+# and build with --zig "python3 -m ziglang". The same zig makes the same bytes on
+# any host, so CI's rebuild can be held to the catalogue's sha256.
+ziglang==0.17.0 \
+    --hash=sha256:97079827064a7492cce5541ceb438ae8003ce1e54e399676da2d62fb7a5dc08b \
+    --hash=sha256:d2804f94f54f7fcf8169f4b212a619ad688a4e2e6592e976f0cf2e58e2cd8af3 \
+    --hash=sha256:87274af689c4128051b26c80f6f676757e0a81c2fdc137fd8b5679e928e4bc4f \
+    --hash=sha256:4d910f0e363ddb60a6b8ddb55235617797a8ccbcb6c5c7132a949d9f833eea42
