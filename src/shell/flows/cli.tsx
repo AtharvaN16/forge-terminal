@@ -1,6 +1,6 @@
 import { Box } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CLI_TABS, cliReferenceText } from '../../core/cli-reference.js'
+import { cliReferenceText, cliTabs } from '../../core/cli-reference.js'
 import type { BarChip } from '../bar-art.js'
 import { cliExampleRows, cliListRows, cliTabRows } from '../cli-art.js'
 import { Runs } from '../components/Home.js'
@@ -29,6 +29,9 @@ export function cliChip(p: Palette): BarChip {
 }
 
 /** How long "✓ copied" stands on the shelf, as /update's does beside its pill. */
+/** This OS's tabs, worked out once: the platform does not change while Forge runs. */
+const CLI_TABS = cliTabs()
+
 const COPIED_MS = 1500
 /** Under the list: the tabs and their gap (3), the "↓ n more" row (1), the shelf and its gap (2). */
 const CHROME = 3 + 1 + 2
@@ -101,7 +104,7 @@ export function CliFlow({ width, height, system = realCli, onClose }: CliFlowPro
       return
     }
     if (input === 'c') {
-      system.copy(cliReferenceText())
+      system.copy(cliReferenceText(CLI_TABS))
       copiedKind.current = 'all'
       setCopiedBy((n) => n + 1)
     }

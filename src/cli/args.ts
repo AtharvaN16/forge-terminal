@@ -438,6 +438,23 @@ Other commands:
   forge uninstall          take Forge out of the right-click menu, then remove it
   forge mcp               run as a local MCP server over stdio, for AI agents`
 
+/**
+ * COMMANDS_HELP in this OS's words: the Mac's as written; elsewhere transcribe
+ * gives a transcript (notes need Apple Intelligence), and the extensions named
+ * are ones this OS has.
+ */
+export function commandsHelp(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'darwin') return COMMANDS_HELP
+  const extras = platform === 'win32' ? 'boost and whisper' : 'whisper and heic'
+  return COMMANDS_HELP.replace(
+    'a video or audio file, or a YouTube link, into notes',
+    'a video or audio file, or a YouTube link, into a transcript',
+  ).replace(
+    'optional extras, such as boost and remove-background',
+    `optional extras, such as ${extras}`,
+  )
+}
+
 function parseMaxSize(raw: unknown): number {
   const bytes = parseSize(String(raw))
   if (bytes === undefined) {
@@ -902,7 +919,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     .option('--json', 'print one JSON document on stdout instead of text')
     .helpOption('-h, --help', 'show this help')
     .version(VERSION, '-V, --version', 'show the version')
-    .addHelpText('after', `${COMMANDS_HELP}\n${EXIT_CODES_HELP}`)
+    .addHelpText('after', `${commandsHelp()}\n${EXIT_CODES_HELP}`)
     .configureOutput({ outputError: () => {} })
     .exitOverride()
     .allowExcessArguments(false)

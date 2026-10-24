@@ -312,19 +312,30 @@ async function exec(
         if (result === undefined)
           return reject(conversionFailed(path, new Error(`${APPLE_NAME} gave no result`)))
         if (result.ok === true) return resolve(result)
-        reject(failure(String(result.code ?? ''), String(result.message ?? ''), path, args))
+        reject(
+          failure(String(result.code ?? ''), String(result.message ?? ''), path, args, helper.kind),
+        )
       }),
     )
   })
 }
 
-function failure(code: string, message: string, path: string, args: string[]): Error {
+/** A helper's refusal, worded for the recogniser that refused: an Intel Mac's is whisper. */
+function failure(
+  code: string,
+  message: string,
+  path: string,
+  args: string[],
+  engine: Helper['kind'],
+): Error {
   if (code === 'no-sound') return noSound(path)
-  if (code === 'unreadable') return untranscribable(path)
+  if (code === 'unreadable') return untranscribable(path, process.platform, engine)
   if (code === 'locale') {
     const i = args.indexOf('--locale')
     return languageUnsupported(
       i >= 0 ? (args[i + 1] ?? 'this language') : `this ${machineName()}'s language`,
+      process.platform,
+      engine,
     )
   }
   // unsupported: a tool is missing; runtime: whisper-cli is there but cannot start.

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { COMMANDS_HELP, parseArgs } from '../../src/cli/args.js'
-import { CLI_TABS } from '../../src/core/cli-reference.js'
+import { COMMANDS_HELP, commandsHelp, parseArgs } from '../../src/cli/args.js'
+import { CLI_TABS, cliTabs } from '../../src/core/cli-reference.js'
 
 const items = CLI_TABS.flatMap((t) => t.items)
 
@@ -79,5 +79,24 @@ describe('the CLI reference', () => {
     const setup = CLI_TABS.find((t) => t.name === 'Setup')?.items.map((i) => i.name) ?? []
     expect(setup).toContain('config set theme')
     expect(setup).toContain('menu [install | remove]')
+  })
+})
+
+describe("help in this OS's words", () => {
+  it("leaves the Mac's as written", () => {
+    expect(commandsHelp('darwin')).toBe(COMMANDS_HELP)
+    expect(cliTabs('darwin')).toEqual([...CLI_TABS])
+  })
+
+  it('off a Mac: a transcript, not notes, and extensions this OS has', () => {
+    for (const os of ['win32', 'linux'] as const) {
+      expect(commandsHelp(os)).toContain('into a transcript')
+      expect(commandsHelp(os)).not.toContain('remove-background')
+    }
+    expect(commandsHelp('linux')).toContain('such as whisper and heic')
+    const rows = (os: NodeJS.Platform) => cliTabs(os).flatMap((t) => t.items)
+    expect(rows('win32').map((r) => r.does)).toContain('the text in it, on a Mac only')
+    expect(rows('linux').map((r) => r.ex)).toContain('forge extensions add whisper')
+    expect(rows('linux').map((r) => r.ex)).not.toContain('forge extensions add boost')
   })
 })

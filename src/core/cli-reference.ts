@@ -275,7 +275,29 @@ export const CLI_TABS: CliTab[] = [
  * wants every command in one paste: the flag and what it does, then its
  * example under it.
  */
-export function cliReferenceText(tabs: readonly CliTab[] = CLI_TABS): string {
+/**
+ * The tabs in this OS's words: the Mac's as written. Elsewhere reading text
+ * is said to be the Mac's alone, and Linux's extension example is one it has.
+ */
+export function cliTabs(platform: NodeJS.Platform = process.platform): CliTab[] {
+  if (platform === 'darwin') return [...CLI_TABS]
+  return CLI_TABS.map((tab) => ({
+    ...tab,
+    items: tab.items.map((item) => {
+      if (item.does === 'the text in it, read on this Mac')
+        return { ...item, does: 'the text in it, on a Mac only' }
+      if (platform === 'linux' && item.ex === 'forge extensions add boost')
+        return {
+          ...item,
+          does: 'optional extras, such as whisper',
+          ex: 'forge extensions add whisper',
+        }
+      return item
+    }),
+  }))
+}
+
+export function cliReferenceText(tabs: readonly CliTab[] = cliTabs()): string {
   return tabs
     .map((tab) => {
       const rows = tab.items.map((item) => `${item.name}\n  ${item.does}\n  $ ${item.ex}`)

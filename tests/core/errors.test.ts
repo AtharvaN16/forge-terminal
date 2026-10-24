@@ -423,3 +423,17 @@ describe('install and recogniser words, per OS', () => {
     }
   })
 })
+
+describe('transcribe refusals name the recogniser that refused', () => {
+  it("an Intel Mac hears through whisper, so it is whisper's words there too", () => {
+    expect(untranscribable('/a/talk.xyz', 'darwin', 'whisper').detail).toBe(
+      'talk.xyz cannot be read by whisper.',
+    )
+    expect(untranscribable('/a/talk.xyz', 'darwin').detail).toBe(
+      "talk.xyz cannot be read by Apple's speech recogniser.",
+    )
+    expect(languageUnsupported('xx', 'darwin', 'whisper').detail).toBe(
+      'The whisper extension does not support xx.',
+    )
+  })
+})

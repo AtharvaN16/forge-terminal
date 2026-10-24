@@ -1146,8 +1146,10 @@ export function noSound(path: string): ForgeError {
 export function untranscribable(
   path: string,
   platform: NodeJS.Platform = process.platform,
+  /** Which recogniser refused it; by default Apple's on a Mac. An Intel Mac hears through whisper. */
+  engine: 'apple' | 'whisper' = platform === 'darwin' ? 'apple' : 'whisper',
 ): ForgeError {
-  if (platform !== 'darwin') {
+  if (engine === 'whisper') {
     return new ForgeError({
       code: 'unsupported-source',
       title: 'Cannot transcribe this file',
@@ -1167,8 +1169,9 @@ export function untranscribable(
 export function languageUnsupported(
   language: string,
   platform: NodeJS.Platform = process.platform,
+  engine: 'apple' | 'whisper' = platform === 'darwin' ? 'apple' : 'whisper',
 ): ForgeError {
-  const who = platform === 'darwin' ? "Apple's speech recogniser" : 'The whisper extension'
+  const who = engine === 'apple' ? "Apple's speech recogniser" : 'The whisper extension'
   return new ForgeError({
     code: 'language-unsupported',
     title: 'Language not supported',
