@@ -40,6 +40,8 @@ describe('format registry', () => {
     expect(FORMATS.gif.animatable).toBe(true)
     expect(FORMATS.webp.animatable).toBe(true)
     expect(FORMATS.png.animatable).toBe(false)
+    // Sharp writes an AVIF as one still: an animation stacked its frames.
+    expect(FORMATS.avif.animatable).toBe(false)
   })
 
   it('records which formats are lossy, which drives the quality option', () => {

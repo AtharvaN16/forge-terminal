@@ -6,9 +6,10 @@ import { makeTempDir } from './fixtures.js'
 const run = promisify(execFile)
 
 /**
- * Whether this machine has ffmpeg. The CI runners do not, so every test that
- * encodes for real is `describe.skipIf(!ffmpegHere)`; the arithmetic, the
- * argument building and the parsing are tested everywhere.
+ * Whether this machine has ffmpeg. CI installs it on every runner
+ * (.github/workflows/test.yml), but a machine without it must still pass, so
+ * every test that encodes for real is `describe.skipIf(!ffmpegHere)`; the
+ * arithmetic, the argument building and the parsing are tested everywhere.
  */
 export const ffmpegHere: boolean = (() => {
   try {
@@ -28,7 +29,7 @@ export interface ClipSpec {
   audio?: boolean
   /** No picture at all: a sound file. */
   soundOnly?: boolean
-  /** The file's extension, which picks the container: mov, mp4, webm, wav, mp3, m4a… */
+  /** The file's extension, which picks the container: mov, mp4, webm, mkv, avi, wav, mp3, m4a, opus, flac, aiff, ogg. */
   ext?: string
   /** Display-matrix rotation to tag a video with, as a phone does. */
   rotate?: 90 | 180 | 270
@@ -68,6 +69,10 @@ export async function makeClip(spec: ClipSpec = {}): Promise<string> {
     else if (ext === 'wav') args.push('-c:a', 'pcm_s16le')
     else if (ext === 'mp3') args.push('-c:a', 'libmp3lame')
     else if (ext === 'ogg') args.push('-c:a', 'libvorbis')
+    else if (ext === 'opus') args.push('-c:a', 'libopus')
+    else if (ext === 'flac') args.push('-c:a', 'flac')
+    else if (ext === 'aiff') args.push('-c:a', 'pcm_s16be')
+    else if (ext === 'avi') args.push('-c:a', 'libmp3lame')
     else args.push('-c:a', 'aac')
   }
   if (!rotate) {

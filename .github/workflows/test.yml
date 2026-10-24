@@ -19,6 +19,40 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # ffmpeg on every runner, so the video and sound tests (and the format
+      # matrix's media rows, tests/parity) run instead of skipping. Forge finds
+      # it on PATH, as it would a user's own copy.
+      - name: ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: command -v ffmpeg || brew install ffmpeg
+      - name: ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      # Windows: a pinned gyan.dev essentials build (the one Chocolatey wraps),
+      # cached by version so it downloads once.
+      - name: ffmpeg cache (Windows)
+        if: runner.os == 'Windows'
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ~\ffmpeg
+          key: ffmpeg-7.1.1-essentials-windows
+      - name: ffmpeg download (Windows)
+        if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\ffmpeg.zip"
+          Invoke-WebRequest -Uri https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip -OutFile $zip
+          Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP
+          Move-Item "$env:RUNNER_TEMP\ffmpeg-7.1.1-essentials_build" "$HOME\ffmpeg"
+      - name: ffmpeg on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content $env:GITHUB_PATH "$HOME\ffmpeg\bin"
+      - run: ffmpeg -hide_banner -version
       - run: npm run typecheck
       - run: npm run lint
       - if: runner.os != 'Windows'
