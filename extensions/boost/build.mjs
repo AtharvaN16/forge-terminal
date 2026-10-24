@@ -186,9 +186,16 @@ async function main() {
   )
   if (!existsSync(nativeDir))
     throw new Error(`onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`)
-  // darwin and linux ship the whole directory: the binding and the one ONNX
-  // Runtime library it links (libonnxruntime.1.23.2.dylib / libonnxruntime.so.1).
-  const native = args.platform === 'win32' ? WIN32_NATIVE : readdirSync(nativeDir)
+  // darwin ships the whole directory: the binding and the one ONNX Runtime
+  // library it links (libonnxruntime.1.23.2.dylib). linux names its two: on an
+  // x64 Linux host, npm's install of onnxruntime-node also fetches the CUDA and
+  // TensorRT providers into the same folder, which the CPU build never loads.
+  const native =
+    args.platform === 'win32'
+      ? WIN32_NATIVE
+      : args.platform === 'linux'
+        ? ['onnxruntime_binding.node', 'libonnxruntime.so.1']
+        : readdirSync(nativeDir)
   for (const f of native) copyFileSync(join(nativeDir, f), join(out, f))
 
   if (args.runnerOnly) return void console.log(out)

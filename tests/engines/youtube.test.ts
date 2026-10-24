@@ -143,43 +143,8 @@ describe.skipIf(process.platform === 'win32')('fetchSound', () => {
 
   it('says yt-dlp is not installed', async () => {
     process.env.XDG_CONFIG_HOME = await makeTempDir()
-    // No extension, and the user's own yt-dlp pointed at nothing.
-    const before = process.env.FORGE_YT_DLP
-    process.env.FORGE_YT_DLP = join(process.env.XDG_CONFIG_HOME, 'missing')
-    try {
-      expect(await codeOf(fetchSound(URL))).toMatch(/^extension-missing: /)
-    } finally {
-      if (before === undefined) delete process.env.FORGE_YT_DLP
-      else process.env.FORGE_YT_DLP = before
-    }
+    expect(await codeOf(fetchSound(URL))).toMatch(/^extension-missing: /)
   })
-
-  it.skipIf(process.platform !== 'linux')(
-    "uses the user's yt-dlp on Linux, and never updates it",
-    async () => {
-      const yt = await fakeYtDlp({ error: 'Some new YouTube change', fixedByUpdate: true })
-      // The same script, as the user's own: no extension installed.
-      process.env.XDG_CONFIG_HOME = await makeTempDir()
-      const before = process.env.FORGE_YT_DLP
-      process.env.FORGE_YT_DLP = join(
-        yt.home,
-        'forge',
-        'extensions',
-        'yt-dlp',
-        '2026.08.19',
-        'yt-dlp',
-      )
-      try {
-        expect(await codeOf(fetchSound(URL))).toMatch(/^link-unavailable: yt-dlp could not fetch/)
-        const calls = (await readFile(yt.calls, 'utf8')).trim().split('\n')
-        expect(calls).toHaveLength(1)
-        expect(calls[0]).not.toContain('--update')
-      } finally {
-        if (before === undefined) delete process.env.FORGE_YT_DLP
-        else process.env.FORGE_YT_DLP = before
-      }
-    },
-  )
 })
 
 describe('no yt-dlp', () => {

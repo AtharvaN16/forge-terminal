@@ -135,6 +135,6 @@ describe('revealLabel', () => {
   it('names the platform file manager', () => {
     expect(revealLabel('darwin')).toBe('Show in Finder')
     expect(revealLabel('win32')).toBe('Show in Explorer')
-    expect(revealLabel('linux')).toBe('Show in file manager')
+    expect(revealLabel('linux')).toBe('Show in Files')
   })
 })

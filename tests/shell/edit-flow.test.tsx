@@ -11,6 +11,7 @@ import {
   CATALOG,
   type CatalogEntry,
   catalogEntry,
+  offeredHere,
   offeredOn,
 } from '../../src/extensions/catalog.js'
 import type { ExtensionStatus } from '../../src/extensions/manager.js'
@@ -246,9 +247,9 @@ describe('edit mode', () => {
     expect(frame()).toContain('becomes 80 × 60')
   }, 60_000)
 
-  // Boost is on both OSes, so these run on the real one: a fresh install is
-  // 1.0.0 on a Mac (2×, 4×) and 1.1.0 on Windows (2×, 3×, 4×).
-  describe('the Boost row, on this OS', () => {
+  // These run on the real OS: a fresh install is 1.0.0 on a Mac (2×, 4×) and
+  // 1.1.0 on Windows (2×, 3×, 4×). Linux has no Boost (CPU only), so no row.
+  describe.skipIf(!offeredHere('boost', REAL_PLATFORM))('the Boost row, on this OS', () => {
     pinPlatform(REAL_PLATFORM)
 
     it('installing from the Boost row stays on the picker, so the scale can be chosen', async () => {

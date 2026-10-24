@@ -17,6 +17,13 @@ import { pinPlatform } from '../helpers/platform.js'
 // their own blocks at the end.
 pinPlatform('darwin')
 
+/**
+ * The ✓ lines with the file's name alone. Pinned to another OS on a Windows
+ * host, a temp folder's backslashed path is not a path to that OS's
+ * basename, so the line would carry the whole of it.
+ */
+const shown = (out: string[]) => out.map((l) => l.replace(/^✓ \S*[\\/]/, '✓ '))
+
 /** The first bytes of an MP4: what `sniffKind` reads it by. */
 const MP4 = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0])
 
@@ -93,7 +100,7 @@ describe('forge transcribe <file>', () => {
         { title: 'talk', from: 'talk.mp4' },
       ),
     )
-    expect(out).toEqual(['✓ talk.md   1:15 → 5 words · 2 parts'])
+    expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words · 2 parts'])
     expect(await argv(fake.dir)).toEqual(['run', input, '--notes'])
   })
 
@@ -102,7 +109,7 @@ describe('forge transcribe <file>', () => {
     const { code, out, err } = await run(intent(input))
     expect(code).toBe(0)
     expect(err).toEqual(['⚠ Apple Intelligence is off, so this is the transcript only.'])
-    expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
+    expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words'])
     expect(await argv(fake.dir)).toEqual(['run', input])
     expect(await readFile(join(dir, 'talk.md'), 'utf8')).not.toContain('## Notes')
   })
@@ -158,7 +165,7 @@ describe('forge transcribe <file>', () => {
       })
     ).path
     const { out } = await run(intent(input))
-    expect(out).toEqual(['✓ talk.md   1:15 → 5 words · 1 part'])
+    expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words · 1 part'])
   })
 
   it('writes text with --format txt: the same words, no marks', async () => {
@@ -318,7 +325,7 @@ describe('forge transcribe <picture|pdf> (spec 2026-10-23-extract-text-design §
     const { code, out } = await run(intent(png))
     expect(code).toBe(0)
     expect(await readFile(join(dir, 'shot.md'), 'utf8')).toBe(pageMarkdown(pageText(DOC.pages)))
-    expect(out).toEqual(['✓ shot.md   PNG → 89 words'])
+    expect(shown(out)).toEqual(['✓ shot.md   PNG → 89 words'])
     expect(await argv(fake.dir)).toEqual(['read', png])
   })
 
@@ -353,7 +360,7 @@ describe('forge transcribe <picture|pdf> (spec 2026-10-23-extract-text-design §
     const pdf = await makePdf(dir, 'scan.pdf', 2)
     const { code, out } = await run(intent(pdf))
     expect(code).toBe(0)
-    expect(out).toEqual(['✓ scan.md   2 pages → 178 words'])
+    expect(shown(out)).toEqual(['✓ scan.md   2 pages → 178 words'])
     expect(await readFile(join(dir, 'scan.md'), 'utf8')).toContain('\n---\n')
   })
 
@@ -426,7 +433,7 @@ describe('forge transcribe on Linux', () => {
     const { code, out, err } = await run(intent(input))
     expect(code).toBe(0)
     expect(err).toEqual([])
-    expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
+    expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words'])
   })
 
   it('refuses --to notes in Linux words', async () => {
@@ -481,7 +488,7 @@ describe('forge transcribe on Windows', () => {
     const { code, out, err } = await run(intent(input))
     expect(code).toBe(0)
     expect(err).toEqual([])
-    expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
+    expect(shown(out)).toEqual(['✓ talk.md   1:15 → 5 words'])
   })
 
   it('refuses --to notes: Apple Intelligence, which this computer does not have', async () => {

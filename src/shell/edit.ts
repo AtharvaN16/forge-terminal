@@ -149,7 +149,9 @@ export function editRows(
   // Dimmed only when no scale fits, with why the smallest does not.
   const boostReason = scales.length === 0 ? tooLarge(source, offered[0] ?? 2) : undefined
   const sharpenReason = tooLarge(source, 1)
-  return [
+  // Boost's model is offered on a Mac and Windows only, so where it is not
+  // (Linux) neither of its rows is there, as Remove background's is not.
+  const boostRows: EditRow[] = [
     {
       id: 'sharpen',
       label: 'Sharpen',
@@ -178,6 +180,9 @@ export function editRows(
       ...(boostReason ? { tooLarge: boostReason } : {}),
       verb: 'Boosting resolution',
     },
+  ]
+  return [
+    ...(offeredHere('boost', platform) ? boostRows : []),
     // Apple Vision does the cutting, so there is no such row where it is not offered.
     ...(offeredHere('remove-background', platform)
       ? [

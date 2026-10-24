@@ -162,5 +162,7 @@ export async function revealPath(
 export function revealLabel(platform: string = process.platform): string {
   if (platform === 'darwin') return 'Show in Finder'
   if (platform === 'win32') return 'Show in Explorer'
-  return 'Show in file manager'
+  // One word, as Finder and Explorer are, so Done's row of buttons still fits
+  // 80 columns. Files is GNOME's file manager's own name, and plain anywhere else.
+  return 'Show in Files'
 }

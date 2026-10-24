@@ -6,6 +6,7 @@ import { passesFor } from '../../src/core/preset.js'
 import { runPreset } from '../../src/core/preset-run.js'
 import type { ImageInfo } from '../../src/core/types.js'
 import { probe } from '../../src/engines/registry.js'
+import { offeredHere } from '../../src/extensions/catalog.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeGradientPng, makeTempDir } from '../helpers/fixtures.js'
 
@@ -106,22 +107,26 @@ describe('runPreset', () => {
     expect((await stat(output)).size).toBeLessThanOrEqual(6_000)
   })
 
-  it('runs an on-device model between the cut and the encode', async () => {
-    const home = await fake.home()
-    await fake.install(home, 'boost')
-    const dir = await makeTempDir()
-    const source = await image(await framed(dir))
-    const output = join(dir, 'out.png')
-    const outcome = await runPreset(
-      source,
-      passesFor({ trim: true, boost: 2, resize: { width: 100 } }, 'png'),
-      output,
-      { force: false },
-    )
-    expect(outcome.kind).toBe('done')
-    const meta = await sharp(output).metadata()
-    expect([meta.width, meta.height]).toEqual([100, 50])
-  })
+  // Boost has no Linux build (CPU only), so a model step runs where it has one.
+  it.skipIf(!offeredHere('boost'))(
+    'runs an on-device model between the cut and the encode',
+    async () => {
+      const home = await fake.home()
+      await fake.install(home, 'boost')
+      const dir = await makeTempDir()
+      const source = await image(await framed(dir))
+      const output = join(dir, 'out.png')
+      const outcome = await runPreset(
+        source,
+        passesFor({ trim: true, boost: 2, resize: { width: 100 } }, 'png'),
+        output,
+        { force: false },
+      )
+      expect(outcome.kind).toBe('done')
+      const meta = await sharp(output).metadata()
+      expect([meta.width, meta.height]).toEqual([100, 50])
+    },
+  )
 
   it('says which pass failed and writes nothing', async () => {
     const home = await fake.home() // no extension installed: Sharpen cannot run

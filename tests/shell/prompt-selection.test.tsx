@@ -37,7 +37,15 @@ const ANSI = /\x1b\[[0-9;]*m/g
 
 const field = (frame: string | undefined) => {
   const line = (frame ?? '').split('\n').find((l) => l.includes('›'))
-  return (line ?? '').replace(ANSI, '').replace('›', '').trim()
+  // The text alone: off a Mac a name search is on from the start, and its key
+  // hint chip sits at the field's far end.
+  return (
+    (line ?? '')
+      .replace(ANSI, '')
+      .replace('›', '')
+      .trim()
+      .split(/\s{3,}/)[0] ?? ''
+  ).trim()
 }
 
 /** The raw prompt line, SGR intact, for asserting on the selection band. */

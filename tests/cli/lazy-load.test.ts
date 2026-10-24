@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { offeredHere } from '../../src/extensions/catalog.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 import { modulesLoaded, packagesIn } from '../helpers/load-log.js'
@@ -96,23 +97,26 @@ describe('a command loads only what it needs', () => {
     expect(loadedExtensions(urls)).toBe(false)
   })
 
-  // A child process, so it runs as the machine's own platform; boost has a build for both.
-  it('--boost loads src/extensions, but never ONNX Runtime into the Forge process', async () => {
-    const fake = fakeExtensions()
-    const home = await fake.home()
-    try {
-      await fake.install(home, 'boost')
-      const dir = await makeTempDir()
-      const jpeg = await makeJpeg(dir, 'a.jpg')
-      const run = await modulesLoaded([entry, jpeg, '--boost'], {
-        env: { XDG_CONFIG_HOME: home },
-      })
-      expect(run.exitCode).toBe(0)
-      expect(loadedExtensions(run.urls)).toBe(true)
-      const names = [...packagesIn(run.urls)]
-      expect(names.filter((n) => n.startsWith('onnxruntime'))).toEqual([])
-    } finally {
-      fake.restore()
-    }
-  })
+  // A child process, so it runs as the machine's own platform: a Mac or Windows, where boost has a build.
+  it.skipIf(!offeredHere('boost'))(
+    '--boost loads src/extensions, but never ONNX Runtime into the Forge process',
+    async () => {
+      const fake = fakeExtensions()
+      const home = await fake.home()
+      try {
+        await fake.install(home, 'boost')
+        const dir = await makeTempDir()
+        const jpeg = await makeJpeg(dir, 'a.jpg')
+        const run = await modulesLoaded([entry, jpeg, '--boost'], {
+          env: { XDG_CONFIG_HOME: home },
+        })
+        expect(run.exitCode).toBe(0)
+        expect(loadedExtensions(run.urls)).toBe(true)
+        const names = [...packagesIn(run.urls)]
+        expect(names.filter((n) => n.startsWith('onnxruntime'))).toEqual([])
+      } finally {
+        fake.restore()
+      }
+    },
+  )
 })

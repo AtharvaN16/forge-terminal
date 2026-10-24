@@ -101,18 +101,23 @@ describe('startWatch', () => {
   it('compresses a file that lands, and never picks up its own -small file', async () => {
     const dir = await makeTempDir()
     const events: WatchEvent[] = []
+    const claimed = new Set<string>()
     session = startWatch({
       dir,
       answers: { op: 'compress', quality: 40 },
       known: [],
-      claimed: new Set(),
+      claimed,
       onEvent: (e) => events.push(e),
       ...FAST,
     })
     await makeNoiseImage(dir, 'hero.jpg', 200, 'jpeg')
     await until(events, 1)
     await wait(400)
-    expect(ends(events)).toEqual(['converted hero.jpg hero-small.jpg'])
+    // What was claimed beside what arrived, so a miss says why (it has, on Windows).
+    const arrived = events.flatMap((e) => (e.type === 'arrived' ? [e.path] : []))
+    expect(ends(events), JSON.stringify({ claimed: [...claimed], arrived })).toEqual([
+      'converted hero.jpg hero-small.jpg',
+    ])
     expect(existsSync(join(dir, 'hero-small.jpg'))).toBe(true)
   })
 

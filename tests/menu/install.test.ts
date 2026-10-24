@@ -214,7 +214,8 @@ describe('installMenu elsewhere', () => {
   })
 })
 
-describe('installMenu on Linux', () => {
+// Written on Linux only; on a Windows host its paths would carry backslashes.
+describe.skipIf(process.platform === 'win32')('installMenu on Linux', () => {
   /** A Linux home in a temp folder, its XDG folders passed in as the shell had them. */
   function linux(over: Partial<MenuEnv> & { thunar?: boolean } = {}) {
     const { thunar, ...rest } = over

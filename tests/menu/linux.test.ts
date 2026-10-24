@@ -24,7 +24,14 @@ const item = (action: string) => ITEMS.find((i) => i.action === action) as (type
 const LAUNCHER = '/home/me/.config/forge/menu/run'
 const MENU = '/home/me/.config/forge/menu'
 
-describe('linuxDirs', () => {
+/**
+ * Linux's menu is written on Linux only: on a Windows host its paths would be
+ * joined with backslashes and its PATH split on semicolons, which no Linux
+ * machine ever sees.
+ */
+const WINDOWS = process.platform === 'win32'
+
+describe.skipIf(WINDOWS)('linuxDirs', () => {
   it('uses the XDG folders the shell had', () => {
     expect(
       linuxDirs({
@@ -45,7 +52,7 @@ describe('linuxDirs', () => {
   })
 })
 
-describe('onPath', () => {
+describe.skipIf(WINDOWS)('onPath', () => {
   it('finds an executable on PATH, and not a file that cannot run', () => {
     const dir = mkdtempSync(join(tmpdir(), 'forge-path-'))
     writeFileSync(join(dir, 'tool'), '#!/bin/sh\n')
@@ -57,7 +64,7 @@ describe('onPath', () => {
   })
 })
 
-describe('nautilusScript', () => {
+describe.skipIf(WINDOWS)('nautilusScript', () => {
   it('calls the launcher with its action, and is marked as Forge’s', () => {
     const sh = nautilusScript(item('convert'), LAUNCHER)
     expect(sh.startsWith('#!/bin/sh\n')).toBe(true)
@@ -90,7 +97,7 @@ describe('nautilusScript', () => {
   )
 })
 
-describe('nemoAction', () => {
+describe.skipIf(WINDOWS)('nemoAction', () => {
   it('offers the item for its kinds’ MIME types, with every selected path', () => {
     const text = nemoAction(item('open'), LAUNCHER)
     expect(text.startsWith('[Nemo Action]\n')).toBe(true)
@@ -114,7 +121,7 @@ describe('nemoAction', () => {
   })
 })
 
-describe('dolphinMenu', () => {
+describe.skipIf(WINDOWS)('dolphinMenu', () => {
   it('puts an image’s items in a Forge submenu, each with its icon', () => {
     const text = dolphinMenu('image', ITEMS, { launcher: LAUNCHER, menuDir: MENU }) ?? ''
     expect(text).toContain('Type=Service\n')
@@ -162,7 +169,7 @@ const USER_UCA = `<?xml version="1.0" encoding="UTF-8"?>
 </actions>
 `
 
-describe('Thunar’s uca.xml', () => {
+describe.skipIf(WINDOWS)('Thunar’s uca.xml', () => {
   const actions = thunarActions(ITEMS, { launcher: LAUNCHER, menuDir: MENU })
 
   it('describes each item as Thunar does, known by a unique-id of Forge’s', () => {
@@ -211,7 +218,7 @@ describe('Thunar’s uca.xml', () => {
   })
 })
 
-describe('presets in the Linux menu', () => {
+describe.skipIf(WINDOWS)('presets in the Linux menu', () => {
   const items = menuItems({ sharpen: true, presets: ['web-small', 'print'] })
   const presets = items.filter((i) => i.preset !== undefined)
   const order = menuItems({ sharpen: true }).map((i) => i.action)
