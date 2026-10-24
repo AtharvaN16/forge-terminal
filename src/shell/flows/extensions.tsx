@@ -27,6 +27,7 @@ import type { Run } from '../home-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { type OwnSheetView, ownSheetRows } from '../own-art.js'
+import { spaceRows } from '../space-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeGradient, type Palette } from '../theme.js'
@@ -44,6 +45,8 @@ export interface ExtensionsManager {
   inUse(id: string): Promise<LockHolder | undefined>
   /** The user's own copies of yt-dlp and ffmpeg (own.ts). Absent: there are none. */
   own?: OwnManager
+  /** What Forge itself takes on disk, for the space box. Absent or undefined: no box. */
+  forgeBytes?(): Promise<number | undefined>
 }
 
 /** The slice of `src/extensions/own.ts` the sheet needs. */
@@ -108,6 +111,11 @@ export const realManager: ExtensionsManager = {
     return (await import('../../extensions/lock.js')).extensionInUse(id)
   },
   own: realOwn,
+  async forgeBytes() {
+    const { installBytes, packageRoot } = await import('../../core/install-size.js')
+    const root = await packageRoot()
+    return root ? installBytes(root) : undefined
+  },
 }
 
 /**
@@ -246,6 +254,8 @@ type Busy = { id: string; done: number; total: number }
 
 interface ExtensionsFlowProps {
   width: number
+  /** The rows the menu gives the screen; the list's frame fills them. */
+  height?: number
   manager?: ExtensionsManager
   onError: (error: ForgeError) => void
   onClose: () => void
@@ -266,6 +276,7 @@ interface ExtensionsFlowProps {
  */
 export function ExtensionsFlow({
   width,
+  height,
   manager = realManager,
   onError,
   onClose,
@@ -309,6 +320,17 @@ export function ExtensionsFlow({
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  /** Forge's own size on disk, measured once (install-size.ts). */
+  const [forgeBytes, setForgeBytes] = useState<number>()
+  useEffect(() => {
+    void manager
+      .forgeBytes?.()
+      .then((bytes) => {
+        if (alive.current && bytes !== undefined) setForgeBytes(bytes)
+      })
+      .catch(() => {})
+  }, [manager])
 
   /** What Forge knows of each tool the user may have themselves: their copy, a newer version, what removing Forge's copy freed. */
   const [owns, setOwns] = useState<
@@ -1059,6 +1081,44 @@ export function ExtensionsFlow({
   const k = keys()
   const rows = current ? sheet(current) : []
 
+  // The list and the space taken share one frame (round 10, 2026-10-24):
+  // the shelf's darker fill, from the sheet's first row to the last row the
+  // menu gives it (the menu keeps the row over the field free), the space box
+  // its last two rows. Too many tools to fit scroll, the last row saying how
+  // many are below, as the / menu's list does.
+  const space =
+    split && statuses && forgeBytes !== undefined
+      ? spaceRows(
+          palette,
+          forgeBytes,
+          statuses.reduce(
+            (n, s) => n + (s.installed !== undefined ? (s.installedBytes ?? 0) : 0),
+            0,
+          ),
+          LIST_WIDTH,
+        )
+      : []
+  const frameRows = split && height !== undefined ? height : undefined
+  const listRoom =
+    frameRows === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(2, frameRows - 1 - (space.length > 0 ? space.length + 1 : 0))
+  const all = statuses ?? []
+  const scrolls = all.length > listRoom
+  const fits = scrolls ? listRoom - 1 : all.length
+  const start = scrolls ? Math.min(Math.max(0, cursor - fits + 1), all.length - fits) : 0
+  const below = all.length - start - fits
+  const listRows = (
+    <>
+      {all.slice(start, start + fits).map((s, i) => listRow(s, start + i))}
+      {scrolls ? (
+        <Box width={LIST_WIDTH} justifyContent="flex-end">
+          <Text color={quiet}>{below > 0 ? `↓ ${below} more ` : ' '}</Text>
+        </Box>
+      ) : null}
+    </>
+  )
+
   return (
     <Box flexDirection="column" flexGrow={1}>
       <ScreenBar
@@ -1069,27 +1129,37 @@ export function ExtensionsFlow({
       />
       {statuses && current ? (
         <Box flexDirection={split ? 'row' : 'column'} paddingLeft={HOME_MARGIN}>
-          <Box flexDirection="column" width={LIST_WIDTH} flexShrink={0}>
-            {statuses.map(listRow)}
-          </Box>
-          {split ? null : <Text> </Text>}
-          {/* The rule between list and sheet is the sheet's left border, so it
-              runs the sheet's whole height, wrapped lines included. */}
+          {split ? (
+            <Box
+              flexDirection="column"
+              width={LIST_WIDTH}
+              flexShrink={0}
+              {...(frameRows !== undefined ? { height: frameRows } : {})}
+              {...(palette.shelf !== '' ? { backgroundColor: palette.shelf } : {})}
+            >
+              <Text> </Text>
+              {listRows}
+              <Box flexGrow={1} />
+              {space.length > 0 ? <Text> </Text> : null}
+              {space.map((row, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: the box's rows are positional
+                <Runs key={i} row={row} />
+              ))}
+            </Box>
+          ) : (
+            <>
+              <Box flexDirection="column" width={LIST_WIDTH} flexShrink={0}>
+                {statuses.map(listRow)}
+              </Box>
+              <Text> </Text>
+            </>
+          )}
+          {/* No rule between list and sheet (2026-10-24): the frame divides them. */}
           <Box
             flexDirection="column"
             width={paneWidth}
             minHeight={statuses.length + 1}
-            {...(split
-              ? {
-                  marginLeft: 1,
-                  paddingLeft: 2,
-                  borderStyle: 'single' as const,
-                  borderTop: false,
-                  borderBottom: false,
-                  borderRight: false,
-                  borderLeftColor: colourProp(palette.faint) ?? 'gray',
-                }
-              : {})}
+            {...(split ? { marginLeft: 1, paddingLeft: 3 } : {})}
           >
             {rows.map((row, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: the sheet's rows are positional

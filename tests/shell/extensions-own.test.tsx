@@ -124,7 +124,7 @@ describe('/extensions — a tool the user has themselves', () => {
     expect(out).not.toContain('↵ install')
     expect(out).toMatch(/YouTube links\s+✓/)
     // Header, a blank row, then the card: the gap keeps the levels apart.
-    expect(out).toMatch(/Transcribe YouTube videos\s*\n.*│\s*\n.*╭─ yt-dlp/)
+    expect(out).toMatch(/Transcribe YouTube videos *\n.{0,30}\n.*╭─ yt-dlp/)
   })
 
   it('never says latest when nobody could say', async () => {

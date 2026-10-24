@@ -6013,6 +6013,7 @@ export function App({
                   'extensions',
                   <ExtensionsFlow
                     width={menuInner}
+                    height={menuBody}
                     onError={(error) => hold({ kind: 'error', id: nextId(), error })}
                     onClose={() => backToCommands('extensions')}
                   />,
