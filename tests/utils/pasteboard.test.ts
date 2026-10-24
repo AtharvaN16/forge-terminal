@@ -154,4 +154,16 @@ describe('macPasteboard', () => {
     expect(await macPasteboard(run).write('/tmp/x/Copied image.jpg', 'jpeg')).toBe(12)
     expect(calls[0]?.args).toEqual(['/tmp/x/Copied image.jpg', 'public.jpeg'])
   })
+
+  it('writeText puts the words on as plain text and as HTML, through files, not arguments', async () => {
+    const seen: string[] = []
+    const { run, calls } = fakeRunner(async (_script: string, args: string[]) => {
+      for (const a of args) seen.push(await readFile(a, 'utf8'))
+      return JSON.stringify({ count: 13 })
+    })
+    expect(await macPasteboard(run).writeText('Tea & milk', '<p>Tea &amp; milk</p>')).toBe(13)
+    expect(seen).toEqual(['Tea & milk', '<p>Tea &amp; milk</p>'])
+    expect(calls[0]?.script).toContain('public.utf8-plain-text')
+    expect(calls[0]?.script).toContain('public.html')
+  })
 })

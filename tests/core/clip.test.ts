@@ -1,7 +1,14 @@
 import { copyFile, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { lastOriginal, putBack, saveCopy, takeImage, undoClip } from '../../src/core/clip.js'
+import {
+  lastOriginal,
+  putBack,
+  putBackText,
+  saveCopy,
+  takeImage,
+  undoClip,
+} from '../../src/core/clip.js'
 import { makeJpeg, makePng, makeTempDir } from '../helpers/fixtures.js'
 import { memoryPasteboard } from '../helpers/pasteboard.js'
 
@@ -49,6 +56,27 @@ describe('takeImage', () => {
     const b = await takeImage((await holding(png)).pb, root)
     expect(a?.outDir).not.toBe(b?.outDir)
     expect(dirname(a?.source as string)).not.toBe(a?.outDir)
+  })
+})
+
+describe('putBackText (spec 2026-10-23-extract-text-design §3.3)', () => {
+  it('puts a picture’s text on the clipboard, plain and as HTML, when nothing else was copied', async () => {
+    const png = await makePng(await makeTempDir(), 'shot.png')
+    const clip = await holding(png)
+    const taken = await take(clip.pb, await makeTempDir())
+
+    expect(await putBackText(clip.pb, taken, 'Tea', '<p>Tea</p>')).toBe('placed')
+    expect(clip.held()).toEqual({ kind: 'text', text: 'Tea', html: '<p>Tea</p>' })
+  })
+
+  it('leaves a newer copy alone', async () => {
+    const png = await makePng(await makeTempDir(), 'shot.png')
+    const clip = await holding(png)
+    const taken = await take(clip.pb, await makeTempDir())
+    await clip.copyImage(png)
+
+    expect(await putBackText(clip.pb, taken, 'Tea', '<p>Tea</p>')).toBe('changed')
+    expect(clip.held()?.kind).toBe('image')
   })
 })
 

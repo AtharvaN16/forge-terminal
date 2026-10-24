@@ -8,15 +8,22 @@
 //   forge-transcribe probe <file>
 //   forge-transcribe run <file> [--locale <id>] [--notes [--detail brief|standard|detailed]]
 //   forge-transcribe render <html> <out> --as docx|pdf
+//   forge-transcribe read <file> [--language <id>]
+//
+// read (spec 2026-10-23-extract-text-design §5.1) reads the text of a picture
+// or a PDF with Apple's on-device text recognition (Vision). It reports what
+// Vision saw; Forge orders it and writes the file. Forge has already probed the
+// file (its own probe tells a picture from a PDF and refuses a locked one).
 //
 // Built by scripts/build.mjs on macOS with a 26+ SDK; original Forge code, MIT.
 import AppKit
 import AVFoundation
 import CoreMedia
-import CoreText
 import Foundation
 import FoundationModels
+import ImageIO
 import Speech
+import Vision
 
 // MARK: - Output
 
@@ -42,6 +49,8 @@ struct Args {
     /// render's format: "docx" or "pdf".
     var format: String?
     var locale: String?
+    /// read's language, when the CLI pins one; else Vision detects it.
+    var language: String?
     var notes = false
     var detail = Detail.standard
 
@@ -52,6 +61,7 @@ struct Args {
             let a = rest.removeFirst()
             switch a {
             case "--locale": locale = rest.isEmpty ? nil : rest.removeFirst()
+            case "--language": language = rest.isEmpty ? nil : rest.removeFirst()
             case "--notes": notes = true
             case "--detail": detail = Detail(rawValue: rest.isEmpty ? "" : rest.removeFirst()) ?? .standard
             case "--as": format = rest.isEmpty ? nil : rest.removeFirst()
@@ -351,7 +361,8 @@ func writeNotes(_ segments: [Segment], detail: Detail) async -> [String: Any]? {
 
 /// A transcript's HTML (from Forge's Markdown) set as Word or PDF by AppKit's own
 /// HTML reader, the one TextEdit and textutil use. Word is written whole; PDF is
-/// laid out by Core Text a page at a time, on the paper this Mac's region uses.
+/// laid out by AppKit's text system a page at a time, on the paper this Mac's
+/// region uses.
 @MainActor
 func render(html: String, out: String, format: String) {
     guard let data = FileManager.default.contents(atPath: html),
@@ -375,24 +386,222 @@ func render(html: String, out: String, format: String) {
         guard let pdf = CGContext(url as CFURL, mediaBox: &page, nil) else {
             fail("render", "The PDF could not be written.")
         }
-        let setter = CTFramesetterCreateWithAttributedString(text as CFAttributedString)
-        let area = CGPath(rect: page.insetBy(dx: 64, dy: 64), transform: nil)
-        var at = 0
+        // AppKit's own text system, not Core Text alone: it draws the tables a
+        // picture's text can have (spec 2026-10-23-extract-text-design §4),
+        // which Core Text's framesetter flattens into one cell a line.
+        let storage = NSTextStorage(attributedString: text)
+        let layout = NSLayoutManager()
+        storage.addLayoutManager(layout)
+        let area = page.insetBy(dx: 64, dy: 64)
+        var pages: [NSTextContainer] = []
         repeat {
+            let container = NSTextContainer(size: area.size)
+            container.lineFragmentPadding = 0
+            layout.addTextContainer(container)
+            pages.append(container)
+            // A page that takes nothing would page for ever.
+            if layout.glyphRange(for: container).length == 0 { break }
+        } while NSMaxRange(layout.glyphRange(for: pages[pages.count - 1])) < layout.numberOfGlyphs
+        for container in pages {
+            let glyphs = layout.glyphRange(for: container)
+            if glyphs.length == 0, pages.count > 1 { continue }
             pdf.beginPDFPage(nil)
-            let frame = CTFramesetterCreateFrame(setter, CFRange(location: at, length: 0), area, nil)
-            CTFrameDraw(frame, pdf)
-            let shown = CTFrameGetVisibleStringRange(frame).length
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: pdf, flipped: true)
+            pdf.translateBy(x: 0, y: page.height)
+            pdf.scaleBy(x: 1, y: -1)
+            layout.drawBackground(forGlyphRange: glyphs, at: area.origin)
+            layout.drawGlyphs(forGlyphRange: glyphs, at: area.origin)
+            NSGraphicsContext.restoreGraphicsState()
             pdf.endPDFPage()
-            // A frame that fits nothing would page for ever.
-            if shown == 0 { break }
-            at += shown
-        } while at < text.length
+        }
         pdf.closePDF()
     default:
         fail("usage", "render makes docx or pdf")
     }
     emit(["ok": true])
+}
+
+// MARK: - Reading text
+
+/// A picture or a PDF, told apart by content: a PDF starts "%PDF" in its first kilobyte.
+enum Page {
+    case image(CGImageSource)
+    case pdf(CGPDFDocument)
+}
+
+func openPage(_ path: String) -> Page {
+    let url = URL(fileURLWithPath: path) as CFURL
+    let head = FileHandle(forReadingAtPath: path).map { h in defer { try? h.close() }; return h.readData(ofLength: 1024) } ?? Data()
+    if head.range(of: Data("%PDF".utf8)) != nil, let doc = CGPDFDocument(url), doc.numberOfPages > 0 {
+        return .pdf(doc)
+    }
+    if let source = CGImageSourceCreateWithURL(url, nil), CGImageSourceGetCount(source) > 0,
+       CGImageSourceCreateImageAtIndex(source, 0, nil) != nil {
+        return .image(source)
+    }
+    fail("unreadable", "This file cannot be read.")
+}
+
+/// The EXIF orientation, so a phone photo taken sideways reads the right way up.
+func orientation(_ source: CGImageSource) -> CGImagePropertyOrientation {
+    let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    let raw = (props?[kCGImagePropertyOrientation] as? NSNumber)?.uint32Value ?? 1
+    return CGImagePropertyOrientation(rawValue: raw) ?? .up
+}
+
+/// Drawn on white: Vision reads nothing off a transparent background. The long side is
+/// held to `cap` pixels, past which Vision gains nothing and memory does.
+func onWhite(width: Int, height: Int, cap: Double, draw: (CGContext, CGRect) -> Void) -> CGImage? {
+    let scale = min(1, cap / Double(max(width, height)))
+    let w = max(1, Int(Double(width) * scale)), h = max(1, Int(Double(height) * scale))
+    guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                              space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+    let rect = CGRect(x: 0, y: 0, width: w, height: h)
+    ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+    ctx.fill(rect)
+    ctx.interpolationQuality = .high
+    draw(ctx, rect)
+    return ctx.makeImage()
+}
+
+func pictureImage(_ source: CGImageSource) -> CGImage? {
+    guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+    return onWhite(width: image.width, height: image.height, cap: 6000) { ctx, rect in ctx.draw(image, in: rect) }
+}
+
+/// A PDF page at about 2 500 px on its long side, its own rotation applied.
+func pdfImage(_ page: CGPDFPage) -> CGImage? {
+    let box = page.getBoxRect(.cropBox)
+    let turned = page.rotationAngle % 180 != 0
+    let w = turned ? box.height : box.width, h = turned ? box.width : box.height
+    let scale = 2500 / max(w, h)
+    return onWhite(width: Int(w * scale), height: Int(h * scale), cap: 2500) { ctx, _ in
+        // getDrawingTransform only ever shrinks a page, so the scale up is the context's own.
+        ctx.scaleBy(x: scale, y: scale)
+        ctx.concatenate(page.getDrawingTransform(.cropBox, rect: CGRect(x: 0, y: 0, width: w, height: h),
+                                                 rotate: 0, preserveAspectRatio: true))
+        ctx.drawPDFPage(page)
+    }
+}
+
+/// Vision's box (normalised, origin bottom-left) as [x, y, w, h] with the origin top-left.
+func box(_ r: CGRect) -> [Double] {
+    [Double(r.minX), Double(1 - r.maxY), Double(r.width), Double(r.height)]
+}
+
+/// A line's own height, along its slant, as a share of the page's height: an upright box
+/// round a tilted line (a phone photo) grows with the line's length. `aspect` is the
+/// page's width over its height, since x and y are normalised to different sides.
+func lineHeight(_ line: RecognizedTextObservation, aspect: Double) -> Double {
+    let dx = Double(line.topLeft.x - line.bottomLeft.x) * aspect
+    let dy = Double(line.topLeft.y - line.bottomLeft.y)
+    return (dx * dx + dy * dy).squareRoot()
+}
+
+func median(_ xs: [Double]) -> Double {
+    let s = xs.sorted()
+    return s.isEmpty ? 0 : s[s.count / 2]
+}
+
+func marker(_ m: DocumentObservation.Container.List.Marker?) -> String {
+    switch m {
+    case .bullet: return "bullet"
+    case .hyphen: return "hyphen"
+    case .lowercaseLatin: return "lowercase"
+    case .uppercaseLatin: return "uppercase"
+    case .decimal, .decorativeDecimal, .compositeDecimal: return "decimal"
+    default: return "bullet"
+    }
+}
+
+func languages(_ id: String?) -> [Locale.Language]? {
+    id.map { [Locale.Language(identifier: $0)] }
+}
+
+/// One page's blocks, as Vision groups them: paragraphs, lists and tables, each with its
+/// box. The text inside a list or table is also among the paragraphs; Forge drops it there.
+func readPage(_ image: CGImage, _ turn: CGImagePropertyOrientation, language: String?) async -> [String: Any] {
+    // Vision's coordinates are the picture's as shown: a quarter turn swaps its sides.
+    let quarter = turn.rawValue >= 5
+    let aspect = Double(quarter ? image.height : image.width) / Double(quarter ? image.width : image.height)
+    var request = RecognizeDocumentsRequest()
+    if let langs = languages(language) {
+        request.textRecognitionOptions.recognitionLanguages = langs
+    } else {
+        request.textRecognitionOptions.automaticallyDetectLanguage = true
+    }
+    do {
+        let doc = try await request.perform(on: image, orientation: turn).first?.document
+        guard let doc else { return ["blocks": []] }
+        let title = doc.title?.transcript
+        var blocks: [[String: Any]] = []
+        for p in doc.paragraphs {
+            let text = p.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { continue }
+            blocks.append([
+                "kind": "text",
+                "text": text,
+                "title": text == title,
+                "lines": p.lines.count,
+                "lineHeight": median(p.lines.map { lineHeight($0, aspect: aspect) }),
+                "box": box(p.boundingRegion.boundingBox.cgRect),
+            ])
+        }
+        for l in doc.lists {
+            blocks.append([
+                "kind": "list",
+                "items": l.items.map { ["marker": marker($0.markerType), "text": $0.itemString] },
+                "box": box(l.boundingRegion.boundingBox.cgRect),
+            ])
+        }
+        for t in doc.tables {
+            blocks.append([
+                "kind": "table",
+                "rows": t.rows.map { row in row.map { $0.content.text.transcript } },
+                "box": box(t.boundingRegion.boundingBox.cgRect),
+            ])
+        }
+        return ["blocks": blocks]
+    } catch {
+        // The document reader failed (untested on Intel): the line reader, lines only.
+        return await readLines(image, turn, aspect: aspect, language: language)
+    }
+}
+
+func readLines(_ image: CGImage, _ turn: CGImagePropertyOrientation, aspect: Double, language: String?) async -> [String: Any] {
+    var request = RecognizeTextRequest()
+    if let langs = languages(language) { request.recognitionLanguages = langs } else { request.automaticallyDetectsLanguage = true }
+    let lines = (try? await request.perform(on: image, orientation: turn)) ?? []
+    return [
+        "lines": true,
+        "blocks": lines.compactMap { line -> [String: Any]? in
+            guard let text = line.topCandidates(1).first?.string, !text.isEmpty else { return nil }
+            let r = line.boundingBox.cgRect
+            return ["kind": "text", "text": text, "title": false, "lines": 1, "lineHeight": lineHeight(line, aspect: aspect), "box": box(r)]
+        },
+    ]
+}
+
+func read(_ path: String, language: String?) async {
+    var pages: [[String: Any]] = []
+    switch openPage(path) {
+    case .pdf(let doc):
+        let n = doc.numberOfPages
+        for i in 1...n {
+            emit(["event": "page", "page": i, "of": n])
+            guard let page = doc.page(at: i), let image = pdfImage(page) else {
+                pages.append(["blocks": []])
+                continue
+            }
+            pages.append(await readPage(image, .up, language: language))
+        }
+    case .image(let source):
+        guard let image = pictureImage(source) else { fail("unreadable", "This file cannot be read.") }
+        pages.append(await readPage(image, orientation(source), language: language))
+    }
+    emit(["ok": true, "pages": pages])
 }
 
 // MARK: - Main
@@ -409,6 +618,8 @@ struct Main {
                 "speech": SpeechTranscriber.isAvailable,
                 "locale": locale?.identifier ?? NSNull(),
                 "notes": notesState(),
+                // Vision's document reader is in every macOS this helper runs on (26+).
+                "read": true,
             ])
         case "probe":
             guard let path = args.file else { fail("usage", "probe needs a file") }
@@ -440,8 +651,11 @@ struct Main {
                 fail("usage", "render needs <html> <out> --as docx|pdf")
             }
             await MainActor.run { render(html: html, out: out, format: format) }
+        case "read":
+            guard let path = args.file else { fail("usage", "read needs a file") }
+            await read(path, language: args.language)
         default:
-            fail("usage", "usage: forge-transcribe status|probe|run|render")
+            fail("usage", "usage: forge-transcribe status|probe|run|render|read")
         }
     }
 }

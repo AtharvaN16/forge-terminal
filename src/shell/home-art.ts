@@ -98,7 +98,7 @@ export const MODE_KINDS: Record<ShellMode, string> = {
   pdf: 'split · merge · rotate · extract · delete',
   colour: 'palette · scale',
   edit: 'Images · Video · Audio',
-  transcribe: 'or paste a YouTube link',
+  transcribe: 'Video · Audio · Images · PDF · or a YouTube link',
 }
 
 /** The kinds a mode lists, each with the formats it takes: `[kind, 'JPEG · PNG · …']`. */
@@ -122,8 +122,7 @@ const SOUND_IDS = ['mp3', 'm4a', 'opus', 'flac', 'aiff', 'wav', 'ogg'] as const
 
 /**
  * What holding ? shows on the drop surface, by mode; a mode with no entry has
- * nothing to list (pdf, colour and transcribe say what they do on the line
- * itself). Not a list of output formats — those come from `targetsFor` — only
+ * nothing to list (pdf and colour say what they do on the line itself). Not a list of output formats — those come from `targetsFor` — only
  * what a drop is understood as.
  */
 export const MODE_FORMATS: Partial<Record<ShellMode, FormatKinds>> = {
@@ -144,6 +143,13 @@ export const MODE_FORMATS: Partial<Record<ShellMode, FormatKinds>> = {
     ['Video', labels(VIDEO_IDS)],
     ['Audio', labels(SOUND_IDS)],
   ],
+  // What Apple's speech recogniser reads (AVFoundation), and the pictures and PDFs Vision reads.
+  transcribe: [
+    ['Video', labels(['mp4', 'mov'])],
+    ['Audio', labels(['m4a', 'mp3', 'wav', 'aiff'])],
+    ['Images', labels(IMAGE_IDS)],
+    ['PDF', 'PDF'],
+  ],
 }
 
 /** `list` broken at its separators into lines of at most `max` columns. */
@@ -161,10 +167,12 @@ function wrapFormats(list: string, max: number): string[] {
   return out
 }
 
-/** The drop surface's heading where a mode asks for more than "a file" (mockups/transcribe-2026-10-round2.html). */
-export const MODE_DROP_TITLES: Partial<Record<ShellMode, string>> = {
-  transcribe: 'Drop a video or audio file',
-}
+/**
+ * The drop surface's heading where a mode asks for more than "a file"
+ * (mockups/transcribe-2026-10-round2.html). Transcribe asked for "a video or
+ * audio file" until it read pictures and PDFs too (spec 2026-10-23-extract-text-design).
+ */
+export const MODE_DROP_TITLES: Partial<Record<ShellMode, string>> = {}
 
 /** What a mode cannot do yet, said on home's key row at its left end (`KeyRow`'s `note`). */
 export const MODE_NOTES: Partial<Record<ShellMode, string>> = {

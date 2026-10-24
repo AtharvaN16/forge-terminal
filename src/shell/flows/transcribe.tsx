@@ -6,15 +6,21 @@
  * Working (the sound still downloading, then Transcribing with what has been
  * heard, then ✓ Transcribing above Writing notes and a square per part), and
  * Done. App draws the header bar from `onTrail`.
+ *
+ * A picture or PDF (spec 2026-10-23-extract-text-design §3) has no Transcribe
+ * to: Format, Save as, Working (Reading text, a true bar of pages for a PDF),
+ * and Done with the text's first lines.
  */
 
 import { dirname, join } from 'node:path'
 import { Box } from 'ink'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import stringWidth from 'string-width'
 import { expandTilde, type Preferences } from '../../config/preferences.js'
 import { destinationAt } from '../../core/actions/destination.js'
 import { writeAtomic } from '../../core/atomic.js'
-import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
+import { putBackText, undoClip } from '../../core/clip.js'
+import { type ForgeError, isForgeError, noText, unexpectedError } from '../../core/errors.js'
 import { uniqueOutputPath } from '../../core/output-path.js'
 import { DEFAULT_DETAIL, DETAILS, type Detail, detailLabel } from '../../core/transcribe/detail.js'
 import {
@@ -31,9 +37,23 @@ import {
   outputExt,
   outputLabel,
 } from '../../core/transcribe/output.js'
-import { renderTranscript, runTranscribe, transcribeStatus } from '../../engines/transcribe.js'
+import {
+  hasText,
+  type PageText,
+  pageHtml,
+  pagePlain,
+  pageText,
+} from '../../core/transcribe/page-text.js'
+import {
+  renderPages,
+  renderTranscript,
+  runRead,
+  runTranscribe,
+  transcribeStatus,
+} from '../../engines/transcribe.js'
 import type { FetchedSound } from '../../engines/youtube.js'
 import { displayName, displayPath } from '../../utils/display-path.js'
+import type { Pasteboard } from '../../utils/pasteboard.js'
 import type { Trail } from '../bar-art.js'
 import { copy } from '../clipboard.js'
 import { DoneActions, doneKeys } from '../components/Done.js'
@@ -53,7 +73,7 @@ import { useTheme } from '../ThemeContext.js'
 import type { Palette } from '../theme.js'
 import { type TranscribeSource, transcribeCard } from '../transcribe-stage.js'
 import { useKeys } from '../useKeys.js'
-import { CARD_WIDTH, middleEllipsis } from '../width.js'
+import { CARD_WIDTH, endEllipsis, middleEllipsis } from '../width.js'
 import { elapsed } from '../working-art.js'
 
 export interface TranscribeFlowProps {
@@ -62,6 +82,11 @@ export interface TranscribeFlowProps {
   /** A link's sound, still being fetched by the run home started. */
   sound?: Promise<FetchedSound> | undefined
   width: number
+  /** The rows Done's body may use: a picture's text fills what there is. */
+  rows?: number
+  /** For a pasted picture: its text goes back here, and u puts the picture back. */
+  pasteboard?: Pasteboard | null | undefined
+  clipRoot?: string | undefined
   prefs: Preferences
   onTrail: (trail: Trail) => void
   /** esc from the first question: home, the file or link still there. */
@@ -92,6 +117,8 @@ type Work =
   | { phase: 'heard'; at: number; seconds: number; of: number }
   /** `at` is when the notes began; `took` is how long transcribing took, said as the clock says it. */
   | { phase: 'notes'; at: number; took: string; part: number; of: number }
+  /** A picture's or PDF's text; a PDF says which page, of a count known before the first. */
+  | { phase: 'reading'; at: number; page?: number; of?: number }
 
 /** The file or video, framed, with its kind in the top edge: as home's card, without the dots. */
 export function transcribeCardRows(
@@ -122,10 +149,44 @@ export function transcribeCardRows(
   ]
 }
 
+/**
+ * A picture's text as Done shows it (spec 2026-10-23-extract-text-design
+ * §3.1): a line per row, no blank rows between blocks, and a table's rows
+ * (tab-separated in the words) in columns as wide as their widest cell.
+ */
+export function previewLines(words: string): string[] {
+  const lines = words.split('\n').filter((l) => l.trim() !== '')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; ) {
+    if (!lines[i]?.includes('\t')) {
+      out.push(lines[i] ?? '')
+      i++
+      continue
+    }
+    const rows: string[][] = []
+    while (lines[i]?.includes('\t')) rows.push((lines[i++] ?? '').split('\t'))
+    const widths = rows.reduce<number[]>(
+      (w, r) => r.map((c, k) => Math.max(w[k] ?? 0, stringWidth(c))),
+      [],
+    )
+    for (const r of rows) {
+      out.push(
+        r
+          .map((c, k) => (k < r.length - 1 ? c + ' '.repeat((widths[k] ?? 0) - stringWidth(c)) : c))
+          .join('   '),
+      )
+    }
+  }
+  return out
+}
+
 export function TranscribeFlow({
   source,
   sound,
   width,
+  rows: bodyRows,
+  pasteboard,
+  clipRoot,
   prefs,
   onTrail,
   onCancel,
@@ -136,8 +197,12 @@ export function TranscribeFlow({
   onSaved,
 }: TranscribeFlowProps) {
   const palette = useTheme()
+  // A picture or PDF has nothing to choose before Format: no status to wait for.
+  const page = source.kind === 'page'
+  // A pasted picture asks nothing at all: its text goes back on the clipboard (§3.3).
+  const clip = source.kind === 'page' ? source.clip : undefined
   const [step, setStep] = useState<'checking' | 'choose' | 'format' | 'save' | 'working' | 'done'>(
-    'checking',
+    clip ? 'working' : page ? 'format' : 'checking',
   )
   const [notesOn, setNotesOn] = useState(false)
   const [want, setWant] = useState<Want>('all')
@@ -153,7 +218,7 @@ export function TranscribeFlow({
       OUTPUTS.findIndex((o) => o.id === defaultFormat),
     ),
   )
-  const here = source.kind === 'file' ? dirname(source.path) : undefined
+  const here = source.kind === 'file' || source.kind === 'page' ? dirname(source.path) : undefined
   const destination = useMemo(
     () => destinationAt(here, prefs, { subfolder: NEW_FOLDER.transcribe }),
     [here, prefs],
@@ -161,18 +226,36 @@ export function TranscribeFlow({
   const [folder, setFolder] = useState(() => expandTilde(prefs.defaultOutput))
   const [name, setName] = useState('')
   const [work, setWork] = useState<Work>({ phase: 'download', at: Date.now() })
-  /** `text` is what c copies: the Markdown for a .md, its words for any other format. */
-  const [done, setDone] = useState<{ output: string; text: string; parts?: NotesPart[] }>()
+  /**
+   * `text` is what c copies: the Markdown for a .md, its words for any other
+   * format — and for a picture's text always its words, never escaped (spec
+   * 2026-10-23 §3.3). `preview` is a picture's text, a line per row.
+   */
+  const [done, setDone] = useState<{
+    output: string
+    text: string
+    parts?: NotesPart[]
+    preview?: string[]
+    /** A pasted picture's text: on the clipboard, or saved because something else was copied. */
+    clip?: 'placed' | 'changed'
+  }>()
+  /** A pasted picture's text, kept for s, and what u or s last did, said on Done. */
+  const read = useRef<PageText | undefined>(undefined)
+  const [said, setSaid] = useState<string | undefined>()
   const stop = useRef<AbortController | undefined>(undefined)
 
   const origin =
-    source.kind === 'file'
+    source.kind === 'file' || source.kind === 'page'
       ? { title: displayName(source.path).replace(/\.[^.]+$/, ''), from: displayName(source.path) }
       : source.phase === 'ready'
         ? { title: source.facts.title, from: source.url }
         : { title: 'transcript', from: source.kind === 'link' ? source.url : '' }
   const seconds =
-    source.kind === 'file' ? source.seconds : source.phase === 'ready' ? source.facts.seconds : 0
+    source.kind === 'file'
+      ? source.seconds
+      : source.kind === 'link' && source.phase === 'ready'
+        ? source.facts.seconds
+        : 0
   const stem = fileStem(origin.title)
   const place = (path: string) =>
     destination.presets.find((p) => p.path === path)?.label ?? displayName(displayPath(path))
@@ -182,6 +265,7 @@ export function TranscribeFlow({
   const fail = useRef(onFail)
   fail.current = onFail
   useEffect(() => {
+    if (page) return
     let live = true
     transcribeStatus().then(
       (status) => {
@@ -198,7 +282,7 @@ export function TranscribeFlow({
     return () => {
       live = false
     }
-  }, [])
+  }, [page])
 
   // Stop a run still going when the flow goes.
   useEffect(() => () => stop.current?.abort(), [])
@@ -223,6 +307,7 @@ export function TranscribeFlow({
     const ctrl = new AbortController()
     stop.current = ctrl
     setStep('working')
+    if (source.kind === 'page') return readPage(source.path, to, output, trail, ctrl)
     try {
       let path: string
       if (source.kind === 'file') path = source.path
@@ -275,6 +360,87 @@ export function TranscribeFlow({
     }
   }
 
+  /** A picture's text, saved in the default format to the default folder, under a name nothing there has. */
+  const saveText = async (doc: PageText, signal?: AbortSignal) => {
+    const output = uniqueOutputPath(
+      join(expandTilde(prefs.defaultOutput), `${stem}${outputExt(defaultFormat)}`),
+    )
+    await writeAtomic(output, await renderPages(doc, defaultFormat, origin.from, { signal }))
+    return output
+  }
+
+  /**
+   * A pasted picture's text, back on the clipboard, plain and as HTML. Not
+   * when something else was copied while it was read: that copy is left
+   * alone and the text is saved to the default folder instead (E3).
+   */
+  const readClip = async (path: string, taken: { changeCount: number }) => {
+    const ctrl = new AbortController()
+    stop.current = ctrl
+    try {
+      const at = Date.now()
+      setWork({ phase: 'reading', at })
+      onTrail({ answers: ['Clipboard'], current: 'Reading text' })
+      const doc = pageText(await runRead(path, { signal: ctrl.signal }))
+      if (!hasText(doc)) throw noText(path)
+      read.current = doc
+      const words = pagePlain(doc)
+      const placed =
+        pasteboard &&
+        (await putBackText(pasteboard, taken, words, pageHtml(doc, origin.from))) === 'placed'
+      if (ctrl.signal.aborted) return
+      const output = placed ? '' : await saveText(doc, ctrl.signal)
+      setDone({
+        output,
+        text: words,
+        preview: previewLines(words),
+        clip: placed ? 'placed' : 'changed',
+      })
+      onTrail({ answers: ['Clipboard'], current: 'Done' })
+      setStep('done')
+    } catch (e) {
+      if (ctrl.signal.aborted) return
+      fail.current(isForgeError(e) ? e : unexpectedError(e))
+    }
+  }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, on arrival
+  useEffect(() => {
+    if (source.kind === 'page' && source.clip) void readClip(source.path, source.clip)
+  }, [])
+
+  /** A picture's or PDF's text: read, written, and its first lines for Done. */
+  const readPage = async (
+    path: string,
+    to: string,
+    output: string,
+    trail: string[],
+    ctrl: AbortController,
+  ) => {
+    try {
+      const at = Date.now()
+      setWork({ phase: 'reading', at })
+      onTrail({ answers: trail, current: 'Reading text' })
+      const pages = await runRead(path, {
+        signal: ctrl.signal,
+        onEvent: (e) => setWork({ phase: 'reading', at, page: e.page, of: e.of }),
+      })
+      const doc = pageText(pages)
+      if (!hasText(doc)) throw noText(path)
+      await writeAtomic(
+        output,
+        await renderPages(doc, format, displayName(path), { signal: ctrl.signal }),
+      )
+      onSaved?.(to)
+      const words = pagePlain(doc)
+      setDone({ output, text: words, preview: previewLines(words) })
+      onTrail({ answers: trail, current: 'Done' })
+      setStep('done')
+    } catch (e) {
+      if (ctrl.signal.aborted) return
+      fail.current(isForgeError(e) ? e : unexpectedError(e))
+    }
+  }
+
   // esc while it works: stop, nothing written, home with the file.
   useKeys(
     (_input, key) => {
@@ -312,11 +478,19 @@ export function TranscribeFlow({
    * Open, Finder and Copy, then Home, selected as Done opens. ←→ chooses,
    * ↵ confirms, each keeps its key (s still reveals), esc goes home.
    */
-  const doneList: DoneAction[] = [
-    { key: 'o', label: 'Open' },
-    { key: 'f', label: revealLabel().replace(/^Show in /, '') },
-    { key: 'c', label: 'Copy' },
-  ]
+  // A pasted picture's text on the clipboard has no file: as a copied image's
+  // Done, u puts the original back and s keeps a copy as a file.
+  const doneList: DoneAction[] =
+    done?.clip === 'placed'
+      ? [
+          { key: 'u', label: 'Undo' },
+          { key: 's', label: 'Save a copy' },
+        ]
+      : [
+          { key: 'o', label: 'Open' },
+          { key: 'f', label: revealLabel().replace(/^Show in /, '') },
+          { key: 'c', label: 'Copy' },
+        ]
   const [doneSel, setDoneSel] = useState<number | undefined>()
   useEffect(() => {
     if (step === 'done') setDoneSel(undefined)
@@ -331,7 +505,18 @@ export function TranscribeFlow({
       }
       const chosen = key.return ? doneList[doneSel ?? home]?.key : input
       if (key.escape || (key.return && chosen === undefined)) onNew()
-      else if (chosen === 'o') void openPath(done.output).catch(() => {})
+      else if (done.clip === 'placed') {
+        if (chosen === 'u' && pasteboard)
+          void undoClip(pasteboard, clipRoot).then(
+            (ok) => ok && setSaid('the original is back on the clipboard'),
+            (e: unknown) => fail.current(isForgeError(e) ? e : unexpectedError(e)),
+          )
+        else if (chosen === 's' && read.current)
+          void saveText(read.current).then(
+            (saved) => setSaid(`saved to ${displayPath(saved)}`),
+            (e: unknown) => fail.current(isForgeError(e) ? e : unexpectedError(e)),
+          )
+      } else if (chosen === 'o') void openPath(done.output).catch(() => {})
       else if (chosen === 'f' || chosen === 's') void revealPath(done.output).catch(() => {})
       else if (chosen === 'c') copy(done.text)
     },
@@ -482,7 +667,10 @@ export function TranscribeFlow({
                 total: work.of,
                 says: `${clock(work.seconds)} of ${clock(work.of)}`,
               }
-            : undefined
+            : work.phase === 'reading' && work.page !== undefined && work.of
+              ? // The bar is the pages finished; the words say the one being read.
+                { done: work.page - 1, total: work.of, says: `page ${work.page} of ${work.of}` }
+              : undefined
     return (
       <Box flexDirection="column" flexGrow={1}>
         {cardBox}
@@ -495,7 +683,9 @@ export function TranscribeFlow({
                 ? 'Downloading the speech model'
                 : work.phase === 'heard'
                   ? 'Transcribing'
-                  : 'Writing notes'
+                  : work.phase === 'reading'
+                    ? 'Reading text'
+                    : 'Writing notes'
           }
           startedAt={work.at}
           progress={progress}
@@ -510,7 +700,12 @@ export function TranscribeFlow({
   }
 
   // Done: a green "done" chip, the file, the parts it found; the way on above the keys.
+  // A picture's text instead shows its first lines, as many as there is room for.
   const parts = done?.parts ?? []
+  const room = Math.max(0, (bodyRows ?? 14) - 4)
+  const preview = (done?.preview ?? [])
+    .slice(0, room)
+    .map((l): Row => [blank(6), { text: endEllipsis(l, Math.max(8, width - 8)), fg: palette.dim }])
   const refused = parts.findIndex((p) => p.refused)
   const rows: Row[] = [
     [
@@ -526,8 +721,16 @@ export function TranscribeFlow({
     [
       blank(4),
       { text: '✓ ', fg: palette.ok, bold: true },
-      { text: displayName(done?.output ?? ''), fg: palette.fg, bold: true },
+      {
+        text:
+          done?.clip === 'placed'
+            ? 'the text is on the clipboard'
+            : displayName(done?.output ?? ''),
+        fg: palette.fg,
+        bold: true,
+      },
     ],
+    ...(said ? [[blank(4), { text: `✓ ${said}`, fg: palette.ok }] as Row] : []),
     [],
     ...parts.map(
       (p, i): Row => [
@@ -539,14 +742,19 @@ export function TranscribeFlow({
           : { text: middleEllipsis(p.heading, Math.max(8, width - 18)), fg: palette.fg },
       ],
     ),
+    ...preview,
   ]
   const warning =
-    refused >= 0
+    refused >= 0 || done?.clip === 'changed'
       ? doneNotes({
           palette,
           width: width - 4,
           offers: [],
-          warnings: [`Apple Intelligence would not write notes for part ${refused + 1}.`],
+          warnings: [
+            done?.clip === 'changed'
+              ? `Clipboard changed: the text is saved to ${displayName(dirname(done.output))}.`
+              : `Apple Intelligence would not write notes for part ${refused + 1}.`,
+          ],
         })
       : []
   return (

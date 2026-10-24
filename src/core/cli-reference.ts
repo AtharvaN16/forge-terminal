@@ -229,6 +229,11 @@ export const CLI_TABS: CliTab[] = [
         ex: 'forge transcribe talk.mp4 --detail brief',
       },
       {
+        name: 'transcribe <picture | pdf>',
+        does: 'the text in it, read on this Mac',
+        ex: 'forge transcribe shot.png',
+      },
+      {
         name: 'transcribe --format',
         does: 'Markdown, Word, PDF or text',
         ex: 'forge transcribe talk.mp4 --format pdf',

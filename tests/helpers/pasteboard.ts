@@ -3,7 +3,9 @@ import { join } from 'node:path'
 import type { FormatId } from '../../src/core/types.js'
 import type { Pasteboard } from '../../src/utils/pasteboard.js'
 
-type Held = { kind: 'image'; bytes: Buffer; ext: string; format?: FormatId } | { kind: 'text' }
+type Held =
+  | { kind: 'image'; bytes: Buffer; ext: string; format?: FormatId }
+  | { kind: 'text'; text?: string; html?: string }
 
 /**
  * An in-memory clipboard: holds one picture (or some text), counts changes
@@ -39,6 +41,11 @@ export function memoryPasteboard(opts: { onRead?: () => void } = {}) {
         ext: path.split('.').pop() ?? '',
         format,
       }
+      count++
+      return count
+    },
+    async writeText(text, html) {
+      held = { kind: 'text', text, html }
       count++
       return count
     },

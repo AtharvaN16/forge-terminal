@@ -84,10 +84,12 @@ buildTranscribeHelper()
 
 /**
  * The transcribe helper (spec 2026-10-17-transcribe-design §4.1): Swift,
- * Apple silicon, macOS 26 and later. Built where swiftc and a macOS 26 SDK
- * are; skipped with one line everywhere else (Windows, the macos-14 test
- * runners), where transcribe is simply not offered. The publish job sets
- * FORGE_REQUIRE_HELPERS=1 so a release cannot ship without it.
+ * macOS 26 and later, universal — Apple silicon and Intel (spec
+ * 2026-10-23-extract-text-design §5.5; the Intel slice is untested). Built
+ * where swiftc and a macOS 26 SDK are; skipped with one line everywhere else
+ * (Windows, the macos-14 test runners), where transcribe is simply not
+ * offered. The publish job sets FORGE_REQUIRE_HELPERS=1 so a release cannot
+ * ship without it.
  */
 function buildTranscribeHelper() {
   const required = process.env.FORGE_REQUIRE_HELPERS === '1'
@@ -98,7 +100,8 @@ function buildTranscribeHelper() {
   }
   const out = join(outdir, 'helpers', 'forge-transcribe')
   mkdirSync(join(outdir, 'helpers'), { recursive: true })
-  try {
+  const slice = (arch) => {
+    const path = `${out}-${arch}`
     execFileSync(
       'xcrun',
       [
@@ -106,13 +109,21 @@ function buildTranscribeHelper() {
         '-O',
         '-parse-as-library',
         '-target',
-        'arm64-apple-macos26.0',
+        `${arch}-apple-macos26.0`,
         join(ROOT, 'helpers/transcribe/forge-transcribe.swift'),
         '-o',
-        out,
+        path,
       ],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     )
+    return path
+  }
+  try {
+    const slices = [slice('arm64'), slice('x86_64')]
+    execFileSync('xcrun', ['lipo', '-create', ...slices, '-output', out], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    for (const path of slices) rmSync(path, { force: true })
   } catch (e) {
     if (required) throw e
     console.log('transcribe helper skipped: needs swiftc and a macOS 26 SDK')

@@ -5,9 +5,16 @@
  */
 import { stat } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
-import { fileNotFound, transcribeUnavailable, untranscribable } from '../core/errors.js'
+import {
+  fileNotFound,
+  readUnavailable,
+  transcribeUnavailable,
+  untranscribable,
+} from '../core/errors.js'
 import { sniffKind } from '../core/folder.js'
+import { FORMATS } from '../core/formats.js'
 import { clock } from '../core/transcribe/markdown.js'
+import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
 import { formatBytes } from '../core/units.js'
 import { probeSound, transcribeStatus } from '../engines/transcribe.js'
 import type { VideoFacts } from '../engines/youtube.js'
@@ -16,6 +23,13 @@ import type { StagedFile, StagedView } from './stage.js'
 
 export type TranscribeSource =
   | { kind: 'file'; path: string; seconds: number; bytes: number }
+  /**
+   * A picture or PDF, whose text is read (spec 2026-10-23-extract-text-design
+   * §3). `clip`: a picture pasted from the clipboard, whose text goes back
+   * there — the change count it was read at says whether something else was
+   * copied since (§3.3).
+   */
+  | ({ kind: 'page'; clip?: { changeCount: number } } & PageSource)
   | { kind: 'link'; url: string; phase: 'looking' }
   | { kind: 'link'; url: string; phase: 'needs-yt-dlp'; bytes: number }
   | { kind: 'link'; url: string; phase: 'installing'; done: number; total: number }
@@ -30,13 +44,24 @@ export type TranscribeSource =
 
 /**
  * A typed or dropped path, read for transcribe: by content (`sniffKind`),
- * then the helper's own probe, which knows whether it has sound at all.
+ * then the helper's own probe, which knows whether it has sound at all. Not
+ * video or sound, Forge's own probe tells a picture or PDF, whose text the
+ * helper reads (spec 2026-10-23-extract-text-design §5.4).
  */
 export async function readTranscribeFile(path: string): Promise<TranscribeSource> {
   const info = await stat(path).catch(() => undefined)
   if (!info?.isFile()) throw fileNotFound(path)
   const kind = await sniffKind(path)
-  if (kind !== 'video' && kind !== 'audio') throw untranscribable(path)
+  if (kind !== 'video' && kind !== 'audio') {
+    const { probe } = await import('../engines/registry.js')
+    const probed = await probe(path).catch(() => {
+      throw untranscribable(path)
+    })
+    const page = pageSource(probed)
+    if (page === undefined) throw untranscribable(path)
+    if (!(await transcribeStatus())?.read) throw readUnavailable()
+    return { kind: 'page', ...page }
+  }
   const status = await transcribeStatus()
   if (!status?.speech) {
     throw transcribeUnavailable('Transcribe needs macOS 26 or later on Apple silicon.')
@@ -57,6 +82,16 @@ export function transcribeCard(src: TranscribeSource, tick?: number): StagedFile
     const tag = extname(src.path).slice(1).toUpperCase() || 'FILE'
     const size = formatBytes(src.bytes)
     return { name: basename(src.path), tag, size, facts: `${clock(src.seconds)} · ${size}` }
+  }
+  if (src.kind === 'page') {
+    const size = formatBytes(src.bytes)
+    if (src.what === 'pdf') {
+      const pages = `${src.pages} ${src.pages === 1 ? 'page' : 'pages'}`
+      return { name: basename(src.path), tag: 'PDF', size, facts: `${pages} · ${size}` }
+    }
+    // The format's name, as convert's card says it: a pasted picture's file has no extension.
+    const tag = FORMATS[src.format].label
+    return { name: basename(src.path), tag, size, facts: `${src.width}×${src.height} · ${size}` }
   }
   const card = (name: string, facts: string): StagedFile => ({
     name,
@@ -102,7 +137,7 @@ export function transcribeNeed(src: TranscribeSource | undefined): TranscribeNee
 
 /** ↵'s word on home, or null while there is nothing for ↵ to do yet. */
 export function transcribeVerb(src: TranscribeSource): 'transcribe' | 'install' | null {
-  if (src.kind === 'file') return 'transcribe'
+  if (src.kind === 'file' || src.kind === 'page') return 'transcribe'
   if (src.phase === 'ready') return 'transcribe'
   if (src.phase === 'needs-yt-dlp') return 'install'
   return null

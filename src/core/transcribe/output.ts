@@ -67,11 +67,11 @@ export function markdownText(md: string): string {
     .join('\n')
 }
 
-const escapeHtml = (s: string) =>
+export const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 /** Plain and readable on a page: the Mac's own type, no colour but the link's. */
-const STYLE = [
+export const STYLE = [
   'body{font-family:-apple-system,"Helvetica Neue",Helvetica,sans-serif;font-size:11pt;line-height:1.45;color:#1d1d1f}',
   'h1{font-size:20pt;margin:0 0 6pt}',
   'h2{font-size:15pt;margin:18pt 0 6pt}',

@@ -1,14 +1,16 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import AdmZip from 'adm-zip'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { TranscribeIntent } from '../../src/cli/args.js'
 import { runTranscribeCommand } from '../../src/cli/transcribe-command.js'
 import { transcriptMarkdown } from '../../src/core/transcribe/markdown.js'
 import { markdownText } from '../../src/core/transcribe/output.js'
+import { pageMarkdown, pagePlain, pageText } from '../../src/core/transcribe/page-text.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
-import { makePng, makeTempDir } from '../helpers/fixtures.js'
+import { makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 /** The first bytes of an MP4: what `sniffKind` reads it by. */
 const MP4 = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0])
@@ -203,10 +205,11 @@ describe('forge transcribe <file>', () => {
     expect(await readFile(join(dir, 'talk.md'), 'utf8')).toContain('# talk')
   })
 
-  it('refuses a file that is not video or sound, by its content', async () => {
+  it('refuses a file that is not video, sound, a picture or a PDF, by its content', async () => {
     await setUp()
-    const png = await makePng(await makeTempDir(), 'still.mp4')
-    const { code, err } = await run(intent(png))
+    const odd = join(await makeTempDir(), 'still.mp4')
+    await writeFile(odd, Buffer.from([0x50, 0x4b, 3, 4, 0, 0, 0, 0, 0xff, 0xfe]))
+    const { code, err } = await run(intent(odd))
     expect(code).toBe(1)
     expect(err[0]).toBe('✕ Cannot transcribe this file')
   })
@@ -275,5 +278,119 @@ describe('forge transcribe <link>', () => {
     expect(r.code).toBe(1)
     expect(r.err[0]).toBe('✕ File already exists')
     expect(existsSync(join(fake.dir, 'argv.json')) && (await argv(fake.dir))[0]).not.toBe('run')
+  })
+})
+
+/** What `read` printed for the spike page (tests/fixtures/README.md, `read/`). */
+const DOC = JSON.parse(
+  readFileSync(join(__dirname, '..', 'fixtures', 'read', 'doc.json'), 'utf8'),
+) as { ok: true; pages: Parameters<typeof pageText>[0] }
+
+describe('forge transcribe <picture|pdf> (spec 2026-10-23-extract-text-design §3.5)', () => {
+  async function setUpRead(read: object[] = [DOC], status: object = { read: true }) {
+    const fake = await fakeTranscribeHelper({
+      status: {
+        lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'available', ...status }],
+      },
+      read: { lines: read },
+      render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'docx:' } },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    return { fake, dir: await makeTempDir() }
+  }
+
+  it('writes the text of a picture beside it, as Markdown', async () => {
+    const { fake, dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    const { code, out } = await run(intent(png))
+    expect(code).toBe(0)
+    expect(await readFile(join(dir, 'shot.md'), 'utf8')).toBe(pageMarkdown(pageText(DOC.pages)))
+    expect(out).toEqual(['✓ shot.md   PNG → 89 words'])
+    expect(await argv(fake.dir)).toEqual(['read', png])
+  })
+
+  it('reads by content: a picture named .mp4 is still a picture', async () => {
+    const { dir } = await setUpRead()
+    const png = await makePng(dir, 'clip.mp4')
+    expect((await run(intent(png))).code).toBe(0)
+    expect(existsSync(join(dir, 'clip.md'))).toBe(true)
+  })
+
+  it('writes the bare words with --format txt', async () => {
+    const { dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    expect((await run(intent(png, { format: 'txt' }))).code).toBe(0)
+    expect(await readFile(join(dir, 'shot.txt'), 'utf8')).toBe(pagePlain(pageText(DOC.pages)))
+  })
+
+  it('writes Word, its table a real one, with --format docx', async () => {
+    const { dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    expect((await run(intent(png, { format: 'docx' }))).code).toBe(0)
+    const xml = new AdmZip(await readFile(join(dir, 'shot.docx'))).readAsText('word/document.xml')
+    expect(xml).toContain('<w:tbl>')
+  })
+
+  it('reads a PDF page by page and says how many pages', async () => {
+    const { dir } = await setUpRead([
+      { event: 'page', page: 1, of: 2 },
+      { event: 'page', page: 2, of: 2 },
+      { ok: true, pages: [...DOC.pages, ...DOC.pages] },
+    ])
+    const pdf = await makePdf(dir, 'scan.pdf', 2)
+    const { code, out } = await run(intent(pdf))
+    expect(code).toBe(0)
+    expect(out).toEqual(['✓ scan.md   2 pages → 178 words'])
+    expect(await readFile(join(dir, 'scan.md'), 'utf8')).toContain('\n---\n')
+  })
+
+  it('passes the language on', async () => {
+    const { fake, dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    await run(intent(png, { language: 'ja' }))
+    expect(await argv(fake.dir)).toEqual(['read', png, '--language', 'ja'])
+  })
+
+  it('writes nothing, and says so, when there is no text', async () => {
+    const { dir } = await setUpRead([{ ok: true, pages: [{ blocks: [] }] }])
+    const png = await makePng(dir, 'blank.png')
+    const { code, err } = await run(intent(png))
+    expect(code).toBe(1)
+    expect(err[0]).toBe('✕ No text found')
+    expect(existsSync(join(dir, 'blank.md'))).toBe(false)
+  })
+
+  it('refuses --to, which is about talk', async () => {
+    const { dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    const { code, err } = await run(intent(png, { to: 'notes' }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('--to is for video and sound')
+  })
+
+  it('says reading text needs macOS 26 when the helper cannot read', async () => {
+    const { dir } = await setUpRead([DOC], { read: false })
+    const png = await makePng(dir, 'shot.png')
+    const { code, err } = await run(intent(png))
+    expect(code).toBe(1)
+    expect(err[0]).toBe('✕ Reading text is not available')
+  })
+
+  it('refuses a password-protected PDF', async () => {
+    const { dir } = await setUpRead()
+    const locked = join(dir, 'locked.pdf')
+    await writeFile(locked, readFileSync(join(__dirname, '..', 'fixtures', 'locked-hunter2.pdf')))
+    const { code, err } = await run(intent(locked))
+    expect(code).toBe(1)
+    expect(err[0]).toBe('✕ This PDF is password-protected')
+  })
+
+  it('refuses to replace a file that is already there, unless --force', async () => {
+    const { dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    await writeFile(join(dir, 'shot.md'), 'mine')
+    expect((await run(intent(png))).code).toBe(1)
+    expect(await readFile(join(dir, 'shot.md'), 'utf8')).toBe('mine')
+    expect((await run(intent(png, { force: true }))).code).toBe(0)
   })
 })

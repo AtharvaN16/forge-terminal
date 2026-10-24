@@ -59,6 +59,8 @@ export type ErrorCode =
   | 'no-sound'
   | 'language-unsupported'
   | 'transcribe-unavailable'
+  | 'read-unavailable'
+  | 'no-text'
   | 'link-unavailable'
   | 'unexpected'
 
@@ -1119,6 +1121,27 @@ export function transcribeUnavailable(reason: string): ForgeError {
     code: 'transcribe-unavailable',
     title: 'Transcribe is not available',
     detail: reason,
+  })
+}
+
+/** This Mac cannot read the text of a picture or PDF (spec 2026-10-23-extract-text-design §3.4). */
+export function readUnavailable(): ForgeError {
+  return new ForgeError({
+    code: 'read-unavailable',
+    title: 'Reading text is not available',
+    detail: 'Reading text needs macOS 26 or later.',
+    short: 'Reading text needs macOS 26 or later.',
+  })
+}
+
+/** Vision found no text: nothing is written (§3.4). */
+export function noText(path: string): ForgeError {
+  const name = displayName(path)
+  return new ForgeError({
+    code: 'no-text',
+    title: 'No text found',
+    detail: `No text found in ${name}`,
+    short: `No text found in ${name}`,
   })
 }
 

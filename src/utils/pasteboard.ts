@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { mkdir, rename, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { FormatId } from '../core/types.js'
@@ -109,6 +110,12 @@ export interface Pasteboard {
    * Resolves to the change count after writing.
    */
   write(path: string, format: FormatId): Promise<number>
+  /**
+   * Puts text on the clipboard twice over: the plain words, for a terminal or
+   * an editor, and HTML, for apps that keep headings, lists and tables (spec
+   * 2026-10-23-extract-text-design §3.3). Resolves to the change count after.
+   */
+  writeText(text: string, html: string): Promise<number>
 }
 
 const PEEK = `ObjC.import('AppKit')
@@ -130,6 +137,19 @@ const WRITE = `function run(argv) {
   const item = $.NSPasteboardItem.alloc.init
   item.setDataForType($.NSData.dataWithContentsOfFile(argv[0]), argv[1])
   item.setStringForType($.NSURL.fileURLWithPath(argv[0]).absoluteString, 'public.file-url')
+  pb.clearContents
+  pb.writeObjects($.NSArray.arrayWithObject(item))
+  return JSON.stringify({ count: Number(pb.changeCount) })
+}`
+
+// Read from files: a long PDF's text is more than an argument list holds.
+const WRITE_TEXT = `function run(argv) {
+  ObjC.import('AppKit')
+  const pb = $.NSPasteboard.generalPasteboard
+  const read = (p) => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null)
+  const item = $.NSPasteboardItem.alloc.init
+  item.setStringForType(read(argv[0]), 'public.utf8-plain-text')
+  item.setStringForType(read(argv[1]), 'public.html')
   pb.clearContents
   pb.writeObjects($.NSArray.arrayWithObject(item))
   return JSON.stringify({ count: Number(pb.changeCount) })
@@ -172,6 +192,19 @@ export function macPasteboard(run: Osascript = osascript): Pasteboard {
     async write(path, format) {
       const { count } = JSON.parse(await run(WRITE, [path, utiFor(format)])) as { count: number }
       return count
+    },
+    async writeText(text, html) {
+      const dir = await mkdtemp(join(tmpdir(), 'forge-text-'))
+      try {
+        const plain = join(dir, 'text.txt')
+        const rich = join(dir, 'text.html')
+        await writeFile(plain, text, 'utf8')
+        await writeFile(rich, html, 'utf8')
+        const { count } = JSON.parse(await run(WRITE_TEXT, [plain, rich])) as { count: number }
+        return count
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
     },
   }
 }

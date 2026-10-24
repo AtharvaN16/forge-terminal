@@ -35,6 +35,7 @@ import {
   ffmpegMissing,
   isForgeError,
   linkUnavailable,
+  readUnavailable,
   unexpectedError,
   unsupportedCompress,
   unsupportedPdf,
@@ -49,6 +50,7 @@ import type { InputFailure } from '../core/resolve.js'
 import { type Suggestion, suggestFormat } from '../core/suggest.js'
 import { readLink } from '../core/transcribe/links.js'
 import type { Output } from '../core/transcribe/output.js'
+import { pageSource } from '../core/transcribe/page-source.js'
 import type {
   Box as CropBox,
   FormatId,
@@ -3013,6 +3015,10 @@ export function App({
    */
   const pasteClipboard = () => {
     if (!pasteboard) return
+    if (mode === 'transcribe') {
+      pasteForText(pasteboard)
+      return
+    }
     const id = ++requestId.current
     dropReading.current = id
     const settled = () => {
@@ -3032,6 +3038,34 @@ export function App({
         landDrop({ sources: [info], failures: [], anyExists: true })
       } catch (e) {
         settled()
+        showError(e)
+      }
+    })()
+  }
+
+  /**
+   * ⌘V on transcribe: the copied picture is read for its text, which goes
+   * back on the clipboard with no Format and no Save as (spec
+   * 2026-10-23-extract-text-design §3.3). The change count it was read at
+   * tells, later, whether something else was copied meanwhile.
+   */
+  const pasteForText = (pb: Pasteboard) => {
+    const id = ++requestId.current
+    const settled = () => requestId.current === id && stepRef.current === 'idle'
+    void (async () => {
+      try {
+        const taken = await takeImage(pb, clipRoot)
+        const page = taken ? pageSource(await probe(taken.source)) : undefined
+        if (!settled() || !taken || page?.what !== 'image') return
+        const { transcribeStatus } = await import('../engines/transcribe.js')
+        if (!(await transcribeStatus())?.read) {
+          refuseOnHome(readUnavailable(), '')
+          return
+        }
+        if (!settled()) return
+        letGoTranscribing()
+        setTranscribing({ kind: 'page', ...page, clip: { changeCount: taken.changeCount } })
+      } catch (e) {
         showError(e)
       }
     })()
@@ -5829,6 +5863,10 @@ export function App({
                 source={transcribing}
                 sound={soundFetch.current?.sound}
                 width={width}
+                // As EditDone's: less the header bar, the way on, the keys, and one spare.
+                rows={height - 10}
+                pasteboard={pasteboard}
+                clipRoot={clipRoot}
                 prefs={livePrefs}
                 onTrail={setTranscribeTrailNow}
                 onCancel={() => setStep('idle')}

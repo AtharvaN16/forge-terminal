@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { transcribeCard, transcribeNeed, transcribeVerb } from '../../src/shell/transcribe-stage.js'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { isForgeError } from '../../src/core/errors.js'
+import {
+  readTranscribeFile,
+  transcribeCard,
+  transcribeNeed,
+  transcribeVerb,
+} from '../../src/shell/transcribe-stage.js'
+import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
+import { makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
 
 const URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
 
@@ -89,5 +99,94 @@ describe('what ↵ does on home', () => {
     expect(
       transcribeVerb({ kind: 'link', url: URL, phase: 'installing', done: 1, total: 2 }),
     ).toBeNull()
+  })
+})
+
+describe('a picture or PDF on transcribe (spec 2026-10-23-extract-text-design §3)', () => {
+  const image = {
+    kind: 'page',
+    what: 'image',
+    path: '/shots/shot.png',
+    format: 'png',
+    bytes: 412_000,
+    width: 1440,
+    height: 900,
+  } as const
+  const pdf = {
+    kind: 'page',
+    what: 'pdf',
+    path: '/scans/scan.pdf',
+    bytes: 3.1e6,
+    pages: 12,
+  } as const
+
+  it('a picture: its name, its kind, its size in pixels and bytes, as convert says them', () => {
+    expect(transcribeCard(image)).toEqual({
+      name: 'shot.png',
+      tag: 'PNG',
+      size: '412 KB',
+      facts: '1440×900 · 412 KB',
+    })
+  })
+
+  it('a PDF: its pages and bytes', () => {
+    expect(transcribeCard(pdf)).toEqual({
+      name: 'scan.pdf',
+      tag: 'PDF',
+      size: '3.1 MB',
+      facts: '12 pages · 3.1 MB',
+    })
+    expect(transcribeCard({ ...pdf, pages: 1 }).facts).toBe('1 page · 3.1 MB')
+  })
+
+  it('↵ transcribes it', () => {
+    expect(transcribeVerb(image)).toBe('transcribe')
+  })
+})
+
+describe('readTranscribeFile', () => {
+  const saved = process.env.FORGE_TRANSCRIBE_HELPER
+  afterEach(() => {
+    if (saved === undefined) delete process.env.FORGE_TRANSCRIBE_HELPER
+    else process.env.FORGE_TRANSCRIBE_HELPER = saved
+  })
+  const helper = async (read: boolean) => {
+    const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off', read }] },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+  }
+
+  it('takes a picture by its content, whatever its name', async () => {
+    await helper(true)
+    const png = await makePng(await makeTempDir(), 'shot.mov')
+    expect(await readTranscribeFile(png)).toMatchObject({
+      kind: 'page',
+      what: 'image',
+      path: png,
+      width: 40,
+      height: 20,
+    })
+  })
+
+  it('takes a PDF with its page count', async () => {
+    await helper(true)
+    const pdf = await makePdf(await makeTempDir(), 'scan.pdf', 2)
+    expect(await readTranscribeFile(pdf)).toMatchObject({ kind: 'page', what: 'pdf', pages: 2 })
+  })
+
+  it('says reading text needs macOS 26 when the helper cannot read', async () => {
+    await helper(false)
+    const png = await makePng(await makeTempDir(), 'shot.png')
+    const e = await readTranscribeFile(png).catch((x: unknown) => x)
+    expect(isForgeError(e) && e.code).toBe('read-unavailable')
+  })
+
+  it('still refuses a file that is none of these', async () => {
+    await helper(true)
+    const odd = join(await makeTempDir(), 'odd.bin')
+    await writeFile(odd, Buffer.from([0x50, 0x4b, 3, 4, 0, 0, 0, 0, 0xff, 0xfe]))
+    const e = await readTranscribeFile(odd).catch((x: unknown) => x)
+    expect(isForgeError(e) && e.code).toBe('unsupported-source')
   })
 })

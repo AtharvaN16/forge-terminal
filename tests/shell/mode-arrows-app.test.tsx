@@ -37,7 +37,7 @@ const on = {
   edit: (f: string) =>
     f.includes(MODE_KINDS.edit) && !f.includes('Audio ·') && !f.includes('Modes ─'),
   colour: (f: string) => f.includes('extract colours'),
-  transcribe: (f: string) => f.includes('or paste a YouTube link'),
+  transcribe: (f: string) => f.includes('or a YouTube link'),
   menu: (f: string) => f.includes('Modes ─') && f.includes('/convert'),
 }
 const reach = (app: Rendered, tab: keyof typeof on) => waitFor(() => on[tab](frame(app)))

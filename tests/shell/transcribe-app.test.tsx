@@ -1,12 +1,15 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PREFERENCES, type Preferences } from '../../src/config/preferences.js'
+import { pageHtml, pageMarkdown, pagePlain, pageText } from '../../src/core/transcribe/page-text.js'
 import { App } from '../../src/shell/App.js'
 import { fakeTranscribeHelper } from '../helpers/fake-transcribe.js'
 import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
-import { makePng, makeTempDir } from '../helpers/fixtures.js'
+import { makePdf, makePng, makeTempDir } from '../helpers/fixtures.js'
+import { memoryPasteboard } from '../helpers/pasteboard.js'
 
 /**
  * Transcribe in the app (spec 2026-10-17-transcribe-design §4.4,
@@ -47,6 +50,11 @@ const RESULT = {
   },
 }
 
+/** What `read` printed for the spike page (tests/fixtures/README.md, `read/`). */
+const DOC = JSON.parse(
+  readFileSync(join(__dirname, '..', 'fixtures', 'read', 'doc.json'), 'utf8'),
+) as { ok: true; pages: Parameters<typeof pageText>[0] }
+
 const savedHelper = process.env.FORGE_TRANSCRIBE_HELPER
 const savedXdg = process.env.XDG_CONFIG_HOME
 afterEach(() => {
@@ -63,10 +71,17 @@ async function setUp(
     hang?: boolean
     prefs?: Partial<Preferences>
     width?: number
+    /** The helper reads pictures and PDFs (spec 2026-10-23-extract-text-design §5.1). */
+    read?: boolean
+    /** What `read` answers; the spike page by default. */
+    lines?: object[]
   } = {},
 ) {
   const fake = await fakeTranscribeHelper({
-    status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes }] },
+    status: {
+      lines: [{ ok: true, speech: true, locale: 'en_US', notes, read: opts.read ?? false }],
+    },
+    read: { lines: opts.lines ?? [DOC], ...(opts.hang ? { hang: true } : {}) },
     probe: { lines: [{ ok: true, seconds: 3717, sound: true }] },
     run: {
       lines: opts.run ?? [
@@ -97,16 +112,25 @@ async function setUp(
 const frame = (app: ReturnType<typeof render>) => plain(app.lastFrame())
 
 describe('transcribe on home', () => {
-  it('5 makes transcribe the mode, asking for a video or sound file, or a link', async () => {
+  it('5 makes transcribe the mode, asking for a file: video, sound, a picture or a PDF, or a link', async () => {
     const { app } = await setUp()
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or audio file'))
-    expect(frame(app)).toContain('or paste a YouTube link')
+    await until(() => frame(app).includes('or a YouTube link'))
+    expect(frame(app)).toContain('Drop a file here')
+    expect(frame(app)).toContain('Video · Audio · Images · PDF · or a YouTube link')
     expect(frame(app)).toContain('OR search or enter a file path…')
-    expect(frame(app)).not.toContain('(English only)')
-    // on the key row, at its left edge, not above it beside "/ menu"
+    // Holding tab names the formats, as on convert's home (spec 2026-10-23 §5.4).
+    expect(frame(app).split('\n').at(-1)).toMatch(/tab supported formats · 1–6 ←→ mode/)
+  }, 30_000)
+
+  it('says only English is understood on the key row, at its left edge, where there is room', async () => {
+    const { app } = await setUp('available', { width: 110 })
+    app.stdin.write('5')
+    await until(() => frame(app).includes('or a YouTube link'))
     const lines = frame(app).split('\n')
-    expect(lines.at(-1)).toMatch(/^\s{1,6}Currently only English is supported\s+1–6 ←→ mode/)
+    expect(lines.at(-1)).toMatch(
+      /^\s{1,6}Currently only English is supported\s+tab supported formats/,
+    )
     expect(lines.filter((l) => l.includes('English'))).toHaveLength(1)
   }, 30_000)
 
@@ -115,13 +139,13 @@ describe('transcribe on home', () => {
     app.stdin.write('/transcribe')
     await settle()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Drop a video or audio file'))
+    await until(() => frame(app).includes('or a YouTube link'))
   }, 30_000)
 
   it('a dropped video waits as its card: its length and size', async () => {
     const { app, input } = await setUp()
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or audio file'))
+    await until(() => frame(app).includes('or a YouTube link'))
     // A whole path at once is a drop: read, no ↵ needed.
     app.stdin.write(input)
     await until(() => frame(app).includes('1:01:57'))
@@ -129,15 +153,24 @@ describe('transcribe on home', () => {
     expect(frame(app).split('\n').at(-1)).toMatch(/↵ +transcribe/)
   }, 30_000)
 
-  it('a picture is refused under the field, by its content', async () => {
-    const { app } = await setUp()
+  it('a picture waits as its card, read by its content: its size (spec 2026-10-23 §3.1)', async () => {
+    const { app } = await setUp('available', { read: true })
     const png = await makePng(await makeTempDir(), 'still.mp4')
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or audio file'))
+    await until(() => frame(app).includes('or a YouTube link'))
     app.stdin.write(png)
-    await settle()
-    app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Cannot transcribe this file'))
+    await until(() => frame(app).includes('40×20'))
+    expect(frame(app)).toContain('still.mp4')
+    expect(frame(app).split('\n').at(-1)).toMatch(/↵ +transcribe/)
+  }, 30_000)
+
+  it('a picture is refused under the field where the helper cannot read', async () => {
+    const { app } = await setUp()
+    const png = await makePng(await makeTempDir(), 'still.png')
+    app.stdin.write('5')
+    await until(() => frame(app).includes('or a YouTube link'))
+    app.stdin.write(png)
+    await until(() => frame(app).includes('Reading text needs macOS 26 or later.'))
   }, 30_000)
 
   it('a pasted link shows the video’s title and channel once yt-dlp has looked it up', async () => {
@@ -146,7 +179,7 @@ describe('transcribe on home', () => {
       facts: { title: 'Me at the zoo', uploader: 'jawed', duration: 19, is_live: false },
     })
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or audio file'))
+    await until(() => frame(app).includes('or a YouTube link'))
     app.stdin.write('https://youtu.be/jNQXAC9IVRw')
     await settle()
     app.stdin.write(ENTER)
@@ -158,7 +191,7 @@ describe('transcribe on home', () => {
   it('a playlist is refused under the field', async () => {
     const { app } = await setUp()
     app.stdin.write('5')
-    await until(() => frame(app).includes('Drop a video or audio file'))
+    await until(() => frame(app).includes('or a YouTube link'))
     app.stdin.write('https://www.youtube.com/playlist?list=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs')
     await settle()
     app.stdin.write(ENTER)
@@ -175,7 +208,7 @@ describe('transcribe, from ↵ to Done', () => {
   ) {
     const s = await setUp(notes, opts)
     s.app.stdin.write('5')
-    await until(() => frame(s.app).includes('Drop a video or audio file'))
+    await until(() => frame(s.app).includes('or a YouTube link'))
     s.app.stdin.write(s.input)
     await until(() => frame(s.app).includes('1:01:57'))
     await settle()
@@ -239,7 +272,7 @@ describe('transcribe, from ↵ to Done', () => {
         app.stdin.write(k)
         await settle(150)
       }
-      await until(() => frame(app).includes('Drop a video or audio file'))
+      await until(() => frame(app).includes('or a YouTube link'))
     }
   }, 60_000)
 
@@ -345,8 +378,7 @@ describe('transcribe, from ↵ to Done', () => {
     await settle()
     app.stdin.write(ESC)
     await until(
-      () =>
-        frame(app).includes('Drop a video or audio file') || frame(app).includes('↵  transcribe'),
+      () => frame(app).includes('or a YouTube link') || frame(app).includes('↵  transcribe'),
     )
     expect(frame(app)).toContain('talk.mp4')
   }, 40_000)
@@ -366,7 +398,7 @@ describe('transcribe, from ↵ to Done', () => {
     await until(() => frame(app).includes('✓ talk.md'))
     await settle()
     app.stdin.write(ENTER)
-    await until(() => frame(app).includes('Drop a video or audio file'))
+    await until(() => frame(app).includes('or a YouTube link'))
     expect(frame(app)).not.toContain('talk.mp4')
   }, 40_000)
 })
@@ -380,7 +412,7 @@ describe('the Format step', () => {
   async function atFormat(opts: Parameters<typeof setUp>[1] = {}) {
     const s = await setUp('available', opts)
     s.app.stdin.write('5')
-    await until(() => frame(s.app).includes('Drop a video or audio file'))
+    await until(() => frame(s.app).includes('or a YouTube link'))
     s.app.stdin.write(s.input)
     await until(() => frame(s.app).includes('1:01:57'))
     await settle()
@@ -474,7 +506,7 @@ describe('transcribe’s Working', () => {
   async function working(run: object[], pick: 'all' | 'transcript' = 'all') {
     const s = await setUp('available', { run, hang: true })
     s.app.stdin.write('5')
-    await until(() => frame(s.app).includes('Drop a video or audio file'))
+    await until(() => frame(s.app).includes('or a YouTube link'))
     s.app.stdin.write(s.input)
     await until(() => frame(s.app).includes('1:01:57'))
     await settle()
@@ -526,5 +558,175 @@ describe('transcribe’s Working', () => {
     const { app } = await working([{ event: 'heard', seconds: 1390, of: 3717 }], 'transcript')
     await until(() => frame(app).includes('23:10 of 1:01:57'))
     expect(frame(app)).not.toContain('Writing notes')
+  }, 40_000)
+})
+
+describe('reading a picture or PDF, from ↵ to Done (spec 2026-10-23-extract-text-design §3)', () => {
+  async function stagedPage(
+    opts: Parameters<typeof setUp>[1] = {},
+    make: (dir: string) => Promise<string> = (dir) => makePng(dir, 'shot.png'),
+  ) {
+    const s = await setUp('available', { read: true, ...opts })
+    const file = await make(await makeTempDir())
+    s.app.stdin.write('5')
+    await until(() => frame(s.app).includes('or a YouTube link'))
+    s.app.stdin.write(file)
+    await until(() => frame(s.app).includes('↵  transcribe') || /↵ +transcribe/.test(frame(s.app)))
+    await settle()
+    return { ...s, file }
+  }
+
+  it('asks no Transcribe to: Format, then Save as, then writes the .md, and Done shows its first lines', async () => {
+    const { app, out } = await stagedPage()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
+    expect(frame(app)).not.toContain('Transcribe to')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Save as'))
+    await settle()
+    expect(frame(app)).toContain('shot')
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('✓ shot.md'))
+    await settle()
+    const done = frame(app)
+    expect(done).toContain('done')
+    expect(done).toContain('Quarterly Field Report')
+    expect(done).toContain('The survey ran from 3 March')
+    expect(done).toMatch(/o Open +f \S+ +c Copy +↵ Home/)
+    const doc = pageText(DOC.pages)
+    expect(await readFile(join(out, 'shot.md'), 'utf8')).toBe(pageMarkdown(doc))
+  }, 40_000)
+
+  it('cuts a preview line too long for the window with …', async () => {
+    const { app } = await stagedPage()
+    for (const step of ['Markdown', 'Save as', '✓ shot.md']) {
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes(step))
+      await settle()
+    }
+    const line = frame(app)
+      .split('\n')
+      .find((l) => l.includes('The survey ran from'))
+    expect(line?.trimEnd().endsWith('…')).toBe(true)
+    expect(line?.length).toBeLessThanOrEqual(80)
+    expect(pagePlain(pageText(DOC.pages))).toContain('marking it as absent.')
+  }, 40_000)
+
+  it('reads a PDF with a true bar and the page it is on', async () => {
+    const { app } = await stagedPage(
+      { lines: [{ event: 'page', page: 2, of: 3 }], hang: true },
+      (dir) => makePdf(dir, 'scan.pdf', 3),
+    )
+    expect(frame(app)).toContain('3 pages')
+    for (const step of ['Markdown', 'Save as']) {
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes(step))
+      await settle()
+    }
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('page 2 of 3'))
+    expect(frame(app)).toContain('Reading text')
+  }, 40_000)
+
+  it('goes home and says so, writing nothing, when there is no text', async () => {
+    const { app, out } = await stagedPage({ lines: [{ ok: true, pages: [{ blocks: [] }] }] })
+    for (const step of ['Markdown', 'Save as']) {
+      app.stdin.write(ENTER)
+      await until(() => frame(app).includes(step))
+      await settle()
+    }
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('No text found in shot.png'))
+    expect(existsSync(join(out, 'shot.md'))).toBe(false)
+  }, 40_000)
+
+  it('esc on Format goes home, the picture still there', async () => {
+    const { app } = await stagedPage()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('Markdown'))
+    await settle()
+    app.stdin.write(ESC)
+    await until(() => frame(app).includes('40×20'))
+  }, 40_000)
+})
+
+describe('a screenshot on the clipboard (spec 2026-10-23-extract-text-design §3.3)', () => {
+  const CTRL_V = '\x16'
+
+  async function pasted() {
+    const fake = await fakeTranscribeHelper({
+      status: { lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off', read: true }] },
+      read: { lines: [DOC] },
+    })
+    process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+    const clip = memoryPasteboard()
+    await clip.copyImage(await makePng(await makeTempDir(), 'shot.png'))
+    const out = await makeTempDir()
+    const app = render(
+      <App
+        initialWidth={80}
+        initialHeight={24}
+        prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: out }}
+        pasteboard={clip.pb}
+        clipRoot={await makeTempDir()}
+      />,
+    )
+    await until(() => frame(app).includes('1 convert'))
+    app.stdin.write('5')
+    await until(() => frame(app).includes('or a YouTube link'))
+    app.stdin.write(CTRL_V)
+    await until(() => frame(app).includes('Copied image'))
+    await settle()
+    return { app, clip, out }
+  }
+
+  it('lands as the Copied image card, its kind and size', async () => {
+    const { app } = await pasted()
+    expect(frame(app)).toContain('40×20')
+    expect(frame(app)).toMatch(/PNG/)
+  }, 40_000)
+
+  it('↵ reads it and puts the text back on the clipboard, plain and as HTML: no Format, no Save as', async () => {
+    const { app, clip, out } = await pasted()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('the text is on the clipboard'))
+    await settle()
+    expect(frame(app)).not.toContain('Save as')
+    expect(frame(app)).toContain('Quarterly Field Report')
+    expect(frame(app)).toMatch(/u Undo +s Save a copy +↵ Home/)
+    const doc = pageText(DOC.pages)
+    expect(clip.held()).toEqual({
+      kind: 'text',
+      text: pagePlain(doc),
+      html: pageHtml(doc, 'Copied image'),
+    })
+    expect(existsSync(join(out, 'Copied image.md'))).toBe(false)
+  }, 40_000)
+
+  it('u puts the picture back; s saves the text as a file in the default folder', async () => {
+    const { app, clip, out } = await pasted()
+    app.stdin.write(ENTER)
+    await until(() => frame(app).includes('the text is on the clipboard'))
+    await settle()
+    app.stdin.write('u')
+    await until(() => frame(app).includes('the original is back on the clipboard'))
+    expect(clip.held()?.kind).toBe('image')
+    app.stdin.write('s')
+    await until(() => frame(app).includes('saved to'))
+    expect(await readFile(join(out, 'Copied image.md'), 'utf8')).toBe(
+      pageMarkdown(pageText(DOC.pages)),
+    )
+  }, 40_000)
+
+  it('saves the text to the default folder instead when something else was copied meanwhile', async () => {
+    const s = await pasted()
+    // The picture was read when the card landed; something else is copied now.
+    s.clip.copyText()
+    s.app.stdin.write(ENTER)
+    await until(() => frame(s.app).includes('Clipboard changed'))
+    expect(frame(s.app)).toContain('✓ Copied image.md')
+    expect(existsSync(join(s.out, 'Copied image.md'))).toBe(true)
+    expect(s.clip.held()).toEqual({ kind: 'text' })
   }, 40_000)
 })

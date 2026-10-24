@@ -4,9 +4,12 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
 import { writeAtomic } from '../core/atomic.js'
 import {
   fileNotFound,
+  invalidArguments,
   isForgeError,
   linkUnavailable,
+  noText,
   outputExists,
+  readUnavailable,
   renderError,
   transcribeUnavailable,
   unexpectedError,
@@ -22,8 +25,13 @@ import {
   transcriptMarkdown,
 } from '../core/transcribe/markdown.js'
 import { OUTPUTS, type Output, outputExt } from '../core/transcribe/output.js'
+import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
+import { hasText, pagePlain, pageText } from '../core/transcribe/page-text.js'
 import {
+  type ReadEvent,
+  renderPages,
   renderTranscript,
+  runRead,
   runTranscribe,
   type TranscribeEvent,
   transcribeStatus,
@@ -39,7 +47,7 @@ export interface TranscribeIo {
   err: (line: string) => void
   signal?: AbortSignal
   /** Progress as it happens, for the entry point to draw on a terminal. */
-  onProgress?: (e: TranscribeEvent) => void
+  onProgress?: (e: TranscribeEvent | ReadEvent) => void
 }
 
 /** `--format`, else `-o`'s extension when it is one transcribe writes, else Markdown. */
@@ -63,8 +71,64 @@ function outputFor(
   return looksLikeDirectory(output) ? join(resolve(output), name) : resolve(output)
 }
 
-const words = (t: Transcription) =>
-  t.segments.reduce((n, s) => n + s.text.split(/\s+/).filter(Boolean).length, 0)
+const count = (text: string) => text.split(/\s+/).filter(Boolean).length
+const words = (t: Transcription) => t.segments.reduce((n, s) => n + count(s.text), 0)
+
+/**
+ * A file that is not video or sound, probed as a picture or PDF by Forge's
+ * own probe (by content); undefined when the probe takes it for media after
+ * all. Loaded only here: the sound path never pays for the engines.
+ */
+async function probePage(path: string): Promise<PageSource | undefined> {
+  const { probe } = await import('../engines/registry.js')
+  const info = await probe(path).catch(() => {
+    throw untranscribable(path)
+  })
+  return pageSource(info)
+}
+
+/** The text of a picture or PDF (spec 2026-10-23-extract-text-design §3.5), one file. */
+async function readPage(
+  page: PageSource,
+  intent: TranscribeIntent,
+  io: TranscribeIo,
+  format: Output,
+): Promise<0> {
+  if (intent.to !== undefined) {
+    throw invalidArguments(
+      '--to is for video and sound: a picture or PDF gives its text as it is.',
+      `Try: forge transcribe ${basename(page.path)}`,
+    )
+  }
+  const status = await transcribeStatus()
+  if (!status?.read) throw readUnavailable()
+  const output = outputFor(
+    basename(page.path, extname(page.path)),
+    dirname(page.path),
+    intent.output,
+    format,
+  )
+  if (existsSync(output) && !intent.force) throw outputExists(output)
+  const pages = await runRead(page.path, {
+    language: intent.language,
+    signal: io.signal,
+    onEvent: io.onProgress,
+  })
+  const doc = pageText(pages)
+  if (!hasText(doc)) throw noText(page.path)
+  await writeAtomic(
+    output,
+    await renderPages(doc, format, basename(page.path), { signal: io.signal }),
+  )
+  const what =
+    page.what === 'pdf'
+      ? `${page.pages} ${page.pages === 1 ? 'page' : 'pages'}`
+      : extname(page.path).slice(1).toUpperCase() || 'picture'
+  io.out(
+    `✓ ${displayName(output)}   ${what} → ${count(pagePlain(doc)).toLocaleString('en-US')} words`,
+  )
+  return 0
+}
 
 /**
  * `forge transcribe <file|link>` (spec 2026-10-17-transcribe-design §4.5): the
@@ -95,7 +159,10 @@ export async function runTranscribeCommand(
       if (!info?.isFile()) throw fileNotFound(source)
       // By content, never by extension: a PNG named .mp4 is still a picture.
       const kind = await sniffKind(source)
-      if (kind !== 'video' && kind !== 'audio') throw untranscribable(source)
+      if (kind !== 'video' && kind !== 'audio') {
+        const page = await probePage(source)
+        if (page) return await readPage(page, intent, io, format)
+      }
     }
     const status = await transcribeStatus(intent.language ? { locale: intent.language } : {})
     if (status === undefined || !status.speech) {

@@ -127,6 +127,22 @@ export async function putBack(
   return 'placed'
 }
 
+/**
+ * Puts a picture's text on the clipboard, plain and as HTML, unless something
+ * else was copied since the picture was read (spec 2026-10-23-extract-text-design §3.3).
+ */
+export async function putBackText(
+  pb: Pasteboard,
+  taken: Pick<Taken, 'changeCount'>,
+  text: string,
+  html: string,
+): Promise<'placed' | 'changed'> {
+  const { changeCount } = await pb.peek()
+  if (changeCount !== taken.changeCount) return 'changed'
+  await pb.writeText(text, html)
+  return 'placed'
+}
+
 /** Puts the last original back on the clipboard. False when none is kept. */
 export async function undoClip(pb: Pasteboard, root: string = clipRoot()): Promise<boolean> {
   const last = await lastOriginal(root)

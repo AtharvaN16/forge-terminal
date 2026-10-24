@@ -1,12 +1,17 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import AdmZip from 'adm-zip'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isForgeError } from '../../src/core/errors.js'
 import { markdownHtml, markdownText } from '../../src/core/transcribe/output.js'
+import { pageHtml, pageMarkdown, pagePlain, pageText } from '../../src/core/transcribe/page-text.js'
 import {
   probeSound,
+  type ReadEvent,
+  renderPages,
   renderTranscript,
+  runRead,
   runTranscribe,
   transcribeStatus,
 } from '../../src/engines/transcribe.js'
@@ -31,7 +36,36 @@ describe('transcribeStatus', () => {
         })
       ).path,
     )
-    expect(await transcribeStatus()).toEqual({ speech: true, locale: 'en_US', notes: 'off' })
+    expect(await transcribeStatus()).toEqual({
+      speech: true,
+      locale: 'en_US',
+      notes: 'off',
+      read: false,
+    })
+  })
+
+  it('says whether it reads text: only when the helper says so (spec 2026-10-23 §5.1)', async () => {
+    use(
+      (
+        await fakeTranscribeHelper({
+          status: {
+            lines: [{ ok: true, speech: true, locale: 'en_US', notes: 'off', read: true }],
+          },
+        })
+      ).path,
+    )
+    expect((await transcribeStatus())?.read).toBe(true)
+  })
+
+  it('is undefined when the helper cannot even say (an untested Intel slice that will not start)', async () => {
+    use(
+      (
+        await fakeTranscribeHelper({
+          status: { lines: [{ ok: false, code: 'crash', message: 'dyld' }], exit: 1 },
+        })
+      ).path,
+    )
+    expect(await transcribeStatus()).toBeUndefined()
   })
 
   it('is undefined when there is no helper', async () => {
@@ -226,5 +260,94 @@ describe('renderTranscript', () => {
     use(join(await makeTempDir(), 'missing'))
     const e = await renderTranscript(MD, 'docx').catch((x: unknown) => x)
     expect(isForgeError(e) && e.code).toBe('transcribe-unavailable')
+  })
+})
+
+/** What `read` printed for the spike page (tests/fixtures/README.md, `read/`). */
+const DOC = JSON.parse(
+  readFileSync(join(__dirname, '..', 'fixtures', 'read', 'doc.json'), 'utf8'),
+) as { ok: true; pages: object[] }
+
+describe('runRead', () => {
+  it('passes the pages on as they are read, then returns what Vision saw', async () => {
+    const fake = await fakeTranscribeHelper({
+      read: {
+        lines: [
+          { event: 'page', page: 1, of: 2 },
+          { event: 'page', page: 2, of: 2 },
+          { ok: true, pages: [...DOC.pages, { blocks: [] }] },
+        ],
+      },
+    })
+    use(fake.path)
+    const events: ReadEvent[] = []
+    const pages = await runRead('/tmp/scan.pdf', { onEvent: (e) => events.push(e) })
+    expect(events).toEqual([
+      { kind: 'page', page: 1, of: 2 },
+      { kind: 'page', page: 2, of: 2 },
+    ])
+    expect(pages).toHaveLength(2)
+    expect(pageMarkdown(pageText(pages))).toContain('# Quarterly Field Report')
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv).toEqual(['read', '/tmp/scan.pdf'])
+  })
+
+  it('pins the language when one is given', async () => {
+    const fake = await fakeTranscribeHelper({ read: { lines: [DOC] } })
+    use(fake.path)
+    await runRead('/tmp/shot.png', { language: 'ja' })
+    const argv = JSON.parse(await readFile(join(fake.dir, 'argv.json'), 'utf8')) as string[]
+    expect(argv).toEqual(['read', '/tmp/shot.png', '--language', 'ja'])
+  })
+
+  it('refuses a file the helper cannot open', async () => {
+    use(
+      (
+        await fakeTranscribeHelper({
+          read: {
+            lines: [{ ok: false, code: 'unreadable', message: 'This file cannot be read.' }],
+            exit: 1,
+          },
+        })
+      ).path,
+    )
+    const error = await runRead('/tmp/odd.png').catch((e: unknown) => e)
+    expect(isForgeError(error) && error.code).toBe('unsupported-source')
+  })
+
+  it('says reading text is unavailable when there is no helper', async () => {
+    use(join(await makeTempDir(), 'missing'))
+    const error = await runRead('/tmp/shot.png').catch((e: unknown) => e)
+    expect(isForgeError(error) && error.code).toBe('read-unavailable')
+  })
+})
+
+describe('renderPages', () => {
+  const doc = pageText(DOC.pages as Parameters<typeof pageText>[0])
+
+  it('gives the Markdown for .md and the bare words for text, without the helper', async () => {
+    use(join(await makeTempDir(), 'missing'))
+    expect((await renderPages(doc, 'md', 'shot.png')).toString('utf8')).toBe(pageMarkdown(doc))
+    expect((await renderPages(doc, 'txt', 'shot.png')).toString('utf8')).toBe(pagePlain(doc))
+  })
+
+  it('writes Word itself, with real headings and a real table (AppKit drops tables)', async () => {
+    use(join(await makeTempDir(), 'missing'))
+    const bytes = await renderPages(doc, 'docx', 'shot.png')
+    const xml = new AdmZip(bytes).readAsText('word/document.xml')
+    expect(xml).toContain('<w:pStyle w:val="Heading1"/>')
+    expect(xml).toContain('<w:pStyle w:val="Heading2"/>')
+    expect(xml).toContain('<w:tbl>')
+    expect(xml).toContain('Quarterly Field Report')
+    expect(xml).toContain('1,240')
+  })
+
+  it('has the helper set its HTML as a PDF', async () => {
+    const fake = await fakeTranscribeHelper({
+      render: { lines: [{ ok: true }], echo: { from: 1, to: 2, prefix: 'pdf:' } },
+    })
+    use(fake.path)
+    const bytes = await renderPages(doc, 'pdf', 'shot.png')
+    expect(bytes.toString('utf8')).toBe(`pdf:${pageHtml(doc, 'shot.png')}`)
   })
 })

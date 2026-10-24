@@ -49,3 +49,23 @@ top to bottom, blue fixed at 128. Made once on macOS:
 
 `sips` encodes with Apple's own HEVC codec, as an iPhone does. Opaque, no
 rotation, a single tile.
+
+## `read/`
+
+What the transcribe helper's `read` command printed (its last line, the
+result) for real inputs, recorded once on macOS 27 so the tests of
+`src/core/transcribe/page-text.ts` run on what Vision actually reports
+(spec 2026-10-23-extract-text-design §9):
+
+- `doc.json`: a page drawn for the spike: a title, a paragraph with a word
+  hyphenated across two lines, a heading, a bulleted list, a ruled 4×5 table
+  and a contact line.
+- `photo.json`: the same page as a phone photo (tilted 4°, blurred, tinted,
+  JPEG at quality 55).
+- `dark.json`: the same page, white on black.
+- `sideways.json`: the photo stored sideways with EXIF orientation 6.
+- `columns.json`, `cjk.json`, `arabic.json`, `hebrew.json`, `ligatures.json`:
+  the `text/` PDFs above. Vision has no Hebrew, so `hebrew.json` is empty.
+
+To record one again: `npm run build`, then
+`dist/helpers/forge-transcribe read <file> | tail -1 > tests/fixtures/read/<name>.json`.

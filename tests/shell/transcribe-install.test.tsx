@@ -81,7 +81,7 @@ describe('a YouTube link with no yt-dlp', () => {
     const frame = () => plain(app.lastFrame())
     await until(() => frame().includes('1 convert'))
     app.stdin.write('5')
-    await until(() => frame().includes('Drop a video or audio file'))
+    await until(() => frame().includes('or a YouTube link'))
     app.stdin.write('https://youtu.be/jNQXAC9IVRw')
     await settle()
     app.stdin.write(ENTER)

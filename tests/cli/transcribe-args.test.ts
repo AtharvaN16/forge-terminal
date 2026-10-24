@@ -37,6 +37,11 @@ describe('forge transcribe', () => {
     expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'all'])).toMatchObject({ notes: true })
   })
 
+  it('remembers that --to was given, which a picture refuses (spec 2026-10-23 §3.5)', () => {
+    expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'all'])).toMatchObject({ to: 'all' })
+    expect(parseArgs(['transcribe', 'talk.mp4'])).not.toHaveProperty('to')
+  })
+
   it('takes --to notes for the notes without the transcript', () => {
     expect(parseArgs(['transcribe', 'talk.mp4', '--to', 'notes'])).toMatchObject({
       notes: true,

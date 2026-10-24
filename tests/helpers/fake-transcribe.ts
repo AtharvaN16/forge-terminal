@@ -12,7 +12,7 @@ import { makeTempDir } from './fixtures.js'
 export async function fakeTranscribeHelper(
   answers: Partial<
     Record<
-      'status' | 'probe' | 'run' | 'render',
+      'status' | 'probe' | 'run' | 'render' | 'read',
       {
         lines: object[]
         exit?: number

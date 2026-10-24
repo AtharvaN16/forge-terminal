@@ -242,6 +242,8 @@ export interface TranscribeIntent {
   notes: boolean
   /** The transcript itself: false for `--to notes`, the notes alone. */
   transcript: boolean
+  /** `--to` as given, when it was: a picture or PDF refuses it (spec 2026-10-23-extract-text-design §3.5). */
+  to?: 'all' | 'notes' | 'transcript'
   /** How much the notes say (`--detail`); no effect on a transcript alone. */
   detail: Detail
   /** The spoken language, when it is not the Mac's own: `hi`, `fr-FR`. */
@@ -563,6 +565,7 @@ function parseTranscribeArgs(argv: string[]): TranscribeIntent {
           'Try: forge transcribe talk.mp4 --to transcript',
         )
       }
+      intent.to = to
       intent.notes = to !== 'transcript'
       intent.transcript = to !== 'notes'
     } else if (a.startsWith('-')) {
