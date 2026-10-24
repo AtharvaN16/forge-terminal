@@ -41,6 +41,7 @@ export type ErrorCode =
   | 'extension-in-use'
   | 'no-subject'
   | 'boost-too-large'
+  | 'boost-too-slow'
   | 'resize-too-large'
   | 'nothing-to-trim'
   | 'animated-trim'
@@ -925,6 +926,28 @@ export function boostTooLarge(path: string, maxScale: number, scale?: number): F
     hint:
       maxScale >= 2 ? `Try --boost ${maxScale}.` : 'Boost works on images up to 100 megapixels.',
     shellHint: maxScale >= 2 ? `Choose ${maxScale}x instead.` : undefined,
+  })
+}
+
+/**
+ * Boost (or Sharpen, at 1x) stopped because this computer would take minutes
+ * over the photo, as a graphics provider that would not start leaves the
+ * processor to do it. `seconds` is the runner's projection of the whole run.
+ */
+export function boostTooSlow(
+  path: string,
+  seconds: number,
+  scale?: number,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const verb = scale === 1 ? 'sharpen' : 'boost'
+  const machine = platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'
+  const m = Math.max(1, Math.round(seconds / 60))
+  return new ForgeError({
+    code: 'boost-too-slow',
+    title: `Too slow to ${verb}`,
+    detail: `${displayName(path)} would take about ${m} ${m === 1 ? 'minute' : 'minutes'} to ${verb} on this ${machine}.`,
+    hint: 'Try a smaller photo.',
   })
 }
 

@@ -1,5 +1,11 @@
 import { spawn } from 'node:child_process'
-import { boostTooLarge, conversionFailed, type ForgeError, noSubject } from '../core/errors.js'
+import {
+  boostTooLarge,
+  boostTooSlow,
+  conversionFailed,
+  type ForgeError,
+  noSubject,
+} from '../core/errors.js'
 import { withExtensionLock } from './lock.js'
 
 /** Structural subset of `Installed` (paths.ts) — all the runner needs. */
@@ -90,9 +96,18 @@ function subjectPath(args: string[]): string {
   return (i >= 0 ? args[i + 1] : args[0]) ?? ''
 }
 
-function mapFailure(code: string, message: string, path: string, opts: RunOpts): ForgeError {
+function mapFailure(
+  code: string,
+  message: string,
+  path: string,
+  opts: RunOpts,
+  args: string[],
+  seconds?: number,
+): ForgeError {
   if (code === 'no-subject') return noSubject(path)
   if (code === 'boost-too-large') return boostTooLarge(path, opts.maxScale ?? 0)
+  if (code === 'boost-too-slow')
+    return boostTooSlow(path, seconds ?? 0, Number(args[args.indexOf('--scale') + 1]))
   return conversionFailed(path, new Error(message))
 }
 
@@ -170,6 +185,8 @@ function runOne(
               pages?: unknown[]
               code?: string
               message?: string
+              /** `boost-too-slow`: the runner's projected total. */
+              seconds?: number
             }
           | undefined
         if (r && r.ok === true && status === 0) {
@@ -182,7 +199,16 @@ function runOne(
           })
         }
         if (r && r.ok === false) {
-          return reject(mapFailure(String(r.code ?? ''), String(r.message ?? ''), path, opts))
+          return reject(
+            mapFailure(
+              String(r.code ?? ''),
+              String(r.message ?? ''),
+              path,
+              opts,
+              args,
+              typeof r.seconds === 'number' ? r.seconds : undefined,
+            ),
+          )
         }
         reject(
           conversionFailed(

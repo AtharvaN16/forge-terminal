@@ -133,6 +133,7 @@ export function editRows(
   measure?: ImageMeasure,
   offered: readonly BoostScale[] = boostScales(undefined),
   platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
 ): EditRow[] {
   const kept = keptFormat(source)
   const asJpeg = kept === 'jpeg' && source.format !== 'jpeg' ? ' · as JPEG' : ''
@@ -149,8 +150,10 @@ export function editRows(
   // Dimmed only when no scale fits, with why the smallest does not.
   const boostReason = scales.length === 0 ? tooLarge(source, offered[0] ?? 2) : undefined
   const sharpenReason = tooLarge(source, 1)
-  // Boost's model is offered on a Mac and Windows only, so where it is not
-  // (Linux) neither of its rows is there, as Remove background's is not.
+  // Boost's model is offered where the catalogue has a build for this chip: a
+  // Mac, Windows and Linux x64, a graphics card each (CoreML, DirectML,
+  // WebGPU). Where it has none (Linux arm64) neither of its rows is there, as
+  // Remove background's is not.
   const boostRows: EditRow[] = [
     {
       id: 'sharpen',
@@ -182,7 +185,7 @@ export function editRows(
     },
   ]
   return [
-    ...(offeredHere('boost', platform) ? boostRows : []),
+    ...(offeredHere('boost', platform, arch) ? boostRows : []),
     // Apple Vision does the cutting, so there is no such row where it is not offered.
     ...(offeredHere('remove-background', platform)
       ? [

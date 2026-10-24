@@ -358,10 +358,18 @@ export function offeredOn(
   return Object.keys(entry.assets).some((key) => key.startsWith(`${platform}-`))
 }
 
+/**
+ * Whether the catalogue offers `id` on this OS and, when `arch` is given, for
+ * that chip as well: Boost, for one, has builds for Linux x64 but not arm64.
+ * Callers that mean this machine pass `process.arch`; a test that names an OS
+ * on its own gets the OS's answer.
+ */
 export function offeredHere(
   id: ExtensionId,
   platform: NodeJS.Platform = process.platform,
+  arch?: string,
 ): boolean {
   const entry = catalogEntry(id)
-  return entry !== undefined && offeredOn(entry, platform)
+  if (entry === undefined || !offeredOn(entry, platform)) return false
+  return arch === undefined || assetFor(entry, platform, arch) !== undefined
 }

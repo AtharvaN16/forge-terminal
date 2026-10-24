@@ -10,7 +10,10 @@
  *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/<platform>/<arch>/, loaded from beside runner.mjs
  *   libonnxruntime.*.dylib      darwin: the binding links it via @loader_path
  *   onnxruntime.dll, DirectML.dll  win32: the binding loads them from the same directory
- *   libonnxruntime.so.1         linux: the binding's RUNPATH is $ORIGIN, so it is found beside it
+ *   libonnxruntime.so.1         linux: the binding's RUNPATH is $ORIGIN, so it is found beside it.
+ *                               x64 holds the WebGPU provider and Dawn (Vulkan backend) in this one
+ *                               file; it needs only libc, libstdc++ and libgcc at load, and takes
+ *                               libvulkan from the system when it runs. Linux arm64's has no WebGPU.
  *   realesr-general-x4v3.onnx   upstream .pth (pinned by sha256) converted by convert.py, output pinned too
  *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT), DirectML's terms (win32 only)
  *                               and ONNX Runtime's third-party notices
@@ -187,9 +190,10 @@ async function main() {
   if (!existsSync(nativeDir))
     throw new Error(`onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`)
   // darwin ships the whole directory: the binding and the one ONNX Runtime
-  // library it links (libonnxruntime.1.23.2.dylib). linux names its two: on an
-  // x64 Linux host, npm's install of onnxruntime-node also fetches the CUDA and
-  // TensorRT providers into the same folder, which the CPU build never loads.
+  // library it links (libonnxruntime.1.23.2.dylib), which holds CoreML and, on
+  // x64, WebGPU (Metal) too. linux names its two: on an x64 Linux host, npm's
+  // install of onnxruntime-node also fetches the CUDA and TensorRT providers
+  // into the same folder, which Boost never asks for.
   const native =
     args.platform === 'win32'
       ? WIN32_NATIVE
