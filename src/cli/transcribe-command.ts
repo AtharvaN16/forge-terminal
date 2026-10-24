@@ -83,14 +83,15 @@ export async function runTranscribeCommand(
     }
     const status = await transcribeStatus(intent.language ? { locale: intent.language } : {})
     if (status === undefined || !status.speech) {
-      throw transcribeUnavailable(transcribeNeeds())
+      throw transcribeUnavailable(transcribeNeeds(process.platform, status?.missing))
     }
     const notes = intent.notes && status.notes === 'available'
     if (intent.notes && !notes) {
       // Notes alone were the whole ask: a transcript would not be what they wanted.
-      if (!intent.transcript) throw transcribeUnavailable(notesNeed())
-      // Linux never has notes, so `--to all` (the default) is a transcript there, not a warning.
-      if (process.platform !== 'linux')
+      if (!intent.transcript) throw transcribeUnavailable(notesNeed(process.platform, status.notes))
+      // Without Apple Intelligence at all (whisper) there are never notes, so `--to all`
+      // (the default) is a transcript there, not a warning. Only "it is off" is news.
+      if (status.notes === 'off')
         io.err('⚠ Apple Intelligence is off, so this is the transcript only.')
     }
 

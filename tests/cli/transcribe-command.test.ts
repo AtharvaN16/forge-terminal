@@ -10,7 +10,8 @@ import { fakeYtDlp } from '../helpers/fake-ytdlp.js'
 import { makePng, makeTempDir } from '../helpers/fixtures.js'
 import { pinPlatform } from '../helpers/platform.js'
 
-// These are the Mac's words; Linux has its own block at the end.
+// These are the Mac's words; Linux, Windows and a Mac without Apple's recogniser have
+// their own blocks at the end.
 pinPlatform('darwin')
 
 /** The first bytes of an MP4: what `sniffKind` reads it by. */
@@ -259,7 +260,7 @@ describe('forge transcribe on Linux', () => {
     await writeFile(input, MP4)
     const { code, err } = await run(intent(input, { transcript: false }))
     expect(code).toBe(1)
-    expect(err.join('\n')).toContain('which Linux does not have')
+    expect(err.join('\n')).toContain('which this computer does not have')
   })
 
   it('names whisper.cpp and ffmpeg when there is no speech', async () => {
@@ -273,5 +274,72 @@ describe('forge transcribe on Linux', () => {
     const { code, err } = await run(intent(input))
     expect(code).toBe(1)
     expect(err.join('\n')).toContain('whisper.cpp')
+  })
+})
+
+/** The whisper helper's answers (no notes, ever), and a video to give it. */
+async function whisperSetUp(status: object) {
+  const fake = await fakeTranscribeHelper({
+    status: { lines: [{ ok: true, locale: 'en', notes: 'unsupported', ...status }] },
+    run: { lines: [RESULT] },
+  })
+  process.env.FORGE_TRANSCRIBE_HELPER = fake.path
+  const dir = await makeTempDir()
+  const input = join(dir, 'talk.mp4')
+  await writeFile(input, MP4)
+  return { dir, input }
+}
+
+describe('forge transcribe on Windows', () => {
+  pinPlatform('win32')
+
+  it('writes the transcript without a warning: there are no notes to miss', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, out, err } = await run(intent(input))
+    expect(code).toBe(0)
+    expect(err).toEqual([])
+    expect(out).toEqual(['✓ talk.md   1:15 → 5 words'])
+  })
+
+  it('refuses --to notes: Apple Intelligence, which this computer does not have', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain(
+      'Summary and notes need Apple Intelligence, which this computer does not have.',
+    )
+  })
+
+  it('names the whisper extension, and ffmpeg when that is missing too', async () => {
+    const { input } = await whisperSetUp({ speech: false, missing: ['whisper', 'ffmpeg'] })
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('forge extensions add whisper')
+    expect(err.join('\n')).toContain('winget install ffmpeg')
+  })
+})
+
+describe("forge transcribe on a Mac without Apple's recogniser (Intel, before macOS 26)", () => {
+  pinPlatform('darwin')
+
+  it('writes the transcript without the Apple Intelligence warning', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(0)
+    expect(err).toEqual([])
+  })
+
+  it('refuses --to notes: Apple Intelligence, which this Mac does not have', async () => {
+    const { input } = await whisperSetUp({ speech: true })
+    const { code, err } = await run(intent(input, { transcript: false }))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('which this Mac does not have')
+  })
+
+  it('says how to get whisper.cpp from Homebrew', async () => {
+    const { input } = await whisperSetUp({ speech: false, missing: ['whisper'] })
+    const { code, err } = await run(intent(input))
+    expect(code).toBe(1)
+    expect(err.join('\n')).toContain('brew install whisper-cpp')
   })
 })

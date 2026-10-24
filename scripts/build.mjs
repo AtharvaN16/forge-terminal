@@ -81,13 +81,13 @@ const result = await build({
 writeFileSync(join(outdir, 'third-party-licenses.txt'), licences(result.metafile))
 if (values.metafile) writeFileSync(join(outdir, 'meta.json'), JSON.stringify(result.metafile))
 buildTranscribeHelper()
-copyLinuxTranscribeHelper()
+copyWhisperTranscribeHelper()
 
 /**
  * The transcribe helper (spec 2026-10-17-transcribe-design §4.1): Swift,
  * Apple silicon, macOS 26 and later. Built where swiftc and a macOS 26 SDK
  * are; skipped with one line everywhere else (Windows, the macos-14 test
- * runners), where transcribe is simply not offered. The publish job sets
+ * runners), where transcribe runs on the whisper helper instead. The publish job sets
  * FORGE_REQUIRE_HELPERS=1 so a release cannot ship without it.
  */
 function buildTranscribeHelper() {
@@ -121,14 +121,15 @@ function buildTranscribeHelper() {
 }
 
 /**
- * The Linux transcribe helper: plain Node (whisper.cpp + ffmpeg underneath), so
- * it is copied, not built, and copied on every OS: releases are cut on macOS.
+ * The whisper transcribe helper (Windows, Linux, and Macs without Apple's
+ * recogniser): plain Node (whisper.cpp + ffmpeg underneath), so it is copied,
+ * not built, and copied on every OS: releases are cut on macOS.
  */
-function copyLinuxTranscribeHelper() {
+function copyWhisperTranscribeHelper() {
   mkdirSync(join(outdir, 'helpers'), { recursive: true })
   copyFileSync(
-    join(ROOT, 'helpers/transcribe/forge-transcribe-linux.mjs'),
-    join(outdir, 'helpers', 'forge-transcribe-linux.mjs'),
+    join(ROOT, 'helpers/transcribe/forge-transcribe-whisper.mjs'),
+    join(outdir, 'helpers', 'forge-transcribe-whisper.mjs'),
   )
 }
 
