@@ -1,18 +1,32 @@
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { Box } from 'ink'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
+import { expandTilde } from '../../config/preferences.js'
 import type { Credit } from '../../core/attributions.js'
 import { type ForgeError, isForgeError, unexpectedError } from '../../core/errors.js'
+import { clockOf } from '../../core/timecode.js'
 import { formatBytes } from '../../core/units.js'
-import { assetFor, type CatalogEntry, type PlatformKey } from '../../extensions/catalog.js'
+import {
+  assetFor,
+  CATALOG,
+  type CatalogEntry,
+  offeredOn,
+  type PlatformKey,
+} from '../../extensions/catalog.js'
 import type { LockHolder } from '../../extensions/lock.js'
 import type { ExtensionStatus } from '../../extensions/manager.js'
+import type { OwnableId, OwnCopy } from '../../extensions/own.js'
+import { unescapePath } from '../../utils/unescape-path.js'
 import type { BarChip } from '../bar-art.js'
 import { Runs } from '../components/Home.js'
 import { ScreenBar, ScreenKeys } from '../components/MenuPopup.js'
 import { errorLine } from '../error-art.js'
+import type { Run } from '../home-art.js'
 import { HOME_MARGIN } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
+import { type OwnSheetView, ownSheetRows } from '../own-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeGradient, type Palette } from '../theme.js'
@@ -28,12 +42,61 @@ export interface ExtensionsManager {
   remove(id: string): Promise<boolean>
   /** Who is running the tool right now, in any forge (lock.ts). */
   inUse(id: string): Promise<LockHolder | undefined>
+  /** The user's own copies of yt-dlp and ffmpeg (own.ts). Absent: there are none. */
+  own?: OwnManager
+}
+
+/** The slice of `src/extensions/own.ts` the sheet needs. */
+export interface OwnManager {
+  /** The user's copy: the quick look, or "Check this Mac"'s deep one. */
+  find(id: OwnableId, deep: boolean): Promise<OwnCopy | undefined>
+  /** What the file at `path` is, when it is the tool. */
+  probe(id: OwnableId, path: string): Promise<OwnCopy | undefined>
+  /** Keeps the file the user pointed to. */
+  choose(id: OwnableId, path: string): Promise<void>
+  /** Removes Forge's copy once the user's is used; the bytes freed. */
+  removeForgeCopy(id: OwnableId): Promise<number>
+  /** A newer version of the user's copy; null when it is the latest; undefined when unknown. */
+  newer(copy: OwnCopy): Promise<string | null | undefined>
+  /** Updates the user's copy the way it was installed. */
+  update(copy: OwnCopy, signal: AbortSignal): Promise<void>
+}
+
+const realOwn: OwnManager = {
+  async find(id, deep) {
+    return (await import('../../extensions/own.js')).findOwn(id, { deep })
+  },
+  async probe(id, path) {
+    return (await import('../../extensions/own.js')).probeOwn(id, path)
+  },
+  async choose(id, path) {
+    return (await import('../../extensions/own.js')).setChosenPath(id, path)
+  },
+  async removeForgeCopy(id) {
+    return (await import('../../extensions/own.js')).removeForgeCopy(id)
+  },
+  async newer(copy) {
+    return (await import('../../extensions/own.js')).ownUpdate(copy)
+  },
+  async update(copy, signal) {
+    return (await import('../../extensions/own.js')).updateOwn(copy, { signal })
+  },
 }
 
 /** Loaded on first use so the shell's start-up never touches `src/extensions/`. */
 export const realManager: ExtensionsManager = {
   async list() {
-    return (await import('../../extensions/manager.js')).listExtensions()
+    const all = await (await import('../../extensions/manager.js')).listExtensions()
+    // A tool the user may have themselves is listed even where Forge has no
+    // download of it yet (ffmpeg on a Mac): the sheet says whether it is theirs.
+    const { isOwnable } = await import('../../extensions/own.js')
+    const more = CATALOG.filter(
+      (entry) =>
+        isOwnable(entry.id) &&
+        !offeredOn(entry, process.platform) &&
+        !all.some((s) => s.entry.id === entry.id),
+    ).map((entry): ExtensionStatus => ({ entry, updateAvailable: false, supported: false }))
+    return [...all, ...more]
   },
   async install(id, opts) {
     return (await import('../../extensions/manager.js')).installExtension(id, opts)
@@ -44,6 +107,7 @@ export const realManager: ExtensionsManager = {
   async inUse(id) {
     return (await import('../../extensions/lock.js')).extensionInUse(id)
   },
+  own: realOwn,
 }
 
 /**
@@ -83,6 +147,13 @@ const SHEETS: Record<
       ['libheif and libde265', 'LGPL-3.0'],
       ['libheif-js', 'LGPL-3.0'],
     ],
+  },
+  // Transcribe's YouTube links: often the user's own, from Homebrew.
+  'yt-dlp': {
+    name: 'YouTube links',
+    gives: 'Transcribe YouTube videos',
+    again: 'A YouTube link will offer to download it again.',
+    parts: [['yt-dlp', 'Unlicense']],
   },
   // ffmpeg, for a Mac without Homebrew's: what lets video and sound open at all.
   video: {
@@ -146,6 +217,22 @@ export function extensionsChip(p: Palette): BarChip {
     colour: p.brand,
     stops: modeGradient(p, 'menu'),
   }
+}
+
+/**
+ * The tools a user may have themselves, by catalogue id, and what to look
+ * for (own.ts). Kept here, not imported, so opening the shell never loads
+ * `src/extensions/`.
+ */
+const OWN_TOOLS: Record<OwnableId, { name: string; binary: string }> = {
+  'yt-dlp': { name: 'yt-dlp', binary: 'yt-dlp' },
+  video: { name: 'ffmpeg', binary: 'ffmpeg' },
+}
+const ownable = (id: string): id is OwnableId => id in OWN_TOOLS
+/** A path as the user would write it: the home folder as ~. */
+const tilde = (path: string) => {
+  const home = homedir()
+  return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
 }
 
 const LIST_WIDTH = 27
@@ -223,6 +310,61 @@ export function ExtensionsFlow({
     void refresh()
   }, [refresh])
 
+  /** What Forge knows of each tool the user may have themselves: their copy, a newer version, what removing Forge's copy freed. */
+  const [owns, setOwns] = useState<
+    Record<string, { copy?: OwnCopy; newer?: string; latest?: boolean; freed?: number }>
+  >({})
+  /** "Check this Mac" on the current tool: looking, found, or nothing found (the Path field). */
+  const [check, setCheck] = useState<
+    | { id: OwnableId; phase: 'checking' }
+    | { id: OwnableId; phase: 'found'; copy: OwnCopy }
+    | { id: OwnableId; phase: 'none' }
+  >()
+  const [path, setPath] = useState('')
+  const [pathError, setPathError] = useState<string>()
+  /** The user's copy being updated, and since when (the clock). */
+  const [updating, setUpdating] = useState<{ id: string; started: number }>()
+
+  /**
+   * The user's copy is used: Forge's own goes (one copy, always), then
+   * Homebrew is asked, in the background, whether there is a newer version.
+   */
+  const adopt = useCallback(
+    async (id: OwnableId, copy: OwnCopy | undefined) => {
+      const own = manager.own
+      if (!own) return
+      const freed = copy && !copy.tooOld ? await own.removeForgeCopy(id).catch(() => 0) : 0
+      if (!alive.current) return
+      setOwns((o) => ({ ...o, [id]: { ...(copy ? { copy } : {}), ...(freed ? { freed } : {}) } }))
+      if (freed) void refresh()
+      if (!copy) return
+      const newer = await own.newer(copy).catch(() => undefined)
+      if (newer === undefined || !alive.current) return
+      setOwns((o) =>
+        o[id]?.copy === copy
+          ? { ...o, [id]: { ...o[id], ...(newer === null ? { latest: true } : { newer }) } }
+          : o,
+      )
+    },
+    [manager, refresh],
+  )
+
+  // Forge looks for the user's own copies by itself, once the list is in.
+  const ownIds = (statuses ?? [])
+    .map((s) => s.entry.id)
+    .filter(ownable)
+    .join(',')
+  useEffect(() => {
+    const own = manager.own
+    if (!own || ownIds === '') return
+    for (const id of ownIds.split(',') as OwnableId[]) {
+      void own
+        .find(id, false)
+        .then((copy) => adopt(id, copy))
+        .catch(() => {})
+    }
+  }, [ownIds, manager, adopt])
+
   // Another forge may start or finish a job on a tool at any time.
   const installedIds = (statuses ?? [])
     .filter((s) => s.installed !== undefined)
@@ -248,8 +390,12 @@ export function ExtensionsFlow({
   }, [installedIds, manager])
 
   const current = statuses?.[cursor]
-  const spinning = busy !== undefined && motionEnabled(palette.name)
+  const spinning =
+    (busy !== undefined || updating !== undefined || check?.phase === 'checking') &&
+    motionEnabled(palette.name)
   const n = useTicker(spinning, SPIN_MS)
+  // The update's clock, a second at a time even with motion off: it is a fact, not an animation.
+  useTicker(updating !== undefined, 1000)
 
   const install = async (s: ExtensionStatus) => {
     const id = s.entry.id
@@ -302,21 +448,106 @@ export function ExtensionsFlow({
     setCursor(next)
     setFreed(undefined)
     setAbout(false)
+    setCheck(undefined)
+    setPath('')
+    setPathError(undefined)
+  }
+
+  /** "Check this Mac": the deep look, the spinner while it runs. */
+  const lookDeep = async (id: OwnableId) => {
+    const own = manager.own
+    if (!own) return
+    setFailed(undefined)
+    setCheck({ id, phase: 'checking' })
+    const copy = await own.find(id, true).catch(() => undefined)
+    if (!alive.current) return
+    setCheck((c) =>
+      c?.id === id && c.phase === 'checking'
+        ? copy
+          ? { id, phase: 'found', copy }
+          : { id, phase: 'none' }
+        : c,
+    )
+  }
+
+  /** ↵ use it: kept as the user's choice, then used — Forge's copy goes. */
+  const take = async (id: OwnableId, copy: OwnCopy) => {
+    const own = manager.own
+    if (!own) return
+    try {
+      await own.choose(id, copy.path)
+    } catch (e) {
+      fail(e)
+      return
+    }
+    setCheck(undefined)
+    setPath('')
+    setPathError(undefined)
+    await adopt(id, copy)
+  }
+
+  /** ↵ on a typed or dropped path: the file, or the tool inside a dropped folder. */
+  const takePath = async (id: OwnableId) => {
+    const own = manager.own
+    if (!own) return
+    const raw = expandTilde(unescapePath(path.trim()))
+    const copy =
+      (await own.probe(id, raw).catch(() => undefined)) ??
+      (await own.probe(id, join(raw, OWN_TOOLS[id].binary)).catch(() => undefined))
+    if (!alive.current) return
+    if (copy === undefined) {
+      setPathError(`Nothing there runs as ${OWN_TOOLS[id].name}`)
+      return
+    }
+    await take(id, copy)
+  }
+
+  /** ↵ update on the user's copy: the way it was installed, with its clock. */
+  const upgrade = async (id: OwnableId, copy: OwnCopy) => {
+    const own = manager.own
+    if (!own) return
+    const controller = new AbortController()
+    stop.current = controller
+    setFailed(undefined)
+    setUpdating({ id, started: Date.now() })
+    try {
+      await own.update(copy, controller.signal)
+      const fresh = await own.probe(id, copy.path).catch(() => undefined)
+      if (!alive.current) return
+      setUpdating(undefined)
+      await adopt(id, fresh ?? copy)
+    } catch (e) {
+      if (!alive.current) return
+      setUpdating(undefined)
+      if (!controller.signal.aborted)
+        setFailed({
+          id,
+          title: `Could not update ${OWN_TOOLS[id].name}`,
+          reason: e instanceof Error ? e.message : String(e),
+        })
+    } finally {
+      if (stop.current === controller) stop.current = undefined
+    }
   }
 
   const used = current ? inUse[current.entry.id] : undefined
   const removable = current?.installed !== undefined && used === undefined
 
   useKeys((input, key) => {
-    if (busy) {
+    if (busy || updating) {
       if (key.escape) stop.current?.abort()
       return
     }
     // esc goes back one level: the question, then the about panel, then
-    // the screen — even before the list has loaded, or if it never does.
+    // a check (its field), then the screen — even before the list has
+    // loaded, or if it never does.
     if (key.escape) {
       if (confirm) setConfirm(false)
       else if (about) setAbout(false)
+      else if (check && path !== '') {
+        setPath('')
+        setPathError(undefined)
+      } else if (check) setCheck(undefined)
       else onClose()
       return
     }
@@ -324,6 +555,43 @@ export function ExtensionsFlow({
     if (confirm) {
       if (key.return) void remove(current)
       return
+    }
+    const id = current.entry.id
+    if (ownable(id) && manager.own && !about) {
+      const mine = owns[id]?.copy
+      if (check?.id === id && check.phase === 'checking') return
+      if (check?.id === id && check.phase === 'found') {
+        if (key.return) void take(id, check.copy)
+        else if (key.upArrow) move(-1)
+        else if (key.downArrow) move(1)
+        return
+      }
+      if (check?.id === id && check.phase === 'none') {
+        // The Path field has the keys: typed or dropped text goes into it.
+        if (key.return) {
+          if (path.trim() !== '') void takePath(id)
+          else if (current.supported && current.installed === undefined) void install(current)
+        } else if (key.upArrow) move(-1)
+        else if (key.downArrow) move(1)
+        else if (key.backspace || key.delete) {
+          setPath((t) => t.slice(0, -1))
+          setPathError(undefined)
+        } else if (input && !key.ctrl && !key.meta && !key.tab) {
+          setPath((t) => t + input.replace(/[\r\n]+/g, ''))
+          setPathError(undefined)
+        }
+        return
+      }
+      if (key.return && mine && (owns[id]?.newer || failed?.id === id)) {
+        void upgrade(id, mine)
+        return
+      }
+      // The user's copy is used: there is nothing of Forge's to install.
+      if (key.return && mine && !mine.tooOld) return
+      if (input === 'c' && !(mine && !mine.tooOld)) {
+        void lookDeep(id)
+        return
+      }
     }
     if (input === 'i') {
       setAbout((a) => !a)
@@ -377,7 +645,9 @@ export function ExtensionsFlow({
 
   /** The list's mark: only what is worth seeing without moving the cursor. */
   const mark = (s: ExtensionStatus): string => {
-    if (busy?.id === s.entry.id) return spinner
+    if (busy?.id === s.entry.id || updating?.id === s.entry.id) return spinner
+    const mine = owns[s.entry.id]
+    if (mine?.copy && !mine.copy.tooOld) return mine.newer ? 'update' : '✓'
     if (s.installed === undefined) return ''
     return s.updateAvailable ? 'update' : '✓'
   }
@@ -386,7 +656,8 @@ export function ExtensionsFlow({
     const me = i === cursor
     const name = sheetFor(s.entry).name
     const m = mark(s)
-    const markColour = busy?.id === s.entry.id ? colourProp(gold) : dim
+    const markColour =
+      busy?.id === s.entry.id || updating?.id === s.entry.id ? colourProp(gold) : dim
     return (
       <Box
         key={s.entry.id}
@@ -396,7 +667,7 @@ export function ExtensionsFlow({
       >
         <Text wrap="truncate">
           {me ? <Text color={colourProp(gold)}>▌ </Text> : '  '}
-          <Text bold={me} color={me ? fg : s.supported ? dim : quiet}>
+          <Text bold={me} color={me ? fg : s.supported || owns[s.entry.id]?.copy ? dim : quiet}>
             {name}
           </Text>
         </Text>
@@ -479,7 +750,175 @@ export function ExtensionsFlow({
     )
   }
 
+  /** The sheet's own width, inside its rule and padding when split. */
+  const room = () => (split ? paneWidth - 3 : paneWidth)
+
+  /**
+   * The sheet of a tool the user may have themselves (own-art.ts): header,
+   * a card of facts, one other thing — the same three blocks in every state.
+   */
+  const ownView = (s: ExtensionStatus, id: OwnableId): OwnSheetView => {
+    const T = sheetFor(s.entry)
+    const tool = OWN_TOOLS[id].name
+    const mine = owns[id]
+    const run = (text: string, colour = palette.fg, bold = false): Run => ({
+      text,
+      fg: colour,
+      ...(bold ? { bold } : {}),
+    })
+    const ok = (text: string): Run[] => [run('✓ ', palette.ok), run(text)]
+    const spin = (text: string): Run[] => [run(`${spinner} `, gold), run(text, palette.dim)]
+    const version = (v: string, newer: string | undefined, latest: boolean): Run[] =>
+      newer
+        ? [
+            run(v, palette.dim),
+            run('  →  ', palette.border),
+            run(newer, palette.fg, true),
+            run(' available', palette.dim),
+          ]
+        : [run(latest ? `${v} · latest` : v, palette.dim)]
+    const size = s.downloadBytes ? `${formatBytes(s.downloadBytes)} download` : undefined
+    const installable = s.supported && s.installed === undefined
+    const ask: Run[] = [
+      run(`Already have ${tool}?  `, palette.dim),
+      ...(palette.keycapBg !== ''
+        ? [{ text: ' c ', fg: palette.fg, bg: palette.keycapBg, bold: true }]
+        : [run('[c]', palette.fg, true)]),
+      run(' check this Mac', palette.dim),
+    ]
+    const error =
+      failed?.id === id
+        ? errorLine({
+            palette,
+            title: failed.title,
+            reason: failed.reason,
+            width: room(),
+            plain: (process.env.NO_COLOR ?? '') !== '',
+          })
+        : undefined
+    const base = { name: T.name, gives: T.gives, tag: tool }
+
+    if (busy?.id === id) {
+      const k = busy.total > 0 ? Math.round(Math.min(1, busy.done / busy.total) * BAND) : 0
+      const count = byteCount(busy.done, busy.total)
+      const band: Run[] =
+        palette.track === '' || palette.trackFill === ''
+          ? [run(`${'━'.repeat(k)}${'─'.repeat(BAND - k)}`, palette.dim)]
+          : [
+              { text: ' '.repeat(k), bg: palette.trackFill },
+              { text: ' '.repeat(BAND - k), bg: palette.track },
+            ]
+      const status =
+        busy.total > 0 && busy.done >= busy.total
+          ? [...band, run('  '), ...spin('checking')]
+          : [...band, run('  '), run(count.got, palette.fg, true), run(` ${count.of}`, palette.dim)]
+      return { ...base, facts: [['Status', status]] }
+    }
+    if (updating?.id === id && mine?.copy) {
+      const by = mine.copy.homebrew ? 'Homebrew' : tool
+      const secs = (Date.now() - updating.started) / 1000
+      return {
+        ...base,
+        facts: [
+          ['Status', spin(`Updating with ${by} · ${clockOf(secs)}`)],
+          ['Path', [run(tilde(mine.copy.path), palette.dim)]],
+          ['Version', [run(mine.copy.version, palette.dim)]],
+        ],
+      }
+    }
+    if (check?.id === id && check.phase === 'checking') {
+      return {
+        ...base,
+        action: installable ? '↵ install' : undefined,
+        facts: [
+          ['Status', spin('Checking this Mac')],
+          ...(installable && size ? [['Size', [run(size, palette.dim)]] as [string, Run[]]] : []),
+        ],
+      }
+    }
+    if (check?.id === id && check.phase === 'found') {
+      return {
+        ...base,
+        action: '↵ use it',
+        facts: [
+          ['Status', ok('Found on this Mac')],
+          ['Path', [run(tilde(check.copy.path), palette.dim)]],
+          ['Version', [run(check.copy.version, palette.dim)]],
+        ],
+      }
+    }
+    if (check?.id === id && check.phase === 'none') {
+      return {
+        ...base,
+        action: path.trim() !== '' ? '↵ use it' : installable ? '↵ install' : undefined,
+        facts: [
+          ['Status', [run('Not found on this Mac')]],
+          [
+            'Path',
+            path === ''
+              ? [run('Drop it here, or type it', palette.border)]
+              : [run(path, palette.fg)],
+          ],
+        ],
+        field: 'Path',
+        under: pathError
+          ? errorLine({ palette, title: 'Not found', reason: pathError, width: room() })
+          : undefined,
+      }
+    }
+    if (mine?.copy) {
+      const c = mine.copy
+      return {
+        ...base,
+        action: mine.newer ? '↵ update' : error ? '↵ try again' : undefined,
+        facts: [
+          ['Status', c.tooOld ? [run('Too old to use')] : ok('Uses your copy')],
+          ['Path', [run(tilde(c.path), palette.dim)]],
+          ['Version', version(c.version, mine.newer, mine.latest === true)],
+        ],
+        under:
+          error ??
+          (mine.freed
+            ? [
+                run("Forge's copy removed · ", palette.dim),
+                run(formatBytes(mine.freed), palette.fg, true),
+                run(' freed', palette.dim),
+              ]
+            : undefined),
+      }
+    }
+    if (s.installed !== undefined) {
+      const newer = s.updateAvailable ? assetFor(s.entry)?.version : undefined
+      return {
+        ...base,
+        action: s.updateAvailable ? '↵ update' : undefined,
+        facts: [
+          ['Status', ok('Installed')],
+          ['Version', version(s.installed, newer, true)],
+          ['Size', [run(formatBytes(s.installedBytes ?? s.downloadBytes ?? 0), palette.dim)]],
+        ],
+        under: error ?? ask,
+      }
+    }
+    return {
+      ...base,
+      action: error && s.supported ? '↵ try again' : installable ? '↵ install' : undefined,
+      facts: [
+        ['Status', [run('Not installed')]],
+        ...(s.supported && size ? [['Size', [run(size, palette.dim)]] as [string, Run[]]] : []),
+      ],
+      under: error ?? ask,
+    }
+  }
+
   const sheet = (s: ExtensionStatus): ReactNode[] => {
+    const id = s.entry.id
+    if (ownable(id) && manager.own && !confirm && !about) {
+      return ownSheetRows(palette, ownView(s, id), room()).map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the sheet's rows are positional
+        <Runs key={i} row={row} />
+      ))
+    }
     const T = sheetFor(s.entry)
     const name = (
       <Text bold color={fg}>
@@ -580,8 +1019,33 @@ export function ExtensionsFlow({
         foot: [quit],
       }
     if (about) return { main: [['i', 'close']], foot: [['esc', 'back'], quit] }
-    if (busy) return { main: [['esc', 'stop']], foot: [quit] }
+    if (busy || updating) return { main: [['esc', 'stop']], foot: [quit] }
     const s = current
+    const id = s?.entry.id
+    if (s && id && ownable(id) && manager.own) {
+      const back: Array<[string, string]> = [['esc', 'back'], quit]
+      if (check?.id === id && check.phase === 'checking')
+        return { main: [['esc', 'stop']], foot: [quit] }
+      if (check?.id === id && check.phase === 'found')
+        return { main: [['↵', 'use it']], foot: back }
+      if (check?.id === id && check.phase === 'none') {
+        if (path.trim() !== '') return { main: [['↵', 'use it']], foot: [['esc', 'clear'], quit] }
+        return {
+          main: s.supported && s.installed === undefined ? [['↵', 'install']] : [],
+          foot: back,
+        }
+      }
+      const mine = owns[id]
+      const main: Array<[string, string]> = [['↑↓', 'choose']]
+      if (mine?.copy && (mine.newer || failed?.id === id))
+        main.push(['↵', failed?.id === id ? 'try again' : 'update'])
+      else if (s.supported && failed?.id === id) main.push(['↵', 'try again'])
+      else if (s.supported && s.installed === undefined && !mine?.copy) main.push(['↵', 'install'])
+      else if (s.updateAvailable && !mine?.copy) main.push(['↵', 'update'])
+      if (!(mine?.copy && !mine.copy.tooOld)) main.push(['c', 'check this Mac'])
+      if (removable && !mine?.copy) main.push(['x', 'remove'])
+      return { main, foot: [['i', 'about'], ['esc', 'back'], quit] }
+    }
     const main: Array<[string, string]> = [['↑↓', 'choose']]
     if (s?.supported && failed?.id === s.entry.id) main.unshift(['↵', 'try again'])
     else if (s?.supported && s.installed === undefined) main.push(['↵', 'install'])

@@ -32,9 +32,10 @@ export interface EncodeStep {
   pass?: { at: 1 | 2; of: 2 }
   /**
    * This step only measures: its stderr carries loudnorm's JSON, which fills
-   * `LOUDNORM_MEASURED` in the next step.
+   * `LOUDNORM_MEASURED` in the next step, or astats' quietest stretch, which
+   * fills `NOISE_FLOOR` (`noiseFloorOf`).
    */
-  measures?: 'loudness'
+  measures?: 'loudness' | 'noise'
 }
 
 export interface EncodePlan {
@@ -45,6 +46,34 @@ export interface EncodePlan {
   copies: { video: boolean; audio: boolean }
   /** The picture a size target settled on, for Done to say. */
   fitted?: { width: number; height: number; fps: number }
+}
+
+/** Replaced by the engine with the noise floor `noiseFloorOf` read from the noise pass. */
+export const NOISE_FLOOR = '%NOISE_FLOOR%'
+
+/**
+ * Clean up audio (design 2026-10-23 §2.2): the low rumble off, then a gentle
+ * FFT denoise, 12 dB at most. Conservative on purpose — a mild result beats a
+ * watery one. Runs before the loudness is evened. afftdn needs to be told
+ * where the noise sits (its own tracking did nothing in measurement), so the
+ * file's quietest stretch is measured first.
+ */
+const CLEANUP_FILTERS = ['highpass=f=80', `afftdn=nr=12:nf=${NOISE_FLOOR}`] as const
+
+/** What measures the quietest stretch: the rumble filter first, as the clean-up has it. */
+const NOISE_MEASURE = 'highpass=f=80,astats=measure_perchannel=none:measure_overall=RMS_trough'
+
+/**
+ * afftdn's `nf` from the noise pass's report: 8 dB above the quietest stretch
+ * (measured on speech with pauses: noise is cut by all `nr` allows from there,
+ * and the speech moves by 0.2 dB or less), held within -70…-30. With no quiet
+ * stretch to read (digital silence, no report) afftdn's own -50.
+ */
+export function noiseFloorOf(report: string): number {
+  const found = /RMS trough dB:\s*(-?[\d.]+|-?inf)/i.exec(report)?.[1]
+  const trough = found === undefined ? Number.NaN : Number(found)
+  if (!Number.isFinite(trough)) return -50
+  return Math.min(-30, Math.max(-70, Math.round(trough + 8)))
 }
 
 /** Replaced by the engine with what the loudness pass measured. */
@@ -219,6 +248,15 @@ export function planEncode(job: EncodeInput): EncodePlan {
       else if ('height' in r) vf.push(`scale=-2:trunc(min(${even(r.height)}\\,ih)/2)*2`)
       else vf.push(`scale=trunc(iw*${r.percent / 100}/2)*2:-2`)
     }
+    // After the crop and resize, which are of the upright picture.
+    if (options.rotate)
+      vf.push(
+        options.rotate === 90
+          ? 'transpose=1'
+          : options.rotate === 270
+            ? 'transpose=2'
+            : 'hflip,vflip',
+      )
     if (speed !== 1) vf.push(`setpts=PTS/${speed}`)
     if (gif) {
       const w = Math.min(GIF_WIDTH, even(v.width))
@@ -287,7 +325,8 @@ export function planEncode(job: EncodeInput): EncodePlan {
   }
 
   // ---- the sound
-  const af: string[] = speed !== 1 ? atempo(speed) : []
+  const cleanup: string[] = m.cleanup ? [...CLEANUP_FILTERS] : []
+  const af: string[] = [...cleanup, ...(speed !== 1 ? atempo(speed) : [])]
   const loudness = m.loudness
   if (loudness !== undefined) {
     af.push(`loudnorm=I=${loudness}:TP=-1.5:LRA=11:${LOUDNORM_MEASURED}:linear=true`)
@@ -331,6 +370,12 @@ export function planEncode(job: EncodeInput): EncodePlan {
   const nul = platform === 'win32' ? 'NUL' : '/dev/null'
 
   const steps: EncodeStep[] = []
+  if (m.cleanup) {
+    steps.push({
+      args: [...input, ...cut, '-vn', '-af', NOISE_MEASURE, '-f', 'null', nul],
+      measures: 'noise',
+    })
+  }
   if (loudness !== undefined) {
     steps.push({
       args: [
@@ -338,7 +383,7 @@ export function planEncode(job: EncodeInput): EncodePlan {
         ...cut,
         '-vn',
         '-af',
-        `${speed !== 1 ? `${atempo(speed).join(',')},` : ''}loudnorm=I=${loudness}:TP=-1.5:LRA=11:print_format=json`,
+        `${[...cleanup, ...(speed !== 1 ? atempo(speed) : [])].map((f) => `${f},`).join('')}loudnorm=I=${loudness}:TP=-1.5:LRA=11:print_format=json`,
         '-f',
         'null',
         nul,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   compressFloor,
+  extractTarget,
   hasPicture,
   hasSound,
   mediaFacts,
@@ -91,5 +92,19 @@ describe('the size field’s units', () => {
 
   it('offers GB for a file over 1 GB', () => {
     expect(sizeUnitsFor({ ...recording, bytes: 4e9 })).toEqual(['mb', 'gb'])
+  })
+})
+
+describe('where extracted sound goes', () => {
+  it.each([
+    ['aac', 'm4a'],
+    ['alac', 'm4a'],
+    ['mp3', 'mp3'],
+    ['opus', 'opus'],
+    ['vorbis', 'm4a'],
+    ['ac3', 'm4a'],
+    ['pcm_s16le', 'm4a'],
+  ] as const)('%s becomes %s', (codec, target) => {
+    expect(extractTarget(codec)).toBe(target)
   })
 })

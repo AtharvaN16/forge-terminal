@@ -70,22 +70,34 @@ export function transcribeCard(src: TranscribeSource, tick?: number): StagedFile
       tick === undefined ? 'Looking up the link' : `Looking up the link ${pulse(tick)}`,
     )
   }
-  if (src.phase === 'needs-yt-dlp') {
-    return card(
-      src.url,
-      `YouTube links need yt-dlp · ${formatBytes(src.bytes)} download · ↵ installs`,
-    )
-  }
-  if (src.phase === 'installing') {
-    const { got, of } = bytesOf(src.done, src.total)
-    return card(src.url, `Installing yt-dlp · ${got} of ${of}`)
-  }
+  // What the link still needs, and its download, are said in the field
+  // beside ↵ install (transcribeNeed), not crowded into the card.
+  if (src.phase === 'needs-yt-dlp' || src.phase === 'installing') return card(src.url, '')
   return card(src.facts.title, `${src.facts.uploader} · ${clock(src.facts.seconds)}`)
 }
 
 export function transcribeView(src: TranscribeSource, tick?: number): StagedView {
   const file = transcribeCard(src, tick)
   return { files: [file], headline: file.name, total: file.size, fresh: 0 }
+}
+
+/**
+ * What the field says in its placeholder's place while a link waits for
+ * yt-dlp (mockups/own-tools-2026-10-round5.html, F2): the need and its
+ * size, then the download, in real bytes.
+ */
+export type TranscribeNeed =
+  | { kind: 'needs'; size: string }
+  | { kind: 'installing'; got: string; of: string; done: number; total: number }
+
+export function transcribeNeed(src: TranscribeSource | undefined): TranscribeNeed | undefined {
+  if (src?.kind !== 'link') return undefined
+  if (src.phase === 'needs-yt-dlp') return { kind: 'needs', size: formatBytes(src.bytes) }
+  if (src.phase === 'installing') {
+    const { got, of } = bytesOf(src.done, src.total)
+    return { kind: 'installing', got, of, done: src.done, total: src.total }
+  }
+  return undefined
 }
 
 /** ↵'s word on home, or null while there is nothing for ↵ to do yet. */

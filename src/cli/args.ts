@@ -340,7 +340,7 @@ function bounded(flag: string, raw: unknown, min: number, max: number, example: 
   return n
 }
 
-/** --cut, --mute, --speed, --fps, --bitrate and --loudness (video spec §3.8). */
+/** --cut, --mute, --speed, --fps, --bitrate, --loudness and --clean-audio (video spec §3.8). */
 function parseMediaFlags(opts: Record<string, unknown>): MediaOptions | undefined {
   const m: MediaOptions = {}
   if (opts.cut !== undefined) {
@@ -360,6 +360,10 @@ function parseMediaFlags(opts: Record<string, unknown>): MediaOptions | undefine
     m.bitrate = Math.round(bounded('--bitrate', opts.bitrate, 32, 320, '128k'))
   }
   if (opts.loudness !== undefined) m.loudness = bounded('--loudness', opts.loudness, -70, -5, '-16')
+  if (opts.cleanAudio) {
+    m.cleanup = true
+    m.loudness ??= -16
+  }
   return Object.keys(m).length ? m : undefined
 }
 
@@ -880,6 +884,7 @@ function parseConversionArgs(argv: string[], boost: BoostScale | undefined): Int
     .option('--fps <n>', 'video: frames per second')
     .option('--bitrate <kbps>', 'audio: bitrate, e.g. 128k')
     .option('--loudness <LUFS>', 'audio: even out loudness to this level, e.g. -16')
+    .option('--clean-audio', 'video or audio: take out rumble and hiss, then even the level')
     .option('--preset <name>', 'run a preset saved from Done, e.g. --preset blog')
     .option('--pages <ranges>', 'with --to, which pages to render, e.g. 3-7,12')
     .option('--dpi <n>', 'rasterisation resolution, 36-600', '150')

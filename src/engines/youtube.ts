@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { extensionMissing, linkUnavailable } from '../core/errors.js'
-import { installed } from '../extensions/paths.js'
+import { resolveYtDlp } from '../extensions/own.js'
 
 export interface VideoFacts {
   title: string
@@ -49,7 +49,8 @@ export async function fetchSound(
     onDir?: (dir: string) => void
   } = {},
 ): Promise<FetchedSound> {
-  const yt = await installed('yt-dlp')
+  // The user's own yt-dlp when it is new enough, else Forge's (own.ts).
+  const yt = await resolveYtDlp()
   if (yt === undefined) throw extensionMissing('yt-dlp')
   const dir = await mkdtemp(join(tmpdir(), 'forge-yt-'))
   opts.onDir?.(dir)
@@ -61,8 +62,10 @@ export async function fetchSound(
     } catch (e) {
       if (!(e instanceof RunFailed)) throw e
       // Not one of the known refusals: most likely YouTube changed and this
-      // yt-dlp is behind. It updates itself (checking its own signatures);
-      // then one more try.
+      // yt-dlp is behind. Forge's own copy updates itself (checking its own
+      // signatures), then one more try. The user's own copy is theirs: it
+      // is never updated behind their back (/extensions has ↵ update).
+      if (yt.own) throw linkUnavailable(`yt-dlp could not fetch this video: ${e.message}`, e)
       await update(yt.entry, opts.signal)
       try {
         got = await once(yt.entry, url, dir, opts)

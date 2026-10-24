@@ -165,6 +165,8 @@ export interface ConvertOptions {
   resize?: ResizeSpec
   /** Cut to a shape, after EXIF rotation and before any resize. Never with `trim`. */
   crop?: CropSpec
+  /** Clockwise quarter turns, after the crop and resize. Never on an animation. */
+  rotate?: Turn
   /**
    * Set by `/compress`. The result must come out smaller than the source, or
    * nothing is written. A quantisable format (PNG, GIF) is cut to a palette
@@ -174,6 +176,9 @@ export interface ConvertOptions {
   /** Video and sound only. */
   media?: MediaOptions
 }
+
+/** Rotate's three turns, in degrees clockwise: 90 is to the right, 270 to the left. */
+export type Turn = 90 | 180 | 270
 
 /** A shape as a ratio of two whole numbers: 16:9 is `{ w: 16, h: 9 }`. */
 export interface Aspect {
@@ -274,6 +279,8 @@ export interface MediaOptions {
   bitrate?: number
   /** Loudness evened out to this, in LUFS (−16 for podcasts). */
   loudness?: number
+  /** Rumble and steady hiss or hum taken out of the sound, before `loudness` evens it. */
+  cleanup?: boolean
   /**
    * The bytes to fit, set by `runPlan` once the engine's arithmetic says it
    * can be reached (video spec §3.3). The encode hits it in two passes.

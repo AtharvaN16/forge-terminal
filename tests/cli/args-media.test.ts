@@ -46,6 +46,16 @@ describe('video and sound flags', () => {
     expect(parseArgs(['rec.mov', '--mute'])).toMatchObject({ kind: 'edit', media: { mute: true } })
   })
 
+  it('cleans up audio at the podcast level unless a level is asked', () => {
+    expect(parseArgs(['rec.mov', '--clean-audio'])).toMatchObject({
+      kind: 'edit',
+      media: { cleanup: true, loudness: -16 },
+    })
+    expect(parseArgs(['rec.mov', '--clean-audio', '--loudness', '-14'])).toMatchObject({
+      media: { cleanup: true, loudness: -14 },
+    })
+  })
+
   it.each([
     [['rec.mov', '--to', 'mp4', '--cut', '0:41-0:03']],
     [['rec.mov', '--to', 'mp4', '--cut', 'soon']],

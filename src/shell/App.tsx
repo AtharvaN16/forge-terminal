@@ -23,7 +23,7 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { mediaEditAction } from '../core/actions/media.js'
-import { cropAction, resizeAction, trimAction } from '../core/actions/resize.js'
+import { cropAction, resizeAction, trimAction, turnAction } from '../core/actions/resize.js'
 import type { EditRecipe } from '../core/batch.js'
 import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
 import { parseColour } from '../core/colour/parse.js'
@@ -61,6 +61,7 @@ import type {
   ResizeSpec,
   Result,
   SourceInfo,
+  Turn,
 } from '../core/types.js'
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
@@ -70,7 +71,6 @@ import { probe } from '../engines/registry.js'
 import { type FetchedSound, fetchSound } from '../engines/youtube.js'
 import type { ExtensionId } from '../extensions/catalog.js'
 import { assetFor, catalogEntry } from '../extensions/catalog.js'
-import { installed } from '../extensions/paths.js'
 import type { Opened } from '../menu/command.js'
 import { displayName, displayPath } from '../utils/display-path.js'
 import { lastSegment } from '../utils/last-segment.js'
@@ -104,7 +104,7 @@ import { HintBar } from './components/HintBar.js'
 import { Home, homeKeys, Runs } from './components/Home.js'
 import { type Cut, LengthStep } from './components/LengthStep.js'
 import { MediaFormatPicker } from './components/MediaFormatPicker.js'
-import { MenuPopup } from './components/MenuPopup.js'
+import { MenuPopup, menuBodyRows } from './components/MenuPopup.js'
 import { NameTaken } from './components/NameTaken.js'
 import { isNotice, type Notice, Notices, NoticesContext, noticeRows } from './components/Notices.js'
 import { PageGrid } from './components/PageGrid.js'
@@ -193,6 +193,7 @@ import { answerFor, type Question, trailFor } from './trail.js'
 import {
   readTranscribeFile,
   type TranscribeSource,
+  transcribeNeed,
   transcribeVerb,
   transcribeView,
 } from './transcribe-stage.js'
@@ -396,6 +397,7 @@ const isExtensionAction = (act: Action): boolean =>
   act === removeBackgroundAction ||
   act === trimAction ||
   act === resizeAction ||
+  act === turnAction ||
   act === cropAction
 
 /** What edit says to a file that is not an image. */
@@ -765,6 +767,9 @@ const SETTINGS_STEPS: ReadonlySet<string> = new Set([
   'update',
   'about',
 ])
+
+/** The install band's length in the field, as /extensions draws it (G1). */
+const NEED_BAND = 16
 
 export function App({
   initialWidth,
@@ -1370,16 +1375,18 @@ export function App({
 
   /** A link's one yt-dlp run, from the facts the card shows to the sound the run reads. */
   const lookUp = useCallback(
-    (url: string) => {
+    /** `go`: straight on to Transcribe to once the facts are in — after an install, ↵ was already pressed. */
+    (url: string, go = false) => {
       const stop = new AbortController()
       setTranscribing({ kind: 'link', url, phase: 'looking' })
       const sound = fetchSound(url, {
         signal: stop.signal,
         onEvent: (e) => {
           if (stop.signal.aborted) return
-          if (e.kind === 'facts')
+          if (e.kind === 'facts') {
             setTranscribing({ kind: 'link', url, phase: 'ready', facts: e.facts })
-          else {
+            if (go) setStep('transcribe')
+          } else {
             setTranscribing((t) =>
               t?.kind === 'link' && t.phase === 'ready'
                 ? { ...t, fetched: { done: e.done, total: e.total } }
@@ -1431,7 +1438,9 @@ export function App({
         }
         return
       }
-      if ((await installed('yt-dlp')) === undefined) {
+      // The user's own yt-dlp counts: it is used, and nothing is offered (own.ts).
+      const { resolveYtDlp } = await import('../extensions/own.js')
+      if ((await resolveYtDlp()) === undefined) {
         const entry = catalogEntry('yt-dlp')
         const asset = entry && assetFor(entry)
         setTranscribing({
@@ -1449,10 +1458,11 @@ export function App({
 
   /** ↵ on a link that needs yt-dlp: installed in place, in real bytes, then looked up. */
   const installYtDlp = useCallback(
-    async (url: string) => {
+    /** `bytes`: the catalogue's count, so the field says "0 of 37.1 MB" before the first byte. */
+    async (url: string, bytes: number) => {
       const stop = new AbortController()
       installAbort.current = stop
-      setTranscribing({ kind: 'link', url, phase: 'installing', done: 0, total: 1 })
+      setTranscribing({ kind: 'link', url, phase: 'installing', done: 0, total: bytes })
       try {
         const { installExtension } = await import('../extensions/manager.js')
         await installExtension('yt-dlp', {
@@ -1461,7 +1471,8 @@ export function App({
             setTranscribing({ kind: 'link', url, phase: 'installing', done, total }),
         })
         installAbort.current = undefined
-        lookUp(url)
+        // ↵ install meant "go": no second ↵ once yt-dlp is in.
+        lookUp(url, true)
       } catch (e) {
         installAbort.current = undefined
         setTranscribing(undefined)
@@ -1557,12 +1568,17 @@ export function App({
    * or a file staged that ↵ would act on. An empty home shows nothing. Not
    * for a command, whose menu says ↵ open, nor while the drop area asks.
    */
+  /** ↵ install while it installs (a link that needs yt-dlp), ↵ enter otherwise. */
+  const enterWord =
+    mode === 'transcribe' && transcribing && transcribeVerb(transcribing) === 'install'
+      ? 'install'
+      : 'enter'
   const enterCap: Row =
     (process.env.NO_COLOR ?? '') !== '' || palette.keycapBg === ''
-      ? [{ text: '[↵ enter]', fg: keyIsDown('enter') ? palette.fg : palette.border }]
+      ? [{ text: `[↵ ${enterWord}]`, fg: keyIsDown('enter') ? palette.fg : palette.border }]
       : [
           {
-            text: ' ↵ enter ',
+            text: ` ↵ ${enterWord} `,
             fg: palette.ink,
             // The mode's colour, so it reads as the thing to press — a neutral
             // grey in colour mode, where the swatches already compete (2026-10-16).
@@ -1594,6 +1610,39 @@ export function App({
         ? [...presetsCap, { text: '  ' }, ...enterCap]
         : enterCap
       : pasteHint
+  /**
+   * A link waiting for yt-dlp says so in the field, beside ↵ install
+   * (mockups/own-tools-2026-10-round5.html, F2): the need and its size, then
+   * the download on the same line — the G1 band, real bytes.
+   */
+  const need = transcribeNeed(transcribing)
+  const needRow: Row | undefined =
+    need?.kind === 'needs'
+      ? [
+          { text: 'YouTube links need yt-dlp', fg: palette.dim },
+          { text: ' · ', fg: palette.border },
+          { text: need.size, fg: palette.fg, bold: true },
+          { text: ' download', fg: palette.dim },
+        ]
+      : need?.kind === 'installing'
+        ? (() => {
+            const k =
+              need.total > 0 ? Math.round(Math.min(1, need.done / need.total) * NEED_BAND) : 0
+            const band: Row =
+              palette.track === '' || palette.trackFill === ''
+                ? [{ text: `${'━'.repeat(k)}${'─'.repeat(NEED_BAND - k)}`, fg: palette.dim }]
+                : [
+                    { text: ' '.repeat(k), bg: palette.trackFill },
+                    { text: ' '.repeat(NEED_BAND - k), bg: palette.track },
+                  ]
+            return [
+              { text: 'Installing yt-dlp  ', fg: palette.dim },
+              ...band,
+              { text: `  ${need.got}`, fg: palette.fg, bold: true },
+              { text: ` of ${need.of}`, fg: palette.dim },
+            ]
+          })()
+        : undefined
 
   /**
    * Tab lists the supported formats on the drop surface until the next key
@@ -1933,7 +1982,8 @@ export function App({
       if (key.return && mode === 'transcribe' && held) {
         const verb = transcribeVerb(held)
         if (verb === 'transcribe') setStep('transcribe')
-        else if (verb === 'install' && held.kind === 'link') void installYtDlp(held.url)
+        else if (verb === 'install' && held.kind === 'link')
+          void installYtDlp(held.url, held.phase === 'needs-yt-dlp' ? held.bytes : 0)
         return true
       }
       const staged = stageRef.current
@@ -4099,6 +4149,16 @@ export function App({
    */
   const chooseBatchEdit = (row: EditRow, step?: number | string) => {
     if (row.id === 'crop' || row.tooLarge) return
+    if (row.id === 'rotate') {
+      const turn = Number(step ?? row.turns?.[0]?.degrees ?? 90) as Turn
+      startBatchEdit({
+        recipe: { op: 'edit', tool: 'rotate', turn },
+        label: row.label,
+        answer: row.turns?.find((t) => t.degrees === turn)?.label ?? row.label,
+        verb: row.verb,
+      })
+      return
+    }
     if (row.id === 'resize') {
       // Never past what the largest image can take (spec §2.3).
       const most = Math.min(100, ...batchImages.map((i) => largestPercent(i)))
@@ -4210,11 +4270,13 @@ export function App({
   }, [step, tools])
 
   /** ffmpeg is here now (installed, or found): read the file again and go on where it was going. */
-  const lookAgain = () => {
+  const lookAgain = (quiet = false) => {
     const waiting = source
     if (!waiting) return
     probe(waiting.path).then((info) => {
       if (info.kind === 'media' && !info.facts) {
+        // The look every couple of seconds says nothing while it is still missing.
+        if (quiet) return
         hold({
           kind: 'note',
           id: nextId(),
@@ -4226,6 +4288,11 @@ export function App({
       proceedWith(info)
     }, showError)
   }
+
+  /** Forge's own look while the user installs ffmpeg: goes on the moment it is there. */
+  const lookQuietly = useCallback(() => lookAgainRef.current(true), [])
+  const lookAgainRef = useRef(lookAgain)
+  lookAgainRef.current = lookAgain
 
   const installFfmpeg = async () => {
     if (installAbort.current) return
@@ -4729,7 +4796,11 @@ export function App({
           ? `${enhancing.label} ${values.scale}×`
           : enhancing.shapes && typeof values.shape === 'string'
             ? `${enhancing.label} ${values.shape}`
-            : enhancing.label
+            : enhancing.turns && values.turn !== undefined
+              ? `${enhancing.label} ${enhancing.turns.find((t) => t.degrees === values.turn)?.label ?? ''}`.trim()
+              : enhancing.speeds && typeof values.speed === 'number'
+                ? `${enhancing.label} ${values.speed}×`
+                : enhancing.label
         : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
@@ -4849,8 +4920,8 @@ export function App({
   const menuOpen = commands !== undefined
   /** The popup's inside: one column in from each side, the border and a column of padding. */
   const menuInner = Math.max(20, width - 2 * HOME_MARGIN - 4)
-  /** Rows for a setting's own content: the box less its border, bar, two blanks and field. */
-  const menuBody = Math.max(6, height - 3 - 6)
+  /** Rows for a setting's own content, as the popup lays them out. */
+  const menuBody = menuBodyRows(height, palette)
   const homeField = (w: number, row = false) => (
     <Prompt
       value={text}
@@ -4872,6 +4943,7 @@ export function App({
       intercept={homeKey}
       hint={emptyHint}
       typedHint={askingSearch ? undefined : sendHint}
+      placeholderRow={mode === 'transcribe' ? needRow : undefined}
       row={row}
     />
   )
@@ -5319,7 +5391,8 @@ export function App({
                 checking={checking}
                 how={process.platform === 'win32' ? 'winget install ffmpeg' : 'brew install ffmpeg'}
                 onInstall={() => void installFfmpeg()}
-                onLookAgain={lookAgain}
+                onLookAgain={() => lookAgain()}
+                onPoll={lookQuietly}
                 onStop={() => installAbort.current?.abort()}
                 onCancel={clearSource}
                 width={width}
@@ -5420,7 +5493,7 @@ export function App({
                 rows={mediaEditRows(source)}
                 tools={{}}
                 checking={false}
-                chosen={{ tool: values.tool, step: values.shape }}
+                chosen={{ tool: values.tool, step: values.shape ?? values.turn ?? values.speed }}
                 width={width}
                 onChoose={chooseEdit}
                 onStop={() => {}}
@@ -5440,7 +5513,10 @@ export function App({
                 )}
                 tools={toolStates}
                 checking={checking}
-                chosen={{ tool: values.tool, step: values.shape ?? values.scale }}
+                chosen={{
+                  tool: values.tool,
+                  step: values.shape ?? values.scale ?? values.turn ?? values.speed,
+                }}
                 width={width}
                 onChoose={(row, step) => {
                   const state = row.extension ? toolStates[row.extension] : { kind: 'ready' }
@@ -5697,9 +5773,11 @@ export function App({
                     lastResult.job.op === 'convert'
                       ? lastResult.job.options.crop
                         ? 'crop'
-                        : lastResult.job.options.resize
-                          ? 'resize'
-                          : 'trim'
+                        : lastResult.job.options.rotate
+                          ? 'rotate'
+                          : lastResult.job.options.resize
+                            ? 'resize'
+                            : 'trim'
                       : lastResult.job.op === 'remove-background'
                         ? 'remove-background'
                         : 'boost'

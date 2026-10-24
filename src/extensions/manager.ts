@@ -62,6 +62,9 @@ async function diskBytes(dir: string): Promise<number> {
   return total
 }
 
+/** What `id` takes on disk now, model cache included: what removing it frees. */
+export const extensionBytes = (id: string) => diskBytes(join(extensionsRoot(), id))
+
 /** Darwin kernel major -> macOS major. macOS 26 shipped with Darwin 25; before that it was Darwin - 9. */
 function macosMajor(): number {
   const darwin = Number.parseInt(release(), 10)

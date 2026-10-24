@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { planEdit } from '../../src/core/actions/resize.js'
+import { planEdit, turnAction } from '../../src/core/actions/resize.js'
 import { resizedSize, sizeOverLimit } from '../../src/core/resize.js'
 import type { ImageInfo } from '../../src/core/types.js'
 
@@ -83,5 +83,28 @@ describe('planEdit', () => {
       keepMetadata: false,
     })
     expect(both?.outputs).toEqual([resolve('/p/photo-trimmed-1200w.jpg')])
+  })
+})
+
+describe('rotate', () => {
+  it('carries the turn, keeps the format and says which way in the name', () => {
+    const [right] = turnAction.plan([img()], { turn: 90 })
+    expect(right).toMatchObject({
+      op: 'convert',
+      target: 'jpeg',
+      outputs: [resolve('/p/photo-rotated-right.jpg')],
+      options: { rotate: 90 },
+    })
+    expect(turnAction.plan([img()], { turn: 270 })[0]?.outputs[0]).toBe(
+      resolve('/p/photo-rotated-left.jpg'),
+    )
+    expect(turnAction.plan([img()], { turn: 180 })[0]?.outputs[0]).toBe(
+      resolve('/p/photo-rotated-180.jpg'),
+    )
+  })
+
+  it('plans nothing without a turn, and does not apply to an animation', () => {
+    expect(turnAction.plan([img()], {})).toEqual([])
+    expect(turnAction.appliesTo([img({ frames: 3, format: 'gif' })])).toBe(false)
   })
 })

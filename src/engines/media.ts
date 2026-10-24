@@ -26,7 +26,13 @@ import type {
 import { formatBytes } from '../core/units.js'
 import { displayName } from '../utils/display-path.js'
 import { type Ffmpeg, findFfmpeg, keyframeAtOrBefore, probeMedia, runFfmpeg } from './ffmpeg.js'
-import { type EncodePlan, LOUDNORM_MEASURED, planEncode } from './media-encode.js'
+import {
+  type EncodePlan,
+  LOUDNORM_MEASURED,
+  NOISE_FLOOR,
+  noiseFloorOf,
+  planEncode,
+} from './media-encode.js'
 import { mediaFloor } from './media-size.js'
 import { type MediaFormat, SNIFF_BYTES, sniffMedia } from './media-sniff.js'
 import type { Engine } from './types.js'
@@ -222,12 +228,15 @@ async function run(
 
   const steps = async (p: EncodePlan) => {
     let loudness = ''
+    let noise = ''
     for (const step of p.steps) {
-      const args = step.args.map((a) => a.replace(LOUDNORM_MEASURED, loudness))
+      const args = step.args.map((a) =>
+        a.replace(LOUDNORM_MEASURED, loudness).replace(NOISE_FLOOR, noise),
+      )
       const report = await runFfmpeg(args, {
         tools,
         signal,
-        report: step.measures === 'loudness',
+        report: step.measures !== undefined,
         onTime: (s) =>
           onPhase({
             phase: 'time',
@@ -237,6 +246,7 @@ async function run(
           }),
       })
       if (step.measures === 'loudness') loudness = measured(report)
+      if (step.measures === 'noise') noise = String(noiseFloorOf(report))
     }
   }
 

@@ -133,6 +133,40 @@ describe('UpdateFlow (U4)', () => {
     expect(row(f, '↑↓')).toContain('choose')
   })
 
+  it('the shell drawing it again checks no second time, and the notes keep their place', async () => {
+    // The shell hands a new onChecked on every render (each key press draws
+    // it twice: down, then up). Checking again on that reset the scroll and
+    // flashed "checking npm" — the notes could not be scrolled.
+    const { updater, calls } = fakeUpdater({ notes: LONG })
+    const at = (onChecked: () => void) => (
+      <UpdateFlow
+        width={80}
+        height={23}
+        current="0.2.1"
+        auto
+        updater={updater}
+        onClose={vi.fn()}
+        onRestart={vi.fn()}
+        onChecked={onChecked}
+      />
+    )
+    const f = render(at(() => {}))
+    await until(() => frame(f).includes('Change 1'))
+    await tick()
+    f.stdin.write(DOWN)
+    await tick()
+    f.stdin.write(DOWN)
+    await tick()
+    f.stdin.write(DOWN)
+    await until(() => !frame(f).includes('Change 1 '))
+    f.rerender(at(() => {}))
+    await tick()
+    await tick()
+    expect(calls.checks).toBe(1)
+    expect(frame(f)).not.toContain('Change 1 ')
+    expect(frame(f)).toContain('Change 2')
+  })
+
   it('↓ from Check automatically goes nowhere when every note fits', async () => {
     const { updater } = fakeUpdater()
     const f = open(updater)

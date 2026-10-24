@@ -53,6 +53,7 @@ function verbFor(job: Job): string {
     case 'convert':
       if (job.options.crop && job.options.resize) return 'cropped and resized'
       if (job.options.crop) return 'cropped'
+      if (job.options.rotate) return 'rotated'
       if (job.options.trim && job.options.resize) return 'trimmed and resized'
       if (job.options.resize) return 'resized'
       if (job.options.trim) return 'trimmed'

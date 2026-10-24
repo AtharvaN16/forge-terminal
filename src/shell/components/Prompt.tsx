@@ -136,6 +136,12 @@ interface PromptProps {
   hint?: Row | undefined
   /** `home` only: a key hint at the far end once something is typed — "enter send" (2026-10-19). */
   typedHint?: Row | undefined
+  /**
+   * `home` only: words in the placeholder's place while the field is empty —
+   * what a staged link still needs, its download — styled where a
+   * placeholder is one dim string (own tools, 2026-10-23).
+   */
+  placeholderRow?: Row | undefined
   /** `inline` only: false draws no `› ` before the value (Save as's name box). */
   marker?: boolean
   /**
@@ -245,6 +251,7 @@ export function Prompt({
   after: trailing,
   hint,
   typedHint,
+  placeholderRow,
   marker = true,
   row = false,
   valueColour,
@@ -883,6 +890,18 @@ export function Prompt({
         <Text> </Text>
         {value || span ? (
           line
+        ) : placeholderRow ? (
+          placeholderRow.map((run, i) => (
+            <Text
+              // biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are positional
+              key={i}
+              color={colourProp(run.fg ?? '')}
+              backgroundColor={colourProp(run.bg ?? '')}
+              bold={run.bold ?? false}
+            >
+              {run.text}
+            </Text>
+          ))
         ) : (
           <Text color={colourProp(palette.border)}>
             {isActive ? caretGlyph(first) : first}

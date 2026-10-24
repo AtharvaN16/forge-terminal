@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { turnAction } from '../../src/core/actions/resize.js'
 import type { ImageInfo } from '../../src/core/types.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import {
@@ -34,6 +35,7 @@ describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
       ['cutout', 'Remove background'],
       ['trim', 'Trim edges'],
       ['resize', 'Resize'],
+      ['rotate', 'Rotate'],
       ['crop', 'Crop to shape'],
     ])
   })
@@ -83,6 +85,7 @@ describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
       'Keeps the subject.',
       'Cuts off plain borders.',
       'Any size, no new detail.',
+      'Turns it a quarter or a half.',
       'Changes the shape.',
     ])
     expect(rows[0]?.pane.long).toContain('on-device model')
@@ -109,6 +112,34 @@ describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
     const sharpen = editRow(image(1200, 900), 'sharpen')
     if (!sharpen) throw new Error('no sharpen row')
     expect(rowValues(sharpen)).toEqual({ tool: 'sharpen', target: 'png', scale: '1' })
+  })
+})
+
+describe('the Rotate row', () => {
+  it('is built in, with the three turns and the size each leaves', () => {
+    const rotate = editRow(image(1600, 900), 'rotate')
+    expect(rotate?.extension).toBeUndefined()
+    expect(rotate?.turns?.map((t) => [t.label, t.detail.dim, t.detail.bold])).toEqual([
+      ['90° right', 'becomes ', '900 × 1600'],
+      ['180°', 'same size · ', '1600 × 900'],
+      ['90° left', 'becomes ', '900 × 1600'],
+    ])
+    expect(rotate?.verb).toBe('Rotating')
+    expect(rotate && actionForRow(rotate)).toBe(turnAction)
+  })
+
+  it('answers with the turn on the pill', () => {
+    const rotate = editRow(image(1200, 900), 'rotate')
+    if (!rotate) throw new Error('no rotate row')
+    expect(pillOf(rotate)?.noun).toBe('turn')
+    expect(rowValues(rotate, 270)).toEqual({ tool: 'rotate', target: 'png', turn: 270 })
+    expect(rowValues(rotate)).toEqual({ tool: 'rotate', target: 'png', turn: 90 })
+  })
+
+  it('is dimmed for an animation, which cannot be rotated', () => {
+    const gif = { ...image(400, 300, 'gif'), frames: 12 } as ImageInfo
+    expect(editRow(gif, 'rotate')?.tooLarge).toBe('animated')
+    expect(editRow(image(400, 300), 'rotate')?.tooLarge).toBeUndefined()
   })
 })
 

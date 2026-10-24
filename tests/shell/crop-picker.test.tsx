@@ -75,8 +75,8 @@ describe('the Crop to shape row’s pill', () => {
     const chose: Array<[string, unknown]> = []
     const p = picker((row, step) => chose.push([row.id, step]))
     await settle()
-    // Sharpen, Boost, Remove background, Trim edges, Resize, then Crop to shape.
-    for (let i = 0; i < 5; i++) {
+    // Sharpen, Boost, Remove background, Trim edges, Resize, Rotate, then Crop to shape.
+    for (let i = 0; i < 6; i++) {
       p.app.stdin.write(DOWN)
       await settle()
     }
@@ -122,13 +122,13 @@ describe('the Crop to shape row’s pill', () => {
     await settle()
     expect(p.plain().join('\n')).toContain('‹ 4× ›')
     expect(p.plain().at(-1)).toMatch(/←→ +scale/)
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       p.app.stdin.write(DOWN)
       await settle()
     }
     // Crop opens at its first shape, not at Boost's second step.
     expect(p.plain().join('\n')).toContain('‹ 1:1 ›')
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       p.app.stdin.write(`${ESC}[A`)
       await settle()
     }

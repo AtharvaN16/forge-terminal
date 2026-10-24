@@ -63,9 +63,9 @@ describe('destinationOption', () => {
   })
 
   it('offers New subfolder only when given its name', () => {
-    expect(destinationOption(source, DEFAULT_PREFERENCES).presets.map((p) => p.label)).not.toContain(
-      'New subfolder',
-    )
+    expect(
+      destinationOption(source, DEFAULT_PREFERENCES).presets.map((p) => p.label),
+    ).not.toContain('New subfolder')
     const spec = destinationOption(source, DEFAULT_PREFERENCES, { subfolder: 'compressed' })
     expect(spec.presets.at(-1)).toEqual({
       label: 'New subfolder',

@@ -5,11 +5,11 @@ import type { Choice } from '../../core/actions/index.js'
 import { formatBytes } from '../../core/units.js'
 import type { ExtensionId } from '../../extensions/catalog.js'
 import { detailAt, type EditRow, GAP_AFTER, pillOf, type ToolState } from '../edit.js'
-import { HOME_MARGIN } from '../home-art.js'
+import { HOME_MARGIN, type Row } from '../home-art.js'
 import { titleRow } from '../quality-art.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
-import { colourProp } from '../theme.js'
+import { colourProp, modeColours } from '../theme.js'
 import { useKeys } from '../useKeys.js'
 import { HintBar } from './HintBar.js'
 import { Runs } from './Home.js'
@@ -23,6 +23,16 @@ const READY: ToolState = { kind: 'ready' }
 
 /** The install byte band's width, a cell tall (G1's look for a real count). */
 const BYTE_BAND = 12
+
+/**
+ * What a tool still needs, in the words of the row over the keys
+ * (mockups/own-tools-2026-10-round5.html, F3): Boost's model, Remove
+ * background's helper.
+ */
+const NEEDS: Partial<Record<ExtensionId, string>> = {
+  boost: 'its on-device model',
+  'remove-background': 'its helper',
+}
 
 /** The narrowest the pane gets before its words wrap a line each. */
 const PANE_MIN = 30
@@ -187,30 +197,8 @@ export function EditPicker({
   /** The pane's last line: what you get, or where the tool's install stands. */
   const fact = () => {
     if (!here) return null
-    if (hereState?.kind === 'installing') {
-      if (checking) return <Text color={dim}>checking</Text>
-      const k = hereState.total > 0 ? Math.round((hereState.done / hereState.total) * BYTE_BAND) : 0
-      const { got, of } = bytesOf(hereState.done, hereState.total)
-      return (
-        <Text>
-          <Text backgroundColor={colourProp(palette.trackFill)}>{' '.repeat(k)}</Text>
-          <Text backgroundColor={colourProp(palette.track)}>{' '.repeat(BYTE_BAND - k)}</Text>
-          <Text>{'  '}</Text>
-          <Text bold color={fg}>
-            {got}
-          </Text>
-          <Text color={dim}>{` of ${of}`}</Text>
-        </Text>
-      )
-    }
-    if (hereState?.kind === 'absent') {
-      return (
-        <Text>
-          <Text color={dim}>{`${formatBytes(hereState.downloadBytes)} download · `}</Text>
-          <Text color={fg}>↵ installs</Text>
-        </Text>
-      )
-    }
+    // A tool still to install says so on the row over the keys, not here.
+    if (hereState?.kind === 'installing' || hereState?.kind === 'absent') return null
     if (hereState === undefined) return null
     const detail = detailAt(here, stepNow?.value)
     return (
@@ -225,6 +213,58 @@ export function EditPicker({
       </Text>
     )
   }
+
+  /**
+   * The row over the keys while the highlighted tool is not on this Mac
+   * (F3): what it needs and its size, ↵ install at the far end in edit's
+   * colour; then the byte band on the same row, then "checking".
+   */
+  const needRow = (): Row | undefined => {
+    if (!here) return undefined
+    if (hereState?.kind === 'absent') {
+      const what = here.extension ? (NEEDS[here.extension] ?? 'a download') : 'a download'
+      return [
+        { text: `${here.label} needs ${what}`, fg: palette.dim },
+        { text: ' · ', fg: palette.border },
+        { text: formatBytes(hereState.downloadBytes), fg: palette.fg, bold: true },
+        { text: ' download', fg: palette.dim },
+      ]
+    }
+    if (hereState?.kind === 'installing') {
+      const lead = { text: `Installing ${here.label}  `, fg: palette.dim }
+      if (checking) return [lead, { text: 'checking', fg: palette.dim }]
+      const k =
+        hereState.total > 0
+          ? Math.round(Math.min(1, hereState.done / hereState.total) * BYTE_BAND)
+          : 0
+      const { got, of } = bytesOf(hereState.done, hereState.total)
+      const band: Row =
+        palette.track === '' || palette.trackFill === ''
+          ? [{ text: `${'━'.repeat(k)}${'─'.repeat(BYTE_BAND - k)}`, fg: palette.dim }]
+          : [
+              { text: ' '.repeat(k), bg: palette.trackFill },
+              { text: ' '.repeat(BYTE_BAND - k), bg: palette.track },
+            ]
+      return [
+        lead,
+        ...band,
+        { text: `  ${got}`, fg: palette.fg, bold: true },
+        { text: ` of ${of}`, fg: palette.dim },
+      ]
+    }
+    return undefined
+  }
+  const need = needRow()
+  const chip: Row =
+    palette.keycapBg === '' || (process.env.NO_COLOR ?? '') !== ''
+      ? [{ text: '[↵ install]', fg: palette.border }]
+      : [{ text: ' ↵ install ', fg: palette.ink, bg: modeColours(palette, 'edit').fg, bold: true }]
+  const hint = need ? (
+    <Box width={width} paddingX={HOME_MARGIN} justifyContent="space-between">
+      <Runs row={need} />
+      {hereState?.kind === 'absent' ? <Runs row={chip} /> : null}
+    </Box>
+  ) : undefined
 
   const main: Array<[string, string]> = installing
     ? [['esc', 'stop']]
@@ -292,6 +332,7 @@ export function EditPicker({
       </Box>
       <HintBar
         width={width}
+        hint={hint}
         pairs={main}
         foot={[
           ['esc', 'back'],

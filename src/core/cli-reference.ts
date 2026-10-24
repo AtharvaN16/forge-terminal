@@ -188,6 +188,11 @@ export const CLI_TABS: CliTab[] = [
         does: 'even out the loudness',
         ex: 'forge talk.mp3 --loudness -16',
       },
+      {
+        name: '--clean-audio',
+        does: 'clear hiss and rumble, even the level',
+        ex: 'forge call.mp4 --clean-audio',
+      },
     ],
   },
   {
