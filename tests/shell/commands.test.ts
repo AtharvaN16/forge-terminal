@@ -166,6 +166,7 @@ describe('the registry', () => {
   it('names the right-click menu as each system does', () => {
     expect(rightClickDescription('darwin')).toBe('manage Forge mac quick actions')
     expect(rightClickDescription('win32')).toBe('manage Forge right-click actions')
+    expect(rightClickDescription('linux')).toBe('manage Forge right-click actions')
   })
 
   it('carries every command the shell can run', () => {
