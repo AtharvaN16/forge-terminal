@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { onPath } from './linux.js'
 
 /**
  * One notification, for a menu item that runs with no window (Sharpen) and
@@ -12,6 +13,10 @@ import { execFile } from 'node:child_process'
  * install registers in the current user's hive with Forge's name and logo.
  * Without one Windows may drop the toast silently. Windows PowerShell 5.1,
  * not pwsh: the WinRT types are reachable from it with no extra modules.
+ *
+ * Linux: notify-send, libnotify's own tool, where it is installed; else
+ * gdbus, which comes with GLib, straight to the desktop's notification
+ * service (org.freedesktop.Notifications); else nothing at all.
  */
 
 /** The app ID Forge's toasts are sent under, registered by install (windows.ts). */
@@ -70,10 +75,74 @@ export function notifyCommand(
   ]
 }
 
+/**
+ * The GVariant text for a string, as gdbus reads each argument: unquoted, a
+ * title such as `42` or `true` would be read as some other type.
+ */
+export const gvariantString = (s: string) =>
+  `"${s.replace(/[\\"]/g, '\\$&').replace(/\n/g, '\\n')}"`
+
+export interface LinuxNotify {
+  /** Whether a program is on PATH; the real PATH when absent. */
+  has?: (cmd: string) => boolean
+  /** The logo shown beside the notification. */
+  icon?: string
+}
+
+/** The program and arguments that post the notification on Linux; undefined when nothing can. */
+export function linuxNotifyCommand(
+  title: string,
+  body: string,
+  o: LinuxNotify = {},
+): [string, string[]] | undefined {
+  const has = o.has ?? ((cmd: string) => onPath(cmd))
+  if (has('notify-send'))
+    return [
+      'notify-send',
+      ['--app-name=Forge', ...(o.icon ? [`--icon=${o.icon}`] : []), '--', title, body],
+    ]
+  if (has('gdbus'))
+    return [
+      'gdbus',
+      [
+        'call',
+        '--session',
+        '--dest',
+        'org.freedesktop.Notifications',
+        '--object-path',
+        '/org/freedesktop/Notifications',
+        '--method',
+        'org.freedesktop.Notifications.Notify',
+        gvariantString('Forge'),
+        '0',
+        gvariantString(o.icon ?? ''),
+        gvariantString(title),
+        gvariantString(body),
+        '[]',
+        '{}',
+        '-1',
+      ],
+    ]
+  return undefined
+}
+
 /** Posts it. Never throws: a notification that could not be shown is not worth failing over. */
-export function notify(title: string, body: string, platform: NodeJS.Platform = process.platform) {
-  const [cmd, args] = notifyCommand(title, body, platform)
+export function notify(
+  title: string,
+  body: string,
+  platform: NodeJS.Platform = process.platform,
+  linux: LinuxNotify = {},
+) {
+  const command =
+    platform === 'linux'
+      ? linuxNotifyCommand(title, body, linux)
+      : notifyCommand(title, body, platform)
   return new Promise<void>((resolve) => {
-    execFile(cmd, args, { timeout: 10_000, windowsHide: true }, () => resolve())
+    if (command === undefined) return resolve()
+    try {
+      execFile(command[0], command[1], { timeout: 10_000, windowsHide: true }, () => resolve())
+    } catch {
+      resolve()
+    }
   })
 }

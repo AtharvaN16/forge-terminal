@@ -1,6 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { installMenu, type MenuEnv, readState, removeMenu, stateMatches } from './install.js'
+import {
+  hasMenu,
+  installMenu,
+  type MenuEnv,
+  readState,
+  removeMenu,
+  stateMatches,
+} from './install.js'
 
 /**
  * Setting the menu up as the shell starts. Decided: the menu is the same for
@@ -20,7 +27,7 @@ export async function ensureMenu(
     enabled?: boolean
   },
 ): Promise<string | undefined> {
-  if (!o.global || (e.platform !== 'darwin' && e.platform !== 'win32')) return undefined
+  if (!o.global || !hasMenu(e.platform)) return undefined
   const state = readState(e)
   if (o.enabled === false) {
     if (state !== undefined) await removeMenu(e)
@@ -50,11 +57,34 @@ export async function resync(e: MenuEnv): Promise<void> {
 const terminalFile = (e: Pick<MenuEnv, 'menuDir'>) => join(e.menuDir, 'terminal')
 const MAC_TERMINALS = new Set(['Apple_Terminal', 'iTerm.app', 'ghostty'])
 
+/** The terminals that say so in TERM_PROGRAM on Linux, by the name run.ts opens them by. */
+const LINUX_TERM_PROGRAMS: Record<string, string> = {
+  WezTerm: 'wezterm',
+  ghostty: 'ghostty',
+  kitty: 'kitty',
+}
+
+/**
+ * The Linux terminal Forge is running in, by the variable each sets for its
+ * shell. Inside VS Code or tmux (TERM_PROGRAM says some other name) those
+ * may be left over from wherever that was started, so nothing is read.
+ */
+function linuxTerminal(env: NodeJS.ProcessEnv): string | undefined {
+  if (env.TERM_PROGRAM) return LINUX_TERM_PROGRAMS[env.TERM_PROGRAM]
+  if (env.TMUX) return undefined
+  if (env.KITTY_WINDOW_ID) return 'kitty'
+  if (env.ALACRITTY_WINDOW_ID || env.ALACRITTY_SOCKET) return 'alacritty'
+  if (env.KONSOLE_VERSION) return 'konsole'
+  if (env.GNOME_TERMINAL_SCREEN || env.GNOME_TERMINAL_SERVICE) return 'gnome-terminal'
+  if (env.XTERM_VERSION) return 'xterm'
+  return undefined
+}
+
 /**
  * Keeps the terminal Forge is running in, so a menu item that opens Forge
  * opens it there next time. On a Mac that is TERM_PROGRAM; on Windows,
- * Windows Terminal sets WT_SESSION. A terminal that says neither keeps the
- * last one known.
+ * Windows Terminal sets WT_SESSION; on Linux, each terminal's own variable.
+ * A terminal that says none of these keeps the last one known.
  */
 export function rememberTerminal(e: Pick<MenuEnv, 'menuDir' | 'platform'>, env: NodeJS.ProcessEnv) {
   // Only terminals the menu knows how to open (run.ts): one inside VS Code or
@@ -64,9 +94,11 @@ export function rememberTerminal(e: Pick<MenuEnv, 'menuDir' | 'platform'>, env: 
       ? env.WT_SESSION
         ? 'wt'
         : 'console'
-      : MAC_TERMINALS.has(env.TERM_PROGRAM ?? '')
-        ? env.TERM_PROGRAM
-        : undefined
+      : e.platform === 'linux'
+        ? linuxTerminal(env)
+        : MAC_TERMINALS.has(env.TERM_PROGRAM ?? '')
+          ? env.TERM_PROGRAM
+          : undefined
   if (!terminal) return
   try {
     mkdirSync(e.menuDir, { recursive: true })
