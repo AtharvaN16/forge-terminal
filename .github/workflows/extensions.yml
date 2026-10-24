@@ -144,8 +144,10 @@ jobs:
       - name: Build tools (whisper)
         if: needs.resolve.outputs.id == 'whisper'
         run: |
-          python3 -m pip install --require-hashes -r extensions/whisper/zig-requirements.txt
-          python3 -m ziglang version
+          # A venv: the macOS runner's Python is Homebrew's, which refuses a bare pip install (PEP 668).
+          python3 -m venv .zig
+          .zig/bin/python -m pip install --require-hashes -r extensions/whisper/zig-requirements.txt
+          .zig/bin/python -m ziglang version
           command -v cmake || brew install cmake
           command -v ninja || brew install ninja
 
@@ -184,7 +186,7 @@ jobs:
             for arch in x64 arm64; do
               node extensions/whisper/build.mjs --platform win32 --arch "$arch" --out "dist-ext/payload-win32-$arch"
               node scripts/package-extension.mjs whisper "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
-              node extensions/whisper/build.mjs --platform linux --arch "$arch" --zig "python3 -m ziglang" --out "dist-ext/payload-linux-$arch"
+              node extensions/whisper/build.mjs --platform linux --arch "$arch" --zig "$PWD/.zig/bin/python -m ziglang" --out "dist-ext/payload-linux-$arch"
               node scripts/package-extension.mjs whisper "$VERSION" "linux-$arch" "dist-ext/payload-linux-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
           elif [ "$ID" = "heic" ]; then
