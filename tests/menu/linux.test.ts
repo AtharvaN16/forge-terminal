@@ -210,3 +210,31 @@ describe('Thunar’s uca.xml', () => {
     expect(mergeUca('<actions>\n<action>', actions)).toBeUndefined()
   })
 })
+
+describe('presets in the Linux menu', () => {
+  const items = menuItems({ sharpen: true, presets: ['web-small', 'print'] })
+  const presets = items.filter((i) => i.preset !== undefined)
+  const order = menuItems({ sharpen: true }).map((i) => i.action)
+
+  it('runs a preset by name, as Windows and the Mac do', () => {
+    const [web] = presets
+    if (web === undefined) throw new Error('a preset item')
+    expect(nautilusScript(web, '/m/run')).toContain(`exec '/m/run' preset web-small "$@"`)
+    expect(nemoAction(web, '/m/run')).toContain(`Exec='/m/run' preset web-small %F`)
+  })
+
+  it('gives each preset its own name, after every built-in item', () => {
+    const names = presets.map((p) => nemoName(p, order))
+    expect(new Set(names).size).toBe(2)
+    for (const name of names) expect(name).toMatch(new RegExp(`^forge-${order.length + 1}-preset-`))
+  })
+
+  it('gives each its own Dolphin action and Thunar id', () => {
+    const menu = dolphinMenu('image', items, { launcher: '/m/run', menuDir: '/m' }) ?? ''
+    expect(menu).toContain('[Desktop Action preset-web-small]')
+    expect(menu).toContain('[Desktop Action preset-print]')
+    const uca = thunarActions(presets, { launcher: '/m/run', menuDir: '/m' })
+    expect(uca).toContain('-preset-web-small</unique-id>')
+    expect(uca).toContain(`preset print %F</command>`)
+  })
+})

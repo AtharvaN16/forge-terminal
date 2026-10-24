@@ -241,13 +241,32 @@ const dirsOf = (e: MenuEnv) =>
   })
 
 /** Every file Forge may have written for a Linux file manager, Sharpen's included. */
+/**
+ * Every file Forge may have written for the file managers: the built-in
+ * items by name, and whatever else is in Forge's own Nautilus folder or
+ * named as Forge's Nemo actions are (a preset's, turned off since).
+ * `removeOwned` still deletes only those carrying Forge's marker.
+ */
 function linuxFiles(d: LinuxDirs): string[] {
   const all = menuItems({ sharpen: true })
   const order = all.map((i) => i.action)
+  const listed = (dir: string, keep: (name: string) => boolean) => {
+    try {
+      return readdirSync(dir)
+        .filter(keep)
+        .map((name) => join(dir, name))
+    } catch {
+      return []
+    }
+  }
   return [
-    ...all.map((i) => join(nautilusDir(d), nautilusName(i))),
-    ...all.map((i) => join(nemoDir(d), nemoName(i, order))),
-    ...DOLPHIN_KINDS.map((k) => join(dolphinDir(d), dolphinName(k))),
+    ...new Set([
+      ...all.map((i) => join(nautilusDir(d), nautilusName(i))),
+      ...listed(nautilusDir(d), () => true),
+      ...all.map((i) => join(nemoDir(d), nemoName(i, order))),
+      ...listed(nemoDir(d), (name) => name.startsWith('forge-') && name.endsWith('.nemo_action')),
+      ...DOLPHIN_KINDS.map((k) => join(dolphinDir(d), dolphinName(k))),
+    ]),
   ]
 }
 

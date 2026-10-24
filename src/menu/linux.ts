@@ -80,6 +80,14 @@ export const pngName = (item: Pick<MenuItem, 'paint'>) => `${item.paint}.png`
 
 export const nautilusDir = (d: LinuxDirs) => join(d.dataHome, 'nautilus', 'scripts', 'Forge')
 
+/** An item's own name among Forge's: its action, or a preset's, which can be several. */
+export const itemId = (item: Pick<MenuItem, 'action' | 'preset'>) =>
+  item.preset === undefined ? item.action : `preset-${item.preset}`
+
+/** What the launcher is given before the files: the action, and a preset's name (letters, digits, dashes). */
+export const itemArgs = (item: Pick<MenuItem, 'action' | 'preset'>) =>
+  item.preset === undefined ? item.action : `preset ${item.preset}`
+
 /** Nautilus shows a script by its file name, so the name is the label. */
 export const nautilusName = (item: Pick<MenuItem, 'label'>) => item.label
 
@@ -97,7 +105,7 @@ if [ -n "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" ]; then
   set -f
   set -- $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS
 fi
-exec ${shellQuote(launcher)} ${item.action} "$@"
+exec ${shellQuote(launcher)} ${itemArgs(item)} "$@"
 `
 }
 
@@ -105,9 +113,12 @@ exec ${shellQuote(launcher)} ${item.action} "$@"
 
 export const nemoDir = (d: LinuxDirs) => join(d.dataHome, 'nemo', 'actions')
 
-/** Numbered in menu order, from the full list so a name never changes with Boost. */
-export const nemoName = (item: Pick<MenuItem, 'action'>, order: string[]) =>
-  `forge-${order.indexOf(item.action) + 1}-${item.action}.nemo_action`
+/**
+ * Numbered in menu order, from the full list so a name never changes with
+ * Boost; presets after every built-in item, as in the menu.
+ */
+export const nemoName = (item: Pick<MenuItem, 'action' | 'preset'>, order: string[]) =>
+  `forge-${item.preset === undefined ? order.indexOf(item.action) + 1 : order.length + 1}-${itemId(item)}.nemo_action`
 
 /**
  * `%` starts one of Nemo's tokens (and a desktop file's field codes), so a
@@ -125,7 +136,7 @@ export function nemoAction(item: MenuItem, launcher: string): string {
 # ${MARKER}: Forge's right-click menu, written by Forge. \`forge menu remove\` takes it out.
 Name=${percent(item.label)}
 Comment=${percent(item.label)}
-Exec=${percent(shellQuote(launcher))} ${item.action} %F
+Exec=${percent(shellQuote(launcher))} ${itemArgs(item)} %F
 Selection=notnone
 Mimetypes=${mimeTypes(item.kinds)}
 `
@@ -166,17 +177,17 @@ export function dolphinMenu(
     'ServiceTypes=KonqPopupMenu/Plugin',
     'X-KDE-ServiceTypes=KonqPopupMenu/Plugin',
     `MimeType=${MIME_TYPES[kind]};`,
-    `Actions=${items.map((i) => `${i.action};`).join('')}`,
+    `Actions=${items.map((i) => `${itemId(i)};`).join('')}`,
     'X-KDE-Priority=TopLevel',
     ...(submenu ? ['X-KDE-Submenu=Forge', `Icon=${join(o.menuDir, 'forge.png')}`] : []),
   ]
   const actions = items.map((i) =>
     [
       '',
-      `[Desktop Action ${i.action}]`,
+      `[Desktop Action ${itemId(i)}]`,
       `Name=${i.label}`,
       `Icon=${join(o.menuDir, pngName(i))}`,
-      `Exec=${desktopQuote(o.launcher)} ${i.action} %F`,
+      `Exec=${desktopQuote(o.launcher)} ${itemArgs(i)} %F`,
     ].join('\n'),
   )
   return `${[...head, ...actions].join('\n')}\n`
@@ -193,7 +204,7 @@ export const thunarDefaults = (d: LinuxDirs) =>
 /** A uca.xml with no actions at all: what Forge writes when Thunar has none to start with. */
 export const EMPTY_UCA = '<?xml version="1.0" encoding="UTF-8"?>\n<actions>\n</actions>\n'
 
-const ucaId = (item: Pick<MenuItem, 'action'>) => `${MARKER}-${item.action}`
+const ucaId = (item: Pick<MenuItem, 'action' | 'preset'>) => `${MARKER}-${itemId(item)}`
 
 const xml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -222,7 +233,7 @@ export function thunarActions(items: MenuItem[], o: { launcher: string; menuDir:
         `\t<name>${xml(i.label)}</name>`,
         `\t<submenu>${i.kinds.includes('pdf') ? '' : 'Forge'}</submenu>`,
         `\t<unique-id>${ucaId(i)}</unique-id>`,
-        `\t<command>${xml(percent(shellQuote(o.launcher)))} ${i.action} %F</command>`,
+        `\t<command>${xml(percent(shellQuote(o.launcher)))} ${itemArgs(i)} %F</command>`,
         `\t<description>${xml(i.label)}</description>`,
         '\t<range></range>',
         `\t<patterns>${xml(all.join(';'))}</patterns>`,
