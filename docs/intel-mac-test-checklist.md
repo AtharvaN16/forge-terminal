@@ -5,7 +5,7 @@ part and send what you have. Do the steps in order. Write down anything that
 looks odd, even if it still worked.
 
 Forge has only been run by hand on Apple-silicon Macs. An Intel Mac is a
-different case in a few places (no Apple speech engine, no Boost, the
+different case in a few places (no Apple speech engine, Boost on the graphics chip, the
 programs inside Forge are built for Intel). Those are marked **Intel:** below.
 
 Each step says what to do, then **Right:** what you should see. If you see
@@ -68,9 +68,16 @@ Type `forge`, then drag a file onto the window, then Enter.
    images, and an image to a PDF.
 8. Convert a Word file to PDF. It is fine if you do not have LibreOffice;
    note whether you do.
-9. **Intel:** in edit mode, look for **Boost resolution**. **Right:** it is not
-   offered, or it says plainly that there is no build for this Mac. It must not
-   start and then sit there. (A graphics-card version may come later.)
+9. **Intel:** in edit mode (`4`), a small photo (about 1000 pixels wide):
+   **Boost resolution** at 2x. The first time it offers the Boost extension
+   (about 16 MB; it needs macOS 14 or newer); install it. **Right:** the photo
+   comes out twice as big. It runs on your Mac's graphics chip, so a small photo
+   takes well under a minute; the very first time there is a pause of a few
+   seconds before the bar moves. Note how long it took. Then try **Sharpen**,
+   and a big photo (about 12 megapixels): note the time.
+   **Also right:** if the Mac would take more than about three minutes, it stops
+   early with "Too slow to boost", saying about how many minutes. Tell us if you
+   see that, and which graphics chip your Mac has (Apple menu › About This Mac).
 10. **Remove background** (edit mode, a photo of a person or an object). It
     needs macOS 14 or newer and a small extension (32 KB).
     **Right:** the offer to install it, then a cut-out PNG. Note how long it
@@ -101,8 +108,7 @@ macOS opens these itself, so there is nothing to install.
 ## 5. Finder's Quick Actions and presets
 
 1. Right-click a JPG in Finder, then **Quick Actions**. **Right:** Open Forge,
-   Convert in Forge, Compress in Forge (and Sharpen in Forge only if Boost is installed,
-   which it cannot be here). If you do not see them, try **Customize…** at the
+   Convert in Forge, Compress in Forge (and Sharpen in Forge once you have installed Boost). If you do not see them, try **Customize…** at the
    bottom of that menu.
 2. Choose **Convert in Forge**. **Right:** a terminal window opens with that file ready.
 3. Right-click a PDF. **Right:** an **Open in Forge** Quick Action.

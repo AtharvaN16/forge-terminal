@@ -107,8 +107,8 @@ describe('runPreset', () => {
     expect((await stat(output)).size).toBeLessThanOrEqual(6_000)
   })
 
-  // Boost has no Linux build (CPU only), so a model step runs where it has one.
-  it.skipIf(!offeredHere('boost'))(
+  // Boost has no Linux arm64 build, so a model step runs where it has one.
+  it.skipIf(!offeredHere('boost', process.platform, process.arch))(
     'runs an on-device model between the cut and the encode',
     async () => {
       const home = await fake.home()

@@ -97,8 +97,8 @@ describe('a command loads only what it needs', () => {
     expect(loadedExtensions(urls)).toBe(false)
   })
 
-  // A child process, so it runs as the machine's own platform: a Mac or Windows, where boost has a build.
-  it.skipIf(!offeredHere('boost'))(
+  // A child process, so it runs as the machine's own platform: where boost has a build for this chip.
+  it.skipIf(!offeredHere('boost', process.platform, process.arch))(
     '--boost loads src/extensions, but never ONNX Runtime into the Forge process',
     async () => {
       const fake = fakeExtensions()
