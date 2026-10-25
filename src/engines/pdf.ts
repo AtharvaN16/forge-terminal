@@ -14,6 +14,7 @@ import type {
   Warning,
 } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
+import { readHead } from './head.js'
 import { lazy, loadPdfLib, loadSharp } from './libs.js'
 import type { Engine, Measurer } from './types.js'
 
@@ -48,7 +49,32 @@ async function load(path: string): Promise<PDFDocument> {
   return pdfLib.PDFDocument.load(await readFile(path), { ignoreEncryption: true })
 }
 
+/**
+ * How far into a file a PDF's `%PDF-` header may start. Junk before the
+ * header is allowed, but only so much: pdfium looks no further than offset
+ * 1024 (measured against @hyzyla/pdfium — 1024 opens, 1025 does not), and
+ * the PDF spec's implementation notes give the same limit. pdf-lib would
+ * search the whole file, but a PDF pdfium cannot open is one Forge cannot
+ * render either.
+ */
+const HEADER_WITHIN = 1024
+const HEADER = Buffer.from('%PDF-', 'latin1')
+
+/**
+ * Whether a file could be a PDF, from its first kilobyte. Checked before the
+ * whole file is read and parsed: probing tries this engine on every file the
+ * image and media engines decline, and a 1.5 GB disk image should not be read
+ * end to end to learn it is not a PDF.
+ */
+async function hasPdfHeader(path: string): Promise<boolean> {
+  const head = await readHead(path, HEADER_WITHIN + HEADER.length)
+  return head.indexOf(HEADER) !== -1
+}
+
 async function probe(path: string): Promise<DocumentInfo> {
+  // A plain Error, as pdf-lib's own parse error was: not a ForgeError, so
+  // registry.ts still surfaces the image engine's better-worded one.
+  if (!(await hasPdfHeader(path))) throw new Error(`${path} is not a PDF`)
   const { surveyDocument } = await loadPdfCompress()
   const doc = await load(path)
   const { size } = await stat(path)

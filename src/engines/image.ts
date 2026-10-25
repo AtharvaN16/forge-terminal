@@ -42,7 +42,7 @@ import type {
   Warning,
 } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
-import { openable } from './decoded.js'
+import { decodedInput } from './decoded.js'
 import { heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import { loadSharp } from './libs.js'
 import { rawDecodable, rawSize, sniffRaw } from './raw.js'
@@ -339,9 +339,6 @@ export async function writeAtomic(bytes: Buffer, output: string): Promise<number
  * HEIC and RAW decoded through sips, `.rotate()` before anything else, alpha
  * flattened for a target that cannot carry it, EXIF stripped unless asked
  * for. A second copy of this would be a second place for those to drift.
- *
- * The caller owns `cleanup` and must call it on every path — the temp HEIC
- * or RAW decode is exactly the litter invariant 6 exists to prevent.
  */
 async function pipelineFor(
   source: SourceInfo,
@@ -360,7 +357,7 @@ async function pipelineFor(
    * never measures; a resize without one is only derivable when nothing is cut.
    */
   outputSize?: Size,
-): Promise<{ pipeline: Sharp; cleanup: () => Promise<void> }> {
+): Promise<{ pipeline: Sharp }> {
   // The image engine only ever builds a pipeline for an image — the registry
   // routes jobs to an engine by `reads`/`writes`, so a document source
   // reaching here would be a caller bug, not a condition a user can trigger.
@@ -370,17 +367,14 @@ async function pipelineFor(
 
   /**
    * HEIC and RAW cannot be decoded by the bundled libvips (engines/heic.ts,
-   * engines/raw.ts), so they are transcoded to a temporary PNG by `sips`
-   * first and the ordinary pipeline runs on that. Everything downstream is
-   * unchanged; only the file Sharp opens differs.
+   * engines/raw.ts), so they are transcoded to PNG by `sips` first and the
+   * ordinary pipeline runs on that (engines/decoded.ts, which keeps the last
+   * few). Everything downstream is unchanged; only what Sharp opens differs.
    */
-  const opened = input === undefined ? await openable(source.path, source.format) : undefined
-  const cleanup = async () => {
-    await opened?.cleanup()
-  }
+  const opened = input ?? (await decodedInput(source.path, source.format))
 
   const sharp = await loadSharp()
-  let pipeline = sharp(input ?? opened?.path ?? source.path, animated ? { animated: true } : {})
+  let pipeline = sharp(opened, animated ? { animated: true } : {})
 
   // Rule 1: EXIF orientation, before anything else. Verified safe on
   // animated input — page count survives.
@@ -422,7 +416,7 @@ async function pipelineFor(
   // colours do not shift on wide-gamut displays.
   pipeline = options.keepMetadata ? pipeline.keepMetadata() : pipeline.keepIccProfile()
 
-  return { pipeline, cleanup }
+  return { pipeline }
 }
 
 /**
@@ -432,12 +426,8 @@ async function pipelineFor(
  */
 export async function decodeToPng(source: SourceInfo, dest: string): Promise<void> {
   const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
-  const { pipeline, cleanup } = await pipelineFor(source, 'png', options, false)
-  try {
-    await pipeline.png({ compressionLevel: 1 }).toFile(dest)
-  } finally {
-    await cleanup()
-  }
+  const { pipeline } = await pipelineFor(source, 'png', options, false)
+  await pipeline.png({ compressionLevel: 1 }).toFile(dest)
 }
 
 /**
@@ -454,17 +444,8 @@ export async function encodeToBuffer(
 ): Promise<Buffer> {
   // Every frame, as the conversion keeps them: a size measured from the
   // first frame of an animation is a size nobody will get.
-  const { pipeline, cleanup } = await pipelineFor(
-    source,
-    target,
-    options,
-    keepsFrames(source, target),
-  )
-  try {
-    return await encode(pipeline, target, options.quality, options.compress).toBuffer()
-  } finally {
-    await cleanup()
-  }
+  const { pipeline } = await pipelineFor(source, target, options, keepsFrames(source, target))
+  return await encode(pipeline, target, options.quality, options.compress).toBuffer()
 }
 
 export interface ImageMeasure {
@@ -484,12 +465,12 @@ export async function measureImage(source: ImageInfo): Promise<ImageMeasure> {
   const upright = { width: source.width, height: source.height }
   if (source.frames > 1) return { upright, trimmed: 'animated' }
 
-  const opened = await openable(source.path, source.format)
+  const opened = await decodedInput(source.path, source.format)
   try {
     const sharp = await loadSharp()
     // Encoded at quality 1 only because Sharp reports the trimmed size with the
     // encoded buffer; the bytes are thrown away.
-    const { info } = await sharp(opened.path)
+    const { info } = await sharp(opened)
       .rotate()
       .trim()
       .jpeg({ quality: 1 })
@@ -499,8 +480,6 @@ export async function measureImage(source: ImageInfo): Promise<ImageMeasure> {
       : { upright, trimmed: { width: info.width, height: info.height } }
   } catch (cause) {
     throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
-  } finally {
-    await opened.cleanup()
   }
 }
 
@@ -523,7 +502,7 @@ const CROP_VIEW_SIDE = 1024
  */
 export async function loadCropView(source: ImageInfo): Promise<CropView> {
   const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
-  const { pipeline, cleanup } = await pipelineFor(source, 'png', options, false)
+  const { pipeline } = await pipelineFor(source, 'png', options, false)
   try {
     const { data, info } = await pipeline
       .resize(CROP_VIEW_SIDE, CROP_VIEW_SIDE, { fit: 'inside', withoutEnlargement: true })
@@ -547,8 +526,6 @@ export async function loadCropView(source: ImageInfo): Promise<CropView> {
     }
   } catch (cause) {
     throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
-  } finally {
-    await cleanup()
   }
 }
 
@@ -677,7 +654,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
   }
 
   onPhase({ phase: 'decoding' })
-  const { pipeline, cleanup } = await pipelineFor(
+  const { pipeline } = await pipelineFor(
     source,
     job.target,
     options,
@@ -714,8 +691,6 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     // no equivalent for. Only an unnamed failure gets the generic wrapper;
     // `run.ts` makes the same distinction the same way.
     throw isForgeError(cause) ? cause : conversionFailed(source.path, cause)
-  } finally {
-    await cleanup()
   }
 }
 
@@ -730,12 +705,8 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
  * cannot move (spec §3).
  */
 async function readOnce(source: ImageInfo): Promise<Buffer> {
-  const opened = await openable(source.path, source.format)
-  try {
-    return await readFile(opened.path)
-  } finally {
-    await opened.cleanup()
-  }
+  const opened = await decodedInput(source.path, source.format)
+  return typeof opened === 'string' ? await readFile(opened) : opened
 }
 
 /**

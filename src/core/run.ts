@@ -40,6 +40,10 @@ export function resolveConcurrency(requested?: number): number {
  * target-size searches (`runPlan`) both go through it, so a search cannot
  * oversubscribe the libuv threadpool that Sharp already shares with them.
  *
+ * Items `alone` picks also run one at a time among themselves, still counted
+ * against `limit`. One waiting its turn does not hold a worker: the next item
+ * that may start does, so pictures keep the pool full around a video encode.
+ *
  * `task` must not throw. A rejection would leave the other workers running
  * with nobody waiting for them.
  */
@@ -47,12 +51,36 @@ export async function pool<T>(
   items: readonly T[],
   limit: number,
   task: (item: T, index: number) => Promise<void>,
+  alone?: (item: T) => boolean,
 ): Promise<void> {
-  let cursor = 0
+  // Two queues of indexes, each in item order; the lower head starts first.
+  const shared: number[] = []
+  const single: number[] = []
+  for (const [index, item] of items.entries()) (alone?.(item) ? single : shared).push(index)
+  let nextShared = 0
+  let nextSingle = 0
+  let running: Promise<void> | undefined
+
   const worker = async (): Promise<void> => {
-    while (cursor < items.length) {
-      const index = cursor++
-      await task(items[index] as T, index)
+    for (;;) {
+      const a = shared[nextShared]
+      const b = running ? undefined : single[nextSingle]
+      if (a !== undefined && (b === undefined || a < b)) {
+        nextShared++
+        await task(items[a] as T, a)
+      } else if (b !== undefined) {
+        nextSingle++
+        // Cleared before anyone waiting on it wakes, so they see it free.
+        running = task(items[b] as T, b).finally(() => {
+          running = undefined
+        })
+        await running
+      } else if (running) {
+        // Only items that must wait for the one running are left.
+        await running
+      } else {
+        return
+      }
     }
   }
   const workers = Math.min(resolveConcurrency(limit), items.length)
@@ -85,42 +113,48 @@ export async function runJobs(
   const failureAt: (InputFailure | undefined)[] = []
   let completed = 0
 
-  await pool(jobs, limit, async (job, index) => {
-    // Stopped: the jobs already running finish; no new one starts.
-    if (opts.signal?.aborted) return
-    emit({ type: 'job:start', job, index, total })
+  const alone = (job: Job) => resolveEngine(job)?.alone === true
+  await pool(
+    jobs,
+    limit,
+    async (job, index) => {
+      // Stopped: the jobs already running finish; no new one starts.
+      if (opts.signal?.aborted) return
+      emit({ type: 'job:start', job, index, total })
 
-    const engine = resolveEngine(job)
-    if (!engine) {
-      completed++
-      const path = job.sources[0].path
-      const failure: InputFailure = {
-        path,
-        error: conversionFailed(path, new Error(`no engine runs ${job.op}`)),
+      const engine = resolveEngine(job)
+      if (!engine) {
+        completed++
+        const path = job.sources[0].path
+        const failure: InputFailure = {
+          path,
+          error: conversionFailed(path, new Error(`no engine runs ${job.op}`)),
+        }
+        failureAt[index] = failure
+        emit({ type: 'job:error', job, failure, completed, total })
+        return
       }
-      failureAt[index] = failure
-      emit({ type: 'job:error', job, failure, completed, total })
-      return
-    }
 
-    try {
-      const result = await engine.run(
-        job,
-        (progress) => emit({ type: 'job:phase', job, progress }),
-        opts.signal,
-      )
-      resultAt[index] = result
-      completed++
-      emit({ type: 'job:done', job, result, completed, total })
-    } catch (e) {
-      completed++
-      const path = job.sources[0].path
-      const error = isForgeError(e) ? e : conversionFailed(path, e)
-      const failure: InputFailure = { path, error }
-      failureAt[index] = failure
-      emit({ type: 'job:error', job, failure, completed, total })
-    }
-  })
+      try {
+        const result = await engine.run(
+          job,
+          (progress) => emit({ type: 'job:phase', job, progress }),
+          opts.signal,
+        )
+        resultAt[index] = result
+        completed++
+        emit({ type: 'job:done', job, result, completed, total })
+      } catch (e) {
+        completed++
+        const path = job.sources[0].path
+        const error = isForgeError(e) ? e : conversionFailed(path, e)
+        const failure: InputFailure = { path, error }
+        failureAt[index] = failure
+        emit({ type: 'job:error', job, failure, completed, total })
+      }
+    },
+    alone,
+  )
 
   const results = resultAt.filter((r): r is Result => r !== undefined)
   const failures = failureAt.filter((f): f is InputFailure => f !== undefined)

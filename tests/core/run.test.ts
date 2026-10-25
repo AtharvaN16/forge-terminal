@@ -4,7 +4,9 @@ import { buildPlan } from '../../src/core/plan.js'
 import { resolveInputs } from '../../src/core/resolve.js'
 import { pool, type RunEvent, resolveConcurrency, runJobs } from '../../src/core/run.js'
 import type { ConvertOptions, Job } from '../../src/core/types.js'
+import { soundEngine, videoEngine } from '../../src/engines/media.js'
 import { probe } from '../../src/engines/registry.js'
+import type { Engine } from '../../src/engines/types.js'
 import { makeCorruptFile, makeJpeg, makeTempDir } from '../helpers/fixtures.js'
 
 const options: ConvertOptions = { background: '#ffffff', keepMetadata: false }
@@ -121,6 +123,59 @@ describe('runJobs', () => {
     expect(summary.results.map((r) => r.job)).toEqual(jobs)
   })
 
+  /**
+   * ffmpeg's x264 already uses every core, so a second encode beside it only
+   * contends. Pictures keep their pool around it; the limit still counts it.
+   */
+  it('runs jobs of an engine marked alone one at a time, beside the others', async () => {
+    const dir = await makeTempDir()
+    const jobs = await planFor(dir, 8)
+    let live = 0
+    let peak = 0
+    let liveAlone = 0
+    let peakAlone = 0
+    let peakPlain = 0
+    let livePlain = 0
+    const stub = (alone: boolean): Engine =>
+      ({
+        id: alone ? 'alone' : 'plain',
+        reads: new Set(),
+        writes: new Set(),
+        ops: new Set(['convert']),
+        ...(alone ? { alone: true } : {}),
+        run: async (job: Job) => {
+          peak = Math.max(peak, ++live)
+          if (alone) peakAlone = Math.max(peakAlone, ++liveAlone)
+          else peakPlain = Math.max(peakPlain, ++livePlain)
+          await new Promise((r) => setTimeout(r, 10))
+          live--
+          if (alone) liveAlone--
+          else livePlain--
+          return { job, outputBytes: 1, warnings: [] }
+        },
+      }) as never
+    const alone = stub(true)
+    const plain = stub(false)
+    const completed: number[] = []
+    const summary = await runJobs(jobs, {
+      concurrency: 4,
+      engineFor: (job) => (jobs.indexOf(job) % 2 === 0 ? alone : plain),
+      onEvent: (e) => {
+        if (e.type === 'job:done') completed.push(e.completed)
+      },
+    })
+    expect(peakAlone).toBe(1)
+    expect(peakPlain).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(4)
+    expect(completed).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(summary.results.map((r) => r.job)).toEqual(jobs)
+  })
+
+  it('marks the video and sound engines alone', () => {
+    expect(videoEngine.alone).toBe(true)
+    expect(soundEngine.alone).toBe(true)
+  })
+
   it('returns an empty summary for no jobs', async () => {
     const summary = await runJobs([], {})
     expect(summary.results).toEqual([])
@@ -150,6 +205,32 @@ describe('pool', () => {
       seen.push(item)
     })
     expect(seen.sort()).toEqual([0, 1, 2])
+  })
+
+  it('runs the items marked alone one at a time, and the rest around them', async () => {
+    let inFlight = 0
+    let peak = 0
+    let alone = 0
+    let peakAlone = 0
+    const seen: number[] = []
+    const isAlone = (item: number) => item < 4
+    await pool(
+      [0, 1, 2, 3, 4, 5, 6, 7],
+      3,
+      async (item) => {
+        peak = Math.max(peak, ++inFlight)
+        if (isAlone(item)) peakAlone = Math.max(peakAlone, ++alone)
+        await new Promise((r) => setTimeout(r, 5))
+        seen.push(item)
+        inFlight -= 1
+        if (isAlone(item)) alone -= 1
+      },
+      isAlone,
+    )
+    expect(peakAlone).toBe(1)
+    // Held-back items do not hold a worker: the rest still fill the pool.
+    expect(peak).toBe(3)
+    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
   })
 
   it('does nothing for no items', async () => {

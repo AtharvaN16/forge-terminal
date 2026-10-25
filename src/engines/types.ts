@@ -32,6 +32,12 @@ export interface Engine {
   ops: ReadonlySet<Job['op']>
   probe(path: string): Promise<SourceInfo>
   /**
+   * Runs one job at a time, whatever the batch's concurrency: its encoder
+   * already uses every core (ffmpeg's x264), so a second one beside it only
+   * contends. Other engines' jobs still run around it.
+   */
+  alone?: boolean
+  /**
    * `signal` aborts a run in flight. Only the extension engine honours it (its
    * child process is killed and nothing is written); the others finish in a
    * single atomic write and ignore it.

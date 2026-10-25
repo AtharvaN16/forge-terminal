@@ -1,6 +1,6 @@
-import { readFile, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import type { Sharp } from 'sharp'
-import { openable } from '../engines/decoded.js'
+import { decodedInput } from '../engines/decoded.js'
 import { looksLikeHeic } from '../engines/heic.js'
 import { loadSharp } from '../engines/libs.js'
 import { sniffRaw } from '../engines/raw.js'
@@ -104,15 +104,8 @@ async function openImage(path: string): Promise<Opened> {
   const sharp = await loadSharp()
   let input: string | Buffer = path
   const format = (await looksLikeHeic(path)) ? 'heic' : (await sniffRaw(path)) ? 'raw' : undefined
-  if (format) {
-    // The decode keeps its orientation as EXIF, so it is turned like any photo.
-    const opened = await openable(path, format)
-    try {
-      input = await readFile(opened.path)
-    } finally {
-      await opened.cleanup()
-    }
-  }
+  // The decode keeps its orientation as EXIF, so it is turned like any photo.
+  if (format) input = await decodedInput(path, format)
   const meta = await sharp(input).metadata()
   // EXIF orientations 5–8 turn the picture a quarter: its upright size is swapped.
   const turned = (meta.orientation ?? 1) >= 5

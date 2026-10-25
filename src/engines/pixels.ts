@@ -2,7 +2,7 @@ import type { Pixels } from '../core/colour/palette.js'
 import { corruptSource, isForgeError, notAnImage } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { ImageInfo } from '../core/types.js'
-import { openable } from './decoded.js'
+import { decodedInput } from './decoded.js'
 import { loadSharp } from './libs.js'
 import { probe } from './registry.js'
 
@@ -18,11 +18,11 @@ export async function samplePixels(
 ): Promise<{ source: ImageInfo; pixels: Pixels }> {
   const source = await probe(path)
   if (source.kind !== 'image') throw notAnImage(path, `a ${FORMATS[source.format].label}`)
-  const opened = await openable(path, source.format)
+  const opened = await decodedInput(path, source.format)
   try {
     const sharp = await loadSharp()
     // Rotated first (invariant 4), a decoded HEIC or RAW too (engines/decoded.ts).
-    const { data, info } = await sharp(opened.path, { animated: false })
+    const { data, info } = await sharp(opened, { animated: false })
       .rotate()
       .resize(longest, longest, { fit: 'inside', withoutEnlargement: true })
       .ensureAlpha()
@@ -39,7 +39,5 @@ export async function samplePixels(
   } catch (e) {
     if (isForgeError(e)) throw e
     throw corruptSource(path, e)
-  } finally {
-    await opened.cleanup()
   }
 }

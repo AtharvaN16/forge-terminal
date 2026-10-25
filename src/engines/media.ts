@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { open, rm, stat } from 'node:fs/promises'
+import { rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { prepareOutputDir, renameAtomic, tempBeside } from '../core/atomic.js'
 import {
@@ -34,6 +34,7 @@ import {
   probeMedia,
   runFfmpeg,
 } from './ffmpeg.js'
+import { readHead } from './head.js'
 import {
   type EncodePlan,
   LOUDNORM_MEASURED,
@@ -69,15 +70,8 @@ const VIDEO_WRITES: FormatId[] = [
 const SOUND_READS: FormatId[] = ['mp3', 'm4a', 'wav', 'aiff', 'flac', 'opus', 'ogg']
 const SOUND_WRITES: FormatId[] = ['mp3', 'm4a', 'opus', 'flac', 'aiff', 'wav']
 
-async function head(path: string): Promise<Buffer> {
-  const handle = await open(path, 'r')
-  try {
-    const b = Buffer.alloc(SNIFF_BYTES)
-    const { bytesRead } = await handle.read(b, 0, b.length, 0)
-    return b.subarray(0, bytesRead)
-  } finally {
-    await handle.close()
-  }
+function head(path: string): Promise<Buffer> {
+  return readHead(path, SNIFF_BYTES)
 }
 
 /** A sound file carried in an ISO box with no picture in it reads as M4A. */
@@ -362,6 +356,7 @@ export const videoEngine: Engine = {
   writes: set(VIDEO_WRITES),
   ops: new Set(['convert']),
   probe: (path) => probeAs(path, 'video'),
+  alone: true,
   run,
   sizeTo,
   writesFor: videoWritesFor,
@@ -373,6 +368,7 @@ export const soundEngine: Engine = {
   writes: set(SOUND_WRITES),
   ops: new Set(['convert']),
   probe: (path) => probeAs(path, 'sound'),
+  alone: true,
   run,
   sizeTo,
 }
