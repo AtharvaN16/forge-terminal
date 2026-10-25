@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  * { box-sizing:border-box }
+  body { margin:0; color:var(--foreground,#e8e8e8); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .lead { font-size:16px; margin:0 0 14px }
+  .facts { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:0 0 8px }
+  .fact { background:#242424; border-radius:var(--radius,8px); padding:16px }
+  .fact b { display:block; font-size:18px } .fact span { color:#b0b0b0; font-size:12px }
+  .name { color:#b0b0b0; font-size:12px; margin:14px 0 4px }
+  .heads { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; color:#b0b0b0; font-size:12px; margin:22px 0 4px }
+  .row { margin:0 0 18px } .row img { width:100%; display:block; border-radius:4px }
+  .row p { margin:6px 0 0; font-size:13px } .row p i { font-style:normal; font-weight:700 }
+  .ok { color:#5fd38d } .bad { color:#e06c6c } .meh { color:#f0a04b }
+  h2 { font-size:16px; margin:26px 0 8px }
+  ul { margin:0; padding-left:18px } li { margin:4px 0 }
+  .rec { background:#242424; border-radius:var(--radius,8px); padding:16px; margin:26px 0 0 }
+  .rec b { font-size:16px; display:block; margin-bottom:6px }
+</style></head><body>
+  <p class="lead">BiRefNet-lite cuts out photos about as well as Apple's, and better than IS-Net, even at 80 MB. But it needs far too much memory to ship: about 6 GB held, 13 GB at its peak.</p>
+
+  <div class="name">BiRefNet-lite, compressed</div>
+  <div class="facts">
+    <div class="fact"><b>80 MB</b><span>model (224 MB before compressing)</span></div>
+    <div class="fact"><b>6.8 s</b><span>per photo, this Mac's processor alone (6–9 s)</span></div>
+    <div class="fact"><b class="bad">5.7 GB held, 13 GB peak</b><span>memory while running (Apple's: 0.2 GB)</span></div>
+    <div class="fact"><b>MIT</b><span>licence, free to ship</span></div>
+  </div>
+  <div class="name">IS-Net, compressed (tested last time)</div>
+  <div class="facts">
+    <div class="fact"><b>45 MB</b><span>model</span></div>
+    <div class="fact"><b>0.8 s</b><span>per photo, this Mac's processor alone</span></div>
+    <div class="fact"><b>2.1 GB</b><span>memory while running</span></div>
+    <div class="fact"><b>Apache-2.0</b><span>licence, free to ship</span></div>
+  </div>
+
+  <div class="heads"><span>Original</span><span>Apple Vision (Mac today)</span><span>IS-Net compressed, 45 MB</span><span>BiRefNet-lite compressed, 80 MB</span></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-portrait.jpg"><p><i class="ok">Same as Apple.</i> Hat and hood are solid. IS-Net leaves them see-through.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-cat.jpg"><p><i class="meh">Close.</i> A few whisker streaks are left behind, as with IS-Net. Apple is a little cleaner.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-dog.jpg"><p><i class="ok">Same.</i></p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-mug.jpg"><p><i class="ok">Close.</i> Mug and sandwich kept. The plate's rim is a little fainter than Apple's.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-sneakers.jpg"><p><i class="ok">Same as Apple.</i> No hole in the see-through side panel, which IS-Net cuts.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-wineglass.jpg"><p><i class="ok">Better than Apple.</i> Glass, splash and bread kept, and none of the table Apple leaves by the bread.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10/cmp-monument.jpg"><p><i class="ok">Right answer.</i> Nearly empty, where IS-Net cuts out junk. The model is 0.1% sure there is a subject, so Forge can say "no subject" like Apple does.</p></div>
+
+  <h2>Notes</h2>
+  <ul>
+    <li>I stopped after the first run. It pushed this Mac's swap to 3.2 GB, past your 3 GB line, and its peak was over the 6 GB line.</li>
+    <li>The speed may be slower than it should be, because the Mac was short of memory while it ran.</li>
+    <li>The 80 MB was made by compressing the model, then storing its big lookup tables in half the space with no change to the answers. Compressing alone gave 112 MB, over the limit.</li>
+    <li>The half-precision version would be about 112 MB, so it is over the limit too and I skipped it. I didn't try any other model.</li>
+    <li>The code is MIT. The model learned from public research photo sets, and I didn't read their terms.</li>
+  </ul>
+
+  <div class="rec"><b>Keep remove background Mac-only for now.</b>
+    BiRefNet-lite is the first model that is good enough, but a Windows or Linux laptop with 8 GB would likely freeze on it. It is worth one more round aimed only at memory (smaller working size, and ONNX Runtime's memory settings). If a run stays under about 3 GB and still looks like this, ship it on Windows and Linux.</div>
+</body></html>

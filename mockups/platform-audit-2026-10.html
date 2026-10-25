@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forge on every computer — audit, 2026-10-24</title>
+<style>
+  :root { --bg:#1c1c1c; --card:#242424; --line:#333; --fg:#e8e8e8; --dim:#b0b0b0; --faint:#808080;
+          --ok:#5fd38d; --ext:#5cc8e0; --app:#9a9a9a; --gap:#f0a04b; --no:#e06c6c; --q:#e6d06a; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:36px 28px 60px; }
+  h1 { font-size:24px; margin:0 0 6px }
+  h2 { font-size:17px; margin:40px 0 12px }
+  .lead { font-size:17px; color:var(--fg); margin:0 0 6px; max-width:820px }
+  .sub { color:var(--dim); margin:0; max-width:820px }
+  .legend { display:flex; flex-wrap:wrap; gap:14px 22px; margin:22px 0 14px; color:var(--dim); font-size:13px }
+  .legend span { display:flex; align-items:center; gap:7px }
+  .c { display:inline-flex; align-items:center; justify-content:center; min-width:24px; height:22px; padding:0 7px;
+       border-radius:5px; font-weight:700; font-size:13px; color:#1c1c1c }
+  .ok{background:var(--ok)} .ext{background:var(--ext)} .app{background:var(--app)}
+  .gap{background:var(--gap)} .no{background:var(--no)} .q{background:var(--q)}
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:8px; overflow:hidden; font-size:14px }
+  th, td { padding:9px 12px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line) }
+  th { color:var(--dim); font-weight:600; font-size:13px; background:#2a2a2a }
+  th.os { width:19% }
+  td.f { color:var(--fg); width:24%; font-weight:500 }
+  tr.group td { background:#1f1f1f; color:var(--faint); font-size:12px; text-transform:uppercase; letter-spacing:.06em; padding:7px 12px }
+  td small { display:block; color:var(--dim); font-size:12.5px; margin-top:3px; line-height:1.35 }
+  .banner { background:#2a2420; border-left:3px solid var(--gap); padding:10px 14px; border-radius:4px; margin:0 0 14px; color:var(--fg); font-size:14px }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px }
+  .card { background:var(--card); border-radius:8px; padding:14px 16px }
+  .card h3 { margin:0 0 4px; font-size:15px; display:flex; justify-content:space-between; gap:10px }
+  .card h3 .mb { color:var(--ext); font-weight:600; white-space:nowrap }
+  .card p { margin:0; color:var(--dim); font-size:13.5px }
+  .card .for { color:var(--faint); font-size:12.5px; margin-top:6px }
+  .card.zero h3 .mb { color:var(--ok) }
+  .card.warn { border-left:3px solid var(--gap) }
+  .card.stop h3 .mb { color:var(--no) }
+  ol { padding-left:20px; margin:0; color:var(--fg) } ol li { margin:6px 0 } ol li span { color:var(--dim) }
+  code { background:#2e2e2e; padding:1px 5px; border-radius:3px; font-size:12.5px }
+</style>
+</head>
+<body>
+<main>
+  <h1>Forge on every computer</h1>
+  <p class="lead">Converting, compressing and editing work the same on every Mac and on Windows. What differs is the set of tools that lean on something Apple builds into macOS: transcribe, notes, reading text, remove background, RAW photos and pasting pictures.</p>
+  <p class="sub">Linux can't install Forge at all yet. Most gaps can be closed with small extensions. Only notes can't be matched under the 100 MB limit, and remove background can't either until a smaller model passes your test.</p>
+
+  <div class="legend">
+    <span><i class="c ok">✓</i> works</span>
+    <span><i class="c ext">+</i> works with a Forge extension</span>
+    <span><i class="c app">○</i> needs a free app (ffmpeg, LibreOffice)</span>
+    <span><i class="c q">?</i> built, never run on this machine</span>
+    <span><i class="c gap">✕</i> missing, but an extension or code could fix it</span>
+    <span><i class="c no">—</i> can't match it within the size limit</span>
+  </div>
+
+  <h2>What works where today</h2>
+  <div class="banner"><b>Linux:</b> npm won't install Forge, because <code>package.json</code> lists only macOS and Windows. The Linux column shows what would happen if that were allowed.</div>
+  <table>
+    <tr><th>Feature</th><th class="os">Apple silicon Mac</th><th class="os">Intel Mac</th><th class="os">Windows</th><th class="os">Linux</th></tr>
+
+    <tr class="group"><td colspan="5">Images</td></tr>
+    <tr><td class="f">Convert &amp; compress (PNG, JPEG, WebP, AVIF, GIF, TIFF, lossy PNG/GIF)</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i><small>Sharp has Linux builds</small></td></tr>
+    <tr><td class="f">Edit: resize, crop to shape, rotate, trim</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td></tr>
+    <tr><td class="f">HEIC (iPhone photos)</td>
+      <td><i class="c ok">✓</i><small>macOS reads it</small></td><td><i class="c ok">✓</i></td><td><i class="c ext">+</i><small>HEIC extension, 0.5 MB</small></td><td><i class="c gap">✕</i><small>code calls the Mac tool and fails</small></td></tr>
+    <tr><td class="f">Camera RAW</td>
+      <td><i class="c ok">✓</i><small>macOS reads it</small></td><td><i class="c ok">✓</i></td><td><i class="c gap">✕</i><small>"RAW photos open on a Mac only"</small></td><td><i class="c gap">✕</i></td></tr>
+    <tr><td class="f">Boost resolution / Sharpen</td>
+      <td><i class="c ext">+</i><small>15 MB, macOS 14+</small></td><td><i class="c gap">✕</i><small>a build exists but has never been run; held back because it might be far too slow</small></td><td><i class="c ext">+</i><small>23 MB, any DirectX 12 graphics</small></td><td><i class="c gap">✕</i></td></tr>
+    <tr><td class="f">Remove background</td>
+      <td><i class="c ext">+</i><small>32 KB, uses Apple Vision, macOS 14+</small></td><td><i class="c q">?</i><small>same build covers Intel; never tried</small></td><td><i class="c no">—</i><small>no good model under 100 MB yet</small></td><td><i class="c no">—</i></td></tr>
+    <tr><td class="f">Paste a picture (⌘V)</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c gap">✕</i><small>Windows can read it itself, no download</small></td><td><i class="c gap">✕</i></td></tr>
+
+    <tr class="group"><td colspan="5">Documents</td></tr>
+    <tr><td class="f">PDF: compress, pages, to images</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td></tr>
+    <tr><td class="f">Word documents</td>
+      <td><i class="c app">○</i><small>basic without LibreOffice</small></td><td><i class="c app">○</i></td><td><i class="c app">○</i></td><td><i class="c app">○</i><small>the warning tells you to use Homebrew</small></td></tr>
+
+    <tr class="group"><td colspan="5">Video and sound</td></tr>
+    <tr><td class="f">Convert, compress, trim, rotate, extract audio, clean up audio</td>
+      <td><i class="c app">○</i><small>ffmpeg from Homebrew. Forge's own ffmpeg extension was never published</small></td><td><i class="c app">○</i></td><td><i class="c app">○</i><small>winget; encodes on the CPU (no hardware encoder)</small></td><td><i class="c app">○</i><small>apt / dnf</small></td></tr>
+
+    <tr class="group"><td colspan="5">Transcribe</td></tr>
+    <tr><td class="f">Transcribe sound and video</td>
+      <td><i class="c ok">✓</i><small>macOS 26+</small></td><td><i class="c q">?</i><small>only 4 Intel Macs (2019–20) run macOS 26; whether Apple's speech engine runs on Intel is untested</small></td><td><i class="c gap">✕</i></td><td><i class="c gap">✕</i><small>PR #3 (whisper.cpp) is open</small></td></tr>
+    <tr><td class="f">Notes (Apple Intelligence)</td>
+      <td><i class="c ok">✓</i><small>with Apple Intelligence on</small></td><td><i class="c no">—</i></td><td><i class="c no">—</i></td><td><i class="c no">—</i></td></tr>
+    <tr><td class="f">Read text in pictures and PDFs</td>
+      <td><i class="c ok">✓</i><small>macOS 26+</small></td><td><i class="c q">?</i><small>the helper includes Intel code, never run; macOS 26 only</small></td><td><i class="c gap">✕</i></td><td><i class="c gap">✕</i></td></tr>
+    <tr><td class="f">YouTube links</td>
+      <td><i class="c ext">+</i><small>yt-dlp, 37 MB</small></td><td><i class="c q">?</i><small>depends on transcribe</small></td><td><i class="c gap">✕</i></td><td><i class="c gap">✕</i></td></tr>
+
+    <tr class="group"><td colspan="5">Colour</td></tr>
+    <tr><td class="f">Colour mode, Figma paste</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c gap">✕</i><small>works, but copying fails silently (uses the Mac's copy command)</small></td></tr>
+
+    <tr class="group"><td colspan="5">Around the app</td></tr>
+    <tr><td class="f">Right-click menu</td>
+      <td><i class="c ok">✓</i><small>Finder Quick Actions</small></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i><small>Explorer menu</small></td><td><i class="c gap">✕</i></td></tr>
+    <tr><td class="f">Find a file by typing its name</td>
+      <td><i class="c ok">✓</i><small>Spotlight</small></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i><small>only looks in nearby folders</small></td><td><i class="c ok">✓</i><small>nearby folders</small></td></tr>
+    <tr><td class="f">Show in Finder, open, notifications</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c gap">✕</i><small>calls Mac commands</small></td></tr>
+    <tr><td class="f">Watch a folder, presets, /update, MCP</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td></tr>
+    <tr><td class="f">Extensions at all</td>
+      <td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c gap">✕</i><small>"extensions need macOS or Windows"</small></td></tr>
+  </table>
+
+  <h2>What would close each gap</h2>
+  <div class="grid">
+    <div class="card zero"><h3>Paste pictures on Windows <span class="mb">0 MB</span></h3>
+      <p>Windows can hand the clipboard's picture over by itself (PowerShell). Nothing to download.</p>
+      <div class="for">Windows</div></div>
+
+    <div class="card zero"><h3>Linux basics <span class="mb">0 MB</span></h3>
+      <p>Allow Linux in npm, and use Linux's own copy, open and notify commands. Add Linux to the extension list. Right-click works through the file manager's scripts folder.</p>
+      <div class="for">Linux. The user may need to install <code>wl-clipboard</code> or <code>xclip</code></div></div>
+
+    <div class="card"><h3>HEIC <span class="mb">0.5 MB</span></h3>
+      <p>The Windows HEIC extension already runs on any system. Publish the same file for Linux.</p>
+      <div class="for">Linux</div></div>
+
+    <div class="card"><h3>Camera RAW <span class="mb">~2 MB</span></h3>
+      <p>LibRaw is the RAW reader most apps use. It's on npm in a form that runs anywhere (like HEIC's), so one extension covers both.</p>
+      <div class="for">Windows + Linux</div></div>
+
+    <div class="card"><h3>Read text <span class="mb">~21 MB</span></h3>
+      <p>The small PP-OCR model you already picked. The helper's "read" answer is already shaped for a second reader to slot in.</p>
+      <div class="for">Windows + Linux</div></div>
+
+    <div class="card warn"><h3>Transcribe <span class="mb">31–57 MB</span></h3>
+      <p>whisper.cpp with a compressed model (tiny ≈ 31 MB, base ≈ 57 MB). <b>PR #3 downloads the full 142 MB base model, which is over your 100 MB ceiling.</b> Switching it to the compressed one fixes that.</p>
+      <div class="for">Windows + Linux, maybe Intel Macs</div></div>
+
+    <div class="card"><h3>YouTube links <span class="mb">~yt-dlp size</span></h3>
+      <p>yt-dlp publishes its own Windows and Linux builds. Only worth it once transcribe is there.</p>
+      <div class="for">Windows + Linux</div></div>
+
+    <div class="card"><h3>Boost on Intel Mac and Linux <span class="mb">0 MB / unmeasured</span></h3>
+      <p>First, run the Intel build that already exists on a real Intel Mac. Apple's CoreML may use its graphics chip, and that could be fast enough. If not, Real-ESRGAN also has a build that runs on any graphics card (Vulkan) and covers Linux too. Its size hasn't been measured.</p>
+      <div class="for">Intel Mac + Linux</div></div>
+
+    <div class="card"><h3>ffmpeg on a Mac without Homebrew <span class="mb">unmeasured</span></h3>
+      <p>The video extension's build script is written but has never been run or published (it needs your OK to push the tag). Windows and Linux get ffmpeg easily from winget or apt.</p>
+      <div class="for">Mac</div></div>
+
+    <div class="card stop"><h3>Notes <span class="mb">too big</span></h3>
+      <p>A local model that writes decent notes is hundreds of MB. Turn notes off on Windows, Linux and Intel, as Apple silicon Macs without Apple Intelligence already do.</p>
+      <div class="for">stays Apple silicon only</div></div>
+
+    <div class="card stop"><h3>Remove background <span class="mb">waiting</span></h3>
+      <p>Small models failed your quality test. A compressed IS-Net (≈ 43 MB) is the one left to try against the 7 test images.</p>
+      <div class="for">Windows + Linux, if that test passes</div></div>
+  </div>
+
+  <h2>Suggested order</h2>
+  <ol>
+    <li>Paste pictures on Windows <span>— no download, closes a gap Windows users hit daily</span></li>
+    <li>RAW extension <span>— 2 MB, Windows and Linux at once</span></li>
+    <li>Read-text extension <span>— 21 MB, the code is ready for it</span></li>
+    <li>Transcribe via whisper <span>— take PR #3, swap in the 31–57 MB model, add Windows</span></li>
+    <li>Try the Boost build on an Intel Mac <span>— borrow one; nothing to build</span></li>
+    <li>Linux support <span>— your call whether to support it at all; the work is mostly swapping commands</span></li>
+  </ol>
+</main>
+</body>
+</html>

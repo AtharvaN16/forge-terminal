@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  :root { --c2:#242424; --line:#333; --fg:#e8e8e8; --dim:#b0b0b0; --faint:#808080;
+          --ok:#5fd38d; --ext:#5cc8e0; --app:#9a9a9a; --gap:#f0a04b; --no:#e06c6c; --q:#e6d06a; }
+  * { box-sizing:border-box }
+  body { margin:0; color:var(--fg); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  h2 { font-size:16px; margin:26px 0 10px }
+  .lead { font-size:16px; margin:0 0 6px }
+  .sub { color:var(--dim); margin:0 }
+  .score { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:16px 0 4px }
+  .s { background:var(--c2); border-radius:var(--radius,8px); padding:16px }
+  .s b { display:block; font-size:13px; color:var(--dim); font-weight:600 }
+  .s .n { font-size:22px; font-weight:700 } .s .was { color:var(--faint); font-size:12px }
+  .legend { display:flex; flex-wrap:wrap; gap:10px 18px; margin:16px 0 12px; color:var(--dim); font-size:12.5px }
+  .legend span { display:flex; align-items:center; gap:6px }
+  .c { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:20px; padding:0 6px;
+       border-radius:5px; font-weight:700; font-size:12px; color:#1c1c1c; font-style:normal }
+  .ok{background:var(--ok)} .ext{background:var(--ext)} .app{background:var(--app)}
+  .gap{background:var(--gap)} .no{background:var(--no)} .q{background:var(--q)}
+  .new { box-shadow: inset 3px 0 0 var(--ext); }
+  .swatch { width:14px; height:14px; box-shadow: inset 3px 0 0 var(--ext); background:#2a2a2a; border-radius:2px }
+  table { width:100%; border-collapse:collapse; background:var(--c2); border-radius:var(--radius,8px); overflow:hidden; font-size:13px }
+  th, td { padding:7px 8px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line) }
+  th { color:var(--dim); font-weight:600; font-size:12px; background:#2a2a2a }
+  th.os { width:19% } td.f { width:24%; font-weight:500 }
+  tr.group td { background:#1f1f1f; color:var(--faint); font-size:11px; text-transform:uppercase; letter-spacing:.06em; padding:6px 8px }
+  td small { display:block; color:var(--dim); font-size:11.5px; margin-top:3px; line-height:1.35 }
+  ol { padding-left:20px; margin:0 } ol li { margin:5px 0 } ol li span { color:var(--dim) }
+</style></head><body>
+  <p class="lead">Since this morning's audit, Windows and Linux have gained transcribe, YouTube links, pasting pictures and Linux right-click, and Linux can install Forge at all. What's still different is RAW photos, reading text, remove background and Boost.</p>
+  <p class="sub">Counts are of the 20 rows below that work there today, with or without a free extension or app.</p>
+
+  <div class="score">
+    <div class="s"><b>Apple silicon Mac</b><span class="n">20 / 20</span> <span class="was">was 20</span></div>
+    <div class="s"><b>Intel Mac</b><span class="n">16 / 20</span> <span class="was">was 13</span></div>
+    <div class="s"><b>Windows</b><span class="n">16 / 20</span> <span class="was">was 12</span></div>
+    <div class="s"><b>Linux</b><span class="n">15 / 20</span> <span class="was">couldn't install</span></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="c ok">✓</i> works</span>
+    <span><i class="c ext">+</i> with a Forge extension</span>
+    <span><i class="c app">○</i> needs a free app (ffmpeg, LibreOffice)</span>
+    <span><i class="c q">?</i> built, never tried there</span>
+    <span><i class="c gap">✕</i> missing, fixable</span>
+    <span><i class="c no">—</i> not possible within the size limit</span>
+    <span><i class="swatch"></i> changed today</span>
+  </div>
+
+  <table>
+    <tr><th>Feature</th><th class="os">Apple silicon Mac</th><th class="os">Intel Mac</th><th class="os">Windows</th><th class="os">Linux</th></tr>
+
+    <tr class="group"><td colspan="5">Installing</td></tr>
+    <tr><td class="f">npm install</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td>
+      <td class="new"><i class="c ok">✓</i><small>allowed now</small></td></tr>
+
+    <tr class="group"><td colspan="5">Images</td></tr>
+    <tr><td class="f">Convert &amp; compress, lossy PNG/GIF</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td class="new"><i class="c ok">✓</i></td></tr>
+    <tr><td class="f">Edit: resize, crop, rotate, trim</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td class="new"><i class="c ok">✓</i></td></tr>
+    <tr><td class="f">HEIC (iPhone photos)</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ext">+</i><small>0.5 MB</small></td>
+      <td class="new"><i class="c ext">+</i><small>0.5 MB, published today</small></td></tr>
+    <tr><td class="f">Camera RAW</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c gap">✕</i><small>LibRaw ext, ~2 MB</small></td><td><i class="c gap">✕</i><small>same</small></td></tr>
+    <tr><td class="f">Boost / Sharpen</td><td><i class="c ext">+</i><small>15 MB</small></td><td><i class="c gap">✕</i><small>try on a real Intel Mac</small></td><td><i class="c ext">+</i><small>23 MB</small></td>
+      <td class="new"><i class="c gap">✕</i><small>no graphics-card route; rows hidden</small></td></tr>
+    <tr><td class="f">Remove background</td><td><i class="c ext">+</i><small>Apple Vision</small></td><td><i class="c q">?</i></td><td><i class="c gap">✕</i><small>IS-Net 45 MB close; your call</small></td><td><i class="c gap">✕</i><small>same</small></td></tr>
+    <tr><td class="f">Paste a picture</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td>
+      <td class="new"><i class="c ok">✓</i><small>Ctrl+V; not tried by hand</small></td>
+      <td class="new"><i class="c ok">✓</i><small>needs wl-clipboard or xclip; not tried by hand</small></td></tr>
+
+    <tr class="group"><td colspan="5">Documents</td></tr>
+    <tr><td class="f">PDF</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td class="new"><i class="c ok">✓</i></td></tr>
+    <tr><td class="f">Word documents</td><td><i class="c app">○</i></td><td><i class="c app">○</i></td><td><i class="c app">○</i></td><td class="new"><i class="c app">○</i><small>now says apt, not Homebrew</small></td></tr>
+
+    <tr class="group"><td colspan="5">Video and sound</td></tr>
+    <tr><td class="f">Convert, compress, trim, rotate, audio</td><td><i class="c app">○</i><small>Homebrew; Forge's ffmpeg unpublished</small></td><td><i class="c app">○</i></td><td><i class="c app">○</i><small>winget</small></td><td class="new"><i class="c app">○</i><small>apt</small></td></tr>
+
+    <tr class="group"><td colspan="5">Transcribe</td></tr>
+    <tr><td class="f">Transcribe sound and video</td><td><i class="c ok">✓</i><small>Apple, macOS 26</small></td>
+      <td class="new"><i class="c ext">+</i><small>whisper, 61 MB, macOS 13+</small></td>
+      <td class="new"><i class="c ext">+</i><small>whisper, 58–61 MB; ran on GitHub's Windows</small></td>
+      <td class="new"><i class="c ext">+</i><small>whisper, 58 MB; ran on GitHub's Linux</small></td></tr>
+    <tr><td class="f">Notes (Apple Intelligence)</td><td><i class="c ok">✓</i></td><td><i class="c no">—</i></td><td><i class="c no">—</i></td><td><i class="c no">—</i></td></tr>
+    <tr><td class="f">Transcript as Word / PDF</td><td><i class="c ok">✓</i></td>
+      <td class="new"><i class="c ok">✓</i><small>Word; PDF needs macOS 26</small></td>
+      <td class="new"><i class="c ok">✓</i><small>Word yes; PDF not offered</small></td>
+      <td class="new"><i class="c ok">✓</i><small>same</small></td></tr>
+    <tr><td class="f">Read text in pictures and PDFs</td><td><i class="c ok">✓</i><small>macOS 26</small></td><td><i class="c q">?</i><small>macOS 26 only</small></td><td><i class="c gap">✕</i><small>OCR ext, ~21 MB</small></td><td><i class="c gap">✕</i><small>same</small></td></tr>
+    <tr><td class="f">YouTube links</td><td><i class="c ext">+</i></td><td class="new"><i class="c ext">+</i><small>macOS 13+</small></td><td class="new"><i class="c ext">+</i></td><td class="new"><i class="c ext">+</i></td></tr>
+
+    <tr class="group"><td colspan="5">Colour</td></tr>
+    <tr><td class="f">Colour mode, Figma paste</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td class="new"><i class="c ok">✓</i><small>Ctrl+V</small></td></tr>
+
+    <tr class="group"><td colspan="5">Around the app</td></tr>
+    <tr><td class="f">Right-click menu, presets in it</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td>
+      <td class="new"><i class="c ok">✓</i><small>Nautilus, Nemo, Dolphin, Thunar; not tried by hand</small></td></tr>
+    <tr><td class="f">Show in Finder / open / notify</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i><small>Explorer</small></td><td class="new"><i class="c ok">✓</i><small>"Files"</small></td></tr>
+    <tr><td class="f">Watch a folder, presets, /update, MCP</td><td><i class="c ok">✓</i></td><td><i class="c ok">✓</i></td>
+      <td class="new"><i class="c ok">✓</i><small>watch loop fixed</small></td><td class="new"><i class="c ok">✓</i></td></tr>
+  </table>
+
+  <h2>What's left, in order</h2>
+  <ol>
+    <li>Try it by hand <span>— your friend on Windows, Harsh on Linux, any Intel Mac</span></li>
+    <li>Release 0.5.0 <span>— first release with Linux and whisper</span></li>
+    <li>RAW and read-text extensions <span>— 2 MB and 21 MB, Windows and Linux at once</span></li>
+    <li>Your calls <span>— remove background model, Boost on a graphics card, publishing Forge's ffmpeg</span></li>
+  </ol>
+</body></html>

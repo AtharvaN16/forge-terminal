@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  * { box-sizing:border-box }
+  body { margin:0; color:var(--foreground,#e8e8e8); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .lead { font-size:16px; margin:0 0 14px }
+  .facts { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:0 0 8px }
+  .fact { background:#242424; border-radius:var(--radius,8px); padding:16px }
+  .fact b { display:block; font-size:18px } .fact span { color:#b0b0b0; font-size:12px }
+  .name { color:#b0b0b0; font-size:12px; margin:14px 0 4px }
+  .heads { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; color:#b0b0b0; font-size:12px; margin:22px 0 4px }
+  .row { margin:0 0 18px } .row img { width:100%; display:block; border-radius:4px }
+  .row p { margin:6px 0 0; font-size:13px } .row p i { font-style:normal; font-weight:700 }
+  .ok { color:#5fd38d } .bad { color:#e06c6c } .meh { color:#f0a04b }
+  h2 { font-size:16px; margin:26px 0 8px }
+  ul { margin:0; padding-left:18px } li { margin:4px 0 }
+  .rec { background:#242424; border-radius:var(--radius,8px); padding:16px; margin:26px 0 0 }
+  .rec b { font-size:16px; display:block; margin-bottom:6px }
+  .cfg { display:grid; grid-template-columns:300px 1fr; gap:14px; align-items:center; margin:0 0 10px; padding:10px; background:#242424; border-radius:var(--radius,8px) }
+  .cfg.pick { outline:2px solid #5fd38d }
+  .cfg img { width:100%; display:block; border-radius:4px }
+  .cfg h3 { margin:0 0 4px; font-size:14px } .cfg .n { color:#b0b0b0; font-size:12px }
+  .cfg .nums { font-size:13px; margin-top:6px } .cfg .nums b { font-weight:700 }
+  .cfg.nostrip { grid-template-columns:300px 1fr }
+  pre { background:#242424; border-radius:var(--radius,8px); padding:14px; font-size:12px; overflow:auto; margin:8px 0 }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:12px }
+</style></head><body>
+  <p class="lead">Yes: BiRefNet-lite fits. Rebuilt to work at 512 pixels, it is 54 MB, peaks at 1.3 GB (down from 13 GB), takes 0.6 s a photo, and agrees with Apple's cut-outs more than any model so far. The memory was never the model itself. The first file turned every "bendy" filter into giant lookup tables. Rebuilt from the original weights, ONNX Runtime does that step directly.</p>
+
+  <div class="name">Chosen: BiRefNet-lite at 512, compressed</div>
+  <div class="facts">
+    <div class="fact"><b>54 MB</b><span>model (limit 100, ideal 50)</span></div>
+    <div class="fact"><b>0.6 s</b><span>per photo, this Mac's processor alone</span></div>
+    <div class="fact"><b>1.3 GB</b><span>peak memory (Apple's: 0.2 GB; last time: 13 GB)</span></div>
+    <div class="fact"><b>MIT</b><span>licence, free to ship</span></div>
+  </div>
+
+  <h2>Every setup tried</h2>
+  <p style="margin:0 0 10px;color:#b0b0b0;font-size:12px">Strips show the three hardest photos: hat and hood, see-through sneaker panel, and the night photo with no subject. "Agrees with Apple" is how much of the cut-out overlaps Apple's, averaged over the six photos where Apple finds a subject.</p>
+
+  <div class="cfg"><div><h3>Apple Vision (Mac today)</h3><div class="n">the reference</div><div class="nums"><b>0.2 GB</b> memory</div></div><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/strip-vision.jpg"></div>
+  <div class="cfg"><div><h3>IS-Net, compressed</h3><div class="n">last time's best small one</div><div class="nums"><b>45 MB</b> · <b>2.1 GB</b> · <b>0.8 s</b><br>agrees with Apple: <b>96.6%</b></div></div><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/strip-isnet.jpg"></div>
+  <div class="cfg"><div><h3>BiRefNet-lite at 1024, compressed</h3><div class="n">round 1: the good one that needed too much memory</div><div class="nums"><b>80 MB</b> · <b class="bad">13 GB</b> · <b>6.8 s</b><br>agrees with Apple: <b>97.9%</b></div></div><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/strip-bi1024.jpg"></div>
+
+  <div class="cfg nostrip"><div><h3>Same file, memory settings off</h3><div class="n">no memory pool, no memory plan, one step at a time</div></div><div class="nums"><b class="bad">Stopped at 5.3 GB</b> after 6 seconds, still climbing. No pictures.</div></div>
+  <div class="cfg nostrip"><div><h3>… plus lighter optimising</h3></div><div class="nums"><b class="bad">Stopped at 5.2 GB.</b> No pictures.</div></div>
+  <div class="cfg nostrip"><div><h3>… plus 2 processor threads</h3></div><div class="nums"><b class="bad">Stopped at 5.2 GB.</b> No pictures. The settings don't fix it, because the giant tables are in the file.</div></div>
+
+  <div class="cfg nostrip"><div><h3>Rebuilt at 768, not compressed</h3><div class="n">two photos</div></div><div class="nums"><b class="bad">181 MB</b> · <b>2.4 GB</b> · <b>1.7 s</b> · over the size limit</div></div>
+  <div class="cfg nostrip"><div><h3>Rebuilt at 512, not compressed</h3><div class="n">two photos</div></div><div class="nums"><b class="bad">181 MB</b> · <b>1.5 GB</b> · <b>0.7 s</b> · over the size limit. Memory is already fine here: the rebuild alone fixed it.</div></div>
+
+  <div class="cfg"><div><h3>Rebuilt at 768, compressed</h3><div class="n">all 7 photos</div><div class="nums"><b>54 MB</b> · <b>2.3 GB</b> · <b>1.4 s</b><br>agrees with Apple: <b>98.4%</b></div></div><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/strip-bi768.jpg"></div>
+  <div class="cfg pick"><div><h3 class="ok">Rebuilt at 512, compressed ← chosen</h3><div class="n">all 7 photos</div><div class="nums"><b>54 MB</b> · <b>1.3 GB</b> · <b>0.6 s</b><br>agrees with Apple: <b>98.6%</b></div></div><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/strip-bi512.jpg"></div>
+  <div class="cfg"><div><h3>512 with sharper edges added</h3><div class="n">smoothing the cut-out against the full photo</div><div class="nums">same size and memory<br>agrees with Apple: <b>98.5%</b></div></div><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/strip-bi512g.jpg"></div>
+
+  <h2>What this shows</h2>
+  <ul>
+    <li><b>512 is as good as 1024 here.</b> Cut-outs are enlarged to the full photo and edges look the same, even zoomed in on fur, the hat weave and the wine splash. Sharpening them first made it worse (a faint glow around edges), so I dropped it.</li>
+    <li><b>512 beats 768 on the night photo.</b> 512 finds nothing, which is right. 768 cuts out a stray dark blob. With 512, "top score under 50%" cleanly means "no subject", as Apple says.</li>
+    <li><b>Compressing barely changes the answers.</b> Storing the bendy-filter weights in half the space moved the mask by under 0.01% on average (at most 3% on any one pixel).</li>
+    <li><b>The table packing from round 1 didn't double memory.</b> Loading it takes 12 MB more than the unpacked file (219 vs 207 MB). It no longer matters: the new file doesn't need it.</li>
+  </ul>
+
+  <h2>The 7 photos: original | Apple Vision | IS-Net compressed | BiRefNet-lite 512, 54 MB</h2>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/portrait.jpg"><p><i class="ok">Same as Apple.</i> Hat and hood are solid. IS-Net leaves them see-through.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/cat.jpg"><p><i class="meh">Close.</i> A few whisker streaks are left behind. Apple is a little cleaner.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/dog.jpg"><p><i class="ok">Same.</i></p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/mug.jpg"><p><i class="ok">Same.</i> Mug, sandwich and plate all kept.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/sneakers.jpg"><p><i class="ok">Same as Apple.</i> No hole in the see-through side panel.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/wineglass.jpg"><p><i class="ok">Better than Apple.</i> Glass, splash and bread kept, and none of the table Apple leaves by the bread.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-models-2026-10-round2/all/monument.jpg"><p><i class="ok">Right answer.</i> Nothing found, where IS-Net cuts out junk.</p></div>
+
+  <h2>Not proven yet</h2>
+  <ul>
+    <li>Only 7 photos, and only one with no subject. Worth 20 or more other photos before shipping.</li>
+    <li>All timings are this Mac's processor. A Windows or Linux laptop will be slower, and I couldn't test one.</li>
+    <li>It only ran on ONNX Runtime 1.31.0. Older versions may lack the built-in "bendy filter" step, so the extension must ship 1.31 or newer. I didn't check which version added it.</li>
+    <li>54 MB is a little over your 50 MB ideal. The remaining weight is the compressed layers (39 MB) and the bendy-filter weights (10 MB), which can't be compressed further this way.</li>
+    <li>I did not try 1024 with the new build. Its export needs over 5.5 GB, past the stop line, and by size it would peak near 3.8 GB, over your 3 GB goal.</li>
+  </ul>
+
+  <h2>Rebuild it exactly</h2>
+  <p style="margin:0 0 6px">Scripts are in <code>mockups/remove-bg-models-2026-10-round2-build/</code> (<code>build.sh</code>, <code>export_birefnet.py</code>, <code>shrink.py</code>, <code>requirements.lock.txt</code>). Run <code>./build.sh &lt;empty folder&gt; 512</code> with Python 3.12 and git. It downloads about 0.7 GB, takes a few minutes, and peaks near 2 GB. I ran it from scratch in a new folder: both files came out byte-for-byte identical to the ones tested here.</p>
+  <pre>source code   github.com/ZhengPeng7/BiRefNet   commit 97e4f35d74043427b0e9ba935ca10991853a36bc   (MIT)
+weights       BiRefNet-general-bb_swin_v1_tiny-epoch_232.pth   (release v1, 177,791,685 bytes)
+              sha256 6a1e050c6ec2697e5ed268455df544782b023acf8643ab771250979094875ab1
+tools         Python 3.12 · torch 2.14.1 · torchvision 0.29.1 · onnx 1.23.2 · onnxruntime 1.31.0 (all pinned in requirements.lock.txt)
+
+step 1  export at 512, ONNX opset 19, DeformConv kept as one operator
+        birefnet-lite-512-fp32.onnx   180,853,776 bytes
+        sha256 092595ac508603d413d898b65b69ef07ee7eb309abbeb9518e02e85409cab719
+step 2  shrink.py: drop weight-forwarding Identity nodes → dynamic int8 (no ONNX Runtime pre-optimiser) → DeformConv weights as fp16
+        birefnet-lite-512-int8.onnx   54,465,081 bytes
+        sha256 536e8a74a105d48f556aba67eb5004208bf990d9625b6b2f97792002a27b9bad
+
+768 version (same steps, not rebuilt from scratch)  sha256 cb6edb75c5b4d1735f43881fb767eb59a59d3770336788b89eaebd8a5ff4e7fc
+
+use at run time   resize photo to 512×512 (Lanczos) · divide by its max value · mean 0.485 0.456 0.406 · std 0.229 0.224 0.225
+                  sigmoid on the output · enlarge the mask to the photo (cubic) · if the top score is under 0.5, there is no subject</pre>
+
+  <div class="rec"><b>Ship BiRefNet-lite at 512 on Windows and Linux, as an extension.</b>
+    It passes both of your lines: 54 MB (under 100) and 1.3 GB at peak (under 3), with cut-outs that agree with Apple's more than any earlier model. Before it goes live: check it on 20 or more other photos, time it on a real Windows and Linux machine, and pin the ONNX Runtime version in the extension. Until then, keep it Mac-only in the released app.</div>
+</body></html>

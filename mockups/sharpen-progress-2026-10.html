@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Convert — a real count while Sharpen works</title>
+<style>
+  :root { --page:#0d0e11; --ink:#e2e4ea; --muted:#8f94a1; --rule:#23252c; --card:#14161a; --violet:#b39ae8;
+    --mono:"SF Mono", ui-monospace, Menlo, monospace; --sans:-apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 var(--sans); }
+  main { max-width:980px; margin:0 auto; padding:48px 24px 120px; }
+  h1 { font-size:30px; margin:0 0 8px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); max-width:760px; margin:0 0 28px; }
+  .rule { background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--violet); border-radius:0 10px 10px 0; padding:12px 16px; margin:0 0 30px; font-size:15px; color:#c7cbd4; }
+  .rule b { color:var(--ink); }
+  .ctl { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px; padding:10px 14px; margin:0 0 26px; background:rgba(20,22,26,.96); border:1px solid var(--rule); border-radius:10px; font:13px var(--mono); color:var(--muted); }
+  .ctl button { font:13px var(--mono); color:#e4e8f0; background:#2a2e37; border:1px solid #3d4350; border-radius:7px; padding:5px 12px; cursor:pointer; }
+  .ctl button:hover { background:#343944; }
+  .ctl input { flex:1; accent-color:#8b93a6; }
+  .ctl .t { min-width:70px; text-align:right; color:var(--ink); }
+  h2 { font-size:20px; margin:34px 0 4px; }
+  h2 .id { font:700 12px var(--mono); padding:3px 7px; border-radius:6px; background:#251f3a; color:var(--violet); margin-right:8px; vertical-align:2px; }
+  .sub { color:var(--muted); margin:0 0 12px; font-size:15px; max-width:760px; }
+  .term { background:#1e1e1e; border:1px solid #2c2f37; border-radius:10px; overflow:hidden; box-shadow:0 24px 60px -30px rgba(0,0,0,.8); }
+  .term .bar { height:26px; display:flex; align-items:center; gap:7px; padding:0 12px; background:#161619; border-bottom:1px solid #26282e; }
+  .term .bar i { width:10px; height:10px; border-radius:50%; }
+  .term .bar i:nth-child(1){background:#ff5f57} .term .bar i:nth-child(2){background:#febc2e} .term .bar i:nth-child(3){background:#28c840}
+  .term pre { margin:0; padding:14px 16px 16px; font:13px/1.25 var(--mono); color:#e7e7e7; white-space:pre; overflow-x:auto; }
+  .hatch { color:#b39ae8; } .dim { color:#b0b0b0; } .bd { color:#808080; } .tr { color:#3a3a3a; } .v { color:#b39ae8; } .b { font-weight:700; }
+  .chip { background:#b39ae8; color:#1b1530; font-weight:700; }
+  .key { background:#333; color:#b0b0b0; }
+  .plain-note { font-size:13.5px; color:var(--muted); margin-top:8px; max-width:760px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>A real count while Sharpen works</h1>
+  <p class="lede">Today Sharpen shows a spinner and a clock, and nothing says how far along it is. If the on-device helper reported each tile it finishes, the Working screen could show a true bar, the way PDF splitting does. Drag the slider or press play.</p>
+  <div class="rule"><b>Why a bar is allowed here:</b> the picture is cut into a known number of tiles, so “12 of 48” is a fact, not a guess. Remove background has no tiles and keeps the plain spinner.</div>
+
+  <div class="ctl">
+    <button id="play">▶ play</button>
+    <input id="scrub" type="range" min="0" max="520" value="140" />
+    <span class="t" id="time">14.0 s</span>
+  </div>
+
+  <h2><span class="id">A</span>Count only</h2>
+  <p class="sub">The bar and “12 of 48 tiles”. The clock stays at the right.</p>
+  <div class="term"><div class="bar"><i></i><i></i><i></i></div><pre id="a"></pre></div>
+
+  <h2><span class="id">B</span>Count, and the time left</h2>
+  <p class="sub">Same bar. After 5 s it adds “about N s left” from the speed so far — the way a video's bar already does. It is the pace measured on this run, not a guess made beforehand.</p>
+  <div class="term"><div class="bar"><i></i><i></i><i></i></div><pre id="b"></pre></div>
+  <p class="plain-note">The real screen draws the same cells; only the fonts differ. The first tile can take a few seconds to report, so for that moment the bar sits empty at “0 of 48 tiles” while the clock runs.</p>
+</main>
+<script>
+  const TOTAL = 48, SECS = 52, W = 78, BAR = 30, FR = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  const $ = (id) => document.getElementById(id)
+  const clock = (s) => s < 60 ? s.toFixed(1) + 's' : Math.floor(s / 60) + 'm ' + String(Math.floor(s % 60)).padStart(2, '0') + 's'
+  // tiles done: starts after ~3 s (decode), then even pace, slightly uneven
+  const doneAt = (s) => s < 3 ? 0 : Math.min(TOTAL, Math.floor(((s - 3) / (SECS - 3)) * TOTAL))
+  function frame(s, withLeft) {
+    const d = doneAt(s), k = Math.round(d / TOTAL * BAR), tick = Math.floor(s * 12.5) % 10
+    const file = 'Sharpening IMG_2041.jpg'
+    const clk = s >= 3 ? clock(s) : ''
+    const head = '  <span class="v b">' + FR[tick] + '</span> <span class="b">' + file + '</span>'
+    const gap = W - 4 - file.length - clk.length
+    let left = ''
+    if (withLeft && s >= 5 && d > 0 && d < TOTAL) {
+      const l = ((TOTAL - d) / d) * (s - 3)
+      left = '  <span class="bd">·  about ' + (l < 60 ? Math.max(1, Math.round(l)) + ' s' : Math.round(l / 60) + ' min') + ' left</span>'
+    }
+    return head + ' '.repeat(Math.max(1, gap)) + '<span class="dim">' + clk + '</span>\n\n' +
+      '    <span class="v">' + '█'.repeat(k) + '</span><span class="tr">' + '█'.repeat(BAR - k) + '</span>' +
+      '<span class="dim">  ' + d + ' of ' + TOTAL + ' tiles</span>' + left + '\n\n' +
+      '  <span class="bd">' + '─'.repeat(W - 4) + '</span>\n' +
+      '  <span class="key"> esc </span> <span class="dim">stop</span>' + ' '.repeat(W - 4 - 10 - 14) + '<span class="key"> ctrl-c </span> <span class="dim">quit</span>'
+  }
+  function draw(s) {
+    $('a').innerHTML = frame(s, false)
+    $('b').innerHTML = frame(s, true)
+    $('time').textContent = s.toFixed(1) + ' s'
+    $('scrub').value = Math.round(s * 10)
+  }
+  let playing = false, t0 = 0, from = 0
+  $('scrub').oninput = (e) => { playing = false; $('play').textContent = '▶ play'; draw(e.target.value / 10) }
+  $('play').onclick = () => {
+    playing = !playing; $('play').textContent = playing ? '❚❚ pause' : '▶ play'
+    if (playing) { from = $('scrub').value >= 520 ? 0 : $('scrub').value / 10; t0 = performance.now(); requestAnimationFrame(step) }
+  }
+  function step(now) {
+    if (!playing) return
+    const s = from + (now - t0) / 1000 * 4   // 4× speed, so 52 s plays in 13 s
+    if (s >= SECS) { draw(SECS); playing = false; $('play').textContent = '▶ play'; return }
+    draw(s); requestAnimationFrame(step)
+  }
+  draw(14)
+</script>
+</body>
+</html>

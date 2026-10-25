@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  * { box-sizing:border-box }
+  body { margin:0; color:var(--foreground,#e8e8e8); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .lead { font-size:16px; margin:0 0 14px }
+  .facts { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:0 0 22px }
+  .fact { background:#242424; border-radius:var(--radius,8px); padding:16px }
+  .fact b { display:block; font-size:18px } .fact span { color:#b0b0b0; font-size:12px }
+  .heads { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; color:#b0b0b0; font-size:12px; margin-bottom:4px }
+  .row { margin:0 0 18px } .row img { width:100%; display:block; border-radius:4px }
+  .row p { margin:6px 0 0; font-size:13px } .row p i { font-style:normal; font-weight:700 }
+  .ok { color:#5fd38d } .bad { color:#e06c6c } .meh { color:#f0a04b }
+  h2 { font-size:16px; margin:26px 0 8px }
+  ul { margin:0; padding-left:18px } li { margin:4px 0 }
+</style></head><body>
+  <p class="lead">The compressed model is far better than the small ones that failed in October, and almost the same as the full model. It still isn't as clean as Apple's: patterned clothes come out partly see-through, and on a photo with no clear subject it cuts out junk instead of saying "no subject".</p>
+  <div class="facts">
+    <div class="fact"><b>45 MB</b><span>model (full one is 179 MB)</span></div>
+    <div class="fact"><b>0.8 s</b><span>per photo, this Mac's processor alone</span></div>
+    <div class="fact"><b>2.1 GB</b><span>memory while running (Apple's: 0.2 GB)</span></div>
+    <div class="fact"><b>Apache-2.0</b><span>licence, free to ship</span></div>
+  </div>
+  <div class="heads"><span>Original</span><span>Apple Vision (Mac today)</span><span>IS-Net full, 179 MB</span><span>IS-Net compressed, 45 MB</span></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-portrait.jpg"><p><i class="bad">Worse.</i> The hat and hood turn partly see-through; the compressed one more so.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-cat.jpg"><p><i class="meh">Close.</i> A few whisker streaks and faint plank lines left behind.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-dog.jpg"><p><i class="ok">Same.</i></p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-mug.jpg"><p><i class="ok">Same.</i> The mug is kept (the October models removed it).</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-sneakers.jpg"><p><i class="meh">Close.</i> A hole is cut through the see-through side panel.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-wineglass.jpg"><p><i class="ok">Same or better.</i> Glass, splash and bread all kept.</p></div>
+  <div class="row"><img src="/Users/atharvanayak/Developer/Convert Terminal/mockups/remove-bg-compressed-2026-10/cmp-monument.jpg"><p><i class="bad">Worse.</i> Apple says "no subject". IS-Net keeps the tower plus scraps, and the compressed one adds noise.</p></div>
+  <h2>Notes</h2>
+  <ul>
+    <li>Making the edges firmer afterwards didn't fix the see-through clothes. The model itself gets them wrong.</li>
+    <li>The October test photos were gone, so these are 7 new photos of the same kinds of subject.</li>
+    <li>The download would be about 55–60 MB with the program that runs the model, or 45 MB if it shares Boost's.</li>
+  </ul>
+</body></html>

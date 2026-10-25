@@ -1,0 +1,91 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Colour mode — what’s confusing</title><style>:root{--background:#161616;--foreground:#e8e8e8;--muted-foreground:#a0a0a0;--border:#3a3a3a;--secondary:#262626} body{background:var(--background);max-width:760px;margin:30px auto;padding:0 20px}
+  .au{font:15px/1.5 var(--font-sans,system-ui);color:var(--foreground)}
+  .lead{font-size:19px;font-weight:600;margin:4px 0 2px}
+  .sub{color:var(--muted-foreground);margin:0 0 8px}
+  section{margin:34px 0}
+  h2{font-size:17px;margin:0 0 10px;display:flex;align-items:center;gap:10px}
+  .n{flex:none;width:26px;height:26px;border-radius:50%;background:#e5484d;color:#fff;font-size:13px;display:grid;place-items:center}
+  .shot{position:relative;border-radius:8px;overflow:hidden;line-height:0}
+  .shot img{width:100%;display:block}
+  .pin{position:absolute;width:22px;height:22px;border-radius:50%;background:#e8a33d;color:#1a1a1a;font:700 12px/22px var(--font-sans,system-ui);text-align:center;box-shadow:0 0 0 2px rgba(0,0,0,.6)}
+  .pin.s{position:static;display:inline-block;box-shadow:none;margin-right:10px;flex:none}
+  .notes{list-style:none;padding:0;margin:10px 0 0}
+  .notes li{display:flex;align-items:center;margin:6px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:560px){.two{grid-template-columns:1fr}}
+  .cap{font-size:14px;margin-top:6px}
+  .keys{display:grid;gap:10px}
+  .key{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .cap-k{font:700 15px var(--font-mono,ui-monospace,monospace);min-width:44px;text-align:center;padding:6px 10px;border-radius:6px;background:var(--secondary,rgba(127,127,127,.2));border-bottom:3px solid var(--border)}
+  .means{padding:4px 10px;border-radius:14px;border:1px solid var(--border);font-size:14px}
+  .paste{display:grid;grid-template-columns:auto 30px 1fr;align-items:center;gap:10px}
+  .chip{font:600 14px var(--font-mono,monospace);padding:8px 12px;border-radius:6px;background:var(--secondary,rgba(127,127,127,.2));white-space:nowrap}
+  .arrow{text-align:center;font-size:20px;color:var(--muted-foreground)}
+  .code{font:11px/1.4 var(--font-mono,monospace);color:var(--muted-foreground);background:var(--code-background,rgba(127,127,127,.12));border-radius:6px;padding:10px;height:88px;overflow:hidden;word-break:break-all;-webkit-mask-image:linear-gradient(#000 55%,transparent)}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+  .flow .box{padding:8px 12px;border-radius:8px;border:1px solid var(--border)}
+  .flow .no{border-color:#e5484d;color:#e5484d;text-decoration:line-through}
+  .small li{margin:4px 0}
+  .fix{display:grid;gap:8px;padding:0;list-style:none;counter-reset:f}
+  .fix li{padding:10px 14px;border-radius:8px;background:var(--secondary,rgba(127,127,127,.12));counter-increment:f}
+  .fix li::before{content:counter(f);font-weight:700;color:#46a758;margin-right:10px}
+  .ok{border:1px solid var(--warning,#e8a33d);border-radius:8px;padding:12px 16px;margin-top:16px}
+  .ok b{color:var(--warning,#e8a33d)}
+</style></head><body><div class="au">
+<p class="lead">People get lost because colour mode shows everything at once.</p>
+<p class="sub">Six problems, most important first. Screens are from the real app.</p>
+
+<section><h2><span class="n">1</span>Two cards sound the same</h2>
+<div class="shot"><img src="colour-audit-2026-10/home.webp" alt=""><span class="pin" style="left:max(1px, calc(39.29711246200608% - 25px + 0px));top:calc(44.57446808510638% - 11px)">1</span><span class="pin" style="left:max(1px, calc(67.83814589665653% - 25px + 0px));top:calc(44.57446808510638% - 11px)">1</span></div>
+<p class="cap">Scale and Palette both say <b>“from one colour”</b>. If you have one colour, which do you pick?</p></section>
+
+<section><h2><span class="n">2</span>Too much on one screen</h2>
+<div class="shot"><img src="colour-audit-2026-10/scale.webp" alt=""><span class="pin" style="left:max(1px, calc(52.37841945288755% - 25px + 0px));top:calc(19.25531914893617% - 11px)">1</span><span class="pin" style="left:max(1px, calc(79.73024316109422% - 25px + 0px));top:calc(30.106382978723406% - 11px)">1</span><span class="pin" style="left:max(1px, calc(70.21656534954408% - 25px + 0px));top:calc(55.425531914893625% - 11px)">1</span><span class="pin" style="left:max(1px, calc(8.377659574468085% - 25px + 0px));top:calc(95.2127659574468% - 11px)">1</span><span class="pin" style="left:max(1px, calc(21.458966565349545% - 25px + 0px));top:calc(30.106382978723406% - 11px)">2</span><span class="pin" style="left:max(1px, calc(35.72948328267477% - 25px + 0px));top:calc(66.27659574468086% - 11px)">3</span><span class="pin" style="left:max(1px, calc(35.72948328267477% - 25px + 0px));top:calc(73.51063829787235% - 11px)">3</span><span class="pin" style="left:max(1px, calc(42.86474164133739% - 25px + 140px));top:calc(51.808510638297875% - 11px)">4</span></div>
+<ol class="notes"><li><span class="pin s">1</span>Key tips in four different places. Your eye has to hunt for them.</li><li><span class="pin s">2</span>Tabs most people will never need (Neutral, Alpha).</li><li><span class="pin s">3</span>Technical numbers: oklch, 3.6:1, AA, AAA.</li><li><span class="pin s">4</span>The colours you came for are marked with only a thin line.</li></ol></section>
+
+<section><h2><span class="n">3</span>You can’t tell where the result goes</h2>
+<div class="paste"><div class="chip">c&nbsp; copy all</div><div class="arrow">→</div><div class="code">&lt;svg xmlns="http://www.w3.org/2000/svg" width="852" height="204" viewBox="0 0 852 204">
+&lt;g id="blue">
+&lt;rect id="card" width="852" height="204" rx="0" fill="#18181B"/>
+&lt;text id="title" x="24" y="38" font-family="Inter" font-size="15" font-weight="600" fill="#FAFAFA">Blue&lt;/text>&lt;text id="subtitle" x="24" y="58" font-family="Inter" font-size="12" fill="#A1A1AA">from #6579FD · 50–950 in OKLCH&lt;/text>
+&lt;g id="blue-50" transform="translate(24 80)">&lt;rect id="swatch" width="64" height="64" rx="10" fill="#F4F6FF" stroke="#FFFFFF" stroke-opacity="0.08"/>&lt;text id="name" x="1" y="86" font-family="Inter" fon
+</div></div>
+<p class="cap">It’s made to paste into <b>Figma</b>, but nothing says so. Paste it anywhere else and you get a page of code.</p></section>
+
+<section><h2><span class="n">4</span>The same key does different things</h2>
+<div class="keys">
+<div class="key"><span class="cap-k">s</span><span class="means">scale</span><span class="means">steps</span><span class="means">open Scale</span></div>
+<div class="key"><span class="cap-k">r</span><span class="means">make centre</span><span class="means">reset</span></div>
+<div class="key"><span class="cap-k">←→</span><span class="means">pick a colour</span><span class="means">go deeper</span><span class="means">change a setting</span><span class="means">move a slider</span></div>
+</div>
+<p class="cap">What you learn on one screen doesn’t work on the next.</p></section>
+
+<section><h2><span class="n">5</span>Things are hidden</h2>
+<div class="two">
+<div><div class="shot"><img src="colour-audit-2026-10/palette.webp" alt=""><span class="pin" style="left:max(1px, calc(85.67629179331307% - 25px + 0px));top:calc(37.340425531914896% - 11px)">1</span></div><p class="cap">Only 5 of 9 rows show. Blue, purple, pink and grey are below, with no sign they’re there.</p></div>
+<div><div class="shot"><img src="colour-audit-2026-10/scale-tweak.webp" alt=""><span class="pin" style="left:max(1px, calc(20.269756838905774% - 25px + 0px));top:calc(33.72340425531915% - 11px)">2</span></div><p class="cap">The Tweak box covers the colours it’s changing.</p></div>
+</div></section>
+
+<section><h2><span class="n">6</span>You have to start over</h2>
+<div class="flow"><span class="box">Photo</span>→<span class="box">pick a colour</span>→<span class="box no">make a palette from it</span></div>
+<p class="cap">The tools don’t connect. To go from Scale to Palette you type the colour again, and going back from Palette throws it away.</p></section>
+
+<section><h2 style="gap:0">Small things</h2>
+<ul class="small">
+<li>“copied 11 swatches”: copied as what?</li>
+<li>“make centre” is hard to understand.</li>
+<li>“wrong input” doesn’t show an example of what works.</li>
+<li>The longest text on the photo screen is a two-line disclaimer.</li>
+<li>The rainbow header and the green/red marks compete with the colours.</li>
+</ul></section>
+
+<section><h2 style="gap:0">How we fix it</h2>
+<ol class="fix">
+<li><b>Two ways in:</b> a photo or a colour.</li>
+<li><b>One clear result first.</b> Extras behind one key.</li>
+<li><b>Say where it goes:</b> “copy for Figma”.</li>
+<li><b>Same keys on every screen.</b> All tips in the bottom row.</li>
+<li><b>Move between tools</b> without typing the colour again.</li>
+</ol>
+<div class="ok"><b>Needs your OK:</b> two of these fixes undo earlier decisions. The three cards become two ways in, and the Tweak box moves out of the middle of the screen.</div>
+</section></div></body></html>

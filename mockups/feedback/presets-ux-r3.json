@@ -1,0 +1,15 @@
+{
+  "page": "presets-ux-r3",
+  "verdicts": {
+    "M1": "potential",
+    "M2": "hate",
+    "M3": "potential",
+    "M4": "hate",
+    "M5": "dislike",
+    "M6": "potential",
+    "M7": "hate"
+  },
+  "notes": {},
+  "moreConcepts": false,
+  "savedAt": "2026-10-23T00:02:50.815Z"
+}
