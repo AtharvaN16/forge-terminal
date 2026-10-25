@@ -31,6 +31,7 @@ import {
   transcribeUnavailable,
   untranscribable,
 } from '../core/errors.js'
+import { isRtl } from '../core/transcribe/bidi.js'
 import { DEFAULT_DETAIL, type Detail } from '../core/transcribe/detail.js'
 import type { Transcription } from '../core/transcribe/markdown.js'
 import {
@@ -46,6 +47,7 @@ import {
   pagePlain,
   type ReadPage,
 } from '../core/transcribe/page-text.js'
+import { langRuns } from '../core/transcribe/scripts.js'
 import type { FormatId } from '../core/types.js'
 import { machineName } from '../extensions/catalog.js'
 import { installed } from '../extensions/paths.js'
@@ -732,27 +734,63 @@ async function renderHtml(
 /** The width of an A4 page's text with Word's own 1-inch margins, in twentieths of a point. */
 const TEXT_WIDTH = 9026
 
-async function pagesDocx(doc: PageText): Promise<Buffer> {
+async function pagesDocx(doc: PageText, lang?: string): Promise<Buffer> {
   const docx = await loadDocx()
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } = docx
   const NUMBERS = 'forge-numbers'
   let lists = 0
+  /**
+   * A text as runs marked by writing system: an East Asian run says so and in
+   * which language, a complex-script run (Arabic, Hebrew, Thai...) says so and
+   * runs right to left where it should. Word picks a font and the forms of a
+   * Han character by those marks; without them it may show boxes or the wrong
+   * forms. Latin-only text is the single plain run it always was.
+   */
+  const runs = (text: string, bold = false) =>
+    langRuns(text, lang).map(
+      (r) =>
+        new TextRun({
+          text: r.text,
+          ...(bold ? { bold: true } : {}),
+          ...(r.kind === 'eastAsia'
+            ? { font: { hint: 'eastAsia' }, language: r.lang ? { eastAsia: r.lang } : {} }
+            : {}),
+          ...(r.kind === 'complex'
+            ? {
+                font: { hint: 'cs' },
+                ...(r.rtl ? { rightToLeft: true } : {}),
+                ...(bold ? { boldComplexScript: true } : {}),
+                ...(r.lang ? { language: { bidirectional: r.lang } } : {}),
+              }
+            : {}),
+        }),
+    )
+  /** A paragraph that runs right to left, so Word aligns and orders it so. */
+  const direction = (text: string) => (isRtl(text) ? { bidirectional: true } : {})
   const pieces = (page: PageText[number]) =>
     page.flatMap((p) => {
       if (p.kind === 'heading')
         return [
           new Paragraph({
-            text: p.text,
+            children: runs(p.text),
             heading: p.level === 1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2,
+            ...direction(p.text),
           }),
         ]
-      if (p.kind === 'paragraph') return [new Paragraph({ text: p.text, spacing: { after: 160 } })]
+      if (p.kind === 'paragraph')
+        return [
+          new Paragraph({ children: runs(p.text), spacing: { after: 160 }, ...direction(p.text) }),
+        ]
       if (p.kind === 'list') {
         const instance = ++lists
         return p.items.map((text) =>
           p.ordered
-            ? new Paragraph({ text, numbering: { reference: NUMBERS, level: 0, instance } })
-            : new Paragraph({ text, bullet: { level: 0 } }),
+            ? new Paragraph({
+                children: runs(text),
+                numbering: { reference: NUMBERS, level: 0, instance },
+                ...direction(text),
+              })
+            : new Paragraph({ children: runs(text), bullet: { level: 0 }, ...direction(text) }),
         )
       }
       // Word reads the percentage; Pages and Quick Look only the cells' own widths.
@@ -771,7 +809,7 @@ async function pagesDocx(doc: PageText): Promise<Buffer> {
                     new TableCell({
                       width: { size: Math.floor(TEXT_WIDTH / columns), type: docx.WidthType.DXA },
                       children: [
-                        new Paragraph({ children: [new TextRun({ text: cell, bold: i === 0 })] }),
+                        new Paragraph({ children: runs(cell, i === 0), ...direction(cell) }),
                       ],
                     }),
                 ),
@@ -807,6 +845,26 @@ async function pagesDocx(doc: PageText): Promise<Buffer> {
   return Packer.toBuffer(file)
 }
 
+export interface RenderOptions {
+  signal?: AbortSignal | undefined
+  /**
+   * The language the text was spoken or written in (`ja_JP`, `zh-TW`), when it
+   * is known: it settles which forms of a Han character Word and the PDF use.
+   */
+  lang?: string | undefined
+  /**
+   * Told, once, which writing systems a PDF written here could not set (no font
+   * for them on this computer, or they have to be rearranged to be read), so
+   * a caller can say so. Never called when everything was set.
+   */
+  onMissing?: ((scripts: string[]) => void) | undefined
+}
+
+const pdfOptions = (o: RenderOptions) => ({
+  ...(o.lang !== undefined ? { lang: o.lang } : {}),
+  ...(o.onMissing !== undefined ? { onMissing: o.onMissing } : {}),
+})
+
 /**
  * A picture's or PDF's text in the chosen format: the Markdown, the bare
  * words, Word (written here), or a PDF named after the file it was read from:
@@ -816,14 +874,14 @@ export async function renderPages(
   doc: PageText,
   format: Output,
   name: string,
-  opts: { signal?: AbortSignal | undefined } = {},
+  opts: RenderOptions = {},
 ): Promise<Buffer> {
   if (format === 'md') return Buffer.from(pageMarkdown(doc), 'utf8')
   if (format === 'txt') return Buffer.from(pagePlain(doc), 'utf8')
-  if (format === 'docx') return pagesDocx(doc)
+  if (format === 'docx') return pagesDocx(doc, opts.lang)
   const apple = await appleRenderer()
   if (apple) return renderHtml(apple, pageHtml(doc, name), 'pdf', opts)
-  return pagesPdf(doc, { title: name })
+  return pagesPdf(doc, { title: name, ...pdfOptions(opts) })
 }
 
 /** The transcript's own title: its first level-1 heading. */
@@ -843,12 +901,14 @@ function titleOf(doc: PageText): string {
 export async function renderTranscript(
   md: string,
   format: Output,
-  opts: { signal?: AbortSignal | undefined } = {},
+  opts: RenderOptions = {},
 ): Promise<Buffer> {
   if (format === 'md') return Buffer.from(md, 'utf8')
   if (format === 'txt') return Buffer.from(markdownText(md), 'utf8')
   const apple = await appleRenderer()
   if (apple) return renderHtml(apple, markdownHtml(md), format, opts)
   const doc = markdownPages(md)
-  return format === 'docx' ? pagesDocx(doc) : pagesPdf(doc, { title: titleOf(doc) })
+  return format === 'docx'
+    ? pagesDocx(doc, opts.lang)
+    : pagesPdf(doc, { title: titleOf(doc), ...pdfOptions(opts) })
 }

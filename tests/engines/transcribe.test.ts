@@ -409,3 +409,73 @@ describe('renderPages', () => {
     expect(text).toContain('1,240')
   })
 })
+
+describe('Word, in any language', () => {
+  const xmlOf = async (doc: Parameters<typeof renderPages>[0], lang?: string) => {
+    use(join(await makeTempDir(), 'missing'))
+    const bytes = await renderPages(doc, 'docx', 'x.png', lang ? { lang } : {})
+    return new AdmZip(bytes).readAsText('word/document.xml')
+  }
+  const para = (text: string) => [[{ kind: 'paragraph' as const, text }]]
+
+  it('is the same plain runs for English: no font hint, no language, no direction', async () => {
+    const xml = await xmlOf(para('Plain English text.'))
+    for (const mark of ['w:hint', 'w:lang', 'w:bidi', '<w:rtl']) expect(xml).not.toContain(mark)
+  })
+
+  it('marks Japanese as East Asian, with its language, so Word does not draw boxes or Chinese forms', async () => {
+    const xml = await xmlOf(para('Hello 日本語のテスト'))
+    expect(xml).toContain('w:hint="eastAsia"')
+    expect(xml).toContain('<w:lang w:eastAsia="ja-JP"/>')
+    // The English before it is a run of its own, unmarked.
+    expect(xml).toMatch(/<w:t xml:space="preserve">Hello <\/w:t>/)
+  })
+
+  it('takes the language the speech was in for Han characters', async () => {
+    expect(await xmlOf(para('漢字'), 'zh_TW')).toContain('w:eastAsia="zh-TW"')
+    expect(await xmlOf(para('漢字'))).toContain('w:eastAsia="zh-CN"')
+    expect(await xmlOf(para('漢字'), 'ja_JP')).toContain('w:eastAsia="ja-JP"')
+  })
+
+  it('sets Arabic as a right-to-left paragraph of complex-script, right-to-left runs', async () => {
+    const xml = await xmlOf(para('مرحبا بالعالم'))
+    expect(xml).toContain('<w:bidi/>')
+    expect(xml).toContain('<w:rtl/>')
+    expect(xml).toContain('w:hint="cs"')
+    expect(xml).toContain('<w:lang w:bidi="ar-SA"/>')
+  })
+
+  it('does the same for a Hebrew cell, bold in the header row, and a heading', async () => {
+    const xml = await xmlOf([
+      [
+        { kind: 'heading', level: 1, text: 'שלום' },
+        {
+          kind: 'table',
+          rows: [
+            ['שלום', 'עולם'],
+            ['a', 'b'],
+          ],
+        },
+      ],
+    ])
+    expect(xml).toContain('<w:pStyle w:val="Heading1"/>')
+    expect(xml).toContain('<w:bCs/>')
+    expect(xml.match(/<w:bidi\/>/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(xml).toContain('<w:lang w:bidi="he-IL"/>')
+  })
+
+  it('leaves a left-to-right paragraph with a little Hebrew in it left to right', async () => {
+    const xml = await xmlOf(para('hello שלום world'))
+    expect(xml).not.toContain('<w:bidi/>')
+    expect(xml).toContain('<w:rtl/>')
+  })
+
+  it('writes a transcript in the language it was spoken in', async () => {
+    use(join(await makeTempDir(), 'missing'))
+    const md = '# 会議\n\n日本語のテスト\n'
+    const xml = new AdmZip(await renderTranscript(md, 'docx', { lang: 'ja_JP' })).readAsText(
+      'word/document.xml',
+    )
+    expect(xml).toContain('<w:lang w:eastAsia="ja-JP"/>')
+  })
+})

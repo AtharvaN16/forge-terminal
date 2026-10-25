@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { PageText } from '../../src/core/transcribe/page-text.js'
 import { loadPdfLib } from '../../src/engines/libs.js'
-import { pagesPdf } from '../../src/engines/pages-pdf.js'
+import { type PdfOptions, pagesPdf as writePdf } from '../../src/engines/pages-pdf.js'
 import { extractPdfText, openPdf } from '../../src/engines/pdfium.js'
+import { noFonts } from '../helpers/fake-fonts.js'
+import { content, ink, words } from '../helpers/pdf-inspect.js'
+
+/** These tests are about Forge's own font: the computer's are not asked, so any machine says the same. */
+const pagesPdf = (doc: PageText, opts: PdfOptions) => writePdf(doc, { fonts: noFonts, ...opts })
 
 const A4 = [595.28, 841.89]
 
@@ -14,44 +19,6 @@ async function pageCount(bytes: Uint8Array): Promise<number> {
     doc.destroy()
   }
 }
-
-/** A page's drawing instructions, as text. */
-async function content(bytes: Uint8Array, page = 0): Promise<string> {
-  const { PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } = await loadPdfLib()
-  const pdf = await PDFDocument.load(bytes)
-  const stream = pdf.context.lookup(pdf.getPage(page).node.get(PDFName.of('Contents')) as never)
-  if (!(stream instanceof PDFRawStream)) throw new Error('no content stream')
-  return Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1')
-}
-
-/** Where a page has ink, in points from its top-left corner (rendered, so it is what a reader sees). */
-async function ink(bytes: Uint8Array, page = 0) {
-  const pdfium = await openPdf(bytes)
-  try {
-    const scale = 2
-    const r = await pdfium.getPage(page).render({ scale, render: 'bitmap' })
-    let left = Infinity
-    let right = -Infinity
-    let top = Infinity
-    let bottom = -Infinity
-    for (let y = 0; y < r.height; y++)
-      for (let x = 0; x < r.width; x++) {
-        const at = (y * r.width + x) * 4
-        if ((r.data[at] ?? 255) < 160 && (r.data[at + 3] ?? 0) > 0) {
-          left = Math.min(left, x)
-          right = Math.max(right, x + 1)
-          top = Math.min(top, y)
-          bottom = Math.max(bottom, y + 1)
-        }
-      }
-    return { left: left / scale, right: right / scale, top: top / scale, bottom: bottom / scale }
-  } finally {
-    pdfium.destroy()
-  }
-}
-
-/** The words of every page as one run, so a line break and a space read the same. */
-const words = (pages: string[]) => pages.join(' ').replace(/\s+/g, ' ').trim()
 
 const sentence = 'The kettle was already boiling when the first guests arrived at the cottage.'
 
@@ -168,12 +135,18 @@ describe('pagesPdf', () => {
       expect(words(await extractPdfText(bytes))).toBe('Заголовок Επικεφαλίδα')
     })
 
-    it('puts "?" for what the font lacks, and keeps going', async () => {
-      // The font covers Latin, Greek and Cyrillic: Chinese, emoji and the like become one "?" each.
+    it('draws a box, not a question mark, for what no font has, says which, and keeps going', async () => {
+      // Forge's font covers Latin, Greek and Cyrillic; this computer gave no other.
+      let missing: string[] = []
       const bytes = await pagesPdf([[textPiece('a 你好 b 🎉 c'), textPiece('Still here')]], {
         title: 'Missing',
+        onMissing: (s) => {
+          missing = s
+        },
       })
-      expect(words(await extractPdfText(bytes))).toBe('a ?? b ? c Still here')
+      // Each missing character is Noto Sans's own .notdef box, which copies out as U+FFFD.
+      expect(words(await extractPdfText(bytes))).toBe('a \ufffd\ufffd b \ufffd c Still here')
+      expect(missing.sort()).toEqual(['Chinese', 'emoji'])
     })
 
     it('drops marks that take no room and folds odd spaces', async () => {

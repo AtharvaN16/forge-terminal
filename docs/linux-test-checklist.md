@@ -163,8 +163,11 @@ On Linux this uses the whisper extension and ffmpeg.
    - `forge transcribe talk.mp4 --format pdf --force` (any PDF viewer)
    - `forge transcribe talk.mp4 --format txt --force`
    **Right (PDF):** readable A4 pages with a title, and text you can select and
-   copy. If the talk is not in English, the words should still show; only
-   letters outside Latin, Greek and Cyrillic (Chinese, Arabic, Hindi...) show as `?`.
+   copy. If the talk is not in English, the words should still show: Chinese,
+   Japanese, Korean, Arabic, Hebrew and Thai in this computer's own fonts
+   (Arabic and Hebrew run right to left, the Arabic letters joined). Hindi and
+   other writing that must be rearranged show as boxes, never as `?`; tell us
+   which language you tried and what you saw.
 6. In the app: press `5` (transcribe), drop the file, and follow the questions,
    choosing PDF as the format. **Right:** the same PDF and a done screen.
 7. **Right:** there are no notes or summary (those need Apple's AI). Asking

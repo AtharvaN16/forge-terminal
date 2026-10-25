@@ -121,7 +121,10 @@ async function readPage(
   if (!hasText(doc)) throw noText(page.path)
   await writeAtomic(
     output,
-    await renderPages(doc, format, basename(page.path), { signal: io.signal }),
+    await renderPages(doc, format, basename(page.path), {
+      signal: io.signal,
+      lang: intent.language,
+    }),
   )
   const what =
     page.what === 'pdf'
@@ -220,7 +223,10 @@ export async function runTranscribeCommand(
       await fetched?.dispose()
     }
     const md = transcriptMarkdown(result, origin, { transcript: intent.transcript })
-    await writeAtomic(output, await renderTranscript(md, format, { signal: io.signal }))
+    await writeAtomic(
+      output,
+      await renderTranscript(md, format, { signal: io.signal, lang: result.locale }),
+    )
     const n = result.notes?.parts.length
     const parts = n === undefined ? '' : ` · ${n} ${n === 1 ? 'part' : 'parts'}`
     io.out(

@@ -348,7 +348,10 @@ export function TranscribeFlow({
         },
       })
       const md = transcriptMarkdown(result, origin, { transcript: want !== 'notes' })
-      await writeAtomic(output, await renderTranscript(md, format, { signal: ctrl.signal }))
+      await writeAtomic(
+        output,
+        await renderTranscript(md, format, { signal: ctrl.signal, lang: result.locale }),
+      )
       onSaved?.(to)
       setDone({
         output,
