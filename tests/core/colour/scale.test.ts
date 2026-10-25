@@ -276,6 +276,33 @@ describe('scale with chosen steps', () => {
     }
   })
 
+  it('a range that ends at 1000 darkens evenly: its last column drops as far as the ones before it (2026-10-25)', () => {
+    const drops = (ref: string, spec: StepSpec) => {
+      const s = scale(hex(ref), spec)
+      return s.slice(1).map((x, i) => L((s[i] as { hex: string }).hex) - L(x.hex))
+    }
+    for (const ref of ['#4FA25A', '#3B82F6', '#808080', '#F26E69']) {
+      for (const spec of [TW(100, 1000), TW(0, 1000), EVEN(0, 1000, 15), EVEN(0, 1000, 21)]) {
+        // From the colour on down: the lights have their own ladder.
+        const s = scale(hex(ref), spec)
+        const dark = drops(ref, spec).slice(s.findIndex((x) => x.reference))
+        const last = dark[dark.length - 1] as number
+        const median = [...dark].sort((a, b) => a - b)[Math.floor(dark.length / 2)] as number
+        expect(last, `${ref} ${spec.set} ${spec.start}–${spec.end}`).toBeLessThan(median * 1.3)
+        expect(last, `${ref} ${spec.set} ${spec.start}–${spec.end}`).toBeGreaterThan(median * 0.7)
+      }
+    }
+  })
+
+  it('1000 is where the default’s 950 is, and the default and its 950 are as they were', () => {
+    for (const ref of ['#6579FD', '#F26E69', '#808080']) {
+      const end1000 = scale(hex(ref), TW(100, 1000))
+      const dflt = scale(hex(ref), DEFAULT_STEPS)
+      expect(end1000[end1000.length - 1]?.hex).toBe(dflt[dflt.length - 1]?.hex)
+    }
+    expect(scale(hex('#6579FD'), DEFAULT_STEPS)[10]?.hex).toBe('#161B58')
+  })
+
   it('a grey stays grey out to 0 and 1000', () => {
     for (const x of scale(hex('#808080'), EVEN(0, 1000, 11))) {
       expect(x.rgb.r).toBe(x.rgb.g)

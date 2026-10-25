@@ -167,7 +167,15 @@ export function scale(ref: Rgb, spec: StepSpec = DEFAULT_STEPS): Step[] {
   // Below L 0.16 the usual floor would sit above the reference; there the
   // darker steps keep going down towards black instead.
   const floor = L0 < 0.16 ? 0.42 * L0 : Math.max(0.16, 0.42 * L0)
-  return placesOf(spec).map(({ step, at: place }) => {
+  const places = placesOf(spec)
+  // A range that ends at 1000 takes its darks evenly from the colour down to
+  // the floor at 1000 (2026-10-25). On the ladder 1000 was a drop past the
+  // floor on top of its own step, and 900 → 950 fell at twice the rate of the
+  // other hundreds, so the last columns fell two or three times as far as the
+  // rest (Tailwind 100–1000: 0.17 of lightness at 900 → 1000, 0.07 before it).
+  // The default, which ends at 950, keeps the ladder and its exact hexes.
+  const eased = places[places.length - 1]?.at === 1000
+  return places.map(({ step, at: place }) => {
     if (place === 500) return { step, at: place, rgb: { ...ref }, hex: toHex(ref), reference: true }
     let L: number
     let C: number
@@ -180,8 +188,8 @@ export function scale(ref: Rgb, spec: StepSpec = DEFAULT_STEPS): Step[] {
       const t = (50 - place) / 50
       L = top + (Math.max(WHITE_END, top) - top) * t
       C = C0 * 0.12 * (1 - t)
-    } else if (place <= 950) {
-      const g = along(DOWN, place)
+    } else if (place <= 950 || eased) {
+      const g = eased ? (place - 500) / 500 : along(DOWN, place)
       L = L0 - (L0 - floor) * g
       C = C0 * (1 - 0.45 * g)
     } else {

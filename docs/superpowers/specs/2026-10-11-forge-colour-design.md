@@ -224,7 +224,14 @@ swatches), ColorBox (a count, start and end lightness, and a curve), Radix
   the ladder's is interpolated along it, so the default eleven keep their
   exact hex. Past 50, lightness goes on to 0.995 and the last of the chroma
   goes; past 950, lightness drops to 0.65 of the floor and chroma to 0.6 of
-  what it was at 950.
+  what it was at 950. **A range that ends at 1000 (2026-10-25)** takes its
+  darks differently: evenly from the colour at 500 down to the floor at 1000
+  (lightness and chroma by the share of the way, 0.2 a hundred), so the
+  last column drops as far as the ones before it. On the ladder 900 → 1000
+  fell 0.17 of lightness where the hundreds before fell 0.07 (1000 past the
+  floor on top of 950's own double step). In such a range 1000 is the colour
+  the default's 950 is, and a 950 inside it is half way to it. Ranges that
+  end at 950 or less keep the ladder, so the default's hexes are unchanged.
 - **Tailwind**: 50, 100, 200 … 900, 950. Its ends move in 50s, the start
   0–450 and the end 550–1000; the hundreds between stay.
 - **Even**: `count` steps, 3 to 21, spread evenly from `start` to `end`
