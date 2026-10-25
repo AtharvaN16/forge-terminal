@@ -356,6 +356,7 @@ export const videoEngine: Engine = {
   writes: set(VIDEO_WRITES),
   ops: new Set(['convert']),
   probe: (path) => probeAs(path, 'video'),
+  alone: true,
   run,
   sizeTo,
   writesFor: videoWritesFor,
@@ -367,6 +368,7 @@ export const soundEngine: Engine = {
   writes: set(SOUND_WRITES),
   ops: new Set(['convert']),
   probe: (path) => probeAs(path, 'sound'),
+  alone: true,
   run,
   sizeTo,
 }
