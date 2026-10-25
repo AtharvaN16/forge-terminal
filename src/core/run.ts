@@ -1,8 +1,8 @@
-import { cpus } from 'node:os'
 import { engineForJob } from '../engines/registry.js'
 import type { Engine } from '../engines/types.js'
 import { conversionFailed, isForgeError } from './errors.js'
 import type { InputFailure } from './resolve.js'
+import { workerCount } from './threads.js'
 import type { Job, Progress, Result } from './types.js'
 
 export type RunEvent =
@@ -19,9 +19,15 @@ export interface RunSummary {
   outputBytes: number
 }
 
-/** Sharp dispatches into libuv's threadpool; unbounded dispatch thrashes it. */
-export function defaultConcurrency(): number {
-  return Math.max(1, Math.min(cpus().length, 4))
+/**
+ * Sharp dispatches into libuv's threadpool; unbounded dispatch thrashes it.
+ * So never more jobs than it has threads: the entry point sizes it to
+ * `workerCount`, and a size set by hand smaller than that wins.
+ */
+export function defaultConcurrency(env: NodeJS.ProcessEnv = process.env): number {
+  const threads = Number(env.UV_THREADPOOL_SIZE)
+  const workers = workerCount()
+  return Number.isInteger(threads) && threads > 0 ? Math.min(workers, threads) : workers
 }
 
 /**
