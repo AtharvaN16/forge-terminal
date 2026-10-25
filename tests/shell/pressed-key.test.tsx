@@ -97,8 +97,10 @@ describe('on the home screen', () => {
     const rest = colourOf(app.lastFrame(), '1–6')
     const words = colourOf(app.lastFrame(), 'mode')
     app.stdin.write('\x1b[C')
-    await settle(10)
     // Pressing → moves to compress; the key is the same orange in every mode.
+    // Polled, not a fixed wait: a slow runner may draw the lit frame late.
+    for (let i = 0; i < 20 && colourOf(app.lastFrame(), '1–6')?.fg !== DARK.brand; i++)
+      await settle(5)
     expect(colourOf(app.lastFrame(), '1–6')?.fg).toBe(DARK.brand)
     expect(colourOf(app.lastFrame(), '1–6')?.fg).not.toBe(rest?.fg)
     expect(colourOf(app.lastFrame(), 'mode')?.fg).toBe(words?.fg)

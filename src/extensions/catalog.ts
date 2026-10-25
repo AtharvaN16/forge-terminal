@@ -194,14 +194,21 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     // ffmpeg for a Mac without Homebrew's (video spec §3.7). Built from source
-    // by extensions/video/build.sh; its source is published beside it, as the
-    // GPL asks. No asset until it is published: until then nothing offers it,
-    // and Forge says how to get ffmpeg instead.
+    // by extensions/video/build.sh on GitHub's macos-14 runner; its source is
+    // published beside it (forge-ext-video-1.0.0-source.tar.gz), as the GPL
+    // asks. Apple silicon only: elsewhere Forge says how to get ffmpeg instead.
     id: 'video',
     title: 'Video and audio',
     summary: 'Convert, compress and trim video and audio (ffmpeg)',
     minMacos: 13,
-    assets: {},
+    assets: {
+      'darwin-arm64': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-video-v1.0.0/forge-ext-video-1.0.0-arm64.tar.gz`,
+        bytes: 24926308,
+        sha256: '6be130647a9a12272c64eacb6a766cf977d80137f84825435ff62f33c464988a',
+      },
+    },
     licence:
       'FFmpeg (GPL-2.0-or-later) with x264 (GPL-2.0), LAME (LGPL-2.0), Opus and libvpx (BSD), zimg (WTFPL)',
   },

@@ -32,6 +32,8 @@ function fake(opts: {
   /** Nobody could say whether there is a newer version. */
   unknown?: boolean
   forgeInstalled?: boolean
+  /** Forge's own ffmpeg can be downloaded here (an Apple silicon Mac). */
+  videoDownload?: boolean
 }) {
   let forge = opts.forgeInstalled ?? false
   const calls = { choose: [] as string[], update: 0, install: 0 }
@@ -61,7 +63,10 @@ function fake(opts: {
   const manager: ExtensionsManager = {
     async list() {
       return CATALOG.filter((e) => offeredOn(e, 'darwin') || e.id === 'video').map(
-        (entry): ExtensionStatus => {
+        (listed): ExtensionStatus => {
+          // Forge's own ffmpeg is for Apple silicon; elsewhere the sheet has only the check.
+          const entry =
+            listed.id === 'video' && !opts.videoDownload ? { ...listed, assets: {} } : listed
           const offered = offeredOn(entry, 'darwin')
           const have = entry.id === 'yt-dlp' && forge
           return {
@@ -218,11 +223,17 @@ describe('/extensions — a tool the user has themselves', () => {
     }
   })
 
-  it('lists Video and audio, with no download of Forge’s: only the check', async () => {
+  it('lists Video and audio, with no download of Forge’s where there is none: only the check', async () => {
     const { manager } = fake({})
     const f = await openOn(manager, 'Video and audio')
     expect(frame(f)).toMatch(/╭─ ffmpeg ─/)
     expect(frame(f)).toContain('Already have ffmpeg?')
     expect(frame(f)).not.toContain('↵ install')
+  })
+
+  it('offers Forge’s own ffmpeg on an Apple silicon Mac', async () => {
+    const { manager } = fake({ videoDownload: true })
+    const f = await openOn(manager, 'Video and audio')
+    expect(frame(f)).toContain('↵ install')
   })
 })

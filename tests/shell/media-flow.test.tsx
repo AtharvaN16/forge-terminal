@@ -225,12 +225,22 @@ describe.skipIf(!ffmpegHere)('video and sound in the shell', () => {
 })
 
 describe.skipIf(!ffmpegHere)('without ffmpeg', () => {
-  it('says how to get it, and goes on by itself once it is there', async () => {
+  it('says how to get it where Forge has no download, and goes on by itself once it is there', async () => {
     const clip = await makeClip({ seconds: 1 })
     const real = await findFfmpeg()
     forceFfmpegForTests(undefined)
+    // An Intel Mac, Windows or Linux: Forge's own ffmpeg is for Apple silicon only.
+    const entry = { ...(CATALOG.find((e) => e.id === 'video') as (typeof CATALOG)[number]) }
+    const tools: EditTools = {
+      async list() {
+        return [{ entry: { ...entry, assets: {} }, updateAvailable: false, supported: false }]
+      },
+      async install() {
+        throw new Error('no download here')
+      },
+    }
     try {
-      const { app, frame } = await start('2')
+      const { app, frame } = await start('2', tools)
       app.stdin.write(typed(clip))
       await until(() => frame().includes('clip.mov'))
       // Known from its bytes alone: a video, its size, nothing more.
