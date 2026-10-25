@@ -107,7 +107,7 @@ describe('runPreset', () => {
     expect((await stat(output)).size).toBeLessThanOrEqual(6_000)
   })
 
-  // Boost has no Linux arm64 build, so a model step runs where it has one.
+  // A model step runs only where the catalogue has a Boost build for this chip.
   it.skipIf(!offeredHere('boost', process.platform, process.arch))(
     'runs an on-device model between the cut and the encode',
     async () => {

@@ -77,7 +77,10 @@ static() { ./configure --prefix="$prefix" --disable-shared --enable-static "$@";
 ( cd "$(unpack lame-3.100.tar.gz)" && static --disable-frontend --disable-gtktest --disable-decoder )
 ( cd "$(unpack opus-1.5.2.tar.gz)" && static --disable-doc --disable-extra-programs )
 ( cd "$(unpack libogg-1.3.5.tar.gz)" && static )
-( cd "$(unpack libvorbis-1.3.7.tar.gz)" && static --disable-oggtest --with-ogg="$prefix" )
+# libvorbis 1.3.7's configure passes -force_cpusubtype_ALL on macOS, which
+# today's Apple linker refuses ("unknown options"); it is dropped before configuring.
+( cd "$(unpack libvorbis-1.3.7.tar.gz)" && sed -i '' 's/ -force_cpusubtype_ALL//g' configure &&
+    static --disable-oggtest --with-ogg="$prefix" )
 ( cd "$(unpack libvpx-1.15.0.tar.gz)" && ./configure --prefix="$prefix" --disable-shared --enable-static \
     --disable-examples --disable-tools --disable-docs --disable-unit-tests --enable-vp9-highbitdepth \
     --extra-cflags="$CFLAGS" && make -j"$jobs" && make install )

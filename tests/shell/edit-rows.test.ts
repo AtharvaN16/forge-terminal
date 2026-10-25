@@ -119,26 +119,20 @@ describe('where the Boost and Sharpen rows are offered', () => {
   const ids = (platform: NodeJS.Platform, arch: string) =>
     editRows(image(1200, 900), undefined, undefined, platform, arch).map((r) => r.id)
 
-  it('shows them on every Mac, on Windows, and on Linux x64 (WebGPU)', () => {
+  it('shows them on every OS and chip: Linux runs the model through ncnn, x64 and arm64', () => {
     for (const [platform, arch] of [
       ['darwin', 'arm64'],
       ['darwin', 'x64'],
       ['win32', 'x64'],
       ['win32', 'arm64'],
       ['linux', 'x64'],
+      ['linux', 'arm64'],
     ] as const) {
-      expect(ids(platform, arch), `${platform}-${arch}`).toEqual(
-        expect.arrayContaining(['sharpen', 'boost']),
-      )
+      const rows = ids(platform, arch)
+      expect(rows, `${platform}-${arch}`).toEqual(expect.arrayContaining(['sharpen', 'boost']))
+      // The built-in rows are there beside them.
+      expect(rows).toEqual(expect.arrayContaining(['trim', 'resize', 'rotate', 'crop']))
     }
-  })
-
-  it('leaves them out on Linux arm64, which has no build', () => {
-    const rows = ids('linux', 'arm64')
-    expect(rows).not.toContain('sharpen')
-    expect(rows).not.toContain('boost')
-    // The built-in rows are still there.
-    expect(rows).toEqual(expect.arrayContaining(['trim', 'resize', 'rotate', 'crop']))
   })
 
   it('shows Remove background on every OS and chip: Apple Vision on a Mac, BiRefNet-lite elsewhere', () => {
