@@ -11,7 +11,10 @@ import { makeTempDir } from './fixtures.js'
  * fresh temp dir and returns it; the previous value is restored by `restore`.
  *
  * The stand-in boost enlarges the PNG by `--scale` with plain resize, keeping
- * whatever channels it was given (so alpha Forge drops stays dropped); the
+ * whatever channels it was given (so alpha Forge drops stays dropped). It
+ * takes `--serve` too, as boost 1.4.0 and later do (one job a stdin line),
+ * and with FAKE_BOOST_LOG set appends a line per process it is started as,
+ * `serve <pid>` or `one <pid>`, so a test can tell which Forge used; the
  * stand-in cutout makes the top-left pixel column transparent. Neither is
  * the real model, which is the point: Forge's side of the contract is what
  * is under test.
@@ -19,14 +22,31 @@ import { makeTempDir } from './fixtures.js'
 const sharpUrl = pathToFileURL(createRequire(import.meta.url).resolve('sharp')).href
 
 const BOOST = `
+import { appendFileSync } from 'node:fs'
 import sharp from '${sharpUrl}'
-const a = process.argv.slice(2)
-const get = (k) => a[a.indexOf(k) + 1]
-const scale = Number(get('--scale'))
-const img = sharp(get('--in'))
-const { width, height } = await img.metadata()
-await img.resize(width * scale, height * scale).png().toFile(get('--out'))
-console.log(JSON.stringify({ ok: true, width: width * scale, height: height * scale, ms: 1 }))
+async function boost(a) {
+  const get = (k) => a[a.indexOf(k) + 1]
+  const scale = Number(get('--scale'))
+  const img = sharp(get('--in'))
+  const { width, height } = await img.metadata()
+  await img.resize(width * scale, height * scale).png().toFile(get('--out'))
+  return JSON.stringify({ ok: true, width: width * scale, height: height * scale, ms: 1 })
+}
+const argv = process.argv.slice(2)
+const serving = argv[0] === '--serve'
+if (process.env.FAKE_BOOST_LOG)
+  appendFileSync(process.env.FAKE_BOOST_LOG, (serving ? 'serve ' : 'one ') + process.pid + '\\n')
+if (serving) {
+  let pending = ''
+  let queue = Promise.resolve()
+  process.stdin.on('end', () => process.exit(0))
+  process.stdin.setEncoding('utf8').on('data', (d) => {
+    const lines = (pending + d).split('\\n')
+    pending = lines.pop()
+    for (const line of lines)
+      queue = queue.then(async () => console.log(await boost(JSON.parse(line).args)))
+  })
+} else console.log(await boost(argv))
 `
 
 const CUTOUT = `

@@ -158,6 +158,16 @@ the moment it ends:
   paths; one JSON line on stdout reports dimensions and timing; errors go to
   stderr as one JSON line with a code.
 - **remove-background:** `<ext>/forge-cutout <in> <out.png>` — same contract.
+- **boost from 1.4.0 (2026-10-25): a batch shares one child.** Starting the
+  model is not free (about 1 s of CoreML compile a run on Apple silicon; on
+  Linux a device listing and a card-against-processor check), and a 20-photo
+  batch paid it 20 times. `runner.mjs --serve` takes one job a stdin line
+  (`{"args":[…]}`, the same arguments) and answers each exactly as a one-file
+  run would. Forge uses it only when the installed version is 1.4.0 or later
+  (`boostServes`); older installs stay one process a file. The child is still
+  let go soon after the batch — 5 s with no job, or stdin closing when Forge
+  exits — so its memory still goes back; the lock is still taken per job, and
+  cancelling kills the child as before.
 - A queue in the parent runs one job at a time. Cancellation (esc / Ctrl-C /
   MCP cancel) kills the child; the atomic writer means nothing partial is left.
 - Inputs are prepared by Forge's existing pipeline first (EXIF rotate, decode
