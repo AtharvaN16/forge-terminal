@@ -73,16 +73,26 @@ Type `forge`, then drop a file onto the window (or type its path), then Enter.
 9. Convert a Word file to PDF. It is fine if you do not have LibreOffice;
    note whether you do.
 10. Edit mode, a small photo (about 1000 pixels wide): **Boost resolution** at 2x.
-    The first time it offers the Boost extension (about 17 MB); install it.
-    **Right:** the photo comes out twice as big. It runs on your graphics card
-    (through Vulkan), so a small photo takes well under a minute; the very
-    first time there is a pause of a few seconds before the bar moves.
+    The first time it offers the Boost extension (about SIZE_MB MB); install it.
+    **Right:** the photo comes out twice as big. This works on x86 (`x86_64`) and
+    ARM (`aarch64`, a Raspberry Pi 4 or 5 for example) alike. It uses your graphics
+    card through Vulkan when there is a real one, and the processor when there is
+    not, so on a PC with a card a small photo takes well under a minute, and on a
+    Raspberry Pi a few seconds more; the very first time on a card there is a pause
+    of a few seconds before the bar moves.
     Note how long it took. Then try **Sharpen**, and a big photo (about 12
-    megapixels): note the time.
-    **Also right:** a PC with no working graphics driver stops a big photo early with
-    "Too slow to boost", saying about how many minutes it would have taken,
-    instead of making you wait. Tell us if you see that, and send the output
-    of `vulkaninfo --summary` (from `vulkan-tools`), which lists your graphics card.
+    megapixels): note the time, and which it used (a graphics card, or only the
+    processor).
+    **Also right:** only a job that would take over about fifteen minutes is
+    stopped early with "Too slow to boost", saying about how many minutes it would
+    have taken. Tell us if you see that, and send the output of
+    `vulkaninfo --summary` (from `vulkan-tools`), which lists your graphics card.
+    A computer with only a software "graphics card" (it says `llvmpipe` or
+    `lavapipe`) must run on the processor, which is what we want.
+    To see what the card adds, run the same photo again with
+    `FORGE_BOOST_DEVICE=cpu forge` in front (it keeps Boost off the card) and note
+    the time. If Boost on the card gives an odd picture (stripes, a wrong colour),
+    tell us your card and driver.
     **Remove background** should not be offered; it is Mac-only.
 
 ## 3. HEIC and RAW (extensions)

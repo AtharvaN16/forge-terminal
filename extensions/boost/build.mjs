@@ -4,19 +4,22 @@
  *
  *   node extensions/boost/build.mjs --arch arm64|x64 --out <dir> [--platform darwin|win32|linux]
  *                                   [--pth <file> | --onnx <file>] [--runner-only]
+ *                                   [--zig <command>] [--worker <file>]   (linux)
  *
  * <dir> receives:
  *   runner.mjs                  runner.ts bundled; onnxruntime-node's JS and onnxruntime-common inlined
  *   onnxruntime_binding.node    from onnxruntime-node's bin/napi-v6/<platform>/<arch>/, loaded from beside runner.mjs
  *   libonnxruntime.*.dylib      darwin: the binding links it via @loader_path
  *   onnxruntime.dll, DirectML.dll  win32: the binding loads them from the same directory
- *   libonnxruntime.so.1         linux: the binding's RUNPATH is $ORIGIN, so it is found beside it.
- *                               x64 holds the WebGPU provider and Dawn (Vulkan backend) in this one
- *                               file; it needs only libc, libstdc++ and libgcc at load, and takes
- *                               libvulkan from the system when it runs. Linux arm64's has no WebGPU.
  *   realesr-general-x4v3.onnx   upstream .pth (pinned by sha256) converted by convert.py, output pinned too
+ *                               (not on linux: ncnn runs the same model from the files below)
+ *   linux (x64 and arm64 alike; no ONNX Runtime at all):
+ *     forge-ncnn                the tile worker (ncnn/forge-ncnn.cpp and ncnn), cross-built with zig
+ *                               by ncnn/build-worker.mjs; --worker uses a prebuilt one instead
+ *     realesr-general-x4v3.param, .bin   the same model in ncnn's format, written from the pinned
+ *                               ONNX by ncnn/onnx-to-ncnn.mjs (weights copied as 32-bit floats)
  *   NOTICES.txt                 Real-ESRGAN (BSD-3), ONNX Runtime (MIT), DirectML's terms (win32 only)
- *                               and ONNX Runtime's third-party notices
+ *                               and ONNX Runtime's third-party notices; on linux ncnn's and glslang's instead
  *
  * Downloads are cached in extensions/boost/.cache/ and verified by sha256 every
  * time. --pth uses a local copy of the upstream checkpoint (still verified).
@@ -42,6 +45,8 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
+import { buildWorker, ncnnLicences } from './ncnn/build-worker.mjs'
+import { onnxToNcnn } from './ncnn/onnx-to-ncnn.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const cacheDir = join(here, '.cache')
@@ -65,7 +70,7 @@ export const ORT_NOTICES = {
 }
 
 function parseArgs(argv) {
-  const out = { runnerOnly: false, platform: 'darwin' }
+  const out = { runnerOnly: false, platform: 'darwin', zig: process.env.ZIG || 'zig' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--runner-only') out.runnerOnly = true
@@ -74,7 +79,9 @@ function parseArgs(argv) {
       a === '--out' ||
       a === '--pth' ||
       a === '--onnx' ||
-      a === '--platform'
+      a === '--platform' ||
+      a === '--zig' ||
+      a === '--worker'
     )
       out[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument: ${a}`)
@@ -135,6 +142,19 @@ async function modelFile(localPth, localOnnx) {
   return onnx
 }
 
+/**
+ * runner.ts imports both engines by name; each platform's runner.mjs carries one
+ * (Linux: ncnn, no ONNX Runtime anywhere; the rest: ONNX Runtime). The other is
+ * left as an import that is never reached.
+ */
+export const oneEngine = (platform) => ({
+  name: 'one-engine',
+  setup(b) {
+    const left = platform === 'linux' ? /engine-ort\.js$/ : /engine-ncnn\.js$/
+    b.onResolve({ filter: left }, (args) => ({ path: args.path, external: true }))
+  },
+})
+
 /** onnxruntime-node loads its binding from ../bin/napi-v6/<platform>/<arch>/; point it beside runner.mjs instead. */
 export const bindingBesideRunner = {
   name: 'ort-binding-beside-runner',
@@ -160,10 +180,13 @@ async function main() {
   const args = parseArgs(process.argv.slice(2))
   const out = resolve(args.out)
   mkdirSync(out, { recursive: true })
+  const linux = args.platform === 'linux'
 
-  const ortPkg = require('onnxruntime-node/package.json')
-  if (ortPkg.version !== ORT_VERSION)
-    throw new Error(`onnxruntime-node ${ortPkg.version} installed; build expects ${ORT_VERSION}`)
+  if (!linux) {
+    const ortPkg = require('onnxruntime-node/package.json')
+    if (ortPkg.version !== ORT_VERSION)
+      throw new Error(`onnxruntime-node ${ortPkg.version} installed; build expects ${ORT_VERSION}`)
+  }
 
   await build({
     entryPoints: [join(here, 'runner.ts')],
@@ -176,41 +199,82 @@ async function main() {
     banner: {
       js: "import { createRequire as __forgeRequire } from 'node:module'; const require = __forgeRequire(import.meta.url);",
     },
-    plugins: [bindingBesideRunner],
+    plugins: [oneEngine(args.platform), ...(linux ? [] : [bindingBesideRunner])],
     logLevel: 'warning',
   })
 
-  const nativeDir = join(
-    dirname(require.resolve('onnxruntime-node/package.json')),
-    'bin',
-    'napi-v6',
-    args.platform,
-    args.arch,
-  )
-  if (!existsSync(nativeDir))
-    throw new Error(`onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`)
-  // darwin ships the whole directory: the binding and the one ONNX Runtime
-  // library it links (libonnxruntime.1.23.2.dylib), which holds CoreML and, on
-  // x64, WebGPU (Metal) too. linux names its two: on an x64 Linux host, npm's
-  // install of onnxruntime-node also fetches the CUDA and TensorRT providers
-  // into the same folder, which Boost never asks for.
-  const native =
-    args.platform === 'win32'
-      ? WIN32_NATIVE
-      : args.platform === 'linux'
-        ? ['onnxruntime_binding.node', 'libonnxruntime.so.1']
-        : readdirSync(nativeDir)
-  for (const f of native) copyFileSync(join(nativeDir, f), join(out, f))
+  if (!linux) {
+    const nativeDir = join(
+      dirname(require.resolve('onnxruntime-node/package.json')),
+      'bin',
+      'napi-v6',
+      args.platform,
+      args.arch,
+    )
+    if (!existsSync(nativeDir))
+      throw new Error(
+        `onnxruntime-node ${ORT_VERSION} has no ${args.platform}/${args.arch} binaries`,
+      )
+    // darwin ships the whole directory: the binding and the one ONNX Runtime
+    // library it links (libonnxruntime.1.23.2.dylib), which holds CoreML and, on
+    // x64, WebGPU (Metal) too; win32 names its three.
+    const native = args.platform === 'win32' ? WIN32_NATIVE : readdirSync(nativeDir)
+    for (const f of native) copyFileSync(join(nativeDir, f), join(out, f))
+  }
 
   if (args.runnerOnly) return void console.log(out)
-  copyFileSync(await modelFile(args.pth, args.onnx), join(out, model.file))
+  const onnx = await modelFile(args.pth, args.onnx)
 
+  if (linux) {
+    // ncnn runs the model from its own files, written from the pinned ONNX.
+    const ncnn = onnxToNcnn(readFileSync(onnx))
+    writeFileSync(join(out, 'realesr-general-x4v3.param'), ncnn.param)
+    writeFileSync(join(out, 'realesr-general-x4v3.bin'), ncnn.bin)
+    let built = 'a prebuilt forge-ncnn'
+    if (args.worker) copyFileSync(args.worker, join(out, 'forge-ncnn'))
+    else built = await buildWorker(args.arch, join(out, 'forge-ncnn'), args.zig)
+    const licences = await ncnnLicences()
+    writeFileSync(join(out, 'NOTICES.txt'), linuxNotices(built, licences))
+    return void console.log(out)
+  }
+
+  copyFileSync(onnx, join(out, model.file))
   const ortNotices = readFileSync(
     await pinned(`ort-${ORT_VERSION}-ThirdPartyNotices.txt`, ORT_NOTICES.url, ORT_NOTICES.sha256),
     'utf8',
   )
   writeFileSync(join(out, 'NOTICES.txt'), notices(ortNotices, args.platform))
   console.log(out)
+}
+
+/** The Linux archives: ncnn runs the model, so ONNX Runtime's notices are not there. */
+function linuxNotices(built, licences) {
+  return `Forge "Boost resolution" extension — third-party notices
+
+The model files realesr-general-x4v3.param and .bin are converted (format only,
+weights unchanged, 32-bit floats) from realesr-general-x4v3.pth of Real-ESRGAN,
+https://github.com/xinntao/Real-ESRGAN, released under the licence below.
+
+${REAL_ESRGAN_LICENCE}----------------------------------------------------------------------------
+ncnn (forge-ncnn is built from ncnn and Forge's own tile program)
+https://github.com/Tencent/ncnn
+${built}
+----------------------------------------------------------------------------
+
+${licences.ncnn}
+----------------------------------------------------------------------------
+glslang (inside ncnn: compiles its Vulkan shaders)
+https://github.com/KhronosGroup/glslang
+----------------------------------------------------------------------------
+
+${licences.glslang}
+----------------------------------------------------------------------------
+Runtime libraries
+----------------------------------------------------------------------------
+
+forge-ncnn is linked against the system's glibc (LGPL-2.1+) and contains LLVM's
+libc++ (Apache-2.0 WITH LLVM-exception), as zig ships it.
+`
 }
 
 /** DirectML's licence lets it ship only inside something else, so the notice says so. */
@@ -226,14 +290,8 @@ not be redistributed on its own.
 
 `
 
-function notices(ortThirdParty, platform) {
-  return `Forge "Boost resolution" extension — third-party notices
-
-The model file realesr-general-x4v3.onnx is converted (format only, weights
-unchanged) from realesr-general-x4v3.pth of Real-ESRGAN,
-https://github.com/xinntao/Real-ESRGAN, released under the licence below.
-
-----------------------------------------------------------------------------
+/** Real-ESRGAN's licence, as it stands in every archive's NOTICES.txt. */
+const REAL_ESRGAN_LICENCE = `----------------------------------------------------------------------------
 Real-ESRGAN
 ----------------------------------------------------------------------------
 
@@ -267,7 +325,16 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-----------------------------------------------------------------------------
+`
+
+function notices(ortThirdParty, platform) {
+  return `Forge "Boost resolution" extension — third-party notices
+
+The model file realesr-general-x4v3.onnx is converted (format only, weights
+unchanged) from realesr-general-x4v3.pth of Real-ESRGAN,
+https://github.com/xinntao/Real-ESRGAN, released under the licence below.
+
+${REAL_ESRGAN_LICENCE}----------------------------------------------------------------------------
 ONNX Runtime ${ORT_VERSION} (onnxruntime-node, onnxruntime-common, libonnxruntime)
 https://github.com/microsoft/onnxruntime
 ----------------------------------------------------------------------------

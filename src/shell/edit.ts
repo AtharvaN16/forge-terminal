@@ -151,8 +151,8 @@ export function editRows(
   const boostReason = scales.length === 0 ? tooLarge(source, offered[0] ?? 2) : undefined
   const sharpenReason = tooLarge(source, 1)
   // Boost's model is offered where the catalogue has a build for this chip: a
-  // Mac, Windows and Linux x64, a graphics card each (CoreML, DirectML,
-  // WebGPU). Where it has none (Linux arm64) neither of its rows is there.
+  // Mac, Windows and Linux (CoreML, DirectML, WebGPU, and ncnn on Vulkan or the
+  // processor). Where it has none neither of its rows is there.
   const boostRows: EditRow[] = [
     {
       id: 'sharpen',

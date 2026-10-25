@@ -4,16 +4,21 @@
  *   node runner.mjs --in <png> --out <png> --scale 1|2|3|4 [--cache <dir>]
  *
  * Runs realesr-general-x4v3 (4×) over the image in 256 px tiles with 16 px of
- * overlap, through ONNX Runtime: DirectML on Windows, CoreML on Apple silicon,
- * WebGPU on Linux x64 and Intel Macs (then CoreML on the Mac), the CPU last
- * everywhere (providers.ts). Where the CPU is all a missing graphics card
- * leaves, a run projected to take over three minutes stops with
- * `boost-too-slow`. 2× and 3× are the 4× tile brought down by Lanczos,
+ * overlap. What runs the model is an engine (engine.ts): ONNX Runtime on
+ * Windows and the Macs (DirectML, CoreML, WebGPU on Intel Macs, the CPU last:
+ * engine-ort.ts, providers.ts), ncnn on Linux (engine-ncnn.ts), on a graphics
+ * card if there is a real one. Where the CPU is all a missing graphics card
+ * leaves (Intel Macs, Linux), a run projected to take longer than the plan's
+ * limit stops with `boost-too-slow`. 2× and 3× are the 4× tile brought down by Lanczos,
  * tile by tile; 1× (Sharpen) is the 4× tile brought down by a quarter the same way,
  * so the image keeps its size and memory stays bound by the tile. Alpha never
  * goes through the model: it is resized with Lanczos (kept as is at 1×) and
  * re-joined. The output is written one band of tiles at a time, so memory
  * does not grow with the image beyond the decoded input.
+ *
+ * Two switches for diagnosis, read from the environment: FORGE_BOOST_DEVICE=cpu
+ * keeps the ncnn engine off the graphics card, and FORGE_BOOST_ENGINE=ncnn runs
+ * it on a platform other than Linux (a Mac, to test it).
  *
  * Contract (shared with Forge's src/extensions/run.ts): exactly one JSON line
  * on stdout — `{"ok":true,"width","height","ms"}` with exit 0, or
@@ -30,15 +35,15 @@
 
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import type { InferenceSession, Tensor } from 'onnxruntime-node'
+import { MODEL_SCALE, TILE, TILE_OUT, type TileEngine } from './engine.js'
 import { Resampler } from './lanczos.js'
 import { decodePng, PngError, PngWriter, readPngHeader } from './png.js'
-import { judge, type Provider, providerPlan, tileCount } from './providers.js'
+import { judge, providerPlan, tileCount } from './providers.js'
 
 const MODEL_FILE = 'realesr-general-x4v3.onnx'
-const MODEL_SCALE = 4
-const TILE = 256
 const OVERLAP = 16
+/** How many tiles a pipelined engine works on in front of the one being brought to size. */
+const AHEAD = 3
 const STEP = TILE - 2 * OVERLAP
 const MAX_SIDE = 16_384
 const MAX_PIXELS = 100_000_000
@@ -117,45 +122,10 @@ function checkSize(w: number, h: number, scale: number): void {
   )
 }
 
-type Ort = typeof import('onnxruntime-node')
-
-/** What ONNX Runtime is called by, and what the log says when it will not load. */
-const ORT_NAME: Record<Provider, string> = {
-  webgpu: 'WebGPU',
-  coreml: 'CoreML',
-  dml: 'DirectML',
-  cpu: 'CPU',
-}
-
-function ortProvider(p: Provider): InferenceSession.ExecutionProviderConfig {
-  return p === 'coreml' ? { name: 'coreml', coreMlFlags: 0 } : p
-}
-
-async function openModel(
-  ort: Ort,
-  path: string,
-  providers: readonly Provider[],
-): Promise<InferenceSession> {
-  const base = {
-    intraOpNumThreads: 2,
-    interOpNumThreads: 1,
-    graphOptimizationLevel: 'all' as const,
-    logSeverityLevel: 3 as const,
-  }
-  // The first of `providers` that loads wins; the CPU is always the way out.
-  // ONNX Runtime drops a provider it does not have by itself ("not available:
-  // backend not found", on stderr) and goes on to the next, so a graphics card
-  // that will not start is only found out by how long a tile takes (`judge`).
-  try {
-    return await ort.InferenceSession.create(path, {
-      ...base,
-      executionProviders: providers.map(ortProvider),
-    })
-  } catch (err) {
-    const first = providers[0] ?? 'cpu'
-    process.stderr.write(`${ORT_NAME[first]} unavailable, using CPU: ${String(err)}\n`)
-    return await ort.InferenceSession.create(path, { ...base, executionProviders: ['cpu'] })
-  }
+/** What has to be beside runner.mjs for the engine this platform uses. */
+const PAYLOAD_FILES: Record<'ort' | 'ncnn', readonly string[]> = {
+  ort: [MODEL_FILE],
+  ncnn: ['forge-ncnn', 'realesr-general-x4v3.param', 'realesr-general-x4v3.bin'],
 }
 
 async function boost(args: Args): Promise<{ width: number; height: number }> {
@@ -168,58 +138,82 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   const OW = W * S
   const OH = H * S
 
-  const modelPath = fileURLToPath(new URL(`./${MODEL_FILE}`, import.meta.url))
-  if (!existsSync(modelPath))
-    throw new RunnerError('runtime-error', `model file missing: ${modelPath}`)
-  const ort: Ort = await import('onnxruntime-node')
-  const plan = providerPlan(process.platform, process.arch)
-  const session = await openModel(ort, modelPath, plan.providers)
-  const inName = session.inputNames[0] ?? 'input'
-  const outName = session.outputNames[0] ?? 'output'
+  // FORGE_BOOST_ENGINE=ncnn runs the Linux engine on another OS (for testing the ncnn path on a Mac).
+  const plan = providerPlan(
+    process.env.FORGE_BOOST_ENGINE === 'ncnn' ? 'linux' : process.platform,
+    process.arch,
+  )
+  for (const file of PAYLOAD_FILES[plan.engine]) {
+    const path = fileURLToPath(new URL(`./${file}`, import.meta.url))
+    if (!existsSync(path)) throw new RunnerError('runtime-error', `model file missing: ${path}`)
+  }
+  const total = tileCount(W, H, STEP)
+  // The engine's module is imported by name here so that each platform's runner.mjs carries one only (build.mjs).
+  const engine: TileEngine =
+    plan.engine === 'ncnn'
+      ? await (await import('./engine-ncnn.js')).openEngine(total)
+      : await (await import('./engine-ort.js')).openEngine(
+          fileURLToPath(new URL(`./${MODEL_FILE}`, import.meta.url)),
+          plan.providers,
+        )
 
-  const T4 = TILE * MODEL_SCALE
-  const down = S === MODEL_SCALE ? undefined : new Resampler(T4, T4, TILE * S, TILE * S)
+  const down = S === MODEL_SCALE ? undefined : new Resampler(TILE_OUT, TILE_OUT, TILE * S, TILE * S)
   const alpha = img.hasAlpha ? alphaPlane(rgba, W, H) : undefined
   const alphaUp = alpha && S !== 1 ? new Resampler(W, H, OW, OH) : undefined
   const ch = img.hasAlpha ? 4 : 3
   const writer = new PngWriter(args.output, OW, OH, img.hasAlpha)
-  const input = new Float32Array(3 * TILE * TILE)
-  const n = TILE * TILE
   // Only where the processor is what a missing graphics card leaves: how long each tile took.
-  const total = tileCount(W, H, STEP)
   const tileMs: number[] = []
 
-  let tilesDone = 0
-  progress(0, total)
-  for (let cy = 0; cy < H; cy += STEP) {
-    const bh = Math.min(STEP, H - cy)
-    const band = new Uint8Array(OW * bh * S * ch)
-    for (let cx = 0; cx < W; cx += STEP) {
-      const tileStart = performance.now()
-      const bw = Math.min(STEP, W - cx)
-      // Edge-clamped 256 px tile whose core (minus the overlap) is (cx, cy, bw, bh).
-      for (let y = 0; y < TILE; y++) {
-        const sy = Math.min(H - 1, Math.max(0, cy - OVERLAP + y))
-        for (let x = 0; x < TILE; x++) {
-          const sx = Math.min(W - 1, Math.max(0, cx - OVERLAP + x))
-          const si = (sy * W + sx) * 4
-          const di = y * TILE + x
-          input[di] = (rgba[si] ?? 0) / 255
-          input[n + di] = (rgba[si + 1] ?? 0) / 255
-          input[2 * n + di] = (rgba[si + 2] ?? 0) / 255
-        }
+  const tiles: Array<[number, number]> = []
+  for (let cy = 0; cy < H; cy += STEP) for (let cx = 0; cx < W; cx += STEP) tiles.push([cx, cy])
+
+  /** The edge-clamped 256 px tile whose core (minus the overlap) starts at (cx, cy). */
+  const cut = (cx: number, cy: number): Uint8Array => {
+    const tile = new Uint8Array(TILE * TILE * 3)
+    let di = 0
+    for (let y = 0; y < TILE; y++) {
+      const sy = Math.min(H - 1, Math.max(0, cy - OVERLAP + y))
+      for (let x = 0; x < TILE; x++) {
+        const sx = Math.min(W - 1, Math.max(0, cx - OVERLAP + x))
+        const si = (sy * W + sx) * 4
+        tile[di++] = rgba[si] ?? 0
+        tile[di++] = rgba[si + 1] ?? 0
+        tile[di++] = rgba[si + 2] ?? 0
       }
-      const result = await session.run({
-        [inName]: new ort.Tensor('float32', input, [1, 3, TILE, TILE]),
-      })
-      const out = (result[outName] as Tensor).data as Float32Array
+    }
+    return tile
+  }
+  // Tiles sent to the engine and not yet taken back, in order. A pipelined engine
+  // is kept AHEAD tiles in front of the one being brought to size.
+  const inflight: Array<Promise<Float32Array>> = []
+  let sent = 0
+  const send = (): void => {
+    const room = engine.pipelined ? AHEAD : 1
+    while (sent < tiles.length && inflight.length < room) {
+      const [cx, cy] = tiles[sent++] as [number, number]
+      inflight.push(engine.run(cut(cx, cy)))
+    }
+  }
+  let writing: Promise<void> = Promise.resolve()
+  try {
+    let band = new Uint8Array(0)
+    let lastDone = performance.now()
+    progress(0, total)
+    for (let i = 0; i < tiles.length; i++) {
+      const [cx, cy] = tiles[i] as [number, number]
+      const bh = Math.min(STEP, H - cy)
+      const bw = Math.min(STEP, W - cx)
+      if (cx === 0) band = new Uint8Array(OW * bh * S * ch)
+      send()
+      const out = await (inflight.shift() as Promise<Float32Array>)
 
       // Bring the whole tile to the target scale, then keep its core: the
       // overlap gives Lanczos real neighbours at the seams.
       const TS = TILE * S
       const planes: Float32Array[] = []
       for (let c = 0; c < 3; c++) {
-        const plane = out.subarray(c * T4 * T4, (c + 1) * T4 * T4)
+        const plane = out.subarray(c * TILE_OUT * TILE_OUT, (c + 1) * TILE_OUT * TILE_OUT)
         planes.push(down ? down.rows(plane, OVERLAP * S, (OVERLAP + bh) * S) : plane)
       }
       const rowBase = down ? 0 : OVERLAP * S
@@ -234,10 +228,11 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
         }
       }
       if (plan.guarded && tileMs.length < 2) {
-        tileMs.push(performance.now() - tileStart)
-        const verdict = judge(tileMs, total)
+        // The whole of this tile's turn, less what the engine spent checking itself.
+        const now = performance.now()
+        tileMs.push(now - lastDone - (engine.takeOverheadMs?.() ?? 0))
+        const verdict = judge(tileMs, total, plan.limitMs)
         if (verdict.slow) {
-          await session.release()
           const seconds = Math.round(verdict.projectedMs / 1000)
           throw new RunnerError(
             'boost-too-slow',
@@ -246,21 +241,31 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
           )
         }
       }
-      progress(++tilesDone, total)
-    }
-    if (alpha) {
-      const a = alphaUp
-        ? alphaUp.rows(alpha, cy * S, (cy + bh) * S)
-        : alpha.subarray(cy * W, (cy + bh) * W)
-      for (let i = 0; i < OW * bh * S; i++) {
-        const v = Math.round(a[i] ?? 0)
-        band[i * 4 + 3] = v < 0 ? 0 : v > 255 ? 255 : v
+      lastDone = performance.now()
+      progress(i + 1, total)
+
+      if (cx + STEP >= W) {
+        if (alpha) {
+          const a = alphaUp
+            ? alphaUp.rows(alpha, cy * S, (cy + bh) * S)
+            : alpha.subarray(cy * W, (cy + bh) * W)
+          for (let k = 0; k < OW * bh * S; k++) {
+            const v = Math.round(a[k] ?? 0)
+            band[k * 4 + 3] = v < 0 ? 0 : v > 255 ? 255 : v
+          }
+        }
+        // Filtering and compressing the band goes on while the next tiles are made; one at a time.
+        await writing
+        writing = writer.writeRows(band)
       }
     }
-    await writer.writeRows(band)
+    await writing
+    await writer.close()
+  } finally {
+    for (const p of inflight) p.catch(() => {})
+    writing.catch(() => {})
+    await engine.close()
   }
-  await writer.close()
-  await session.release()
   return { width: OW, height: OH }
 }
 

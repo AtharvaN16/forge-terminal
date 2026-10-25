@@ -72,6 +72,9 @@ export function readPngHeader(path: string): PngHeader {
   return header(chunks(buf).find((c) => c.type === 'IHDR')?.data)
 }
 
+/** How far a filtered byte is from zero, going the short way round 256: the weight the filter choice sums. */
+const DISTANCE = Uint8Array.from({ length: 256 }, (_, v) => (v < 128 ? v : 256 - v))
+
 function paeth(a: number, b: number, c: number): number {
   const p = a + b - c
   const pa = Math.abs(p - a)
@@ -218,6 +221,7 @@ export class PngWriter {
   private readonly channels: number
   private readonly stride: number
   private prev: Uint8Array
+  private readonly candidates = Array.from({ length: 5 }, () => new Uint8Array(0))
   private readonly deflate = createDeflate({ level: 6 })
   private readonly done: Promise<void>
 
@@ -225,6 +229,7 @@ export class PngWriter {
     this.channels = alpha ? 4 : 3
     this.stride = width * this.channels
     this.prev = new Uint8Array(this.stride)
+    for (let f = 0; f < 5; f++) this.candidates[f] = new Uint8Array(this.stride)
     this.fd = openSync(path, 'w')
     writeSync(this.fd, SIGNATURE)
     const ihdr = Buffer.alloc(13)
@@ -253,46 +258,74 @@ export class PngWriter {
 
   /** `rows` holds whole rows of 8-bit pixels with this writer's channel count. */
   async writeRows(rows: Uint8Array): Promise<void> {
-    const n = rows.length / this.stride
-    const out = Buffer.alloc(n * (this.stride + 1))
-    const cand = Array.from({ length: 5 }, () => new Uint8Array(this.stride))
+    const stride = this.stride
     const bpp = this.channels
+    const n = rows.length / stride
+    const out = Buffer.alloc(n * (stride + 1))
+    const [c0, c1, c2, c3, c4] = this.candidates as [
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+    ]
     for (let y = 0; y < n; y++) {
-      const row = rows.subarray(y * this.stride, (y + 1) * this.stride)
+      const row = rows.subarray(y * stride, (y + 1) * stride)
       const up = this.prev
-      let best = 0
-      let bestSum = Number.POSITIVE_INFINITY
-      for (let f = 0; f < 5; f++) {
-        const c = cand[f] as Uint8Array
-        let sum = 0
-        for (let i = 0; i < this.stride; i++) {
-          const x = row[i] ?? 0
-          const a = i >= bpp ? (row[i - bpp] ?? 0) : 0
-          const b = up[i] ?? 0
-          const cc = i >= bpp ? (up[i - bpp] ?? 0) : 0
-          const v =
-            f === 0
-              ? x
-              : f === 1
-                ? x - a
-                : f === 2
-                  ? x - b
-                  : f === 3
-                    ? x - ((a + b) >> 1)
-                    : x - paeth(a, b, cc)
-          const byte = v & 0xff
-          c[i] = byte
-          sum += byte < 128 ? byte : 256 - byte
-        }
-        if (sum < bestSum) {
-          bestSum = sum
-          best = f
-        }
+      // The five filters at once; each byte's weight is its distance from 0 (mod 256), the sum lowest wins.
+      let s0 = 0
+      let s1 = 0
+      let s2 = 0
+      let s3 = 0
+      let s4 = 0
+      for (let i = 0; i < stride; i++) {
+        const x = row[i] as number
+        const b = up[i] as number
+        const a = i >= bpp ? (row[i - bpp] as number) : 0
+        const c = i >= bpp ? (up[i - bpp] as number) : 0
+        // Paeth: the neighbour (left a, up b, up-left c) closest to a + b - c; ties go to a, then b.
+        const pa = b > c ? b - c : c - b
+        const pb = a > c ? a - c : c - a
+        const t = a + b - 2 * c
+        const pc = t < 0 ? -t : t
+        const pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+        const v1 = (x - a) & 0xff
+        const v2 = (x - b) & 0xff
+        const v3 = (x - ((a + b) >> 1)) & 0xff
+        const v4 = (x - pr) & 0xff
+        c0[i] = x
+        c1[i] = v1
+        c2[i] = v2
+        c3[i] = v3
+        c4[i] = v4
+        s0 += DISTANCE[x] as number
+        s1 += DISTANCE[v1] as number
+        s2 += DISTANCE[v2] as number
+        s3 += DISTANCE[v3] as number
+        s4 += DISTANCE[v4] as number
       }
-      const o = y * (this.stride + 1)
+      let best = 0
+      let bestSum = s0
+      if (s1 < bestSum) {
+        best = 1
+        bestSum = s1
+      }
+      if (s2 < bestSum) {
+        best = 2
+        bestSum = s2
+      }
+      if (s3 < bestSum) {
+        best = 3
+        bestSum = s3
+      }
+      if (s4 < bestSum) best = 4
+      const o = y * (stride + 1)
       out[o] = best
-      out.set(cand[best] as Uint8Array, o + 1)
+      out.set(this.candidates[best] as Uint8Array, o + 1)
       this.prev = row
+      // Filtering a band is a long run of plain arithmetic; let the event loop in now and then
+      // (a worker process waiting to be read from, a progress line to go out).
+      if ((y & 31) === 31) await new Promise<void>((resolve) => setImmediate(resolve))
     }
     this.prev = Uint8Array.from(this.prev)
     await new Promise<void>((resolve, reject) =>

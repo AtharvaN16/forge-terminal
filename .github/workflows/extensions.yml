@@ -28,8 +28,9 @@ name: extensions
 # Windows and Linux archives are assembled on the macOS runner (they are only
 # files, and package-extension.mjs packs the same bytes on any host) and then
 # run for real on windows-latest and ubuntu-latest by the verify-windows and
-# verify-linux jobs, also with read-only tokens. Nothing is uploaded until
-# both have passed: resolve -> package -> verify-windows, verify-linux -> publish.
+# verify-linux jobs (and verify-linux-arm64, for boost's Linux arm64 archive),
+# also with read-only tokens. Nothing is uploaded until they have passed:
+# resolve -> package -> verify-windows, verify-linux, verify-linux-arm64 -> publish.
 #
 # remove-background is two programs: Apple Vision's Swift helper for macOS,
 # and a Node runner on ONNX Runtime (extensions/remove-background-onnx) for
@@ -37,9 +38,10 @@ name: extensions
 # BiRefNet-lite, fetched from the model-birefnet-lite-768-v1 release and pinned
 # by sha256 in model.json (how it is made: extensions/remove-background-onnx/model/).
 # It runs on onnxruntime-node-rmbg, an npm alias of onnxruntime-node 1.25.1;
-# boost and read-text stay on 1.23.2. Boost's Linux x64 payload is built here
-# (WebGPU, through Vulkan); there is none for Linux arm64, whose ONNX Runtime
-# has no WebGPU.
+# boost and read-text stay on 1.23.2. Boost's Linux payloads (x64 and arm64)
+# have no ONNX Runtime: they run the same model through ncnn, in forge-ncnn,
+# cross-built here with the same hash-pinned zig as whisper's (on the
+# graphics card through Vulkan where there is a real one, else the processor).
 #
 # whisper packages on macos-26 (publish.yml's runner; the Mac archive was
 # built on Xcode 27, so a different Xcode there may not match it byte for
@@ -154,9 +156,10 @@ jobs:
           fi
           node --version
 
-      # zig from PyPI, pinned by hash; it is what makes the Linux builds reproducible.
-      - name: Build tools (whisper)
-        if: needs.resolve.outputs.id == 'whisper'
+      # zig from PyPI, pinned by hash; it is what makes the Linux builds reproducible
+      # (whisper's whisper-cli, boost's forge-ncnn: one zig, one requirements file).
+      - name: Build tools (whisper, boost)
+        if: needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'boost'
         run: |
           # A venv: the macOS runner's Python is Homebrew's, which refuses a bare pip install (PEP 668).
           python3 -m venv .zig
@@ -189,9 +192,11 @@ jobs:
               node extensions/boost/build.mjs --platform win32 --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-win32-$arch"
               node scripts/package-extension.mjs boost "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
-            # Linux x64 only: WebGPU is in its ONNX Runtime, not Linux arm64's.
-            node extensions/boost/build.mjs --platform linux --arch x64 --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out dist-ext/payload-linux-x64
-            node scripts/package-extension.mjs boost "$VERSION" linux-x64 dist-ext/payload-linux-x64 dist-ext/out >> dist-ext/assets.jsonl
+            # Linux, both chips: no ONNX Runtime; ncnn runs the model (forge-ncnn, cross-built with zig).
+            for arch in x64 arm64; do
+              node extensions/boost/build.mjs --platform linux --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --zig "$PWD/.zig/bin/python -m ziglang" --out "dist-ext/payload-linux-$arch"
+              node scripts/package-extension.mjs boost "$VERSION" "linux-$arch" "dist-ext/payload-linux-$arch" dist-ext/out >> dist-ext/assets.jsonl
+            done
           elif [ "$ID" = "video" ]; then
             # The GPL asks for the source beside the binaries: the source bundle goes
             # into out/ too, so publish uploads it to the same release.
@@ -462,51 +467,11 @@ jobs:
           name: payloads
           path: dist-ext
 
-      # A runner without a graphics card: WebGPU may not start, and the processor takes the one tile.
+      # A runner without a graphics card (or with only a software one, which is turned
+      # away by name): the processor takes every tile. Six tiles, so the seams run too.
       - name: Boost runs on Linux
         if: needs.resolve.outputs.id == 'boost'
-        run: |
-          # No PNG is checked in for this, so write a 32x32 gradient with node's zlib alone.
-          node -e '
-            const zlib = require("zlib"), fs = require("fs")
-            const crcTable = Array.from({ length: 256 }, (_, n) => {
-              let c = n
-              for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-              return c >>> 0
-            })
-            const crc = (b) => {
-              let c = 0xffffffff
-              for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8)
-              return (c ^ 0xffffffff) >>> 0
-            }
-            const chunk = (type, data) => {
-              const body = Buffer.concat([Buffer.from(type), data])
-              const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
-              const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(body))
-              return Buffer.concat([len, body, sum])
-            }
-            const W = 32, H = 32
-            const ihdr = Buffer.alloc(13)
-            ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2
-            const raw = Buffer.alloc((W * 3 + 1) * H)
-            for (let y = 0; y < H; y++)
-              for (let x = 0; x < W; x++) {
-                const i = y * (W * 3 + 1) + 1 + x * 3
-                raw[i] = x * 8; raw[i + 1] = y * 8; raw[i + 2] = 128
-              }
-            fs.writeFileSync("in.png", Buffer.concat([
-              Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-              chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0)),
-            ]))
-          '
-          # runner.mjs --in <png> --out <png> --scale 1|2|3|4
-          node dist-ext/payload-linux-x64/runner.mjs --in in.png --out out.png --scale 2
-          test -s out.png
-          node -e '
-            const b = require("fs").readFileSync("out.png")
-            const w = b.readUInt32BE(16), h = b.readUInt32BE(20)
-            if (w !== 64 || h !== 64) { console.error("expected 64x64, got " + w + "x" + h); process.exit(1) }
-          '
+        run: node scripts/verify-extension-payload.mjs boost dist-ext/payload-linux-x64
 
       # A blank page: ONNX Runtime and both models load and run, and the reply is the read contract.
       - name: read-text runs on Linux
@@ -570,14 +535,40 @@ jobs:
           cat out.txt
           grep -qi "ask not what your country" out.txt
 
+  # Boost's Linux arm64 archive, run on an arm64 Linux runner: the processor path (forge-ncnn
+  # with ARM fp16 arithmetic where the chip has it). Only boost has an arm64 build to run.
+  verify-linux-arm64:
+    needs: [resolve, package]
+    if: needs.resolve.outputs.id == 'boost'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: payloads
+          path: dist-ext
+
+      - name: Boost runs on Linux arm64
+        run: node scripts/verify-extension-payload.mjs boost dist-ext/payload-linux-arm64
+
   # Uploads only after the Windows and Linux archives have run there. An id with
   # none for an OS skips that job, and a skip counts as passed.
   publish:
-    needs: [resolve, package, verify-windows, verify-linux]
+    needs: [resolve, package, verify-windows, verify-linux, verify-linux-arm64]
     if: >-
       always() && needs.resolve.result == 'success' && needs.package.result == 'success' &&
       (needs.verify-windows.result == 'success' || needs.verify-windows.result == 'skipped') &&
-      (needs.verify-linux.result == 'success' || needs.verify-linux.result == 'skipped')
+      (needs.verify-linux.result == 'success' || needs.verify-linux.result == 'skipped') &&
+      (needs.verify-linux-arm64.result == 'success' || needs.verify-linux-arm64.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

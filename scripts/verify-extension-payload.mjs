@@ -5,7 +5,8 @@
  *
  *   node scripts/verify-extension-payload.mjs boost|remove-background <payloadDir>
  *
- * boost: a 32 × 32 gradient boosted 2× must come back 64 × 64.
+ * boost: a 32 × 32 gradient boosted 2× must come back 64 × 64, and a 520 × 300 one
+ * (six tiles) 1040 × 600, with the colours where they were.
  * remove-background: a figure on a flat background must come back the same
  * size with clear corners and an opaque middle; a flat grey frame must be
  * refused as `no-subject` with no file written.
@@ -14,7 +15,7 @@
  * written and read here with zlib alone. Exits non-zero on the first failure.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -104,7 +105,7 @@ export function readPng(path) {
   return { width: w, height: h, channels: ch, px }
 }
 
-/** Runs the payload's runner; the one JSON line it prints, and its exit status. */
+/** Runs the payload's runner; its result (the last JSON line it prints, after any progress lines), and its exit status. */
 function runner(payload, args) {
   let stdout
   let status = 0
@@ -117,8 +118,11 @@ function runner(payload, args) {
     stdout = String(err.stdout ?? '')
     status = err.status ?? 1
   }
-  const lines = stdout.trim().split('\n').filter(Boolean)
-  if (lines.length !== 1) throw new Error(`expected one JSON line, got: ${stdout}`)
+  const lines = stdout
+    .trim()
+    .split('\n')
+    .filter((l) => l && !l.startsWith('{"progress"'))
+  if (lines.length !== 1) throw new Error(`expected one JSON result line, got: ${stdout}`)
   return { status, reply: JSON.parse(lines[0]) }
 }
 
@@ -137,6 +141,9 @@ export function figure(w, h) {
 }
 
 function verifyBoost(payload, work) {
+  // Artifacts and zips do not keep the execute bit; Forge's installer does.
+  const worker = join(payload, 'forge-ncnn')
+  if (existsSync(worker)) chmodSync(worker, 0o755)
   const input = join(work, 'in.png')
   const out = join(work, 'out.png')
   writeRgbPng(input, 32, 32, (x, y) => [x * 8, y * 8, 128])
@@ -144,6 +151,38 @@ function verifyBoost(payload, work) {
   check(status === 0 && reply.ok === true, `boost replied ok: ${JSON.stringify(reply)}`)
   const png = readPng(out)
   check(png.width === 64 && png.height === 64, `boost made 64x64 (got ${png.width}x${png.height})`)
+
+  // Several tiles, so the seams and the tile after tile path run as well.
+  const big = join(work, 'big.png')
+  const bigOut = join(work, 'big-out.png')
+  writeRgbPng(big, 520, 300, (x, y) => [
+    Math.round((x / 519) * 255),
+    Math.round((y / 299) * 255),
+    128,
+  ])
+  const r = runner(payload, ['--in', big, '--out', bigOut, '--scale', '2'])
+  check(
+    r.status === 0 && r.reply.ok === true,
+    `boost replied ok on six tiles: ${JSON.stringify(r.reply)}`,
+  )
+  const bigPng = readPng(bigOut)
+  check(
+    bigPng.width === 1040 && bigPng.height === 600,
+    `boost made 1040x600 (got ${bigPng.width}x${bigPng.height})`,
+  )
+  for (const [x, y] of [
+    [100, 60],
+    [520, 300],
+    [940, 540],
+  ]) {
+    const i = (y * bigPng.width + x) * bigPng.channels
+    const want = [Math.round((x / 1039) * 255), Math.round((y / 599) * 255), 128]
+    const got = [bigPng.px[i], bigPng.px[i + 1], bigPng.px[i + 2]]
+    check(
+      want.every((v, k) => Math.abs(v - (got[k] ?? 0)) < 24),
+      `colour at ${x},${y} is ${want} (got ${got})`,
+    )
+  }
 }
 
 function verifyCutout(payload, work) {

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, readdirSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -9,10 +9,14 @@ import { describe, expect, it } from 'vitest'
 const run = promisify(execFile)
 const build = join(process.cwd(), 'extensions', 'boost', 'build.mjs')
 
-async function files(...flags: string[]): Promise<string[]> {
+async function built(...flags: string[]): Promise<string> {
   const out = mkdtempSync(join(tmpdir(), 'forge-boost-build-'))
   await run(process.execPath, [build, ...flags, '--out', out, '--runner-only'])
-  return readdirSync(out).sort()
+  return out
+}
+
+async function files(...flags: string[]): Promise<string[]> {
+  return readdirSync(await built(...flags)).sort()
 }
 
 describe('boost build.mjs --runner-only', () => {
@@ -33,13 +37,21 @@ describe('boost build.mjs --runner-only', () => {
     ])
   }, 60_000)
 
-  it('--platform linux copies the binding and the one ONNX Runtime library it links', async () => {
+  it('--platform linux carries no ONNX Runtime: ncnn runs the model, so only the runner is bundled', async () => {
     for (const arch of ['x64', 'arm64'])
-      expect(await files('--platform', 'linux', '--arch', arch)).toEqual([
-        'libonnxruntime.so.1',
-        'onnxruntime_binding.node',
-        'runner.mjs',
-      ])
+      expect(await files('--platform', 'linux', '--arch', arch)).toEqual(['runner.mjs'])
+  }, 60_000)
+
+  it('bundles one engine per platform: ncnn on Linux, ONNX Runtime elsewhere', async () => {
+    const linux = readFileSync(
+      join(await built('--platform', 'linux', '--arch', 'x64'), 'runner.mjs'),
+      'utf8',
+    )
+    expect(linux).toContain('forge-ncnn')
+    expect(linux).not.toContain('onnxruntime_binding')
+    const mac = readFileSync(join(await built('--arch', 'arm64'), 'runner.mjs'), 'utf8')
+    expect(mac).toContain('onnxruntime_binding')
+    expect(mac).not.toContain('--devices')
   }, 60_000)
 
   it('rejects a platform it does not build for', async () => {

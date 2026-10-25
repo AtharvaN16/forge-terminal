@@ -462,9 +462,13 @@ zoom.
 Two image operations that need a model, so they are optional extensions rather
 than part of the install. On a Mac both need macOS 14 or later. Boost runs on
 the graphics card: CoreML on Apple silicon, DirectML on Windows (any DirectX 12
-graphics), WebGPU on Intel Macs (Metal) and on Linux x64 (Vulkan, so it needs a
-Vulkan driver for the card). Where that would leave the processor to do it and
-a photo would take over about three minutes, Boost stops and says so. Remove
+graphics), WebGPU on Intel Macs (Metal). On Linux, x64 and arm64 alike, it runs
+the same model through ncnn: on a Vulkan graphics card when there is a real one
+(a software "graphics card" such as llvmpipe is turned away by its name, and a
+card slower than the processor is passed over), otherwise on the processor,
+which every Linux computer has. Where the processor is all there is and a photo
+would take too long (over about three minutes on an Intel Mac, fifteen on
+Linux), Boost stops and says so. Remove
 background uses Apple Vision on a Mac, and on Windows and Linux a small model
 (BiRefNet-lite, 54 MB, on the processor: about two seconds a photo and 2 GB of
 memory at its peak). Windows and Linux also have a `heic` extension, because macOS opens
