@@ -40,6 +40,7 @@ import {
 } from './catalog.js'
 import { withExtensionLock } from './lock.js'
 import { extensionsRoot, type Installed, installed, SAFE_NAME } from './paths.js'
+import { closeExtensionServers } from './run.js'
 import { extractTar, unsafeArchivePath, within } from './tar.js'
 
 export interface ExtensionStatus {
@@ -392,6 +393,8 @@ async function installOnly(
     }
 
     opts.signal?.throwIfAborted()
+    // A runner of this forge's still waiting for a job has the old files open.
+    await closeExtensionServers(entry.id)
     const target = join(base, asset.version)
     await rm(target, { recursive: true, force: true })
     await moveIntoPlace(staging, target, id, platform)
@@ -431,6 +434,7 @@ async function removeOnly(
     entry.id,
     async () => {
       await sweepDebris(extensionsRoot())
+      await closeExtensionServers(entry.id)
       const base = join(extensionsRoot(), entry.id)
       // Leftover temp files from an interrupted install are not an installed extension.
       const existed = (await readdir(base).catch(() => [] as string[])).some(

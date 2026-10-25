@@ -43,6 +43,7 @@ const { installExtension, listExtensions, removeExtension } = await import(
   '../../src/extensions/manager.js'
 )
 const { installed, extensionsRoot } = await import('../../src/extensions/paths.js')
+const { runExtension } = await import('../../src/extensions/run.js')
 
 // The machine's own platform, read before the pin below takes effect.
 const REAL_PLATFORM = process.platform
@@ -424,6 +425,42 @@ describe('removing', () => {
     expect(await removeExtension('remove-background')).toBe(false)
     expect(await leftovers()).toEqual([])
   })
+})
+
+describe('a runner left waiting for its next job', () => {
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // The stand-in server is a shell script.
+  it.skipIf(REAL_PLATFORM === 'win32')(
+    'is let go before its tool is removed or updated (Windows will not delete files a process has open)',
+    async () => {
+      for (const step of ['remove', 'update']) {
+        h.catalog = [entryFor('1.0.0', payload('1.0.0'), '/v1.tgz')]
+        const ext = await installExtension('remove-background')
+        const pidFile = join(config, `pid-${step}`)
+        await writeFile(
+          ext.entry,
+          `#!/bin/sh\necho $$ > '${pidFile}'\nwhile read line; do echo '{"ok":true,"width":1,"height":1,"ms":1}'; done\n`,
+        )
+        await runExtension({ ...ext, serve: true }, ['--in', '/x/a.png'])
+        const pid = Number(await readFile(pidFile, 'utf8'))
+        expect(alive(pid)).toBe(true)
+        if (step === 'remove') expect(await removeExtension('remove-background')).toBe(true)
+        else {
+          h.catalog = [entryFor('1.1.0', payload('1.1.0'), '/v2.tgz')]
+          expect((await installExtension('remove-background')).version).toBe('1.1.0')
+        }
+        expect(alive(pid)).toBe(false)
+      }
+    },
+  )
 })
 
 // --- listing --------------------------------------------------------------

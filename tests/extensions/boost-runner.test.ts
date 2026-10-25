@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import sharp from 'sharp'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { serveJobs } from '../helpers/boost-serve.js'
 
 /**
  * The boost payload's child-process contract (plan: shared contracts), run
@@ -157,6 +158,104 @@ describe('boost runner', () => {
       }
     },
     // Four model runs; on Linux, and on a GPU-less Windows, they are on the CPU.
+    180_000,
+  )
+})
+
+describe('boost runner --serve', () => {
+  it('answers each job as a one-image run would, in one process, and exits when its input closes', async () => {
+    const garbage = join(work, 'serve-garbage.png')
+    writeFileSync(garbage, 'definitely not a PNG')
+    const wide = join(work, 'serve-wide.png')
+    await sharp({ create: { width: 4100, height: 50, channels: 3, background: '#808080' } })
+      .png()
+      .toFile(wide)
+    const job = (input: string, scale: number) => [
+      '--in',
+      input,
+      '--out',
+      join(work, `serve-out-${scale}.png`),
+      '--scale',
+      String(scale),
+    ]
+    const r = await serveJobs(join(payload, 'runner.mjs'), [
+      job(garbage, 2),
+      job(wide, 4),
+      job(wide, 5),
+    ])
+    expect(r.exitCode).toBe(0)
+    expect(r.results).toMatchObject([
+      { ok: false, code: 'runtime-error' },
+      { ok: false, code: 'boost-too-large' },
+      { ok: false, code: 'runtime-error' },
+    ])
+    expect(r.results[1]?.message).toContain('The largest factor that fits is 3×.')
+    expect(existsSync(join(work, 'serve-out-4.png'))).toBe(false)
+  })
+
+  it('answers a line that is not a job, and reads the next', async () => {
+    const child = spawn(process.execPath, [join(payload, 'runner.mjs'), '--serve'])
+    let out = ''
+    child.stdout.setEncoding('utf8').on('data', (d: string) => {
+      out += d
+    })
+    const closed = new Promise<number | null>((r) => child.on('close', r))
+    child.stdin.write('hello\n{"args":[1,2]}\n{"args":["--scale","9"]}\n')
+    for (let i = 0; i < 100 && out.split('\n').length < 4; i++)
+      await new Promise((r) => setTimeout(r, 20))
+    child.stdin.end()
+    expect(await closed).toBe(0)
+    const lines = out
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
+    expect(lines).toMatchObject([
+      { ok: false, code: 'runtime-error', message: 'not a job: hello' },
+      { ok: false, code: 'runtime-error' },
+      { ok: false, code: 'runtime-error' },
+    ])
+    expect(lines[2].message).toContain('usage')
+  })
+
+  it('refuses --serve with anything beside it, as a usage error', async () => {
+    const r = await run(process.execPath, [join(payload, 'runner.mjs'), '--serve', '--x']).catch(
+      (e: { code: number; stdout: string }) => e,
+    )
+    expect((r as { code: number }).code).toBe(1)
+    expect(JSON.parse(String((r as { stdout: string }).stdout).trim())).toMatchObject({
+      ok: false,
+      code: 'runtime-error',
+    })
+  })
+
+  it.skipIf(!haveModel)(
+    'makes every factor from one model opened once, as one-image runs make them',
+    async () => {
+      const input = join(work, 'serve-model.png')
+      await sharp({ create: { width: 64, height: 48, channels: 3, background: '#4080c0' } })
+        .png()
+        .toFile(input)
+      const scales = [1, 2, 3, 4]
+      const r = await serveJobs(
+        join(payload, 'runner.mjs'),
+        scales.map((s) => [
+          '--in',
+          input,
+          '--out',
+          join(work, `serve-model-${s}.png`),
+          '--scale',
+          String(s),
+        ]),
+      )
+      expect(r.results).toMatchObject(
+        scales.map((s) => ({ ok: true, width: 64 * s, height: 48 * s })),
+      )
+      for (const p of r.progress)
+        expect(p).toEqual([
+          [0, 1],
+          [1, 1],
+        ])
+    },
     180_000,
   )
 })

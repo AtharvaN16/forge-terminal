@@ -52,11 +52,52 @@ export function providerPlan(platform: NodeJS.Platform, arch: string): Plan {
   return { engine: 'ort', providers: ['coreml', 'cpu'], guarded: false, limitMs: TOO_SLOW_MS }
 }
 
+/**
+ * Threads for ONNX Runtime's CPU provider when it is all a session has: every
+ * core but one, which is left to the runner's own work beside the model (each
+ * band of the PNG is filtered and compressed while the next tiles are made),
+ * never fewer than the two it always had and no more than eight. Measured on
+ * an Apple M2, CPU only: 971 ms a tile on 2 threads, 566 on 4 (1.7×); its
+ * efficiency cores added little past that (mockups/boost-linux-options-2026-10).
+ */
+export function cpuThreads(cores: number): number {
+  return Math.max(2, Math.min(8, cores - 1))
+}
+
+/**
+ * Threads for a session asked for `providers`, on a computer of `cores`. Where
+ * a graphics provider comes first it does the model's work and the CPU provider
+ * only what it leaves, so the two this runner has always used stay: CoreML on an
+ * M2 made a tile in 31 ms on 2 threads and 32 on 7.
+ */
+export function ortThreads(providers: readonly Provider[], cores: number): number {
+  return providers.every((p) => p === 'cpu') ? cpuThreads(cores) : 2
+}
+
 /** A Vulkan device as forge-ncnn --devices lists it. */
 export interface Device {
   index: number
   name: string
   kind: string
+  /** The PCI vendor and device ids, and the driver's version, as Vulkan reports them. Optional: the name alone still works. */
+  vendor?: number
+  deviceId?: number
+  driver?: number
+}
+
+/**
+ * What a card's measured choice (itself or the processor, engine-ncnn.ts) is
+ * remembered under: its name, its ids and its driver, so that a new driver,
+ * which can change how fast the card is, is measured again. Not its index: that
+ * is only where it is in today's list.
+ */
+export function deviceKey(d: Device): string {
+  const hex = (n: number) => n.toString(16).padStart(4, '0')
+  const ids =
+    d.vendor !== undefined && d.deviceId !== undefined
+      ? ` [${hex(d.vendor)}:${hex(d.deviceId)}]`
+      : ''
+  return `${d.name}${ids}${d.driver !== undefined ? ` driver ${d.driver}` : ''}`
 }
 
 /**

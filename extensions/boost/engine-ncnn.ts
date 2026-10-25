@@ -10,13 +10,19 @@
  * be slower than the cores beside it: the first two tiles run on the card, the
  * same tile is then timed twice on the processor, and the run goes on with
  * whichever was quicker.
+ *
+ * Given a cache directory, the choice is remembered there (ncnn-devices.json),
+ * under the card's name, ids and driver (`deviceKey`), and later runs on the
+ * same card and driver go straight to it: no processor started, no tiles timed.
  */
 
 import { execFile, spawn } from 'node:child_process'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { TILE_OUT, type TileEngine } from './engine.js'
-import { type Device, pickDevice } from './providers.js'
+import { type Device, deviceKey, pickDevice } from './providers.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -157,26 +163,89 @@ export function looksBroken(out: Float32Array): boolean {
   return flat
 }
 
+/** What a card was found to be against the processor: the one to use. */
+type Choice = 'card' | 'cpu'
+
+/** The file in the cache directory that holds each card's choice. */
+const CHOICES_FILE = 'ncnn-devices.json'
+
+interface Remembered {
+  use: Choice
+  /** The steady tile on each, in ms, when they were measured; none for a card that gave no usable tile. */
+  cardMs?: number
+  cpuMs?: number
+  at: string
+}
+
+function readChoices(cache: string): Record<string, Remembered> {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(cache, CHOICES_FILE), 'utf8'))
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, Remembered>)
+      : {}
+  } catch {
+    // None yet, or not readable: measured again, and written whole next time.
+    return {}
+  }
+}
+
+/** The choice remembered for `key`, if there is a usable one. */
+export function recall(cache: string, key: string): Choice | undefined {
+  const use = readChoices(cache)[key]?.use
+  return use === 'card' || use === 'cpu' ? use : undefined
+}
+
+/** Adds `key`'s choice to the file, written whole to a temp file and renamed over the old. Never throws. */
+export function remember(cache: string, key: string, entry: Omit<Remembered, 'at'>): void {
+  try {
+    mkdirSync(cache, { recursive: true })
+    const all = { ...readChoices(cache), [key]: { ...entry, at: new Date().toISOString() } }
+    const path = join(cache, CHOICES_FILE)
+    const tmp = `${path}.${process.pid}.tmp`
+    writeFileSync(tmp, `${JSON.stringify(all, null, 2)}\n`)
+    renameSync(tmp, path)
+  } catch (err) {
+    process.stderr.write(`could not remember the choice for ${key}: ${String(err)}\n`)
+  }
+}
+
 /**
- * Runs on the card for its first two tiles, then checks the processor on the
- * same tile and goes on with the quicker one. While it is deciding it answers
- * one tile at a time.
+ * Runs on the card, checking its first tile, and on its second checks the
+ * processor on the same tile and goes on with the quicker one. While it is
+ * deciding it answers one tile at a time. It lasts for every image a
+ * `--serve` runner is given, so it decides once: on the first image large
+ * enough to be worth it. A card already `known` quicker is not checked
+ * against the processor, only for a tile that came back as nothing.
  */
 class Checked implements TileEngine {
   private current: Worker
-  private count = 0
-  private decided = false
+  /** Whether the card's first tile has been looked at. */
+  private vetted = false
+  private decided: boolean
+  /** The tiles of the image now being made. */
+  private tiles = Number.POSITIVE_INFINITY
   private overheadMs = 0
 
   constructor(
     private readonly card: Worker,
-    private readonly total: number,
+    known: boolean,
+    private readonly chosen?: (entry: Omit<Remembered, 'at'>) => void,
   ) {
     this.current = card
+    this.decided = known
+  }
+
+  /** On the card, deciding nothing: decided, or an image too small to be worth checking. */
+  private get settled(): boolean {
+    return this.vetted && (this.decided || this.tiles < CHECK_FROM_TILES)
   }
 
   get pipelined(): boolean {
-    return this.decided
+    return this.settled
+  }
+
+  startImage(tiles: number): void {
+    this.tiles = tiles
   }
 
   takeOverheadMs(): number {
@@ -186,19 +255,20 @@ class Checked implements TileEngine {
   }
 
   async run(tile: Uint8Array): Promise<Float32Array> {
-    if (this.decided) return this.current.run(tile)
+    if (this.settled) return this.current.run(tile)
     const t0 = performance.now()
     const out = await this.card.run(tile)
     const ms = performance.now() - t0
-    if (this.count++ === 0) {
+    if (!this.vetted) {
+      this.vetted = true
       if (looksBroken(out)) {
         process.stderr.write(`${this.card.device} gave no usable tile, using the processor\n`)
         await this.card.close()
         this.current = await startWorker()
         this.decided = true
+        this.chosen?.({ use: 'cpu' })
         return this.current.run(tile)
       }
-      if (this.total < CHECK_FROM_TILES) this.decided = true
       return out
     }
     const checking = performance.now()
@@ -225,6 +295,11 @@ class Checked implements TileEngine {
     process.stderr.write(
       `${this.card.device}: ${Math.round(cardMs)} ms a tile, processor: ${Math.round(cpuMs)} ms; using ${useCpu ? 'the processor' : this.card.device}\n`,
     )
+    this.chosen?.({
+      use: useCpu ? 'cpu' : 'card',
+      cardMs: Math.round(cardMs),
+      cpuMs: Math.round(cpuMs),
+    })
     if (useCpu) {
       await this.card.close()
       this.current = cpu
@@ -248,13 +323,27 @@ class Plain implements TileEngine {
   }
 }
 
-/** Opens the engine for an image of `total` tiles. */
-export async function openEngine(total: number): Promise<TileEngine> {
+/**
+ * Opens the engine, for one image or for every image a `--serve` runner is
+ * given. With `cache`, a card's choice is read from there and written there.
+ */
+export async function openEngine(cache?: string): Promise<TileEngine> {
   // FORGE_BOOST_DEVICE=cpu: never the graphics card (for finding out whether it is the trouble).
   const gpu = process.env.FORGE_BOOST_DEVICE === 'cpu' ? undefined : pickDevice(await listDevices())
   if (gpu) {
+    const key = deviceKey(gpu)
+    const known = cache === undefined ? undefined : recall(cache, key)
+    if (known === 'cpu') {
+      process.stderr.write(`${gpu.name}: the processor was quicker when measured; using it\n`)
+      return new Plain(await startWorker())
+    }
     try {
-      return new Checked(await startWorker(gpu.index), total)
+      const card = await startWorker(gpu.index)
+      return new Checked(
+        card,
+        known === 'card',
+        cache === undefined ? undefined : (entry) => remember(cache, key, entry),
+      )
     } catch (err) {
       process.stderr.write(`${gpu.name} unavailable, using the processor: ${String(err)}\n`)
     }

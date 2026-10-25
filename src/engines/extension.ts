@@ -8,7 +8,12 @@ import {
   extensionNotOffered,
   isForgeError,
 } from '../core/errors.js'
-import { boostOverLimit, boostScaleRefusal, boostScales } from '../core/extension-targets.js'
+import {
+  boostOverLimit,
+  boostScaleRefusal,
+  boostScales,
+  boostServes,
+} from '../core/extension-targets.js'
 import { FORMATS } from '../core/formats.js'
 import type { Job, Progress, Result, Warning } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
@@ -114,7 +119,10 @@ async function run(
             join(extensionsRoot(), 'boost', 'cache'),
           ]
         : [input, result]
-    await runExtension(ext, args, {
+    // A boost that serves takes the whole batch in one runner, its model opened
+    // once; any older one, or any other tool, is one process a file.
+    const serve = job.op === 'boost' && boostServes(ext.version)
+    await runExtension({ ...ext, serve }, args, {
       subject: source.path,
       what: `${toolVerb(job)} is running on ${displayName(source.path)}`,
       onWait: () => onPhase({ phase: 'waiting' }),

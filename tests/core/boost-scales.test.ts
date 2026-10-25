@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
 import { boostAction } from '../../src/core/actions/extension.js'
-import { boostScaleRefusal, boostScales } from '../../src/core/extension-targets.js'
+import { boostScaleRefusal, boostScales, boostServes } from '../../src/core/extension-targets.js'
 import type { ImageInfo } from '../../src/core/types.js'
 import { maxBoost } from '../../src/engines/extension.js'
 
@@ -24,6 +24,13 @@ describe('boost scales', () => {
     expect(boostScales('1.1.0')).toEqual([2, 3, 4])
     expect(boostScales('1.10.0')).toEqual([2, 3, 4])
     expect(boostScales('2.0.0')).toEqual([2, 3, 4])
+  })
+
+  it('runs a batch in one runner only from the boost release whose runner serves', () => {
+    // Every version published before it — Apple silicon 1.0.0, Windows 1.1.0, Intel Macs 1.2.0, Linux 1.3.0 — gets one process a file.
+    for (const v of [undefined, '1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.9'])
+      expect(boostServes(v)).toBe(false)
+    for (const v of ['1.4.0', '1.10.0', '2.0.0']) expect(boostServes(v)).toBe(true)
   })
 
   it('says “update it” for a scale only when a released boost makes it', () => {

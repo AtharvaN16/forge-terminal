@@ -34,6 +34,18 @@ function atLeast(v: string, floor: string): boolean {
   return true
 }
 
+/**
+ * The first boost release whose runner takes a batch in one process
+ * (`--serve`, extensions/boost/runner.ts). Earlier ones are run one process a
+ * file, as they always were.
+ */
+export const BOOST_SERVE_SINCE = '1.4.0'
+
+/** Whether an installed boost `version` can be given many jobs in one process. */
+export function boostServes(version: string | undefined): boolean {
+  return version !== undefined && atLeast(version, BOOST_SERVE_SINCE)
+}
+
 /** The factors an installed boost `version` makes, smallest first; 2× and 4× when unknown. */
 export function boostScales(version: string | undefined): BoostScale[] {
   return version !== undefined && atLeast(version, BOOST_THREE_SINCE) ? [2, 3, 4] : [2, 4]

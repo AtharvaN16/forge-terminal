@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/client'
 import { InMemoryTransport } from '@modelcontextprotocol/server'
@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import type { ProbeJson, RunJson } from '../../src/core/report-data.js'
+import { closeExtensionServers } from '../../src/extensions/run.js'
 import { createForgeServer } from '../../src/mcp/server.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeJpeg, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
@@ -25,6 +26,43 @@ beforeEach(async () => {
 afterEach(() => fake.restore())
 
 const forge = (...argv: string[]) => execute(parseArgs(argv), { json: argv.includes('--json') })
+
+describe('a batch of boosts', () => {
+  const started = async (version: string, files: number) => {
+    await fake.install(home, 'boost', version)
+    const dir = await makeTempDir()
+    const log = join(dir, 'started.txt')
+    writeFileSync(log, '')
+    const sources = await Promise.all(
+      Array.from({ length: files }, (_, i) => makeTransparentPng(dir, `p${i}.png`)),
+    )
+    process.env.FAKE_BOOST_LOG = log
+    try {
+      const out = await forge(...sources, '--boost', '--json')
+      expect(out.exitCode).toBe(0)
+      for (let i = 0; i < files; i++) {
+        const meta = await sharp(join(dir, `p${i}-2x.png`)).metadata()
+        expect([meta.width, meta.height, meta.hasAlpha]).toEqual([64, 64, true])
+      }
+    } finally {
+      delete process.env.FAKE_BOOST_LOG
+      await closeExtensionServers()
+    }
+    return readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => l.split(' ')[0])
+  }
+
+  it('goes through one runner, started once, on a boost that serves (1.4.0)', async () => {
+    expect(await started('1.4.0', 3)).toEqual(['serve'])
+  })
+
+  it('is one process a file on every boost published before it', async () => {
+    for (const version of ['1.0.0', '1.1.0', '1.2.0', '1.3.0'])
+      expect(await started(version, 3)).toEqual(['one', 'one', 'one'])
+  })
+})
 
 describe('--boost with an installed extension', () => {
   it('writes name-2x.png at twice the size and keeps the alpha', async () => {

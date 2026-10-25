@@ -62,6 +62,41 @@ setTimeout(() => {}, 60000)`,
   })
 })
 
+describe('aborting a job on a boost that serves (1.4.0)', () => {
+  it('kills the runner it was on and writes nothing', async () => {
+    const home = await fake.home()
+    await fake.install(home, 'boost', '1.4.0')
+    const dir = await makeTempDir()
+    const pidFile = join(dir, 'pid')
+    // A runner that takes --serve, reports its pid, and never answers its job.
+    writeFileSync(
+      join(home, 'forge', 'extensions', 'boost', '1.4.0', 'runner.mjs'),
+      `import { writeFileSync } from 'node:fs'
+if (process.argv[2] !== '--serve') process.exit(9)
+process.stdin.on('data', () => writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)))
+setTimeout(() => {}, 60000)`,
+    )
+    const sources = await Promise.all(
+      ['a', 'b'].map(async (n) => probe(await makeTransparentPng(dir, `${n}.png`))),
+    )
+    const jobs = boostAction.plan(sources, { scale: '2', output: dir })
+
+    const controller = new AbortController()
+    const running = runPlan(jobs, { force: false, concurrency: 1, signal: controller.signal })
+    await until(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '')
+    const pid = Number(readFileSync(pidFile, 'utf8'))
+    expect(alive(pid)).toBe(true)
+
+    controller.abort()
+    const outcome = await running
+    expect(outcome.cancelled).toBe(true)
+    expect(outcome.results).toEqual([])
+    expect(jobs.filter((j) => existsSync(j.outputs[0] as string))).toEqual([])
+    await until(() => !alive(pid))
+    expect(alive(pid)).toBe(false)
+  })
+})
+
 describe('cancelling a batch of extension jobs', () => {
   it('starts no decode or child after the cancel and leaves no temp dirs', async () => {
     const home = await fake.home()

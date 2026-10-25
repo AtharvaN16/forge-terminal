@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
@@ -19,6 +19,7 @@ import { KEEP, layerSwitches } from '../../extensions/boost/ncnn/build-worker.mj
 import { onnxToNcnn } from '../../extensions/boost/ncnn/onnx-to-ncnn.mjs'
 // @ts-expect-error build scripts are plain .mjs
 import { readPng, writeRgbPng } from '../../scripts/verify-extension-payload.mjs'
+import { serveJobs } from '../helpers/boost-serve.js'
 
 /**
  * Boost on Linux: the ONNX → ncnn model conversion, the layer list of the
@@ -144,6 +145,7 @@ describe.skipIf(process.platform === 'win32')(
       out: string,
       scale: number,
       env: Record<string, string> = {},
+      extra: string[] = [],
     ): Promise<Reply> {
       const args = [
         join(payload, 'runner.mjs'),
@@ -153,6 +155,7 @@ describe.skipIf(process.platform === 'win32')(
         out,
         '--scale',
         String(scale),
+        ...extra,
       ]
       const opts = {
         env: { ...process.env, FORGE_BOOST_ENGINE: 'ncnn', ...env },
@@ -343,6 +346,221 @@ describe.skipIf(process.platform === 'win32')(
       )
       expect(line).toMatchObject({ ok: false, code: 'runtime-error' })
       expect(line.message).toMatch(/forge-ncnn/)
+    })
+
+    const lines = (file: string) => readFileSync(file, 'utf8').trim().split('\n')
+    const ncnnEnv = (env: Record<string, string>) => ({
+      ...process.env,
+      FORGE_BOOST_ENGINE: 'ncnn',
+      ...env,
+    })
+
+    describe('--serve: one process for many images', () => {
+      it('lists the devices and checks the card against the processor once for three images', async () => {
+        const log = join(work, 'log-serve.txt')
+        const listed = join(work, 'devices-serve.txt')
+        const input = gradient('s.png', 500)
+        const outs = [4, 2, 1].map((s) => join(work, `s-out-${s}.png`))
+        const r = await serveJobs(
+          join(payload, 'runner.mjs'),
+          [4, 2, 1].map((s, i) => [
+            '--in',
+            input,
+            '--out',
+            outs[i] as string,
+            '--scale',
+            String(s),
+          ]),
+          ncnnEnv({
+            FAKE_LOG: log,
+            FAKE_DEVICES_LOG: listed,
+            FAKE_DEVICES: JSON.stringify([{ index: 0, name: 'Quick Card', kind: 'discrete' }]),
+            FAKE_GPU_MS: '1',
+            FAKE_MS: '150',
+          }),
+        )
+        expect(r.exitCode).toBe(0)
+        expect(r.results).toMatchObject([
+          { ok: true, width: 2080, height: 2000 },
+          { ok: true, width: 1040, height: 1000 },
+          { ok: true, width: 520, height: 500 },
+        ])
+        // Each job counts its own nine tiles, from none done to all.
+        for (const p of r.progress) expect(p).toEqual([...Array(10).keys()].map((i) => [i, 9]))
+        expect(lines(listed)).toEqual(['devices'])
+        expect(lines(log)).toEqual(['gpu 0', 'cpu'])
+        expect(r.stderr.match(/ms a tile/g)).toHaveLength(1)
+        // The card kept on for the second and third images makes the same pixels.
+        const png = readPng(outs[0])
+        const i = ((150 * 4 + 1) * png.width + 300 * 4 + 2) * png.channels
+        expect([png.px[i], png.px[i + 1], png.px[i + 2]]).toEqual([300 % 256, 150, 450 % 256])
+      })
+
+      it('answers a job it cannot do and goes on with the next', async () => {
+        const garbage = join(work, 'serve-garbage.png')
+        writeFileSync(garbage, 'not a PNG')
+        const input = gradient('t.png')
+        const job = (i: string, scale: string) => [
+          '--in',
+          i,
+          '--out',
+          join(work, `t-out-${scale}.png`),
+          '--scale',
+          scale,
+        ]
+        const r = await serveJobs(
+          join(payload, 'runner.mjs'),
+          [job(garbage, '2'), job(input, '2'), job(input, '5'), job(input, '1')],
+          ncnnEnv({}),
+        )
+        expect(r.exitCode).toBe(0)
+        expect(r.results).toMatchObject([
+          { ok: false, code: 'runtime-error' },
+          { ok: true, width: 1040, height: 600 },
+          { ok: false, code: 'runtime-error' },
+          { ok: true, width: 520, height: 300 },
+        ])
+        expect(r.results[2]?.message).toContain('--scale 1|2|3|4')
+      })
+
+      it('exits when its input closes with nothing asked of it', async () => {
+        const r = await serveJobs(join(payload, 'runner.mjs'), [], ncnnEnv({}))
+        expect(r).toMatchObject({ exitCode: 0, results: [] })
+      })
+
+      it('stops at once, answering nothing, when its input closes mid-image (Forge is gone)', async () => {
+        const child = spawn(process.execPath, [join(payload, 'runner.mjs'), '--serve'], {
+          env: ncnnEnv({ FAKE_MS: '400' }),
+        })
+        let out = ''
+        const t0 = performance.now()
+        const closed = new Promise<number | null>((r) => child.on('close', r))
+        child.stdout.setEncoding('utf8').on('data', (d: string) => {
+          out += d
+          if (out.includes('{"progress":1,')) child.stdin.end()
+        })
+        const input = gradient('u.png', 500)
+        const job = ['--in', input, '--out', join(work, 'u-out.png'), '--scale', '1']
+        child.stdin.write(`${JSON.stringify({ args: job })}\n`)
+        expect(await closed).toBe(0)
+        // Nine tiles at 400 ms would be 3.6 s; it stopped after the first or second.
+        expect(performance.now() - t0).toBeLessThan(2500)
+        expect(out).not.toContain('"ok"')
+      })
+
+      it('does not check the card on an image too small to be worth it, and does on a larger one after', async () => {
+        const log = join(work, 'log-small.txt')
+        const small = gradient('v-small.png', 200) // 3 × 1 tiles
+        const large = gradient('v-large.png', 500) // 3 × 3
+        const r = await serveJobs(
+          join(payload, 'runner.mjs'),
+          [small, large].map((i, n) => [
+            '--in',
+            i,
+            '--out',
+            join(work, `v-out-${n}.png`),
+            '--scale',
+            '1',
+          ]),
+          ncnnEnv({
+            FAKE_LOG: log,
+            FAKE_DEVICES: JSON.stringify([{ index: 0, name: 'Quick Card', kind: 'discrete' }]),
+            FAKE_GPU_MS: '1',
+            FAKE_MS: '150',
+          }),
+        )
+        expect(r.results).toMatchObject([{ ok: true }, { ok: true }])
+        expect(lines(log)).toEqual(['gpu 0', 'cpu'])
+        expect(r.stderr).toMatch(/Quick Card: .* ms a tile, processor: .* ms; using Quick Card/)
+      })
+    })
+
+    describe('--cache: the card-or-processor choice is remembered', () => {
+      const card = (driver: number) =>
+        JSON.stringify([
+          {
+            index: 0,
+            name: 'Quick Card',
+            kind: 'discrete',
+            vendor: 4318,
+            deviceId: 8708,
+            driver,
+          },
+        ])
+      const choices = (cache: string) =>
+        JSON.parse(readFileSync(join(cache, 'ncnn-devices.json'), 'utf8')) as Record<
+          string,
+          { use: string }
+        >
+
+      async function twice(env: Record<string, string>, second = env) {
+        const cache = mkdtempSync(join(work, 'cache-'))
+        const log = join(cache, 'log.txt')
+        const input = gradient(`w-${cache.slice(-6)}.png`, 500)
+        const out = join(cache, 'out.png')
+        const first = await boost(input, out, 1, { ...env, FAKE_LOG: log }, ['--cache', cache])
+        const firstLog = lines(log)
+        writeFileSync(log, '')
+        const again = await boost(input, out, 1, { ...second, FAKE_LOG: log }, ['--cache', cache])
+        return { cache, first, again, firstLog, againLog: lines(log) }
+      }
+
+      it('starts the card alone next time when it was the quicker', async () => {
+        const r = await twice({ FAKE_DEVICES: card(1), FAKE_GPU_MS: '1', FAKE_MS: '150' })
+        expect(r.firstLog).toEqual(['gpu 0', 'cpu'])
+        expect(choices(r.cache)).toMatchObject({
+          'Quick Card [10de:2204] driver 1': { use: 'card' },
+        })
+        expect(r.again.result).toMatchObject({ ok: true, width: 520, height: 500 })
+        expect(r.againLog).toEqual(['gpu 0'])
+        expect(r.again.stderr).not.toMatch(/ms a tile/)
+      })
+
+      it('does not start the card again when the processor was the quicker', async () => {
+        const r = await twice({ FAKE_DEVICES: card(1), FAKE_GPU_MS: '150', FAKE_MS: '1' })
+        expect(r.firstLog).toEqual(['gpu 0', 'cpu'])
+        expect(choices(r.cache)).toMatchObject({
+          'Quick Card [10de:2204] driver 1': { use: 'cpu' },
+        })
+        expect(r.again.result).toMatchObject({ ok: true })
+        expect(r.againLog).toEqual(['cpu'])
+      })
+
+      it('remembers a card that gave nothing as the processor', async () => {
+        const r = await twice({ FAKE_DEVICES: card(1), FAKE_BROKEN: '1' })
+        expect(r.firstLog).toEqual(['gpu 0', 'cpu'])
+        expect(r.againLog).toEqual(['cpu'])
+      })
+
+      it('measures again under a new driver, keeping what it knew of the old', async () => {
+        const quick = { FAKE_GPU_MS: '1', FAKE_MS: '150' }
+        const r = await twice(
+          { ...quick, FAKE_DEVICES: card(1) },
+          { ...quick, FAKE_DEVICES: card(2) },
+        )
+        expect(r.againLog).toEqual(['gpu 0', 'cpu'])
+        expect(Object.keys(choices(r.cache)).sort()).toEqual([
+          'Quick Card [10de:2204] driver 1',
+          'Quick Card [10de:2204] driver 2',
+        ])
+      })
+
+      it('measures again when what it remembered cannot be read', async () => {
+        const r = await twice({ FAKE_DEVICES: card(1), FAKE_GPU_MS: '1', FAKE_MS: '150' })
+        writeFileSync(join(r.cache, 'ncnn-devices.json'), '{ torn')
+        const log = join(r.cache, 'log.txt')
+        writeFileSync(log, '')
+        const third = await boost(
+          gradient('x.png', 500),
+          join(r.cache, 'x.png'),
+          1,
+          { FAKE_DEVICES: card(1), FAKE_GPU_MS: '1', FAKE_MS: '150', FAKE_LOG: log },
+          ['--cache', r.cache],
+        )
+        expect(third.result).toMatchObject({ ok: true })
+        expect(lines(log)).toEqual(['gpu 0', 'cpu'])
+        expect(Object.keys(choices(r.cache))).toEqual(['Quick Card [10de:2204] driver 1'])
+      })
     })
   },
 )
