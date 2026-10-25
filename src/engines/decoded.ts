@@ -36,6 +36,22 @@ const ENTRIES = 4
 const BYTES = 256 * 1024 * 1024
 let limitBytes = BYTES
 
+/**
+ * How long the cache keeps what it holds once nothing asks. A photo's steps
+ * come seconds apart, but the shell stays open for hours: without this, the
+ * last batch's PNGs would be held until Forge quit.
+ */
+const IDLE_MS = 60_000
+let idleMs = IDLE_MS
+let idle: ReturnType<typeof setTimeout> | undefined
+
+/** Starts the idle clock again; it never keeps the process alive by itself. */
+function touched(): void {
+  clearTimeout(idle)
+  idle = setTimeout(() => cache.clear(), idleMs)
+  idle.unref?.()
+}
+
 interface Entry {
   /** The file as it was when decoded: a changed file is decoded afresh. */
   size: number
@@ -56,6 +72,7 @@ const cache = new Map<string, Entry>()
  */
 async function cachedDecode(path: string, format: 'heic' | 'raw'): Promise<Buffer> {
   const { size, mtimeMs } = await stat(path)
+  touched()
   const key = `${format}\0${path}`
   const hit = cache.get(key)
   cache.delete(key)
@@ -101,6 +118,12 @@ async function decode(path: string, format: 'heic' | 'raw'): Promise<Buffer> {
 /** Only for tests: forgets every decode. */
 export function clearDecodedCacheForTests(): void {
   cache.clear()
+  clearTimeout(idle)
+}
+
+/** Only for tests: a shorter idle time, so letting go is tested without a minute's wait. Undefined restores it. */
+export function idleDecodedCacheForTests(ms: number | undefined): void {
+  idleMs = ms ?? IDLE_MS
 }
 
 /** Only for tests: a smaller byte limit, so eviction is tested without 256 MB of PNG. Undefined restores it. */

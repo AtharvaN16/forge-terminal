@@ -6,6 +6,7 @@ import type { ImageInfo } from '../../src/core/types.js'
 import {
   clearDecodedCacheForTests,
   decodedInput,
+  idleDecodedCacheForTests,
   limitDecodedCacheForTests,
 } from '../../src/engines/decoded.js'
 import { encodeToBuffer, loadCropView, measureImage } from '../../src/engines/image.js'
@@ -61,6 +62,7 @@ vi.mock('../../src/engines/raw.js', async (importOriginal) => ({
 afterEach(() => {
   clearDecodedCacheForTests()
   limitDecodedCacheForTests(undefined)
+  idleDecodedCacheForTests(undefined)
   decodes.heic = 0
   decodes.raw = 0
   decodes.fail = false
@@ -90,6 +92,17 @@ describe('decodedInput', () => {
     expect(Buffer.isBuffer(first)).toBe(true)
     expect(second).toEqual(first)
     expect(decodes.temps.some((t) => existsSync(t))).toBe(false)
+  })
+
+  it('lets go of what it kept once nothing has asked for a while', async () => {
+    idleDecodedCacheForTests(20)
+    const path = await photo(await makeTempDir(), 'a.heic')
+    await decodedInput(path, 'heic')
+    await decodedInput(path, 'heic')
+    expect(decodes.heic).toBe(1)
+    await new Promise((r) => setTimeout(r, 80))
+    await decodedInput(path, 'heic')
+    expect(decodes.heic).toBe(2)
   })
 
   it('shares one decode between steps that ask at the same time', async () => {
