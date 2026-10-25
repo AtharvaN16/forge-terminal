@@ -1,22 +1,153 @@
 {
-  "files": {
-    "det.onnx": {
-      "url": "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx",
-      "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9",
-      "bytes": 4745517
-    },
-    "rec.onnx": {
-      "url": "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/latin/rec.onnx",
-      "sha256": "614ffc2d6d3902d360fad7f1b0dd455ee45e877069d14c4e51a99dc4ef144409",
-      "bytes": 7862832
-    },
-    "dict.txt": {
-      "url": "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/latin/dict.txt",
-      "sha256": "3c0a8a79b612653c25f765271714f71281e4e955962c153e272b7b8c1d2b13ff",
-      "bytes": 1634
-    }
+  "det": {
+    "file": "det.onnx",
+    "url": "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx",
+    "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9",
+    "bytes": 4745517
   },
-  "licence": "PP-OCRv4 detection and PP-OCRv5 Latin recognition (Apache-2.0, PaddlePaddle), ONNX exports by RapidOCR and monkt (Apache-2.0)",
+  "recognisers": [
+    {
+      "id": "main",
+      "reads": "Latin (many languages), Chinese (simplified and traditional), Japanese",
+      "source": {
+        "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx/resolve/b8f84f0b80c529de40b4fbb3544b84fa7233a513/inference.onnx",
+        "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "bytes": 21159378
+      },
+      "onnx": {
+        "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-read-text-scripts-v1/rec-main.onnx",
+        "sha256": "3d842c0dd3eaf40f29750e52c7c023a4e3a622f8dd48cb09336fd59e8093b3fc",
+        "bytes": 10638323
+      },
+      "yml": {
+        "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx/resolve/b8f84f0b80c529de40b4fbb3544b84fa7233a513/inference.yml",
+        "sha256": "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1",
+        "bytes": 150579
+      },
+      "dict": {
+        "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
+        "chars": 18708
+      }
+    },
+    {
+      "id": "korean",
+      "reads": "Korean",
+      "source": {
+        "url": "https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/5c6f574b8e2230adf4287b33e736d71b9fabd28e/inference.onnx",
+        "sha256": "92f0b7785e64fc9090106a241cf4c1eb97472824558272751b88a2a4476d3a08",
+        "bytes": 13418787
+      },
+      "onnx": {
+        "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-read-text-scripts-v1/rec-korean.onnx",
+        "sha256": "7a34f0b0dab9e8105b74b74976fb4ceef0022e1151d4176d24cdd1e0d3343ff2",
+        "bytes": 6761886
+      },
+      "yml": {
+        "url": "https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/5c6f574b8e2230adf4287b33e736d71b9fabd28e/inference.yml",
+        "sha256": "f757fa1c40e99edcf27e9cce879b93eb2a51fa46f5ef39095689b8c37dd75998",
+        "bytes": 96039
+      },
+      "dict": {
+        "sha256": "a88071c68c01707489baa79ebe0405b7beb5cca229f4fc94cc3ef992328802d7",
+        "chars": 11945
+      }
+    },
+    {
+      "id": "cyrillic",
+      "reads": "Russian, Ukrainian and other Cyrillic",
+      "source": {
+        "url": "https://huggingface.co/PaddlePaddle/cyrillic_PP-OCRv5_mobile_rec_onnx/resolve/2cef88145434beb8afa9dd82d77d799eb1ad7b29/inference.onnx",
+        "sha256": "5371ee1ddaa7983cc62d0818d99e982b6804638c85e4f960d59a574094e172e5",
+        "bytes": 8048799
+      },
+      "onnx": {
+        "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-read-text-scripts-v1/rec-cyrillic.onnx",
+        "sha256": "5f8bb82a615bf012cbe28aed5e6c8ce64667a5951582c96d35b2e8c0e8c53e6b",
+        "bytes": 4076888
+      },
+      "yml": {
+        "url": "https://huggingface.co/PaddlePaddle/cyrillic_PP-OCRv5_mobile_rec_onnx/resolve/2cef88145434beb8afa9dd82d77d799eb1ad7b29/inference.yml",
+        "sha256": "5c76cc91fa98410178a09f498db10050d0ec1634a660053d3005ab7be581f501",
+        "bytes": 6991
+      },
+      "dict": {
+        "sha256": "db40aa52ceb112055be80c694afdf655d5d2c4f7873704524cc16a447ca913ba",
+        "chars": 850
+      },
+      "probe": true
+    },
+    {
+      "id": "arabic",
+      "reads": "Arabic",
+      "source": {
+        "url": "https://huggingface.co/PaddlePaddle/arabic_PP-OCRv5_mobile_rec_onnx/resolve/14aaedcd75825982689ecf5cd64ab33ee083215a/inference.onnx",
+        "sha256": "799113ebf267fbe742deb99eb36e8d42c9ddc5291ceacf92add41b4d52a59110",
+        "bytes": 7998947
+      },
+      "onnx": {
+        "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-read-text-scripts-v1/rec-arabic.onnx",
+        "sha256": "f20b2a91160dca03cbcc04ea55a129a9fd2dcb09503f60a331b10c8fadc41704",
+        "bytes": 4051962
+      },
+      "yml": {
+        "url": "https://huggingface.co/PaddlePaddle/arabic_PP-OCRv5_mobile_rec_onnx/resolve/14aaedcd75825982689ecf5cd64ab33ee083215a/inference.yml",
+        "sha256": "21368419e6c016c31db55d316d59e11c128e1913e6e6fe10287084710043d3a6",
+        "bytes": 6165
+      },
+      "dict": {
+        "sha256": "7f92f7dbb9b75a4787a83bfb4f6d14a8ab515525130c9d40a9036f61cf6999e9",
+        "chars": 747
+      },
+      "reverse": true
+    },
+    {
+      "id": "devanagari",
+      "reads": "Hindi, Marathi and other Devanagari",
+      "source": {
+        "url": "https://huggingface.co/PaddlePaddle/devanagari_PP-OCRv5_mobile_rec_onnx/resolve/251aec19e36739540d35e2cc943f6aa7503b98e5/inference.onnx",
+        "sha256": "cb789212ce96c69d3e74728ae4309d179281d68cb3945d0616b67cafab41c986",
+        "bytes": 7912311
+      },
+      "onnx": {
+        "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-read-text-scripts-v1/rec-devanagari.onnx",
+        "sha256": "8e3196d9e89b920db845582d3d743af8fd0537bf632f07034ad03d0f0c02f7a3",
+        "bytes": 4008644
+      },
+      "yml": {
+        "url": "https://huggingface.co/PaddlePaddle/devanagari_PP-OCRv5_mobile_rec_onnx/resolve/251aec19e36739540d35e2cc943f6aa7503b98e5/inference.yml",
+        "sha256": "9bd172dd26440c8ce94d1cde5d5baea6aefdc7cf3c5c8492e0beedef656d4e54",
+        "bytes": 5027
+      },
+      "dict": {
+        "sha256": "09c7440bfc5477e5c41052304b6b185aff8c4a5e8b2b4c23c1c706f6fe1ee9fc",
+        "chars": 568
+      }
+    },
+    {
+      "id": "thai",
+      "reads": "Thai",
+      "source": {
+        "url": "https://huggingface.co/PaddlePaddle/th_PP-OCRv5_mobile_rec_onnx/resolve/1d4adbbafb1034a2fd6618498575b81ea7b69f69/inference.onnx",
+        "sha256": "27618be66018f8598ac0a526a593f9f1cebf794e7eded93428e8fb016e537f5f",
+        "bytes": 7891015
+      },
+      "onnx": {
+        "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-read-text-scripts-v1/rec-thai.onnx",
+        "sha256": "245e99be807e0c9974028f075970b18fe115a049a6b6891187739a98e8249173",
+        "bytes": 3997996
+      },
+      "yml": {
+        "url": "https://huggingface.co/PaddlePaddle/th_PP-OCRv5_mobile_rec_onnx/resolve/1d4adbbafb1034a2fd6618498575b81ea7b69f69/inference.yml",
+        "sha256": "f6ba7fefc38ca1ff398ddafa75d67d16e0b3757c4e6c833adffee98a981766c9",
+        "bytes": 4667
+      },
+      "dict": {
+        "sha256": "57f5406f94bb6688fb7077f7be65f08bbd71cecf48c01ea26c522cb5c4836b7a",
+        "chars": 524
+      }
+    }
+  ],
+  "licence": "PP-OCRv4 detection and PP-OCRv5 and PP-OCRv6 recognition (Apache-2.0, PaddlePaddle; detection ONNX by RapidOCR, recognition ONNX by PaddlePaddle, weights stored in half precision by Forge)",
   "licences": {
     "paddleocr": {
       "url": "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/dab3fe35379033fdcb2d0e9572fac0b36c9a9ebf/LICENSE",

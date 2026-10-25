@@ -3,10 +3,15 @@
  * Macs without Apple's reader (spec 2026-10-23-extract-text-design §6).
  *
  *   node runner.mjs --in <png> [--in <png> ...]
+ *   node runner.mjs --check
  *
  * Each --in is one page, a PNG Forge already rotated and decoded (a picture,
  * or a PDF's page drawn by pdfium). PP-OCR's detector finds the lines of text,
- * its recogniser reads each, on ONNX Runtime's CPU provider.
+ * a recogniser reads each, on ONNX Runtime's CPU provider. There is one
+ * recogniser for Latin, Chinese and Japanese, and one each for Korean,
+ * Cyrillic, Arabic, Devanagari and Thai (the scripts Apple's reader reads):
+ * which one reads a page is decided from their own confidence (readCrops), so
+ * nothing asks what language it is in, and a page in one script loads two.
  *
  * Contract: the Swift helper's `read`, so Forge cannot tell which reader ran.
  * One `{"event":"page","page","of"}` line as each page starts, then exactly
@@ -16,7 +21,7 @@
  * (layout.ts). Forge orders them and picks the headings, as for Vision.
  */
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { InferenceSession, Tensor } from 'onnxruntime-node'
@@ -26,6 +31,7 @@ import { type Block, blocksOf } from './layout.js'
 const DET_MODEL = 'det.onnx'
 const REC_MODEL = 'rec.onnx'
 const DICT = 'dict.txt'
+const MANIFEST = 'recognisers.json'
 
 /** The detector's input is scaled so its longer side is at most this, in steps of 32. */
 const DET_MAX_SIDE = 1536
@@ -44,8 +50,6 @@ export interface Line {
   /** The text itself, tight, in the page's pixels: x, y, width, height. */
   box: [number, number, number, number]
 }
-
-type Box = readonly [number, number, number, number]
 
 export interface ReadPage {
   blocks: Block[]
@@ -207,7 +211,7 @@ export function regions(prob: Float32Array, w: number, h: number): Region[] {
 }
 
 /** One line's crop for the recogniser, cut along its slant: 48 px high, its length kept in proportion, −1…1. */
-function recCrop(img: Rgba, r: Region): { data: Float32Array; w: number } {
+export function recCrop(img: Rgba, r: Region): { data: Float32Array; w: number } {
   const w = Math.max(8, Math.min(REC_MAX_WIDTH, Math.ceil((REC_HEIGHT * r.w) / r.h)))
   const data = new Float32Array(3 * REC_HEIGHT * w)
   const cos = Math.cos(r.angle)
@@ -258,23 +262,208 @@ export function ctcDecode(
   return { text: text.trim(), score: kept > 0 ? total / kept : 0 }
 }
 
-export interface Models {
-  det: InferenceSession
-  rec: InferenceSession
+/** One recogniser: a PP-OCR model for a script (or a few), its dictionary, and how its text is read off. */
+export interface Recogniser {
+  id: string
   /** Index 0 is CTC's blank; the dictionary follows, then a space. */
   chars: string[]
+  /** Arabic is read off the way it is drawn, left to right; its text is the reverse of that. */
+  reverse: boolean
+  /** The model's file, created on first use: a page in one script never loads the others. */
+  file: string
+  /** Asked about every page, however sure the main recogniser is: it reads this script in lookalikes. */
+  probe?: boolean
+  session?: InferenceSession
+  /** The characters it can write, made on first use. */
+  known?: Set<string>
+}
+
+export interface Models {
+  det: InferenceSession
+  /** The first is the main one, tried on every line; the rest are tried when it is unsure. */
+  recs: Recogniser[]
   Tensor: typeof Tensor
+  create: (file: string) => Promise<InferenceSession>
+}
+
+/** The payload's recognisers, in order: `recognisers.json`, or the one rec.onnx an older payload has. */
+function manifestOf(dir: string): Array<{
+  id: string
+  file: string
+  dict: string
+  reverse?: boolean
+  probe?: boolean
+}> {
+  const path = join(dir, MANIFEST)
+  if (!existsSync(path)) return [{ id: 'main', file: REC_MODEL, dict: DICT }]
+  return JSON.parse(readFileSync(path, 'utf8')).recognisers
 }
 
 export async function loadModels(dir: string): Promise<Models> {
   const ort = await import('onnxruntime-node')
-  const opts = { executionProviders: ['cpu'], graphOptimizationLevel: 'all' as const }
-  const det = await ort.InferenceSession.create(join(dir, DET_MODEL), opts)
-  const rec = await ort.InferenceSession.create(join(dir, REC_MODEL), opts)
-  const dict = readFileSync(join(dir, DICT), 'utf8')
-    .split(/\r?\n/)
-    .filter((l, i, a) => l !== '' || i < a.length - 1)
-  return { det, rec, chars: ['', ...dict, ' '], Tensor: ort.Tensor }
+  const opts = {
+    executionProviders: ['cpu'],
+    graphOptimizationLevel: 'all' as const,
+    logSeverityLevel: 3 as const,
+  }
+  const create = (file: string) => ort.InferenceSession.create(join(dir, file), opts)
+  const det = await create(DET_MODEL)
+  const recs = manifestOf(dir).map((r): Recogniser => {
+    const dict = readFileSync(join(dir, r.dict), 'utf8')
+      .split(/\r?\n/)
+      .filter((l, i, a) => l !== '' || i < a.length - 1)
+    return {
+      id: r.id,
+      chars: ['', ...dict, ' '],
+      reverse: r.reverse === true,
+      file: r.file,
+      ...(r.probe ? { probe: true } : {}),
+    }
+  })
+  return { det, recs, Tensor: ort.Tensor, create }
+}
+
+/**
+ * Arabic as the model gives it is in drawn order, so a run of letters, digits
+ * or Latin (which read left to right) stays whole while the rest turns over:
+ * PaddleOCR's own reversal for its Arabic model.
+ */
+export function drawnToLogical(text: string): string {
+  const parts: string[] = []
+  let run = ''
+  for (const c of text) {
+    if (/[a-zA-Z0-9 :*./%+-]/.test(c)) run += c
+    else {
+      if (run !== '') parts.push(run)
+      parts.push(c)
+      run = ''
+    }
+  }
+  if (run !== '') parts.push(run)
+  return parts.reverse().join('')
+}
+
+/** A line's crop read by one recogniser. */
+export async function recognise(
+  m: Models,
+  rec: Recogniser,
+  crop: { data: Float32Array; w: number },
+): Promise<{ text: string; score: number }> {
+  rec.session ??= await m.create(rec.file)
+  const out = await rec.session.run({
+    [rec.session.inputNames[0] as string]: new m.Tensor('float32', crop.data, [
+      1,
+      3,
+      REC_HEIGHT,
+      crop.w,
+    ]),
+  })
+  const t = out[rec.session.outputNames[0] as string] as Tensor
+  const [, steps, classes] = t.dims as number[]
+  const read = ctcDecode(t.data as Float32Array, steps as number, classes as number, rec.chars)
+  return { text: rec.reverse ? drawnToLogical(read.text) : read.text, score: read.score }
+}
+
+/** Whether `text` has a character the recogniser has no letter for (digits aside). */
+function cannotWrite(rec: Recogniser, text: string): boolean {
+  rec.known ??= new Set(rec.chars)
+  for (const c of text) if (!rec.known.has(c) && !/\d/.test(c)) return true
+  return false
+}
+
+type Crop = { data: Float32Array; w: number }
+type Reading = { text: string; score: number; id: string }
+
+/** The lines a page's script is judged from: the widest, which carry the most evidence. */
+const SAMPLE = 8
+/** The main recogniser this sure of its sample leaves the page as it reads it, bar the lookalike script. */
+const GATE = 0.96
+/** Another recogniser takes the page when its readings are this much surer than the main one's. */
+const MARGIN = 0.02
+/** A page's recogniser reading a line this poorly gives it up to whichever recogniser is surest. */
+const FALLBACK = 0.7
+/** A reading this sure is taken as it is. */
+const ACCEPT = 0.93
+/** At most this many lines of a page are shown to the other recognisers. */
+const ALT_LINES = 60
+
+/**
+ * Which recogniser reads each line. Nothing says what script a page is in,
+ * and nothing is asked of the user: the recognisers say how sure they are.
+ * The page's widest lines are read by the main recogniser first. When it is
+ * sure (Latin, Chinese and Japanese all read at 0.99), the page is its own.
+ * When it is not, every other recogniser reads the same lines, and the one
+ * that is surest on average takes the page. Cyrillic is asked either way,
+ * since a recogniser for Latin letters reads it in lookalikes, and sure.
+ * Then every line goes to the page's recogniser, and one it is not sure of
+ * is shown to the others.
+ */
+export async function readCrops(
+  m: Models,
+  crops: readonly Crop[],
+): Promise<Array<Reading | undefined>> {
+  const [main, ...others] = m.recs as [Recogniser, ...Recogniser[]]
+  const seen = new Map<string, Reading>()
+  const read = async (i: number, rec: Recogniser): Promise<Reading> => {
+    const key = `${i}:${rec.id}`
+    let r = seen.get(key)
+    if (r === undefined) {
+      r = { ...(await recognise(m, rec, crops[i] as Crop)), id: rec.id }
+      seen.set(key, r)
+    }
+    return r
+  }
+  const sample = crops
+    .map((c, i) => ({ i, w: c.w }))
+    .sort((a, b) => b.w - a.w)
+    .slice(0, SAMPLE)
+    .map((x) => x.i)
+  const mean = async (rec: Recogniser) => {
+    let sum = 0
+    for (const i of sample) sum += (await read(i, rec)).score
+    return sample.length > 0 ? sum / sample.length : 0
+  }
+  let page = main
+  if (others.length > 0 && sample.length > 0) {
+    const mainMean = await mean(main)
+    const asked = others.filter((r) => mainMean < GATE || r.probe === true)
+    let top = mainMean + MARGIN
+    for (const rec of asked) {
+      const v = await mean(rec)
+      if (v > top) {
+        top = v
+        page = rec
+      }
+    }
+  }
+  const out: Array<Reading | undefined> = []
+  for (let i = 0; i < crops.length; i++) out.push(await read(i, page))
+  // The lines it is least sure of are shown to the others (a page of fine print has hundreds,
+  // and all but a few score under 0.93: the least sure are the ones worth the time).
+  const unsure = out
+    .map((r, i) => ({ i, score: (r as Reading).score }))
+    .filter((x) => x.score < ACCEPT)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, ALT_LINES)
+  for (const { i } of m.recs.length > 1 ? unsure : []) {
+    const best = out[i] as Reading
+    let alt: Reading | undefined
+    for (const rec of m.recs) {
+      if (rec === page) continue
+      const r = await read(i, rec)
+      if (alt === undefined || r.score > alt.score) alt = r
+    }
+    // Another reading takes the line when it is surer and the page's recogniser could not have
+    // written it (it has characters this one has no letter for), or when the page's is poor.
+    // Reading a Cyrillic line in Latin lookalikes can be sure of itself; it is not a better reading.
+    if (
+      alt !== undefined &&
+      alt.score > best.score + MARGIN &&
+      (best.score < FALLBACK || cannotWrite(page, alt.text))
+    )
+      out[i] = alt
+  }
+  return out
 }
 
 /** The lines of text on one page, top to bottom, in its pixels. */
@@ -286,30 +475,20 @@ export async function readLines(img: Rgba, m: Models): Promise<Line[]> {
   const prob = detOut[m.det.outputNames[0] as string]?.data as Float32Array
   const fx = img.width / input.w
   const fy = img.height / input.h
-  const lines: Line[] = []
-  for (const found of regions(prob, input.w, input.h)) {
+  const found: Region[] = []
+  for (const f of regions(prob, input.w, input.h)) {
     // Back to the page's pixels. The map is the page scaled nearly evenly, so the slant stands.
-    const r: Region = {
-      ...found,
-      cx: found.cx * fx,
-      cy: found.cy * fy,
-      w: found.w * fx,
-      h: found.h * fy,
-    }
-    if (r.w < 4 || r.h < 4) continue
-    const crop = recCrop(img, r)
-    const out = await m.rec.run({
-      [m.rec.inputNames[0] as string]: new m.Tensor('float32', crop.data, [
-        1,
-        3,
-        REC_HEIGHT,
-        crop.w,
-      ]),
-    })
-    const t = out[m.rec.outputNames[0] as string] as Tensor
-    const [, steps, classes] = t.dims as number[]
-    const read = ctcDecode(t.data as Float32Array, steps as number, classes as number, m.chars)
-    if (read.text === '' || read.score < MIN_SCORE) continue
+    const r: Region = { ...f, cx: f.cx * fx, cy: f.cy * fy, w: f.w * fx, h: f.h * fy }
+    if (r.w >= 4 && r.h >= 4) found.push(r)
+  }
+  const reads = await readCrops(
+    m,
+    found.map((r) => recCrop(img, r)),
+  )
+  const lines: Line[] = []
+  for (const [i, r] of found.entries()) {
+    const read = reads[i]
+    if (read === undefined || read.text === '' || read.score < MIN_SCORE) continue
     // Upright, about its centre: the layout reads rows and gaps, which a tilt's corners would blur.
     lines.push({
       text: read.text,
@@ -348,8 +527,21 @@ export function pageOf(lines: readonly Line[], width: number, height: number): R
   return { blocks: blocksOf(straightened(lines, width, height), { width, height }) }
 }
 
+/**
+ * `--check`: every model in the payload loads and answers (for CI, which runs
+ * the packed archive on each OS). One `{"ok":true,"recognisers":[…]}` line.
+ */
+async function check(dir: string): Promise<void> {
+  const models = await loadModels(dir)
+  const blank = { data: new Float32Array(3 * REC_HEIGHT * 160).fill(1), w: 160 }
+  for (const rec of models.recs) await recognise(models, rec, blank)
+  reply({ ok: true, recognisers: models.recs.map((r) => r.id) }, 0)
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
+  if (argv.length === 1 && argv[0] === '--check')
+    return check(dirname(fileURLToPath(import.meta.url)))
   const inputs: string[] = []
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--in' && argv[i + 1] !== undefined) inputs.push(argv[++i] as string)

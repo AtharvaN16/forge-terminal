@@ -304,52 +304,54 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     // Reading the text of pictures and PDFs where Apple's reader is not
     // (spec 2026-10-23-extract-text-design §6): Windows, Linux, and Macs on
-    // Intel or before macOS 26. PP-OCR's small models on ONNX Runtime's CPU
-    // provider; it answers as the Mac helper's \`read\` does.
+    // Intel or before macOS 26. PP-OCR's models on ONNX Runtime's CPU provider,
+    // one recogniser each for the scripts Apple's reader reads (Latin, Chinese
+    // and Japanese in one, then Korean, Cyrillic, Arabic, Devanagari, Thai);
+    // it answers as the Mac helper's \`read\` does.
     id: 'read-text',
     title: 'Read text',
     summary: 'Read the text of pictures and PDFs on this computer',
     minMacos: 13,
     assets: {
       'darwin-arm64': {
-        version: '1.0.1',
-        url: `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-arm64.tar.gz`,
-        bytes: 21975029,
-        sha256: 'b6af18462eb4bf6571caf6a7d392bd945a18f91d5cdd95de6fa4b5466aacc2cc',
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-arm64.tar.gz`,
+        bytes: 42705161,
+        sha256: '5fea76dcbe7ea8b52feb2f42796ca831de8237db14cc13f541fcecf310552599',
       },
       'darwin-x64': {
-        version: '1.0.1',
-        url: `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-x64.tar.gz`,
-        bytes: 23165933,
-        sha256: '1267a0e2883d274b22b3712ac1ebf427a740986858d402b2e018d1bab3f0bf26',
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-x64.tar.gz`,
+        bytes: 43898855,
+        sha256: '028e8643d7d96c90dc030124a5c2a2348a9549560017f10b5b49aff50382bb1e',
       },
       'win32-x64': {
-        version: '1.0.1',
-        url: `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-win32-x64.tar.gz`,
-        bytes: 20729724,
-        sha256: 'aec6099196c03ba37562974f93b6eeb3246ff9b381b63e35aece6aa2324f6360',
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-win32-x64.tar.gz`,
+        bytes: 41461196,
+        sha256: '39a1da83498d9858cebc3202f884ca852954ffee01383af90efd9e99dd752e6d',
       },
       'win32-arm64': {
-        version: '1.0.1',
-        url: `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-win32-arm64.tar.gz`,
-        bytes: 20805682,
-        sha256: '3aece834bf1fe83238d001239ebb0c63fe484ad3fb11f5f16680f801a0e0c4ae',
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-win32-arm64.tar.gz`,
+        bytes: 41540477,
+        sha256: 'ee551378b14c199b4528511d5a0066e29a11397caf4f5c7fb801eeb40544cb25',
       },
       'linux-x64': {
-        version: '1.0.1',
-        url: `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-linux-x64.tar.gz`,
-        bytes: 24127461,
-        sha256: '032a7075867fa7d9e00eb462df55cdc13b131710fe37941a899144775b2f5d2f',
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-linux-x64.tar.gz`,
+        bytes: 44859772,
+        sha256: 'b5d1158d06dc008e1986a0684049911194e97b72f35d01c2110d71e0d39b446a',
       },
       'linux-arm64': {
-        version: '1.0.1',
-        url: `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-linux-arm64.tar.gz`,
-        bytes: 19113041,
-        sha256: '013f452ef931c91ecec7c39cbb9766c8d0f50e00aa9c7ffff37e589b65565961',
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-linux-arm64.tar.gz`,
+        bytes: 39842973,
+        sha256: 'bfa94581c43f9d9760d6ca33f7e19dc31e58732ac6c07bf89fe433ac594d8176',
       },
     },
     licence:
-      'PP-OCRv4 detection and PP-OCRv5 Latin recognition (Apache-2.0, PaddlePaddle; ONNX by RapidOCR and monkt), ONNX Runtime (MIT)',
+      'PP-OCRv4 detection and PP-OCRv5 and PP-OCRv6 recognition (Apache-2.0, PaddlePaddle; ONNX by RapidOCR and PaddlePaddle), ONNX Runtime (MIT)',
   },
 ]
 
