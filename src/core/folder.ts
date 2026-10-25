@@ -5,6 +5,7 @@ import { targetIdsFor } from './capabilities.js'
 import { isForgeError } from './errors.js'
 import { FORMATS } from './formats.js'
 import type { InputFailure } from './resolve.js'
+import { defaultConcurrency, pool } from './run.js'
 import type { FormatId, SourceInfo } from './types.js'
 
 /**
@@ -116,9 +117,9 @@ export async function scanFolder(dir: string): Promise<FolderScan> {
   let bytes = 0
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isFile() || isIgnoredName(entry.name)) continue
-    const path = join(abs, entry.name)
-    paths.push(path)
-    const read = await readFolderFile(path)
+    paths.push(join(abs, entry.name))
+  }
+  for (const read of await readAll(paths)) {
     if (read.kind === 'source') {
       sources.push(read.source)
       bytes += read.source.bytes
@@ -148,6 +149,29 @@ export async function scanFolder(dir: string): Promise<FolderScan> {
     })
   }
   return { dir: abs, sources, failures, kinds, bytes, paths }
+}
+
+/**
+ * Every file read through the run pool, answers in `paths` order whatever
+ * order they finish in. On a Mac each HEIC and RAW probe spawns `sips`; one
+ * at a time, a folder of them waited on each in turn. Bounded like
+ * conversions, so a big folder never starts hundreds of processes at once.
+ * `readFolderFile` turns every probe failure into an answer; anything else
+ * it throws is rethrown here, the first in name order, as the loop did.
+ */
+async function readAll(paths: readonly string[]): Promise<FolderFileRead[]> {
+  const reads: ({ read: FolderFileRead } | { error: unknown })[] = []
+  await pool(paths, defaultConcurrency(), async (path, index) => {
+    try {
+      reads[index] = { read: await readFolderFile(path) }
+    } catch (error) {
+      reads[index] = { error }
+    }
+  })
+  return reads.map((r) => {
+    if ('error' in r) throw r.error
+    return r.read
+  })
 }
 
 /** The kinds Forge converts, the largest first. */
