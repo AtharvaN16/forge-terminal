@@ -1,8 +1,17 @@
 import { boostAction, removeBackgroundAction } from '../core/actions/extension.js'
 import type { Action } from '../core/actions/index.js'
 import { mediaEditAction, SPEEDS } from '../core/actions/media.js'
-import { cropAction, resizeAction, trimAction, turnAction } from '../core/actions/resize.js'
+import {
+  cropAction,
+  debandAction,
+  ditherAction,
+  resizeAction,
+  trimAction,
+  turnAction,
+} from '../core/actions/resize.js'
 import { type CropShape, largestBox, shapesFor } from '../core/crop.js'
+import { DEBAND_LEVELS, DEBAND_START, type DebandLevelId } from '../core/deband.js'
+import { canDither, coloursLabel, DITHER_COLOURS, ditherTarget } from '../core/dither.js'
 import {
   BOOST_MAX_SIDE,
   type BoostScale,
@@ -37,6 +46,8 @@ export type EditToolId =
   | 'resize'
   | 'rotate'
   | 'crop'
+  | 'deband'
+  | 'dither'
   // Video and sound (video spec §3.4).
   | 'cut'
   | 'mute'
@@ -69,6 +80,12 @@ export interface EditRow {
   shapes?: Array<{ shape: CropShape; detail: Detail }>
   /** Rotate: the turns, in the pill's order; ←→ steps through them. */
   turns?: Array<{ degrees: Turn; label: string; detail: Detail }>
+  /** Remove banding: the levels, gentlest first; ←→ steps through them. */
+  levels?: Array<{ level: DebandLevelId; label: string; detail: Detail }>
+  /** Where the pill opens, when not on its first step: Remove banding's Medium. */
+  start?: number
+  /** Dither: the colour counts, gentlest first; ←→ steps through them. */
+  dithers?: Array<{ colours: number; detail: Detail }>
   /** Speed: how fast, faster ones first; ←→ steps through them. */
   speeds?: Array<{ speed: number; detail: Detail }>
   /** What the file is written as: the source's own format, or PNG for a cutout. */
@@ -216,7 +233,62 @@ export function editRows(
     },
     rotateRow(source, asJpeg),
     cropRow(source, asJpeg),
+    debandRow(source, kept, asJpeg),
+    ditherRow(source),
   ]
+}
+
+/**
+ * Remove banding's row: Light, Medium and Strong, opening on Medium. The size
+ * stays and so does the format. Dimmed for an animation, as Trim is.
+ */
+function debandRow(source: ImageInfo, kept: FormatId, asJpeg: string): EditRow {
+  const detail: Detail = {
+    dim: 'same size · ',
+    bold: dims(source.width, source.height),
+    after: asJpeg,
+  }
+  return {
+    id: 'deband',
+    label: 'Remove banding',
+    levels: DEBAND_LEVELS.map((l) => ({ level: l.id, label: l.label, detail })),
+    start: DEBAND_START,
+    target: kept,
+    detail,
+    pane: {
+      short: 'Smooths out stripes.',
+      long: 'Stripes in smooth shading are blended back into a gradient. Edges stay sharp; stronger levels also smooth away fine grain.',
+    },
+    ...(source.frames > 1 ? { tooLarge: 'animated' } : {}),
+    verb: debandAction.verb,
+  }
+}
+
+/**
+ * Dither's row: the colour counts, each saying what it makes. A palette format
+ * keeps its own; anything else is written as a PNG, which the row says, since
+ * a lossy file would smear the dots. Dimmed for an animation, a GIF excepted.
+ */
+function ditherRow(source: ImageInfo): EditRow {
+  const target = ditherTarget(source)
+  const as = target === source.format ? '' : ` · as ${FORMATS[target].label}`
+  const dithers = DITHER_COLOURS.map((colours) => ({
+    colours,
+    detail: { dim: 'becomes ', bold: coloursLabel(colours), after: as },
+  }))
+  return {
+    id: 'dither',
+    label: 'Dither',
+    dithers,
+    target,
+    detail: (dithers[0] as { detail: Detail }).detail,
+    pane: {
+      short: 'Fewer colours, scattered.',
+      long: 'The colours are cut down and the missing ones are drawn as dots, so it still reads as the picture.',
+    },
+    ...(canDither(source) ? {} : { tooLarge: 'animated' }),
+    verb: ditherAction.verb,
+  }
 }
 
 /**
@@ -296,6 +368,18 @@ export function batchEditRows(
         }
       case 'crop':
         return { ...rest, shapes: [], detail: none, tooLarge: 'one at a time' }
+      case 'deband':
+        return {
+          ...rest,
+          levels: rest.levels?.map((l) => ({ ...l, detail: none })) ?? [],
+          detail: none,
+        }
+      case 'dither':
+        return {
+          ...rest,
+          dithers: rest.dithers?.map((d) => ({ ...d, detail: none })) ?? [],
+          detail: none,
+        }
       default:
         return rest
     }
@@ -471,7 +555,9 @@ export interface PillStep {
  * The pill a row carries at its band's far end, if any: Boost's scales or
  * Crop's shapes, one pill for both. `noun` is the key row's word for ←→.
  */
-export function pillOf(row: EditRow): { noun: string; steps: PillStep[] } | undefined {
+export function pillOf(
+  row: EditRow,
+): { noun: string; steps: PillStep[]; start?: number } | undefined {
   if (row.scales) {
     return {
       noun: 'scale',
@@ -490,6 +576,23 @@ export function pillOf(row: EditRow): { noun: string; steps: PillStep[] } | unde
       steps: row.turns.map((t) => ({ value: t.degrees, label: t.label, detail: t.detail })),
     }
   }
+  if (row.levels) {
+    return {
+      noun: 'level',
+      steps: row.levels.map((l) => ({ value: l.level, label: l.label, detail: l.detail })),
+      ...(row.start === undefined ? {} : { start: row.start }),
+    }
+  }
+  if (row.dithers) {
+    return {
+      noun: 'colours',
+      steps: row.dithers.map((d) => ({
+        value: d.colours,
+        label: coloursLabel(d.colours),
+        detail: d.detail,
+      })),
+    }
+  }
   if (row.shapes) {
     return {
       noun: 'shape',
@@ -505,8 +608,9 @@ export function pillOf(row: EditRow): { noun: string; steps: PillStep[] } | unde
 
 /** The pill step `value` names (a scale, a shape's label; as a number or its string), else the first. */
 const stepAt = (row: EditRow, value: unknown): PillStep | undefined => {
-  const steps = pillOf(row)?.steps ?? []
-  return steps.find((s) => String(s.value) === String(value)) ?? steps[0]
+  const pill = pillOf(row)
+  const steps = pill?.steps ?? []
+  return steps.find((s) => String(s.value) === String(value)) ?? steps[pill?.start ?? 0]
 }
 
 /** One row by id; `offered` and `platform` as for `editRows` (Boost's scales depend on it). */
@@ -521,7 +625,12 @@ export function editRow(
 
 /** What a row makes at `step` (one of Boost's scales, one of Crop's shapes), else at its own. */
 export function detailAt(row: EditRow, step?: number | string): Detail {
-  return pillOf(row)?.steps.find((s) => String(s.value) === String(step))?.detail ?? row.detail
+  const pill = pillOf(row)
+  return (
+    pill?.steps.find((s) => String(s.value) === String(step))?.detail ??
+    pill?.steps[pill.start ?? 0]?.detail ??
+    row.detail
+  )
 }
 
 /** The action a row runs through: the same plan-and-run path as the CLI. */
@@ -536,9 +645,13 @@ export const actionForRow = (row: Pick<EditRow, 'id' | 'extension' | 'target'>):
           ? cropAction
           : row.id === 'rotate'
             ? turnAction
-            : row.extension === 'boost'
-              ? boostAction
-              : removeBackgroundAction
+            : row.id === 'dither'
+              ? ditherAction
+              : row.id === 'deband'
+                ? debandAction
+                : row.extension === 'boost'
+                  ? boostAction
+                  : removeBackgroundAction
 
 /**
  * The answers Save as and the run plan with, for a row at `step` on its pill:
@@ -553,6 +666,8 @@ export function rowValues(row: EditRow, step?: number | string): Record<string, 
     ...(k === undefined ? {} : { scale: String(k) }),
     ...(row.shapes && at ? { shape: at.label } : {}),
     ...(row.turns && at ? { turn: at.value } : {}),
+    ...(row.dithers && at ? { dither: at.value } : {}),
+    ...(row.levels && at ? { deband: at.value } : {}),
     ...(row.speeds && at ? { speed: at.value } : {}),
     ...(row.id === 'trim' ? { trim: true } : {}),
   }

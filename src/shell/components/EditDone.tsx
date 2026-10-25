@@ -44,7 +44,7 @@ import { middleEllipsis } from '../width.js'
 
 export interface EditDoneProps {
   /** `trim`, `resize` and `crop` are convert jobs (Trim edges, Resize, Crop to shape): both pictures whole. */
-  op: 'boost' | 'remove-background' | 'trim' | 'resize' | 'rotate' | 'crop'
+  op: 'boost' | 'remove-background' | 'trim' | 'resize' | 'rotate' | 'dither' | 'deband' | 'crop'
   scale?: 1 | 2 | 3 | 4
   before: string
   after: string
@@ -131,7 +131,13 @@ export function EditDone({
   const protocol = stdout.isTTY && colour ? imageProtocol() : null
   const cols = pictureCols(width)
   const rows = colour ? pictureRows(available, protocol === null ? noteRows(width) : 0) : 0
-  const whole = op === 'trim' || op === 'resize' || op === 'rotate' || op === 'crop'
+  const whole =
+    op === 'trim' ||
+    op === 'resize' ||
+    op === 'rotate' ||
+    op === 'dither' ||
+    op === 'deband' ||
+    op === 'crop'
   const s = op === 'boost' ? scale : 1
   const [shown, setShown] = useState<Shown | undefined>(undefined)
   useEffect(() => forgetCloseup, [])

@@ -23,12 +23,21 @@ import { boostAction, removeBackgroundAction } from '../core/actions/extension.j
 import type { Action, OptionSpec } from '../core/actions/index.js'
 import { ACTIONS, compressAction, convertAction } from '../core/actions/index.js'
 import { mediaEditAction } from '../core/actions/media.js'
-import { cropAction, resizeAction, trimAction, turnAction } from '../core/actions/resize.js'
+import {
+  cropAction,
+  debandAction,
+  ditherAction,
+  resizeAction,
+  trimAction,
+  turnAction,
+} from '../core/actions/resize.js'
 import type { EditRecipe } from '../core/batch.js'
 import { putBack, saveCopy, type Taken, takeImage, undoClip } from '../core/clip.js'
 import { parseColour } from '../core/colour/parse.js'
 import { DEFAULT_STEPS, type StepSpec } from '../core/colour/scale.js'
+import { DEBAND_LEVELS, DEBAND_START, isDebandLevel } from '../core/deband.js'
 import { describeResult } from '../core/describe.js'
+import { coloursLabel, DITHER_COLOURS } from '../core/dither.js'
 import {
   emptyDirectory,
   type ForgeError,
@@ -404,6 +413,8 @@ const isExtensionAction = (act: Action): boolean =>
   act === trimAction ||
   act === resizeAction ||
   act === turnAction ||
+  act === ditherAction ||
+  act === debandAction ||
   act === cropAction
 
 /** What edit says to a file that is not an image. */
@@ -4265,6 +4276,26 @@ export function App({
       })
       return
     }
+    if (row.id === 'deband') {
+      const level = isDebandLevel(step) ? step : DEBAND_LEVELS[DEBAND_START]?.id
+      startBatchEdit({
+        recipe: { op: 'edit', tool: 'deband', ...(level ? { level } : {}) },
+        label: row.label,
+        answer: row.levels?.find((l) => l.level === level)?.label ?? row.label,
+        verb: row.verb,
+      })
+      return
+    }
+    if (row.id === 'dither') {
+      const colours = Number(step ?? row.dithers?.[0]?.colours ?? DITHER_COLOURS[0])
+      startBatchEdit({
+        recipe: { op: 'edit', tool: 'dither', colours },
+        label: row.label,
+        answer: coloursLabel(colours),
+        verb: row.verb,
+      })
+      return
+    }
     if (row.id === 'resize') {
       // Never past what the largest image can take (spec §2.3).
       const most = Math.min(100, ...batchImages.map((i) => largestPercent(i)))
@@ -4909,9 +4940,13 @@ export function App({
             ? `${enhancing.label} ${values.shape}`
             : enhancing.turns && values.turn !== undefined
               ? `${enhancing.label} ${enhancing.turns.find((t) => t.degrees === values.turn)?.label ?? ''}`.trim()
-              : enhancing.speeds && typeof values.speed === 'number'
-                ? `${enhancing.label} ${values.speed}×`
-                : enhancing.label
+              : enhancing.levels && typeof values.deband === 'string'
+                ? `${enhancing.label} ${enhancing.levels.find((l) => l.level === values.deband)?.label ?? ''}`.trim()
+                : enhancing.dithers && typeof values.dither === 'number'
+                  ? `${enhancing.label} ${coloursLabel(values.dither)}`
+                  : enhancing.speeds && typeof values.speed === 'number'
+                    ? `${enhancing.label} ${values.speed}×`
+                    : enhancing.label
         : typeof values.target === 'string' && values.target in FORMATS
           ? FORMATS[values.target as FormatId].label
           : undefined,
@@ -5620,7 +5655,13 @@ export function App({
                 checking={checking}
                 chosen={{
                   tool: values.tool,
-                  step: values.shape ?? values.scale ?? values.turn ?? values.speed,
+                  step:
+                    values.shape ??
+                    values.scale ??
+                    values.turn ??
+                    values.dither ??
+                    values.deband ??
+                    values.speed,
                 }}
                 width={width}
                 onChoose={(row, step) => {
@@ -5881,9 +5922,13 @@ export function App({
                         ? 'crop'
                         : lastResult.job.options.rotate
                           ? 'rotate'
-                          : lastResult.job.options.resize
-                            ? 'resize'
-                            : 'trim'
+                          : lastResult.job.options.dither
+                            ? 'dither'
+                            : lastResult.job.options.deband
+                              ? 'deband'
+                              : lastResult.job.options.resize
+                                ? 'resize'
+                                : 'trim'
                       : lastResult.job.op === 'remove-background'
                         ? 'remove-background'
                         : 'boost'

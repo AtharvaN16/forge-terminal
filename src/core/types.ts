@@ -1,3 +1,4 @@
+import type { DebandLevelId } from './deband.js'
 export type FormatId =
   | 'jpeg'
   | 'png'
@@ -167,6 +168,10 @@ export interface ConvertOptions {
   crop?: CropSpec
   /** Clockwise quarter turns, after the crop and resize. Never on an animation. */
   rotate?: Turn
+  /** Remove banding in /edit: how hard stripes in smooth shading are blended away. */
+  deband?: DebandLevelId
+  /** Dither in /edit: cut to this many colours, the rest scattered as dots. A PNG or a GIF. */
+  dither?: number
   /**
    * Set by `/compress`. The result must come out smaller than the source, or
    * nothing is written. A quantisable format (PNG, GIF) is cut to a palette

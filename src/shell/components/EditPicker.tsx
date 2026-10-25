@@ -137,14 +137,17 @@ export function EditPicker({
     const k = row
       ? (pillOf(row)?.steps.findIndex((s) => String(s.value) === String(chosen?.step)) ?? -1)
       : -1
-    return row && k > 0 ? { [row.id]: k } : {}
+    return row && k !== -1 ? { [row.id]: k } : {}
   })
   const [placed, setPlaced] = useState<Record<string, number>>(opening)
   const placedRef = useRef<Record<string, number>>(opening)
   /** Where `row` stands on its pill: its index, within its steps. */
-  const indexOf = (row: EditRow, n: number) => Math.min(placedRef.current[row.id] ?? 0, n - 1)
+  /** Where a row's pill stands before ←→ moves it: its own start, else the first step. */
+  const startOf = (row: EditRow) => pillOf(row)?.start ?? 0
+  const indexOf = (row: EditRow, n: number) =>
+    Math.min(placedRef.current[row.id] ?? startOf(row), n - 1)
   const stepNow = here
-    ? steps[Math.max(0, Math.min(placed[here.id] ?? 0, steps.length - 1))]
+    ? steps[Math.max(0, Math.min(placed[here.id] ?? startOf(here), steps.length - 1))]
     : undefined
   const installing = Object.values(tools).some((t) => t?.kind === 'installing')
 
@@ -191,7 +194,7 @@ export function EditPicker({
     const row = rows.find((r) => r.id === item.value)
     const own = row ? pillOf(row) : undefined
     if (!row || !own || own.steps.length === 0 || stateOf(row)?.kind !== 'ready') return null
-    return <StepPill labels={own.steps.map((s) => s.label)} at={placed[row.id] ?? 0} />
+    return <StepPill labels={own.steps.map((s) => s.label)} at={placed[row.id] ?? startOf(row)} />
   }
 
   /** The pane's last line: what you get, or where the tool's install stands. */

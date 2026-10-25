@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { turnAction } from '../../src/core/actions/resize.js'
+import { debandAction, ditherAction, turnAction } from '../../src/core/actions/resize.js'
 import type { ImageInfo } from '../../src/core/types.js'
 import { CATALOG } from '../../src/extensions/catalog.js'
 import {
@@ -37,6 +37,8 @@ describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
       ['resize', 'Resize'],
       ['rotate', 'Rotate'],
       ['crop', 'Crop to shape'],
+      ['deband', 'Remove banding'],
+      ['dither', 'Dither'],
     ])
   })
 
@@ -87,6 +89,8 @@ describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
       'Any size, no new detail.',
       'Turns it a quarter or a half.',
       'Changes the shape.',
+      'Smooths out stripes.',
+      'Fewer colours, scattered.',
     ])
     expect(rows[0]?.pane.long).toContain('on-device model')
     expect(rows[1]?.pane.long).toContain('on-device model')
@@ -171,6 +175,64 @@ describe('the Rotate row', () => {
     const gif = { ...image(400, 300, 'gif'), frames: 12 } as ImageInfo
     expect(editRow(gif, 'rotate')?.tooLarge).toBe('animated')
     expect(editRow(image(400, 300), 'rotate')?.tooLarge).toBeUndefined()
+  })
+})
+
+describe('the Remove banding row', () => {
+  it('is built in, with Light, Medium and Strong, opening on Medium', () => {
+    const row = editRow(image(1600, 900), 'deband')
+    if (!row) throw new Error('no deband row')
+    expect(row.extension).toBeUndefined()
+    expect(pillOf(row)?.steps.map((s) => s.label)).toEqual(['Light', 'Medium', 'Strong'])
+    expect(pillOf(row)?.start).toBe(1)
+    expect(pillOf(row)?.noun).toBe('level')
+    expect(rowValues(row)).toEqual({ tool: 'deband', target: 'png', deband: 'medium' })
+    expect(rowValues(row, 'strong')).toEqual({ tool: 'deband', target: 'png', deband: 'strong' })
+    expect(detailAt(row).bold).toBe('1600 × 900')
+    expect(row.verb).toBe('Removing banding')
+    expect(actionForRow(row)).toBe(debandAction)
+  })
+
+  it('keeps the format, and is dimmed for an animation', () => {
+    expect(editRow(image(400, 300, 'jpeg'), 'deband')?.target).toBe('jpeg')
+    const gif = { ...image(400, 300, 'gif'), frames: 12 } as ImageInfo
+    expect(editRow(gif, 'deband')?.tooLarge).toBe('animated')
+  })
+})
+
+describe('the Dither row', () => {
+  it('is built in, with three colour counts, the gentlest first, each saying what it makes', () => {
+    const dither = editRow(image(1600, 900), 'dither')
+    expect(dither?.extension).toBeUndefined()
+    expect(dither?.dithers?.map((d) => [d.colours, d.detail.bold, d.detail.after])).toEqual([
+      [16, '16 colours', ''],
+      [4, '4 colours', ''],
+      [2, '2 colours', ''],
+    ])
+    expect(dither?.verb).toBe('Dithering')
+    expect(dither && actionForRow(dither)).toBe(ditherAction)
+  })
+
+  it('says it is written as a PNG when the picture is not a palette format', () => {
+    const dither = editRow(image(1600, 900, 'jpeg'), 'dither')
+    expect(dither?.target).toBe('png')
+    expect(dither?.detail.after).toBe(' · as PNG')
+    expect(editRow(image(1600, 900, 'gif'), 'dither')?.target).toBe('gif')
+  })
+
+  it('answers with the colour count on the pill', () => {
+    const dither = editRow(image(1200, 900), 'dither')
+    if (!dither) throw new Error('no dither row')
+    expect(pillOf(dither)?.noun).toBe('colours')
+    expect(rowValues(dither, 2)).toEqual({ tool: 'dither', target: 'png', dither: 2 })
+    expect(rowValues(dither)).toEqual({ tool: 'dither', target: 'png', dither: 16 })
+  })
+
+  it('is dimmed for an animation, a GIF excepted', () => {
+    const webp = { ...image(400, 300, 'webp'), frames: 12 } as ImageInfo
+    const gif = { ...image(400, 300, 'gif'), frames: 12 } as ImageInfo
+    expect(editRow(webp, 'dither')?.tooLarge).toBe('animated')
+    expect(editRow(gif, 'dither')?.tooLarge).toBeUndefined()
   })
 })
 

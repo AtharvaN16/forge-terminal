@@ -3,8 +3,16 @@ import { basename, dirname, extname, join } from 'node:path'
 import { compressAction } from './actions/compress.js'
 import { convertAction } from './actions/convert.js'
 import { boostAction, removeBackgroundAction } from './actions/extension.js'
-import { resizeAction, trimAction, turnAction } from './actions/resize.js'
+import {
+  debandAction,
+  ditherAction,
+  resizeAction,
+  trimAction,
+  turnAction,
+} from './actions/resize.js'
 import { targetIdsFor } from './capabilities.js'
+import { DEBAND_LEVELS, DEBAND_START, type DebandLevelId } from './deband.js'
+import { canDither, DITHER_COLOURS, ditherTarget } from './dither.js'
 import { type PlanEvent, type RunOutcome, runPlan } from './execute-jobs.js'
 import { boostOverLimit } from './extension-targets.js'
 import type { KindAnswer, KindId } from './folder.js'
@@ -31,7 +39,15 @@ export type Recipe =
   /** Compressed at a quality, or each file to fit under `targetBytes`. */
   | { op: 'compress'; quality?: number; targetBytes?: number }
   /** One of Edit's tools on every image: Boost's scale, Resize's size. */
-  | { op: 'edit'; tool: BatchEditTool; scale?: number; resize?: ResizeSpec; turn?: Turn }
+  | {
+      op: 'edit'
+      tool: BatchEditTool
+      scale?: number
+      resize?: ResizeSpec
+      turn?: Turn
+      colours?: number
+      level?: DebandLevelId
+    }
 
 /** An edit recipe: one tool, run on every image. */
 export type EditRecipe = Extract<Recipe, { op: 'edit' }>
@@ -40,7 +56,15 @@ export type EditRecipe = Extract<Recipe, { op: 'edit' }>
  * The edit tools a batch runs on every image. Not Crop to shape: where to
  * cut is a choice made for each picture, so it is one image at a time.
  */
-export type BatchEditTool = 'sharpen' | 'boost' | 'cutout' | 'trim' | 'resize' | 'rotate'
+export type BatchEditTool =
+  | 'sharpen'
+  | 'boost'
+  | 'cutout'
+  | 'trim'
+  | 'resize'
+  | 'rotate'
+  | 'dither'
+  | 'deband'
 
 /**
  * What to do with a file whose output is already on disk. `leave` it alone
@@ -107,6 +131,24 @@ function editJob(
   if (recipe.tool === 'rotate') {
     if (image.frames > 1) return { left: 'animated' }
     const [job] = turnAction.plan([image], { turn: recipe.turn ?? 90, ...where })
+    return job ? { job } : { left: 'not supported' }
+  }
+  if (recipe.tool === 'deband') {
+    if (image.frames > 1) return { left: 'animated' }
+    const [job] = debandAction.plan([image], {
+      deband: recipe.level ?? (DEBAND_LEVELS[DEBAND_START] as { id: DebandLevelId }).id,
+      target: keptFormat(image),
+      ...where,
+    })
+    return job ? { job } : { left: 'not supported' }
+  }
+  if (recipe.tool === 'dither') {
+    if (!canDither(image)) return { left: 'animated' }
+    const [job] = ditherAction.plan([image], {
+      dither: recipe.colours ?? DITHER_COLOURS[0],
+      target: ditherTarget(image),
+      ...where,
+    })
     return job ? { job } : { left: 'not supported' }
   }
   if (recipe.tool === 'trim' && image.frames > 1) return { left: 'animated' }

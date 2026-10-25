@@ -1,4 +1,7 @@
 import { cropSuffix, largestBox } from '../crop.js'
+import { type DebandLevelId, debandSuffix, isDebandLevel } from '../deband.js'
+import { canDither, ditherSuffix, ditherTarget, isDitherColours } from '../dither.js'
+import { FORMATS } from '../formats.js'
 import { placeOutput, suffixedImagePath } from '../output-path.js'
 import { keptFormat, resizedSize, sizeSuffix, specSuffix } from '../resize.js'
 import { isTurn, turnSuffix } from '../turn.js'
@@ -30,6 +33,10 @@ export interface EditRequest {
   crop?: CropSpec
   /** A quarter turn or a half, after the rest. */
   rotate?: Turn
+  /** Remove banding: how hard. Its own, never with the rest. */
+  deband?: DebandLevelId
+  /** Dither: the colours to cut it to. Its own, never with the rest. */
+  dither?: number
   /** Absent means the source's own format (`keptFormat`). */
   target?: FormatId
   output?: string
@@ -47,6 +54,8 @@ export interface EditRequest {
  * plan time, so the name carries the spec instead of a size.
  */
 function suffixFor(source: ImageInfo, req: EditRequest): string {
+  if (req.dither) return ditherSuffix(req.dither)
+  if (req.deband) return debandSuffix(req.deband)
   if (!req.rotate) return sizeAndCutSuffix(source, req)
   const turned = turnSuffix(req.rotate)
   return req.trim || req.crop || req.resize ? `${sizeAndCutSuffix(source, req)}-${turned}` : turned
@@ -70,7 +79,7 @@ function sizeAndCutSuffix(source: ImageInfo, req: EditRequest): string {
 export function planEdit(images: ImageInfo[], req: EditRequest): Job[] {
   if (req.trim && req.crop) throw new Error('planEdit cannot trim and crop the same image')
   return images.map((source) => {
-    const target = req.target ?? keptFormat(source)
+    const target = req.target ?? (req.dither ? ditherTarget(source) : keptFormat(source))
     const options: ConvertOptions = {
       background: req.background,
       keepMetadata: req.keepMetadata,
@@ -79,6 +88,11 @@ export function planEdit(images: ImageInfo[], req: EditRequest): Job[] {
       ...(req.resize ? { resize: req.resize } : {}),
       ...(req.crop ? { crop: req.crop } : {}),
       ...(req.rotate ? { rotate: req.rotate } : {}),
+      ...(req.dither ? { dither: req.dither } : {}),
+      ...(req.deband ? { deband: req.deband } : {}),
+      // A smoothed gradient re-encoded at a lossy format's everyday quality
+      // gets its stripes back from the encoder; at 95 it keeps them away.
+      ...(req.deband && req.quality === undefined && FORMATS[target].lossy ? { quality: 95 } : {}),
     }
     const root = req.roots?.get(source.path)
     const named = suffixedImagePath({
@@ -116,7 +130,7 @@ const isCrop = (v: unknown): v is CropSpec =>
   'h' in v.aspect
 
 function actionFor(
-  id: 'trim' | 'resize' | 'crop' | 'turn',
+  id: 'trim' | 'resize' | 'crop' | 'turn' | 'dither' | 'deband',
   label: string,
   verb: string,
   hint: string,
@@ -128,7 +142,9 @@ function actionFor(
     hint,
     // An animation cannot be trimmed or cropped (the engine refuses one), only resized.
     appliesTo: (sources) =>
-      imagesOnly(sources)?.every((s) => id === 'resize' || s.frames <= 1) === true,
+      imagesOnly(sources)?.every((s) =>
+        id === 'resize' ? true : id === 'dither' ? canDither(s) : s.frames <= 1,
+      ) === true,
     unavailable: (sources) => (imagesOnly(sources) ? 'animated' : 'images only'),
     // The shell asks its own questions (the slider, the exact-size pair).
     options: (): OptionSpec[] => [],
@@ -139,9 +155,17 @@ function actionFor(
       if (id === 'crop' && !isCrop(values.crop)) return []
       // …and a rotation is nothing without its turn.
       if (id === 'turn' && !isTurn(values.turn)) return []
+      // …and a deband is nothing without its level, nor possible on an animation.
+      if (id === 'deband' && (!isDebandLevel(values.deband) || images.some((s) => s.frames > 1)))
+        return []
+      // …and a dither is nothing without its colours, nor possible on an animation but a GIF.
+      if (id === 'dither' && (!isDitherColours(values.dither) || !images.every(canDither)))
+        return []
       return planEdit(images, {
         trim: id === 'trim' || values.trim === true,
         ...(isTurn(values.turn) ? { rotate: values.turn } : {}),
+        ...(id === 'dither' && isDitherColours(values.dither) ? { dither: values.dither } : {}),
+        ...(id === 'deband' && isDebandLevel(values.deband) ? { deband: values.deband } : {}),
         ...(isSpec(values.resize) ? { resize: values.resize } : {}),
         ...(isCrop(values.crop) ? { crop: values.crop } : {}),
         ...(typeof values.target === 'string' ? { target: values.target as FormatId } : {}),
@@ -166,3 +190,15 @@ export const trimAction: Action = actionFor(
 export const resizeAction: Action = actionFor('resize', 'Resize', 'Resizing', 'smaller or larger')
 export const cropAction: Action = actionFor('crop', 'Crop to shape', 'Cropping', 'change the shape')
 export const turnAction: Action = actionFor('turn', 'Rotate', 'Rotating', 'turn it')
+export const ditherAction: Action = actionFor(
+  'dither',
+  'Dither',
+  'Dithering',
+  'fewer colours, scattered',
+)
+export const debandAction: Action = actionFor(
+  'deband',
+  'Remove banding',
+  'Removing banding',
+  'smooth out stripes',
+)

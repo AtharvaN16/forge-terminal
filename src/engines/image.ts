@@ -4,6 +4,7 @@ import { dirname } from 'node:path'
 import type { Metadata, Sharp } from 'sharp'
 import { prepareOutputDir, renameAtomic, tempBeside } from '../core/atomic.js'
 import { type Aspect, aspectLabel, type Box, largestBox, type Thumb } from '../core/crop.js'
+import { debandLevel } from '../core/deband.js'
 import {
   animatedCrop,
   animatedRotate,
@@ -42,7 +43,9 @@ import type {
   Warning,
 } from '../core/types.js'
 import { displayName } from '../utils/display-path.js'
+import { deband } from './deband.js'
 import { decodedInput } from './decoded.js'
+import { distinctColours, floydSteinberg } from './dither.js'
 import { heicDecodable, heicInfo, looksLikeHeic } from './heic.js'
 import { loadSharp } from './libs.js'
 import { rawDecodable, rawSize, sniffRaw } from './raw.js'
@@ -305,6 +308,100 @@ function quantise(
   })
 }
 
+/**
+ * The encoded bytes of `pipeline`: `encode`; for Remove banding in /edit the
+ * picture smoothed first (`engines/deband.ts`, never an animation: the action
+ * refuses one); or for Dither in /edit the
+ * picture cut to a palette of at most `options.dither` colours and diffused
+ * onto it (`engines/dither.ts`).
+ *
+ * The palette is the one libimagequant finds without dithering, so the colours
+ * are the best few for the picture; the dots are Floyd–Steinberg's. An
+ * animation, or a picture with transparency, takes libimagequant's own dither
+ * instead: a dot pattern drawn per frame would flicker, and error diffused
+ * through alpha has no good answer.
+ */
+async function encodeBuffer(
+  pipeline: Sharp,
+  target: FormatId,
+  options: ConvertOptions,
+  animated: boolean,
+): Promise<Buffer> {
+  if (options.deband) {
+    const sharp = await loadSharp()
+    // sRGB first, as Dither does: the raw pixels leave without their profile.
+    const { data, info } = await pipeline
+      .clone()
+      .withIccProfile('srgb')
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    let smoothed: Buffer = data
+    debandLevel(options.deband).passes.forEach((pass, i) => {
+      smoothed = deband(smoothed, info.width, info.height, info.channels, pass, i + 1)
+    })
+    const raw = { width: info.width, height: info.height, channels: info.channels }
+    return await encode(
+      sharp(smoothed, { raw }).withIccProfile('srgb'),
+      target,
+      options.quality,
+      options.compress,
+    ).toBuffer()
+  }
+  const colours = options.dither
+  if (colours === undefined || !FORMATS[target].quantisable) {
+    return await encode(pipeline, target, options.quality, options.compress).toBuffer()
+  }
+  const palette = (p: Sharp) =>
+    target === 'gif'
+      ? p.gif({ colours, dither: 0, effort: 10 })
+      : p.png({ palette: true, colours, quality: 100, dither: 0, compressionLevel: 9, effort: 10 })
+  const libimagequant = () =>
+    target === 'gif'
+      ? pipeline.gif({ colours, dither: 1, effort: 10 })
+      : pipeline.png({
+          palette: true,
+          colours,
+          quality: 100,
+          dither: 1,
+          compressionLevel: 9,
+          effort: 10,
+        })
+  if (animated) return await libimagequant().toBuffer()
+
+  const sharp = await loadSharp()
+  // sRGB first, so the picture's own profile is applied before the raw pixels leave it.
+  const flat = pipeline.clone().withIccProfile('srgb')
+  const { data, info } = await flat.raw().toBuffer({ resolveWithObject: true })
+  if (info.channels === 4) {
+    for (let i = 3; i < data.length; i += 4)
+      if (data[i] !== 255) return await libimagequant().toBuffer()
+  }
+  const rgb = info.channels === 3 ? data : stripAlpha(data)
+  const cut = await palette(
+    sharp(rgb, { raw: { width: info.width, height: info.height, channels: 3 } }),
+  ).toBuffer()
+  const quantised = await sharp(cut).removeAlpha().raw().toBuffer()
+  const colourList = distinctColours(quantised, colours)
+  if (!colourList) return await libimagequant().toBuffer()
+  const dotted = floydSteinberg(rgb, info.width, info.height, colourList)
+  return await palette(
+    sharp(dotted, { raw: { width: info.width, height: info.height, channels: 3 } }).withIccProfile(
+      'srgb',
+    ),
+  ).toBuffer()
+}
+
+/** An RGBA buffer's colours, three bytes a pixel. */
+function stripAlpha(rgba: Buffer): Buffer {
+  const out = Buffer.alloc((rgba.length / 4) * 3)
+  for (let i = 0, o = 0; i < rgba.length; i += 4, o += 3) {
+    out[o] = rgba[i] as number
+    out[o + 1] = rgba[i + 1] as number
+    out[o + 2] = rgba[i + 2] as number
+  }
+  return out
+}
+
 /** Whether an encode to `target` keeps every frame of `source`: an animation into a format that can animate. */
 const keepsFrames = (source: SourceInfo, target: FormatId): boolean =>
   source.kind === 'image' && source.frames > 1 && FORMATS[target].animatable
@@ -445,7 +542,7 @@ export async function encodeToBuffer(
   // Every frame, as the conversion keeps them: a size measured from the
   // first frame of an animation is a size nobody will get.
   const { pipeline } = await pipelineFor(source, target, options, keepsFrames(source, target))
-  return await encode(pipeline, target, options.quality, options.compress).toBuffer()
+  return await encodeBuffer(pipeline, target, options, keepsFrames(source, target))
 }
 
 export interface ImageMeasure {
@@ -671,7 +768,7 @@ async function run(job: Job, onPhase: (progress: Progress) => void): Promise<Res
     // for the whole of an encode that has not happened yet. The phases the
     // shell shows (W5) are the true ones only if each is its own step.
     onPhase({ phase: 'encoding' })
-    const encoded = await encode(pipeline, job.target, options.quality, options.compress).toBuffer()
+    const encoded = await encodeBuffer(pipeline, job.target, options, keepFrames)
 
     // `/compress` promises smaller. Refused before the write, so a bigger
     // file never lands, not even for a moment.
@@ -738,7 +835,7 @@ async function measurer(job: Job): Promise<Measurer | undefined> {
         keepsFrames(source, job.target),
         input,
       )
-      return (await encode(pipeline, job.target, options.quality, options.compress).toBuffer())
+      return (await encodeBuffer(pipeline, job.target, options, keepsFrames(source, job.target)))
         .length
     },
   }
