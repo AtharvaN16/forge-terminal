@@ -40,7 +40,15 @@ if (s.error && !(s.fixedByUpdate && fs.existsSync(${JSON.stringify(updated)}))) 
 }
 const facts = s.facts ?? { title: 'Me at the zoo', uploader: 'jawed', duration: 19, is_live: false }
 console.log('forge-facts ' + JSON.stringify(facts))
-if (s.hang) setInterval(() => {}, 1000)
+// Waits to be killed, but never outlives the process that ran it: a test that
+// ends mid-run would otherwise leave it behind for good (and CI waiting on it).
+if (s.hang) {
+  const parent = process.ppid
+  setInterval(() => {
+    try { process.kill(parent, 0) } catch { process.exit(0) }
+    if (process.ppid !== parent) process.exit(0)
+  }, 250)
+}
 else {
   for (const [d, t] of s.bytes ?? [[1024, 4096], [4096, 4096]]) console.log('forge-bytes ' + d + ' ' + t)
   const out = a[a.indexOf('-o') + 1].replace('%(ext)s', 'm4a')

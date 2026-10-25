@@ -36,7 +36,11 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     label: 'AVIF',
     extensions: ['.avif'],
     hasAlpha: true,
-    animatable: true,
+    // AVIF can hold a sequence, but Sharp's encoder (libvips heifsave) writes
+    // one still: handed an animation, it wrote every frame stacked into one
+    // tall picture (tests/parity/format-matrix.test.ts, gif → avif). So an
+    // animation becomes its first frame, with the warning that says so.
+    animatable: false,
     lossy: true,
     hint: 'smallest',
     defaultQuality: 50,

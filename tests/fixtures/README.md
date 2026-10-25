@@ -82,3 +82,13 @@ result) for real inputs, recorded once on macOS 27 so the tests of
 
 To record one again: `npm run build`, then
 `dist/helpers/forge-transcribe read <file> | tail -1 > tests/fixtures/read/<name>.json`.
+
+## `word/small.doc`
+
+A one-paragraph legacy Word document ("Hello from Forge."), so the format
+matrix (`tests/parity/format-matrix.test.ts`) converts a `.doc` on Windows and
+Linux too: only macOS has `textutil` to make one at test time. Made once on
+macOS:
+
+    echo "Hello from Forge." > a.txt
+    textutil -convert doc -output tests/fixtures/word/small.doc a.txt
