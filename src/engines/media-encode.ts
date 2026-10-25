@@ -479,6 +479,10 @@ export function planEncode(job: EncodeInput): EncodePlan {
       videoArgs.push('-pix_fmt', 'yuv420p')
     }
     if (fps !== undefined) videoArgs.push('-r', String(fps))
+    // AVI holds one frame rate: passed through, a sped-up clip puts two frames
+    // in one slot, which ffmpeg's own MPEG-4 refuses. Held to the rate, the
+    // extra frame is dropped.
+    else if (target === 'avi') videoArgs.push('-fps_mode', 'cfr')
     else if (!gif) videoArgs.push('-fps_mode', 'passthrough')
   }
 
