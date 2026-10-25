@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boost on a graphics card: Linux and Intel Macs</title>
+<style>
+  :root { color-scheme: light dark; --fg:#1d1d1f; --dim:#6e6e73; --line:#d2d2d7; --card:#f5f5f7; --ok:#1a7f37; --warn:#9a6700; --bad:#b42318; --pick:#0b57d0; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#f5f5f7; --dim:#a1a1a6; --line:#3a3a3c; --card:#1c1c1e; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --pick:#6ea8fe; } }
+  body { font: 16px/1.5 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--fg); background: Canvas; max-width: 980px; margin: 0 auto; padding: 32px 24px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 36px 0 10px; }
+  p { margin: 8px 0; }
+  .dim { color: var(--dim); }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin: 16px 0; }
+  .pick { border-color: var(--pick); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; background: var(--card); }
+  .card h3 { margin: 0 0 2px; font-size: 17px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; vertical-align: 2px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; margin-top: 10px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-top: 1px solid var(--line); }
+  th { width: 27%; font-weight: 600; color: var(--dim); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  code { font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--card); padding: 1px 5px; border-radius: 4px; }
+  .small { font-size: 13.5px; }
+</style>
+</head>
+<body>
+
+<h1>Boost on a graphics card: Linux and Intel Macs</h1>
+<p class="dim">Research, 2026-10-24. Nothing was run: no model, no inference. I read release pages, npm metadata and file listings, and looked inside the downloaded programs.</p>
+
+<div class="box pick">
+  <strong>Recommendation.</strong>
+  <ol>
+    <li><strong>On an Intel Mac, first time one thing that costs nothing:</strong> the x64 Mac Boost we already build asks Apple's graphics layer (CoreML) first. Nobody has ever timed it on an Intel Mac. Put a stopwatch on one photo before building anything.</li>
+    <li><strong>Build route 1 (ONNX Runtime's WebGPU) for Linux x64 and Intel Macs.</strong> It is the same model and the same runner we ship, so the pictures stay identical to today's Boost. The program we already use contains it. About 16 to 17 MB to download.</li>
+    <li><strong>Keep route 2 (ncnn Vulkan) as plan B</strong> if WebGPU turns out flaky on real Linux machines. It is smaller on Linux but brings a different model file and an old program.</li>
+    <li><strong>Never start a GPU job that might silently run on the CPU.</strong> Time the first tile, and say so if it is slow.</li>
+  </ol>
+  <p class="small dim">One test is needed before committing: route 1 on a real Linux PC with a graphics card, and on one Intel Mac. See "What is still unknown".</p>
+</div>
+
+<h2>The two real routes</h2>
+<div class="grid">
+
+<div class="card">
+  <h3>1. ONNX Runtime WebGPU <span class="tag">recommended</span></h3>
+  <p class="dim small">The <code>onnxruntime-node</code> 1.23.2 we already pin, asked for the <code>webgpu</code> provider.</p>
+  <table>
+    <tr><th>Is it there?</th><td><span class="ok">Yes.</span> The shipped binaries for Linux x64, macOS x64, macOS arm64 and Windows x64 contain the WebGPU provider and its graphics layer (Dawn). Linux arm64 does not: no Linux ARM. The package's own table calls WebGPU "experimental".</td></tr>
+    <tr><th>Size, Linux x64</th><td>Library 32.7 MB (about 12.0 MB compressed) + model 4.6 MB. About <strong>17 MB</strong> to download, about 38 MB on disk.</td></tr>
+    <tr><th>Size, Intel Mac</th><td>Library 40.0 MB (about 11.2 MB compressed) + model 4.6 MB. About <strong>16 MB</strong> to download, about 45 MB on disk.</td></tr>
+    <tr><th>For comparison</th><td>Today's Boost: Windows 23.0 MB, Apple silicon 14.9 MB.</td></tr>
+    <tr><th>Licence</th><td>ONNX Runtime MIT; Dawn (the graphics layer inside it) Apache-2.0; the model BSD-3-Clause.</td></tr>
+    <tr><th>The user needs</th><td><strong>Mac:</strong> nothing, it uses Metal. <strong>Linux:</strong> the Vulkan loader and a Vulkan driver for the card (Mesa for AMD and Intel, NVIDIA's own driver). Most desktop installs have them; minimal ones may not.</td></tr>
+    <tr><th>Risks</th><td>
+      <ul>
+        <li>Experimental. A driver bug can mean a crash or wrong pixels on someone's machine.</li>
+        <li>Node cannot tell us which device it got. A software Vulkan (Mesa's "llvmpipe") looks like a GPU and is as slow as the CPU. Needs a timed first tile.</li>
+        <li>Linux x64 only: ARM boards, and machines without Vulkan, stay on the CPU.</li>
+        <li>First run compiles shaders: a pause before the bar moves.</li>
+      </ul></td></tr>
+    <tr><th>Work</th><td>Small. The runner already picks a provider per OS (DirectML, CoreML, CPU); this adds <code>webgpu</code> on Linux, and on Intel Macs if CoreML is slow. Same model, same Lanczos path, same output.</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>2. Real-ESRGAN ncnn Vulkan <span class="tag">plan B</span></h3>
+  <p class="dim small">Upstream's <code>realesrgan-ncnn-vulkan</code> program (xinntao) with the model in ncnn form.</p>
+  <table>
+    <tr><th>Is our model there?</th><td><span class="warn">Not in the official downloads.</span> They carry animevideov3, x4plus and x4plus-anime only. But <code>realesr-general-x4v3.param</code> (6.4 KB) and <code>.bin</code> (2.4 MB, half precision) exist in several community repos. Where they came from is not stated. The program loads any model name (I read its source), so they would work. We could also convert our own.</td></tr>
+    <tr><th>Size</th><td>Official v0.2.0 (April 2022), program alone: <strong>macOS 26.8 MB</strong> (Intel and Apple silicon in one, about 8.5 MB zipped); <strong>Linux x64 11.4 MB</strong> (about 3.7 MB zipped); Windows 6.2 MB (not needed, Boost has DirectML). Plus 2.4 MB of model. About <strong>11 MB</strong> to download on a Mac, <strong>6 MB</strong> on Linux. No Linux ARM build.</td></tr>
+    <tr><th>Licence</th><td>Program MIT; ncnn BSD-3-Clause; Real-ESRGAN weights BSD-3-Clause. The Mac build has MoltenVK (Apache-2.0) and shader tools built in, so their notices must go in our credits.</td></tr>
+    <tr><th>The user needs</th><td><strong>Mac:</strong> nothing. MoltenVK is inside the program and it uses Metal; the program asks for macOS 11 or later. <strong>Linux:</strong> <code>libvulkan.so.1</code> and a Vulkan driver, and glibc 2.29 or newer (Ubuntu 20.04 on).</td></tr>
+    <tr><th>Risks</th><td>
+      <ul>
+        <li>Upstream is quiet: last release April 2022, last change May 2024.</li>
+        <li>Half-precision model gives slightly different pixels than today's Boost. Needs a side-by-side look.</li>
+        <li>A second program to ship and keep working; unsigned on a Mac.</li>
+        <li>Plus side: it prints the GPU it found, so we can see "llvmpipe" (software) and refuse it.</li>
+      </ul></td></tr>
+    <tr><th>Work</th><td>Medium. A new runner around a command-line program, a new model file to vet, new credits.</td></tr>
+  </table>
+</div>
+
+</div>
+
+<h2>Other ideas</h2>
+<table>
+  <tr><th>CoreML on an Intel Mac</th><td><span class="ok">Free.</span> It is in the same macOS x64 library, and our runner already asks for it first on any Mac. CoreML on Intel uses the processor and the graphics chip (there is no Neural Engine). <span class="warn">Never measured:</span> the x64 build "has never been run". Might already be fast enough, or might quietly stay on the CPU.</td></tr>
+  <tr><th>A faster, honest CPU path</th><td>No driver needed, works on every machine, including Linux ARM and virtual machines. Arithmetic, not measured: the model has about 1.2 million multiply-adds per input pixel, so a 12-megapixel photo is about 15 trillion. At 100 to 200 billion a second (a guess for a laptop CPU) that is 1.2 to 2.5 minutes; a mid-range graphics card at about 1 trillion a second would take about 15 seconds. The tiles are a known total, so the bar can be true. A smaller-photo limit or an 8-bit model could cut it further. This is also the fallback that route 1 and 2 both need.</td></tr>
+  <tr><th>Not credible</th><td>
+    <strong>CUDA</strong>: NVIDIA only, a separate download of hundreds of MB (the package says so itself). <strong>OpenVINO, ROCm</strong>: not in the prebuilt Node packages. <strong>tfjs-node-gpu</strong>: CUDA only. <strong>A headless browser for WebGPU</strong>: far heavier than route 1 for the same result.</td></tr>
+</table>
+
+<h2>What I checked, and how</h2>
+<ul class="small">
+  <li><strong>WebGPU in the Node package:</strong> the package's own README table (same in 1.23.2 and 1.30.0), and then the actual files in <code>node_modules/onnxruntime-node/bin/napi-v6</code>: searched the binaries for the WebGPU provider and Dawn (found in macOS x64 and arm64, Linux x64, Windows; none in Linux arm64) and for a Vulkan backend (found in the Linux x64 file; macOS has Metal).</li>
+  <li><strong>ncnn:</strong> GitHub release lists and zip contents for v0.2.0 (April 2022) and the 2022-04-24 bundle; file type, linked libraries and minimum macOS of the Mac program; the program's <code>main.cpp</code> for how it picks a model.</li>
+  <li><strong>Sizes:</strong> raw sizes are file sizes. "Compressed" is <code>gzip -9</code> on the library: a real tarball will differ a little.</li>
+  <li><strong>Newer ONNX Runtime:</strong> npm is at 1.30.0 and its table is the same. We pin 1.23.2. I did not test whether a newer one helps.</li>
+</ul>
+
+<h2>What is still unknown</h2>
+<ul>
+  <li>Whether route 1 really picks a graphics card on a typical Linux PC, and how fast. <strong>Test:</strong> one tile through the model with <code>executionProviders: ['webgpu']</code> on a Linux box with an AMD, Intel or NVIDIA GPU (Harsh's), and on an Intel Mac. Needs a model run, so it waits.</li>
+  <li>Whether CoreML on an Intel Mac is already fast. <strong>Test:</strong> the existing x64 Boost build, one photo, a stopwatch.</li>
+  <li>Where the community ncnn model files were converted from (only matters if we pick route 2).</li>
+  <li>How common "no Vulkan driver" is among Linux users who would try this. It decides whether the CPU fallback matters more than the GPU route.</li>
+</ul>
+
+<h2>Sources</h2>
+<ul class="small">
+  <li><a href="https://github.com/microsoft/onnxruntime/blob/v1.23.2/js/node/README.md">onnxruntime-node README, v1.23.2</a> (support table, "experimental")</li>
+  <li><a href="https://www.npmjs.com/package/onnxruntime-node">onnxruntime-node on npm</a> (1.30.0 current)</li>
+  <li><a href="https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases">Real-ESRGAN-ncnn-vulkan releases</a> (v0.2.0, April 2022) and <a href="https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/blob/master/src/main.cpp">main.cpp</a></li>
+  <li><a href="https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0">Real-ESRGAN v0.2.5.0</a> (the 2022-04-24 bundles with models; the general-x4v3 weights as .pth)</li>
+  <li><a href="https://github.com/Tencent/ncnn">ncnn</a> (BSD-3-Clause), <a href="https://github.com/KhronosGroup/MoltenVK">MoltenVK</a> (Apache-2.0)</li>
+  <li>Community ncnn conversions of general-x4v3: <a href="https://github.com/moyu3739/Enana">moyu3739/Enana</a>, <a href="https://github.com/TheSuperHackers/GeneralsTools">TheSuperHackers/GeneralsTools</a></li>
+</ul>
+
+</body>
+</html>

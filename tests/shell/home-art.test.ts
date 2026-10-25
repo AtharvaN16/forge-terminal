@@ -300,11 +300,8 @@ describe('formatRows', () => {
     for (const r of rows) expect(width(r)).toBe(78)
     const lines = text(rows)
     expect(lines[0]?.trim()).toBe('')
-    // Camera RAW reads only on a Mac (engines/raw.ts), so only a Mac lists it.
-    const raw = process.platform === 'darwin' ? 'RAW · ' : ''
-    expect(lines.join(' ')).toMatch(
-      new RegExp(`Images +JPEG · PNG · WebP · AVIF · HEIC · ${raw}GIF · TIFF`),
-    )
+    // Camera RAW reads on every OS: macOS itself, the raw extension elsewhere (engines/raw.ts).
+    expect(lines.join(' ')).toMatch(/Images +JPEG · PNG · WebP · AVIF · HEIC · RAW · GIF · TIFF/)
     // No title, no rule (mockups/formats-spacing-2026-10-screens.html, B).
     expect(lines.join('\n')).not.toContain('Supported formats')
     expect(lines.join('\n')).not.toContain('──')

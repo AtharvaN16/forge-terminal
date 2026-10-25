@@ -46,6 +46,7 @@ import {
   pagePlain,
   type ReadPage,
 } from '../core/transcribe/page-text.js'
+import type { FormatId } from '../core/types.js'
 import { machineName } from '../extensions/catalog.js'
 import { installed } from '../extensions/paths.js'
 import { findFfmpeg } from './ffmpeg.js'
@@ -411,9 +412,92 @@ async function hearer(): Promise<Helper> {
   return helper
 }
 
+/**
+ * The containers Apple's recogniser reads itself (AVFoundation). Any other
+ * video or sound Forge reads — MKV, WebM, AVI, FLAC, OGG, Opus — reaches it
+ * as a WAV ffmpeg made, so a Mac transcribes every format whisper does
+ * elsewhere (whisper's helper decodes through ffmpeg already).
+ */
+const APPLE_HEARS: ReadonlySet<FormatId> = new Set(['mp4', 'mov', 'm4a', 'mp3', 'wav', 'aiff'])
+
+/** A format Apple's recogniser cannot read, and the ffmpeg that can, by the file's content. */
+async function needsSoundFor(
+  helper: Helper,
+  path: string,
+): Promise<{ tools: NonNullable<Awaited<ReturnType<typeof findFfmpeg>>> } | undefined> {
+  if (helper.kind !== 'apple') return undefined
+  const { probe } = await import('./registry.js')
+  const info = await probe(path).catch(() => undefined)
+  if (info === undefined || info.kind !== 'media' || APPLE_HEARS.has(info.format)) return undefined
+  const tools = await findFfmpeg().catch(() => undefined)
+  // Without ffmpeg the helper is asked as it is, and says it cannot read it.
+  return tools ? { tools } : undefined
+}
+
+/** The sound of `path` as a 16 kHz mono WAV in a temporary folder; `cleanup` removes it. */
+async function soundOf(
+  path: string,
+  ffmpeg: string,
+  signal?: AbortSignal,
+): Promise<{ path: string; cleanup: () => Promise<void> }> {
+  const dir = await mkdtemp(join(tmpdir(), 'forge-sound-'))
+  const cleanup = () => rm(dir, { recursive: true, force: true })
+  const out = join(dir, 'sound.wav')
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        ffmpeg,
+        [
+          '-nostdin',
+          '-v',
+          'error',
+          '-i',
+          path,
+          '-vn',
+          '-ac',
+          '1',
+          '-ar',
+          '16000',
+          '-c:a',
+          'pcm_s16le',
+          out,
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
+      )
+      let err = ''
+      child.stderr?.setEncoding('utf8').on('data', (d: string) => {
+        err += d
+      })
+      const onAbort = () => child.kill('SIGKILL')
+      signal?.addEventListener('abort', onAbort, { once: true })
+      child.on('error', reject)
+      child.on('close', (code) => {
+        signal?.removeEventListener('abort', onAbort)
+        if (signal?.aborted) return reject(signal.reason ?? new Error('aborted'))
+        if (code === 0) resolve()
+        else reject(conversionFailed(path, new Error(`ffmpeg: ${err.trim()}`)))
+      })
+    })
+    return { path: out, cleanup }
+  } catch (e) {
+    await cleanup()
+    throw e
+  }
+}
+
 /** The sound's length; refuses a file with no sound or one the recogniser cannot read. */
 export async function probeSound(path: string): Promise<{ seconds: number }> {
-  const r = await exec(await hearer(), ['probe', path], path)
+  const helper = await hearer()
+  const via = await needsSoundFor(helper, path)
+  if (via) {
+    // ffprobe measures it as it is; the WAV is made once, when it is heard.
+    const { probeMedia } = await import('./ffmpeg.js')
+    const facts = await probeMedia(path, via.tools).catch(() => undefined)
+    if (facts === undefined) throw untranscribable(path)
+    if (facts.audio === undefined) throw noSound(path)
+    return { seconds: facts.duration }
+  }
+  const r = await exec(helper, ['probe', path], path)
   return { seconds: Number(r.seconds) }
 }
 
@@ -428,16 +512,38 @@ export async function runTranscribe(
     onEvent?: (e: TranscribeEvent) => void
   },
 ): Promise<Transcription & { locale: string }> {
+  const helper = await hearer()
+  const via = await needsSoundFor(helper, path)
+  const sound = via ? await soundOf(path, via.tools.ffmpeg, opts.signal) : undefined
+  try {
+    return await transcribeWith(helper, sound?.path ?? path, path, opts)
+  } finally {
+    await sound?.cleanup()
+  }
+}
+
+async function transcribeWith(
+  helper: Helper,
+  heard: string,
+  path: string,
+  opts: {
+    notes: boolean
+    detail?: Detail | undefined
+    locale?: string | undefined
+    signal?: AbortSignal | undefined
+    onEvent?: (e: TranscribeEvent) => void
+  },
+): Promise<Transcription & { locale: string }> {
   const args = [
     'run',
-    path,
+    heard,
     ...(opts.locale ? ['--locale', opts.locale] : []),
     ...(opts.notes ? ['--notes'] : []),
     ...(opts.notes && opts.detail && opts.detail !== DEFAULT_DETAIL
       ? ['--detail', opts.detail]
       : []),
   ]
-  const r = await exec(await hearer(), args, path, {
+  const r = await exec(helper, args, path, {
     signal: opts.signal,
     onLine: (line) => {
       const e = eventOf(line)
