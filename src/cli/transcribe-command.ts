@@ -15,6 +15,7 @@ import {
   unexpectedError,
   untranscribable,
 } from '../core/errors.js'
+import type { Finished } from '../core/finish-notice.js'
 import { sniffKind } from '../core/folder.js'
 import { looksLikeDirectory } from '../core/output-path.js'
 import { readLink } from '../core/transcribe/links.js'
@@ -51,6 +52,8 @@ export interface TranscribeIo {
   signal?: AbortSignal
   /** Progress as it happens, for the entry point to draw on a terminal. */
   onProgress?: (e: TranscribeEvent | ReadEvent) => void
+  /** How it ended, for the notice a long run posts (`core/finish-notice.ts`). */
+  finished?: (run: Finished) => void
 }
 
 /** `--format`, else `-o`'s extension when it is one transcribe writes, else Markdown. */
@@ -133,6 +136,7 @@ async function readPage(
   io.out(
     `✓ ${displayName(output)}   ${what} → ${count(pagePlain(doc)).toLocaleString('en-US')} words`,
   )
+  io.finished?.({ made: [{ from: [page.path], to: [output] }], failed: [] })
   return 0
 }
 
@@ -232,10 +236,17 @@ export async function runTranscribeCommand(
     io.out(
       `✓ ${displayName(output)}   ${clock(result.seconds)} → ${words(result).toLocaleString('en-US')} words${parts}`,
     )
+    // A link's video is named by its title: the download is gone by now.
+    io.finished?.({
+      made: [{ from: [link === undefined ? source : origin.title], to: [output] }],
+      failed: [],
+    })
     return 0
   } catch (e) {
     const error = isForgeError(e) ? e : unexpectedError(e)
     for (const line of renderError(error, { debug: intent.debug })) io.err(line)
+    const path = readLink(intent.input) === undefined ? resolve(intent.input) : ''
+    io.finished?.({ made: [], failed: [{ path, message: error.message }] })
     return 1
   }
 }

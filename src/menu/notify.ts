@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { type Notice, noticeWorthy } from '../core/finish-notice.js'
 import { onPath } from './linux.js'
 
 /**
@@ -145,4 +146,53 @@ export function notify(
       resolve()
     }
   })
+}
+
+type Ask = (cmd: string, args: string[]) => Promise<string>
+
+const lsappinfo: Ask = (cmd, args) =>
+  new Promise((resolve, reject) =>
+    execFile(cmd, args, { timeout: 2_000 }, (e, out) => (e ? reject(e) : resolve(out))),
+  )
+
+/**
+ * Whether the app `bundle` names is the Mac's front app: `lsappinfo`, which
+ * needs no permission, unlike asking System Events. `bundle` is the
+ * terminal's, from `__CFBundleIdentifier`, which macOS gives every process an
+ * app starts — Terminal's shells, iTerm2's and Ghostty's alike.
+ */
+export async function terminalInFront(bundle: string, ask: Ask = lsappinfo): Promise<boolean> {
+  const asn = (await ask('lsappinfo', ['front'])).trim()
+  const info = await ask('lsappinfo', ['info', '-only', 'bundleid', asn])
+  return info.match(/bundleID="([^"]*)"/)?.[1] === bundle
+}
+
+/**
+ * Posts a finished run's notice (`core/finish-notice.ts`) if it ran long
+ * enough to need one and the person is somewhere else: never over SSH, where
+ * it would show on the other machine; on a Mac only when the terminal is not
+ * the front app; on Windows and Linux always, having no cheap way to ask.
+ * Never throws, like `notify`.
+ */
+export async function postFinishNotice(
+  notice: Notice | undefined,
+  elapsedMs: number,
+  d: {
+    platform?: NodeJS.Platform
+    env?: NodeJS.ProcessEnv
+    ask?: Ask
+    post?: (title: string, body: string) => Promise<void>
+  } = {},
+): Promise<void> {
+  if (notice === undefined || !noticeWorthy(elapsedMs)) return
+  const platform = d.platform ?? process.platform
+  const env = d.env ?? process.env
+  // FORGE_NO_NOTIFY: off for the test suite, which runs real flows (vitest.config.ts).
+  if (env.FORGE_NO_NOTIFY || env.SSH_CONNECTION || env.SSH_TTY) return
+  const bundle = env.__CFBundleIdentifier
+  if (platform === 'darwin' && bundle) {
+    const inFront = await terminalInFront(bundle, d.ask).catch(() => false)
+    if (inFront) return
+  }
+  await (d.post ?? ((title, body) => notify(title, body, platform)))(notice.title, notice.body)
 }
