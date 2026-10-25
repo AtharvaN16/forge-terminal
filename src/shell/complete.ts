@@ -42,6 +42,13 @@ interface Entry {
   dir: boolean
 }
 
+/**
+ * Names in the order `localeCompare` with these options gives, from one
+ * collator made once: `localeCompare` makes a new one for every comparison,
+ * which was most of a keystroke's time in a folder of thousands.
+ */
+const byName = new Intl.Collator(undefined, { sensitivity: 'base' }).compare
+
 async function list(dir: string, stem: string, allowed: Set<string>): Promise<Entry[]> {
   // Typed explicitly: inferring from `readdir` picks its Buffer overload.
   let entries: Dirent[]
@@ -62,7 +69,7 @@ async function list(dir: string, stem: string, allowed: Set<string>): Promise<En
       return dot > 0 && allowed.has(e.name.slice(dot).toLowerCase())
     })
     .map((e) => ({ name: e.name, dir: e.isDirectory() }))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .sort((a, b) => byName(a.name, b.name))
 }
 
 /**
