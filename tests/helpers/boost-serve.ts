@@ -19,9 +19,22 @@ export function serveJobs(
   runner: string,
   jobs: string[][],
   env: NodeJS.ProcessEnv = process.env,
+  /** Under the test's own 20 s, so a runner that never exits says how far it got. */
+  timeoutMs = 15_000,
 ): Promise<Served> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [runner, '--serve'], { env })
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      const last = progress.at(-1)?.at(-1)
+      reject(
+        new Error(
+          `runner.mjs --serve did not exit within ${timeoutMs} ms: answered ${results.length} of ${jobs.length} jobs` +
+            `${last ? `, the next at tile ${last[0]} of ${last[1]}` : ', the next not started'}` +
+            `${next > jobs.length ? ', its input closed' : ''}; stderr: ${stderr.trim() || '(none)'}`,
+        ),
+      )
+    }, timeoutMs)
     const results: Array<Record<string, unknown>> = []
     const progress: Array<Array<[number, number]>> = [[]]
     let stderr = ''
@@ -50,9 +63,10 @@ export function serveJobs(
       stderr += d
     })
     child.on('error', reject)
-    child.on('close', (exitCode) =>
-      resolve({ results, progress: progress.slice(0, results.length), exitCode, stderr }),
-    )
+    child.on('close', (exitCode) => {
+      clearTimeout(timer)
+      resolve({ results, progress: progress.slice(0, results.length), exitCode, stderr })
+    })
     send()
   })
 }

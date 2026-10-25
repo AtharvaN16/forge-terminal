@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -108,6 +109,15 @@ describe.skipIf(process.platform === 'win32')(
   'the ncnn engine (runner.mjs with a stand-in worker)',
   () => {
     let work: string
+    /**
+     * A log file in `work`, emptied first: CI retries a failed test in the same
+     * folder, and a retry must not read the attempt before's lines as its own.
+     */
+    const fresh = (name: string) => {
+      const path = join(work, name)
+      rmSync(path, { force: true })
+      return path
+    }
     let payload: string
 
     beforeAll(async () => {
@@ -234,13 +244,13 @@ describe.skipIf(process.platform === 'win32')(
     })
 
     it('runs on the processor when there is no graphics device', async () => {
-      const log = join(work, 'log-cpu.txt')
+      const log = fresh('log-cpu.txt')
       await boost(gradient('a.png'), join(work, 'a-out.png'), 1, { FAKE_LOG: log })
       expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['cpu'])
     })
 
     it('never starts a worker on a software adapter, and says nothing of it as an error', async () => {
-      const log = join(work, 'log-soft.txt')
+      const log = fresh('log-soft.txt')
       const r = await boost(gradient('b.png'), join(work, 'b-out.png'), 1, {
         FAKE_LOG: log,
         FAKE_DEVICES: JSON.stringify([
@@ -252,7 +262,7 @@ describe.skipIf(process.platform === 'win32')(
     })
 
     it('runs on a real card when there is one, and keeps it when it is quicker than the processor', async () => {
-      const log = join(work, 'log-gpu.txt')
+      const log = fresh('log-gpu.txt')
       const r = await boost(gradient('c.png', 500), join(work, 'c-out.png'), 1, {
         FAKE_LOG: log,
         FAKE_DEVICES: JSON.stringify([{ index: 0, name: 'Quick Card', kind: 'discrete' }]),
@@ -290,7 +300,7 @@ describe.skipIf(process.platform === 'win32')(
     })
 
     it('does not start the card at all when told to use the processor', async () => {
-      const log = join(work, 'log-off.txt')
+      const log = fresh('log-off.txt')
       await boost(gradient('f.png'), join(work, 'f-out.png'), 1, {
         FAKE_LOG: log,
         FORGE_BOOST_DEVICE: 'cpu',
@@ -357,8 +367,8 @@ describe.skipIf(process.platform === 'win32')(
 
     describe('--serve: one process for many images', () => {
       it('lists the devices and checks the card against the processor once for three images', async () => {
-        const log = join(work, 'log-serve.txt')
-        const listed = join(work, 'devices-serve.txt')
+        const log = fresh('log-serve.txt')
+        const listed = fresh('devices-serve.txt')
         const input = gradient('s.png', 500)
         const outs = [4, 2, 1].map((s) => join(work, `s-out-${s}.png`))
         const r = await serveJobs(
@@ -423,6 +433,16 @@ describe.skipIf(process.platform === 'win32')(
         expect(r.results[2]?.message).toContain('--scale 1|2|3|4')
       })
 
+      it('is killed, saying how far it got, when it does not finish in time', async () => {
+        const input = gradient('slow.png', 500)
+        const job = ['--in', input, '--out', join(work, 'slow-out.png'), '--scale', '1']
+        await expect(
+          serveJobs(join(payload, 'runner.mjs'), [job], ncnnEnv({ FAKE_MS: '2000' }), 1000),
+        ).rejects.toThrow(
+          /did not exit within 1000 ms: answered 0 of 1 jobs, the next at tile 0 of 9/,
+        )
+      })
+
       it('exits when its input closes with nothing asked of it', async () => {
         const r = await serveJobs(join(payload, 'runner.mjs'), [], ncnnEnv({}))
         expect(r).toMatchObject({ exitCode: 0, results: [] })
@@ -449,7 +469,7 @@ describe.skipIf(process.platform === 'win32')(
       })
 
       it('does not check the card on an image too small to be worth it, and does on a larger one after', async () => {
-        const log = join(work, 'log-small.txt')
+        const log = fresh('log-small.txt')
         const small = gradient('v-small.png', 200) // 3 × 1 tiles
         const large = gradient('v-large.png', 500) // 3 × 3
         const r = await serveJobs(
