@@ -1,47 +1,23 @@
 {
   "name": "forge-terminal",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Windows and Linux",
-      "text": "Transcribe, read text, camera RAW, Boost and remove background now work on Windows and Linux too, as extensions."
+      "title": "Boost on every Linux",
+      "text": "Boost now works on any Linux PC, ARM ones like a Raspberry Pi too, and uses the graphics card when there is a real one."
     },
     {
-      "title": "Read text",
-      "text": "Transcribe reads the words in pictures and PDFs, including Chinese, Japanese, Korean, Russian, Arabic, Hindi and Thai."
+      "title": "Forge’s own ffmpeg",
+      "text": "No ffmpeg on your Apple silicon Mac? Forge can now download its own copy for video and sound, in one step."
     },
     {
-      "title": "Transcript formats",
-      "text": "Save a transcript as Markdown, Word, PDF or plain text."
+      "title": "Notes card colour",
+      "text": "On /update, the release notes card stays grey whichever mode you opened the menu from."
     },
     {
-      "title": "Many files at once",
-      "text": "Convert, compress and edit take several files or a whole folder. esc stops a batch."
-    },
-    {
-      "title": "Run a preset",
-      "text": "Run a saved preset from home with p, or from Finder’s Quick Actions. Choose which ones show in /right-click."
-    },
-    {
-      "title": "Camera RAW",
-      "text": "Photos straight from a camera open like any other picture."
-    },
-    {
-      "title": "More in edit",
-      "text": "Rotate pictures and video, change a video’s speed, take the sound out of a video, and clean up noisy audio."
-    },
-    {
-      "title": "One way off Done",
-      "text": "Every Done ends in the same row of buttons: Home, show in Finder, or keep editing."
-    },
-    {
-      "title": "Simpler colour mode",
-      "text": "Palette is a tab now, More holds the rest, and a gradient can have any number of colours."
-    },
-    {
-      "title": "Your own tools",
-      "text": "Forge uses the yt-dlp and ffmpeg you already have, and /extensions shows the space each one takes."
+      "title": "Safer MCP server",
+      "text": "The MCP server uses a fixed zod, which could run out of memory on an oversized request."
     }
   ],
   "keywords": [
@@ -128,9 +104,9 @@
     "tinyglobby": "^0.2.17",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "word-extractor": "^1.0.4",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "overrides": {
     "onnxruntime-node": {

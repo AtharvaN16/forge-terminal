@@ -50,7 +50,7 @@ That puts `forge` on your `PATH`, so it works from any directory. Verify:
 
 ```bash
 forge --version
-# 0.5.0
+# 0.5.1
 
 forge photo.jpg --to webp
 ```
@@ -164,7 +164,8 @@ every OS):
 forge extensions add whisper     # every OS (Linux x64 needs AVX2)
 winget install ffmpeg            # Windows
 sudo apt install ffmpeg          # Linux, or your distro's ffmpeg
-brew install ffmpeg              # Mac
+brew install ffmpeg              # Intel Mac
+forge extensions add video       # Apple-silicon Mac: Forge's own ffmpeg (25 MB)
 
 forge transcribe talk.mp4
 forge transcribe "https://www.youtube.com/watch?v=..." --language en
@@ -476,11 +477,12 @@ iPhone photos itself and they need a decoder. Nothing downloads until you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
-forge extensions add boost              # about 15 MB on Apple silicon, 16 MB on an Intel Mac, 17 MB on Linux x64, 23 MB on Windows
+forge extensions add boost              # about 15 MB on Apple silicon, 16 MB on an Intel Mac, 7 to 8 MB on Linux, 23 MB on Windows
 forge extensions add remove-background  # 32 KB on a Mac (Apple Vision); 46 to 52 MB on Windows and Linux
 forge extensions add heic               # about 0.5 MB; Windows and Linux
 forge extensions add whisper            # transcribe where Apple's recogniser is not (see above)
 forge extensions add yt-dlp             # YouTube links for transcribe, every OS
+forge extensions add video              # Forge's own ffmpeg, 25 MB; Apple-silicon Macs
 forge extensions remove boost
 ```
 
@@ -1115,7 +1117,7 @@ photo.png · PNG · 122 KB · 2756×774
 With `--json`:
 
 ```json
-{"forge":"0.5.0","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+{"forge":"0.5.1","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
 ```
 
 `targets` and `actions` come from the engines' own capabilities, so they are
@@ -1141,7 +1143,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 ```jsonc
 {
-  "forge": "0.5.0",
+  "forge": "0.5.1",
   "ok": false,
   "results": [
     {
