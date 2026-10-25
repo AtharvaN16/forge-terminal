@@ -71,10 +71,18 @@ Type `forge`, then drop a file onto the window (or type its path), then Enter.
    images, and an image to a PDF.
 9. Convert a Word file to PDF. It is fine if you do not have LibreOffice;
    note whether you do.
-10. Edit mode, a photo: look for **Boost resolution**. **Right:** on Linux it is
-    not offered, or it says plainly that it is not available on this computer.
-    It must not start and then sit there. (A graphics-card version may come later.)
-    **Remove background** should not be offered either; it is Mac-only.
+10. Edit mode, a small photo (about 1000 pixels wide): **Boost resolution** at 2x.
+    The first time it offers the Boost extension (about 17 MB); install it.
+    **Right:** the photo comes out twice as big. It runs on your graphics card
+    (through Vulkan), so a small photo takes well under a minute; the very
+    first time there is a pause of a few seconds before the bar moves.
+    Note how long it took. Then try **Sharpen**, and a big photo (about 12
+    megapixels): note the time.
+    **Also right:** a PC with no working graphics driver stops a big photo early with
+    "Too slow to boost", saying about how many minutes it would have taken,
+    instead of making you wait. Tell us if you see that, and send the output
+    of `vulkaninfo --summary` (from `vulkan-tools`), which lists your graphics card.
+    **Remove background** should not be offered; it is Mac-only.
 
 ## 3. HEIC and RAW (extensions)
 

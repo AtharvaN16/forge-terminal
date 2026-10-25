@@ -50,9 +50,12 @@ export const CATALOG: readonly CatalogEntry[] = [
     title: 'Boost resolution',
     summary: 'Sharpen, or boost resolution 2x or 4x, with a local AI model',
     minMacos: 14,
-    // Apple Silicon only for now. An x64 build exists (CI still makes it) but
-    // has never been run, and its CPU fallback would look frozen on an Intel
-    // Mac, so Intel is told there is no build rather than offered that.
+    // Apple silicon and Windows keep the graphics provider they always had
+    // (CoreML, DirectML). Linux x64 and Intel Macs run on WebGPU (Vulkan, Metal)
+    // through the same model and runner, 1.2.0, and the runner stops with
+    // boost-too-slow when no real graphics card answers and the processor would
+    // take minutes (extensions/boost/providers.ts). Not Linux arm64: its ONNX
+    // Runtime build has no WebGPU in it.
     assets: {
       'darwin-arm64': {
         version: '1.0.0',
@@ -60,8 +63,13 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 14866325,
         sha256: '7af24c92f95b1cd34618adde4a90926c91a8db4347d640be4921f1dc706a9a2e',
       },
-      // Windows runs on DirectML, so any DirectX 12 GPU — integrated included —
-      // keeps it from the CPU fallback that rules out Intel Macs above.
+      'darwin-x64': {
+        version: '1.2.0',
+        url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-x64.tar.gz`,
+        bytes: 16062122,
+        sha256: '4770833905b4b6c348d1eb18bb735ace9a4f63ace51097c4a7c4b74ec1787998',
+      },
+      // Windows runs on DirectML, so any DirectX 12 GPU — integrated included.
       'win32-x64': {
         version: '1.1.0',
         url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-win32-x64.tar.gz`,
@@ -74,12 +82,14 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 22936985,
         sha256: '7d39d93cae52f298423db0b185b0ae3a3bac65464abeb23561d9bcb2ebb3f026',
       },
-      // Not on Linux: onnxruntime-node's only Linux GPU provider is CUDA, a
-      // separate download of hundreds of MB, and on the CPU alone a photo
-      // takes minutes: the rule that keeps it off Intel Macs. Linux payloads
-      // still build (extensions/boost) for a GPU route to come.
+      'linux-x64': {
+        version: '1.2.0',
+        url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-linux-x64.tar.gz`,
+        bytes: 17020821,
+        sha256: 'fca6232c38c05469e255ba2900ab32f993c1b8588f0a3569b24977ab657ff4cb',
+      },
     },
-    licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
+    licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT), Dawn (BSD-3-Clause)',
   },
   {
     id: 'remove-background',

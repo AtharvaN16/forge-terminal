@@ -9,8 +9,9 @@ name: extensions
 #      a published asset (no --clobber, ever): a rebuilt archive whose sha256
 #      differs from the catalogue fails the job, and an asset already on the
 #      release is downloaded and verified against the catalogue instead of
-#      overwritten. Only an archive the catalogue does not list (boost x64,
-#      built but not offered) and the release does not have is uploaded.
+#      overwritten. Only an archive the catalogue does not list (boost's
+#      other versions, built but not offered) and the release does not have
+#      is uploaded.
 #      Adding a platform to a published version works the same way: the
 #      catalogue lists the new archives, the release lacks them, so a
 #      workflow_dispatch run for that version uploads them and checks the rest.
@@ -32,7 +33,8 @@ name: extensions
 #
 # remove-background is Apple Vision's Swift helper, macOS only. Its ONNX
 # runner (extensions/remove-background-onnx) is not built here until a model
-# passes the quality bar; boost's Linux payloads likewise wait for a GPU route.
+# passes the quality bar. Boost's Linux x64 payload is built here (WebGPU, through
+# Vulkan); there is none for Linux arm64, whose ONNX Runtime has no WebGPU.
 #
 # whisper packages on macos-26 (publish.yml's runner; the Mac archive was
 # built on Xcode 27, so a different Xcode there may not match it byte for
@@ -181,6 +183,9 @@ jobs:
               node extensions/boost/build.mjs --platform win32 --arch "$arch" --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out "dist-ext/payload-win32-$arch"
               node scripts/package-extension.mjs boost "$VERSION" "win32-$arch" "dist-ext/payload-win32-$arch" dist-ext/out >> dist-ext/assets.jsonl
             done
+            # Linux x64 only: WebGPU is in its ONNX Runtime, not Linux arm64's.
+            node extensions/boost/build.mjs --platform linux --arch x64 --onnx dist-ext/payload-arm64/realesr-general-x4v3.onnx --out dist-ext/payload-linux-x64
+            node scripts/package-extension.mjs boost "$VERSION" linux-x64 dist-ext/payload-linux-x64 dist-ext/out >> dist-ext/assets.jsonl
           elif [ "$ID" = "video" ]; then
             # The GPL asks for the source beside the binaries: the source bundle goes
             # into out/ too, so publish uploads it to the same release.
@@ -415,7 +420,8 @@ jobs:
     needs: [resolve, package]
     if: >-
       needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'raw' ||
-      needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'read-text'
+      needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'read-text' ||
+      needs.resolve.outputs.id == 'boost'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -432,6 +438,52 @@ jobs:
         with:
           name: payloads
           path: dist-ext
+
+      # A runner without a graphics card: WebGPU may not start, and the processor takes the one tile.
+      - name: Boost runs on Linux
+        if: needs.resolve.outputs.id == 'boost'
+        run: |
+          # No PNG is checked in for this, so write a 32x32 gradient with node's zlib alone.
+          node -e '
+            const zlib = require("zlib"), fs = require("fs")
+            const crcTable = Array.from({ length: 256 }, (_, n) => {
+              let c = n
+              for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+              return c >>> 0
+            })
+            const crc = (b) => {
+              let c = 0xffffffff
+              for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8)
+              return (c ^ 0xffffffff) >>> 0
+            }
+            const chunk = (type, data) => {
+              const body = Buffer.concat([Buffer.from(type), data])
+              const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
+              const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(body))
+              return Buffer.concat([len, body, sum])
+            }
+            const W = 32, H = 32
+            const ihdr = Buffer.alloc(13)
+            ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2
+            const raw = Buffer.alloc((W * 3 + 1) * H)
+            for (let y = 0; y < H; y++)
+              for (let x = 0; x < W; x++) {
+                const i = y * (W * 3 + 1) + 1 + x * 3
+                raw[i] = x * 8; raw[i + 1] = y * 8; raw[i + 2] = 128
+              }
+            fs.writeFileSync("in.png", Buffer.concat([
+              Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+              chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0)),
+            ]))
+          '
+          # runner.mjs --in <png> --out <png> --scale 1|2|3|4
+          node dist-ext/payload-linux-x64/runner.mjs --in in.png --out out.png --scale 2
+          test -s out.png
+          node -e '
+            const b = require("fs").readFileSync("out.png")
+            const w = b.readUInt32BE(16), h = b.readUInt32BE(20)
+            if (w !== 64 || h !== 64) { console.error("expected 64x64, got " + w + "x" + h); process.exit(1) }
+          '
 
       # A blank page: ONNX Runtime and both models load and run, and the reply is the read contract.
       - name: read-text runs on Linux

@@ -63,9 +63,20 @@ describe('the Mac catalogue, as published', () => {
     })
   })
 
-  it('tells an Intel Mac there is no boost build', async () => {
+  it('offers an Intel Mac boost 1.2.0, which runs on WebGPU (Metal)', async () => {
     const boost = (await listExtensions('darwin', 'x64')).find((s) => s.entry.id === 'boost')
-    expect(boost).toMatchObject({ supported: false, reason: 'no build for x64 Macs' })
+    expect(boost).toMatchObject({ supported: true })
+    expect(boost && assetFor(boost.entry, 'darwin', 'x64')).toEqual({
+      version: '1.2.0',
+      url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-x64.tar.gz`,
+      bytes: 16062122,
+      sha256: '4770833905b4b6c348d1eb18bb735ace9a4f63ace51097c4a7c4b74ec1787998',
+    })
+  })
+
+  it('leaves Apple silicon on the boost it has', () => {
+    const boost = catalogEntry('boost')
+    expect(boost && assetFor(boost, 'darwin', 'arm64')?.version).toBe('1.0.0')
   })
 
   it('an installed boost 1.0.0 is up to date', async () => {
@@ -204,13 +215,35 @@ describe('by OS', () => {
 })
 
 describe('the Windows and Linux catalogue', () => {
-  it('offers neither boost nor remove-background on Linux: CPU only, and no model passed yet', async () => {
+  it('offers boost on Linux x64 (WebGPU), not remove-background (no model has passed yet)', async () => {
     for (const arch of ['x64', 'arm64']) {
       const ids = (await listExtensions('linux', arch)).map((s) => s.entry.id)
-      expect(ids).not.toContain('boost')
       expect(ids).not.toContain('remove-background')
       expect(ids).toEqual(expect.arrayContaining(['heic', 'raw', 'whisper', 'yt-dlp']))
     }
+    const boost = (await listExtensions('linux', 'x64')).find((s) => s.entry.id === 'boost')
+    expect(boost).toMatchObject({ supported: true })
+  })
+
+  it('has no boost build for Linux arm64: that ONNX Runtime has no WebGPU in it', async () => {
+    const boost = (await listExtensions('linux', 'arm64')).find((s) => s.entry.id === 'boost')
+    expect(boost).toMatchObject({ supported: false, reason: 'no build for arm64 computers' })
+    expect(offeredHere('boost', 'linux', 'arm64')).toBe(false)
+    expect(offeredHere('boost', 'linux', 'x64')).toBe(true)
+  })
+
+  it('pins the Linux x64 boost 1.2.0 archive', () => {
+    const boost = catalogEntry('boost')
+    expect(boost && assetFor(boost, 'linux', 'x64')).toEqual({
+      version: '1.2.0',
+      url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-linux-x64.tar.gz`,
+      bytes: 17020821,
+      sha256: 'fca6232c38c05469e255ba2900ab32f993c1b8588f0a3569b24977ab657ff4cb',
+    })
+  })
+
+  it('names every part of boost in its licence line, Dawn (WebGPU) too', () => {
+    expect(catalogEntry('boost')?.licence).toContain('Dawn (BSD-3-Clause)')
   })
 
   it('offers boost and heic on Windows, and remove-background only on the Mac', async () => {
@@ -219,11 +252,6 @@ describe('the Windows and Linux catalogue', () => {
     expect(ids).not.toContain('remove-background')
     const cutout = catalogEntry('remove-background')
     expect(cutout && assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')
-  })
-
-  it('still tells an Intel Mac there is no boost build', () => {
-    const boost = CATALOG.find((e) => e.id === 'boost')
-    expect(boost && assetFor(boost, 'darwin', 'x64')).toBeUndefined()
   })
 })
 
