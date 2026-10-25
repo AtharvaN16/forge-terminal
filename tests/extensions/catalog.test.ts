@@ -216,31 +216,33 @@ describe('by OS', () => {
 })
 
 describe('the Windows and Linux catalogue', () => {
-  it('offers boost on Linux x64 (WebGPU) and remove-background on every Linux chip', async () => {
+  it('offers boost (ncnn) and remove-background on every Linux chip', async () => {
     for (const arch of ['x64', 'arm64']) {
       const ids = (await listExtensions('linux', arch)).map((s) => s.entry.id)
       expect(ids).toEqual(
         expect.arrayContaining(['remove-background', 'heic', 'raw', 'whisper', 'yt-dlp']),
       )
     }
-    const boost = (await listExtensions('linux', 'x64')).find((s) => s.entry.id === 'boost')
-    expect(boost).toMatchObject({ supported: true })
+    for (const arch of ['x64', 'arm64']) {
+      const boost = (await listExtensions('linux', arch)).find((s) => s.entry.id === 'boost')
+      expect(boost, arch).toMatchObject({ supported: true })
+      expect(offeredHere('boost', 'linux', arch)).toBe(true)
+    }
   })
 
-  it('has no boost build for Linux arm64: that ONNX Runtime has no WebGPU in it', async () => {
-    const boost = (await listExtensions('linux', 'arm64')).find((s) => s.entry.id === 'boost')
-    expect(boost).toMatchObject({ supported: false, reason: 'no build for arm64 computers' })
-    expect(offeredHere('boost', 'linux', 'arm64')).toBe(false)
-    expect(offeredHere('boost', 'linux', 'x64')).toBe(true)
-  })
-
-  it('pins the Linux x64 boost 1.2.0 archive', () => {
+  it('pins the Linux boost 1.3.0 archives, one per chip', () => {
     const boost = catalogEntry('boost')
     expect(boost && assetFor(boost, 'linux', 'x64')).toEqual({
-      version: '1.2.0',
-      url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-linux-x64.tar.gz`,
-      bytes: 17020821,
-      sha256: 'fca6232c38c05469e255ba2900ab32f993c1b8588f0a3569b24977ab657ff4cb',
+      version: '1.3.0',
+      url: `${RELEASES}/ext-boost-v1.3.0/forge-ext-boost-1.3.0-linux-x64.tar.gz`,
+      bytes: 8305889,
+      sha256: '27f6768abae3ece2a32432129b724066ab86897f75149fafb54ce2f397d107de',
+    })
+    expect(boost && assetFor(boost, 'linux', 'arm64')).toEqual({
+      version: '1.3.0',
+      url: `${RELEASES}/ext-boost-v1.3.0/forge-ext-boost-1.3.0-linux-arm64.tar.gz`,
+      bytes: 6813573,
+      sha256: 'ae30dce9b85afc99fc418cea8dc09db07b2657ae987aeae88320423c21b58b8f',
     })
   })
 

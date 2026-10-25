@@ -73,7 +73,7 @@ Type `forge`, then drop a file onto the window (or type its path), then Enter.
 9. Convert a Word file to PDF. It is fine if you do not have LibreOffice;
    note whether you do.
 10. Edit mode, a small photo (about 1000 pixels wide): **Boost resolution** at 2x.
-    The first time it offers the Boost extension (about SIZE_MB MB); install it.
+    The first time it offers the Boost extension (about 7 to 8 MB); install it.
     **Right:** the photo comes out twice as big. This works on x86 (`x86_64`) and
     ARM (`aarch64`, a Raspberry Pi 4 or 5 for example) alike. It uses your graphics
     card through Vulkan when there is a real one, and the processor when there is

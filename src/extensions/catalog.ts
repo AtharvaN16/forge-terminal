@@ -51,11 +51,12 @@ export const CATALOG: readonly CatalogEntry[] = [
     summary: 'Sharpen, or boost resolution 2x or 4x, with a local AI model',
     minMacos: 14,
     // Apple silicon and Windows keep the graphics provider they always had
-    // (CoreML, DirectML). Linux x64 and Intel Macs run on WebGPU (Vulkan, Metal)
-    // through the same model and runner, 1.2.0, and the runner stops with
-    // boost-too-slow when no real graphics card answers and the processor would
-    // take minutes (extensions/boost/providers.ts). Not Linux arm64: its ONNX
-    // Runtime build has no WebGPU in it.
+    // (CoreML, DirectML). Intel Macs run on WebGPU (Metal) through the same
+    // model and runner, 1.2.0, and the runner stops with boost-too-slow when no
+    // real graphics card answers and the processor would take minutes
+    // (extensions/boost/providers.ts). Linux, both chips, runs the same model
+    // through ncnn (1.3.0, no ONNX Runtime): on a Vulkan card if there is a real
+    // one, else the processor, stopping only past fifteen minutes.
     assets: {
       'darwin-arm64': {
         version: '1.0.0',
@@ -83,13 +84,20 @@ export const CATALOG: readonly CatalogEntry[] = [
         sha256: '7d39d93cae52f298423db0b185b0ae3a3bac65464abeb23561d9bcb2ebb3f026',
       },
       'linux-x64': {
-        version: '1.2.0',
-        url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-linux-x64.tar.gz`,
-        bytes: 17020821,
-        sha256: 'fca6232c38c05469e255ba2900ab32f993c1b8588f0a3569b24977ab657ff4cb',
+        version: '1.3.0',
+        url: `${RELEASES}/ext-boost-v1.3.0/forge-ext-boost-1.3.0-linux-x64.tar.gz`,
+        bytes: 8305889,
+        sha256: '27f6768abae3ece2a32432129b724066ab86897f75149fafb54ce2f397d107de',
+      },
+      'linux-arm64': {
+        version: '1.3.0',
+        url: `${RELEASES}/ext-boost-v1.3.0/forge-ext-boost-1.3.0-linux-arm64.tar.gz`,
+        bytes: 6813573,
+        sha256: 'ae30dce9b85afc99fc418cea8dc09db07b2657ae987aeae88320423c21b58b8f',
       },
     },
-    licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT), Dawn (BSD-3-Clause)',
+    licence:
+      'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT), Dawn (BSD-3-Clause), ncnn (BSD-3-Clause)',
   },
   {
     id: 'remove-background',

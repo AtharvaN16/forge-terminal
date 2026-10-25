@@ -248,8 +248,8 @@ describe('edit mode', () => {
   }, 60_000)
 
   // These run on the real OS: a fresh install is 1.0.0 on a Mac (2×, 4×) and
-  // 1.1.0 on Windows (2×, 3×, 4×), 1.2.0 on Linux x64 and Intel Macs. Linux
-  // arm64 has no Boost (no WebGPU in its ONNX Runtime), so no row there.
+  // 1.1.0 on Windows (2×, 3×, 4×), 1.2.0 on Intel Macs, 1.3.0 on Linux (x64 and
+  // arm64, through ncnn).
   describe.skipIf(!offeredHere('boost', REAL_PLATFORM, process.arch))(
     'the Boost row, on this OS',
     () => {
