@@ -23,7 +23,7 @@ import { trailBarRow } from '../src/shell/bar-art.js'
 import { windowOver } from '../src/shell/colour/system-art.js'
 import type { Row, Run } from '../src/shell/home-art.js'
 import { DARK, modePalette, type ShellMode } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
 import { type Cell, type Grid, rowOf, termHtml, toGrid } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
@@ -33,7 +33,9 @@ const load = (file: string) =>
       JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8')) as Record<string, Raw[][]>,
     ).map(([k, v]) => [
       k,
-      v.map((r) => r.map((c) => ({ ch: c.ch, fg: c.fg ?? undefined, bg: c.bg ?? undefined, b: c.b }))),
+      v.map((r) =>
+        r.map((c) => ({ ch: c.ch, fg: c.fg ?? undefined, bg: c.bg ?? undefined, b: c.b })),
+      ),
     ]),
   ) as Record<string, Grid>
 const F1 = load('./presets-ux-frames.json')
@@ -89,7 +91,13 @@ const cap = (k: string, words: string): Seg[] => [
   [' ', undefined, CAP],
   [` ${words}`, P.dim],
 ]
-function keyRow(main: Array<[string, string]>, foot: Array<[string, string]> = [['esc', 'back'], ['ctrl-c', 'quit']]): Cell[] {
+function keyRow(
+  main: Array<[string, string]>,
+  foot: Array<[string, string]> = [
+    ['esc', 'back'],
+    ['ctrl-c', 'quit'],
+  ],
+): Cell[] {
   const left: Seg[] = main.flatMap(([k, w], i) => (i ? [['  '] as Seg, ...cap(k, w)] : cap(k, w)))
   const right: Seg[] = foot.flatMap(([k, w], i) => [
     ...(i ? ([[' · ', P.border]] as Seg[]) : []),
@@ -110,10 +118,13 @@ const chainSegs = (parts: string[], bg?: string): Seg[] =>
   parts.flatMap((t, i) =>
     i === 0 ? [[t, P.dim, bg] as Seg] : [[' → ', P.faint, bg] as Seg, [t, P.fg, bg, true] as Seg],
   )
-const chainRuns = (parts: string[]): Run[] => chainSegs(parts).map(([t, fg, bg, b]) => run(t, fg, bg, b))
+const chainRuns = (parts: string[]): Run[] =>
+  chainSegs(parts).map(([t, fg, bg, b]) => run(t, fg, bg, b))
 /** A preset's steps alone, no source: `JPEG 80 → under 300 KB`. */
 const stepSegs = (steps: string[], bg?: string): Seg[] =>
-  steps.flatMap((t, i) => (i ? [[' → ', P.faint, bg] as Seg, [t, P.fg, bg, true] as Seg] : [[t, P.fg, bg, true] as Seg]))
+  steps.flatMap((t, i) =>
+    i ? [[' → ', P.faint, bg] as Seg, [t, P.fg, bg, true] as Seg] : [[t, P.fg, bg, true] as Seg],
+  )
 const quiet = (segs: Seg[]): Seg[] => segs.map(([t, , bg]) => [t, P.border, bg, false])
 
 function fit(H: number, rows: Cell[][], keys: Cell[]): Grid {
@@ -124,15 +135,37 @@ function fit(H: number, rows: Cell[][], keys: Cell[]): Grid {
 }
 /** The header bar as the app draws it, for a trail of our own. */
 function header(mode: ShellMode, answers: string[], current: string, drift?: number): Cell[] {
-  const bar = trailBarRow({ width: N - 4, palette: DARK, mode, trail: { answers, current }, slanted: false, ...(drift === undefined ? {} : { drift }) })
-  return toGrid([[run('  '), ...bar]], N)[0]?.map((c) => ({ ...c, bg: c.bg ?? CANVAS })) ?? blankRow()
+  const bar = trailBarRow({
+    width: N - 4,
+    palette: DARK,
+    mode,
+    trail: { answers, current },
+    slanted: false,
+    ...(drift === undefined ? {} : { drift }),
+  })
+  return (
+    toGrid([[run('  '), ...bar]], N)[0]?.map((c) => ({ ...c, bg: c.bg ?? CANVAS })) ?? blankRow()
+  )
 }
 /** The file's card, rewritten: its kind in the top edge, its name and facts. */
-function card(g: Grid, kind: string, name: string, facts: string, accent = ACCENT, at = 3, bg = CANVAS, x = 4): void {
+function card(
+  g: Grid,
+  kind: string,
+  name: string,
+  facts: string,
+  accent = ACCENT,
+  at = 3,
+  bg = CANVAS,
+  x = 4,
+): void {
   const top = g[at] as Cell[]
   const end = x + 50
   for (let i = x + 2; i < end; i++) top[i] = { ch: '─', fg: P.border, bg }
-  put(top, x + 2, [[' ', undefined, bg], [kind, accent, bg], [' ', undefined, bg]])
+  put(top, x + 2, [
+    [' ', undefined, bg],
+    [kind, accent, bg],
+    [' ', undefined, bg],
+  ])
   put(clear(g[at + 1] as Cell[], x + 2, end, bg), x + 2, [[name, P.fg, bg]])
   put(clear(g[at + 2] as Cell[], x + 2, end, bg), x + 2, [[facts, P.fg, bg]])
 }
@@ -147,15 +180,34 @@ const PRESETS = [
 const FORMATS = ['JPEG', 'WebP', 'AVIF', 'GIF', 'TIFF', 'PDF']
 const top10 = () => (F2.picker as Grid).slice(0, 10).map(copy)
 const pickKeys = (extra: Array<[string, string]> = []) =>
-  keyRow([['↑↓', 'choose'], ...extra, ['↵', 'confirm']], [['esc', 'remove file'], ['ctrl-c', 'quit']])
+  keyRow(
+    [['↑↓', 'choose'], ...extra, ['↵', 'confirm']],
+    [
+      ['esc', 'remove file'],
+      ['ctrl-c', 'quit'],
+    ],
+  )
 
-function listRow(name: string, lit: boolean, rest: Seg[] = [], o: { at?: number; to?: number; from?: number; accent?: string } = {}): Cell[] {
+function listRow(
+  name: string,
+  lit: boolean,
+  rest: Seg[] = [],
+  o: { at?: number; to?: number; from?: number; accent?: string } = {},
+): Cell[] {
   const from = o.from ?? 4
   const r = blankRow()
   if (lit) {
     clear(r, from, o.to ?? 56, SEL)
-    put(r, from, [['▌', o.accent ?? ACCENT, SEL], [' ', undefined, SEL], [name, P.fg, SEL, true]])
-    put(r, o.at ?? 22, rest.map(([t, fg, , b]) => [t, fg, SEL, b] as Seg))
+    put(r, from, [
+      ['▌', o.accent ?? ACCENT, SEL],
+      [' ', undefined, SEL],
+      [name, P.fg, SEL, true],
+    ])
+    put(
+      r,
+      o.at ?? 22,
+      rest.map(([t, fg, , b]) => [t, fg, SEL, b] as Seg),
+    )
   } else {
     put(r, from + 2, [[name, P.fg]])
     put(r, o.at ?? 22, rest)
@@ -164,7 +216,17 @@ function listRow(name: string, lit: boolean, rest: Seg[] = [], o: { at?: number;
 }
 const formatRows = (lit: boolean, o: { from?: number; to?: number } = {}) =>
   FORMATS.map((f, i) =>
-    listRow(f, lit && i === 0, lit && i === 0 ? [['708 KB', P.fg, undefined, true], ['  96% smaller', P.ok]] : [], { at: (o.from ?? 4) + 31, ...o }),
+    listRow(
+      f,
+      lit && i === 0,
+      lit && i === 0
+        ? [
+            ['708 KB', P.fg, undefined, true],
+            ['  96% smaller', P.ok],
+          ]
+        : [],
+      { at: (o.from ?? 4) + 31, ...o },
+    ),
   )
 const presetRows = (lit: boolean, o: { from?: number; to?: number; at?: number } = {}) =>
   PRESETS.map((p, i) =>
@@ -184,16 +246,30 @@ type Tab = 'formats' | 'presets'
 function p3(on: Tab): Grid {
   const rows = top10()
   const title = clear(rows[8] as Cell[], 0, N, CANVAS)
-  const tab = (t: string, lit: boolean): Seg[] => (lit ? [[` ${t} `, P.fg, SEL, true]] : [[` ${t} `, P.dim]])
-  put(title, 4, [['Convert to', ACCENT, undefined, true], ['   '], ...tab('formats', on === 'formats'), [' '], ...tab('presets 3', on === 'presets')])
-  return fit(24, [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))], pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]))
+  const tab = (t: string, lit: boolean): Seg[] =>
+    lit ? [[` ${t} `, P.fg, SEL, true]] : [[` ${t} `, P.dim]]
+  put(title, 4, [
+    ['Convert to', ACCENT, undefined, true],
+    ['   '],
+    ...tab('formats', on === 'formats'),
+    [' '],
+    ...tab('presets 3', on === 'presets'),
+  ])
+  return fit(
+    24,
+    [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))],
+    pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]),
+  )
 }
 /** T1: /about's rule tabs — the title is the first tab, heavy rule under the one shown. */
 function t1(on: Tab, video = false): Grid {
   const rows = video ? (F2.videoPicker as Grid).slice(0, 10).map(copy) : top10()
   const names = clear(rows[8] as Cell[], 0, N, CANVAS)
   const rule = clear(rows[9] as Cell[], 0, N, CANVAS)
-  const tabs: Array<[string, boolean]> = [['Convert to', on === 'formats'], [video ? 'Presets 2' : 'Presets 3', on === 'presets']]
+  const tabs: Array<[string, boolean]> = [
+    ['Convert to', on === 'formats'],
+    [video ? 'Presets 2' : 'Presets 3', on === 'presets'],
+  ]
   let x = 4
   for (const [t, lit] of tabs) {
     const w = t.length + 4
@@ -204,11 +280,30 @@ function t1(on: Tab, video = false): Grid {
   put(rule, x, [['─'.repeat(R - x), P.faint]])
   let body: Cell[][]
   if (video) {
-    body = on === 'formats'
-      ? (F2.videoPicker as Grid).slice(10, 18).map(copy)
-      : [blankRow(), listRow('clips', true, chainSegs(['MP4', '720p'])), listRow('voice', false, quiet(chainSegs(['M4A'])))]
+    body =
+      on === 'formats'
+        ? (F2.videoPicker as Grid).slice(10, 18).map(copy)
+        : [
+            blankRow(),
+            listRow('clips', true, chainSegs(['MP4', '720p'])),
+            listRow('voice', false, quiet(chainSegs(['M4A']))),
+          ]
   } else body = [blankRow(), ...(on === 'formats' ? formatRows(true) : presetRows(true))]
-  return fit(24, [...rows, ...body], keyRow([[video && on === 'formats' ? '↑↓←→' : '↑↓', 'choose'], ['tab', on === 'formats' ? 'presets' : 'formats'], ['↵', 'confirm']], [['esc', 'remove file'], ['ctrl-c', 'quit']]))
+  return fit(
+    24,
+    [...rows, ...body],
+    keyRow(
+      [
+        [video && on === 'formats' ? '↑↓←→' : '↑↓', 'choose'],
+        ['tab', on === 'formats' ? 'presets' : 'formats'],
+        ['↵', 'confirm'],
+      ],
+      [
+        ['esc', 'remove file'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
 }
 /** T2: the list in a frame, its tabs written into the frame's top edge, as windows carry titles. */
 function t2(on: Tab): Grid {
@@ -228,43 +323,80 @@ function t2(on: Tab): Grid {
   // A heavy mark under the shown tab's name, in the edge itself.
   const markAt = on === 'formats' ? x0 + 3 : x0 + 3 + 7 + 3
   const markW = on === 'formats' ? 7 : 9
-  const list = on === 'formats' ? formatRows(true, { from: x0 + 1, to: x0 + W - 1 }) : presetRows(true, { from: x0 + 1, to: x0 + W - 1 })
+  const list =
+    on === 'formats'
+      ? formatRows(true, { from: x0 + 1, to: x0 + W - 1 })
+      : presetRows(true, { from: x0 + 1, to: x0 + W - 1 })
   const body = list.map((r) => put(put(r, x0, [['│', edge]]), x0 + W - 1, [['│', edge]]))
-  const bottom = put(blankRow(), x0, [['╰', edge], ['─'.repeat(W - 2), edge], ['╯', edge]])
+  const bottom = put(blankRow(), x0, [
+    ['╰', edge],
+    ['─'.repeat(W - 2), edge],
+    ['╯', edge],
+  ])
   void markAt
   void markW
-  return fit(24, [...rows, topRow, ...body, bottom], pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]))
+  return fit(
+    24,
+    [...rows, topRow, ...body, bottom],
+    pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]),
+  )
 }
 /** T3: one segmented pill at the title's right, the shown half lifted. */
 function t3(on: Tab): Grid {
   const rows = top10()
   const t = rows[8] as Cell[]
-  const seg = (s: string, lit: boolean): Seg => [` ${s} `, lit ? P.fg : P.dim, lit ? '#404040' : ZONE, lit]
+  const seg = (s: string, lit: boolean): Seg => [
+    ` ${s} `,
+    lit ? P.fg : P.dim,
+    lit ? '#404040' : ZONE,
+    lit,
+  ]
   const pill: Seg[] = [seg('formats', on === 'formats'), seg('presets 3', on === 'presets')]
   put(t, R - len(pill), pill)
   if (on === 'presets') {
     clear(t, 0, 40, CANVAS)
     put(t, 4, [['Convert to', ACCENT, undefined, true]])
   }
-  return fit(24, [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))], pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]))
+  return fit(
+    24,
+    [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))],
+    pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]),
+  )
 }
 /** T4: tabs in home's own look — the shown one on the mode tabs' chip, the other bare. */
 function t4(on: Tab): Grid {
   const rows = top10()
   const t = clear(rows[8] as Cell[], 0, N, CANVAS)
-  const chip = (s: string, lit: boolean): Seg[] => (lit ? [[` ${s} `, P.fg, '#262626', true]] : [[` ${s} `, P.dim]])
-  put(t, 3, [...chip('Convert to', on === 'formats'), ['  '], ...chip('Presets', on === 'presets'), [' 3', P.border]])
-  return fit(24, [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))], pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]))
+  const chip = (s: string, lit: boolean): Seg[] =>
+    lit ? [[` ${s} `, P.fg, '#262626', true]] : [[` ${s} `, P.dim]]
+  put(t, 3, [
+    ...chip('Convert to', on === 'formats'),
+    ['  '],
+    ...chip('Presets', on === 'presets'),
+    [' 3', P.border],
+  ])
+  return fit(
+    24,
+    [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))],
+    pickKeys([['tab', on === 'formats' ? 'presets' : 'formats']]),
+  )
 }
 /** T5: the tabs stand down the left, the list beside them. */
 function t5(on: Tab): Grid {
   const rows = top10()
-  const list = on === 'formats' ? formatRows(true, { from: 18, to: 70 }) : presetRows(true, { from: 18, to: 70 })
-  const side: Array<[string, boolean]> = [['formats', on === 'formats'], ['presets 3', on === 'presets']]
+  const list =
+    on === 'formats'
+      ? formatRows(true, { from: 18, to: 70 })
+      : presetRows(true, { from: 18, to: 70 })
+  const side: Array<[string, boolean]> = [
+    ['formats', on === 'formats'],
+    ['presets 3', on === 'presets'],
+  ]
   list.forEach((r, i) => {
     const s = side[i]
     if (s) {
-      if (s[1]) put(clear(r, 4, 15, CANVAS), 4, [['▎', ACCENT], [' '], [s[0], P.fg, undefined, true]])
+      if (s[1])
+        put(clear(r, 4, 15, CANVAS), 4, [['▎', ACCENT], [' '], [s[0], P.fg, undefined, true]])
       else put(r, 6, [[s[0], P.dim]])
     }
     put(r, 16, [['│', P.faint]])
@@ -276,7 +408,10 @@ function t6(on: Tab): Grid {
   const rows = top10()
   const t = clear(rows[8] as Cell[], 0, N, CANVAS)
   put(t, 4, [[on === 'formats' ? 'Convert to' : 'Presets', ACCENT, undefined, true]])
-  const other: Seg[] = [[' tab ', P.fg, CAP, true], [on === 'formats' ? ' presets 3' : ' formats', P.dim]]
+  const other: Seg[] = [
+    [' tab ', P.fg, CAP, true],
+    [on === 'formats' ? ' presets 3' : ' formats', P.dim],
+  ]
   put(t, R - len(other), other)
   return fit(24, [...rows, ...(on === 'formats' ? formatRows(true) : presetRows(true))], pickKeys())
 }
@@ -293,14 +428,28 @@ const stagedKeys = () => copy(STAGED[23])
 function m1(open: boolean): Grid {
   const g = dup(HOME)
   const row = clear(g[7] as Cell[], 4, 76, CANVAS)
-  const tabs: Array<[string, string]> = [['1', 'convert'], ['2', 'compress'], ['3', 'pdf'], ['4', 'edit'], ['5', 'transcribe'], ['6', 'colour'], ['7', 'presets']]
+  const tabs: Array<[string, string]> = [
+    ['1', 'convert'],
+    ['2', 'compress'],
+    ['3', 'pdf'],
+    ['4', 'edit'],
+    ['5', 'transcribe'],
+    ['6', 'colour'],
+    ['7', 'presets'],
+  ]
   let x = 4
   for (const [n, t] of tabs) {
     const on = open ? t === 'presets' : t === 'convert'
     if (on) {
       if (x > 4) x -= 1
       const bg = '#262626'
-      put(row, x, [[' ', undefined, bg], [n, ACCENT, bg, true], [' ', undefined, bg], [t, P.fg, bg, true], [' ', undefined, bg]])
+      put(row, x, [
+        [' ', undefined, bg],
+        [n, ACCENT, bg, true],
+        [' ', undefined, bg],
+        [t, P.fg, bg, true],
+        [' ', undefined, bg],
+      ])
       x += n.length + t.length + 3 + 1
     } else {
       put(row, x, [[n, P.border], [' '], [t, P.dim]])
@@ -314,7 +463,11 @@ function m1(open: boolean): Grid {
       const lit = i === 0
       if (lit) clear(r, 6, 74, '#383838')
       const bg = lit ? '#383838' : ZONE
-      put(r, 6, [[lit ? '▌ ' : '  ', ACCENT, bg], [p.name.padEnd(12), P.fg, bg, lit], ...(lit ? stepSegs(p.steps, bg) : quiet(stepSegs(p.steps, bg)))])
+      put(r, 6, [
+        [lit ? '▌ ' : '  ', ACCENT, bg],
+        [p.name.padEnd(12), P.fg, bg, lit],
+        ...(lit ? stepSegs(p.steps, bg) : quiet(stepSegs(p.steps, bg))),
+      ])
     })
   }
   return g
@@ -328,7 +481,12 @@ function m2(staged: boolean): Grid {
   const items: Seg[] = [['presets', P.faint], ['   ']]
   PRESETS.forEach((p, i) => {
     const off = staged && i === 2
-    items.push([`${7 + i}`, off ? P.faint : P.border], [' '], [p.name, off ? P.faint : P.dim], ['   '])
+    items.push(
+      [`${7 + i}`, off ? P.faint : P.border],
+      [' '],
+      [p.name, off ? P.faint : P.dim],
+      ['   '],
+    )
   })
   put(r, 5, items)
   return g
@@ -380,22 +538,48 @@ function m5(staged: boolean): Grid {
 function m6(open: boolean): Grid {
   const g = dup(HOME)
   const r = g[21] as Cell[]
-  put(r, 54, [[' p ', P.fg, CAP], [' presets', P.dim]])
+  put(r, 54, [
+    [' p ', P.fg, CAP],
+    [' presets', P.dim],
+  ])
   if (!open) return g
   const lines: Row[] = [
     [],
     ...PRESETS.map((p, i): Row => {
       const lit = i === 0
       const bg = lit ? P.panelBand : undefined
-      const row: Row = [run(lit ? ' › ' : '   ', ACCENT, bg, true), run(p.name.padEnd(10), P.fg, bg, lit), ...stepSegs(p.steps).map(([t, fg, bg, b]) => run(t, lit ? fg : P.border, bg, lit && b))]
+      const row: Row = [
+        run(lit ? ' › ' : '   ', ACCENT, bg, true),
+        run(p.name.padEnd(10), P.fg, bg, lit),
+        ...stepSegs(p.steps).map(([t, fg, bg, b]) => run(t, lit ? fg : P.border, bg, lit && b)),
+      ]
       const w = rlen(row)
       return [...row, run(' '.repeat(Math.max(0, 38 - w)), undefined, bg)]
     }),
     [],
   ]
   const under = HOME.slice(2, 22).map(rowOf)
-  const mid = windowOver(P, under, { title: 'Presets', lines, width: 40, columns: N, top: 12, left: 36 }).slice(0, 20)
-  return [copy(HOME[0]), copy(HOME[1]), ...toGrid(mid, N).map((row) => row.map((c) => ({ ...c, bg: c.bg ?? CANVAS }))), copy(HOME[22]), keyRow([['↑↓', 'choose'], ['↵', 'run on a file']], [['esc', 'close']])]
+  const mid = windowOver(P, under, {
+    title: 'Presets',
+    lines,
+    width: 40,
+    columns: N,
+    top: 12,
+    left: 36,
+  }).slice(0, 20)
+  return [
+    copy(HOME[0]),
+    copy(HOME[1]),
+    ...toGrid(mid, N).map((row) => row.map((c) => ({ ...c, bg: c.bg ?? CANVAS }))),
+    copy(HOME[22]),
+    keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'run on a file'],
+      ],
+      [['esc', 'close']],
+    ),
+  ]
 }
 
 /** M7: the block splits — the drop zone narrows, a presets panel stands at its right. */
@@ -417,7 +601,11 @@ function m7(staged: boolean): Grid {
     for (const r of [9, 12, 13]) dots(r, 7, 48)
     dots(10, 7, 13)
     dots(10, 42, 48)
-    const drop: Seg[] = [['↓', ACCENT, ZONE, true], ['  ', undefined, ZONE], ['Drop a file here', P.fg, ZONE, true]]
+    const drop: Seg[] = [
+      ['↓', ACCENT, ZONE, true],
+      ['  ', undefined, ZONE],
+      ['Drop a file here', P.fg, ZONE, true],
+    ]
     put(g[10] as Cell[], Z0 + Math.floor((Z1 - Z0 - len(drop)) / 2), drop)
     const kinds: Seg[] = [['Images · Video · Audio · Documents', P.dim, ZONE]]
     put(g[11] as Cell[], Z0 + Math.floor((Z1 - Z0 - len(kinds)) / 2), kinds)
@@ -428,10 +616,26 @@ function m7(staged: boolean): Grid {
     const W = 30
     const x = 13
     const edge = P.border
-    put(g[9] as Cell[], x, [['╭─ ', edge, ZONE], ['PNG', ACCENT, ZONE], [` ${'─'.repeat(W - 7)}╮`, edge, ZONE]])
-    put(g[10] as Cell[], x, [['│ ', edge, ZONE], ['IMG_2041.png'.padEnd(W - 3), P.fg, ZONE, true], ['│', edge, ZONE]])
-    put(g[11] as Cell[], x, [['│ ', edge, ZONE], ['3000×2000 · 16 MB'.padEnd(W - 3), P.fg, ZONE], ['│', edge, ZONE]])
-    put(g[12] as Cell[], x, [['╰', edge, ZONE], ['─'.repeat(W - 2), edge, ZONE], ['╯', edge, ZONE]])
+    put(g[9] as Cell[], x, [
+      ['╭─ ', edge, ZONE],
+      ['PNG', ACCENT, ZONE],
+      [` ${'─'.repeat(W - 7)}╮`, edge, ZONE],
+    ])
+    put(g[10] as Cell[], x, [
+      ['│ ', edge, ZONE],
+      ['IMG_2041.png'.padEnd(W - 3), P.fg, ZONE, true],
+      ['│', edge, ZONE],
+    ])
+    put(g[11] as Cell[], x, [
+      ['│ ', edge, ZONE],
+      ['3000×2000 · 16 MB'.padEnd(W - 3), P.fg, ZONE],
+      ['│', edge, ZONE],
+    ])
+    put(g[12] as Cell[], x, [
+      ['╰', edge, ZONE],
+      ['─'.repeat(W - 2), edge, ZONE],
+      ['╯', edge, ZONE],
+    ])
   }
   put(g[9] as Cell[], 55, [['Presets', P.dim, SHELF, true]])
   PRESETS.forEach((p, i) => {
@@ -447,7 +651,12 @@ const DONE_NEW = F3.done as Grid
 const TRAIL = ['JPEG', '80', 'Desktop', 'IMG_2041.jpg']
 
 /** A list row in the flows: the band and ▌ when lit, the quiet ↵ select at its far end. */
-function flowRow(name: string, lit: boolean, rest: Seg[] = [], o: { accent?: string; to?: number; at?: number } = {}): Cell[] {
+function flowRow(
+  name: string,
+  lit: boolean,
+  rest: Seg[] = [],
+  o: { accent?: string; to?: number; at?: number } = {},
+): Cell[] {
   const to = o.to ?? 76
   const r = listRow(name, lit, rest, { accent: o.accent ?? ACCENT, to, at: o.at ?? 24 })
   if (lit) put(r, to - len(SELECT) - 1, SELECT)
@@ -455,21 +664,43 @@ function flowRow(name: string, lit: boolean, rest: Seg[] = [], o: { accent?: str
 }
 
 /** The working screen as every job shows it: the header drifting, the card, one line, a clock. */
-function working(mode: ShellMode, answers: string[], current: string, cardKind: string, cardFacts: string, what: Seg[], clock: string): Grid {
+function working(
+  mode: ShellMode,
+  answers: string[],
+  current: string,
+  cardKind: string,
+  cardFacts: string,
+  what: Seg[],
+  clock: string,
+): Grid {
   const g = dup(F2.working as Grid)
   g[1] = header(mode, answers, current, 1.2)
   card(g, cardKind, 'IMG_2041.jpg', cardFacts, modePalette(DARK, mode).accent)
   const w = clear(g[8] as Cell[], 0, N, CANVAS)
   put(w, 6, what)
   put(w, 64, [[clock, P.border]])
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([], [['esc', 'stop'], ['ctrl-c', 'quit']]))
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [],
+      [
+        ['esc', 'stop'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 
 /* J1: edit mode, carried on */
 function j1Picker(stage: 'open' | 'after' | 'leave'): Grid {
   const g = dup(F3.editPicker as Grid)
-  g[1] = header('edit', stage === 'open' ? ['JPEG 80', 'IMG_2041.jpg'] : ['JPEG 80', 'IMG_2041.jpg', 'Resize'], stage === 'leave' ? 'Done' : 'Edit')
+  g[1] = header(
+    'edit',
+    stage === 'open' ? ['JPEG 80', 'IMG_2041.jpg'] : ['JPEG 80', 'IMG_2041.jpg', 'Resize'],
+    stage === 'leave' ? 'Done' : 'Edit',
+  )
   if (stage !== 'open') card(g, 'JPEG', 'IMG_2041.jpg', '1920×1280 · 402 KB', EDIT)
   const t = clear(g[8] as Cell[], 0, N, CANVAS)
   put(t, 4, [['Edit JPEG', EDIT, undefined, true]])
@@ -481,8 +712,27 @@ function j1Picker(stage: 'open' | 'after' | 'leave'): Grid {
       ['Save as preset', quiet(chainSegs(steps))],
       ['Keep IMG_2041.jpg', []],
     ]
-    rows.forEach(([n, rest], i) => (g[10 + i] = flowRow(n, i === 0, i === 0 ? chainSegs(steps) : rest, { accent: EDIT, at: 26 })))
-    ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↑↓', 'choose'], ['↵', 'select']], [['esc', 'back to edit'], ['ctrl-c', 'quit']]))
+    rows.forEach(
+      ([n, rest], i) =>
+        (g[10 + i] = flowRow(n, i === 0, i === 0 ? chainSegs(steps) : rest, {
+          accent: EDIT,
+          at: 26,
+        })),
+    )
+    ;(g[23] as Cell[]).splice(
+      0,
+      N,
+      ...keyRow(
+        [
+          ['↑↓', 'choose'],
+          ['↵', 'select'],
+        ],
+        [
+          ['esc', 'back to edit'],
+          ['ctrl-c', 'quit'],
+        ],
+      ),
+    )
     return g
   }
   const items: Array<[string, string]> = [
@@ -501,7 +751,20 @@ function j1Picker(stage: 'open' | 'after' | 'leave'): Grid {
     const tone = v.startsWith('✓') ? P.ok : n === 'Trim edges' ? P.faint : P.dim
     g[10 + i] = flowRow(n, lit, v ? [[v, tone]] : [], { accent: EDIT })
   })
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↑↓', 'choose'], ['↵', 'select']], [['esc', 'back'], ['ctrl-c', 'quit']]))
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'select'],
+      ],
+      [
+        ['esc', 'back'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 function j1Resize(): Grid {
@@ -515,11 +778,25 @@ function j2Home(): Grid {
   const g = dup(STAGED)
   // Compress lit: the user pressed 2.
   const tabs = clear(g[7] as Cell[], 4, 76, CANVAS)
-  const names: Array<[string, string]> = [['1', 'convert'], ['2', 'compress'], ['3', 'pdf'], ['4', 'edit'], ['5', 'transcribe'], ['6', 'colour']]
+  const names: Array<[string, string]> = [
+    ['1', 'convert'],
+    ['2', 'compress'],
+    ['3', 'pdf'],
+    ['4', 'edit'],
+    ['5', 'transcribe'],
+    ['6', 'colour'],
+  ]
   let x = 5
   for (const [n, t] of names) {
     const on = t === 'compress'
-    if (on) put(tabs, x - 1, [[' ', undefined, '#262626'], [n, COMPRESS, '#262626', true], [' ', undefined, '#262626'], [t, P.fg, '#262626', true], [' ', undefined, '#262626']])
+    if (on)
+      put(tabs, x - 1, [
+        [' ', undefined, '#262626'],
+        [n, COMPRESS, '#262626', true],
+        [' ', undefined, '#262626'],
+        [t, P.fg, '#262626', true],
+        [' ', undefined, '#262626'],
+      ])
     else put(tabs, x, [[n, P.border], [' '], [t, P.dim]])
     x += n.length + t.length + 4
   }
@@ -527,7 +804,20 @@ function j2Home(): Grid {
   // The steps so far in the card's top edge, at its right.
   const steps = chainSegs(['PNG', 'JPEG 80'], ZONE)
   put(g[9] as Cell[], 62 - len(steps), [[' ', undefined, ZONE], ...steps, [' ', undefined, ZONE]])
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↵', 'compress'], ['esc', 'clear']], [['1–6 ←→', 'mode'], ['ctrl-c', 'quit']]))
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [
+        ['↵', 'compress'],
+        ['esc', 'clear'],
+      ],
+      [
+        ['1–6 ←→', 'mode'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 function j2Slider(inConvert = false): Grid {
@@ -542,7 +832,10 @@ function j2Slider(inConvert = false): Grid {
   clear(s, 4, 30, '#515151')
   put(s, 30, [[' 60 ', INK, P.fg, true]])
   const msg = clear(g[13] as Cell[], 0, N, CANVAS)
-  put(msg, 4, [['412 KB', P.fg, undefined, true], ['  42% smaller', P.ok]])
+  put(msg, 4, [
+    ['412 KB', P.fg, undefined, true],
+    ['  42% smaller', P.ok],
+  ])
   return g
 }
 function j2Done(): Grid {
@@ -554,20 +847,45 @@ function j2Done(): Grid {
   const saved: Seg[] = [['15.6 MB saved · 97.5% smaller', P.ok, ZONE, true]]
   put(strip, 75 - len(saved), saved)
   const sizes = clear(g[15] as Cell[], 0, N, CANVAS)
-  put(sizes, 4, [['now ', P.dim], ['412 KB', P.ok, undefined, true]])
-  put(sizes, 67, [['was ', P.border], ['16 MB', P.fg, undefined, true]])
+  put(sizes, 4, [
+    ['now ', P.dim],
+    ['412 KB', P.ok, undefined, true],
+  ])
+  put(sizes, 67, [
+    ['was ', P.border],
+    ['16 MB', P.fg, undefined, true],
+  ])
   // The focus on Save as preset: its button lifted, Home back to its tint at rest.
   const b = g[19] as Cell[]
-  for (let i = 24; i <= 41; i++) for (const r of [18, 19, 20]) (g[r] as Cell[])[i] = { ...((g[r] as Cell[])[i] as Cell), bg: CAP }
-  put(b, 25, [['p', P.fg, CAP, true], [' Save as preset', P.fg, CAP, true]])
+  for (let i = 24; i <= 41; i++)
+    for (const r of [18, 19, 20])
+      (g[r] as Cell[])[i] = { ...((g[r] as Cell[])[i] as Cell), bg: CAP }
+  put(b, 25, [
+    ['p', P.fg, CAP, true],
+    [' Save as preset', P.fg, CAP, true],
+  ])
   return g
 }
 
 /* J3: one window, everything in it */
 const UNDER: Row[] = (F1.done as Grid).slice(2, 22).map((r, i) => (i === 18 ? [] : rowOf(r)))
 const INNER = 66
-const pad = (row: Row, n: number, bg?: string): Row => [...row, run(' '.repeat(Math.max(0, n - rlen(row))), undefined, bg)]
-function opRow(name: string, value: string, o: { on?: boolean; lit?: boolean; dead?: boolean; button?: boolean; spin?: boolean; faint?: boolean } = {}): Row {
+const pad = (row: Row, n: number, bg?: string): Row => [
+  ...row,
+  run(' '.repeat(Math.max(0, n - rlen(row))), undefined, bg),
+]
+function opRow(
+  name: string,
+  value: string,
+  o: {
+    on?: boolean
+    lit?: boolean
+    dead?: boolean
+    button?: boolean
+    spin?: boolean
+    faint?: boolean
+  } = {},
+): Row {
   const bg = o.lit ? P.panelBand : undefined
   const tone = o.faint ? P.faint : undefined
   const head: Row = [
@@ -606,7 +924,12 @@ function j3Lines(o: { compress?: string; lit?: number; busy?: boolean; foot: Row
     [],
   ]
 }
-const overDone = (title: string, lines: Row[], under: Row[] = UNDER, o: { width?: number; top?: number; left?: number } = {}): Row[] =>
+const overDone = (
+  title: string,
+  lines: Row[],
+  under: Row[] = UNDER,
+  o: { width?: number; top?: number; left?: number } = {},
+): Row[] =>
   windowOver(P, under, {
     title,
     lines,
@@ -632,27 +955,99 @@ const fileFoot = (bytes: string, change: string): Row => [
   run(`   ${change}`, P.ok, undefined, true),
 ]
 function j3Open(): Grid {
-  return winScreen(overDone('Continue editing', j3Lines({ lit: 2, foot: [[run('   '), run('✓ ', P.ok, undefined, true), run('IMG_2041.jpg', P.fg, undefined, true), run('   708 KB', P.fg, undefined, true)]] })), keyRow([['↑↓', 'choose'], ['↵', 'select']], [['esc', 'done']]))
+  return winScreen(
+    overDone(
+      'Continue editing',
+      j3Lines({
+        lit: 2,
+        foot: [
+          [
+            run('   '),
+            run('✓ ', P.ok, undefined, true),
+            run('IMG_2041.jpg', P.fg, undefined, true),
+            run('   708 KB', P.fg, undefined, true),
+          ],
+        ],
+      }),
+    ),
+    keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'select'],
+      ],
+      [['esc', 'done']],
+    ),
+  )
 }
 function j3Sub(): Grid {
-  const lines = j3Lines({ lit: 2, foot: [[run('   '), run('✓ ', P.ok, undefined, true), run('IMG_2041.jpg', P.fg, undefined, true), run('   708 KB', P.fg, undefined, true)]] })
+  const lines = j3Lines({
+    lit: 2,
+    foot: [
+      [
+        run('   '),
+        run('✓ ', P.ok, undefined, true),
+        run('IMG_2041.jpg', P.fg, undefined, true),
+        run('   708 KB', P.fg, undefined, true),
+      ],
+    ],
+  })
   const base = overDone('Continue editing', lines)
   const top = Math.max(0, Math.floor((21 - (lines.length + 2)) / 2) - 1) + 1 + 1 + 2 + 1
   const sub: Row[] = [
     [],
-    pad([run(' › ', ACCENT, P.panelBand, true), run('To a target size   ', P.fg, P.panelBand, true), run(' 300 ', P.fg, P.band, true), run(' ', undefined, P.fg), run(' KB', P.dim, P.panelBand)], 40, P.panelBand),
+    pad(
+      [
+        run(' › ', ACCENT, P.panelBand, true),
+        run('To a target size   ', P.fg, P.panelBand, true),
+        run(' 300 ', P.fg, P.band, true),
+        run(' ', undefined, P.fg),
+        run(' KB', P.dim, P.panelBand),
+      ],
+      40,
+      P.panelBand,
+    ),
     pad([run('   '), run('By quality', P.dim)], 40),
     [],
   ]
-  const mid = windowOver(P, base, { title: 'Compress', lines: sub, width: 42, columns: N, top, left: Math.floor((N - 68) / 2) + 1 + 3 + 2 + 19 - 2 }).slice(0, 20)
-  return winScreen(mid, keyRow([['0–9', 'size'], ['↵', 'select']], [['esc', 'back']]))
+  const mid = windowOver(P, base, {
+    title: 'Compress',
+    lines: sub,
+    width: 42,
+    columns: N,
+    top,
+    left: Math.floor((N - 68) / 2) + 1 + 3 + 2 + 19 - 2,
+  }).slice(0, 20)
+  return winScreen(
+    mid,
+    keyRow(
+      [
+        ['0–9', 'size'],
+        ['↵', 'select'],
+      ],
+      [['esc', 'back']],
+    ),
+  )
 }
 function j3Busy(): Grid {
   const foot: Row[] = [
-    [run('   '), run('PNG', P.dim), run(' ── ', P.faint), run('✓ ', P.ok, undefined, true), run('JPEG 80', P.fg, undefined, true), run(' ── ', P.faint), run('⠹ ', ACCENT, undefined, true), run('under 300 KB', ACCENT, undefined, true), run(' ── ', P.faint), run('IMG_2041.jpg', P.faint)],
+    [
+      run('   '),
+      run('PNG', P.dim),
+      run(' ── ', P.faint),
+      run('✓ ', P.ok, undefined, true),
+      run('JPEG 80', P.fg, undefined, true),
+      run(' ── ', P.faint),
+      run('⠹ ', ACCENT, undefined, true),
+      run('under 300 KB', ACCENT, undefined, true),
+      run(' ── ', P.faint),
+      run('IMG_2041.jpg', P.faint),
+    ],
     [run('                         '), run('trying quality 41 · 3 of 8', P.dim)],
   ]
-  return winScreen(overDone('Continue editing', j3Lines({ compress: 'under 300 KB', busy: true, foot })), keyRow([], [['esc', 'stop']]))
+  return winScreen(
+    overDone('Continue editing', j3Lines({ compress: 'under 300 KB', busy: true, foot })),
+    keyRow([], [['esc', 'stop']]),
+  )
 }
 function j3Leave(): Grid {
   const foot: Row[] = [
@@ -661,8 +1056,21 @@ function j3Leave(): Grid {
     opRow('Save as preset', '', { lit: true, button: true }),
     opRow('Keep IMG_2041.jpg', ''),
   ]
-  const lines = j3Lines({ compress: 'under 300 KB', lit: 99, foot }).map((row, i) => (i >= 1 && i <= 7 ? row.map((r) => (r.fg && r.fg !== ACCENT ? { ...r, fg: P.faint, bold: false } : r)) : row))
-  return winScreen(overDone('Continue editing', lines), keyRow([['↑↓', 'choose'], ['↵', 'select']], [['esc', 'back to steps']]))
+  const lines = j3Lines({ compress: 'under 300 KB', lit: 99, foot }).map((row, i) =>
+    i >= 1 && i <= 7
+      ? row.map((r) => (r.fg && r.fg !== ACCENT ? { ...r, fg: P.faint, bold: false } : r))
+      : row,
+  )
+  return winScreen(
+    overDone('Continue editing', lines),
+    keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'select'],
+      ],
+      [['esc', 'back to steps']],
+    ),
+  )
 }
 
 /* J4: one question per screen, as a convert asks */
@@ -683,8 +1091,24 @@ function j4Next(): Grid {
     ['Sharpen', 'not added'],
     ['Remove background', 'not added'],
   ]
-  items.forEach(([n, v], i) => (g[10 + i] = flowRow(n, i === 0, v ? [[v, v === 'not added' ? P.faint : P.border]] : [])))
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↑↓', 'choose'], ['↵', 'select']], [['esc', 'back to Done'], ['ctrl-c', 'quit']]))
+  items.forEach(
+    ([n, v], i) =>
+      (g[10 + i] = flowRow(n, i === 0, v ? [[v, v === 'not added' ? P.faint : P.border]] : [])),
+  )
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'select'],
+      ],
+      [
+        ['esc', 'back to Done'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 function j4Result(): Grid {
@@ -696,14 +1120,32 @@ function j4Result(): Grid {
   const steps = chainSegs(['PNG', 'JPEG 80', 'quality 60'])
   put(t, R - len(steps), steps)
   for (let i = 9; i <= 21; i++) clear(g[i] as Cell[], 0, N, CANVAS)
-  put(g[9] as Cell[], R - 22, [['708 KB', P.dim], ['  →  ', P.faint], ['412 KB', P.fg, undefined, true], ['  −42%', P.ok]])
+  put(g[9] as Cell[], R - 22, [
+    ['708 KB', P.dim],
+    ['  →  ', P.faint],
+    ['412 KB', P.fg, undefined, true],
+    ['  −42%', P.ok],
+  ])
   const items: Array<[string, Seg[]]> = [
     ['Save as preset', []],
     ['Another step', []],
     ['Done', [['keep IMG_2041.jpg', P.border]]],
   ]
   items.forEach(([n, rest], i) => (g[11 + i] = flowRow(n, i === 0, rest)))
-  ;(g[23] as Cell[]).splice(0, N, ...keyRow([['↑↓', 'choose'], ['↵', 'select']], [['esc', 'undo the step'], ['ctrl-c', 'quit']]))
+  ;(g[23] as Cell[]).splice(
+    0,
+    N,
+    ...keyRow(
+      [
+        ['↑↓', 'choose'],
+        ['↵', 'select'],
+      ],
+      [
+        ['esc', 'undo the step'],
+        ['ctrl-c', 'quit'],
+      ],
+    ),
+  )
   return g
 }
 
@@ -730,7 +1172,8 @@ const concepts: PageConcept[] = [
   },
   {
     id: 'T1',
-    section: 'More ways to draw the tabs — the same two lists, tab switches, never taller than today',
+    section:
+      'More ways to draw the tabs — the same two lists, tab switches, never taller than today',
     name: 'Rule tabs, as /about has',
     idea: 'MY PICK. The title itself becomes the first tab: “Convert to” and “Presets 3” on a rule, heavy in the mode colour under the one shown — the tabs /about already uses. The rule takes the blank row under the title, so no row is added. A video’s boxes sit under the same tabs.',
     html: `${pair(fr(t1('formats'), 'formats'), fr(t1('presets'), 'tab — presets'))}${pair(fr(t1('formats', true), 'a video'), fr(t1('presets', true), 'a video — presets'))}`,
@@ -770,7 +1213,8 @@ const concepts: PageConcept[] = [
   {
     id: 'M1',
     tab: '2 · Presets on home',
-    section: 'OPTIONS — where presets live on home itself, not in the field. Each drawn idle and with a photo staged (or open)',
+    section:
+      'OPTIONS — where presets live on home itself, not in the field. Each drawn idle and with a photo staged (or open)',
     name: 'A seventh tab',
     idea: 'presets joins the modes. Shown, its list stands in the drop zone; drop a file and the lit preset runs on it. Seven tabs only just fit 80 columns.',
     html: pair(fr(m1(false), 'idle'), fr(m1(true), '7 — presets')),
@@ -816,7 +1260,8 @@ const concepts: PageConcept[] = [
   {
     id: 'J1',
     tab: '3 · Continue editing, end to end',
-    section: 'Every journey starts on Done: e Continue editing. Each option is the whole way through — choosing, the step working, and leaving',
+    section:
+      'Every journey starts on Done: e Continue editing. Each option is the whole way through — choosing, the step working, and leaving',
     earlier: 'potential',
     name: 'Edit mode, carried on (round two’s K1)',
     idea: 'MY PICK. e opens edit’s own picker on the file just made, steps so far at the top right. Each operation runs its own screen and the working screen every job shows, then comes back with a ✓. Done (the first row) ends it: two rows, Save as preset or Keep IMG_2041.jpg.',
@@ -824,7 +1269,21 @@ const concepts: PageConcept[] = [
       [DONE_NEW, '1 · Done — e'],
       [j1Picker('open'), '2 · edit’s picker, on the JPEG'],
       [j1Resize(), '3 · Resize, its own screen'],
-      [working('edit', ['JPEG 80', 'IMG_2041.jpg', 'Resize', '1920 wide'], 'Resizing', 'JPEG', '3000×2000 · 708 KB', [['Resizing', P.fg, undefined, true], [' to 1920 wide', P.dim]], '0.8s'), '4 · working, as every job'],
+      [
+        working(
+          'edit',
+          ['JPEG 80', 'IMG_2041.jpg', 'Resize', '1920 wide'],
+          'Resizing',
+          'JPEG',
+          '3000×2000 · 708 KB',
+          [
+            ['Resizing', P.fg, undefined, true],
+            [' to 1920 wide', P.dim],
+          ],
+          '0.8s',
+        ),
+        '4 · working, as every job',
+      ],
       [j1Picker('after'), '5 · back, ✓ Resize'],
       [j1Picker('leave'), '6 · Done — save or keep'],
     ),
@@ -837,7 +1296,21 @@ const concepts: PageConcept[] = [
       [DONE_NEW, '1 · Done — e'],
       [j2Home(), '2 · home, IMG_2041.jpg staged — 2'],
       [j2Slider(), '3 · compress, as ever'],
-      [working('compress', ['By quality', '60', 'Desktop', 'IMG_2041-small.jpg'], 'Compressing', 'JPEG', '3000×2000 · 708 KB', [['Compressing', P.fg, undefined, true], [' at quality 60', P.dim]], '1.1s'), '4 · working'],
+      [
+        working(
+          'compress',
+          ['By quality', '60', 'Desktop', 'IMG_2041-small.jpg'],
+          'Compressing',
+          'JPEG',
+          '3000×2000 · 708 KB',
+          [
+            ['Compressing', P.fg, undefined, true],
+            [' at quality 60', P.dim],
+          ],
+          '1.1s',
+        ),
+        '4 · working',
+      ],
       [j2Done(), '5 · Done — the steps, p to save'],
     ),
   },
@@ -861,7 +1334,21 @@ const concepts: PageConcept[] = [
       [DONE_NEW, '1 · Done — e'],
       [j4Next(), '2 · Next step'],
       [j2Slider(true), '3 · its own screen'],
-      [working('convert', [...TRAIL, 'Compress', '60'], 'Compressing', 'JPEG', '3000×2000 · 708 KB', [['Compressing', P.fg, undefined, true], [' at quality 60', P.dim]], '1.1s'), '4 · working'],
+      [
+        working(
+          'convert',
+          [...TRAIL, 'Compress', '60'],
+          'Compressing',
+          'JPEG',
+          '3000×2000 · 708 KB',
+          [
+            ['Compressing', P.fg, undefined, true],
+            [' at quality 60', P.dim],
+          ],
+          '1.1s',
+        ),
+        '4 · working',
+      ],
       [j4Result(), '5 · the result — save, another, done'],
     ),
   },

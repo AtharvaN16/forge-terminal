@@ -43,7 +43,10 @@ const APP: Array<Credit & { packages: string[] }> = [
 const NATIVE: Credit[] = [{ name: '@hyzyla/pdfium', licence: 'MIT' }]
 
 /** Data compiled into the source rather than a package, so no licence file names it. */
-const DATA: Credit[] = [{ name: 'xkcd colour survey', licence: 'CC0-1.0' }]
+const DATA: Credit[] = [
+  { name: 'Noto Sans', licence: 'OFL-1.1' },
+  { name: 'xkcd colour survey', licence: 'CC0-1.0' },
+]
 
 /**
  * Every package in the build's licence file: its sections start

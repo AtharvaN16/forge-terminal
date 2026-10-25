@@ -10,11 +10,13 @@ import type { ProbeJson, RunJson } from '../../src/core/report-data.js'
 import { createForgeServer } from '../../src/mcp/server.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import { makeJpeg, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
-import { pinPlatform } from '../helpers/platform.js'
+import { pinArch, pinPlatform } from '../helpers/platform.js'
 import { runForge } from '../helpers/run-forge.js'
 
-// The catalogue offers these extensions on macOS; see pinPlatform.
+// The catalogue offers these extensions on macOS; see pinPlatform. Apple
+// silicon's, whose boost (1.0.0) makes no 3x, on whatever chip runs the tests.
 pinPlatform('darwin')
+pinArch('arm64')
 const fake = fakeExtensions()
 let home: string
 beforeEach(async () => {

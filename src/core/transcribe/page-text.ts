@@ -239,7 +239,7 @@ export function pagePlain(doc: PageText): string {
   return pages.length ? `${pages.join('\n\n')}\n` : ''
 }
 
-// HTML, for Word and PDF (the helper's `render`) and the clipboard's rich copy
+// HTML, for Word and PDF set by Apple's helper (`render`) and the clipboard's rich copy
 
 const TABLE_STYLE =
   'table{border-collapse:collapse;width:100%;margin:0 0 8pt}th,td{border:1px solid #c7c7cc;padding:2pt 6pt;text-align:left;vertical-align:top}ol{margin:0 0 8pt}'

@@ -18,6 +18,7 @@ const say = (o) => console.log(JSON.stringify(o))
 if (mode === 'ok') say({ ok: true, width: 3, height: 4, ms: 5 })
 else if (mode === 'no-subject') { say({ ok: false, code: 'no-subject', message: 'none' }); process.exit(2) }
 else if (mode === 'too-large') { say({ ok: false, code: 'boost-too-large', message: 'big' }); process.exit(1) }
+else if (mode === 'too-slow') { say({ ok: false, code: 'boost-too-slow', message: 'slow', seconds: 420 }); process.exit(1) }
 else if (mode === 'runtime') { say({ ok: false, code: 'runtime-error', message: 'kaboom' }); process.exit(1) }
 else if (mode === 'garbage') { console.log('not json at all') }
 else if (mode === 'noisy') { say({ loading: 'model' }); say({ ok: true, width: 7, height: 8, ms: 9 }) }
@@ -93,6 +94,33 @@ describe('runExtension', () => {
     expect(await codeOf(run('no-subject'))).toBe('no-subject')
     expect(await codeOf(run('too-large'))).toBe('boost-too-large')
     expect(await codeOf(run('runtime'))).toBe('conversion-failed')
+  })
+
+  it('maps a run that would take minutes to its own error, saying how long', async () => {
+    expect(await codeOf(run('too-slow'))).toBe('boost-too-slow')
+    const detail = async (scale: string) => {
+      try {
+        await runExtension(ext, ['--in', '/x/in.png', '--scale', scale, '--mode', 'too-slow'], {
+          subject: '/photos/banner.png',
+        })
+      } catch (e) {
+        return isForgeError(e) ? [e.title, e.detail, e.hint] : [String(e)]
+      }
+      return ['resolved']
+    }
+    const mac = process.platform === 'darwin'
+    const where = mac ? 'Mac' : process.platform === 'win32' ? 'PC' : 'computer'
+    expect(await detail('2')).toEqual([
+      'Too slow to boost',
+      `banner.png would take about 7 minutes to boost on this ${where}.`,
+      'Try a smaller photo.',
+    ])
+    // Sharpen is the same job at 1x, and says so.
+    expect(await detail('1')).toEqual([
+      'Too slow to sharpen',
+      `banner.png would take about 7 minutes to sharpen on this ${where}.`,
+      'Try a smaller photo.',
+    ])
   })
 
   it('reads the result from the last JSON line, past earlier noise', async () => {

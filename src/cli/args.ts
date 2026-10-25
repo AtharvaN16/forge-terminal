@@ -715,14 +715,21 @@ function colourArg(raw: string | undefined): Rgb {
  * Claimed before Commander, like `probe`: Commander would read the word as a
  * filename. `--json` is read by `wantsJson`; `--svg` and `--inside <hex>` are
  * the only flags these take. `--svg` names this OS's clipboard command:
- * pbcopy on a Mac, clip on Windows, wl-copy (wl-clipboard) on Linux.
+ * pbcopy on a Mac, clip on Windows, wl-copy (wl-clipboard) on Linux's Wayland and
+ * xclip on its X11.
  */
 export function colourUsage(
   which: 'palette' | 'scale',
   platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  // Linux: Wayland's wl-copy, or X11's xclip where there is no Wayland (its
+  // clipboard, not the primary selection), said shorter so the line keeps to 80.
+  const x11 = platform === 'linux' && !env.WAYLAND_DISPLAY && Boolean(env.DISPLAY)
   const copier = platform === 'win32' ? 'clip' : platform === 'linux' ? 'wl-copy' : 'pbcopy'
-  const svg = `  --svg             a card of swatches; pipe to ${copier} and paste into Figma`
+  const svg = x11
+    ? '  --svg             a card of swatches; pipe to xclip -sel c, paste into Figma'
+    : `  --svg             a card of swatches; pipe to ${copier} and paste into Figma`
   if (which === 'scale')
     return `Usage: forge scale <colour> [--json] [--svg]
 

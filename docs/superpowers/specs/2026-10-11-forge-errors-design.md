@@ -92,7 +92,7 @@ Filled in for the errors a typed or dropped path can produce:
 | `encrypted-source` | `<name> is password-protected.` |
 | `heic-decoder-unavailable` | `HEIC needs sips, which could not be run.` |
 | `raw-decoder-unavailable` (Mac) | `RAW needs sips, which could not be run.` |
-| `raw-decoder-unavailable` (Windows) | `RAW photos open on a Mac only.` |
+| `raw-decoder-unavailable` (Windows, Linux) | `RAW needs the raw extension.` |
 | `raw-decoder-unavailable` (camera) | `macOS cannot read RAW photos from this camera.` |
 
 `<name>` is the basename, as in the details today.

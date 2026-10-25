@@ -55,14 +55,14 @@ describe('loadCredits', () => {
 })
 
 describe('extensionCredits', () => {
-  it('credits Remove background with what it is on each OS: Apple Vision on a Mac, U²-Net-p elsewhere', () => {
+  it('credits Remove background with what it is on each OS: Apple Vision on a Mac, BiRefNet-lite elsewhere', () => {
     const cutout = CATALOG.find((e) => e.id === 'remove-background')
     if (!cutout) throw new Error('no remove-background in the catalogue')
     const names = (os: NodeJS.Platform) => extensionCredits(cutout, os).map((c) => c.name)
     expect(names('darwin')).toContain('Apple Vision')
     for (const os of ['win32', 'linux'] as const) {
       expect(extensionCredits(cutout, os)).toEqual([
-        { name: 'U²-Net-p (via rembg)', licence: 'Apache-2.0', does: 'Remove background' },
+        { name: 'BiRefNet-lite', licence: 'MIT', does: 'Remove background' },
         { name: 'ONNX Runtime', licence: 'MIT', does: 'Remove background' },
       ])
     }

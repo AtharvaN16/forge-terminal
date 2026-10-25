@@ -36,7 +36,11 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     label: 'AVIF',
     extensions: ['.avif'],
     hasAlpha: true,
-    animatable: true,
+    // AVIF can hold a sequence, but Sharp's encoder (libvips heifsave) writes
+    // one still: handed an animation, it wrote every frame stacked into one
+    // tall picture (tests/parity/format-matrix.test.ts, gif → avif). So an
+    // animation becomes its first frame, with the warning that says so.
+    animatable: false,
     lossy: true,
     hint: 'smallest',
     defaultQuality: 50,
@@ -50,9 +54,9 @@ export const FORMATS: Record<FormatId, FormatSpec> = {
     lossy: true,
     hint: 'Apple photos',
   },
-  // Each maker's own format, one id: macOS decodes them all (engines/raw.ts),
-  // and none is ever written. Extensions only shortlist a folder's files;
-  // what a file is comes from its bytes.
+  // Each maker's own format, one id: macOS decodes them all, the raw extension
+  // elsewhere (engines/raw.ts), and none is ever written. Extensions only
+  // shortlist a folder's files; what a file is comes from its bytes.
   raw: {
     id: 'raw',
     label: 'RAW',

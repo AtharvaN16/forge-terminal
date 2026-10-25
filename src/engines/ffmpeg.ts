@@ -115,6 +115,8 @@ async function resolveFfmpeg(): Promise<Ffmpeg | undefined> {
 
 let found: Promise<Ffmpeg | undefined> | undefined
 let forced: { value: Ffmpeg | undefined } | null = null
+/** What the last look found, for a question asked without waiting (`knownFfmpeg`). */
+let last: Ffmpeg | undefined
 
 /** Where ffmpeg and ffprobe are, or undefined when this machine has neither. */
 export function findFfmpeg(): Promise<Ffmpeg | undefined> {
@@ -124,15 +126,26 @@ export function findFfmpeg(): Promise<Ffmpeg | undefined> {
   const look = found ?? resolveFfmpeg()
   found = look.then((t) => {
     if (!t) found = undefined
+    last = t
     return t
   })
   return found
+}
+
+/**
+ * The ffmpeg found already, without looking: undefined until `findFfmpeg`
+ * has settled once. Probing a video or sound file finds it, so whatever
+ * asks about a probed file has its answer.
+ */
+export function knownFfmpeg(): Ffmpeg | undefined {
+  return forced ? forced.value : last
 }
 
 /** Only for tests: pretend ffmpeg is at `value` (undefined: absent); `null` restores real detection. */
 export function forceFfmpegForTests(value: Ffmpeg | undefined | null): void {
   forced = value === null ? null : { value }
   found = undefined
+  last = undefined
 }
 
 /** The facts of a video or sound file, read by ffprobe. Throws when ffprobe cannot read it. */

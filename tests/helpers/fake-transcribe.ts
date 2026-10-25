@@ -40,7 +40,15 @@ if (a.echo) {
   fs.writeFileSync(args[a.echo.to], a.echo.prefix + fs.readFileSync(args[a.echo.from], 'utf8'))
 }
 for (const line of a.lines) process.stdout.write(JSON.stringify(line) + '\\n')
-if (a.hang) setInterval(() => {}, 1000)
+// Waits to be killed, but never outlives the process that ran it: a test that
+// ends mid-run would otherwise leave it behind for good (and CI waiting on it).
+if (a.hang) {
+  const parent = process.ppid
+  setInterval(() => {
+    try { process.kill(parent, 0) } catch { process.exit(0) }
+    if (process.ppid !== parent) process.exit(0)
+  }, 250)
+}
 else process.exitCode = a.exit ?? 0
 `
   await writeFile(path, script)

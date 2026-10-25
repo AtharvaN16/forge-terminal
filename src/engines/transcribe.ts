@@ -10,7 +10,7 @@
  * - notes: Apple's on-device model, during Apple's hearing, nowhere else;
  * - reading pictures and PDFs: Apple's Vision, through the Swift helper;
  * - Word and PDF: AppKit through the Swift helper on a Mac that runs it;
- *   elsewhere Word is written here and PDF is not offered (`outputsFor`).
+ *   elsewhere both are written here (`pagesDocx`, `pagesPdf`).
  *
  * This file only picks the engine for a job, runs it, and turns its JSON
  * lines into data and `ForgeError`s.
@@ -28,10 +28,10 @@ import {
   languageUnsupported,
   noSound,
   readUnavailable,
-  renderUnavailable,
   transcribeUnavailable,
   untranscribable,
 } from '../core/errors.js'
+import { isRtl } from '../core/transcribe/bidi.js'
 import { DEFAULT_DETAIL, type Detail } from '../core/transcribe/detail.js'
 import type { Transcription } from '../core/transcribe/markdown.js'
 import {
@@ -47,10 +47,13 @@ import {
   pagePlain,
   type ReadPage,
 } from '../core/transcribe/page-text.js'
+import { langRuns } from '../core/transcribe/scripts.js'
+import type { FormatId } from '../core/types.js'
 import { machineName } from '../extensions/catalog.js'
 import { installed } from '../extensions/paths.js'
 import { findFfmpeg } from './ffmpeg.js'
 import { loadDocx } from './libs.js'
+import { pagesPdf } from './pages-pdf.js'
 
 /** What the whisper helper can lack: whisper.cpp's whisper-cli, or ffmpeg. */
 export type TranscribeMissing = 'whisper' | 'ffmpeg'
@@ -65,8 +68,6 @@ export interface TranscribeStatus {
   notes: 'available' | 'off' | 'unsupported'
   /** Whether it reads the text of pictures and PDFs (spec 2026-10-23-extract-text-design §5.1). */
   read: boolean
-  /** Whether Apple's helper sets Word and PDF here. Without it Word is written by Forge and PDF is not offered. */
-  render: boolean
   /** Without speech, what the whisper helper is missing: what to install. */
   missing?: TranscribeMissing[]
 }
@@ -347,8 +348,8 @@ const MISSING: readonly TranscribeMissing[] = ['whisper', 'ffmpeg']
 
 /**
  * What this machine can do, job by job, or undefined when no helper is here
- * at all. Notes come only with Apple's hearing; reading and Apple's Word and
- * PDF only with Apple's helper.
+ * at all. Notes come only with Apple's hearing; reading only with Apple's
+ * helper. Word and PDF are written everywhere, so they are not asked of it.
  */
 export async function transcribeStatus(
   opts: { locale?: string } = {},
@@ -356,7 +357,9 @@ export async function transcribeStatus(
   const here = helpers()
   if (here.apple === undefined && here.whisper === undefined) return undefined
   const apple = await appleStatus(opts.locale)
-  const base = { read: apple?.read === true, render: apple !== undefined }
+  // Reading is Apple's where it reads, else the read-text extension's once it is installed.
+  const read = apple?.read === true || (await installed('read-text')) !== undefined
+  const base = { read }
   if (apple?.speech === true)
     return {
       speech: true,
@@ -395,6 +398,15 @@ export async function whisperUseful(
   return (await transcribeStatus().catch(() => undefined))?.hears !== 'apple'
 }
 
+/** What Apple's helper does here: hear, read pictures and PDFs. Off a Mac, neither. */
+export async function appleDoes(
+  platform: NodeJS.Platform = process.platform,
+): Promise<{ hears: boolean; reads: boolean }> {
+  if (platform !== 'darwin') return { hears: false, reads: false }
+  const apple = await appleStatus().catch(() => undefined)
+  return { hears: apple?.speech === true, reads: apple?.read === true }
+}
+
 /** The helper that hears, or why there is none. */
 async function hearer(): Promise<Helper> {
   const helper = await hearingHelper()
@@ -402,9 +414,92 @@ async function hearer(): Promise<Helper> {
   return helper
 }
 
+/**
+ * The containers Apple's recogniser reads itself (AVFoundation). Any other
+ * video or sound Forge reads — MKV, WebM, AVI, FLAC, OGG, Opus — reaches it
+ * as a WAV ffmpeg made, so a Mac transcribes every format whisper does
+ * elsewhere (whisper's helper decodes through ffmpeg already).
+ */
+const APPLE_HEARS: ReadonlySet<FormatId> = new Set(['mp4', 'mov', 'm4a', 'mp3', 'wav', 'aiff'])
+
+/** A format Apple's recogniser cannot read, and the ffmpeg that can, by the file's content. */
+async function needsSoundFor(
+  helper: Helper,
+  path: string,
+): Promise<{ tools: NonNullable<Awaited<ReturnType<typeof findFfmpeg>>> } | undefined> {
+  if (helper.kind !== 'apple') return undefined
+  const { probe } = await import('./registry.js')
+  const info = await probe(path).catch(() => undefined)
+  if (info === undefined || info.kind !== 'media' || APPLE_HEARS.has(info.format)) return undefined
+  const tools = await findFfmpeg().catch(() => undefined)
+  // Without ffmpeg the helper is asked as it is, and says it cannot read it.
+  return tools ? { tools } : undefined
+}
+
+/** The sound of `path` as a 16 kHz mono WAV in a temporary folder; `cleanup` removes it. */
+async function soundOf(
+  path: string,
+  ffmpeg: string,
+  signal?: AbortSignal,
+): Promise<{ path: string; cleanup: () => Promise<void> }> {
+  const dir = await mkdtemp(join(tmpdir(), 'forge-sound-'))
+  const cleanup = () => rm(dir, { recursive: true, force: true })
+  const out = join(dir, 'sound.wav')
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        ffmpeg,
+        [
+          '-nostdin',
+          '-v',
+          'error',
+          '-i',
+          path,
+          '-vn',
+          '-ac',
+          '1',
+          '-ar',
+          '16000',
+          '-c:a',
+          'pcm_s16le',
+          out,
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
+      )
+      let err = ''
+      child.stderr?.setEncoding('utf8').on('data', (d: string) => {
+        err += d
+      })
+      const onAbort = () => child.kill('SIGKILL')
+      signal?.addEventListener('abort', onAbort, { once: true })
+      child.on('error', reject)
+      child.on('close', (code) => {
+        signal?.removeEventListener('abort', onAbort)
+        if (signal?.aborted) return reject(signal.reason ?? new Error('aborted'))
+        if (code === 0) resolve()
+        else reject(conversionFailed(path, new Error(`ffmpeg: ${err.trim()}`)))
+      })
+    })
+    return { path: out, cleanup }
+  } catch (e) {
+    await cleanup()
+    throw e
+  }
+}
+
 /** The sound's length; refuses a file with no sound or one the recogniser cannot read. */
 export async function probeSound(path: string): Promise<{ seconds: number }> {
-  const r = await exec(await hearer(), ['probe', path], path)
+  const helper = await hearer()
+  const via = await needsSoundFor(helper, path)
+  if (via) {
+    // ffprobe measures it as it is; the WAV is made once, when it is heard.
+    const { probeMedia } = await import('./ffmpeg.js')
+    const facts = await probeMedia(path, via.tools).catch(() => undefined)
+    if (facts === undefined) throw untranscribable(path)
+    if (facts.audio === undefined) throw noSound(path)
+    return { seconds: facts.duration }
+  }
+  const r = await exec(helper, ['probe', path], path)
   return { seconds: Number(r.seconds) }
 }
 
@@ -419,16 +514,38 @@ export async function runTranscribe(
     onEvent?: (e: TranscribeEvent) => void
   },
 ): Promise<Transcription & { locale: string }> {
+  const helper = await hearer()
+  const via = await needsSoundFor(helper, path)
+  const sound = via ? await soundOf(path, via.tools.ffmpeg, opts.signal) : undefined
+  try {
+    return await transcribeWith(helper, sound?.path ?? path, path, opts)
+  } finally {
+    await sound?.cleanup()
+  }
+}
+
+async function transcribeWith(
+  helper: Helper,
+  heard: string,
+  path: string,
+  opts: {
+    notes: boolean
+    detail?: Detail | undefined
+    locale?: string | undefined
+    signal?: AbortSignal | undefined
+    onEvent?: (e: TranscribeEvent) => void
+  },
+): Promise<Transcription & { locale: string }> {
   const args = [
     'run',
-    path,
+    heard,
     ...(opts.locale ? ['--locale', opts.locale] : []),
     ...(opts.notes ? ['--notes'] : []),
     ...(opts.notes && opts.detail && opts.detail !== DEFAULT_DETAIL
       ? ['--detail', opts.detail]
       : []),
   ]
-  const r = await exec(await hearer(), args, path, {
+  const r = await exec(helper, args, path, {
     signal: opts.signal,
     onLine: (line) => {
       const e = eventOf(line)
@@ -463,6 +580,8 @@ export async function runRead(
     onEvent?: (e: ReadEvent) => void
   } = {},
 ): Promise<ReadPage[]> {
+  // Apple's reader where it reads; else the read-text extension, which answers the same.
+  if ((await appleStatus())?.read !== true) return readWithExtension(path, opts)
   const args = ['read', path, ...(opts.language ? ['--language', opts.language] : [])]
   const r = await exec(appleHelper(readUnavailable), args, path, {
     signal: opts.signal,
@@ -474,13 +593,123 @@ export async function runRead(
   return (r.pages ?? []) as ReadPage[]
 }
 
-/** Whether Apple's helper is here and answers: it alone sets HTML as Word or PDF. */
-async function appleRenders(): Promise<boolean> {
-  return helpers().apple !== undefined && (await appleStatus()) !== undefined
+/** A page is read at this many dots per inch, and no side over READ_MAX_SIDE pixels. */
+const READ_DPI = 200
+const READ_MAX_SIDE = 4000
+
+/** Why nothing reads here, in this machine's words: the extension to add, where there is one. */
+export async function readRefusal(): Promise<ForgeError> {
+  return readUnavailable(await readTextOffered())
+}
+
+/** Whether the read-text extension is offered for this machine. */
+async function readTextOffered(): Promise<boolean> {
+  const { catalogEntry, assetFor } = await import('../extensions/catalog.js')
+  const entry = catalogEntry('read-text')
+  return entry !== undefined && assetFor(entry) !== undefined
+}
+
+/**
+ * The text of a picture or PDF through the read-text extension (spec
+ * 2026-10-23-extract-text-design §6): each page drawn as a PNG Forge
+ * prepared — a picture turned upright (invariant 4) and decoded (HEIC, RAW),
+ * a PDF's pages drawn by pdfium on white — read by PP-OCR in the extension's
+ * own process, its answer the Mac helper's `read`.
+ */
+async function readWithExtension(
+  path: string,
+  opts: { signal?: AbortSignal | undefined; onEvent?: (e: ReadEvent) => void },
+): Promise<ReadPage[]> {
+  const ext = await installed('read-text')
+  if (ext === undefined) throw readUnavailable(await readTextOffered())
+  const [{ probe }, { openable }, { loadSharp }, { runExtension }] = await Promise.all([
+    import('./registry.js'),
+    import('./decoded.js'),
+    import('./libs.js'),
+    import('../extensions/run.js'),
+  ])
+  const sharp = await loadSharp()
+  const info = await probe(path)
+  const dir = await mkdtemp(join(tmpdir(), 'forge-read-'))
+  const fit = {
+    width: READ_MAX_SIDE,
+    height: READ_MAX_SIDE,
+    fit: 'inside',
+    withoutEnlargement: true,
+  } as const
+  try {
+    const pngs: string[] = []
+    if (info.kind === 'document' && info.format === 'pdf') {
+      const { openPdf } = await import('./pdfium.js')
+      const doc = await openPdf(await readFile(path))
+      try {
+        for (let i = 0; i < info.pages; i++) {
+          const bitmap = await doc.getPage(i).render({ scale: READ_DPI / 72, render: 'bitmap' })
+          const out = join(dir, `page-${i + 1}.png`)
+          await sharp(Buffer.from(bitmap.data), {
+            raw: { width: bitmap.width, height: bitmap.height, channels: 4 },
+          })
+            .flatten({ background: '#ffffff' })
+            .resize(fit)
+            .png()
+            .toFile(out)
+          pngs.push(out)
+        }
+      } finally {
+        doc.destroy()
+      }
+    } else if (info.kind === 'image') {
+      const open = await openable(path, info.format)
+      try {
+        const out = join(dir, 'page-1.png')
+        await sharp(open.path)
+          .rotate()
+          .flatten({ background: '#ffffff' })
+          .resize(fit)
+          .png()
+          .toFile(out)
+        pngs.push(out)
+      } finally {
+        await open.cleanup()
+      }
+    } else throw untranscribable(path)
+    const r = await runExtension(
+      { id: 'read-text', entry: ext.entry, kind: ext.kind },
+      pngs.flatMap((p) => ['--in', p]),
+      {
+        subject: path,
+        what: `Reading the text of ${path}`,
+        ...(opts.signal ? { signal: opts.signal } : {}),
+        onLine: (line) => {
+          if (line.event === 'page')
+            opts.onEvent?.({ kind: 'page', page: Number(line.page), of: Number(line.of) })
+        },
+      },
+    )
+    const pages = (r.pages ?? []) as ReadPage[]
+    if (!(info.kind === 'document' && info.format === 'pdf')) return pages
+    // A PDF's own text, where it has one, mends the words OCR broke (core/transcribe/text-layer.ts).
+    const [{ extractPdfText }, { mendPage }] = await Promise.all([
+      import('./pdfium.js'),
+      import('../core/transcribe/text-layer.js'),
+    ])
+    const layers = await extractPdfText(await readFile(path)).catch(() => [] as string[])
+    return pages.map((page, i) => mendPage(page, layers[i] ?? ''))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/** Apple's helper when it is here and answers: it sets HTML as Word or PDF. Elsewhere Forge writes both. */
+async function appleRenderer(): Promise<Helper | undefined> {
+  const { apple } = helpers()
+  if (apple === undefined || (await appleStatus()) === undefined) return undefined
+  return { path: apple, kind: 'apple' }
 }
 
 /** HTML set as Word or PDF by Apple's helper; the caller writes the bytes. */
 async function renderHtml(
+  apple: Helper,
   html: string,
   format: 'docx' | 'pdf',
   opts: { signal?: AbortSignal | undefined },
@@ -490,7 +719,6 @@ async function renderHtml(
     const page = join(dir, 'transcript.html')
     const out = join(dir, `transcript.${format}`)
     await writeFile(page, html, 'utf8')
-    const apple = appleHelper(() => renderUnavailable(format))
     await exec(apple, ['render', page, out, '--as', format], out, { signal: opts.signal })
     return await readFile(out)
   } finally {
@@ -506,27 +734,63 @@ async function renderHtml(
 /** The width of an A4 page's text with Word's own 1-inch margins, in twentieths of a point. */
 const TEXT_WIDTH = 9026
 
-async function pagesDocx(doc: PageText): Promise<Buffer> {
+async function pagesDocx(doc: PageText, lang?: string): Promise<Buffer> {
   const docx = await loadDocx()
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } = docx
   const NUMBERS = 'forge-numbers'
   let lists = 0
+  /**
+   * A text as runs marked by writing system: an East Asian run says so and in
+   * which language, a complex-script run (Arabic, Hebrew, Thai...) says so and
+   * runs right to left where it should. Word picks a font and the forms of a
+   * Han character by those marks; without them it may show boxes or the wrong
+   * forms. Latin-only text is the single plain run it always was.
+   */
+  const runs = (text: string, bold = false) =>
+    langRuns(text, lang).map(
+      (r) =>
+        new TextRun({
+          text: r.text,
+          ...(bold ? { bold: true } : {}),
+          ...(r.kind === 'eastAsia'
+            ? { font: { hint: 'eastAsia' }, language: r.lang ? { eastAsia: r.lang } : {} }
+            : {}),
+          ...(r.kind === 'complex'
+            ? {
+                font: { hint: 'cs' },
+                ...(r.rtl ? { rightToLeft: true } : {}),
+                ...(bold ? { boldComplexScript: true } : {}),
+                ...(r.lang ? { language: { bidirectional: r.lang } } : {}),
+              }
+            : {}),
+        }),
+    )
+  /** A paragraph that runs right to left, so Word aligns and orders it so. */
+  const direction = (text: string) => (isRtl(text) ? { bidirectional: true } : {})
   const pieces = (page: PageText[number]) =>
     page.flatMap((p) => {
       if (p.kind === 'heading')
         return [
           new Paragraph({
-            text: p.text,
+            children: runs(p.text),
             heading: p.level === 1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2,
+            ...direction(p.text),
           }),
         ]
-      if (p.kind === 'paragraph') return [new Paragraph({ text: p.text, spacing: { after: 160 } })]
+      if (p.kind === 'paragraph')
+        return [
+          new Paragraph({ children: runs(p.text), spacing: { after: 160 }, ...direction(p.text) }),
+        ]
       if (p.kind === 'list') {
         const instance = ++lists
         return p.items.map((text) =>
           p.ordered
-            ? new Paragraph({ text, numbering: { reference: NUMBERS, level: 0, instance } })
-            : new Paragraph({ text, bullet: { level: 0 } }),
+            ? new Paragraph({
+                children: runs(text),
+                numbering: { reference: NUMBERS, level: 0, instance },
+                ...direction(text),
+              })
+            : new Paragraph({ children: runs(text), bullet: { level: 0 }, ...direction(text) }),
         )
       }
       // Word reads the percentage; Pages and Quick Look only the cells' own widths.
@@ -545,7 +809,7 @@ async function pagesDocx(doc: PageText): Promise<Buffer> {
                     new TableCell({
                       width: { size: Math.floor(TEXT_WIDTH / columns), type: docx.WidthType.DXA },
                       children: [
-                        new Paragraph({ children: [new TextRun({ text: cell, bold: i === 0 })] }),
+                        new Paragraph({ children: runs(cell, i === 0), ...direction(cell) }),
                       ],
                     }),
                 ),
@@ -581,37 +845,70 @@ async function pagesDocx(doc: PageText): Promise<Buffer> {
   return Packer.toBuffer(file)
 }
 
+export interface RenderOptions {
+  signal?: AbortSignal | undefined
+  /**
+   * The language the text was spoken or written in (`ja_JP`, `zh-TW`), when it
+   * is known: it settles which forms of a Han character Word and the PDF use.
+   */
+  lang?: string | undefined
+  /**
+   * Told, once, which writing systems a PDF written here could not set (no font
+   * for them on this computer, or they have to be rearranged to be read), so
+   * a caller can say so. Never called when everything was set.
+   */
+  onMissing?: ((scripts: string[]) => void) | undefined
+}
+
+const pdfOptions = (o: RenderOptions) => ({
+  ...(o.lang !== undefined ? { lang: o.lang } : {}),
+  ...(o.onMissing !== undefined ? { onMissing: o.onMissing } : {}),
+})
+
 /**
  * A picture's or PDF's text in the chosen format: the Markdown, the bare
- * words, Word (written here), or — through the helper — its HTML set as a
- * PDF, named after the file it was read from.
+ * words, Word (written here), or a PDF named after the file it was read from:
+ * Apple's helper sets its HTML where it runs, Forge writes it elsewhere.
  */
 export async function renderPages(
   doc: PageText,
   format: Output,
   name: string,
-  opts: { signal?: AbortSignal | undefined } = {},
+  opts: RenderOptions = {},
 ): Promise<Buffer> {
   if (format === 'md') return Buffer.from(pageMarkdown(doc), 'utf8')
   if (format === 'txt') return Buffer.from(pagePlain(doc), 'utf8')
-  if (format === 'docx') return pagesDocx(doc)
-  return renderHtml(pageHtml(doc, name), format, opts)
+  if (format === 'docx') return pagesDocx(doc, opts.lang)
+  const apple = await appleRenderer()
+  if (apple) return renderHtml(apple, pageHtml(doc, name), 'pdf', opts)
+  return pagesPdf(doc, { title: name, ...pdfOptions(opts) })
+}
+
+/** The transcript's own title: its first level-1 heading. */
+function titleOf(doc: PageText): string {
+  for (const piece of doc.flat())
+    if (piece.kind === 'heading' && piece.level === 1) return piece.text
+  return 'Transcript'
 }
 
 /**
  * The transcript's bytes in the chosen format (mockups/transcribe-2026-10-round4.html,
- * T1): the Markdown itself, its words as text, or — through Apple's helper —
- * its HTML set as Word or PDF. Without Apple's helper, Word is written here
- * from the same Markdown, and PDF is not offered (`outputsFor`). The caller
- * writes the bytes atomically.
+ * T1): the Markdown itself, its words as text, or its HTML set as Word or PDF
+ * through Apple's helper where that runs. Elsewhere Word and PDF are written
+ * here from the same Markdown (`markdownPages`). The caller writes the bytes
+ * atomically.
  */
 export async function renderTranscript(
   md: string,
   format: Output,
-  opts: { signal?: AbortSignal | undefined } = {},
+  opts: RenderOptions = {},
 ): Promise<Buffer> {
   if (format === 'md') return Buffer.from(md, 'utf8')
   if (format === 'txt') return Buffer.from(markdownText(md), 'utf8')
-  if (format === 'docx' && !(await appleRenders())) return pagesDocx(markdownPages(md))
-  return renderHtml(markdownHtml(md), format, opts)
+  const apple = await appleRenderer()
+  if (apple) return renderHtml(apple, markdownHtml(md), format, opts)
+  const doc = markdownPages(md)
+  return format === 'docx'
+    ? pagesDocx(doc, opts.lang)
+    : pagesPdf(doc, { title: titleOf(doc), ...pdfOptions(opts) })
 }

@@ -115,6 +115,43 @@ describe('edit rows (boost-row-2026-10.html: B3, S1)', () => {
   })
 })
 
+describe('where the Boost and Sharpen rows are offered', () => {
+  const ids = (platform: NodeJS.Platform, arch: string) =>
+    editRows(image(1200, 900), undefined, undefined, platform, arch).map((r) => r.id)
+
+  it('shows them on every Mac, on Windows, and on Linux x64 (WebGPU)', () => {
+    for (const [platform, arch] of [
+      ['darwin', 'arm64'],
+      ['darwin', 'x64'],
+      ['win32', 'x64'],
+      ['win32', 'arm64'],
+      ['linux', 'x64'],
+    ] as const) {
+      expect(ids(platform, arch), `${platform}-${arch}`).toEqual(
+        expect.arrayContaining(['sharpen', 'boost']),
+      )
+    }
+  })
+
+  it('leaves them out on Linux arm64, which has no build', () => {
+    const rows = ids('linux', 'arm64')
+    expect(rows).not.toContain('sharpen')
+    expect(rows).not.toContain('boost')
+    // The built-in rows are still there.
+    expect(rows).toEqual(expect.arrayContaining(['trim', 'resize', 'rotate', 'crop']))
+  })
+
+  it('shows Remove background on every OS and chip: Apple Vision on a Mac, BiRefNet-lite elsewhere', () => {
+    for (const [platform, arch] of [
+      ['linux', 'x64'],
+      ['linux', 'arm64'],
+      ['win32', 'x64'],
+      ['darwin', 'x64'],
+    ] as const)
+      expect(ids(platform, arch)).toContain('cutout')
+  })
+})
+
 describe('the Rotate row', () => {
   it('is built in, with the three turns and the size each leaves', () => {
     const rotate = editRow(image(1600, 900), 'rotate')

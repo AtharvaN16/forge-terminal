@@ -2,7 +2,15 @@
  * The catalogue of optional extensions, compiled into Forge (spec §4.2).
  * Forge never downloads a catalogue and never runs anything not listed here.
  */
-export type ExtensionId = 'boost' | 'remove-background' | 'heic' | 'video' | 'yt-dlp' | 'whisper'
+export type ExtensionId =
+  | 'boost'
+  | 'remove-background'
+  | 'heic'
+  | 'raw'
+  | 'video'
+  | 'yt-dlp'
+  | 'whisper'
+  | 'read-text'
 
 /** Where an asset runs: `${platform}-${arch}`, or `${platform}-universal` for any arch. */
 export type PlatformKey = `${'darwin' | 'win32' | 'linux'}-${'arm64' | 'x64' | 'universal'}`
@@ -42,9 +50,12 @@ export const CATALOG: readonly CatalogEntry[] = [
     title: 'Boost resolution',
     summary: 'Sharpen, or boost resolution 2x or 4x, with a local AI model',
     minMacos: 14,
-    // Apple Silicon only for now. An x64 build exists (CI still makes it) but
-    // has never been run, and its CPU fallback would look frozen on an Intel
-    // Mac, so Intel is told there is no build rather than offered that.
+    // Apple silicon and Windows keep the graphics provider they always had
+    // (CoreML, DirectML). Linux x64 and Intel Macs run on WebGPU (Vulkan, Metal)
+    // through the same model and runner, 1.2.0, and the runner stops with
+    // boost-too-slow when no real graphics card answers and the processor would
+    // take minutes (extensions/boost/providers.ts). Not Linux arm64: its ONNX
+    // Runtime build has no WebGPU in it.
     assets: {
       'darwin-arm64': {
         version: '1.0.0',
@@ -52,8 +63,13 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 14866325,
         sha256: '7af24c92f95b1cd34618adde4a90926c91a8db4347d640be4921f1dc706a9a2e',
       },
-      // Windows runs on DirectML, so any DirectX 12 GPU — integrated included —
-      // keeps it from the CPU fallback that rules out Intel Macs above.
+      'darwin-x64': {
+        version: '1.2.0',
+        url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-x64.tar.gz`,
+        bytes: 16062122,
+        sha256: '4770833905b4b6c348d1eb18bb735ace9a4f63ace51097c4a7c4b74ec1787998',
+      },
+      // Windows runs on DirectML, so any DirectX 12 GPU — integrated included.
       'win32-x64': {
         version: '1.1.0',
         url: `${RELEASES}/ext-boost-v1.1.0/forge-ext-boost-1.1.0-win32-x64.tar.gz`,
@@ -66,17 +82,19 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 22936985,
         sha256: '7d39d93cae52f298423db0b185b0ae3a3bac65464abeb23561d9bcb2ebb3f026',
       },
-      // Not on Linux: onnxruntime-node's only Linux GPU provider is CUDA, a
-      // separate download of hundreds of MB, and on the CPU alone a photo
-      // takes minutes: the rule that keeps it off Intel Macs. Linux payloads
-      // still build (extensions/boost) for a GPU route to come.
+      'linux-x64': {
+        version: '1.2.0',
+        url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-linux-x64.tar.gz`,
+        bytes: 17020821,
+        sha256: 'fca6232c38c05469e255ba2900ab32f993c1b8588f0a3569b24977ab657ff4cb',
+      },
     },
-    licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT)',
+    licence: 'Real-ESRGAN general-x4v3 (BSD-3-Clause), ONNX Runtime (MIT), Dawn (BSD-3-Clause)',
   },
   {
     id: 'remove-background',
     title: 'Remove background',
-    summary: 'Cut the subject out of a photo, on this Mac',
+    summary: 'Cut the subject out of a photo, on your own computer',
     // Darwin assets only, like every minMacos.
     minMacos: 14,
     assets: {
@@ -87,13 +105,38 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 32489,
         sha256: '9f6e055c0ce25f7504e10c7871e506a813bc75d6536396a675a8c075c4eb4686',
       },
-      // Not on Windows or Linux yet: U²-Net-p (extensions/remove-background-onnx)
-      // failed the quality bar on 2026-10-11, and a compressed IS-Net
-      // (45 MB) is close but not Apple's (mockups/remove-bg-compressed-2026-10.html).
-      // The runner speaks the Swift helper's arguments, so a model that passes
-      // drops in.
+      // Windows and Linux: BiRefNet-lite at 768 px (extensions/remove-background-onnx), on its
+      // own ONNX Runtime 1.25.1 (the model needs DeformConv, which 1.23.2 lacks). It came close
+      // to Apple Vision on 42 photos (same subject or none on 40; nothing missed) at about
+      // 2 GB of memory and a second or two a photo. The runner speaks the Swift helper's
+      // arguments and replies, so Forge runs either the same way.
+      'win32-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-x64.tar.gz`,
+        bytes: 47185054,
+        sha256: '50e8ec4df513d491fa5c1a08e92919426d78f021aa7641e0e0e8b958fd5ebb32',
+      },
+      'win32-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
+        bytes: 47167233,
+        sha256: '1210707480f0119019be21d9bfefe80faa472ebb345e9ae3e560bb7b5c1989a3',
+      },
+      'linux-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-x64.tar.gz`,
+        bytes: 51958081,
+        sha256: 'd3c6cf5e02bd1dfdc73c564acf679d9e4ec0e218386573347e17d2392237c123',
+      },
+      'linux-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-arm64.tar.gz`,
+        bytes: 45516645,
+        sha256: '97ebaaad5ee7b13696bfc1e7bf8203942370987d828625e25e095c3f9d350a5c',
+      },
     },
-    licence: 'Uses Apple Vision on-device; helper is MIT',
+    licence:
+      'Apple Vision on a Mac (the helper is MIT); BiRefNet-lite (MIT) and ONNX Runtime (MIT) on Windows and Linux',
   },
   {
     // macOS decodes HEIC itself (sips); Windows and Linux need this. The two
@@ -117,6 +160,29 @@ export const CATALOG: readonly CatalogEntry[] = [
       },
     },
     licence: 'libheif and libde265 (LGPL-3.0), via libheif-js',
+  },
+  {
+    // macOS decodes camera RAW itself (sips); Windows and Linux need this:
+    // LibRaw, through libraw-wasm's WASM build. As with heic, the two
+    // archives hold the same files and differ only in the manifest's arch.
+    id: 'raw',
+    title: 'Camera RAW photos',
+    summary: 'Open camera RAW photos',
+    assets: {
+      'win32-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-raw-v1.0.0/forge-ext-raw-1.0.0-win32-universal.tar.gz`,
+        bytes: 529983,
+        sha256: 'def170f48e004240c0cd23a539e4345d8056ea1f4d9c90f45c2a07573bfad199',
+      },
+      'linux-universal': {
+        version: '1.0.0',
+        url: `${RELEASES}/ext-raw-v1.0.0/forge-ext-raw-1.0.0-linux-universal.tar.gz`,
+        bytes: 529982,
+        sha256: '35c21be2691cecfcadca944ee8c61736b7d6149130e42492c097115467facd36',
+      },
+    },
+    licence: 'LibRaw (LGPL-2.1 or CDDL-1.0), via libraw-wasm (ISC)',
   },
   {
     // ffmpeg for a Mac without Homebrew's (video spec §3.7). Built from source
@@ -235,6 +301,58 @@ export const CATALOG: readonly CatalogEntry[] = [
     },
     licence: 'whisper.cpp and ggml (MIT), OpenAI Whisper base model (MIT)',
   },
+  {
+    // Reading the text of pictures and PDFs where Apple's reader is not
+    // (spec 2026-10-23-extract-text-design §6): Windows, Linux, and Macs on
+    // Intel or before macOS 26. PP-OCR's models on ONNX Runtime's CPU provider,
+    // one recogniser each for the scripts Apple's reader reads (Latin, Chinese
+    // and Japanese in one, then Korean, Cyrillic, Arabic, Devanagari, Thai);
+    // it answers as the Mac helper's \`read\` does.
+    id: 'read-text',
+    title: 'Read text',
+    summary: 'Read the text of pictures and PDFs on this computer',
+    minMacos: 13,
+    assets: {
+      'darwin-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-arm64.tar.gz`,
+        bytes: 42705161,
+        sha256: '5fea76dcbe7ea8b52feb2f42796ca831de8237db14cc13f541fcecf310552599',
+      },
+      'darwin-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-x64.tar.gz`,
+        bytes: 43898855,
+        sha256: '028e8643d7d96c90dc030124a5c2a2348a9549560017f10b5b49aff50382bb1e',
+      },
+      'win32-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-win32-x64.tar.gz`,
+        bytes: 41461196,
+        sha256: '39a1da83498d9858cebc3202f884ca852954ffee01383af90efd9e99dd752e6d',
+      },
+      'win32-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-win32-arm64.tar.gz`,
+        bytes: 41540477,
+        sha256: 'ee551378b14c199b4528511d5a0066e29a11397caf4f5c7fb801eeb40544cb25',
+      },
+      'linux-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-linux-x64.tar.gz`,
+        bytes: 44859772,
+        sha256: 'b5d1158d06dc008e1986a0684049911194e97b72f35d01c2110d71e0d39b446a',
+      },
+      'linux-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-linux-arm64.tar.gz`,
+        bytes: 39842973,
+        sha256: 'bfa94581c43f9d9760d6ca33f7e19dc31e58732ac6c07bf89fe433ac594d8176',
+      },
+    },
+    licence:
+      'PP-OCRv4 detection and PP-OCRv5 and PP-OCRv6 recognition (Apache-2.0, PaddlePaddle; ONNX by RapidOCR and PaddlePaddle), ONNX Runtime (MIT)',
+  },
 ]
 
 /** The machine, as sentences name it: "this Mac", "this PC", "this computer" (Linux). */
@@ -277,10 +395,18 @@ export function offeredOn(
   return Object.keys(entry.assets).some((key) => key.startsWith(`${platform}-`))
 }
 
+/**
+ * Whether the catalogue offers `id` on this OS and, when `arch` is given, for
+ * that chip as well: Boost, for one, has builds for Linux x64 but not arm64.
+ * Callers that mean this machine pass `process.arch`; a test that names an OS
+ * on its own gets the OS's answer.
+ */
 export function offeredHere(
   id: ExtensionId,
   platform: NodeJS.Platform = process.platform,
+  arch?: string,
 ): boolean {
   const entry = catalogEntry(id)
-  return entry !== undefined && offeredOn(entry, platform)
+  if (entry === undefined || !offeredOn(entry, platform)) return false
+  return arch === undefined || assetFor(entry, platform, arch) !== undefined
 }

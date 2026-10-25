@@ -91,8 +91,15 @@ const put = (g: Grid, r: number, c: number, cell: Cell): void => {
 /** The swatch's own cells, left to right, on the row's line. */
 const swatch = (g: Grid, row: number, col: number): Cell[] =>
   (g[1 + row] as Cell[]).slice(at(col), at(col) + CELL)
-const onSwatch = (g: Grid, row: number, col: number, k: number, ch: string, fg: string, hex: string) =>
-  put(g, 1 + row, at(col) + k, { ch, fg, bg: hex, b: true })
+const onSwatch = (
+  g: Grid,
+  row: number,
+  col: number,
+  k: number,
+  ch: string,
+  fg: string,
+  hex: string,
+) => put(g, 1 + row, at(col) + k, { ch, fg, bg: hex, b: true })
 const gaps = (g: Grid, row: number, col: number, left: string, right: string, fg: string) => {
   put(g, 1 + row, at(col) - 1, { ch: left, fg, b: true })
   put(g, 1 + row, at(col) + CELL, { ch: right, fg, b: true })
@@ -101,7 +108,8 @@ const pillLabels: Look = (g, row, col) => {
   for (let c = at(col); c < at(col) + CELL; c++)
     put(g, 0, c, { fg: NEAR_BLACK, bg: '#e7e7e7', b: true })
   const name = names[row] as string
-  for (let c = 2; c <= 2 + name.length; c++) put(g, 1 + row, c, { fg: NEAR_BLACK, bg: '#e7e7e7', b: true })
+  for (let c = 2; c <= 2 + name.length; c++)
+    put(g, 1 + row, c, { fg: NEAR_BLACK, bg: '#e7e7e7', b: true })
 }
 
 const LOOKS: Record<string, { name: string; idea: string; group: string; draw: Look }> = {

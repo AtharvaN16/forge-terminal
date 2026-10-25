@@ -20,7 +20,11 @@ const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms))
 const out = await makeTempDir()
 const app = render(
-  <App initialWidth={W} initialHeight={H} prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: out }} />,
+  <App
+    initialWidth={W}
+    initialHeight={H}
+    prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: out }}
+  />,
 )
 async function until(cond: () => boolean) {
   const end = Date.now() + 15_000

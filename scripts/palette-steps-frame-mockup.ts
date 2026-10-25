@@ -119,8 +119,9 @@ function pillsIn(hand: Field): Seg[] {
  */
 function buttonsIn(hand: Field, room: number): Seg[] {
   const label: Record<Field, string> = { set: 'Tailwind', start: 'from 50', end: 'to 950' }
-  const buttons = (['set', 'start', 'end'] as Field[]).map((f): Seg =>
-    f === hand ? [` ‹ ${label[f]} › `, FG, CAP, true] : [`   ${label[f]}   `, DIM, SHELF],
+  const buttons = (['set', 'start', 'end'] as Field[]).map(
+    (f): Seg =>
+      f === hand ? [` ‹ ${label[f]} › `, FG, CAP, true] : [`   ${label[f]}   `, DIM, SHELF],
   )
   const tail: Seg[] = [['11 steps', QUIET, SHELF], ['  '], ...TAB, ['  ']]
   const spare = room - len(buttons) - len(tail)
@@ -139,7 +140,11 @@ function concept(kind: 'A' | 'B' | 'C', hand: Field): Grid {
   three(g, LEFT, [[' '.repeat(frameW), undefined, SHELF]])
   if (kind === 'A') {
     const inside = pillsIn(hand)
-    three(g, LEFT, inside.map(([t, fg, bg, b]): Seg => [t, fg, bg ?? SHELF, b]))
+    three(
+      g,
+      LEFT,
+      inside.map(([t, fg, bg, b]): Seg => [t, fg, bg ?? SHELF, b]),
+    )
     // The value pills are one row; the frame round them is three.
     put(g, TOP, LEFT, [[' '.repeat(frameW), undefined, SHELF]])
     put(g, TOP + 2, LEFT, [[' '.repeat(frameW), undefined, SHELF]])

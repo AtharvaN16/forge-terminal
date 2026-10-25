@@ -240,6 +240,10 @@ reader ran. Later:
   already a Forge dependency through Boost. It fits the 50 MB extension rule.
   It answers `read` with `text` blocks only, so no lists or tables until it
   can.
+  *2026-10-25:* it now reads every script Apple's reader reads (Latin, Chinese,
+  Japanese, Korean, Cyrillic, Arabic, Devanagari, Thai), with lists and tables
+  too; one 45 MB archive, since a page's script is only known once a recogniser
+  has read it. See `extensions/read-text/model/README.md`.
 - Windows's built-in `Windows.Media.Ocr` was looked at and set aside: it needs
   an OCR language pack, and Microsoft documents the API for packaged apps.
 - The catalogue's `PlatformKey` is `darwin | win32` today; a Linux asset needs

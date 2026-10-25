@@ -159,6 +159,17 @@ const SHEETS: Record<
       ['libheif-js', 'LGPL-3.0'],
     ],
   },
+  // Off macOS only, as heic: what lets a camera RAW photo open at all.
+  raw: {
+    name: 'Camera RAW photos',
+    gives: 'Opens camera RAW photos',
+    again: 'A RAW photo will ask for it again.',
+    parts: [
+      ['LibRaw', 'LGPL-2.1 or CDDL-1.0'],
+      ['libraw-wasm', 'ISC'],
+      ['Little CMS', 'MIT'],
+    ],
+  },
   // Transcribe's YouTube links: often the user's own, from Homebrew.
   'yt-dlp': {
     name: 'YouTube links',
@@ -194,7 +205,7 @@ const SHEETS: Record<
  */
 const PARTS_ELSEWHERE: Record<string, Array<[string, string]>> = {
   'remove-background': [
-    ['U²-Net-p (via rembg)', 'Apache-2.0'],
+    ['BiRefNet-lite', 'MIT'],
     ['ONNX Runtime', 'MIT'],
   ],
 }

@@ -54,6 +54,17 @@
           }
         }
       }
+    },
+    {
+      "includes": ["scripts/*-mockup*.ts", "scripts/*-capture*.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noAssignInExpressions": "off",
+            "useIterableCallbackReturn": "off"
+          }
+        }
+      }
     }
   ]
 }

@@ -11,14 +11,20 @@
  *   npx tsx scripts/colour-redesign-mockup-r4.ts → mockups/colour-redesign-2026-10-round4.html
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { onWhiteAndBlack } from '../src/core/colour/contrast.js'
 import { DEFAULT_STEPS, scale, stepsOf } from '../src/core/colour/scale.js'
-import { formatOklch, formatRgb, parseHex, type Rgb } from '../src/core/colour/space.js'
+import {
+  formatOklch,
+  formatRgb,
+  oklabToRgb,
+  parseHex,
+  type Rgb,
+  rgbToOklab,
+} from '../src/core/colour/space.js'
 import { NO_TWEAK, system, type Tweak, tweakSteps } from '../src/core/colour/system.js'
 import { trailBarRow } from '../src/shell/bar-art.js'
 import { fieldRows, fieldValue, previewRows, rampRows } from '../src/shell/colour/colour-art.js'
 import { chosenRow, tweakLines } from '../src/shell/colour/system-art.js'
-import { onWhiteAndBlack } from '../src/core/colour/contrast.js'
-import { oklabToRgb, rgbToOklab } from '../src/core/colour/space.js'
 import { type Row, surfaceRows } from '../src/shell/home-art.js'
 import { sliderRow } from '../src/shell/quality-art.js'
 import { DARK, modePalette } from '../src/shell/theme.js'
@@ -86,7 +92,13 @@ function bar(g: Grid, answers: string[], current?: string) {
   row(
     g,
     1,
-    trailBarRow({ width: 76, palette: P, mode: 'colour', trail: { answers, current }, slanted: false }),
+    trailBarRow({
+      width: 76,
+      palette: P,
+      mode: 'colour',
+      trail: { answers, current },
+      slanted: false,
+    }),
   )
 }
 /** The field: a filled block of three rows. */
@@ -134,7 +146,13 @@ function tabs(g: Grid, r: number, names: string[], on: number, hint = true) {
     if (i === on) put(g, r + 1, at - 2, [['━'.repeat(n.length + 4), PINK]])
     at += n.length + 4
   })
-  if (hint) put(g, r, 64, [[' ', undefined, CAP], ['tab', FG, CAP, true], [' ', undefined, CAP], [' switch', DIM]])
+  if (hint)
+    put(g, r, 64, [
+      [' ', undefined, CAP],
+      ['tab', FG, CAP, true],
+      [' ', undefined, CAP],
+      [' switch', DIM],
+    ])
 }
 
 /* --------------------------------------------------------------- data */
@@ -143,7 +161,11 @@ const BLUE = parseHex('#6579FD') as Rgb
 const PURPLE = parseHex('#AC96EF') as Rgb
 const stepsFor = (ref: Rgb, t: Tweak = NO_TWEAK) =>
   t === NO_TWEAK ? scale(ref) : tweakSteps((r) => scale(r), ref, t, 5)
-const hex = (rgb: Rgb) => `#${[rgb.r, rgb.g, rgb.b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`
+const hex = (rgb: Rgb) =>
+  `#${[rgb.r, rgb.g, rgb.b]
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`
 
 /** The ramp under the tabs (labels at `top`), its chosen step marked with a heavier bar. */
 function ramp(g: Grid, top: number, ref: Rgb, sel = 5, t: Tweak = NO_TWEAK) {
@@ -175,7 +197,11 @@ const POP_ON = '#404040'
 /** The More button: a filled pill, its key in the mode's pink; lighter while its menu is open. */
 function moreButton(g: Grid, r: number, open = false) {
   const bg = open ? '#4f4f4f' : BUTTON
-  put(g, r, 65, [[' ', undefined, bg], ['m', PINK, bg, true], ['  More ▾ ', FG, bg, true]])
+  put(g, r, 65, [
+    [' ', undefined, bg],
+    ['m', PINK, bg, true],
+    ['  More ▾ ', FG, bg, true],
+  ])
 }
 
 /**
@@ -196,11 +222,24 @@ function scaleTab(k: 'scale' | 'scale-neutral' | 'scale-alpha', open = false): G
 function popup(g: Grid, top: number, width: number, title: string, lines: Seg[][], pad = true) {
   const left = 76 - width
   const inner = width - 2
-  put(g, top, left, [['╭─ ', QUIET], [title, FG, undefined, true], [` ${'─'.repeat(inner - title.length - 3)}╮`, QUIET]])
+  put(g, top, left, [
+    ['╭─ ', QUIET],
+    [title, FG, undefined, true],
+    [` ${'─'.repeat(inner - title.length - 3)}╮`, QUIET],
+  ])
   const body = (pad ? [[], ...lines, []] : lines) as Seg[][]
   body.forEach((segs, i) => {
-    put(g, top + 1 + i, left, [['│', QUIET], [' '.repeat(inner), undefined, POP], ['│', QUIET]])
-    put(g, top + 1 + i, left + 1, segs.map(([t, fg, bg, b]) => [t, fg, bg ?? POP, b] as Seg))
+    put(g, top + 1 + i, left, [
+      ['│', QUIET],
+      [' '.repeat(inner), undefined, POP],
+      ['│', QUIET],
+    ])
+    put(
+      g,
+      top + 1 + i,
+      left + 1,
+      segs.map(([t, fg, bg, b]) => [t, fg, bg ?? POP, b] as Seg),
+    )
   })
   put(g, top + 1 + body.length, left, [[`╰${'─'.repeat(inner)}╯`, QUIET]])
 }
@@ -233,7 +272,17 @@ function moreOpen(): Grid {
       ]
     }),
   )
-  keys(g, [['↑↓', 'choose'], ['↵', 'open']], [['esc', 'close'], ['ctrl-c', 'quit']])
+  keys(
+    g,
+    [
+      ['↑↓', 'choose'],
+      ['↵', 'open'],
+    ],
+    [
+      ['esc', 'close'],
+      ['ctrl-c', 'quit'],
+    ],
+  )
   return g
 }
 
@@ -243,7 +292,16 @@ function tweakOpen(): Grid {
   const g = scaleTab('scale', true)
   // The scale above shows the tweak as it is moved.
   clear(g, 9, 13)
-  rows(g, 9, rampRows({ width: 76, palette: P, steps: tweakSteps((r) => scale(r), BLUE, t, 5), selected: 5 }))
+  rows(
+    g,
+    9,
+    rampRows({
+      width: 76,
+      palette: P,
+      steps: tweakSteps((r) => scale(r), BLUE, t, 5),
+      selected: 5,
+    }),
+  )
   clear(g, 15, 23)
   const lines = tweakLines(
     P,
@@ -256,8 +314,27 @@ function tweakOpen(): Grid {
     1,
     [],
   ).slice(1, -2)
-  popup(g, 15, 56, 'Tweak', lines.map((r) => r.map((x) => [x.text, x.fg, x.bg, x.bold] as Seg)), false)
-  keys(g, [['↑↓', 'choose'], ['←→', '1'], ['⇧←→', '10'], ['↵', 'done']], [['r', 'reset'], ['esc', 'cancel']])
+  popup(
+    g,
+    15,
+    56,
+    'Tweak',
+    lines.map((r) => r.map((x) => [x.text, x.fg, x.bg, x.bold] as Seg)),
+    false,
+  )
+  keys(
+    g,
+    [
+      ['↑↓', 'choose'],
+      ['←→', '1'],
+      ['⇧←→', '10'],
+      ['↵', 'done'],
+    ],
+    [
+      ['r', 'reset'],
+      ['esc', 'cancel'],
+    ],
+  )
   return g
 }
 
@@ -271,7 +348,11 @@ function gradient(stops: Rgb[], n: number): Array<{ step: number; hex: string; r
     const u = x - k
     const a = labs[k] as ReturnType<typeof rgbToOklab>
     const b = labs[k + 1] as ReturnType<typeof rgbToOklab>
-    const rgb = oklabToRgb({ L: a.L + (b.L - a.L) * u, a: a.a + (b.a - a.a) * u, b: a.b + (b.b - a.b) * u })
+    const rgb = oklabToRgb({
+      L: a.L + (b.L - a.L) * u,
+      a: a.a + (b.a - a.a) * u,
+      b: a.b + (b.b - a.b) * u,
+    })
     return { step: Math.round(at * 100), hex: hex(rgb), rgb }
   })
 }
@@ -283,15 +364,43 @@ function gradientOpen(): Grid {
   const w = 44
   const inner = w - 2
   const strip = gradient([BLUE, AMBER, TEAL], inner - 4)
-  const stop = (n: number, c: Rgb): Seg[] => [['  '], [String(n), QUIET], ['  '], ['    ', undefined, hex(c)], ['  '], [hex(c), DIM]]
+  const stop = (n: number, c: Rgb): Seg[] => [
+    ['  '],
+    [String(n), QUIET],
+    ['  '],
+    ['    ', undefined, hex(c)],
+    ['  '],
+    [hex(c), DIM],
+  ]
   popup(g, 15, w, 'Gradient', [
     stop(1, BLUE),
     stop(2, AMBER),
-    [['  '], ['3', QUIET], ['  ', undefined, SHELF], ['›', PINK, SHELF, true], [' ', undefined, SHELF], ['#2EC4B6', FG, SHELF], ['  ', undefined, SHELF], ['    ', undefined, '#2EC4B6'], [' '.repeat(inner - 25), undefined, SHELF]],
+    [
+      ['  '],
+      ['3', QUIET],
+      ['  ', undefined, SHELF],
+      ['›', PINK, SHELF, true],
+      [' ', undefined, SHELF],
+      ['#2EC4B6', FG, SHELF],
+      ['  ', undefined, SHELF],
+      ['    ', undefined, '#2EC4B6'],
+      [' '.repeat(inner - 25), undefined, SHELF],
+    ],
     [],
     [['  '], ...strip.map((s) => [' ', undefined, s.hex] as Seg)],
   ])
-  keys(g, [['↵', 'add'], ['↑↓', 'choose']], [['⌫', 'remove'], ['tab', 'done'], ['esc', 'cancel']])
+  keys(
+    g,
+    [
+      ['↵', 'add'],
+      ['↑↓', 'choose'],
+    ],
+    [
+      ['⌫', 'remove'],
+      ['tab', 'done'],
+      ['esc', 'cancel'],
+    ],
+  )
   return g
 }
 
@@ -300,9 +409,19 @@ function gradientScreen(): Grid {
   const g = frame('mix')
   bar(g, ['#6579FD'], 'Gradient')
   clear(g, 3, 5)
-  const sw = (c: Rgb): Seg[] => [[hex(c), DIM, FIELD], ['  ', undefined, FIELD], ['    ', undefined, hex(c)]]
+  const sw = (c: Rgb): Seg[] => [
+    [hex(c), DIM, FIELD],
+    ['  ', undefined, FIELD],
+    ['    ', undefined, hex(c)],
+  ]
   field(g, 3, [])
-  put(g, 4, 7, [...sw(BLUE), ['   →   ', QUIET, FIELD], ...sw(AMBER), ['   →   ', QUIET, FIELD], ...sw(TEAL)])
+  put(g, 4, 7, [
+    ...sw(BLUE),
+    ['   →   ', QUIET, FIELD],
+    ...sw(AMBER),
+    ['   →   ', QUIET, FIELD],
+    ...sw(TEAL),
+  ])
   const steps = gradient([BLUE, AMBER, TEAL], 9)
   clear(g, 7, 11)
   rows(g, 7, rampRows({ width: 76, palette: P, steps, selected: 4 }))
@@ -310,7 +429,10 @@ function gradientScreen(): Grid {
   moreButton(g, 12)
   clear(g, 14, 18)
   const at = steps[4] as (typeof steps)[number]
-  const prev = previewRows({ palette: P, step: { step: at.step, hex: at.hex, oklch: formatOklch(at.rgb), ...onWhiteAndBlack(at.rgb) } })
+  const prev = previewRows({
+    palette: P,
+    step: { step: at.step, hex: at.hex, oklch: formatOklch(at.rgb), ...onWhiteAndBlack(at.rgb) },
+  })
   const first = prev[0]
   const i = first?.findIndex((r) => r.text === String(at.step) && r.bold) ?? -1
   if (first && i >= 0) first[i] = { ...(first[i] as Row[number]), text: `${at.step}%` }
@@ -326,18 +448,51 @@ function paletteTab(ref: Rgb): Grid {
   tabs(g, 7, TABS, 3)
   const sys = system(ref, 'full', NO_TWEAK, DEFAULT_STEPS)
   const yours = sys.rows.find((r) => r.yours)
-  const ordered = [...(yours ? [yours] : []), ...sys.rows.filter((r) => !r.yours), { name: 'neutral', steps: sys.neutral, yours: false }]
-  put(g, 9, 14, stepsOf(DEFAULT_STEPS).map((n, c) => [(n < 100 ? ` ${n}` : String(n)).padEnd(5), c === 5 ? FG : QUIET, undefined, c === 5] as Seg))
+  const ordered = [
+    ...(yours ? [yours] : []),
+    ...sys.rows.filter((r) => !r.yours),
+    { name: 'neutral', steps: sys.neutral, yours: false },
+  ]
+  put(
+    g,
+    9,
+    14,
+    stepsOf(DEFAULT_STEPS).map(
+      (n, c) =>
+        [
+          (n < 100 ? ` ${n}` : String(n)).padEnd(5),
+          c === 5 ? FG : QUIET,
+          undefined,
+          c === 5,
+        ] as Seg,
+    ),
+  )
   ordered.forEach((r, i) => {
     put(g, 10 + i, 4, [[r.name, i === 0 ? PINK : DIM, undefined, i === 0]])
     r.steps.forEach((st, c) => put(g, 10 + i, 14 + c * 5, [['    ', undefined, st.hex]]))
   })
-  for (const [c, ch] of [[38, '▕'], [43, '▏']] as const) put(g, 10, c, [[ch, FG]])
+  for (const [c, ch] of [
+    [38, '▕'],
+    [43, '▏'],
+  ] as const)
+    put(g, 10, c, [[ch, FG]])
   const chosen = ordered[0]?.steps[5]
-  if (chosen) row(g, 20, chosenRow(P, ordered[0]?.name ?? '', '500', chosen.hex, formatOklch(chosen.rgb)))
+  if (chosen)
+    row(g, 20, chosenRow(P, ordered[0]?.name ?? '', '500', chosen.hex, formatOklch(chosen.rgb)))
   put(g, 22, 4, [['Full set', FG, undefined, true]])
   moreButton(g, 22)
-  keys(g, [['↑↓←→', 'choose'], ['↵', 'copy'], ['c', 'copy all']], [['#', 'new colour'], ['esc', 'back']])
+  keys(
+    g,
+    [
+      ['↑↓←→', 'choose'],
+      ['↵', 'copy'],
+      ['c', 'copy all'],
+    ],
+    [
+      ['#', 'new colour'],
+      ['esc', 'back'],
+    ],
+  )
   return g
 }
 
@@ -360,15 +515,57 @@ const idea = `<div class="ov">
 
 const colourFlow = flow(
   step(1, 'Colour’s home', frame('home'), 'Press <kbd>S</kbd> Scale', 'Unchanged.'),
-  step(2, 'Type a colour', frame('scale-typing'), 'Type <code>#6579FD</code>, then <kbd>↵</kbd>', 'Unchanged.'),
-  step(3, 'Colour tab', scaleTab('scale'), '<kbd>←→</kbd> choose · <kbd>↵</kbd> copy', 'Palette is a fourth tab. The More button sits where t tweak · s steps were. The gradient hint left the field: Gradient is in More.'),
+  step(
+    2,
+    'Type a colour',
+    frame('scale-typing'),
+    'Type <code>#6579FD</code>, then <kbd>↵</kbd>',
+    'Unchanged.',
+  ),
+  step(
+    3,
+    'Colour tab',
+    scaleTab('scale'),
+    '<kbd>←→</kbd> choose · <kbd>↵</kbd> copy',
+    'Palette is a fourth tab. The More button sits where t tweak · s steps were. The gradient hint left the field: Gradient is in More.',
+  ),
   step(4, 'Neutral tab', scaleTab('scale-neutral'), '<kbd>tab</kbd>', 'As today.'),
   step(5, 'Alpha tab', scaleTab('scale-alpha'), '<kbd>tab</kbd>', 'As today.'),
-  step(6, 'Palette tab', paletteTab(BLUE), '<kbd>tab</kbd> · or <kbd>D</kbd> on home', 'Every row shows at once, yours first. Its More holds Mode, Tweak and Steps.'),
-  step(7, 'More', moreOpen(), '<kbd>m</kbd> on the Colour tab', 'A pop-up under the button. The scale stays in view.'),
-  step(8, 'Tweak', tweakOpen(), 'Pick Tweak', 'Today’s sliders, in a pop-up under the scale. The scale above changes as you move them.'),
-  step(9, 'Gradient: add colours', gradientOpen(), 'Pick Gradient, type a colour, <kbd>↵</kbd> add', 'Starts with this colour. Add as many as you like; <kbd>⌫</kbd> removes the chosen one; <kbd>tab</kbd> shows it.'),
-  step(10, 'The gradient', gradientScreen(), '<kbd>tab</kbd>', 'Today’s Mix screen, with every colour you added. Its More holds Steps.'),
+  step(
+    6,
+    'Palette tab',
+    paletteTab(BLUE),
+    '<kbd>tab</kbd> · or <kbd>D</kbd> on home',
+    'Every row shows at once, yours first. Its More holds Mode, Tweak and Steps.',
+  ),
+  step(
+    7,
+    'More',
+    moreOpen(),
+    '<kbd>m</kbd> on the Colour tab',
+    'A pop-up under the button. The scale stays in view.',
+  ),
+  step(
+    8,
+    'Tweak',
+    tweakOpen(),
+    'Pick Tweak',
+    'Today’s sliders, in a pop-up under the scale. The scale above changes as you move them.',
+  ),
+  step(
+    9,
+    'Gradient: add colours',
+    gradientOpen(),
+    'Pick Gradient, type a colour, <kbd>↵</kbd> add',
+    'Starts with this colour. Add as many as you like; <kbd>⌫</kbd> removes the chosen one; <kbd>tab</kbd> shows it.',
+  ),
+  step(
+    10,
+    'The gradient',
+    gradientScreen(),
+    '<kbd>tab</kbd>',
+    'Today’s Mix screen, with every colour you added. Its More holds Steps.',
+  ),
 )
 
 const CSS = `<style>
@@ -387,7 +584,13 @@ kbd{font:600 13px ui-monospace,Menlo,monospace;background:#333;color:#e7e7e7;bor
 </style>`
 
 const concepts: PageConcept[] = [
-  { id: 'F1', name: 'I have a colour', idea: 'Ten steps, top to bottom.', html: colourFlow, section: 'Flow 1 · I have a colour' },
+  {
+    id: 'F1',
+    name: 'I have a colour',
+    idea: 'Ten steps, top to bottom.',
+    html: colourFlow,
+    section: 'Flow 1 · I have a colour',
+  },
 ]
 
 writeFileSync(
@@ -403,5 +606,12 @@ writeFileSync(
 )
 console.log('wrote mockups/colour-redesign-2026-10-round4.html')
 if (process.env.DUMP)
-  for (const [n, g] of Object.entries({ colour: scaleTab('scale'), pal: paletteTab(BLUE), more: moreOpen(), tweak: tweakOpen(), grad: gradientOpen(), gs: gradientScreen() }))
+  for (const [n, g] of Object.entries({
+    colour: scaleTab('scale'),
+    pal: paletteTab(BLUE),
+    more: moreOpen(),
+    tweak: tweakOpen(),
+    grad: gradientOpen(),
+    gs: gradientScreen(),
+  }))
     console.log(`== ${n}\n${g.map((r) => r.map((c) => c.ch).join('')).join('\n')}`)

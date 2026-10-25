@@ -93,8 +93,10 @@
     "ink": "^7.1.1",
     "ink-testing-library": "^4.0.0",
     "libheif-js": "^1.23.5",
+    "libraw-wasm": "^1.6.0",
     "mammoth": "^1.13.0",
     "onnxruntime-node": "1.23.2",
+    "onnxruntime-node-rmbg": "npm:onnxruntime-node@1.25.1",
     "pdf-lib": "^1.17.1",
     "react": "^19.3.0",
     "string-width": "^8.3.0",
@@ -108,6 +110,9 @@
   },
   "overrides": {
     "onnxruntime-node": {
+      "adm-zip": "$adm-zip"
+    },
+    "onnxruntime-node-rmbg": {
       "adm-zip": "$adm-zip"
     }
   }

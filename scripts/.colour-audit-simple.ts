@@ -3,17 +3,20 @@
  * mockups/colour-audit-2026-10-simple.html. `--thread` → absolute image paths.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+
 const frames: Array<{ id: string; rows: Array<Array<{ ch: string }>> }> = JSON.parse(
   readFileSync('/tmp/colour-audit/frames.json', 'utf8'),
 )
-const text = (id: string) => frames.find((f) => f.id === id)!.rows.map((r) => r.map((c) => c.ch).join(''))
+const text = (id: string) =>
+  frames.find((f) => f.id === id)!.rows.map((r) => r.map((c) => c.ch).join(''))
 function at(id: string, find: string, nth = 0) {
   const rows = text(id)
   let seen = 0
   for (let r = 0; r < rows.length; r++) {
     let c = rows[r]!.indexOf(find)
     while (c >= 0) {
-      if (seen++ === nth) return { x: ((32 + c * 15.65) / 1316) * 100, y: ((28 + r * 34 + 17) / 940) * 100 }
+      if (seen++ === nth)
+        return { x: ((32 + c * 15.65) / 1316) * 100, y: ((28 + r * 34 + 17) / 940) * 100 }
       c = rows[r]!.indexOf(find, c + 1)
     }
   }
@@ -21,7 +24,9 @@ function at(id: string, find: string, nth = 0) {
 }
 const thread = process.argv.includes('--thread')
 const src = (id: string) =>
-  thread ? `/Users/atharvanayak/Developer/Convert Terminal/mockups/colour-audit-2026-10/${id}.webp` : `colour-audit-2026-10/${id}.webp`
+  thread
+    ? `/Users/atharvanayak/Developer/Convert Terminal/mockups/colour-audit-2026-10/${id}.webp`
+    : `colour-audit-2026-10/${id}.webp`
 type Pin = [label: string, find: string, nth?: number, dx?: number]
 function shot(id: string, pins: Pin[] = []) {
   const dots = pins
@@ -71,46 +76,85 @@ const css = `
   .ok{border:1px solid var(--warning,#e8a33d);border-radius:8px;padding:12px 16px;margin-top:16px}
   .ok b{color:var(--warning,#e8a33d)}
 `
-const svg = readFileSync('/dev/stdin', 'utf8').slice(0, 700).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+const svg = readFileSync('/dev/stdin', 'utf8')
+  .slice(0, 700)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
 
 const body = `
 <p class="lead">People get lost because colour mode shows everything at once.</p>
 <p class="sub">Six problems, most important first. Screens are from the real app.</p>
 
-${problem(1, 'Two cards sound the same', `
-${shot('home', [['1', 'create shades', 0, 0], ['1', 'build a palette', 0, 0]])}
-<p class="cap">Scale and Palette both say <b>“from one colour”</b>. If you have one colour, which do you pick?</p>`)}
+${problem(
+  1,
+  'Two cards sound the same',
+  `
+${shot('home', [
+  ['1', 'create shades', 0, 0],
+  ['1', 'build a palette', 0, 0],
+])}
+<p class="cap">Scale and Palette both say <b>“from one colour”</b>. If you have one colour, which do you pick?</p>`,
+)}
 
-${problem(2, 'Too much on one screen', `
-${shot('scale', [['1', '⇧ →'], ['1', 'tab '], ['1', 't  tweak'], ['1', '←→'], ['2', 'Neutral'], ['3', 'oklch'], ['3', 'white'], ['4', '▔▔▔▔▔', 0, 140]])}
+${problem(
+  2,
+  'Too much on one screen',
+  `
+${shot('scale', [
+  ['1', '⇧ →'],
+  ['1', 'tab '],
+  ['1', 't  tweak'],
+  ['1', '←→'],
+  ['2', 'Neutral'],
+  ['3', 'oklch'],
+  ['3', 'white'],
+  ['4', '▔▔▔▔▔', 0, 140],
+])}
 ${notes([
   'Key tips in four different places. Your eye has to hunt for them.',
   'Tabs most people will never need (Neutral, Alpha).',
   'Technical numbers: oklch, 3.6:1, AA, AAA.',
   'The colours you came for are marked with only a thin line.',
-])}`)}
+])}`,
+)}
 
-${problem(3, 'You can’t tell where the result goes', `
+${problem(
+  3,
+  'You can’t tell where the result goes',
+  `
 <div class="paste"><div class="chip">c&nbsp; copy all</div><div class="arrow">→</div><div class="code">${svg}</div></div>
-<p class="cap">It’s made to paste into <b>Figma</b>, but nothing says so. Paste it anywhere else and you get a page of code.</p>`)}
+<p class="cap">It’s made to paste into <b>Figma</b>, but nothing says so. Paste it anywhere else and you get a page of code.</p>`,
+)}
 
-${problem(4, 'The same key does different things', `
+${problem(
+  4,
+  'The same key does different things',
+  `
 <div class="keys">
 <div class="key"><span class="cap-k">s</span><span class="means">scale</span><span class="means">steps</span><span class="means">open Scale</span></div>
 <div class="key"><span class="cap-k">r</span><span class="means">make centre</span><span class="means">reset</span></div>
 <div class="key"><span class="cap-k">←→</span><span class="means">pick a colour</span><span class="means">go deeper</span><span class="means">change a setting</span><span class="means">move a slider</span></div>
 </div>
-<p class="cap">What you learn on one screen doesn’t work on the next.</p>`)}
+<p class="cap">What you learn on one screen doesn’t work on the next.</p>`,
+)}
 
-${problem(5, 'Things are hidden', `
+${problem(
+  5,
+  'Things are hidden',
+  `
 <div class="two">
 <div>${shot('palette', [['1', '┃']])}<p class="cap">Only 5 of 9 rows show. Blue, purple, pink and grey are below, with no sign they’re there.</p></div>
 <div>${shot('scale-tweak', [['2', 'Tweak']])}<p class="cap">The Tweak box covers the colours it’s changing.</p></div>
-</div>`)}
+</div>`,
+)}
 
-${problem(6, 'You have to start over', `
+${problem(
+  6,
+  'You have to start over',
+  `
 <div class="flow"><span class="box">Photo</span>→<span class="box">pick a colour</span>→<span class="box no">make a palette from it</span></div>
-<p class="cap">The tools don’t connect. To go from Scale to Palette you type the colour again, and going back from Palette throws it away.</p>`)}
+<p class="cap">The tools don’t connect. To go from Scale to Palette you type the colour again, and going back from Palette throws it away.</p>`,
+)}
 
 <section><h2 style="gap:0">Small things</h2>
 <ul class="small">
@@ -132,5 +176,8 @@ ${problem(6, 'You have to start over', `
 <div class="ok"><b>Needs your OK:</b> two of these fixes undo earlier decisions. The three cards become two ways in, and the Tweak box moves out of the middle of the screen.</div>
 </section>`
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>Colour mode — what’s confusing</title><style>${thread ? '' : ':root{--background:#161616;--foreground:#e8e8e8;--muted-foreground:#a0a0a0;--border:#3a3a3a;--secondary:#262626} body{background:var(--background);max-width:760px;margin:30px auto;padding:0 20px}'}${css}</style></head><body><div class="au">${body}</div></body></html>`
-writeFileSync(thread ? '/tmp/colour-audit/simple-thread.html' : 'mockups/colour-audit-2026-10-simple.html', html)
+writeFileSync(
+  thread ? '/tmp/colour-audit/simple-thread.html' : 'mockups/colour-audit-2026-10-simple.html',
+  html,
+)
 console.log('ok', html.length)

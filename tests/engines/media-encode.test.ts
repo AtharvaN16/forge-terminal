@@ -255,6 +255,15 @@ describe('review fixes', () => {
     expect(flag(two, '-b:v')).toMatch(/^\d+k$/)
   })
 
+  it('writes a GIF into WebM as yuva420p, never the gbrap ffmpeg 9 picks', () => {
+    const gif: MediaFacts = {
+      duration: 1,
+      video: { codec: 'gif', width: 32, height: 16, fps: 10, rotation: 0, hdr: false },
+    }
+    expect(flag(single(plan('webm', {}, gif)), '-pix_fmt')).toBe('yuva420p')
+    expect(single(plan('webm'))).not.toContain('-pix_fmt')
+  })
+
   it('compresses WebM by quality: the quality moves the constant quality', () => {
     const low = single(plan('webm', { compress: { dither: false }, quality: 10 }))
     const high = single(plan('webm', { compress: { dither: false }, quality: 90 }))
@@ -307,6 +316,18 @@ describe('what this ffmpeg has', () => {
     expect(flag(single(plan('mp4', { media: { speed: 2 } }, screen, 'darwin', lean)), '-c:a')).toBe(
       'aac',
     )
+  })
+
+  it('writes an OGG with ffmpeg’s own Vorbis without libvorbis (Homebrew’s ffmpeg)', () => {
+    const ogg: MediaFacts = {
+      duration: 10,
+      audio: { codec: 'vorbis', channels: 1, sampleRate: 44100 },
+    }
+    const args = single(plan('ogg', { media: { speed: 2 } }, ogg, 'darwin', lean))
+    expect(flag(args, '-c:a')).toBe('vorbis')
+    // Experimental, and stereo only: a mono file is written as two channels.
+    expect(flag(args, '-strict')).toBe('-2')
+    expect(flag(args, '-ac')).toBe('2')
   })
 
   it('fits HEVC with Apple’s encoder when there is no x265', () => {

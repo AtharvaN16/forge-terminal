@@ -41,6 +41,7 @@ export type ErrorCode =
   | 'extension-in-use'
   | 'no-subject'
   | 'boost-too-large'
+  | 'boost-too-slow'
   | 'resize-too-large'
   | 'nothing-to-trim'
   | 'animated-trim'
@@ -57,11 +58,11 @@ export type ErrorCode =
   | 'nothing-to-undo'
   | 'cannot-compress-more'
   | 'ffmpeg-missing'
+  | 'encoder-missing'
   | 'no-sound'
   | 'language-unsupported'
   | 'transcribe-unavailable'
   | 'read-unavailable'
-  | 'render-unavailable'
   | 'no-text'
   | 'link-unavailable'
   | 'unexpected'
@@ -266,25 +267,32 @@ export function heicDecoderUnavailable(
 /**
  * Camera RAW is decoded by macOS itself, through `sips` (engines/raw.ts):
  * Sharp has no RAW decoder, and a TIFF reader sees only the small preview
- * most RAW files carry. Windows has neither, so there RAW is not read at all.
+ * most RAW files carry.
+ *
+ * Windows and Linux have no sips, so there RAW is decoded by Forge's optional
+ * `raw` extension (LibRaw), and the way forward is installing it — the same
+ * shape as HEIC's refusal.
  */
 export function rawDecoderUnavailable(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): ForgeError {
-  const detail = `${displayName(path, platform)} is a camera RAW photo, which Forge reads with macOS's own RAW support.`
   if (platform !== 'darwin') {
+    // Spelt out rather than osName(): core must not load src/extensions.
+    const os = platform === 'win32' ? 'Windows' : platform === 'linux' ? 'Linux' : 'this system'
     return new ForgeError({
       code: 'raw-decoder-unavailable',
       title: 'Cannot read RAW here',
-      detail,
-      short: 'RAW photos open on a Mac only.',
+      detail: `${displayName(path, platform)} is a camera RAW photo, which needs Forge's free RAW extension on ${os}.`,
+      short: 'RAW needs the raw extension.',
+      hint: 'Install it with: forge extensions add raw',
+      shellHint: 'Open /extensions to install it.',
     })
   }
   return new ForgeError({
     code: 'raw-decoder-unavailable',
     title: 'Cannot read RAW here',
-    detail,
+    detail: `${displayName(path, platform)} is a camera RAW photo, which Forge reads with macOS's own RAW support.`,
     short: 'RAW needs sips, which could not be run.',
     hint: 'sips could not be run. It ships with macOS at /usr/bin/sips.',
   })
@@ -922,6 +930,28 @@ export function boostTooLarge(path: string, maxScale: number, scale?: number): F
   })
 }
 
+/**
+ * Boost (or Sharpen, at 1x) stopped because this computer would take minutes
+ * over the photo, as a graphics provider that would not start leaves the
+ * processor to do it. `seconds` is the runner's projection of the whole run.
+ */
+export function boostTooSlow(
+  path: string,
+  seconds: number,
+  scale?: number,
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const verb = scale === 1 ? 'sharpen' : 'boost'
+  const machine = platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'
+  const m = Math.max(1, Math.round(seconds / 60))
+  return new ForgeError({
+    code: 'boost-too-slow',
+    title: `Too slow to ${verb}`,
+    detail: `${displayName(path)} would take about ${m} ${m === 1 ? 'minute' : 'minutes'} to ${verb} on this ${machine}.`,
+    hint: 'Try a smaller photo.',
+  })
+}
+
 export function resizeTooLarge(path: string, size: Size): ForgeError {
   return new ForgeError({
     code: 'resize-too-large',
@@ -1108,6 +1138,45 @@ export function ffmpegMissing(
 }
 
 /**
+ * The ffmpeg found was built without every encoder Forge can write this
+ * format with (a distribution's lean build: Fedora's ffmpeg-free has no
+ * libx264 or libx265). Said before ffmpeg runs, naming what it looked for.
+ */
+export function encoderMissing(
+  target: FormatId,
+  missing: {
+    /** The kind of encoder wanted, as people say it: "H.264", "Opus or Vorbis". */
+    codec: string
+    /** The encoders looked for, in the order they are tried. */
+    encoders: readonly string[]
+    /** The sound of a video format, rather than its picture. */
+    sound?: boolean
+  },
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const label = FORMATS[target].label
+  // Said as letters: an H.264, an HEVC, an MP3, an Opus; a VP9.
+  const an = /^[AEFHILMNORSX]/.test(missing.codec) ? 'an' : 'a'
+  const names = missing.encoders
+  const list =
+    names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : (names[0] ?? '')
+  const them = names.length > 1 ? 'any of them' : 'it'
+  const hint =
+    platform === 'linux'
+      ? "Install a full build of ffmpeg, then run Forge again. On Fedora, RPM Fusion's ffmpeg replaces ffmpeg-free."
+      : platform === 'win32'
+        ? `Install a full build of ffmpeg, such as gyan.dev's (${ffmpegInstall(platform)}), then run Forge again.`
+        : `Install a full build of ffmpeg (${ffmpegInstall(platform)}), then run Forge again.`
+  return new ForgeError({
+    code: 'encoder-missing',
+    title: `Your ffmpeg can't write ${label}`,
+    detail: `${label} needs ${an} ${missing.codec} encoder${missing.sound ? ' for its sound' : ''}: ${list}. Your ffmpeg was built without ${them}.`,
+    short: `Your ffmpeg has no ${missing.codec} encoder`,
+    hint,
+  })
+}
+
+/**
  * The command that installs ffmpeg, in this OS's words: Homebrew on a Mac,
  * winget on Windows, apt on Linux.
  */
@@ -1161,7 +1230,8 @@ export function untranscribable(
     code: 'unsupported-source',
     title: 'Cannot transcribe this file',
     detail: `${displayName(path)} cannot be read by Apple's speech recogniser.`,
-    hint: 'MP4, MOV, M4A, MP3, WAV and AIFF files can be transcribed.',
+    // Any other video or sound reaches it through ffmpeg (engines/transcribe.ts).
+    hint: 'MP4, MOV, M4A, MP3, WAV and AIFF can be transcribed; with ffmpeg (brew install ffmpeg), any video or sound file.',
   })
 }
 
@@ -1204,28 +1274,27 @@ export function transcribeUnavailable(reason: string): ForgeError {
   })
 }
 
-/** This Mac cannot read the text of a picture or PDF (spec 2026-10-23-extract-text-design §3.4). */
-export function readUnavailable(): ForgeError {
+/**
+ * Nothing here reads the text of a picture or PDF (spec 2026-10-23-extract-text-design
+ * §3.4, §6): Apple's reader (macOS 26) is not here, and the read-text
+ * extension is not installed. Where the extension is offered it says so, as
+ * HEIC's does; elsewhere (a chip with no build) the Mac's words stand.
+ */
+export function readUnavailable(offered = false): ForgeError {
+  if (offered)
+    return new ForgeError({
+      code: 'read-unavailable',
+      title: 'Reading text is not available',
+      detail: "Reading text needs Forge's free read-text extension.",
+      short: 'Needs the read-text extension.',
+      hint: 'Install it with: forge extensions add read-text',
+      shellHint: 'Open /extensions to install it.',
+    })
   return new ForgeError({
     code: 'read-unavailable',
     title: 'Reading text is not available',
     detail: 'Reading text needs macOS 26 or later.',
     short: 'Reading text needs macOS 26 or later.',
-  })
-}
-
-/**
- * A transcript or a page's text asked for as PDF (or Word, by a page) where
- * Apple's helper does not run: only it sets HTML as a document. Pickers do
- * not offer it there (`outputsFor`); the CLI's --to can still ask.
- */
-export function renderUnavailable(format: 'docx' | 'pdf'): ForgeError {
-  const what = format === 'pdf' ? 'PDF' : 'Word'
-  return new ForgeError({
-    code: 'render-unavailable',
-    title: `${what} is not available here`,
-    detail: `${what} transcripts need macOS 26 or later. Markdown, Word and text work everywhere.`,
-    short: `${what} needs macOS 26 or later.`,
   })
 }
 

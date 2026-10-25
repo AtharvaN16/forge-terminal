@@ -4,8 +4,11 @@
  *   node runner.mjs --in <png> --out <png> --scale 1|2|3|4 [--cache <dir>]
  *
  * Runs realesr-general-x4v3 (4×) over the image in 256 px tiles with 16 px of
- * overlap, through ONNX Runtime with the CoreML execution provider (CPU if
- * CoreML will not load). 2× and 3× are the 4× tile brought down by Lanczos,
+ * overlap, through ONNX Runtime: DirectML on Windows, CoreML on Apple silicon,
+ * WebGPU on Linux x64 and Intel Macs (then CoreML on the Mac), the CPU last
+ * everywhere (providers.ts). Where the CPU is all a missing graphics card
+ * leaves, a run projected to take over three minutes stops with
+ * `boost-too-slow`. 2× and 3× are the 4× tile brought down by Lanczos,
  * tile by tile; 1× (Sharpen) is the 4× tile brought down by a quarter the same way,
  * so the image keeps its size and memory stays bound by the tile. Alpha never
  * goes through the model: it is resized with Lanczos (kept as is at 1×) and
@@ -14,7 +17,8 @@
  *
  * Contract (shared with Forge's src/extensions/run.ts): exactly one JSON line
  * on stdout — `{"ok":true,"width","height","ms"}` with exit 0, or
- * `{"ok":false,"code","message"}` with exit 1. stderr is free-form. The input
+ * `{"ok":false,"code","message"}` with exit 1 (`boost-too-slow` adds `seconds`,
+ * the projected total). stderr is free-form. The input
  * is a PNG Forge already rotated and decoded, so EXIF is not this file's concern.
  *
  * --cache is accepted for the contract but unused: onnxruntime-node 1.23 only
@@ -29,6 +33,7 @@ import { fileURLToPath } from 'node:url'
 import type { InferenceSession, Tensor } from 'onnxruntime-node'
 import { Resampler } from './lanczos.js'
 import { decodePng, PngError, PngWriter, readPngHeader } from './png.js'
+import { judge, type Provider, providerPlan, tileCount } from './providers.js'
 
 const MODEL_FILE = 'realesr-general-x4v3.onnx'
 const MODEL_SCALE = 4
@@ -38,12 +43,14 @@ const STEP = TILE - 2 * OVERLAP
 const MAX_SIDE = 16_384
 const MAX_PIXELS = 100_000_000
 
-type Code = 'boost-too-large' | 'runtime-error'
+type Code = 'boost-too-large' | 'boost-too-slow' | 'runtime-error'
 
 class RunnerError extends Error {
   constructor(
     readonly code: Code,
     message: string,
+    /** For `boost-too-slow`: the projected total, in seconds. */
+    readonly seconds?: number,
   ) {
     super(message)
   }
@@ -112,25 +119,41 @@ function checkSize(w: number, h: number, scale: number): void {
 
 type Ort = typeof import('onnxruntime-node')
 
-async function openModel(ort: Ort, path: string): Promise<InferenceSession> {
+/** What ONNX Runtime is called by, and what the log says when it will not load. */
+const ORT_NAME: Record<Provider, string> = {
+  webgpu: 'WebGPU',
+  coreml: 'CoreML',
+  dml: 'DirectML',
+  cpu: 'CPU',
+}
+
+function ortProvider(p: Provider): InferenceSession.ExecutionProviderConfig {
+  return p === 'coreml' ? { name: 'coreml', coreMlFlags: 0 } : p
+}
+
+async function openModel(
+  ort: Ort,
+  path: string,
+  providers: readonly Provider[],
+): Promise<InferenceSession> {
   const base = {
     intraOpNumThreads: 2,
     interOpNumThreads: 1,
     graphOptimizationLevel: 'all' as const,
     logSeverityLevel: 3 as const,
   }
-  // DirectML on Windows (any DX12 GPU), CoreML on macOS; CPU is always the way out.
-  // On Linux ONNX Runtime drops the CoreML request itself ("not available:
-  // backend not found", on stderr) and the session runs on the CPU.
-  const win = process.platform === 'win32'
-  const preferred = win ? (['dml'] as const) : ([{ name: 'coreml', coreMlFlags: 0 }] as const)
+  // The first of `providers` that loads wins; the CPU is always the way out.
+  // ONNX Runtime drops a provider it does not have by itself ("not available:
+  // backend not found", on stderr) and goes on to the next, so a graphics card
+  // that will not start is only found out by how long a tile takes (`judge`).
   try {
     return await ort.InferenceSession.create(path, {
       ...base,
-      executionProviders: [...preferred, 'cpu'],
+      executionProviders: providers.map(ortProvider),
     })
   } catch (err) {
-    process.stderr.write(`${win ? 'DirectML' : 'CoreML'} unavailable, using CPU: ${String(err)}\n`)
+    const first = providers[0] ?? 'cpu'
+    process.stderr.write(`${ORT_NAME[first]} unavailable, using CPU: ${String(err)}\n`)
     return await ort.InferenceSession.create(path, { ...base, executionProviders: ['cpu'] })
   }
 }
@@ -149,7 +172,8 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   if (!existsSync(modelPath))
     throw new RunnerError('runtime-error', `model file missing: ${modelPath}`)
   const ort: Ort = await import('onnxruntime-node')
-  const session = await openModel(ort, modelPath)
+  const plan = providerPlan(process.platform, process.arch)
+  const session = await openModel(ort, modelPath, plan.providers)
   const inName = session.inputNames[0] ?? 'input'
   const outName = session.outputNames[0] ?? 'output'
 
@@ -161,14 +185,17 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   const writer = new PngWriter(args.output, OW, OH, img.hasAlpha)
   const input = new Float32Array(3 * TILE * TILE)
   const n = TILE * TILE
+  // Only where the processor is what a missing graphics card leaves: how long each tile took.
+  const total = tileCount(W, H, STEP)
+  const tileMs: number[] = []
 
-  const tiles = Math.ceil(H / STEP) * Math.ceil(W / STEP)
   let tilesDone = 0
-  progress(0, tiles)
+  progress(0, total)
   for (let cy = 0; cy < H; cy += STEP) {
     const bh = Math.min(STEP, H - cy)
     const band = new Uint8Array(OW * bh * S * ch)
     for (let cx = 0; cx < W; cx += STEP) {
+      const tileStart = performance.now()
       const bw = Math.min(STEP, W - cx)
       // Edge-clamped 256 px tile whose core (minus the overlap) is (cx, cy, bw, bh).
       for (let y = 0; y < TILE; y++) {
@@ -206,7 +233,20 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
           }
         }
       }
-      progress(++tilesDone, tiles)
+      if (plan.guarded && tileMs.length < 2) {
+        tileMs.push(performance.now() - tileStart)
+        const verdict = judge(tileMs, total)
+        if (verdict.slow) {
+          await session.release()
+          const seconds = Math.round(verdict.projectedMs / 1000)
+          throw new RunnerError(
+            'boost-too-slow',
+            `Boost would take about ${minutes(seconds)} on this computer.`,
+            seconds,
+          )
+        }
+      }
+      progress(++tilesDone, total)
     }
     if (alpha) {
       const a = alphaUp
@@ -224,6 +264,12 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   return { width: OW, height: OH }
 }
 
+/** "3 minutes", for a log line or an error message. */
+function minutes(seconds: number): string {
+  const m = Math.max(1, Math.round(seconds / 60))
+  return m === 1 ? '1 minute' : `${m} minutes`
+}
+
 function alphaPlane(rgba: Uint8Array, w: number, h: number): Float32Array {
   const a = new Float32Array(w * h)
   for (let i = 0; i < a.length; i++) a[i] = rgba[i * 4 + 3] ?? 255
@@ -238,7 +284,15 @@ async function main(): Promise<void> {
     reply({ ok: true, width, height, ms: Math.round(performance.now() - t0) }, 0)
   } catch (err) {
     if (err instanceof RunnerError)
-      return reply({ ok: false, code: err.code, message: err.message }, 1)
+      return reply(
+        {
+          ok: false,
+          code: err.code,
+          message: err.message,
+          ...(err.seconds === undefined ? {} : { seconds: err.seconds }),
+        },
+        1,
+      )
     if (err instanceof PngError)
       return reply(
         {

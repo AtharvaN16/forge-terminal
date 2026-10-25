@@ -248,188 +248,192 @@ describe('edit mode', () => {
   }, 60_000)
 
   // These run on the real OS: a fresh install is 1.0.0 on a Mac (2×, 4×) and
-  // 1.1.0 on Windows (2×, 3×, 4×). Linux has no Boost (CPU only), so no row.
-  describe.skipIf(!offeredHere('boost', REAL_PLATFORM))('the Boost row, on this OS', () => {
-    pinPlatform(REAL_PLATFORM)
+  // 1.1.0 on Windows (2×, 3×, 4×), 1.2.0 on Linux x64 and Intel Macs. Linux
+  // arm64 has no Boost (no WebGPU in its ONNX Runtime), so no row there.
+  describe.skipIf(!offeredHere('boost', REAL_PLATFORM, process.arch))(
+    'the Boost row, on this OS',
+    () => {
+      pinPlatform(REAL_PLATFORM)
 
-    it('installing from the Boost row stays on the picker, so the scale can be chosen', async () => {
-      const version = shipped(catalogEntry('boost') as CatalogEntry)
-      const [, next] = boostScales(version)
-      const installed = new Set<string>(['remove-background'])
-      // Returns what the manager's install does: the version now on disk,
-      // which the row's scales are read from.
-      const tools = someTools(async (id, { onProgress }) => {
-        onProgress(32_489, 32_489)
-        installed.add(id)
-        return { version }
-      }, installed)
-      const dir = await makeTempDir()
-      const png = join(dir, 'tile.png')
-      await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
-        .png()
-        .toFile(png)
-      const app = render(
-        <App
-          initialWidth={80}
-          initialHeight={24}
-          prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
-          tools={tools}
-        />,
-      )
-      const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/edit')
-      await settle()
-      app.stdin.write(ENTER)
-      await settle()
-      app.stdin.write(typed(png))
-      await until(() => frame().includes('tile.png'))
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Edit PNG'))
-      await settle(300)
-      app.stdin.write(DOWN)
-      await until(() => frame().includes('Makes it bigger.'))
-      expect(frame()).toMatch(/needs .+ · 32\.5 KB download +↵ install/)
+      it('installing from the Boost row stays on the picker, so the scale can be chosen', async () => {
+        const version = shipped(catalogEntry('boost') as CatalogEntry)
+        const [, next] = boostScales(version)
+        const installed = new Set<string>(['remove-background'])
+        // Returns what the manager's install does: the version now on disk,
+        // which the row's scales are read from.
+        const tools = someTools(async (id, { onProgress }) => {
+          onProgress(32_489, 32_489)
+          installed.add(id)
+          return { version }
+        }, installed)
+        const dir = await makeTempDir()
+        const png = join(dir, 'tile.png')
+        await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
+          .png()
+          .toFile(png)
+        const app = render(
+          <App
+            initialWidth={80}
+            initialHeight={24}
+            prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
+            tools={tools}
+          />,
+        )
+        const frame = () => app.lastFrame() ?? ''
+        app.stdin.write('/edit')
+        await settle()
+        app.stdin.write(ENTER)
+        await settle()
+        app.stdin.write(typed(png))
+        await until(() => frame().includes('tile.png'))
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Edit PNG'))
+        await settle(300)
+        app.stdin.write(DOWN)
+        await until(() => frame().includes('Makes it bigger.'))
+        expect(frame()).toMatch(/needs .+ · 32\.5 KB download +↵ install/)
 
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('‹ 2× ›'))
-      expect(frame()).toContain('becomes 80 × 60')
-      expect(frame()).not.toContain('Save as')
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('‹ 2× ›'))
+        expect(frame()).toContain('becomes 80 × 60')
+        expect(frame()).not.toContain('Save as')
 
-      await settle(300) // ←→ attach once Boost shows its pill
-      app.stdin.write(RIGHT)
-      await until(() => frame().includes(tileAt(next as number)))
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Save as'))
-      expect(frame()).toContain(`tile-${next}x`)
-    }, 60_000)
-
-    it('offers 3× on the Boost row when boost 1.1.0 is installed', async () => {
-      const tools: EditTools = {
-        async list() {
-          return CATALOG.filter((entry) => offeredOn(entry)).map(
-            (entry): ExtensionStatus => ({
-              entry,
-              installed: entry.id === 'boost' ? '1.1.0' : shipped(entry),
-              updateAvailable: false,
-              supported: true,
-            }),
-          )
-        },
-        async install() {},
-      }
-      const dir = await makeTempDir()
-      const png = join(dir, 'tile.png')
-      await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
-        .png()
-        .toFile(png)
-      const app = render(
-        <App
-          initialWidth={80}
-          initialHeight={24}
-          prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
-          tools={tools}
-        />,
-      )
-      const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/edit')
-      await settle()
-      app.stdin.write(ENTER)
-      await settle()
-      app.stdin.write(typed(png))
-      await until(() => frame().includes('tile.png'))
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Edit PNG'))
-      await settle(300)
-      app.stdin.write(DOWN)
-      await until(() => frame().includes('becomes 80 × 60'))
-      await settle(300) // ←→ attach once Boost shows its pill
-      app.stdin.write(RIGHT)
-      await until(() => frame().includes('becomes 120 × 90'))
-      expect(frame()).toContain('‹ 3× ›')
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Save as'))
-      expect(frame()).toContain('tile-3x')
-    }, 60_000)
-
-    it('steps the Boost row’s scale with ←→ and answers with the one chosen', async () => {
-      // On disk and in the list alike, the build this OS ships.
-      const version = shipped(catalogEntry('boost') as CatalogEntry)
-      const scales = boostScales(version)
-      const home = await fake.home()
-      await fake.install(home, 'boost', version)
-      const tools = someTools(async () => {}, new Set(['boost', 'remove-background']))
-      const dir = await makeTempDir()
-      const png = join(dir, 'tile.png')
-      await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
-        .png()
-        .toFile(png)
-      const app = render(
-        <App
-          initialWidth={80}
-          initialHeight={24}
-          prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
-          tools={tools}
-        />,
-      )
-      const frame = () => app.lastFrame() ?? ''
-      app.stdin.write('/edit')
-      await settle()
-      app.stdin.write(ENTER)
-      await settle()
-      app.stdin.write(typed(png))
-      await until(() => frame().includes('tile.png'))
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Edit PNG'))
-      await settle(300)
-
-      // Sharpen has no scale: no ←→ in the keys.
-      expect(frame()).not.toMatch(/←→ +scale/)
-      app.stdin.write(DOWN)
-      await until(() => frame().includes('becomes 80 × 60'))
-      expect(frame()).toMatch(/←→ +scale/)
-
-      await settle(300) // ←→ attach once Boost shows its pill
-      for (const scale of scales.slice(1)) {
+        await settle(300) // ←→ attach once Boost shows its pill
         app.stdin.write(RIGHT)
-        await until(() => frame().includes(tileAt(scale)))
-      }
-      expect(frame()).toContain('‹ 4× ›')
-      app.stdin.write(RIGHT) // already the largest: stays
-      await settle(100)
-      expect(frame()).toContain('becomes 160 × 120')
-      app.stdin.write(LEFT)
-      await until(() => frame().includes(tileAt(scales.at(-2) as number)))
-      app.stdin.write(RIGHT)
-      await until(() => frame().includes('becomes 160 × 120'))
+        await until(() => frame().includes(tileAt(next as number)))
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Save as'))
+        expect(frame()).toContain(`tile-${next}x`)
+      }, 60_000)
 
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Save as'))
-      expect(frame()).toContain('tile-4x')
-      // The trail answers with the scale too, as the two rows used to.
-      expect(frame()).toContain('Boost resolution 4×')
+      it('offers 3× on the Boost row when boost 1.1.0 is installed', async () => {
+        const tools: EditTools = {
+          async list() {
+            return CATALOG.filter((entry) => offeredOn(entry)).map(
+              (entry): ExtensionStatus => ({
+                entry,
+                installed: entry.id === 'boost' ? '1.1.0' : shipped(entry),
+                updateAvailable: false,
+                supported: true,
+              }),
+            )
+          },
+          async install() {},
+        }
+        const dir = await makeTempDir()
+        const png = join(dir, 'tile.png')
+        await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
+          .png()
+          .toFile(png)
+        const app = render(
+          <App
+            initialWidth={80}
+            initialHeight={24}
+            prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
+            tools={tools}
+          />,
+        )
+        const frame = () => app.lastFrame() ?? ''
+        app.stdin.write('/edit')
+        await settle()
+        app.stdin.write(ENTER)
+        await settle()
+        app.stdin.write(typed(png))
+        await until(() => frame().includes('tile.png'))
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Edit PNG'))
+        await settle(300)
+        app.stdin.write(DOWN)
+        await until(() => frame().includes('becomes 80 × 60'))
+        await settle(300) // ←→ attach once Boost shows its pill
+        app.stdin.write(RIGHT)
+        await until(() => frame().includes('becomes 120 × 90'))
+        expect(frame()).toContain('‹ 3× ›')
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Save as'))
+        expect(frame()).toContain('tile-3x')
+      }, 60_000)
 
-      // Back from Save as (esc clears the name, esc again goes back): the
-      // picker is where it was, Boost at 4×.
-      await settle(400)
-      app.stdin.write(ESC)
-      await settle()
-      app.stdin.write(ESC)
-      await until(() => frame().includes('Edit PNG'))
-      await settle(200)
-      expect(frame()).toMatch(/❯ Boost resolution +‹ 4× ›/)
-      expect(frame()).toContain('becomes 160 × 120')
+      it('steps the Boost row’s scale with ←→ and answers with the one chosen', async () => {
+        // On disk and in the list alike, the build this OS ships.
+        const version = shipped(catalogEntry('boost') as CatalogEntry)
+        const scales = boostScales(version)
+        const home = await fake.home()
+        await fake.install(home, 'boost', version)
+        const tools = someTools(async () => {}, new Set(['boost', 'remove-background']))
+        const dir = await makeTempDir()
+        const png = join(dir, 'tile.png')
+        await sharp({ create: { width: 40, height: 30, channels: 3, background: '#808080' } })
+          .png()
+          .toFile(png)
+        const app = render(
+          <App
+            initialWidth={80}
+            initialHeight={24}
+            prefs={{ ...DEFAULT_PREFERENCES, theme: 'dark', defaultOutput: dir }}
+            tools={tools}
+          />,
+        )
+        const frame = () => app.lastFrame() ?? ''
+        app.stdin.write('/edit')
+        await settle()
+        app.stdin.write(ENTER)
+        await settle()
+        app.stdin.write(typed(png))
+        await until(() => frame().includes('tile.png'))
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Edit PNG'))
+        await settle(300)
 
-      // And the run itself is at 4× (the stand-in runner resizes by --scale).
-      app.stdin.write(ENTER)
-      await until(() => frame().includes('Save as'))
-      await settle(400)
-      app.stdin.write(ENTER)
-      const out = join(dir, 'tile-4x.png')
-      await until(() => existsSync(out) && frame().includes('↵ Home'))
-      const meta = await sharp(out).metadata()
-      expect([meta.width, meta.height]).toEqual([160, 120])
-    }, 90_000)
-  })
+        // Sharpen has no scale: no ←→ in the keys.
+        expect(frame()).not.toMatch(/←→ +scale/)
+        app.stdin.write(DOWN)
+        await until(() => frame().includes('becomes 80 × 60'))
+        expect(frame()).toMatch(/←→ +scale/)
+
+        await settle(300) // ←→ attach once Boost shows its pill
+        for (const scale of scales.slice(1)) {
+          app.stdin.write(RIGHT)
+          await until(() => frame().includes(tileAt(scale)))
+        }
+        expect(frame()).toContain('‹ 4× ›')
+        app.stdin.write(RIGHT) // already the largest: stays
+        await settle(100)
+        expect(frame()).toContain('becomes 160 × 120')
+        app.stdin.write(LEFT)
+        await until(() => frame().includes(tileAt(scales.at(-2) as number)))
+        app.stdin.write(RIGHT)
+        await until(() => frame().includes('becomes 160 × 120'))
+
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Save as'))
+        expect(frame()).toContain('tile-4x')
+        // The trail answers with the scale too, as the two rows used to.
+        expect(frame()).toContain('Boost resolution 4×')
+
+        // Back from Save as (esc clears the name, esc again goes back): the
+        // picker is where it was, Boost at 4×.
+        await settle(400)
+        app.stdin.write(ESC)
+        await settle()
+        app.stdin.write(ESC)
+        await until(() => frame().includes('Edit PNG'))
+        await settle(200)
+        expect(frame()).toMatch(/❯ Boost resolution +‹ 4× ›/)
+        expect(frame()).toContain('becomes 160 × 120')
+
+        // And the run itself is at 4× (the stand-in runner resizes by --scale).
+        app.stdin.write(ENTER)
+        await until(() => frame().includes('Save as'))
+        await settle(400)
+        app.stdin.write(ENTER)
+        const out = join(dir, 'tile-4x.png')
+        await until(() => existsSync(out) && frame().includes('↵ Home'))
+        const meta = await sharp(out).metadata()
+        expect([meta.width, meta.height]).toEqual([160, 120])
+      }, 90_000)
+    },
+  )
 
   it('a failed download from the picker says why, and the row offers the download again', async () => {
     const tools = someTools(

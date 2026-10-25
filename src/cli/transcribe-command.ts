@@ -11,7 +11,6 @@ import {
   outputExists,
   readUnavailable,
   renderError,
-  renderUnavailable,
   transcribeUnavailable,
   unexpectedError,
   untranscribable,
@@ -25,12 +24,13 @@ import {
   type Transcription,
   transcriptMarkdown,
 } from '../core/transcribe/markdown.js'
-import { OUTPUTS, type Output, outputExt, outputsFor } from '../core/transcribe/output.js'
+import { OUTPUTS, type Output, outputExt } from '../core/transcribe/output.js'
 import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
 import { hasText, pagePlain, pageText } from '../core/transcribe/page-text.js'
 import {
   notesNeed,
   type ReadEvent,
+  readRefusal,
   renderPages,
   renderTranscript,
   runRead,
@@ -104,7 +104,7 @@ async function readPage(
     )
   }
   const status = await transcribeStatus()
-  if (!status?.read) throw readUnavailable()
+  if (!status?.read) throw await readRefusal()
   const output = outputFor(
     basename(page.path, extname(page.path)),
     dirname(page.path),
@@ -121,7 +121,10 @@ async function readPage(
   if (!hasText(doc)) throw noText(page.path)
   await writeAtomic(
     output,
-    await renderPages(doc, format, basename(page.path), { signal: io.signal }),
+    await renderPages(doc, format, basename(page.path), {
+      signal: io.signal,
+      lang: intent.language,
+    }),
   )
   const what =
     page.what === 'pdf'
@@ -171,8 +174,6 @@ export async function runTranscribeCommand(
     if (status === undefined || !status.speech) {
       throw transcribeUnavailable(transcribeNeeds(process.platform, status?.missing))
     }
-    // Before the minute of listening: a PDF nothing here can set is said now (outputsFor).
-    if (!outputsFor(status).some((o) => o.id === format)) throw renderUnavailable('pdf')
     const notes = intent.notes && status.notes === 'available'
     if (intent.notes && !notes) {
       // Notes alone were the whole ask: a transcript would not be what they wanted.
@@ -222,7 +223,10 @@ export async function runTranscribeCommand(
       await fetched?.dispose()
     }
     const md = transcriptMarkdown(result, origin, { transcript: intent.transcript })
-    await writeAtomic(output, await renderTranscript(md, format, { signal: io.signal }))
+    await writeAtomic(
+      output,
+      await renderTranscript(md, format, { signal: io.signal, lang: result.locale }),
+    )
     const n = result.notes?.parts.length
     const parts = n === undefined ? '' : ` · ${n} ${n === 1 ? 'part' : 'parts'}`
     io.out(

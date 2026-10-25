@@ -63,9 +63,20 @@ describe('the Mac catalogue, as published', () => {
     })
   })
 
-  it('tells an Intel Mac there is no boost build', async () => {
+  it('offers an Intel Mac boost 1.2.0, which runs on WebGPU (Metal)', async () => {
     const boost = (await listExtensions('darwin', 'x64')).find((s) => s.entry.id === 'boost')
-    expect(boost).toMatchObject({ supported: false, reason: 'no build for x64 Macs' })
+    expect(boost).toMatchObject({ supported: true })
+    expect(boost && assetFor(boost.entry, 'darwin', 'x64')).toEqual({
+      version: '1.2.0',
+      url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-x64.tar.gz`,
+      bytes: 16062122,
+      sha256: '4770833905b4b6c348d1eb18bb735ace9a4f63ace51097c4a7c4b74ec1787998',
+    })
+  })
+
+  it('leaves Apple silicon on the boost it has', () => {
+    const boost = catalogEntry('boost')
+    expect(boost && assetFor(boost, 'darwin', 'arm64')?.version).toBe('1.0.0')
   })
 
   it('an installed boost 1.0.0 is up to date', async () => {
@@ -89,10 +100,9 @@ describe('the Mac catalogue, as published', () => {
 })
 
 describe('by OS', () => {
-  it("remove-background is the Mac's alone until a model passes; heic is never offered on a Mac", () => {
-    expect(offeredHere('remove-background', 'darwin')).toBe(true)
-    for (const os of ['win32', 'linux'] as const)
-      expect(offeredHere('remove-background', os)).toBe(false)
+  it('remove-background is offered on every OS (Apple Vision on a Mac, BiRefNet-lite elsewhere); heic is never offered on a Mac', () => {
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(offeredHere('remove-background', os)).toBe(true)
     expect(offeredHere('heic', 'darwin')).toBe(false)
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
@@ -133,6 +143,32 @@ describe('by OS', () => {
     }
   })
 
+  it('raw is offered on Windows and Linux, never on a Mac (sips), one build for any chip', () => {
+    expect(offeredHere('raw', 'darwin')).toBe(false)
+    expect(offeredHere('raw', 'win32')).toBe(true)
+    expect(offeredHere('raw', 'linux')).toBe(true)
+    const raw = catalogEntry('raw')
+    if (raw === undefined) throw new Error('raw is catalogued')
+    expect(raw).toMatchObject({
+      title: 'Camera RAW photos',
+      summary: 'Open camera RAW photos',
+      licence: 'LibRaw (LGPL-2.1 or CDDL-1.0), via libraw-wasm (ISC)',
+    })
+    for (const os of ['win32', 'linux'] as const) {
+      for (const arch of ['x64', 'arm64']) {
+        const asset = assetFor(raw, os, arch)
+        expect(asset?.url, `${os}-${arch}`).toBe(
+          `${RELEASES}/ext-raw-v1.0.0/forge-ext-raw-1.0.0-${os}-universal.tar.gz`,
+        )
+        expect(asset?.version).toBe('1.0.0')
+        // Pinned to the archives built: a WASM LibRaw, about half a megabyte.
+        expect(asset?.sha256).toMatch(/^[0-9a-f]{64}$/)
+        expect(asset?.bytes).toBeGreaterThan(400_000)
+        expect(asset?.bytes).toBeLessThan(1_000_000)
+      }
+    }
+  })
+
   it('whisper is on every OS, model inside, one archive per OS and chip', async () => {
     for (const os of ['darwin', 'win32', 'linux'] as const)
       expect(offeredHere('whisper', os)).toBe(true)
@@ -160,7 +196,7 @@ describe('by OS', () => {
     expect(linux?.supported).toBe(true)
   })
 
-  it('Edit has a Remove background row only where it is offered: the Mac', () => {
+  it('Edit has a Remove background row wherever it is offered: a Mac, Windows and Linux', () => {
     const photo = {
       kind: 'image',
       path: '/p.png',
@@ -171,32 +207,97 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    expect(editRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
-    for (const os of ['win32', 'linux', 'freebsd'] as const)
-      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).not.toContain('cutout')
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).toContain('cutout')
+    expect(editRows(photo, undefined, undefined, 'freebsd').map((r) => r.id)).not.toContain(
+      'cutout',
+    )
   })
 })
 
 describe('the Windows and Linux catalogue', () => {
-  it('offers neither boost nor remove-background on Linux: CPU only, and no model passed yet', async () => {
+  it('offers boost on Linux x64 (WebGPU) and remove-background on every Linux chip', async () => {
     for (const arch of ['x64', 'arm64']) {
       const ids = (await listExtensions('linux', arch)).map((s) => s.entry.id)
-      expect(ids).not.toContain('boost')
-      expect(ids).not.toContain('remove-background')
-      expect(ids).toEqual(expect.arrayContaining(['heic', 'whisper', 'yt-dlp']))
+      expect(ids).toEqual(
+        expect.arrayContaining(['remove-background', 'heic', 'raw', 'whisper', 'yt-dlp']),
+      )
+    }
+    const boost = (await listExtensions('linux', 'x64')).find((s) => s.entry.id === 'boost')
+    expect(boost).toMatchObject({ supported: true })
+  })
+
+  it('has no boost build for Linux arm64: that ONNX Runtime has no WebGPU in it', async () => {
+    const boost = (await listExtensions('linux', 'arm64')).find((s) => s.entry.id === 'boost')
+    expect(boost).toMatchObject({ supported: false, reason: 'no build for arm64 computers' })
+    expect(offeredHere('boost', 'linux', 'arm64')).toBe(false)
+    expect(offeredHere('boost', 'linux', 'x64')).toBe(true)
+  })
+
+  it('pins the Linux x64 boost 1.2.0 archive', () => {
+    const boost = catalogEntry('boost')
+    expect(boost && assetFor(boost, 'linux', 'x64')).toEqual({
+      version: '1.2.0',
+      url: `${RELEASES}/ext-boost-v1.2.0/forge-ext-boost-1.2.0-linux-x64.tar.gz`,
+      bytes: 17020821,
+      sha256: 'fca6232c38c05469e255ba2900ab32f993c1b8588f0a3569b24977ab657ff4cb',
+    })
+  })
+
+  it('names every part of boost in its licence line, Dawn (WebGPU) too', () => {
+    expect(catalogEntry('boost')?.licence).toContain('Dawn (BSD-3-Clause)')
+  })
+
+  it('offers boost, heic and remove-background on Windows', async () => {
+    for (const arch of ['x64', 'arm64']) {
+      const ids = (await listExtensions('win32', arch)).map((s) => s.entry.id)
+      expect(ids).toEqual(
+        expect.arrayContaining(['boost', 'remove-background', 'heic', 'raw', 'whisper']),
+      )
     }
   })
 
-  it('offers boost and heic on Windows, and remove-background only on the Mac', async () => {
-    const ids = (await listExtensions('win32', 'x64')).map((s) => s.entry.id)
-    expect(ids).toEqual(expect.arrayContaining(['boost', 'heic', 'whisper']))
-    expect(ids).not.toContain('remove-background')
+  it("remove-background 1.1.0 is BiRefNet-lite on Windows and Linux, one archive per OS and chip; the Mac's stays at 1.0.0", () => {
     const cutout = catalogEntry('remove-background')
-    expect(cutout && assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')
+    if (cutout === undefined) throw new Error('remove-background is catalogued')
+    expect(assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')
+    for (const key of ['win32-x64', 'win32-arm64', 'linux-x64', 'linux-arm64']) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(cutout, platform, arch)
+      expect(asset?.version, key).toBe('1.1.0')
+      expect(asset?.url, key).toBe(
+        `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-${key}.tar.gz`,
+      )
+      expect(asset?.sha256, key).toMatch(/^[0-9a-f]{64}$/)
+      // The 54 MB model plus ONNX Runtime, packed: under the 100 MB ceiling for a model.
+      expect(asset?.bytes, key).toBeGreaterThan(40_000_000)
+      expect(asset?.bytes, key).toBeLessThan(100_000_000)
+    }
   })
+})
 
-  it('still tells an Intel Mac there is no boost build', () => {
-    const boost = CATALOG.find((e) => e.id === 'boost')
-    expect(boost && assetFor(boost, 'darwin', 'x64')).toBeUndefined()
+describe('read-text', () => {
+  it('is offered on every OS and chip, one archive each (all six scripts), under 50 MB', () => {
+    const rt = catalogEntry('read-text')
+    if (rt === undefined) throw new Error('read-text is catalogued')
+    const files = {
+      'darwin-arm64': 'arm64',
+      'darwin-x64': 'x64',
+      'win32-x64': 'win32-x64',
+      'win32-arm64': 'win32-arm64',
+      'linux-x64': 'linux-x64',
+      'linux-arm64': 'linux-arm64',
+    }
+    for (const [key, file] of Object.entries(files)) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(rt, platform, arch)
+      expect(asset?.url, key).toBe(
+        `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-${file}.tar.gz`,
+      )
+      expect(asset?.version, key).toBe('1.1.0')
+      // Detector, six recognisers (half precision) and ONNX Runtime.
+      expect(asset?.bytes, key).toBeGreaterThan(35_000_000)
+      expect(asset?.bytes, key).toBeLessThan(50_000_000)
+    }
   })
 })

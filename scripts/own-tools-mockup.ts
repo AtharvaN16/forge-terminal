@@ -13,8 +13,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { errorPanel } from '../src/shell/error-art.js'
 import { DARK, modePalette } from '../src/shell/theme.js'
-import { type PageConcept, feedbackPage } from './feedback-page.js'
-import { type Cell, type Grid, cellsOf, termHtml } from './term-cells.js'
+import { feedbackPage, type PageConcept } from './feedback-page.js'
+import { type Cell, cellsOf, type Grid, termHtml } from './term-cells.js'
 
 type Raw = { ch: string; fg: string | null; bg: string | null; b: boolean }
 const frames = JSON.parse(
@@ -107,22 +107,14 @@ function listRow(g: Grid, r: number, name: string, o: { on?: boolean; mark?: str
   blank(g, r, L, R, PANEL)
   if (o.on) {
     blank(g, r, 8, 35, BAND)
-    put(g, r, 8, [
-      ['▌', GOLD],
-      [' '],
-      [name, FG, undefined, true],
-    ])
+    put(g, r, 8, [['▌', GOLD], [' '], [name, FG, undefined, true]])
   } else put(g, r, 10, [[name, DIM]])
   if (o.mark) put(g, r, 33, [[o.mark, DIM]])
 }
 /** A group's heading in the list, as the menu heads its groups. */
 function groupRow(g: Grid, r: number, name: string) {
   blank(g, r, L, R, PANEL)
-  put(g, r, 8, [
-    [name, DIM, undefined, true],
-    [' '],
-    ['─'.repeat(35 - 8 - name.length - 1), QUIET],
-  ])
+  put(g, r, 8, [[name, DIM, undefined, true], [' '], ['─'.repeat(35 - 8 - name.length - 1), QUIET]])
 }
 /** The sheet: name, what it gives, a blank, then `status` rows, from row `top`. */
 function sheet(g: Grid, top: number, name: string, gives: string, status: Seg[][]) {
@@ -172,7 +164,13 @@ function x3(): Grid {
   listRow(g, 4, 'Boost resolution', { on: true })
   listRow(g, 5, 'Remove background')
   blank(g, 6, L, R, PANEL)
-  sheet(g, 7, 'Boost resolution', 'Sharpen, or boost resolution 2x or 4x, with a local AI model', [])
+  sheet(
+    g,
+    7,
+    'Boost resolution',
+    'Sharpen, or boost resolution 2x or 4x, with a local AI model',
+    [],
+  )
   put(g, 10, 8, [
     [' ', undefined, PILL],
     ['↵', INK, PILL, true],
@@ -235,7 +233,8 @@ function x5(): Grid {
 /** The card's second line (columns 15–62), in dim. */
 function cardLine(g: Grid, segs: Seg[]): void {
   const room = 48
-  if (len(segs) > room) throw new Error(`card line too long (${len(segs)}): ${segs.map((s) => s[0]).join('')}`)
+  if (len(segs) > room)
+    throw new Error(`card line too long (${len(segs)}): ${segs.map((s) => s[0]).join('')}`)
   blank(g, 11, 15, 63)
   put(g, 11, 15, segs)
 }
@@ -377,14 +376,16 @@ const dumped: Grid[] = []
 const frameOf = (g: Grid, caption?: string) =>
   void dumped.push(g) ||
   `<figure class="fr">${shot(g)}${caption ? `<figcaption>${caption}</figcaption>` : ''}</figure>`
-const row = (...parts: string[]) => `<div class="flow">${parts.join('<div class="arrow">→</div>')}</div>`
+const row = (...parts: string[]) =>
+  `<div class="flow">${parts.join('<div class="arrow">→</div>')}</div>`
 
 const concepts: PageConcept[] = [
   /* 1 · /extensions */
   {
     id: 'X1',
     tab: '1 · /extensions',
-    section: 'OPTIONS — /extensions when this Mac already has yt-dlp (Forge has not downloaded its own). Pick one.',
+    section:
+      'OPTIONS — /extensions when this Mac already has yt-dlp (Forge has not downloaded its own). Pick one.',
     name: 'Just ✓ ready',
     idea: 'The row gets its ✓ like an installed tool; the sheet says ready, with no size and no remove, since nothing of Forge’s is on disk. Quietest; does not say where it comes from.',
     html: frameOf(x1()),
@@ -419,7 +420,8 @@ const concepts: PageConcept[] = [
   {
     id: 'Y1',
     tab: '2 · Pasting a link',
-    section: 'OPTIONS — a YouTube link, with your yt-dlp found. Today, with no yt-dlp, this card offers a 37.1 MB download.',
+    section:
+      'OPTIONS — a YouTube link, with your yt-dlp found. Today, with no yt-dlp, this card offers a 37.1 MB download.',
     name: 'Nothing new: straight to the video',
     idea: 'MY PICK. The card looks the link up and shows the title, exactly as with Forge’s copy. Your yt-dlp is never mentioned because nothing is asked of you.',
     html: frameOf(y1()),
@@ -435,7 +437,8 @@ const concepts: PageConcept[] = [
   {
     id: 'O1',
     tab: '3 · Yours is too old',
-    section: 'OPTIONS — your yt-dlp is older than the one this Forge is tested with (2026.08.19). Known before anything runs.',
+    section:
+      'OPTIONS — your yt-dlp is older than the one this Forge is tested with (2026.08.19). Known before anything runs.',
     name: 'Offer Forge’s copy',
     idea: 'The card offers the download as today. Just works; costs the 37.1 MB this round is trying to save, and leaves your old copy old.',
     html: frameOf(o1()),
@@ -475,7 +478,8 @@ const concepts: PageConcept[] = [
   {
     id: 'F1',
     tab: '4 · Yours fails on a video',
-    section: 'OPTIONS — your yt-dlp ran and could not fetch the video, most likely because YouTube changed. Today: Cannot transcribe this link · yt-dlp could not fetch this video: Sign…',
+    section:
+      'OPTIONS — your yt-dlp ran and could not fetch the video, most likely because YouTube changed. Today: Cannot transcribe this link · yt-dlp could not fetch this video: Sign…',
     name: 'Today’s row, the fix as its reason',
     idea: 'MY PICK. Same one-line refusal; the reason becomes the command. yt-dlp’s own words go (they were cut off anyway).',
     html: frameOf(f1()),

@@ -85,7 +85,13 @@ function bar(g: Grid, answers: string[], current?: string) {
   row(
     g,
     1,
-    trailBarRow({ width: 76, palette: P, mode: 'colour', trail: { answers, current }, slanted: false }),
+    trailBarRow({
+      width: 76,
+      palette: P,
+      mode: 'colour',
+      trail: { answers, current },
+      slanted: false,
+    }),
   )
 }
 /** The field: a filled block of three rows. */
@@ -133,7 +139,13 @@ function tabs(g: Grid, r: number, names: string[], on: number, hint = true) {
     if (i === on) put(g, r + 1, at - 2, [['━'.repeat(n.length + 4), PINK]])
     at += n.length + 4
   })
-  if (hint) put(g, r, 64, [[' ', undefined, CAP], ['tab', FG, CAP, true], [' ', undefined, CAP], [' switch', DIM]])
+  if (hint)
+    put(g, r, 64, [
+      [' ', undefined, CAP],
+      ['tab', FG, CAP, true],
+      [' ', undefined, CAP],
+      [' switch', DIM],
+    ])
 }
 
 /* --------------------------------------------------------------- data */
@@ -142,7 +154,11 @@ const BLUE = parseHex('#6579FD') as Rgb
 const PURPLE = parseHex('#AC96EF') as Rgb
 const stepsFor = (ref: Rgb, t: Tweak = NO_TWEAK) =>
   t === NO_TWEAK ? scale(ref) : tweakSteps((r) => scale(r), ref, t, 5)
-const hex = (rgb: Rgb) => `#${[rgb.r, rgb.g, rgb.b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`
+const hex = (rgb: Rgb) =>
+  `#${[rgb.r, rgb.g, rgb.b]
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`
 
 /** The ramp under the tabs (labels at `top`), its chosen step marked with a heavier bar. */
 function ramp(g: Grid, top: number, ref: Rgb, sel = 5, t: Tweak = NO_TWEAK) {
@@ -186,13 +202,24 @@ function home(typed?: string): Grid {
   put(g, 15, 4, [[' '.repeat(72), undefined, FIELD]])
   for (const r of [16, 17, 18]) put(g, r, 4, [[' '.repeat(72), undefined, SHELF]])
   if (typed) {
-    put(g, 17, 6, [['›', PINK, SHELF, true], [' '], [typed, FG, SHELF], ['  '], ['    ', undefined, typed]])
+    put(g, 17, 6, [
+      ['›', PINK, SHELF, true],
+      [' '],
+      [typed, FG, SHELF],
+      ['  '],
+      ['    ', undefined, typed],
+    ])
     const hint = chipHint('↵', 'open')
     put(g, 17, 74 - len(hint), hint)
   } else {
     put(g, 17, 6, [['›', QUIET, SHELF, true], [' '], ['OR type a colour', QUIET, SHELF]])
   }
-  put(g, 23, 68, [[' ', undefined, CAP], ['/', FG, CAP], [' ', undefined, CAP], [' menu', DIM]])
+  put(g, 23, 68, [
+    [' ', undefined, CAP],
+    ['/', FG, CAP],
+    [' ', undefined, CAP],
+    [' menu', DIM],
+  ])
   keys(
     g,
     [],
@@ -207,7 +234,13 @@ function home(typed?: string): Grid {
           ['ctrl-c', 'quit'],
         ],
   )
-  if (typing) put(g, 25, 4, [[' ', undefined, CAP], ['↵', FG, CAP, true], [' ', undefined, CAP], [' open', DIM]])
+  if (typing)
+    put(g, 25, 4, [
+      [' ', undefined, CAP],
+      ['↵', FG, CAP, true],
+      [' ', undefined, CAP],
+      [' open', DIM],
+    ])
   return g
 }
 
@@ -226,7 +259,17 @@ function underRamp(g: Grid, top: number, ref: Rgb, sel: number, how: Under, flas
   const step = stepsFor(ref)[sel]
   if (!step) return
   if (how === 'line') {
-    put(g, top, 4, flash ? [['✓', P.ok, undefined, true], [` ${flash}`, FG]] : [[String(step.step), FG, undefined, true], ['  '], [step.hex, FG, undefined, true]])
+    put(
+      g,
+      top,
+      4,
+      flash
+        ? [
+            ['✓', P.ok, undefined, true],
+            [` ${flash}`, FG],
+          ]
+        : [[String(step.step), FG, undefined, true], ['  '], [step.hex, FG, undefined, true]],
+    )
     return
   }
   if (how === 'big') {
@@ -235,7 +278,11 @@ function underRamp(g: Grid, top: number, ref: Rgb, sel: number, how: Under, flas
     put(g, top + 3, 6, [['Aa', '#000000', step.hex, true]])
     put(g, top + 1, 9, [['white text', '#ffffff', step.hex]])
     put(g, top + 3, 9, [['black text', '#000000', step.hex]])
-    if (flash) put(g, top, 24, [['✓', P.ok, undefined, true], [` ${flash}`, FG]])
+    if (flash)
+      put(g, top, 24, [
+        ['✓', P.ok, undefined, true],
+        [` ${flash}`, FG],
+      ])
     else put(g, top, 24, [[String(step.step), DIM], ['  '], [step.hex, FG, undefined, true]])
     put(g, top + 2, 24, [[formatRgb(step.rgb), DIM]])
     put(g, top + 3, 24, [[formatOklch(step.rgb), DIM]])
@@ -244,7 +291,11 @@ function underRamp(g: Grid, top: number, ref: Rgb, sel: number, how: Under, flas
   // The rest of the palette as thin rows, each on the ramp's columns.
   const sys = system(ref, 'full', NO_TWEAK, DEFAULT_STEPS)
   const others = [...sys.rows.filter((r) => !r.yours), { name: 'neutral', steps: sys.neutral }]
-  put(g, top, 4, [[String(step.step), FG, undefined, true], ['  '], [step.hex, FG, undefined, true]])
+  put(g, top, 4, [
+    [String(step.step), FG, undefined, true],
+    ['  '],
+    [step.hex, FG, undefined, true],
+  ])
   others.slice(0, 8).forEach((r, i) => {
     r.steps.forEach((s, c) => put(g, top + 2 + i, 4 + c * 6, [['     ', undefined, s.hex]]))
     put(g, top + 2 + i, 70, [[(r.name === 'neutral' ? 'grey' : r.name).slice(0, 6), QUIET]])
@@ -291,7 +342,20 @@ function paletteOf(ref: Rgb, { trail = [] as string[] } = {}): Grid {
     { name: 'neutral', steps: sys.neutral, yours: false },
   ]
   // Every row on one line, touching, so all nine show at 80×26.
-  put(g, 9, 14, stepsOf(DEFAULT_STEPS).map((n, c) => [(n < 100 ? ` ${n}` : String(n)).padEnd(5), c === 5 ? FG : QUIET, undefined, c === 5] as Seg))
+  put(
+    g,
+    9,
+    14,
+    stepsOf(DEFAULT_STEPS).map(
+      (n, c) =>
+        [
+          (n < 100 ? ` ${n}` : String(n)).padEnd(5),
+          c === 5 ? FG : QUIET,
+          undefined,
+          c === 5,
+        ] as Seg,
+    ),
+  )
   ordered.forEach((r, i) => {
     const name = r.name === 'neutral' ? 'grey' : r.name
     put(g, 10 + i, 4, [[name, i === 0 ? PINK : DIM, undefined, i === 0]])
@@ -300,7 +364,14 @@ function paletteOf(ref: Rgb, { trail = [] as string[] } = {}): Grid {
   mark(g, 10, 10, 38, 43)
   const chosen = ordered[0]?.steps[5]
   if (chosen)
-    put(g, 20, 4, [[ordered[0]?.name ?? '', FG, undefined, true], [' 500', FG, undefined, true], ['  '], [chosen.hex, FG, undefined, true], ['  '], [formatRgb(chosen.rgb), DIM]])
+    put(g, 20, 4, [
+      [ordered[0]?.name ?? '', FG, undefined, true],
+      [' 500', FG, undefined, true],
+      ['  '],
+      [chosen.hex, FG, undefined, true],
+      ['  '],
+      [formatRgb(chosen.rgb), DIM],
+    ])
   keys(g, [['↑↓←→', 'choose'], ...COPY_KEYS], FOOT)
   return g
 }
@@ -317,16 +388,36 @@ function moreBox(g: Grid, items: readonly (readonly [string, string])[] = MORE, 
   const left = 76 - w
   const top = 23 - items.length - 3
   clear(g, top, 23, left - 1, 76)
-  put(g, top, left, [['╭─ ', QUIET], ['More', FG, undefined, true], [` ${'─'.repeat(w - 9)}╮`, QUIET]])
-  put(g, top + 1, left, [['│', QUIET], [' '.repeat(w - 2), undefined, FIELD], ['│', QUIET]])
+  put(g, top, left, [
+    ['╭─ ', QUIET],
+    ['More', FG, undefined, true],
+    [` ${'─'.repeat(w - 9)}╮`, QUIET],
+  ])
+  put(g, top + 1, left, [
+    ['│', QUIET],
+    [' '.repeat(w - 2), undefined, FIELD],
+    ['│', QUIET],
+  ])
   items.forEach(([name, k], i) => {
     const r = top + 2 + i
     const on = i === at
-    put(g, r, left, [['│', QUIET], [' '.repeat(w - 2), undefined, on ? '#404040' : FIELD], ['│', QUIET]])
-    put(g, r, left + 2, [[on ? '▌' : ' ', PINK, on ? '#404040' : FIELD], [' '], [name, on ? FG : DIM, on ? '#404040' : FIELD, on]])
+    put(g, r, left, [
+      ['│', QUIET],
+      [' '.repeat(w - 2), undefined, on ? '#404040' : FIELD],
+      ['│', QUIET],
+    ])
+    put(g, r, left + 2, [
+      [on ? '▌' : ' ', PINK, on ? '#404040' : FIELD],
+      [' '],
+      [name, on ? FG : DIM, on ? '#404040' : FIELD, on],
+    ])
     put(g, r, left + w - 4, [[k, QUIET, on ? '#404040' : FIELD]])
   })
-  put(g, top + 2 + items.length, left, [['│', QUIET], [' '.repeat(w - 2), undefined, FIELD], ['│', QUIET]])
+  put(g, top + 2 + items.length, left, [
+    ['│', QUIET],
+    [' '.repeat(w - 2), undefined, FIELD],
+    ['│', QUIET],
+  ])
   put(g, top + 3 + items.length, left, [[`╰${'─'.repeat(w - 2)}╯`, QUIET]])
 }
 function withMore(g: Grid, items: readonly (readonly [string, string])[] = MORE): Grid {
@@ -362,7 +453,13 @@ function adjust(ref: Rgb): Grid {
     row(
       g,
       r,
-      sliderRow({ palette: P, value: t[n], min: n === 'hue' ? -180 : -100, max: n === 'hue' ? 180 : 100, width: 50 }),
+      sliderRow({
+        palette: P,
+        value: t[n],
+        min: n === 'hue' ? -180 : -100,
+        max: n === 'hue' ? 180 : 100,
+        width: 50,
+      }),
       21,
     )
   })
@@ -396,7 +493,11 @@ function photo(sel = 0): Grid {
   }
   const hexes = ['#AC96EF', '#89B929', '#275F22', '#6678FF', '#B3E72E', '#F9716E', '#5A8E25']
   const pcts = ['18', '15', '15', '15', '13', '12', '12']
-  put(g, 18, 4, [[hexes[sel] ?? '', FG, undefined, true], ['  '], [`${pcts[sel]}% of the photo`, DIM]])
+  put(g, 18, 4, [
+    [hexes[sel] ?? '', FG, undefined, true],
+    ['  '],
+    [`${pcts[sel]}% of the photo`, DIM],
+  ])
   keys(g, [['↑↓', 'choose'], ...COPY_KEYS], [['→', 'open'], ...FOOT])
   return g
 }
@@ -407,7 +508,15 @@ function tabsForAll(): Grid {
   tabs(g, 7, ['Scale', 'Palette', 'Blend', 'See-through'], 0)
   clear(g, 15, 23)
   underRamp(g, 15, BLUE, 5, 'line')
-  keys(g, [['←→', 'choose'], ...COPY_KEYS], [['t', 'adjust'], ['s', 'steps'], ['esc', 'back']])
+  keys(
+    g,
+    [['←→', 'choose'], ...COPY_KEYS],
+    [
+      ['t', 'adjust'],
+      ['s', 'steps'],
+      ['esc', 'back'],
+    ],
+  )
   return g
 }
 /** Option: extras on a sheet that rises over the key row, each on its key. */
@@ -417,11 +526,19 @@ function sheet(): Grid {
   for (const r of [21, 22, 23]) put(g, r, 4, [[' '.repeat(72), undefined, FIELD]])
   let at = 6
   for (const [name, k] of MORE) {
-    put(g, 22, at, [[' ', undefined, CAP], [k, FG, CAP, true], [' ', undefined, CAP], [` ${name}`, FG, FIELD]])
+    put(g, 22, at, [
+      [' ', undefined, CAP],
+      [k, FG, CAP, true],
+      [' ', undefined, CAP],
+      [` ${name}`, FG, FIELD],
+    ])
     at += name.length + 6
   }
   put(g, 24, 4, [['─'.repeat(72), QUIET]])
-  put(g, 25, 70, [['esc', FG], [' close', QUIET]])
+  put(g, 25, 70, [
+    ['esc', FG],
+    [' close', QUIET],
+  ])
   return g
 }
 /** Option: colour's home as two cards, Photo and Colour. */
@@ -429,17 +546,52 @@ function twoCards(): Grid {
   const g = frame('home')
   clear(g, 8, 23)
   for (let r = 9; r <= 15; r++) put(g, r, 4, [[' '.repeat(72), undefined, FIELD]])
-  const card = (at: number, k: string, name: string, sub: string[], on: boolean, chips: string[]) => {
+  const card = (
+    at: number,
+    k: string,
+    name: string,
+    sub: string[],
+    on: boolean,
+    chips: string[],
+  ) => {
     const bg = on ? '#404040' : FIELD
     for (let r = 10; r <= 14; r++) put(g, r, at, [[' '.repeat(32), undefined, bg]])
     put(g, 10, at + 2, [[k, PINK, bg, true], [' '], [name, FG, bg, true]])
     sub.forEach((s, i) => put(g, 11 + i, at + 2, [[s, DIM, bg]]))
     chips.forEach((h, i) => put(g, 13, at + 2 + i * 2, [['  ', undefined, h]]))
   }
-  card(6, 'A', 'Photo', ['colours in a photo'], true, ['#AC96EF', '#89B929', '#275F22', '#6678FF', '#B3E72E', '#F9716E', '#5A8E25'])
-  card(41, 'S', 'Colour', ['shades and a palette'], false, scale(BLUE).map((s) => s.hex))
-  put(g, 23, 68, [[' ', undefined, CAP], ['/', FG, CAP], [' ', undefined, CAP], [' menu', DIM]])
-  keys(g, [['A S', 'open']], [['1–6', ''], ['←→', 'mode'], ['ctrl-c', 'quit']])
+  card(6, 'A', 'Photo', ['colours in a photo'], true, [
+    '#AC96EF',
+    '#89B929',
+    '#275F22',
+    '#6678FF',
+    '#B3E72E',
+    '#F9716E',
+    '#5A8E25',
+  ])
+  card(
+    41,
+    'S',
+    'Colour',
+    ['shades and a palette'],
+    false,
+    scale(BLUE).map((s) => s.hex),
+  )
+  put(g, 23, 68, [
+    [' ', undefined, CAP],
+    ['/', FG, CAP],
+    [' ', undefined, CAP],
+    [' menu', DIM],
+  ])
+  keys(
+    g,
+    [['A S', 'open']],
+    [
+      ['1–6', ''],
+      ['←→', 'mode'],
+      ['ctrl-c', 'quit'],
+    ],
+  )
   return g
 }
 
@@ -526,21 +678,75 @@ ${map}
 </div>`
 
 const colourFlow = flow(
-  step(1, 'Colour’s home', todayHome(), 'Press <kbd>S</kbd> Scale', 'Unchanged. <kbd>D</kbd> Palette opens the same screen on its Palette tab.'),
-  step(2, 'Type a colour', scaleTyping(BLUE), 'Type <code>#6579FD</code>, then <kbd>↵</kbd>', 'The shades draw as you type.'),
-  step(3, 'Its scale', shades(BLUE), '<kbd>←→</kbd> choose · <kbd>↵</kbd> copy the hex', 'The chosen colour big, with text on it and its codes. Neutral is now a row on the Palette tab; Alpha is See-through in More.'),
-  step(4, 'Copy for Figma', shades(BLUE, { flash: 'copied for Figma' }), '<kbd>c</kbd>', 'Says where the copy goes.'),
-  step(5, 'Its palette', paletteOf(BLUE), '<kbd>tab</kbd>', 'Every colour row shows at once. Yours is first.'),
+  step(
+    1,
+    'Colour’s home',
+    todayHome(),
+    'Press <kbd>S</kbd> Scale',
+    'Unchanged. <kbd>D</kbd> Palette opens the same screen on its Palette tab.',
+  ),
+  step(
+    2,
+    'Type a colour',
+    scaleTyping(BLUE),
+    'Type <code>#6579FD</code>, then <kbd>↵</kbd>',
+    'The shades draw as you type.',
+  ),
+  step(
+    3,
+    'Its scale',
+    shades(BLUE),
+    '<kbd>←→</kbd> choose · <kbd>↵</kbd> copy the hex',
+    'The chosen colour big, with text on it and its codes. Neutral is now a row on the Palette tab; Alpha is See-through in More.',
+  ),
+  step(
+    4,
+    'Copy for Figma',
+    shades(BLUE, { flash: 'copied for Figma' }),
+    '<kbd>c</kbd>',
+    'Says where the copy goes.',
+  ),
+  step(
+    5,
+    'Its palette',
+    paletteOf(BLUE),
+    '<kbd>tab</kbd>',
+    'Every colour row shows at once. Yours is first.',
+  ),
   step(6, 'More', withMore(shades(BLUE)), '<kbd>m</kbd>', 'The extras, in one short list.'),
-  step(7, 'Adjust', adjust(BLUE), 'Pick Adjust in More', 'The sliders sit at the bottom, so the colours stay in view.'),
+  step(
+    7,
+    'Adjust',
+    adjust(BLUE),
+    'Pick Adjust in More',
+    'The sliders sit at the bottom, so the colours stay in view.',
+  ),
 )
 
 const photoFlow = flow(
   step(1, 'Colour’s home', todayHome(), 'Press <kbd>A</kbd> Extract', 'Unchanged.'),
   step(2, 'Drop a photo', frame('extract-empty'), 'Drop it, or type its path', 'Unchanged.'),
-  step(3, 'Its colours', photo(), '<kbd>↑↓</kbd> choose · <kbd>↵</kbd> copy the hex', 'The long note under the photo is gone. All keys are in the bottom row.'),
-  step(4, 'Open one', shades(PURPLE, { trail: ['Extract'] }), '<kbd>→</kbd>', 'The same colour screen as in the other flow.'),
-  step(5, 'Its palette', paletteOf(PURPLE, { trail: ['Extract'] }), '<kbd>tab</kbd>', 'From a photo to a full palette, without typing the colour again.'),
+  step(
+    3,
+    'Its colours',
+    photo(),
+    '<kbd>↑↓</kbd> choose · <kbd>↵</kbd> copy the hex',
+    'The long note under the photo is gone. All keys are in the bottom row.',
+  ),
+  step(
+    4,
+    'Open one',
+    shades(PURPLE, { trail: ['Extract'] }),
+    '<kbd>→</kbd>',
+    'The same colour screen as in the other flow.',
+  ),
+  step(
+    5,
+    'Its palette',
+    paletteOf(PURPLE, { trail: ['Extract'] }),
+    '<kbd>tab</kbd>',
+    'From a photo to a full palette, without typing the colour again.',
+  ),
 )
 
 const CSS = `<style>
@@ -600,8 +806,18 @@ const concepts: PageConcept[] = [
     tab: '4 · Choices',
     section: 'A · What goes under the scale? <span class="pk">pick one</span>',
   },
-  { id: 'A2', name: 'The colour, big — my pick', idea: 'The chosen colour large, white and black text on it, and its codes. Used in the flows.', html: big(shades(BLUE)) },
-  { id: 'A3', name: 'Palette under it', idea: 'No tabs: the scale on top, the other colours as thin rows below.', html: big(shades(BLUE, { how: 'palette', tabbed: false })) },
+  {
+    id: 'A2',
+    name: 'The colour, big — my pick',
+    idea: 'The chosen colour large, white and black text on it, and its codes. Used in the flows.',
+    html: big(shades(BLUE)),
+  },
+  {
+    id: 'A3',
+    name: 'Palette under it',
+    idea: 'No tabs: the scale on top, the other colours as thin rows below.',
+    html: big(shades(BLUE, { how: 'palette', tabbed: false })),
+  },
   {
     id: 'B1',
     name: 'A list on m — my pick',
@@ -609,8 +825,18 @@ const concepts: PageConcept[] = [
     html: big(withMore(shades(BLUE))),
     section: 'B · Where do the extras live? <span class="pk">pick one</span>',
   },
-  { id: 'B2', name: 'More tabs', idea: 'Blend and See-through become tabs; Adjust and Steps stay keys.', html: big(tabsForAll()) },
-  { id: 'B3', name: 'A strip over the keys', idea: 'Each extra on its own key, in a strip that rises over the key row.', html: big(sheet()) },
+  {
+    id: 'B2',
+    name: 'More tabs',
+    idea: 'Blend and See-through become tabs; Adjust and Steps stay keys.',
+    html: big(tabsForAll()),
+  },
+  {
+    id: 'B3',
+    name: 'A strip over the keys',
+    idea: 'Each extra on its own key, in a strip that rises over the key row.',
+    html: big(sheet()),
+  },
   {
     id: 'H1',
     name: 'Today’s cards — kept',
@@ -618,8 +844,18 @@ const concepts: PageConcept[] = [
     html: big(todayHome()),
     section: 'C · Colour’s home: only other takes on the cards <span class="pk">optional</span>',
   },
-  { id: 'H2', name: 'Same cards, plainer subtitles', idea: 'Only the words change: each card says what it gives. Needs your OK on the words.', html: big(plainCards()) },
-  { id: 'H3', name: 'Two cards', idea: 'Photo or Colour. Colour opens the screen with the Scale and Palette tabs.', html: big(twoCards()) },
+  {
+    id: 'H2',
+    name: 'Same cards, plainer subtitles',
+    idea: 'Only the words change: each card says what it gives. Needs your OK on the words.',
+    html: big(plainCards()),
+  },
+  {
+    id: 'H3',
+    name: 'Two cards',
+    idea: 'Photo or Colour. Colour opens the screen with the Scale and Palette tabs.',
+    html: big(twoCards()),
+  },
 ]
 
 writeFileSync(

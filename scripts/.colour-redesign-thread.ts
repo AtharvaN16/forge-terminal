@@ -1,5 +1,7 @@
 import { writeFileSync } from 'node:fs'
-const img = (id: string) => `/Users/atharvanayak/Developer/Convert Terminal/mockups/colour-redesign-2026-10/${id}.webp`
+
+const img = (id: string) =>
+  `/Users/atharvanayak/Developer/Convert Terminal/mockups/colour-redesign-2026-10/${id}.webp`
 const step = (n: number, title: string, id: string, k: string) =>
   `<figure><figcaption><span class="n">${n}</span>${title}</figcaption><img src="${img(id)}"><div class="k">${k}</div></figure>`
 const opt = (id: string, title: string, shot: string, note: string, pick = false) =>

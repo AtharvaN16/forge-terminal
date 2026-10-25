@@ -21,3 +21,19 @@ export function pinPlatform(platform: NodeJS.Platform): void {
     if (before) Object.defineProperty(process, 'platform', before)
   })
 }
+
+/**
+ * Pins process.arch, as pinPlatform pins process.platform: the catalogue's
+ * asset differs by chip (an Intel Mac's boost is 1.2.0, Apple silicon's
+ * 1.0.0), so a test about one Mac's build pins both.
+ */
+export function pinArch(arch: string): void {
+  let before: PropertyDescriptor | undefined
+  beforeAll(() => {
+    before = Object.getOwnPropertyDescriptor(process, 'arch')
+    Object.defineProperty(process, 'arch', { value: arch })
+  })
+  afterAll(() => {
+    if (before) Object.defineProperty(process, 'arch', before)
+  })
+}

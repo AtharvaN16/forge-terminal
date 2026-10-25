@@ -50,6 +50,19 @@ top to bottom, blue fixed at 128. Made once on macOS:
 `sips` encodes with Apple's own HEVC codec, as an iPhone does. Opaque, no
 rotation, a single tile.
 
+## `raw/small.dng`
+
+A 64×48 Bayer DNG, so the Windows and Linux jobs can exercise the `raw`
+extension: those runners have no Node dependencies installed to build one at
+test time. It is `dngBytes` from `tests/helpers/raw.ts` (the same gradient as
+every synthetic DNG) with orientation 6 and a maker's crop of 60×44 at (2, 2),
+so a correct decode is upright, cropped and 44×60:
+
+    dngBytes({ width: 64, height: 48, orientation: 6, crop: { left: 2, top: 2, width: 60, height: 44 } })
+
+written to the file as is. Too small for macOS to read as RAW (it needs about
+300 pixels a side); the Mac's tests make their own.
+
 ## `read/`
 
 What the transcribe helper's `read` command printed (its last line, the
@@ -69,3 +82,13 @@ result) for real inputs, recorded once on macOS 27 so the tests of
 
 To record one again: `npm run build`, then
 `dist/helpers/forge-transcribe read <file> | tail -1 > tests/fixtures/read/<name>.json`.
+
+## `word/small.doc`
+
+A one-paragraph legacy Word document ("Hello from Forge."), so the format
+matrix (`tests/parity/format-matrix.test.ts`) converts a `.doc` on Windows and
+Linux too: only macOS has `textutil` to make one at test time. Made once on
+macOS:
+
+    echo "Hello from Forge." > a.txt
+    textutil -convert doc -output tests/fixtures/word/small.doc a.txt

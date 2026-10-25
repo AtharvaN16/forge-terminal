@@ -26,14 +26,20 @@
  *   npx tsx scripts/colour-more-copy-mockup-r6.ts → mockups/colour-more-copy-2026-10-round6.html
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { onWhiteAndBlack } from '../src/core/colour/contrast.js'
 import { DEFAULT_STEPS, scale, stepsOf } from '../src/core/colour/scale.js'
-import { formatOklch, formatRgb, parseHex, type Rgb } from '../src/core/colour/space.js'
+import {
+  formatOklch,
+  formatRgb,
+  oklabToRgb,
+  parseHex,
+  type Rgb,
+  rgbToOklab,
+} from '../src/core/colour/space.js'
 import { NO_TWEAK, system, type Tweak, tweakSteps } from '../src/core/colour/system.js'
 import { trailBarRow } from '../src/shell/bar-art.js'
 import { fieldRows, fieldValue, previewRows, rampRows } from '../src/shell/colour/colour-art.js'
 import { chosenRow, tweakLines, windowOver } from '../src/shell/colour/system-art.js'
-import { onWhiteAndBlack } from '../src/core/colour/contrast.js'
-import { oklabToRgb, rgbToOklab } from '../src/core/colour/space.js'
 import { type Row, surfaceRows } from '../src/shell/home-art.js'
 import { sliderRow } from '../src/shell/quality-art.js'
 import { DARK, modePalette } from '../src/shell/theme.js'
@@ -101,7 +107,13 @@ function bar(g: Grid, answers: string[], current?: string) {
   row(
     g,
     1,
-    trailBarRow({ width: 76, palette: P, mode: 'colour', trail: { answers, current }, slanted: false }),
+    trailBarRow({
+      width: 76,
+      palette: P,
+      mode: 'colour',
+      trail: { answers, current },
+      slanted: false,
+    }),
   )
 }
 /** The field: a filled block of three rows. */
@@ -149,7 +161,13 @@ function tabs(g: Grid, r: number, names: string[], on: number, hint = true) {
     if (i === on) put(g, r + 1, at - 2, [['━'.repeat(n.length + 4), PINK]])
     at += n.length + 4
   })
-  if (hint) put(g, r, 64, [[' ', undefined, CAP], ['tab', FG, CAP, true], [' ', undefined, CAP], [' switch', DIM]])
+  if (hint)
+    put(g, r, 64, [
+      [' ', undefined, CAP],
+      ['tab', FG, CAP, true],
+      [' ', undefined, CAP],
+      [' switch', DIM],
+    ])
 }
 
 /* --------------------------------------------------------------- data */
@@ -158,7 +176,11 @@ const BLUE = parseHex('#6579FD') as Rgb
 const PURPLE = parseHex('#AC96EF') as Rgb
 const stepsFor = (ref: Rgb, t: Tweak = NO_TWEAK) =>
   t === NO_TWEAK ? scale(ref) : tweakSteps((r) => scale(r), ref, t, 5)
-const hex = (rgb: Rgb) => `#${[rgb.r, rgb.g, rgb.b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`
+const hex = (rgb: Rgb) =>
+  `#${[rgb.r, rgb.g, rgb.b]
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`
 
 /** The ramp under the tabs (labels at `top`), its chosen step marked with a heavier bar. */
 function ramp(g: Grid, top: number, ref: Rgb, sel = 5, t: Tweak = NO_TWEAK) {
@@ -190,7 +212,11 @@ const POP_ON = '#404040'
 /** The More button: a filled pill, its key in the mode's pink; lighter while its menu is open. */
 function moreButton(g: Grid, r: number, open = false) {
   const bg = open ? '#4f4f4f' : BUTTON
-  put(g, r, 65, [[' ', undefined, bg], ['m', PINK, bg, true], ['  More ▾ ', FG, bg, true]])
+  put(g, r, 65, [
+    [' ', undefined, bg],
+    ['m', PINK, bg, true],
+    ['  More ▾ ', FG, bg, true],
+  ])
 }
 
 /**
@@ -211,18 +237,33 @@ function scaleTab(k: 'scale' | 'scale-neutral' | 'scale-alpha', open = false): G
 function popup(g: Grid, top: number, width: number, title: string, lines: Seg[][], pad = true) {
   const left = 76 - width
   const inner = width - 2
-  put(g, top, left, [['╭─ ', QUIET], [title, FG, undefined, true], [` ${'─'.repeat(inner - title.length - 3)}╮`, QUIET]])
+  put(g, top, left, [
+    ['╭─ ', QUIET],
+    [title, FG, undefined, true],
+    [` ${'─'.repeat(inner - title.length - 3)}╮`, QUIET],
+  ])
   const body = (pad ? [[], ...lines, []] : lines) as Seg[][]
   body.forEach((segs, i) => {
-    put(g, top + 1 + i, left, [['│', QUIET], [' '.repeat(inner), undefined, POP], ['│', QUIET]])
-    put(g, top + 1 + i, left + 1, segs.map(([t, fg, bg, b]) => [t, fg, bg ?? POP, b] as Seg))
+    put(g, top + 1 + i, left, [
+      ['│', QUIET],
+      [' '.repeat(inner), undefined, POP],
+      ['│', QUIET],
+    ])
+    put(
+      g,
+      top + 1 + i,
+      left + 1,
+      segs.map(([t, fg, bg, b]) => [t, fg, bg ?? POP, b] as Seg),
+    )
   })
   put(g, top + 1 + body.length, left, [[`╰${'─'.repeat(inner)}╯`, QUIET]])
 }
 
 /** Rows of the grid as an art row, `from` column on, `n` cells wide. */
 function asRow(g: Grid, r: number, from = 2, n = 76): Row {
-  return (g[r] as Cell[]).slice(from, from + n).map((c) => ({ text: c.ch, fg: c.fg, bg: c.bg, bold: !!c.b }))
+  return (g[r] as Cell[])
+    .slice(from, from + n)
+    .map((c) => ({ text: c.ch, fg: c.fg, bg: c.bg, bold: !!c.b }))
 }
 const WIN = 56
 /**
@@ -262,7 +303,17 @@ const COLOUR_MORE: Array<[string, string]> = [
 function moreOpen(): Grid {
   const g = scaleTab('scale', true)
   windowed(g, 'More', [[], ...COLOUR_MORE.map(([name, k], i) => listLine(name, k, i === 0)), []])
-  keys(g, [['↑↓', 'choose'], ['↵', 'open']], [['esc', 'close'], ['ctrl-c', 'quit']])
+  keys(
+    g,
+    [
+      ['↑↓', 'choose'],
+      ['↵', 'open'],
+    ],
+    [
+      ['esc', 'close'],
+      ['ctrl-c', 'quit'],
+    ],
+  )
   return g
 }
 
@@ -285,7 +336,19 @@ function tweakOpen(): Grid {
     steps.map((x) => x.hex),
   )
   windowed(g, 'Tweak', lines)
-  keys(g, [['↑↓', 'choose'], ['←→', '1'], ['⇧←→', '10'], ['↵', 'done']], [['r', 'reset'], ['esc', 'cancel']])
+  keys(
+    g,
+    [
+      ['↑↓', 'choose'],
+      ['←→', '1'],
+      ['⇧←→', '10'],
+      ['↵', 'done'],
+    ],
+    [
+      ['r', 'reset'],
+      ['esc', 'cancel'],
+    ],
+  )
   return g
 }
 
@@ -299,7 +362,11 @@ function gradient(stops: Rgb[], n: number): Array<{ step: number; hex: string; r
     const u = x - k
     const a = labs[k] as ReturnType<typeof rgbToOklab>
     const b = labs[k + 1] as ReturnType<typeof rgbToOklab>
-    const rgb = oklabToRgb({ L: a.L + (b.L - a.L) * u, a: a.a + (b.a - a.a) * u, b: a.b + (b.b - a.b) * u })
+    const rgb = oklabToRgb({
+      L: a.L + (b.L - a.L) * u,
+      a: a.a + (b.a - a.a) * u,
+      b: a.b + (b.b - a.b) * u,
+    })
     return { step: Math.round(at * 100), hex: hex(rgb), rgb }
   })
 }
@@ -335,7 +402,18 @@ function gradientOpen(): Grid {
     [{ text: '   ' }, ...strip.map((x) => ({ text: ' ', bg: x.hex }))],
     [],
   ])
-  keys(g, [['↵', 'add'], ['↑↓', 'choose']], [['⌫', 'remove'], ['tab', 'done'], ['esc', 'cancel']])
+  keys(
+    g,
+    [
+      ['↵', 'add'],
+      ['↑↓', 'choose'],
+    ],
+    [
+      ['⌫', 'remove'],
+      ['tab', 'done'],
+      ['esc', 'cancel'],
+    ],
+  )
   return g
 }
 
@@ -344,9 +422,19 @@ function gradientScreen(): Grid {
   const g = frame('mix')
   bar(g, ['#6579FD'], 'Gradient')
   clear(g, 3, 5)
-  const sw = (c: Rgb): Seg[] => [[hex(c), DIM, FIELD], ['  ', undefined, FIELD], ['    ', undefined, hex(c)]]
+  const sw = (c: Rgb): Seg[] => [
+    [hex(c), DIM, FIELD],
+    ['  ', undefined, FIELD],
+    ['    ', undefined, hex(c)],
+  ]
   field(g, 3, [])
-  put(g, 4, 7, [...sw(BLUE), ['   →   ', QUIET, FIELD], ...sw(AMBER), ['   →   ', QUIET, FIELD], ...sw(TEAL)])
+  put(g, 4, 7, [
+    ...sw(BLUE),
+    ['   →   ', QUIET, FIELD],
+    ...sw(AMBER),
+    ['   →   ', QUIET, FIELD],
+    ...sw(TEAL),
+  ])
   const steps = gradient([BLUE, AMBER, TEAL], 9)
   clear(g, 7, 11)
   rows(g, 7, rampRows({ width: 76, palette: P, steps, selected: 4 }))
@@ -354,7 +442,10 @@ function gradientScreen(): Grid {
   moreButton(g, 12)
   clear(g, 14, 18)
   const at = steps[4] as (typeof steps)[number]
-  const prev = previewRows({ palette: P, step: { step: at.step, hex: at.hex, oklch: formatOklch(at.rgb), ...onWhiteAndBlack(at.rgb) } })
+  const prev = previewRows({
+    palette: P,
+    step: { step: at.step, hex: at.hex, oklch: formatOklch(at.rgb), ...onWhiteAndBlack(at.rgb) },
+  })
   const first = prev[0]
   const i = first?.findIndex((r) => r.text === String(at.step) && r.bold) ?? -1
   if (first && i >= 0) first[i] = { ...(first[i] as Row[number]), text: `${at.step}%` }
@@ -370,18 +461,51 @@ function paletteTab(ref: Rgb): Grid {
   tabs(g, 7, TABS, 3)
   const sys = system(ref, 'full', NO_TWEAK, DEFAULT_STEPS)
   const yours = sys.rows.find((r) => r.yours)
-  const ordered = [...(yours ? [yours] : []), ...sys.rows.filter((r) => !r.yours), { name: 'neutral', steps: sys.neutral, yours: false }]
-  put(g, 9, 14, stepsOf(DEFAULT_STEPS).map((n, c) => [(n < 100 ? ` ${n}` : String(n)).padEnd(5), c === 5 ? FG : QUIET, undefined, c === 5] as Seg))
+  const ordered = [
+    ...(yours ? [yours] : []),
+    ...sys.rows.filter((r) => !r.yours),
+    { name: 'neutral', steps: sys.neutral, yours: false },
+  ]
+  put(
+    g,
+    9,
+    14,
+    stepsOf(DEFAULT_STEPS).map(
+      (n, c) =>
+        [
+          (n < 100 ? ` ${n}` : String(n)).padEnd(5),
+          c === 5 ? FG : QUIET,
+          undefined,
+          c === 5,
+        ] as Seg,
+    ),
+  )
   ordered.forEach((r, i) => {
     put(g, 10 + i, 4, [[r.name, i === 0 ? PINK : DIM, undefined, i === 0]])
     r.steps.forEach((st, c) => put(g, 10 + i, 14 + c * 5, [['    ', undefined, st.hex]]))
   })
-  for (const [c, ch] of [[38, '▕'], [43, '▏']] as const) put(g, 10, c, [[ch, FG]])
+  for (const [c, ch] of [
+    [38, '▕'],
+    [43, '▏'],
+  ] as const)
+    put(g, 10, c, [[ch, FG]])
   const chosen = ordered[0]?.steps[5]
-  if (chosen) row(g, 20, chosenRow(P, ordered[0]?.name ?? '', '500', chosen.hex, formatOklch(chosen.rgb)))
+  if (chosen)
+    row(g, 20, chosenRow(P, ordered[0]?.name ?? '', '500', chosen.hex, formatOklch(chosen.rgb)))
   put(g, 22, 4, [['Full set', FG, undefined, true]])
   moreButton(g, 22)
-  keys(g, [['↑↓←→', 'choose'], ['↵', 'copy'], ['c', 'copy all']], [['#', 'new colour'], ['esc', 'back']])
+  keys(
+    g,
+    [
+      ['↑↓←→', 'choose'],
+      ['↵', 'copy'],
+      ['c', 'copy all'],
+    ],
+    [
+      ['#', 'new colour'],
+      ['esc', 'back'],
+    ],
+  )
   return g
 }
 
@@ -396,21 +520,41 @@ function colourTab(look: Look): Grid {
   put(g, 7, 36, [['Palette', DIM]])
   clear(g, 14, 14, 50, 76)
   if (look === 'pill') moreButton(g, 14)
-  if (look === 'chip') put(g, 14, 67, [[' m ', CANVAS, QUIET, true], [' More', QUIET]])
-  if (look === 'dots') put(g, 14, 70, [[' ', undefined, BUTTON], ['m', PINK, BUTTON, true], [' ⋯ ', FG, BUTTON, true]])
+  if (look === 'chip')
+    put(g, 14, 67, [
+      [' m ', CANVAS, QUIET, true],
+      [' More', QUIET],
+    ])
+  if (look === 'dots')
+    put(g, 14, 70, [
+      [' ', undefined, BUTTON],
+      ['m', PINK, BUTTON, true],
+      [' ⋯ ', FG, BUTTON, true],
+    ])
   if (look === 'outline') {
     clear(g, 13, 15, 60, 76)
     put(g, 13, 62, [['╭────────────╮', QUIET]])
-    put(g, 14, 62, [['│', QUIET], [' m', PINK, undefined, true], ['  More ▾  ', FG, undefined, true], ['│', QUIET]])
+    put(g, 14, 62, [
+      ['│', QUIET],
+      [' m', PINK, undefined, true],
+      ['  More ▾  ', FG, undefined, true],
+      ['│', QUIET],
+    ])
     put(g, 15, 62, [['╰────────────╯', QUIET]])
   }
   if (look === 'block') {
     for (const r of [16, 17, 18]) put(g, r, 62, [[' '.repeat(14), undefined, FIELD]])
-    put(g, 17, 64, [[' m ', FG, CAP, true], ['  More', FG, FIELD, true]])
+    put(g, 17, 64, [
+      [' m ', FG, CAP, true],
+      ['  More', FG, FIELD, true],
+    ])
   }
   if (look === 'tab') {
     clear(g, 7, 7, 46, 64)
-    put(g, 7, 50, [['m', PINK, undefined, true], [' More ▾', FG, undefined, true]])
+    put(g, 7, 50, [
+      ['m', PINK, undefined, true],
+      [' More ▾', FG, undefined, true],
+    ])
   }
   return g
 }
@@ -423,8 +567,14 @@ interface Words {
   all: [string, string]
 }
 const WORDS: Words[] = [
-  { hex: ['copied #6579FD', 'paste it into code or a colour field'], all: ['copied 11 swatches', 'paste into Figma with ⌘V'] },
-  { hex: ['copied #6579FD', 'paste it into code or a colour field'], all: ['copied 11 swatches', 'paste into Figma with ⌘V, or into code as SVG'] },
+  {
+    hex: ['copied #6579FD', 'paste it into code or a colour field'],
+    all: ['copied 11 swatches', 'paste into Figma with ⌘V'],
+  },
+  {
+    hex: ['copied #6579FD', 'paste it into code or a colour field'],
+    all: ['copied 11 swatches', 'paste into Figma with ⌘V, or into code as SVG'],
+  },
   { hex: ['copied #6579FD', ''], all: ['copied 11 swatches', 'paste into Figma with ⌘V'] },
 ]
 
@@ -432,19 +582,30 @@ const WORDS: Words[] = [
 function copied(place: Place, [what, how]: [string, string]): Grid {
   const g = colourTab('pill')
   if (place === 'line') {
-    put(g, 22, 6, [['✓', P.ok, undefined, true], [` ${what}`, FG], ...(how ? ([[` · ${how}`, DIM]] as Seg[]) : [])])
+    put(g, 22, 6, [
+      ['✓', P.ok, undefined, true],
+      [` ${what}`, FG],
+      ...(how ? ([[` · ${how}`, DIM]] as Seg[]) : []),
+    ])
   }
   if (place === 'toast') {
     const text = Math.max(what.length + 2, how.length)
     const w = text + 6
     const left = 76 - w
     for (let r = 2; r <= 5; r++) put(g, r, left, [[' '.repeat(w), undefined, '#3a3a3a']])
-    put(g, 3, left + 2, [['✓', P.ok, '#3a3a3a', true], [` ${what}`, FG, '#3a3a3a', true]])
+    put(g, 3, left + 2, [
+      ['✓', P.ok, '#3a3a3a', true],
+      [` ${what}`, FG, '#3a3a3a', true],
+    ])
     if (how) put(g, 4, left + 4, [[how, DIM, '#3a3a3a']])
   }
   if (place === 'keys') {
     clear(g, 25, 25)
-    put(g, 25, 4, [['✓', P.ok, undefined, true], [` ${what}`, FG], ...(how ? ([[` · ${how}`, DIM]] as Seg[]) : [])])
+    put(g, 25, 4, [
+      ['✓', P.ok, undefined, true],
+      [` ${what}`, FG],
+      ...(how ? ([[` · ${how}`, DIM]] as Seg[]) : []),
+    ])
   }
   return g
 }
@@ -458,11 +619,19 @@ function colourTab2(look: Look2): Grid {
   clear(g, 14, 14, 60, 76)
   if (look === 'menu') {
     // As home's "/ menu": the key on a grey cap, the word after it, over the rule at the right.
-    put(g, 23, 68, [[' ', undefined, CAP], ['m', FG, CAP], [' ', undefined, CAP], [' more', DIM]])
+    put(g, 23, 68, [
+      [' ', undefined, CAP],
+      ['m', FG, CAP],
+      [' ', undefined, CAP],
+      [' more', DIM],
+    ])
   }
   if (look === 'pill') {
     // As /update's "↵ check again": a white pill, its words dark, at the right of its line.
-    put(g, 14, 66, [[' m ', '#0c1d22', '#e7e7e7', true], ['More ', '#0c1d22', '#e7e7e7', true]])
+    put(g, 14, 66, [
+      [' m ', '#0c1d22', '#e7e7e7', true],
+      ['More ', '#0c1d22', '#e7e7e7', true],
+    ])
   }
   return g
 }
@@ -471,27 +640,98 @@ function colourTab2(look: Look2): Grid {
 function copiedKeys(what: string, how: string): Grid {
   const g = colourTab2('menu')
   clear(g, 25, 25)
-  put(g, 25, 4, [['✓', P.ok, undefined, true], [` ${what}`, FG], ...(how ? ([[` · ${how}`, DIM]] as Seg[]) : [])])
+  put(g, 25, 4, [
+    ['✓', P.ok, undefined, true],
+    [` ${what}`, FG],
+    ...(how ? ([[` · ${how}`, DIM]] as Seg[]) : []),
+  ])
   return g
 }
 
 const INK = '#0c1d22'
 const CARD = '#404040'
 const pill = (bg: string, key: string, word: string, extra = ''): Seg[] => [
-  [' ', undefined, bg], ['m', key, bg, true], [' ', undefined, bg], [`more${extra}`, word, bg, key === word], [' ', undefined, bg],
+  [' ', undefined, bg],
+  ['m', key, bg, true],
+  [' ', undefined, bg],
+  [`more${extra}`, word, bg, key === word],
+  [' ', undefined, bg],
 ]
 /** The grey looks: id → [label, what it borrows, cells]. */
 const GREYS: Record<string, [string, string, Seg[]]> = {
-  p1: ['G2 with m in pink', 'your pick: home’s “/ menu” look, the key in colour mode’s pink', [[' ', undefined, CAP], ['m', PINK, CAP, true], [' ', undefined, CAP], [' more', DIM]]],
-  d1: ['Darker', 'key #4d4d4d · word #333333', [[' ', undefined, '#4d4d4d'], ['m', FG, '#4d4d4d', true], [' ', undefined, '#4d4d4d'], [' more ', FG, '#333333', true]]],
-  d2: ['Darker still', 'key #404040 · word #2c2c2c', [[' ', undefined, '#404040'], ['m', FG, '#404040', true], [' ', undefined, '#404040'], [' more ', FG, '#2c2c2c', true]]],
-  d3: ['More contrast between the two', 'key #4d4d4d · word #2c2c2c', [[' ', undefined, '#4d4d4d'], ['m', FG, '#4d4d4d', true], [' ', undefined, '#4d4d4d'], [' more ', FG, '#2c2c2c', true]]],
-  d4: ['Darkest', 'key #333333 · word #242424', [[' ', undefined, '#333333'], ['m', FG, '#333333', true], [' ', undefined, '#333333'], [' more ', FG, '#242424', true]]],
+  p1: [
+    'G2 with m in pink',
+    'your pick: home’s “/ menu” look, the key in colour mode’s pink',
+    [
+      [' ', undefined, CAP],
+      ['m', PINK, CAP, true],
+      [' ', undefined, CAP],
+      [' more', DIM],
+    ],
+  ],
+  d1: [
+    'Darker',
+    'key #4d4d4d · word #333333',
+    [
+      [' ', undefined, '#4d4d4d'],
+      ['m', FG, '#4d4d4d', true],
+      [' ', undefined, '#4d4d4d'],
+      [' more ', FG, '#333333', true],
+    ],
+  ],
+  d2: [
+    'Darker still',
+    'key #404040 · word #2c2c2c',
+    [
+      [' ', undefined, '#404040'],
+      ['m', FG, '#404040', true],
+      [' ', undefined, '#404040'],
+      [' more ', FG, '#2c2c2c', true],
+    ],
+  ],
+  d3: [
+    'More contrast between the two',
+    'key #4d4d4d · word #2c2c2c',
+    [
+      [' ', undefined, '#4d4d4d'],
+      ['m', FG, '#4d4d4d', true],
+      [' ', undefined, '#4d4d4d'],
+      [' more ', FG, '#2c2c2c', true],
+    ],
+  ],
+  d4: [
+    'Darkest',
+    'key #333333 · word #242424',
+    [
+      [' ', undefined, '#333333'],
+      ['m', FG, '#333333', true],
+      [' ', undefined, '#333333'],
+      [' more ', FG, '#242424', true],
+    ],
+  ],
   g1: ['Mid grey, dark words', 'round 4’s grey; the in-field chip’s grey', pill(QUIET, INK, INK)],
-  g2: ['Like “/ menu”', 'a key cap, the word beside it on the canvas', [[' ', undefined, CAP], ['m', FG, CAP, true], [' ', undefined, CAP], [' more', DIM]]],
+  g2: [
+    'Like “/ menu”',
+    'a key cap, the word beside it on the canvas',
+    [
+      [' ', undefined, CAP],
+      ['m', FG, CAP, true],
+      [' ', undefined, CAP],
+      [' more', DIM],
+    ],
+  ],
   g3: ['Key-cap grey, all in', 'the whole pill in the key caps’ grey', pill(CAP, FG, DIM)],
   g4: ['Card grey, light words', 'the grey of a chosen card on colour’s home', pill(CARD, FG, FG)],
-  g5: ['Two-tone', 'the key on mid grey, the word on card grey', [[' ', undefined, QUIET], ['m', INK, QUIET, true], [' ', undefined, QUIET], [' more ', FG, CARD, true]]],
+  g5: [
+    'Two-tone',
+    'the key on mid grey, the word on card grey',
+    [
+      [' ', undefined, QUIET],
+      ['m', INK, QUIET, true],
+      [' ', undefined, QUIET],
+      [' more ', FG, CARD, true],
+    ],
+  ],
   g6: ['Mid grey with ▾', 'g1, saying it opens a list', pill(QUIET, INK, INK, ' ▾')],
   g7: ['Field grey, quiet', 'the field’s grey; the quietest', pill(FIELD, FG, DIM)],
 }
@@ -504,13 +744,26 @@ function colourTab4({ more = 'p1' as MoreLook, typing = false } = {}): Grid {
   clear(g, 14, 14, 60, 76)
   // The tab row's hint: the cap alone.
   clear(g, 7, 7, 60, 76)
-  put(g, 7, 71, [[' ', undefined, CAP], ['tab', FG, CAP, true], [' ', undefined, CAP]])
+  put(g, 7, 71, [
+    [' ', undefined, CAP],
+    ['tab', FG, CAP, true],
+    [' ', undefined, CAP],
+  ])
   if (typing) {
     // While typing, the field's end is empty: the key row says ↵ done.
-    put(g, 4, 5, [['›', PINK, FIELD, true], [' '], ['#6579FD', FG, FIELD], ['  '], ['    ', undefined, '#6579FD']])
+    put(g, 4, 5, [
+      ['›', PINK, FIELD, true],
+      [' '],
+      ['#6579FD', FG, FIELD],
+      ['  '],
+      ['    ', undefined, '#6579FD'],
+    ])
   } else {
     // # new colour as plain text at the field's far end, as the key row's foot is written.
-    const hint: Seg[] = [['#', FG, FIELD], [' new colour', QUIET, FIELD]]
+    const hint: Seg[] = [
+      ['#', FG, FIELD],
+      [' new colour', QUIET, FIELD],
+    ]
     put(g, 4, 74 - len(hint), hint)
   }
   if (!typing) {
@@ -519,22 +772,57 @@ function colourTab4({ more = 'p1' as MoreLook, typing = false } = {}): Grid {
   }
   keys(
     g,
-    typing ? [['↵', 'done']] : [['←→', 'choose'], ['↵', 'copy'], ['c', 'copy all']],
-    typing ? [['esc', 'cancel'], ['ctrl-c', 'quit']] : [['r', 'make centre'], ['esc', 'back']],
+    typing
+      ? [['↵', 'done']]
+      : [
+          ['←→', 'choose'],
+          ['↵', 'copy'],
+          ['c', 'copy all'],
+        ],
+    typing
+      ? [
+          ['esc', 'cancel'],
+          ['ctrl-c', 'quit'],
+        ]
+      : [
+          ['r', 'make centre'],
+          ['esc', 'back'],
+        ],
   )
   return g
 }
 
 /* ---------------------------------------------------------------- page */
 
-const SCREENS = Object.fromEntries(Object.keys(GREYS).map((k) => [k, gridHtml(colourTab4({ more: k }), P)]))
-const CLOSE = Object.fromEntries(Object.keys(GREYS).map((k) => [k, gridHtml(colourTab4({ more: k }).slice(21, 26).map((r) => r.slice(40)), P)]))
+const SCREENS = Object.fromEntries(
+  Object.keys(GREYS).map((k) => [k, gridHtml(colourTab4({ more: k }), P)]),
+)
+const CLOSE = Object.fromEntries(
+  Object.keys(GREYS).map((k) => [
+    k,
+    gridHtml(
+      colourTab4({ more: k })
+        .slice(21, 26)
+        .map((r) => r.slice(40)),
+      P,
+    ),
+  ]),
+)
 const PAGE = 'colour-more-copy-2026-10-round6'
 
 const chip = ([id, [label, from]]: [string, [string, string, Seg[]]]) =>
   `<button class="chip" data-id="${id}"><b>${id.toUpperCase()}</b> ${label}<span>${from}</span></button>`
 const entries = Object.entries(GREYS)
-const chips = `<div class="grp">Your pick · new</div>${entries.filter(([id]) => id.startsWith('p')).map(chip).join('')}<div class="grp">Two-tone, darker · round 6</div>${entries.filter(([id]) => id.startsWith('d')).map(chip).join('')}<div class="grp">Round 5 · all kept</div>${entries.filter(([id]) => id.startsWith('g')).map(chip).join('')}`
+const chips = `<div class="grp">Your pick · new</div>${entries
+  .filter(([id]) => id.startsWith('p'))
+  .map(chip)
+  .join('')}<div class="grp">Two-tone, darker · round 6</div>${entries
+  .filter(([id]) => id.startsWith('d'))
+  .map(chip)
+  .join('')}<div class="grp">Round 5 · all kept</div>${entries
+  .filter(([id]) => id.startsWith('g'))
+  .map(chip)
+  .join('')}`
 
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>Forge · colour: the two-tone More button, darker</title>
 <style>

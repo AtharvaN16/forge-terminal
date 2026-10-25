@@ -37,7 +37,9 @@ const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
 const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms))
 type Cell = { ch: string; fg: string | null; bg: string | null; b: boolean }
 const cells = (frame: string): Cell[][] =>
-  frame.split('\n').map((l) => ansiRow(l, 80).map((c) => ({ ch: c.ch, fg: c.fg, bg: c.bg, b: c.b })))
+  frame
+    .split('\n')
+    .map((l) => ansiRow(l, 80).map((c) => ({ ch: c.ch, fg: c.fg, bg: c.bg, b: c.b })))
 
 // The files: a photo (heavy, so the working screen shows), a folder of
 // photos and two screenshots, and a short video.
@@ -55,7 +57,9 @@ async function photo(path: string, w: number, h: number, seed0: number) {
       raw[i + 1] = (y / h) * 160 + 50 + grain
       raw[i + 2] = 180 - (x / w) * 90 + grain
     }
-  await sharp(raw, { raw: { width: w, height: h, channels: 3 } }).png().toFile(path)
+  await sharp(raw, { raw: { width: w, height: h, channels: 3 } })
+    .png()
+    .toFile(path)
 }
 const input = join(pics, 'IMG_2041.png')
 await photo(input, 3000, 2000, 7)
@@ -64,17 +68,35 @@ mkdirSync(folder)
 for (let i = 0; i < 12; i++) await photo(join(folder, `IMG_${2050 + i}.png`), 400, 300, i + 1)
 await photo(join(folder, 'notes.png'), 300, 200, 99)
 const video = join(pics, 'clip.mov')
-execFileSync('ffmpeg', ['-v', 'quiet', '-f', 'lavfi', '-i', 'testsrc=duration=2:size=640x360:rate=30', '-f', 'lavfi', '-i', 'sine=duration=2', '-shortest', '-pix_fmt', 'yuv420p', video])
+execFileSync('ffmpeg', [
+  '-v',
+  'quiet',
+  '-f',
+  'lavfi',
+  '-i',
+  'testsrc=duration=2:size=640x360:rate=30',
+  '-f',
+  'lavfi',
+  '-i',
+  'sine=duration=2',
+  '-shortest',
+  '-pix_fmt',
+  'yuv420p',
+  video,
+])
 
 const frames: Record<string, Cell[][]> = {}
 const log: string[] = []
 
-async function session(height: number, go: (s: {
-  frame: () => string
-  write: (s: string) => void
-  snap: (k: string) => void
-  until: (what: string, cond: () => boolean, ms?: number) => Promise<void>
-}) => Promise<void>) {
+async function session(
+  height: number,
+  go: (s: {
+    frame: () => string
+    write: (s: string) => void
+    snap: (k: string) => void
+    until: (what: string, cond: () => boolean, ms?: number) => Promise<void>
+  }) => Promise<void>,
+) {
   const app = render(
     <App
       initialWidth={80}
@@ -109,7 +131,6 @@ async function session(height: number, go: (s: {
   }
 }
 
-
 const DOWN = `${ESC}[B`
 const jpg = join(home, 'Desktop', 'IMG_2041.jpg')
 try {
@@ -128,7 +149,14 @@ try {
     await until('Save as', () => frame().includes('Save as'))
     await settle(500)
     write(ENTER)
-    await until('Done', () => frame().includes('continue editing') || frame().includes('Continue editing') || / Done /.test(frame()), 30_000)
+    await until(
+      'Done',
+      () =>
+        frame().includes('continue editing') ||
+        frame().includes('Continue editing') ||
+        / Done /.test(frame()),
+      30_000,
+    )
     await settle(800)
     snap('done')
   })

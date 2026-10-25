@@ -90,7 +90,16 @@ const GREYS: Record<string, [hex: string, name: string, from: string]> = {
   g6: ['#808080', 'Border', 'window edges; the outline’s usual grey'],
 }
 /** One step up from `hex`, so what sits on the band still reads off it. */
-const LADDER = ['#242424', '#2c2c2c', '#333333', '#404040', '#4d4d4d', '#5c5c5c', '#808080', '#959595']
+const LADDER = [
+  '#242424',
+  '#2c2c2c',
+  '#333333',
+  '#404040',
+  '#4d4d4d',
+  '#5c5c5c',
+  '#808080',
+  '#959595',
+]
 const up = (hex: string) => LADDER[Math.min(LADDER.length - 1, LADDER.indexOf(hex) + 1)] as string
 /** The value pills' and the tab cap's grey on a band of `band`: today's, unless the band is as light or lighter. */
 const onBand = (band: string, today: string) =>
@@ -131,10 +140,16 @@ function pills(hand: Field, pill: string, band?: string): Seg[] {
 /** Done's buttons in one row: the one in hand on `on` with ‹ ›, the rest dim on the band, spaced evenly. */
 function buttons(hand: Field, band: string, on: string, room: number): Seg[] {
   const label: Record<Field, string> = { set: 'Tailwind', start: 'from 50', end: 'to 950' }
-  const all = (['set', 'start', 'end'] as Field[]).map((f): Seg =>
-    f === hand ? [` ‹ ${label[f]} › `, FG, on, true] : [`   ${label[f]}   `, DIM, band],
+  const all = (['set', 'start', 'end'] as Field[]).map(
+    (f): Seg =>
+      f === hand ? [` ‹ ${label[f]} › `, FG, on, true] : [`   ${label[f]}   `, DIM, band],
   )
-  const tail: Seg[] = [['11 steps', QUIET, band], ['  ', undefined, band], ...tab(on), ['  ', undefined, band]]
+  const tail: Seg[] = [
+    ['11 steps', QUIET, band],
+    ['  ', undefined, band],
+    ...tab(on),
+    ['  ', undefined, band],
+  ]
   const spare = room - len(all) - len(tail)
   const gap = Math.floor(spare / 4)
   const out: Seg[] = []
@@ -189,11 +204,23 @@ function outlined(g: Grid, grey: string, hand: Field): Grid {
 }
 
 const KINDS: Record<Kind, [name: string, idea: string]> = {
-  t1: ['One-row band, today’s pills', 'the band from margin to margin; tab at its right end; ↵ done tinted beside it'],
-  t2: ['One-row band, Done’s buttons', 'values spaced evenly; the one in hand one grey lighter, with ‹ ›; ↵ done tinted'],
+  t1: [
+    'One-row band, today’s pills',
+    'the band from margin to margin; tab at its right end; ↵ done tinted beside it',
+  ],
+  t2: [
+    'One-row band, Done’s buttons',
+    'values spaced evenly; the one in hand one grey lighter, with ‹ ›; ↵ done tinted',
+  ],
   t3: ['As T2, ↵ done bright', 'the same buttons; ↵ done in the bright pink'],
-  t4: ['No band', 'today’s line; only ↵ done drawn as its own tinted block (the grey changes nothing here)'],
-  t5: ['A thin outline', 'a rounded frame in the grey, three rows; it takes the rule’s row; ↵ done outlined in pink'],
+  t4: [
+    'No band',
+    'today’s line; only ↵ done drawn as its own tinted block (the grey changes nothing here)',
+  ],
+  t5: [
+    'A thin outline',
+    'a rounded frame in the grey, three rows; it takes the rule’s row; ↵ done outlined in pink',
+  ],
 }
 
 /* ---------------------------------------------------------------- page */

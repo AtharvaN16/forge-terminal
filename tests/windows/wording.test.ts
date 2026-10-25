@@ -65,8 +65,13 @@ describe('wording on Linux', () => {
     expect(text).toContain('paste into Figma with Ctrl+V')
 
     for (const which of ['palette', 'scale'] as const) {
-      expect(colourUsage(which, 'linux')).toContain('pipe to wl-copy and paste into Figma')
-      expect(colourUsage(which, 'linux')).not.toContain('pbcopy')
+      const wayland = colourUsage(which, 'linux', { WAYLAND_DISPLAY: 'wayland-0' })
+      expect(wayland).toContain('pipe to wl-copy and paste into Figma')
+      expect(wayland).not.toContain('pbcopy')
+      const x11 = colourUsage(which, 'linux', { DISPLAY: ':0' })
+      expect(x11).toContain('pipe to xclip -sel c, paste into Figma')
+      const svgLine = x11.split('\n').find((l) => l.includes('--svg')) ?? ''
+      expect(svgLine.length).toBeLessThanOrEqual(80)
     }
   })
 })

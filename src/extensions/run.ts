@@ -1,5 +1,11 @@
 import { spawn } from 'node:child_process'
-import { boostTooLarge, conversionFailed, type ForgeError, noSubject } from '../core/errors.js'
+import {
+  boostTooLarge,
+  boostTooSlow,
+  conversionFailed,
+  type ForgeError,
+  noSubject,
+} from '../core/errors.js'
 import { withExtensionLock } from './lock.js'
 
 /** Structural subset of `Installed` (paths.ts) — all the runner needs. */
@@ -16,6 +22,8 @@ export interface ExtensionJobResult {
   ms: number
   /** Only from jobs that report it (the heic runner's `--info`). */
   hasAlpha?: boolean
+  /** Only from the read-text runner: each page's blocks, as the Mac helper's `read` gives them. */
+  pages?: unknown[]
 }
 
 type RunOpts = {
@@ -41,6 +49,8 @@ type RunOpts = {
   onProgress?: (done: number, of: number) => void
   /** Which queue the job joins (see `tails`). */
   platform?: NodeJS.Platform
+  /** Each JSON line before the result, as it comes (the read-text runner's page events). */
+  onLine?: (line: Record<string, unknown>) => void
 }
 
 /**
@@ -103,9 +113,18 @@ function progressOf(line: string): { done: number; of: number } | undefined {
   }
 }
 
-function mapFailure(code: string, message: string, path: string, opts: RunOpts): ForgeError {
+function mapFailure(
+  code: string,
+  message: string,
+  path: string,
+  opts: RunOpts,
+  args: string[],
+  seconds?: number,
+): ForgeError {
   if (code === 'no-subject') return noSubject(path)
   if (code === 'boost-too-large') return boostTooLarge(path, opts.maxScale ?? 0)
+  if (code === 'boost-too-slow')
+    return boostTooSlow(path, seconds ?? 0, Number(args[args.indexOf('--scale') + 1]))
   return conversionFailed(path, new Error(message))
 }
 
@@ -142,13 +161,23 @@ function runOne(
     let pending = ''
     child.stdout.setEncoding('utf8').on('data', (d: string) => {
       out += d
-      if (!opts.onProgress) return
+      if (!opts.onProgress && !opts.onLine) return
       // A chunk can end mid-line: only whole lines are read.
       const lines = (pending + d).split('\n')
       pending = lines.pop() ?? ''
-      for (const line of lines) {
-        const count = progressOf(line)
-        if (count) opts.onProgress(count.done, count.of)
+      for (const l of lines) {
+        const count = progressOf(l)
+        if (count) {
+          opts.onProgress?.(count.done, count.of)
+          continue
+        }
+        if (!opts.onLine || !l.trim().startsWith('{')) continue
+        try {
+          const parsed = JSON.parse(l) as Record<string, unknown>
+          if (!('ok' in parsed)) opts.onLine(parsed)
+        } catch {
+          // Not a line of ours: a library's noise.
+        }
       }
     })
     child.stderr.setEncoding('utf8').on('data', (d: string) => {
@@ -175,8 +204,11 @@ function runOne(
               height?: number
               ms?: number
               hasAlpha?: boolean
+              pages?: unknown[]
               code?: string
               message?: string
+              /** `boost-too-slow`: the runner's projected total. */
+              seconds?: number
             }
           | undefined
         if (r && r.ok === true && status === 0) {
@@ -185,10 +217,20 @@ function runOne(
             height: Number(r.height),
             ms: Number(r.ms),
             ...(typeof r.hasAlpha === 'boolean' ? { hasAlpha: r.hasAlpha } : {}),
+            ...(Array.isArray(r.pages) ? { pages: r.pages } : {}),
           })
         }
         if (r && r.ok === false) {
-          return reject(mapFailure(String(r.code ?? ''), String(r.message ?? ''), path, opts))
+          return reject(
+            mapFailure(
+              String(r.code ?? ''),
+              String(r.message ?? ''),
+              path,
+              opts,
+              args,
+              typeof r.seconds === 'number' ? r.seconds : undefined,
+            ),
+          )
         }
         reject(
           conversionFailed(

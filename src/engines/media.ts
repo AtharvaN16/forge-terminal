@@ -6,6 +6,7 @@ import {
   cannotCompressMore,
   conversionFailed,
   corruptSource,
+  type ForgeError,
   ffmpegMissing,
   invalidArguments,
   isForgeError,
@@ -25,7 +26,14 @@ import type {
 } from '../core/types.js'
 import { formatBytes } from '../core/units.js'
 import { displayName } from '../utils/display-path.js'
-import { type Ffmpeg, findFfmpeg, keyframeAtOrBefore, probeMedia, runFfmpeg } from './ffmpeg.js'
+import {
+  type Ffmpeg,
+  findFfmpeg,
+  keyframeAtOrBefore,
+  knownFfmpeg,
+  probeMedia,
+  runFfmpeg,
+} from './ffmpeg.js'
 import {
   type EncodePlan,
   LOUDNORM_MEASURED,
@@ -177,7 +185,6 @@ async function run(
   const tools = await findFfmpeg()
   if (!tools) throw ffmpegMissing(source.path, process.platform, await videoOffered())
   const facts = await factsOf(source, tools)
-  await prepareOutputDir(output)
 
   const tag = randomBytes(6).toString('hex')
   const temp = tempBeside(output, tag)
@@ -199,10 +206,12 @@ async function run(
       facts,
       options,
       platform,
+      os: process.platform,
       passlog,
       ...(tools.has ? { has: tools.has } : {}),
     })
   let options = job.options
+  // Refused before anything is made: an encoder this ffmpeg lacks throws here.
   let plan = planFor(process.platform)
   if (plan.duration <= 0) {
     throw invalidArguments(
@@ -210,6 +219,9 @@ async function run(
       `It is ${timeOf(facts.duration)} long.`,
     )
   }
+  await prepareOutputDir(output)
+  /** The platform planned for: 'linux' once Apple's encoder refused, so a retry stays in software. */
+  let planned: NodeJS.Platform = process.platform
 
   // A copied cut can only start on a keyframe: start on the one at or before
   // the asked start, keep the asked end, and say where it landed.
@@ -258,7 +270,8 @@ async function run(
       // take): the same job in software.
       if (signal?.aborted) throw e
       if (!plan.steps.some((s) => s.args.some((a) => a.endsWith('_videotoolbox')))) throw e
-      plan = planFor('linux', options)
+      planned = 'linux'
+      plan = planFor(planned, options)
       await steps(plan)
     }
     // Two passes land within a percent or so; a near miss gets another try
@@ -267,10 +280,7 @@ async function run(
     for (const k of [0.95, 0.9]) {
       if (asked === undefined || (await stat(temp)).size <= asked) break
       options = { ...options, media: { ...options.media, targetBytes: Math.floor(asked * k) } }
-      plan = planFor(
-        plan.steps.some((s) => s.args.includes('libx264')) ? 'linux' : process.platform,
-        options,
-      )
+      plan = planFor(planned, options)
       await steps(plan)
     }
     // A size asked for is a size kept, and compress never writes a bigger
@@ -300,6 +310,35 @@ async function run(
     })
   }
   return { job, outputBytes: (await stat(output)).size, warnings }
+}
+
+/**
+ * Why the ffmpeg found cannot write `target` from this source at all — the
+ * plain conversion would need an encoder it was built without — or
+ * undefined. Asked when a format is picked, so the refusal comes before the
+ * questions after it; the run asks again with its own options. Nothing is
+ * known (no ffmpeg looked for yet, no list read from it): undefined.
+ */
+export function encodeRefusal(source: SourceInfo, target: FormatId): ForgeError | undefined {
+  if (source.kind !== 'media' || !source.facts) return undefined
+  const has = knownFfmpeg()?.has
+  if (!has) return undefined
+  try {
+    planEncode({
+      input: source.path,
+      output: source.path,
+      target,
+      facts: source.facts,
+      options: { background: '#ffffff', keepMetadata: false },
+      platform: process.platform,
+      passlog: '',
+      has,
+    })
+    return undefined
+  } catch (e) {
+    if (isForgeError(e) && e.code === 'encoder-missing') return e
+    return undefined
+  }
 }
 
 const set = (ids: FormatId[]) => new Set<FormatId>(ids)

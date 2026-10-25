@@ -7,7 +7,6 @@ import {
   markdownText,
   OUTPUTS,
   outputExt,
-  outputsFor,
 } from '../../src/core/transcribe/output.js'
 
 /**
@@ -93,13 +92,6 @@ describe('markdownHtml', () => {
   it('escapes what was said, so speech never becomes markup', () => {
     expect(html).toContain('Now, &lt;milk&gt;.')
     expect(html).not.toContain('<milk>')
-  })
-})
-
-describe('outputsFor', () => {
-  it("offers every format where Apple's helper sets documents, all but PDF elsewhere", () => {
-    expect(outputsFor({ render: true }).map((o) => o.id)).toEqual(['md', 'docx', 'pdf', 'txt'])
-    expect(outputsFor({ render: false }).map((o) => o.id)).toEqual(['md', 'docx', 'txt'])
   })
 })
 

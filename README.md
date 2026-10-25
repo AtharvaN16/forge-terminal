@@ -37,10 +37,8 @@ your distro's package (or nodejs.org's build) on Linux.
 On Windows, use Windows Terminal for the full experience.
 
 Most features work on all three. The exceptions: transcript summaries and
-notes need Apple Intelligence, so they are Mac-only; remove background is
-Mac-only until a model matches Apple Vision; Boost has no Intel Mac or Linux
-build yet (both would run on the processor alone); reading text from pictures
-and PDF transcripts need macOS 26; camera RAW photos open on a Mac only. Where a feature needs a
+notes need Apple Intelligence, so they are Mac-only; Boost has no Linux ARM
+build (there it would run on the processor alone). Where a feature needs a
 tool the OS does not have, it is a small optional extension
 (`forge extensions`) or a common package, named in the error that asks for it.
 
@@ -177,7 +175,20 @@ forge transcribe "https://www.youtube.com/watch?v=..." --language en
   run downloads the same model, checked against its sha256, into
   `%LOCALAPPDATA%\forge\whisper`, `~/Library/Caches/forge/whisper` or
   `~/.cache/forge/whisper`.
-- Transcripts can be Markdown, Word or text everywhere; PDF needs macOS 26.
+- Transcripts can be Markdown, Word, PDF or text everywhere. Forge writes the
+  Word and PDF itself where Apple's helper is not. The PDF is set in Noto Sans
+  for Latin, Greek and Cyrillic, and in the fonts your computer already has for
+  Chinese, Japanese, Korean, Arabic, Hebrew and Thai (Forge adds none). Writing
+  that has to be rearranged to be read, such as Hindi, is drawn as boxes in the
+  PDF; Markdown, Word and text have it.
+- Reading the text of pictures and PDFs (`forge transcribe shot.png`) uses
+  Apple's reader on macOS 26. Everywhere else it uses the read-text extension
+  (`forge extensions add read-text`, about 45 MB): PaddleOCR's models for the
+  scripts Apple's reader reads (Latin, Chinese, Japanese, Korean, Cyrillic,
+  Arabic, Devanagari and Thai). Nothing asks which language a page is in: the
+  models say how sure they are, and the surest reads it. It does not read
+  vertical text, and leaves out Vietnamese's doubly-marked vowels. A PDF's own
+  text, when it has one, corrects words OCR splits at ligatures.
 - Without `--language`, whisper detects the language itself.
 - Summary and notes need Apple Intelligence, so off it Forge writes the
   transcript. `--to notes` is refused; the default `--to all` gives the
@@ -449,15 +460,20 @@ zoom.
 ## Boost resolution and remove background
 
 Two image operations that need a model, so they are optional extensions rather
-than part of the install. On a Mac both need macOS 14 or later. On Windows,
-Boost runs on DirectML (any DirectX 12 graphics). Remove background uses Apple
-Vision, so it is Mac-only for now. Windows and Linux also have a `heic` extension, because macOS opens
+than part of the install. On a Mac both need macOS 14 or later. Boost runs on
+the graphics card: CoreML on Apple silicon, DirectML on Windows (any DirectX 12
+graphics), WebGPU on Intel Macs (Metal) and on Linux x64 (Vulkan, so it needs a
+Vulkan driver for the card). Where that would leave the processor to do it and
+a photo would take over about three minutes, Boost stops and says so. Remove
+background uses Apple Vision on a Mac, and on Windows and Linux a small model
+(BiRefNet-lite, 54 MB, on the processor: about two seconds a photo and 2 GB of
+memory at its peak). Windows and Linux also have a `heic` extension, because macOS opens
 iPhone photos itself and they need a decoder. Nothing downloads until you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
-forge extensions add boost              # about 15 MB on Apple Silicon (no Intel Mac build), 23 MB on Windows
-forge extensions add remove-background  # about 32 KB; Mac only
+forge extensions add boost              # about 15 MB on Apple silicon, 16 MB on an Intel Mac, 17 MB on Linux x64, 23 MB on Windows
+forge extensions add remove-background  # 32 KB on a Mac (Apple Vision); 46 to 52 MB on Windows and Linux
 forge extensions add heic               # about 0.5 MB; Windows and Linux
 forge extensions add whisper            # transcribe where Apple's recogniser is not (see above)
 forge extensions add yt-dlp             # YouTube links for transcribe, every OS

@@ -32,10 +32,10 @@ import {
 import {
   DEFAULT_OUTPUT,
   markdownText,
+  OUTPUTS,
   type Output,
   outputExt,
   outputLabel,
-  outputsFor,
 } from '../../core/transcribe/output.js'
 import {
   hasText,
@@ -210,13 +210,9 @@ export function TranscribeFlow({
   const [detail, setDetail] = useState<Detail>(DEFAULT_DETAIL)
   const [cursor, setCursor] = useState(0)
   // Format opens on the default; tab on a row makes that one the default.
-  // What this machine can write: without Apple's helper there is no PDF (outputsFor).
-  const [render, setRender] = useState(true)
-  const outputs = outputsFor({ render })
+  // Every machine writes all four: Apple's helper sets Word and PDF where it runs, Forge elsewhere.
+  const outputs = OUTPUTS
   const saved = prefs.transcribeFormat ?? DEFAULT_OUTPUT
-  // Read by the status check, which runs once on arrival.
-  const savedRef = useRef(saved)
-  savedRef.current = saved
   const defaultFormat = outputs.some((o) => o.id === saved) ? saved : DEFAULT_OUTPUT
   const [format, setFormat] = useState<Output>(defaultFormat)
   const [formatCursor, setFormatCursor] = useState(() =>
@@ -277,21 +273,6 @@ export function TranscribeFlow({
     transcribeStatus().then(
       (status) => {
         if (!live) return
-        const can = status?.render ?? true
-        setRender(can)
-        if (!can) {
-          // The list loses PDF: the cursor follows the default into it.
-          const list = outputsFor({ render: false })
-          const want = savedRef.current
-          const id = list.some((o) => o.id === want) ? want : DEFAULT_OUTPUT
-          setFormat(id)
-          setFormatCursor(
-            Math.max(
-              0,
-              list.findIndex((o) => o.id === id),
-            ),
-          )
-        }
         const on = status?.notes === 'available'
         setNotesOn(on)
         setWant(on ? 'all' : 'transcript')
@@ -367,7 +348,10 @@ export function TranscribeFlow({
         },
       })
       const md = transcriptMarkdown(result, origin, { transcript: want !== 'notes' })
-      await writeAtomic(output, await renderTranscript(md, format, { signal: ctrl.signal }))
+      await writeAtomic(
+        output,
+        await renderTranscript(md, format, { signal: ctrl.signal, lang: result.locale }),
+      )
       onSaved?.(to)
       setDone({
         output,

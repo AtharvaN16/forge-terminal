@@ -140,7 +140,8 @@ function framed(items: Item[], look: Look, inset: boolean): Grid {
   for (let r = 4; r <= 17; r++) put(g, r, 4, [[' '.repeat(32), undefined, PANEL]])
   const line = !look.fill
   const ground = look.fill ?? PANEL
-  if (look.fill) for (let r = TOP; r <= BOTTOM; r++) put(g, r, L, [[' '.repeat(COL), undefined, look.fill]])
+  if (look.fill)
+    for (let r = TOP; r <= BOTTOM; r++) put(g, r, L, [[' '.repeat(COL), undefined, look.fill]])
   else {
     put(g, TOP, L, [[`╭${'─'.repeat(COL - 2)}╮`, QUIET]])
     for (let r = TOP + 1; r < BOTTOM; r++) {

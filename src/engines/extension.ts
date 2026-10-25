@@ -59,7 +59,8 @@ async function run(
 
   // Not "install it": on an OS the catalogue offers no build for, there is nothing to install.
   const { assetFor, catalogEntry, offeredHere } = await import('../extensions/catalog.js')
-  if (!offeredHere(id)) throw extensionNotOffered(catalogEntry(id)?.title ?? id)
+  if (!offeredHere(id, process.platform, process.arch))
+    throw extensionNotOffered(catalogEntry(id)?.title ?? id)
   // The installed version first: which factors its runner makes decides both
   // whether this job can run and which factor a too-large refusal names.
   const { installed, extensionsRoot } = await import('../extensions/paths.js')

@@ -1,26 +1,26 @@
 /**
- * U²-Net-p's pre- and post-processing, as plain functions over typed arrays,
- * so the runner stays a thin shell and tests can check them without a model.
+ * BiRefNet-lite's pre- and post-processing, as plain functions over typed
+ * arrays, so the runner stays a thin shell and tests can check them without a
+ * model.
  *
- * The model takes one 320 × 320 RGB image, squashed to that square whatever
- * its aspect (as U²-Net was trained and as rembg runs it), scaled by its
+ * The model takes one 768 × 768 RGB image, squashed to that square whatever
+ * its aspect (as it was trained and as rembg runs it), scaled by its
  * brightest sample and normalised with ImageNet's mean and deviation. Its
- * first output is the fused saliency map, already through a sigmoid in the
- * graph, so every value is in 0–1.
+ * output is one 768 × 768 map of raw scores; a sigmoid turns them into 0–1.
  */
 
 import { Resampler } from '../boost/lanczos.js'
 
-export const SIZE = 320
+export const SIZE = 768
 const MEAN = [0.485, 0.456, 0.406] as const
 const STD = [0.229, 0.224, 0.225] as const
 
 /**
  * A box shrink first keeps the Lanczos step's cost and memory bound by about
- * 1280 px a side, however large the photo: below that, Lanczos alone does the
+ * 1536 px a side, however large the photo: below that, Lanczos alone does the
  * whole reduction.
  */
-const BOX_TARGET = SIZE * 4
+const BOX_TARGET = SIZE * 2
 
 /** Averages `kx` × `ky` blocks of the RGB channels (alpha ignored, as rembg does) into float planes. */
 function boxShrink(
@@ -50,7 +50,7 @@ function boxShrink(
   return { planes, bw, bh }
 }
 
-/** The model's input tensor data, 1 × 3 × 320 × 320, from 8-bit RGBA. */
+/** The model's input tensor data, 1 × 3 × 768 × 768, from 8-bit RGBA. */
 export function modelInput(rgba: Uint8Array, w: number, h: number): Float32Array {
   const kx = Math.max(1, Math.floor(w / BOX_TARGET))
   const ky = Math.max(1, Math.floor(h / BOX_TARGET))
@@ -68,8 +68,8 @@ export function modelInput(rgba: Uint8Array, w: number, h: number): Float32Array
       if (v > max) max = v
     }
   }
-  // Scaled by the brightest sample, not by 255: what U²-Net's own test code
-  // and rembg do, so the model sees the input it was evaluated on.
+  // Scaled by the brightest sample, not by 255: what rembg does with this
+  // model, so it sees the input it was tested on.
   const scale = 1 / Math.max(max, 1e-6)
   for (let c = 0; c < 3; c++) {
     const m = MEAN[c] as number
@@ -79,21 +79,29 @@ export function modelInput(rgba: Uint8Array, w: number, h: number): Float32Array
   return out
 }
 
+/** The raw scores through a sigmoid: 0–1 per pixel, as the model was trained to give them. */
+export function sigmoid(raw: Float32Array): Float32Array {
+  const out = new Float32Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = 1 / (1 + Math.exp(-(raw[i] ?? 0)))
+  return out
+}
+
 /**
- * When the model has found nothing. Measured on the raw map (before min–max
- * stretching, which would blow any faint noise up to a full mask):
+ * When the model has found nothing, measured on the mask after the sigmoid
+ * (and never stretched, which would blow faint noise up to a full mask):
  *
- *   - `peak`: the most confident pixel. A flat or featureless image peaks
- *     far below one half (a flat grey frame: about 0.001); a photo with a
- *     subject is near 1 somewhere.
+ *   - `peak`: the most confident pixel. The score is almost always near 0 or
+ *     near 1 (on 42 test photos, none sat between 0.01 and 0.98), so anything
+ *     from 0.01 to 0.98 gives the same answers; one half is the middle.
  *   - `coverage`: the share of the frame at one half or more. A few confident
- *     pixels on a speck are not a subject either.
+ *     pixels on a speck are not a subject either. The smallest real subject
+ *     in those photos covered 3.5 %, a wall with a few leaf specks 0.2 %, so
+ *     anything from 0.3 % to 3.4 % works; one percent is the rule.
  *
- * Found means peak ≥ 0.5 and coverage ≥ 0.5 % of the frame (512 of the
- * 320 × 320 pixels).
+ * Found means peak ≥ 0.5 and coverage ≥ 1 % of the frame.
  */
 export const PEAK_MIN = 0.5
-export const COVERAGE_MIN = 0.005
+export const COVERAGE_MIN = 0.01
 
 export interface Verdict {
   found: boolean
@@ -101,34 +109,19 @@ export interface Verdict {
   coverage: number
 }
 
-export function judge(raw: Float32Array): Verdict {
+export function judge(mask: Float32Array): Verdict {
   let peak = 0
   let over = 0
-  for (const v of raw) {
+  for (const v of mask) {
     if (v > peak) peak = v
     if (v >= 0.5) over++
   }
-  const coverage = raw.length ? over / raw.length : 0
+  const coverage = mask.length ? over / mask.length : 0
   return { found: peak >= PEAK_MIN && coverage >= COVERAGE_MIN, peak, coverage }
 }
 
-/** Min–max stretched to 0–1, as rembg does, so the background reaches 0 and the subject 1. */
-export function stretch(raw: Float32Array): Float32Array {
-  let lo = Number.POSITIVE_INFINITY
-  let hi = Number.NEGATIVE_INFINITY
-  for (const v of raw) {
-    if (v < lo) lo = v
-    if (v > hi) hi = v
-  }
-  const range = hi - lo
-  const out = new Float32Array(raw.length)
-  if (!(range > 1e-6)) return out
-  for (let i = 0; i < raw.length; i++) out[i] = ((raw[i] ?? 0) - lo) / range
-  return out
-}
-
 /**
- * The 320 × 320 mask brought to the image's own size, bilinear (pixel
+ * The 768 × 768 mask brought to the image's own size, bilinear (pixel
  * centres aligned), one row at a time so no full-size float mask is held.
  */
 export class MaskScaler {
