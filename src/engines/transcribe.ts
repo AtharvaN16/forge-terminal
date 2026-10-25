@@ -190,14 +190,32 @@ export async function chooseHearing(opts: {
   return opts.whisper === undefined ? undefined : { path: opts.whisper, kind: 'whisper' }
 }
 
-/** Apple's helper's `status`, or undefined when it is not here or cannot answer. */
-async function appleStatus(locale?: string): Promise<Line | undefined> {
+const statuses = new Map<string, Promise<Line | undefined>>()
+
+/**
+ * Apple's helper's `status`, or undefined when it is not here or cannot answer.
+ *
+ * Asked once per helper and locale for the process, like `hearing` below: the
+ * status, the reader and the renderer each wanted it, so a run spawned it
+ * about three times. What it says about the Mac (does it hear, does it read)
+ * does not change while Forge runs. Whether notes are ready can — Apple
+ * Intelligence turned on, its model done downloading — so `fresh` asks again
+ * and keeps the new answer; `transcribeStatus`, the one reader of `notes`,
+ * does. "Cannot answer" is kept too: a helper that cannot start (the
+ * universal build's Intel slice) or refuses a locale will do the same again.
+ */
+function appleStatus(locale?: string, opts: { fresh?: boolean } = {}): Promise<Line | undefined> {
   const { apple } = helpers()
-  if (apple === undefined) return undefined
+  if (apple === undefined) return Promise.resolve(undefined)
+  const key = `${apple}\0${locale ?? ''}`
+  const known = opts.fresh ? undefined : statuses.get(key)
+  if (known) return known
   const args = ['status', ...(locale ? ['--locale', locale] : [])]
   // A helper that cannot even answer (the universal build's Intel slice is
   // untested, spec 2026-10-23 §5.5) is no helper for any job.
-  return exec({ path: apple, kind: 'apple' }, args, '').catch(() => undefined)
+  const status = exec({ path: apple, kind: 'apple' }, args, '').catch(() => undefined)
+  statuses.set(key, status)
+  return status
 }
 
 let hearing: Promise<Helper | undefined> | undefined
@@ -356,7 +374,7 @@ export async function transcribeStatus(
 ): Promise<TranscribeStatus | undefined> {
   const here = helpers()
   if (here.apple === undefined && here.whisper === undefined) return undefined
-  const apple = await appleStatus(opts.locale)
+  const apple = await appleStatus(opts.locale, { fresh: true })
   // Reading is Apple's where it reads, else the read-text extension's once it is installed.
   const read = apple?.read === true || (await installed('read-text')) !== undefined
   const base = { read }
