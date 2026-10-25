@@ -69,6 +69,7 @@ import type {
 import { describeSize, formatBytes, parseSize } from '../core/units.js'
 import { checkWriteSafety } from '../core/write-safety.js'
 import { encodeToBuffer, type ImageMeasure } from '../engines/image.js'
+import { encodeRefusal } from '../engines/media.js'
 import { pdfiumEngine } from '../engines/pdfium.js'
 import { probe } from '../engines/registry.js'
 import { type FetchedSound, fetchSound, ytDlpMissing } from '../engines/youtube.js'
@@ -3408,6 +3409,12 @@ export function App({
   const chooseTarget = (currentSource: SourceInfo, target: string) => {
     if (currentSource.kind === 'media' && !currentSource.facts) {
       refuseFile(ffmpegMissing(currentSource.path), currentSource.path)
+      return
+    }
+    // This ffmpeg has no encoder for it: said now, not after the questions.
+    const lacking = encodeRefusal(currentSource, target as FormatId)
+    if (lacking) {
+      refuseFile(lacking, currentSource.path)
       return
     }
     setValues((v) => ({ ...v, target }))

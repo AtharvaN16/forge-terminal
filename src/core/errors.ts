@@ -58,6 +58,7 @@ export type ErrorCode =
   | 'nothing-to-undo'
   | 'cannot-compress-more'
   | 'ffmpeg-missing'
+  | 'encoder-missing'
   | 'no-sound'
   | 'language-unsupported'
   | 'transcribe-unavailable'
@@ -1133,6 +1134,45 @@ export function ffmpegMissing(
     detail: `${displayName(path)} is a video or audio file, and ffmpeg is not on this computer.`,
     short: 'ffmpeg is not on this computer',
     hint: `Install it with ${how}, then run Forge again.`,
+  })
+}
+
+/**
+ * The ffmpeg found was built without every encoder Forge can write this
+ * format with (a distribution's lean build: Fedora's ffmpeg-free has no
+ * libx264 or libx265). Said before ffmpeg runs, naming what it looked for.
+ */
+export function encoderMissing(
+  target: FormatId,
+  missing: {
+    /** The kind of encoder wanted, as people say it: "H.264", "Opus or Vorbis". */
+    codec: string
+    /** The encoders looked for, in the order they are tried. */
+    encoders: readonly string[]
+    /** The sound of a video format, rather than its picture. */
+    sound?: boolean
+  },
+  platform: NodeJS.Platform = process.platform,
+): ForgeError {
+  const label = FORMATS[target].label
+  // Said as letters: an H.264, an HEVC, an MP3, an Opus; a VP9.
+  const an = /^[AEFHILMNORSX]/.test(missing.codec) ? 'an' : 'a'
+  const names = missing.encoders
+  const list =
+    names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : (names[0] ?? '')
+  const them = names.length > 1 ? 'any of them' : 'it'
+  const hint =
+    platform === 'linux'
+      ? "Install a full build of ffmpeg, then run Forge again. On Fedora, RPM Fusion's ffmpeg replaces ffmpeg-free."
+      : platform === 'win32'
+        ? `Install a full build of ffmpeg, such as gyan.dev's (${ffmpegInstall(platform)}), then run Forge again.`
+        : `Install a full build of ffmpeg (${ffmpegInstall(platform)}), then run Forge again.`
+  return new ForgeError({
+    code: 'encoder-missing',
+    title: `Your ffmpeg can't write ${label}`,
+    detail: `${label} needs ${an} ${missing.codec} encoder${missing.sound ? ' for its sound' : ''}: ${list}. Your ffmpeg was built without ${them}.`,
+    short: `Your ffmpeg has no ${missing.codec} encoder`,
+    hint,
   })
 }
 

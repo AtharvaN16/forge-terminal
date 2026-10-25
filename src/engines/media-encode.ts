@@ -1,3 +1,4 @@
+import { encoderMissing } from '../core/errors.js'
 import { FORMATS } from '../core/formats.js'
 import type { ConvertOptions, FormatId, MediaFacts } from '../core/types.js'
 import { planSize } from './media-size.js'
@@ -17,11 +18,18 @@ export interface EncodeInput {
   facts: MediaFacts
   options: ConvertOptions
   platform: NodeJS.Platform
+  /**
+   * This computer's OS, for a refusal's advice. Absent: `platform`, which is
+   * 'linux' on a Mac when the job is planned again without Apple's encoders.
+   */
+  os?: NodeJS.Platform
   /** Where a two-pass encode keeps its first pass's notes. */
   passlog: string
   /**
    * The encoders and filters this ffmpeg was built with. Absent: assume
-   * everything (Homebrew's has it all); a lean build is planned around.
+   * everything (Homebrew's has it all); a lean build is planned around, and
+   * a format none of its encoders can write is refused (`encoderMissing`),
+   * thrown before ffmpeg runs.
    */
   has?: ReadonlySet<string>
 }
@@ -124,21 +132,57 @@ const AUDIO_FITS: Partial<Record<FormatId, readonly string[]>> = {
 }
 
 /**
+ * An encoder this ffmpeg lacks, and every one that would have done: the
+ * refusal's words (`encoderMissing`), said before ffmpeg runs.
+ */
+export interface Missing {
+  codec: string
+  encoders: string[]
+  sound?: boolean
+}
+
+interface AudioPick {
+  encoder: string
+  kbps?: number
+  args?: string[]
+  /** The sample rates it takes, the one to use first; absent: any. */
+  rates?: readonly number[]
+}
+
+/** What libopus takes; ffmpeg's own Opus encoder takes 48 kHz alone. */
+const OPUS_RATES = [48000, 24000, 16000, 12000, 8000] as const
+
+/**
  * The sound encoder for a container, and its bitrate when lossy. `args` are
  * what that encoder needs besides: ffmpeg's own Vorbis encoder is marked
  * experimental and writes stereo only.
+ *
+ * Each is the first of a chain this ffmpeg has (`can`), libraries first.
+ * ffmpeg's own encoders (AAC, FLAC, PCM, Vorbis) are part of it and assumed;
+ * its own Opus is experimental (CELT only, at best libopus's equal), so it is
+ * used only when this ffmpeg lists it and nothing better is there.
  */
 function audioEncoder(
   target: FormatId,
   platform: NodeJS.Platform,
   can: (name: string) => boolean,
-): { encoder: string; kbps?: number; args?: string[] } {
+): AudioPick | Missing {
+  const ownOpus: AudioPick = { encoder: 'opus', kbps: 96, args: ['-strict', '-2'], rates: [48000] }
   switch (target) {
     case 'webm':
+      // WebM carries Vorbis as well as Opus.
+      if (can('libopus')) return { encoder: 'libopus', kbps: 96, rates: OPUS_RATES }
+      if (can('libvorbis')) return { encoder: 'libvorbis', kbps: 128 }
+      if (can('opus')) return ownOpus
+      return { codec: 'Opus or Vorbis', encoders: ['libopus', 'libvorbis', 'opus'], sound: true }
     case 'opus':
-      return { encoder: 'libopus', kbps: 96 }
+      if (can('libopus')) return { encoder: 'libopus', kbps: 96, rates: OPUS_RATES }
+      if (can('opus')) return ownOpus
+      return { codec: 'Opus', encoders: ['libopus', 'opus'] }
     case 'mp3':
-      return { encoder: 'libmp3lame', kbps: 128 }
+      // ffmpeg has no MP3 encoder of its own.
+      if (can('libmp3lame')) return { encoder: 'libmp3lame', kbps: 128 }
+      return { codec: 'MP3', encoders: ['libmp3lame'] }
     case 'flac':
       return { encoder: 'flac' }
     case 'wav':
@@ -166,6 +210,60 @@ export const crfOf = (quality: number) => Math.round(38 - ((quality - 1) * 20) /
 const vp9CrfOf = (quality: number) => Math.round(50 - ((quality - 1) * 30) / 99)
 /** And for x265: 100 → 22, 1 → 40. */
 const x265CrfOf = (quality: number) => Math.round(40 - ((quality - 1) * 18) / 99)
+
+/** Apple's encoders' own quality scale, 1–100, from quality 1–100. */
+const toolboxQOf = (quality: number) => Math.round(20 + (quality * 60) / 100)
+/** And MPEG-4 part 2's quantiser, 31 (worst) to 2: 100 → 2, 1 → 31. */
+const mpeg4QOf = (quality: number) => Math.round(31 - ((quality - 1) * 29) / 99)
+
+/**
+ * The bitrate standing in for an x264 constant rate factor, for an encoder
+ * with no constant quality (OpenH264, Media Foundation): bits for every
+ * pixel of every frame, 0.15 at CRF 18, halved every 6 CRF up — x264's own
+ * rule of thumb. So CRF 21 (a plain convert) is 0.106, quality 60's CRF 26
+ * is 0.059, quality 1's CRF 38 is 0.015. A bitrate follows the picture's
+ * size, not what is in it: a still screen gets as many bits as a busy one.
+ */
+export function kbpsForCrf(crf: number, pixelsPerSecond: number): number {
+  const bitsPerPixel = 0.15 * 2 ** ((18 - crf) / 6)
+  return Math.max(64, Math.round((pixelsPerSecond * bitsPerPixel) / 1000))
+}
+
+/** The pixels a second the encoder is given: the picture after its crop and resize, at its frame rate. */
+function pixelsPerSecond(
+  v: { width: number; height: number; fps: number },
+  options: ConvertOptions,
+  fitted: EncodePlan['fitted'],
+  fps: number | undefined,
+  speed: number,
+): number {
+  let w = v.width
+  let h = v.height
+  if (fitted) {
+    w = fitted.width
+    h = fitted.height
+  } else {
+    if (options.crop?.box) {
+      w = options.crop.box.width
+      h = options.crop.box.height
+    }
+    const r = options.resize
+    if (r && 'width' in r) {
+      const k = Math.min(r.width, w) / w
+      w *= k
+      h *= k
+    } else if (r && 'height' in r) {
+      const k = Math.min(r.height, h) / h
+      w *= k
+      h *= k
+    } else if (r) {
+      w *= r.percent / 100
+      h *= r.percent / 100
+    }
+  }
+  // Sped up with every frame kept, there are more of them a second.
+  return w * h * (fps ?? v.fps * speed)
+}
 
 /** HDR to normal range, for a format that can't carry it. */
 const TONEMAP =
@@ -201,6 +299,7 @@ export function planEncode(job: EncodeInput): EncodePlan {
   const compress = options.compress !== undefined
   const darwin = platform === 'darwin'
   const can = (name: string) => job.has === undefined || job.has.has(name)
+  const missing = (what: Missing) => encoderMissing(target, what, job.os ?? platform)
 
   const start = m.cut?.start ?? 0
   const end = Math.min(m.cut?.end ?? facts.duration, facts.duration)
@@ -283,12 +382,17 @@ export function planEncode(job: EncodeInput): EncodePlan {
     (VIDEO_FITS[target] ?? []).includes(v.codec)
 
   const videoArgs: string[] = []
+  /** The encoder chosen keeps notes for a second pass (x264, VP9): a size is then two passes. */
+  let twoPassable = false
   if (!wantVideo) videoArgs.push('-vn')
   else if (copyVideo) videoArgs.push('-c:v', 'copy')
   else {
     if (vf.length) videoArgs.push('-vf', vf.join(','))
     if (gif) videoArgs.push('-c:v', 'gif', '-loop', '0')
     else if (target === 'webm') {
+      // VP9 has no other software encoder in ffmpeg worth the wait.
+      if (!can('libvpx-vp9')) throw missing({ codec: 'VP9', encoders: ['libvpx-vp9'] })
+      twoPassable = videoKbps !== undefined
       videoArgs.push('-c:v', 'libvpx-vp9', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4')
       // A GIF's frames are RGB with alpha: left to choose, ffmpeg 9 picks
       // gbrap, which VP9 refuses without -strict. yuva420p keeps the
@@ -300,15 +404,23 @@ export function planEncode(job: EncodeInput): EncodePlan {
         videoArgs.push('-crf', String(crf), '-b:v', '0')
       }
     } else if (target === 'hevc') {
-      const x265 = can('libx265') || !darwin
+      // libx265, else Apple's on a Mac. No software fallback: Media
+      // Foundation's HEVC needs Windows' paid extension or a GPU.
+      const x265 = can('libx265')
+      const toolbox = darwin && can('hevc_videotoolbox')
+      if (!x265 && !toolbox)
+        throw missing({
+          codec: 'HEVC',
+          encoders: ['libx265', ...(darwin ? ['hevc_videotoolbox'] : [])],
+        })
       if (videoKbps !== undefined) {
         // HEVC is not run in two passes: one pass at the bitrate, and the
         // engine's check after it holds the size.
         if (x265) videoArgs.push('-c:v', 'libx265', '-preset', 'fast', '-b:v', `${videoKbps}k`)
         else videoArgs.push('-c:v', 'hevc_videotoolbox', '-b:v', `${videoKbps}k`)
-      } else if (darwin && (!compress || !x265)) {
+      } else if (toolbox && (!compress || !x265)) {
         // Apple's encoder: its own quality scale, 1–100.
-        const q = compress ? Math.round(20 + ((options.quality ?? 60) * 60) / 100) : 60
+        const q = compress ? toolboxQOf(options.quality ?? 60) : 60
         videoArgs.push('-c:v', 'hevc_videotoolbox', '-q:v', String(q))
       } else {
         const crf = compress ? x265CrfOf(options.quality ?? 60) : 26
@@ -316,19 +428,54 @@ export function planEncode(job: EncodeInput): EncodePlan {
       }
       videoArgs.push('-tag:v', 'hvc1', '-pix_fmt', v?.hdr ? 'p010le' : 'yuv420p')
     } else {
-      if (videoKbps !== undefined) {
-        videoArgs.push('-c:v', 'libx264', '-preset', 'medium', '-b:v', `${videoKbps}k`)
-      } else if (compress) {
-        videoArgs.push(
-          '-c:v',
-          'libx264',
-          '-preset',
-          'medium',
-          '-crf',
-          String(crfOf(options.quality ?? 60)),
-        )
-      } else if (darwin) videoArgs.push('-c:v', 'h264_videotoolbox', '-q:v', '65')
-      else videoArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21')
+      // H.264 (AVI's last resort MPEG-4 part 2), the first of a chain this
+      // ffmpeg has: x264; Apple's on a Mac; OpenH264, which Fedora's
+      // ffmpeg-free carries; Windows' own Media Foundation, whose software
+      // encoder ships with Windows (ffmpeg asks for hardware only when told).
+      const crf = compress ? crfOf(options.quality ?? 60) : 21
+      const rate = () =>
+        `${videoKbps ?? kbpsForCrf(crf, v ? pixelsPerSecond(v, options, fitted, fps, speed) : 0)}k`
+      if (videoKbps === undefined && !compress && darwin && can('h264_videotoolbox'))
+        videoArgs.push('-c:v', 'h264_videotoolbox', '-q:v', '65')
+      else if (can('libx264')) {
+        twoPassable = videoKbps !== undefined
+        if (videoKbps !== undefined)
+          videoArgs.push('-c:v', 'libx264', '-preset', 'medium', '-b:v', `${videoKbps}k`)
+        else if (compress)
+          videoArgs.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf))
+        else videoArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21')
+      } else if (darwin && can('h264_videotoolbox')) {
+        if (videoKbps !== undefined) videoArgs.push('-c:v', 'h264_videotoolbox', '-b:v', rate())
+        else
+          videoArgs.push(
+            '-c:v',
+            'h264_videotoolbox',
+            '-q:v',
+            String(toolboxQOf(options.quality ?? 60)),
+          )
+      } else if (can('libopenh264')) {
+        // No constant quality: a bitrate, one pass (it keeps no notes for a second).
+        videoArgs.push('-c:v', 'libopenh264', '-b:v', rate())
+      } else if (platform === 'win32' && can('h264_mf')) {
+        videoArgs.push('-c:v', 'h264_mf', '-b:v', rate())
+      } else if (target === 'avi') {
+        // ffmpeg's own, AVI's own codec: always there.
+        if (videoKbps !== undefined) videoArgs.push('-c:v', 'mpeg4', '-b:v', `${videoKbps}k`)
+        else {
+          const q = compress ? mpeg4QOf(options.quality ?? 60) : 3
+          videoArgs.push('-c:v', 'mpeg4', '-q:v', String(q))
+        }
+      } else {
+        throw missing({
+          codec: 'H.264',
+          encoders: [
+            'libx264',
+            ...(darwin ? ['h264_videotoolbox'] : []),
+            'libopenh264',
+            ...(platform === 'win32' ? ['h264_mf'] : []),
+          ],
+        })
+      }
       videoArgs.push('-pix_fmt', 'yuv420p')
     }
     if (fps !== undefined) videoArgs.push('-r', String(fps))
@@ -357,14 +504,24 @@ export function planEncode(job: EncodeInput): EncodePlan {
   else {
     if (af.length) audioArgs.push('-af', af.join(','))
     const enc = audioEncoder(target, platform, can)
+    if ('codec' in enc) throw missing(enc)
     audioArgs.push('-c:a', enc.encoder)
     const rate = kbps ?? enc.kbps
     if (rate !== undefined && enc.kbps !== undefined) audioArgs.push('-b:a', `${rate}k`)
     if (enc.args) audioArgs.push(...enc.args)
-    else if (sizedAudioKbps !== undefined && sizedAudioKbps <= SOUND_FLOOR_KBPS)
+    if (
+      !enc.args?.includes('-ac') &&
+      sizedAudioKbps !== undefined &&
+      sizedAudioKbps <= SOUND_FLOOR_KBPS
+    )
       audioArgs.push('-ac', '1')
-    // loudnorm works at 192 kHz and would write it: keep the file's own rate.
-    if (loudness !== undefined && a) audioArgs.push('-ar', String(a.sampleRate))
+    // loudnorm works at 192 kHz and would write it: keep the file's own rate,
+    // or, when the encoder takes only some, its first (Opus refuses 44.1 kHz:
+    // 48).
+    if (loudness !== undefined && a) {
+      const keep = !enc.rates || enc.rates.includes(a.sampleRate)
+      audioArgs.push('-ar', String(keep ? a.sampleRate : enc.rates?.[0]))
+    }
   }
 
   // ---- around them
@@ -404,7 +561,7 @@ export function planEncode(job: EncodeInput): EncodePlan {
       pass: { at: 1, of: 2 },
     })
   }
-  const twoPass = videoKbps !== undefined && target !== 'hevc' && !gif
+  const twoPass = twoPassable
   if (twoPass) {
     steps.push({
       args: [
