@@ -18,6 +18,7 @@ import {
   MODE_KINDS,
   MODE_NOTES,
   menuHintRow,
+  mergeRuns,
   type Row,
   type Run,
   type SuggestionItem,
@@ -37,6 +38,7 @@ import {
   motionEnabled,
   useBlendedRows,
   useElapsed,
+  useElapsedFrames,
   useTween,
 } from '../motion.js'
 import { keyIsDown } from '../pressed-key.js'
@@ -201,7 +203,7 @@ export function Runs({ row }: { row: Row }) {
   return (
     <Box flexShrink={0}>
       <Text wrap="truncate">
-        {row.map((run, i) => (
+        {mergeRuns(row).map((run, i) => (
           <Text
             // biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are positional
             key={i}
@@ -488,7 +490,20 @@ export function Home({
   // and nothing is typed; anything else holds it still, and it starts again
   // from empty when the panel is bare once more.
   const bare = !staged && !typing && !formats && mode !== 'colour' && layout.surface > 0
-  const ripple = useElapsed(bare && motionEnabled(palette.name))
+  const restingSurface = (ripple: number | undefined) =>
+    surfaceRows({
+      ...art,
+      rows: layout.surface,
+      // Never faded for typing (2026-10-19): the drop area
+      // keeps its strength whatever is in the field.
+      typing: false,
+      kinds: MODE_KINDS[mode],
+      ...(MODE_DROP_TITLES[mode] ? { title: MODE_DROP_TITLES[mode] } : {}),
+      ripple,
+    })
+  const ripple = useElapsedFrames(bare && motionEnabled(palette.name), (at) =>
+    JSON.stringify(restingSurface(at)),
+  )
   // The searching line's spinner turns while it shows; still where motion is off.
   const spun = useElapsed(typing && searching && motionEnabled(palette.name), 80)
   // A file that has just landed runs one ring through the card's dots (M2a).
@@ -545,16 +560,7 @@ export function Home({
                     ? stagedCardRows({ ...art, rows: layout.surface, file: staged.files[0], ring })
                     : staged && staged.files.length > 1
                       ? stagedListRows({ ...art, rows: layout.surface, view: staged })
-                      : surfaceRows({
-                          ...art,
-                          rows: layout.surface,
-                          // Never faded for typing (2026-10-19): the drop area
-                          // keeps its strength whatever is in the field.
-                          typing: false,
-                          kinds: MODE_KINDS[mode],
-                          ...(MODE_DROP_TITLES[mode] ? { title: MODE_DROP_TITLES[mode] } : {}),
-                          ripple,
-                        })
+                      : restingSurface(ripple)
       : []
 
   // p presets: the window over the surface, the surface faded under it.

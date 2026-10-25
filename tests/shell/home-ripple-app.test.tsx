@@ -26,6 +26,10 @@ const advance = async (ms: number) => {
   vi.advanceTimersByTime(ms)
   await flush()
 }
+/** As a person watches it: each tick drawn before the next one comes. */
+const watch = async (ms: number) => {
+  for (let t = 0; t < ms; t += 33) await advance(Math.min(33, ms - t))
+}
 
 beforeEach(() => vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] }))
 afterEach(() => {
@@ -91,6 +95,26 @@ describe('the drop zone’s ripple on the home screen', () => {
 
     await advance(RIPPLE.gap / 2 + RIPPLE.ring * 0.3)
     expect(dots(app.lastFrame())).toBeGreaterThan(fixed)
+    app.unmount()
+  })
+
+  it('draws nothing while the surface rests full or empty', async () => {
+    setMotionForTests(true)
+    const app = render(home())
+    await flush()
+    // Well into the hold: the field is full and nothing on it moves.
+    await advance(RIPPLE.ring + RIPPLE.hold * 0.2)
+    const held = app.frames.length
+    await watch(RIPPLE.hold * 0.6)
+    expect(app.frames.length).toBe(held)
+    // And in the gap, where it is empty.
+    await advance(RIPPLE.hold * 0.2 + RIPPLE.fade + RIPPLE.gap * 0.2)
+    const empty = app.frames.length
+    await watch(RIPPLE.gap * 0.6)
+    expect(app.frames.length).toBe(empty)
+    // It still moves when the ring comes again.
+    await watch(RIPPLE.gap * 0.2 + RIPPLE.ring * 0.3)
+    expect(app.frames.length).toBeGreaterThan(empty)
     app.unmount()
   })
 

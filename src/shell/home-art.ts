@@ -46,6 +46,28 @@ export interface Run {
 }
 export type Row = Run[]
 
+/**
+ * `row` with each run of neighbours drawn alike — the same colour, background
+ * and weight — joined into one. What reaches the terminal is the same; it is
+ * fewer pieces for React and Ink to lay out on every redraw, and art built a
+ * cell at a time (the drop surface's dots) is most of a screen's pieces.
+ */
+export function mergeRuns(row: Row): Row {
+  const out: Row = []
+  for (const run of row) {
+    const last = out[out.length - 1]
+    if (
+      last &&
+      (last.fg || '') === (run.fg || '') &&
+      (last.bg || '') === (run.bg || '') &&
+      Boolean(last.bold) === Boolean(run.bold)
+    ) {
+      out[out.length - 1] = { ...last, text: last.text + run.text }
+    } else out.push(run)
+  }
+  return out
+}
+
 /** Columns kept clear either side of the block. */
 export const HOME_MARGIN = 2
 

@@ -39,7 +39,7 @@ import { Prompt } from '../components/Prompt.js'
 import { fieldKey } from '../field-key.js'
 import { trueColour } from '../glyphs.js'
 import { sketchNoteRows } from '../halfblocks.js'
-import { blank, type Row, width as widthOf } from '../home-art.js'
+import { blank, mergeRuns, type Row, width as widthOf } from '../home-art.js'
 import { imageProtocol } from '../inline-image.js'
 import { easeOut, motionEnabled, useTicker, useTween } from '../motion.js'
 import { isStrayEscapeSequence } from '../mouse.js'
@@ -645,7 +645,7 @@ function Line({ row }: { row: Row }) {
 function RunsText({ row }: { row: Row }) {
   return (
     <>
-      {row.map((run, i) => (
+      {mergeRuns(row).map((run, i) => (
         <Text
           // biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are positional
           key={i}

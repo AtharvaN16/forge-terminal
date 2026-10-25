@@ -218,6 +218,44 @@ export function useElapsed(active: boolean, intervalMs = FRAME_MS * 2): number |
   return since.current === null ? undefined : Date.now() - since.current
 }
 
+/**
+ * `useElapsed` for a loop with still stretches in it, like the drop surface's
+ * hold and gap. It ticks just as often, but redraws only when `frame` — what
+ * the screen would show that many ms in, as a string — differs from what is
+ * up, and returns the time of the frame that is up. Measured on the idle home
+ * (2026-10-25): every redraw costs React and Ink the whole screen, so a frame
+ * drawn again unchanged is a third of the ripple's CPU spent on nothing.
+ */
+export function useElapsedFrames(
+  active: boolean,
+  frame: (elapsed: number) => string,
+  intervalMs = FRAME_MS * 2,
+): number | undefined {
+  const since = useRef<number | null>(null)
+  const shown = useRef<{ at: number; frame?: string }>({ at: 0 })
+  const frameOf = useRef(frame)
+  frameOf.current = frame
+  const [, redraw] = useState(0)
+  if (!active) since.current = null
+  else if (since.current === null) {
+    since.current = Date.now()
+    shown.current = { at: 0 }
+  }
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => {
+      if (since.current === null) return
+      const at = Date.now() - since.current
+      const next = frameOf.current(at)
+      if (next === shown.current.frame) return
+      shown.current = { at, frame: next }
+      redraw((n) => n + 1)
+    }, intervalMs)
+    return () => clearInterval(id)
+  }, [active, intervalMs])
+  return since.current === null ? undefined : shown.current.at
+}
+
 /** A frame count that advances every `intervalMs` while `active`, and holds still otherwise. */
 export function useTicker(active: boolean, intervalMs = FRAME_MS * 2): number {
   const [n, setN] = useState(0)
