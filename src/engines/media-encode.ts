@@ -290,6 +290,10 @@ export function planEncode(job: EncodeInput): EncodePlan {
     if (gif) videoArgs.push('-c:v', 'gif', '-loop', '0')
     else if (target === 'webm') {
       videoArgs.push('-c:v', 'libvpx-vp9', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4')
+      // A GIF's frames are RGB with alpha: left to choose, ffmpeg 9 picks
+      // gbrap, which VP9 refuses without -strict. yuva420p keeps the
+      // transparency, as ffmpeg 7 chose itself.
+      if (v?.codec === 'gif') videoArgs.push('-pix_fmt', 'yuva420p')
       if (videoKbps !== undefined) videoArgs.push('-b:v', `${videoKbps}k`)
       else {
         const crf = compress ? vp9CrfOf(options.quality ?? 60) : 33

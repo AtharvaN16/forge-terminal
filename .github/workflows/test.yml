@@ -55,18 +55,7 @@ jobs:
       - run: ffmpeg -hide_banner -version
       - run: npm run typecheck
       - run: npm run lint
-      - name: TEMP diagnose macOS hang
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        timeout-minutes: 25
-        run: |
-          (npx vitest run > vitest.log 2>&1; echo "VITEST EXITED $?" >> vitest.log) &
-          for i in $(seq 1 120); do sleep 10; if grep -q "Duration" vitest.log; then break; fi; done
-          sleep 45
-          grep -E "FAIL|Test Files|Tests  |VITEST EXITED" vitest.log | sort -u
-          grep -B2 -A30 "Failed Tests" vitest.log | head -150
-          ps -axo pid,ppid,etime,command | grep -vE "grep|Runner.Worker|Runner.Listener" | grep -E "node|ffmpeg|ffprobe|sips|forge|swift|transcribe" | cut -c1-400
-      - if: runner.os == 'Linux'
+      - if: runner.os != 'Windows'
         run: npm test
       # On Windows the Ink screen tests (tests/shell) are not blocking. They
       # wait for frames with fixed settle() sleeps, and on the Windows runners
