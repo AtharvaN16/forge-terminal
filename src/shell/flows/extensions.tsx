@@ -438,7 +438,9 @@ export function ExtensionsFlow({
         const holder = await manager.inUse(id).catch(() => undefined)
         if (holder) next[id] = holder
       }
-      if (live && alive.current) setInUse(next)
+      // The same answer as last time is the same state: no redraw, every second, for nothing.
+      if (live && alive.current)
+        setInUse((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next))
     }
     void look()
     const timer = setInterval(() => void look(), IN_USE_POLL_MS)

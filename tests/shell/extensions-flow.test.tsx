@@ -159,6 +159,27 @@ describe('ExtensionsFlow (M3 · T2)', () => {
     expect(frame(f)).not.toContain('Remove it from this Mac?')
   })
 
+  it('does not redraw for a look that finds what it found the last time', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { manager } = fakeManager({
+        installed: ['boost'],
+        inUse: { boost: { pid: 1, what: 'Boost resolution 4× is running on portrait.jpg' } },
+      })
+      const f = open(manager)
+      await until(() => frame(f).includes('In use:'))
+      await tick()
+      const drawn = f.frames.length
+      for (let i = 0; i < 3; i++) {
+        vi.advanceTimersByTime(1000)
+        await tick()
+      }
+      expect(f.frames.length).toBe(drawn)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('i shows parts and licences, with no version or needs when nothing is wrong (T2)', async () => {
     const { manager } = fakeManager({ installed: ['boost'] })
     const f = open(manager)
