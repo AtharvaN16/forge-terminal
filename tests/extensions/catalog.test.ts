@@ -89,10 +89,9 @@ describe('the Mac catalogue, as published', () => {
 })
 
 describe('by OS', () => {
-  it("remove-background is the Mac's alone until a model passes; heic is never offered on a Mac", () => {
-    expect(offeredHere('remove-background', 'darwin')).toBe(true)
-    for (const os of ['win32', 'linux'] as const)
-      expect(offeredHere('remove-background', os)).toBe(false)
+  it('remove-background is offered on every OS (Apple Vision on a Mac, BiRefNet-lite elsewhere); heic is never offered on a Mac', () => {
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(offeredHere('remove-background', os)).toBe(true)
     expect(offeredHere('heic', 'darwin')).toBe(false)
     expect(CATALOG.map((e) => e.id)).toContain('heic')
   })
@@ -186,7 +185,7 @@ describe('by OS', () => {
     expect(linux?.supported).toBe(true)
   })
 
-  it('Edit has a Remove background row only where it is offered: the Mac', () => {
+  it('Edit has a Remove background row wherever it is offered: a Mac, Windows and Linux', () => {
     const photo = {
       kind: 'image',
       path: '/p.png',
@@ -197,28 +196,50 @@ describe('by OS', () => {
       hasAlpha: false,
       frames: 1,
     } as const
-    expect(editRows(photo, undefined, undefined, 'darwin').map((r) => r.id)).toContain('cutout')
-    for (const os of ['win32', 'linux', 'freebsd'] as const)
-      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).not.toContain('cutout')
+    for (const os of ['darwin', 'win32', 'linux'] as const)
+      expect(editRows(photo, undefined, undefined, os).map((r) => r.id)).toContain('cutout')
+    expect(editRows(photo, undefined, undefined, 'freebsd').map((r) => r.id)).not.toContain(
+      'cutout',
+    )
   })
 })
 
 describe('the Windows and Linux catalogue', () => {
-  it('offers neither boost nor remove-background on Linux: CPU only, and no model passed yet', async () => {
+  it('does not offer boost on Linux (CPU only), but does offer remove-background', async () => {
     for (const arch of ['x64', 'arm64']) {
       const ids = (await listExtensions('linux', arch)).map((s) => s.entry.id)
       expect(ids).not.toContain('boost')
-      expect(ids).not.toContain('remove-background')
-      expect(ids).toEqual(expect.arrayContaining(['heic', 'raw', 'whisper', 'yt-dlp']))
+      expect(ids).toEqual(
+        expect.arrayContaining(['remove-background', 'heic', 'raw', 'whisper', 'yt-dlp']),
+      )
     }
   })
 
-  it('offers boost and heic on Windows, and remove-background only on the Mac', async () => {
-    const ids = (await listExtensions('win32', 'x64')).map((s) => s.entry.id)
-    expect(ids).toEqual(expect.arrayContaining(['boost', 'heic', 'raw', 'whisper']))
-    expect(ids).not.toContain('remove-background')
+  it('offers boost, heic and remove-background on Windows', async () => {
+    for (const arch of ['x64', 'arm64']) {
+      const ids = (await listExtensions('win32', arch)).map((s) => s.entry.id)
+      expect(ids).toEqual(
+        expect.arrayContaining(['boost', 'remove-background', 'heic', 'raw', 'whisper']),
+      )
+    }
+  })
+
+  it("remove-background 1.1.0 is BiRefNet-lite on Windows and Linux, one archive per OS and chip; the Mac's stays at 1.0.0", () => {
     const cutout = catalogEntry('remove-background')
-    expect(cutout && assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')
+    if (cutout === undefined) throw new Error('remove-background is catalogued')
+    expect(assetFor(cutout, 'darwin', 'arm64')?.version).toBe('1.0.0')
+    for (const key of ['win32-x64', 'win32-arm64', 'linux-x64', 'linux-arm64']) {
+      const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
+      const asset = assetFor(cutout, platform, arch)
+      expect(asset?.version, key).toBe('1.1.0')
+      expect(asset?.url, key).toBe(
+        `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-${key}.tar.gz`,
+      )
+      expect(asset?.sha256, key).toMatch(/^[0-9a-f]{64}$/)
+      // The 54 MB model plus ONNX Runtime, packed: under the 100 MB ceiling for a model.
+      expect(asset?.bytes, key).toBeGreaterThan(40_000_000)
+      expect(asset?.bytes, key).toBeLessThan(100_000_000)
+    }
   })
 
   it('still tells an Intel Mac there is no boost build', () => {
