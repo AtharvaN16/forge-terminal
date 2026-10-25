@@ -1,23 +1,23 @@
 {
   "name": "forge-terminal",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Boost on every Linux",
-      "text": "Boost now works on any Linux PC, ARM ones like a Raspberry Pi too, and uses the graphics card when there is a real one."
+      "title": "Faster batches",
+      "text": "Batches now use every core: 50 photos compressed to a size finish about 30% sooner."
     },
     {
-      "title": "Forge’s own ffmpeg",
-      "text": "No ffmpeg on your Apple silicon Mac? Forge can now download its own copy for video and sound, in one step."
+      "title": "Calmer when idle",
+      "text": "The home screen uses about half the processor it did while it waits for a file."
     },
     {
-      "title": "Notes card colour",
-      "text": "On /update, the release notes card stays grey whichever mode you opened the menu from."
+      "title": "Photos read once",
+      "text": "HEIC and camera RAW photos are decoded once rather than at every step, and big files Forge can't read are no longer loaded whole."
     },
     {
-      "title": "Safer MCP server",
-      "text": "The MCP server uses a fixed zod, which could run out of memory on an oversized request."
+      "title": "A note when it ends",
+      "text": "A run of 20 seconds or more tells you when it is done, if you have switched to another app."
     }
   ],
   "keywords": [

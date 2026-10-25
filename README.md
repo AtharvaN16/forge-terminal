@@ -50,7 +50,7 @@ That puts `forge` on your `PATH`, so it works from any directory. Verify:
 
 ```bash
 forge --version
-# 0.5.1
+# 0.5.2
 
 forge photo.jpg --to webp
 ```
@@ -888,7 +888,7 @@ forge <inputs...> --to <format> [options]
 | `--keep-metadata` | preserve EXIF/GPS instead of stripping it |
 | `--recursive` | descend into subdirectories |
 | `--force` | allow overwriting an existing output file |
-| `--concurrency <n>` | batch parallelism (default `min(cpus, 4)`) |
+| `--concurrency <n>` | batch parallelism (default: one per core, at most 8) |
 | `--debug` | include stack traces in error output |
 | `--formats` | print the capability matrix |
 | `-V, --version` / `-h, --help` | the usual |
@@ -1117,7 +1117,7 @@ photo.png · PNG · 122 KB · 2756×774
 With `--json`:
 
 ```json
-{"forge":"0.5.1","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
+{"forge":"0.5.2","ok":true,"probes":[{"path":"/Users/me/photo.png","kind":"image","format":"png","bytes":122449,"width":2756,"height":774,"targets":["jpeg","png","webp","avif","gif","tiff","pdf"],"actions":["convert"]}],"failures":[]}
 ```
 
 `targets` and `actions` come from the engines' own capabilities, so they are
@@ -1143,7 +1143,7 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 ```jsonc
 {
-  "forge": "0.5.1",
+  "forge": "0.5.2",
   "ok": false,
   "results": [
     {
@@ -1441,8 +1441,9 @@ These apply automatically, unconditionally, unless a flag opts out:
 4. **Never drop animation silently.** An animated source converting to a
    format that can't animate keeps only the first frame — and attaches a
    warning to the result, rather than converting quietly and losing frames.
-5. **Bounded concurrency.** Batches run `min(cpus, 4)` conversions at a
-   time, so Sharp's threadpool isn't overwhelmed.
+5. **Bounded concurrency.** Batches run one conversion per core, at most
+   8 at a time, and Forge gives Sharp's threadpool a thread for each, so
+   neither waits on the other. Video and sound encode one at a time.
 
 Writes are atomic: output goes to a temp file in the destination directory
 and is renamed into place only on success, so a crash mid-encode never
