@@ -18,7 +18,7 @@ import {
   windowOver,
 } from '../../src/shell/colour/system-art.js'
 import { type Row, width } from '../../src/shell/home-art.js'
-import { DARK, modePalette } from '../../src/shell/theme.js'
+import { DARK, LIGHT, modePalette } from '../../src/shell/theme.js'
 
 /** The rows of colour, round two (colour spec §12), as mockups/colour-more-2026-10.html draws them. */
 
@@ -142,51 +142,48 @@ describe('Palette’s grid (§12.6)', () => {
     expect(red.some((r) => r.text === '    ' && r.bg === hex)).toBe(true)
   })
 
-  it('the chosen cell: eighth blocks against its edges, white on a dark swatch, near-black on a light one (2026-10-24)', () => {
+  it('the chosen cell: ▸ ◂ in the gaps either side, in the text colour, on the swatch’s middle line (2026-10-25)', () => {
+    const flat = (rows: Row[], i: number) =>
+      (rows[i] as Row).flatMap((r) => [...r.text].map((ch) => ({ ch, fg: r.fg, bg: r.bg })))
     const rows = gridOf({ row: 5, col: 7 })
-    const cells = (i: number) => [...text(rows[i])]
     // Row 5's gap line is 1 + 5 × 3 = 16; its swatches 17–18; the gap under, 19.
-    expect(
-      cells(16)
-        .slice(at(7), at(7) + 4)
-        .join(''),
-    ).toBe('▁▁▁▁')
-    expect(cells(17)[at(7) - 1]).toBe('▕')
-    expect(cells(18)[at(7) + 4]).toBe('▏')
-    expect(
-      cells(19)
-        .slice(at(7), at(7) + 4)
-        .join(''),
-    ).toBe('▔▔▔▔')
-    expect((rows[16] as Row).find((r) => r.text.includes('▁'))?.fg).toBe('#ffffff')
-    // Nowhere else in its colour (row 5 is not your colour's row).
-    const strokes = rows
-      .flatMap((row) => row.flatMap((r) => (r.fg === '#ffffff' ? [...r.text] : [])))
-      .filter((ch) => '▁▔▕▏'.includes(ch))
-    expect(strokes).toHaveLength(4 + 2 + 2 + 4)
-    // A light swatch: the frame near-black.
-    const light = gridOf({ row: 5, col: 1 })
-    expect((light[16] as Row).find((r) => r.text.includes('▁'))?.fg).toBe('#111111')
-    // A mid-tone, teal 600 #6F7C79 (2026-10-24): white, which the canvas does not swallow.
-    const mid = gridRows({
+    // Two lines tall: the first is the middle.
+    const middle = flat(rows, 17)
+    expect(middle[at(7) - 1]).toMatchObject({ ch: '▸', fg: P.fg.toLowerCase() })
+    expect(middle[at(7) + 4]).toMatchObject({ ch: '◂', fg: P.fg.toLowerCase() })
+    // Nothing on the swatch, the line under it, or the gap lines.
+    expect(flat(rows, 18)[at(7) - 1]?.ch).toBe(' ')
+    expect(middle[at(7)]?.ch).toBe(' ')
+    expect(rows.flatMap((row) => [...text(row)]).filter((ch) => '▸◂'.includes(ch))).toHaveLength(2)
+    expect(rows.every((row) => !/[▁▔▕▏]/.test(text(row)))).toBe(true)
+    // Narrow cells have the same gaps.
+    const narrow = gridOf({ row: 5, col: 7 }, { width: 60 })
+    expect([...text(narrow[17])].filter((ch) => '▸◂'.includes(ch))).toHaveLength(2)
+  })
+
+  it('the light theme’s pointers are black: the text colour, whatever the swatch (2026-10-25)', () => {
+    const light = modePalette(LIGHT, 'colour')
+    const rows = gridRows({
       width: 76,
-      palette: P,
-      labels: ['600'],
-      rows: [{ name: 'teal', hexes: ['#6F7C79'], yours: false }],
+      palette: light,
+      labels: ['100'],
+      rows: [{ name: 'blue', hexes: ['#D8E7FF'], yours: false }],
       reference: -1,
       sel: { row: 0, col: 0 },
       lines: 28,
     })
-    expect((mid[2] as Row).find((r) => r.text.includes('▕'))?.fg).toBe('#ffffff')
+    const pointer = (rows[3] as Row).find((r) => r.text.includes('▸'))
+    expect(pointer?.fg).toBe(light.fg.toLowerCase())
+    expect(light.fg.toLowerCase()).toBe('#262626')
   })
 
   it('no frame while a window is open over the grid', () => {
     const rows = gridOf({ row: 5, col: 7 }, { framed: false })
     expect(rows.every((row) => !/[▁▔]/.test(text(row)))).toBe(true)
-    expect(rows.every((row) => !/[▕▏]/.test(text(row)))).toBe(true)
+    expect(rows.every((row) => !/[▸◂]/.test(text(row)))).toBe(true)
   })
 
-  it('your colour’s cell: a small dot in its middle, and no lines beside it (2026-10-24)', () => {
+  it('your colour’s cell: a small dot in its middle, and nothing beside it until it is chosen (2026-10-24)', () => {
     const yours = sys.rows.findIndex((r) => r.yours)
     const flat = (rows: Row[], i: number) =>
       (rows[i] as Row).flatMap((r) => [...r.text].map((ch) => ({ ch, fg: r.fg, bg: r.bg })))
@@ -199,10 +196,11 @@ describe('Palette’s grid (§12.6)', () => {
       const cells = flat(rows, line)
       expect([cells[at(5) - 1]?.ch, cells[at(5) + 4]?.ch]).toEqual([' ', ' '])
     }
-    // Chosen, the frame round it and the dot still in it.
+    // Chosen, the pointers either side and the dot still between them.
     const chosen = gridOf({ row: yours, col: 5 })
-    expect(flat(chosen, 2 + yours * 3)[at(5) - 1]?.ch).toBe('▕')
+    expect(flat(chosen, 2 + yours * 3)[at(5) - 1]?.ch).toBe('▸')
     expect(flat(chosen, 2 + yours * 3)[at(5) + 1]?.ch).toBe('•')
+    expect(flat(chosen, 2 + yours * 3)[at(5) + 4]?.ch).toBe('◂')
   })
 
   it('fewer colours: every row shows, up to three lines tall', () => {
@@ -217,9 +215,10 @@ describe('Palette’s grid (§12.6)', () => {
     expect(rows).toHaveLength(14)
     expect(text(rows[1])).toMatch(/^ {2}red/)
     expect(text(rows[9])).toMatch(/^ {2}neutral/)
-    expect(rows.every((r) => !/[┃│]/.test(text(r)))).toBe(true)
-    // The chosen cell, marked in the gaps either side.
-    expect([...text(rows[9])][at(10) - 1]).toBe('▕')
+    expect(rows.every((r) => !text(r).includes('┃'))).toBe(true)
+    // The chosen cell, pointed at from the gaps either side.
+    expect([...text(rows[9])][at(10) - 1]).toBe('▸')
+    expect([...text(rows[9])][at(10) + 4]).toBe('◂')
   })
 
   it('fewer lines than rows: one-line swatches with gaps, scrolling, the chosen row kept in the middle', () => {

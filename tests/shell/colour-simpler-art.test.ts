@@ -129,9 +129,9 @@ describe('the Palette tab’s grid', () => {
     // The step numbers, then the nine rows, and nothing scrolls.
     const names = out.slice(1, 10).map((r) => text(r).trim().split(/\s+/)[0])
     expect(names).toEqual(rows.map((r) => r.name))
-    expect(out.map(text).join('')).not.toMatch(/[┃│]/)
-    // The chosen cell is marked in the gaps either side of it (here your colour, with its dot).
-    expect(text(out[6])).toMatch(/▕[ •]{4,8}▏/)
+    expect(out.map(text).join('')).not.toMatch(/┃/)
+    // The chosen cell is pointed at from the gaps either side (here your colour, with its dot).
+    expect(text(out[6])).toMatch(/▸[ •]{4,8}◂/)
     expect(scale(BLUE)).toHaveLength(11)
   })
 })

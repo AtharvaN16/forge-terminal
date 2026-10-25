@@ -730,9 +730,13 @@ one colour"), Palette ("build a palette / from one colour").
   that, up to three when every row fits. When not every row fits, the grid
   scrolls with the chosen row kept in the middle, and a bar (`┃` on a faint
   `│`) at its right says where.
-- **The chosen cell** has a thin frame in the gaps round it, eighth blocks
-  against its edges (`▁ ▕ ▏ ▔`), white on a dark swatch and near-black on a
-  light one (2026-10-24; was `╭─╮ │ ╰─╯` in the text colour). **Your
+- **The chosen cell** is pointed at from the gaps either side, `▸ ◂` in
+  the text colour, on the swatch's middle line (2026-10-25; S2 on
+  `mockups/palette-selection-2026-10.html`): white on the dark theme, black
+  on the light. They are in the gaps, on the canvas, so they are seen
+  whatever the swatch. Earlier marks, all dropped: `╭─╮ │ ╰─╯` (2026-10-14),
+  eighth blocks in the gaps (2026-10-24, lost beside light swatches),
+  lines inside the swatch (2026-10-25, disliked). **Your
   colour's cell** has a small `•` in its middle, white (near-black on a
   light colour), and nothing round it (2026-10-24; replaces the `━`
   underline of 2026-10-14). The step number above and the

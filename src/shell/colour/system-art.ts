@@ -2,7 +2,7 @@ import stringWidth from 'string-width'
 import { onWhiteAndBlack } from '../../core/colour/contrast.js'
 import { mix as mixColours } from '../../core/colour/mix.js'
 import { parseColour } from '../../core/colour/parse.js'
-import { parseHex, type Rgb, rgbToOklab, toHex } from '../../core/colour/space.js'
+import { parseHex, type Rgb, toHex } from '../../core/colour/space.js'
 import { blank, mix, type Row, type Run, width } from '../home-art.js'
 import { sliderRow } from '../quality-art.js'
 import type { Palette } from '../theme.js'
@@ -100,10 +100,10 @@ export function gridLayout(lines: number, n: number): { tall: number; shown: num
  * Terminal draws it from the font) and left lines inside the swatches.
  * Rows have a gap line between them as columns have a gap column.
  *
- * The chosen cell has a thin frame round it in the gaps, eighth blocks
- * against its edges (`▁ ▕ ▏ ▔`), so no swatch is covered: white on a dark
- * swatch, near-black on a light one (2026-10-24). Your colour's reference
- * cell has a small dot in its middle, white, near-black on a light colour. When not every row fits in `lines`, the rows shown keep the
+ * The chosen cell is pointed at from the gaps either side, `▸ ◂` in the
+ * text colour (2026-10-25): in the gaps, on the canvas, so it is seen
+ * whatever the swatch. Your colour's reference cell has a small
+ * dot in its middle, white, near-black on a light colour. When not every row fits in `lines`, the rows shown keep the
  * chosen one in the middle, and a bar at the right says where they are in
  * the list.
  */
@@ -140,10 +140,10 @@ export function gridRows({
   const gapless = gapped.shown < all.length && lines >= all.length
   const { tall, shown } = gapless ? { tall: 1, shown: all.length } : gapped
   const first = Math.max(0, Math.min(all.length - shown, sel.row - Math.floor((shown - 1) / 2)))
-  // The chosen cell's frame (2026-10-24): the one of white and near-black
-  // that stands off the canvas, so the thin line is seen against the gap it
-  // is drawn in; the other only on a swatch too close to it to tell apart.
-  const frame = frameOn(p, all[sel.row]?.hexes[sel.col])
+  // The chosen cell is pointed at from the gaps either side, `▸ ◂` in the
+  // text colour (2026-10-25, S2 on mockups/palette-selection-2026-10.html):
+  // white on the dark canvas, black on the light one, seen on any swatch.
+  const pointer = lc(p.fg)
   const C = (ch: string, fg?: string, bg?: string, bold = false): Cell => ({ ch, fg, bg, bold })
 
   const at = (i: number) => 2 + nameW + i * (cell + 1)
@@ -173,21 +173,13 @@ export function gridRows({
     })
   }
 
-  /** The gap line above row `r`: the chosen cell's frame, top or bottom, where it is. */
-  const gap = (r: number): Cell[] => {
-    const cells = line()
-    const top = r === sel.row
-    // Eighth blocks against the swatch's edge, so the frame sits on the colour it reads on.
-    if (framed && sel.col >= 0 && (top || r - 1 === sel.row)) {
-      for (let c = 0; c < cell; c++) cells[at(sel.col) + c] = C(top ? '▁' : '▔', frame)
-    }
-    return cells
-  }
+  /** The gap line above row `r`: nothing in it but blanks. */
+  const gap = (): Cell[] => line()
 
   const body: Cell[][] = []
   for (let r = first; r < first + shown; r++) {
     const x = all[r] as GridRow
-    if (!gapless) body.push(gap(r))
+    if (!gapless) body.push(gap())
     for (let k = 0; k < tall; k++) {
       const cells = line()
       if (k === 0) {
@@ -210,14 +202,14 @@ export function gridRows({
           )
         }
       }
-      if (framed && r === sel.row && sel.col >= 0) {
-        cells[at(sel.col) - 1] = C('▕', frame)
-        cells[at(sel.col) + cell] = C('▏', frame)
+      if (framed && r === sel.row && sel.col >= 0 && k === Math.floor((tall - 1) / 2)) {
+        cells[at(sel.col) - 1] = C('▸', pointer, undefined, true)
+        cells[at(sel.col) + cell] = C('◂', pointer, undefined, true)
       }
       body.push(cells)
     }
   }
-  if (!gapless) body.push(gap(first + shown))
+  if (!gapless) body.push(gap())
 
   // Where the rows shown are in the list: a thumb on a faint track, as the windows' bars.
   if (shown < all.length) {
@@ -240,29 +232,6 @@ function readsOn(hex: string | undefined, fallback: string): string {
   if (!rgb) return lc(fallback)
   const r = onWhiteAndBlack(rgb)
   return r.white >= r.black ? '#ffffff' : '#111111'
-}
-
-/** How far apart two lightnesses must be for a thin line between them to be seen. */
-const APART = 0.2
-const WHITE = '#ffffff'
-const NEAR_BLACK = '#111111'
-const lightness = (hex: string): number | undefined => {
-  const rgb = parseHex(hex)
-  return rgb ? rgbToOklab(rgb).L : undefined
-}
-
-/**
- * The frame's colour on `hex`: white on a dark canvas, near-black on a light
- * one; the other where the swatch is within `APART` of it. Not a contrast
- * ratio: by that, a mid-tone swatch takes near-black, which a dark canvas
- * swallows (2026-10-24, teal 600 #6F7C79).
- */
-function frameOn(p: Palette, hex: string | undefined): string {
-  const canvas = lightness(p.canvas) ?? 0
-  const [line, other] = canvas < 0.5 ? [WHITE, NEAR_BLACK] : [NEAR_BLACK, WHITE]
-  const L = hex ? lightness(hex) : undefined
-  if (L === undefined) return lc(p.fg)
-  return Math.abs((lightness(line) as number) - L) < APART ? other : line
 }
 
 /** Before a colour: the step numbers faint, the swatches as outlines on every other line. */
