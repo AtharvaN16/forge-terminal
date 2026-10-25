@@ -18,7 +18,13 @@ jobs:
           # module.registerHooks, which needs Node 22.15 or later.
           node-version: 24
           cache: npm
+      # onnxruntime-node and its alias onnxruntime-node-rmbg each fetch CUDA
+      # libraries on Linux x64 into a temp folder named by the millisecond; npm
+      # runs both at once and they can delete it from under each other. Forge
+      # never uses CUDA, and no extension build packs those files.
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
       # ffmpeg on every runner, so the video and sound tests (and the format
       # matrix's media rows, tests/parity) run instead of skipping. Forge finds
       # it on PATH, as it would a user's own copy.

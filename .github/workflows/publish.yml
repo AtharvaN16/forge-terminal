@@ -69,7 +69,13 @@ jobs:
             echo "::error::$GITHUB_REF_NAME is not on main"; exit 1
           }
 
+      # onnxruntime-node and its alias onnxruntime-node-rmbg each fetch CUDA
+      # libraries on Linux x64 into a temp folder named by the millisecond; npm
+      # runs both at once and they can delete it from under each other. Forge
+      # never uses CUDA, and no extension build packs those files.
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       # What prepublishOnly runs, as steps so each shows on its own, minus
       # tests/shell: those drive the Ink UI with keypresses on a clock, and

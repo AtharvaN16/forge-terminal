@@ -141,7 +141,13 @@ jobs:
           node-version: 20
           cache: npm
 
+      # onnxruntime-node and its alias onnxruntime-node-rmbg each fetch CUDA
+      # libraries on Linux x64 into a temp folder named by the millisecond; npm
+      # runs both at once and they can delete it from under each other. Forge
+      # never uses CUDA, and no extension build packs those files.
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       - name: Toolchain
         shell: bash
