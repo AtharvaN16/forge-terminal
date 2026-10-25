@@ -113,7 +113,7 @@ describe('Crop to shape in Edit', () => {
     await until(() => frame().includes('Crop to 4:5'))
     await press(ESC)
     await until(() => frame().includes('Edit PNG'))
-    expect(frame()).toMatch(/▌ Crop to shape +‹ 4:5 ›/)
+    expect(frame()).toMatch(/❯ Crop to shape +‹ 4:5 ›/)
     await press(LEFT)
     await until(() => frame().includes('‹ 1:1 ›'))
     await press(ENTER)

@@ -12,12 +12,13 @@ export const SYMBOLS = {
   ok: '✓',
   fail: '✕',
   warn: '⚠',
-  cursor: '❯',
   /**
-   * The picker's selected-row marker: the left edge of its band. A shape as
-   * well as a colour, so the selection still reads under NO_COLOR, where the
-   * band itself is not drawn.
+   * The picker's selected-row marker, in the text colour on the grey band. A
+   * shape rather than a colour, so the selection still reads under NO_COLOR,
+   * where the band itself is not drawn.
    */
+  cursor: '❯',
+  /** The left edge of a band in the home screen's own lists (menu, right-click). */
   strip: '▌',
   /** Marks the saved default among Save to's places. */
   star: '★',

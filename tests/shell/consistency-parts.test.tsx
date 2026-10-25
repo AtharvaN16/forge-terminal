@@ -42,9 +42,10 @@ describe('the picker band', () => {
     expect(row).not.toContain(bgOf(DARK.modeConvertBg))
   })
 
-  it('keeps the strip in the mode’s colour', () => {
+  it('marks the row with a plain ❯ in the text colour, not the mode’s', () => {
     const row = frame(<Select width={52} items={items} onSubmit={() => {}} />).split('\n')[0] ?? ''
-    expect(row).toContain(`${fgOf(DARK.modeConvert)}m▌`)
+    expect(row).toContain(`${fgOf(DARK.fg)}m❯`)
+    expect(row).not.toContain(`${fgOf(DARK.modeConvert)}m❯`)
   })
 })
 

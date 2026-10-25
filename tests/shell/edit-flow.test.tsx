@@ -159,7 +159,7 @@ describe('edit mode', () => {
       await until(() => existsSync(out) && frame().includes('↵ Home'))
       expect(frame()).toContain('banner-cutout.png')
       // The way on, as on every Done: the actions and Home, ←→ to choose.
-      expect(frame()).toMatch(/o Open +f \S+ +↵ Home/)
+      expect(frame()).toMatch(/o open +f \S+ +↵ Home/)
       expect(frame()).toMatch(/←→ +choose +↵ +confirm/)
       const meta = await sharp(out).metadata()
       expect([meta.width, meta.height, meta.hasAlpha]).toEqual([4100, 50, true])
@@ -416,7 +416,7 @@ describe('edit mode', () => {
       app.stdin.write(ESC)
       await until(() => frame().includes('Edit PNG'))
       await settle(200)
-      expect(frame()).toMatch(/▌ Boost resolution +‹ 4× ›/)
+      expect(frame()).toMatch(/❯ Boost resolution +‹ 4× ›/)
       expect(frame()).toContain('becomes 160 × 120')
 
       // And the run itself is at 4× (the stand-in runner resizes by --scale).

@@ -246,7 +246,7 @@ describe('transcribe, from ↵ to Done', () => {
     expect(done).toMatch(/0:00\s+Welcome/)
     expect(done).toMatch(/1:10\s+Milk/)
     // Done's way on, as on every Done: the actions and Home, ←→ to choose.
-    expect(done).toMatch(/o Open +f \S+ +c Copy +↵ Home/)
+    expect(done).toMatch(/o open +f \S+ +c copy +↵ Home/)
     expect(done.split('\n').at(-1)).toMatch(/←→ +choose +↵ +confirm/)
     const md = await readFile(join(out, 'talk.md'), 'utf8')
     expect(md).toContain('## Notes')
@@ -432,9 +432,9 @@ describe('the Format step', () => {
     expect(barOf(f)).toMatch(/ All ╱ Format ╱╱$/)
     const rows = f.split('\n')
     const at = rows.findIndex((l) => /^\s+Format\s*$/.test(l))
-    const names = rows.slice(at + 1, at + 5).map((l) => l.replace('▌', '').trim().split(/\s+/)[0])
+    const names = rows.slice(at + 1, at + 5).map((l) => l.replace('❯', '').trim().split(/\s+/)[0])
     expect(names).toEqual(['Markdown', 'Word', 'PDF', 'Text'])
-    expect(rows[at + 1]).toMatch(/▌ Markdown\s+\.md\s+default\s*$/)
+    expect(rows[at + 1]).toMatch(/❯ Markdown\s+\.md\s+default\s*$/)
     expect(f.split('\n').at(-1)).toMatch(/↑↓ +choose +tab +make default +↵ +confirm/)
   }, 40_000)
 
@@ -442,7 +442,7 @@ describe('the Format step', () => {
     const { app, out } = await atFormat()
     app.stdin.write(DOWN)
     await settle()
-    expect(frame(app)).toMatch(/▌ Word\s+\.docx/)
+    expect(frame(app)).toMatch(/❯ Word\s+\.docx/)
     app.stdin.write(ENTER)
     await until(() => frame(app).includes('Save as'))
     await settle()
@@ -464,7 +464,7 @@ describe('the Format step', () => {
     await settle()
     app.stdin.write(TAB)
     await settle(300)
-    expect(frame(app)).toMatch(/▌ PDF\s+\.pdf\s+default\s*$/m)
+    expect(frame(app)).toMatch(/❯ PDF\s+\.pdf\s+default\s*$/m)
     expect(frame(app)).not.toMatch(/Markdown\s+default/)
     const config = JSON.parse(await readFile(join(home, 'forge', 'config.json'), 'utf8'))
     expect(config.transcribeFormat).toBe('pdf')
@@ -472,7 +472,7 @@ describe('the Format step', () => {
 
   it('opens on the default format when one is set', async () => {
     const { app } = await atFormat({ prefs: { transcribeFormat: 'txt' } })
-    expect(frame(app)).toMatch(/▌ Text\s+\.txt\s+default\s*$/m)
+    expect(frame(app)).toMatch(/❯ Text\s+\.txt\s+default\s*$/m)
   }, 40_000)
 
   it('writes text for Text: the words, no Markdown', async () => {
@@ -593,7 +593,7 @@ describe('reading a picture or PDF, from ↵ to Done (spec 2026-10-23-extract-te
     expect(done).toContain('done')
     expect(done).toContain('Quarterly Field Report')
     expect(done).toContain('The survey ran from 3 March')
-    expect(done).toMatch(/o Open +f \S+ +c Copy +↵ Home/)
+    expect(done).toMatch(/o open +f \S+ +c copy +↵ Home/)
     const doc = pageText(DOC.pages)
     expect(await readFile(join(out, 'shot.md'), 'utf8')).toBe(pageMarkdown(doc))
   }, 40_000)
@@ -694,7 +694,7 @@ describe('a screenshot on the clipboard (spec 2026-10-23-extract-text-design §3
     await settle()
     expect(frame(app)).not.toContain('Save as')
     expect(frame(app)).toContain('Quarterly Field Report')
-    expect(frame(app)).toMatch(/u Undo +s Save a copy +↵ Home/)
+    expect(frame(app)).toMatch(/u undo +s save a copy +↵ Home/)
     const doc = pageText(DOC.pages)
     expect(clip.held()).toEqual({
       kind: 'text',

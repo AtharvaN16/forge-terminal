@@ -18,7 +18,7 @@ const rgb = (hex: string) => {
 }
 
 describe('the screen is drawn in the mode colour', () => {
-  it('draws the picker cursor in convert cyan, not the old amber', async () => {
+  it('draws the picker cursor as a plain ❯ in the text colour, not a mode colour', async () => {
     const dir = await makeTempDir()
     const jpg = await makeJpeg(dir, 'photo.jpg')
     const prefs = { ...DEFAULT_PREFERENCES, theme: 'dark' as const, defaultOutput: dir }
@@ -29,10 +29,10 @@ describe('the screen is drawn in the mode colour', () => {
     // Polls until the picker's cursor is drawn, up to 10 s: a busy CI runner
     // can take seconds to probe the file and render the next screen.
     const start = Date.now()
-    while (!(app.lastFrame() ?? '').includes('▌') && Date.now() - start < 10_000) await settle(30)
+    while (!(app.lastFrame() ?? '').includes('❯') && Date.now() - start < 10_000) await settle(30)
     const frame = app.lastFrame() ?? ''
-    expect(frame).toContain('▌')
-    expect(frame).toContain(rgb(DARK.modeConvert))
-    expect(frame).not.toContain(rgb(DARK.accent))
+    expect(frame).toContain('❯')
+    expect(frame).toContain(`38;${rgb(DARK.fg)}m❯`.replace('38;', '38;2;'))
+    expect(frame).not.toContain(`38;2;${rgb(DARK.modeConvert)}m❯`)
   })
 })

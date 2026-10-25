@@ -21,6 +21,15 @@ else if (mode === 'too-large') { say({ ok: false, code: 'boost-too-large', messa
 else if (mode === 'runtime') { say({ ok: false, code: 'runtime-error', message: 'kaboom' }); process.exit(1) }
 else if (mode === 'garbage') { console.log('not json at all') }
 else if (mode === 'noisy') { say({ loading: 'model' }); say({ ok: true, width: 7, height: 8, ms: 9 }) }
+else if (mode === 'counts') {
+  const total = 3
+  for (let i = 0; i <= total; i++) say({ progress: i, of: total })
+  say({ ok: true, width: 1, height: 1, ms: 1 })
+}
+else if (mode === 'bad-counts') {
+  say({ progress: 'two', of: 3 }); say({ progress: 1, of: 0 }); say({ loading: 'model' })
+  say({ ok: true, width: 1, height: 1, ms: 1 })
+}
 else if (mode === 'slow') {
   appendFileSync(log, 'start\\n')
   setTimeout(() => { appendFileSync(log, 'end\\n'); say({ ok: true, width: 1, height: 1, ms: 1 }) }, 150)
@@ -53,6 +62,31 @@ async function codeOf(p: Promise<unknown>): Promise<string> {
 describe('runExtension', () => {
   it('returns the single JSON result of a successful child', async () => {
     expect(await run('ok')).toEqual({ width: 3, height: 4, ms: 5 })
+  })
+
+  it('reports a child’s tile counts as they arrive, and still returns its result', async () => {
+    const counts: Array<[number, number]> = []
+    const r = await runExtension(
+      ext,
+      ['--in', '/x/photo.png', '--out', '/x/o.png', '--mode', 'counts'],
+      { onProgress: (done, of) => counts.push([done, of]) },
+    )
+    expect(r).toEqual({ width: 1, height: 1, ms: 1 })
+    expect(counts).toEqual([
+      [0, 3],
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ])
+  })
+
+  it('ignores a line that only looks like a count, and a child that counts nothing', async () => {
+    const counts: Array<[number, number]> = []
+    const opts = { onProgress: (done: number, of: number) => counts.push([done, of]) }
+    const args = (mode: string) => ['--in', '/x/photo.png', '--out', '/x/o.png', '--mode', mode]
+    await runExtension(ext, args('bad-counts'), opts)
+    await runExtension(ext, args('ok'), opts)
+    expect(counts).toEqual([])
   })
 
   it('maps the child error codes to ForgeErrors', async () => {

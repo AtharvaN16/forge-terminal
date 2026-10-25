@@ -163,10 +163,10 @@ describe('the shell — page and resolution steps, live progress', () => {
     stdin.write(ENTER) // "All pages" (default, first choice) -> dpi step
     expect(await reach('Resolution')).toContain('Resolution')
     // Audit #8: the step opens on the spec's default (150), not its first row.
-    expect(plain(lastFrame())).toContain('▌ 150 dpi')
+    expect(plain(lastFrame())).toContain('❯ 150 dpi')
 
     stdin.write(DOWN) // 150 -> 300 dpi
-    await reach('▌ 300 dpi')
+    await reach('❯ 300 dpi')
     stdin.write(ENTER) // -> quality (jpeg is lossy)
     await reach('Quality')
     stdin.write(ENTER) // accept default quality -> Save as

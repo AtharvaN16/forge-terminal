@@ -16,14 +16,17 @@ describe('the theme picker is a setting: the commands’ gold', () => {
   it.each([
     ['dark', DARK],
     ['light', LIGHT],
-  ] as const)('marks the highlighted row in the brand gold, not the mode’s colour (%s)', (_, p) => {
-    const { lastFrame } = render(
-      <ThemeProvider palette={modePalette(p, 'convert')}>
-        <ThemePicker width={60} onChoose={() => {}} />
-      </ThemeProvider>,
-    )
-    const row = (lastFrame() ?? '').split('\n').find((l) => l.includes('Dark')) ?? ''
-    expect(row).toContain(`${fgOf(p.brand)}▌`)
-    expect(row).not.toContain(fgOf(p.modeConvert))
-  })
+  ] as const)(
+    'marks the highlighted row with a plain ❯ in the text colour, not the mode’s colour (%s)',
+    (_, p) => {
+      const { lastFrame } = render(
+        <ThemeProvider palette={modePalette(p, 'convert')}>
+          <ThemePicker width={60} onChoose={() => {}} />
+        </ThemeProvider>,
+      )
+      const row = (lastFrame() ?? '').split('\n').find((l) => l.includes('Dark')) ?? ''
+      expect(row).toContain(`${fgOf(p.fg)}❯`)
+      expect(row).not.toContain(fgOf(p.modeConvert))
+    },
+  )
 })

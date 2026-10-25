@@ -516,11 +516,12 @@ function MouseRouter({
 
 /** Sentinel `Select` value for the convert-target picker's row into `/pdf`. */
 /**
- * The largest image whose formats are measured as they are highlighted: 12
- * megapixels, a typical phone photo. Above it a single encode (AVIF, worst
- * case) runs long enough to overlap the conversion the user then asks for.
+ * The largest image whose formats are measured as they are highlighted: 64
+ * megapixels, past a 48 MP phone photo (raised from 12 MP, 2026-10-24: a
+ * size is worth the wait). Above it a single encode (AVIF, worst case) runs
+ * long enough to overlap the conversion the user then asks for.
  */
-const MEASURE_MAX_PIXELS = 12_000_000
+const MEASURE_MAX_PIXELS = 64_000_000
 
 /** How long a job runs before Working is shown at all (W5). */
 const WORK_AFTER_MS = 300
@@ -1077,6 +1078,16 @@ export function App({
    * (video spec §3.6): a true total, so Working draws a real bar. `pass` while
    * a size is hit in two passes; `since` when this pass began, for the time left.
    */
+  /**
+   * Tiles a model has finished of the tiles the picture was cut into (Sharpen,
+   * Boost resolution): a true total, so Working draws a real bar. `since` is
+   * when the first count arrived, for the time left.
+   */
+  const [tileProgress, setTileProgress] = useState<{
+    done: number
+    total: number
+    since: number
+  } | null>(null)
   const [timeProgress, setTimeProgress] = useState<{
     done: number
     total: number
@@ -2306,6 +2317,7 @@ export function App({
         // Back to the step that started it, the file still staged.
         searchAbort.current = undefined
         setTimeProgress(null)
+        setTileProgress(null)
         setStep(mode === 'compress' ? 'mode' : 'target')
         return
       }
@@ -3839,6 +3851,14 @@ export function App({
       }))
       return
     }
+    if (progress.phase === 'tiles') {
+      setTileProgress((t) => ({
+        done: progress.done,
+        total: progress.total,
+        since: t ? t.since : Date.now(),
+      }))
+      return
+    }
     const phase = phaseLabel(job, progress.phase)
     setWork((w) => (w ? { ...w, phase } : w))
   }
@@ -3866,6 +3886,7 @@ export function App({
     const controller = new AbortController()
     searchAbort.current = controller
     setTimeProgress(null)
+    setTileProgress(null)
     // A video or sound encode can be stopped all the way through (ffmpeg is
     // killed, nothing is written), so esc stays live past the size search.
     const media = planned.sources[0].kind === 'media'
@@ -3889,6 +3910,7 @@ export function App({
     })
     setAttempt(undefined)
     setTimeProgress(null)
+    setTileProgress(null)
     mediaRun.current = false
     searchAbort.current = undefined
 
@@ -4021,6 +4043,7 @@ export function App({
     const controller = new AbortController()
     searchAbort.current = controller
     setTimeProgress(null)
+    setTileProgress(null)
     try {
       const [job] = act.plan([source], { ...values, output: opts.output ?? destination })
       if (!job) return
@@ -4085,6 +4108,7 @@ export function App({
       failRun(e)
     } finally {
       setTimeProgress(null)
+      setTileProgress(null)
       if (searchAbort.current === controller) searchAbort.current = undefined
       converting.current = false
       setWork(null)
@@ -5783,6 +5807,7 @@ export function App({
                   search={attempt}
                   pages={attempt ? undefined : (pageProgress ?? undefined)}
                   time={attempt ? undefined : (timeProgress ?? undefined)}
+                  tiles={attempt ? undefined : (tileProgress ?? undefined)}
                   stoppable={mode === 'edit' || timeProgress !== null}
                   width={width}
                 />

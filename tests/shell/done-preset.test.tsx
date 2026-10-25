@@ -15,7 +15,7 @@ vi.hoisted(() => {
 /**
  * Done's way on (mockups/done-next-2026-10-round9.html, Y31): a three-row
  * frame in the shelf grey holding Open, Finder, Save as preset and Continue
- * editing, flush on its left edge, then a cell of canvas and Home as its own
+ * editing, spaced evenly, then a cell of canvas and Home as its own
  * block in the mode's tint at the block's right edge. Home is selected as
  * the screen opens, so it is the bright mode colour. Under the rule, ←→
  * choose and ↵ confirm.
@@ -87,7 +87,7 @@ describe('Done, its way on', () => {
     const all = lines({ save: 'key' })
     expect(all).toHaveLength(24)
     expect(all[19]).toMatch(
-      /^ {3}o Open +f Finder +p Save as preset +e Continue editing +↵ Home {2}$/,
+      /^ {3,}o open +f finder +p save as preset +e continue editing +↵ Home {2}$/,
     )
     // Home ends on the block's edge, two cells from the window's.
     expect(all[19]?.length).toBe(78)
@@ -100,8 +100,15 @@ describe('Done, its way on', () => {
     expect(lines({ save: 'key' })[23]).toMatch(/^ {3}←→ {2}choose {3}↵ {2}confirm +ctrl-c quit$/)
   })
 
-  it('opens with Home selected: the bright mode colour', () => {
+  it('opens with nothing selected: Home keeps its tint, and the actions stay on the shelf', () => {
     const row = frame({ save: 'key' }).split('\n')[19] ?? ''
+    expect(row).toContain(sgr(48, DARK.modeConvertBg))
+    expect(row).not.toContain(sgr(48, DARK.modeConvert))
+    expect(row).not.toContain(sgr(48, DARK.keycapBg))
+  })
+
+  it('turns Home the bright mode colour once ←→ has chosen it', () => {
+    const row = frame({ save: 'key' }, 24, { selected: 4 }).split('\n')[19] ?? ''
     expect(row).toContain(sgr(48, DARK.modeConvert))
   })
 
@@ -116,19 +123,19 @@ describe('Done, its way on', () => {
   })
 
   it('offers to update it once the steps change after saving', () => {
-    expect(lines({ save: 'update', name: 'blog' })[19]).toContain('p Update preset')
+    expect(lines({ save: 'update', name: 'blog' })[19]).toContain('p update preset')
   })
 
   it('steps the body back on a short screen, so the actions and their blank row still fit', () => {
     const all = lines({ save: 'key' }, 17)
     expect(all).toHaveLength(17)
-    expect(all[12]).toMatch(/o Open .* ↵ Home {2}$/)
+    expect(all[12]).toMatch(/o open .* ↵ Home {2}$/)
     expect(all[14]?.trim()).toBe('')
   })
 
   it('keeps Open, Finder and Home where presets do not apply', () => {
     const all = lines()
-    expect(all[19]).toMatch(/^ {3}o Open +f Finder +↵ Home {2}$/)
+    expect(all[19]).toMatch(/^ {3,}o open +f finder +↵ Home {2}$/)
     expect(all.join('\n')).not.toContain('preset')
   })
 

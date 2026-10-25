@@ -79,9 +79,9 @@ describe('Select mouse support', () => {
       second?.onHover?.(true)
     })
     // The highlight marker is what the keyboard moves; hover must move the
-    // same one rather than introduce a second kind of selection. SYMBOLS.strip
+    // same one rather than introduce a second kind of selection. SYMBOLS.cursor
     // is the actual glyph Select draws for the keyboard cursor too.
-    expect(h.app.lastFrame()).toContain(`${SYMBOLS.strip} Second`)
+    expect(h.app.lastFrame()).toContain(`${SYMBOLS.cursor} Second`)
     h.app.unmount()
   })
 

@@ -34,6 +34,11 @@ type RunOpts = {
   onWait?: () => void
   /** The tool is this job's and the child is about to start. */
   onStart?: () => void
+  /**
+   * A child that counts its work says so as `{"progress":12,"of":48}` lines
+   * before its result: tiles done, of the tiles the job was cut into.
+   */
+  onProgress?: (done: number, of: number) => void
   /** Which queue the job joins (see `tails`). */
   platform?: NodeJS.Platform
 }
@@ -86,6 +91,18 @@ function subjectPath(args: string[]): string {
   return (i >= 0 ? args[i + 1] : args[0]) ?? ''
 }
 
+/** A child's count line, or nothing: any other line is a library talking. */
+function progressOf(line: string): { done: number; of: number } | undefined {
+  if (!line.startsWith('{"progress"')) return undefined
+  try {
+    const r = JSON.parse(line) as { progress?: unknown; of?: unknown }
+    if (typeof r.progress !== 'number' || typeof r.of !== 'number' || r.of <= 0) return undefined
+    return { done: r.progress, of: r.of }
+  } catch {
+    return undefined
+  }
+}
+
 function mapFailure(code: string, message: string, path: string, opts: RunOpts): ForgeError {
   if (code === 'no-subject') return noSubject(path)
   if (code === 'boost-too-large') return boostTooLarge(path, opts.maxScale ?? 0)
@@ -122,8 +139,17 @@ function runOne(
     })
     signal?.addEventListener('abort', onAbort, { once: true })
 
+    let pending = ''
     child.stdout.setEncoding('utf8').on('data', (d: string) => {
       out += d
+      if (!opts.onProgress) return
+      // A chunk can end mid-line: only whole lines are read.
+      const lines = (pending + d).split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) {
+        const count = progressOf(line)
+        if (count) opts.onProgress(count.done, count.of)
+      }
     })
     child.stderr.setEncoding('utf8').on('data', (d: string) => {
       err += d

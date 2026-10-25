@@ -39,7 +39,7 @@ async function atFormat() {
   await settle()
   app.stdin.write(ENTER)
   const frame = () => app.lastFrame() ?? ''
-  await waitFor(() => /Format ╱╱$/.test(barLine(frame())) && /▌ \w/.test(plain(frame())))
+  await waitFor(() => /Format ╱╱$/.test(barLine(frame())) && /❯ \w/.test(plain(frame())))
   // A step's key handler attaches just after its first frame.
   await settle()
   return { app, dir }
@@ -56,7 +56,7 @@ describe('the header bar in the flow', () => {
 
   it('grows the trail leftward as questions are answered', async () => {
     const { app } = await atFormat()
-    const format = (app.lastFrame() ?? '').match(/▌ (\w+)/)?.[1] ?? ''
+    const format = (app.lastFrame() ?? '').match(/❯ (\w+)/)?.[1] ?? ''
     expect(format).not.toBe('')
     app.stdin.write(ENTER)
     await waitFor(() => /(Quality|Save as) ╱╱$/.test(barLine(app.lastFrame() ?? '')))

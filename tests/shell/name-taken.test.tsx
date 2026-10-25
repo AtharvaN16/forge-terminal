@@ -52,7 +52,7 @@ describe('Name taken (L1)', () => {
   it('opens on Keep both, which previews the name yours gets, the (1) in the mode’s colour', () => {
     const { app } = mount()
     const out = app.lastFrame() ?? ''
-    expect(plain(out)).toMatch(/▌ Keep both +saves yours as test \(1\)\.jpg/)
+    expect(plain(out)).toMatch(/❯ Keep both +saves yours as test \(1\)\.jpg/)
     expect(out).toContain(`${fgOf(DARK.modeConvert)}m (1)`)
   })
 
@@ -62,7 +62,7 @@ describe('Name taken (L1)', () => {
     await settle()
     const out = app.lastFrame() ?? ''
     const row = out.split('\n').find((l) => plain(l).includes('Replace')) ?? ''
-    expect(plain(row)).toMatch(/▌ Replace +test\.jpg {2}68\.2 KB ╱+/)
+    expect(plain(row)).toMatch(/❯ Replace +test\.jpg {2}68\.2 KB ╱+/)
     expect(row).toContain(`${ESC}[9m`)
   })
 
@@ -70,7 +70,7 @@ describe('Name taken (L1)', () => {
     const { app } = mount()
     app.stdin.write(DOWN + DOWN)
     await settle()
-    expect(plain(app.lastFrame())).toMatch(/▌ Cancel +back to Save as/)
+    expect(plain(app.lastFrame())).toMatch(/❯ Cancel +back to Save as/)
   })
 
   it('answers with the highlighted choice on ↵, and esc cancels', async () => {

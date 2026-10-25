@@ -56,7 +56,7 @@ describe('Done, opening and showing the file', () => {
       const app = await renderResult(mouse)
       const frame = (app.lastFrame() ?? '').replace(SGR, '')
       expect(frame).not.toContain('Open file')
-      expect(frame).toMatch(/o Open +f \S+/)
+      expect(frame).toMatch(/o open +f \S+/)
       vi.doUnmock('../../src/shell/mouse.js')
     })
   }

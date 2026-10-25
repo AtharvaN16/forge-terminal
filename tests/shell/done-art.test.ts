@@ -131,7 +131,7 @@ describe('the Done body (round 24)', () => {
     expect(cells(strip)[3]).toMatchObject({ ch: 'P', fg: DARK.fg, bold: true })
   })
 
-  it('draws the chain of links: the source quiet, each step bold, joined by ─▸, then the + slot', () => {
+  it('draws the chain of links: the source quiet, each step bold, joined by ─▸, then the + slot once a step is added', () => {
     const rows = doneBody({
       palette: P,
       facts: cv,
@@ -145,10 +145,22 @@ describe('the Done body (round 24)', () => {
     const at = cells(rows[ROW.strip])
     expect(at[3]).toMatchObject({ ch: 'P', fg: DARK.dim, bold: false })
     expect(at[10]).toMatchObject({ ch: 'J', fg: DARK.fg, bold: true })
-    // The slot is the one chip: + on the key grey, dim.
+    // The slot is the one chip: + on the key grey, dim, after its arrow.
     const plus = at.findIndex((c) => c.ch === '+')
     expect(at[plus]).toMatchObject({ fg: DARK.dim, bg: DARK.keycapBg })
     expect(text(rows[ROW.sizes])).not.toContain('saved')
+  })
+
+  it('ends the conversion alone at its format: no arrow after it, no + until a step is added', () => {
+    const rows = doneBody({
+      palette: P,
+      facts: cv,
+      width: 80,
+      links: { source: 'PNG', steps: ['JPEG 80'], slot: true },
+    })
+    const strip = text(rows[ROW.strip])
+    expect(strip).toMatch(/^ {3}PNG ─▸ JPEG 80 {2,}47\.4 KB saved · 38\.9% smaller $/)
+    expect(strip).not.toContain('+')
   })
 
   it('moves the saving beside now when the chain leaves it no room on the strip', () => {

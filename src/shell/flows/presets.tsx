@@ -4,6 +4,7 @@ import { basename, dirname, extname, join } from 'node:path'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { Preferences } from '../../config/preferences.js'
 import { targetsFor } from '../../core/capabilities.js'
+import type { PlanEvent } from '../../core/execute-jobs.js'
 import { boostScales } from '../../core/extension-targets.js'
 import { FORMATS, primaryExtension } from '../../core/formats.js'
 import { uniqueOutputPath } from '../../core/output-path.js'
@@ -201,7 +202,11 @@ export function usePresetsOnDone(o: {
   const original = source
   const output = job?.outputs[0]
   const run = useCallback(
-    async (s: PresetSteps, signal: AbortSignal): Promise<Rerun> => {
+    async (
+      s: PresetSteps,
+      signal: AbortSignal,
+      onEvent: (e: PlanEvent) => void,
+    ): Promise<Rerun> => {
       if (!original || !output) return { kind: 'failed', message: 'nothing to edit' }
       const passes = passesFor(s, original.format)
       const last = passes[passes.length - 1]
@@ -210,7 +215,7 @@ export function usePresetsOnDone(o: {
       const temp = await mkdtemp(join(tmpdir(), 'forge-edit-'))
       temps.current.push(temp)
       const file = join(temp, name)
-      const outcome = await runPreset(original, passes, file, { force: true, signal })
+      const outcome = await runPreset(original, passes, file, { force: true, signal, onEvent })
       if (outcome.kind === 'done') {
         return {
           kind: 'ready',

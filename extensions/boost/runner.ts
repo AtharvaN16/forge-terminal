@@ -49,6 +49,14 @@ class RunnerError extends Error {
   }
 }
 
+/**
+ * One line a tile, `{"progress":12,"of":48}`, before the result. The count is
+ * the grid the loop below walks, so it is known before the first tile runs.
+ */
+function progress(done: number, of: number): void {
+  process.stdout.write(`${JSON.stringify({ progress: done, of })}\n`)
+}
+
 function reply(line: Record<string, unknown>, exitCode: number): void {
   process.stdout.write(`${JSON.stringify(line)}\n`)
   process.exitCode = exitCode
@@ -154,6 +162,9 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   const input = new Float32Array(3 * TILE * TILE)
   const n = TILE * TILE
 
+  const tiles = Math.ceil(H / STEP) * Math.ceil(W / STEP)
+  let tilesDone = 0
+  progress(0, tiles)
   for (let cy = 0; cy < H; cy += STEP) {
     const bh = Math.min(STEP, H - cy)
     const band = new Uint8Array(OW * bh * S * ch)
@@ -195,6 +206,7 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
           }
         }
       }
+      progress(++tilesDone, tiles)
     }
     if (alpha) {
       const a = alphaUp

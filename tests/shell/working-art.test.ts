@@ -12,6 +12,7 @@ import {
   pagesRow,
   partsRow,
   phaseLabel,
+  tilesRow,
   timeRow,
   triesRow,
   workLine,
@@ -376,5 +377,31 @@ describe('the time bar, for video and sound', () => {
     expect(
       text(timeRow({ palette: DARK, mode: 'convert', done: 10, total: 200, elapsedMs: 10_000 })),
     ).toContain('about 3 min left')
+  })
+})
+
+describe('the tiles bar, for Sharpen and Boost resolution', () => {
+  const text = (row: ReturnType<typeof tilesRow>) => row.map((r) => r.text).join('')
+
+  it('fills to the tiles done of the tiles there are, and says only the two numbers', () => {
+    const row = tilesRow({ palette: DARK, mode: 'edit', done: 12, total: 48, elapsedMs: 2000 })
+    const bar = pagesRow({ palette: DARK, mode: 'edit', done: 12, total: 48 })
+    expect(row.slice(0, 3)).toEqual(bar.slice(0, 3))
+    expect(text(row)).toContain('12 of 48')
+    expect(text(row)).not.toMatch(/tile|page/i)
+  })
+
+  it('says the time left only after 5 s, from the pace so far', () => {
+    const at = (elapsedMs: number) =>
+      text(tilesRow({ palette: DARK, mode: 'edit', done: 10, total: 40, elapsedMs }))
+    expect(at(4000)).not.toContain('left')
+    expect(at(5000)).toContain('about 15 s left')
+  })
+
+  it('says nothing of the time left before the first tile or after the last', () => {
+    const at = (done: number) =>
+      text(tilesRow({ palette: DARK, mode: 'edit', done, total: 48, elapsedMs: 30_000 }))
+    expect(at(0)).not.toContain('left')
+    expect(at(48)).not.toContain('left')
   })
 })

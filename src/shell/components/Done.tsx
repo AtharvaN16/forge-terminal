@@ -95,13 +95,16 @@ export interface DonePreset {
   name?: string | undefined
 }
 
+/** `selected` before any arrow key: no action, and Home not lit. */
+const NONE = -1
+
 /** What a Done action does, for the shell to act on. */
 export type DoneActionId = 'open' | 'reveal' | 'preset' | 'edit' | 'undo' | 'copy'
 
 /**
- * Done's actions besides Home, in order: Open, then Finder (or, for an image
- * placed on the clipboard, Undo and Save a copy), then Save as preset and
- * Continue editing where a preset can be made from the result.
+ * Done's actions besides Home, in order: open, then finder (or, for an image
+ * placed on the clipboard, undo and save a copy), then save as preset and
+ * continue editing where a preset can be made from the result.
  */
 export function doneActions({
   preset,
@@ -114,13 +117,13 @@ export function doneActions({
   /** `placed`: the result is on the clipboard, with no file to show. */
   clipboard?: 'placed' | undefined
 }): Array<DoneAction & { id: DoneActionId }> {
-  const where = reveal.replace(/^Show in /, '')
+  const where = reveal.replace(/^Show in /, '').toLowerCase()
   return [
-    { id: 'open', key: 'o', label: 'Open' },
+    { id: 'open', key: 'o', label: 'open' },
     ...(clipboard === 'placed'
       ? [
-          { id: 'undo' as const, key: 'u', label: 'Undo' },
-          { id: 'copy' as const, key: 's', label: 'Save a copy' },
+          { id: 'undo' as const, key: 'u', label: 'undo' },
+          { id: 'copy' as const, key: 's', label: 'save a copy' },
         ]
       : [{ id: 'reveal' as const, key: 'f', label: where }]),
     ...(preset
@@ -132,11 +135,11 @@ export function doneActions({
               preset.save === 'saved'
                 ? `✓ ${preset.name ?? 'saved'}`
                 : preset.save === 'update'
-                  ? 'Update preset'
-                  : 'Save as preset',
+                  ? 'update preset'
+                  : 'save as preset',
             ok: preset.save === 'saved',
           },
-          { id: 'edit' as const, key: 'e', label: 'Continue editing' },
+          { id: 'edit' as const, key: 'e', label: 'continue editing' },
         ]
       : []),
   ]
@@ -207,7 +210,7 @@ export function DoneActions({
     palette,
     mode,
     actions,
-    selected: selected ?? actions.length,
+    selected: selected ?? NONE,
     width,
     down: (key) => keyIsDown(key) || (press < 1 && pressed?.key === key),
   })
@@ -247,7 +250,10 @@ export function DoneScreen({
   block?: Row[] | undefined
   /** The ways on besides Home (`doneActions`). */
   actions: readonly DoneAction[]
-  /** The action chosen with ←→, an index into `actions`; `actions.length`, the default, is Home. */
+  /**
+   * The action chosen with ←→, an index into `actions`, or `actions.length` for Home. Until a
+   * key moves it, nothing is chosen: Home keeps its tint (↵ still goes home).
+   */
   selected?: number | undefined
   /**
    * The chain the file was made by (C1): the strip says the source, every
@@ -295,7 +301,7 @@ export function DoneScreen({
     palette,
     mode,
     actions,
-    selected: selected ?? actions.length,
+    selected: selected ?? NONE,
     width,
     // Held down, or just pressed (M6b): opening a file takes the system a
     // moment, and the lit key says it was taken meanwhile.

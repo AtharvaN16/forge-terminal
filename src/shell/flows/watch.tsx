@@ -471,7 +471,8 @@ export function WatchFlow({
         event.type === 'job:phase' &&
         'phase' in event.progress &&
         event.progress.phase !== 'page' &&
-        event.progress.phase !== 'time'
+        event.progress.phase !== 'time' &&
+        event.progress.phase !== 'tiles'
       ) {
         const label = `${phaseLabel(event.job, event.progress.phase)} · ${displayName(event.job.sources[0].path)}`
         setWork((w) => ({ ...w, label }))
@@ -1203,8 +1204,13 @@ function Watching({
    * (s still reveals), esc goes home. Watching keeps its one key: ↵ stops.
    */
   const doneList: DoneAction[] = [
-    { key: 'o', label: 'Open' },
-    { key: 'f', label: revealLabel().replace(/^Show in /, '') },
+    { key: 'o', label: 'open' },
+    {
+      key: 'f',
+      label: revealLabel()
+        .replace(/^Show in /, '')
+        .toLowerCase(),
+    },
   ]
   const [sel, setSel] = useState<number | undefined>()
   useKeys((input, key) => {

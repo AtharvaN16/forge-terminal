@@ -161,16 +161,16 @@ describe('the format picker measures the highlighted format', () => {
     app.stdin.write(png)
     await wait(150)
     app.stdin.write(ENTER)
-    await until(app.lastFrame, (f) => f.includes('▌'))
+    await until(app.lastFrame, (f) => f.includes('❯'))
     return app
   }
 
   it('shows a real size and how it compares on the highlighted row only', async () => {
     const app = await atPicker()
-    const frame = await until(app.lastFrame, (f) => /▌ \S+\s+[\d.]+ (B|KB) {2}/.test(f))
+    const frame = await until(app.lastFrame, (f) => /❯ \S+\s+[\d.]+ (B|KB) {2}/.test(f))
     const rows = frame.split('\n').filter((l) => /(smaller|larger|the same)/.test(l))
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toContain('▌')
+    expect(rows[0]).toContain('❯')
   })
 
   it('measures the next format once the highlight moves there', async () => {
@@ -178,10 +178,10 @@ describe('the format picker measures the highlighted format', () => {
     await until(app.lastFrame, (f) => /(smaller|larger|the same)/.test(f))
     app.stdin.write(DOWN)
     const frame = await until(app.lastFrame, (f) => {
-      const row = f.split('\n').find((l) => l.includes('▌')) ?? ''
+      const row = f.split('\n').find((l) => l.includes('❯')) ?? ''
       return /(smaller|larger|the same)/.test(row)
     })
-    const row = frame.split('\n').find((l) => l.includes('▌')) ?? ''
+    const row = frame.split('\n').find((l) => l.includes('❯')) ?? ''
     expect(row).toMatch(/[\d.]+ (B|KB)/)
   })
 })

@@ -186,7 +186,7 @@ export function doneBody({
   /**
    * The chain the file was made by (C1, mockups/presets-ux-2026-10-round10.html):
    * the source quiet, each step bold, joined by ─▸, and — where Continue
-   * editing can add to it — the + slot, the strip's one chip. A chain that
+   * editing can add to it — the + slot, the strip's one chip, once a step has been added. A chain that
    * leaves the change no room beside it sends the change down beside now; one
    * longer than the strip wraps onto a second row of it.
    */
@@ -224,12 +224,15 @@ export function doneBody({
       ...(i > 0 ? [arrow] : []),
       { text: step, fg: palette.fg, bold: true },
     ])
-  const slotRuns: Run[] = links?.slot
-    ? [
-        arrow,
-        { text: ' + ', fg: palette.dim, ...(palette.keycapBg ? { bg: palette.keycapBg } : {}) },
-      ]
-    : []
+  // The slot follows only a chain that has been added to: the file's own
+  // conversion alone (JPEG ─▸ PNG) ends at its format, with no arrow after it.
+  const slotRuns: Run[] =
+    links?.slot && links.steps.length > 1
+      ? [
+          arrow,
+          { text: ' + ', fg: palette.dim, ...(palette.keycapBg ? { bg: palette.keycapBg } : {}) },
+        ]
+      : []
   let lines: Run[][]
   if (links) {
     const lead: Run[] = [{ text: ' ' }, { text: links.source, fg: palette.dim }]
@@ -440,12 +443,12 @@ export interface DoneAction {
 
 /**
  * Done's way on (mockups/done-next-2026-10-round9.html, Y31), three rows
- * across the block. A frame in the shelf grey holds `actions`, the first
- * flush on its left edge, the spare cells shared between them and one cell
- * of the grey after the last; then a cell of canvas; then Home as its own
+ * across the block. A frame in the shelf grey holds `actions`, spaced evenly
+ * (the same grey before the first, between each and after the last; where
+ * that does not fit, the first flush left); then a cell of canvas; then Home as its own
  * block in the mode's tint, two cells either side of its words, ending on
  * the block's edge. `selected` is an index into `actions`, or
- * `actions.length` for Home: a selected action fills all three rows in the
+ * `actions.length` for Home, or -1 for none, as Done opens: a selected action fills all three rows in the
  * key caps' grey, its words bright; Home selected turns the bright mode
  * colour, its words dark. `down` lights a key while it is held.
  *
@@ -497,15 +500,21 @@ export function doneActionRows({
       { text: ` ${a.label} `, fg: words, bg, bold: on },
     ]
   })
-  const gaps = Math.max(0, buttons.length - 1)
-  const spare = frameW - 1 - buttons.reduce((n, b) => n + width(b), 0)
-  if (spare < gaps) return undefined
-  const gapAt = (i: number) => Math.floor((spare * (i + 1)) / gaps) - Math.floor((spare * i) / gaps)
+  const spare = frameW - buttons.reduce((n, b) => n + width(b), 0)
+  if (spare - 1 < buttons.length - 1) return undefined
+  // The spare grey shared evenly before, between and after the actions; where
+  // there is too little for that, the first sits flush and they share the rest.
+  const even = spare >= buttons.length + 1
+  const slots = even ? buttons.length + 1 : Math.max(1, buttons.length - 1)
+  const share = even ? spare : spare - 1
+  const gapAt = (i: number) =>
+    Math.floor((share * (i + 1)) / slots) - Math.floor((share * i) / slots)
   const fill = (n: number, bg: string): Run => ({ text: ' '.repeat(Math.max(0, n)), bg })
   // The words' row, then the rows above and below it: the same runs with the
   // words blanked, so a selected action's grey runs the full height.
+  const before = (i: number) => (even ? gapAt(i) : i ? gapAt(i - 1) : 0)
   const middle: Run[] = buttons.flatMap((b, i) =>
-    i ? [fill(gapAt(i - 1), palette.shelf), ...b] : b,
+    before(i) ? [fill(before(i), palette.shelf), ...b] : b,
   )
   const used = width(middle)
   const frame: Run[] = [...middle, fill(frameW - used, palette.shelf)]

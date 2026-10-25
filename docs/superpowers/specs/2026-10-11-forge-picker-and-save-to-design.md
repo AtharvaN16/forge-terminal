@@ -49,7 +49,8 @@ the intro animation (`intro.ts`, `launch.tsx`) in parallel.
 ## 2. Measured sizes in the format picker
 
 - These apply only to the `target` step, for a single staged **image** source
-  of at most 12 megapixels, and only outside the compact band. An encode
+  of at most 64 megapixels (12 until 2026-10-24: the user would rather wait
+  for a size than not see one), and only outside the compact band. An encode
   cannot be stopped part-way: on a larger photo one AVIF measurement takes
   seconds of CPU, and it could still be running when the conversion starts.
   Documents, batches and larger images get no size, and the row then shows

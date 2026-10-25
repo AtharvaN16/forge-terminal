@@ -16,13 +16,13 @@ const frameOf = (node: ReactElement) =>
 
 describe('Select rows', () => {
   it('marks the selection with a glyph, so meaning survives without colour', () => {
-    expect(frameOf(<Select width={50} items={items} onSubmit={() => {}} />)).toContain('▌ WebP')
+    expect(frameOf(<Select width={50} items={items} onSubmit={() => {}} />)).toContain('❯ WebP')
   })
 
   it('leaves unselected rows unmarked', () => {
     const frame = frameOf(<Select width={50} items={items} onSubmit={() => {}} />)
     const row = frame.split('\n').find((l) => l.includes('PNG')) ?? ''
-    expect(row).not.toContain('▌')
+    expect(row).not.toContain('❯')
     expect(row.trimStart().startsWith('PNG')).toBe(true)
   })
 
@@ -143,6 +143,6 @@ describe('the picker (spec 2026-10-11 picker §1)', () => {
         </ThemeProvider>,
       ).lastFrame() ?? ''
     // On the app's margin (2026-10-20).
-    expect(frame.split('\n')[0]?.startsWith(`${' '.repeat(HOME_MARGIN)}▌ WebP`)).toBe(true)
+    expect(frame.split('\n')[0]?.startsWith(`${' '.repeat(HOME_MARGIN)}❯ WebP`)).toBe(true)
   })
 })

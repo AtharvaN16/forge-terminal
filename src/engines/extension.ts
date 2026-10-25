@@ -118,6 +118,8 @@ async function run(
       what: `${toolVerb(job)} is running on ${displayName(source.path)}`,
       onWait: () => onPhase({ phase: 'waiting' }),
       onStart: () => onPhase({ phase: 'encoding' }),
+      // Only a child that counts reports; one that does not keeps the plain phase.
+      onProgress: (done, total) => onPhase({ phase: 'tiles', done, total }),
       ...(job.op === 'boost'
         ? { maxScale: maxBoost(source.width, source.height, job.scale, scales) }
         : {}),

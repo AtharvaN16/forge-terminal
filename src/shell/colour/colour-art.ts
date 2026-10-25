@@ -486,7 +486,14 @@ export function withKey(p: Palette, row: Row, key: string, word: string, w: numb
 }
 
 /** `withKey` with several keys, two cells apart; none where they do not all fit. */
-export function withKeys(p: Palette, row: Row, pairs: [string, string][], w: number): Row {
+export function withKeys(
+  p: Palette,
+  row: Row,
+  pairs: [string, string][],
+  w: number,
+  /** Drawn after the keys, two cells on: More's own `m` cap. */
+  after: Row = [],
+): Row {
   const tail: Row = []
   pairs.forEach(([k, word], i) => {
     if (i) tail.push(blank(2))
@@ -497,6 +504,7 @@ export function withKeys(p: Palette, row: Row, pairs: [string, string][], w: num
       ink(` ${word}`, p.dim),
     )
   })
+  if (after.length) tail.push(...(tail.length ? [blank(2)] : []), ...after)
   const gap = w - 1 - width(row) - width(tail)
   return gap < 2 ? row : [...row, blank(gap), ...tail]
 }
@@ -573,6 +581,13 @@ export function newColourHint(p: Palette): Row {
   return [ink('#', p.fg), ink(' new colour', p.border)]
 }
 
+/** More's key: `m` in the mode's colour on a grey cap; without fills, bracketed. */
+export function moreCap(p: Palette): Row {
+  return p.keycapBg === ''
+    ? [{ text: '[m]', fg: lc(p.accent), bold: true }]
+    : [{ text: ' m ', fg: lc(p.accent), bg: lc(p.keycapBg), bold: true }]
+}
+
 /**
  * More, over the key row's rule at the right (2026-10-24, P1): drawn as
  * home's "/ menu" — the key on a grey cap, the word dim — its key in the
@@ -581,18 +596,18 @@ export function newColourHint(p: Palette): Row {
 export function moreHintRow({
   palette: p,
   width: columns,
+  left = [],
+  more = true,
 }: {
   palette: Palette
   width: number
+  /** What the row says at the left: the Palette tab's mode (2026-10-24). */
+  left?: Row
+  /** Whether More is there to open; not while a colour is being typed. */
+  more?: boolean
 }): Row {
-  const hint: Row =
-    p.keycapBg === ''
-      ? [{ text: '[m] more', fg: lc(p.accent), bold: true }]
-      : [
-          { text: ' m ', fg: lc(p.accent), bg: lc(p.keycapBg), bold: true },
-          { text: ' more', fg: lc(p.dim) },
-        ]
-  return [blank(columns - 2 - width(hint)), ...hint, blank(2)]
+  const hint: Row = more ? [...moreCap(p), ink(' more', p.dim)] : []
+  return [...left, blank(Math.max(1, columns - 2 - width(left) - width(hint))), ...hint, blank(2)]
 }
 
 /**
@@ -863,12 +878,15 @@ export function stepsLine({
   palette: p,
   spec,
   editing,
+  next = false,
   extra,
 }: {
   width: number
   palette: Palette
   spec: StepSpec
   editing?: StepsField | undefined
+  /** Whether there is more than one value, so tab goes to the next: said on the line (2026-10-24). */
+  next?: boolean
   /** The tab's own setting, last on the line: a neutral's tint, an alpha's background (§12.1). */
   extra?: { field: 'tint' | 'over'; value: string } | undefined
 }): Row {
@@ -891,6 +909,29 @@ export function stepsLine({
     // Tweak and Steps are in More now (2026-10-24): the line says what the steps are, no keys.
     return row
   }
+  // T2 on G1 (palette-steps-frame-2026-10-round3, 2026-10-24): one band.
+  const band = stepsBand(
+    p,
+    columns,
+    [
+      { label: SET_NAMES[spec.set], on: editing === 'set' },
+      ...(spec.set === 'radix'
+        ? []
+        : [
+            { label: `from ${spec.start}`, on: editing === 'start' },
+            { label: `to ${spec.end}`, on: editing === 'end' },
+            ...(spec.set === 'even' ? [{ label: count, on: editing === 'count' }] : []),
+          ]),
+      ...(extra ? [{ label: words, on: editing === extra.field }] : []),
+    ],
+    spec.set === 'radix'
+      ? '1 – 12 · your colour at 9'
+      : spec.set === 'tailwind' && !extra
+        ? count
+        : '',
+    next,
+  )
+  if (band) return band
   const plain = p.thumb === ''
   const pill = (f: StepsField, v: string | number): Run =>
     f === editing
@@ -914,7 +955,9 @@ export function stepsLine({
     else if (!extra) row.push(ink(`   ${count}`, p.border))
   }
   if (extra) row.push(ink(`  ${extra.field} `, p.dim), pill(extra.field, extra.value))
-  return withKey(p, row, '↵', 'done', columns - 1)
+  // Where tab does not fit too, ↵ done alone.
+  const both = next ? withKeys(p, row, [], columns - 1, stepsKeys(p, true)) : row
+  return both !== row ? both : withKeys(p, row, [], columns - 1, stepsKeys(p, false))
 }
 
 const SPACE_NAMES: Record<MixSpace, string> = { oklab: 'OKLab', oklch: 'OKLCH' }
@@ -949,6 +992,17 @@ export function mixLine({
       ink(`  ·  ${count} steps`, p.border),
     ]
   }
+  const band = stepsBand(
+    p,
+    columns,
+    [
+      { label: SPACE_NAMES[space], on: editing === 'way' },
+      { label: `${count} steps`, on: editing === 'mixCount' },
+    ],
+    '',
+    true,
+  )
+  if (band) return band
   const plain = p.thumb === ''
   const pill = (on: boolean, v: string | number): Run =>
     on
@@ -958,7 +1012,7 @@ export function mixLine({
       : plain
         ? ink(` ${v} `, p.dim)
         : { text: ` ${v} `, fg: lc(p.fg), bg: lc(p.fieldBand) }
-  return withKey(
+  return withKeys(
     p,
     [
       blank(2),
@@ -966,10 +1020,81 @@ export function mixLine({
       ink('  steps ', p.dim),
       pill(editing === 'mixCount', count),
     ],
-    '↵',
-    'done',
+    [],
     columns - 1,
+    stepsKeys(p, true),
   )
+}
+
+/**
+ * The steps line while they are being changed (T2 on G1, picked on
+ * mockups/palette-steps-frame-2026-10-round3.html, 2026-10-24), drawn as
+ * Done's way on in one row: a band in the shelf grey holds each value as a
+ * button, spaced evenly, the one in hand on the key caps' grey with ‹ ›, the
+ * rest dim; then what is not a value, quiet, and the tab cap where tab has
+ * somewhere to go. A cell of canvas, then `↵ done` as its own block in the
+ * mode's tint, as Done's Home rests. Undefined without greys to draw it in,
+ * or where it does not fit.
+ */
+function stepsBand(
+  p: Palette,
+  columns: number,
+  buttons: { label: string; on: boolean }[],
+  info: string,
+  tab: boolean,
+): Row | undefined {
+  if (p.shelf === '' || p.keycapBg === '' || p.modeColourBg === '') return undefined
+  const shelf = lc(p.shelf)
+  const capBg = lc(p.keycapBg)
+  const tint = lc(p.modeColourBg)
+  const done: Row = [
+    { text: '  ↵', fg: lc(keyIsDown('↵') ? p.brand : p.accent), bg: tint, bold: true },
+    { text: ' done  ', fg: lc(p.accent), bg: tint },
+  ]
+  const frameW = columns - 4 - width(done) - 1
+  const tail: Row = [
+    ...(info
+      ? [
+          { ...ink(info, p.border), bg: shelf },
+          { text: '  ', bg: shelf },
+        ]
+      : []),
+    ...(tab
+      ? [
+          { text: ' tab ', fg: lc(keyIsDown('tab') ? p.brand : p.fg), bg: capBg, bold: true },
+          { text: '  ', bg: shelf },
+        ]
+      : []),
+  ]
+  // Roomiest first: three cells round each value, then two, then one.
+  for (const pad of [3, 2, 1]) {
+    const runs = buttons.map(({ label, on }): Run => {
+      const sides = ' '.repeat(Math.max(0, pad - 2))
+      return on
+        ? { text: `${sides}‹ ${label} ›${sides}`, fg: lc(p.fg), bg: capBg, bold: true }
+        : { text: `${' '.repeat(pad)}${label}${' '.repeat(pad)}`, fg: lc(p.dim), bg: shelf }
+    })
+    const spare = frameW - width(runs) - width(tail)
+    if (spare < buttons.length) continue
+    const gap = Math.floor(spare / (buttons.length + 1))
+    const row: Row = [blank(2)]
+    for (const r of runs) row.push({ text: ' '.repeat(gap), bg: shelf }, r)
+    row.push({ text: ' '.repeat(spare - gap * buttons.length), bg: shelf }, ...tail)
+    return [...row, blank(1), ...done]
+  }
+  return undefined
+}
+
+/**
+ * The keys at the end of a steps line (2026-10-24): the tab cap alone, as
+ * the tab row's is, where there is more than one value; then `↵ done`.
+ */
+function stepsKeys(p: Palette, tab: boolean): Row {
+  const cap = (k: string): Run =>
+    p.keycapBg === ''
+      ? { text: `[${k}]`, fg: keyIsDown(k) ? p.brand : lc(p.fg), bold: true }
+      : { text: ` ${k} `, fg: keyIsDown(k) ? p.brand : lc(p.fg), bg: lc(p.keycapBg), bold: true }
+  return [...(tab ? [cap('tab'), blank(2)] : []), cap('↵'), ink(' done', p.dim)]
 }
 
 /** Scale's tabs (§12.1), drawn as /about's (L2): names with room round them, a rule under, heavy under the one in use. */
@@ -977,10 +1102,13 @@ export function scaleTabRows({
   width: columns,
   palette: p,
   at,
+  cap: withCap = true,
 }: {
   width: number
   palette: Palette
   at: number
+  /** The tab cap at the right; not while the steps are open, where tab goes to the next value. */
+  cap?: boolean
 }): Row[] {
   const names: Row = [blank(2)]
   const rule: Row = [blank(2)]
@@ -1000,7 +1128,7 @@ export function scaleTabRows({
       : { text: ' tab ', fg: lc(p.fg), bg: lc(p.keycapBg), bold: true }
   // Ending on the margin, where the field above ends.
   const gap = columns - 2 - width(names) - width([cap])
-  return [gap < 2 ? names : [...names, blank(gap), cap], rule]
+  return [gap < 2 || !withCap ? names : [...names, blank(gap), cap], rule]
 }
 
 /** The checkerboard an alpha is drawn over: Figma's white and grey, or black and a dark grey. */

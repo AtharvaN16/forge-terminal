@@ -44,7 +44,7 @@ describe('the edit picker’s split (S1)', () => {
     await settle()
     const lines = (app.lastFrame() ?? '').split('\n')
     const boost = lines.findIndex((l) => l.includes('Boost resolution'))
-    expect(lines[boost]).toMatch(/▌ Boost resolution +‹ 2× › +│/)
+    expect(lines[boost]).toMatch(/❯ Boost resolution +‹ 2× › +│/)
     expect(lines[boost + 1]).toMatch(/^ +Remove background +│/)
   })
 

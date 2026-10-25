@@ -82,7 +82,7 @@ describe('several files in compress mode', () => {
     for (const name of ['one.jpg', 'two.jpg', 'three.jpg']) expect(done).toContain(name)
     expect(done).toMatch(/one\.jpg +\d.* → +\d.*−\d+%/)
     expect(done).not.toContain('Watching')
-    expect(done).toMatch(/o Open +f \w+ +↵ Home/)
+    expect(done).toMatch(/o open +f \w+ +↵ Home/)
     expect((await readdir(out)).sort()).toEqual([
       'one-small.jpg',
       'three-small.jpg',
@@ -156,11 +156,11 @@ describe('several files in compress mode', () => {
 describe('several images in edit mode', () => {
   /** Down the picker until `label`'s row is the chosen one. */
   async function pick(app: Awaited<ReturnType<typeof compressHome>>, label: string) {
-    for (let i = 0; i < 8 && !new RegExp(`▌ +${label}`).test(app.frame()); i++) {
+    for (let i = 0; i < 8 && !new RegExp(`❯ +${label}`).test(app.frame()); i++) {
       app.stdin.write(DOWN)
       await settle(120)
     }
-    expect(app.frame()).toMatch(new RegExp(`▌ +${label}`))
+    expect(app.frame()).toMatch(new RegExp(`❯ +${label}`))
   }
 
   async function editHome(out: string, paths: string[]) {

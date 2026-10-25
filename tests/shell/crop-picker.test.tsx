@@ -80,7 +80,7 @@ describe('the Crop to shape row’s pill', () => {
       p.app.stdin.write(DOWN)
       await settle()
     }
-    expect(p.plain().join('\n')).toMatch(/▌ Crop to shape +‹ 1:1 › +│/)
+    expect(p.plain().join('\n')).toMatch(/❯ Crop to shape +‹ 1:1 › +│/)
     expect(p.plain().join('\n')).toContain('Changes the shape.')
     expect(p.plain().join('\n')).toContain('becomes 3024 × 3024')
     expect(p.plain().at(-1)).toMatch(/↑↓ +choose +←→ +shape +↵ +confirm/)
@@ -172,6 +172,6 @@ describe('the Crop to shape row’s pill', () => {
       </ThemeProvider>,
     )
     await settle()
-    expect((app.lastFrame() ?? '').replace(SGR, '')).toMatch(/▌ Crop to shape +‹ 16:9 ›/)
+    expect((app.lastFrame() ?? '').replace(SGR, '')).toMatch(/❯ Crop to shape +‹ 16:9 ›/)
   })
 })

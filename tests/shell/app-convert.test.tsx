@@ -50,7 +50,7 @@ async function driveToResult() {
   app.stdin.write(ENTER) // submit path
   await until(app.lastFrame, 'Convert to')
   app.stdin.write(DOWN) // targets exclude jpeg (same-format is a no-op), so
-  await until(app.lastFrame, '▌ WebP') // the order is png, webp, avif…
+  await until(app.lastFrame, '❯ WebP') // the order is png, webp, avif…
   app.stdin.write(ENTER)
   await until(app.lastFrame, 'smaller')
   app.stdin.write(ENTER) // accept quality
@@ -78,8 +78,8 @@ describe('shell conversion', () => {
     const { lastFrame } = await driveToResult()
     const frame = lastFrame() ?? ''
     // Done's way on (round nine): the actions, each with its key, and Home.
-    expect(frame).toContain('o Open')
-    expect(frame).toMatch(/f (Finder|Explorer|Files)/)
+    expect(frame).toContain('o open')
+    expect(frame).toMatch(/f (finder|explorer|files)/)
     expect(frame).toContain('↵ Home')
   })
 
@@ -119,7 +119,7 @@ describe('shell conversion', () => {
     app.stdin.write(ENTER) // submit path
     await until(app.lastFrame, 'Convert to')
     app.stdin.write(DOWN) // webp (jpeg excluded, so png, webp, avif…)
-    await until(app.lastFrame, '▌ WebP')
+    await until(app.lastFrame, '❯ WebP')
     app.stdin.write(ENTER)
     await until(app.lastFrame, 'smaller')
     app.stdin.write(ENTER) // quality -> Save as

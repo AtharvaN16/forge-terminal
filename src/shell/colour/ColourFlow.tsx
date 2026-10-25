@@ -1,5 +1,5 @@
 import { Box, type DOMElement, useStdout } from 'ink'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { SPINNER_FRAMES } from '../../cli/spinner.js'
 import { encodePng, padToBox } from '../../core/closeup.js'
@@ -528,11 +528,7 @@ export function ColourFlow({
         pairs={keys.main}
         foot={keys.foot}
         width={width}
-        hint={
-          moreItems(state).length > 0 && !state.win && !state.stepsEdit && !state.field.focus ? (
-            <Runs row={moreHintRow({ palette: p, width })} />
-          ) : undefined
-        }
+        hint={moreRowFor(p, screen, state, width)}
         message={
           state.flash?.keys ? (
             <Runs row={[blank(2), ...copiedMessage(p, state.flash.text)]} />
@@ -541,6 +537,39 @@ export function ColourFlow({
       />
     </Box>
   )
+}
+
+/**
+ * The row over the key row's rule: More at the right. On the Palette tab
+ * (2026-10-24) the mode's name is at its left, and while the steps are
+ * being changed their line is the row, the detail line a blank above it.
+ */
+function moreRowFor(
+  p: ReturnType<typeof useTheme>,
+  screen: Screen,
+  state: ColourState,
+  width: number,
+): ReactNode {
+  const more = moreItems(state).length > 0 && !state.stepsEdit && !state.field.focus
+  const palette =
+    onPaletteTab(screen, state) && (screen.kind === 'scale' || state.preview !== undefined)
+  if (state.win) return undefined
+  if (palette && state.stepsEdit) {
+    return (
+      <Runs
+        row={stepsLine({
+          width,
+          palette: p,
+          spec: state.steps,
+          editing: state.stepsEdit.field,
+          next: fieldsFor(state).length > 1,
+        })}
+      />
+    )
+  }
+  if (!more && !palette) return undefined
+  const left = palette ? modeRow(p, width, MODE_NAMES[state.mode]) : []
+  return <Runs row={moreHintRow({ palette: p, width, left, more })} />
 }
 
 const onScaleScreen = (screen: Screen) =>
@@ -802,6 +831,7 @@ function bodyRows({
           palette: p,
           spec: state.steps,
           editing: state.stepsEdit?.field,
+          next: fieldsFor(state).length > 1,
           extra,
         })
       : []
@@ -809,7 +839,15 @@ function bodyRows({
     // spare: at 80×24 every row is taken, and the tabs sit right under the field.
     const gap: Row[] = height > TIGHT_HEIGHT ? [[]] : []
     const tabs = tabbed
-      ? [...gap, ...scaleTabRows({ width, palette: p, at: SCALE_TABS.indexOf(state.tab) })]
+      ? [
+          ...gap,
+          ...scaleTabRows({
+            width,
+            palette: p,
+            at: SCALE_TABS.indexOf(state.tab),
+            cap: !state.stepsEdit,
+          }),
+        ]
       : []
     const bg = state.over === 'white' ? WHITE : BLACK
     // Without colour there are no swatches to look at: the scale as text.
@@ -991,7 +1029,15 @@ function paletteTabRows({
   const gap: Row[] = height > TIGHT_HEIGHT ? [[]] : []
   const tabs =
     screen.kind === 'scale'
-      ? [...gap, ...scaleTabRows({ width, palette: p, at: SCALE_TABS.indexOf(state.tab) })]
+      ? [
+          ...gap,
+          ...scaleTabRows({
+            width,
+            palette: p,
+            at: SCALE_TABS.indexOf(state.tab),
+            cap: !state.stepsEdit,
+          }),
+        ]
       : []
   if (!ref) {
     const lines = paletteLinesFor(height, tabs.length)
@@ -1002,10 +1048,12 @@ function paletteTabRows({
     ...sys.rows.map((r) => ({ name: r.name, hexes: r.steps.map((x) => x.hex), yours: r.yours })),
     { name: 'neutral', hexes: sys.neutral.map((x) => x.hex), yours: false },
   ]
-  // The blank lines round the grid go when keeping them would make it scroll.
-  const most = paletteLinesFor(height, tabs.length)
-  const spaced = most - 2 >= rows.length
-  const lines = spaced ? most - 2 : most
+  // The mode's line is on More's row now (2026-10-24), under the detail
+  // line, and the row it took is the blank under the chosen swatch; the
+  // blank goes when keeping it would make the grid scroll.
+  const most = paletteLinesFor(height, tabs.length) + 1
+  const spaced = most - 1 >= rows.length
+  const lines = spaced ? most - 1 : most
   const gap2: Row[] = spaced ? [[]] : []
   const steps = [...sys.rows.map((r) => r.steps), sys.neutral]
   const centre = centreOf(state.steps)
@@ -1027,9 +1075,6 @@ function paletteTabRows({
             formatOklch(chosen.rgb),
           )
         : []
-  const under = state.stepsEdit
-    ? stepsLine({ width, palette: p, spec: state.steps, editing: state.stepsEdit.field })
-    : modeRow(p, width, MODE_NAMES[state.mode])
   if (p.selectionBg === '') {
     const picked = (steps[cell.row] ?? []).map((x) => ({ ...x, ...onWhiteAndBlack(x.rgb) }))
     return [
@@ -1037,8 +1082,6 @@ function paletteTabRows({
       top,
       ...gap2,
       ...plainScaleRows({ palette: p, steps: picked, selected: cell.col }),
-      ...gap2,
-      under,
     ]
   }
   const grid = gridRows({
@@ -1051,7 +1094,7 @@ function paletteTabRows({
     framed: !state.win,
     lines,
   })
-  const body: Row[] = [...tabs, top, ...gap2, ...grid, ...gap2, under]
+  const body: Row[] = [...tabs, top, ...gap2, ...grid]
   return state.win ? windowFor(p, state, ref, body, width) : body
 }
 
@@ -1193,12 +1236,10 @@ function keysFor(
       ],
     }
   }
-  // The steps being changed: ↵ done sits on their line, where s steps was.
-  // Radix has nothing but the set to change, so nothing to tab to.
+  // The steps being changed: tab next and ↵ done sit on their line (2026-10-24).
   if (state.stepsEdit) {
-    const more = fieldsFor(state).length > 1
     return {
-      main: [['←→', 'change'], ...(more ? [['tab', 'next'] as [string, string]] : [])],
+      main: [['←→', 'change']],
       foot: [
         ['esc', 'cancel'],
         ['ctrl-c', 'quit'],

@@ -163,7 +163,7 @@ export function NameTaken({
               marginLeft={HOME_MARGIN}
               {...(selected && band ? { backgroundColor: band } : {})}
             >
-              <Text color={colourProp(accent)}>{selected ? `${SYMBOLS.strip} ` : '  '}</Text>
+              <Text color={colourProp(palette.fg)}>{selected ? `${SYMBOLS.cursor} ` : '  '}</Text>
               <Text bold={selected} color={colourProp(selected ? palette.fg : palette.dim)}>
                 {label.padEnd(NAME_COLUMN)}
               </Text>

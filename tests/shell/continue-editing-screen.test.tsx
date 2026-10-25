@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
+import type { PlanEvent } from '../../src/core/execute-jobs.js'
 import type { PresetSteps } from '../../src/core/preset.js'
 import type { ImageInfo, Result } from '../../src/core/types.js'
 import { ContinueEditingScreen, type Rerun } from '../../src/shell/components/ContinueEditing.js'
@@ -56,6 +57,8 @@ function mount(
     undo?: { label: string; steps: PresetSteps }
     missing?: Record<string, number>
     reasons?: Record<string, string>
+    /** Replaces the rerun: it is handed the run's event sink. */
+    rerun?: (onEvent: (e: PlanEvent) => void) => Promise<Rerun>
   } = {},
 ) {
   setMotionForTests(false)
@@ -76,8 +79,9 @@ function mount(
         reasons={o.reasons ?? {}}
         missing={o.missing ?? {}}
         onAdd={async () => true}
-        run={async (steps): Promise<Rerun> => {
+        run={async (steps, _signal, onEvent): Promise<Rerun> => {
           runs.push(steps)
+          if (o.rerun) return o.rerun(onEvent)
           return { kind: 'ready', output: join(DESKTOP, 'IMG_2041.jpg'), bytes: 402_000 }
         }}
         onFinish={finish}
@@ -128,6 +132,51 @@ describe('Continue editing: one more thing done to the file', () => {
       kind: 'add',
       step: { op: 'resize', spec: { percent: 95 } },
     })
+  })
+
+  it('opens each sub-picker on its first row, whatever row of the list led to it', async () => {
+    const { app, finish } = mount()
+    await until(app, 'Continue editing')
+    for (let i = 0; i < 6; i++) {
+      app.stdin.write(DOWN) // … down to Boost resolution
+      await settle()
+    }
+    app.stdin.write(ENTER)
+    await until(app, '2×')
+    app.stdin.write(ENTER) // the cursor is on 2×, so ↵ chooses it
+    const start = Date.now()
+    while (finish.mock.calls.length === 0 && Date.now() - start < 3_000) await settle(20)
+    expect(finish.mock.calls[0]?.[2]).toEqual({ kind: 'add', step: { op: 'boost', scale: 2 } })
+  })
+
+  it('shows the tiles a model has done of all there are, and the time left, while it runs', async () => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((r) => {
+      release = r
+    })
+    const { app, finish } = mount({
+      rerun: async (onEvent) => {
+        const job = result.job
+        const tiles = (done: number) =>
+          onEvent({ type: 'job:phase', job, progress: { phase: 'tiles', done, total: 48 } })
+        tiles(0)
+        tiles(12)
+        await held
+        return { kind: 'ready', output: join(DESKTOP, 'IMG_2041.jpg'), bytes: 402_000 }
+      },
+    })
+    await until(app, 'Continue editing')
+    for (let i = 0; i < 5; i++) {
+      app.stdin.write(DOWN) // … down to Sharpen
+      await settle()
+    }
+    app.stdin.write(ENTER)
+    await until(app, '12 of 48')
+    expect(plain(app)).not.toMatch(/tiles/i)
+    release()
+    const start = Date.now()
+    while (finish.mock.calls.length === 0 && Date.now() - start < 3_000) await settle(20)
+    expect(finish.mock.calls[0]?.[2]).toEqual({ kind: 'add', step: { op: 'sharpen' } })
   })
 
   it('offers Undo for the last step on top, and undoing reruns the steps without it', async () => {

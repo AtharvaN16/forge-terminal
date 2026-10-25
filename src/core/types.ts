@@ -340,6 +340,11 @@ export type Progress =
    * hit in two passes.
    */
   | { phase: 'time'; done: number; total: number; pass?: { at: 1 | 2; of: 2 } }
+  /**
+   * Tiles of the picture a model has finished, of the tiles it was cut into: a
+   * true total, known before the first is run (Sharpen and Boost resolution).
+   */
+  | { phase: 'tiles'; done: number; total: number }
 
 /**
  * Progress's first variant. `waiting`: queued behind another forge using the

@@ -238,12 +238,47 @@ export function timeRow({
   // The page bar's own cells, without its words.
   const bar = pagesRow({ palette, mode, done, total, plain, unit: '' }).slice(0, -1)
   const row: Row = [...bar, { text: `  ${clockOf(done)} of ${clockOf(total)}`, fg: palette.dim }]
-  if (elapsedMs >= TIME_LEFT_AFTER_MS && done > 0 && done < total) {
-    const left = ((total - done) / done) * (elapsedMs / 1000)
-    const said = left < 60 ? `${Math.max(1, Math.round(left))} s` : `${Math.round(left / 60)} min`
-    row.push({ text: `  ·  about ${said} left`, fg: palette.border })
-  }
-  return row
+  return [...row, ...timeLeftRun(palette, done, total, elapsedMs)]
+}
+
+/**
+ * Said once the speed is known (`TIME_LEFT_AFTER_MS`): the time left at the
+ * pace this pass has kept so far. Nothing before then, and nothing at either
+ * end, where there is no pace or no time left.
+ */
+function timeLeftRun(palette: Palette, done: number, total: number, elapsedMs: number): Row {
+  if (elapsedMs < TIME_LEFT_AFTER_MS || done <= 0 || done >= total) return []
+  const left = ((total - done) / done) * (elapsedMs / 1000)
+  const said = left < 60 ? `${Math.max(1, Math.round(left))} s` : `${Math.round(left / 60)} min`
+  return [{ text: `  ·  about ${said} left`, fg: palette.border }]
+}
+
+/**
+ * Tiles done of the tiles a picture was cut into (Sharpen, Boost resolution):
+ * the page bar's look, then "12 of 48" and, after 5 s, the time left. The total
+ * is a fact — the grid is laid out before the first tile — so the bar may be
+ * drawn (invariant 7). `elapsedMs` is since the first count arrived, so the
+ * model's start-up is not counted in the pace.
+ */
+export function tilesRow({
+  palette,
+  mode,
+  done,
+  total,
+  elapsedMs,
+  plain = palette.track === '',
+}: {
+  palette: Palette
+  mode: ShellMode
+  done: number
+  total: number
+  elapsedMs: number
+  plain?: boolean
+}): Row {
+  return [
+    ...pagesRow({ palette, mode, done, total, plain, says: `${done} of ${total}` }),
+    ...timeLeftRun(palette, done, total, elapsedMs),
+  ]
 }
 
 /**

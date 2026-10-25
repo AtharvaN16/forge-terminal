@@ -134,6 +134,25 @@ export function Select({
   const indexRef = useRef(initialIndex(items, initialValue))
 
   /**
+   * A different list in the same place keeps this instance — React matches
+   * by type and position — and with it the cursor, so a picker that follows
+   * another opened on the row the last one left it (or on none, past its
+   * end). When the rows' values change, the cursor stays on its row if the
+   * new list still has it (a filter narrowing), else opens as a new list
+   * does: on `initialValue`, or the first enabled row.
+   */
+  const valuesKey = items.map((item) => item.value).join('\u0000')
+  const seen = useRef({ key: valuesKey, values: items.map((item) => item.value) })
+  if (seen.current.key !== valuesKey) {
+    const held = seen.current.values[indexRef.current]
+    const kept = items.findIndex((item) => item.value === held && !item.disabled)
+    const next = kept !== -1 ? kept : initialIndex(items, initialValue)
+    seen.current = { key: valuesKey, values: items.map((item) => item.value) }
+    indexRef.current = next
+    setIndex(next)
+  }
+
+  /**
    * The next enabled row in `delta`'s direction, or the current one if
    * there isn't one — a disabled row (the `/pdf` hub's dimmed "needs 2+
    * files" Merge) is not a stop the cursor can land on, so moving toward
@@ -187,9 +206,9 @@ export function Select({
   const labelWidth = Math.max(0, ...items.map((i) => stringWidth(i.label)))
 
   /**
-   * The band behind the highlighted row, or nothing. Grey (`listBand`), as
-   * the decided picker draws it: the strip carries the mode's colour, the
-   * band does not. It moves at once — a fade between rows read as ghosting.
+   * The band behind the highlighted row, or nothing. Grey (`listBand`), with a
+   * plain `❯` in the text colour: the selection carries no mode colour (2026-10-24).
+   * It moves at once — a fade between rows read as ghosting.
    */
   const bandFor = (selected: boolean): string | undefined =>
     selected && palette.listBand !== '' ? palette.listBand : undefined
@@ -206,7 +225,7 @@ export function Select({
         // index both skip disabled rows) — the dim hub row for an
         // unavailable action must never draw the marker or go bold.
         const selected = i === index && !item.disabled
-        const marker = selected ? `${SYMBOLS.strip} ` : '  '
+        const marker = selected ? `${SYMBOLS.cursor} ` : '  '
         // The tag, padded one cell each side, then one cell inside the band's edge.
         const badge = item.badge ? ` ${item.badge} ` : ''
         // A label wider than its row is cut, never wrapped: Save to feeds this
@@ -252,7 +271,7 @@ export function Select({
               a padded Text band would stop where the words do.
             */}
             <Box width={width} {...(bg ? { backgroundColor: bg } : {})}>
-              <Text color={colourProp(palette.accent)}>{marker}</Text>
+              <Text color={colourProp(palette.fg)}>{marker}</Text>
               <Text
                 bold={selected}
                 {...(item.disabled

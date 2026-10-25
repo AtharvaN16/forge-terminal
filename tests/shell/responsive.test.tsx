@@ -77,7 +77,7 @@ describe('responsiveness', () => {
     const question = lines.findIndex((l) => /Convert to/.test(l))
     expect(question).toBeGreaterThan(-1)
     expect(lines[question + 1]?.replace(ANSI_ALL, '').trim()).toBe('')
-    expect(lines[question + 2]).toMatch(/▌/)
+    expect(lines[question + 2]).toMatch(/❯/)
   })
 
   it('draws no box around the drop area at any width', () => {

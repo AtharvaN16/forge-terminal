@@ -83,12 +83,12 @@ describe('what a copy says, on the key row', () => {
 })
 
 describe('the windows More opens', () => {
-  it('More: its items, the one in hand on the band with ›, each with its key at the right', () => {
+  it('More: its items, the one in hand on the band with ❯, each with its key at the right', () => {
     const lines = moreLines(P, ['gradient', 'tweak', 'steps'], 1)
     const shown = lines.map(text).filter((t) => t.trim() !== '')
     expect(shown).toHaveLength(3)
     expect(shown[0]).toMatch(/^ {3}Gradient +⇧→ +$/)
-    expect(shown[1]).toMatch(/^ › Tweak +t +$/)
+    expect(shown[1]).toMatch(/^ ❯ Tweak +t +$/)
     expect(shown[2]).toMatch(/^ {3}Steps +s +$/)
     for (const l of lines) expect(width(l)).toBeLessThanOrEqual(MORE_WINDOW_WIDTH - 2)
   })
@@ -98,7 +98,7 @@ describe('the windows More opens', () => {
     const t = lines.map(text)
     expect(t.some((l) => /^ +1 +#6579FD/.test(l))).toBe(true)
     expect(t.some((l) => /^ +2 +#F5A524/.test(l))).toBe(true)
-    expect(t.some((l) => /3 +› #2EC4B6/.test(l))).toBe(true)
+    expect(t.some((l) => /3 +❯ #2EC4B6/.test(l))).toBe(true)
     const strip = lines.find((l) => l.filter((r) => r.bg).length > 10)
     expect(strip?.[1]?.bg?.toLowerCase()).toBe('#6579fd')
     for (const l of lines) expect(width(l)).toBeLessThanOrEqual(GRADIENT_WINDOW_WIDTH - 2)
@@ -130,8 +130,8 @@ describe('the Palette tab’s grid', () => {
     const names = out.slice(1, 10).map((r) => text(r).trim().split(/\s+/)[0])
     expect(names).toEqual(rows.map((r) => r.name))
     expect(out.map(text).join('')).not.toMatch(/[┃│]/)
-    // The chosen cell is marked in the gaps either side of it.
-    expect(text(out[6])).toMatch(/▕ {4,8}▏/)
+    // The chosen cell is marked in the gaps either side of it (here your colour, with its dot).
+    expect(text(out[6])).toMatch(/▕[ •]{4,8}▏/)
     expect(scale(BLUE)).toHaveLength(11)
   })
 })

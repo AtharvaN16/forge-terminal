@@ -7,7 +7,6 @@ import { unpaint } from '../helpers/unpaint.js'
 
 const ESC = String.fromCharCode(27)
 const ENTER = '\r'
-const CTRL_N = String.fromCharCode(14)
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const plain = (f: string | undefined) => (f ?? '').replace(SGR, '')
@@ -97,14 +96,16 @@ describe("colour's home and screens", () => {
 
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('‹ Tailwind ›'))
-    expect(plain(app.lastFrame())).toMatch(/↵ +done/)
-    expect(keyRow(app.lastFrame())).toMatch(/←→ +change +tab +next/)
+    // tab next on the steps' line, not in the key row; the tab row's cap hides (2026-10-24).
+    expect(plain(app.lastFrame())).toMatch(/‹ Tailwind ›.* tab +↵ +done\s*\n/)
+    expect(keyRow(app.lastFrame())).toMatch(/^ *←→ +change +esc cancel/)
+    expect(plain(app.lastFrame())).toMatch(/Palette\s*\n/)
     app.stdin.write(`${ESC}[C`)
     await waitFor(() => plain(app.lastFrame()).includes('‹ Even ›'))
     // Radix has only the set to change: no tab.
     app.stdin.write(`${ESC}[C`)
     await waitFor(() => plain(app.lastFrame()).includes('‹ Radix ›'))
-    expect(keyRow(app.lastFrame())).not.toMatch(/tab/)
+    expect(plain(app.lastFrame())).toMatch(/‹ Radix ›.* {3}↵ +done\s*\n/)
     app.stdin.write(`${ESC}[D`)
     await waitFor(() => plain(app.lastFrame()).includes('‹ Even ›'))
     for (let i = 0; i < 3; i++) {

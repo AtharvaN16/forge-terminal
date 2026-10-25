@@ -120,7 +120,7 @@ describe('the theme picker (round 5)', () => {
     expect(lines[0]).toBe('  Select theme')
     expect(lines[1]).toBe('')
     expect(lines[2]).toMatch(/^ {4}Light$/)
-    expect(lines[3]).toMatch(/^ {2}▌ Dark$/)
+    expect(lines[3]).toMatch(/^ {2}❯ Dark$/)
     const all = lines.join('\n')
     expect(all).not.toContain('background')
     expect(all).not.toContain('suits')

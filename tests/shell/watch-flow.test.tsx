@@ -54,6 +54,18 @@ async function open(dir: string, over: { onClose?: () => void } = {}) {
 }
 
 describe('WatchFlow, one kind', () => {
+  it('opens Resolution on its own default, not on the row Convert to left the cursor at', async () => {
+    const dir = await makeTempDir()
+    await makePdf(dir, 'a.pdf', 1)
+    const f = await open(dir)
+    await until(() => f.frame().includes('Convert to'))
+    f.stdin.write(`${ESC}[A`) // JPEG, above PNG
+    await tick()
+    f.stdin.write(ENTER)
+    await until(() => f.frame().includes('Resolution'))
+    expect(f.frame()).toMatch(/❯ 150 dpi/)
+  })
+
   it('asks as a file does: the folder’s card, Convert to, WebP first', async () => {
     const dir = await makeTempDir()
     await makePng(dir, 'a.png')
@@ -63,7 +75,7 @@ describe('WatchFlow, one kind', () => {
     expect(f.frame()).toContain(`FOLDER – ${basename(dir)}`)
     expect(f.frame()).toMatch(/2 images · \d/)
     expect(f.frame()).toMatch(/Convert to\s+2 images/)
-    expect(f.frame()).toMatch(/▌ WebP/)
+    expect(f.frame()).toMatch(/❯ WebP/)
     expect(f.trails.at(-1)).toEqual({ answers: [], current: 'Format' })
   })
 

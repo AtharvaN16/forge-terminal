@@ -47,21 +47,31 @@ beforeAll(async () => {
 interface Reply {
   exitCode: number
   json: Record<string, unknown>
+  /** The result line is the last; the lines before it are `{"progress","of"}` counts. */
   lines: number
+  progress: Array<[number, number]>
+}
+
+/** What a run printed: its result (the last line) and the tile counts before it. */
+function replyOf(exitCode: number, stdout: string): Reply {
+  const all = stdout.trim().split('\n')
+  const counts = all.filter((l) => l.startsWith('{"progress"')).map((l) => JSON.parse(l))
+  return {
+    exitCode,
+    json: JSON.parse(all.at(-1) ?? '{}'),
+    lines: all.length - counts.length,
+    progress: counts.map((c: { progress: number; of: number }) => [c.progress, c.of]),
+  }
 }
 
 async function boost(input: string, out: string, scale: number): Promise<Reply> {
   const args = [join(payload, 'runner.mjs'), '--in', input, '--out', out, '--scale', String(scale)]
   try {
     const { stdout } = await run(process.execPath, args)
-    return { exitCode: 0, json: JSON.parse(stdout), lines: stdout.trim().split('\n').length }
+    return replyOf(0, stdout)
   } catch (err) {
     const e = err as { code: number; stdout: string }
-    return {
-      exitCode: e.code,
-      json: JSON.parse(e.stdout),
-      lines: e.stdout.trim().split('\n').length,
-    }
+    return replyOf(e.code, e.stdout)
   }
 }
 
@@ -133,6 +143,11 @@ describe('boost runner', () => {
         expect(r.exitCode).toBe(0)
         expect(r.lines).toBe(1)
         expect(r.json).toMatchObject({ ok: true, width: size * scale, height: size * scale })
+        // One 256 px tile covers 64 px: counted before it runs, and once it is done.
+        expect(r.progress).toEqual([
+          [0, 1],
+          [1, 1],
+        ])
         const { data, info } = await sharp(out).raw().toBuffer({ resolveWithObject: true })
         expect([info.width, info.height, info.channels]).toEqual([size * scale, size * scale, 4])
         const alphaAt = (x: number, y: number) => data[(y * info.width + x) * 4 + 3]

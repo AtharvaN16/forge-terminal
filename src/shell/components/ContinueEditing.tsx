@@ -2,6 +2,7 @@ import { basename } from 'node:path'
 import { Box } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 import { CROP_SHAPES, shapesFor } from '../../core/crop.js'
+import type { PlanEvent } from '../../core/execute-jobs.js'
 import { FORMATS } from '../../core/formats.js'
 import type { PresetSteps } from '../../core/preset.js'
 import { resizedSize } from '../../core/size.js'
@@ -124,7 +125,12 @@ export function ContinueEditingScreen({
   missing: Partial<Record<Op, number>>
   /** Adds an operation's model; resolves once it is in, false if it could not be. */
   onAdd: (op: Op) => Promise<boolean>
-  run: (steps: PresetSteps, signal: AbortSignal) => Promise<Rerun>
+  /** Redoes the steps; `onEvent` hears what the run reports, for Working's count. */
+  run: (
+    steps: PresetSteps,
+    signal: AbortSignal,
+    onEvent: (event: PlanEvent) => void,
+  ) => Promise<Rerun>
   onFinish: (steps: PresetSteps, rerun: Extract<Rerun, { kind: 'ready' }>, change: Change) => void
   /** A step that failed: the error, or what was said of it. */
   onFail: (error: unknown) => void
@@ -139,6 +145,10 @@ export function ContinueEditingScreen({
   const [sizeUnit, setSizeUnit] = useState<'kb' | 'mb'>('kb')
   const [unitFocused, setUnitFocused] = useState(false)
   const [quality, setQuality] = useState(steps.quality ?? 80)
+  const [count, setCount] = useState<{
+    tiles?: { done: number; total: number; since: number }
+    search?: { n: number; of: number }
+  }>({})
   const job = result.job
   const output = job.outputs[0] ?? ''
   const target = job.op === 'convert' ? job.target : original.format
@@ -167,7 +177,21 @@ export function ContinueEditingScreen({
     if (!working) return
     const controller = new AbortController()
     abort.current = controller
-    void run(working.steps, controller.signal).then(
+    setCount({})
+    // What the run really counts, and nothing it does not: tiles of a picture a
+    // model has done, or the tries of a target-size search (invariant 7).
+    const onEvent = (event: PlanEvent) => {
+      if (controller.signal.aborted) return
+      // Each pass of the steps starts uncounted: the last one's bar is not this one's.
+      if (event.type === 'job:start') setCount({})
+      else if (event.type === 'search:attempt')
+        setCount({ search: { n: event.attempt, of: event.of } })
+      else if (event.type === 'job:phase' && event.progress.phase === 'tiles') {
+        const { done, total } = event.progress
+        setCount((c) => ({ tiles: { done, total, since: c.tiles?.since ?? Date.now() } }))
+      }
+    }
+    void run(working.steps, controller.signal, onEvent).then(
       (rerun) => {
         if (controller.signal.aborted) return
         if (rerun.kind === 'ready') onFinish(working.steps, rerun, working.change)
@@ -532,6 +556,8 @@ export function ContinueEditingScreen({
             : stage.label
         }
         startedAt={stage.startedAt}
+        search={count.search}
+        tiles={count.tiles}
         stoppable
         width={width}
       />

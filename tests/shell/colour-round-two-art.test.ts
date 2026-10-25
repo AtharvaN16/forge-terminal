@@ -51,7 +51,7 @@ describe('Scale’s tabs and lines', () => {
       editing: 'over',
       extra: { field: 'over', value: 'black' },
     })
-    expect(text(editing)).toMatch(/over +‹ black ›.*↵ +done/)
+    expect(text(editing)).toMatch(/‹ over black › +↵ done {2}$/)
   })
 
   it('the mix’s line: the way across and the count; under s, both as pills', () => {
@@ -60,7 +60,7 @@ describe('Scale’s tabs and lines', () => {
     )
     expect(
       text(mixLine({ width: 76, palette: P, space: 'oklch', count: 9, editing: 'way' })),
-    ).toMatch(/‹ OKLCH ›\s+steps\s+9\s.*↵ +done/)
+    ).toMatch(/‹ OKLCH › +9 steps +tab +↵ done {2}$/)
   })
 })
 
@@ -121,7 +121,6 @@ describe('Palette’s grid (§12.6)', () => {
       framed,
       lines,
     })
-  const frame = P.fg.toLowerCase()
   // 76 columns, names 10 wide: cells of four, the first at column 12.
   const at = (i: number) => 12 + i * 5
 
@@ -143,45 +142,67 @@ describe('Palette’s grid (§12.6)', () => {
     expect(red.some((r) => r.text === '    ' && r.bg === hex)).toBe(true)
   })
 
-  it('the chosen cell: a thin frame round it in the gaps, in the text colour', () => {
+  it('the chosen cell: eighth blocks against its edges, white on a dark swatch, near-black on a light one (2026-10-24)', () => {
     const rows = gridOf({ row: 5, col: 7 })
     const cells = (i: number) => [...text(rows[i])]
     // Row 5's gap line is 1 + 5 × 3 = 16; its swatches 17–18; the gap under, 19.
     expect(
       cells(16)
-        .slice(at(7) - 1, at(7) + 5)
+        .slice(at(7), at(7) + 4)
         .join(''),
-    ).toBe('╭────╮')
-    expect(cells(17)[at(7) - 1]).toBe('│')
-    expect(cells(18)[at(7) + 4]).toBe('│')
+    ).toBe('▁▁▁▁')
+    expect(cells(17)[at(7) - 1]).toBe('▕')
+    expect(cells(18)[at(7) + 4]).toBe('▏')
     expect(
       cells(19)
-        .slice(at(7) - 1, at(7) + 5)
+        .slice(at(7), at(7) + 4)
         .join(''),
-    ).toBe('╰────╯')
-    expect((rows[16] as Row).find((r) => r.text.includes('─'))?.fg).toBe(frame)
-    // Nowhere else (row 5 is not your colour's row).
-    const strokes = rows.flatMap((row) => [...text(row)]).filter((ch) => '╭╮╰╯│─'.includes(ch))
-    expect(strokes).toHaveLength(2 + 4 + 2 + 2 + 2 + 4)
+    ).toBe('▔▔▔▔')
+    expect((rows[16] as Row).find((r) => r.text.includes('▁'))?.fg).toBe('#ffffff')
+    // Nowhere else in its colour (row 5 is not your colour's row).
+    const strokes = rows
+      .flatMap((row) => row.flatMap((r) => (r.fg === '#ffffff' ? [...r.text] : [])))
+      .filter((ch) => '▁▔▕▏'.includes(ch))
+    expect(strokes).toHaveLength(4 + 2 + 2 + 4)
+    // A light swatch: the frame near-black.
+    const light = gridOf({ row: 5, col: 1 })
+    expect((light[16] as Row).find((r) => r.text.includes('▁'))?.fg).toBe('#111111')
+    // A mid-tone, teal 600 #6F7C79 (2026-10-24): white, which the canvas does not swallow.
+    const mid = gridRows({
+      width: 76,
+      palette: P,
+      labels: ['600'],
+      rows: [{ name: 'teal', hexes: ['#6F7C79'], yours: false }],
+      reference: -1,
+      sel: { row: 0, col: 0 },
+      lines: 28,
+    })
+    expect((mid[2] as Row).find((r) => r.text.includes('▕'))?.fg).toBe('#ffffff')
   })
 
   it('no frame while a window is open over the grid', () => {
     const rows = gridOf({ row: 5, col: 7 }, { framed: false })
-    expect(rows.every((row) => !/[╭╮╰╯│─]/.test(text(row)))).toBe(true)
+    expect(rows.every((row) => !/[▁▔]/.test(text(row)))).toBe(true)
+    expect(rows.every((row) => !/[▕▏]/.test(text(row)))).toBe(true)
   })
 
-  it('your colour’s cell is underlined in the mode’s colour, in the gap under it', () => {
+  it('your colour’s cell: a small dot in its middle, and no lines beside it (2026-10-24)', () => {
     const yours = sys.rows.findIndex((r) => r.yours)
-    const accent = P.accent.toLowerCase()
+    const flat = (rows: Row[], i: number) =>
+      (rows[i] as Row).flatMap((r) => [...r.text].map((ch) => ({ ch, fg: r.fg, bg: r.bg })))
+    // Its swatches on lines 2 + 3 × row and the next; the dot on the first of two.
     const rows = gridOf({ row: 0, col: 0 })
-    // Its swatches on lines 2 + 3 × row and the next; the gap under them after.
-    const under = rows[4 + yours * 3] as Row
-    expect([...text(under)].slice(at(5), at(5) + 4).join('')).toBe('━━━━')
-    expect(under.find((r) => r.text.includes('━'))?.fg).toBe(accent)
-    expect(rows.every((row) => !text(row).includes('◤'))).toBe(true)
-    // Chosen, the underline takes the middle of the frame's bottom edge.
+    const hex = (sys.rows[yours]?.steps[5]?.hex ?? '').toLowerCase()
+    expect(flat(rows, 2 + yours * 3)[at(5) + 1]).toEqual({ ch: '•', fg: '#ffffff', bg: hex })
+    expect(rows.flatMap((row) => [...text(row)]).filter((ch) => ch === '•')).toHaveLength(1)
+    for (const line of [2 + yours * 3, 3 + yours * 3]) {
+      const cells = flat(rows, line)
+      expect([cells[at(5) - 1]?.ch, cells[at(5) + 4]?.ch]).toEqual([' ', ' '])
+    }
+    // Chosen, the frame round it and the dot still in it.
     const chosen = gridOf({ row: yours, col: 5 })
-    expect([...text(chosen[4 + yours * 3])].slice(at(5) - 1, at(5) + 5).join('')).toBe('╰━━━━╯')
+    expect(flat(chosen, 2 + yours * 3)[at(5) - 1]?.ch).toBe('▕')
+    expect(flat(chosen, 2 + yours * 3)[at(5) + 1]?.ch).toBe('•')
   })
 
   it('fewer colours: every row shows, up to three lines tall', () => {
@@ -247,7 +268,7 @@ describe('Palette’s windows (W1)', () => {
     const rows = windowOver(P, under, { title: 'Mode', lines, width: 56, columns: 76, top: 2 })
     expect(text(rows[2])).toContain('╭─ Mode ─')
     expect(text(rows[2 + lines.length + 1])).toContain('╰──')
-    expect(text(rows[5])).toMatch(/│ › Pastel/)
+    expect(text(rows[5])).toMatch(/│ ❯ Pastel/)
     // Outside the window, the screen is faded towards the canvas.
     expect((rows[0] as Row)[0]?.fg).not.toBe(P.fg.toLowerCase())
   })

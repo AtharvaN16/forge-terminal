@@ -51,14 +51,25 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('Full set'))
     const frame = app.lastFrame()
     expect(plain(frame)).toMatch(/red 500 {2}#F7022A/)
-    // The mode's name alone; Mode, Tweak and Steps are in More (2026-10-24).
-    expect(plain(frame)).toMatch(/Full set\s*\n/)
-    expect(plain(frame)).toMatch(/ m {2}more\s*\n/)
+    // The mode's name on More's row, over the rule (2026-10-24); a blank
+    // between the chosen swatch's line and the step numbers.
+    expect(plain(frame)).toMatch(/ {2}Full set +m {2}more\s*\n/)
+    const all = lines(frame)
+    const chosen = all.findIndex((l) => /red 500 {2}#F7022A/.test(l))
+    expect(all[chosen + 1]?.trim()).toBe('')
+    expect(all[chosen + 2]).toMatch(/50 +100 +200/)
+    expect(
+      all
+        .slice(chosen + 1)
+        .filter((l) =>
+          /^ {2}(red|orange|yellow|green|teal|blue|purple|pink|neutral)\b/.test(l.slice(2)),
+        ),
+    ).toHaveLength(9)
     expect(lines(frame)).toHaveLength(24)
 
     app.stdin.write('m')
     await waitFor(() => plain(app.lastFrame()).includes('╭─ More'))
-    expect(plain(app.lastFrame())).toMatch(/› Mode/)
+    expect(plain(app.lastFrame())).toMatch(/❯ Mode/)
     expect(keyRow(app.lastFrame())).toMatch(/↑↓ +choose +↵ +open +m +done/)
     expect(lines(app.lastFrame())).toHaveLength(24)
     app.stdin.write('\r')
@@ -322,7 +333,7 @@ describe('colour, round two, in the app', () => {
     await waitFor(() => plain(app.lastFrame()).includes('Full set'))
     app.stdin.write('s')
     await waitFor(() => plain(app.lastFrame()).includes('‹ Tailwind ›'))
-    expect(plain(app.lastFrame())).toMatch(/↵ +done/)
+    expect(plain(app.lastFrame())).toMatch(/‹ Tailwind ›.* tab +↵ +done\s*\n/)
     expect(lines(app.lastFrame())).toHaveLength(24)
   }, 30_000)
 })

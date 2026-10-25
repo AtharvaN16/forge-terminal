@@ -5,7 +5,7 @@ import { DARK, modePalette, NEUTRAL } from '../../src/shell/theme.js'
 
 /**
  * Done's way on (mockups/done-next-2026-10-round9.html, Y31): a frame in the
- * shelf grey holding every action but Home, flush on its left edge; a cell of
+ * shelf grey holding every action but Home, spaced evenly; a cell of
  * canvas; then Home as its own block in the mode's tint, ending on the
  * block's edge. Both three rows tall. The selected action fills all three
  * rows: a grey one in the key caps' grey, Home in the bright mode colour.
@@ -13,10 +13,10 @@ import { DARK, modePalette, NEUTRAL } from '../../src/shell/theme.js'
 const P = modePalette(DARK, 'convert')
 const W = 80
 const ACTIONS: DoneAction[] = [
-  { key: 'o', label: 'Open' },
-  { key: 'f', label: 'Finder' },
-  { key: 'p', label: 'Save as preset' },
-  { key: 'e', label: 'Continue editing' },
+  { key: 'o', label: 'open' },
+  { key: 'f', label: 'finder' },
+  { key: 'p', label: 'save as preset' },
+  { key: 'e', label: 'continue editing' },
 ]
 const HOME = ACTIONS.length
 
@@ -35,12 +35,21 @@ describe('doneActionRows', () => {
     for (const row of rows) expect(text(row).length).toBe(W - 2)
   })
 
-  it('puts the first action flush on the frame’s left edge, every key beside its word', () => {
+  it('puts every key beside its word, in order', () => {
     const middle = text(draw(HOME)[1])
-    expect(middle.startsWith('   o Open ')).toBe(true)
+    expect(middle).toMatch(/^ {3,}o open /)
     for (const a of ACTIONS) expect(middle).toContain(`${a.key} ${a.label}`)
-    expect(middle.indexOf('Open')).toBeLessThan(middle.indexOf('Finder'))
-    expect(middle.indexOf('Save as preset')).toBeLessThan(middle.indexOf('Continue editing'))
+    expect(middle.indexOf('open')).toBeLessThan(middle.indexOf('finder'))
+    expect(middle.indexOf('save as preset')).toBeLessThan(middle.indexOf('continue editing'))
+  })
+
+  it('spaces the actions evenly: the same grey before the first, between each, and after the last', () => {
+    const three = ACTIONS.slice(0, 2).concat({ key: 'c', label: 'copy' })
+    const middle = text(draw(HOME, 100, three)[1])
+    const frame = middle.slice(2, middle.length - '  ↵ Home  '.length - 1)
+    const gaps = frame.split(/ ?[ofc] (?:open|finder|copy) /).map((g) => g.length)
+    expect(gaps).toHaveLength(4)
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThanOrEqual(1)
   })
 
   it('fills the frame with the shelf grey from the margin', () => {
@@ -64,17 +73,17 @@ describe('doneActionRows', () => {
 
   it('fills a selected grey action all three rows in the key caps’ grey, its words bright', () => {
     const rows = draw(1)
-    const at = text(rows[1]).indexOf('f Finder') - 1
-    const span = ' f Finder '.length
+    const at = text(rows[1]).indexOf('f finder') - 1
+    const span = ' f finder '.length
     for (const row of rows)
       for (let x = at; x < at + span; x++) expect(cells(row)[x]?.bg).toBe(P.keycapBg)
-    expect(cells(rows[1])[text(rows[1]).indexOf('Finder')]).toMatchObject({ fg: P.fg, bold: true })
+    expect(cells(rows[1])[text(rows[1]).indexOf('finder')]).toMatchObject({ fg: P.fg, bold: true })
     expect(cells(rows[0])[at - 1]?.bg).toBe(P.shelf)
   })
 
   it('leaves an unselected action’s word dim', () => {
     const middle = draw(HOME)[1]
-    expect(cells(middle)[text(middle).indexOf('Finder')]?.fg).toBe(P.dim)
+    expect(cells(middle)[text(middle).indexOf('finder')]?.fg).toBe(P.dim)
   })
 
   it('turns Home the bright mode colour, dark words, while it is selected', () => {
@@ -111,7 +120,7 @@ describe('doneActionRows, in the first-run palette', () => {
     const N = modePalette(NEUTRAL, 'convert')
     const rows =
       doneActionRows({ palette: N, mode: 'convert', actions: ACTIONS, selected: 1, width: W }) ?? []
-    const at = text(rows[1]).indexOf('Finder')
+    const at = text(rows[1]).indexOf('finder')
     expect(cells(rows[1])[at]?.bg).toBe(N.modeConvert)
   })
 })

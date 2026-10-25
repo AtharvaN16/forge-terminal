@@ -129,7 +129,7 @@ describe('Compress, with the decided parts', () => {
     await until(app, 'Try a different target size', 30_000)
     const out = plain(app.lastFrame())
     expect(out).toMatch(/^ {2}photo\.jpg can't get below \d+ B +asked for 1 B$/m)
-    expect(out).toMatch(/▌ Use \d+ B anyway +saves it at \d+ B/)
+    expect(out).toMatch(/❯ Use \d+ B anyway +saves it at \d+ B/)
     expect(keyRow(app)).toMatch(/esc cancel · ctrl-c quit$/)
     // The trail ends at the size: the folder and name came after it.
     expect(out.split('\n')[0]).toMatch(/To a target size ╱ 1b ╱ Size ╱╱ *$/)
@@ -167,7 +167,7 @@ describe('Name taken (L1), everywhere', () => {
     await until(app, 'already exists')
     const out = plain(app.lastFrame())
     expect(out).toMatch(/^ {2}test\.jpg already exists +[\d.]+ (B|KB) · today, \d\d:\d\d$/m)
-    expect(out).toMatch(/▌ Keep both +saves yours as test \(1\)\.jpg/)
+    expect(out).toMatch(/❯ Keep both +saves yours as test \(1\)\.jpg/)
     expect(out.split('\n')[0]).toMatch(/Name taken ╱╱ *$/)
     app.stdin.write(ENTER)
     await until(app, '↵ Home', 20_000)
@@ -202,7 +202,7 @@ describe('Name taken (L1), everywhere', () => {
       /90° right ╱ Desktop ╱ report-rotated\.pdf ╱ Name taken ╱╱ *$/,
     )
     expect(out).not.toContain('✕')
-    expect(out).toMatch(/▌ Keep both +saves yours as report-rotated \(1\)\.pdf/)
+    expect(out).toMatch(/❯ Keep both +saves yours as report-rotated \(1\)\.pdf/)
     app.stdin.write(ENTER)
     const start = Date.now()
     while (!existsSync(join(dir, 'report-rotated (1).pdf')) && Date.now() - start < 15_000)

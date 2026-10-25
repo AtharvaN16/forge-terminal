@@ -1,7 +1,8 @@
 import stringWidth from 'string-width'
+import { onWhiteAndBlack } from '../../core/colour/contrast.js'
 import { mix as mixColours } from '../../core/colour/mix.js'
 import { parseColour } from '../../core/colour/parse.js'
-import { type Rgb, toHex } from '../../core/colour/space.js'
+import { parseHex, type Rgb, rgbToOklab, toHex } from '../../core/colour/space.js'
 import { blank, mix, type Row, type Run, width } from '../home-art.js'
 import { sliderRow } from '../quality-art.js'
 import type { Palette } from '../theme.js'
@@ -99,10 +100,10 @@ export function gridLayout(lines: number, n: number): { tall: number; shown: num
  * Terminal draws it from the font) and left lines inside the swatches.
  * Rows have a gap line between them as columns have a gap column.
  *
- * The chosen cell has a thin frame round it in the text colour, `╭─╮ │ ╰─╯`,
- * in the gaps, so no swatch is covered. Your colour's reference cell is
- * underlined in the mode's colour, `━`, in the gap under it, as the tab in
- * use is. When not every row fits in `lines`, the rows shown keep the
+ * The chosen cell has a thin frame round it in the gaps, eighth blocks
+ * against its edges (`▁ ▕ ▏ ▔`), so no swatch is covered: white on a dark
+ * swatch, near-black on a light one (2026-10-24). Your colour's reference
+ * cell has a small dot in its middle, white, near-black on a light colour. When not every row fits in `lines`, the rows shown keep the
  * chosen one in the middle, and a bar at the right says where they are in
  * the list.
  */
@@ -139,7 +140,10 @@ export function gridRows({
   const gapless = gapped.shown < all.length && lines >= all.length
   const { tall, shown } = gapless ? { tall: 1, shown: all.length } : gapped
   const first = Math.max(0, Math.min(all.length - shown, sel.row - Math.floor((shown - 1) / 2)))
-  const frame = lc(p.fg)
+  // The chosen cell's frame (2026-10-24): the one of white and near-black
+  // that stands off the canvas, so the thin line is seen against the gap it
+  // is drawn in; the other only on a swatch too close to it to tell apart.
+  const frame = frameOn(p, all[sel.row]?.hexes[sel.col])
   const C = (ch: string, fg?: string, bg?: string, bold = false): Cell => ({ ch, fg, bg, bold })
 
   const at = (i: number) => 2 + nameW + i * (cell + 1)
@@ -173,14 +177,9 @@ export function gridRows({
   const gap = (r: number): Cell[] => {
     const cells = line()
     const top = r === sel.row
+    // Eighth blocks against the swatch's edge, so the frame sits on the colour it reads on.
     if (framed && sel.col >= 0 && (top || r - 1 === sel.row)) {
-      cells[at(sel.col) - 1] = C(top ? '╭' : '╰', frame)
-      for (let c = 0; c < cell; c++) cells[at(sel.col) + c] = C('─', frame)
-      cells[at(sel.col) + cell] = C(top ? '╮' : '╯', frame)
-    }
-    // Under your colour's reference cell, its underline: over the frame's edge where they meet.
-    if (all[r - 1]?.yours && reference >= 0 && reference < n) {
-      for (let c = 0; c < cell; c++) cells[at(reference) + c] = C('━', lc(p.accent))
+      for (let c = 0; c < cell; c++) cells[at(sel.col) + c] = C(top ? '▁' : '▔', frame)
     }
     return cells
   }
@@ -200,9 +199,20 @@ export function gridRows({
       x.hexes.forEach((h, i) => {
         for (let c = 0; c < cell; c++) cells[at(i) + c] = C(' ', undefined, lc(h))
       })
+      // Your colour's reference cell (2026-10-24): a small dot in its middle.
+      if (x.yours && reference >= 0 && reference < n) {
+        if (k === Math.floor((tall - 1) / 2)) {
+          const h = x.hexes[reference]
+          cells[at(reference) + Math.floor((cell - 1) / 2)] = C(
+            '•',
+            readsOn(h, '#ffffff'),
+            h ? lc(h) : undefined,
+          )
+        }
+      }
       if (framed && r === sel.row && sel.col >= 0) {
-        cells[at(sel.col) - 1] = C(gapless ? '▕' : '│', frame)
-        cells[at(sel.col) + cell] = C(gapless ? '▏' : '│', frame)
+        cells[at(sel.col) - 1] = C('▕', frame)
+        cells[at(sel.col) + cell] = C('▏', frame)
       }
       body.push(cells)
     }
@@ -222,6 +232,37 @@ export function gridRows({
   const out: Row[] = [rowFrom(labelCells), ...body.map(rowFrom)]
   while (out.length < lines + 1) out.push([])
   return out
+}
+
+/** White on a dark swatch, near-black on a light one; `fallback` when there is no swatch. */
+function readsOn(hex: string | undefined, fallback: string): string {
+  const rgb = hex ? parseHex(hex) : undefined
+  if (!rgb) return lc(fallback)
+  const r = onWhiteAndBlack(rgb)
+  return r.white >= r.black ? '#ffffff' : '#111111'
+}
+
+/** How far apart two lightnesses must be for a thin line between them to be seen. */
+const APART = 0.2
+const WHITE = '#ffffff'
+const NEAR_BLACK = '#111111'
+const lightness = (hex: string): number | undefined => {
+  const rgb = parseHex(hex)
+  return rgb ? rgbToOklab(rgb).L : undefined
+}
+
+/**
+ * The frame's colour on `hex`: white on a dark canvas, near-black on a light
+ * one; the other where the swatch is within `APART` of it. Not a contrast
+ * ratio: by that, a mid-tone swatch takes near-black, which a dark canvas
+ * swallows (2026-10-24, teal 600 #6F7C79).
+ */
+function frameOn(p: Palette, hex: string | undefined): string {
+  const canvas = lightness(p.canvas) ?? 0
+  const [line, other] = canvas < 0.5 ? [WHITE, NEAR_BLACK] : [NEAR_BLACK, WHITE]
+  const L = hex ? lightness(hex) : undefined
+  if (L === undefined) return lc(p.fg)
+  return Math.abs((lightness(line) as number) - L) < APART ? other : line
 }
 
 /** Before a colour: the step numbers faint, the swatches as outlines on every other line. */
@@ -353,7 +394,7 @@ export function windowOver(
   return rows.map(rowFrom)
 }
 
-/** A list row in a window: the one in hand on the band, with › in the mode colour. */
+/** A list row in a window: the one in hand on the band, with a plain ❯ in the text colour. */
 function listRow(
   p: Palette,
   name: string,
@@ -364,7 +405,7 @@ function listRow(
 ): Row {
   const band = on && p.panelBand !== '' ? lc(p.panelBand) : undefined
   const row: Row = [
-    { text: on ? ' › ' : '   ', fg: lc(p.accent), bold: true, ...(band ? { bg: band } : {}) },
+    { text: on ? ' ❯ ' : '   ', fg: lc(p.fg), bold: true, ...(band ? { bg: band } : {}) },
     { ...ink(name, on ? p.fg : p.dim, on), ...(band ? { bg: band } : {}) },
   ]
   row.push({ text: ' '.repeat(Math.max(1, nameW + 3 - width(row))), ...(band ? { bg: band } : {}) })
@@ -509,7 +550,7 @@ export function gradientLines(
   const stops = win.stops.map((c, i): Row => {
     const chosen = i === win.at
     const row: Row = [
-      { text: chosen ? ' › ' : '   ', fg: lc(p.accent), bold: true },
+      { text: chosen ? ' ❯ ' : '   ', fg: lc(p.fg), bold: true },
       ink(String(i + 1), chosen ? p.fg : p.border, chosen),
       blank(3),
       { text: '    ', bg: lc(toHex(c)) },
@@ -524,7 +565,7 @@ export function gradientLines(
   const boxW = inner - 6 - 3
   const inside: Row = [
     blank(1),
-    ink('›', inHand ? p.accent : p.border, true),
+    ink(inHand ? '❯' : '›', inHand ? p.fg : p.border, true),
     blank(1),
     ink(win.text, win.wrong ? p.fail : p.fg),
     ...(typed && !win.wrong ? [blank(2), { text: '    ', bg: lc(toHex(typed)) }] : []),

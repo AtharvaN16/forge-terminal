@@ -10,6 +10,7 @@ import {
   nextLine,
   pagesRow,
   partsRow,
+  tilesRow,
   timeRow,
   triesRow,
   workLine,
@@ -42,6 +43,7 @@ export function Working({
   search,
   pages,
   time,
+  tiles,
   progress,
   parts,
   finished,
@@ -61,6 +63,8 @@ export function Working({
   pages?: { done: number; total: number } | undefined
   /** A video's or sound file's seconds encoded of its true total, and when this pass began. */
   time?: { done: number; total: number; since: number } | undefined
+  /** Tiles of a picture a model has done, of all it was cut into, and when the first was counted. */
+  tiles?: { done: number; total: number; since: number } | undefined
   /** A true amount of a known total that is not whole things, and how to say it: "23:10 of 1:01:57". */
   progress?: { done: number; total: number; says: string } | undefined
   /** Parts of a known count, done of all, as two-cell squares (transcribe's notes). */
@@ -98,16 +102,25 @@ export function Working({
               // Read at render time, as `KeyRow` reads it: NO_COLOR strips every colour.
               plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
             })
-          : time
-            ? timeRow({
+          : tiles
+            ? tilesRow({
                 palette,
                 mode,
-                done: time.done,
-                total: time.total,
-                elapsedMs: Date.now() - time.since,
+                done: tiles.done,
+                total: tiles.total,
+                elapsedMs: Date.now() - tiles.since,
                 plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
               })
-            : undefined
+            : time
+              ? timeRow({
+                  palette,
+                  mode,
+                  done: time.done,
+                  total: time.total,
+                  elapsedMs: Date.now() - time.since,
+                  plain: (process.env.NO_COLOR ?? '') !== '' || palette.track === '',
+                })
+              : undefined
   return (
     <Box flexDirection="column" flexGrow={1}>
       {finished ? (

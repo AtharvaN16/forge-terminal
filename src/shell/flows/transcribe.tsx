@@ -505,13 +505,18 @@ export function TranscribeFlow({
   const doneList: DoneAction[] =
     done?.clip === 'placed'
       ? [
-          { key: 'u', label: 'Undo' },
-          { key: 's', label: 'Save a copy' },
+          { key: 'u', label: 'undo' },
+          { key: 's', label: 'save a copy' },
         ]
       : [
-          { key: 'o', label: 'Open' },
-          { key: 'f', label: revealLabel().replace(/^Show in /, '') },
-          { key: 'c', label: 'Copy' },
+          { key: 'o', label: 'open' },
+          {
+            key: 'f',
+            label: revealLabel()
+              .replace(/^Show in /, '')
+              .toLowerCase(),
+          },
+          { key: 'c', label: 'copy' },
         ]
   const [doneSel, setDoneSel] = useState<number | undefined>()
   useEffect(() => {

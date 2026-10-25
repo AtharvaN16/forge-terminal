@@ -389,14 +389,26 @@ describe('the ramp at other widths and counts', () => {
     }
   })
 
-  it('the steps line says the steps at rest, no keys (More has them); ↵ done at its end while editing', () => {
+  it('the steps line says the steps at rest, no keys (More has them); a band of buttons while editing (T2 · G1)', () => {
     const tw = { set: 'tailwind', start: 50, end: 950, count: 11 } as const
     const rest = text(stepsLine({ width: 76, palette: P, spec: tw }))
     expect(rest).toMatch(/^ {2}Tailwind {2}50 – 950 {2}· {2}11 steps$/)
     const even = { set: 'even', start: 0, end: 1000, count: 15 } as const
-    const editing = text(stepsLine({ width: 76, palette: P, spec: even, editing: 'count' }))
-    expect(editing).toMatch(/^ +Even +from +0 +to +1000 +steps +‹ 15 › +↵ +done$/)
+    const row = stepsLine({ width: 76, palette: P, spec: even, editing: 'count' })
+    const editing = text(row)
+    expect(editing).toMatch(/^ +Even +from 0 +to 1000 +‹ 15 steps › +↵ done {2}$/)
     expect(editing.length).toBe(74)
+    // The band in the shelf grey to a cell before ↵ done; the value in hand on the key caps' grey.
+    const shelf = P.shelf.toLowerCase()
+    expect(row.find((r) => r.text.includes('Even'))?.bg).toBe(shelf)
+    expect(row.find((r) => r.text.includes('‹ 15 steps ›'))).toMatchObject({
+      bg: P.keycapBg.toLowerCase(),
+      bold: true,
+    })
+    expect(row.find((r) => r.text.includes('done'))?.bg).toBe(P.modeColourBg.toLowerCase())
+    const done = editing.indexOf('↵') - 2
+    expect(editing[done - 1]).toBe(' ')
+    expect(row.flatMap((r) => [...r.text].map(() => r.bg))[done - 1]).toBeUndefined()
     const radix = { set: 'radix', start: 50, end: 950, count: 11 } as const
     expect(text(stepsLine({ width: 76, palette: P, spec: radix }))).toMatch(
       /Radix {2}1 – 12 {2}· {2}12 steps · your colour at 9$/,

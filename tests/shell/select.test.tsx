@@ -45,7 +45,7 @@ describe('Select', () => {
   it('marks the first item with a cursor and bold, not colour alone', () => {
     const { lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     const frame = lastFrame() ?? ''
-    expect(plain(frame)).toContain('▌ WebP')
+    expect(plain(frame)).toContain('❯ WebP')
     expect(plain(frame)).toContain('  PNG')
     // The glyph alone isn't the requirement — §13 demands bold too, so pin
     // the actual SGR bold-on sequence to the selected row and nowhere else.
@@ -65,7 +65,7 @@ describe('Select', () => {
     const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(DOWN)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ PNG')
+    expect(plain(lastFrame())).toContain('❯ PNG')
   })
 
   it('moves the cursor up', async () => {
@@ -74,17 +74,17 @@ describe('Select', () => {
     await settle()
     stdin.write(UP)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ WebP')
+    expect(plain(lastFrame())).toContain('❯ WebP')
   })
 
   it('stops at the ends rather than wrapping', async () => {
     const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={() => {}} />)
     stdin.write(UP)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ WebP')
+    expect(plain(lastFrame())).toContain('❯ WebP')
     stdin.write(DOWN + DOWN + DOWN + DOWN)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ AVIF')
+    expect(plain(lastFrame())).toContain('❯ AVIF')
   })
 
   it('submits the highlighted value on enter', async () => {
@@ -106,7 +106,7 @@ describe('Select', () => {
     const { stdin, lastFrame } = render(<Select width={60} items={items} onSubmit={onSubmit} />)
     stdin.write(DOWN + DOWN + ENTER)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ AVIF')
+    expect(plain(lastFrame())).toContain('❯ AVIF')
     expect(onSubmit).toHaveBeenCalledWith('avif')
   })
 
@@ -126,7 +126,7 @@ describe('Select', () => {
     await settle()
     stdin.write(ENTER)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ WebP')
+    expect(plain(lastFrame())).toContain('❯ WebP')
     expect(onHighlight).not.toHaveBeenCalled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -183,7 +183,7 @@ describe('Select disabled rows', () => {
 
   it('starts the cursor on the first enabled row, not row zero', () => {
     const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
-    expect(plain(lastFrame())).toContain('▌ Split')
+    expect(plain(lastFrame())).toContain('❯ Split')
   })
 
   it('skips a disabled row when moving down', async () => {
@@ -197,7 +197,7 @@ describe('Select disabled rows', () => {
     )
     stdin.write(DOWN)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ Extract')
+    expect(plain(lastFrame())).toContain('❯ Extract')
   })
 
   it('skips a disabled row when moving up', async () => {
@@ -213,7 +213,7 @@ describe('Select disabled rows', () => {
     await settle()
     stdin.write(UP)
     await settle()
-    expect(plain(lastFrame())).toContain('▌ Split')
+    expect(plain(lastFrame())).toContain('❯ Split')
   })
 
   it('never submits a disabled row', async () => {
@@ -230,7 +230,7 @@ describe('Select disabled rows', () => {
     const { lastFrame } = render(<Select width={60} items={withDisabled} onSubmit={() => {}} />)
     const frame = lastFrame() ?? ''
     const mergeLine = frame.split('\n').find((l) => plain(l).includes('Merge')) ?? ''
-    expect(plain(mergeLine)).not.toContain('▌')
+    expect(plain(mergeLine)).not.toContain('❯')
     expect(mergeLine).not.toContain(BOLD_ON)
   })
 
@@ -283,8 +283,8 @@ describe('an initial value', () => {
     const { lastFrame } = render(
       <Select width={60} items={dpi} initialValue="150" onSubmit={() => {}} />,
     )
-    expect(plain(lastFrame())).toContain('▌ 150 dpi')
-    expect(plain(lastFrame())).not.toContain('▌ 72 dpi')
+    expect(plain(lastFrame())).toContain('❯ 150 dpi')
+    expect(plain(lastFrame())).not.toContain('❯ 72 dpi')
   })
 
   it('submits the named row on a plain Enter', async () => {
@@ -323,13 +323,60 @@ describe('an initial value', () => {
         onSubmit={() => {}}
       />,
     )
-    expect(plain(lastFrame())).toContain('▌ B')
+    expect(plain(lastFrame())).toContain('❯ B')
   })
 
   it('falls back to the first enabled row when the value matches nothing', () => {
     const { lastFrame } = render(
       <Select width={60} items={dpi} initialValue="600" onSubmit={() => {}} />,
     )
-    expect(plain(lastFrame())).toContain('▌ 72 dpi')
+    expect(plain(lastFrame())).toContain('❯ 72 dpi')
+  })
+
+  describe('when the list is replaced by another in the same place', () => {
+    const many: Choice[] = ['a', 'b', 'c', 'd', 'e'].map((v) => ({
+      value: v,
+      label: v.toUpperCase(),
+    }))
+    const few: Choice[] = [
+      { value: '2', label: '2×' },
+      { value: '4', label: '4×' },
+    ]
+
+    it('opens the new list on its first row, not on the row the old cursor was at', async () => {
+      const app = render(<Select width={60} items={many} onSubmit={() => {}} />)
+      for (let i = 0; i < 4; i++) {
+        app.stdin.write(DOWN)
+        await settle()
+      }
+      expect(plain(app.lastFrame())).toContain('❯ E')
+      const onSubmit = vi.fn()
+      app.rerender(<Select width={60} items={few} onSubmit={onSubmit} />)
+      await settle()
+      expect(plain(app.lastFrame())).toContain('❯ 2×')
+      app.stdin.write(ENTER)
+      await settle()
+      expect(onSubmit).toHaveBeenCalledWith('2')
+    })
+
+    it('opens it on the new list’s initialValue', async () => {
+      const app = render(<Select width={60} items={many} onSubmit={() => {}} />)
+      app.stdin.write(DOWN)
+      await settle()
+      app.rerender(<Select width={60} items={few} initialValue="4" onSubmit={() => {}} />)
+      await settle()
+      expect(plain(app.lastFrame())).toContain('❯ 4×')
+    })
+
+    it('keeps the cursor on its row when the same row is still there (a filter narrowing)', async () => {
+      const app = render(<Select width={60} items={many} onSubmit={() => {}} />)
+      app.stdin.write(DOWN)
+      await settle()
+      app.stdin.write(DOWN)
+      await settle()
+      app.rerender(<Select width={60} items={many.slice(1)} onSubmit={() => {}} />)
+      await settle()
+      expect(plain(app.lastFrame())).toContain('❯ C')
+    })
   })
 })

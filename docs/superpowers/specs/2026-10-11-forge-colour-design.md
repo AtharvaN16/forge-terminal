@@ -441,7 +441,23 @@ Tailwind, Even, Radix), stopping at its ends, and tab goes to the next
 (shift-tab back). The ramp redraws as each value changes, and the chosen
 step stays on the same place on the ruler, or the nearest one, so Radix's
 9 is Tailwind's 500. ↵ keeps the steps; esc puts back what they were. The key row while
-editing: ←→ change, tab next, and esc cancel at the right. Every other key
+editing: ←→ change, and esc cancel at the right. The tab row's tab cap
+hides while the steps are open (2026-10-24).
+
+While editing, the steps' line is one band (T2 · G1, picked on
+`mockups/palette-steps-frame-2026-10-round3.html`, 2026-10-24), drawn as
+Done's way on in one row: the shelf grey (#242424) from the margin to a
+cell before `↵ done`, each value a button spaced evenly — `Tailwind`,
+`from 50`, `to 950`, an even set's `11 steps`, the tab's `soft tint` or
+`over black`; a gradient's `OKLCH`, `9 steps` — the one in hand on the
+key caps' grey (#333) with ‹ › round it, bold, the rest dim. Then what is
+not a value, quiet (`11 steps` for Tailwind, `1 – 12 · your colour at 9`
+for Radix), and the tab cap alone where tab has somewhere to go. `↵ done`
+is its own block in the mode's tint, as Done's Home rests. Three cells
+round each value where they fit, then two, then one; without greys (the
+first-run palette) the line falls back to pills. On the Palette
+tab the steps' line is drawn on More's row, over the key row's rule, with
+the detail line a blank above it. Every other key
 does nothing until then.
 
 The steps are kept for the session: a new colour (`#`), a new centre (`r`),
@@ -714,11 +730,15 @@ one colour"), Palette ("build a palette / from one colour").
   that, up to three when every row fits. When not every row fits, the grid
   scrolls with the chosen row kept in the middle, and a bar (`┃` on a faint
   `│`) at its right says where.
-- **The chosen cell** has a thin frame, `╭─╮ │ ╰─╯`, in the text colour, in
-  the gaps round it. **Your colour's cell** is underlined, `━` in the mode's
-  colour in the gap under it, taking the middle of the frame's bottom edge
-  when chosen (2026-10-14; replaces ◤). The step number above and the
-  row's name are bold.
+- **The chosen cell** has a thin frame in the gaps round it, eighth blocks
+  against its edges (`▁ ▕ ▏ ▔`), white on a dark swatch and near-black on a
+  light one (2026-10-24; was `╭─╮ │ ╰─╯` in the text colour). **Your
+  colour's cell** has a small `•` in its middle, white (near-black on a
+  light colour), and nothing round it (2026-10-24; replaces the `━`
+  underline of 2026-10-14). The step number above and the
+  row's name are bold. A blank line sits between the chosen swatch's line
+  and the step numbers, and the mode's name is at the left of More's row,
+  over the key row's rule (2026-10-24).
 - **Modes** (`m`, a centred window over the faded screen, W1; each mode with
   its colours as chips; it scrolls when too short): Full set, Monochromatic,
   Analogous, Complementary, Split complementary, Triadic, Pastel. Maths in

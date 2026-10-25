@@ -44,7 +44,7 @@ async function walkTo(file: string, dir: string, format: string) {
   await settle()
   app.stdin.write(ENTER)
   await settle(400)
-  for (let i = 0; i < 8 && !plain(app.lastFrame()).includes(`▌ ${format}`); i++) {
+  for (let i = 0; i < 8 && !plain(app.lastFrame()).includes(`❯ ${format}`); i++) {
     app.stdin.write(DOWN)
     await settle(100)
   }
