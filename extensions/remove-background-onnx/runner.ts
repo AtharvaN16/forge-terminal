@@ -4,13 +4,17 @@
  *   node runner.mjs <in.png> <out.png>
  *
  * The same arguments and replies as the macOS helper (forge-cutout, Apple
- * Vision), so Forge runs either the same way. U²-Net-p (rembg's
- * u2netp.onnx, 4.6 MB) finds the subject on a 320 × 320 copy of the image
- * through ONNX Runtime's CPU provider: one small inference, well under a
- * second on a laptop, so no GPU provider is worth shipping. The mask is
- * stretched, brought back to the image's size (bilinear) and becomes its
- * alpha, multiplied into any alpha the image already had. The RGB is the
- * input's, untouched.
+ * Vision), so Forge runs either the same way. BiRefNet-lite (54 MB, int8, made
+ * for 768 × 768) finds the subject on a 768 × 768 copy of the image through
+ * ONNX Runtime's CPU provider, about a second or two on a laptop and about
+ * 2 GB at its peak. Its scores go through a sigmoid and are brought back to
+ * the image's size (bilinear) as its alpha, multiplied into any alpha the
+ * image already had. The RGB is the input's, untouched.
+ *
+ * ONNX Runtime here is onnxruntime-node-rmbg, an npm alias of
+ * onnxruntime-node 1.25.1: the model's deformable convolutions are ONNX's
+ * own `DeformConv`, which the CPU provider only has from 1.25.1 (Forge's
+ * other extensions stay on 1.23.2).
  *
  * Contract (shared with Forge's src/extensions/run.ts): exactly one JSON line
  * on stdout — `{"ok":true,"width","height","ms"}` with exit 0, or
@@ -23,11 +27,11 @@
 
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import type { Tensor } from 'onnxruntime-node'
+import type { Tensor } from 'onnxruntime-node-rmbg'
 import { decodePng, PngError, PngWriter } from '../boost/png.js'
-import { judge, MaskScaler, modelInput, SIZE, stretch } from './mask.js'
+import { judge, MaskScaler, modelInput, SIZE, sigmoid } from './mask.js'
 
-const MODEL_FILE = 'u2netp.onnx'
+const MODEL_FILE = 'birefnet-lite-768-int8.onnx'
 const BAND = 64
 const USAGE = 'usage: runner.mjs <in.png> <out.png>'
 
@@ -56,31 +60,28 @@ async function cutout(input: string, output: string): Promise<{ width: number; h
   if (!existsSync(modelPath))
     throw new RunnerError('runtime-error', `model file missing: ${modelPath}`)
   const tDecoded = performance.now()
-  const ort = await import('onnxruntime-node')
+  const ort = await import('onnxruntime-node-rmbg')
   const session = await ort.InferenceSession.create(modelPath, {
     executionProviders: ['cpu'],
-    intraOpNumThreads: 2,
-    interOpNumThreads: 1,
     graphOptimizationLevel: 'all',
     logSeverityLevel: 3,
   })
-  const inName = session.inputNames[0] ?? 'input.1'
-  // The first output is d0, the fused map; the other six are side outputs.
-  const outName = session.outputNames[0] ?? '1959'
+  const inName = session.inputNames[0] ?? 'input_image'
+  const outName = session.outputNames[0] ?? 'output_image'
   const result = await session.run({
     [inName]: new ort.Tensor('float32', modelInput(rgba, W, H), [1, 3, SIZE, SIZE]),
   })
-  const raw = Float32Array.from((result[outName] as Tensor).data as Float32Array)
+  const mask = sigmoid((result[outName] as Tensor).data as Float32Array)
   await session.release()
   const tModel = performance.now()
 
-  const verdict = judge(raw)
+  const verdict = judge(mask)
   process.stderr.write(
     `mask peak ${verdict.peak.toFixed(3)}, coverage ${(verdict.coverage * 100).toFixed(1)}%\n`,
   )
   if (!verdict.found) throw new RunnerError('no-subject', 'no foreground subject found')
 
-  const scaler = new MaskScaler(stretch(raw), W, H)
+  const scaler = new MaskScaler(mask, W, H)
   const row = new Float32Array(W)
   const writer = new PngWriter(output, W, H, true)
   for (let y0 = 0; y0 < H; y0 += BAND) {

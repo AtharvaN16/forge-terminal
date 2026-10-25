@@ -19,10 +19,11 @@ import { runExtension } from '../../src/extensions/run.js'
 /**
  * The Windows and Linux cutout payload's child-process contract — the same
  * one as the macOS helper's (cutout.test.ts) — run against the real esbuild
- * bundle. The model is 4.6 MB and comes from
+ * bundle. The model is 54 MB and comes from
  * `node extensions/remove-background-onnx/build.mjs` (cached in
  * extensions/boost/.cache/), so the tests that run it are skipped where that
  * file is absent, e.g. CI, and on macOS, which has no build of this runner.
+ * (CI runs the same checks on the packed archives: scripts/verify-extension-payload.mjs.)
  */
 const run = promisify(execFile)
 const extDir = join(process.cwd(), 'extensions', 'remove-background-onnx')

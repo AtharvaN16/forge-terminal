@@ -94,7 +94,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: 'remove-background',
     title: 'Remove background',
-    summary: 'Cut the subject out of a photo, on this Mac',
+    summary: 'Cut the subject out of a photo, on your own computer',
     // Darwin assets only, like every minMacos.
     minMacos: 14,
     assets: {
@@ -105,13 +105,38 @@ export const CATALOG: readonly CatalogEntry[] = [
         bytes: 32489,
         sha256: '9f6e055c0ce25f7504e10c7871e506a813bc75d6536396a675a8c075c4eb4686',
       },
-      // Not on Windows or Linux yet: U²-Net-p (extensions/remove-background-onnx)
-      // failed the quality bar on 2026-10-11, and a compressed IS-Net
-      // (45 MB) is close but not Apple's (mockups/remove-bg-compressed-2026-10.html).
-      // The runner speaks the Swift helper's arguments, so a model that passes
-      // drops in.
+      // Windows and Linux: BiRefNet-lite at 768 px (extensions/remove-background-onnx), on its
+      // own ONNX Runtime 1.25.1 (the model needs DeformConv, which 1.23.2 lacks). It came close
+      // to Apple Vision on 42 photos (same subject or none on 40; nothing missed) at about
+      // 2 GB of memory and a second or two a photo. The runner speaks the Swift helper's
+      // arguments and replies, so Forge runs either the same way.
+      'win32-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-x64.tar.gz`,
+        bytes: 47185054,
+        sha256: '50e8ec4df513d491fa5c1a08e92919426d78f021aa7641e0e0e8b958fd5ebb32',
+      },
+      'win32-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-win32-arm64.tar.gz`,
+        bytes: 47167233,
+        sha256: '1210707480f0119019be21d9bfefe80faa472ebb345e9ae3e560bb7b5c1989a3',
+      },
+      'linux-x64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-x64.tar.gz`,
+        bytes: 51958081,
+        sha256: 'd3c6cf5e02bd1dfdc73c564acf679d9e4ec0e218386573347e17d2392237c123',
+      },
+      'linux-arm64': {
+        version: '1.1.0',
+        url: `${RELEASES}/ext-remove-background-v1.1.0/forge-ext-remove-background-1.1.0-linux-arm64.tar.gz`,
+        bytes: 45516645,
+        sha256: '97ebaaad5ee7b13696bfc1e7bf8203942370987d828625e25e095c3f9d350a5c',
+      },
     },
-    licence: 'Uses Apple Vision on-device; helper is MIT',
+    licence:
+      'Apple Vision on a Mac (the helper is MIT); BiRefNet-lite (MIT) and ONNX Runtime (MIT) on Windows and Linux',
   },
   {
     // macOS decodes HEIC itself (sips); Windows and Linux need this. The two

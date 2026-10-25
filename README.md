@@ -37,9 +37,8 @@ your distro's package (or nodejs.org's build) on Linux.
 On Windows, use Windows Terminal for the full experience.
 
 Most features work on all three. The exceptions: transcript summaries and
-notes need Apple Intelligence, so they are Mac-only; remove background is
-Mac-only until a model matches Apple Vision; Boost has no Linux ARM build
-(there it would run on the processor alone). Where a feature needs a
+notes need Apple Intelligence, so they are Mac-only; Boost has no Linux ARM
+build (there it would run on the processor alone). Where a feature needs a
 tool the OS does not have, it is a small optional extension
 (`forge extensions`) or a common package, named in the error that asks for it.
 
@@ -461,13 +460,15 @@ the graphics card: CoreML on Apple silicon, DirectML on Windows (any DirectX 12
 graphics), WebGPU on Intel Macs (Metal) and on Linux x64 (Vulkan, so it needs a
 Vulkan driver for the card). Where that would leave the processor to do it and
 a photo would take over about three minutes, Boost stops and says so. Remove
-background uses Apple Vision, so it is Mac-only for now. Windows and Linux also have a `heic` extension, because macOS opens
+background uses Apple Vision on a Mac, and on Windows and Linux a small model
+(BiRefNet-lite, 54 MB, on the processor: about two seconds a photo and 2 GB of
+memory at its peak). Windows and Linux also have a `heic` extension, because macOS opens
 iPhone photos itself and they need a decoder. Nothing downloads until you ask:
 
 ```bash
 forge extensions                        # list: installed or not, size, licence
 forge extensions add boost              # about 15 MB on Apple silicon, 16 MB on an Intel Mac, 17 MB on Linux x64, 23 MB on Windows
-forge extensions add remove-background  # about 32 KB; Mac only
+forge extensions add remove-background  # 32 KB on a Mac (Apple Vision); 46 to 52 MB on Windows and Linux
 forge extensions add heic               # about 0.5 MB; Windows and Linux
 forge extensions add whisper            # transcribe where Apple's recogniser is not (see above)
 forge extensions add yt-dlp             # YouTube links for transcribe, every OS

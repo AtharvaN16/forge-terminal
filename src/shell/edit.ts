@@ -126,7 +126,7 @@ function trimRow(source: ImageInfo, measure: ImageMeasure | undefined): EditRow 
  * The rows, in the decided order, for `source`. No row is a default.
  * `measure` (read once the list opens) gives Trim its facts. `offered` is
  * what the installed boost makes (`boostScales`); the Boost row keeps those
- * that fit this image. Remove background is a Mac-only row (`platform`).
+ * that fit this image. Remove background is offered wherever the catalogue has a build (`platform`).
  */
 export function editRows(
   source: ImageInfo,
@@ -152,8 +152,7 @@ export function editRows(
   const sharpenReason = tooLarge(source, 1)
   // Boost's model is offered where the catalogue has a build for this chip: a
   // Mac, Windows and Linux x64, a graphics card each (CoreML, DirectML,
-  // WebGPU). Where it has none (Linux arm64) neither of its rows is there, as
-  // Remove background's is not.
+  // WebGPU). Where it has none (Linux arm64) neither of its rows is there.
   const boostRows: EditRow[] = [
     {
       id: 'sharpen',
@@ -186,7 +185,7 @@ export function editRows(
   ]
   return [
     ...(offeredHere('boost', platform, arch) ? boostRows : []),
-    // Apple Vision does the cutting, so there is no such row where it is not offered.
+    // Apple Vision on a Mac, a small model on Windows and Linux: no row where the catalogue has no build.
     ...(offeredHere('remove-background', platform)
       ? [
           {

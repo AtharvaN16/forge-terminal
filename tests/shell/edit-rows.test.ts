@@ -141,13 +141,14 @@ describe('where the Boost and Sharpen rows are offered', () => {
     expect(rows).toEqual(expect.arrayContaining(['trim', 'resize', 'rotate', 'crop']))
   })
 
-  it('never shows Remove background off a Mac', () => {
+  it('shows Remove background on every OS and chip: Apple Vision on a Mac, BiRefNet-lite elsewhere', () => {
     for (const [platform, arch] of [
       ['linux', 'x64'],
+      ['linux', 'arm64'],
       ['win32', 'x64'],
+      ['darwin', 'x64'],
     ] as const)
-      expect(ids(platform, arch)).not.toContain('cutout')
-    expect(ids('darwin', 'x64')).toContain('cutout')
+      expect(ids(platform, arch)).toContain('cutout')
   })
 })
 

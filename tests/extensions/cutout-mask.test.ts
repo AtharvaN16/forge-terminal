@@ -6,7 +6,7 @@ import {
   modelInput,
   PEAK_MIN,
   SIZE,
-  stretch,
+  sigmoid,
 } from '../../extensions/remove-background-onnx/mask.js'
 
 const N = SIZE * SIZE
@@ -18,7 +18,7 @@ function rgba(w: number, h: number, px: (x: number, y: number) => number[]): Uin
 }
 
 describe('modelInput', () => {
-  it('is 3 × 320 × 320, scaled by the brightest sample, then ImageNet-normalised', () => {
+  it('is 3 × 768 × 768, scaled by the brightest sample, then ImageNet-normalised', () => {
     // Mid grey everywhere: scaled by its own brightness, every sample is 1.
     const t = modelInput(
       rgba(50, 30, () => [128, 128, 128, 255]),
@@ -36,19 +36,24 @@ describe('modelInput', () => {
   })
 
   it('keeps the planes apart and the picture the right way up', () => {
-    // Top half red, bottom half blue, on a 2000 × 1600 photo (box-shrunk first).
+    // Top half red, bottom half blue, on a 4000 × 3200 photo (box-shrunk first).
     const t = modelInput(
-      rgba(2000, 1600, (_x, y) => (y < 800 ? [255, 0, 0, 255] : [0, 0, 255, 255])),
-      2000,
-      1600,
+      rgba(4000, 3200, (_x, y) => (y < 1600 ? [255, 0, 0, 255] : [0, 0, 255, 255])),
+      4000,
+      3200,
     )
     const at = (c: number, x: number, y: number) => t[c * N + y * SIZE + x] ?? Number.NaN
-    expect(at(0, 160, 20)).toBeGreaterThan(at(0, 160, 300))
-    expect(at(2, 160, 300)).toBeGreaterThan(at(2, 160, 20))
+    expect(at(0, 384, 40)).toBeGreaterThan(at(0, 384, 700))
+    expect(at(2, 384, 700)).toBeGreaterThan(at(2, 384, 40))
   })
 })
 
 describe('judge', () => {
+  it('asks for a confident pixel (one half) and one percent of the frame', () => {
+    expect(PEAK_MIN).toBe(0.5)
+    expect(COVERAGE_MIN).toBe(0.01)
+  })
+
   it('finds a subject that is confident and covers enough of the frame', () => {
     const raw = new Float32Array(N)
     raw.fill(0.95, 0, Math.ceil(N * 0.2))
@@ -73,22 +78,18 @@ describe('judge', () => {
   })
 })
 
-describe('stretch', () => {
-  it('maps the lowest value to 0 and the highest to 1', () => {
-    expect(Array.from(stretch(Float32Array.from([0.2, 0.4, 0.6])))).toEqual([
-      0,
-      expect.closeTo(0.5, 5),
-      1,
-    ])
-  })
-
-  it('gives an all-zero mask for a flat map instead of dividing by zero', () => {
-    expect(Array.from(stretch(new Float32Array(4).fill(0.3)))).toEqual([0, 0, 0, 0])
+describe('sigmoid', () => {
+  it('turns raw scores into 0–1: 0 is one half, large scores are near 1 or 0', () => {
+    const out = sigmoid(Float32Array.from([0, 20, -20, Math.log(3)]))
+    expect(out[0]).toBeCloseTo(0.5, 6)
+    expect(out[1]).toBeGreaterThan(0.999999)
+    expect(out[2]).toBeLessThan(0.000001)
+    expect(out[3]).toBeCloseTo(0.75, 6)
   })
 })
 
 describe('MaskScaler', () => {
-  it('brings the 320 px mask to any size, bilinear between pixel centres', () => {
+  it('brings the 768 px mask to any size, bilinear between pixel centres', () => {
     // Left half 0, right half 1.
     const mask = new Float32Array(N)
     for (let y = 0; y < SIZE; y++) mask.fill(1, y * SIZE + SIZE / 2, (y + 1) * SIZE)
@@ -101,7 +102,7 @@ describe('MaskScaler', () => {
     expect(row.some((v) => v > 0 && v < 1)).toBe(true)
   })
 
-  it('keeps a 320 px image pixel for pixel', () => {
+  it('keeps a 768 px image pixel for pixel', () => {
     const mask = Float32Array.from({ length: N }, (_, i) => (i % 7) / 7)
     const s = new MaskScaler(mask, SIZE, SIZE)
     const row = s.row(5, new Float32Array(SIZE))

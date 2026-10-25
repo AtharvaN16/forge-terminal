@@ -31,10 +31,15 @@ name: extensions
 # verify-linux jobs, also with read-only tokens. Nothing is uploaded until
 # both have passed: resolve -> package -> verify-windows, verify-linux -> publish.
 #
-# remove-background is Apple Vision's Swift helper, macOS only. Its ONNX
-# runner (extensions/remove-background-onnx) is not built here until a model
-# passes the quality bar. Boost's Linux x64 payload is built here (WebGPU, through
-# Vulkan); there is none for Linux arm64, whose ONNX Runtime has no WebGPU.
+# remove-background is two programs: Apple Vision's Swift helper for macOS,
+# and a Node runner on ONNX Runtime (extensions/remove-background-onnx) for
+# Windows and Linux, built beside it from the same tag. The runner's model is
+# BiRefNet-lite, fetched from the model-birefnet-lite-768-v1 release and pinned
+# by sha256 in model.json (how it is made: extensions/remove-background-onnx/model/).
+# It runs on onnxruntime-node-rmbg, an npm alias of onnxruntime-node 1.25.1;
+# boost and read-text stay on 1.23.2. Boost's Linux x64 payload is built here
+# (WebGPU, through Vulkan); there is none for Linux arm64, whose ONNX Runtime
+# has no WebGPU.
 #
 # whisper packages on macos-26 (publish.yml's runner; the Mac archive was
 # built on Xcode 27, so a different Xcode there may not match it byte for
@@ -216,6 +221,13 @@ jobs:
           else
             bash extensions/remove-background/build.sh dist-ext/payload-universal
             node scripts/package-extension.mjs remove-background "$VERSION" universal dist-ext/payload-universal dist-ext/out >> dist-ext/assets.jsonl
+            # Windows and Linux: BiRefNet-lite on ONNX Runtime, pinned by sha256 in model.json.
+            for os in win32 linux; do
+              for arch in x64 arm64; do
+                node extensions/remove-background-onnx/build.mjs --platform "$os" --arch "$arch" --out "dist-ext/payload-$os-$arch"
+                node scripts/package-extension.mjs remove-background "$VERSION" "$os-$arch" "dist-ext/payload-$os-$arch" dist-ext/out >> dist-ext/assets.jsonl
+              done
+            done
           fi
           cat dist-ext/assets.jsonl
 
@@ -293,7 +305,7 @@ jobs:
     if: >-
       needs.resolve.outputs.id == 'boost' || needs.resolve.outputs.id == 'heic' ||
       needs.resolve.outputs.id == 'raw' || needs.resolve.outputs.id == 'read-text' ||
-      needs.resolve.outputs.id == 'whisper'
+      needs.resolve.outputs.id == 'remove-background' || needs.resolve.outputs.id == 'whisper'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -405,6 +417,12 @@ jobs:
             if (n !== 44 * 60 * 3) { console.error("expected " + 44 * 60 * 3 + " bytes, got " + n); process.exit(1) }
           '
 
+      # x64 only, as for boost: windows-latest cannot run the arm64 build. A figure on a
+      # flat background must come back cut out, and a flat grey one must be no-subject.
+      - name: Remove background runs on Windows
+        if: needs.resolve.outputs.id == 'remove-background'
+        run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-win32-x64
+
       # x64 only, as for boost: windows-latest cannot run the arm64 build.
       - name: whisper runs on Windows
         if: needs.resolve.outputs.id == 'whisper'
@@ -420,8 +438,8 @@ jobs:
     needs: [resolve, package]
     if: >-
       needs.resolve.outputs.id == 'heic' || needs.resolve.outputs.id == 'raw' ||
-      needs.resolve.outputs.id == 'whisper' || needs.resolve.outputs.id == 'read-text' ||
-      needs.resolve.outputs.id == 'boost'
+      needs.resolve.outputs.id == 'remove-background' || needs.resolve.outputs.id == 'whisper' ||
+      needs.resolve.outputs.id == 'read-text' || needs.resolve.outputs.id == 'boost'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -528,6 +546,11 @@ jobs:
             const n = require("fs").statSync("x.rgb").size
             if (n !== 44 * 60 * 3) { console.error("expected " + 44 * 60 * 3 + " bytes, got " + n); process.exit(1) }
           '
+      # Built-ins only (no npm ci): it writes its own test PNGs and reads the results.
+      - name: Remove background runs on Linux
+        if: needs.resolve.outputs.id == 'remove-background'
+        run: node scripts/verify-extension-payload.mjs remove-background dist-ext/payload-linux-x64
+
       # A real transcription of whisper.cpp's own sample, with the model the archive carries.
       - name: whisper runs on Linux
         if: needs.resolve.outputs.id == 'whisper'

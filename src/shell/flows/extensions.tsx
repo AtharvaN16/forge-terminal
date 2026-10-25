@@ -205,7 +205,7 @@ const SHEETS: Record<
  */
 const PARTS_ELSEWHERE: Record<string, Array<[string, string]>> = {
   'remove-background': [
-    ['U²-Net-p (via rembg)', 'Apache-2.0'],
+    ['BiRefNet-lite', 'MIT'],
     ['ONNX Runtime', 'MIT'],
   ],
 }

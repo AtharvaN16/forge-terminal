@@ -1,18 +1,24 @@
 {
-  "file": "u2netp.onnx",
-  "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
-  "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
-  "bytes": 4574861,
-  "rembgMd5": "8e83ca70e441ab06c318d82300c84806",
-  "licence": "Apache-2.0 (U-2-Net, Xuebin Qin et al.); ONNX export distributed by rembg (MIT, Copyright (c) 2020 Daniel Gatis)",
+  "file": "birefnet-lite-768-int8.onnx",
+  "url": "https://github.com/AtharvaN16/forge-terminal/releases/download/model-birefnet-lite-768-v1/birefnet-lite-768-int8.onnx",
+  "sha256": "cb6edb75c5b4d1735f43881fb767eb59a59d3770336788b89eaebd8a5ff4e7fc",
+  "bytes": 54465081,
+  "licence": "MIT (BiRefNet, Peng Zheng et al.; Swin Transformer, Microsoft). Weights trained on public research datasets; see NOTICES.",
+  "source": {
+    "repo": "https://github.com/ZhengPeng7/BiRefNet",
+    "commit": "97e4f35d74043427b0e9ba935ca10991853a36bc",
+    "weights": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.pth",
+    "weightsSha256": "6a1e050c6ec2697e5ed268455df544782b023acf8643ab771250979094875ab1",
+    "build": "model/README.md"
+  },
   "licences": {
-    "u2net": {
-      "url": "https://raw.githubusercontent.com/xuebinqin/U-2-Net/ac7e1c817ecab7c7dff5ce6b1abba61cd213ff29/LICENSE",
-      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    "birefnet": {
+      "url": "https://raw.githubusercontent.com/ZhengPeng7/BiRefNet/97e4f35d74043427b0e9ba935ca10991853a36bc/LICENSE",
+      "sha256": "92a7089e0915fc32bc40067560b398f1e6a7a5958abd7d04eda393629a5acefb"
     },
-    "rembg": {
-      "url": "https://raw.githubusercontent.com/danielgatis/rembg/7fb6683169d588f653281d53c3c258838194c950/LICENSE.txt",
-      "sha256": "90a3215072968fd304669c5389f04f1274a587abdd0507d99dead0f5511f8999"
+    "swin": {
+      "url": "https://raw.githubusercontent.com/microsoft/Swin-Transformer/f82860bfb5225915aca09c3227159ee9e1df874d/LICENSE",
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
     }
   }
 }

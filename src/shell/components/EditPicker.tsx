@@ -99,8 +99,8 @@ export function EditPicker({
   const palette = useTheme()
   const stateOf = (row: EditRow): ToolState | undefined =>
     row.extension ? tools[row.extension] : READY
-  // Windows has no Remove background row (Apple Vision); the blank row then
-  // follows the last AI row there is, so it still splits AI from built-in.
+  // Where a tool has no row (Linux has no Boost), the blank row follows the
+  // last AI row there is, so it still splits AI from built-in.
   const gapAfter =
     rows.find((r) => r.gapAfter)?.id ??
     (rows.some((r) => r.id === GAP_AFTER) ? GAP_AFTER : rows.filter((r) => r.extension).at(-1)?.id)
