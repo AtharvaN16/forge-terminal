@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Row, width } from '../../src/shell/home-art.js'
-import { DARK } from '../../src/shell/theme.js'
+import { DARK, menuPalette, modePalette } from '../../src/shell/theme.js'
 import { lastNoteStart, noteCard, noteLines } from '../../src/shell/update-art.js'
 
 const text = (row: Row) => row.map((r) => r.text).join('')
@@ -60,6 +60,22 @@ describe('noteCard', () => {
     expect(text(card[2] as Row)).toMatch(/^ {2}Watch a folder/)
     // Everything fits: no bar, no note.
     expect(card.map(text).join('\n')).not.toMatch(/[│┃]|more/)
+  })
+
+  it('is the dark grey of a frame inside the popup, whatever mode the shell is in', () => {
+    // Opened from compress, the palette's band is compress's blue-green tint.
+    const p = menuPalette(modePalette(DARK, 'compress'))
+    expect(p.band).not.toBe(DARK.shelf)
+    const card = noteCard({
+      palette: p,
+      version: '0.4.0',
+      laid: laid(),
+      width: W,
+      start: 0,
+      room: 6,
+      lit: false,
+    })
+    for (const row of card.slice(1)) for (const run of row) expect(run.bg).toBe(DARK.shelf)
   })
 
   it('past its room, a bar on its last column and “↓ n more” for the notes wholly below', () => {

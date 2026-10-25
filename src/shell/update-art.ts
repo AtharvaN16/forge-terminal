@@ -94,7 +94,9 @@ export function noteCard({
   room: number
   lit: boolean
 }): Row[] {
-  const bg = palette.band
+  // The popup's darker grey, as /extensions' frame: `band` takes the mode's
+  // tint, and the card was blue-green when the menu was opened from compress.
+  const bg = palette.shelf
   const card = (row: Row): Row => {
     const runs = row.map((r): Run => ({ ...r, bg: r.bg ?? bg }))
     return [...runs, { text: ' '.repeat(Math.max(0, width - rowWidth(runs))), bg }]
