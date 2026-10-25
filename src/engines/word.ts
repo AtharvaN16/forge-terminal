@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 import { writeAtomic } from '../core/atomic.js'
 import { conversionFailed, encryptedSource } from '../core/errors.js'
 import type { DocumentInfo, FormatId, Job, Progress, Result, Warning } from '../core/types.js'
+import { readHead } from './head.js'
 import {
   loadAdmZip,
   loadCfb,
@@ -77,7 +78,26 @@ async function readDocx(bytes: Buffer): Promise<DocxProbeResult | undefined> {
   }
 }
 
+/** Every zip a docx can be starts with a local file header. */
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04])
+
+/**
+ * Whether a file could be a docx or a .doc, from its first bytes. The two
+ * checks below each need the whole file in memory, and probing reaches this
+ * engine for every file the image, media and PDF engines decline — a 1.5 GB
+ * disk image should not be read end to end to learn it is not a Word file.
+ * These are exactly the two containers `readDocx` and `looksLikeDoc` accept.
+ */
+async function couldBeWord(path: string): Promise<boolean> {
+  const head = await readHead(path, OLE_MAGIC.length)
+  return (
+    head.subarray(0, ZIP_MAGIC.length).equals(ZIP_MAGIC) ||
+    head.subarray(0, OLE_MAGIC.length).equals(OLE_MAGIC)
+  )
+}
+
 export async function probe(path: string): Promise<DocumentInfo> {
+  if (!(await couldBeWord(path))) throw new Error(`${path} is not a Word document`)
   const bytes = await readFile(path)
 
   const docx = await readDocx(bytes)

@@ -25,7 +25,8 @@ export const ENGINES: Engine[] = [
   imageEngine,
   // Straight after the image engine: they decline a non-media file from its
   // first bytes, and a video must never fall through to the PDF and Word
-  // engines, which read a whole file into memory before refusing it.
+  // engines, which read a whole file into memory once its first bytes say it
+  // could be theirs.
   videoEngine,
   soundEngine,
   pdfEngine,
