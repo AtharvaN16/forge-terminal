@@ -176,9 +176,11 @@ forge transcribe "https://www.youtube.com/watch?v=..." --language en
   `%LOCALAPPDATA%\forge\whisper`, `~/Library/Caches/forge/whisper` or
   `~/.cache/forge/whisper`.
 - Transcripts can be Markdown, Word, PDF or text everywhere. Forge writes the
-  Word and PDF itself where Apple's helper is not. The PDF is set in Noto Sans,
-  which covers Latin, Greek and Cyrillic; a character from another script
-  (Chinese, Arabic, Hindi) shows as `?` in it. Markdown, Word and text keep it.
+  Word and PDF itself where Apple's helper is not. The PDF is set in Noto Sans
+  for Latin, Greek and Cyrillic, and in the fonts your computer already has for
+  Chinese, Japanese, Korean, Arabic, Hebrew and Thai (Forge adds none). Writing
+  that has to be rearranged to be read, such as Hindi, is drawn as boxes in the
+  PDF; Markdown, Word and text have it.
 - Reading the text of pictures and PDFs (`forge transcribe shot.png`) uses
   Apple's reader on macOS 26. Everywhere else it uses the read-text extension
   (`forge extensions add read-text`, about 20 MB): PaddleOCR's small models,

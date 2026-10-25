@@ -132,8 +132,11 @@ On Windows this uses the whisper extension and ffmpeg.
    - `forge transcribe talk.mp4 --format pdf --force` opens in any PDF viewer
    - `forge transcribe talk.mp4 --format txt --force`
    **Right (PDF):** readable A4 pages with a title, the words you can select
-   and copy. If the talk is not in English, the words should still show; only
-   letters outside Latin, Greek and Cyrillic (Chinese, Arabic, Hindi...) show as `?`.
+   and copy. If the talk is not in English, the words should still show: Chinese,
+   Japanese, Korean, Arabic, Hebrew and Thai in this PC's own fonts (Arabic and
+   Hebrew run right to left, the Arabic letters joined). Hindi and other writing
+   that must be rearranged show as boxes, never as `?`; tell us which language
+   you tried and what you saw.
 6. In the app: press `5` (transcribe), drop the file, and follow the questions,
    choosing PDF as the format. **Right:** the same PDF, and a done screen.
 7. YouTube: `forge extensions add yt-dlp` (about 18 MB), then
