@@ -4,9 +4,10 @@
  * (providers.ts).
  */
 
+import { availableParallelism } from 'node:os'
 import type { InferenceSession, Tensor } from 'onnxruntime-node'
 import { TILE, type TileEngine } from './engine.js'
-import type { Provider } from './providers.js'
+import { ortThreads, type Provider } from './providers.js'
 
 type Ort = typeof import('onnxruntime-node')
 
@@ -28,11 +29,11 @@ async function openModel(
   providers: readonly Provider[],
 ): Promise<InferenceSession> {
   const base = {
-    intraOpNumThreads: 2,
     interOpNumThreads: 1,
     graphOptimizationLevel: 'all' as const,
     logSeverityLevel: 3 as const,
   }
+  const cores = availableParallelism()
   // The first of `providers` that loads wins; the CPU is always the way out.
   // ONNX Runtime drops a provider it does not have by itself ("not available:
   // backend not found", on stderr) and goes on to the next, so a graphics card
@@ -40,12 +41,17 @@ async function openModel(
   try {
     return await ort.InferenceSession.create(path, {
       ...base,
+      intraOpNumThreads: ortThreads(providers, cores),
       executionProviders: providers.map(ortProvider),
     })
   } catch (err) {
     const first = providers[0] ?? 'cpu'
     process.stderr.write(`${ORT_NAME[first]} unavailable, using CPU: ${String(err)}\n`)
-    return await ort.InferenceSession.create(path, { ...base, executionProviders: ['cpu'] })
+    return await ort.InferenceSession.create(path, {
+      ...base,
+      intraOpNumThreads: ortThreads(['cpu'], cores),
+      executionProviders: ['cpu'],
+    })
   }
 }
 

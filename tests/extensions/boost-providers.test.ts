@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cpuThreads,
   type Device,
   judge,
   NCNN_TOO_SLOW_MS,
+  ortThreads,
   pickDevice,
   providerPlan,
   TOO_SLOW_MS,
@@ -173,3 +175,25 @@ describe('judge (the too-slow guard)', () => {
     expect(judge([], total)).toEqual({ slow: false })
   })
 })
+
+describe('ortThreads (ONNX Runtime threads)', () => {
+  it('gives the CPU provider every core but one, at least two and at most eight', () => {
+    expect(cpuThreads(1)).toBe(2)
+    expect(cpuThreads(2)).toBe(2)
+    expect(cpuThreads(4)).toBe(3)
+    expect(cpuThreads(8)).toBe(7)
+    expect(cpuThreads(9)).toBe(8)
+    expect(cpuThreads(64)).toBe(8)
+  })
+
+  it('uses them when the CPU is all the session has: a GPU-less fallback', () => {
+    expect(ortThreads(['cpu'], 8)).toBe(7)
+  })
+
+  it('keeps two where a graphics provider is asked for first, as before', () => {
+    expect(ortThreads(['coreml', 'cpu'], 8)).toBe(2)
+    expect(ortThreads(['dml', 'cpu'], 16)).toBe(2)
+    expect(ortThreads(['webgpu', 'coreml', 'cpu'], 12)).toBe(2)
+  })
+})
+
