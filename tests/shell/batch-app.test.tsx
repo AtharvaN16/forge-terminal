@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { render } from 'ink-testing-library'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { DEFAULT_PREFERENCES } from '../../src/config/preferences.js'
 import { App } from '../../src/shell/App.js'
 import { makeJpeg, makeNoiseImage, makeTempDir } from '../helpers/fixtures.js'
@@ -224,6 +224,14 @@ describe('several images in edit mode', () => {
 
 describe('stopping a batch', () => {
   it('esc lets the files already started finish, starts no more, and says which stopped', async () => {
+    // Two at a time, so most of the eight have not started when esc comes,
+    // and the stopped ones are in the rows Done shows.
+    const threads = process.env.UV_THREADPOOL_SIZE
+    process.env.UV_THREADPOOL_SIZE = '2'
+    onTestFinished(() => {
+      if (threads === undefined) delete process.env.UV_THREADPOOL_SIZE
+      else process.env.UV_THREADPOOL_SIZE = threads
+    })
     const dir = await makeTempDir()
     const out = await makeTempDir()
     const paths: string[] = []
