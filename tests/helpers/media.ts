@@ -20,6 +20,23 @@ export const ffmpegHere: boolean = (() => {
   }
 })()
 
+/**
+ * Vorbis, by libvorbis where this ffmpeg has it. Homebrew's is built without
+ * it, so there ffmpeg's own encoder: experimental, and stereo only.
+ */
+function vorbis(): string[] {
+  let encoders = ''
+  try {
+    encoders = execFileSync('ffmpeg', ['-hide_banner', '-encoders'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    })
+  } catch {}
+  return /\blibvorbis\b/.test(encoders)
+    ? ['-c:a', 'libvorbis']
+    : ['-c:a', 'vorbis', '-strict', '-2', '-ac', '2']
+}
+
 export interface ClipSpec {
   seconds?: number
   width?: number
@@ -68,7 +85,7 @@ export async function makeClip(spec: ClipSpec = {}): Promise<string> {
     if (ext === 'webm') args.push('-c:a', 'libopus')
     else if (ext === 'wav') args.push('-c:a', 'pcm_s16le')
     else if (ext === 'mp3') args.push('-c:a', 'libmp3lame')
-    else if (ext === 'ogg') args.push('-c:a', 'libvorbis')
+    else if (ext === 'ogg') args.push(...vorbis())
     else if (ext === 'opus') args.push('-c:a', 'libopus')
     else if (ext === 'flac') args.push('-c:a', 'flac')
     else if (ext === 'aiff') args.push('-c:a', 'pcm_s16be')

@@ -188,7 +188,10 @@ async function convert(source: SourceInfo, target: FormatId): Promise<string[]> 
   const intent = parseArgs([source.path, '--to', target, '--output', out])
   if (intent.kind !== 'convert') throw new Error(`parsed as ${intent.kind}, not convert`)
   const report = await runIntent(intent)
-  expect(report.failures.map((f) => f.error.message)).toEqual([])
+  // The cause too (what --debug prints), so a CI failure says why, not just that.
+  const why = (e: { message: string; cause?: unknown }) =>
+    e.cause === undefined ? e.message : `${e.message} ← ${String(e.cause).slice(-1500)}`
+  expect(report.failures.map((f) => why(f.error))).toEqual([])
   expect(report.results).toHaveLength(1)
   return report.results[0]?.job.outputs ?? []
 }

@@ -123,12 +123,16 @@ const AUDIO_FITS: Partial<Record<FormatId, readonly string[]>> = {
   avi: ['mp3', 'ac3', 'aac', 'pcm_s16le'],
 }
 
-/** The sound encoder for a container, and its bitrate when lossy. */
+/**
+ * The sound encoder for a container, and its bitrate when lossy. `args` are
+ * what that encoder needs besides: ffmpeg's own Vorbis encoder is marked
+ * experimental and writes stereo only.
+ */
 function audioEncoder(
   target: FormatId,
   platform: NodeJS.Platform,
   can: (name: string) => boolean,
-): { encoder: string; kbps?: number } {
+): { encoder: string; kbps?: number; args?: string[] } {
   switch (target) {
     case 'webm':
     case 'opus':
@@ -142,7 +146,10 @@ function audioEncoder(
     case 'aiff':
       return { encoder: 'pcm_s16be' }
     case 'ogg':
-      return { encoder: 'libvorbis', kbps: 128 }
+      // Homebrew's ffmpeg is built without libvorbis: there, ffmpeg's own.
+      return can('libvorbis')
+        ? { encoder: 'libvorbis', kbps: 128 }
+        : { encoder: 'vorbis', kbps: 128, args: ['-strict', '-2', '-ac', '2'] }
     default:
       return { encoder: platform === 'darwin' && can('aac_at') ? 'aac_at' : 'aac', kbps: 128 }
   }
@@ -349,7 +356,8 @@ export function planEncode(job: EncodeInput): EncodePlan {
     audioArgs.push('-c:a', enc.encoder)
     const rate = kbps ?? enc.kbps
     if (rate !== undefined && enc.kbps !== undefined) audioArgs.push('-b:a', `${rate}k`)
-    if (sizedAudioKbps !== undefined && sizedAudioKbps <= SOUND_FLOOR_KBPS)
+    if (enc.args) audioArgs.push(...enc.args)
+    else if (sizedAudioKbps !== undefined && sizedAudioKbps <= SOUND_FLOOR_KBPS)
       audioArgs.push('-ac', '1')
     // loudnorm works at 192 kHz and would write it: keep the file's own rate.
     if (loudness !== undefined && a) audioArgs.push('-ar', String(a.sampleRate))

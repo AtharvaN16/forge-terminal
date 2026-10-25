@@ -309,6 +309,18 @@ describe('what this ffmpeg has', () => {
     )
   })
 
+  it('writes an OGG with ffmpeg’s own Vorbis without libvorbis (Homebrew’s ffmpeg)', () => {
+    const ogg: MediaFacts = {
+      duration: 10,
+      audio: { codec: 'vorbis', channels: 1, sampleRate: 44100 },
+    }
+    const args = single(plan('ogg', { media: { speed: 2 } }, ogg, 'darwin', lean))
+    expect(flag(args, '-c:a')).toBe('vorbis')
+    // Experimental, and stereo only: a mono file is written as two channels.
+    expect(flag(args, '-strict')).toBe('-2')
+    expect(flag(args, '-ac')).toBe('2')
+  })
+
   it('fits HEVC with Apple’s encoder when there is no x265', () => {
     const p = plan('hevc', { media: { targetBytes: 10_000_000 } }, screen, 'darwin', lean)
     const args = p.steps.at(-1)?.args ?? []
