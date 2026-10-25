@@ -1,23 +1,47 @@
 {
   "name": "forge-terminal",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Enter is easier to see",
-      "text": "The enter key in the file field now wears a ↵ and the mode's colour, so it is clear what to press."
+      "title": "Windows and Linux",
+      "text": "Transcribe, read text, camera RAW, Boost and remove background now work on Windows and Linux too, as extensions."
     },
     {
-      "title": "esc clear moved down",
-      "text": "With a file staged, esc clear now sits on the bottom row, right beside ↵."
+      "title": "Read text",
+      "text": "Transcribe reads the words in pictures and PDFs, including Chinese, Japanese, Korean, Russian, Arabic, Hindi and Thai."
     },
     {
-      "title": "Modes change on home",
-      "text": "The 1–6 mode keys work on the home screen only. Pickers and edit screens no longer offer them."
+      "title": "Transcript formats",
+      "text": "Save a transcript as Markdown, Word, PDF or plain text."
     },
     {
-      "title": "Boost scale pill",
-      "text": "When an image has only one boost scale, the pill no longer shows arrows that go nowhere."
+      "title": "Many files at once",
+      "text": "Convert, compress and edit take several files or a whole folder. esc stops a batch."
+    },
+    {
+      "title": "Run a preset",
+      "text": "Run a saved preset from home with p, or from Finder’s Quick Actions. Choose which ones show in /right-click."
+    },
+    {
+      "title": "Camera RAW",
+      "text": "Photos straight from a camera open like any other picture."
+    },
+    {
+      "title": "More in edit",
+      "text": "Rotate pictures and video, change a video’s speed, take the sound out of a video, and clean up noisy audio."
+    },
+    {
+      "title": "One way off Done",
+      "text": "Every Done ends in the same row of buttons: Home, show in Finder, or keep editing."
+    },
+    {
+      "title": "Simpler colour mode",
+      "text": "Palette is a tab now, More holds the rest, and a gradient can have any number of colours."
+    },
+    {
+      "title": "Your own tools",
+      "text": "Forge uses the yt-dlp and ffmpeg you already have, and /extensions shows the space each one takes."
     }
   ],
   "keywords": [
