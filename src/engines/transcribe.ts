@@ -622,7 +622,7 @@ async function readWithExtension(
 ): Promise<ReadPage[]> {
   const ext = await installed('read-text')
   if (ext === undefined) throw readUnavailable(await readTextOffered())
-  const [{ probe }, { openable }, { loadSharp }, { runExtension }] = await Promise.all([
+  const [{ probe }, { decodedInput }, { loadSharp }, { runExtension }] = await Promise.all([
     import('./registry.js'),
     import('./decoded.js'),
     import('./libs.js'),
@@ -659,19 +659,14 @@ async function readWithExtension(
         doc.destroy()
       }
     } else if (info.kind === 'image') {
-      const open = await openable(path, info.format)
-      try {
-        const out = join(dir, 'page-1.png')
-        await sharp(open.path)
-          .rotate()
-          .flatten({ background: '#ffffff' })
-          .resize(fit)
-          .png()
-          .toFile(out)
-        pngs.push(out)
-      } finally {
-        await open.cleanup()
-      }
+      const out = join(dir, 'page-1.png')
+      await sharp(await decodedInput(path, info.format))
+        .rotate()
+        .flatten({ background: '#ffffff' })
+        .resize(fit)
+        .png()
+        .toFile(out)
+      pngs.push(out)
     } else throw untranscribable(path)
     const r = await runExtension(
       { id: 'read-text', entry: ext.entry, kind: ext.kind },
