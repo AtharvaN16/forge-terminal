@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boost on Linux, on both chips</title>
+<style>
+  :root { color-scheme: light dark; --fg:#1d1d1f; --dim:#6e6e73; --line:#d2d2d7; --card:#f5f5f7; --ok:#1a7f37; --warn:#9a6700; --bad:#b42318; --pick:#0b57d0; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#f5f5f7; --dim:#a1a1a6; --line:#3a3a3c; --card:#1c1c1e; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --pick:#6ea8fe; } }
+  body { font: 16px/1.5 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--fg); background: Canvas; max-width: 1040px; margin: 0 auto; padding: 32px 24px 72px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 40px 0 10px; }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .dim { color: var(--dim); }
+  .small { font-size: 13.5px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin: 16px 0; }
+  .pick { border-color: var(--pick); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 10px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-top: 1px solid var(--line); }
+  thead th { border-top: 0; color: var(--dim); font-weight: 600; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.today td { background: var(--card); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--card); padding: 1px 5px; border-radius: 4px; }
+  figure { margin: 18px 0; }
+  figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; image-rendering: auto; }
+  figcaption { font-size: 14px; color: var(--dim); margin-top: 6px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; vertical-align: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Boost on Linux, on both chips</h1>
+<p class="dim">Research, 2026-10-25. The on-device model was run for real; numbers are measured unless a line says "estimate". No change to the app.</p>
+
+<div class="box pick">
+  <strong>The short answer.</strong> Boost can work on Linux arm64 (and on x64 without a working Vulkan driver) <em>without changing the model</em>. The slowness is mostly the program that runs it, not the model.
+  <ol>
+    <li><strong>Now, a few days:</strong> on the CPU path use every core (today it uses 2), and give that path an int8 copy of today's model (1.3 MB). A 12 MP photo at 2× goes from <strong>4 min 40 s to 1 min 19 s</strong> on one Apple M2 CPU, with the output very close to today's (not identical). This needs no new program, and the Linux arm64 payload is the same kind of file we already build for x64.</li>
+    <li><strong>If you want zero visible change, or Raspberry Pi class machines to be bearable:</strong> run today's model, unchanged, through <strong>ncnn</strong> on Linux (both chips). Output matches today's (50 dB), and the model part is <strong>4.7× faster</strong> than ONNX Runtime at the same cores. The same program uses a real Vulkan graphics card when there is one and the CPU when not, and can tell the two apart by name, so a software "GPU" is no longer a risk. About 4 MB to download. Costs a small C++ program and a cross-build, a few days' work.</li>
+    <li><strong>Don't:</strong> OpenVINO (slower on ARM and 2.5 GB of memory), MNN (slower than ncnn, no Linux arm64 download), swapping to a smaller model (different, softer look), custom ONNX Runtime builds, ffmpeg's neural filters.</li>
+  </ol>
+  <p class="small dim">Open choice for you: step 1 changes Boost's look a little on flat areas (see the second crop). If that is not acceptable, go straight to step 2.</p>
+</div>
+
+<h2>What is slow today</h2>
+<p>Boost runs <strong>Real-ESRGAN realesr-general-x4v3</strong> (BSD-3-Clause): 32 layers of 64 channels, 1.2 million numbers, <strong>4.9 MB</strong>. It works in 256 px tiles with 16 px overlap, always at 4×, and then brings the tile down for 2× and 3× (and 1× for Sharpen, which costs the same as a 4× Boost). Where there is no graphics card, the runner uses ONNX Runtime on the CPU with <strong>2 threads</strong>.</p>
+<p>On one Apple M2, <strong>CPU only</strong> (graphics chip and Neural Engine not used), a 256 px tile takes <strong>1.87 s on one core, 0.97 s on the two the runner uses</strong>. A 12 MP photo at 2× (4200×2800 → 8400×5600, 247 tiles) took <strong>280 s</strong> end to end, <strong>442 MB</strong> of memory (measured with the real runner).</p>
+<p class="small dim"><strong>Stand-in.</strong> No Linux arm64 machine here, so the Mac's CPU stands in for one. An M2 core is roughly 3 to 4 times faster than a Raspberry Pi 5 core (public single-core benchmarks; <em>my estimate, not measured</em>), and about the same as a Linux VM on an M-series Mac, Asahi, or a recent Snapdragon laptop. x64 was not measured: there was no x64 Linux CPU to hand, so the x64 "without Vulkan" row is expected to follow the same pattern but is unproven.</p>
+
+<h2>Speed: one 256 px tile, CPU only</h2>
+<p class="small dim">Milliseconds, median of five. The ONNX Runtime rows use the <code>onnxruntime-node</code> 1.23.2 that Forge ships. The "12 MP model time" column is tiles × the 4-thread figure (model only; the runner adds about 35 s for resizing and writing a 47 MP PNG).</p>
+<table>
+  <thead><tr><th>Model, program</th><th class="n">1 thread</th><th class="n">2 threads</th><th class="n">4 threads</th><th class="n">12 MP model time (4 thr)</th><th class="n">Memory</th></tr></thead>
+  <tbody>
+    <tr class="today"><td><strong>Today's model</strong>, ONNX Runtime (as shipped)</td><td class="n">1871</td><td class="n">971</td><td class="n">566</td><td class="n">140 s</td><td class="n">262 MB</td></tr>
+    <tr><td>Today's model, <strong>int8</strong>, ONNX Runtime</td><td class="n">534</td><td class="n">289</td><td class="n">182</td><td class="n">45 s</td><td class="n">252 MB</td></tr>
+    <tr><td>Today's model, ncnn</td><td class="n">578</td><td class="n">–</td><td class="n">232</td><td class="n">57 s</td><td class="n">276 MB</td></tr>
+    <tr><td>Today's model, ncnn, half-precision maths<sup>1</sup></td><td class="n">–</td><td class="n">–</td><td class="n">118</td><td class="n">29 s</td><td class="n">199 MB</td></tr>
+    <tr><td>Today's model, MNN (half precision: 310)</td><td class="n">697</td><td class="n">–</td><td class="n">351</td><td class="n">87 s</td><td class="n">194 MB</td></tr>
+    <tr><td>Today's model, OpenVINO (ARM plugin)</td><td class="n">1656</td><td class="n">–</td><td class="n">507</td><td class="n">125 s</td><td class="n bad">2.5 GB</td></tr>
+    <tr><td>Compact 2× model (16 layers), ONNX Runtime / ncnn / ncnn half</td><td class="n">930 / 287</td><td class="n">490 / –</td><td class="n">290 / 114 / 60</td><td class="n">72 / 28 / 15 s</td><td class="n">183 MB</td></tr>
+    <tr><td>Compact 4× model (16 layers), ONNX Runtime / ncnn / ncnn half</td><td class="n">1036 / 299</td><td class="n">530 / –</td><td class="n">293 / 119 / 64</td><td class="n">72 / 29 / 16 s</td><td class="n">257 MB</td></tr>
+    <tr><td>SPAN 2× model, ONNX Runtime / ncnn / ncnn half</td><td class="n">698 / 263</td><td class="n">384 / –</td><td class="n">247 / 122 / 63</td><td class="n">61 / 30 / 16 s</td><td class="n">333 MB</td></tr>
+  </tbody>
+</table>
+<p class="small dim"><sup>1</sup> Half-precision arithmetic needs an ARMv8.2 CPU (Raspberry Pi 5, Graviton 2+, Apple, Snapdragon). Output stayed within 50 dB of full precision (below). Pi 4 and older do not have it and use the full-precision row.</p>
+
+<h3>The whole 12 MP run, measured with the real runner (M2, CPU only)</h3>
+<table>
+  <thead><tr><th>Setup</th><th class="n">Time</th><th class="n">Memory</th><th>Output against today's</th></tr></thead>
+  <tbody>
+    <tr class="today"><td>Today's runner on its CPU path (2 threads)</td><td class="n">280 s</td><td class="n">442 MB</td><td>–</td></tr>
+    <tr><td>Same model as int8, 4 threads</td><td class="n">79 s</td><td class="n">432 MB</td><td>34.1 dB, SSIM 0.92</td></tr>
+    <tr><td>ncnn, half precision, 4 threads <span class="dim">(estimate: tiles 29 s + the same ~35 s of resizing and writing)</span></td><td class="n">≈ 65 s</td><td class="n">≈ 250 MB</td><td>50 dB (see next)</td></tr>
+  </tbody>
+</table>
+<p class="small dim">On a Raspberry Pi 5 (4 cores) multiply by roughly 3.5 (estimate): today's runner about 16 min, int8 about 4½ min, ncnn half precision about 4 min (2 to 3 if the resizing and writing are trimmed too). After the model gets faster, the next cost is the JavaScript resizing and PNG writing (35 s here), which is easy to cut.</p>
+
+<h2>Quality: Kodak photos, 2×</h2>
+<p>Two tests. <strong>Clean</strong>: each Kodak photo (768×512, 24 of them) halved with Lanczos, then boosted 2× and compared with the original. <strong>JPEG</strong>: same, but the half-size copy is saved as JPEG quality 70 first (12 photos), which is closer to a phone photo that went through a chat app. Higher PSNR and SSIM are better; <strong>lower LPIPS</strong> (a measure of how different two pictures look to a person) is better. "Against today's" says how close an option is to what Boost makes now.</p>
+<table>
+  <thead><tr><th>Option</th><th class="n">Clean: PSNR / SSIM vs original</th><th class="n">JPEG: PSNR / SSIM / LPIPS vs original</th><th class="n">JPEG: vs today's PSNR / LPIPS</th></tr></thead>
+  <tbody>
+    <tr><td>Plain Lanczos 2× (no model)</td><td class="n">29.63 / 0.880</td><td class="n">27.72 / 0.802 / 0.342</td><td class="n">27.7 / 0.266</td></tr>
+    <tr class="today"><td><strong>Today's Boost</strong></td><td class="n">27.61 / 0.843</td><td class="n">26.38 / 0.794 / 0.227</td><td class="n">–</td></tr>
+    <tr><td>Today's, ncnn half precision</td><td class="n">27.60 / 0.842</td><td class="n">26.38 / 0.794 / 0.226</td><td class="n ok">49.8 / 0.001</td></tr>
+    <tr><td>Today's, int8</td><td class="n">27.29 / 0.814</td><td class="n">26.22 / 0.767 / 0.187</td><td class="n">35.7 / 0.083</td></tr>
+    <tr><td>Compact 4× (LSDIR v2)</td><td class="n">28.66 / 0.853</td><td class="n">27.17 / 0.791 / 0.198</td><td class="n">30.4 / 0.077</td></tr>
+    <tr><td>Compact 2× (NomosUni multijpg)</td><td class="n">29.65 / 0.872</td><td class="n">27.75 / 0.792 / 0.151</td><td class="n">29.0 / 0.132</td></tr>
+    <tr><td>SPAN 2× (NomosUni multijpg)</td><td class="n">28.04 / 0.869</td><td class="n">26.41 / 0.793 / 0.174</td><td class="n">27.8 / 0.119</td></tr>
+  </tbody>
+</table>
+<p class="small dim">Also tried and worse: NomosUni compact "otf-medium" (27.2 / 0.811 clean) and ParimgCompact (26.5 / 0.792 clean). The clean-test numbers were made before LPIPS was added; the JPEG run has all three. Today's model is trained to sharpen and invent detail, so on a clean half-size copy it scores <em>below</em> plain Lanczos on PSNR. That is expected: PSNR rewards staying close to blurry, not looking crisp. Read the crops, not only the numbers.</p>
+
+<h3>Crops (3× enlarged, same crop in every tile)</h3>
+<figure>
+  <img src="boost-linux-options-2026-10/crop-real-branches.jpg" alt="Branches and a pole, seven versions">
+  <figcaption><strong>A real photo, no original to compare with</strong> (Kodak 08 as it is, boosted 2×; the first tile is the photo's own pixels doubled). Today's, int8 and the compact 4× all recover the thin branches and the pole. The compact 2× and SPAN stay soft, close to plain Lanczos.</figcaption>
+</figure>
+<figure>
+  <img src="boost-linux-options-2026-10/crop-real-flat.jpg" alt="Out-of-focus feathers, seven versions">
+  <figcaption><strong>Where int8 differs.</strong> A flat, out-of-focus area of a real photo. Today's model smooths the little blocks the photo already has (a little plastic, but clean). The int8 copy leaves them in, as Lanczos does. This is the visible cost of step 1; ncnn does not have it.</figcaption>
+</figure>
+<figure>
+  <img src="boost-linux-options-2026-10/crop-clean-window.jpg" alt="Shutters and brick, original and seven versions">
+  <figcaption><strong>With the original</strong> (first tile; the clean test). Today's is crisp and painterly, with dark outlines the original does not have. The compact 2× is closer to the original's brick and shutter texture. The compact 4× and int8 sit between.</figcaption>
+</figure>
+<figure>
+  <img src="boost-linux-options-2026-10/crop-jpeg-dark.jpg" alt="A red strap and dark hair after JPEG, original and seven versions">
+  <figcaption><strong>JPEG test, dark area.</strong> All the models remove the JPEG blocks Lanczos keeps (second tile). int8 leaves a little more grain in the dark area than today's.</figcaption>
+</figure>
+
+<h2>Options, one by one</h2>
+<table>
+  <thead><tr><th>Option</th><th>Size, licence</th><th>Needs</th><th>Covers</th><th>Build / CI cost</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Use every core</strong> on the CPU path (ONNX Runtime)</td><td>no change</td><td>nothing</td><td>both chips</td><td>two lines in <code>runner.ts</code>; an ETA on the working screen</td><td class="ok">Do. 2→4 threads is 1.7× on the M2 (more cores, more gain; efficiency cores did not help).</td></tr>
+    <tr><td><strong>int8 copy of today's model</strong> (ONNX Runtime)</td><td>1.3 MB (today 4.9 MB); BSD-3-Clause</td><td>CPU with 8-bit dot products (Pi 4 has none; Pi 5 and everything newer do; x64 with AVX2)</td><td>both chips; Linux arm64 gets a payload like x64's</td><td>quantize once offline (script in <code>scripts/</code>), pin its sha beside <code>model.json</code>; no new CI step</td><td class="ok">Do, if a small look change is acceptable (3.5× faster). Untested on x64: older x64 CPUs without VNNI need the quantizer's "reduce range" option, and I could not check that here.</td></tr>
+    <tr><td><strong>ncnn</strong> (CPU and Vulkan in one program)</td><td>about 4 MB zipped with Vulkan (the upstream x64 zip is 3.7 MB), about 2 MB without; model 2.4 MB; ncnn BSD-3-Clause, model BSD-3-Clause</td><td>nothing for the CPU; a Vulkan driver only for the GPU path (ncnn loads it itself, no SDK)</td><td>both chips, CPU and GPU</td><td>no ready Linux arm64 download (ncnn releases and Real-ESRGAN-ncnn-vulkan have x64 only), so cross-build it like the whisper extension (zig), plus a small C++ runner that does tiles. A few days.</td><td class="ok">Best result. Same output, 2.4 to 4.7× faster than ONNX Runtime at equal cores, and one program for CPU and GPU on Linux.</td></tr>
+    <tr><td>Compact models (16 layers, or SPAN)</td><td>2.4 / 1.7 MB; CC-BY-4.0 (credit needed)</td><td>–</td><td>both</td><td>conversion script, new model pin</td><td class="warn">Half the work, but a softer look on real photos (the first and third crops) and not the same product. A choice for later, not for now.</td></tr>
+    <tr><td>OpenVINO (Node package)</td><td>Linux arm64 runtime 26 MB, x64 56 MB; Apache-2.0</td><td>–</td><td>Intel CPU/GPU; ARM CPU</td><td>download at install</td><td class="bad">No: slower than ncnn on ARM (507 ms, half precision 368) and 2.5 GB of memory.</td></tr>
+    <tr><td>MNN</td><td>Apache-2.0</td><td>–</td><td>–</td><td>no Linux arm64 download (x64 only), build it like ncnn</td><td class="bad">No: 1.5 to 2.6× slower than ncnn here.</td></tr>
+    <tr><td>TFLite / LiteRT (XNNPACK, GPU delegate)</td><td>Apache-2.0</td><td>–</td><td>–</td><td>ONNX→TFLite conversion is heavy; no official Node binding</td><td class="warn">Not measured. Same class as ncnn with more work.</td></tr>
+    <tr><td>ONNX Runtime XNNPACK / ACL / ArmNN</td><td>MIT</td><td>–</td><td>–</td><td>custom ONNX Runtime build per chip</td><td class="bad">No: the shipped build says "backend not found" for all three (tested).</td></tr>
+    <tr><td>Bigger tiles</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="bad">No gain: ncnn 384 px and 512 px tiles cost more per pixel than 256 (2.6 and 2.1 µs/px against 1.8).</td></tr>
+    <tr><td>What the desktop already has</td><td>–</td><td>–</td><td>–</td><td>–</td><td class="bad">Nothing. Linux has no system upscaler. ffmpeg's neural filters need a build with TensorFlow, OpenVINO or LibTorch, which the ffmpeg a user has will not be; the old <code>sr</code> filter is a small research model from 2018. A plain Lanczos "resize" Forge already has.</td></tr>
+  </tbody>
+</table>
+
+<h2>What I would do</h2>
+<ol>
+  <li><strong>Week 1.</strong> CPU path: use up to 8 cores, add the int8 model (calibrated on photos, pinned by sha), build the Linux arm64 payload, trim the JavaScript resizing and PNG writing, give the working screen an ETA. Raise the "too slow" limit for the CPU path (3 minutes would still refuse a 12 MP photo on a Pi 5). Linux x64 without Vulkan then falls to the same path instead of stopping. Test on one real Raspberry Pi 5 and one x64 laptop without Vulkan, and send me the checklist results.</li>
+  <li><strong>If the int8 look is not accepted, or Pi-class speed matters:</strong> replace Linux's ONNX Runtime payloads with ncnn (CPU + Vulkan), same model, keeping ONNX Runtime for Windows and Mac. This also removes the guess about whether a "GPU" is real: ncnn lists the device by name and the runner can refuse a software one.</li>
+  <li><strong>Later, optional:</strong> offer the compact 4× model as "faster" (about half the cost, a little softer).</li>
+</ol>
+
+<h2>How this was measured, and what is not known</h2>
+<ul class="small">
+  <li>One Apple M2 (4 performance + 4 efficiency cores), CPU only, nothing else running. Models: Real-ESRGAN realesr-general-x4v3 (BSD-3-Clause); OpenModelDB's NomosUni compact and SPAN 2×, LSDIRCompact v2 (all CC-BY-4.0 by helaman).</li>
+  <li>Images: the Kodak set (free for research); no personal photos. Quality is on halved copies, so it favours models trained on that kind of degradation. A real photo has no original to compare with, hence the first two crops.</li>
+  <li>Not measured: Linux arm64 or x64 hardware, ncnn on x64, int8 on an AVX2-only x64 CPU, a Vulkan GPU on Linux, TFLite. The Raspberry Pi figures are scaled estimates.</li>
+  <li>Scripts and raw numbers: <code>boost-linux-options-2026-10/</code>.</li>
+</ul>
+
+</body>
+</html>
