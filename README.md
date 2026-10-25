@@ -181,9 +181,12 @@ forge transcribe "https://www.youtube.com/watch?v=..." --language en
   (Chinese, Arabic, Hindi) shows as `?` in it. Markdown, Word and text keep it.
 - Reading the text of pictures and PDFs (`forge transcribe shot.png`) uses
   Apple's reader on macOS 26. Everywhere else it uses the read-text extension
-  (`forge extensions add read-text`, about 20 MB): PaddleOCR's small models,
-  for English and the languages written in Latin letters. A PDF's own text, when it
-  has one, corrects words OCR splits at ligatures.
+  (`forge extensions add read-text`, about 45 MB): PaddleOCR's models for the
+  scripts Apple's reader reads (Latin, Chinese, Japanese, Korean, Cyrillic,
+  Arabic, Devanagari and Thai). Nothing asks which language a page is in: the
+  models say how sure they are, and the surest reads it. It does not read
+  vertical text, and leaves out Vietnamese's doubly-marked vowels. A PDF's own
+  text, when it has one, corrects words OCR splits at ligatures.
 - Without `--language`, whisper detects the language itself.
 - Summary and notes need Apple Intelligence, so off it Forge writes the
   transcript. `--to notes` is refused; the default `--to all` gives the

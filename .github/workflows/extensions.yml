@@ -106,6 +106,7 @@ jobs:
             # LibRaw through libraw-wasm: JavaScript and WebAssembly too, packaged the same way as heic.
             raw) runner=macos-14 ;;
             # PP-OCR on ONNX Runtime: JavaScript and prebuilt libraries for every OS; any macOS runner assembles it.
+            # Its recognisers (six, for the scripts Apple's reader reads) come from the model-read-text-scripts-v1 release.
             read-text) runner=macos-14 ;;
             # ffmpeg, compiled from source for Apple Silicon (extensions/video/build.sh).
             video) runner=macos-14 ;;
@@ -387,6 +388,10 @@ jobs:
           out="$(node dist-ext/payload-win32-x64/runner.mjs --in blank.png | tail -1)"
           echo "$out"
           printf '%s' "$out" | grep -q '"ok":true'
+          # Every recogniser loads and answers with this ONNX Runtime, not only the one a blank page needs.
+          out="$(node dist-ext/payload-win32-x64/runner.mjs --check | tail -1)"
+          echo "$out"
+          printf '%s' "$out" | grep -q '"recognisers":\["main","korean","cyrillic","arabic","devanagari","thai"\]'
 
       - name: HEIC extension runs on Windows
         if: needs.resolve.outputs.id == 'heic'
@@ -519,6 +524,10 @@ jobs:
           out="$(node dist-ext/payload-linux-x64/runner.mjs --in blank.png | tail -1)"
           echo "$out"
           printf '%s' "$out" | grep -q '"ok":true'
+          # Every recogniser loads and answers with this ONNX Runtime, not only the one a blank page needs.
+          out="$(node dist-ext/payload-linux-x64/runner.mjs --check | tail -1)"
+          echo "$out"
+          printf '%s' "$out" | grep -q '"recognisers":\["main","korean","cyrillic","arabic","devanagari","thai"\]'
 
       - name: HEIC extension runs on Linux
         if: needs.resolve.outputs.id == 'heic'

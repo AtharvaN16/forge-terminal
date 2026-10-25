@@ -277,7 +277,7 @@ describe('the Windows and Linux catalogue', () => {
 })
 
 describe('read-text', () => {
-  it('is offered on every OS and chip, one archive each, under 25 MB', () => {
+  it('is offered on every OS and chip, one archive each (all six scripts), under 50 MB', () => {
     const rt = catalogEntry('read-text')
     if (rt === undefined) throw new Error('read-text is catalogued')
     const files = {
@@ -292,9 +292,12 @@ describe('read-text', () => {
       const [platform, arch] = key.split('-') as [NodeJS.Platform, string]
       const asset = assetFor(rt, platform, arch)
       expect(asset?.url, key).toBe(
-        `${RELEASES}/ext-read-text-v1.0.1/forge-ext-read-text-1.0.1-${file}.tar.gz`,
+        `${RELEASES}/ext-read-text-v1.1.0/forge-ext-read-text-1.1.0-${file}.tar.gz`,
       )
-      expect(asset?.bytes, key).toBeLessThan(25_000_000)
+      expect(asset?.version, key).toBe('1.1.0')
+      // Detector, six recognisers (half precision) and ONNX Runtime.
+      expect(asset?.bytes, key).toBeGreaterThan(35_000_000)
+      expect(asset?.bytes, key).toBeLessThan(50_000_000)
     }
   })
 })
