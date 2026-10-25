@@ -36,6 +36,11 @@ export default defineConfig({
        * own-tools tests pass the folders to look in (src/extensions/own.ts).
        */
       FORGE_NO_OWN_TOOLS: '1',
+      /**
+       * Nor post a real notification when a run takes 20 seconds
+       * (src/menu/notify.ts). Its tests pass their own environment.
+       */
+      FORGE_NO_NOTIFY: '1',
     },
     /**
      * Capped well below the machine's core count on purpose.

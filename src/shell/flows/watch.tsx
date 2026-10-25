@@ -14,6 +14,7 @@ import {
   type Recipe,
 } from '../../core/batch.js'
 import type { PlanEvent } from '../../core/execute-jobs.js'
+import { finishedOf } from '../../core/finish-notice.js'
 import {
   answerFor,
   defaultAnswer,
@@ -52,6 +53,7 @@ import { blank, HOME_MARGIN, type Row } from '../home-art.js'
 import { motionEnabled, useTicker } from '../motion.js'
 import { titleRow } from '../quality-art.js'
 import { openPath, revealLabel, revealPath } from '../reveal.js'
+import { NOTICE_VERBS, noticeRun } from '../run-notice.js'
 import { Text } from '../Text.js'
 import { useTheme } from '../ThemeContext.js'
 import { colourProp, modeColours, SYMBOLS } from '../theme.js'
@@ -458,7 +460,8 @@ export function WatchFlow({
   const run = async (to: string, existing: Existing) => {
     onSaved?.(to)
     setStep('converting')
-    setWork({ done: 0, total: 0, label: 'Reading', at: Date.now() })
+    const startedAt = Date.now()
+    setWork({ done: 0, total: 0, label: 'Reading', at: startedAt })
     const onEvent = (event: PlanEvent) => {
       if (event.type === 'search:attempt') {
         const label = `Finding the right quality · ${displayName(event.job.sources[0].path)}`
@@ -491,6 +494,15 @@ export function WatchFlow({
     })
     stop.current = undefined
     const results = done.outcome.results
+    // Stopped by esc: whoever pressed it is here.
+    if (!done.outcome.cancelled) {
+      const { refusals, failures } = done.outcome
+      noticeRun(
+        NOTICE_VERBS[mode],
+        startedAt,
+        finishedOf(results, [...scan.failures, ...refusals, ...failures]),
+      )
+    }
     setTotals({
       n: results.length,
       before: results.reduce((t, r) => t + r.job.sources[0].bytes, 0),

@@ -105,6 +105,21 @@ describe('forge transcribe <file>', () => {
     expect(await argv(fake.dir)).toEqual(['run', input, '--notes'])
   })
 
+  it('says how it ended, for the notice a long run posts', async () => {
+    const { dir, input } = await setUp()
+    const ended: unknown[] = []
+    const io = { out: () => {}, err: () => {}, finished: (f: unknown) => ended.push(f) }
+    await runTranscribeCommand(intent(input), io)
+    await runTranscribeCommand(intent(join(dir, 'ghost.mp4')), io)
+    expect(ended).toEqual([
+      { made: [{ from: [input], to: [join(dir, 'talk.md')] }], failed: [] },
+      {
+        made: [],
+        failed: [{ path: join(dir, 'ghost.mp4'), message: expect.any(String) }],
+      },
+    ])
+  })
+
   it('writes the transcript alone, and says so, when Apple Intelligence is off', async () => {
     const { fake, dir, input } = await setUp('off')
     const { code, out, err } = await run(intent(input))

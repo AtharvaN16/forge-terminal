@@ -5,6 +5,8 @@ import {
   linuxNotifyCommand,
   notify,
   notifyCommand,
+  postFinishNotice,
+  terminalInFront,
 } from '../../src/menu/notify.js'
 
 describe('notifyCommand', () => {
@@ -87,5 +89,100 @@ describe('Linux notifications', () => {
 
   it('writes a GVariant string gdbus reads as one, whatever is in it', () => {
     expect(gvariantString("it's a\\b\nc")).toBe('"it\'s a\\\\b\\nc"')
+  })
+})
+
+describe('a long run’s notification', () => {
+  const FRONT = 'ASN:0x0-0x78078:'
+  /** lsappinfo as macOS answers: the front app's ASN, then its bundle ID. */
+  const lsappinfo =
+    (bundle: string) =>
+    async (_cmd: string, args: string[]): Promise<string> =>
+      args[0] === 'front'
+        ? `${FRONT}\n`
+        : `[ NULL ]  ${FRONT} (in front) \n    bundleID="${bundle}"\n    bundle path=[ NULL ] \n`
+  const notice = { title: 'Convert finished', body: 'holiday.mov → holiday.mp4' }
+
+  const run = async (o: {
+    elapsed?: number
+    platform?: NodeJS.Platform
+    env?: NodeJS.ProcessEnv
+    front?: string
+  }) => {
+    const posted: string[] = []
+    await postFinishNotice(notice, o.elapsed ?? 25_000, {
+      platform: o.platform ?? 'darwin',
+      env: o.env ?? { __CFBundleIdentifier: 'com.apple.Terminal' },
+      ask: lsappinfo(o.front ?? 'com.google.Chrome'),
+      post: async (title, body) => {
+        posted.push(`${title} | ${body}`)
+      },
+    })
+    return posted
+  }
+
+  it('is posted when the terminal is not the app in front', async () => {
+    expect(await run({})).toEqual(['Convert finished | holiday.mov → holiday.mp4'])
+  })
+
+  it('is not posted while the terminal it runs in is in front', async () => {
+    expect(await run({ front: 'com.apple.Terminal' })).toEqual([])
+  })
+
+  it('is not posted for a run shorter than 20 seconds', async () => {
+    expect(await run({ elapsed: 19_000 })).toEqual([])
+  })
+
+  it('is not posted over SSH, where it would land on the other machine', async () => {
+    expect(await run({ env: { SSH_CONNECTION: '1 2 3 4' }, platform: 'linux' })).toEqual([])
+    expect(
+      await run({ env: { SSH_TTY: '/dev/ttys001', __CFBundleIdentifier: 'com.apple.Terminal' } }),
+    ).toEqual([])
+  })
+
+  it('is posted on Windows and Linux, which have no cheap way to ask what is in front', async () => {
+    expect(await run({ platform: 'win32', env: {} })).toHaveLength(1)
+    expect(await run({ platform: 'linux', env: {} })).toHaveLength(1)
+  })
+
+  it('is posted when a Mac cannot say which app the terminal is, or which is in front', async () => {
+    expect(await run({ env: {} })).toHaveLength(1)
+    const posted: string[] = []
+    await postFinishNotice(notice, 25_000, {
+      platform: 'darwin',
+      env: { __CFBundleIdentifier: 'com.apple.Terminal' },
+      ask: async () => {
+        throw new Error('no lsappinfo')
+      },
+      post: async (title) => {
+        posted.push(title)
+      },
+    })
+    expect(posted).toEqual(['Convert finished'])
+  })
+
+  it('is never posted with FORGE_NO_NOTIFY set, as under the test suite', async () => {
+    expect(await run({ env: { FORGE_NO_NOTIFY: '1' }, platform: 'win32' })).toEqual([])
+  })
+
+  it('has nothing to post for a run that did nothing', async () => {
+    const posted: string[] = []
+    await postFinishNotice(undefined, 25_000, {
+      platform: 'win32',
+      env: {},
+      post: async (title) => {
+        posted.push(title)
+      },
+    })
+    expect(posted).toEqual([])
+  })
+
+  it('reads the front app from lsappinfo', async () => {
+    expect(await terminalInFront('com.mitchellh.ghostty', lsappinfo('com.mitchellh.ghostty'))).toBe(
+      true,
+    )
+    expect(await terminalInFront('com.mitchellh.ghostty', lsappinfo('com.apple.Safari'))).toBe(
+      false,
+    )
   })
 })

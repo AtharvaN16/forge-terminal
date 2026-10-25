@@ -43,6 +43,7 @@ import {
 } from '../core/errors.js'
 import { runPlan } from '../core/execute-jobs.js'
 import { boostScales } from '../core/extension-targets.js'
+import { finishedOf } from '../core/finish-notice.js'
 import { type FolderScan, scanFolder, scanOfFiles } from '../core/folder.js'
 import { FORMATS } from '../core/formats.js'
 import { compressFloor, hasPicture, sizeUnitsFor, soundBytes } from '../core/media.js'
@@ -164,6 +165,7 @@ import { CLEAR_SCREEN, historyForRedraw } from './redraw.js'
 import { largestPercent } from './resize-art.js'
 import { requestRestart } from './restart.js'
 import { openPath, revealLabel, revealPath } from './reveal.js'
+import { NOTICE_VERBS, noticeRun } from './run-notice.js'
 import {
   addToStage,
   batchMode,
@@ -1105,6 +1107,12 @@ export function App({
     verb: string
     phase?: string | undefined
   } | null>(null)
+  /** When the job running now began, for its notice (`noticeRun`): `work` is stale in a run's closure. */
+  const runStarted = useRef(0)
+  const startWork = (verb: string) => {
+    runStarted.current = Date.now()
+    setWork({ startedAt: runStarted.current, verb })
+  }
   /** Why a typed size was rejected, shown against the field rather than later. */
   const [sizeError, setSizeError] = useState<string | undefined>(undefined)
   /** A measured alternative worth offering after a compression. */
@@ -3952,6 +3960,18 @@ export function App({
       return
     }
 
+    // A name taken, or the source itself, is a question asked next, not an end.
+    if (
+      !outcome.refusals.some(
+        (r) => r.error.code === 'output-exists' || r.error.code === 'output-is-input',
+      )
+    )
+      noticeRun(
+        NOTICE_VERBS[mode],
+        runStarted.current,
+        finishedOf(outcome.results, [...outcome.refusals, ...outcome.failures]),
+      )
+
     const refusal = outcome.refusals[0]
     if (refusal) {
       // An output that already exists is a question, not a refusal: spec §8
@@ -4045,7 +4065,7 @@ export function App({
     converting.current = true
     const row = enhancing
     const act = actionForRow(row)
-    setWork({ startedAt: Date.now(), verb: row.verb })
+    startWork(row.verb)
     setStep('converting')
     const controller = new AbortController()
     searchAbort.current = controller
@@ -4063,6 +4083,12 @@ export function App({
         },
       })
       if (outcome.cancelled) return
+      if (!outcome.refusals.some((r) => r.error.code === 'output-exists'))
+        noticeRun(
+          NOTICE_VERBS[mode],
+          runStarted.current,
+          finishedOf(outcome.results, [...outcome.refusals, ...outcome.failures]),
+        )
       const refusal = outcome.refusals[0]
       if (refusal) {
         if (refusal.error.code === 'output-exists') {
@@ -4519,7 +4545,7 @@ export function App({
     if (!source) return
     if (converting.current) return
     converting.current = true
-    setWork({ startedAt: Date.now(), verb: action.verb })
+    startWork(action.verb)
     setStep('converting')
     try {
       const planned = action.plan([source], { ...values, destination })[0]
@@ -4572,7 +4598,7 @@ export function App({
       // so taking that size means taking both.
       if (dpi !== undefined) planned.options.dpi = dpi
       if (media !== undefined) planned.options.media = media
-      setWork({ startedAt: Date.now(), verb: action.verb })
+      startWork(action.verb)
       setStep('converting')
       // Deliberately without `targetBytes`: the search already ran and this is
       // the answer to it. Passing it again would search a second time and miss
@@ -4644,7 +4670,7 @@ export function App({
    * relays it, never recomputes one of its own.
    */
   const runPdfJobs = async (jobs: Job[], opts: { force?: boolean } = {}) => {
-    setWork({ startedAt: Date.now(), verb: verbOf(jobs[0]) ?? action.verb })
+    startWork(verbOf(jobs[0]) ?? action.verb)
     setStep('pdf-running')
     setPageProgress(null)
     // Held for home once it is back (see `notices`).
@@ -4666,6 +4692,11 @@ export function App({
           if (event.type === 'job:phase') showPhase(event.job, event.progress)
         },
       })
+      noticeRun(
+        NOTICE_VERBS[mode],
+        runStarted.current,
+        finishedOf(summary.results, [...summary.refusals, ...summary.failures]),
+      )
       const [first] = summary.results
       if (first) {
         hold({

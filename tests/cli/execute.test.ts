@@ -47,6 +47,19 @@ describe('execute', () => {
     expect((await execute(parseArgs([a, '--to', 'webp', '--force']))).exitCode).toBe(0)
   })
 
+  it('hands back the notice a long run posts: what it made, or what failed', async () => {
+    const dir = await makeTempDir()
+    const a = await makeJpeg(dir, 'a.jpg')
+    expect((await execute(parseArgs([a, '--to', 'webp']))).notice).toEqual({
+      title: 'Convert finished',
+      body: 'a.jpg → a.webp',
+    })
+    const both = await execute(parseArgs([a, join(dir, 'ghost.jpg'), '--to', 'png']))
+    expect(both.notice?.title).toBe('Convert finished 1 of 2 files')
+    expect(both.notice?.body).toMatch(/^ghost\.jpg: /)
+    expect((await execute({ kind: 'formats' })).notice).toBeUndefined()
+  })
+
   it('prints the format table and exits 0', async () => {
     const out = await execute({ kind: 'formats' })
     expect(out.exitCode).toBe(0)

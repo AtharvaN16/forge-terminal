@@ -184,6 +184,7 @@ async function main(): Promise<void> {
     const interrupt = new AbortController()
     // Only for extension jobs: any other run keeps the default ctrl-c.
     if (intent.kind === 'extension-op') process.once('SIGINT', () => interrupt.abort())
+    const startedAt = Date.now()
     const result = await execute(intent, {
       json,
       // npm says nothing while it installs, so a person gets a spinner (invariant 7: no number).
@@ -226,6 +227,12 @@ async function main(): Promise<void> {
     if (result.stdout.length > 0) process.stdout.write(`${result.stdout.join('\n')}\n`)
     if (result.stderr.length > 0) process.stderr.write(`${result.stderr.join('\n')}\n`)
     process.exitCode = interrupt.signal.aborted ? 130 : result.exitCode
+    // A long run's notice, for a person who went to another app meanwhile:
+    // never into a pipe or under --json, where no one is waiting on it.
+    if (tty && result.notice && !interrupt.signal.aborted) {
+      const { postFinishNotice } = await import('./menu/notify.js')
+      await postFinishNotice(result.notice, Date.now() - startedAt)
+    }
     // A6: a newer Forge, said once a day after a command, to a person at a
     // terminal only — never into a pipe, never with --json. It reads the
     // cache and never waits on the network; it must never fail the command.

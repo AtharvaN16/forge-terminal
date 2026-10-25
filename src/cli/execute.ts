@@ -22,6 +22,7 @@ import {
 } from '../core/errors.js'
 import { type PlanEvent, runPlan } from '../core/execute-jobs.js'
 import { boostScaleRefusal, removeBackgroundTargetRefusal } from '../core/extension-targets.js'
+import { finishedOf, finishNotice, type Notice } from '../core/finish-notice.js'
 import { looksLikeDirectory, resolveOutputPath } from '../core/output-path.js'
 import { buildPlan } from '../core/plan.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -73,6 +74,17 @@ export interface ExecuteResult {
   exitCode: 0 | 1 | 2
   stdout: string[]
   stderr: string[]
+  /** A run's notice, posted by src/index.ts if it ran long and the person went elsewhere. */
+  notice?: Notice
+}
+
+/** The mode a run's notice names, as home's tabs say it; a preset by its name. */
+function noticeVerb(intent: RunnableIntent): string {
+  if (intent.kind === 'preset') return intent.name
+  if (intent.kind === 'pageop') return 'PDF'
+  if (intent.kind === 'compress') return 'Compress'
+  if (intent.kind === 'convert') return 'Convert'
+  return 'Edit'
 }
 
 export interface BatchProgress {
@@ -902,11 +914,15 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
       const { runTranscribeCommand } = await import('./transcribe-command.js')
       const stdout: string[] = []
       const stderr: string[] = []
+      let notice: Notice | undefined
       const exitCode = await runTranscribeCommand(intent, {
         out: (line) => stdout.push(line),
         err: (line) => stderr.push(line),
+        finished: (run) => {
+          notice = finishNotice('Transcribe', run)
+        },
       })
-      return { exitCode, stdout, stderr }
+      return { exitCode, stdout, stderr, ...(notice ? { notice } : {}) }
     }
     if (intent.kind === 'shell') return { exitCode: 0, stdout: [], stderr: [] }
     // It runs until ctrl-c and prints as it goes; src/index.ts starts it itself.
@@ -916,7 +932,9 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         'Try: forge watch ./images --to webp',
       )
     }
-    return renderRun(await runIntent(intent, opts), { json, debug })
+    const report = await runIntent(intent, opts)
+    const notice = finishNotice(noticeVerb(intent), finishedOf(report.results, report.failures))
+    return { ...renderRun(report, { json, debug }), ...(notice ? { notice } : {}) }
   } catch (e) {
     if (!isForgeError(e)) throw e
     return renderCommandFailure(e, { json, debug })

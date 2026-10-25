@@ -69,6 +69,7 @@ import { NEW_FOLDER } from '../destinations.js'
 import { type DoneAction, doneActionRows, doneNotes } from '../done-art.js'
 import { blank, HOME_MARGIN, mix, type Row, width as widthOf } from '../home-art.js'
 import { openPath, revealLabel, revealPath } from '../reveal.js'
+import { NOTICE_VERBS, noticeRun } from '../run-notice.js'
 import { useTheme } from '../ThemeContext.js'
 import type { Palette } from '../theme.js'
 import { type TranscribeSource, transcribeCard } from '../transcribe-stage.js'
@@ -260,6 +261,28 @@ export function TranscribeFlow({
         ? source.facts.seconds
         : 0
   const stem = fileStem(origin.title)
+
+  /** A run's notice (`noticeRun`): the file it made, or why it stopped. A link's video goes by its title. */
+  const noticeEnd = (startedAt: number, made: { output: string } | { error: unknown }) => {
+    const path = source.kind === 'file' || source.kind === 'page' ? source.path : ''
+    noticeRun(
+      NOTICE_VERBS.transcribe,
+      startedAt,
+      'output' in made
+        ? { made: [{ from: [path || origin.title], to: [made.output] }], failed: [] }
+        : {
+            made: [],
+            failed: [
+              {
+                path,
+                message: isForgeError(made.error)
+                  ? made.error.message
+                  : unexpectedError(made.error).message,
+              },
+            ],
+          },
+    )
+  }
   const place = (path: string) =>
     destination.presets.find((p) => p.path === path)?.label ?? displayName(displayPath(path))
 
@@ -311,6 +334,7 @@ export function TranscribeFlow({
     stop.current = ctrl
     setStep('working')
     if (source.kind === 'page') return readPage(source.path, to, output, trail, ctrl)
+    const startedAt = Date.now()
     try {
       let path: string
       if (source.kind === 'file') path = source.path
@@ -360,8 +384,10 @@ export function TranscribeFlow({
       })
       onTrail({ answers: trail, current: 'Done' })
       setStep('done')
+      noticeEnd(startedAt, { output })
     } catch (e) {
       if (ctrl.signal.aborted) return
+      noticeEnd(startedAt, { error: e })
       fail.current(isForgeError(e) ? e : unexpectedError(e))
     }
   }
@@ -422,8 +448,8 @@ export function TranscribeFlow({
     trail: string[],
     ctrl: AbortController,
   ) => {
+    const at = Date.now()
     try {
-      const at = Date.now()
       setWork({ phase: 'reading', at })
       onTrail({ answers: trail, current: 'Reading text' })
       const pages = await runRead(path, {
@@ -441,8 +467,10 @@ export function TranscribeFlow({
       setDone({ output, text: words, preview: previewLines(words) })
       onTrail({ answers: trail, current: 'Done' })
       setStep('done')
+      noticeEnd(at, { output })
     } catch (e) {
       if (ctrl.signal.aborted) return
+      noticeEnd(at, { error: e })
       fail.current(isForgeError(e) ? e : unexpectedError(e))
     }
   }
