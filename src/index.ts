@@ -5,8 +5,8 @@ import type { BatchProgress } from './cli/execute.js'
 import { asForgeError, fatalLines, guardUnsettled } from './cli/fatal.js'
 import { type Spinner, startSpinner } from './cli/spinner.js'
 import { invalidArguments, isForgeError, renderError } from './core/errors.js'
-import { sizeThreadpool } from './core/threads.js'
 import { errorJson } from './core/report-data.js'
+import { sizeThreadpool } from './core/threads.js'
 import { trueColour } from './shell/glyphs.js'
 
 // Before anything can touch libuv's threadpool, which reads its size once:
