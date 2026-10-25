@@ -1261,20 +1261,30 @@ function Watching({
   const now = Date.now()
   const end = scrolls ? width - HOME_MARGIN - 3 : width - 2
   const spinner = moving ? SPINNER_FRAMES[tick % SPINNER_FRAMES.length] : undefined
-  const rows = files.map((f) =>
-    watchedRow({
-      palette,
-      mode,
-      width,
-      end,
-      spinner,
-      file: {
-        ...f,
-        ...(f.state === 'running' ? { clock: `${((now - f.startedAt) / 1000).toFixed(1)}s` } : {}),
-        ...(f.doneAt !== undefined ? { flash: Math.max(0, 1 - (now - f.doneAt) / FLASH_MS) } : {}),
-      },
-    }),
-  )
+  // Drawn as the list asks for them: only the rows that fit, however many landed.
+  const rows = {
+    length: files.length,
+    row: (i: number) => {
+      const f = files[i]
+      if (!f) return []
+      return watchedRow({
+        palette,
+        mode,
+        width,
+        end,
+        spinner,
+        file: {
+          ...f,
+          ...(f.state === 'running'
+            ? { clock: `${((now - f.startedAt) / 1000).toFixed(1)}s` }
+            : {}),
+          ...(f.doneAt !== undefined
+            ? { flash: Math.max(0, 1 - (now - f.doneAt) / FLASH_MS) }
+            : {}),
+        },
+      })
+    },
+  }
   const failedAt = files.flatMap((f, i) => (f.state === 'failed' ? [i] : []))
   const light =
     moving && watching ? sweepAt(tick % SWEEP, SWEEP, Math.max(1, width - 6)) : undefined

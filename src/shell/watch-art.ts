@@ -303,7 +303,12 @@ export function watchListRows({
   still = false,
 }: {
   palette: Palette
-  rows: Row[]
+  /**
+   * The list's rows, or how many there are and how to draw one. Given the
+   * second, only the rows that fit are drawn: a long watch has hundreds, and
+   * its light redraws the screen 14 times a second.
+   */
+  rows: Row[] | { length: number; row: (i: number) => Row }
   room: number
   width: number
   /** The indexes of the rows that failed. */
@@ -315,12 +320,14 @@ export function watchListRows({
 }): Row[] {
   const end = columns - HOME_MARGIN
   const total = rows.length
-  if (total <= room) return [[], ...rows]
+  const rowAt = Array.isArray(rows) ? (i: number) => rows[i] ?? [] : rows.row
+  if (total <= room) return [[], ...Array.from({ length: total }, (_, i) => rowAt(i))]
   const shown = back > 0 && !still ? room - 1 : room
   const start = Math.max(0, total - shown - back)
   const thumb = Math.max(1, Math.round((shown * shown) / total))
   const at = Math.round((start / Math.max(1, total - shown)) * (shown - thumb))
-  const body = rows.slice(start, start + shown).map((row, k): Row => {
+  const body = Array.from({ length: Math.min(shown, total - start) }, (_, k): Row => {
+    const row = rowAt(start + k)
     const bar: Run =
       k >= at && k < at + thumb ? { text: '┃', fg: palette.dim } : { text: '│', fg: palette.faint }
     return [...row, blank(end - 1 - width(row)), bar]

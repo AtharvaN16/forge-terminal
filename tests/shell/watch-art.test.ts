@@ -212,6 +212,22 @@ describe('watchListRows', () => {
     expect(out.at(-1)?.endsWith('┃')).toBe(true)
   })
 
+  it('draws only the rows it shows, given a way to draw one', () => {
+    const drawn: number[] = []
+    const lazy = {
+      length: 1000,
+      row: (i: number): Row => {
+        drawn.push(i)
+        return [{ text: `row ${i}` }]
+      },
+    }
+    const out = texts(watchListRows({ palette, rows: lazy, room: 5, width: 80, failedAt: [] }))
+    expect(drawn).toEqual([995, 996, 997, 998, 999])
+    expect(out).toEqual(
+      texts(watchListRows({ palette, rows: rows(1000), room: 5, width: 80, failedAt: [] })),
+    )
+  })
+
   it('counts a failure that has scrolled off the top over the list', () => {
     const out = texts(watchListRows({ palette, rows: rows(20), room: 5, width: 80, failedAt: [6] }))
     expect(out[0]?.trim()).toBe('↑ 1 failed')
