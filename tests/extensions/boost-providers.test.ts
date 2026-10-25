@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cpuThreads,
   type Device,
+  deviceKey,
   judge,
   NCNN_TOO_SLOW_MS,
   ortThreads,
@@ -197,3 +198,20 @@ describe('ortThreads (ONNX Runtime threads)', () => {
   })
 })
 
+describe('deviceKey (what a remembered card-or-processor choice is filed under)', () => {
+  const card: Device = { index: 0, name: 'Radeon 780M', kind: 'integrated' }
+
+  it('is the name alone when that is all forge-ncnn says', () => {
+    expect(deviceKey(card)).toBe('Radeon 780M')
+  })
+
+  it('takes in the vendor, the model and the driver, so a new driver is checked again', () => {
+    const a = deviceKey({ ...card, vendor: 4098, deviceId: 5567, driver: 8388894 })
+    expect(a).toBe('Radeon 780M [1002:15bf] driver 8388894')
+    expect(deviceKey({ ...card, vendor: 4098, deviceId: 5567, driver: 8388895 })).not.toBe(a)
+  })
+
+  it('does not depend on where in the list the card is', () => {
+    expect(deviceKey({ ...card, index: 3 })).toBe(deviceKey(card))
+  })
+})

@@ -7,7 +7,9 @@
 //
 //   forge-ncnn --devices
 //       One line of JSON on stdout: the Vulkan devices ncnn can see, each with
-//       its index, name and kind. An empty list if there is no Vulkan loader or
+//       its index, name and kind, its PCI vendor and device ids, and its driver's
+//       version (which a remembered speed check is filed under, so that a new
+//       driver is checked again). An empty list if there is no Vulkan loader or
 //       driver; never an error. Which one to use is runner.mjs's decision (it
 //       turns away a software "graphics card" by its name), made before the
 //       worker is started.
@@ -153,7 +155,10 @@ static int list_devices()
             if (i) line += ",";
             line += "{\"index\":" + std::to_string(i);
             line += ",\"name\":\"" + json_escape(info.device_name()) + "\"";
-            line += ",\"kind\":\"" + std::string(kind_of(info.type())) + "\"}";
+            line += ",\"kind\":\"" + std::string(kind_of(info.type())) + "\"";
+            line += ",\"vendor\":" + std::to_string(info.vendor_id());
+            line += ",\"deviceId\":" + std::to_string(info.device_id());
+            line += ",\"driver\":" + std::to_string(info.driver_version()) + "}";
         }
         ncnn::destroy_gpu_instance();
     }

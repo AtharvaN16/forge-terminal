@@ -26,11 +26,25 @@
  * the projected total). stderr is free-form. The input
  * is a PNG Forge already rotated and decoded, so EXIF is not this file's concern.
  *
- * --cache is accepted for the contract but unused: onnxruntime-node 1.23 only
- * passes `coreMlFlags` to the CoreML EP, so there is no ModelCacheDirectory to
- * point at it. The EP compiles into the per-user temp directory (it ignores
- * TMPDIR) and deletes that on release — about 1 s per run, measured. The only
- * file this runner writes is --out.
+ *   node runner.mjs --serve
+ *
+ * One process for many images (from 1.4.0; Forge asks for it by the installed
+ * version, `boostServes`). Each line on stdin is a job, `{"args":[...]}`, the
+ * arguments a one-image run takes; it is answered on stdout exactly as that run
+ * would be (its counts, then its result line), and the next line is read once
+ * it has. The engine is opened for the first job and kept for the rest, so a
+ * batch pays ONNX Runtime's start and CoreML's compile (about 1 s a run,
+ * measured), or ncnn's device listing and card check, once. A job that fails
+ * is answered and the next one goes on; an engine that failed is opened afresh.
+ * When stdin closes the runner gives its engine back and exits; mid-job it
+ * exits at once: Forge closes it only between jobs, so then Forge is gone.
+ *
+ * --cache: the ncnn engine remembers there which of a card and the processor
+ * was quicker (engine-ncnn.ts), and that file and --out are all this runner
+ * writes. ONNX Runtime has no use for it: onnxruntime-node 1.23 only passes
+ * `coreMlFlags` to the CoreML EP, so there is no ModelCacheDirectory to point
+ * at it. The EP compiles into the per-user temp directory (it ignores TMPDIR)
+ * and deletes that on release.
  */
 
 import { existsSync } from 'node:fs'
@@ -69,9 +83,8 @@ function progress(done: number, of: number): void {
   process.stdout.write(`${JSON.stringify({ progress: done, of })}\n`)
 }
 
-function reply(line: Record<string, unknown>, exitCode: number): void {
+function say(line: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify(line)}\n`)
-  process.exitCode = exitCode
 }
 
 interface Args {
@@ -84,7 +97,8 @@ interface Args {
 /** The factors this runner makes: 1× (Sharpen) and 2×–4×, each from the model's 4× tile. */
 type Scale = 1 | 2 | 3 | 4
 const SCALES: readonly Scale[] = [1, 2, 3, 4]
-const USAGE = 'usage: runner.mjs --in <png> --out <png> --scale 1|2|3|4 [--cache <dir>]'
+const USAGE =
+  'usage: runner.mjs --in <png> --out <png> --scale 1|2|3|4 [--cache <dir>] | runner.mjs --serve'
 
 function parseArgs(argv: string[]): Args {
   const v: Record<string, string> = {}
@@ -128,7 +142,22 @@ const PAYLOAD_FILES: Record<'ort' | 'ncnn', readonly string[]> = {
   ncnn: ['forge-ncnn', 'realesr-general-x4v3.param', 'realesr-general-x4v3.bin'],
 }
 
-async function boost(args: Args): Promise<{ width: number; height: number }> {
+/**
+ * Where a job gets its engine and gives it back: a one-image run opens it and
+ * closes it, a `--serve` runner keeps it for the next job (see `serve`).
+ */
+interface Keeper {
+  open(make: () => Promise<TileEngine>): Promise<TileEngine>
+  /** `failed`: the job ended in something other than a refusal, so the engine may be what broke. */
+  release(engine: TileEngine, failed: boolean): Promise<void>
+}
+
+const oneImage: Keeper = {
+  open: (make) => make(),
+  release: (engine) => engine.close(),
+}
+
+async function boost(args: Args, keeper: Keeper): Promise<{ width: number; height: number }> {
   const head = readPngHeader(args.input)
   checkSize(head.width, head.height, args.scale)
 
@@ -149,19 +178,20 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
   }
   const total = tileCount(W, H, STEP)
   // The engine's module is imported by name here so that each platform's runner.mjs carries one only (build.mjs).
-  const engine: TileEngine =
+  const engine = await keeper.open(async () =>
     plan.engine === 'ncnn'
-      ? await (await import('./engine-ncnn.js')).openEngine(total)
-      : await (await import('./engine-ort.js')).openEngine(
+      ? (await import('./engine-ncnn.js')).openEngine(args.cache)
+      : (await import('./engine-ort.js')).openEngine(
           fileURLToPath(new URL(`./${MODEL_FILE}`, import.meta.url)),
           plan.providers,
-        )
+        ),
+  )
+  engine.startImage?.(total)
 
   const down = S === MODEL_SCALE ? undefined : new Resampler(TILE_OUT, TILE_OUT, TILE * S, TILE * S)
   const alpha = img.hasAlpha ? alphaPlane(rgba, W, H) : undefined
   const alphaUp = alpha && S !== 1 ? new Resampler(W, H, OW, OH) : undefined
   const ch = img.hasAlpha ? 4 : 3
-  const writer = new PngWriter(args.output, OW, OH, img.hasAlpha)
   // Only where the processor is what a missing graphics card leaves: how long each tile took.
   const tileMs: number[] = []
 
@@ -196,7 +226,10 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
     }
   }
   let writing: Promise<void> = Promise.resolve()
+  let failed = true
   try {
+    // In here, so that an --out that cannot be opened still gives the engine back.
+    const writer = new PngWriter(args.output, OW, OH, img.hasAlpha)
     let band = new Uint8Array(0)
     let lastDone = performance.now()
     progress(0, total)
@@ -261,10 +294,17 @@ async function boost(args: Args): Promise<{ width: number; height: number }> {
     }
     await writing
     await writer.close()
+    failed = false
+  } catch (err) {
+    failed = !(err instanceof RunnerError)
+    throw err
   } finally {
     for (const p of inflight) p.catch(() => {})
     writing.catch(() => {})
-    await engine.close()
+    // Tiles still being made (a refusal comes while a pipelined engine is ahead)
+    // are let finish, so a kept engine's next answer is the next job's.
+    if (keeper !== oneImage) await Promise.allSettled(inflight)
+    await keeper.release(engine, failed)
   }
   return { width: OW, height: OH }
 }
@@ -281,35 +321,105 @@ function alphaPlane(rgba: Uint8Array, w: number, h: number): Float32Array {
   return a
 }
 
-async function main(): Promise<void> {
+/** The line a job that threw is answered with. */
+function failure(err: unknown): Record<string, unknown> {
+  if (err instanceof RunnerError)
+    return {
+      ok: false,
+      code: err.code,
+      message: err.message,
+      ...(err.seconds === undefined ? {} : { seconds: err.seconds }),
+    }
+  if (err instanceof PngError)
+    return {
+      ok: false,
+      code: 'runtime-error',
+      message: `input is not a readable PNG: ${err.message}`,
+    }
+  process.stderr.write(`${(err as Error)?.stack ?? err}\n`)
+  return { ok: false, code: 'runtime-error', message: String((err as Error)?.message ?? err) }
+}
+
+/** One job, answered on stdout: its counts as it goes, then its result line. Whether it worked. */
+async function job(argv: string[], keeper: Keeper): Promise<boolean> {
   const t0 = performance.now()
   try {
-    const args = parseArgs(process.argv.slice(2))
-    const { width, height } = await boost(args)
-    reply({ ok: true, width, height, ms: Math.round(performance.now() - t0) }, 0)
+    const { width, height } = await boost(parseArgs(argv), keeper)
+    say({ ok: true, width, height, ms: Math.round(performance.now() - t0) })
+    return true
   } catch (err) {
-    if (err instanceof RunnerError)
-      return reply(
-        {
-          ok: false,
-          code: err.code,
-          message: err.message,
-          ...(err.seconds === undefined ? {} : { seconds: err.seconds }),
-        },
-        1,
-      )
-    if (err instanceof PngError)
-      return reply(
-        {
-          ok: false,
-          code: 'runtime-error',
-          message: `input is not a readable PNG: ${err.message}`,
-        },
-        1,
-      )
-    process.stderr.write(`${(err as Error)?.stack ?? err}\n`)
-    reply({ ok: false, code: 'runtime-error', message: String((err as Error)?.message ?? err) }, 1)
+    say(failure(err))
+    return false
   }
+}
+
+/** A job line's arguments: `{"args":[...]}`, strings only. */
+function jobArgs(line: string): string[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    throw new RunnerError('runtime-error', `not a job: ${line.slice(0, 80)}`)
+  }
+  const args = (parsed as { args?: unknown } | null)?.args
+  if (!Array.isArray(args) || !args.every((a) => typeof a === 'string'))
+    throw new RunnerError('runtime-error', `not a job: ${line.slice(0, 80)}`)
+  return args
+}
+
+/** `--serve`: jobs from stdin, one line each, one at a time, on one engine (header). */
+function serve(): void {
+  let kept: TileEngine | undefined
+  const keeper: Keeper = {
+    async open(make) {
+      kept ??= await make()
+      return kept
+    },
+    async release(engine, failed) {
+      if (!failed) return
+      kept = undefined
+      await engine.close().catch(() => {})
+    },
+  }
+  let busy = false
+  // Nobody is reading any more: Forge is gone.
+  process.stdout.on('error', () => process.exit(0))
+  process.stdin.on('end', async () => {
+    // Between jobs the engine is given back first: CoreML deletes the model it
+    // compiled into the temp directory only then. Mid-job Forge is gone, and
+    // nothing is waited for. ncnn's workers go with this process either way:
+    // their stdin is its pipe.
+    const engine = kept
+    kept = undefined
+    if (engine && !busy) await engine.close().catch(() => {})
+    process.exit(0)
+  })
+  let queue: Promise<unknown> = Promise.resolve()
+  let pending = ''
+  process.stdin.setEncoding('utf8').on('data', (d: string) => {
+    const lines = (pending + d).split('\n')
+    pending = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.trim()) continue
+      queue = queue.then(async () => {
+        let argv: string[]
+        try {
+          argv = jobArgs(line)
+        } catch (err) {
+          return say(failure(err))
+        }
+        busy = true
+        await job(argv, keeper)
+        busy = false
+      })
+    }
+  })
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2)
+  if (argv.length === 1 && argv[0] === '--serve') return serve()
+  process.exitCode = (await job(argv, oneImage)) ? 0 : 1
 }
 
 await main()

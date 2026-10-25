@@ -26,5 +26,11 @@ export interface TileEngine {
   run(tile: Uint8Array): Promise<Float32Array>
   /** Time spent since the last call on checking itself rather than on tiles, in ms; the too-slow guard leaves it out. */
   takeOverheadMs?(): number
+  /**
+   * An image of `tiles` tiles comes next. An engine is opened once and kept
+   * for every image a `--serve` runner is given, so what it decides by the
+   * size of the image is told it here, each image.
+   */
+  startImage?(tiles: number): void
   close(): Promise<void>
 }

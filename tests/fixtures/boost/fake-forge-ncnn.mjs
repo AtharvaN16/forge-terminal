@@ -11,6 +11,7 @@
 //   FAKE_BROKEN   "1": a device answers with zeros (a driver that computed nothing)
 //   FAKE_DIE      "1": exits at once, before saying it is ready
 //   FAKE_LOG      a file: one line is appended per started worker ("cpu" or "gpu <n>")
+//   FAKE_DEVICES_LOG  a file: one line ("devices") is appended per --devices call
 import { appendFileSync } from 'node:fs'
 
 const argv = process.argv.slice(2)
@@ -20,6 +21,7 @@ const flag = (name) => {
 }
 
 if (argv.includes('--devices')) {
+  if (process.env.FAKE_DEVICES_LOG) appendFileSync(process.env.FAKE_DEVICES_LOG, 'devices\n')
   process.stdout.write(
     `${JSON.stringify({ devices: JSON.parse(process.env.FAKE_DEVICES ?? '[]') })}\n`,
   )

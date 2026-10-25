@@ -79,6 +79,25 @@ export interface Device {
   index: number
   name: string
   kind: string
+  /** The PCI vendor and device ids, and the driver's version, as Vulkan reports them. Optional: the name alone still works. */
+  vendor?: number
+  deviceId?: number
+  driver?: number
+}
+
+/**
+ * What a card's measured choice (itself or the processor, engine-ncnn.ts) is
+ * remembered under: its name, its ids and its driver, so that a new driver,
+ * which can change how fast the card is, is measured again. Not its index: that
+ * is only where it is in today's list.
+ */
+export function deviceKey(d: Device): string {
+  const hex = (n: number) => n.toString(16).padStart(4, '0')
+  const ids =
+    d.vendor !== undefined && d.deviceId !== undefined
+      ? ` [${hex(d.vendor)}:${hex(d.deviceId)}]`
+      : ''
+  return `${d.name}${ids}${d.driver !== undefined ? ` driver ${d.driver}` : ''}`
 }
 
 /**
