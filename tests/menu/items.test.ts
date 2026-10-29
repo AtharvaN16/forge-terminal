@@ -4,13 +4,13 @@ import { menuItems } from '../../src/menu/items.js'
 const labels = (o: Parameters<typeof menuItems>[0]) => menuItems(o).map((i) => i.label)
 
 describe('menuItems', () => {
-  it('offers the four image items, and Open in Forge for PDFs, once Boost is installed', () => {
+  it('offers the four image items, and Open in Forge for PDFs, video and sound, once Boost is installed', () => {
     expect(labels({ sharpen: true })).toEqual([
       'Open Forge',
+      'Open in Forge',
       'Convert in Forge',
       'Compress in Forge',
       'Sharpen in Forge',
-      'Open in Forge',
     ])
   })
 
@@ -18,17 +18,17 @@ describe('menuItems', () => {
     expect(labels({ sharpen: false })).not.toContain('Sharpen in Forge')
   })
 
-  it('shows Open in Forge for PDFs only, never for images', () => {
+  it('shows Open in Forge for PDFs, video and sound, never for images', () => {
     const openIn = menuItems({ sharpen: true }).find((i) => i.label === 'Open in Forge')
-    expect(openIn?.kinds).toEqual(['pdf'])
+    expect(openIn?.kinds).toEqual(['pdf', 'video', 'audio'])
   })
 
-  it('shows Sharpen for images only, Open Forge and the two modes for folders too', () => {
+  it('shows Sharpen for images only, Open Forge and the two modes for folders, the two modes for video and sound', () => {
     const kinds = Object.fromEntries(menuItems({ sharpen: true }).map((i) => [i.label, i.kinds]))
     expect(kinds['Sharpen in Forge']).toEqual(['image'])
     expect(kinds['Open Forge']).toEqual(['image', 'folder'])
-    expect(kinds['Convert in Forge']).toEqual(['image', 'folder'])
-    expect(kinds['Compress in Forge']).toEqual(['image', 'folder'])
+    expect(kinds['Convert in Forge']).toEqual(['image', 'folder', 'video', 'audio'])
+    expect(kinds['Compress in Forge']).toEqual(['image', 'folder', 'video', 'audio'])
   })
 
   it('runs Sharpen with no window and opens Forge for the rest', () => {
@@ -39,7 +39,7 @@ describe('menuItems', () => {
   it('adds each preset turned on in /right-click after Forge’s own: images only, no window, Forge’s mark', () => {
     const items = menuItems({ sharpen: false, presets: ['webblog', 'thumbs'] })
     expect(items.map((i) => i.label).slice(-3)).toEqual([
-      'Open in Forge',
+      'Compress in Forge',
       'webblog in Forge',
       'thumbs in Forge',
     ])
@@ -61,7 +61,7 @@ describe('menuItems', () => {
       convert: 'convert',
       compress: 'compress',
       sharpen: 'edit',
-      'open-pdf': 'pdf',
+      'open-file': 'pdf',
     })
   })
 })

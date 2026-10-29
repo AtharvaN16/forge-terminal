@@ -9,7 +9,8 @@ import { AUMID, psEscape } from './notify.js'
  *
  * Decided (WM2): images and folders get one "Forge ›" row holding the
  * items, the way 7-Zip does, rather than four rows loose among Windows' own.
- * A PDF has a single item, Open in Forge, so it goes straight in the menu.
+ * A PDF has a single item, Open in Forge, so it goes straight in the menu;
+ * video and sound get the Forge row, with that item and Convert and Compress.
  *
  * Each item runs the launcher (launcher.ts) under `conhost --headless`, so a
  * click that opens no window (Sharpen) flashes no console either.
@@ -18,6 +19,8 @@ import { AUMID, psEscape } from './notify.js'
 const CLASSES = 'HKCU\\Software\\Classes'
 const IMAGE = `${CLASSES}\\SystemFileAssociations\\image\\shell\\Forge`
 const FOLDER = `${CLASSES}\\Directory\\shell\\Forge`
+const VIDEO = `${CLASSES}\\SystemFileAssociations\\video\\shell\\Forge`
+const AUDIO = `${CLASSES}\\SystemFileAssociations\\audio\\shell\\Forge`
 const PDF = `${CLASSES}\\SystemFileAssociations\\.pdf\\shell\\ForgeOpen`
 const APP_ID = `${CLASSES}\\AppUserModelId\\${AUMID}`
 
@@ -28,7 +31,7 @@ export interface RegistryEntry {
 }
 
 /** The keys that, deleted with everything under them, remove all Forge wrote. */
-export const registryRoots = () => [IMAGE, FOLDER, PDF, APP_ID]
+export const registryRoots = () => [IMAGE, FOLDER, VIDEO, AUDIO, PDF, APP_ID]
 
 /** The icon file for an item's colour, in the menu folder. */
 export const icoName = (item: Pick<MenuItem, 'paint'>) => `${item.paint}.ico`
@@ -58,10 +61,12 @@ export function registryPlan(o: {
       }),
     ]
   }
-  const pdf = o.items.find((i) => i.kinds.includes('pdf'))
+  const pdf = o.items.find((i) => i.action === 'open-file')
   return [
     ...cascade(IMAGE, 'image'),
     ...cascade(FOLDER, 'folder'),
+    ...cascade(VIDEO, 'video'),
+    ...cascade(AUDIO, 'audio'),
     ...(pdf
       ? [
           { key: PDF, values: { MUIVerb: pdf.label, Icon: icon(pdf) } },

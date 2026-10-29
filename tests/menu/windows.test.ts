@@ -42,6 +42,14 @@ describe('registryPlan', () => {
     expect(keys).toEqual([`${sub}\\1open`, `${sub}\\2convert`, `${sub}\\3compress`])
   })
 
+  it('gives video and sound their own Forge › row: Open in Forge, Convert, Compress', () => {
+    for (const kind of ['video', 'audio']) {
+      const sub = `${C}\\SystemFileAssociations\\${kind}\\shell\\Forge\\shell`
+      const keys = Object.keys(byKey()).filter((x) => x.startsWith(sub) && !x.endsWith('command'))
+      expect(keys).toEqual([`${sub}\\1open-file`, `${sub}\\2convert`, `${sub}\\3compress`])
+    }
+  })
+
   it('puts Open in Forge straight in a PDF’s menu, one item needing no submenu', () => {
     const k = byKey()
     expect(k[`${C}\\SystemFileAssociations\\.pdf\\shell\\ForgeOpen`]).toEqual({

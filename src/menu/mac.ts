@@ -45,6 +45,8 @@ const SEND_TYPES: Record<MenuKind, string> = {
   image: 'public.image',
   folder: 'public.folder',
   pdf: 'com.adobe.pdf',
+  video: 'public.movie',
+  audio: 'public.audio',
 }
 
 /** What Automator records the service as taking. */

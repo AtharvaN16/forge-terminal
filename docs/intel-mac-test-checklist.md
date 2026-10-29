@@ -112,6 +112,8 @@ macOS opens these itself, so there is nothing to install.
    bottom of that menu.
 2. Choose **Convert in Forge**. **Right:** a terminal window opens with that file ready.
 3. Right-click a PDF. **Right:** an **Open in Forge** Quick Action.
+   Right-click an MP4 or an MP3. **Right:** **Open in Forge**, **Convert in Forge**
+   and **Compress in Forge**; Convert and Compress open with the file ready.
 4. Make a preset: convert a photo to WebP, and on the done screen press `p`.
    Give it a name.
 5. Type `/right-click`. **Right:** a line saying Forge is in Finder's Quick

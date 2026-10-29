@@ -30,9 +30,19 @@ describe('workflowFiles', () => {
     expect(info).toContain('<string>public.folder</string>')
   })
 
-  it('offers Open in Forge for PDFs', () => {
-    const info = workflowFiles(item('open-pdf'), LAUNCHER).files['Contents/Info.plist'] as string
+  it('offers Open in Forge for PDFs, video and sound', () => {
+    const info = workflowFiles(item('open-file'), LAUNCHER).files['Contents/Info.plist'] as string
     expect(info).toContain('<string>com.adobe.pdf</string>')
+    expect(info).toContain('<string>public.movie</string>')
+    expect(info).toContain('<string>public.audio</string>')
+  })
+
+  it('offers Convert and Compress for video and sound too', () => {
+    for (const action of ['convert', 'compress']) {
+      const info = workflowFiles(item(action), LAUNCHER).files['Contents/Info.plist'] as string
+      expect(info).toContain('<string>public.movie</string>')
+      expect(info).toContain('<string>public.audio</string>')
+    }
   })
 
   it('runs the launcher with the action and every selected file', () => {
@@ -55,7 +65,7 @@ describe('workflowFiles', () => {
         /<key>serviceInputTypeIdentifier<\/key>\s*<string>([^<]+)<\/string>/,
       )?.[1]
     expect(meta('sharpen')).toBe('com.apple.Automator.fileSystemObject.image')
-    expect(meta('open-pdf')).toBe('com.apple.Automator.fileSystemObject.PDF')
+    expect(meta('open-file')).toBe('com.apple.Automator.fileSystemObject')
     expect(meta('convert')).toBe('com.apple.Automator.fileSystemObject')
   })
 
@@ -90,10 +100,10 @@ describe('a preset’s Quick Action', () => {
 
 describe('serviceKey', () => {
   it('names the service as the services settings key it: bundle ID, menu name, message', () => {
-    const info = workflowFiles(item('open-pdf'), LAUNCHER).files['Contents/Info.plist'] as string
-    expect(info).toContain('<string>com.forge-terminal.menu.open-pdf</string>')
-    expect(serviceKey(item('open-pdf'))).toBe(
-      'com.forge-terminal.menu.open-pdf - Open in Forge - runWorkflowAsService',
+    const info = workflowFiles(item('open-file'), LAUNCHER).files['Contents/Info.plist'] as string
+    expect(info).toContain('<string>com.forge-terminal.menu.open-file</string>')
+    expect(serviceKey(item('open-file'))).toBe(
+      'com.forge-terminal.menu.open-file - Open in Forge - runWorkflowAsService',
     )
   })
 })

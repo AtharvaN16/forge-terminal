@@ -276,15 +276,17 @@ describe.skipIf(process.platform === 'win32')('installMenu on Linux', () => {
     await installMenu(e)
     expect(tree(nemo)).toEqual([
       'forge-1-open.nemo_action',
-      'forge-2-convert.nemo_action',
-      'forge-3-compress.nemo_action',
-      'forge-4-sharpen.nemo_action',
-      'forge-5-open-pdf.nemo_action',
+      'forge-2-open-file.nemo_action',
+      'forge-3-convert.nemo_action',
+      'forge-4-compress.nemo_action',
+      'forge-5-sharpen.nemo_action',
     ])
     expect(tree(dolphin)).toEqual([
+      'forge-audio.desktop',
       'forge-folder.desktop',
       'forge-image.desktop',
       'forge-pdf.desktop',
+      'forge-video.desktop',
     ])
     if (process.platform !== 'win32') expect(exec(join(dolphin, 'forge-image.desktop'))).toBe(true)
   })

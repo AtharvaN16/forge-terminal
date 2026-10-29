@@ -3,8 +3,10 @@
  * Explorer's menu on Windows (mockups/finder-2026-10.html, decided).
  *
  * An image gets Open Forge, Convert in Forge, Compress in Forge and Sharpen
- * in Forge; a folder the first three; a PDF only Open in Forge, which opens
- * it in PDF mode. Video and sound join Open in Forge when those modes land.
+ * in Forge; a folder the first three; a video or a sound file Open in Forge,
+ * Convert in Forge and Compress in Forge; a PDF only Open in Forge, which
+ * opens it in PDF mode. Video and sound have no quiet item: converting and
+ * compressing them takes a target, so those two open the window.
  *
  * Then each preset turned on in /right-click, as "<name> in Forge"
  * (mockups/quick-actions-presets-2026-10.html, round one): images only, run
@@ -12,10 +14,10 @@
  */
 
 /** What a menu item does when clicked. */
-export type MenuAction = 'open' | 'convert' | 'compress' | 'sharpen' | 'open-pdf' | 'preset'
+export type MenuAction = 'open' | 'convert' | 'compress' | 'sharpen' | 'open-file' | 'preset'
 
 /** The file kinds an item is offered for. The system hides it for anything else. */
-export type MenuKind = 'image' | 'folder' | 'pdf'
+export type MenuKind = 'image' | 'folder' | 'pdf' | 'video' | 'audio'
 
 /** The colour of the slashes in the item's icon: a mode's, or Forge's own gradient. */
 export type MenuPaint = 'forge' | 'convert' | 'compress' | 'edit' | 'pdf'
@@ -49,16 +51,23 @@ export function menuItems(o: {
       paint: 'forge',
     },
     {
+      action: 'open-file',
+      label: 'Open in Forge',
+      kinds: ['pdf', 'video', 'audio'],
+      window: true,
+      paint: 'pdf',
+    },
+    {
       action: 'convert',
       label: 'Convert in Forge',
-      kinds: ['image', 'folder'],
+      kinds: ['image', 'folder', 'video', 'audio'],
       window: true,
       paint: 'convert',
     },
     {
       action: 'compress',
       label: 'Compress in Forge',
-      kinds: ['image', 'folder'],
+      kinds: ['image', 'folder', 'video', 'audio'],
       window: true,
       paint: 'compress',
     },
@@ -69,7 +78,6 @@ export function menuItems(o: {
       window: false,
       paint: 'edit',
     },
-    { action: 'open-pdf', label: 'Open in Forge', kinds: ['pdf'], window: true, paint: 'pdf' },
   ]
   const presets = (o.presets ?? []).map(
     (name): MenuItem => ({

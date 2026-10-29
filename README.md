@@ -118,12 +118,14 @@ the first time you run `forge`, and says so once:
 | --- | --- |
 | an image | Open Forge · Convert in Forge · Compress in Forge · Sharpen in Forge |
 | a folder | Open Forge · Convert in Forge · Compress in Forge |
+| a video or a sound file | Open in Forge · Convert in Forge · Compress in Forge |
 | a PDF | Open in Forge |
 
 - **Open Forge** opens Forge in a terminal window, nothing staged.
 - **Convert in Forge** and **Compress in Forge** open it with the file staged
   and that mode's first question already asked.
-- **Open in Forge** opens a PDF staged in PDF mode.
+- **Open in Forge** opens a PDF staged in PDF mode, and a video or sound file
+  staged on the home screen.
 - **Sharpen in Forge** runs with no window, says how it went in a
   notification, and selects the new file. It is there once the Boost
   extension is installed (`forge extensions add boost`).
@@ -138,7 +140,7 @@ Forge's logo with the slashes in its mode's colour.
 On a Mac the items are under **Quick Actions**, and Finder's own
 **Customize…** at the bottom of that menu hides any you do not want. On
 Windows 11 they are under **Show more options** (or shift + right-click): an
-image's and a folder's in a **Forge** submenu, a PDF's one item on its own. They are set up only for a Forge installed with
+image's, a folder's, a video's and a sound file's in a **Forge** submenu, a PDF's one item on its own. They are set up only for a Forge installed with
 `npm install -g`; from a source checkout, `forge menu install` sets them up
 by hand and `forge menu remove` takes them out.
 

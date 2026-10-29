@@ -18,6 +18,14 @@ describe('parseMenuArgs', () => {
     })
   })
 
+  it('reads Open in Forge from a menu written before video and sound', () => {
+    expect(parseMenuArgs(['run', 'open-pdf', '/a.pdf'])).toEqual({
+      kind: 'run',
+      action: 'open-file',
+      paths: ['/a.pdf'],
+    })
+  })
+
   it('reads install and remove', () => {
     expect(parseMenuArgs(['install'])).toEqual({ kind: 'install' })
     expect(parseMenuArgs(['remove'])).toEqual({ kind: 'remove' })
@@ -62,9 +70,17 @@ describe('openedFor', () => {
   })
 
   it('Open in Forge on a PDF: staged in PDF mode, waiting for ↵', () => {
-    expect(openedFor('open-pdf', ['/n.pdf'])).toEqual({
+    expect(openedFor('open-file', ['/n.pdf'], true)).toEqual({
       paths: ['/n.pdf'],
       mode: 'pdf',
+      advance: false,
+    })
+  })
+
+  it('Open in Forge on a video or sound file: staged on the convert home, waiting for ↵', () => {
+    expect(openedFor('open-file', ['/clip.mov'])).toEqual({
+      paths: ['/clip.mov'],
+      mode: 'convert',
       advance: false,
     })
   })

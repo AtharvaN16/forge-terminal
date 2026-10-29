@@ -71,13 +71,13 @@ async function main(): Promise<void> {
     // files, and `run` opens a terminal on `open`, which is the shell with the
     // files staged.
     if (argv[0] === 'menu') {
-      const { openedFor, parseMenuArgs } = await import('./menu/command.js')
+      const { openedForClick, parseMenuArgs } = await import('./menu/command.js')
       const cmd = parseMenuArgs(argv.slice(1))
       if (cmd.kind === 'open') {
         const { applyColourPreference } = await import('./shell/theme.js')
         applyColourPreference()
         const { bootShell } = await import('./shell/boot.js')
-        await bootShell(undefined, { opened: openedFor(cmd.action, cmd.paths) })
+        await bootShell(undefined, { opened: await openedForClick(cmd.action, cmd.paths) })
         return
       }
       const { runMenuCommand } = await import('./menu/entry.js')

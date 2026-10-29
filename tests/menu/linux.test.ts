@@ -105,7 +105,12 @@ describe.skipIf(WINDOWS)('nemoAction', () => {
     expect(text).toContain(`Exec='${LAUNCHER}' open %F\n`)
     expect(text).toContain('Mimetypes=image/*;inode/directory;\n')
     expect(text).toContain('Selection=notnone\n')
-    expect(nemoAction(item('open-pdf'), LAUNCHER)).toContain('Mimetypes=application/pdf;\n')
+    expect(nemoAction(item('open-file'), LAUNCHER)).toContain(
+      'Mimetypes=application/pdf;video/*;audio/*;\n',
+    )
+    expect(nemoAction(item('compress'), LAUNCHER)).toContain(
+      'Mimetypes=image/*;inode/directory;video/*;audio/*;\n',
+    )
   })
 
   it('quotes a launcher path with a space or a percent sign', () => {
@@ -117,7 +122,8 @@ describe.skipIf(WINDOWS)('nemoAction', () => {
   it('numbers the files in menu order, the same with or without Sharpen', () => {
     const order = ITEMS.map((i) => i.action)
     expect(nemoName(item('open'), order)).toBe('forge-1-open.nemo_action')
-    expect(nemoName(item('open-pdf'), order)).toBe('forge-5-open-pdf.nemo_action')
+    expect(nemoName(item('open-file'), order)).toBe('forge-2-open-file.nemo_action')
+    expect(nemoName(item('sharpen'), order)).toBe('forge-5-sharpen.nemo_action')
   })
 })
 
@@ -140,8 +146,20 @@ describe.skipIf(WINDOWS)('dolphinMenu', () => {
     expect(folder).toContain('MimeType=inode/directory;\n')
     expect(folder).toContain('Actions=open;convert;compress;\n')
     const pdf = dolphinMenu('pdf', ITEMS, { launcher: LAUNCHER, menuDir: MENU }) ?? ''
-    expect(pdf).toContain('Actions=open-pdf;\n')
+    expect(pdf).toContain('Actions=open-file;\n')
     expect(pdf).not.toContain('X-KDE-Submenu')
+  })
+
+  it('gives video and sound a Forge submenu: Open in Forge, Convert, Compress', () => {
+    for (const [kind, mime] of [
+      ['video', 'video/*'],
+      ['audio', 'audio/*'],
+    ] as const) {
+      const text = dolphinMenu(kind, ITEMS, { launcher: LAUNCHER, menuDir: MENU }) ?? ''
+      expect(text).toContain(`MimeType=${mime};\n`)
+      expect(text).toContain('Actions=open-file;convert;compress;\n')
+      expect(text).toContain('X-KDE-Submenu=Forge')
+    }
   })
 
   it('writes nothing for a kind no item is offered for', () => {
@@ -173,7 +191,8 @@ describe.skipIf(WINDOWS)('Thunar’s uca.xml', () => {
   const actions = thunarActions(ITEMS, { launcher: LAUNCHER, menuDir: MENU })
 
   it('describes each item as Thunar does, known by a unique-id of Forge’s', () => {
-    expect(actions.match(/<action>/g)).toHaveLength(5)
+    // Open in Forge is two: the PDF's on its own, and video and sound's in the Forge submenu.
+    expect(actions.match(/<action>/g)).toHaveLength(6)
     expect(actions).toContain(`<unique-id>${MARKER}-convert</unique-id>`)
     expect(actions).toContain(`<command>'${LAUNCHER}' convert %F</command>`)
     expect(actions).toContain('<submenu>Forge</submenu>')
@@ -185,8 +204,13 @@ describe.skipIf(WINDOWS)('Thunar’s uca.xml', () => {
     expect(block('open')).toContain('<image-files/>')
     expect(block('open')).toContain('<directories/>')
     expect(block('sharpen')).not.toContain('<directories/>')
-    expect(block('open-pdf')).toContain('<patterns>*.pdf;*.PDF</patterns>')
-    expect(block('open-pdf')).toContain('<submenu></submenu>')
+    expect(block('open-file-pdf')).toContain('<patterns>*.pdf;*.PDF</patterns>')
+    expect(block('open-file-pdf')).toContain('<submenu></submenu>')
+    expect(block('open-file')).toContain('<video-files/>')
+    expect(block('open-file')).toContain('<audio-files/>')
+    expect(block('open-file')).toContain('<patterns>*</patterns>')
+    expect(block('open-file')).toContain('<submenu>Forge</submenu>')
+    expect(block('convert')).toContain('<video-files/>')
   })
 
   it('merges in beside the user’s own actions, and strips back out to the very same file', () => {

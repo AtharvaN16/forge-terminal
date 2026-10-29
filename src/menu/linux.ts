@@ -69,6 +69,8 @@ export const MIME_TYPES: Record<MenuKind, string> = {
   image: 'image/*',
   folder: 'inode/directory',
   pdf: 'application/pdf',
+  video: 'video/*',
+  audio: 'audio/*',
 }
 
 const mimeTypes = (kinds: MenuKind[]) => kinds.map((k) => `${MIME_TYPES[k]};`).join('')
@@ -149,7 +151,7 @@ export const dolphinDir = (d: LinuxDirs) => join(d.dataHome, 'kio', 'servicemenu
 /** One service menu per kind: a Forge submenu as on Windows, so a file gets one row. */
 export const dolphinName = (kind: MenuKind) => `forge-${kind}.desktop`
 
-export const DOLPHIN_KINDS: MenuKind[] = ['image', 'folder', 'pdf']
+export const DOLPHIN_KINDS: MenuKind[] = ['image', 'folder', 'pdf', 'video', 'audio']
 
 /**
  * An argument in a desktop file's Exec line: in double quotes, with `"`, `` ` ``,
@@ -214,25 +216,39 @@ const THUNAR_MATCH: Record<MenuKind, { patterns: string[]; type: string }> = {
   image: { patterns: ['*'], type: 'image-files' },
   folder: { patterns: ['*'], type: 'directories' },
   pdf: { patterns: ['*.pdf', '*.PDF'], type: 'other-files' },
+  video: { patterns: ['*'], type: 'video-files' },
+  audio: { patterns: ['*'], type: 'audio-files' },
 }
 
 /**
  * Forge's actions as uca.xml entries, laid out as Thunar writes its own.
- * Images' and folders' are in a Forge submenu (Thunar 4.18 and later; an
- * older one lists them loose), the PDF's on its own, as on Windows.
+ * Images', folders', videos' and sounds' are in a Forge submenu (Thunar 4.18
+ * and later; an older one lists them loose), the PDF's on its own, as on
+ * Windows. Thunar matches by name pattern and file type together, so an item
+ * for a PDF and for media is two actions: one for *.pdf, one for the rest.
  */
 export function thunarActions(items: MenuItem[], o: { launcher: string; menuDir: string }): string {
   return items
-    .map((i) => {
-      const match = i.kinds.map((k) => THUNAR_MATCH[k])
+    .flatMap((i): { item: MenuItem; kinds: MenuKind[]; id: string }[] => {
+      const pdf = i.kinds.filter((k) => k === 'pdf')
+      const rest = i.kinds.filter((k) => k !== 'pdf')
+      return [
+        ...(rest.length > 0 ? [{ item: i, kinds: rest, id: ucaId(i) }] : []),
+        ...(pdf.length > 0
+          ? [{ item: i, kinds: pdf, id: rest.length > 0 ? `${ucaId(i)}-pdf` : ucaId(i) }]
+          : []),
+      ]
+    })
+    .map(({ item: i, kinds, id }) => {
+      const match = kinds.map((k) => THUNAR_MATCH[k])
       const patterns = [...new Set(match.flatMap((m) => m.patterns))]
       const all = patterns.includes('*') ? ['*'] : patterns
       return [
         '<action>',
         `\t<icon>${xml(join(o.menuDir, pngName(i)))}</icon>`,
         `\t<name>${xml(i.label)}</name>`,
-        `\t<submenu>${i.kinds.includes('pdf') ? '' : 'Forge'}</submenu>`,
-        `\t<unique-id>${ucaId(i)}</unique-id>`,
+        `\t<submenu>${kinds.includes('pdf') ? '' : 'Forge'}</submenu>`,
+        `\t<unique-id>${id}</unique-id>`,
         `\t<command>${xml(percent(shellQuote(o.launcher)))} ${itemArgs(i)} %F</command>`,
         `\t<description>${xml(i.label)}</description>`,
         '\t<range></range>',
