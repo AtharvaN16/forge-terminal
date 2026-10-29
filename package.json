@@ -1,19 +1,11 @@
 {
   "name": "forge-terminal",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Remove banding",
-      "text": "Edit smooths stripes out of shading, like a banded sky or a heavily compressed picture. Pick Light, Medium or Strong on the row."
-    },
-    {
-      "title": "Dither",
-      "text": "Edit can cut a picture down to 16, 4 or 2 colours, with dots that keep its shading."
-    },
-    {
-      "title": "Windows notice",
-      "text": "When a batch finishes on Windows, the notice now names the right folder."
+      "title": "Right-click video",
+      "text": "Right-click a video or sound file to Open, Convert or Compress it in Forge, on Mac, Windows and Linux."
     }
   ],
   "keywords": [
