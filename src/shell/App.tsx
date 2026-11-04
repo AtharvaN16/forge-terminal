@@ -1105,7 +1105,7 @@ export function App({
   const [timeProgress, setTimeProgress] = useState<{
     done: number
     total: number
-    pass?: { at: 1 | 2; of: 2 } | undefined
+    pass?: { at: number; of: number } | undefined
     since: number
   } | null>(null)
   /**
@@ -5877,7 +5877,7 @@ export function App({
                     attempt
                       ? 'Finding the right quality'
                       : timeProgress?.pass
-                        ? `Pass ${timeProgress.pass.at} of 2 · ${work.phase ?? work.verb}`
+                        ? `Pass ${timeProgress.pass.at} of ${timeProgress.pass.of} · ${work.phase ?? work.verb}`
                         : pageProgress
                           ? `${verbOf(pageProgress.job) ?? work.verb} ${displayName(pageProgress.job.sources[0].path)}`
                           : (work.phase ?? work.verb)

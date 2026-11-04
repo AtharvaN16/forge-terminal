@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises'
@@ -71,6 +72,7 @@ export async function renameAtomic(
 ): Promise<void> {
   if (platform !== 'win32') {
     await rename(from, to)
+    if (platform === 'darwin') await unhide(from, to)
     return
   }
   for (let attempt = 1; ; attempt++) {
@@ -83,6 +85,20 @@ export async function renameAtomic(
       await wait(Math.min(50 * 2 ** (attempt - 1), 1000))
     }
   }
+}
+
+/**
+ * iCloud Drive (Desktop & Documents) marks a file whose name starts with a dot
+ * hidden a few seconds after it appears, and a rename keeps the mark: a long
+ * encode beside an output on the desktop came out faded in Finder and missing
+ * from the desktop. So a dot-named temp renamed to a visible name has the mark
+ * taken off. Best effort: a file it cannot touch is still written.
+ */
+function unhide(from: string, to: string): Promise<void> {
+  if (!basename(from).startsWith('.') || basename(to).startsWith('.')) return Promise.resolve()
+  return new Promise((resolve) => {
+    execFile('/usr/bin/chflags', ['nohidden', to], () => resolve())
+  })
 }
 
 /**

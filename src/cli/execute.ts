@@ -383,7 +383,7 @@ function reportEvents(opts: ExecuteOptions, batch: boolean): (event: PlanEvent) 
     if (!batch && event.type === 'job:phase' && event.progress.phase === 'time') {
       const p = event.progress
       const at = `${clockOf(p.done)} of ${clockOf(p.total)}`
-      opts.onEncode?.(p.pass ? `pass ${p.pass.at} of 2 · ${at}` : at)
+      opts.onEncode?.(p.pass ? `pass ${p.pass.at} of ${p.pass.of} · ${at}` : at)
       return
     }
     if (batch && (event.type === 'job:done' || event.type === 'job:error')) {

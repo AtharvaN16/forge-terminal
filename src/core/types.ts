@@ -342,9 +342,10 @@ export type Progress =
   /**
    * Seconds of the output encoded of the seconds it will have: a video's or a
    * sound file's true total (video spec §3.6). `pass` while a size is being
-   * hit in two passes.
+   * hit in two passes. A near miss is encoded again, two passes more, so the
+   * count runs on: the third pass is 3 of 4, never 1 of 2 again.
    */
-  | { phase: 'time'; done: number; total: number; pass?: { at: 1 | 2; of: 2 } }
+  | { phase: 'time'; done: number; total: number; pass?: { at: number; of: number } }
   /**
    * Tiles of the picture a model has finished, of the tiles it was cut into: a
    * true total, known before the first is run (Sharpen and Boost resolution).

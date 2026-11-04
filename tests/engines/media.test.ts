@@ -117,12 +117,14 @@ describe.skipIf(!ffmpegHere)('with ffmpeg', () => {
       compress: { dither: false },
       media: { targetBytes: target },
     })
-    const passes = new Set<number>()
+    const passes: number[] = []
     const result = await videoEngine.run(j, (p) => {
-      if (p.phase === 'time' && p.pass) passes.add(p.pass.at)
+      if (p.phase === 'time' && p.pass && passes.at(-1) !== p.pass.at) passes.push(p.pass.at)
     })
     expect(result.outputBytes).toBeLessThanOrEqual(target)
-    expect([...passes]).toEqual([1, 2])
+    // Two passes, and two more for each near miss aimed lower: counted on, never from 1 again.
+    expect(passes.length % 2).toBe(0)
+    expect(passes).toEqual(passes.map((_, i) => i + 1))
     // No first-pass notes left behind.
     expect(await readdir(dirname(j.outputs[0]))).toEqual(['out.mov'])
   })

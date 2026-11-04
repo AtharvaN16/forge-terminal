@@ -232,7 +232,10 @@ async function run(
     }
   }
 
+  /** Passes already run for this output: a retry's passes count on from them. */
+  let passesRun = 0
   const steps = async (p: EncodePlan) => {
+    const before = passesRun
     let loudness = ''
     let noise = ''
     for (const step of p.steps) {
@@ -248,12 +251,15 @@ async function run(
             phase: 'time',
             done: Math.min(s, p.duration),
             total: p.duration,
-            ...(step.pass ? { pass: step.pass } : {}),
+            ...(step.pass
+              ? { pass: { at: before + step.pass.at, of: before + step.pass.of } }
+              : {}),
           }),
       })
       if (step.measures === 'loudness') loudness = measured(report)
       if (step.measures === 'noise') noise = String(noiseFloorOf(report))
     }
+    passesRun = before + Math.max(0, ...p.steps.map((s) => s.pass?.of ?? 0))
   }
 
   try {
@@ -266,6 +272,8 @@ async function run(
       if (!plan.steps.some((s) => s.args.some((a) => a.endsWith('_videotoolbox')))) throw e
       planned = 'linux'
       plan = planFor(planned, options)
+      // Nothing of the refused try is kept: the count starts again.
+      passesRun = 0
       await steps(plan)
     }
     // Two passes land within a percent or so; a near miss gets another try
