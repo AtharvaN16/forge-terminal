@@ -16,9 +16,11 @@ import {
   PdfInput,
   ProbeInput,
   ProbeOutput,
+  ReadTextInput,
   RunOutput,
   ScaleInput,
   ScaleOutput,
+  TranscribeInput,
 } from './schemas.js'
 import { claimStdout } from './stdout-guard.js'
 import {
@@ -27,11 +29,46 @@ import {
   compressTool,
   convertTool,
   formatsTool,
+  type Progress,
   paletteTool,
   pdfTool,
   probeTool,
+  readTextTool,
   scaleTool,
+  transcribeTool,
 } from './tools.js'
+
+/**
+ * A tool call's cancel signal, and its progress as facts when the client
+ * gave a token. MCP wants progress to rise, so it counts the messages and
+ * gives no total: the facts are in the message, never a made-up percentage.
+ */
+function progressOf(ctx: {
+  mcpReq: {
+    signal: AbortSignal
+    _meta?: { progressToken?: string | number }
+    notify: (n: {
+      method: 'notifications/progress'
+      params: Record<string, unknown>
+    }) => Promise<void>
+  }
+}): Progress {
+  const token = ctx.mcpReq._meta?.progressToken
+  if (token === undefined) return { signal: ctx.mcpReq.signal }
+  let n = 0
+  return {
+    signal: ctx.mcpReq.signal,
+    report: (message) => {
+      n += 1
+      ctx.mcpReq
+        .notify({
+          method: 'notifications/progress',
+          params: { progressToken: token, progress: n, message },
+        })
+        .catch(() => undefined)
+    },
+  }
+}
 
 /** What a client tells its model about Forge as a whole. */
 export function instructionsFor(platform: NodeJS.Platform = process.platform): string {
@@ -39,6 +76,11 @@ export function instructionsFor(platform: NodeJS.Platform = process.platform): s
     `Forge converts, compresses and edits files on this ${platform === 'win32' ? 'PC' : platform === 'darwin' ? 'Mac' : 'computer'}, locally.`,
     'Every path must be absolute.',
     'Call forge_probe first: it says what a file is, every format it can become, and every action that applies.',
+    'Reach for Forge when a file must fit a limit (an upload under 5 MB: forge_compress with maxSize; a set width: forge_convert with resize);',
+    'when a file is in a format you cannot open (HEIC, camera RAW, Word): forge_convert it to PNG, JPEG or PDF and read that;',
+    'when you need what a recording, meeting or YouTube video says: forge_transcribe;',
+    'when you need the text in a picture, screenshot, scan or PDF: forge_read_text;',
+    'and when the user wants colours in Figma: forge_card, forge_scale or forge_palette with copy: true put a card of swatches on their clipboard to paste.',
     'Nothing is overwritten unless you pass overwrite: true — only do that when the user asked to replace a file.',
     'A failure hint that mentions --force means overwrite: true here; --output means the output argument; --password-stdin means the password argument.',
   ].join(' ')
@@ -74,15 +116,21 @@ const WRITES = {
 } as const
 
 /**
- * Forge's MCP server, with nine tools on purpose. A 57-tool ImageMagick server
+ * Forge's MCP server, with eleven tools on purpose. A 57-tool ImageMagick server
  * is the cautionary example of flooding an agent's context (spec §3.5). The
  * three colour tools earn their place the way `forge_probe` does: they
  * write no file, are small, and answer a question an agent cannot answer
  * by looking at a file (colour spec §7.2). `forge_card` is the way back: colours the agent
- * was given in words, out as a card Figma pastes. Tools call core
+ * was given in words, out as a card Figma pastes. Transcribe and read text
+ * hear and read what an agent cannot, on this computer. Tools call core
  * in-process; nothing spawns the CLI.
  */
-export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
+export function createForgeServer(
+  deps: {
+    clip?: ClipDeps /** Where a link's transcript goes: Forge's default folder. */
+    folder?: string
+  } = {},
+): McpServer {
   const server = new McpServer({ name: 'forge', version: VERSION }, { instructions: INSTRUCTIONS })
 
   server.registerTool(
@@ -115,7 +163,7 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Convert files',
       description:
-        'Convert files to another format, beside each source unless output is given. A PDF becomes one image per page (choose pages and dpi); Word documents become PDF; images convert between formats; with trim, crop (to a shape such as 1:1, keeping the subject) or resize they keep their format unless `to` is given. Returns every output path and a file:// link to each.',
+        'Convert files to another format, beside each source unless output is given. A PDF becomes one image per page (choose pages and dpi); Word documents become PDF; images convert between formats; with trim, crop (to a shape such as 1:1, keeping the subject) or resize they keep their format unless `to` is given. Use it to open a format you cannot read (HEIC, camera RAW, Word): convert to PNG, JPEG or PDF. Returns every output path and a file:// link to each.',
       inputSchema: ConvertInput,
       outputSchema: RunOutput,
       annotations: WRITES,
@@ -128,7 +176,7 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Compress files',
       description:
-        'Make files smaller without changing their format: by quality (1-100) or to fit a size such as "500kb". Writes <name>-small.<ext> beside the source unless output is given. PNG and GIF are cut to fewer colours. A result no smaller than the source is never written (error code cannot-compress-more).',
+        'Make files smaller without changing their format: by quality (1-100) or to fit a size such as "500kb" — use maxSize when an upload, email or form has a size limit. Writes <name>-small.<ext> beside the source unless output is given. PNG and GIF are cut to fewer colours. A result no smaller than the source is never written (error code cannot-compress-more).',
       inputSchema: CompressInput,
       outputSchema: RunOutput,
       annotations: WRITES,
@@ -198,6 +246,31 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
       annotations: COPIES,
     },
     (args) => cardTool(args, deps.clip),
+  )
+
+  server.registerTool(
+    'forge_transcribe',
+    {
+      title: 'Transcribe a recording',
+      description:
+        'What is said in a video or sound file, or a YouTube link, on this computer: a summary and notes (where Apple Intelligence is on) and the transcript. Use it whenever you need to know what a recording, meeting, lecture or video says, since you cannot listen to it. Writes a Markdown file beside the source (Word, PDF or text with format) and returns its text. A long recording takes minutes; progress says how far it has heard. Nothing is overwritten unless overwrite: true.',
+      inputSchema: TranscribeInput,
+      annotations: { ...WRITES, openWorldHint: true },
+    },
+    (args, ctx) =>
+      transcribeTool(args, progressOf(ctx), { ...(deps.folder ? { folder: deps.folder } : {}) }),
+  )
+
+  server.registerTool(
+    'forge_read_text',
+    {
+      title: 'Read the text in a picture or PDF',
+      description:
+        "The text in a picture, screenshot, scan, photo of a page or whiteboard, or PDF, read on this computer, with headings, lists and tables kept, in Latin, Cyrillic, Chinese, Japanese, Korean, Arabic, Devanagari or Thai script. Use it when you cannot read an image's text yourself or a PDF is scanned. Writes a Markdown file beside it (Word, PDF or text with format) and returns its text. Nothing is overwritten unless overwrite: true.",
+      inputSchema: ReadTextInput,
+      annotations: WRITES,
+    },
+    (args, ctx) => readTextTool(args, progressOf(ctx)),
   )
 
   return server

@@ -356,3 +356,48 @@ export const ScaleOutput = z.strictObject({
   }),
   failures: z.array(FailureOut),
 })
+
+/** Transcribe and read text (transcribe spec §4.5, extract-text spec §3.5). */
+const sourceOf = z
+  .string()
+  .refine((s) => isAbsolute(s) || /^https?:\/\//i.test(s), 'must be an absolute path or a link')
+const textOut = {
+  language: z
+    .string()
+    .optional()
+    .describe("The language, when it is not this computer's own: hi, fr-FR"),
+  format: z
+    .enum(['md', 'docx', 'pdf', 'txt'])
+    .optional()
+    .describe(
+      'The file written: Markdown (default), Word, PDF or text. The reply is Markdown either way',
+    ),
+  output: absolutePath
+    .optional()
+    .describe(
+      "A folder (ending in /) or a file to write. Default: beside the source; for a link, Forge's default folder",
+    ),
+  overwrite: z.boolean().optional().describe('Replace a file of that name. Default: refuse'),
+}
+export const TranscribeInput = z.object({
+  source: sourceOf.describe(
+    'A video or sound file (absolute path) or a YouTube link. A picture or PDF is read for its text instead',
+  ),
+  to: z
+    .enum(['all', 'notes', 'transcript'])
+    .optional()
+    .describe(
+      'all (default): summary, notes and transcript; notes: no transcript; transcript: no notes. Notes need Apple Intelligence',
+    ),
+  detail: z
+    .enum(['brief', 'standard', 'detailed'])
+    .optional()
+    .describe('How much the notes say. Default: standard'),
+  ...textOut,
+})
+export const ReadTextInput = z.object({
+  path: absolutePath.describe('A picture, screenshot, scan or PDF (absolute path)'),
+  ...textOut,
+})
+export type TranscribeArgs = z.infer<typeof TranscribeInput>
+export type ReadTextArgs = z.infer<typeof ReadTextInput>

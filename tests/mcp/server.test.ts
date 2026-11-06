@@ -17,7 +17,7 @@ import type {
   ScaleJson,
 } from '../../src/core/report-data.js'
 import { probe } from '../../src/engines/registry.js'
-import { createForgeServer } from '../../src/mcp/server.js'
+import { createForgeServer, instructionsFor } from '../../src/mcp/server.js'
 import { fakeExtensions } from '../helpers/fake-extension.js'
 import {
   makeGradientPng,
@@ -70,7 +70,7 @@ async function call<T = RunJson>(
 }
 
 describe('the tool list', () => {
-  it('offers exactly the nine tools, annotated', async () => {
+  it('offers exactly the eleven tools, annotated', async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
       'forge_card',
@@ -81,7 +81,9 @@ describe('the tool list', () => {
       'forge_palette',
       'forge_pdf',
       'forge_probe',
+      'forge_read_text',
       'forge_scale',
+      'forge_transcribe',
     ])
     const byName = new Map(tools.map((t) => [t.name, t]))
     expect(byName.get('forge_probe')?.annotations?.readOnlyHint).toBe(true)
@@ -97,6 +99,23 @@ describe('the tool list', () => {
       readOnlyHint: false,
       destructiveHint: false,
     })
+  })
+})
+
+describe('the instructions', () => {
+  it('say when to reach for Forge, naming the tool and argument for each case', () => {
+    const text = instructionsFor('darwin')
+    for (const words of [
+      'maxSize',
+      'resize',
+      'HEIC',
+      'forge_transcribe',
+      'forge_read_text',
+      'copy: true',
+      'Figma',
+    ]) {
+      expect(text, words).toContain(words)
+    }
   })
 })
 

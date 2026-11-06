@@ -179,6 +179,19 @@ example of flooding an agent's context:
 | `forge_compress` | Compress by quality or to a target size |
 | `forge_pdf` | Page operations: `merge`, `split`, `extract`, `delete`, `rotate` (an `op` enum) |
 
+Added later: `forge_clip`, the colour tools (`forge_palette`, `forge_scale`,
+`forge_card`; colour spec §7.2), and on 2026-11-06 `forge_transcribe` and
+`forge_read_text`. Those two run `runTranscribeCommand` (transcribe spec §4.5)
+one at a time, apart from the file writes, and are the one exception to "no
+file contents": the reply carries the written file's text as Markdown,
+capped at 200,000 characters, because an agent calls them for the words.
+Progress goes out as `notifications/progress` when the call has a token:
+the count of messages, no total, the facts in the message (invariant 7). A
+link's file goes to the default folder, since the server's working folder
+is wherever the client started it. The server's instructions say when to
+reach for each tool (a size limit, a format the agent cannot open, a
+recording, a scan, colours for Figma), not only what each does.
+
 **Behaviour**
 
 - Tools call core directly (`runPlan` and friends) — they do not spawn the

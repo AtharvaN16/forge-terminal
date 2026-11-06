@@ -9,7 +9,6 @@ import {
   linkUnavailable,
   noText,
   outputExists,
-  readUnavailable,
   renderError,
   transcribeUnavailable,
   unexpectedError,
@@ -27,7 +26,7 @@ import {
 } from '../core/transcribe/markdown.js'
 import { OUTPUTS, type Output, outputExt } from '../core/transcribe/output.js'
 import { type PageSource, pageSource } from '../core/transcribe/page-source.js'
-import { hasText, pagePlain, pageText } from '../core/transcribe/page-text.js'
+import { hasText, pageMarkdown, pagePlain, pageText } from '../core/transcribe/page-text.js'
 import {
   notesNeed,
   type ReadEvent,
@@ -54,6 +53,8 @@ export interface TranscribeIo {
   onProgress?: (e: TranscribeEvent | ReadEvent) => void
   /** How it ended, for the notice a long run posts (`core/finish-notice.ts`). */
   finished?: (run: Finished) => void
+  /** What was written, as Markdown whatever the format: for an agent to read (MCP). */
+  document?: (doc: { path: string; markdown: string }) => void
 }
 
 /** `--format`, else `-o`'s extension when it is one transcribe writes, else Markdown. */
@@ -129,6 +130,7 @@ async function readPage(
       lang: intent.language,
     }),
   )
+  io.document?.({ path: output, markdown: pageMarkdown(doc) })
   const what =
     page.what === 'pdf'
       ? `${page.pages} ${page.pages === 1 ? 'page' : 'pages'}`
@@ -231,6 +233,7 @@ export async function runTranscribeCommand(
       output,
       await renderTranscript(md, format, { signal: io.signal, lang: result.locale }),
     )
+    io.document?.({ path: output, markdown: md })
     const n = result.notes?.parts.length
     const parts = n === undefined ? '' : ` · ${n} ${n === 1 ? 'part' : 'parts'}`
     io.out(

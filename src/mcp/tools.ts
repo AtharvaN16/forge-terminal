@@ -1,4 +1,4 @@
-import { basename } from 'node:path'
+import { basename, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import type {
@@ -8,6 +8,7 @@ import type {
   EditIntent,
   ExtensionOpIntent,
   PageOpIntent,
+  TranscribeIntent,
 } from '../cli/args.js'
 import { type ClipDeps, clipLines, runClip, runUndo } from '../cli/clip-command.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
@@ -24,6 +25,7 @@ import {
   invalidArguments,
   isForgeError,
 } from '../core/errors.js'
+import { sniffKind } from '../core/folder.js'
 import { probeFiles } from '../core/probe-report.js'
 import {
   errorJson,
@@ -35,7 +37,11 @@ import {
   runJson,
   type ScaleJson,
 } from '../core/report-data.js'
+import { DEFAULT_DETAIL } from '../core/transcribe/detail.js'
+import { readLink } from '../core/transcribe/links.js'
+import { clock } from '../core/transcribe/markdown.js'
 import { parseSize } from '../core/units.js'
+import type { ReadEvent, TranscribeEvent } from '../engines/transcribe.js'
 import { VERSION } from '../shell/theme.js'
 import { clipboardSupported, type Pasteboard, systemPasteboard } from '../utils/pasteboard.js'
 import type {
@@ -46,7 +52,9 @@ import type {
   PaletteArgs,
   PdfArgs,
   ProbeArgs,
+  ReadTextArgs,
   ScaleArgs,
+  TranscribeArgs,
 } from './schemas.js'
 
 /**
@@ -508,4 +516,118 @@ export async function cardTool(args: CardArgs, deps: ClipDeps = {}): Promise<Cal
   // The card is this tool's answer, so it is handed back unless it was copied instead.
   if (!args.copy) return { content: [{ type: 'text', text: svg() }] }
   return withCard({ content: [] }, svg, { copy: true, swatches: n }, deps)
+}
+
+// ── Transcribe and read text ─────────────────────────────────────────────
+
+/** What a long tool call can say while it runs, when the client asked (MCP progress). */
+export interface Progress {
+  signal?: AbortSignal
+  /** Called with each fact; nothing when the client gave no progress token. */
+  report?: (message: string) => void
+}
+
+/** Speech models and Vision are heavy: one at a time, apart from the file writes. */
+let listening: Promise<unknown> = Promise.resolve()
+function oneListenerAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const run = listening.then(work, work)
+  listening = run.catch(() => undefined)
+  return run
+}
+
+/** An hour's transcript is ~60,000 characters; past this the file holds the rest. */
+const MAX_TEXT = 200_000
+
+function factOf(e: TranscribeEvent | ReadEvent): string {
+  if (e.kind === 'model') return `getting the speech model, ${Math.round(e.fraction * 100)}%`
+  if (e.kind === 'heard') return `heard ${clock(e.seconds)} of ${clock(e.of)}`
+  if (e.kind === 'notes') return `writing notes, part ${e.part} of ${e.of}`
+  return `reading page ${e.page} of ${e.of}`
+}
+
+async function defaultFolder(deps: { folder?: string }): Promise<string> {
+  if (deps.folder !== undefined) return deps.folder
+  const { loadPreferences, expandTilde } = await import('../config/preferences.js')
+  return expandTilde((await loadPreferences()).prefs.defaultOutput)
+}
+
+/**
+ * `forge transcribe` for an agent. Unlike the other tools, the reply carries
+ * the file's contents, as Markdown whatever was written: an agent asks
+ * because it cannot listen or read a scan, so the words are the answer
+ * (colour spec's MCP note; transcribe spec §4.5). The file is still written,
+ * and linked, as the CLI writes it.
+ */
+export async function transcribeTool(
+  args: TranscribeArgs,
+  progress: Progress = {},
+  deps: { folder?: string } = {},
+): Promise<CallToolResult> {
+  const link = readLink(args.source) !== undefined
+  const folder = link && args.output === undefined ? await defaultFolder(deps) : undefined
+  const intent: TranscribeIntent = {
+    kind: 'transcribe',
+    input: args.source,
+    notes: args.to !== 'transcript',
+    transcript: args.to !== 'notes',
+    ...(args.to === undefined ? {} : { to: args.to }),
+    detail: args.detail ?? DEFAULT_DETAIL,
+    ...(args.language === undefined ? {} : { language: args.language }),
+    ...(args.format === undefined ? {} : { format: args.format }),
+    ...(folder !== undefined
+      ? { output: `${folder}${sep}` }
+      : args.output === undefined
+        ? {}
+        : { output: args.output }),
+    force: args.overwrite === true,
+    debug: false,
+  }
+  const out: string[] = []
+  const err: string[] = []
+  let doc: { path: string; markdown: string } | undefined
+  const { runTranscribeCommand } = await import('../cli/transcribe-command.js')
+  const code = await oneListenerAtATime(() =>
+    runTranscribeCommand(intent, {
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+      ...(progress.signal ? { signal: progress.signal } : {}),
+      ...(progress.report ? { onProgress: (e) => progress.report?.(factOf(e)) } : {}),
+      document: (d) => {
+        doc = d
+      },
+    }),
+  )
+  const said = (lines: string[]) =>
+    lines
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(' ')
+  if (code !== 0 || doc === undefined) return textError(said(err) || 'Transcribe failed.')
+  const { path, markdown } = doc
+  const text =
+    markdown.length > MAX_TEXT
+      ? `${markdown.slice(0, MAX_TEXT)}\n\n[The rest is in ${path}]`
+      : markdown
+  return {
+    content: [
+      { type: 'text', text: [...out, ...err].join('\n') },
+      { type: 'resource_link', uri: pathToFileURL(path).href, name: basename(path) },
+      { type: 'text', text },
+    ],
+  }
+}
+
+/** `forge_read_text`: the same as transcribe on a picture or PDF; a recording is transcribe's. */
+export async function readTextTool(
+  args: ReadTextArgs,
+  progress: Progress = {},
+): Promise<CallToolResult> {
+  const kind = await sniffKind(args.path).catch(() => undefined)
+  if (kind === 'video' || kind === 'audio') {
+    return textError(
+      `${basename(args.path)} is a recording, not a picture or PDF. Use forge_transcribe for what is said in it.`,
+    )
+  }
+  const { path, ...rest } = args
+  return transcribeTool({ source: path, ...rest }, progress)
 }

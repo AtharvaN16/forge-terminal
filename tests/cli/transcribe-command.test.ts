@@ -120,6 +120,22 @@ describe('forge transcribe <file>', () => {
     ])
   })
 
+  it('hands over what it wrote as Markdown, whatever the format, for an agent to read', async () => {
+    const { dir, input } = await setUp()
+    const docs: { path: string; markdown: string }[] = []
+    const io = { out: () => {}, err: () => {}, document: (d: (typeof docs)[0]) => docs.push(d) }
+    await runTranscribeCommand(intent(input, { format: 'txt' }), io)
+    expect(docs).toEqual([
+      {
+        path: join(dir, 'talk.txt'),
+        markdown: transcriptMarkdown(
+          { seconds: 75, segments: RESULT.segments, notes: NOTES },
+          { title: 'talk', from: 'talk.mp4' },
+        ),
+      },
+    ])
+  })
+
   it('writes the transcript alone, and says so, when Apple Intelligence is off', async () => {
     const { fake, dir, input } = await setUp('off')
     const { code, out, err } = await run(intent(input))
@@ -344,6 +360,17 @@ describe('forge transcribe <picture|pdf> (spec 2026-10-23-extract-text-design §
     expect(await readFile(join(dir, 'shot.md'), 'utf8')).toBe(pageMarkdown(pageText(DOC.pages)))
     expect(shown(out)).toEqual(['✓ shot.md   PNG → 89 words'])
     expect(await argv(fake.dir)).toEqual(['read', png])
+  })
+
+  it("hands over a picture's text as Markdown too", async () => {
+    const { dir } = await setUpRead()
+    const png = await makePng(dir, 'shot.png')
+    const docs: { path: string; markdown: string }[] = []
+    const io = { out: () => {}, err: () => {}, document: (d: (typeof docs)[0]) => docs.push(d) }
+    await runTranscribeCommand(intent(png), io)
+    expect(docs).toEqual([
+      { path: join(dir, 'shot.md'), markdown: pageMarkdown(pageText(DOC.pages)) },
+    ])
   })
 
   it('reads by content: a picture named .mp4 is still a picture', async () => {

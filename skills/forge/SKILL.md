@@ -1,11 +1,24 @@
 ---
 name: forge
-description: Convert, compress and edit local files on macOS with the Forge CLI (`forge`) — images (HEIC, JPEG, PNG, WebP, AVIF, GIF, TIFF), PDFs and Word documents. Use when the user wants a file in another format, smaller or under a size, or cropped to a shape, or a PDF merged, split, trimmed or rotated, or an image's colour palette or a tonal scale from a colour, and `forge` is installed (`npm i -g forge-terminal`).
+description: Convert, compress and edit local files with the Forge CLI (`forge`) — images (HEIC, camera RAW, JPEG, PNG, WebP, AVIF, GIF, TIFF), PDFs, Word documents, video and sound — and hear or read what an agent cannot. Use when the user wants a file in another format, smaller or under a size limit, or cropped to a shape; a PDF merged, split, trimmed or rotated; what a recording, meeting or YouTube video says; the text in a picture, scan or PDF; or a colour palette, tonal scale or named colours as a card to paste into Figma — and `forge` is installed (`npm i -g forge-terminal`).
 ---
 
 # Forge
 
-Forge converts files on this Mac. Nothing is uploaded.
+Forge converts files on this computer. Nothing is uploaded.
+
+## When to reach for it
+
+- **A file must fit a limit** (an upload under 5 MB, an email, a form):
+  `--max-size 5mb`. A set width: `--width 1200`.
+- **A format you cannot open** (HEIC, camera RAW, Word): convert it to PNG,
+  JPEG or PDF and read that.
+- **What a recording, meeting or YouTube video says:** `forge transcribe`,
+  then read the Markdown file it writes.
+- **The text in a picture, screenshot, scan or PDF:** `forge transcribe` on
+  it reads the text instead.
+- **Colours for Figma:** `forge card`, `forge scale` or `forge palette` with
+  `--svg`, piped to `pbcopy`. The user presses ⌘V in Figma.
 
 ## Always
 
@@ -55,6 +68,10 @@ forge --formats --json
 forge palette photo.jpg --json                             # an image's main colours
 forge palette photo.jpg --inside F96363 --json             # one colour's shades
 forge scale 6579FD --json                                  # 50–950, the colour at 500
+forge card palette.csv --json                              # named colours, as read
+forge card palette.csv --svg | pbcopy                      # a card to paste into Figma
+forge transcribe talk.mp4                                  # notes and transcript -> talk.md
+forge transcribe scan.pdf                                  # a picture's or PDF's text -> scan.md
 ```
 
 For a colour, pass the hex without `#`, or quote it: an unquoted `#` starts
@@ -75,6 +92,47 @@ per file, and `stopped` with the totals.
 Outputs go beside the source unless `-o` names a folder (or, for one file, a
 filename). Page operations always write beside the source, take no `-o`, and
 never edit the original.
+
+## Transcribe and read text
+
+```bash
+forge transcribe meeting.m4a                       # summary, notes and transcript -> meeting.md
+forge transcribe talk.mp4 --to transcript          # no notes; --to notes: no transcript
+forge transcribe 'https://youtu.be/…'              # a YouTube link, into this folder
+forge transcribe talk.mp4 --detail brief --format pdf -o ~/Notes/
+forge transcribe whiteboard.jpg                    # the text in a picture -> whiteboard.md
+```
+
+It takes one file or link at a time and has **no `--json`**: on success it
+prints one line, `✓ <file>   1:15 → 812 words · 4 parts`, and exits 0. Read
+the file it names. A video or sound file gives notes and a transcript; a
+picture, screenshot or PDF gives its text, with headings, lists and tables
+kept (`--to` is refused for those). What it is is read from the content, not
+the name. `--language fr-FR` when the speech or text is not in the
+computer's own language. Notes need Apple Intelligence on a Mac; elsewhere
+`--to all` gives the transcript alone. A long recording takes minutes.
+Without `--force` an existing file is refused (`output-exists`).
+
+Failure codes: `transcribe-unavailable` (the hint names what to install or
+turn on), `read-unavailable` (reading text needs macOS 26, or the read-text
+extension on Windows and Linux), `no-text` (nothing to read),
+`link-unavailable` (a playlist, or a video yt-dlp could not fetch),
+`extension-missing` (a link needs yt-dlp: the hint is the install command;
+ask the user first, it downloads), `output-exists`.
+
+## Colour cards for Figma
+
+```bash
+forge card palette.csv --svg | pbcopy              # design tokens, CSV, CSS variables or "bg #F8F1E6" lines
+pbpaste | forge card - --svg --title 'Brand' | pbcopy   # colours you wrote, from stdin
+forge scale 6579FD --svg | pbcopy                  # a 50–950 scale
+```
+
+Pasted into Figma, the card is one layer per colour, named as written, with
+its exact fill. `forge card` reads the file by content. If any line is not a
+colour it draws nothing, names every bad line and exits 1. Write your colours
+one a line as `name colour` and pipe them in with `-`. If `pbcopy` fails (a
+sandbox may block the clipboard), give the user the command to run instead.
 
 ## Resize and trim edges
 
@@ -167,8 +225,13 @@ exit 1 and a hint; a wrong password has its own hint.
 ## MCP
 
 If a `forge` MCP server is connected (tools `forge_probe`, `forge_formats`,
-`forge_convert`, `forge_compress`, `forge_pdf`, `forge_palette`,
-`forge_scale`), prefer it. It takes absolute
+`forge_convert`, `forge_compress`, `forge_pdf`, `forge_clip`, `forge_palette`,
+`forge_scale`, `forge_card`, `forge_transcribe`, `forge_read_text`), prefer it.
+`forge_transcribe` and `forge_read_text` write the file and also return its
+text as Markdown, so there is nothing more to read. `forge_card`,
+`forge_scale` and `forge_palette` take `copy: true`, which puts the card on
+the user's clipboard from Forge itself, with no shell needed; `svg: true`
+returns it. It takes absolute
 paths and returns the same JSON as `structuredContent`. It never overwrites
 unless you pass `overwrite: true`, and an encrypted PDF takes a `password`
 argument. `forge_convert` also takes `sharpen: true`, `boost: 2 | 3 | 4` and `removeBackground: true`

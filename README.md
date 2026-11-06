@@ -1084,7 +1084,7 @@ Claude Desktop and Cursor:
 { "mcpServers": { "forge": { "command": "forge", "args": ["mcp"] } } }
 ```
 
-Nine tools, deliberately few:
+Eleven tools, deliberately few:
 
 | Tool | Does |
 | --- | --- |
@@ -1097,10 +1097,15 @@ Nine tools, deliberately few:
 | `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades; `svg` returns the card, `copy` puts it on the clipboard |
 | `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text; the colour as hex, `rgb()`, `hsl()`, `oklch()` or a name; `svg` returns the card, `copy` puts it on the clipboard |
 | `forge_card` | named colours (`title`, `colours: [{ name, colour }]`, optional `subtitle` and `theme`) drawn as the SVG swatch card, or with `copy: true` put straight on the clipboard; paste into Figma for one layer per colour |
+| `forge_transcribe` | a video or sound file, or a YouTube link, into notes and a transcript (`to`, `detail`, `language`, `format`, `output`, `overwrite`); writes the file and returns its text |
+| `forge_read_text` | the text in a picture, screenshot, scan or PDF (`language`, `format`, `output`, `overwrite`); writes the file and returns its text |
 
 Paths must be absolute. Results come back as structured content in the
 `--json` shape below, with a `file://` link to every output, and never as
-file contents. Nothing is overwritten unless the call passes
+file contents, except from `forge_transcribe` and `forge_read_text`, whose
+text is the answer an agent asked for. Those two report progress as facts
+("heard 12:00 of 48:30") when the client asks for it, and a link's
+transcript goes to Forge's default folder. Nothing is overwritten unless the call passes
 `overwrite: true`. An encrypted PDF takes a `password` argument to
 `forge_convert`; there is no prompt. The server speaks MCP over stdio,
 negotiates protocol revision 2025-11-25 with current Claude Code, writes
@@ -1497,7 +1502,7 @@ src/
 │   └── report.ts        stdout formatting (success, batch, errors, --formats)
 │
 ├── mcp/                the MCP server — a third front end, loaded only by `forge mcp`
-│   ├── server.ts        createForgeServer(): nine tools; runMcpServer(): stdio
+│   ├── server.ts        createForgeServer(): eleven tools; runMcpServer(): stdio
 │   ├── tools.ts         tool handlers → the same intents and runIntent() the CLI uses
 │   ├── schemas.ts       zod input/output schemas, vocabularies read from core/actions
 │   └── stdout-guard.ts  stdout belongs to the protocol; stray writes go to stderr
