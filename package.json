@@ -1,15 +1,15 @@
 {
   "name": "forge-terminal",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Colour cards for Figma",
-      "text": "forge card turns a palette file (design tokens, CSV, CSS or one colour a line) into a card of swatches. Paste it into Figma and each colour is its own layer, named as written."
+      "title": "Agents copy the card",
+      "text": "An AI agent using Forge can now put a colour card straight on your clipboard, the same card c copies in the app, ready to paste into Figma."
     },
     {
-      "title": "Agents can draw cards",
-      "text": "Forge's MCP server has forge_card, so an AI agent can turn a colour system it wrote into the same card for you to paste."
+      "title": "Cards from any colour",
+      "text": "Agents can now get the card for a scale or an image's palette too, not only the numbers."
     }
   ],
   "keywords": [
