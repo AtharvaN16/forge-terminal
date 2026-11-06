@@ -289,8 +289,26 @@ export const PaletteInput = z.object({
   inside: Hex.optional().describe('Show the shades of the palette colour nearest this one'),
 })
 export const ScaleInput = z.object({ colour: Hex })
+export const CardInput = z.object({
+  title: z.string().min(1).describe("The card's heading, e.g. the palette's name"),
+  subtitle: z.string().optional().describe('The grey line under the title. Default: "N colours"'),
+  colours: z
+    .array(
+      z.object({
+        name: z
+          .string()
+          .min(1)
+          .describe('Shown under the swatch and used as its layer name, e.g. blue-600 or blue/600'),
+        colour: Hex,
+      }),
+    )
+    .min(1)
+    .describe('The colours, in the order they should appear'),
+  theme: z.enum(['light', 'dark']).optional().describe("The card's background. Default: light"),
+})
 export type PaletteArgs = z.infer<typeof PaletteInput>
 export type ScaleArgs = z.infer<typeof ScaleInput>
+export type CardArgs = z.infer<typeof CardInput>
 
 export const PaletteOutput = z.strictObject({
   forge: z.string(),

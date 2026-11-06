@@ -12,8 +12,10 @@ import type {
 import { type ClipDeps, clipLines, runClip, runUndo } from '../cli/clip-command.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
+import { type CardItem, card } from '../core/colour/card.js'
 import { wholePercents } from '../core/colour/palette.js'
 import { parseColour } from '../core/colour/parse.js'
+import { toHex } from '../core/colour/space.js'
 import { type CropSpec, parseAspect } from '../core/crop.js'
 import { type ForgeError, invalidArguments, isForgeError } from '../core/errors.js'
 import { probeFiles } from '../core/probe-report.js'
@@ -30,6 +32,7 @@ import {
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
 import type {
+  CardArgs,
   ClipArgs,
   CompressArgs,
   ConvertArgs,
@@ -401,4 +404,41 @@ export async function scaleTool(args: ScaleArgs): Promise<CallToolResult> {
     .map((s) => `${s.step} ${s.hex} white ${s.white} black ${s.black}`)
     .join('\n')
   return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
+}
+
+/**
+ * Colours an agent was given in words, drawn as the same card `forge scale
+ * --svg` prints. The SVG is the whole answer: piped to the clipboard, Figma
+ * pastes it as one layer per colour, named as written. Any entry that is not
+ * a colour refuses the card, every bad one listed, so nothing half-right lands.
+ */
+export function cardTool(args: CardArgs): CallToolResult {
+  const items: CardItem[] = []
+  const bad: string[] = []
+  for (const { name, colour } of args.colours) {
+    const parsed = parseColour(colour)
+    if (!parsed) {
+      bad.push(`${name}: ${colour}`)
+      continue
+    }
+    const hex = toHex(parsed.rgb)
+    const alpha = parsed.alpha !== undefined && parsed.alpha < 1 ? parsed.alpha : undefined
+    items.push({
+      id: name,
+      name,
+      value: alpha === undefined ? hex : `${hex} ${Math.round(alpha * 100)}%`,
+      hex,
+      ...(alpha === undefined ? {} : { alpha }),
+    })
+  }
+  if (bad.length > 0) {
+    return textError(
+      `Not ${bad.length === 1 ? 'a colour' : 'colours'}: ${bad.join(', ')}. Try #RRGGBB, rgb(), hsl(), oklch() or a colour name.`,
+    )
+  }
+  const n = items.length
+  const subtitle = args.subtitle ?? `${n} colour${n === 1 ? '' : 's'}`
+  return {
+    content: [{ type: 'text', text: card(args.title, subtitle, items, args.theme, { perRow: 8 }) }],
+  }
 }

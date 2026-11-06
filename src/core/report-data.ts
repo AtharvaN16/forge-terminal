@@ -110,6 +110,18 @@ export type ScaleJson = {
   failures: FailureJson[]
 }
 
+/** `forge card --json`: the colours the card would draw, as read. */
+export type CardJson = {
+  forge: string
+  ok: boolean
+  card: { source: string; colours: { name: string; hex: string; alpha?: number }[] }
+  failures: FailureJson[]
+}
+
+export function cardJson(forge: string, card: CardJson['card']): CardJson {
+  return { forge, ok: true, card, failures: [] }
+}
+
 export function paletteJson(forge: string, palette: PaletteJson['palette']): PaletteJson {
   return { forge, ok: true, palette, failures: [] }
 }

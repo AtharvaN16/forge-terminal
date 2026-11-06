@@ -54,6 +54,35 @@ describe('card', () => {
     )
   })
 
+  it('widens a column to its name, so long names never run into the next', () => {
+    const items = ['surface-raised', 'surface-sunken', 'hairline'].map((name, i) => ({
+      id: name,
+      name,
+      value: '#000000',
+      hex: `#00000${i}`,
+    }))
+    const xs = [...card('t', 's', items).matchAll(/translate\((\d+) /g)].map((m) => Number(m[1]))
+    // 14 characters of 13 px semibold need well over the 104 px swatch.
+    expect((xs[1] ?? 0) - (xs[0] ?? 0)).toBeGreaterThanOrEqual(14 * 8 + 10)
+    expect(card('t', 's', items)).toContain('width="104" height="104"')
+  })
+
+  it('wraps to rows of perRow, the card growing to hold them', () => {
+    const items = Array.from({ length: 15 }, (_, i) => ({
+      id: `c${i}`,
+      name: `c${i}`,
+      value: '#000000',
+      hex: '#000000',
+    }))
+    const svg = card('t', 's', items, 'light', { perRow: 8 })
+    const at = [...svg.matchAll(/translate\((\d+) (\d+)\)/g)].map((m) => [m[1], m[2]])
+    expect(new Set(at.map(([, y]) => y)).size).toBe(2)
+    expect(at.filter(([, y]) => y === at[0]?.[1])).toHaveLength(8)
+    expect(at[8]?.[0]).toBe(at[0]?.[0])
+    const height = (s: string) => Number(/<svg[^>]* height="(\d+)"/.exec(s)?.[1])
+    expect(height(svg)).toBeGreaterThan(height(card('t', 's', items)))
+  })
+
   it('is deterministic', () => {
     expect(scaleCard(ref, scale(ref))).toBe(scaleCard(ref, scale(ref)))
   })

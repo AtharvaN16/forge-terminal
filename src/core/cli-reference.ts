@@ -214,6 +214,11 @@ export const CLI_TABS: CliTab[] = [
         ex: 'forge scale "#3b82f6" --json',
       },
       {
+        name: 'card <file>',
+        does: 'named colours as a Figma card · --title',
+        ex: 'forge card palette.csv --svg',
+      },
+      {
         name: 'clip',
         does: 'compress the copied image · --save, --undo',
         ex: 'forge clip --to webp',

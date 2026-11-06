@@ -4,6 +4,7 @@ import type { ClipDeps } from '../cli/clip-command.js'
 import { invalidArguments } from '../core/errors.js'
 import { VERSION } from '../shell/theme.js'
 import {
+  CardInput,
   ClipInput,
   ClipOutput,
   CompressInput,
@@ -21,6 +22,7 @@ import {
 } from './schemas.js'
 import { claimStdout } from './stdout-guard.js'
 import {
+  cardTool,
   clipTool,
   compressTool,
   convertTool,
@@ -59,11 +61,13 @@ const WRITES = {
 } as const
 
 /**
- * Forge's MCP server, with eight tools on purpose. A 57-tool ImageMagick server
+ * Forge's MCP server, with nine tools on purpose. A 57-tool ImageMagick server
  * is the cautionary example of flooding an agent's context (spec §3.5). The
- * two colour tools earn their place the way `forge_probe` does: read-only,
+ * three colour tools earn their place the way `forge_probe` does: read-only,
  * small, and answering a question an agent cannot answer by looking at a
- * file (colour spec §7.2). Tools call core in-process; nothing spawns the CLI.
+ * file (colour spec §7.2). `forge_card` is the way back: colours the agent
+ * was given in words, out as a card Figma pastes. Tools call core
+ * in-process; nothing spawns the CLI.
  */
 export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
   const server = new McpServer({ name: 'forge', version: VERSION }, { instructions: INSTRUCTIONS })
@@ -169,6 +173,18 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
       annotations: READS,
     },
     (args) => scaleTool(args),
+  )
+
+  server.registerTool(
+    'forge_card',
+    {
+      title: 'Colour card for Figma',
+      description:
+        'Named colours drawn as an SVG card of swatches, returned as text. Pipe it to pbcopy (macOS), clip (Windows), wl-copy or xclip -sel c (Linux) and paste into Figma: one layer per colour, named as given, with its exact fill. Use it to turn a colour system written in words into something the user can paste. Writes nothing.',
+      inputSchema: CardInput,
+      annotations: READS,
+    },
+    (args) => cardTool(args),
   )
 
   return server

@@ -550,9 +550,26 @@ probed as something else; 2 bad arguments, including an unparseable colour.
 
 - `forge_palette { path, inside? } → palette JSON`
 - `forge_scale { colour } → scale JSON`
+- `forge_card { title, subtitle?, colours: [{ name, colour }], theme? } → SVG card`
+  (added 2026-11-06). Colours an agent was given in words, drawn by `card()`
+  as the card `--svg` prints, for the agent to put on the clipboard and the
+  user to paste into Figma. Any entry that is not a colour refuses the whole
+  card, every bad entry named.
 
-Both are registered in `mcp/server.ts`, with Zod schemas in `schemas.ts`,
+All three are registered in `mcp/server.ts`, with Zod schemas in `schemas.ts`,
 and annotated read-only.
+
+### 7.3 `forge card` (added 2026-11-06)
+
+`forge card <file | -> [--svg] [--json] [--title <text>]` reads named colours
+someone already has and draws them with `card()`, wrapped eight to a row,
+each column as wide as its longest name. `core/colour/list.ts` reads the
+text by content: JSON design tokens (DTCG; a lone top-level group dropped,
+groups joined by `/`, aliases followed), a list of `{ name, hex }`, a CSV
+with a name and a colour column, CSS custom properties, or one colour a
+line in either order with any of tab, `:`, `=`, `,` or spaces between. Any
+line or colour-typed token that does not read refuses the card, every one
+named (exit 1). No colours at all is also exit 1.
 
 ## 8. Code layout
 

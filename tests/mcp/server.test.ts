@@ -70,9 +70,10 @@ async function call<T = RunJson>(
 }
 
 describe('the tool list', () => {
-  it('offers exactly the eight tools, annotated', async () => {
+  it('offers exactly the nine tools, annotated', async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'forge_card',
       'forge_clip',
       'forge_compress',
       'forge_convert',
@@ -86,6 +87,7 @@ describe('the tool list', () => {
     expect(byName.get('forge_probe')?.annotations?.readOnlyHint).toBe(true)
     expect(byName.get('forge_palette')?.annotations?.readOnlyHint).toBe(true)
     expect(byName.get('forge_scale')?.annotations?.readOnlyHint).toBe(true)
+    expect(byName.get('forge_card')?.annotations?.readOnlyHint).toBe(true)
     expect(byName.get('forge_convert')?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: false,
@@ -451,5 +453,54 @@ describe('colour tools', () => {
     const bad = await call('forge_scale', { colour: 'notacolour' })
     expect(bad.isError).toBe(true)
     expect(bad.text).toContain('not a colour')
+  })
+
+  it('forge_card draws written colours as a Figma card, one named layer each', async () => {
+    const out = await call('forge_card', {
+      title: 'Cream blue',
+      colours: [
+        { name: 'bg', colour: '#f8f1e6' },
+        { name: 'blue/600', colour: '#1c50b5' },
+        { name: 'ink', colour: 'rgb(30 26 21)' },
+      ],
+    })
+    expect(out.isError).toBe(false)
+    const svg = out.text
+    expect(svg.startsWith('<svg')).toBe(true)
+    expect(svg).toContain('>Cream blue</text>')
+    expect(svg).toContain('>3 colours</text>')
+    // Layer names, names under the swatches, exact fills.
+    expect(svg).toContain('<g id="bg"')
+    expect(svg).toContain('<g id="blue-600"')
+    expect(svg).toContain('>blue/600</text>')
+    expect(svg.match(/id="swatch"[^>]*fill="(#[0-9A-Fa-f]{6})"/g)).toHaveLength(3)
+    expect(svg).toMatch(/fill="#F8F1E6"/i)
+    expect(svg).toMatch(/fill="#1C50B5"/i)
+    expect(svg).toMatch(/fill="#1E1A15"/i)
+  })
+
+  it('forge_card wraps a long list to rows of eight', async () => {
+    const colours = Array.from({ length: 15 }, (_, i) => ({ name: `c-${i}`, colour: '#336699' }))
+    const out = await call('forge_card', { title: 'Many', colours })
+    const ys = [...out.text.matchAll(/translate\(\d+ (\d+)\)/g)].map((m) => m[1])
+    expect(ys).toHaveLength(15)
+    expect(new Set(ys).size).toBe(2)
+  })
+
+  it('forge_card refuses every entry that is not a colour, by name, and draws nothing', async () => {
+    const out = await call('forge_card', {
+      title: 'Broken',
+      colours: [
+        { name: 'bg', colour: '#f8f1e6' },
+        { name: 'accent', colour: 'brand blue' },
+        { name: 'line', colour: '#12' },
+      ],
+    })
+    expect(out.isError).toBe(true)
+    expect(out.text).not.toContain('<svg')
+    expect(out.text).toContain('accent')
+    expect(out.text).toContain('brand blue')
+    expect(out.text).toContain('line')
+    expect(out.text).not.toMatch(/\bbg\b/)
   })
 })

@@ -1,5 +1,7 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { parseArgs } from '../../src/cli/args.js'
+import { colourUsage, parseArgs } from '../../src/cli/args.js'
 import { execute } from '../../src/cli/execute.js'
 import { makeJpeg, makePdf, makeTempDir, makeTransparentPng } from '../helpers/fixtures.js'
 
@@ -143,5 +145,118 @@ describe('forge palette', () => {
     const out = await run(['palette', await makeTransparentPng(dir, 't.png')])
     expect(out.exitCode).toBe(1)
     expect(out.stderr.join('\n')).toContain('no visible pixels')
+  })
+})
+
+describe('forge card', () => {
+  const write = async (name: string, text: string) => {
+    const dir = await makeTempDir()
+    const path = join(dir, name)
+    await writeFile(path, text)
+    return path
+  }
+  const TOKENS = JSON.stringify({
+    color: {
+      bg: { $type: 'color', $value: '#f8f1e6' },
+      'blue-600': { $type: 'color', $value: '#1c50b5' },
+    },
+  })
+
+  it('prints one row per colour, hex then name, plain when colour is off', async () => {
+    const out = await run(['card', await write('palette.tokens.json', TOKENS)])
+    expect(out.exitCode).toBe(0)
+    expect(out.stdout).toEqual(['#F8F1E6  bg', '#1C50B5  blue-600'])
+  })
+
+  it('draws swatches in true colour when colour is on', async () => {
+    const out = await run(['card', await write('p.json', TOKENS)], true)
+    expect(out.stdout[0]).toContain('\x1b[38;2;248;241;230m██\x1b[39m')
+  })
+
+  it('--svg prints the card, titled with the file name unless --title says otherwise', async () => {
+    const path = await write('cream-blue.tokens.json', TOKENS)
+    const svg = (await run(['card', path, '--svg'])).stdout[0] ?? ''
+    expect(svg.startsWith('<svg')).toBe(true)
+    expect(svg).toContain('>cream-blue</text>')
+    expect(svg).toContain('>2 colours</text>')
+    expect(svg).toContain('<g id="blue-600"')
+    const titled = (await run(['card', path, '--svg', '--title', 'Cream blue'])).stdout[0] ?? ''
+    expect(titled).toContain('>Cream blue</text>')
+  })
+
+  it('--json is the card document', async () => {
+    const path = await write('p.json', TOKENS)
+    const doc = JSON.parse((await run(['card', path, '--json'])).stdout[0] ?? '')
+    expect(doc).toMatchObject({
+      ok: true,
+      card: {
+        source: path,
+        colours: [
+          { name: 'bg', hex: '#F8F1E6' },
+          { name: 'blue-600', hex: '#1C50B5' },
+        ],
+      },
+      failures: [],
+    })
+  })
+
+  it('reads the file by what it holds, not its name: CSV saved as .txt', async () => {
+    const out = await run(['card', await write('notes.txt', 'name,hex\nbg,#f8f1e6\n')])
+    expect(out.stdout).toEqual(['#F8F1E6  bg'])
+  })
+
+  it('a see-through colour says how see-through', async () => {
+    const out = await run(['card', await write('a.txt', 'scrim #00000080\n')])
+    expect(out.stdout).toEqual(['#000000 50%  scrim'])
+  })
+
+  it('lines it cannot read refuse the card, every one listed, exit 1', async () => {
+    const path = await write('a.txt', 'bg #f8f1e6\naccent to be decided\nline #12\n')
+    const out = await run(['card', path, '--svg'])
+    expect(out.exitCode).toBe(1)
+    expect(out.stdout).toEqual([])
+    const err = out.stderr.join('\n')
+    expect(err).toContain('accent to be decided')
+    expect(err).toContain('line #12')
+  })
+
+  it('a file with no colours in it is refused, exit 1', async () => {
+    const out = await run(['card', await write('a.txt', '')])
+    expect(out.exitCode).toBe(1)
+    expect(out.stderr.join('\n')).toContain('No colours')
+  })
+
+  it('a missing file is file-not-found, exit 1', async () => {
+    const out = await run(['card', '/nonexistent/palette.csv'])
+    expect(out.exitCode).toBe(1)
+    expect(out.stderr.join('\n')).toMatch(/not found/i)
+  })
+
+  it('- reads the list from stdin', async () => {
+    expect(parseArgs(['card', '-'])).toMatchObject({ kind: 'card', input: '-' })
+    const { runCard } = await import('../../src/cli/colour.js')
+    const out = await runCard(
+      { kind: 'card', input: '-', svg: false },
+      { json: false, colour: false },
+      async () => 'bg #f8f1e6\n',
+    )
+    expect(out.stdout).toEqual(['#F8F1E6  bg'])
+  })
+
+  it('no file, two files, a bare --title or a flag it does not take is invalid arguments', () => {
+    for (const argv of [
+      ['card'],
+      ['card', 'a.csv', 'b.csv'],
+      ['card', 'a.csv', '--title'],
+      ['card', 'a.csv', '--inside', '123456'],
+    ]) {
+      expect(() => parseArgs(argv), argv.join(' ')).toThrow(
+        expect.objectContaining({ code: 'invalid-arguments' }),
+      )
+    }
+  })
+
+  it('--help prints its usage', () => {
+    expect(colourUsage('card', 'darwin')).toContain('Usage: forge card <file> [--json] [--svg]')
   })
 })

@@ -853,6 +853,11 @@ $ forge scale 6579FD
  500  #6579FD  white 3.6 large · black 5.7 AA
  …
  950  #161B58  white 15.7 AAA · black 1.3 fails
+$ forge card palette.csv
+#F8F1E6  bg
+#1C50B5  blue-600
+…
+$ forge card palette.csv --svg | pbcopy           # then ⌘V in Figma
 ```
 
 - **`forge palette <image>`** gives an image's main colours, most of the image
@@ -866,11 +871,21 @@ $ forge scale 6579FD
   takes it (`forge scale crimson`, `forge scale 'rgb(210 4 45)'`). Pass a hex
   without the `#`, or quote it (`'#6579FD'`): an unquoted `#` starts a
   comment in the shell.
+- **`forge card <file>`** reads named colours you already have and draws
+  them as the same card, so a colour system written down pastes into Figma
+  in one go. It takes design tokens (JSON), a CSV with name and hex columns,
+  CSS variables, or one colour a line (`bg #F8F1E6`, `ink: rgb(30 26 21)`).
+  The file is read by what it holds, not its name. `-` reads stdin:
+  `pbpaste | forge card - --svg | pbcopy`. `--title` sets the card's heading.
+  If any line is not a colour, no card is drawn and every such line is named
+  (exit 1), so a card never lands in Figma with colours missing.
 - **`--svg`** prints a card of swatches. Pipe it to `pbcopy` and press ⌘V in
   Figma to get real shapes and text layers: `forge scale 6579FD --svg | pbcopy`.
+  Each swatch is its own layer, named after its colour.
 - **`--json`** returns `palette` (`source`, `colours[]` with `hex`, `rgb`,
-  `oklch`, `share`) or `scale` (`reference`, `steps[]` with `step`, `hex`,
-  `oklch`, `white`, `black`).
+  `oklch`, `share`), `scale` (`reference`, `steps[]` with `step`, `hex`,
+  `oklch`, `white`, `black`) or `card` (`source`, `colours[]` with `name`,
+  `hex`, and `alpha` when a colour is see-through).
 
 On a colour terminal each row starts with a swatch. Piped, or under
 `NO_COLOR`, the rows are plain text.
@@ -1069,7 +1084,7 @@ Claude Desktop and Cursor:
 { "mcpServers": { "forge": { "command": "forge", "args": ["mcp"] } } }
 ```
 
-Seven tools, deliberately few:
+Nine tools, deliberately few:
 
 | Tool | Does |
 | --- | --- |
@@ -1078,8 +1093,10 @@ Seven tools, deliberately few:
 | `forge_convert` | convert to a target format (`quality`, `dpi`, `pages`, `background`, `password`, `overwrite`; images also `trim`, `crop`, `resize`, `sharpen`, `boost: 2 \| 3 \| 4` and `removeBackground`, the last two needing the optional extensions) |
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
+| `forge_clip` | the image on the clipboard, compressed (`quality`, `maxSize`) or converted (`to`) and put back; `undo: true` restores the original |
 | `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades (read-only) |
 | `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text; the colour as hex, `rgb()`, `hsl()`, `oklch()` or a name (read-only) |
+| `forge_card` | named colours (`title`, `colours: [{ name, colour }]`, optional `subtitle` and `theme`) drawn as the SVG swatch card; pipe it to `pbcopy` and paste into Figma for one layer per colour (read-only) |
 
 Paths must be absolute. Results come back as structured content in the
 `--json` shape below, with a `file://` link to every output, and never as
@@ -1170,7 +1187,8 @@ succeeded) and `failures`. A conversion, compression or page operation adds
 
 `--formats --json` returns `formats` (`id`, `label`, `extensions`, `read`,
 `write`, `lossy`). `forge probe --json` returns `probes`. `forge palette
---json` returns `palette`, and `forge scale --json` returns `scale` (see
+--json` returns `palette`, `forge scale --json` returns `scale`, and `forge
+card --json` returns `card` (see
 [Colour](#colour)). `forge config
 --json` returns `config` and `warnings`. An argument error is a document with
 one `invalid-arguments` failure and exit code 2. Fields are not renamed or
@@ -1479,7 +1497,7 @@ src/
 │   └── report.ts        stdout formatting (success, batch, errors, --formats)
 │
 ├── mcp/                the MCP server — a third front end, loaded only by `forge mcp`
-│   ├── server.ts        createForgeServer(): seven tools; runMcpServer(): stdio
+│   ├── server.ts        createForgeServer(): nine tools; runMcpServer(): stdio
 │   ├── tools.ts         tool handlers → the same intents and runIntent() the CLI uses
 │   ├── schemas.ts       zod input/output schemas, vocabularies read from core/actions
 │   └── stdout-guard.ts  stdout belongs to the protocol; stray writes go to stderr

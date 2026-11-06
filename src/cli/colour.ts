@@ -1,15 +1,26 @@
-import { resolve } from 'node:path'
-import { paletteCard, scaleCard } from '../core/colour/card.js'
+import { readFile } from 'node:fs/promises'
+import { basename, resolve } from 'node:path'
+import { card, paletteCard, scaleCard } from '../core/colour/card.js'
 import { onWhiteAndBlack, rate } from '../core/colour/contrast.js'
+import { readColourList } from '../core/colour/list.js'
 import { type Group, inside, palette, wholePercents } from '../core/colour/palette.js'
+import { parseColour } from '../core/colour/parse.js'
 import { scale } from '../core/colour/scale.js'
 import { formatOklch, formatRgb, type Rgb, rgbToOklab, toHex } from '../core/colour/space.js'
-import { nothingVisible } from '../core/errors.js'
-import { paletteJson, scaleJson } from '../core/report-data.js'
+import {
+  fileNotFound,
+  noColours,
+  notAFile,
+  notColours,
+  nothingVisible,
+  permissionDenied,
+  unreadablePath,
+} from '../core/errors.js'
+import { cardJson, paletteJson, scaleJson } from '../core/report-data.js'
 import { samplePixels } from '../engines/pixels.js'
 import { VERSION } from '../shell/theme.js'
 import { displayName } from '../utils/display-path.js'
-import type { PaletteIntent, ScaleIntent } from './args.js'
+import type { CardIntent, PaletteIntent, ScaleIntent } from './args.js'
 import type { ExecuteResult } from './execute.js'
 
 /**
@@ -98,6 +109,72 @@ export async function runScale(intent: ScaleIntent, opts: Opts): Promise<Execute
         `${String(s.step).padStart(4)}  ${swatch(s.rgb, opts.colour)}${s.hex}  ` +
         `white ${s.white.toFixed(1)} ${rate(s.white)} · black ${s.black.toFixed(1)} ${rate(s.black)}`,
     ),
+    stderr: [],
+  }
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function readText(path: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') throw fileNotFound(path)
+    if (code === 'EISDIR') throw notAFile(path)
+    if (code === 'EACCES' || code === 'EPERM') throw permissionDenied(path)
+    throw unreadablePath(path, e)
+  }
+}
+
+const hexAndAlpha = (c: { hex: string; alpha?: number }): string =>
+  c.alpha === undefined ? c.hex : `${c.hex} ${Math.round(c.alpha * 100)}%`
+
+/**
+ * `forge card`: a palette file's named colours, as rows, the card (`--svg`)
+ * or JSON. Any line that is not a colour refuses the whole card, so nothing
+ * half-right reaches Figma (exit 1, every bad line named).
+ */
+export async function runCard(
+  intent: CardIntent,
+  opts: Opts,
+  stdin: () => Promise<string> = readStdin,
+): Promise<ExecuteResult> {
+  const fromStdin = intent.input === '-'
+  const text = fromStdin ? await stdin() : await readText(intent.input)
+  const label = fromStdin ? 'the text from stdin' : displayName(intent.input)
+  const { colours, bad } = readColourList(text)
+  if (bad.length > 0) throw notColours(label, bad)
+  if (colours.length === 0) throw noColours(label)
+  if (intent.svg) {
+    const title =
+      intent.title ??
+      (fromStdin ? 'Colours' : basename(intent.input).replace(/\..*$/, '') || 'Colours')
+    const n = colours.length
+    const items = colours.map((c) => ({
+      id: c.name,
+      name: c.name,
+      value: hexAndAlpha(c),
+      hex: c.hex,
+      ...(c.alpha === undefined ? {} : { alpha: c.alpha }),
+    }))
+    const svg = card(title, `${n} colour${n === 1 ? '' : 's'}`, items, 'light', { perRow: 8 })
+    return { exitCode: 0, stdout: [svg], stderr: [] }
+  }
+  if (opts.json) {
+    const doc = cardJson(VERSION, { source: fromStdin ? '-' : resolve(intent.input), colours })
+    return { exitCode: 0, stdout: [JSON.stringify(doc)], stderr: [] }
+  }
+  return {
+    exitCode: 0,
+    stdout: colours.map((c) => {
+      const rgb = parseColour(c.hex)?.rgb ?? { r: 0, g: 0, b: 0 }
+      return `${swatch(rgb, opts.colour)}${hexAndAlpha(c)}  ${c.name}`
+    }),
     stderr: [],
   }
 }

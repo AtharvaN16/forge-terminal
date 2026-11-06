@@ -64,7 +64,7 @@ describe('wording on Linux', () => {
       .join('')
     expect(text).toContain('paste into Figma with Ctrl+V')
 
-    for (const which of ['palette', 'scale'] as const) {
+    for (const which of ['palette', 'scale', 'card'] as const) {
       const wayland = colourUsage(which, 'linux', { WAYLAND_DISPLAY: 'wayland-0' })
       expect(wayland).toContain('pipe to wl-copy and paste into Figma')
       expect(wayland).not.toContain('pbcopy')
@@ -94,7 +94,7 @@ An image's main colours, most of the image first.
   --inside <hex>    the shades of the palette colour nearest <hex>
 `)
     for (const platform of ['darwin', 'win32', 'linux'] as const)
-      for (const which of ['palette', 'scale'] as const)
+      for (const which of ['palette', 'scale', 'card'] as const)
         for (const line of colourUsage(which, platform).split('\n'))
           if (line.includes('--svg  ')) expect([...line].length).toBeLessThanOrEqual(80)
   })

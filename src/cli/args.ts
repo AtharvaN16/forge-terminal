@@ -192,6 +192,19 @@ export interface PaletteIntent {
   svg: boolean
 }
 
+/**
+ * `forge card <file>`: named colours from a palette file (or `-`, stdin),
+ * drawn as the swatch card Figma pastes (colour spec §7.3).
+ */
+export interface CardIntent {
+  kind: 'card'
+  /** A path, or `-` for stdin. */
+  input: string
+  svg: boolean
+  /** `--title <text>`: the card's heading. Default: the file's name. */
+  title?: string
+}
+
 /** `forge scale <colour>`: 50–950 with the colour at 500. */
 export interface ScaleIntent {
   kind: 'scale'
@@ -274,6 +287,7 @@ export type Intent =
   | ExtensionsIntent
   | PaletteIntent
   | ScaleIntent
+  | CardIntent
   | { kind: 'formats' }
   | { kind: 'shell' }
   /** `forge update`: check npm now and install a newer Forge. */
@@ -423,6 +437,8 @@ Other commands:
   forge probe <files...>   what each file is and what Forge can do with it
   forge palette <image>    an image's main colours (--json, --svg, --inside <hex>)
   forge scale <colour>     50–950 from one colour, with it at 500 (--json, --svg)
+  forge card <file>        named colours as a card to paste into Figma
+                           (--svg, --json, --title <text>; - reads stdin)
   forge clip               compress the copied image and put it back (--to, --quality,
                            --max-size, --save [folder], --undo)
   forge transcribe <file | link>
@@ -719,7 +735,7 @@ function colourArg(raw: string | undefined): Rgb {
  * xclip on its X11.
  */
 export function colourUsage(
-  which: 'palette' | 'scale',
+  which: 'palette' | 'scale' | 'card',
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
@@ -730,6 +746,15 @@ export function colourUsage(
   const svg = x11
     ? '  --svg             a card of swatches; pipe to xclip -sel c, paste into Figma'
     : `  --svg             a card of swatches; pipe to ${copier} and paste into Figma`
+  if (which === 'card')
+    return `Usage: forge card <file> [--json] [--svg] [--title <text>]
+
+Named colours from design tokens, a CSV, CSS variables or one a line
+(bg #F8F1E6). - reads them from stdin.
+  --json            one JSON document: card.colours[] with name and hex
+${svg}
+  --title <text>    the card's heading; the file's name if not given
+`
   if (which === 'scale')
     return `Usage: forge scale <colour> [--json] [--svg]
 
@@ -746,13 +771,16 @@ ${svg}
 `
 }
 
-function parseColourArgs(argv: string[]): PaletteIntent | ScaleIntent {
+function parseColourArgs(argv: string[]): PaletteIntent | ScaleIntent | CardIntent {
   const [cmd, ...rest] = argv
   if (rest.includes('--help') || rest.includes('-h')) {
     // As Commander does for `forge --help`: print, then end as help (exit 0).
-    process.stdout.write(colourUsage(cmd === 'scale' ? 'scale' : 'palette'))
+    process.stdout.write(
+      colourUsage(cmd === 'scale' ? 'scale' : cmd === 'card' ? 'card' : 'palette'),
+    )
     throw new CommanderError(0, 'commander.helpDisplayed', '(outputHelp)')
   }
+  if (cmd === 'card') return parseCardArgs(rest)
   const args = rest.filter((a) => a !== '--json' && a !== '--svg')
   const svg = rest.includes('--svg')
   const at = args.indexOf('--inside')
@@ -785,6 +813,34 @@ function parseColourArgs(argv: string[]): PaletteIntent | ScaleIntent {
     svg,
     ...(at === -1 ? {} : { inside: colourArg(insideRaw) }),
   }
+}
+
+function parseCardArgs(rest: string[]): CardIntent {
+  const args = rest.filter((a) => a !== '--json' && a !== '--svg')
+  const svg = rest.includes('--svg')
+  const at = args.indexOf('--title')
+  const title = at === -1 ? undefined : args[at + 1]
+  if (at !== -1) {
+    if (title === undefined || title.trim() === '') {
+      throw invalidArguments(
+        '--title needs the heading.',
+        "Try: forge card palette.csv --title 'Cream blue'",
+      )
+    }
+    args.splice(at, 2)
+  }
+  // `-` alone is stdin, not a flag.
+  const flag = args.find((a) => a.startsWith('-') && a !== '-')
+  if (flag !== undefined) {
+    throw invalidArguments(`forge card does not take ${flag}.`, 'Try: forge card --help')
+  }
+  if (args.length !== 1) {
+    throw invalidArguments(
+      args.length === 0 ? 'No file given.' : 'forge card takes one file.',
+      'Try: forge card palette.csv --svg',
+    )
+  }
+  return { kind: 'card', input: args[0] as string, svg, ...(title === undefined ? {} : { title }) }
 }
 
 /**
@@ -840,6 +896,7 @@ export function parseArgs(rawArgv: string[]): Intent {
     argv[0] === 'extensions' ||
     argv[0] === 'palette' ||
     argv[0] === 'scale' ||
+    argv[0] === 'card' ||
     argv[0] === 'update' ||
     argv[0] === 'uninstall'
   ) {
@@ -875,7 +932,9 @@ function parseSubcommand(argv: string[]): Intent {
   if (argv[0] === 'transcribe') return parseTranscribeArgs(argv)
   if (argv[0] === 'config') return parseConfigArgs(argv.filter((a) => a !== '--json'))
   if (argv[0] === 'probe') return parseProbeArgs(argv)
-  if (argv[0] === 'palette' || argv[0] === 'scale') return parseColourArgs(argv)
+  if (argv[0] === 'palette' || argv[0] === 'scale' || argv[0] === 'card') {
+    return parseColourArgs(argv)
+  }
   return parseExtensionsArgs(argv)
 }
 

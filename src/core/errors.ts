@@ -229,6 +229,28 @@ export function nothingVisible(path: string): ForgeError {
   })
 }
 
+/** `forge card`: the text holds no colour at all. `label` names the file, or "the text from stdin". */
+export function noColours(label: string): ForgeError {
+  return new ForgeError({
+    code: 'unsupported-source',
+    title: 'No colours',
+    detail: `There are no colours in ${label} that Forge can read.`,
+    hint: 'Write one a line, a name and a colour (bg #F8F1E6), or use a CSV with name and hex columns, CSS variables or design tokens.',
+  })
+}
+
+/** `forge card`: some lines or tokens are not colours, so no card is drawn rather than a card missing some. */
+export function notColours(label: string, bad: string[]): ForgeError {
+  const shown = bad.slice(0, 8).join('; ')
+  const more = bad.length > 8 ? `; and ${bad.length - 8} more` : ''
+  return new ForgeError({
+    code: 'unsupported-source',
+    title: 'Not colours',
+    detail: `${bad.length === 1 ? 'One line' : `${bad.length} lines`} of ${label} could not be read as a colour: ${shown}${more}.`,
+    hint: 'Write each as a name and a colour, such as bg #F8F1E6, or take the line out.',
+  })
+}
+
 /**
  * HEIC is decoded by macOS's own `sips`, because Sharp's prebuilt binary
  * ships libheif without an HEVC decoder for licensing reasons. This is the

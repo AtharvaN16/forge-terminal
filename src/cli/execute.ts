@@ -904,10 +904,11 @@ export async function execute(intent: Intent, opts: ExecuteOptions = {}): Promis
         stderr: reportFailures(failures, { debug }),
       }
     }
-    if (intent.kind === 'palette' || intent.kind === 'scale') {
+    if (intent.kind === 'palette' || intent.kind === 'scale' || intent.kind === 'card') {
       // Lazy: colour pulls in sharp only through samplePixels, and only here.
-      const { runPalette, runScale } = await import('./colour.js')
+      const { runCard, runPalette, runScale } = await import('./colour.js')
       const o = { json, colour: opts.colour ?? false }
+      if (intent.kind === 'card') return await runCard(intent, o)
       return intent.kind === 'palette' ? await runPalette(intent, o) : await runScale(intent, o)
     }
     if (intent.kind === 'transcribe') {

@@ -53,12 +53,24 @@ export function card(
   subtitle: string,
   items: CardItem[],
   theme: 'light' | 'dark' = 'light',
+  /** Swatches per row before the next row starts. Default: one row. */
+  opts: { perRow?: number } = {},
 ): string {
   const { ink, grey, edge, paper } = look(theme)
-  const sw = items.length > 8 ? 64 : 104
+  const cols = Math.min(items.length, opts.perRow ?? items.length)
+  const rows = Math.ceil(items.length / Math.max(1, cols))
+  const sw = cols > 8 ? 64 : 104
   const gap = 10
-  const w = 48 + items.length * sw + Math.max(0, items.length - 1) * gap
-  const h = 84 + sw + 56
+  // A column is as wide as its swatch, or its longest name or value when that
+  // is wider (13 px semibold ≈ 8 px a character, 11 px ≈ 6.5), so a written
+  // name like surface-raised never runs into the next one.
+  const col = Math.max(
+    sw,
+    ...items.map((it) => Math.max(it.name.length * 8, Math.ceil(it.value.length * 6.5))),
+  )
+  const pitch = sw + 56
+  const w = 48 + cols * col + Math.max(0, cols - 1) * gap
+  const h = 84 + rows * pitch
   const rx = sw > 80 ? 12 : 10
   const head =
     `<text id="title" x="24" y="38" ${FONT} font-size="15" font-weight="600" fill="${ink}">${esc(title)}</text>` +
@@ -66,7 +78,7 @@ export function card(
   const body = items
     .map(
       (it, i) =>
-        `<g id="${slug(it.id)}" transform="translate(${24 + i * (sw + gap)} 80)">` +
+        `<g id="${slug(it.id)}" transform="translate(${24 + (i % cols) * (col + gap)} ${80 + Math.floor(i / cols) * pitch})">` +
         (it.alpha === undefined
           ? ''
           : `<rect id="checker" width="${sw}" height="${sw}" rx="${rx}" fill="url(#checker)"/>`) +
