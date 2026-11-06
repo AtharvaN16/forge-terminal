@@ -1,15 +1,15 @@
 {
   "name": "forge-terminal",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Agents copy the card",
-      "text": "An AI agent using Forge can now put a colour card straight on your clipboard, the same card c copies in the app, ready to paste into Figma."
+      "title": "Agents hear recordings",
+      "text": "AI agents using Forge can now get the notes and transcript of a video, sound file or YouTube link, made on your computer."
     },
     {
-      "title": "Cards from any colour",
-      "text": "Agents can now get the card for a scale or an image's palette too, not only the numbers."
+      "title": "Agents read pictures",
+      "text": "Agents can also get the text in a picture, screenshot, scan or PDF, with headings, lists and tables kept."
     }
   ],
   "keywords": [
