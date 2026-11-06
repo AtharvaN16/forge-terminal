@@ -1,15 +1,15 @@
 {
   "name": "forge-terminal",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "A terminal-native file converter for macOS, Windows and Linux",
   "whatsNew": [
     {
-      "title": "Videos stay visible",
-      "text": "A video saved to an iCloud Desktop or Documents folder was hidden by macOS. Forge now saves it visible."
+      "title": "Colour cards for Figma",
+      "text": "forge card turns a palette file (design tokens, CSV, CSS or one colour a line) into a card of swatches. Paste it into Figma and each colour is its own layer, named as written."
     },
     {
-      "title": "Size passes count on",
-      "text": "When a size takes another try, the passes now read 3 of 4, 4 of 4 instead of starting over at 1 of 2."
+      "title": "Agents can draw cards",
+      "text": "Forge's MCP server has forge_card, so an AI agent can turn a colour system it wrote into the same card for you to paste."
     }
   ],
   "keywords": [
