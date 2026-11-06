@@ -85,9 +85,14 @@ describe('the tool list', () => {
     ])
     const byName = new Map(tools.map((t) => [t.name, t]))
     expect(byName.get('forge_probe')?.annotations?.readOnlyHint).toBe(true)
-    expect(byName.get('forge_palette')?.annotations?.readOnlyHint).toBe(true)
-    expect(byName.get('forge_scale')?.annotations?.readOnlyHint).toBe(true)
-    expect(byName.get('forge_card')?.annotations?.readOnlyHint).toBe(true)
+    // The colour tools write no file, but copy: true replaces the clipboard.
+    for (const name of ['forge_palette', 'forge_scale', 'forge_card']) {
+      expect(byName.get(name)?.annotations, name).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+      })
+    }
     expect(byName.get('forge_convert')?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: false,

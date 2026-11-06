@@ -12,12 +12,18 @@ import type {
 import { type ClipDeps, clipLines, runClip, runUndo } from '../cli/clip-command.js'
 import { type RunReport, runIntent } from '../cli/execute.js'
 import { formatMatrix } from '../core/capabilities.js'
-import { type CardItem, card } from '../core/colour/card.js'
+import { type CardItem, card, scaleCard } from '../core/colour/card.js'
 import { wholePercents } from '../core/colour/palette.js'
 import { parseColour } from '../core/colour/parse.js'
+import { scale } from '../core/colour/scale.js'
 import { toHex } from '../core/colour/space.js'
 import { type CropSpec, parseAspect } from '../core/crop.js'
-import { type ForgeError, invalidArguments, isForgeError } from '../core/errors.js'
+import {
+  clipboardUnavailable,
+  type ForgeError,
+  invalidArguments,
+  isForgeError,
+} from '../core/errors.js'
 import { probeFiles } from '../core/probe-report.js'
 import {
   errorJson,
@@ -31,6 +37,7 @@ import {
 } from '../core/report-data.js'
 import { parseSize } from '../core/units.js'
 import { VERSION } from '../shell/theme.js'
+import { clipboardSupported, type Pasteboard, systemPasteboard } from '../utils/pasteboard.js'
 import type {
   CardArgs,
   ClipArgs,
@@ -365,32 +372,84 @@ function textError(text: string): CallToolResult {
   return { content: [{ type: 'text', text }], isError: true }
 }
 
+/** Where a card goes when asked: the clipboard forge_clip uses, or the system's. */
+function pasteboardOf(deps: ClipDeps): Pasteboard {
+  if (deps.pasteboard) return deps.pasteboard
+  if (!clipboardSupported()) throw clipboardUnavailable()
+  return systemPasteboard()
+}
+
+const PASTE = process.platform === 'darwin' ? '⌘V' : 'Ctrl+V'
+
 /**
- * Colour tools call the CLI's own runners with `json: true` and return the
- * very document `forge palette --json` prints, so the two cannot drift.
+ * A colour tool's card, as asked: handed back (`svg`), put on the clipboard
+ * (`copy`), or both. Copied, it is plain text only, as the app's c copies it,
+ * so Figma pastes shapes. Copied and not asked for, it is not handed back:
+ * the agent has no use for the SVG and it would fill its context.
  */
-export async function paletteTool(args: PaletteArgs): Promise<CallToolResult> {
+async function withCard(
+  base: CallToolResult,
+  svg: () => string,
+  want: { svg?: boolean | undefined; copy?: boolean | undefined; swatches: number },
+  deps: ClipDeps,
+): Promise<CallToolResult> {
+  if (!want.svg && !want.copy) return base
+  const card = svg()
+  const content = [...base.content]
+  if (want.copy) {
+    try {
+      await pasteboardOf(deps).writeText(card, '')
+    } catch (e) {
+      const why = isForgeError(e) ? e.detail : e instanceof Error ? e.message : String(e)
+      return textError(`The card could not be put on the clipboard: ${why}`)
+    }
+    const n = want.swatches
+    content.push({
+      type: 'text',
+      text: `Copied a card of ${n} swatch${n === 1 ? '' : 'es'} to the clipboard. Paste it into Figma with ${PASTE}: one layer per colour.`,
+    })
+  }
+  if (want.svg) content.push({ type: 'text', text: card })
+  return { ...base, content }
+}
+
+/**
+ * Colour tools call the CLI's own runners and readers, and return the very
+ * document `forge palette --json` prints, so the two cannot drift.
+ */
+export async function paletteTool(args: PaletteArgs, deps: ClipDeps = {}): Promise<CallToolResult> {
   const inside = args.inside === undefined ? undefined : parseColour(args.inside)?.rgb
   if (args.inside !== undefined && !inside) {
     return textError(`${args.inside} is not a colour. Try #RRGGBB.`)
   }
   try {
-    const { runPalette } = await import('../cli/colour.js')
-    const out = await runPalette(
-      { kind: 'palette', input: args.path, svg: false, ...(inside ? { inside } : {}) },
-      { json: true, colour: false },
-    )
-    const doc = JSON.parse(out.stdout[0] ?? '{}') as PaletteJson
+    const { readPalette } = await import('../cli/colour.js')
+    const read = await readPalette({
+      kind: 'palette',
+      input: args.path,
+      svg: false,
+      ...(inside ? { inside } : {}),
+    })
+    const doc = read.doc as PaletteJson
     const pcts = wholePercents(doc.palette.colours.map((c) => c.share))
     const text = doc.palette.colours.map((c, i) => `${c.hex} ${pcts[i]}%`).join('\n')
-    return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
+    const base: CallToolResult = {
+      content: [{ type: 'text', text }],
+      structuredContent: { ...doc },
+    }
+    return await withCard(
+      base,
+      read.svg,
+      { svg: args.svg, copy: args.copy, swatches: doc.palette.colours.length },
+      deps,
+    )
   } catch (e) {
     if (isForgeError(e)) return textError(`${e.title}: ${e.detail}${e.hint ? ` ${e.hint}` : ''}`)
     throw e
   }
 }
 
-export async function scaleTool(args: ScaleArgs): Promise<CallToolResult> {
+export async function scaleTool(args: ScaleArgs, deps: ClipDeps = {}): Promise<CallToolResult> {
   const colour = parseColour(args.colour)?.rgb
   if (!colour) {
     return textError(
@@ -403,7 +462,14 @@ export async function scaleTool(args: ScaleArgs): Promise<CallToolResult> {
   const text = doc.scale.steps
     .map((s) => `${s.step} ${s.hex} white ${s.white} black ${s.black}`)
     .join('\n')
-  return { content: [{ type: 'text', text }], structuredContent: { ...doc } }
+  const base: CallToolResult = { content: [{ type: 'text', text }], structuredContent: { ...doc } }
+  const svg = () => scaleCard(colour, scale(colour))
+  return withCard(
+    base,
+    svg,
+    { svg: args.svg, copy: args.copy, swatches: doc.scale.steps.length },
+    deps,
+  )
 }
 
 /**
@@ -412,7 +478,7 @@ export async function scaleTool(args: ScaleArgs): Promise<CallToolResult> {
  * pastes it as one layer per colour, named as written. Any entry that is not
  * a colour refuses the card, every bad one listed, so nothing half-right lands.
  */
-export function cardTool(args: CardArgs): CallToolResult {
+export async function cardTool(args: CardArgs, deps: ClipDeps = {}): Promise<CallToolResult> {
   const items: CardItem[] = []
   const bad: string[] = []
   for (const { name, colour } of args.colours) {
@@ -438,7 +504,8 @@ export function cardTool(args: CardArgs): CallToolResult {
   }
   const n = items.length
   const subtitle = args.subtitle ?? `${n} colour${n === 1 ? '' : 's'}`
-  return {
-    content: [{ type: 'text', text: card(args.title, subtitle, items, args.theme, { perRow: 8 }) }],
-  }
+  const svg = () => card(args.title, subtitle, items, args.theme, { perRow: 8 })
+  // The card is this tool's answer, so it is handed back unless it was copied instead.
+  if (!args.copy) return { content: [{ type: 'text', text: svg() }] }
+  return withCard({ content: [] }, svg, { copy: true, swatches: n }, deps)
 }

@@ -50,6 +50,19 @@ export const INSTRUCTIONS = instructionsFor()
 const READS = { readOnlyHint: true, openWorldHint: false } as const
 
 /**
+ * The colour tools read, and write nothing to disk, but `copy: true` puts
+ * their card on the user's clipboard. That changes something, so they are
+ * not marked read-only; it is only ever asked for, and the same call gives
+ * the same card, so they are not destructive and are idempotent.
+ */
+const COPIES = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const
+
+/**
  * These tools write new files but never replace one unless the call passes
  * overwrite: true, so they are marked non-destructive by default (spec §3.5).
  */
@@ -63,9 +76,9 @@ const WRITES = {
 /**
  * Forge's MCP server, with nine tools on purpose. A 57-tool ImageMagick server
  * is the cautionary example of flooding an agent's context (spec §3.5). The
- * three colour tools earn their place the way `forge_probe` does: read-only,
- * small, and answering a question an agent cannot answer by looking at a
- * file (colour spec §7.2). `forge_card` is the way back: colours the agent
+ * three colour tools earn their place the way `forge_probe` does: they
+ * write no file, are small, and answer a question an agent cannot answer
+ * by looking at a file (colour spec §7.2). `forge_card` is the way back: colours the agent
  * was given in words, out as a card Figma pastes. Tools call core
  * in-process; nothing spawns the CLI.
  */
@@ -154,12 +167,12 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Colours of an image',
       description:
-        "An image's main colours, most of the image first, each as hex, rgb and OKLCH with its share. With inside, the shades that one colour is made of. Writes nothing.",
+        "An image's main colours, most of the image first, each as hex, rgb and OKLCH with its share. With inside, the shades that one colour is made of. svg: true also returns them as an SVG card of swatches; copy: true puts that card on the user's clipboard to paste into Figma. Writes no file.",
       inputSchema: PaletteInput,
       outputSchema: PaletteOutput,
-      annotations: READS,
+      annotations: COPIES,
     },
-    (args) => paletteTool(args),
+    (args) => paletteTool(args, deps.clip),
   )
 
   server.registerTool(
@@ -167,12 +180,12 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Tonal scale',
       description:
-        'A 50–950 tonal scale built in OKLCH with the given colour at 500, each step with its contrast against white and black text. Writes nothing.',
+        "A 50–950 tonal scale built in OKLCH with the given colour at 500, each step with its contrast against white and black text. svg: true also returns it as an SVG card of swatches; copy: true puts that card on the user's clipboard to paste into Figma. Writes no file.",
       inputSchema: ScaleInput,
       outputSchema: ScaleOutput,
-      annotations: READS,
+      annotations: COPIES,
     },
-    (args) => scaleTool(args),
+    (args) => scaleTool(args, deps.clip),
   )
 
   server.registerTool(
@@ -180,11 +193,11 @@ export function createForgeServer(deps: { clip?: ClipDeps } = {}): McpServer {
     {
       title: 'Colour card for Figma',
       description:
-        'Named colours drawn as an SVG card of swatches, returned as text. Pipe it to pbcopy (macOS), clip (Windows), wl-copy or xclip -sel c (Linux) and paste into Figma: one layer per colour, named as given, with its exact fill. Use it to turn a colour system written in words into something the user can paste. Writes nothing.',
+        "Named colours drawn as an SVG card of swatches, returned as text. Paste into Figma, it is one layer per colour, named as given, with its exact fill. copy: true puts it on the user's clipboard instead of returning it, so they can press ⌘V (Ctrl+V) in Figma straight away. Use it to turn a colour system written in words into something the user can paste. Writes no file.",
       inputSchema: CardInput,
-      annotations: READS,
+      annotations: COPIES,
     },
-    (args) => cardTool(args),
+    (args) => cardTool(args, deps.clip),
   )
 
   return server

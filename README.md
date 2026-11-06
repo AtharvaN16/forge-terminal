@@ -1094,9 +1094,9 @@ Nine tools, deliberately few:
 | `forge_compress` | compress by `quality` or to a `maxSize` (also `dpi` for PDFs, `output`, `overwrite`; no `password`: compression refuses encrypted PDFs) |
 | `forge_pdf` | `merge`, `split`, `extract`, `delete`, `rotate` |
 | `forge_clip` | the image on the clipboard, compressed (`quality`, `maxSize`) or converted (`to`) and put back; `undo: true` restores the original |
-| `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades (read-only) |
-| `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text; the colour as hex, `rgb()`, `hsl()`, `oklch()` or a name (read-only) |
-| `forge_card` | named colours (`title`, `colours: [{ name, colour }]`, optional `subtitle` and `theme`) drawn as the SVG swatch card; pipe it to `pbcopy` and paste into Figma for one layer per colour (read-only) |
+| `forge_palette` | an image's main colours with their shares; `inside` gives one colour's shades; `svg` returns the card, `copy` puts it on the clipboard |
+| `forge_scale` | a 50–950 tonal scale with the colour at 500, rated for white and black text; the colour as hex, `rgb()`, `hsl()`, `oklch()` or a name; `svg` returns the card, `copy` puts it on the clipboard |
+| `forge_card` | named colours (`title`, `colours: [{ name, colour }]`, optional `subtitle` and `theme`) drawn as the SVG swatch card, or with `copy: true` put straight on the clipboard; paste into Figma for one layer per colour |
 
 Paths must be absolute. Results come back as structured content in the
 `--json` shape below, with a `file://` link to every output, and never as

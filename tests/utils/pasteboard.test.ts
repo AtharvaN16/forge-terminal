@@ -222,6 +222,17 @@ describe('macPasteboard', () => {
     expect(calls[0]?.script).toContain('public.utf8-plain-text')
     expect(calls[0]?.script).toContain('public.html')
   })
+
+  it('writeText with no HTML puts plain text only, so an app never pastes an empty page', async () => {
+    const seen: string[] = []
+    const { run, calls } = fakeRunner(async (_script: string, args: string[]) => {
+      for (const a of args) seen.push(await readFile(a, 'utf8'))
+      return JSON.stringify({ count: 14 })
+    })
+    expect(await macPasteboard(run).writeText('<svg/>', '')).toBe(14)
+    expect(seen).toEqual(['<svg/>'])
+    expect(calls[0]?.args).toHaveLength(1)
+  })
 })
 
 describe('fingerprint', () => {

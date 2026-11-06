@@ -52,29 +52,39 @@ function nearest(groups: Group[], to: Rgb): Group | undefined {
   return best
 }
 
-export async function runPalette(intent: PaletteIntent, opts: Opts): Promise<ExecuteResult> {
+/** An image's palette, or one colour's shades: what both the CLI and MCP read. */
+export interface PaletteRead {
+  groups: Group[]
+  parent?: Group
+  doc: ReturnType<typeof paletteJson>
+  /** The card `--svg` prints and the app's c copies. */
+  svg: () => string
+}
+
+export async function readPalette(intent: PaletteIntent): Promise<PaletteRead> {
   const { pixels } = await samplePixels(intent.input)
   const top = palette(pixels)
   if (top.length === 0) throw nothingVisible(intent.input)
   const parent = intent.inside ? nearest(top, intent.inside) : undefined
   const groups = parent ? inside(pixels, parent) : top
-  if (intent.svg) {
-    const svg = paletteCard(displayName(intent.input), groups, 'light', parent?.hex)
-    return { exitCode: 0, stdout: [svg], stderr: [] }
-  }
-  if (opts.json) {
-    const doc = paletteJson(VERSION, {
-      source: resolve(intent.input),
-      ...(parent ? { inside: parent.hex } : {}),
-      colours: groups.map((g) => ({
-        hex: g.hex,
-        rgb: formatRgb(g.rgb),
-        oklch: formatOklch(g.rgb),
-        share: g.share,
-      })),
-    })
-    return { exitCode: 0, stdout: [JSON.stringify(doc)], stderr: [] }
-  }
+  const doc = paletteJson(VERSION, {
+    source: resolve(intent.input),
+    ...(parent ? { inside: parent.hex } : {}),
+    colours: groups.map((g) => ({
+      hex: g.hex,
+      rgb: formatRgb(g.rgb),
+      oklch: formatOklch(g.rgb),
+      share: g.share,
+    })),
+  })
+  const svg = () => paletteCard(displayName(intent.input), groups, 'light', parent?.hex)
+  return { groups, ...(parent ? { parent } : {}), doc, svg }
+}
+
+export async function runPalette(intent: PaletteIntent, opts: Opts): Promise<ExecuteResult> {
+  const { groups, doc, svg } = await readPalette(intent)
+  if (intent.svg) return { exitCode: 0, stdout: [svg()], stderr: [] }
+  if (opts.json) return { exitCode: 0, stdout: [JSON.stringify(doc)], stderr: [] }
   const pcts = wholePercents(groups.map((g) => g.share))
   return {
     exitCode: 0,

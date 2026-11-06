@@ -284,11 +284,26 @@ const Hex = z
     'A colour: #RRGGBB, #RGB (or without the #), rgb(), hsl(), oklch(), or a CSS or common colour name',
   )
 
+/** The card as forge's app copies it with c (colour spec §7.2). */
+const CardOut = {
+  svg: z
+    .boolean()
+    .optional()
+    .describe('Also return the SVG card of swatches as text, which Figma pastes as layers'),
+  copy: z
+    .boolean()
+    .optional()
+    .describe(
+      "Put the SVG card on the user's clipboard, replacing what is there, ready to paste into Figma. Only when the user wants it copied",
+    ),
+}
+
 export const PaletteInput = z.object({
   path: absolutePath.describe('An image file (absolute path): a photo, a screenshot or artwork'),
   inside: Hex.optional().describe('Show the shades of the palette colour nearest this one'),
+  ...CardOut,
 })
-export const ScaleInput = z.object({ colour: Hex })
+export const ScaleInput = z.object({ colour: Hex, ...CardOut })
 export const CardInput = z.object({
   title: z.string().min(1).describe("The card's heading, e.g. the palette's name"),
   subtitle: z.string().optional().describe('The grey line under the title. Default: "N colours"'),
@@ -305,6 +320,7 @@ export const CardInput = z.object({
     .min(1)
     .describe('The colours, in the order they should appear'),
   theme: z.enum(['light', 'dark']).optional().describe("The card's background. Default: light"),
+  copy: CardOut.copy,
 })
 export type PaletteArgs = z.infer<typeof PaletteInput>
 export type ScaleArgs = z.infer<typeof ScaleInput>

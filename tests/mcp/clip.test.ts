@@ -83,3 +83,90 @@ describe('forge_clip', () => {
     )
   })
 })
+
+describe('colour tools: the card, and onto the clipboard', () => {
+  async function colour(c: Client, name: string, args: Record<string, unknown>) {
+    const result = await c.callTool({ name, arguments: args })
+    const content = result.content as { type: string; text?: string }[]
+    return {
+      isError: result.isError === true,
+      doc: result.structuredContent as Record<string, unknown> | undefined,
+      texts: content.filter((x) => x.type === 'text').map((x) => x.text ?? ''),
+    }
+  }
+  const heldText = (clip: ReturnType<typeof memoryPasteboard>) => {
+    const h = clip.held()
+    return h?.kind === 'text' ? h : undefined
+  }
+
+  it('svg: true gives the card a person gets with c, and still the numbers', async () => {
+    const clip = memoryPasteboard()
+    const c = await connect(clip)
+    const scale = await colour(c, 'forge_scale', { colour: '#6579FD', svg: true })
+    expect(scale.isError).toBe(false)
+    expect(scale.texts.some((t) => t.startsWith('<svg'))).toBe(true)
+    expect(scale.doc).toMatchObject({ ok: true, scale: { reference: '#6579FD' } })
+    const jpg = await makeNoiseImage(await makeTempDir(), 'a.jpg', 64, 'jpeg')
+    const palette = await colour(c, 'forge_palette', { path: jpg, svg: true })
+    expect(palette.texts.some((t) => t.startsWith('<svg') && t.includes('>a.jpg</text>'))).toBe(
+      true,
+    )
+    expect(palette.doc).toMatchObject({ ok: true })
+    expect(clip.held()).toBeNull()
+  })
+
+  it('copy: true puts the card on the clipboard as plain text and says to paste it', async () => {
+    const clip = memoryPasteboard()
+    const c = await connect(clip)
+    const out = await colour(c, 'forge_card', {
+      title: 'Cream blue',
+      colours: [
+        { name: 'bg', colour: '#f8f1e6' },
+        { name: 'blue-600', colour: '#1c50b5' },
+      ],
+      copy: true,
+    })
+    expect(out.isError).toBe(false)
+    expect(heldText(clip)?.text).toMatch(/^<svg[\s\S]*>Cream blue<\/text>/)
+    expect(heldText(clip)?.html ?? '').toBe('')
+    expect(out.texts.join('\n')).toMatch(/copied/i)
+    expect(out.texts.join('\n')).toContain('Figma')
+    // The card is on the clipboard; the agent is not handed it again unless it asks.
+    expect(out.texts.some((t) => t.startsWith('<svg'))).toBe(false)
+  })
+
+  it('copy: true on scale and palette copies their cards; inside copies the shades', async () => {
+    const clip = memoryPasteboard()
+    const c = await connect(clip)
+    const scale = await colour(c, 'forge_scale', { colour: '#6579FD', copy: true })
+    expect(scale.isError).toBe(false)
+    expect(heldText(clip)?.text).toContain('<g id="blue-500"')
+    expect(scale.doc).toMatchObject({ ok: true })
+
+    const jpg = await makeNoiseImage(await makeTempDir(), 'a.jpg', 64, 'jpeg')
+    const first = await colour(c, 'forge_palette', { path: jpg })
+    const hex = (first.doc as { palette: { colours: { hex: string }[] } }).palette.colours[0]?.hex
+    const inner = await colour(c, 'forge_palette', { path: jpg, inside: hex, copy: true })
+    expect(inner.isError).toBe(false)
+    expect(heldText(clip)?.text).toContain(`of ${hex}`)
+  })
+
+  it('copy and svg together: copied, and the card handed back too', async () => {
+    const clip = memoryPasteboard()
+    const c = await connect(clip)
+    const out = await colour(c, 'forge_scale', { colour: '#6579FD', copy: true, svg: true })
+    expect(out.texts.some((t) => t.startsWith('<svg'))).toBe(true)
+    expect(heldText(clip)?.text?.startsWith('<svg')).toBe(true)
+  })
+
+  it('a clipboard that will not take the card is an error that says so', async () => {
+    const clip = memoryPasteboard()
+    clip.pb.writeText = async () => {
+      throw new Error('pbcopy went away')
+    }
+    const c = await connect(clip)
+    const out = await colour(c, 'forge_scale', { colour: '#6579FD', copy: true })
+    expect(out.isError).toBe(true)
+    expect(out.texts.join('\n')).toMatch(/clipboard/i)
+  })
+})

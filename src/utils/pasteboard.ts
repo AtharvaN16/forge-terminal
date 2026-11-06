@@ -198,7 +198,9 @@ export interface Pasteboard {
   /**
    * Puts text on the clipboard twice over: the plain words, for a terminal or
    * an editor, and HTML, for apps that keep headings, lists and tables (spec
-   * 2026-10-23-extract-text-design §3.3). Resolves to the change count after.
+   * 2026-10-23-extract-text-design §3.3). Empty `html` puts plain text only,
+   * as an SVG card must be for Figma to paste it as shapes. Resolves to the
+   * change count after.
    */
   writeText(text: string, html: string): Promise<number>
 }
@@ -269,7 +271,8 @@ const WRITE_TEXT = `function run(argv) {
   const read = (p) => $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null)
   const item = $.NSPasteboardItem.alloc.init
   item.setStringForType(read(argv[0]), 'public.utf8-plain-text')
-  item.setStringForType(read(argv[1]), 'public.html')
+  // No HTML given: plain text only, so no app pastes an empty page instead.
+  if (argv.length > 1) item.setStringForType(read(argv[1]), 'public.html')
   pb.clearContents
   pb.writeObjects($.NSArray.arrayWithObject(item))
   return JSON.stringify({ count: Number(pb.changeCount) })
@@ -312,8 +315,9 @@ export function macPasteboard(run: Osascript = osascript): Pasteboard {
         const plain = join(dir, 'text.txt')
         const rich = join(dir, 'text.html')
         await writeFile(plain, text, 'utf8')
-        await writeFile(rich, html, 'utf8')
-        const { count } = JSON.parse(await run(WRITE_TEXT, [plain, rich])) as { count: number }
+        if (html !== '') await writeFile(rich, html, 'utf8')
+        const files = html === '' ? [plain] : [plain, rich]
+        const { count } = JSON.parse(await run(WRITE_TEXT, files)) as { count: number }
         return count
       } finally {
         await rm(dir, { recursive: true, force: true })

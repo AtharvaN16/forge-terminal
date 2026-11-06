@@ -548,16 +548,23 @@ probed as something else; 2 bad arguments, including an unparseable colour.
 
 ### 7.2 MCP tools
 
-- `forge_palette { path, inside? } → palette JSON`
-- `forge_scale { colour } → scale JSON`
+- `forge_palette { path, inside?, svg?, copy? } → palette JSON`
+- `forge_scale { colour, svg?, copy? } → scale JSON`
 - `forge_card { title, subtitle?, colours: [{ name, colour }], theme? } → SVG card`
   (added 2026-11-06). Colours an agent was given in words, drawn by `card()`
   as the card `--svg` prints, for the agent to put on the clipboard and the
   user to paste into Figma. Any entry that is not a colour refuses the whole
   card, every bad entry named.
 
-All three are registered in `mcp/server.ts`, with Zod schemas in `schemas.ts`,
-and annotated read-only.
+All three are registered in `mcp/server.ts`, with Zod schemas in `schemas.ts`.
+
+`svg: true` (added 2026-11-06) also returns the card the app's `c` copies,
+as text beside the JSON. `copy: true` puts that card on the clipboard itself,
+plain text only (an HTML flavour beside it could be what Figma pastes), and
+says so instead of returning the SVG unless `svg` asks for it too. An agent
+with no shell, such as a desktop chat app, can then hand the user a card.
+Because `copy` replaces the clipboard, the three tools are annotated not
+read-only, not destructive and idempotent, rather than read-only.
 
 ### 7.3 `forge card` (added 2026-11-06)
 
